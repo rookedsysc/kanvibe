@@ -25,7 +25,8 @@ const taskTitle = fixtureLabel ? `Chat History Fixture - ${fixtureLabel}` : 'Cha
 const historyPrefix = fixtureLabel ? `History QA ${fixtureLabel}` : 'History QA';
 const hermesTitle = `${historyPrefix} Hermes session`;
 const desktopApi = `http://127.0.0.1:${selectedPort}`;
-const fakeHome = path.join(runDir, 'agent-home');
+// Herdr의 Unix socket 경로 상한을 넘기지 않는 격리된 HOME만 별도로 만든다.
+const fakeHome = process.argv.includes('--short-agent-home') ? fs.realpathSync(fs.mkdtempSync('/tmp/kv-chat-')) : path.join(runDir, 'agent-home');
 const repo = path.join(runDir, 'fixture-repo');
 
 async function freePort(port = 0) {
@@ -92,6 +93,7 @@ async function main() {
   git('add', 'README.md'); git('commit', '-m', 'chore: isolated History fixture');
   seedAgentFiles();
   const rendererPort = await freePort();
+  const cdpPort = await freePort();
   const rendererUrl = `http://127.0.0.1:${rendererPort}`;
   const viteLog = fs.openSync(path.join(runDir, 'vite.log'), 'a');
   const vite = spawn(process.execPath, [path.join(root, 'node_modules/vite/bin/vite.js'), '--host', '127.0.0.1', '--port', String(rendererPort)], { cwd: root, env: createLocalShellEnvironment(), stdio: ['ignore', viteLog, viteLog] });
@@ -101,7 +103,7 @@ async function main() {
   process.once('SIGINT', () => { void stop().then(() => process.exit(0)); });
   try {
     await waitFor(rendererUrl);
-    app = await electron.launch({ executablePath: require('electron'), args: ['--no-sandbox', root], cwd: root, env: { ...isolatedAgentEnvironment(), KANVIBE_QA_MODE: '1', KANVIBE_APP_DATA_DIR: path.join(runDir, 'app-data'), KANVIBE_RENDERER_URL: rendererUrl }, timeout: 60000 });
+    app = await electron.launch({ executablePath: require('electron'), args: [`--remote-debugging-port=${cdpPort}`, '--no-sandbox', root], cwd: root, env: { ...isolatedAgentEnvironment(), KANVIBE_QA_MODE: '1', KANVIBE_APP_DATA_DIR: path.join(runDir, 'app-data'), KANVIBE_RENDERER_URL: rendererUrl }, recordVideo: process.argv.includes('--pane-chat') ? { dir: path.join(runDir, 'video') } : undefined, timeout: 60000 });
     app.process().stdout?.on('data', (data) => fs.appendFileSync(path.join(runDir, 'desktop.log'), data));
     app.process().stderr?.on('data', (data) => fs.appendFileSync(path.join(runDir, 'desktop.log'), data));
     const page = await app.firstWindow();
@@ -111,19 +113,30 @@ async function main() {
     await invoke('appSettings', 'setDefaultSessionType', 'terminal');
     const project = await invoke('project', 'registerProject', historyPrefix, repo);
     if (!project.success) throw new Error(JSON.stringify(project));
-    const task = await invoke('kanban', 'createTask', { title: taskTitle, projectId: project.project.id });
+    const task = await invoke('kanban', 'createTask', { title: taskTitle, projectId: project.project.id, ...(process.argv.includes('--pane-chat') ? { baseBranch: 'main' } : {}) });
+    if (process.argv.includes('--pane-chat')) {
+      const connected = await invoke('kanban', 'connectTerminalSession', task.id, 'terminal');
+      if (connected?.sessionType !== 'terminal' || !connected.sessionName) throw new Error('Fixture terminal session did not connect');
+    }
     await waitFor(`${desktopApi}/api/hooks/health`);
     const pairing = await fetch(`${desktopApi}/api/mobile/dev/pairing-code`, { method: 'POST' }).then((r) => r.json());
     const paired = await fetch(`${desktopApi}/api/mobile/pair`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code: pairing.code, deviceName: 'History contract probe' }) }).then((r) => r.json());
     const response = await fetch(`${desktopApi}/api/mobile/tasks/${task.id}/ai-sessions?limit=20`, { headers: { Authorization: `Bearer ${paired.token}` } });
     const history = await response.json();
     if (response.status !== 200 || history.history.sessions.length !== 20 || !history.history.nextCursor) throw new Error(`Real History contract failed: ${JSON.stringify(history)}`);
-    fs.writeFileSync(path.join(runDir, 'fixture.json'), JSON.stringify({ taskId: task.id, fixtureLabel, taskTitle, historyPrefix, hermesTitle, rendererUrl, repo, fakeHome, sessionCount: history.history.sessions.length, desktopPort: selectedPort, mobileTlsPort, desktopApi }, null, 2));
+    fs.writeFileSync(path.join(runDir, 'fixture.json'), JSON.stringify({ taskId: task.id, fixtureLabel, taskTitle, historyPrefix, hermesTitle, rendererUrl, repo, fakeHome, sessionCount: history.history.sessions.length, desktopPort: selectedPort, mobileTlsPort, desktopApi, cdpPort }, null, 2));
     fs.writeFileSync(path.join(runDir, 'http-contract.json'), JSON.stringify(history, null, 2));
     const flowDirectory = path.join(__dirname, '../../../mobile/.maestro/flows');
     const flowTemplate = fs.readFileSync(path.join(flowDirectory, 'chat-history.yaml'), 'utf8');
     const flow = flowTemplate.replace('TASK_TITLE: \"Chat History Fixture\"', `TASK_TITLE: ${JSON.stringify(taskTitle)}`).replace('HISTORY_PREFIX: \"History QA\"', `HISTORY_PREFIX: ${JSON.stringify(historyPrefix)}`).replace('DESKTOP_PORT: "19748"', `DESKTOP_PORT: "${mobileTlsPort}"`).replace('http://127.0.0.1:19738', desktopApi).replace('file: ../scripts/issue-dev-pairing-code.js', `file: ${path.resolve(flowDirectory, '../scripts/issue-dev-pairing-code.js')}`);
     fs.writeFileSync(path.join(runDir, 'chat-history.yaml'), flow);
+
+    if (process.argv.includes('--pane-chat')) {
+      const { runPaneChatScenario } = require('../../electron/lib/paneChatScenario.cjs');
+      const live = await runPaneChatScenario({ page, invoke, taskId: task.id, repo, fakeHome, runDir });
+      const fixture = JSON.parse(fs.readFileSync(path.join(runDir, 'fixture.json'), 'utf8'));
+      fs.writeFileSync(path.join(runDir, 'fixture.json'), JSON.stringify({ ...fixture, live }, null, 2));
+    }
 
     if (process.argv.includes('--desktop-ui')) {
       await page.setViewportSize({ width: 1440, height: 960 });
@@ -137,6 +150,7 @@ async function main() {
       const closeUpdate = page.locator("button[aria-label*='업데이트'][aria-label*='닫기']").first();
       if (await closeUpdate.isVisible().catch(() => false)) await closeUpdate.click();
       await page.getByRole('button', { name: 'AI 채팅', exact: true }).click();
+      await page.getByRole('button', { name: '히스토리', exact: true }).click();
       const list = page.getByTestId('ai-session-list');
       await list.waitFor({ state: 'visible', timeout: 30000 });
       const first = page.getByRole('button', { name: `Codex ${historyPrefix} session 24`, exact: true });
@@ -153,11 +167,22 @@ async function main() {
       await page.getByRole('button', { name: 'AI 채팅', exact: true }).click();
       await page.getByTestId('inline-ai-chat').waitFor({ state: 'detached' });
       await page.getByRole('button', { name: 'AI 채팅', exact: true }).click();
+      await page.getByRole('button', { name: '히스토리', exact: true }).click();
       await first.waitFor({ state: 'visible' });
       await page.screenshot({ path: path.join(runDir, 'desktop-history-reopen.png') });
       fs.writeFileSync(path.join(runDir, 'desktop-ui-result.json'), JSON.stringify({ pass: true, checks: ['real pairing HTTP contract', '26sessions paginated', 'selected latest messages', 'older messages', 'reopen History'] }, null, 2));
     }
     console.log(JSON.stringify({ ready: true, taskId: task.id, fixtureLabel, taskTitle, historyPrefix, runDir }));
-  } catch (error) { await stop(); throw error; }
+  } catch (error) {
+    if (app) {
+      const window = await app.firstWindow().catch(() => null);
+      if (window) {
+        await window.screenshot({ path: path.join(runDir, 'failure.png'), animations: 'disabled' }).catch(() => {});
+        fs.writeFileSync(path.join(runDir, 'failure-page.txt'), await window.locator('body').innerText().catch(() => ''));
+      }
+    }
+    await stop();
+    throw error;
+  }
 }
 main().catch((error) => { console.error(error); process.exit(1); });

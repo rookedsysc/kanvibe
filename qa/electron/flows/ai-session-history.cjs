@@ -690,6 +690,7 @@ async function main() {
     await check("Opening AI chat view shows the AI session panel without selecting a conversation", async () => {
       await dismissUpdateDialogIfPresent(page);
       await page.getByRole("button", { name: "AI 채팅" }).click({ timeout: 15000 });
+      await page.getByRole("button", { name: "히스토리", exact: true }).click();
       await page.locator("[data-testid='inline-ai-chat']").waitFor({ state: "visible", timeout: 15000 });
 
       const manualLoadButton = page.getByRole("button", { name: "히스토리 불러오기" });

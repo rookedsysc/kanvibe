@@ -147,4 +147,10 @@ KanVibe는 Flutter와 React를 사용하므로 컴포넌트 소스 공유 자체
 
 모바일은 같은 메시지 표현을 ChatConversationView와 ChatMessageTile로 분리했다. 768dp 이상에서는 세션 목록과 대화를 나란히 표시하고 휴대폰에서는 기존 Navigator의 목록→대화 흐름을 유지한다. AI 본문은 선택 가능한 Markdown, 사용자 입력은 선택 가능한 원문으로 표시한다. 전문 복사·시간·접기·최신 이동·재시도를 제공한다. Markdown은 flutter_markdown_plus 1.0.12의 MarkdownBody를 사용한다. [공식 MarkdownBody API](https://pub.dev/documentation/flutter_markdown_plus/latest/flutter_markdown_plus/MarkdownBody-class.html)는 이를 “A non-scrolling widget that parses and displays Markdown.”로 정의한다.
 
-실시간 메시지 전송 및 응답 스트리밍은 아직 구현하지 않았다. 현재 기록 API의 세션 식별자를 실행 터미널에 안전하게 연결하는 계약이 없으며, 기록을 임의 pane에 보내는 입력창을 만들지 않았다. 해당 범위는 사용자에게 질문했으며 답변 대기 중이다.
+사용자가 요구한 채팅 모드는 현재 포커스된 pane의 CLI를 제어하는 화면이다. 데스크톱 채팅 dock과 모바일 pane의 채팅 전환은 같은 실행 프로세스에 연결하고, 히스토리는 별도로 연다. 현재 실행 중인 공급자는 프로세스에서 감지한다. 프롬프트는 bracketed paste 후 별도 Enter로 전달하며, 중단과 CLI 선택기 조작을 제공한다.
+
+Orca의 terminal bridge처럼 입력 대상과 대화 파일의 소유권을 구분한다. task·pane·공급자 PID·시작 시각을 묶어 전송 직전에 확인한다. Claude/Codex hook의 세션 ID를 실제 조상 프로세스와 연결하고, 정확한 열린 대화 파일을 확인할 수 있는 경우에도 그 파일만 읽는다. 최신 히스토리 순서로 실행 대상을 추정하지 않는다. 대화 연결 전에는 현재 CLI 화면을 표시하고, 파일이 연결되면 같은 메시지 렌더러로 응답을 갱신한다.
+
+모델 변경은 CLI의 실제 `/model` 선택기를 연다. 특히 [Orca의 Claude/Codex 옵션 계약](https://github.com/stablyai/orca/blob/c8a8288a5fd022a93d6360c5350579d890b8be18/src/shared/agent-session/options/agent-session-option-catalog-claude-codex.ts)은 Claude의 모델 명령과 Codex의 대화형 선택기를 구분한다. KanVibe는 화면에 나온 목록을 방향·확인·취소 버튼으로 조작하며, 명령을 썼다는 이유만으로 변경 성공을 표시하지 않는다. 터미널에 기존 초안이 있거나 입력 위치를 확인할 수 없으면 프롬프트와 모델 명령을 막고 CLI 조작 및 터미널 전환을 제공한다.
+
+현재 새 프롬프트·모델 선택은 일반 터미널·tmux·Herdr의 Claude/Codex를 대상으로 한다. Herdr는 해당 task의 실제 클라이언트가 포커스한 pane을 읽고, native 화면 스트림을 headless 터미널로 복원해 입력 위치를 확인한다. Zellij는 설치된 CLI가 정확한 OS 프로세스 식별자를 제공하지 않아 전송을 차단한다. 원격 일반 터미널의 SSH 뒤 프로세스나 원격 데스크톱 tmux 클라이언트도 로컬 PID로 추정하지 않는다. 해당 원격 경로까지 지원 완료했다는 의미는 아니다. 실제 모델 API 응답 품질과 연결 비용은 별도 검증 대상이다.
