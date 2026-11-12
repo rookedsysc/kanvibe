@@ -42,6 +42,7 @@ import {
   syncProjectColorWithKanvibeState,
 } from "@/desktop/main/services/kanvibeProjectColorService";
 import { mapWithConcurrency } from "@/lib/aiSessions/shared";
+import { isPathMissing } from "@/lib/hostFileAccess";
 
 /** 아이콘 backfill 동시 실행 수. GitHub에 과도한 동시 요청을 보내지 않으면서 순차 대기를 줄이는 값 */
 const PROJECT_ICON_BACKFILL_CONCURRENCY = 8;
@@ -136,7 +137,9 @@ async function resolveProjectDefaultBranchWorktreePath(project: Pick<Project, "r
       return null;
     }
 
-    return worktrees.find((worktree) => !worktree.isBare && worktree.branch === project.defaultBranch)?.path ?? null;
+    const defaultWorktree = worktrees.find((worktree) => !worktree.isBare && worktree.branch === project.defaultBranch);
+    if (!defaultWorktree || await isPathMissing(defaultWorktree.path, project.sshHost)) return null;
+    return defaultWorktree.path;
   } catch {
     return null;
   }
@@ -306,7 +309,7 @@ async function ensureProjectRootTask(
     suppressRemoteConnectionErrorLogging?: boolean;
   },
 ): Promise<{ task: Awaited<ReturnType<typeof getProjectRootTask>>; repaired: boolean }> {
-  if (isProjectRootRepairBlocked(project.id)) {
+  if (isProjectRootRepairBlocked(project.id) || await isPathMissing(project.repoPath, project.sshHost)) {
     return { task: null, repaired: false };
   }
 
@@ -744,7 +747,23 @@ async function syncProjectWorktrees(
   };
 
   try {
-    result.changed = await syncSharedProjectColor(project) || result.changed;
+    const worktrees = await listWorktrees(project.repoPath, project.sshHost);
+    const projectTasks = worktrees.length > 0
+      ? await taskRepo.find({ where: { projectId: project.id } }) : [];
+    for (const task of projectTasks) {
+      if (task.branchName === project.defaultBranch || !task.worktreePath) continue;
+      if (!await isPathMissing(task.worktreePath, task.sshHost ?? project.sshHost)) continue;
+      const movedWorktree = worktrees.find((worktree) => (
+        !worktree.isBare && worktree.branch && worktree.branch === task.branchName
+        && worktree.path !== project.repoPath
+        && (task.sshHost ?? project.sshHost) === project.sshHost
+      ));
+      if (movedWorktree && !await isPathMissing(movedWorktree.path, project.sshHost)) continue;
+      const deleted = await taskRepo.delete({ id: task.id, projectId: project.id, worktreePath: task.worktreePath });
+      if (deleted.affected) {
+        result.changed = true;
+      }
+    }
 
     const { repaired } = await ensureProjectRootTask(project, {
       repairHooks: false,
@@ -752,10 +771,9 @@ async function syncProjectWorktrees(
     });
     result.changed = result.changed || repaired;
 
-    const worktrees = await listWorktrees(project.repoPath, project.sshHost);
-
     for (const wt of worktrees) {
       if (wt.isBare || !wt.branch) continue;
+      if (await isPathMissing(wt.path, project.sshHost)) continue;
 
       /** 메인 작업 디렉토리(프로젝트 루트)는 기본 브랜치 태스크와 중복되므로 건너뛴다 */
       if (wt.path === project.repoPath) continue;
@@ -861,10 +879,14 @@ async function syncProjectWorktrees(
         sshHost: project.sshHost ?? null,
       });
     }
+    if (worktrees.length > 0) {
+      result.changed = await syncSharedProjectColor(project) || result.changed;
+    }
   } catch (error) {
     result.errors.push(
       `${project.name} worktree 스캔 실패: ${error instanceof Error ? error.message : "알 수 없는 오류"}`,
     );
+    return result;
   }
 
   /** 메인 브랜치 태스크에 활성 세션이 있으면 자동 연결한다 */
@@ -915,10 +937,23 @@ export async function syncRegisteredProjectWorktrees(
     changed: false,
   };
 
-  mergedResult.changed = await backfillMissingProjectIcons(projects);
+  const existingProjects: Project[] = [];
+  for (const project of projects) {
+    try {
+      if (await isPathMissing(project.repoPath, project.sshHost)) {
+        mergedResult.changed = await deleteProject(project.id) || mergedResult.changed;
+      } else {
+        existingProjects.push(project);
+      }
+    } catch (error) {
+      mergedResult.errors.push(`${project.name} 경로 확인 실패: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  mergedResult.changed = await backfillMissingProjectIcons(existingProjects) || mergedResult.changed;
 
   const projectResults: RegisteredProjectWorktreeSyncResult[] = [];
-  for (const project of projects) {
+  for (const project of existingProjects) {
     projectResults.push(await syncProjectWorktrees(project, taskRepo));
   }
 
