@@ -1,0 +1,48 @@
+{
+  "host": "dev-vm",
+  "runtime": "v24.15.0",
+  "configuredConcurrency": "1",
+  "startedAt": "2026-11-12T05:23:05.129Z",
+  "checks": [
+    {
+      "name": "exact-contents-mode-nested-command-at-concurrency-one",
+      "pass": true,
+      "callbackCalls": 1
+    },
+    {
+      "name": "8MiB-current-file-frame-and-small-result",
+      "pass": true,
+      "callbackCalls": 1
+    },
+    {
+      "name": "concurrent-remote-merges",
+      "pass": true,
+      "clients": 6
+    },
+    {
+      "name": "app-process-death-releases-remote-lock-without-publish",
+      "pass": true
+    }
+  ],
+  "cleanup": true,
+  "treeBefore": {
+    "head": "9f48b2fb38ea41d73c6ed1a59c510bddb3d85542",
+    "fingerprint": "0896381805e178fefc8f01caa26d06b30ad7fedc"
+  },
+  "fixture": "/tmp/kanvibe-lock-qa-Lgh7PoXV",
+  "owner": {
+    "pid": 19532,
+    "executable": "/Users/rookedsysc/.nvm/versions/node/v24.15.0/bin/node",
+    "command": "/Users/rookedsysc/.nvm/versions/node/v24.15.0/bin/node --import tsx /Users/rookedsysc/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/fix-hook-lock-recovery-and-verification/qa-results/roky-harness/hook-lock-recovery-and-verification/remote-lock-smoke.cjs --crash-owner /tmp/kanvibe-lock-qa-Lgh7PoXV"
+  },
+  "ownerExit": {
+    "code": null,
+    "signal": "SIGKILL"
+  },
+  "treeAfter": {
+    "head": "9f48b2fb38ea41d73c6ed1a59c510bddb3d85542",
+    "fingerprint": "0896381805e178fefc8f01caa26d06b30ad7fedc"
+  },
+  "treeMatches": true,
+  "finishedAt": "2026-11-12T05:23:16.986Z"
+}

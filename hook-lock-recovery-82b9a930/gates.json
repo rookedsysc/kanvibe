@@ -1,0 +1,42 @@
+{
+  "runtime": "v24.15.0",
+  "pnpm": "10.17.0",
+  "gates": [
+    {
+      "command": "pnpm check",
+      "HEAD": "9f48b2fb38ea41d73c6ed1a59c510bddb3d85542",
+      "fingerprint": "0896381805e178fefc8f01caa26d06b30ad7fedc",
+      "startedAt": "2026-11-12T05:21:22.748Z",
+      "log": "/Users/rookedsysc/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/fix-hook-lock-recovery-and-verification/qa-results/roky-harness/hook-lock-recovery-and-verification/gate-check.log",
+      "exitCode": 0,
+      "signal": null,
+      "finishedAt": "2026-11-12T05:21:26.114Z",
+      "afterFingerprint": "0896381805e178fefc8f01caa26d06b30ad7fedc",
+      "treeMatched": true
+    },
+    {
+      "command": "pnpm test",
+      "HEAD": "9f48b2fb38ea41d73c6ed1a59c510bddb3d85542",
+      "fingerprint": "0896381805e178fefc8f01caa26d06b30ad7fedc",
+      "startedAt": "2026-11-12T05:21:26.173Z",
+      "log": "/Users/rookedsysc/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/fix-hook-lock-recovery-and-verification/qa-results/roky-harness/hook-lock-recovery-and-verification/gate-test.log",
+      "exitCode": 0,
+      "signal": null,
+      "finishedAt": "2026-11-12T05:22:13.629Z",
+      "afterFingerprint": "0896381805e178fefc8f01caa26d06b30ad7fedc",
+      "treeMatched": true
+    },
+    {
+      "command": "pnpm build",
+      "HEAD": "9f48b2fb38ea41d73c6ed1a59c510bddb3d85542",
+      "fingerprint": "0896381805e178fefc8f01caa26d06b30ad7fedc",
+      "startedAt": "2026-11-12T05:22:13.709Z",
+      "log": "/Users/rookedsysc/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/fix-hook-lock-recovery-and-verification/qa-results/roky-harness/hook-lock-recovery-and-verification/gate-build.log",
+      "exitCode": 0,
+      "signal": null,
+      "finishedAt": "2026-11-12T05:22:20.306Z",
+      "afterFingerprint": "0896381805e178fefc8f01caa26d06b30ad7fedc",
+      "treeMatched": true
+    }
+  ]
+}

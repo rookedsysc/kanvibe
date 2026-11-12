@@ -1,0 +1,15 @@
+{
+  "changedTestFiles": {
+    "src/lib/__tests__/gitOperations.test.ts": 28,
+    "src/lib/__tests__/hostFileAccess.test.ts": 30,
+    "src/lib/__tests__/kanvibeTargetsConcurrency.test.ts": 20,
+    "src/lib/__tests__/kanvibeProjectConcurrency.test.ts": 6,
+    "src/lib/__tests__/kanvibeHooksInstaller.test.ts": 51,
+    "src/desktop/renderer/components/__tests__/Terminal.test.tsx": 28,
+    "src/components/__tests__/SessionTypeEditor.test.tsx": 7,
+    "src/desktop/main/__tests__/terminalBridge.test.ts": 18
+  },
+  "changedSuiteExecutedTotal": 188,
+  "allFiles": 201,
+  "allTests": 2792
+}
