@@ -91,6 +91,54 @@ void main() {
     });
   }
 
+  for (final size in [phoneSize, tabletSize]) {
+    testWidgets('${size.width}dp에서 PC 별칭을 수정하고 취소하면 저장하지 않는다', (tester) async {
+      final store = await pumpApp(
+        tester,
+        client: FakeDesktopClient(boardsByHost: boards),
+        initialStore: FakeConnectionStore(initial: twoPcs),
+        size: size,
+      );
+      await tester.tap(find.text('작업실'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('집 PC 이름 수정'));
+      await tester.pumpAndSettle();
+      expect(find.widgetWithText(TextFormField, '집 PC'), findsOneWidget);
+      await tester.enterText(find.byType(TextFormField), '  새 별칭  ');
+      await tester.tap(find.text('저장'));
+      await tester.pumpAndSettle();
+      expect(find.text('새 별칭'), findsOneWidget);
+      expect((await store.readRegistry()).activeId, pcA.id);
+      expect((await store.readRegistry()).find(pcB.id)?.name, '새 별칭');
+
+      await tester.tap(find.byTooltip('새 별칭 이름 수정'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextFormField), '버릴 이름');
+      await tester.tap(find.text('취소'));
+      await tester.pumpAndSettle();
+      expect(find.text('새 별칭'), findsOneWidget);
+      expect((await store.readRegistry()).find(pcB.id)?.name, '새 별칭');
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('별칭 저장 실패는 이전 이름을 유지하고 오류를 알린다', (tester) async {
+    await pumpApp(
+      tester,
+      client: FakeDesktopClient(boardsByHost: boards),
+      initialStore: _FailingConnectionStore(initial: twoPcs),
+    );
+    await tester.tap(find.text('작업실'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('작업실 이름 수정'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextFormField), '저장 실패');
+    await tester.tap(find.text('저장'));
+    await tester.pumpAndSettle();
+    expect(find.text('작업실'), findsOneWidget);
+    expect(find.text('PC 이름을 저장하지 못했습니다. 다시 시도해 주세요.'), findsOneWidget);
+  });
+
   testWidgets('PC 추가 폼으로 새 PC를 등록한 뒤 새 보드로 이동한다', (tester) async {
     final store = await pumpApp(
       tester,
@@ -220,4 +268,13 @@ void main() {
     expect(client.unpairCalls, isEmpty);
     expect((await store.readRegistry()).connections, isEmpty);
   });
+}
+
+class _FailingConnectionStore extends FakeConnectionStore {
+  _FailingConnectionStore({super.initial});
+
+  @override
+  Future<void> writeRegistry(SavedConnections registry) async {
+    throw StateError('storage unavailable');
+  }
 }
