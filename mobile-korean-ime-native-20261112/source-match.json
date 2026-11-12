@@ -1,0 +1,22 @@
+[
+  {
+    "path": "features/task_detail/presentation/widgets/pane_terminal_view.dart",
+    "sha256": "81de5491c6214b7f0f3c98b9cc312fb12428fd1bf2d0326178e863fb67174fb8",
+    "exact": true
+  },
+  {
+    "path": "features/task_detail/presentation/widgets/terminal_soft_keyboard.dart",
+    "sha256": "0ad79a331ca8322fa5bc6d7ff041bc86cf34cd3fd33300d1f0723d15225daafd",
+    "exact": true
+  },
+  {
+    "path": "features/task_detail/presentation/widgets/terminal_shortcut_bar.dart",
+    "sha256": "616898cf7fb54adb49c7e12e3b5804e3bfd6d59d2a0dac5d866ae4f8dd481d34",
+    "exact": true
+  },
+  {
+    "path": "common/network/desktop_client.dart",
+    "sha256": "63b5caed12133d9466fd5cbbea40744c2c52c0c9f31cb43fc3c51aa9b18c14da",
+    "exact": true
+  }
+]

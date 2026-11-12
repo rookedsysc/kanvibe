@@ -1,0 +1,28 @@
+{
+  "pass": true,
+  "checks": {
+    "KOREAN_IME_QA.txt": {
+      "expected": "안녕하세요\n",
+      "actual": "안녕하세요\n",
+      "pass": true
+    },
+    "KOREAN_DELETE_QA.txt": {
+      "expected": "한기\n",
+      "actual": "한기\n",
+      "pass": true
+    },
+    "no_bulk_backspace": {
+      "pass": true
+    },
+    "stable_prefix_emitted_once": {
+      "first_안": 1,
+      "first_녕": 1,
+      "second_한": 1,
+      "pass": true
+    }
+  },
+  "inputEvents": 90,
+  "sourceCommitBeforeRepair": "5746cb564356cc3d3f891a6cf09e514a67a5580b",
+  "scope": "native iOS keyboard + unchanged production terminal widgets + isolated real desktop, focused QA fixture",
+  "verifiedSourceCommit": "2e0deba36d4f9e27019dc4b84799352b931b65b6"
+}
