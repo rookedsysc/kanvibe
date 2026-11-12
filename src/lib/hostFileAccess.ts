@@ -335,6 +335,8 @@ function buildRemoteFileUpdateCommand(targetPath: string, temporaryPath: string,
     '__kanvibe_host=$(uname -n | tr -d "\\n" | od -An -tx1 | tr -d " \\n") || exit $?;',
     'test -n "$__kanvibe_host" || exit 1;',
     `if ! mkdir -m 700 ${lockPath} 2>/dev/null; then`,
+    // mkdir 실패 직후 다른 작업이 잠금을 풀었으면 경로 오류가 아니라 사용 중으로 보고 재시도한다. 로컬 잠금의 ENOENT 처리와 같다.
+    `if ! test -e ${lockPath} && ! test -L ${lockPath}; then printf '%s\\n' ${quoteShellArgument(REMOTE_FILE_UPDATE_BUSY)}; exit 0; fi;`,
     `test -d ${lockPath} && ! test -L ${lockPath} || { printf '%s\\n' ${quoteShellArgument(`파일 잠금 경로를 확인하세요: ${targetPath}.lock`)} >&2; exit 1; };`,
     `set -- ${lockPath}/owner-*;`,
     'if [ "$#" = 1 ] && test -d "$1" && ! test -L "$1"; then',
