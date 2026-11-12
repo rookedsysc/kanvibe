@@ -277,95 +277,146 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
       }
     });
     final surfaces = ref.watch(surfacesProvider(_task.id));
-
-    return Scaffold(
-      appBar: AppBar(
-        titleSpacing: AppSizes.p8,
-        leadingWidth: AppSizes.minTouchTarget,
-        title: TerminalChromeHeader(task: _task),
-        actions: [
-          Semantics(
-            identifier: 'create-task-from-current',
-            child: IconButton(
-              onPressed: _isPreparingCreateTask ? null : _openCreateTask,
-              icon: const Icon(Icons.add_task),
-              tooltip: _isPreparingCreateTask ? '불러오는 중…' : '새 태스크',
-            ),
+    final headerActions =
+        <({String id, String label, IconData icon, VoidCallback? onPressed})>[
+          (
+            id: 'create-task-from-current',
+            label: _isPreparingCreateTask ? '불러오는 중…' : '새 태스크',
+            icon: Icons.add_task,
+            onPressed: _isPreparingCreateTask ? null : _openCreateTask,
           ),
-          Semantics(
-            identifier: 'chat-history',
-            child: IconButton(
-              tooltip: '채팅 History',
-              icon: const Icon(Icons.chat_bubble_outline),
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => ChatHistoryScreen(taskId: _task.id),
-                ),
+          (
+            id: 'chat-history',
+            label: '채팅 History',
+            icon: Icons.chat_bubble_outline,
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => ChatHistoryScreen(taskId: _task.id),
               ),
             ),
           ),
-          IconButton(
+          (
+            id: 'task-info',
+            label: '정보',
+            icon: Icons.info_outline,
             onPressed: _openInfoSheet,
-            icon: const Icon(Icons.info_outline),
-            tooltip: '정보',
           ),
-          IconButton(
+          (
+            id: 'task-status',
+            label: '상태 옮기기',
+            icon: Icons.swap_horiz,
             onPressed: _openStatusSheet,
-            icon: const Icon(Icons.swap_horiz),
-            tooltip: '상태 옮기기',
           ),
-          Semantics(
-            identifier: 'change-session-type',
-            child: IconButton(
-              onPressed: surfaces.hasValue
-                  ? () => _openSessionTypeSheet(
-                      surfaces.requireValue.surfaces.sessionType,
-                    )
-                  : null,
-              icon: const Icon(Icons.terminal),
-              tooltip: '세션 종류 바꾸기',
-            ),
+          (
+            id: 'change-session-type',
+            label: '세션 종류 바꾸기',
+            icon: Icons.terminal,
+            onPressed: surfaces.hasValue
+                ? () => _openSessionTypeSheet(
+                    surfaces.requireValue.surfaces.sessionType,
+                  )
+                : null,
           ),
           if (_task.prUrl != null)
-            IconButton(
+            (
+              id: 'task-pull-request',
+              label: 'PR 열기',
+              icon: Icons.call_merge,
               onPressed: _openPullRequest,
-              icon: const Icon(Icons.call_merge),
-              tooltip: 'PR 열기',
-              color: AppColors.brandPrimary,
             ),
-        ],
-      ),
-      body: SafeArea(
-        child: Column(
-          children: [
-            Expanded(
-              child: surfaces.when(
-                loading: () => const Center(child: CircularProgressIndicator()),
-                error: (error, _) => _SurfacesUnavailable(
-                  reason: error is SurfaceUnavailableException
-                      ? error.reason
-                      : SurfaceUnavailableReason.unknown,
-                  message: switch (error) {
-                    DesktopUpdateRequiredException() =>
-                      desktopUpdateRequiredMessage,
-                    DesktopDisconnectedException() =>
-                      desktopDisconnectedMessage,
-                    DesktopCommandFailure() => error.message,
-                    _ => null,
-                  },
-                  onRetry: () => ref
-                      .read(surfacesProvider(_task.id).notifier)
-                      .startSession(),
+        ];
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isCompact = !isTabletLayout(constraints);
+        return Scaffold(
+          appBar: AppBar(
+            titleSpacing: AppSizes.p8,
+            leadingWidth: AppSizes.minTouchTarget,
+            title: TerminalChromeHeader(task: _task),
+            actions: [
+              if (isCompact)
+                Semantics(
+                  identifier: 'task-more',
+                  child: PopupMenuButton<VoidCallback>(
+                    tooltip: '태스크 메뉴',
+                    onSelected: (action) => action(),
+                    itemBuilder: (_) => [
+                      for (final action in headerActions)
+                        PopupMenuItem<VoidCallback>(
+                          value: action.onPressed,
+                          enabled: action.onPressed != null,
+                          child: Semantics(
+                            identifier: action.id,
+                            child: Tooltip(
+                              message: action.label,
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    action.icon,
+                                    color: action.id == 'task-pull-request'
+                                        ? AppColors.brandPrimary
+                                        : null,
+                                  ),
+                                  const SizedBox(width: AppSizes.p12),
+                                  Flexible(child: Text(action.label)),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                )
+              else
+                for (final action in headerActions)
+                  Semantics(
+                    identifier: action.id,
+                    child: IconButton(
+                      onPressed: action.onPressed,
+                      icon: Icon(action.icon),
+                      tooltip: action.label,
+                      color: action.id == 'task-pull-request'
+                          ? AppColors.brandPrimary
+                          : null,
+                    ),
+                  ),
+            ],
+          ),
+          body: SafeArea(
+            child: Column(
+              children: [
+                Expanded(
+                  child: surfaces.when(
+                    loading: () =>
+                        const Center(child: CircularProgressIndicator()),
+                    error: (error, _) => _SurfacesUnavailable(
+                      reason: error is SurfaceUnavailableException
+                          ? error.reason
+                          : SurfaceUnavailableReason.unknown,
+                      message: switch (error) {
+                        DesktopUpdateRequiredException() =>
+                          desktopUpdateRequiredMessage,
+                        DesktopDisconnectedException() =>
+                          desktopDisconnectedMessage,
+                        DesktopCommandFailure() => error.message,
+                        _ => null,
+                      },
+                      onRetry: () => ref
+                          .read(surfacesProvider(_task.id).notifier)
+                          .startSession(),
+                    ),
+                    data: (value) => _buildSurfaces(
+                      value.surfaces,
+                      isCreating: value.isMutating,
+                    ),
+                  ),
                 ),
-                data: (value) => _buildSurfaces(
-                  value.surfaces,
-                  isCreating: value.isMutating,
-                ),
-              ),
+              ],
             ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 

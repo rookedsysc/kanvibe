@@ -30,6 +30,7 @@ env:
       MAX_COLUMNS: 160
 - takeScreenshot: terminal-fit-landscape
 - setOrientation: PORTRAIT
+- runFlow: ../subflows/opens-task-menu.yaml
 - tapOn:
     id: create-task-from-current
 - extendedWaitUntil:

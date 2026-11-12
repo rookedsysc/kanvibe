@@ -7,6 +7,7 @@ import '../../../common/constants/app_sizes.dart';
 import '../../../common/constants/app_theme.dart';
 import '../../../common/providers.dart';
 import '../../task_create/presentation/create_task_screen.dart';
+import '../../project_registry/presentation/project_registry_screen.dart';
 import '../../task_detail/presentation/task_detail_screen.dart';
 import '../../connection/presentation/desktop_connections_screen.dart';
 import '../../notifications/presentation/notification_center_screen.dart';
@@ -79,12 +80,33 @@ class BoardScreen extends ConsumerWidget {
           ),
         ),
         actions: [
-          const ProjectFilterButton(),
           const NotificationCenterButton(),
-          IconButton(
-            onPressed: () => ref.invalidate(boardProvider),
-            icon: const Icon(Icons.refresh),
-            tooltip: '새로고침',
+          Semantics(
+            identifier: 'board-more',
+            child: PopupMenuButton<String>(
+              key: const ValueKey('board-more'),
+              tooltip: '보드 메뉴',
+              onSelected: (action) {
+                if (action == 'refresh') {
+                  ref.invalidate(boardProvider);
+                } else if (activeConnection != null) {
+                  Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) =>
+                          ProjectRegistryScreen(connection: activeConnection),
+                    ),
+                  );
+                }
+              },
+              itemBuilder: (_) => [
+                PopupMenuItem(
+                  value: 'register',
+                  enabled: activeConnection != null,
+                  child: const Text('프로젝트 등록'),
+                ),
+                const PopupMenuItem(value: 'refresh', child: Text('새로고침')),
+              ],
+            ),
           ),
         ],
       ),
@@ -96,18 +118,32 @@ class BoardScreen extends ConsumerWidget {
               child: const Icon(Icons.add),
             ),
       body: SafeArea(
-        child: filteredBoard.when(
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (error, _) =>
-              _BoardLoadFailure(onRetry: () => ref.invalidate(boardProvider)),
-          data: (snapshot) => RefreshIndicator(
-            onRefresh: () async => ref.invalidate(boardProvider),
-            child: LayoutBuilder(
-              builder: (context, constraints) => isTabletLayout(constraints)
-                  ? _KanbanBoard(snapshot: snapshot)
-                  : _StatusListView(snapshot: snapshot),
+        child: Column(
+          children: [
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: AppSizes.p16),
+              child: Row(
+                children: [Text('프로젝트'), Spacer(), ProjectFilterButton()],
+              ),
             ),
-          ),
+            Expanded(
+              child: filteredBoard.when(
+                loading: () => const Center(child: CircularProgressIndicator()),
+                error: (error, _) => _BoardLoadFailure(
+                  onRetry: () => ref.invalidate(boardProvider),
+                ),
+                data: (snapshot) => RefreshIndicator(
+                  onRefresh: () async => ref.invalidate(boardProvider),
+                  child: LayoutBuilder(
+                    builder: (context, constraints) =>
+                        isTabletLayout(constraints)
+                        ? _KanbanBoard(snapshot: snapshot)
+                        : _StatusListView(snapshot: snapshot),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );

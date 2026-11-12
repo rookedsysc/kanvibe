@@ -7,6 +7,7 @@
 # 명령이 실행됐는지는 BRANCH_NAME의 worktree에 MARKER 파일이 생겼는지를 probe로 확인한다.
 appId: ${APP_ID}
 ---
+- runFlow: opens-task-menu.yaml
 - tapOn: "새 태스크"
 - extendedWaitUntil:
     visible: "프로젝트 \\*"

@@ -33,6 +33,7 @@ env:
 - pressKey: Enter
 - hideKeyboard
 - takeScreenshot: vim-yank-complete
+- runFlow: ../subflows/opens-task-menu.yaml
 - tapOn:
     id: create-task-from-current
 - extendedWaitUntil:
