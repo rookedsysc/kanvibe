@@ -63,6 +63,7 @@ export interface KanvibeHookProviderModule {
     repoPath: string,
     taskId?: string,
     sshHost?: string | null,
+    existingFiles?: Map<string, TextFileReadResult>,
   ) => Promise<KanvibeHookStatus>;
 }
 

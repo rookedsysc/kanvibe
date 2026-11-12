@@ -1,5 +1,5 @@
 import path from "path";
-import { ensureHerdrSession, getHerdrWorkspaceId, getHerdrClientSocketPath } from "@/lib/herdr";
+import { ensureHerdrRemoteMachine, ensureHerdrSession, getHerdrWorkspaceId, getHerdrClientSocketPath } from "@/lib/herdr";
 import { existsSync } from "fs";
 import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
@@ -833,6 +833,9 @@ async function spawnRemoteSession(
   if (sessionType === SessionType.HERDR) {
     await ensureHerdrSession(sessionName, worktreePath || "~", tmuxPaneLayout, sshHost);
     if (ws.readyState !== ws.OPEN) return;
+    void ensureHerdrRemoteMachine(sessionName, sshHost).catch((error: unknown) => {
+      console.warn(`[kanvibe] Herdr machine 등록 실패 (${sshHost}/${parseHerdrSessionTarget(sessionName).serverName}):`, error);
+    });
   }
 
 

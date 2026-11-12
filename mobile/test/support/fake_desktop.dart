@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:kanvibe_mobile/src/common/constants/app_theme.dart';
 import 'package:kanvibe_mobile/src/common/network/desktop_client.dart';
 import 'package:kanvibe_mobile/src/common/network/desktop_command.dart';
+import 'package:kanvibe_mobile/src/features/project_registry/data/project_scan_result.dart';
 import 'package:kanvibe_mobile/src/common/network/desktop_connection.dart';
 import 'package:kanvibe_mobile/src/common/providers.dart';
 import 'package:kanvibe_mobile/src/features/board/domain/task_status.dart';
@@ -48,6 +49,36 @@ class FakeConnectionStore implements ConnectionStore {
 ///
 /// 실제 소켓을 열지 않으므로 pane 출력은 테스트가 직접 흘려보낼 수 있다.
 class FakeDesktopClient implements DesktopClient {
+  Map<String, List<String>> directoriesByPath = {
+    '~': ['Documents'],
+    '~/Documents': [],
+  };
+  Object? directoryError;
+  Object? scanError;
+  ProjectScanResult scanResult = const ProjectScanResult(
+    registered: ['new-project'],
+  );
+  final scannedPaths = <String>[];
+
+  @override
+  Future<List<String>> fetchProjectDirectories(
+    DesktopConnection connection,
+    String path,
+  ) async {
+    if (directoryError != null) throw directoryError!;
+    return directoriesByPath[path] ?? [];
+  }
+
+  @override
+  Future<ProjectScanResult> scanProjects(
+    DesktopConnection connection,
+    String rootPath,
+  ) async {
+    scannedPaths.add(rootPath);
+    if (scanError != null) throw scanError!;
+    return scanResult;
+  }
+
   NotificationSettings notificationSettings = NotificationSettings(
     isEnabled: true,
     enabledStatuses: ['progress', 'pending', 'review'],

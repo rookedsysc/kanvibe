@@ -1,5 +1,5 @@
 import { registerKanvibeHookTarget } from "@/lib/hookTargetRegistration";
-import { readTextFiles } from "@/lib/hostFileAccess";
+import { readTextFiles, type TextFileReadResult } from "@/lib/hostFileAccess";
 import { writeHookProviderFiles } from "@/lib/hookFileWriter";
 import {
   buildMatcherCommandHookEntry,
@@ -138,6 +138,7 @@ export async function getGeminiHooksStatus(
   repoPath: string,
   taskId?: string,
   sshHost?: string | null,
+  existingFiles?: Map<string, TextFileReadResult>,
 ): Promise<GeminiHooksStatus> {
   const settingsPath = getGeminiSettingsPath(repoPath, sshHost);
   const state = await readShellHookProviderState({
@@ -147,6 +148,7 @@ export async function getGeminiHooksStatus(
     extraFilePaths: [settingsPath],
     taskId,
     sshHost,
+    files: existingFiles,
   });
   const [promptScript, stopScript] = state.scriptFiles;
   const hasSettingsEntry = hasGeminiSettingsEntry(state.files.get(settingsPath)?.content ?? "");

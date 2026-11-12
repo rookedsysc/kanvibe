@@ -121,6 +121,135 @@ function getSpawnedControlPath(callIndex = 0): string {
     .replace("ControlPath=", ""));
 }
 
+describe("gitOperations interactive remote transaction", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.clearAllMocks();
+    mocks.availableParallelism.mockReturnValue(2);
+    mocks.execFile.mockImplementation((_file: string, _args: string[], _options: unknown, callback: (error: null, result: { stdout: string }) => void) => callback(null, { stdout: "" }));
+    vi.doMock("@/lib/sshConfig", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("@/lib/sshConfig")>()),
+      parseSSHConfig: vi.fn(async () => [{ host: "remote-host", hostname: "example.com", port: 22, username: "tester", privateKeyPath: "/tmp/test-key" }]),
+    }));
+  });
+
+  it("분할 수신한 요청 한 줄에 한 번만 응답하고 비밀 내용은 stdin으로 보낸다", async () => {
+    const child = createMockSSHProcess();
+    const respond = vi.fn(async (payload: string) => {
+      expect(child.stdin.end).not.toHaveBeenCalled();
+      expect(payload).toBe("b2xk");
+      return "secret-response\n";
+    });
+    child.stdin.end.mockImplementation(() => queueMicrotask(() => completeRemoteCommand(child, "done")));
+    mocks.spawn.mockImplementation(() => {
+      queueMicrotask(() => {
+        child.writeStdout("login banner\nREADY\tb2");
+        child.writeStdout("xk\n");
+        child.writeStdout("READY\tb2xk\n");
+      });
+      return child;
+    });
+    const { execGit } = await import("@/lib/gitOperations");
+    await expect(execGit("transaction", "remote-host", { timeoutMs: 100, remoteStdinResponder: { marker: "READY", respond } })).resolves.toContain("done");
+    expect(respond).toHaveBeenCalledTimes(1);
+    expect(child.stdin.end).toHaveBeenCalledWith("secret-response\n");
+    expect(getSpawnedSSHArgs().join(" ")).not.toContain("secret-response");
+  });
+
+  it("한 슬롯에서도 callback의 같은 host 명령이 교착 없이 같은 shard를 쓴다", async () => {
+    vi.stubEnv("KANVIBE_REMOTE_SSH_HOST_MAX_CONCURRENCY", "1");
+    try {
+      const holder = createMockSSHProcess();
+      const nested = createMockSSHProcess();
+      holder.stdin.end.mockImplementation(() => queueMicrotask(() => completeRemoteCommand(holder, "committed")));
+      mocks.spawn.mockImplementation(() => {
+        const child = mocks.spawn.mock.calls.length === 1 ? holder : nested;
+        queueMicrotask(() => child === holder ? child.writeStdout("READY\t\n") : completeRemoteCommand(child, "nested-result"));
+        return child;
+      });
+      const { execGit } = await import("@/lib/gitOperations");
+      const respond = vi.fn(async () => {
+        expect(await execGit("herdr workspace list", "remote-host", { timeoutMs: 100 })).toBe("nested-result");
+        return "response\n";
+      });
+      await expect(execGit("transaction", "remote-host", { timeoutMs: 150, remoteStdinResponder: { marker: "READY", respond } })).resolves.toContain("committed");
+      expect(respond).toHaveBeenCalledTimes(1);
+      expect(mocks.spawn).toHaveBeenCalledTimes(2);
+      expect(getSpawnedControlPath(1)).toBe(getSpawnedControlPath(0));
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("callback 예외는 입력과 SSH 프로세스를 닫고 재실행하지 않는다", async () => {
+    const child = createMockSSHProcess();
+    mocks.spawn.mockImplementation(() => {
+      queueMicrotask(() => child.writeStdout("READY\t\n"));
+      return child;
+    });
+    const respond = vi.fn(async () => { throw new Error("update rejected"); });
+    const { execGit } = await import("@/lib/gitOperations");
+    await expect(execGit("transaction", "remote-host", { timeoutMs: 100, remoteStdinResponder: { marker: "READY", respond } })).rejects.toThrow("update rejected");
+    expect(respond).toHaveBeenCalledTimes(1);
+    expect(child.stdin.end).toHaveBeenCalled();
+    expect(child.kill).toHaveBeenCalled();
+    expect(mocks.spawn).toHaveBeenCalledTimes(1);
+  });
+
+  it("응답 후 transport가 끊겨도 callback이나 transaction을 재실행하지 않는다", async () => {
+    const child = createMockSSHProcess();
+    child.stdin.end.mockImplementation(() => queueMicrotask(() => {
+      child.writeStderr("Connection reset by peer");
+      child.close(255);
+    }));
+    mocks.spawn.mockImplementation(() => {
+      queueMicrotask(() => child.writeStdout("READY\t\n"));
+      return child;
+    });
+    const respond = vi.fn(async () => "response\n");
+    const { execGit } = await import("@/lib/gitOperations");
+    await expect(execGit("transaction", "remote-host", { timeoutMs: 100, remoteStdinResponder: { marker: "READY", respond } })).rejects.toThrow("Connection reset by peer");
+    expect(respond).toHaveBeenCalledTimes(1);
+    expect(mocks.spawn).toHaveBeenCalledTimes(1);
+  });
+
+  it("요청 직후 SSH가 종료되면 아직 시작하지 않은 callback을 실행하지 않는다", async () => {
+    const child = createMockSSHProcess();
+    mocks.spawn.mockImplementation(() => {
+      queueMicrotask(() => {
+        child.writeStdout("READY\t\n");
+        child.writeStderr("Connection reset by peer");
+        child.close(255);
+      });
+      return child;
+    });
+    const respond = vi.fn(async () => "response\n");
+    const { execGit } = await import("@/lib/gitOperations");
+    await expect(execGit("transaction", "remote-host", { timeoutMs: 100, remoteStdinResponder: { marker: "READY", respond } })).rejects.toThrow("Connection reset by peer");
+    expect(respond).not.toHaveBeenCalled();
+  });
+
+  it("transport 오류와 cooldown 오류에 실제 남은 재시도 시간을 첨부한다", async () => {
+    vi.stubEnv("KANVIBE_REMOTE_SSH_TRANSPORT_FAILURE_COOLDOWN_MS", "5000");
+    const now = vi.spyOn(Date, "now").mockReturnValue(1000);
+    try {
+      mocks.spawn.mockImplementation(() => {
+        const child = createMockSSHProcess();
+        queueMicrotask(() => { child.writeStderr("Connection reset by peer"); child.close(255); });
+        return child;
+      });
+      const { execGit } = await import("@/lib/gitOperations");
+      await expect(execGit("command", "remote-host")).rejects.toMatchObject({ retryAfterMs: 5000 });
+      now.mockReturnValue(2500);
+      await expect(execGit("following", "remote-host")).rejects.toMatchObject({ retryAfterMs: 3500 });
+      expect(mocks.spawn).toHaveBeenCalledTimes(3);
+    } finally {
+      now.mockRestore();
+      vi.unstubAllEnvs();
+    }
+  });
+});
+
 describe("gitOperations.resolvePathForShell", () => {
   beforeEach(() => {
     vi.resetModules();

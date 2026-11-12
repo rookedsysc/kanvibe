@@ -1,4 +1,8 @@
 import { spawn, type ChildProcess } from "child_process";
+import { access, stat } from "node:fs/promises";
+import { constants as fsConstants } from "node:fs";
+import { homedir } from "node:os";
+import path from "node:path";
 import { getAppSetting, getDefaultSessionType, getLanPlaintextAllowed, getNotificationSettings, setAppSetting, setLanPlaintextAllowed, setNotificationEnabled, setNotificationStatuses } from "@/desktop/main/services/appSettingsService";
 import { getMobileTlsPort } from "@/lib/hookEndpoint";
 import {
@@ -13,7 +17,7 @@ import {
   updateTaskStatus,
 } from "@/desktop/main/services/kanbanService";
 import { subscribeToBoardEvents } from "@/lib/boardNotifier";
-import { getAllProjects, getProjectBranches, getTaskAiSessions, getTaskAiSessionDetail } from "@/desktop/main/services/projectService";
+import { getAllProjects, getProjectBranches, getTaskAiSessions, getTaskAiSessionDetail, listSubdirectories, scanAndRegisterProjects } from "@/desktop/main/services/projectService";
 import { isAiSessionProvider } from "@/lib/aiSessions/providers";
 import type { AiMessageRole, AiSessionProvider } from "@/lib/aiSessions/types";
 import { attachTaskTerminal, CallbackTerminalClient } from "@/desktop/main/terminalBridge";
@@ -477,6 +481,43 @@ export async function getMobileBoard() {
     getDefaultSessionType(),
   ]);
   return { ...board, projects, defaultSessionType };
+}
+
+async function resolveMobileProjectDirectory(submittedPath: string): Promise<string> {
+  if (typeof submittedPath !== "string" || !submittedPath || /[\x00-\x1f\x7f]/.test(submittedPath)) {
+    throw new MobileTaskInputError("올바른 폴더 경로를 입력해 주세요");
+  }
+  const expandedPath = submittedPath === "~" || submittedPath.startsWith("~/")
+    ? path.join(homedir(), submittedPath.slice(1))
+    : submittedPath;
+  if (!path.isAbsolute(expandedPath)) {
+    throw new MobileTaskInputError("절대 경로나 ~/로 시작하는 폴더를 선택해 주세요");
+  }
+  try {
+    if (!(await stat(expandedPath)).isDirectory()) {
+      throw new MobileTaskInputError("폴더를 선택해 주세요");
+    }
+    // 기존 데스크톱 조회는 find 오류를 빈 목록으로 바꾸므로, 모바일은 접근 가능 여부를 먼저 확인한다.
+    await access(expandedPath, fsConstants.R_OK | fsConstants.X_OK);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ENOENT" || code === "ENOTDIR") {
+      throw new MobileTaskInputError("폴더를 찾을 수 없습니다");
+    }
+    if (code === "EACCES" || code === "EPERM") {
+      throw new MobileTaskInputError("이 폴더에 접근할 권한이 없습니다");
+    }
+    throw error;
+  }
+  return expandedPath;
+}
+
+export async function getMobileDirectories(parentPath: string): Promise<string[]> {
+  return listSubdirectories(await resolveMobileProjectDirectory(parentPath));
+}
+
+export async function scanMobileProjects(rootPath: string) {
+  return scanAndRegisterProjects(await resolveMobileProjectDirectory(rootPath));
 }
 
 /** 완료 태스크의 보드 페이지와 관계없이 알림이 가리키는 태스크를 직접 조회한다 */

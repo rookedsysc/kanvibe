@@ -7,7 +7,7 @@ import { once, EventEmitter } from "events";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PaneLayoutType } from "@/entities/PaneLayoutConfig";
 import { buildHerdrCommand, buildHerdrSessionCleanupCommand, sanitizeHerdrSessionName } from "@/lib/worktree";
-import { ensureHerdrSession, listHerdrMirrorPanes, listHerdrRunningAgentPanes, moveHerdrTab, readHerdrTabs } from "@/lib/herdr";
+import { ensureHerdrRemoteMachine, ensureHerdrSession, listHerdrMirrorPanes, listHerdrRunningAgentPanes, moveHerdrTab, readHerdrTabs } from "@/lib/herdr";
 
 const { execGit, spawn, readTextFile, updateTextFile } = vi.hoisted(() => ({ execGit: vi.fn(), spawn: vi.fn(), readTextFile: vi.fn(), updateTextFile: vi.fn() }));
 vi.mock("@/lib/hostFileAccess", async (importOriginal) => ({
@@ -45,6 +45,108 @@ describe("Herdr 세션 이름", () => {
   });
   it("동일한 절단 접두사를 가진 이름도 구분한다", () => {
     expect(sanitizeHerdrSessionName("a".repeat(80) + "x")).not.toBe(sanitizeHerdrSessionName("a".repeat(80) + "y"));
+  });
+});
+
+describe("Herdr 원격 machine 등록", () => {
+  beforeEach(() => { execGit.mockReset(); });
+
+  it.each(["kanvibe:task-a", "feature"])("%s의 실제 서버 세션을 로컬 machine에 등록한다", async (sessionName) => {
+    execGit.mockResolvedValueOnce("[]").mockResolvedValueOnce("Saved SSH machine profile. Remote server is ready.");
+
+    await ensureHerdrRemoteMachine(sessionName, "remote");
+
+    const serverName = sessionName === "feature" ? "feature" : "kanvibe";
+    expect(execGit.mock.calls).toEqual([
+      [buildHerdrCommand(serverName, ["machine", "list", "--json"]), null, { timeoutMs: 5_000 }],
+      [`${buildHerdrCommand(serverName, ["machine", "add", "remote", "--remote-session", serverName])} </dev/null`, null, { timeoutMs: 30_000 }],
+    ]);
+  });
+
+  it.each([true, false])("기존 프로필의 이름과 활성화 상태(%s)를 보존한다", async (enabled) => {
+    execGit.mockResolvedValueOnce(JSON.stringify([{ id: "opaque-id", label: "사용자 이름", target: "remote", session: "kanvibe", enabled }]));
+
+    await ensureHerdrRemoteMachine("kanvibe:task-a", "remote");
+
+    expect(execGit).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    { target: "remote", session: "default" },
+    { target: "other-remote", session: "kanvibe" },
+  ])("다른 호스트 또는 세션의 프로필과 구분한다: %j", async (existing) => {
+    execGit.mockResolvedValueOnce(JSON.stringify([existing])).mockResolvedValueOnce("");
+
+    await ensureHerdrRemoteMachine("kanvibe:task-a", "remote");
+
+    expect(execGit.mock.calls[1][0]).toContain("'machine' 'add' 'remote' '--remote-session' 'kanvibe'");
+  });
+
+  it("동일 호스트의 동시 접속과 재접속은 중복 등록하지 않는다", async () => {
+    const machines: { target: string; session: string }[] = [];
+    execGit.mockImplementation(async (command: string) => {
+      if (command.includes("'machine' 'list'")) return JSON.stringify(machines);
+      machines.push({ target: "remote", session: "kanvibe" });
+      return "";
+    });
+
+    await Promise.all([
+      ensureHerdrRemoteMachine("kanvibe:task-a", "remote"),
+      ensureHerdrRemoteMachine("kanvibe:task-b", "remote"),
+    ]);
+    await ensureHerdrRemoteMachine("kanvibe:task-a", "remote");
+
+    expect(machines).toEqual([{ target: "remote", session: "kanvibe" }]);
+    expect(execGit.mock.calls.filter(([command]) => command.includes("'machine' 'add'"))).toHaveLength(1);
+  });
+
+  it("다른 호스트의 catalog 저장도 직렬화한다", async () => {
+    let releaseList!: (value: string) => void;
+    execGit.mockImplementationOnce(() => new Promise<string>((resolve) => { releaseList = resolve; }))
+      .mockResolvedValueOnce("")
+      .mockResolvedValueOnce(JSON.stringify([{ target: "remote-a", session: "kanvibe" }]))
+      .mockResolvedValueOnce("");
+
+    const first = ensureHerdrRemoteMachine("kanvibe:task-a", "remote-a");
+    const second = ensureHerdrRemoteMachine("kanvibe:task-b", "remote-b");
+    await vi.waitFor(() => expect(execGit).toHaveBeenCalledOnce());
+    releaseList("[]");
+    await Promise.all([first, second]);
+
+    expect(execGit.mock.calls.map(([command]) => command)).toEqual([
+      buildHerdrCommand("kanvibe", ["machine", "list", "--json"]),
+      `${buildHerdrCommand("kanvibe", ["machine", "add", "remote-a", "--remote-session", "kanvibe"])} </dev/null`,
+      buildHerdrCommand("kanvibe", ["machine", "list", "--json"]),
+      `${buildHerdrCommand("kanvibe", ["machine", "add", "remote-b", "--remote-session", "kanvibe"])} </dev/null`,
+    ]);
+  });
+
+  it.each(["lookup", "add"])("%s 실패 뒤 다음 요청은 재시도한다", async (failure) => {
+    if (failure === "add") execGit.mockResolvedValueOnce("[]");
+    execGit.mockRejectedValueOnce(new Error("machine failed"));
+    await expect(ensureHerdrRemoteMachine("kanvibe:task-a", "remote")).rejects.toThrow("machine failed");
+    execGit.mockResolvedValueOnce("[]").mockResolvedValueOnce("");
+
+    await expect(ensureHerdrRemoteMachine("kanvibe:task-a", "remote")).resolves.toBeUndefined();
+    expect(execGit.mock.calls.at(-1)?.[0]).toContain("'machine' 'add' 'remote'");
+  });
+
+  it.each(["invalid json", "{}"])("잘못된 목록 응답(%s)에는 프로필을 쓰지 않는다", async (output) => {
+    execGit.mockResolvedValueOnce(output);
+
+    await expect(ensureHerdrRemoteMachine("kanvibe:task-a", "remote")).rejects.toThrow();
+
+    expect(execGit).toHaveBeenCalledOnce();
+  });
+
+  it("사용자가 삭제한 프로필은 다음 접속에서 다시 등록한다", async () => {
+    execGit.mockResolvedValueOnce(JSON.stringify([{ target: "remote", session: "kanvibe" }]));
+    await ensureHerdrRemoteMachine("kanvibe:task-a", "remote");
+    execGit.mockResolvedValueOnce("[]").mockResolvedValueOnce("");
+
+    await ensureHerdrRemoteMachine("kanvibe:task-a", "remote");
+
+    expect(execGit.mock.calls.at(-1)?.[0]).toContain("'machine' 'add' 'remote'");
   });
 });
 

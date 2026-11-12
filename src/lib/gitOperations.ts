@@ -1,6 +1,7 @@
 import { exec, execFile, spawn } from "child_process";
 import { promisify } from "util";
 import { availableParallelism, homedir } from "os";
+import { AsyncLocalStorage } from "node:async_hooks";
 import {
   buildSSHArgs,
   ensureKanvibeSSHControlDirectory,
@@ -50,6 +51,7 @@ const REMOTE_COMMAND_MAX_BUFFER_BYTES = 10 * 1024 * 1024;
 const remoteSSHTransportFailures = new Map<string, { until: number; error: Error }>();
 // 실제 SSH 연결은 OpenSSH ControlMaster가 유지하고, 앱은 host별 shard lease와 대기열을 관리한다.
 const remoteSSHConnectionPools = new Map<string, RemoteSSHConnectionPool>();
+const remoteSSHResponderContext = new AsyncLocalStorage<{ sshHost: string; controlMasterShardIndex: number; active: boolean }>();
 
 interface RemoteSSHConnectionPool {
   activeConnections: number;
@@ -68,6 +70,11 @@ export interface ExecGitOptions {
   strictHostKeyChecking?: boolean;
   /** 원격 명령의 표준 입력으로 보낼 내용. 자격 증명처럼 프로세스 인자에 남으면 안 되는 값을 싣는다. 재시도마다 다시 보낸다 */
   remoteStdin?: string;
+  /** 원격 셸이 marker와 tab으로 시작하는 요청 한 줄을 보내면 한 번 응답한다. callback은 재실행하지 않는다. */
+  remoteStdinResponder?: {
+    marker: string;
+    respond: (payload: string) => Promise<string>;
+  };
 }
 
 function collectErrorOutput(error: unknown): string {
@@ -203,7 +210,7 @@ async function execRemote(
   command: string,
   options?: ExecGitOptions,
 ): Promise<string> {
-  return runLimitedRemoteCommand(sshHost, async (controlMasterShardIndex) => {
+  const execute = async (controlMasterShardIndex: number) => {
     throwIfSSHTransportCooldownActive(sshHost);
 
     const timeoutMs = getRemoteSSHCommandTimeoutMs(options);
@@ -222,16 +229,30 @@ async function execRemote(
     let lastError: Error | null = null;
     for (let attempt = 1; attempt <= REMOTE_SSH_COMMAND_MAX_ATTEMPTS; attempt += 1) {
       try {
+        const context = { sshHost, controlMasterShardIndex, active: true };
         return await spawnSSHCommand(
           sshArgs,
           timeoutMs,
           options?.maxBufferBytes ?? REMOTE_COMMAND_MAX_BUFFER_BYTES,
           options?.remoteStdin,
-        );
+          options?.remoteStdinResponder && {
+            ...options.remoteStdinResponder,
+            respond: (payload) => {
+              return remoteSSHResponderContext.run(context, async () => {
+                try {
+                  return await options.remoteStdinResponder!.respond(payload);
+                } finally {
+                  context.active = false;
+                }
+              });
+            },
+          },
+        ).finally(() => { context.active = false; });
       } catch (error) {
         const isCommandTimeout = isSSHCommandTimeoutError(error);
         const normalizedError = normalizeSSHExecError(error, sshHost, timeoutMs, isCommandTimeout);
         const shouldRetry = isRetriableSSHExecError(normalizedError, isCommandTimeout)
+          && !options?.remoteStdinResponder
           && attempt < REMOTE_SSH_COMMAND_MAX_ATTEMPTS;
         lastError = normalizedError;
 
@@ -248,7 +269,12 @@ async function execRemote(
     }
 
     throw lastError ?? new Error(`${sshHost} 원격 명령 실패`);
-  });
+  };
+  const responderContext = remoteSSHResponderContext.getStore();
+  if (responderContext?.active && responderContext.sshHost === sshHost) {
+    return execute(responderContext.controlMasterShardIndex);
+  }
+  return runLimitedRemoteCommand(sshHost, execute);
 }
 
 function logRemoteCommandFailure(
@@ -277,16 +303,16 @@ function isRetriableSSHExecError(error: Error, isCommandTimeout: boolean): boole
   return isCommandTimeout || isSSHTransportError(error);
 }
 
-function spawnSSHProcess(sshArgs: string[], remoteStdin?: string) {
+function spawnSSHProcess(sshArgs: string[], remoteStdin?: string, interactive = false) {
   const env = createLocalShellEnvironment();
-  if (remoteStdin === undefined) {
+  if (remoteStdin === undefined && !interactive) {
     return spawn("ssh", sshArgs, { env, stdio: ["ignore", "pipe", "pipe"] });
   }
 
   const child = spawn("ssh", sshArgs, { env, stdio: ["pipe", "pipe", "pipe"] });
   /** 원격이 입력을 다 읽기 전에 끝나면 EPIPE가 나지만, 실패 판정은 종료 코드가 맡는다 */
   child.stdin.on("error", () => undefined);
-  child.stdin.end(remoteStdin);
+  if (!interactive) child.stdin.end(remoteStdin);
   return child;
 }
 
@@ -295,13 +321,17 @@ function spawnSSHCommand(
   timeoutMs: number,
   maxBufferBytes: number,
   remoteStdin?: string,
+  responder?: ExecGitOptions["remoteStdinResponder"],
 ): Promise<string> {
   return new Promise((resolve, reject) => {
-    const child = spawnSSHProcess(sshArgs, remoteStdin);
+    const child = spawnSSHProcess(sshArgs, remoteStdin, Boolean(responder));
 
     let stdout = "";
     let stderr = "";
     let settled = false;
+    let responded = false;
+    let responseComplete = false;
+    let responderError: Error | undefined;
     const timeout = setTimeout(() => {
       finishWithError(createSSHTimeoutError(timeoutMs, stdout, stderr));
     }, timeoutMs);
@@ -312,6 +342,29 @@ function spawnSSHCommand(
     child.stdout.on("data", (chunk: string) => {
       stdout += chunk;
       rejectIfOutputIsTooLarge();
+      if (settled) return;
+      if (responder && !responded) {
+        const prefix = `${responder.marker}\t`;
+        const start = stdout.startsWith(prefix) ? 0 : stdout.indexOf(`\n${prefix}`) + 1;
+        const end = stdout.indexOf("\n", start);
+        if (stdout.startsWith(prefix, start) && end >= 0) {
+          responded = true;
+          const payload = stdout.slice(start + prefix.length, end);
+          stdout = stdout.slice(0, start) + stdout.slice(end + 1);
+          void Promise.resolve().then(async () => {
+            if (settled) return;
+            const reply = await responder.respond(payload);
+            if (!settled) {
+              responseComplete = true;
+              child.stdin?.end(reply);
+            }
+          }).catch((error: unknown) => {
+            if (settled) return;
+            responderError = error instanceof Error ? error : new Error(String(error));
+            child.stdin?.end();
+          });
+        }
+      }
 
       const parsed = parseRemoteCommandCompletion(stdout);
       if (parsed) {
@@ -360,6 +413,10 @@ function spawnSSHCommand(
     }
 
     function finishWithRemoteCompletion(exitCode: number, completedStdout: string, completedStderr: string): void {
+      if (responderError) {
+        finishWithError(responderError);
+        return;
+      }
       if (exitCode === 0) {
         finishWithSuccess(completedStdout.trim());
         return;
@@ -373,9 +430,14 @@ function spawnSSHCommand(
       if (settled) {
         return;
       }
+      if (responderError || (responded && !responseComplete)) {
+        finishWithError(responderError ?? new Error("SSH transaction ended before its input response"));
+        return;
+      }
 
       settled = true;
       clearTimeout(timeout);
+      if (responder && !responded) child.stdin?.end();
       if (child.exitCode === null && !child.killed) {
         child.kill("SIGTERM");
       }
@@ -389,10 +451,11 @@ function spawnSSHCommand(
 
       settled = true;
       clearTimeout(timeout);
+      if (responder) child.stdin?.end();
       if (child.exitCode === null && !child.killed) {
         child.kill("SIGTERM");
       }
-      reject(error);
+      reject(responderError ?? error);
     }
   });
 }
@@ -537,9 +600,9 @@ function throwIfSSHTransportCooldownActive(sshHost: string): void {
     return;
   }
 
-  throw new Error(
+  throw Object.assign(new Error(
     `${sshHost} 원격 명령 실패: 최근 SSH transport 실패로 원격 명령을 잠시 건너뜁니다. 마지막 오류: ${failure.error.message}`,
-  );
+  ), { retryAfterMs: Math.max(0, failure.until - Date.now()) });
 }
 
 function rememberSSHTransportFailure(sshHost: string, error: Error): void {
@@ -547,8 +610,10 @@ function rememberSSHTransportFailure(sshHost: string, error: Error): void {
     return;
   }
 
+  const retryAfterMs = getRemoteSSHTransportFailureCooldownMs();
+  Object.assign(error, { retryAfterMs });
   remoteSSHTransportFailures.set(sshHost, {
-    until: Date.now() + getRemoteSSHTransportFailureCooldownMs(),
+    until: Date.now() + retryAfterMs,
     error,
   });
 }

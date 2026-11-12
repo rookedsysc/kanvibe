@@ -1,13 +1,21 @@
 import { access, chmod, lstat, mkdir, readFile, readdir, rename, rmdir, stat, unlink, writeFile } from "fs/promises";
 import { randomUUID } from "crypto";
-import { homedir } from "os";
+import { homedir, hostname } from "os";
 import path from "path";
 import { execGit, type ExecGitOptions } from "@/lib/gitOperations";
 
 const remoteHomeDirectoryCache = new Map<string, string>();
 const REMOTE_FILE_RECORD_PREFIX = "__KANVIBE_FILE_RECORD__";
+const REMOTE_FILE_RECORD_END = "__KANVIBE_FILE_RECORD_END__";
 // AI history JSONL can exceed the general 10 MiB command cap; 64 MiB keeps reads bounded while covering large sessions.
 const REMOTE_TEXT_FILE_MAX_BUFFER_BYTES = 64 * 1024 * 1024;
+const FILE_UPDATE_LOCK_ATTEMPTS = 200;
+const FILE_UPDATE_LOCK_RETRY_MS = 50;
+const FILE_UPDATE_OWNER_INITIALIZATION_ATTEMPTS = 10;
+const REMOTE_FILE_UPDATE_READY = "__KANVIBE_FILE_UPDATE_READY__";
+const REMOTE_FILE_UPDATE_DONE = "__KANVIBE_FILE_UPDATED__";
+const REMOTE_FILE_UPDATE_BUSY = "__KANVIBE_FILE_UPDATE_BUSY__";
+const REMOTE_FILE_UPDATE_UNOWNED = "__KANVIBE_FILE_UPDATE_UNOWNED__";
 
 export interface TextFileReadResult {
   exists: boolean;
@@ -128,7 +136,8 @@ export async function readTextFiles(
     'printf "%s" "$__kanvibe_content" | tr -d "\\n";',
     'elif test -e "$__kanvibe_file" || test -L "$__kanvibe_file"; then exit 1;',
     `else printf '%s\\t%s\\t0\\t' ${quoteShellArgument(REMOTE_FILE_RECORD_PREFIX)} "$__kanvibe_file"; fi;`,
-    'printf "\\n";',
+    // execGit의 trim()이 빈 내용 필드의 탭까지 지우지 않도록 종료 표식을 붙인다.
+    `printf '\\t%s\\n' ${quoteShellArgument(REMOTE_FILE_RECORD_END)};`,
     "done",
   ].join(" ");
   const output = await execGit(command, sshHost, ...(options ? [options] as const : [] as const));
@@ -150,8 +159,8 @@ function parseRemoteTextFiles(
   for (const line of output.split("\n")) {
     if (!line.startsWith(`${REMOTE_FILE_RECORD_PREFIX}\t`)) continue;
     const fields = line.split("\t");
-    const [, filePath, existsFlag, encodedContent] = fields;
-    if (fields.length !== 4 || !expectedPaths.has(filePath) || files.has(filePath)
+    const [, filePath, existsFlag, encodedContent, recordEnd] = fields;
+    if (fields.length !== 5 || recordEnd !== REMOTE_FILE_RECORD_END || !expectedPaths.has(filePath) || files.has(filePath)
       || (existsFlag !== "0" && existsFlag !== "1")
       || (existsFlag === "0" && encodedContent !== "")
       || Buffer.from(encodedContent, "base64").toString("base64") !== encodedContent) {
@@ -200,60 +209,158 @@ export async function updateTextFile(
   const temporaryPath = `${targetPath}.${randomUUID()}.tmp`;
   const directoryPath = (sshHost ? path.posix : path).dirname(targetPath);
   if (sshHost) {
-    await execGit([
-      `mkdir -p ${quoteShellArgument(directoryPath)} || exit $?;`,
-      `__kanvibe_attempt=0; while ! mkdir ${quoteShellArgument(lockPath)} 2>/dev/null; do`,
-      '__kanvibe_attempt=$((__kanvibe_attempt + 1));',
-      'test "$__kanvibe_attempt" -lt 200 || exit 1; sleep 0.05; done',
-    ].join(" "), sshHost, ...(options ? [options] as const : [] as const));
-  } else {
-    await mkdir(directoryPath, { recursive: true });
-    for (let attempt = 0; ; attempt++) {
-      try {
-        await mkdir(lockPath);
-        break;
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== "EEXIST" || attempt >= 199) throw error;
-        await new Promise((resolve) => setTimeout(resolve, 50));
-      }
+    await updateRemoteTextFile(targetPath, temporaryPath, update, sshHost, mode, options);
+    return;
+  }
+  await mkdir(directoryPath, { recursive: true });
+  const ownerPath = path.join(lockPath, `owner-${process.pid}-${randomUUID()}-${Buffer.from(hostname()).toString("hex")}`);
+  let unownedObservations = 0;
+  for (let attempt = 0; ; attempt++) {
+    const state = await tryAcquireLocalFileLock(lockPath, ownerPath);
+    if (state === "acquired") break;
+    if (state === "unowned" && ++unownedObservations >= FILE_UPDATE_OWNER_INITIALIZATION_ATTEMPTS) {
+      throw new Error(`소유자를 확인할 수 없는 파일 잠금입니다. 사용 중인 작업이 없는지 확인한 뒤 잠금을 백업 이동하세요: ${lockPath}`);
     }
+    if (attempt >= FILE_UPDATE_LOCK_ATTEMPTS - 1) throw new Error(`파일 잠금 대기 시간이 초과되었습니다: ${lockPath}`);
+    await new Promise((resolve) => setTimeout(resolve, FILE_UPDATE_LOCK_RETRY_MS));
   }
 
   try {
-    let currentContent: string;
-    if (sshHost) {
-      const quotedPath = quoteShellArgument(targetPath);
-      currentContent = await execGit(`if test -e ${quotedPath}; then cat ${quotedPath}; fi`, sshHost, ...(options ? [options] as const : [] as const));
-    } else {
-      currentContent = await readFile(targetPath, "utf-8").catch((error: NodeJS.ErrnoException) => {
-        if (error.code !== "ENOENT") throw error;
-        return "";
-      });
-    }
+    const currentContent = await readFile(targetPath, "utf-8").catch((error: NodeJS.ErrnoException) => {
+      if (error.code !== "ENOENT") throw error;
+      return "";
+    });
     const nextContent = await update(currentContent);
-    if (sshHost) {
-      await execGit(
-        buildRemoteStdinPublishCommand(temporaryPath, targetPath, Buffer.byteLength(nextContent), mode),
-        sshHost,
-        { remoteStdin: Buffer.from(nextContent, "utf-8").toString("base64"), ...options },
-      );
-    } else {
-      await writeFile(temporaryPath, nextContent, { encoding: "utf-8", flag: "wx", ...(mode !== undefined ? { mode } : {}) });
-      if (mode !== undefined) {
-        await chmod(temporaryPath, mode);
-      }
-      await rename(temporaryPath, targetPath);
+    if (!(await lstat(ownerPath)).isDirectory()) throw new Error(`파일 잠금 소유권이 변경되었습니다: ${lockPath}`);
+    await writeFile(temporaryPath, nextContent, { encoding: "utf-8", flag: "wx", ...(mode !== undefined ? { mode } : {}) });
+    if (mode !== undefined) {
+      await chmod(temporaryPath, mode);
     }
+    await rename(temporaryPath, targetPath);
   } finally {
-    if (sshHost) {
-      await execGit(`rm -f ${quoteShellArgument(temporaryPath)}; rmdir ${quoteShellArgument(lockPath)}`, sshHost, ...(options ? [options] as const : [] as const));
-    } else {
-      await unlink(temporaryPath).catch((error: NodeJS.ErrnoException) => {
-        if (error.code !== "ENOENT") throw error;
-      });
-      await rmdir(lockPath);
-    }
+    await unlink(temporaryPath).catch((error: NodeJS.ErrnoException) => {
+      if (error.code !== "ENOENT") throw error;
+    });
+    await rmdir(ownerPath).then(() => rmdir(lockPath)).catch((error: NodeJS.ErrnoException) => {
+      if (error.code !== "ENOENT") throw error;
+    });
   }
+}
+
+async function tryAcquireLocalFileLock(lockPath: string, ownerPath: string): Promise<"acquired" | "busy" | "unowned"> {
+  try {
+    await mkdir(lockPath, { mode: 0o700 });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    const entry = await lstat(lockPath).catch((error: NodeJS.ErrnoException) => {
+      if (error.code !== "ENOENT") throw error;
+      return null;
+    });
+    if (!entry) return "busy";
+    if (!entry.isDirectory() || entry.isSymbolicLink()) throw new Error(`파일 잠금 경로가 디렉터리가 아닙니다: ${lockPath}`);
+    const owners = await readdir(lockPath).catch((error: NodeJS.ErrnoException) => {
+      if (error.code !== "ENOENT") throw error;
+      return [];
+    });
+    const owner = owners.length === 1 ? owners[0] : "";
+    const match = /^owner-([1-9][0-9]*)-[a-zA-Z0-9-]+-([a-f0-9]+)$/.exec(owner);
+    if (!match || match[2] !== Buffer.from(hostname()).toString("hex")) return "unowned";
+    try {
+      process.kill(Number(match[1]), 0);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ESRCH") {
+        await rmdir(path.join(lockPath, owner)).then(() => rmdir(lockPath)).catch((error: NodeJS.ErrnoException) => {
+          if (error.code !== "ENOENT") throw error;
+        });
+      }
+    }
+    return "busy";
+  }
+  try {
+    await mkdir(ownerPath);
+  } catch (error) {
+    await rmdir(lockPath);
+    throw error;
+  }
+  return "acquired";
+}
+
+async function updateRemoteTextFile(
+  targetPath: string,
+  temporaryPath: string,
+  update: (content: string) => string | Promise<string>,
+  sshHost: string,
+  mode?: number,
+  options?: Pick<ExecGitOptions, "strictHostKeyChecking">,
+): Promise<void> {
+  const command = buildRemoteFileUpdateCommand(targetPath, temporaryPath, mode);
+  let unownedObservations = 0;
+  for (let attempt = 0; attempt < FILE_UPDATE_LOCK_ATTEMPTS; attempt++) {
+    let responseStarted = false;
+    const output = await execGit(command, sshHost, {
+      ...options,
+      maxBufferBytes: REMOTE_TEXT_FILE_MAX_BUFFER_BYTES,
+      remoteStdinResponder: {
+        marker: REMOTE_FILE_UPDATE_READY,
+        respond: async (encodedContent) => {
+          responseStarted = true;
+          const content = Buffer.from(encodedContent, "base64");
+          if (content.toString("base64") !== encodedContent) throw new Error("원격 파일 갱신 요청이 손상되었습니다.");
+          const nextContent = await update(content.toString("utf-8"));
+          return `${Buffer.byteLength(nextContent)}\n${Buffer.from(nextContent, "utf-8").toString("base64")}\n`;
+        },
+      },
+    });
+    const records = output.split("\n");
+    if (responseStarted && records.includes(REMOTE_FILE_UPDATE_DONE)) return;
+    if (responseStarted || records.includes(REMOTE_FILE_UPDATE_DONE)) throw new Error(`원격 파일 갱신 결과를 확인할 수 없습니다: ${targetPath}`);
+    if (records.includes(REMOTE_FILE_UPDATE_UNOWNED)) {
+      if (++unownedObservations >= FILE_UPDATE_OWNER_INITIALIZATION_ATTEMPTS) {
+        throw new Error(`소유자를 확인할 수 없는 파일 잠금입니다. 사용 중인 작업이 없는지 확인한 뒤 잠금을 백업 이동하세요: ${targetPath}.lock`);
+      }
+    } else if (!records.includes(REMOTE_FILE_UPDATE_BUSY)) {
+      throw new Error(`원격 파일 갱신 결과를 확인할 수 없습니다: ${targetPath}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, FILE_UPDATE_LOCK_RETRY_MS));
+  }
+  throw new Error(`파일 잠금 대기 시간이 초과되었습니다: ${targetPath}.lock`);
+}
+
+function buildRemoteFileUpdateCommand(targetPath: string, temporaryPath: string, mode?: number): string {
+  const lockPath = quoteShellArgument(`${targetPath}.lock`);
+  const ownerSuffix = quoteShellArgument(randomUUID());
+  const cleanup = `rm -f ${quoteShellArgument(temporaryPath)}; rmdir "$__kanvibe_owner" && rmdir ${lockPath}`;
+  return [
+    `mkdir -p ${quoteShellArgument(path.posix.dirname(targetPath))} || exit $?;`,
+    '__kanvibe_host=$(uname -n | tr -d "\\n" | od -An -tx1 | tr -d " \\n") || exit $?;',
+    'test -n "$__kanvibe_host" || exit 1;',
+    `if ! mkdir -m 700 ${lockPath} 2>/dev/null; then`,
+    `test -d ${lockPath} && ! test -L ${lockPath} || { printf '%s\\n' ${quoteShellArgument(`파일 잠금 경로를 확인하세요: ${targetPath}.lock`)} >&2; exit 1; };`,
+    `set -- ${lockPath}/owner-*;`,
+    'if [ "$#" = 1 ] && test -d "$1" && ! test -L "$1"; then',
+    '__kanvibe_name=${1##*/}; if [ "${__kanvibe_name##*-}" != "$__kanvibe_host" ]; then',
+    `printf '%s\\n' ${quoteShellArgument(REMOTE_FILE_UPDATE_UNOWNED)}; exit 0; fi;`,
+    '__kanvibe_pid=${__kanvibe_name#owner-}; __kanvibe_pid=${__kanvibe_pid%%-*};',
+    'case "$__kanvibe_pid" in ""|0|*[!0-9]*) exit 1;; esac;',
+    'if ! kill -0 "$__kanvibe_pid" 2>/dev/null && command -v ps >/dev/null 2>&1; then',
+    '__kanvibe_alive=$(ps -p "$__kanvibe_pid" -o pid= 2>/dev/null); __kanvibe_probe_status=$?;',
+    `if [ "$__kanvibe_probe_status" = 1 ] && [ -z "$__kanvibe_alive" ]; then rmdir "$1" 2>/dev/null && rmdir ${lockPath}; fi; fi;`,
+    `printf '%s\\n' ${quoteShellArgument(REMOTE_FILE_UPDATE_BUSY)};`,
+    `else printf '%s\\n' ${quoteShellArgument(REMOTE_FILE_UPDATE_UNOWNED)}; fi; exit 0; fi;`,
+    `__kanvibe_owner=${lockPath}/owner-$$-${ownerSuffix}-"$__kanvibe_host";`,
+    `mkdir -m 700 "$__kanvibe_owner" || { rmdir ${lockPath}; exit 1; };`,
+    `trap ${quoteShellArgument(cleanup)} 0; trap 'exit 1' HUP INT TERM;`,
+    `if test -e ${quoteShellArgument(targetPath)} || test -L ${quoteShellArgument(targetPath)}; then`,
+    `test -f ${quoteShellArgument(targetPath)} || exit 1;`,
+    `__kanvibe_current=$(base64 -w 0 ${quoteShellArgument(targetPath)} 2>/dev/null || base64 < ${quoteShellArgument(targetPath)}) || exit $?;`,
+    'else __kanvibe_current=""; fi;',
+    `printf '%s\\t%s\\n' ${quoteShellArgument(REMOTE_FILE_UPDATE_READY)} "$(printf '%s' "$__kanvibe_current" | tr -d '\\n')";`,
+    'IFS= read -r __kanvibe_length && IFS= read -r __kanvibe_next || exit 1;',
+    'case "$__kanvibe_length" in ""|*[!0-9]*) exit 1;; esac;',
+    'test -d "$__kanvibe_owner" && ! test -L "$__kanvibe_owner" || exit 1;',
+    `printf '%s' "$__kanvibe_next" | ${buildRemoteStdinPublishCommand(temporaryPath, targetPath, "$__kanvibe_length", mode)} || exit $?;`,
+    `printf '%s\\n' ${quoteShellArgument(REMOTE_FILE_UPDATE_DONE)}`,
+  ].join(" ");
 }
 
 /**
@@ -264,7 +371,7 @@ export async function updateTextFile(
 function buildRemoteStdinPublishCommand(
   temporaryPath: string,
   targetPath: string,
-  expectedByteLength: number,
+  expectedByteLength: number | string,
   mode?: number,
 ): string {
   const quotedTemporaryPath = quoteShellArgument(temporaryPath);
