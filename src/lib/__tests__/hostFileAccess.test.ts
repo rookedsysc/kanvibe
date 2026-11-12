@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   execGit: vi.fn(),
   skipsChmod: false,
   readError: undefined as NodeJS.ErrnoException | undefined,
+  stdinReplies: [] as string[],
 }));
 
 /** 기록 뒤 권한 조정을 건너뛰게 해, 파일이 처음 만들어질 때의 권한을 볼 수 있게 한다 */
@@ -223,6 +224,7 @@ describe("hostFileAccess.updateTextFile 권한", () => {
     tempDir = await mkdtemp(path.join(tmpdir(), "kanvibe-update-mode-"));
     mocks.execGit.mockReset();
     mocks.skipsChmod = false;
+    mocks.stdinReplies = [];
   });
 
   afterEach(async () => {
@@ -234,17 +236,36 @@ describe("hostFileAccess.updateTextFile 권한", () => {
   }
 
   function runRemoteCommandsWithoutChmod(): void {
-    mocks.execGit.mockImplementation(async (command: string, _sshHost: string, options?: { remoteStdin?: string }) => {
+    mocks.execGit.mockImplementation(async (command: string, _sshHost: string, options?: { maxBufferBytes?: number; remoteStdin?: string; remoteStdinResponder?: { marker: string; respond: (payload: string) => Promise<string> } }) => {
       const commandWithoutChmod = `umask 022; chmod() { :; }; ${command}`;
       const child = spawn("sh", ["-c", commandWithoutChmod], {
-        stdio: [options?.remoteStdin === undefined ? "ignore" : "pipe", "pipe", "pipe"],
+        stdio: [options?.remoteStdin === undefined && !options?.remoteStdinResponder ? "ignore" : "pipe", "pipe", "pipe"],
       });
+      let callbackError: unknown;
+      child.stdin?.on("error", () => undefined);
       const completion = new Promise<string>((resolve, reject) => {
         let stdout = "";
-        child.stdout?.on("data", (chunk: string) => { stdout += chunk; });
-        child.on("close", (code) => code === 0 ? resolve(stdout) : reject(new Error(`exit ${code}: ${command}`)));
+        let replied = false;
+        child.stdout?.on("data", (chunk: string) => {
+          stdout += chunk;
+          if (Buffer.byteLength(stdout) > (options?.maxBufferBytes ?? 10 * 1024 * 1024)) {
+            callbackError = new Error("SSH command output exceeded maxBuffer");
+            child.stdin?.end();
+          }
+          if (callbackError) return;
+          const responder = options?.remoteStdinResponder;
+          const line = stdout.split("\n").find((value) => value.startsWith(`${responder?.marker}\t`));
+          if (!replied && responder && line !== undefined && stdout.includes(`${line}\n`)) {
+            replied = true;
+            void responder.respond(line.slice(responder.marker.length + 1)).then((reply) => {
+              mocks.stdinReplies.push(reply);
+              child.stdin?.end(reply);
+            }, (error) => { callbackError = error; child.stdin?.end(); });
+          }
+        });
+        child.on("close", (code) => callbackError ? reject(callbackError) : code === 0 ? resolve(stdout.trim()) : reject(new Error(`exit ${code}: ${command}`)));
       });
-      child.stdin?.end(options?.remoteStdin);
+      if (!options?.remoteStdinResponder) child.stdin?.end(options?.remoteStdin);
       return completion;
     });
   }
@@ -333,7 +354,7 @@ describe("hostFileAccess.updateTextFile 권한", () => {
     // Then
     const remoteCommands = mocks.execGit.mock.calls.map(([command]) => command as string);
     expect(remoteCommands.some((command) => command.includes(encodedSecret) || command.includes("secret-token"))).toBe(false);
-    expect(mocks.execGit.mock.calls.some(([, , options]) => options?.remoteStdin === encodedSecret)).toBe(true);
+    expect(mocks.stdinReplies.some((reply) => reply.includes(encodedSecret))).toBe(true);
     await expect(readFile(targetPath, "utf-8")).resolves.toBe(secretContent);
   });
 
@@ -356,6 +377,34 @@ describe("hostFileAccess.updateTextFile 권한", () => {
     // Then
     await expect(update).rejects.toThrow("publish failed");
     await expect(readFile(targetPath, "utf-8")).resolves.toBe("existing");
+    await expect(stat(`${targetPath}.lock`)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("원격의 현재 내용은 공백과 마지막 줄바꿈을 보존하고 한 SSH transaction으로 갱신한다", async () => {
+    const targetPath = path.join(tempDir, "exact.txt");
+    await writeFile(targetPath, "  saved\n\n");
+    runRemoteCommandsWithoutChmod();
+    const { updateTextFile } = await import("@/lib/hostFileAccess");
+    const update = vi.fn(async (content: string) => `${content}next\n`);
+    await updateTextFile(targetPath, update, "remote-host", 0o600);
+    expect(update).toHaveBeenCalledExactlyOnceWith("  saved\n\n");
+    expect(mocks.execGit).toHaveBeenCalledTimes(1);
+    await expect(readFile(targetPath, "utf-8")).resolves.toBe("  saved\n\nnext\n");
+  });
+
+  it("8MiB 현재 파일의 base64 요청도 callback에 전달하고 더 작은 결과로 교체한다", async () => {
+    const targetPath = path.join(tempDir, "large-current.txt");
+    const current = "x".repeat(8 * 1024 * 1024);
+    await writeFile(targetPath, current);
+    runRemoteCommandsWithoutChmod();
+    const { updateTextFile } = await import("@/lib/hostFileAccess");
+    const update = vi.fn(async (content: string) => {
+      expect(content).toBe(current);
+      return "small result";
+    });
+    await updateTextFile(targetPath, update, "remote-host", 0o600);
+    expect(update).toHaveBeenCalledTimes(1);
+    await expect(readFile(targetPath, "utf-8")).resolves.toBe("small result");
   });
 });
 
@@ -454,11 +503,15 @@ describe("hostFileAccess strict SSH boundaries", () => {
     await files.readTextFiles(["/remote/config"], "remote-host", options);
     await files.findSymbolicLinkPath(["/remote/config"], "remote-host", options);
     await files.writeTextFile("/remote/config", "content", "remote-host", options);
+    mocks.execGit.mockImplementation(async (_command: string, _host: string, executionOptions?: { remoteStdinResponder?: { respond: (payload: string) => Promise<string> } }) => {
+      await executionOptions?.remoteStdinResponder?.respond("");
+      return "__KANVIBE_FILE_UPDATED__";
+    });
     await files.updateTextFile("/remote/config", () => "content", "remote-host", 0o600, options);
-    expect(mocks.execGit.mock.calls.length).toBeGreaterThan(6);
+    expect(mocks.execGit.mock.calls.length).toBe(5);
     for (const call of mocks.execGit.mock.calls) {
       expect(call[2]).toMatchObject(options);
     }
-    expect(mocks.execGit.mock.calls.some((call) => call[2]?.remoteStdin)).toBe(true);
+    expect(mocks.execGit.mock.calls.some((call) => call[2]?.remoteStdinResponder)).toBe(true);
   });
 });

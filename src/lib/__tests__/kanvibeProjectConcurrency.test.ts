@@ -9,12 +9,33 @@ import { TaskPriority } from "@/entities/TaskPriority";
 
 const execFileAsync = promisify(execFile);
 vi.mock("@/lib/gitOperations", () => ({
-  execGit: async (command: string, _sshHost: string, options?: { remoteStdin?: string }) => {
+  execGit: async (command: string, _sshHost: string, options?: { remoteStdin?: string; remoteStdinResponder?: { marker: string; respond: (payload: string) => Promise<string> } }) => {
     const execution = execFileAsync("sh", ["-c", command]);
     /** 실제 전송 경로처럼, 명령이 입력을 다 읽기 전에 끝나 생기는 EPIPE는 종료 코드로 판정한다 */
     execution.child.stdin?.on("error", () => undefined);
-    execution.child.stdin?.end(options?.remoteStdin ?? "");
-    return (await execution).stdout;
+    let callbackError: unknown;
+    if (options?.remoteStdinResponder) {
+      const responder = options.remoteStdinResponder;
+      let output = "";
+      let replied = false;
+      execution.child.stdout?.on("data", (chunk: string) => {
+        output += chunk;
+        const line = output.split("\n").find((value) => value.startsWith(`${responder.marker}\t`));
+        if (replied || line === undefined || !output.includes(`${line}\n`)) return;
+        replied = true;
+        void responder.respond(line.slice(responder.marker.length + 1)).then(
+          (reply) => execution.child.stdin?.end(reply),
+          (error) => { callbackError = error; execution.child.stdin?.end(); },
+        );
+      });
+    } else {
+      execution.child.stdin?.end(options?.remoteStdin ?? "");
+    }
+    try {
+      return (await execution).stdout.trim();
+    } catch (error) {
+      throw callbackError ?? error;
+    }
   },
 }));
 import { writeKanvibeProjectColor, writeKanvibeProjectPriority } from "@/lib/kanvibeProjectState";
