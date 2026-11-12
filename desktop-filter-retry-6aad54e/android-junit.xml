@@ -1,0 +1,6 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<testsuites>
+  <testsuite name="Test Suite" device="KanvibeFilterRetry20261112" tests="1" failures="0" time="57.3" timestamp="2026-11-12T23:07:03">
+    <testcase id="recording-wrapper" name="recording-wrapper" classname="recording-wrapper" file="qa-results/roky-harness/desktop-filter-retry-20261112/maestro-2/recording-wrapper.yaml" time="57.289" timestamp="2026-11-12T23:07:03" status="SUCCESS"/>
+  </testsuite>
+</testsuites>
