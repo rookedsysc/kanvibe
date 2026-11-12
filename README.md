@@ -277,7 +277,7 @@ For an SSH task, connect to that task's SSH host first, then run the command the
 ### Mobile Companion (Flutter)
 
 - View tasks by status on phones; tablets at 768dp and wider show Kanban columns. Filter projects and switch between saved PCs.
-- Filter local and SSH desktops together with projects. The desktop board control lives in `src/components/Board.tsx`; mobile uses the board feature's snapshot and per-connection filter controllers.
+- Select multiple local and SSH desktops together with projects. Filters use neutral checkmarks without selected accent colors. The desktop control lives in `src/components/DesktopFilter.tsx`; mobile uses the board feature's snapshot and per-connection filter controllers.
 - Sync cleans registrations for deleted repository directories and task worktrees. Connection or permission failures preserve records; files, branches, and running sessions stay intact.
 - Open the task’s existing tmux, Zellij, or plain terminal session. Each tab shows one pane on both phones and tablets; add a shell tab without returning to the PC.
 - Read terminal output and type with the on-screen keyboard, including in SSH remote tasks. Create tasks, change status, inspect task details, and open the linked PR.

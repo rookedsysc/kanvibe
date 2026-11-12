@@ -42,7 +42,7 @@ void main() {
     await container.read(boardProvider.future);
     container
         .read(boardDesktopFilterProvider('127.0.0.1:9736').notifier)
-        .select('ssh:devbox');
+        .toggleDesktop('ssh:devbox');
     container
         .read(boardProjectFilterProvider('127.0.0.1:9736').notifier)
         .toggleProject('local');
@@ -59,15 +59,28 @@ void main() {
     final container = ProviderContainer.test();
     container
         .read(boardDesktopFilterProvider('first').notifier)
-        .select('ssh:devbox');
+        .toggleDesktop('ssh:devbox');
     container
         .read(boardDesktopFilterProvider('second').notifier)
-        .select('local');
-    expect(container.read(boardDesktopFilterProvider('first')), 'ssh:devbox');
-    expect(container.read(boardDesktopFilterProvider('second')), 'local');
-    container.read(boardDesktopFilterProvider('first').notifier).select('');
-    expect(container.read(boardDesktopFilterProvider('first')), '');
-    expect(container.read(boardDesktopFilterProvider('second')), 'local');
+        .toggleDesktop('local');
+    expect(container.read(boardDesktopFilterProvider('first')), {'ssh:devbox'});
+    container
+        .read(boardDesktopFilterProvider('first').notifier)
+        .toggleDesktop('local');
+    expect(container.read(boardDesktopFilterProvider('first')), {
+      'ssh:devbox',
+      'local',
+    });
+    container
+        .read(boardDesktopFilterProvider('first').notifier)
+        .toggleDesktop('ssh:devbox');
+    expect(container.read(boardDesktopFilterProvider('first')), {'local'});
+    expect(container.read(boardDesktopFilterProvider('second')), {'local'});
+    container
+        .read(boardDesktopFilterProvider('first').notifier)
+        .showAllDesktops();
+    expect(container.read(boardDesktopFilterProvider('first')), isEmpty);
+    expect(container.read(boardDesktopFilterProvider('second')), {'local'});
   });
 
   test('PC별 복수 선택과 전체 해제는 다른 PC 선택을 바꾸지 않는다', () {

@@ -7,7 +7,7 @@
 
 KanVibe 데스크탑에 연결해 보드를 보고, 태스크의 터미널 pane을 그대로 비추는 Flutter 클라이언트.
 
-보드의 **전체 데스크톱** 메뉴에서 로컬 또는 SSH 호스트를 선택하면 프로젝트 필터와 함께 적용된다. 선택 상태는 연결한 PC별로 분리된다. `features/board/application/board_desktop_filter_controller.dart`가 선택을 관리하고, `data/board_snapshot.dart`가 목록을 필터링하며, `presentation/widgets/desktop_filter_button.dart`가 메뉴를 표시한다.
+보드의 **전체 데스크톱** 체크 목록에서 로컬과 SSH 호스트를 여러 개 고르면 선택한 호스트의 태스크를 함께 표시한다. 선택은 중립색 체크 표시와 개수로 구분하며 강조색은 쓰지 않는다. 프로젝트 필터와 함께 적용되고, 선택 상태는 연결한 PC별로 분리된다. `features/board/application/board_desktop_filter_controller.dart`가 선택을 관리하고, `data/board_snapshot.dart`가 목록을 필터링하며, `presentation/widgets/desktop_filter_button.dart`가 목록을 표시한다.
 
 연결 화면의 가로형 로고와 Android·iOS 앱 아이콘은 공통 브랜드 원본에서 생성한다. 원본 위치, 해상도와 재생성 명령은 [브랜드 자산 안내](../resources/branding/README.md)를 따른다.
 

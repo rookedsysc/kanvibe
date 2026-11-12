@@ -33,9 +33,9 @@ final filteredBoardProvider = Provider<AsyncValue<BoardSnapshot>>((ref) {
   );
   if (connectionId == null) return board;
   final selected = ref.watch(boardProjectFilterProvider(connectionId));
-  final desktop = ref.watch(boardDesktopFilterProvider(connectionId));
+  final desktops = ref.watch(boardDesktopFilterProvider(connectionId));
   return board.whenData(
     (snapshot) =>
-        snapshot.filterByDesktop(desktop).filterByProjectIds(selected),
+        snapshot.filterByDesktops(desktops).filterByProjectIds(selected),
   );
 });

@@ -30,11 +30,10 @@ class BoardSnapshot {
         if (task.sshHost != null) task.sshHost!,
   }.toList()..sort();
 
-  BoardSnapshot filterByDesktop(String selected) {
-    if (selected != 'local' &&
-        !desktopHosts.any((host) => selected == 'ssh:$host')) {
-      return this;
-    }
+  BoardSnapshot filterByDesktops(Set<String> selected) {
+    final available = {'local', for (final host in desktopHosts) 'ssh:$host'};
+    final active = selected.intersection(available);
+    if (active.isEmpty) return this;
     final projectHosts = {
       for (final project in projects) project.id: project.sshHost,
     };
@@ -43,7 +42,7 @@ class BoardSnapshot {
         for (final entry in tasksByStatus.entries)
           entry.key: entry.value.where((task) {
             final host = task.sshHost ?? projectHosts[task.projectId];
-            return selected == (host == null ? 'local' : 'ssh:$host');
+            return active.contains(host == null ? 'local' : 'ssh:$host');
           }).toList(),
       },
       projects: projects,

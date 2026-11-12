@@ -1,15 +1,21 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 final boardDesktopFilterProvider =
-    NotifierProvider.family<BoardDesktopFilterController, String, String>(
+    NotifierProvider.family<BoardDesktopFilterController, Set<String>, String>(
       BoardDesktopFilterController.new,
     );
 
-class BoardDesktopFilterController extends Notifier<String> {
+class BoardDesktopFilterController extends Notifier<Set<String>> {
   BoardDesktopFilterController(String connectionId);
 
   @override
-  String build() => '';
+  Set<String> build() => const {};
 
-  void select(String desktop) => state = desktop;
+  void toggleDesktop(String desktop) {
+    final selected = {...state};
+    if (!selected.remove(desktop)) selected.add(desktop);
+    state = Set.unmodifiable(selected);
+  }
+
+  void showAllDesktops() => state = const {};
 }

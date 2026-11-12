@@ -101,17 +101,50 @@ Future<void> _closeFilter(WidgetTester tester) async {
 }
 
 void main() {
-  testWidgets('데스크톱 필터를 프로젝트 필터와 함께 적용하고 전체로 복원한다', (tester) async {
+  testWidgets('데스크톱을 연속 복수 선택하고 프로젝트 필터와 함께 적용한다', (tester) async {
     await tester.pumpWidget(
       _app(client: FakeDesktopClient(board: _filterBoard())),
     );
     await tester.pumpAndSettle();
+    final trigger = find.descendant(
+      of: _control('desktop-filter'),
+      matching: find.byType(OutlinedButton),
+    );
+    final unselectedColor = tester
+        .widget<OutlinedButton>(trigger)
+        .style!
+        .foregroundColor!
+        .resolve({});
     await tester.tap(_control('desktop-filter'));
     await tester.pumpAndSettle();
     await tester.tap(_control('desktop-filter-ssh-devbox'));
     await tester.pumpAndSettle();
+    await tester.tap(_control('desktop-filter-close'));
+    await tester.pumpAndSettle();
     expect(find.text('local 태스크'), findsNothing);
     expect(find.text('remote 태스크'), findsOneWidget);
+    expect(
+      tester
+          .widget<OutlinedButton>(trigger)
+          .style!
+          .foregroundColor!
+          .resolve({}),
+      unselectedColor,
+    );
+    await tester.tap(_control('desktop-filter'));
+    await tester.pumpAndSettle();
+    await tester.tap(_control('desktop-filter-local'));
+    await tester.pumpAndSettle();
+    await tester.tap(_control('desktop-filter-close'));
+    await tester.pumpAndSettle();
+    expect(find.text('local 태스크'), findsOneWidget);
+    expect(find.text('remote 태스크'), findsOneWidget);
+    await tester.tap(_control('desktop-filter'));
+    await tester.pumpAndSettle();
+    await tester.tap(_control('desktop-filter-local'));
+    await tester.pumpAndSettle();
+    await tester.tap(_control('desktop-filter-close'));
+    await tester.pumpAndSettle();
     await _openFilter(tester);
     await tester.tap(_control('project-filter-option-local'));
     await _closeFilter(tester);
@@ -119,6 +152,8 @@ void main() {
     await tester.tap(_control('desktop-filter'));
     await tester.pumpAndSettle();
     await tester.tap(_control('desktop-filter-all'));
+    await tester.pumpAndSettle();
+    await tester.tap(_control('desktop-filter-close'));
     await tester.pumpAndSettle();
     expect(find.text('local 태스크'), findsOneWidget);
     expect(find.text('remote 태스크'), findsNothing);

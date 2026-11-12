@@ -439,22 +439,29 @@ describe("Board defaultSessionType sync", () => {
     mockWindowFind();
   });
 
-  it("데스크톱 필터는 로컬/SSH 태스크를 구분하고 전체로 복원한다", () => {
+  it("데스크톱 필터는 여러 호스트를 선택하고 개별 해제와 전체 복원을 지원한다", () => {
     const tasks = createTaskKindFilterTasks();
     tasks[TaskStatus.TODO][1].sshHost = "devbox";
+    tasks[TaskStatus.TODO][2].sshHost = "prod";
     render(
       <Board initialTasks={tasks} initialDoneTotal={0} initialDoneLimit={20}
-        sshHosts={["devbox"]} projects={[createProject()]} sidebarDefaultCollapsed={false}
+        sshHosts={["devbox", "prod"]} projects={[createProject()]} sidebarDefaultCollapsed={false}
         doneAlertDismissed={false} notificationSettings={{ isEnabled: true, enabledStatuses: [] }}
         defaultSessionType={SessionType.TMUX} taskSearchShortcut="Mod+Shift+O" />,
     );
-    const filter = screen.getByRole("combobox", { name: "desktopFilter" });
-    fireEvent.change(filter, { target: { value: "ssh:devbox" } });
+    fireEvent.click(screen.getByRole("button", { name: "desktopFilter" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "devbox" }));
     expectTaskKindFilterVisibleTasks(["Branch Worktree Task"]);
-    fireEvent.change(filter, { target: { value: "local" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: "prod" }));
+    expectTaskKindFilterVisibleTasks(["Branch Worktree Task", "Plain Task"]);
+    fireEvent.click(screen.getByRole("checkbox", { name: "devbox" }));
+    expectTaskKindFilterVisibleTasks(["Plain Task"]);
+    fireEvent.click(screen.getByRole("checkbox", { name: "local" }));
     expectTaskKindFilterVisibleTasks(["Root Project Task", "Plain Task"]);
-    fireEvent.change(filter, { target: { value: "" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: "allDesktops" }));
     expectTaskKindFilterVisibleTasks(["Root Project Task", "Branch Worktree Task", "Plain Task"]);
+    fireEvent.keyDown(screen.getByRole("button", { name: "desktopFilter" }), { key: "Escape" });
+    expect(screen.queryByRole("checkbox", { name: "devbox" })).toBeNull();
   });
 
   it("defaultSessionType prop이 변경되면 내부 상태와 하위 컴포넌트가 동기화된다", async () => {

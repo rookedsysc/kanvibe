@@ -36,6 +36,8 @@ tags:
     id: desktop-filter
 - tapOn:
     id: desktop-filter-ssh-qa-remote
+- tapOn:
+    id: desktop-filter-close
 - assertVisible: "(?s).*Desktop Filter Remote.*"
 - assertNotVisible: "(?s).*Desktop Filter Local.*"
 - takeScreenshot: desktop-filter-remote
@@ -43,6 +45,17 @@ tags:
     id: desktop-filter
 - tapOn:
     id: desktop-filter-local
+- tapOn:
+    id: desktop-filter-close
+- assertVisible: "(?s).*Desktop Filter Local.*"
+- assertVisible: "(?s).*Desktop Filter Remote.*"
+- takeScreenshot: desktop-filter-multiple
+- tapOn:
+    id: desktop-filter
+- tapOn:
+    id: desktop-filter-ssh-qa-remote
+- tapOn:
+    id: desktop-filter-close
 - assertVisible: "(?s).*Desktop Filter Local.*"
 - assertNotVisible: "(?s).*Desktop Filter Remote.*"
 - takeScreenshot: desktop-filter-local
@@ -50,6 +63,8 @@ tags:
     id: desktop-filter
 - tapOn:
     id: desktop-filter-all
+- tapOn:
+    id: desktop-filter-close
 - assertVisible: "(?s).*Desktop Filter Local.*"
 - assertVisible: "(?s).*Desktop Filter Remote.*"
 - takeScreenshot: desktop-filter-all
