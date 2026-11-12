@@ -1,0 +1,34 @@
+{
+  "pass": true,
+  "dir": "/tmp/kvhp-93hBRK",
+  "session": "kvp15004",
+  "paneId": "w1:p1",
+  "checks": [
+    {
+      "name": "exact provider and empty native prompt",
+      "pass": true
+    },
+    {
+      "name": "production prompt reached exact Herdr CLI",
+      "pass": true
+    },
+    {
+      "name": "native model picker opened",
+      "pass": true
+    },
+    {
+      "name": "native model changed and prompt ready",
+      "pass": true
+    },
+    {
+      "name": "interrupt reached same CLI",
+      "pass": true
+    }
+  ],
+  "final": {
+    "provider": "codex",
+    "inputState": "ready",
+    "screen": "OpenAI Codex                                                                                                            \nModel: fixture-b                                                                                                        \nAssistant: Interrupted                                                                                                  \n›",
+    "transcriptStatus": "unavailable"
+  }
+}
