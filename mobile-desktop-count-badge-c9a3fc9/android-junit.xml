@@ -1,0 +1,6 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<testsuites>
+  <testsuite name="Test Suite" device="KanvibeFilterRetry20261112" tests="1" failures="0" time="60.133" timestamp="2026-11-13T10:27:44">
+    <testcase id="recording-wrapper" name="recording-wrapper" classname="recording-wrapper" file="qa-results/roky-harness/mobile-desktop-count-badge-20261113/maestro-1/recording-wrapper.yaml" time="60.122" timestamp="2026-11-13T10:27:44" status="SUCCESS"/>
+  </testsuite>
+</testsuites>
