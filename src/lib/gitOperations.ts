@@ -341,31 +341,64 @@ function spawnSSHCommand(
   return new Promise((resolve, reject) => {
     const child = spawnSSHProcess(sshArgs, remoteStdin, Boolean(responder));
 
-    let stdout = "";
-    let stderr = "";
+    let stdoutChunks: string[] = [];
+    const stderrChunks: string[] = [];
+    let stdoutBytes = 0;
+    let stderrBytes = 0;
+    let stdoutLength = 0;
+    let stdoutLastCharacter = "";
+    let stderrLastCharacter = "";
+    let readCompletion = createRemoteCommandCompletionParser();
+    const responsePrefix = responder ? `${responder.marker}\t` : "";
+    let responseSearchTail = "";
+    let responseStart = -1;
+    const readStdout = () => stdoutChunks.join("");
+    const readStderr = () => stderrChunks.join("");
     let settled = false;
     let responded = false;
     let responseComplete = false;
     let responderError: Error | undefined;
     const timeout = setTimeout(() => {
-      finishWithError(createSSHTimeoutError(timeoutMs, stdout, stderr));
+      finishWithError(createSSHTimeoutError(timeoutMs, readStdout(), readStderr()));
     }, timeoutMs);
 
     child.stdout.setEncoding("utf8");
     child.stderr.setEncoding("utf8");
 
     child.stdout.on("data", (chunk: string) => {
-      stdout += chunk;
+      if (settled) return;
+      const previousLength = stdoutLength;
+      stdoutChunks.push(chunk);
+      stdoutBytes += getUTF8ChunkByteLength(chunk, stdoutLastCharacter);
+      if (chunk) stdoutLastCharacter = chunk.slice(-1);
+      stdoutLength += chunk.length;
       rejectIfOutputIsTooLarge();
       if (settled) return;
+      let parsed: ReturnType<typeof readCompletion> = null;
       if (responder && !responded) {
-        const prefix = `${responder.marker}\t`;
-        const start = stdout.startsWith(prefix) ? 0 : stdout.indexOf(`\n${prefix}`) + 1;
-        const end = stdout.indexOf("\n", start);
-        if (stdout.startsWith(prefix, start) && end >= 0) {
+        const search = responseSearchTail + chunk;
+        const searchOffset = previousLength - responseSearchTail.length;
+        if (responseStart < 0) {
+          const found = search.indexOf(`\n${responsePrefix}`);
+          if (searchOffset === 0 && search.startsWith(responsePrefix)) responseStart = 0;
+          else if (found >= 0) responseStart = searchOffset + found + 1;
+        }
+        responseSearchTail = search.slice(-responsePrefix.length);
+        const end = responseStart < 0 ? -1 : responsePrefix.includes("\n")
+          ? readStdout().indexOf("\n", responseStart)
+          : chunk.indexOf("\n", Math.max(0, responseStart - previousLength));
+        if (responseStart >= 0 && end >= 0) {
+          const stdout = readStdout();
+          const responseEnd = responsePrefix.includes("\n") ? end : previousLength + end;
           responded = true;
-          const payload = stdout.slice(start + prefix.length, end);
-          stdout = stdout.slice(0, start) + stdout.slice(end + 1);
+          const payload = stdout.slice(responseStart + responsePrefix.length, responseEnd);
+          const remaining = stdout.slice(0, responseStart) + stdout.slice(responseEnd + 1);
+          stdoutChunks = [remaining];
+          stdoutLength = remaining.length;
+          stdoutBytes = Buffer.byteLength(remaining);
+          stdoutLastCharacter = remaining.slice(-1);
+          readCompletion = createRemoteCommandCompletionParser();
+          parsed = readCompletion(remaining);
           void Promise.resolve().then(async () => {
             if (settled) return;
             const reply = await responder.respond(payload);
@@ -378,22 +411,28 @@ function spawnSSHCommand(
             responderError = error instanceof Error ? error : new Error(String(error));
             child.stdin?.end();
           });
+        } else {
+          parsed = readCompletion(chunk);
         }
+      } else {
+        parsed = readCompletion(chunk);
       }
-
-      const parsed = parseRemoteCommandCompletion(stdout);
       if (parsed) {
-        finishWithRemoteCompletion(parsed.exitCode, parsed.stdout, stderr);
+        finishWithRemoteCompletion(parsed.exitCode, readStdout().slice(0, parsed.markerIndex), readStderr());
       }
     });
 
     child.stderr.on("data", (chunk: string) => {
-      stderr += chunk;
+      if (settled) return;
+      stderrChunks.push(chunk);
+      stderrBytes += getUTF8ChunkByteLength(chunk, stderrLastCharacter);
+      if (chunk) stderrLastCharacter = chunk.slice(-1);
       rejectIfOutputIsTooLarge();
     });
 
     child.on("error", (error) => {
-      finishWithError(attachCommandOutput(error, stdout, stderr));
+      if (settled) return;
+      finishWithError(attachCommandOutput(error, readStdout(), readStderr()));
     });
 
     child.on("close", (code, signal) => {
@@ -401,29 +440,23 @@ function spawnSSHCommand(
         return;
       }
 
-      const parsed = parseRemoteCommandCompletion(stdout);
-      if (parsed) {
-        finishWithRemoteCompletion(parsed.exitCode, parsed.stdout, stderr);
-        return;
-      }
-
       if (code === 0) {
-        finishWithSuccess(stdout.trim());
+        finishWithSuccess(readStdout().trim());
         return;
       }
 
-      finishWithError(createSSHExitError(code, signal, stdout, stderr));
+      finishWithError(createSSHExitError(code, signal, readStdout(), readStderr()));
     });
 
     function rejectIfOutputIsTooLarge(): void {
-      if (Buffer.byteLength(stdout) + Buffer.byteLength(stderr) <= maxBufferBytes) {
+      if (stdoutBytes + stderrBytes <= maxBufferBytes) {
         return;
       }
 
       finishWithError(attachCommandOutput(
         new Error("SSH command output exceeded maxBuffer"),
-        stdout,
-        stderr,
+        readStdout(),
+        readStderr(),
       ));
     }
 
@@ -475,23 +508,56 @@ function spawnSSHCommand(
   });
 }
 
-function parseRemoteCommandCompletion(stdout: string): { stdout: string; exitCode: number } | null {
-  const markerPrefix = `\n${REMOTE_COMMAND_EXIT_MARKER}:`;
-  const markerIndex = stdout.lastIndexOf(markerPrefix);
-  if (markerIndex < 0) {
-    return null;
-  }
+function getUTF8ChunkByteLength(chunk: string, previousCharacter: string): number {
+  const joinsSurrogatePair = /[\uD800-\uDBFF]/.test(previousCharacter)
+    && /^[\uDC00-\uDFFF]/.test(chunk);
+  return Buffer.byteLength(chunk) - (joinsSurrogatePair ? 2 : 0);
+}
 
-  const exitCodeMatch = stdout
-    .slice(markerIndex + markerPrefix.length)
-    .match(/^(\d+)\r?\n/);
-  if (!exitCodeMatch) {
-    return null;
-  }
+function createRemoteCommandCompletionParser(): (chunk: string) => { markerIndex: number; exitCode: number } | null {
+  const prefix = `\n${REMOTE_COMMAND_EXIT_MARKER}:`;
+  let tail = "";
+  let length = 0;
+  let markerIndex = -1;
+  let digits: string[] = [];
+  let digitCount = 0;
+  let awaitingNewline = false;
+  let invalid = false;
 
-  return {
-    stdout: stdout.slice(0, markerIndex),
-    exitCode: Number.parseInt(exitCodeMatch[1], 10),
+  return (chunk) => {
+    const search = tail + chunk;
+    const found = search.lastIndexOf(prefix);
+    let suffix = chunk;
+    if (found >= 0) {
+      markerIndex = length - tail.length + found;
+      digits = [];
+      digitCount = 0;
+      awaitingNewline = false;
+      invalid = false;
+      suffix = search.slice(found + prefix.length);
+    }
+    length += chunk.length;
+    tail = search.slice(-(prefix.length - 1));
+    if (markerIndex < 0 || invalid || !suffix) return null;
+    if (!awaitingNewline) {
+      const nextDigits = suffix.match(/^\d*/)?.[0] ?? "";
+      if (nextDigits) {
+        digits.push(nextDigits);
+        digitCount += nextDigits.length;
+      }
+      suffix = suffix.slice(nextDigits.length);
+      if (!suffix) return null;
+      if (suffix[0] === "\r") {
+        awaitingNewline = true;
+        suffix = suffix.slice(1);
+        if (!suffix) return null;
+      }
+    }
+    if (digitCount && suffix[0] === "\n") {
+      return { markerIndex, exitCode: Number.parseInt(digits.join(""), 10) };
+    }
+    invalid = true;
+    return null;
   };
 }
 

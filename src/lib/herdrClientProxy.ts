@@ -56,16 +56,33 @@ function frame(payload: Buffer): Buffer {
 }
 
 function readFrames(socket: Socket, receive: (payload: Buffer) => void, fail: (error: Error) => void): void {
-  let buffered: Buffer = Buffer.alloc(0);
+  const header = Buffer.alloc(4);
+  let headerBytes = 0;
+  let payloadLength = 0;
+  let payloadBytes = 0;
+  let payloadChunks: Buffer[] = [];
   socket.on("data", (chunk: Buffer) => {
     try {
-      buffered = Buffer.concat([buffered, chunk]);
-      while (buffered.length >= 4) {
-        const length = buffered.readUInt32LE(0);
-        if (!length || length > MAX_FRAME_BYTES) throw new Error("Herdr 프레임 크기가 올바르지 않습니다.");
-        if (buffered.length < length + 4) break;
-        const payload = buffered.subarray(4, length + 4);
-        buffered = buffered.subarray(length + 4);
+      let offset = 0;
+      while (offset < chunk.length) {
+        if (headerBytes < 4) {
+          const count = Math.min(4 - headerBytes, chunk.length - offset);
+          chunk.copy(header, headerBytes, offset, offset + count);
+          headerBytes += count;
+          offset += count;
+          if (headerBytes < 4) break;
+          payloadLength = header.readUInt32LE(0);
+          if (!payloadLength || payloadLength > MAX_FRAME_BYTES) throw new Error("Herdr 프레임 크기가 올바르지 않습니다.");
+        }
+        const count = Math.min(payloadLength - payloadBytes, chunk.length - offset);
+        if (count) payloadChunks.push(chunk.subarray(offset, offset + count));
+        payloadBytes += count;
+        offset += count;
+        if (payloadBytes < payloadLength) break;
+        const payload = payloadChunks.length === 1 ? payloadChunks[0] : Buffer.concat(payloadChunks, payloadLength);
+        headerBytes = 0;
+        payloadBytes = 0;
+        payloadChunks = [];
         receive(payload);
       }
     } catch (error) {
