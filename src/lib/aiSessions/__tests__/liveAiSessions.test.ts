@@ -51,7 +51,7 @@ function mockTmuxPanes(panes: string[]) {
 
       throw new Error(`unexpected command: ${command}`);
     }),
-    isSSHTransportError: () => false,
+    isSSHConnectionError: () => false,
   }));
 }
 

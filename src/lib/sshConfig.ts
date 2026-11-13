@@ -1,6 +1,7 @@
 import { mkdir, readFile } from "fs/promises";
 import { homedir } from "os";
 import path from "path";
+import { createHash, randomBytes } from "node:crypto";
 
 export interface SSHHostConfig {
   host: string;
@@ -23,6 +24,8 @@ export interface SSHConnectionHealthOptions {
 
 const SSH_CONFIG_CACHE_TTL_MS = 5000;
 const KANVIBE_SSH_CONTROL_PERSIST = "10m";
+// A random process namespace keeps stable/dev instances and PID reuse from sharing ownership.
+const sshControlOwner = randomBytes(6).toString("hex");
 const KANVIBE_SSH_CONNECT_TIMEOUT_SECONDS = 8;
 const KANVIBE_SSH_SERVER_ALIVE_INTERVAL_SECONDS = 5;
 const KANVIBE_SSH_SERVER_ALIVE_COUNT_MAX = 2;
@@ -133,10 +136,14 @@ export async function ensureKanvibeSSHControlDirectory(): Promise<void> {
   await mkdir(getKanvibeSSHControlDirectory(), { recursive: true, mode: 0o700 });
 }
 
-export function getKanvibeSSHConnectionReuseOptions(shardIndex?: number): SSHConnectionReuseOptions {
-  const controlPathName = typeof shardIndex === "number" && Number.isInteger(shardIndex) && shardIndex >= 0
-    ? `ssh-%C-${shardIndex}`
-    : "ssh-%C";
+export function getKanvibeSSHConnectionReuseOptions(shardIndex?: number, config?: SSHHostConfig): SSHConnectionReuseOptions {
+  const identity = config
+    ? createHash("sha256").update(JSON.stringify(config)).digest("hex").slice(0, 20)
+    : "%C";
+  const generation = typeof shardIndex === "number" && Number.isInteger(shardIndex) && shardIndex >= 0
+    ? `-${shardIndex}`
+    : "";
+  const controlPathName = `ssh-${sshControlOwner}-${identity}${generation}`;
 
   return {
     controlPath: path.join(getKanvibeSSHControlDirectory(), controlPathName),

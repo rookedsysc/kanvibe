@@ -28,6 +28,7 @@ const mocks = vi.hoisted(() => ({
   aggregateAiSessions: vi.fn(),
   getAiSessionDetail: vi.fn(),
   ensureKanvibeHooksCurrent: vi.fn(async () => false),
+  getKanvibeHooksStatuses: vi.fn(),
   installKanvibeHooks: vi.fn(),
   installKanvibeHookProvider: vi.fn(),
   scheduleKanvibeHooksInstall: vi.fn(),
@@ -172,6 +173,7 @@ vi.mock("@/lib/remoteSessionDependency", () => ({
 
 vi.mock("@/lib/kanvibeHooksInstaller", () => ({
   ensureKanvibeHooksCurrent: mocks.ensureKanvibeHooksCurrent,
+  getKanvibeHooksStatuses: mocks.getKanvibeHooksStatuses,
   installKanvibeHooks: mocks.installKanvibeHooks,
   installKanvibeHookProvider: mocks.installKanvibeHookProvider,
   scheduleKanvibeHooksInstall: mocks.scheduleKanvibeHooksInstall,
@@ -2690,13 +2692,69 @@ describe("projectService remote hook and AI session support", () => {
     mocks.getOpenCodeHooksStatus.mockResolvedValue({ installed: false });
   });
 
-  it("상세 훅 조회의 갱신 실패는 성공 상태로 감추지 않는다", async () => {
+  it("상세 훅 조회 실패는 성공 상태로 감추지 않는다", async () => {
     const task = { id: "task-remote", worktreePath: "/remote/worktree", project: { repoPath: "/remote/repo", sshHost: "remote-host" } };
     mocks.getTaskRepository.mockResolvedValue({ findOne: vi.fn(async () => task) });
-    mocks.ensureKanvibeHooksCurrent.mockRejectedValueOnce(new Error("inspection unavailable"));
+    mocks.getClaudeHooksStatus.mockRejectedValueOnce(new Error("inspection unavailable"));
     const { getTaskHooksStatus } = await import("@/desktop/main/services/projectService");
     await expect(getTaskHooksStatus(task.id)).rejects.toThrow("inspection unavailable");
-    expect(mocks.getClaudeHooksStatus).not.toHaveBeenCalled();
+    expect(mocks.getClaudeHooksStatus).toHaveBeenCalledTimes(1);
+    expect(mocks.ensureKanvibeHooksCurrent).not.toHaveBeenCalled();
+  });
+
+  it.each(["getProjectHooksStatus", "getProjectGeminiHooksStatus", "getProjectCodexHooksStatus"] as const)("%s는 기존 root task 조회만 하고 복구하지 않는다", async (method) => {
+    const project = { id: "project-root", repoPath: "/remote/repo", defaultBranch: "main", sshHost: "remote-host" };
+    const task = { id: "task-root", projectId: project.id, branchName: "main", worktreePath: project.repoPath, sshHost: project.sshHost };
+    const save = vi.fn(async (value) => value);
+    mocks.getProjectRepository.mockResolvedValue({ findOneBy: vi.fn(async () => project) });
+    mocks.getTaskRepository.mockResolvedValue({ findOneBy: vi.fn(async () => task), save });
+    const service = await import("@/desktop/main/services/projectService");
+
+    await expect(service[method](project.id)).resolves.toEqual({ installed: false });
+    expect(save).not.toHaveBeenCalled();
+    expect(mocks.writeTextFile).not.toHaveBeenCalled();
+    expect(mocks.ensureKanvibeHooksCurrent).not.toHaveBeenCalled();
+  });
+
+  it("상태 조회는 네 provider가 미설치여도 hooks를 복구하지 않는다", async () => {
+    const task = { id: "task-read-only", worktreePath: "/remote/worktree", project: { repoPath: "/remote/repo", sshHost: "remote-host" } };
+    mocks.getTaskRepository.mockResolvedValue({ findOne: vi.fn(async () => task) });
+    const service = await import("@/desktop/main/services/projectService");
+
+    const statuses = await Promise.all([
+      service.getTaskHooksStatus(task.id), service.getTaskGeminiHooksStatus(task.id),
+      service.getTaskCodexHooksStatus(task.id), service.getTaskOpenCodeHooksStatus(task.id),
+    ]);
+
+    expect(statuses).toEqual(Array.from({ length: 4 }, () => ({ installed: false })));
+    expect(mocks.ensureKanvibeHooksCurrent).not.toHaveBeenCalled();
+    expect(mocks.installKanvibeHookProvider).not.toHaveBeenCalled();
+  });
+
+  it("일괄 hook 상태 조회는 task target을 한 번만 조회한다", async () => {
+    const task = { id: "task-batch", worktreePath: "/remote/worktree", project: { repoPath: "/remote/repo", sshHost: "remote-host" } };
+    const findOne = vi.fn(async () => task);
+    mocks.getTaskRepository.mockResolvedValue({ findOne });
+    const expected = { claude: { installed: false }, gemini: { installed: true }, codex: { installed: false }, openCode: { installed: true } };
+    mocks.getKanvibeHooksStatuses.mockResolvedValue(expected);
+    const { getTaskHooksStatuses } = await import("@/desktop/main/services/projectService");
+
+    await expect(getTaskHooksStatuses(task.id)).resolves.toBe(expected);
+    expect(findOne).toHaveBeenCalledTimes(1);
+    expect(mocks.getKanvibeHooksStatuses).toHaveBeenCalledWith("/remote/worktree", "task-batch", "remote-host");
+    expect(mocks.ensureKanvibeHooksCurrent).not.toHaveBeenCalled();
+  });
+
+  it("기본 브랜치 상태 조회는 기존 root task를 읽고 상태 파일을 쓰지 않는다", async () => {
+    const task = { id: "task-root", branchName: "main", worktreePath: "/remote/repo", project: { id: "project-root", repoPath: "/remote/repo", defaultBranch: "main", sshHost: "remote-host" } };
+    const save = vi.fn(async (value) => value);
+    mocks.getTaskRepository.mockResolvedValue({ findOne: vi.fn(async () => task), findOneBy: vi.fn(async () => task), save });
+    const { getTaskHooksStatus } = await import("@/desktop/main/services/projectService");
+
+    await expect(getTaskHooksStatus(task.id)).resolves.toEqual({ installed: false });
+    expect(save).not.toHaveBeenCalled();
+    expect(mocks.writeTextFile).not.toHaveBeenCalled();
+    expect(mocks.ensureKanvibeHooksCurrent).not.toHaveBeenCalled();
   });
 
   it("원격 태스크의 Claude hook 상태도 sshHost 기준으로 조회한다", async () => {
@@ -2765,7 +2823,7 @@ describe("projectService remote hook and AI session support", () => {
     await getTaskCodexHooksStatus(task.id);
     await getTaskOpenCodeHooksStatus(task.id);
 
-    expect(mocks.ensureKanvibeHooksCurrent).toHaveBeenCalledWith("/remote/repo", "task-remote", "remote-host");
+    expect(mocks.ensureKanvibeHooksCurrent).not.toHaveBeenCalled();
     expect(mocks.getClaudeHooksStatus).toHaveBeenCalledWith("/remote/repo", "task-remote", "remote-host");
     expect(mocks.getGeminiHooksStatus).toHaveBeenCalledWith("/remote/repo", "task-remote", "remote-host");
     expect(mocks.getCodexHooksStatus).toHaveBeenCalledWith("/remote/repo", "task-remote", "remote-host");

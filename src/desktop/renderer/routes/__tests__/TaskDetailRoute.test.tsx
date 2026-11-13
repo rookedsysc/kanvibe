@@ -24,6 +24,7 @@ const mocks = vi.hoisted(() => ({
   deleteTask: vi.fn(),
   getGitDiffFiles: vi.fn(),
   getTaskHooksStatus: vi.fn(),
+  getTaskHooksStatuses: vi.fn(),
   getTaskGeminiHooksStatus: vi.fn(),
   getTaskCodexHooksStatus: vi.fn(),
   getTaskOpenCodeHooksStatus: vi.fn(),
@@ -166,6 +167,7 @@ vi.mock("@/desktop/renderer/actions/diff", () => ({
 
 vi.mock("@/desktop/renderer/actions/project", () => ({
   getTaskHooksStatus: (...args: unknown[]) => mocks.getTaskHooksStatus(...args),
+  getTaskHooksStatuses: (...args: unknown[]) => mocks.getTaskHooksStatuses(...args),
   getTaskGeminiHooksStatus: (...args: unknown[]) => mocks.getTaskGeminiHooksStatus(...args),
   getTaskCodexHooksStatus: (...args: unknown[]) => mocks.getTaskCodexHooksStatus(...args),
   getTaskOpenCodeHooksStatus: (...args: unknown[]) => mocks.getTaskOpenCodeHooksStatus(...args),
@@ -316,6 +318,7 @@ describe("TaskDetailRoute", () => {
     mocks.getTaskIdByProjectAndBranch.mockResolvedValue(null);
     mocks.getGitDiffFiles.mockResolvedValue([]);
     mocks.getTaskHooksStatus.mockResolvedValue(null);
+    mocks.getTaskHooksStatuses.mockResolvedValue(null);
     mocks.getTaskGeminiHooksStatus.mockResolvedValue(null);
     mocks.getTaskCodexHooksStatus.mockResolvedValue(null);
     mocks.getTaskOpenCodeHooksStatus.mockResolvedValue(null);
@@ -1931,6 +1934,7 @@ describe("TaskDetailRoute", () => {
       worktreePath: "/repo__worktrees/detail-shortcut",
     });
     mocks.getTaskCodexHooksStatus.mockResolvedValue(codexStatus);
+    mocks.getTaskHooksStatuses.mockResolvedValue({ claude: null, gemini: null, codex: codexStatus, openCode: null });
     mocks.getTaskAiSessions.mockReturnValue(unresolvedAiSessions.promise);
 
     render(<TaskDetailRoute />);
@@ -1943,6 +1947,8 @@ describe("TaskDetailRoute", () => {
     expect(mocks.renderHooksStatusCard).toHaveBeenLastCalledWith(expect.objectContaining({
       initialCodexStatus: codexStatus,
     }));
+    expect(mocks.getTaskHooksStatuses).toHaveBeenCalledWith("task-1");
+    expect(mocks.getTaskCodexHooksStatus).not.toHaveBeenCalled();
   });
 
   it("상세 화면 좌측 하단 rail에는 알림 버튼을 렌더링하지 않는다", async () => {

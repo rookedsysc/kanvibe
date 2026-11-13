@@ -16,6 +16,7 @@ import type {
 import type { GeminiHooksStatus } from "@/lib/geminiHooksSetup";
 import type { CodexHooksStatus } from "@/lib/codexHooksSetup";
 import type { OpenCodeHooksStatus } from "@/lib/openCodeHooksSetup";
+import type { KanvibeHookStatuses } from "@/lib/kanvibeHookProviders";
 import type { ScanResult } from "@/desktop/main/services/projectService";
 
 async function invokeAndRefresh<T>(
@@ -70,6 +71,10 @@ export function getProjectHooksStatus(projectId: string): Promise<ClaudeHooksSta
 
 export function installProjectHooks(projectId: string): Promise<{ success: boolean; error?: string; status?: ClaudeHooksStatus | null }> {
   return invokeAndRefresh("installProjectHooks", [projectId], { refresh: false });
+}
+
+export function getTaskHooksStatuses(taskId: string): Promise<KanvibeHookStatuses | null> {
+  return invokeDesktop("project", "getTaskHooksStatuses", taskId);
 }
 
 export function getTaskHooksStatus(taskId: string): Promise<ClaudeHooksStatus | null> {

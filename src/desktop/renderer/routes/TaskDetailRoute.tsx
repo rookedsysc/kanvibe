@@ -29,6 +29,7 @@ import {
   getTaskCodexHooksStatus,
   getTaskGeminiHooksStatus,
   getTaskHooksStatus,
+  getTaskHooksStatuses,
   getTaskOpenCodeHooksStatus,
   getAllProjects,
 } from "@/desktop/renderer/actions/project";
@@ -1528,18 +1529,13 @@ function TaskDetailContent({ id }: { id: string }) {
 
         void (async () => {
           try {
-            const [claudeHooksStatus, geminiHooksStatus, codexHooksStatus, openCodeHooksStatus] = await Promise.all([
-              task.projectId ? getTaskHooksStatus(id) : Promise.resolve(null),
-              task.projectId ? getTaskGeminiHooksStatus(id) : Promise.resolve(null),
-              task.projectId ? getTaskCodexHooksStatus(id) : Promise.resolve(null),
-              task.projectId ? getTaskOpenCodeHooksStatus(id) : Promise.resolve(null),
-            ]);
+            const hookStatuses = task.projectId ? await getTaskHooksStatuses(id) : null;
 
             applySupplementalState({
-              claudeHooksStatus,
-              geminiHooksStatus,
-              codexHooksStatus,
-              openCodeHooksStatus,
+              claudeHooksStatus: hookStatuses?.claude ?? null,
+              geminiHooksStatus: hookStatuses?.gemini ?? null,
+              codexHooksStatus: hookStatuses?.codex ?? null,
+              openCodeHooksStatus: hookStatuses?.openCode ?? null,
             });
           } catch (error) {
             console.error("Failed to load task hook statuses:", error);
