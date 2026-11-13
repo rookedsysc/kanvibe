@@ -22,7 +22,7 @@ appId: ${APP_ID}
       - inputText: "127.0.0.1"
 - tapOn: "포트"
 - eraseText
-- inputText: "19746"
+- inputText: "39746"
 - tapOn: "연결 코드"
 - eraseText
 - inputText: ${PAIRING_CODE}

@@ -7,7 +7,7 @@ const { _electron: electron } = require('@playwright/test');
 const { createLocalShellEnvironment } = require('../../../src/lib/shellEnvironment.ts');
 
 const workspaceIndex = process.argv.indexOf('--workspace');
-let root = workspaceIndex >= 0 ? path.resolve(process.argv[workspaceIndex + 1]) : path.resolve(__dirname, '../../..');
+const root = workspaceIndex >= 0 ? path.resolve(process.argv[workspaceIndex + 1]) : path.resolve(__dirname, '../../..');
 const runDirIndex = process.argv.indexOf('--run-dir');
 if (runDirIndex < 0 || !process.argv[runDirIndex + 1]) throw new Error('--run-dir <fresh directory> is required');
 const runDir = path.resolve(process.argv[runDirIndex + 1]);
@@ -69,17 +69,6 @@ async function main() {
   if (fs.existsSync(path.join(runDir, 'app-data'))) throw new Error('Use a fresh --run-dir');
   fs.mkdirSync(repo, { recursive: true });
   await freePort(selectedPort);
-  const gatedWorkspace = root;
-  const runtimeWorkspace = path.join(runDir, 'runtime-workspace');
-  fs.cpSync(root, runtimeWorkspace, { recursive: true, filter: (entry) => entry !== path.join(root, 'node_modules') });
-  fs.symlinkSync(fs.realpathSync(path.join(root, 'node_modules')), path.join(runtimeWorkspace, 'node_modules'), 'dir');
-  const mainPath = path.join(runtimeWorkspace, 'electron', 'main.js');
-  const mainSource = fs.readFileSync(mainPath, 'utf8');
-  const originalPort = 'const DEV_HOOK_SERVER_PORT = 19736;';
-  if (!mainSource.includes(originalPort)) throw new Error('QA port override target missing');
-  fs.writeFileSync(mainPath, mainSource.replace(originalPort, `const DEV_HOOK_SERVER_PORT = ${selectedPort};`));
-  fs.writeFileSync(path.join(runDir, 'runtime-port-override.json'), JSON.stringify({ gatedWorkspace, runtimeWorkspace, onlyOverride: { from: originalPort, to: `const DEV_HOOK_SERVER_PORT = ${selectedPort};` } }, null, 2));
-  root = runtimeWorkspace;
   const git = (...args) => execFileSync('git', ['-C', repo, ...args], { env: createLocalShellEnvironment(), stdio: 'pipe' });
   git('init', '-b', 'main');
   git('config', 'user.name', 'KanVibe QA'); git('config', 'user.email', 'qa@kanvibe.local');
@@ -96,7 +85,7 @@ async function main() {
   process.once('SIGINT', () => { void stop().then(() => process.exit(0)); });
   try {
     await waitFor(rendererUrl);
-    app = await electron.launch({ executablePath: require('electron'), args: ['--no-sandbox', root], cwd: root, env: { ...isolatedAgentEnvironment(), KANVIBE_QA_MODE: '1', KANVIBE_APP_DATA_DIR: path.join(runDir, 'app-data'), KANVIBE_RENDERER_URL: rendererUrl }, timeout: 60000 });
+    app = await electron.launch({ executablePath: require('electron'), args: ['--no-sandbox', `--kanvibe-hook-port=${selectedPort}`, root], cwd: root, env: { ...isolatedAgentEnvironment(), KANVIBE_QA_MODE: '1', KANVIBE_APP_DATA_DIR: path.join(runDir, 'app-data'), KANVIBE_RENDERER_URL: rendererUrl }, timeout: 60000 });
     app.process().stdout?.on('data', (data) => fs.appendFileSync(path.join(runDir, 'desktop.log'), data));
     app.process().stderr?.on('data', (data) => fs.appendFileSync(path.join(runDir, 'desktop.log'), data));
     const page = await app.firstWindow();

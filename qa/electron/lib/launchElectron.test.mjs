@@ -83,4 +83,30 @@ describe("Electron QA launcher", () => {
     }
     expect(first.KANVIBE_APP_DATA_DIR).not.toBe(second.KANVIBE_APP_DATA_DIR);
   });
+
+  it("gives each automated QA run a hook port apart from the installed app and pnpm dev", async () => {
+    const { launch, launchKanVibeElectron } = createLauncher();
+
+    const first = await launchKanVibeElectron();
+    const second = await launchKanVibeElectron();
+    for (const call of launch.mock.calls) fixtureDirectories.push(call[0].env.KANVIBE_APP_DATA_DIR);
+
+    expect(launch.mock.calls[0][0].args).toContain(`--kanvibe-hook-port=${first.hookPort}`);
+    expect(launch.mock.calls[1][0].args).toContain(`--kanvibe-hook-port=${second.hookPort}`);
+    expect(first.hookPort).not.toBe(second.hookPort);
+    for (const hookPort of [first.hookPort, second.hookPort]) {
+      expect([9736, 19736, 29736]).not.toContain(hookPort);
+      expect(hookPort + 10).toBeLessThanOrEqual(65535);
+    }
+  });
+
+  it("uses the fixed hook port a mobile QA fixture asks for", async () => {
+    const { launch, launchKanVibeElectron } = createLauncher();
+
+    const launched = await launchKanVibeElectron({ hookPort: 39736 });
+    fixtureDirectories.push(launch.mock.calls[0][0].env.KANVIBE_APP_DATA_DIR);
+
+    expect(launched.hookPort).toBe(39736);
+    expect(launch.mock.calls[0][0].args).toContain("--kanvibe-hook-port=39736");
+  });
 });

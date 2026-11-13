@@ -1,7 +1,7 @@
 # 격리 desktop fixture의 worktree에 clipboard.vim과 clipboard.txt를 준비한다.
 appId: ${APP_ID}
 env:
-  DESKTOP_API_FROM_HOST: http://127.0.0.1:19736
+  DESKTOP_API_FROM_HOST: http://127.0.0.1:39736
 ---
 - launchApp:
     clearState: true
