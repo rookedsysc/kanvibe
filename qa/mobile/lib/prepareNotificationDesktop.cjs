@@ -16,6 +16,7 @@ const PROBE_PORT = 19737;
 const PROBE_URL = `http://127.0.0.1:${PROBE_PORT}`;
 const LATEST_TASK_TITLE = "Maestro Open Task Latest";
 const LIVE_NOTIFICATION_TITLE = "Maestro Live Notice";
+const TASK_DETAIL_NOTIFICATION_TITLE = "Maestro Task Detail Notice";
 let desktopNotificationEventCount = 0;
 
 // 기존 terminal fixture와 달리 실제 renderer IPC로 알림을 읽고 바꾸며, 사용자 DB를 열지 않는다.
@@ -191,6 +192,10 @@ async function startProbe(page, fixture, runDir) {
     "/desktop/read-all": () => page.evaluate(() => window.kanvibeDesktop.markAllNotificationsRead()),
     "/desktop/create": () => createNotification(page, LIVE_NOTIFICATION_TITLE, null),
     "/desktop/update-task": () => invokeDesktop(page, "kanban", "updateTask", fixture.tasks.targetId, { title: LATEST_TASK_TITLE }),
+    // 모바일이 보드에서 태스크 상세를 열 때만 읽혀야 하므로, 알림함 흐름의 개수와 섞이지 않게 요청 시점에 만든다.
+    "/desktop/create-task-notification": async () => {
+      fixture.notifications.taskDetail = await createNotification(page, TASK_DETAIL_NOTIFICATION_TITLE, fixture.tasks.betaRootId);
+    },
   };
   const server = http.createServer(async (request, response) => {
     const requestUrl = new URL(request.url, PROBE_URL);
