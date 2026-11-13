@@ -11,6 +11,7 @@ import '../../features/project_registry/data/project_scan_result.dart';
 import '../../features/chat_history/domain/chat_history.dart';
 import '../../features/notifications/domain/inbox_notification.dart';
 import '../../features/notifications/domain/notification_settings.dart';
+import '../../features/pane_chat/domain/pane_chat.dart';
 import '../../features/task_create/domain/session_type.dart';
 import '../../features/task_detail/domain/mirror_pane.dart';
 import 'desktop_command.dart';
@@ -212,6 +213,234 @@ class DesktopClient {
       (jsonDecode(response.body) as Map<String, dynamic>)['detail']
           as Map<String, dynamic>,
     );
+  }
+
+  // Foreground-process inspection and exact transcript lookup can each outlast a normal board request.
+  static const _paneChatTimeout = Duration(seconds: 30);
+
+  Future<PaneChatSnapshot> fetchPaneChat(
+    DesktopConnection connection,
+    PaneChatTarget target,
+  ) async {
+    final response = await _clientFor(connection)
+        .get(
+          connection
+              .buildHttpUri('/')
+              .replace(
+                pathSegments: [
+                  'api',
+                  'mobile',
+                  'tasks',
+                  target.taskId,
+                  'pane-chat',
+                ],
+                queryParameters: {'paneId': target.paneId},
+              ),
+          headers: connection.authorizationHeaders,
+        )
+        .timeout(_paneChatTimeout);
+    if (response.statusCode != 200) {
+      throw DesktopRequestException(
+        response.statusCode,
+        message: _readErrorMessage(response.body),
+      );
+    }
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    final snapshot = PaneChatSnapshot.fromJson(
+      body['snapshot'] as Map<String, dynamic>,
+    );
+    if (snapshot.taskId != target.taskId ||
+        (snapshot.paneId != null && snapshot.paneId != target.paneId)) {
+      throw const FormatException('선택한 pane과 응답의 대상이 다릅니다.');
+    }
+    return snapshot;
+  }
+
+  Future<void> sendPaneChatAction(
+    DesktopConnection connection,
+    String taskId,
+    String targetToken,
+    PaneChatAction action, {
+    String? text,
+    PaneChatKey? key,
+    List<String>? attachmentIds,
+    String? requestId,
+  }) async {
+    final response = await _clientFor(connection)
+        .post(
+          connection
+              .buildHttpUri('/')
+              .replace(
+                pathSegments: [
+                  'api',
+                  'mobile',
+                  'tasks',
+                  taskId,
+                  'pane-chat',
+                  action.path,
+                ],
+              ),
+          headers: {
+            ...connection.authorizationHeaders,
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({
+            'targetToken': targetToken,
+            if (action == PaneChatAction.prompt) 'text': text,
+            if (action == PaneChatAction.key) 'key': key?.name,
+            'attachmentIds': ?attachmentIds,
+            'requestId': ?requestId,
+          }),
+        )
+        .timeout(_paneChatTimeout);
+    if (response.statusCode != 200) {
+      throw DesktopRequestException(
+        response.statusCode,
+        message: _readErrorMessage(response.body),
+      );
+    }
+    if ((jsonDecode(response.body) as Map<String, dynamic>)['success'] !=
+        true) {
+      throw const FormatException('CLI가 동작을 수락하지 않았습니다.');
+    }
+  }
+
+  Uri _paneComposerUri(
+    DesktopConnection connection,
+    String taskId,
+    String part, [
+    Map<String, String>? query,
+  ]) => connection
+      .buildHttpUri('/')
+      .replace(
+        pathSegments: ['api', 'mobile', 'tasks', taskId, 'pane-chat', part],
+        queryParameters: query,
+      );
+
+  Map<String, dynamic> _composerBody(http.Response response) {
+    if (response.statusCode != 200) {
+      throw DesktopRequestException(
+        response.statusCode,
+        message: _readErrorMessage(response.body),
+      );
+    }
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    if (body['success'] != true) throw const FormatException('요청을 완료하지 못했습니다.');
+    return body;
+  }
+
+  Future<String> stagePaneChatAttachment(
+    DesktopConnection connection,
+    String taskId,
+    String targetToken, {
+    required String name,
+    required String mimeType,
+    required List<int> bytes,
+  }) async {
+    final response = await _clientFor(connection)
+        .post(
+          _paneComposerUri(connection, taskId, 'attachments'),
+          headers: {
+            ...connection.authorizationHeaders,
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({
+            'targetToken': targetToken,
+            'attachment': {
+              'name': name,
+              'mimeType': mimeType,
+              'dataUrl': 'data:$mimeType;base64,${base64Encode(bytes)}',
+            },
+          }),
+        )
+        .timeout(_paneChatTimeout);
+    return (_composerBody(response)['attachment'] as Map<String, dynamic>)['id']
+        as String;
+  }
+
+  Future<void> removePaneChatAttachment(
+    DesktopConnection connection,
+    String taskId,
+    String targetToken,
+    String id,
+  ) async {
+    final response = await _clientFor(connection)
+        .delete(
+          _paneComposerUri(connection, taskId, 'attachments'),
+          headers: {
+            ...connection.authorizationHeaders,
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({'targetToken': targetToken, 'id': id}),
+        )
+        .timeout(_paneChatTimeout);
+    _composerBody(response);
+  }
+
+  Future<List<PaneChatSuggestion>> getPaneChatSuggestions(
+    DesktopConnection connection,
+    String taskId,
+    String targetToken,
+    String kind,
+    String query,
+  ) async {
+    final response = await _clientFor(connection)
+        .get(
+          _paneComposerUri(connection, taskId, 'suggestions', {
+            'targetToken': targetToken,
+            'kind': kind,
+            'query': query,
+          }),
+          headers: connection.authorizationHeaders,
+        )
+        .timeout(_paneChatTimeout);
+    final body = _composerBody(response);
+    if (body['targetToken'] != targetToken) {
+      throw const FormatException('CLI 대상이 변경되었습니다.');
+    }
+    return (body['items'] as List)
+        .map(
+          (item) => PaneChatSuggestion.fromJson(item as Map<String, dynamic>),
+        )
+        .toList();
+  }
+
+  Future<List<int>> fetchChatAttachment(
+    DesktopConnection connection,
+    String taskId,
+    String provider,
+    String sessionId,
+    String attachmentId,
+  ) async {
+    final uri = connection
+        .buildHttpUri('/')
+        .replace(
+          pathSegments: [
+            'api',
+            'mobile',
+            'tasks',
+            taskId,
+            'ai-sessions',
+            provider,
+            sessionId,
+            'attachments',
+            attachmentId,
+          ],
+        );
+    final response = await _clientFor(connection)
+        .get(uri, headers: connection.authorizationHeaders)
+        .timeout(_paneChatTimeout);
+    final attachment =
+        _composerBody(response)['attachment'] as Map<String, dynamic>;
+    final data = UriData.parse(attachment['dataUrl'] as String);
+    if (!data.mimeType.startsWith('image/')) {
+      throw const FormatException('이미지 형식이 아닙니다.');
+    }
+    final bytes = data.contentAsBytes();
+    if (bytes.length > 10 * 1024 * 1024) {
+      throw const FormatException('이미지가 너무 큽니다.');
+    }
+    return bytes;
   }
 
   Future<List<InboxNotification>> fetchNotifications(

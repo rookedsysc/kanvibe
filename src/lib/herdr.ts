@@ -46,6 +46,43 @@ export function buildHerdrClientCommand(sessionName: string, socketPath: string)
   return `env -u HERDR_ENV -u HERDR_SOCKET_PATH -u HERDR_PANE_ID -u HERDR_WORKSPACE_ID -u HERDR_TAB_ID HERDR_SESSION=${quoteShellArgument(serverName)} HERDR_CLIENT_SOCKET_PATH=${quoteShellArgument(socketPath)} ${HERDR_EXECUTABLE} client`;
 }
 
+export async function readHerdrClientTabBarPosition(sshHost?: string): Promise<"top" | "bottom" | null> {
+  try {
+    const configPath = await execGit('printf "%s" "${HERDR_CONFIG_PATH:-${XDG_CONFIG_HOME:-$HOME/.config}/herdr/config.toml}"', sshHost, { timeoutMs: HERDR_COMMAND_TIMEOUT_MS });
+    if (!path.posix.isAbsolute(configPath)) return null;
+    const target = quoteShellArgument(configPath);
+    const content = await execGit(`if test -e ${target}; then cat ${target}; fi`, sshHost, { timeoutMs: HERDR_COMMAND_TIMEOUT_MS });
+    let section = "";
+    let position: "top" | "bottom" = "top";
+    let foundPosition = false;
+    for (const original of content.split(/\r?\n/)) {
+      const line = original.trim();
+      if (!line || line.startsWith("#")) continue;
+      // 해석할 수 없는 TOML에서 위치를 추측하면 pane 밖을 덮을 수 있다.
+      if (line.includes('"""') || line.includes("'''")) return null;
+      if (line.startsWith("[")) {
+        const table = /^\[([^\]]+)\]\s*(?:#.*)?$/.exec(line);
+        if (table?.[1].includes("\\")) return null;
+        section = table?.[1].trim().replace(/^(["'])(.*)\1$/, "$2") ?? "";
+        continue;
+      }
+      if (!section && /^(?:ui|"ui"|'ui')\s*=/.test(line)) return null;
+      if (section === "ui" && /^["'][^=]*\\/.test(line)) return null;
+      const key = section === "ui"
+        ? /^(?:tab_bar_position|"tab_bar_position"|'tab_bar_position')\s*=\s*(.*)$/.exec(line)
+        : !section ? /^(?:ui|"ui"|'ui')\s*\.\s*(?:tab_bar_position|"tab_bar_position"|'tab_bar_position')\s*=\s*(.*)$/.exec(line) : null;
+      if (!key) continue;
+      const value = /^(?:"(top|bottom)"|'(top|bottom)')\s*(?:#.*)?$/.exec(key[1]);
+      if (!value || foundPosition) return null;
+      position = (value[1] ?? value[2]) as "top" | "bottom";
+      foundPosition = true;
+    }
+    return position;
+  } catch {
+    return null;
+  }
+}
+
 interface HerdrTab {
   tab_id: string;
   number: number;
@@ -341,12 +378,15 @@ async function bootstrapHerdrSession(sessionName: string, cwd: string, layout?: 
     }
   }
   if (!workspaceKey) {
-    if (workspaces.length === 0) await createHerdrWorkspace(serverName, cwd, layout, null, sshHost);
+    if (workspaces.length === 0 || !(await closeUnrestorableHerdrPanes(serverName, null, sshHost))) {
+      await createHerdrWorkspace(serverName, cwd, layout, null, sshHost);
+    }
     return null;
   }
   const mappingPath = await getWorkspaceMappingPath(sshHost);
   const mapping = parseWorkspaceMapping(await readTextFile(mappingPath, sshHost));
-  if (Object.hasOwn(mapping, workspaceKey) && workspaces.some((space) => space.workspace_id === mapping[workspaceKey])) {
+  if (Object.hasOwn(mapping, workspaceKey) && workspaces.some((space) => space.workspace_id === mapping[workspaceKey])
+    && await closeUnrestorableHerdrPanes(serverName, mapping[workspaceKey], sshHost)) {
     return mapping[workspaceKey];
   }
   let workspaceId: string | null = null;
@@ -368,6 +408,22 @@ async function bootstrapHerdrSession(sessionName: string, cwd: string, layout?: 
     throw error;
   }
   return workspaceId;
+}
+
+/**
+ * 저장된 작업 경로가 사라져 Herdr가 복원하지 못한 pane을 닫는다.
+ * 이런 pane은 프로세스 없이 오류 문구만 보여 주고 Herdr에 다시 띄우는 명령도 없어서, 닫는 것 말고는 되살릴 방법이 없다.
+ * workspaceId가 있으면 공유 서버에서 그 task Space의 pane만 다루고, 없으면 task 전용 서버의 pane 전체를 다룬다.
+ * 반환값은 정상 pane이 하나라도 남았는지다. 모두 닫혔다면 Herdr가 workspace도 함께 닫으므로 호출자가 새로 만들어야 한다.
+ */
+async function closeUnrestorableHerdrPanes(serverName: string, workspaceId: string | null, sshHost?: string | null): Promise<boolean> {
+  const { panes } = await runHerdrCommand<{ panes: HerdrPane[] }>(serverName, ["pane", "list"], sshHost);
+  const workspacePanes = workspaceId ? panes.filter((pane) => pane.pane_id.startsWith(`${workspaceId}:`)) : panes;
+  const unrestorablePanes = workspacePanes.filter((pane) => pane.restore_error);
+  for (const pane of unrestorablePanes) {
+    await runHerdrCommand(serverName, ["pane", "close", pane.pane_id], sshHost);
+  }
+  return unrestorablePanes.length < workspacePanes.length;
 }
 
 async function createHerdrWorkspace(serverName: string, cwd: string, layout: TmuxPaneLayoutConfig | null | undefined, workspaceKey: string | null, sshHost?: string | null): Promise<string> {

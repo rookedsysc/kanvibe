@@ -1560,6 +1560,82 @@ describe("모바일 프로젝트 폴더 등록", () => {
   });
 });
 
+describe("현재 pane 채팅 인증 및 대상 경계", () => {
+  const headers = { authorization: "Bearer good", "Content-Type": "application/json" };
+  beforeEach(() => {
+    bridge.getPaneChatSnapshot = vi.fn(async () => ({ taskId: "task-1", paneId: "%3", canSend: true, inputState: "ready", targetToken: "opaque-token" }));
+    bridge.sendPaneChatPrompt = vi.fn(async () => ({ success: true }));
+    bridge.interruptPaneChat = vi.fn(async () => ({ success: true }));
+  });
+  it("인증된 기기는 요청한 정확한 pane 스냅샷을 읽는다", async () => {
+    const result = await request("/api/mobile/tasks/task-1/pane-chat?paneId=%253", { headers });
+    expect(result).toMatchObject({ status: 200, body: { success: true, snapshot: { paneId: "%3", targetToken: "opaque-token" } } });
+    expect(bridge.getPaneChatSnapshot).toHaveBeenCalledWith("task-1", "%3");
+  });
+  it("토큰 없는 기기는 스냅샷과 메시지 전송에 접근할 수 없다", async () => {
+    expect((await request("/api/mobile/tasks/task-1/pane-chat")).status).toBe(401);
+    expect((await request("/api/mobile/tasks/task-1/pane-chat/prompt", { method: "POST", body: JSON.stringify({ targetToken: "opaque-token", text: "Hi" }) })).status).toBe(401);
+    expect(bridge.getPaneChatSnapshot).not.toHaveBeenCalled();
+    expect(bridge.sendPaneChatPrompt).not.toHaveBeenCalled();
+  });
+  it("인증과 대상 토큰을 보존해 메시지를 서비스에 전달한다", async () => {
+    const result = await request("/api/mobile/tasks/task-1/pane-chat/prompt", { method: "POST", headers, body: JSON.stringify({ targetToken: "opaque-token", text: "First\nSecond" }) });
+    expect(result).toEqual({ status: 200, body: { success: true } });
+    expect(bridge.sendPaneChatPrompt).toHaveBeenCalledWith("task-1", "opaque-token", "First\nSecond");
+  });
+  it("대상이 교체되면 충돌을 반환하고 빈 토큰은 거부한다", async () => {
+    bridge.interruptPaneChat.mockRejectedValue(Object.assign(new Error("대상 변경"), { name: "PaneChatTargetChangedError" }));
+    expect(await request("/api/mobile/tasks/task-1/pane-chat/interrupt", { method: "POST", headers, body: JSON.stringify({ targetToken: "stale-token" }) })).toEqual({ status: 409, body: { success: false, error: "대상 변경", reason: "target-changed" } });
+    expect((await request("/api/mobile/tasks/task-1/pane-chat/prompt", { method: "POST", headers, body: JSON.stringify({ text: "Hi" }) })).status).toBe(400);
+    expect(bridge.sendPaneChatPrompt).not.toHaveBeenCalled();
+  });
+});
+
+describe("채팅 composer 첨부와 자동완성 HTTP", () => {
+  const headers = { authorization: "Bearer good", "Content-Type": "application/json" };
+  beforeEach(() => {
+    bridge.stagePaneChatAttachment = vi.fn(async () => ({ id: "owned-id", name: "file.txt", mimeType: "text/plain", kind: "file", sizeBytes: 65537 }));
+    bridge.removePaneChatAttachment = vi.fn(async () => ({ success: true }));
+    bridge.getPaneChatSuggestions = vi.fn(async () => ({ targetToken: "token", items: [{ id: "skill:review", label: "review", description: "Review", insertText: "$review" }], truncated: false }));
+    bridge.sendPaneChatPrompt = vi.fn(async () => ({ success: true }));
+    bridge.getMobileAiSessionAttachment = vi.fn(async () => ({ id: "image-id", name: "image.png", mimeType: "image/png", dataUrl: "data:image/png;base64,aGVsbG8=" }));
+    bridge.isMobileAiSessionProvider = vi.fn((provider) => ["claude", "codex"].includes(provider));
+  });
+  it("인증 업로드만 기존 64KiB를 넘는 첨부 본문을 읽고 토큰을 보존한다", async () => {
+    const attachment = { name: "file.txt", mimeType: "text/plain", dataUrl: `data:text/plain;base64,${Buffer.alloc(65537).toString("base64")}` };
+    const result = await request("/api/mobile/tasks/task-1/pane-chat/attachments", { method: "POST", headers, body: JSON.stringify({ targetToken: "token", attachment }) });
+    expect(result).toMatchObject({ status: 200, body: { success: true, attachment: { id: "owned-id" } } });
+    expect(bridge.stagePaneChatAttachment).toHaveBeenCalledWith("task-1", "token", attachment);
+    expect((await request("/api/mobile/tasks/task-1/pane-chat/attachments", { method: "POST", body: JSON.stringify({ targetToken: "token", attachment }) })).status).toBe(401);
+    expect(bridge.stagePaneChatAttachment).toHaveBeenCalledTimes(1);
+  });
+  it("첨부 삭제와 검색에 같은 대상 토큰을 사용한다", async () => {
+    const body = JSON.stringify({ targetToken: "token", id: "owned-id" });
+    expect((await request("/api/mobile/tasks/task-1/pane-chat/attachments", { method: "DELETE", headers: { ...headers, "Content-Length": Buffer.byteLength(body) }, body })).status).toBe(200);
+    expect(bridge.removePaneChatAttachment).toHaveBeenCalledWith("task-1", "token", "owned-id");
+    const result = await request("/api/mobile/tasks/task-1/pane-chat/suggestions?targetToken=token&kind=skill&query=review", { headers });
+    expect(result).toMatchObject({ status: 200, body: { targetToken: "token", items: [{ insertText: "$review" }] } });
+    expect(bridge.getPaneChatSuggestions).toHaveBeenCalledWith("task-1", "token", "skill", "review");
+  });
+  it("첨부 ID와 중복 방지 식별자를 메시지와 함께 전달한다", async () => {
+    await request("/api/mobile/tasks/task-1/pane-chat/prompt", { method: "POST", headers, body: JSON.stringify({ targetToken: "token", text: "caption", attachmentIds: ["owned-id"], requestId: "once" }) });
+    expect(bridge.sendPaneChatPrompt).toHaveBeenCalledWith("task-1", "token", "caption", ["owned-id"], "once");
+  });
+  it("활성 CLI 없이 인증된 히스토리 첨부만 가져오고 누락 파일을 구분한다", async () => {
+    const url = "/api/mobile/tasks/task-1/ai-sessions/codex/session-1/attachments/image-id";
+    expect((await request(url)).status).toBe(401);
+    expect(bridge.getMobileAiSessionAttachment).not.toHaveBeenCalled();
+    expect((await request(url, { headers })).body.attachment).toMatchObject({ id: "image-id", mimeType: "image/png" });
+    expect(bridge.getMobileAiSessionAttachment).toHaveBeenCalledWith("task-1", "codex", "session-1", "image-id", undefined);
+    bridge.getMobileAiSessionAttachment.mockResolvedValue(null);
+    expect((await request(url, { headers })).status).toBe(404);
+  });
+  it("부분 전송 뒤 불확실한 결과는 재전송 유도 없이 명시한다", async () => {
+    bridge.sendPaneChatPrompt.mockRejectedValue(Object.assign(new Error("전송 결과 불확실"), { name: "PaneChatDeliveryUncertainError" }));
+    expect(await request("/api/mobile/tasks/task-1/pane-chat/prompt", { method: "POST", headers, body: JSON.stringify({ targetToken: "token", text: "caption", requestId: "once" }) })).toEqual({ status: 409, body: { success: false, error: "전송 결과 불확실", reason: "delivery-uncertain" } });
+  });
+});
+
 describe("원격 pane 지속 연결 경로", () => {
   const connectionPath = "/api/mobile/tasks/task-1/panes/w1%3Ap1/connection";
   const grant = {

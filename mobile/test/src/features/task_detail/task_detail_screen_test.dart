@@ -255,7 +255,7 @@ void main() {
           await tester.pumpAndSettle();
           for (final label in [
             '새 태스크',
-            '채팅 History',
+            '대화 기록',
             '정보',
             '상태 옮기기',
             '세션 종류 바꾸기',

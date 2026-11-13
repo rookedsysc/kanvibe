@@ -11,9 +11,11 @@ import '../../board/domain/board_task.dart';
 import '../../board/domain/task_status.dart';
 import '../../chat_history/presentation/chat_history_screen.dart';
 import '../../notifications/application/mobile_notification_controller.dart';
+import '../../pane_chat/presentation/pane_chat_view.dart';
 import '../../task_create/domain/session_type.dart';
 import '../../task_create/presentation/create_task_screen.dart';
 import '../domain/mirror_pane.dart';
+import 'pane_chat_shortcut.dart';
 import 'surface_unavailable_message.dart';
 import 'widgets/pane_terminal_view.dart';
 import 'widgets/task_info_sheet.dart';
@@ -34,11 +36,35 @@ class TaskDetailScreen extends ConsumerStatefulWidget {
 
 class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
   String? _selectedPaneId;
+  final _chatModePaneIds = <String>{};
+  final _chatPaneIds = <String>{};
+  final _chatPaneNumbers = <String, int>{};
 
   /// 화면이 들고 있는 태스크. 상태를 옮기면 보드를 다시 받기 전에 여기부터 갈아 끼운다
   late BoardTask _task = widget.task;
 
   bool _isPreparingCreateTask = false;
+
+  void _setPaneChatMode(String paneId, bool enabled) {
+    setState(() {
+      if (enabled) {
+        _chatModePaneIds.add(paneId);
+        _chatPaneIds.add(paneId);
+      } else {
+        _chatModePaneIds.remove(paneId);
+      }
+    });
+  }
+
+  void _toggleSelectedPaneChat() {
+    if (!(ModalRoute.isCurrentOf(context) ?? true)) return;
+    final panes = ref.read(surfacesProvider(_task.id)).value?.surfaces.allPanes;
+    if (panes == null || panes.isEmpty) return;
+    final pane =
+        panes.where((pane) => pane.id == _selectedPaneId).firstOrNull ??
+        panes.first;
+    _setPaneChatMode(pane.id, !_chatModePaneIds.contains(pane.id));
+  }
 
   Future<void> _openCreateTask() async {
     if (_isPreparingCreateTask) {
@@ -287,7 +313,7 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
           ),
           (
             id: 'chat-history',
-            label: '채팅 History',
+            label: '대화 기록',
             icon: Icons.chat_bubble_outline,
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute<void>(
@@ -326,7 +352,7 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
             ),
         ];
 
-    return LayoutBuilder(
+    final content = LayoutBuilder(
       builder: (context, constraints) {
         final isCompact = !isTabletLayout(constraints);
         return Scaffold(
@@ -418,10 +444,29 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
         );
       },
     );
+    return CallbackShortcuts(
+      bindings: {
+        paneChatShortcut(Theme.of(context).platform): _toggleSelectedPaneChat,
+      },
+      child: Focus(autofocus: true, child: content),
+    );
   }
 
   Widget _buildSurfaces(TaskSurfaces surfaces, {required bool isCreating}) {
     final tabs = surfaces.allPanes;
+    final chatLabels = <String, String>{};
+    for (final pane in tabs) {
+      final number = _chatPaneNumbers.putIfAbsent(
+        pane.id,
+        () => _chatPaneNumbers.length + 1,
+      );
+      final name = [
+        pane.tabName.trim(),
+        pane.command.trim(),
+        'pane',
+      ].firstWhere((value) => value.isNotEmpty);
+      chatLabels[pane.id] = '$number · $name';
+    }
 
     if (tabs.isEmpty) {
       return _SurfacesUnavailable(
@@ -433,43 +478,133 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
 
     final matchingIndex = tabs.indexWhere((pane) => pane.id == _selectedPaneId);
     final selectedIndex = matchingIndex < 0 ? 0 : matchingIndex;
+    final selectedPaneId = tabs[selectedIndex].id;
+    final chatMode = _chatModePaneIds.contains(selectedPaneId);
 
     return Column(
       children: [
         _SurfaceTabBar(
           tabs: tabs,
+          chatLabels: _chatPaneIds.isNotEmpty ? chatLabels : const {},
           selectedIndex: selectedIndex,
-          onSelected: (index) =>
-              setState(() => _selectedPaneId = tabs[index].id),
+          onSelected: (index) => setState(() {
+            _selectedPaneId = tabs[index].id;
+          }),
           onCreate: isCreating ? null : _createTerminalTab,
           // 탭이 하나뿐이면 세션이 끝나 버리므로 닫을 수 없다
           onClose: isCreating || tabs.length == 1
               ? null
               : (tab) => _closeTab(tabs, tab),
         ),
-        Expanded(child: _buildSelectedSurface(tabs[selectedIndex], surfaces)),
+        Row(
+          children: [
+            Expanded(
+              child: Semantics(
+                identifier: 'pane-terminal-mode',
+                selected: !chatMode,
+                child: TextButton.icon(
+                  onPressed: () => _setPaneChatMode(selectedPaneId, false),
+                  icon: const Icon(Icons.terminal, size: AppSizes.p16),
+                  label: const Text('터미널'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: !chatMode
+                        ? AppColors.brandPrimary
+                        : AppColors.textSecondary,
+                  ),
+                ),
+              ),
+            ),
+            Expanded(
+              child: Semantics(
+                identifier: 'pane-chat-mode',
+                selected: chatMode,
+                child: TextButton.icon(
+                  onPressed: () => _setPaneChatMode(selectedPaneId, true),
+                  icon: const Icon(
+                    Icons.chat_bubble_outline,
+                    size: AppSizes.p16,
+                  ),
+                  label: const Text('채팅'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: chatMode
+                        ? AppColors.brandPrimary
+                        : AppColors.textSecondary,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+        Expanded(
+          child: _buildSelectedSurface(
+            tabs[selectedIndex],
+            surfaces,
+            chatLabels,
+          ),
+        ),
       ],
     );
   }
 
   /// 세션 종류가 바뀌면 pane id가 같더라도 다른 세션이므로 pane 화면을 새로 만들어 스트림을 다시 연다
-  Widget _buildSelectedSurface(MirrorPane pane, TaskSurfaces surfaces) =>
-      KeyedSubtree(
-        key: ValueKey(surfaces.sessionType),
-        child: PaneTerminalView(
-          taskId: _task.id,
-          pane: pane,
-          canResize: surfaces.canResize,
-          sessionType: surfaces.sessionType,
-          canRespondToDeviceQueries: surfaces.canRespondToDeviceQueries,
-          key: ValueKey(pane.id),
-        ),
-      );
+  Widget _buildSelectedSurface(
+    MirrorPane pane,
+    TaskSurfaces surfaces,
+    Map<String, String> chatLabels,
+  ) {
+    final routeActive = ModalRoute.isCurrentOf(context) ?? true;
+    final chatMode = _chatModePaneIds.contains(pane.id);
+    return KeyedSubtree(
+      key: ValueKey(surfaces.sessionType),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          ExcludeFocus(
+            excluding: chatMode || !routeActive,
+            child: Offstage(
+              offstage: chatMode,
+              child: PaneTerminalView(
+                taskId: _task.id,
+                pane: pane,
+                canResize: surfaces.canResize,
+                sessionType: surfaces.sessionType,
+                canRespondToDeviceQueries: surfaces.canRespondToDeviceQueries,
+                isActive: !chatMode && routeActive,
+                onToggleChat: _toggleSelectedPaneChat,
+                key: ValueKey(pane.id),
+              ),
+            ),
+          ),
+          for (final chatPane in surfaces.allPanes.where(
+            (entry) => _chatPaneIds.contains(entry.id),
+          ))
+            Offstage(
+              key: ValueKey('pane-chat:${chatPane.id}'),
+              offstage: !chatMode || chatPane.id != pane.id,
+              child: ExcludeFocus(
+                excluding: !chatMode || chatPane.id != pane.id || !routeActive,
+                child: TickerMode(
+                  enabled: chatMode && chatPane.id == pane.id && routeActive,
+                  child: PaneChatView(
+                    target: (taskId: _task.id, paneId: chatPane.id),
+                    paneLabel: chatLabels[chatPane.id],
+                    isActive: chatMode && chatPane.id == pane.id && routeActive,
+                    onReturnToTerminal: () =>
+                        _setPaneChatMode(chatPane.id, false),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
 }
 
 class _SurfaceTabBar extends StatelessWidget {
   const _SurfaceTabBar({
     required this.tabs,
+    required this.chatLabels,
     required this.selectedIndex,
     required this.onSelected,
     required this.onCreate,
@@ -477,6 +612,7 @@ class _SurfaceTabBar extends StatelessWidget {
   });
 
   final List<MirrorPane> tabs;
+  final Map<String, String> chatLabels;
   final int selectedIndex;
   final ValueChanged<int> onSelected;
   final VoidCallback? onCreate;
@@ -499,6 +635,7 @@ class _SurfaceTabBar extends StatelessWidget {
               itemCount: tabs.length,
               itemBuilder: (context, index) => _SurfaceTabButton(
                 tab: tabs[index],
+                chatLabel: chatLabels[tabs[index].id],
                 isSelected: index == selectedIndex,
                 onTap: () => onSelected(index),
                 onClose: onClose == null ? null : () => onClose!(tabs[index]),
@@ -527,12 +664,14 @@ class _SurfaceTabBar extends StatelessWidget {
 class _SurfaceTabButton extends StatelessWidget {
   const _SurfaceTabButton({
     required this.tab,
+    this.chatLabel,
     required this.isSelected,
     required this.onTap,
     required this.onClose,
   });
 
   final MirrorPane tab;
+  final String? chatLabel;
   final bool isSelected;
   final VoidCallback onTap;
 
@@ -545,7 +684,8 @@ class _SurfaceTabButton extends StatelessWidget {
       identifier: 'terminal-tab-${tab.id}',
       selected: isSelected,
       button: true,
-      label: '${tab.command.isEmpty ? tab.id : tab.command} ${tab.id} 탭',
+      label:
+          '${chatLabel ?? (tab.command.isEmpty ? tab.id : tab.command)} ${tab.id} 탭',
       child: InkWell(
         onTap: onTap,
         child: Container(
@@ -569,25 +709,38 @@ class _SurfaceTabButton extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Flexible(
-                      child: Text(
-                        tab.command.isEmpty ? tab.id : tab.command,
-                        overflow: TextOverflow.ellipsis,
-                        style: monoStyle(
-                          fontSize: 13,
-                          color: isSelected
-                              ? AppColors.textPrimary
-                              : AppColors.textMuted,
-                          fontWeight: isSelected
-                              ? FontWeight.w700
-                              : FontWeight.w400,
+                      child: Tooltip(
+                        message: tab.id,
+                        child: Text(
+                          chatLabel ??
+                              (tab.command.isEmpty ? tab.id : tab.command),
+                          overflow: TextOverflow.ellipsis,
+                          style: monoStyle(
+                            fontSize: 13,
+                            color: isSelected
+                                ? AppColors.textPrimary
+                                : chatLabel == null
+                                ? AppColors.textMuted
+                                : AppColors.textSecondary,
+                            fontWeight: isSelected
+                                ? FontWeight.w700
+                                : FontWeight.w400,
+                          ),
                         ),
                       ),
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      '${tab.tabName} ${tab.id}',
+                      chatLabel == null
+                          ? '${tab.tabName} ${tab.id}'
+                          : tab.id.length > 16
+                          ? '…${tab.id.substring(tab.id.length - 6)}'
+                          : tab.id,
                       overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.labelSmall,
+                      style: chatLabel == null
+                          ? Theme.of(context).textTheme.labelSmall
+                          : Theme.of(context).textTheme.labelSmall
+                                ?.copyWith(color: AppColors.textSecondary),
                     ),
                   ],
                 ),

@@ -63,6 +63,10 @@ const TASK_STATUS_PATH_PATTERN = /^\/api\/mobile\/tasks\/([^/]+)\/status$/;
 const TASK_SESSION_TYPE_PATH_PATTERN = /^\/api\/mobile\/tasks\/([^/]+)\/session-type$/;
 const TASK_SESSION_ALIVE_PATH_PATTERN = /^\/api\/mobile\/tasks\/([^/]+)\/session-alive$/;
 const AI_SESSIONS_PATH_PATTERN = /^\/api\/mobile\/tasks\/([^/]+)\/ai-sessions(?:\/([^/]+)\/([^/]+))?$/;
+const AI_SESSION_ATTACHMENT_PATH_PATTERN = /^\/api\/mobile\/tasks\/([^/]+)\/ai-sessions\/([^/]+)\/([^/]+)\/attachments\/([^/]+)$/;
+const PANE_CHAT_PATH_PATTERN = /^\/api\/mobile\/tasks\/([^/]+)\/pane-chat(?:\/(prompt|interrupt|model-picker|key|attachments|suggestions))?$/;
+// 10MiB 파일의 base64와 JSON 메타데이터를 수용하며, 다른 요청의 64KiB 한도는 유지한다.
+const MAX_PANE_CHAT_ATTACHMENT_BODY_BYTES = 14 * 1024 * 1024;
 const AI_MESSAGE_ROLES = new Set(["user", "assistant", "tool", "system", "developer", "reasoning", "unknown"]);
 const AI_HISTORY_PAGE_LIMIT = 100;
 
@@ -178,6 +182,21 @@ async function handleMobileRequest(request, response, { bridge, host, port, isDe
     if (request.method === "PATCH" && notificationReadMatch) {
       const notification = await bridge.markMobileNotificationRead(decodeURIComponent(notificationReadMatch[1]));
       writeJson(response, notification ? 200 : 404, notification ? { success: true, notification } : { success: false, error: "없는 알림입니다" });
+      return true;
+    }
+
+    const paneChatMatch = requestUrl.pathname.match(PANE_CHAT_PATH_PATTERN);
+    if (paneChatMatch && ((request.method === "GET" && (!paneChatMatch[2] || paneChatMatch[2] === "suggestions")) || (request.method === "POST" && paneChatMatch[2] && paneChatMatch[2] !== "suggestions") || (request.method === "DELETE" && paneChatMatch[2] === "attachments"))) {
+      await handlePaneChatRequest(request, response, bridge, decodeURIComponent(paneChatMatch[1]), paneChatMatch[2], requestUrl.searchParams);
+      return true;
+    }
+
+    const attachmentMatch = requestUrl.pathname.match(AI_SESSION_ATTACHMENT_PATH_PATTERN);
+    if (request.method === "GET" && attachmentMatch) {
+      const [taskId, provider, sessionId, attachmentId] = attachmentMatch.slice(1).map(decodeURIComponent);
+      if (!bridge.isMobileAiSessionProvider(provider)) { writeJson(response, 400, { success: false, error: "지원하지 않는 CLI입니다" }); return true; }
+      const attachment = await bridge.getMobileAiSessionAttachment(taskId, provider, sessionId, attachmentId, requestUrl.searchParams.get("sourceRef") ?? undefined);
+      writeJson(response, attachment ? 200 : 404, attachment ? { success: true, attachment } : { success: false, error: "첨부 파일을 찾을 수 없습니다" });
       return true;
     }
 
@@ -345,6 +364,45 @@ async function handleNotificationSubscriptionRequest(request, response, bridge) 
     });
   }
   writeJson(response, registered ? 200 : 401, registered ? { success: true } : { success: false, error: "연결되지 않은 기기입니다" });
+}
+
+async function handlePaneChatRequest(request, response, bridge, taskId, action, searchParams) {
+  try {
+    if (request.method === "GET") {
+      if (action === "suggestions") {
+        const token = searchParams.get("targetToken");
+        if (!token) { writeJson(response, 400, { success: false, error: "CLI 대상 토큰이 필요합니다" }); return; }
+        const result = await bridge.getPaneChatSuggestions(taskId, token, searchParams.get("kind"), searchParams.get("query") ?? "");
+        writeJson(response, 200, { success: true, ...result });
+        return;
+      }
+      const snapshot = await bridge.getPaneChatSnapshot(taskId, searchParams.get("paneId") ?? undefined);
+      writeJson(response, 200, { success: true, snapshot });
+      return;
+    }
+    let body;
+    try { body = await readJsonBody(request, action === "attachments" && request.method === "POST" ? MAX_PANE_CHAT_ATTACHMENT_BODY_BYTES : undefined); }
+    catch { writeJson(response, 400, { success: false, error: "잘못된 요청입니다" }); return; }
+    if (!body || typeof body !== "object" || typeof body.targetToken !== "string" || !body.targetToken) {
+      writeJson(response, 400, { success: false, error: "CLI 대상 토큰이 필요합니다" });
+      return;
+    }
+    let result;
+    if (action === "attachments") {
+      if (request.method === "DELETE") result = await bridge.removePaneChatAttachment(taskId, body.targetToken, body.id);
+      else result = { success: true, attachment: await bridge.stagePaneChatAttachment(taskId, body.targetToken, body.attachment) };
+    }
+    else if (action === "prompt") result = await bridge.sendPaneChatPrompt(taskId, body.targetToken, body.text, ...(body.attachmentIds === undefined && body.requestId === undefined ? [] : [body.attachmentIds, body.requestId]));
+    else if (action === "interrupt") result = await bridge.interruptPaneChat(taskId, body.targetToken);
+    else if (action === "model-picker") result = await bridge.openPaneChatModelPicker(taskId, body.targetToken);
+    else result = await bridge.sendPaneChatKey(taskId, body.targetToken, body.key);
+    writeJson(response, 200, result);
+  } catch (error) {
+    if (error?.name === "PaneChatInputError") writeJson(response, 400, { success: false, error: error.message });
+    else if (error?.name === "PaneChatTargetChangedError") writeJson(response, 409, { success: false, error: error.message, reason: "target-changed" });
+    else if (error?.name === "PaneChatDeliveryUncertainError") writeJson(response, 409, { success: false, error: error.message, reason: "delivery-uncertain" });
+    else { console.error("[kanvibe] Pane chat request failed:", error); writeJson(response, 500, { success: false, error: "서버 오류" }); }
+  }
 }
 
 async function handlePairRequest(request, response, bridge) {

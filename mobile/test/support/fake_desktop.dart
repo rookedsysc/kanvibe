@@ -10,6 +10,7 @@ import 'package:kanvibe_mobile/src/common/network/desktop_connection.dart';
 import 'package:kanvibe_mobile/src/common/providers.dart';
 import 'package:kanvibe_mobile/src/features/board/domain/task_status.dart';
 import 'package:kanvibe_mobile/src/features/chat_history/domain/chat_history.dart';
+import 'package:kanvibe_mobile/src/features/pane_chat/domain/pane_chat.dart';
 import 'package:kanvibe_mobile/src/features/connection/data/connection_store.dart';
 import 'package:kanvibe_mobile/src/features/connection/domain/saved_connections.dart';
 import 'package:kanvibe_mobile/src/features/notifications/domain/inbox_notification.dart';
@@ -479,6 +480,71 @@ class FakeDesktopClient implements DesktopClient {
     ChatSession session, {
     String? cursor,
   }) async => const ChatMessagePage(messages: []);
+
+  @override
+  Future<PaneChatSnapshot> fetchPaneChat(
+    DesktopConnection connection,
+    PaneChatTarget target,
+  ) async => PaneChatSnapshot(
+    taskId: target.taskId,
+    paneId: target.paneId,
+    provider: null,
+    targetToken: null,
+    canSend: false,
+    inputState: PaneChatInputState.unknown,
+    screen: '',
+    reason: 'no-foreground-ai-cli',
+    transcript: const PaneChatTranscript(available: false, messages: []),
+    modelPickerSupported: false,
+  );
+
+  @override
+  Future<void> sendPaneChatAction(
+    DesktopConnection connection,
+    String taskId,
+    String targetToken,
+    PaneChatAction action, {
+    String? text,
+    PaneChatKey? key,
+    List<String>? attachmentIds,
+    String? requestId,
+  }) async => throw StateError('No live pane fixture configured');
+
+  @override
+  Future<String> stagePaneChatAttachment(
+    DesktopConnection connection,
+    String taskId,
+    String targetToken, {
+    required String name,
+    required String mimeType,
+    required List<int> bytes,
+  }) async => throw StateError('No attachment fixture');
+
+  @override
+  Future<void> removePaneChatAttachment(
+    DesktopConnection connection,
+    String taskId,
+    String targetToken,
+    String id,
+  ) async => throw StateError('No attachment fixture');
+
+  @override
+  Future<List<PaneChatSuggestion>> getPaneChatSuggestions(
+    DesktopConnection connection,
+    String taskId,
+    String targetToken,
+    String kind,
+    String query,
+  ) async => const [];
+
+  @override
+  Future<List<int>> fetchChatAttachment(
+    DesktopConnection connection,
+    String taskId,
+    String provider,
+    String sessionId,
+    String attachmentId,
+  ) async => throw StateError('No media fixture');
 
   @override
   void close() {}

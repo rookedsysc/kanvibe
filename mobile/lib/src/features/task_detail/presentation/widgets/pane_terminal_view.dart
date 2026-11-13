@@ -13,6 +13,7 @@ import '../../../../common/network/desktop_connection.dart';
 import '../../../../common/providers.dart';
 import '../../domain/mirror_pane.dart';
 import '../../../task_create/domain/session_type.dart';
+import '../pane_chat_shortcut.dart';
 import 'terminal_soft_keyboard.dart';
 
 /// 선택한 pane을 화면 너비에 맞춰 표시한다.
@@ -23,6 +24,8 @@ class PaneTerminalView extends ConsumerStatefulWidget {
     this.canResize = false,
     this.sessionType = SessionType.terminal,
     this.canRespondToDeviceQueries = false,
+    this.isActive = true,
+    this.onToggleChat,
     super.key,
   });
 
@@ -31,6 +34,8 @@ class PaneTerminalView extends ConsumerStatefulWidget {
   final MirrorPane pane;
   final bool canResize;
   final bool canRespondToDeviceQueries;
+  final bool isActive;
+  final VoidCallback? onToggleChat;
 
   @override
   ConsumerState<PaneTerminalView> createState() => _PaneTerminalViewState();
@@ -81,6 +86,7 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
     _terminalController.addListener(_applyDeferredRedraw);
 
     _terminal.onOutput = (data) {
+      if (!widget.isActive) return;
       // 멀티플렉서가 응답한 질의 원문도 미러에 남으므로 파싱 중 생긴 자동 응답만 막는다.
       if (_isParsingRemoteOutput && !widget.canRespondToDeviceQueries) return;
       if (_failureMessage == null) _stream?.write(data);
@@ -96,6 +102,10 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
   @override
   void didUpdateWidget(PaneTerminalView oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (!oldWidget.isActive && widget.isActive) {
+      _lastSentSize = null;
+      _sendViewport(_terminal.viewWidth, _terminal.viewHeight);
+    }
     if (widget.canResize &&
         (widget.pane.width != oldWidget.pane.width ||
             widget.pane.height != oldWidget.pane.height)) {
@@ -119,6 +129,7 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
   void _sendViewport(int cols, int rows) {
     final size = (cols: cols, rows: rows);
     if (!widget.canResize ||
+        !widget.isActive ||
         _stream == null ||
         _isSuspended ||
         _failureMessage != null ||
@@ -421,6 +432,16 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
                       controller: _terminalController,
                       autoResize: widget.canResize,
                       hardwareKeyboardOnly: true,
+                      onKeyEvent: (_, event) {
+                        if (widget.isActive &&
+                            widget.onToggleChat != null &&
+                            paneChatShortcut(Theme.of(context).platform)
+                                .accepts(event, HardwareKeyboard.instance)) {
+                          widget.onToggleChat!();
+                          return KeyEventResult.handled;
+                        }
+                        return KeyEventResult.ignored;
+                      },
                       scrollController: _verticalScroll,
                       backgroundOpacity: 0,
                       theme: _terminalTheme,

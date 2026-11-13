@@ -192,6 +192,8 @@ KANVIBE_MOBILE_PUSH_RELAY_TOKEN='<relay-config-secret>' pnpm dev
 
 실기기에서는 앱 실행 중, 다른 앱 사용 중, 화면 잠금, 앱 종료 후의 네 경우에 PC hook으로 상태를 변경하고 알림 수신·클릭 이동을 확인한다. 다른 PC를 선택해 둔 상태에서도 같은 확인을 한다. 앱을 다시 열었을 때 보드가 최신 상태인지, 삭제된 태스크와 해제된 PC의 알림이 안내로 처리되는지도 확인한다. Firebase/APNs와 실기기가 없는 자동 테스트는 실제 푸시 전달을 검증하지 않는다.
 
+태스크 화면의 pane 탭 아래 `터미널` / `채팅` 아이콘으로 선택한 pane의 표시 모드를 바꾼다. 외부 키보드에서는 macOS·iOS `⌘⇧J`, Android 등에서는 `Ctrl+Shift+J`를 사용한다. 모드와 초안은 pane별로 유지하며, 상단 `대화 기록`은 기존 히스토리를 연다. `TaskDetailScreen`이 모드를 소유하고 `PaneTerminalView`는 단축키를 CLI 입력보다 먼저 처리한다. 키 조합은 `presentation/pane_chat_shortcut.dart`에서 공유한다.
+
 ## 원격 Herdr 터미널 연결
 
 A에 등록된 원격 B의 Herdr pane은 A의 인증된 TLS API로 연결 권한을 받은 뒤 B에 직접 연결한다. B의 포트에 닿지 않으면 같은 B 스트림을 A가 중계한다. 연결 뒤 전송한 키는 재접속 때 다시 보내지 않으며, 화면을 떠나거나 앱이 배경으로 가면 준비 중인 요청과 소켓도 취소한다.

@@ -375,10 +375,13 @@ describe("AI session history readers", () => {
 
     expect(detail?.messages.map((message) => message.role)).toEqual([
       "system",
-      "tool",
-      "reasoning",
       "assistant",
+      "reasoning",
+      "tool",
       "user",
+    ]);
+    expect([...(detail?.messages ?? [])].reverse().map((message) => message.role)).toEqual([
+      "user", "tool", "reasoning", "assistant", "system",
     ]);
     expect(detail?.messages.find((message) => message.role === "tool")?.fullText).toContain("read_file");
   });

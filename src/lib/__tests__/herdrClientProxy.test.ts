@@ -30,9 +30,9 @@ function paneInput(tag: 13 | 14, target: string): Buffer {
   return frame(Buffer.concat([Buffer.from([tag]), stringBytes(target), Buffer.from([1, 1]), stringBytes("must not reach initial terminal")]));
 }
 
-function snapshot(bootId = "boot-1", workspaceId = "w1", tabId = "w1:t1"): Buffer {
+function snapshot(bootId = "boot-1", workspaceId = "w1", tabId = "w1:t1", paneId = `${workspaceId}:p1`): Buffer {
   return frame(Buffer.concat([Buffer.from([20]), stringBytes("shell.snapshot.v1"), stringBytes(JSON.stringify({
-    boot_id: bootId, focused_workspace_id: workspaceId, focused_tab_id: tabId,
+    boot_id: bootId, focused_workspace_id: workspaceId, focused_tab_id: tabId, focused_pane_id: paneId,
   }))]));
 }
 
@@ -113,6 +113,34 @@ async function finishInitialization(upstream: Socket, received: ReturnType<typeo
 }
 
 describe("Herdr 클라이언트 endpoint 프록시", () => {
+  it("실제 클라이언트의 surface 크기와 사이드바 변경을 추적하고 숨긴 surface는 투영하지 않는다", async () => {
+    const setup = await fixture();
+    await initialize(setup);
+    const hello = frame(Buffer.concat([Buffer.from([20]), stringBytes("endpoint.hello.v1"), stringBytes(JSON.stringify({ generation: 1, surface_size: { cols: 134, rows: 47 }, surface_active: true }))]));
+    await new Promise<void>((resolve, reject) => setup.client.write(hello, (error) => error ? reject(error) : resolve()));
+    await setup.sent.next();
+    expect(setup.proxy.getSurfaceSize()).toEqual({ cols: 134, rows: 47 });
+    await new Promise<void>((resolve, reject) => setup.client.write(frame(Buffer.from([12, 8, 16, 156, 47, 0])), (error) => error ? reject(error) : resolve()));
+    await setup.sent.next();
+    expect(setup.proxy.getSurfaceSize()).toEqual({ cols: 156, rows: 47 });
+    const hide = frame(Buffer.concat([Buffer.from([15]), stringBytes("boot-1"), stringBytes(JSON.stringify({ id: "native:hide", method: "client_shell.surface.set", params: { active: false } }))]));
+    await new Promise<void>((resolve, reject) => setup.client.write(hide, (error) => error ? reject(error) : resolve()));
+    await setup.sent.next();
+    expect(setup.proxy.getSurfaceSize()).toBeNull();
+  });
+
+  it("알 수 없는 resize 프레임은 크기를 추측하지 않고 투영을 중단한다", async () => {
+    const setup = await fixture();
+    await initialize(setup);
+    const hello = frame(Buffer.concat([Buffer.from([20]), stringBytes("endpoint.hello.v1"), stringBytes(JSON.stringify({ generation: 1, surface_size: { cols: 134, rows: 47 }, surface_active: true }))]));
+    await new Promise<void>((resolve, reject) => setup.client.write(hello, (error) => error ? reject(error) : resolve()));
+    await setup.sent.next();
+    expect(setup.proxy.getSurfaceSize()).toEqual({ cols: 134, rows: 47 });
+    await new Promise<void>((resolve, reject) => setup.client.write(frame(Buffer.from([12, 8, 16, 251])), (error) => error ? reject(error) : resolve()));
+    await setup.sent.next();
+    expect(setup.proxy.getSurfaceSize()).toBeNull();
+  });
+
   it("native 렌더링의 초기 snapshot과 surface는 보존하고 잘못된 초기 입력은 버린다", async () => {
     const setup = await fixture();
     const original = snapshot("boot-1", "w2", "w2:t1");
@@ -152,6 +180,19 @@ describe("Herdr 클라이언트 endpoint 프록시", () => {
     setup.upstream.write(changed);
     expect(frame(await setup.received.next())).toEqual(changed);
     expect(setup.proxy.getActiveTabId()).toBe("w1:t3");
+  });
+
+  it("이 client가 보고한 workspace 안의 focused pane만 반환한다", async () => {
+    const setup = await fixture();
+    await initialize(setup);
+    expect(setup.proxy.getActivePaneId()).toBe("w1:p1");
+    const selected = snapshot("boot-1", "w1", "w1:t3", "w1:p7");
+    setup.upstream.write(selected);
+    await setup.received.next();
+    expect(setup.proxy.getActivePaneId()).toBe("w1:p7");
+    setup.upstream.write(snapshot("boot-1", "w2", "w2:t1", "w2:p1"));
+    await setup.received.next();
+    expect(setup.proxy.getActivePaneId()).toBeNull();
   });
 
   it("조각난 프레임과 native 응답을 원문 그대로 중계하고 자체 응답만 숨긴다", async () => {
@@ -333,9 +374,11 @@ describe("Herdr 클라이언트 endpoint 프록시", () => {
     const setup = await fixture();
     await initialize(setup);
     const socketPath = setup.proxy.socketPath;
+    expect(setup.proxy.getActivePaneId()).toBe("w1:p1");
     expect((await stat(socketPath)).mode & 0o777).toBe(0o600);
     await setup.proxy.close();
     await setup.proxy.close();
+    expect(setup.proxy.getActivePaneId()).toBeNull();
     await expect(stat(path.dirname(socketPath))).rejects.toMatchObject({ code: "ENOENT" });
     await expect(setup.proxy.request("tab.focus", { tab_id: "w1:t2" })).rejects.toThrow();
   });

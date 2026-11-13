@@ -1,4 +1,5 @@
 import path from "path";
+import { extractMessageAttachments } from "./messageAttachments";
 import {
   createReaderResult,
   createSessionDetail,
@@ -47,6 +48,9 @@ interface ClaudeProjectEvent {
   timestamp?: string;
   sessionId?: string;
   cwd?: string;
+  imagePasteIds?: number[];
+  isMeta?: boolean;
+  turnCompanion?: boolean;
   message?: {
     role?: string;
     content?: unknown;
@@ -56,6 +60,16 @@ interface ClaudeProjectEvent {
 interface ClaudeSessionAccumulator {
   session: AggregatedAiSession;
   hasQueryMatch: boolean;
+}
+
+function getClaudeMessageText(event: ClaudeProjectEvent): string {
+  const text = extractPlainText(event.message?.content);
+  return event.imagePasteIds?.length ? text.replace(/^(?:\[Image #\d+\]\s*)+/, "") : text;
+}
+
+function isClaudeImageCompanion(event: ClaudeProjectEvent): boolean {
+  return event.isMeta === true && event.turnCompanion === true
+    && /^\[Image: source: /.test(extractPlainText(event.message?.content));
 }
 
 export async function readClaudeSessions(context: AiSessionReaderContext): Promise<AiSessionReaderResult> {
@@ -95,16 +109,21 @@ export async function readClaudeSessionDetail(
 
   let title: string | null = null;
   let matchedPath: string | null = null;
+  let resolvedSourceRef = sourceRef ?? null;
   const messages: AggregatedAiMessage[] = [];
 
   for (const filePath of projectFiles) {
     const events = await getCachedOrParse(filePath, () => readJsonLines(filePath, context.sshHost), context.sshHost);
+    let sessionInScope = false;
     for (const rawEvent of events) {
       const event = rawEvent as ClaudeProjectEvent;
       if (event.sessionId !== sessionId) continue;
-      if (typeof event.cwd === "string" && !determineMatchScope(event.cwd, context)) continue;
+      if (typeof event.cwd === "string") sessionInScope = determineMatchScope(event.cwd, context) !== null;
+      if (!sessionInScope) continue;
+      if (isClaudeImageCompanion(event)) continue;
       if (!matchedPath && typeof event.cwd === "string") {
         matchedPath = event.cwd;
+        resolvedSourceRef = filePath;
       }
 
       const role = resolveClaudeRole(event);
@@ -112,8 +131,9 @@ export async function readClaudeSessionDetail(
         continue;
       }
 
-      const text = extractPlainText(event.message?.content);
-      if (context.query && text && !text.toLowerCase().includes(context.query.toLowerCase())) {
+      const text = getClaudeMessageText(event);
+      const attachments = extractMessageAttachments(event.message?.content, filePath);
+      if (context.query && ![text, ...attachments.map(attachment => attachment.name)].join("\n").toLowerCase().includes(context.query.toLowerCase())) {
         continue;
       }
 
@@ -121,7 +141,7 @@ export async function readClaudeSessionDetail(
         title = truncateText(text, 80);
       }
 
-      const previewMessage = makePreviewMessage(role, event.timestamp, text);
+      const previewMessage = makePreviewMessage(role, event.timestamp, text, attachments);
       if (previewMessage) {
         messages.push(previewMessage);
       }
@@ -136,7 +156,7 @@ export async function readClaudeSessionDetail(
     provider: "claude",
     title,
     matchedPath,
-    sourceRef: sourceRef ?? null,
+    sourceRef: resolvedSourceRef,
     messages: paginated.items,
     nextCursor: paginated.nextCursor,
   });
@@ -191,9 +211,10 @@ async function parseClaudeSessionFromFile(
 function findLatestClaudeConversationTimestamp(events: unknown[]): string | null {
   for (let index = events.length - 1; index >= 0; index -= 1) {
     const event = events[index] as ClaudeProjectEvent;
+    if (isClaudeImageCompanion(event)) continue;
     const role = resolveClaudeRole(event);
     if (role !== "user" && role !== "assistant") continue;
-    if (!extractPlainText(event.message?.content)) continue;
+    if (!extractPlainText(event.message?.content) && !extractMessageAttachments(event.message?.content, "").length) continue;
 
     const timestamp = toIsoString(event.timestamp);
     if (timestamp) return timestamp;
@@ -249,27 +270,31 @@ function consumeClaudeListEvent(
   context: AiSessionReaderContext,
   sourceRef: string
 ): void {
+  if (isClaudeImageCompanion(event)) return;
   const sessionId = typeof event.sessionId === "string" ? event.sessionId : null;
   const cwd = typeof event.cwd === "string" ? event.cwd : null;
   const matchScope = determineMatchScope(cwd, context);
   if (!sessionId || !cwd || !matchScope) return;
 
   const role = resolveClaudeRole(event);
-  const text = extractPlainText(event.message?.content);
+  const text = getClaudeMessageText(event);
+  const attachments = extractMessageAttachments(event.message?.content, sourceRef);
+  const prompt = text || attachments.map(attachment => attachment.name).join(", ");
+  const hasContent = Boolean(prompt);
 
   const accumulator = getOrCreateClaudeSession(sessions, sessionId, cwd, matchScope, event.timestamp, sourceRef);
 
-  if (role === "user" && text && !accumulator.session.firstUserPrompt) {
-    accumulator.session.firstUserPrompt = text;
-    accumulator.session.title = truncateText(text, 80);
+  if (role === "user" && prompt && !accumulator.session.firstUserPrompt) {
+    accumulator.session.firstUserPrompt = prompt;
+    accumulator.session.title = truncateText(prompt, 80);
   }
 
-  if (text) {
+  if (hasContent) {
     accumulator.session.messageCount += 1;
   }
 
   const normalizedTimestamp = toIsoString(event.timestamp);
-  if (normalizedTimestamp && text && (role === "user" || role === "assistant")) {
+  if (normalizedTimestamp && hasContent && (role === "user" || role === "assistant")) {
     accumulator.session.updatedAt = normalizedTimestamp;
   }
 
@@ -378,6 +403,7 @@ function findLatestRoleText(events: unknown[], role: "assistant" | "user"): stri
   for (let index = events.length - 1; index >= 0; index -= 1) {
     const event = events[index] as ClaudeProjectEvent;
     if (event?.message?.role !== role) continue;
+    if (isClaudeImageCompanion(event)) continue;
 
     const text = extractPlainText(event.message.content);
     if (text) {
