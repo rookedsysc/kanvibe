@@ -171,6 +171,44 @@ describe("Herdr 클라이언트 endpoint 프록시", () => {
     expect(frame(await setup.sent.next())).toEqual(input);
   });
 
+  it("큰 분할 프레임은 입력 크기에 비례한 복사로 원문을 중계한다", async () => {
+    const setup = await fixture();
+    await initialize(setup);
+    const payload = Buffer.alloc(1024 * 1024, 7);
+    const bytes = frame(payload);
+    let copiedBytes = 0;
+    const original = Buffer.concat;
+    const concat = vi.spyOn(Buffer, "concat").mockImplementation((parts, length) => {
+      if (new Error().stack?.includes("/src/lib/herdrClientProxy.ts")) {
+        copiedBytes += parts.reduce((total, part) => total + part.length, 0);
+      }
+      return original(parts, length);
+    });
+    try {
+      for (let offset = 0; offset < bytes.length; offset += 1024) {
+        setup.upstream.write(bytes.subarray(offset, offset + 1024));
+      }
+      expect(await setup.received.next()).toEqual(payload);
+    } finally {
+      concat.mockRestore();
+    }
+    expect(copiedBytes).toBeLessThanOrEqual(bytes.length * 3);
+  });
+
+  it("연속 프레임과 다음 부분 헤더의 경계를 보존한다", async () => {
+    const setup = await fixture();
+    await initialize(setup);
+    const first = frame(Buffer.from([7, 1, 2]));
+    const second = frame(Buffer.from([8, 3, 4]));
+    const third = frame(Buffer.from([9, 5, 6]));
+    setup.upstream.write(Buffer.concat([first, second, third.subarray(0, 2)]));
+    expect(frame(await setup.received.next())).toEqual(first);
+    expect(frame(await setup.received.next())).toEqual(second);
+    setup.upstream.write(third.subarray(2, 5));
+    setup.upstream.write(third.subarray(5));
+    expect(frame(await setup.received.next())).toEqual(third);
+  });
+
   it("tab focus 요청의 성공 응답을 기다리고 서버 오류를 전달한다", async () => {
     const setup = await fixture();
     await initialize(setup);
