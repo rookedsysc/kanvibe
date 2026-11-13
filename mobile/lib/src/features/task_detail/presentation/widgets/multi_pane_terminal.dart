@@ -103,7 +103,7 @@ class MultiPaneTerminal extends StatelessWidget {
                                 ),
                               ),
                             ),
-                            Expanded(child: _terminal(pane)),
+                            Expanded(child: ClipRect(child: _terminal(pane))),
                           ],
                         ),
                       ),

@@ -1,4 +1,7 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:xterm/xterm.dart' as xterm;
@@ -64,6 +67,93 @@ Widget app(FakeDesktopClient client, ValueChanged<String> select) =>
       ),
     );
 void main() {
+  testWidgets('partial terminal rows cannot paint over either pane title', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1024, 768);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final client = FakeDesktopClient();
+    final boundaryKey = GlobalKey();
+    await tester.pumpWidget(
+      RepaintBoundary(key: boundaryKey, child: app(client, (_) {})),
+    );
+    await tester.pump(const Duration(milliseconds: 100));
+    final titleRects = <Rect>[];
+    final terminals = <xterm.TerminalView>[];
+    for (final pane in [leftPane, rightPane]) {
+      final paneFinder = find.byKey(ValueKey('multi-pane-${pane.id}'));
+      final terminalFinder = find.descendant(
+        of: paneFinder,
+        matching: find.byType(xterm.TerminalView),
+      );
+      final paneRect = tester.getRect(paneFinder);
+      final terminalRect = tester.getRect(terminalFinder);
+      titleRects.add(
+        Rect.fromLTRB(
+          paneRect.left + 2,
+          paneRect.top + 2,
+          paneRect.right - 2,
+          terminalRect.top,
+        ),
+      );
+      terminals.add(tester.widget<xterm.TerminalView>(terminalFinder));
+    }
+    Future<List<int>> titlePixels() async {
+      return (await tester.runAsync(() async {
+        final boundary =
+            boundaryKey.currentContext!.findRenderObject()!
+                as RenderRepaintBoundary;
+        final image = await boundary.toImage();
+        final data = (await image.toByteData(
+          format: ui.ImageByteFormat.rawRgba,
+        ))!;
+        final pixels = <int>[];
+        for (final rect in titleRects) {
+          for (var y = rect.top.ceil(); y < rect.bottom.floor(); y++) {
+            final start = (y * image.width + rect.left.ceil()) * 4;
+            final end = (y * image.width + rect.right.floor()) * 4;
+            pixels.addAll(data.buffer.asUint8List(start, end - start));
+          }
+        }
+        image.dispose();
+        return pixels;
+      }))!;
+    }
+
+    final before = await titlePixels();
+    final output = List.filled(
+      100,
+      '\x1b[42mMMMMMMMMMMMMMMMMMMMM\x1b[0m\r\n',
+    ).join();
+    for (final stream in client.openedPanes.values) {
+      stream.add(output);
+    }
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    for (final terminal in terminals) {
+      expect(
+        terminal.scrollController!.position.maxScrollExtent,
+        greaterThan(5),
+      );
+      terminal.scrollController!.jumpTo(5);
+    }
+    await tester.pump();
+    final after = await titlePixels();
+    final changed = List.generate(
+      before.length,
+      (i) => i,
+    ).where((i) => before[i] != after[i]).length;
+    expect(
+      changed,
+      0,
+      reason: 'Terminal paint must remain below both pane titles',
+    );
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+  });
+
   testWidgets(
     'tablet opens both panes, selection uses the tapped pane, and disposal closes both streams',
     (tester) async {
