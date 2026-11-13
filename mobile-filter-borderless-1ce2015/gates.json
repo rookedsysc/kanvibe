@@ -1,0 +1,123 @@
+[
+  {
+    "gate": "install",
+    "command": [
+      "pnpm",
+      "install",
+      "--frozen-lockfile"
+    ],
+    "cwd": ".",
+    "head": "f11e2966194aafcf1855bee0b6d0e7267d4a94a4",
+    "fingerprint": "fe8c4d1ca20bcb60545e906ed7290a089d4d57ed",
+    "exit": 0,
+    "seconds": 1.5,
+    "log": "final-install.log"
+  },
+  {
+    "gate": "check",
+    "command": [
+      "pnpm",
+      "check"
+    ],
+    "cwd": ".",
+    "head": "f11e2966194aafcf1855bee0b6d0e7267d4a94a4",
+    "fingerprint": "fe8c4d1ca20bcb60545e906ed7290a089d4d57ed",
+    "exit": 0,
+    "seconds": 1.51,
+    "log": "final-check.log"
+  },
+  {
+    "gate": "test",
+    "command": [
+      "pnpm",
+      "test"
+    ],
+    "cwd": ".",
+    "head": "f11e2966194aafcf1855bee0b6d0e7267d4a94a4",
+    "fingerprint": "fe8c4d1ca20bcb60545e906ed7290a089d4d57ed",
+    "exit": 0,
+    "seconds": 57.16,
+    "log": "final-test.log"
+  },
+  {
+    "gate": "build",
+    "command": [
+      "pnpm",
+      "build"
+    ],
+    "cwd": ".",
+    "head": "f11e2966194aafcf1855bee0b6d0e7267d4a94a4",
+    "fingerprint": "fe8c4d1ca20bcb60545e906ed7290a089d4d57ed",
+    "exit": 0,
+    "seconds": 8.04,
+    "log": "final-build.log"
+  },
+  {
+    "gate": "flutter-analyze",
+    "command": [
+      "fvm",
+      "flutter",
+      "analyze"
+    ],
+    "cwd": "mobile/",
+    "head": "f11e2966194aafcf1855bee0b6d0e7267d4a94a4",
+    "fingerprint": "fe8c4d1ca20bcb60545e906ed7290a089d4d57ed",
+    "exit": 0,
+    "seconds": 7.94,
+    "log": "final-flutter-analyze.log"
+  },
+  {
+    "gate": "flutter-format",
+    "command": [
+      "fvm",
+      "dart",
+      "format",
+      "--output=none",
+      "--set-exit-if-changed",
+      "lib/src/features/board/application/board_desktop_filter_controller.dart",
+      "lib/src/features/board/application/board_project_filter_controller.dart",
+      "lib/src/features/board/data/board_snapshot.dart",
+      "lib/src/features/board/presentation/widgets/desktop_filter_button.dart",
+      "test/src/features/board/board_project_filter_controller_test.dart",
+      "test/src/features/board/project_filter_button_test.dart"
+    ],
+    "cwd": "mobile/",
+    "head": "f11e2966194aafcf1855bee0b6d0e7267d4a94a4",
+    "fingerprint": "fe8c4d1ca20bcb60545e906ed7290a089d4d57ed",
+    "exit": 0,
+    "seconds": 2.84,
+    "log": "final-flutter-format.log"
+  },
+  {
+    "gate": "flutter-test",
+    "command": [
+      "fvm",
+      "flutter",
+      "test",
+      "--reporter",
+      "json"
+    ],
+    "cwd": "mobile/",
+    "head": "f11e2966194aafcf1855bee0b6d0e7267d4a94a4",
+    "fingerprint": "fe8c4d1ca20bcb60545e906ed7290a089d4d57ed",
+    "exit": 0,
+    "seconds": 28.69,
+    "log": "final-flutter-test.log"
+  },
+  {
+    "gate": "flutter-apk",
+    "command": [
+      "fvm",
+      "flutter",
+      "build",
+      "apk",
+      "--debug"
+    ],
+    "cwd": "mobile/",
+    "head": "f11e2966194aafcf1855bee0b6d0e7267d4a94a4",
+    "fingerprint": "fe8c4d1ca20bcb60545e906ed7290a089d4d57ed",
+    "exit": 0,
+    "seconds": 13.14,
+    "log": "final-flutter-apk.log"
+  }
+]
