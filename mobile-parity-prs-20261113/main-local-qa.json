@@ -1,0 +1,128 @@
+{
+  "commit": "82e7c713a79136d37d584fe8005a2c6241bf3103",
+  "gateHead": "95148047a2d9c8f122159294b0e3b33e4c2b7868",
+  "gateFingerprint": "5e7b4eef12b7f96778acb2d1357ddac2ccbfb308",
+  "commitMatchesGate": true,
+  "sourceFingerprint": "b8b5f7d95edb754ccbffb8d46200afc288620481724062501ef315b9c7d46a7e",
+  "desktopTests": 3295,
+  "flutter": {
+    "passed": 720,
+    "skipped": 0,
+    "failed": 0
+  },
+  "relayTests": 20,
+  "gates": [
+    {
+      "command": [
+        "pnpm",
+        "check"
+      ],
+      "cwd": "/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-not-implemented-mobile-feature",
+      "started": 1794574366.1136045,
+      "head": "95148047a2d9c8f122159294b0e3b33e4c2b7868",
+      "sourceFingerprintBefore": "b8b5f7d95edb754ccbffb8d46200afc288620481724062501ef315b9c7d46a7e",
+      "sourceFingerprintAfter": "b8b5f7d95edb754ccbffb8d46200afc288620481724062501ef315b9c7d46a7e",
+      "sourceUnchanged": true,
+      "exitCode": 0,
+      "duration": 3.611265182495117,
+      "log": "/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-not-implemented-mobile-feature/qa-results/roky-harness/mobile-parity-20261113/publish-final-v2-desktop-check.log"
+    },
+    {
+      "command": [
+        "pnpm",
+        "test"
+      ],
+      "cwd": "/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-not-implemented-mobile-feature",
+      "started": 1794574369.7799177,
+      "head": "95148047a2d9c8f122159294b0e3b33e4c2b7868",
+      "sourceFingerprintBefore": "b8b5f7d95edb754ccbffb8d46200afc288620481724062501ef315b9c7d46a7e",
+      "sourceFingerprintAfter": "b8b5f7d95edb754ccbffb8d46200afc288620481724062501ef315b9c7d46a7e",
+      "sourceUnchanged": true,
+      "exitCode": 0,
+      "duration": 96.2109727859497,
+      "log": "/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-not-implemented-mobile-feature/qa-results/roky-harness/mobile-parity-20261113/publish-final-v2-desktop-tests.log"
+    },
+    {
+      "command": [
+        "pnpm",
+        "build"
+      ],
+      "cwd": "/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-not-implemented-mobile-feature",
+      "started": 1794574466.0335915,
+      "head": "95148047a2d9c8f122159294b0e3b33e4c2b7868",
+      "sourceFingerprintBefore": "b8b5f7d95edb754ccbffb8d46200afc288620481724062501ef315b9c7d46a7e",
+      "sourceFingerprintAfter": "b8b5f7d95edb754ccbffb8d46200afc288620481724062501ef315b9c7d46a7e",
+      "sourceUnchanged": true,
+      "exitCode": 0,
+      "duration": 14.197147607803345,
+      "log": "/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-not-implemented-mobile-feature/qa-results/roky-harness/mobile-parity-20261113/publish-final-v2-desktop-build.log"
+    },
+    {
+      "command": [
+        "node",
+        "--test",
+        "services/mobile-push-relay/relay.node-test.mjs"
+      ],
+      "cwd": "/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-not-implemented-mobile-feature",
+      "started": 1794574480.2708466,
+      "head": "95148047a2d9c8f122159294b0e3b33e4c2b7868",
+      "sourceFingerprintBefore": "b8b5f7d95edb754ccbffb8d46200afc288620481724062501ef315b9c7d46a7e",
+      "sourceFingerprintAfter": "b8b5f7d95edb754ccbffb8d46200afc288620481724062501ef315b9c7d46a7e",
+      "sourceUnchanged": true,
+      "exitCode": 0,
+      "duration": 0.3172414302825928,
+      "log": "/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-not-implemented-mobile-feature/qa-results/roky-harness/mobile-parity-20261113/publish-final-v2-relay-tests.log"
+    },
+    {
+      "command": [
+        "dart",
+        "format",
+        "--output=none",
+        "--set-exit-if-changed",
+        "lib",
+        "test"
+      ],
+      "cwd": "/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-not-implemented-mobile-feature/mobile",
+      "started": 1794574480.628198,
+      "head": "95148047a2d9c8f122159294b0e3b33e4c2b7868",
+      "sourceFingerprintBefore": "b8b5f7d95edb754ccbffb8d46200afc288620481724062501ef315b9c7d46a7e",
+      "sourceFingerprintAfter": "b8b5f7d95edb754ccbffb8d46200afc288620481724062501ef315b9c7d46a7e",
+      "sourceUnchanged": true,
+      "exitCode": 0,
+      "duration": 1.3241510391235352,
+      "log": "/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-not-implemented-mobile-feature/qa-results/roky-harness/mobile-parity-20261113/publish-final-v2-mobile-format.log"
+    },
+    {
+      "command": [
+        "flutter",
+        "analyze"
+      ],
+      "cwd": "/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-not-implemented-mobile-feature/mobile",
+      "started": 1794574481.993914,
+      "head": "95148047a2d9c8f122159294b0e3b33e4c2b7868",
+      "sourceFingerprintBefore": "b8b5f7d95edb754ccbffb8d46200afc288620481724062501ef315b9c7d46a7e",
+      "sourceFingerprintAfter": "b8b5f7d95edb754ccbffb8d46200afc288620481724062501ef315b9c7d46a7e",
+      "sourceUnchanged": true,
+      "exitCode": 0,
+      "duration": 8.035460233688354,
+      "log": "/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-not-implemented-mobile-feature/qa-results/roky-harness/mobile-parity-20261113/publish-final-v2-mobile-analyze.log"
+    },
+    {
+      "command": [
+        "flutter",
+        "test",
+        "--machine"
+      ],
+      "cwd": "/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-not-implemented-mobile-feature/mobile",
+      "started": 1794574490.0682788,
+      "head": "95148047a2d9c8f122159294b0e3b33e4c2b7868",
+      "sourceFingerprintBefore": "b8b5f7d95edb754ccbffb8d46200afc288620481724062501ef315b9c7d46a7e",
+      "sourceFingerprintAfter": "b8b5f7d95edb754ccbffb8d46200afc288620481724062501ef315b9c7d46a7e",
+      "sourceUnchanged": true,
+      "exitCode": 0,
+      "duration": 72.89394855499268,
+      "log": "/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-not-implemented-mobile-feature/qa-results/roky-harness/mobile-parity-20261113/publish-final-v2-mobile-tests.log"
+    }
+  ],
+  "deviceScope": "Historical visual captures refer to HEAD20af plus uncommitted source fingerprint278d. Latest dev head verified through static analysis/tests/build/APK; fresh device journey not executed."
+}

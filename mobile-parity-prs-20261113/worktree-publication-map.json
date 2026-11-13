@@ -1,0 +1,407 @@
+{
+  "originalWorktreeCount": 49,
+  "additionalBuildWorktree": 1,
+  "rows": [
+    {
+      "branch": "feat/mobile-a01",
+      "title": "실행 중 AI 세션 모니터링",
+      "cohort": "A01",
+      "initialChangedFiles": 47,
+      "handling": "공유 기준본 포함; 실제 변경분만 최종 통합",
+      "publicationBranch": "perf/not-implemented-mobile-feature"
+    },
+    {
+      "branch": "feat/mobile-a02",
+      "title": "Agent 호출 그래프·타임라인",
+      "cohort": "A01",
+      "initialChangedFiles": 88,
+      "handling": "공유 기준본 포함; 실제 변경분만 최종 통합",
+      "publicationBranch": "perf/not-implemented-mobile-feature"
+    },
+    {
+      "branch": "feat/mobile-a03",
+      "title": "채팅 메시지 역할 필터",
+      "cohort": "A03",
+      "initialChangedFiles": 12,
+      "handling": "공유 기준본 포함; 실제 변경분만 최종 통합",
+      "publicationBranch": "perf/not-implemented-mobile-feature"
+    },
+    {
+      "branch": "feat/mobile-a04",
+      "title": "여러 AI provider 동시 선택",
+      "cohort": "A04",
+      "initialChangedFiles": 13,
+      "handling": "공유 기준본 포함; 실제 변경분만 최종 통합",
+      "publicationBranch": "perf/not-implemented-mobile-feature"
+    },
+    {
+      "branch": "feat/mobile-a05",
+      "title": "선택한 대화의 메시지 본문 검색",
+      "cohort": "A05",
+      "initialChangedFiles": 208,
+      "handling": "공유 기준본 포함; 실제 변경분만 최종 통합",
+      "publicationBranch": "perf/not-implemented-mobile-feature"
+    },
+    {
+      "branch": "feat/mobile-a06",
+      "title": "채팅 내용 서식 렌더링",
+      "cohort": "A06",
+      "initialChangedFiles": 235,
+      "handling": "공유 기준본 포함; 실제 변경분만 최종 통합",
+      "publicationBranch": "perf/not-implemented-mobile-feature"
+    },
+    {
+      "branch": "feat/mobile-a07",
+      "title": "AI 계정 관리",
+      "cohort": "A01",
+      "initialChangedFiles": 12,
+      "handling": "공유 기준본 포함; 실제 변경분만 최종 통합",
+      "publicationBranch": "perf/not-implemented-mobile-feature"
+    },
+    {
+      "branch": "feat/mobile-a08",
+      "title": "AI 사용량 확인",
+      "cohort": "A01",
+      "initialChangedFiles": 0,
+      "handling": "빈 기능별 작업 자리",
+      "publicationBranch": "perf/not-implemented-mobile-feature"
+    },
+    {
+      "branch": "feat/mobile-b01",
+      "title": "전체 태스크 빠른 검색",
+      "cohort": "B05",
+      "initialChangedFiles": 13,
+      "handling": "공유 기준본 포함; 실제 변경분만 최종 통합",
+      "publicationBranch": "perf/not-implemented-mobile-feature"
+    },
+    {
+      "branch": "feat/mobile-b02",
+      "title": "현재 보드 안의 텍스트 찾기",
+      "cohort": "B05",
+      "initialChangedFiles": 0,
+      "handling": "빈 기능별 작업 자리",
+      "publicationBranch": "perf/not-implemented-mobile-feature"
+    },
+    {
+      "branch": "feat/mobile-b03",
+      "title": "태스크 종류 필터",
+      "cohort": "B05",
+      "initialChangedFiles": 0,
+      "handling": "빈 기능별 작업 자리",
+      "publicationBranch": "perf/not-implemented-mobile-feature"
+    },
+    {
+      "branch": "feat/mobile-b04",
+      "title": "여러 기준의 정렬과 설정 저장",
+      "cohort": "B05",
+      "initialChangedFiles": 0,
+      "handling": "빈 기능별 작업 자리",
+      "publicationBranch": "perf/not-implemented-mobile-feature"
+    },
+    {
+      "branch": "feat/mobile-b05",
+      "title": "Done 더보기와 전체 개수",
+      "cohort": "B05",
+      "initialChangedFiles": 65,
+      "handling": "공유 기준본 포함; 실제 변경분만 최종 통합",
+      "publicationBranch": "perf/not-implemented-mobile-feature"
+    },
+    {
+      "branch": "feat/mobile-b06",
+      "title": "카드 우선순위와 상속 우선순위",
+      "cohort": "B05",
+      "initialChangedFiles": 0,
+      "handling": "빈 기능별 작업 자리",
+      "publicationBranch": "perf/not-implemented-mobile-feature"
+    },
+    {
+      "branch": "feat/mobile-b07",
+      "title": "카드의 추가 요약 정보",
+      "cohort": "B05",
+      "initialChangedFiles": 0,
+      "handling": "빈 기능별 작업 자리",
+      "publicationBranch": "perf/not-implemented-mobile-feature"
+    },
+    {
+      "branch": "feat/mobile-b08",
+      "title": "카드의 PR 바로 열기",
+      "cohort": "B05",
+      "initialChangedFiles": 0,
+      "handling": "빈 기능별 작업 자리",
+      "publicationBranch": "perf/not-implemented-mobile-feature"
+    },
+    {
+      "branch": "feat/mobile-b09",
+      "title": "Workspace 보드",
+      "cohort": "B05",
+      "initialChangedFiles": 208,
+      "handling": "공유 기준본 포함; 실제 변경분만 최종 통합",
+      "publicationBranch": "perf/not-implemented-mobile-feature"
+    },
+    {
+      "branch": "feat/mobile-g01",
+      "title": "변경량 요약",
+      "cohort": "G02",
+      "initialChangedFiles": 0,
+      "handling": "빈 기능별 작업 자리",
+      "publicationBranch": "perf/not-implemented-mobile-feature"
+    },
+    {
+      "branch": "feat/mobile-g02",
+      "title": "Git Diff 화면",
+      "cohort": "G02",
+      "initialChangedFiles": 65,
+      "handling": "공유 기준본 포함; 실제 변경분만 최종 통합",
+      "publicationBranch": "perf/not-implemented-mobile-feature"
+    },
+    {
+      "branch": "feat/mobile-g03",
+      "title": "Diff 파일 편집·저장",
+      "cohort": "G02",
+      "initialChangedFiles": 0,
+      "handling": "빈 기능별 작업 자리",
+      "publicationBranch": "perf/not-implemented-mobile-feature"
+    },
+    {
+      "branch": "feat/mobile-g04",
+      "title": "파일별 Viewed 체크",
+      "cohort": "G02",
+      "initialChangedFiles": 0,
+      "handling": "빈 기능별 작업 자리",
+      "publicationBranch": "perf/not-implemented-mobile-feature"
+    },
+    {
+      "branch": "feat/mobile-n01",
+      "title": "태스크 상세 포커스 시 관련 알림 자동 읽음",
+      "cohort": "N01",
+      "initialChangedFiles": 59,
+      "handling": "dev #458 정본 유지 + 보이는 태스크 알림 갱신 통합",
+      "publicationBranch": "perf/not-implemented-mobile-feature"
+    },
+    {
+      "branch": "feat/mobile-n02",
+      "title": "운영 이벤트의 실시간 경고",
+      "cohort": "N02",
+      "initialChangedFiles": 62,
+      "handling": "공유 기준본 포함; 실제 변경분만 최종 통합",
+      "publicationBranch": "perf/not-implemented-mobile-feature"
+    },
+    {
+      "branch": "feat/mobile-p01",
+      "title": "SSH 프로젝트 탐색·등록",
+      "cohort": "S01",
+      "initialChangedFiles": 0,
+      "handling": "빈 기능별 작업 자리",
+      "publicationBranch": "perf/not-implemented-mobile-feature"
+    },
+    {
+      "branch": "feat/mobile-p02",
+      "title": "등록 프로젝트 삭제",
+      "cohort": "S01",
+      "initialChangedFiles": 0,
+      "handling": "빈 기능별 작업 자리",
+      "publicationBranch": "perf/not-implemented-mobile-feature"
+    },
+    {
+      "branch": "feat/mobile-parity-api",
+      "title": "공유 Desktop/API·Mermaid 제공 기반",
+      "cohort": "공유/통합/수리",
+      "initialChangedFiles": 207,
+      "handling": "공유 기준본 포함; 실제 변경분만 최종 통합",
+      "publicationBranch": "perf/not-implemented-mobile-feature"
+    },
+    {
+      "branch": "feat/mobile-r01",
+      "title": "탭 이름 변경",
+      "cohort": "G02",
+      "initialChangedFiles": 0,
+      "handling": "빈 기능별 작업 자리",
+      "publicationBranch": "perf/not-implemented-mobile-feature"
+    },
+    {
+      "branch": "feat/mobile-r02",
+      "title": "탭 순서 변경",
+      "cohort": "G02",
+      "initialChangedFiles": 0,
+      "handling": "빈 기능별 작업 자리",
+      "publicationBranch": "perf/not-implemented-mobile-feature"
+    },
+    {
+      "branch": "feat/mobile-r03",
+      "title": "Pane 레이아웃 템플릿 편집",
+      "cohort": "G02",
+      "initialChangedFiles": 0,
+      "handling": "빈 기능별 작업 자리",
+      "publicationBranch": "perf/not-implemented-mobile-feature"
+    },
+    {
+      "branch": "feat/mobile-r04",
+      "title": "분할 pane의 동시 표시",
+      "cohort": "G02",
+      "initialChangedFiles": 210,
+      "handling": "공유 기준본 포함; 실제 변경분만 최종 통합",
+      "publicationBranch": "perf/not-implemented-mobile-feature"
+    },
+    {
+      "branch": "feat/mobile-r05",
+      "title": "원격 터미널 이미지 붙여넣기",
+      "cohort": "G02",
+      "initialChangedFiles": 0,
+      "handling": "빈 기능별 작업 자리",
+      "publicationBranch": "perf/not-implemented-mobile-feature"
+    },
+    {
+      "branch": "feat/mobile-s01",
+      "title": "기본 세션 종류 변경",
+      "cohort": "S01",
+      "initialChangedFiles": 108,
+      "handling": "공유 기준본 포함; 실제 변경분만 최종 통합",
+      "publicationBranch": "perf/not-implemented-mobile-feature"
+    },
+    {
+      "branch": "feat/mobile-s02",
+      "title": "기존 태스크의 세션 종류 일괄 변경",
+      "cohort": "S01",
+      "initialChangedFiles": 0,
+      "handling": "빈 기능별 작업 자리",
+      "publicationBranch": "perf/not-implemented-mobile-feature"
+    },
+    {
+      "branch": "feat/mobile-s03",
+      "title": "시스템·라이트·다크 테마 선택",
+      "cohort": "S03",
+      "initialChangedFiles": 15,
+      "handling": "공유 기준본 포함; 실제 변경분만 최종 통합",
+      "publicationBranch": "perf/not-implemented-mobile-feature"
+    },
+    {
+      "branch": "feat/mobile-s04",
+      "title": "다국어 화면",
+      "cohort": "S03",
+      "initialChangedFiles": 0,
+      "handling": "빈 기능별 작업 자리",
+      "publicationBranch": "perf/not-implemented-mobile-feature"
+    },
+    {
+      "branch": "feat/mobile-s05",
+      "title": "PC 백그라운드 동기화 제어",
+      "cohort": "S01",
+      "initialChangedFiles": 0,
+      "handling": "빈 기능별 작업 자리",
+      "publicationBranch": "perf/not-implemented-mobile-feature"
+    },
+    {
+      "branch": "feat/mobile-s06",
+      "title": "동기화 결과 검토와 후속 처리",
+      "cohort": "S01",
+      "initialChangedFiles": 0,
+      "handling": "빈 기능별 작업 자리",
+      "publicationBranch": "perf/not-implemented-mobile-feature"
+    },
+    {
+      "branch": "feat/mobile-t01",
+      "title": "생성 시 세션 종류 선택",
+      "cohort": "T02",
+      "initialChangedFiles": 0,
+      "handling": "빈 기능별 작업 자리",
+      "publicationBranch": "perf/not-implemented-mobile-feature"
+    },
+    {
+      "branch": "feat/mobile-t02",
+      "title": "기존 태스크 설명 편집",
+      "cohort": "T02",
+      "initialChangedFiles": 48,
+      "handling": "공유 기준본 포함; 실제 변경분만 최종 통합",
+      "publicationBranch": "perf/not-implemented-mobile-feature"
+    },
+    {
+      "branch": "feat/mobile-t03",
+      "title": "기존 태스크 우선순위 변경",
+      "cohort": "T02",
+      "initialChangedFiles": 0,
+      "handling": "빈 기능별 작업 자리",
+      "publicationBranch": "perf/not-implemented-mobile-feature"
+    },
+    {
+      "branch": "feat/mobile-t04",
+      "title": "프로젝트 색상 변경",
+      "cohort": "T02",
+      "initialChangedFiles": 208,
+      "handling": "공유 기준본 포함; 실제 변경분만 최종 통합",
+      "publicationBranch": "perf/not-implemented-mobile-feature"
+    },
+    {
+      "branch": "feat/mobile-t05",
+      "title": "관련 태스크 바로가기",
+      "cohort": "T02",
+      "initialChangedFiles": 0,
+      "handling": "빈 기능별 작업 자리",
+      "publicationBranch": "perf/not-implemented-mobile-feature"
+    },
+    {
+      "branch": "feat/mobile-t06",
+      "title": "생성일·수정일 표시",
+      "cohort": "T06",
+      "initialChangedFiles": 89,
+      "handling": "공유 기준본 포함; 실제 변경분만 최종 통합",
+      "publicationBranch": "perf/not-implemented-mobile-feature"
+    },
+    {
+      "branch": "feat/mobile-t07",
+      "title": "수동 Pending 이동",
+      "cohort": "T02",
+      "initialChangedFiles": 0,
+      "handling": "빈 기능별 작업 자리",
+      "publicationBranch": "perf/not-implemented-mobile-feature"
+    },
+    {
+      "branch": "feat/mobile-t08",
+      "title": "Done 이동 안내와 다시 묻지 않기",
+      "cohort": "T02",
+      "initialChangedFiles": 136,
+      "handling": "공유 기준본 포함; 실제 변경분만 최종 통합",
+      "publicationBranch": "perf/not-implemented-mobile-feature"
+    },
+    {
+      "branch": "feat/mobile-t09",
+      "title": "저장 URL이 없을 때 PR 탐색",
+      "cohort": "T02",
+      "initialChangedFiles": 0,
+      "handling": "빈 기능별 작업 자리",
+      "publicationBranch": "perf/not-implemented-mobile-feature"
+    },
+    {
+      "branch": "feat/mobile-t10",
+      "title": "기존 태스크를 브랜치 작업으로 전환",
+      "cohort": "T02",
+      "initialChangedFiles": 0,
+      "handling": "빈 기능별 작업 자리",
+      "publicationBranch": "perf/not-implemented-mobile-feature"
+    },
+    {
+      "branch": "fix/mobile-pane-title-overlap",
+      "title": "분할 터미널 제목 영역 겹침 후속 수리",
+      "cohort": "공유/통합/수리",
+      "initialChangedFiles": 162,
+      "handling": "공유 기준본 포함; 실제 변경분만 최종 통합",
+      "publicationBranch": "perf/not-implemented-mobile-feature"
+    },
+    {
+      "branch": "perf/not-implemented-mobile-feature",
+      "title": "전체 기능 최종 통합·충돌 해소",
+      "cohort": "공유/통합/수리",
+      "initialChangedFiles": 211,
+      "handling": "공유 기준본 포함; 실제 변경분만 최종 통합",
+      "publicationBranch": "perf/not-implemented-mobile-feature"
+    },
+    {
+      "branch": "fix/mobile-android-sdk-minor",
+      "title": "Android library compileSdk minor 설정 보존",
+      "cohort": "독립 빌드 수리",
+      "initialChangedFiles": 1,
+      "handling": "게시 준비 중 요청한 CLI로 추가 생성",
+      "publicationBranch": "fix/mobile-android-sdk-minor"
+    }
+  ],
+  "policy": "Keep coupled implementation together; independent SDK fix PR; all base dev; no stale raw snapshots or empty PRs"
+}

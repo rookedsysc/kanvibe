@@ -1,0 +1,17 @@
+{
+  "head": "20af2db9a71da0884a3cbe3111917c5d3c192025",
+  "fixedSourceFingerprint": "278d0ccd0c675e6b0c330d2b6c942fcca657e2636625b2cd8dc8199399eaab5c",
+  "fixedApkSha256": "06a6b46a1a7b17e0973a8f4337d8b83c0732454d75c33f7b84b77f15b7ee3478",
+  "recording": {
+    "path": "/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-not-implemented-mobile-feature/qa-results/roky-harness/mobile-parity-20261113/device/flow-pane-titlefix-visual-v2/videos/flow-pane-titlefix-visual-v2-flow-pane-titlefix-visual-v2.mp4",
+    "sha256": "708cc7f65a66287aa4f80a6f51162a11ae87647376ac4f1081a1010b9a339b52",
+    "bytes": 2173050,
+    "decodedExitCode": 0,
+    "frames": 185,
+    "durationSeconds": 131.51417,
+    "actualJourneyRecording": true,
+    "lastDecodedFrame": "/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-not-implemented-mobile-feature/qa-results/roky-harness/mobile-parity-20261113/device/flow-pane-titlefix-visual-v2/video-last-decoded-frame.png",
+    "visualReviewRequired": true
+  },
+  "scope": "Prior QA-RTRY-01 repair actual Android split/scroll/overlay/reentry, before latest-dev integration. Current-head device journey not claimed."
+}
