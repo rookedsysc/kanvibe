@@ -11,6 +11,7 @@ interface PendingAttachment {
   error?: string;
 }
 interface Draft {
+  owner?: { taskId: string; targetToken: string };
   text: string;
   revision: number;
   attachments: PendingAttachment[];
@@ -19,6 +20,17 @@ interface Draft {
   request?: { fingerprint: string; id: string };
 }
 const emptyDraft = (): Draft => ({ text: "", revision: 0, attachments: [], sending: false, error: null });
+
+async function discardAttachment(owner: NonNullable<Draft["owner"]>, id: string) {
+  try { await actions.removePaneChatAttachment(owner.taskId, owner.targetToken, id); }
+  catch (error) { console.warn("Could not remove an abandoned chat attachment", error); }
+}
+
+async function discardDraftAttachments(draft: Draft) {
+  const owner = draft.owner;
+  if (!owner || draft.sending) return;
+  await Promise.all(draft.attachments.filter(item => item.staged && item.status !== "removing").map(item => discardAttachment(owner, item.staged!.id)));
+}
 
 function readAttachment(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -34,7 +46,14 @@ export function usePaneChatComposer(taskId: string, snapshot: PaneChatSnapshot |
   const drafts = useRef<Record<string, Draft>>({});
   const [, render] = useState(0);
   const mounted = useRef(true);
-  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  useEffect(() => {
+    mounted.current = true;
+    const storage = drafts.current;
+    return () => {
+      mounted.current = false;
+      for (const draft of Object.values(storage)) void discardDraftAttachments(draft);
+    };
+  }, []);
   function read(target = key) { return drafts.current[target] ?? emptyDraft(); }
   function update(target: string, mutate: (draft: Draft) => Draft) {
     drafts.current[target] = mutate(read(target));
@@ -53,8 +72,7 @@ export function usePaneChatComposer(taskId: string, snapshot: PaneChatSnapshot |
       }
       const staged = await actions.stagePaneChatAttachment(taskId, token, { name: item.file.name, mimeType: item.file.type || "application/octet-stream", dataUrl });
       if (!mounted.current) {
-        try { await actions.removePaneChatAttachment(taskId, token, staged.id); }
-        catch (error) { console.warn("Could not remove an abandoned chat attachment", error); }
+        await discardAttachment({ taskId, targetToken: token }, staged.id);
         return;
       }
       const removing = read(target).attachments.find((entry) => entry.localId === item.localId)?.status === "removing";
@@ -78,7 +96,7 @@ export function usePaneChatComposer(taskId: string, snapshot: PaneChatSnapshot |
       return;
     }
     const items = files.map((file): PendingAttachment => ({ localId: crypto.randomUUID(), file, status: file.size > snapshot.composer!.maxAttachmentBytes ? "failed" : "uploading", error: file.size > snapshot.composer!.maxAttachmentBytes ? "attachmentTooLarge" : undefined }));
-    update(key, (value) => ({ ...value, error: null, attachments: [...value.attachments, ...items] }));
+    update(key, (value) => ({ ...value, owner: { taskId, targetToken: token }, error: null, attachments: [...value.attachments, ...items] }));
     for (const item of items) if (item.status === "uploading") void upload(key, token, item);
   }
 
@@ -114,6 +132,7 @@ export function usePaneChatComposer(taskId: string, snapshot: PaneChatSnapshot |
     const request = captured.request?.fingerprint === fingerprint ? captured.request : { fingerprint, id: crypto.randomUUID() };
     update(key, (value) => ({ ...value, sending: true, error: null, request }));
     const accepted = await send(captured.text, ids, request.id);
+    if (!mounted.current) await discardDraftAttachments({ ...read(key), sending: false });
     update(key, (value) => ({ ...value, sending: false, error: accepted ? null : "sendError", ...(accepted ? {
       text: value.revision === captured.revision ? "" : value.text,
       attachments: value.attachments.filter((entry) => !captured.attachments.some((sent) => sent.localId === entry.localId)),

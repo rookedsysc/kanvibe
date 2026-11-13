@@ -15,6 +15,13 @@ import 'package:kanvibe_mobile/src/features/pane_chat/application/pane_chat_comp
 import 'package:kanvibe_mobile/src/features/pane_chat/application/pane_chat_controller.dart';
 import 'package:kanvibe_mobile/src/features/pane_chat/domain/pane_chat_attachment.dart';
 
+import 'package:kanvibe_mobile/src/features/pane_chat/presentation/pane_chat_attachment_strip.dart';
+import 'package:kanvibe_mobile/src/features/pane_chat/presentation/pane_chat_view.dart';
+import 'package:kanvibe_mobile/src/features/pane_chat/data/pane_chat_attachment_intake.dart';
+import 'package:kanvibe_mobile/src/features/connection/domain/saved_connections.dart';
+
+import '../../../support/fake_desktop.dart';
+
 import 'pane_chat_test.dart' as fixtures;
 
 const owner = (
@@ -453,6 +460,266 @@ void main() {
       'new',
     );
   });
+
+  test(
+    'native intake failure exposes human message without platform code',
+    () async {
+      final env = await ready(
+        (r) async => fixtures.response({'snapshot': snapshot()}),
+      );
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+            const MethodChannel('kanvibe/pane-chat-attachments'),
+            (call) async {
+              if (call.method == 'readClipboardImage') {
+                throw PlatformException(
+                  code: 'attachment_read_failed',
+                  message: '파일을 읽지 못했습니다.',
+                );
+              }
+              return null;
+            },
+          );
+      await env.controller.pasteImage();
+      expect(
+        env.container.read(paneChatComposerProvider(owner)).error,
+        '파일을 읽지 못했습니다.',
+      );
+    },
+  );
+
+  testWidgets('upload retry accepts the entire attachment card touch target', (
+    tester,
+  ) async {
+    String? retried;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: PaneChatAttachmentStrip(
+            attachments: [
+              PaneChatDraftAttachment(
+                localId: 'a',
+                file: image,
+                error: '업로드 실패 · 다시 시도',
+              ),
+            ],
+            sending: false,
+            onRemove: (_) {},
+            onRetry: (id) => retried = id,
+          ),
+        ),
+      ),
+    );
+    final card = find.byType(Card);
+    expect(tester.getSize(card).shortestSide, greaterThanOrEqualTo(48));
+    await tester.tapAt(tester.getCenter(card));
+    await tester.pump();
+    expect(retried, 'a');
+  });
+
+  test('dispose clears all 10 ready unsent IDs so reopening same CLI lease can stage again', () async {
+    final stagedIds = <String>{};
+    final deleted = <String>[];
+    var serial = 0;
+    final env = await ready((r) async {
+      if (r.method == 'DELETE') {
+        final body = jsonDecode(r.body) as Map;
+        expect(body['targetToken'], 'target-a');
+        expect(r.url.pathSegments[3], 'task/1');
+        deleted.add(body['id']);
+        stagedIds.remove(body['id']);
+        return ok();
+      }
+      if (r.method == 'GET') {
+        return fixtures.response({'snapshot': snapshot()});
+      }
+      if (stagedIds.length == 10) {
+        return fixtures.response({'error': 'quota'}, 409);
+      }
+      final id = 'draft-${++serial}';
+      stagedIds.add(id);
+      return staged(id);
+    });
+    env.controller.addAttachments(List.filled(10, image));
+    await flush();
+    expect(stagedIds.length, 10);
+    env.container.invalidate(paneChatComposerProvider(owner));
+    await flush();
+    expect(
+      deleted.toSet(),
+      Set.from(List.generate(10, (i) => 'draft-${i + 1}')),
+    );
+    expect(stagedIds, isEmpty);
+    final reopened = env.container.read(
+      paneChatComposerProvider(owner).notifier,
+    );
+    await reopened.setActive(true);
+    reopened.addAttachments([image]);
+    await flush();
+    expect(
+      env.container.read(paneChatComposerProvider(owner)).attachments.single.id,
+      'draft-11',
+    );
+  });
+
+  test('late upload ACK after disposal is cleaned with captured client and original connection', () async {
+    final upload = Completer<http.Response>();
+    final deleted = <String>[];
+    final env = await ready((r) async {
+      if (r.method == 'DELETE') {
+        deleted.add((jsonDecode(r.body) as Map)['id']);
+        return ok();
+      }
+      if (r.method == 'GET') {
+        return fixtures.response({'snapshot': snapshot()});
+      }
+      return upload.future;
+    });
+    env.controller.addAttachments([image]);
+    await flush();
+    env.container.invalidate(paneChatComposerProvider(owner));
+    await flush();
+    upload.complete(staged('late-original'));
+    await flush();
+    expect(deleted, ['late-original']);
+    expect(
+      env.container.read(paneChatComposerProvider(owner)).attachments,
+      isEmpty,
+    );
+  });
+
+  for (final accepted in [false, true]) {
+    test(
+      'dispose defers pending-send ID cleanup until outcome accepted=$accepted',
+      () async {
+        final send = Completer<http.Response>();
+        final deleted = <String>[];
+        var retained = false, exists = false;
+        final env = await ready((r) async {
+          if (r.method == 'DELETE') {
+            deleted.add((jsonDecode(r.body) as Map)['id']);
+            if (!retained) exists = false;
+            return ok();
+          }
+          if (r.method == 'GET') {
+            return fixtures.response({'snapshot': snapshot()});
+          }
+          if (r.url.pathSegments.last == 'attachments') {
+            exists = true;
+            return staged('pending-file');
+          }
+          return send.future;
+        });
+        env.controller.addAttachments([image]);
+        await flush();
+        final pending = env.controller.send();
+        await flush();
+        env.container.invalidate(paneChatComposerProvider(owner));
+        await flush();
+        expect(deleted, isEmpty);
+        expect(exists, true);
+        retained = accepted;
+        send.complete(
+          accepted
+              ? ok()
+              : fixtures.response({'error': 'prewrite failure'}, 503),
+        );
+        await pending;
+        await flush();
+        expect(deleted, ['pending-file']);
+        expect(exists, accepted);
+      },
+    );
+  }
+
+  test('hidden pane deactivation retains ready IDs and draft until actual disposal', () async {
+    final deleted = <String>[];
+    final env = await ready((r) async {
+      if (r.method == 'DELETE') {
+        deleted.add((jsonDecode(r.body) as Map)['id']);
+        return ok();
+      }
+      if (r.method == 'GET') {
+        return fixtures.response({'snapshot': snapshot()});
+      }
+      return staged('retained-hidden');
+    });
+    env.controller.edit('hidden draft');
+    env.controller.addAttachments([image]);
+    await flush();
+    await env.controller.setActive(false);
+    await flush();
+    expect(deleted, isEmpty);
+    expect(
+      env.container.read(paneChatComposerProvider(owner)).text,
+      'hidden draft',
+    );
+    await env.controller.setActive(true);
+    expect(
+      env.container.read(paneChatComposerProvider(owner)).attachments.single.id,
+      'retained-hidden',
+    );
+  });
+
+  testWidgets(
+    'attachment sheet reactivates route owner before opening native picker',
+    (tester) async {
+      var picks = 0;
+      final client = DesktopClient(
+        httpClient: MockClient(
+          (r) async => fixtures.response({'snapshot': snapshot()}),
+        ),
+      );
+      final intake = PaneChatAttachmentIntake(
+        pickFiles: (_) async {
+          picks++;
+          return [];
+        },
+      );
+      final container = ProviderContainer(
+        overrides: [
+          desktopClientProvider.overrideWithValue(client),
+          connectionStoreProvider.overrideWithValue(
+            FakeConnectionStore(
+              initial: const SavedConnections(
+                connections: [fixtures.pcA],
+                activeId: 'a:19746',
+              ),
+            ),
+          ),
+          paneChatAttachmentIntakeProvider.overrideWithValue(intake),
+        ],
+      );
+      addTearDown(container.dispose);
+      addTearDown(client.close);
+      addTearDown(intake.dispose);
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            home: Builder(
+              builder: (context) => Scaffold(
+                body: PaneChatView(
+                  target: fixtures.target,
+                  onReturnToTerminal: () {},
+                  isActive: ModalRoute.isCurrentOf(context) ?? true,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('첨부 추가'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('사진 선택'));
+      await tester.pumpAndSettle();
+      expect(picks, 1);
+      await tester.pumpWidget(const SizedBox.shrink());
+      container.dispose();
+      await tester.pump();
+    },
+  );
 
   testWidgets(
     'skill button opens catalog and inserts provider-owned slash syntax',

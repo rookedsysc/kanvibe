@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../common/network/desktop_connection.dart';
+import '../../../common/network/desktop_client.dart';
 import '../../../common/providers.dart';
 import '../data/pane_chat_attachment_intake.dart';
 import '../domain/pane_chat.dart';
@@ -61,6 +62,38 @@ class PaneChatComposerState {
       (text.trim().isNotEmpty || attachments.isNotEmpty);
 }
 
+class _ComposerLifetime {
+  _ComposerLifetime(
+    this.client,
+    this.connection,
+    this.taskId,
+    this.targetToken,
+  );
+  final DesktopClient client;
+  final DesktopConnection? connection;
+  final String taskId, targetToken;
+  final stagedIds = <String>{}, pendingSendIds = <String>{};
+  bool disposed = false;
+
+  Future<void> cleanup(Iterable<String> ids) async {
+    final ownerConnection = connection;
+    if (ownerConnection == null) return;
+    for (final id in ids.toList()) {
+      try {
+        await client.removePaneChatAttachment(
+          ownerConnection,
+          taskId,
+          targetToken,
+          id,
+        );
+        stagedIds.remove(id);
+      } catch (_) {
+        // Cleanup after ownership ends is best effort and cannot update a disposed UI.
+      }
+    }
+  }
+}
+
 class PaneChatComposerController extends Notifier<PaneChatComposerState> {
   PaneChatComposerController(this.target);
   final PaneChatComposerTarget target;
@@ -69,13 +102,29 @@ class PaneChatComposerController extends Notifier<PaneChatComposerState> {
   Timer? _suggestionTimer;
   int _suggestionEpoch = 0, _localId = 0, _revision = 0;
   bool _active = false;
+  late _ComposerLifetime _lifetime;
   String? _requestId, _requestSignature;
 
   @override
   PaneChatComposerState build() {
+    final lifetime = _ComposerLifetime(
+      ref.read(desktopClientProvider),
+      _connection,
+      target.taskId,
+      target.targetToken,
+    );
+    _lifetime = lifetime;
+    _active = false;
+    _requestId = null;
+    _requestSignature = null;
     final intake = ref.read(paneChatAttachmentIntakeProvider);
     final subscription = intake.drops.listen((event) {
-      if (!_active || event.ownerKey != ownerKey || !ref.mounted) return;
+      if (lifetime.disposed ||
+          !_active ||
+          event.ownerKey != ownerKey ||
+          !ref.mounted) {
+        return;
+      }
       if (event.error != null) {
         _update(error: event.error);
         return;
@@ -83,6 +132,13 @@ class PaneChatComposerController extends Notifier<PaneChatComposerState> {
       addAttachments(event.attachments);
     });
     ref.onDispose(() {
+      lifetime.disposed = true;
+      unawaited(
+        lifetime.cleanup(
+          lifetime.stagedIds.difference(lifetime.pendingSendIds),
+        ),
+      );
+      _suggestionEpoch++;
       _suggestionTimer?.cancel();
       unawaited(subscription.cancel());
       unawaited(intake.setActive(ownerKey, false).catchError((Object _) {}));
@@ -127,14 +183,17 @@ class PaneChatComposerController extends Notifier<PaneChatComposerState> {
   }
 
   Future<void> setActive(bool active, {bool attachmentsEnabled = true}) async {
+    final lifetime = _lifetime;
     _active = active;
     if (!active) dismissSuggestions();
     try {
       await ref
           .read(paneChatAttachmentIntakeProvider)
           .setActive(ownerKey, active && attachmentsEnabled);
-    } catch (error) {
-      if (ref.mounted && active) _update(error: '첨부 입력을 활성화하지 못했습니다. $error');
+    } catch (_) {
+      if (!lifetime.disposed && active) {
+        _update(error: '첨부 입력을 활성화하지 못했습니다. 다시 시도해 주세요.');
+      }
     }
   }
 
@@ -165,13 +224,22 @@ class PaneChatComposerController extends Notifier<PaneChatComposerState> {
     read,
   ) async {
     if (!_ownsTarget) return;
+    final lifetime = _lifetime;
     try {
       final files = await read(ref.read(paneChatAttachmentIntakeProvider));
-      if (ref.mounted && _ownsTarget) addAttachments(files);
+      if (!lifetime.disposed && _ownsTarget) addAttachments(files);
     } catch (error) {
-      if (ref.mounted && _ownsTarget) _update(error: '$error');
+      if (!lifetime.disposed && _ownsTarget) {
+        _update(error: _intakeErrorMessage(error));
+      }
     }
   }
+
+  String _intakeErrorMessage(Object error) => switch (error) {
+    FormatException(:final message) => message,
+    PlatformException(:final message) => message ?? '파일을 읽지 못했습니다. 다시 시도해 주세요.',
+    _ => '파일을 가져오지 못했습니다. 다시 시도해 주세요.',
+  };
 
   void addAttachments(List<PickedPaneChatAttachment> files) {
     if (!_ownsTarget || files.isEmpty) return;
@@ -215,6 +283,7 @@ class PaneChatComposerController extends Notifier<PaneChatComposerState> {
   }
 
   Future<void> upload(String localId) async {
+    final lifetime = _lifetime;
     final connection = _connection;
     final item = state.attachments
         .where((a) => a.localId == localId)
@@ -239,34 +308,29 @@ class PaneChatComposerController extends Notifier<PaneChatComposerState> {
       ),
     );
     try {
-      final id = await ref
-          .read(desktopClientProvider)
-          .stagePaneChatAttachment(
-            connection,
-            target.taskId,
-            target.targetToken,
-            name: item.file.name,
-            mimeType: item.file.mimeType,
-            bytes: item.file.bytes,
-          );
-      if (!ref.mounted) return;
+      final id = await lifetime.client.stagePaneChatAttachment(
+        connection,
+        target.taskId,
+        target.targetToken,
+        name: item.file.name,
+        mimeType: item.file.mimeType,
+        bytes: item.file.bytes,
+      );
+      lifetime.stagedIds.add(id);
+      if (lifetime.disposed) {
+        await lifetime.cleanup([id]);
+        return;
+      }
       final exists = state.attachments.any((a) => a.localId == localId);
       if (!exists) {
-        await ref
-            .read(desktopClientProvider)
-            .removePaneChatAttachment(
-              connection,
-              target.taskId,
-              target.targetToken,
-              id,
-            );
+        await lifetime.cleanup([id]);
         return;
       }
       replace(
         PaneChatDraftAttachment(localId: localId, file: item.file, id: id),
       );
     } catch (error) {
-      if (ref.mounted) {
+      if (!lifetime.disposed) {
         replace(
           PaneChatDraftAttachment(
             localId: localId,
@@ -279,6 +343,7 @@ class PaneChatComposerController extends Notifier<PaneChatComposerState> {
   }
 
   Future<void> remove(String localId) async {
+    final lifetime = _lifetime;
     final item = state.attachments
         .where((a) => a.localId == localId)
         .firstOrNull;
@@ -300,8 +365,11 @@ class PaneChatComposerController extends Notifier<PaneChatComposerState> {
             target.targetToken,
             item.id!,
           );
+      lifetime.stagedIds.remove(item.id);
     } catch (_) {
-      if (ref.mounted) _update(error: '첨부 정리를 완료하지 못했습니다. 전송에서는 제외했습니다.');
+      if (!lifetime.disposed) {
+        _update(error: '첨부 정리를 완료하지 못했습니다. 전송에서는 제외했습니다.');
+      }
     }
   }
 
@@ -309,6 +377,7 @@ class PaneChatComposerController extends Notifier<PaneChatComposerState> {
     if (!_ownsTarget || !state.canSend || _pane?.canPrompt != true) {
       return false;
     }
+    final lifetime = _lifetime;
     final text = state.text;
     final sent = state.attachments;
     final ids = sent.map((a) => a.id!).toList();
@@ -322,6 +391,7 @@ class PaneChatComposerController extends Notifier<PaneChatComposerState> {
         (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0'),
       ).join();
     }
+    lifetime.pendingSendIds.addAll(ids);
     _update(sending: true);
     final accepted = await ref
         .read(
@@ -329,8 +399,13 @@ class PaneChatComposerController extends Notifier<PaneChatComposerState> {
               .notifier,
         )
         .send(text, attachmentIds: ids, requestId: _requestId);
-    if (!ref.mounted) return accepted;
+    lifetime.pendingSendIds.removeAll(ids);
+    if (lifetime.disposed) {
+      await lifetime.cleanup(ids);
+      return accepted;
+    }
     if (accepted) {
+      lifetime.stagedIds.removeAll(ids);
       final sentIds = sent.map((a) => a.localId).toSet();
       _update(
         text: revision == _revision ? '' : state.text,

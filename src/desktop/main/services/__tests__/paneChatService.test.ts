@@ -87,6 +87,35 @@ describe("pane chat exact CLI control", () => {
     expect(mocks.write.mock.calls).toEqual([["task-chat", "%3", "\x1b[200~Use $qa-skill \x1b[201~"], ["task-chat", "%3", "\r"]]);
   });
 
+  it.each(["", "Read this file"])("closes a staged Claude file reference before one submit Enter (caption=%s)", async (text) => {
+    mocks.exec.mockResolvedValue(processTable().replace("/usr/bin/python3 python3 /tmp/codex", "/tmp/claude /tmp/claude"));
+    mocks.surface.mockResolvedValue({ ...surface, inputLine: "❯ " });
+    const target = await getPaneChatSnapshot("task-chat", "%3");
+    const attachment = await stagePaneChatAttachment("task-chat", target.targetToken!, { name: "file with spaces.txt", mimeType: "text/plain", dataUrl: "data:text/plain;base64,aGVsbG8=" });
+    await sendPaneChatPrompt("task-chat", target.targetToken!, text, [attachment.id]);
+    expect(mocks.write.mock.calls).toHaveLength(2);
+    const paste = mocks.write.mock.calls[0][2] as string;
+    const mention = paste.slice("\x1b[200~".length + (text ? text.length + 2 : 0), -" \x1b[201~".length);
+    expect(mention).toMatch(/^@(?:"[^\n]+\.txt"|\/[^\n]+\.txt)$/);
+    expect(mocks.write.mock.calls).toEqual([["task-chat", "%3", `\x1b[200~${text ? `${text}\n\n` : ""}${mention} \x1b[201~`], ["task-chat", "%3", "\r"]]);
+    await removePaneChatAttachment("task-chat", target.targetToken!, attachment.id);
+  });
+
+  it.each([
+    ["Read @/repo/file.txt", "Read @/repo/file.txt "],
+    ['Read @"/repo/file with spaces.txt"', 'Read @"/repo/file with spaces.txt" '],
+    ['Read @"/repo/file \\"quoted\\".txt"', 'Read @"/repo/file \\"quoted\\".txt" '],
+    ["Read @/repo/file.txt ", "Read @/repo/file.txt "],
+    ["Read @/repo/file.txt please", "Read @/repo/file.txt please"],
+    ["Contact person@example.com", "Contact person@example.com"],
+  ])("preserves Claude text while terminating only a final file mention (%s)", async (text, expected) => {
+    mocks.exec.mockResolvedValue(processTable().replace("/usr/bin/python3 python3 /tmp/codex", "/tmp/claude /tmp/claude"));
+    mocks.surface.mockResolvedValue({ ...surface, inputLine: "❯ " });
+    const target = await getPaneChatSnapshot("task-chat", "%3");
+    await sendPaneChatPrompt("task-chat", target.targetToken!, text);
+    expect(mocks.write.mock.calls).toEqual([["task-chat", "%3", `\x1b[200~${expected}\x1b[201~`], ["task-chat", "%3", "\r"]]);
+  });
+
   it("restores the requested tmux pane before returning to raw terminal input", async () => {
     mocks.exec.mockResolvedValue("");
     expect(await focusPaneChatTerminal("task-chat", "%3")).toEqual({ success: true });

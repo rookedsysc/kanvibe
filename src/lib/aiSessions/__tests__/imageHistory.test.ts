@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getAiSessionDetail } from "../aggregateAiSessions";
 import { readAiSessionAttachment } from "../readSessionAttachment";
 import { extractMessageAttachments } from "../messageAttachments";
+import { readClaudeLiveSessions, readClaudeSessions } from "../readClaudeSessions";
 
 const PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aRZkAAAAASUVORK5CYII=";
 let fixture: string;
@@ -23,6 +24,32 @@ beforeEach(async () => { fixture = await mkdtemp(path.join(tmpdir(), "kanvibe-im
 afterEach(async () => { vi.unstubAllEnvs(); await rm(fixture, { recursive: true, force: true }); });
 
 describe("image-aware Claude and Codex history", () => {
+  it("omits Claude's native image provenance companion while preserving the human image and literal text", async () => {
+    const source = await rollout("claude", [
+      { type: "user", sessionId: "image-session", cwd: context.worktreePath, timestamp: "2026-11-13T01:00:00Z", message: { role: "user", content: [{ type: "text", text: "Caption" }, { type: "image", source: { type: "base64", media_type: "image/png", data: PNG } }] } },
+      { type: "user", sessionId: "image-session", cwd: context.worktreePath, timestamp: "2026-11-13T01:00:01Z", isMeta: true, turnCompanion: true, message: { role: "user", content: [{ type: "text", text: "[Image: source: /qa/private-staging/image.png]" }] } },
+      { type: "user", sessionId: "image-session", cwd: context.worktreePath, timestamp: "2026-11-13T01:00:02Z", message: { role: "user", content: "[Image: source: literal text]" } },
+    ]);
+    const detail = await getAiSessionDetail(context, "claude", "image-session", source);
+    expect(detail?.messages.map(message => message.fullText)).toEqual(["[Image: source: literal text]", "Caption"]);
+    expect(detail?.messages[1].attachments).toHaveLength(1);
+    expect(JSON.stringify(detail)).not.toContain("private-staging");
+  });
+
+  it("excludes image companions from Claude list counts, timestamps, search and current activity", async () => {
+    vi.stubEnv("HOME", fixture);
+    const source = path.join(fixture, ".claude", "projects", "-qa-image-worktree", "image-session.jsonl");
+    await mkdir(path.dirname(source), { recursive: true });
+    const events = [
+      { type: "user", sessionId: "image-session", cwd: context.worktreePath, timestamp: "2026-11-13T01:00:00Z", message: { role: "user", content: "Caption" } },
+      { type: "user", sessionId: "image-session", cwd: context.worktreePath, timestamp: "2026-11-13T01:00:01Z", isMeta: true, turnCompanion: true, message: { role: "user", content: "[Image: source: /qa/private-staging/image.png]" } },
+    ];
+    await writeFile(source, events.map(event => JSON.stringify(event)).join("\n"));
+    expect((await readClaudeSessions(context)).sessions).toMatchObject([{ messageCount: 1, title: "Caption", updatedAt: "2026-11-13T01:00:00.000Z" }]);
+    expect((await readClaudeSessions({ ...context, query: "private-staging" })).sessions).toHaveLength(0);
+    expect(await readClaudeLiveSessions(context, { runningWindowMs: 60_000, recentWindowMs: 60_000 })).toMatchObject([{ currentTask: "Caption" }]);
+  });
+
   it("preserves Claude image-only messages and returns lazy metadata alongside mixed text", async () => {
     const source = await rollout("claude", [
       { type: "user", sessionId: "image-session", cwd: context.worktreePath, timestamp: "2026-11-13T01:00:00Z", message: { role: "user", content: [{ type: "image", source: { type: "base64", media_type: "image/png", data: PNG } }] } },

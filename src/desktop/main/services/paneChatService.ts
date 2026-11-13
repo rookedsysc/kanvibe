@@ -261,6 +261,8 @@ export function sendPaneChatPrompt(taskId: string, targetToken: string, text: st
     const attachments = owner ? resolvePaneChatAttachments(owner, attachmentIds) : [];
     const files = attachments.filter((entry) => entry.kind === "file").map((entry) => formatFileMention(entry.path));
     let body = [text, ...files].filter(Boolean).join("\n\n");
+    // Claude 파일 참조 팝업이 전송 Enter를 소비하지 않도록 마지막 토큰을 공백으로 닫는다.
+    if (lease.process.provider === "claude" && (files.length || /(?:^|\s)@(?:"(?:[^"\\]|\\.)+"|[^\s"]+)$/.test(body)) && !/\s$/.test(body)) body += " ";
     if (lease.process.provider === "codex" && /(?:^|\s)\$[\w.-]+$/.test(body) && !/\s$/.test(body)) body += " ";
     if (owner) retainPaneChatAttachments(owner, attachmentIds);
     const images = attachments.filter((entry) => entry.kind === "image");

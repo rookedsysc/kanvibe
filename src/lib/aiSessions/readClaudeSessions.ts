@@ -49,6 +49,8 @@ interface ClaudeProjectEvent {
   sessionId?: string;
   cwd?: string;
   imagePasteIds?: number[];
+  isMeta?: boolean;
+  turnCompanion?: boolean;
   message?: {
     role?: string;
     content?: unknown;
@@ -63,6 +65,11 @@ interface ClaudeSessionAccumulator {
 function getClaudeMessageText(event: ClaudeProjectEvent): string {
   const text = extractPlainText(event.message?.content);
   return event.imagePasteIds?.length ? text.replace(/^(?:\[Image #\d+\]\s*)+/, "") : text;
+}
+
+function isClaudeImageCompanion(event: ClaudeProjectEvent): boolean {
+  return event.isMeta === true && event.turnCompanion === true
+    && /^\[Image: source: /.test(extractPlainText(event.message?.content));
 }
 
 export async function readClaudeSessions(context: AiSessionReaderContext): Promise<AiSessionReaderResult> {
@@ -113,6 +120,7 @@ export async function readClaudeSessionDetail(
       if (event.sessionId !== sessionId) continue;
       if (typeof event.cwd === "string") sessionInScope = determineMatchScope(event.cwd, context) !== null;
       if (!sessionInScope) continue;
+      if (isClaudeImageCompanion(event)) continue;
       if (!matchedPath && typeof event.cwd === "string") {
         matchedPath = event.cwd;
         resolvedSourceRef = filePath;
@@ -203,6 +211,7 @@ async function parseClaudeSessionFromFile(
 function findLatestClaudeConversationTimestamp(events: unknown[]): string | null {
   for (let index = events.length - 1; index >= 0; index -= 1) {
     const event = events[index] as ClaudeProjectEvent;
+    if (isClaudeImageCompanion(event)) continue;
     const role = resolveClaudeRole(event);
     if (role !== "user" && role !== "assistant") continue;
     if (!extractPlainText(event.message?.content) && !extractMessageAttachments(event.message?.content, "").length) continue;
@@ -261,6 +270,7 @@ function consumeClaudeListEvent(
   context: AiSessionReaderContext,
   sourceRef: string
 ): void {
+  if (isClaudeImageCompanion(event)) return;
   const sessionId = typeof event.sessionId === "string" ? event.sessionId : null;
   const cwd = typeof event.cwd === "string" ? event.cwd : null;
   const matchScope = determineMatchScope(cwd, context);
@@ -393,6 +403,7 @@ function findLatestRoleText(events: unknown[], role: "assistant" | "user"): stri
   for (let index = events.length - 1; index >= 0; index -= 1) {
     const event = events[index] as ClaudeProjectEvent;
     if (event?.message?.role !== role) continue;
+    if (isClaudeImageCompanion(event)) continue;
 
     const text = extractPlainText(event.message.content);
     if (text) {

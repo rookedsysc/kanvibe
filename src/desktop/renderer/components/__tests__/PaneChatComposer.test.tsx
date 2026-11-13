@@ -202,6 +202,32 @@ describe("pane chat composer", () => {
     expect(actions.removePaneChatAttachment).toHaveBeenCalledWith("task", "pane-a", "image-1");
   });
 
+  it("discards abandoned ready attachments from every pane when the composer unmounts", async () => {
+    const view = open(); select([image()]);
+    await waitFor(() => expect((screen.getByRole("button", { name: "send" }) as HTMLButtonElement).disabled).toBe(false));
+    view.switchTo(chat("pane-b"));
+    actions.stagePaneChatAttachment.mockResolvedValue({ ...attachment, id: "image-b" });
+    select([image()]);
+    await waitFor(() => expect((screen.getByRole("button", { name: "send" }) as HTMLButtonElement).disabled).toBe(false));
+    view.unmount();
+    await waitFor(() => expect(actions.removePaneChatAttachment).toHaveBeenCalledTimes(2));
+    expect(actions.removePaneChatAttachment).toHaveBeenCalledWith("task", "pane-a", "image-1");
+    expect(actions.removePaneChatAttachment).toHaveBeenCalledWith("task", "pane-b", "image-b");
+  });
+
+  it("defers disposal of a captured send until its outcome is known", async () => {
+    let resolve!: (accepted: boolean) => void;
+    const current = chat();
+    vi.mocked(current.send).mockReturnValue(new Promise(accept => { resolve = accept; }));
+    const view = open(current); select([image()]);
+    await waitFor(() => expect((screen.getByRole("button", { name: "send" }) as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(screen.getByRole("button", { name: "send" }));
+    view.unmount();
+    expect(actions.removePaneChatAttachment).not.toHaveBeenCalled();
+    await act(async () => resolve(true));
+    await waitFor(() => expect(actions.removePaneChatAttachment).toHaveBeenCalledWith("task", "pane-a", "image-1"));
+  });
+
   it("rejects oversized files and excessive file counts without staging bytes", async () => {
     const current = chat(); current.snapshot!.composer!.maxAttachmentBytes = 3;
     open(current); select([image()]);

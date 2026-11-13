@@ -247,6 +247,9 @@ class _PaneChatComposerState extends ConsumerState<PaneChatComposer> {
       ),
     );
     if (!mounted || action == null) return;
+    // The sheet temporarily makes the pane route inactive; wait for its owner to resume.
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted || !widget.isActive || !widget.showPrompt) return;
     final notifier = ref.read(paneChatComposerProvider(widget.target).notifier);
     if (action == 'paste') {
       await notifier.pasteImage();

@@ -23,6 +23,12 @@ const INTERPRETERS = /^(?:node|nodejs|python(?:\d+(?:\.\d+)?)?|ruby|bash|sh|zsh)
 function detectProvider(row: Pick<ProcessRow, "command" | "args">): PaneChatProvider | null {
   const executable = row.command.split("/").at(-1)?.replace(/\.exe$/i, "").toLowerCase() ?? "";
   if (PROVIDERS.has(executable as PaneChatProvider)) return executable as PaneChatProvider;
+  const nativeExecutable = row.args.match(/^\S+/)?.[0] ?? "";
+  // 공식 native 설치는 ucomm에 버전 파일명이 드러나므로 argv의 실행 경로까지 확인한다.
+  if (/^\d+\.\d+\.\d+$/.test(executable) && nativeExecutable.startsWith("/") && (
+    /^\/(?:[^/\s]+\/)*claude$/.test(nativeExecutable)
+    || nativeExecutable.endsWith(`/.local/share/claude/versions/${executable}`)
+  )) return "claude";
   if (!INTERPRETERS.test(executable)) return null;
   const script = row.args.match(/^\S+\s+([^\s]+)/)?.[1]?.replace(/^["']|["']$/g, "") ?? "";
   const basename = script.split("/").at(-1) ?? "";
