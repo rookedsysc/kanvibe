@@ -1,3 +1,5 @@
+import '../../../../common/l10n/app_localizations.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -36,7 +38,7 @@ class _TerminalShortcutComboEditorState
   String? _error;
 
   TerminalShortcutChord get _initialChord =>
-      widget.combo?.chord ?? const TerminalShortcutChord(keys: []);
+      widget.combo?.chord ?? TerminalShortcutChord(keys: []);
 
   /// 같은 글자를 두 번 친 것은 한 번 누른 것으로 본다. 한 키를 동시에 두 번 누를 수는 없다
   TerminalShortcutChord get _chord {
@@ -94,9 +96,9 @@ class _TerminalShortcutComboEditorState
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
       leading: IconButton(
-        tooltip: '콤보 닫기',
+        tooltip: context.tr('콤보 닫기'),
         onPressed: () => Navigator.pop(context),
-        icon: const Icon(Icons.close),
+        icon: Icon(Icons.close),
       ),
     ),
     body: SafeArea(
@@ -105,7 +107,7 @@ class _TerminalShortcutComboEditorState
         children: [
           Expanded(
             child: ListView(
-              padding: const EdgeInsets.fromLTRB(
+              padding: EdgeInsets.fromLTRB(
                 AppSizes.p24,
                 0,
                 AppSizes.p24,
@@ -117,23 +119,20 @@ class _TerminalShortcutComboEditorState
                   subtitle: '고른 키를 모두 한 번에 눌러요',
                 ),
                 _ChordPreview(chord: _chord),
-                const SettingsSectionLabel('이름'),
+                SettingsSectionLabel('이름'),
                 Semantics(
                   identifier: 'combo-name',
                   child: TextField(
                     controller: _label,
                     maxLength: maxTerminalComboLabelLength,
-                    decoration: const InputDecoration(
-                      labelText: '콤보 이름',
-                      hintText: '예: 좌우 분할',
+                    decoration: InputDecoration(
+                      labelText: context.tr('콤보 이름'),
+                      hintText: context.tr('예: 좌우 분할'),
                     ),
                     onChanged: (_) => setState(() => _error = null),
                   ),
                 ),
-                const SettingsSectionLabel(
-                  '특수 키',
-                  caption: '여러 개를 골라 함께 누를 수 있어요',
-                ),
+                SettingsSectionLabel('특수 키', caption: '여러 개를 골라 함께 누를 수 있어요'),
                 _SpecialKeyPicker(
                   ctrl: _ctrl,
                   alt: _alt,
@@ -144,10 +143,7 @@ class _TerminalShortcutComboEditorState
                   onShift: (value) => _update(() => _shift = value),
                   onSpecialKey: _toggleSpecialKey,
                 ),
-                const SettingsSectionLabel(
-                  '일반 키',
-                  caption: '입력한 글자마다 함께 누를 키가 돼요',
-                ),
+                SettingsSectionLabel('일반 키', caption: '입력한 글자마다 함께 누를 키가 돼요'),
                 Semantics(
                   identifier: 'combo-key-input',
                   child: TextField(
@@ -161,9 +157,9 @@ class _TerminalShortcutComboEditorState
                     inputFormatters: [
                       LengthLimitingTextInputFormatter(maxTerminalChordKeys),
                     ],
-                    decoration: const InputDecoration(
-                      labelText: '입력 키',
-                      hintText: '예: b, %, ab',
+                    decoration: InputDecoration(
+                      labelText: context.tr('입력 키'),
+                      hintText: context.tr('예: b, %, ab'),
                     ),
                     onChanged: (_) => _update(() {}),
                   ),
@@ -195,16 +191,16 @@ class _ChordPreview extends StatelessWidget {
       identifier: 'combo-preview',
       label: chord.keys.isEmpty ? null : chord.label,
       child: Container(
-        constraints: const BoxConstraints(minHeight: 88),
+        constraints: BoxConstraints(minHeight: 88),
         alignment: Alignment.center,
-        padding: const EdgeInsets.all(AppSizes.p16),
+        padding: EdgeInsets.all(AppSizes.p16),
         decoration: BoxDecoration(
           color: AppColors.terminalBg,
           borderRadius: BorderRadius.circular(AppSizes.radiusCard),
         ),
         child: chord.keys.isEmpty
-            ? const Text(
-                '함께 누를 키를 골라 주세요',
+            ? Text(
+                context.tr('함께 누를 키를 골라 주세요'),
                 style: TextStyle(color: AppColors.textMuted),
               )
             : ExcludeSemantics(
@@ -216,10 +212,7 @@ class _ChordPreview extends StatelessWidget {
                   children: [
                     for (final (index, label) in keyLabels.indexed) ...[
                       if (index > 0)
-                        const Text(
-                          '+',
-                          style: TextStyle(color: AppColors.textMuted),
-                        ),
+                        Text('+', style: TextStyle(color: AppColors.textMuted)),
                       _Keycap(label),
                     ],
                   ],
@@ -237,14 +230,14 @@ class _Keycap extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(
+    padding: EdgeInsets.symmetric(
       horizontal: AppSizes.p12,
       vertical: AppSizes.p8,
     ),
     decoration: BoxDecoration(
       color: AppColors.buttonNeutral,
       borderRadius: BorderRadius.circular(AppSizes.radiusLg),
-      border: const Border(
+      border: Border(
         bottom: BorderSide(color: AppColors.borderStrong, width: 3),
       ),
     ),

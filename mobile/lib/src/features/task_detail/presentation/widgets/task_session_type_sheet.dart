@@ -1,3 +1,5 @@
+import '../../../../common/l10n/app_localizations.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -87,19 +89,21 @@ class _TaskSessionTypeSheetState extends ConsumerState<TaskSessionTypeSheet> {
   Future<bool?> _askToCloseExistingSession() => showDialog<bool>(
     context: context,
     builder: (dialogContext) => AlertDialog(
-      title: const Text('기존 세션 닫기'),
+      title: Text(context.tr('기존 세션 닫기')),
       content: Text(
-        '켜져 있는 기존 ${widget.currentSessionType.wireValue} 세션을 닫을까요?\n'
-        '남겨 두면 데스크탑 백그라운드에서 계속 실행됩니다.',
+        context.tr('켜져 있는 기존 {type} 세션을 닫을까요?\n', {
+              'type': widget.currentSessionType.wireValue,
+            }) +
+            context.tr('남겨 두면 데스크탑 백그라운드에서 계속 실행됩니다.'),
       ),
       actions: [
         TextButton(
           onPressed: () => Navigator.of(dialogContext).pop(false),
-          child: const Text('남겨 두기'),
+          child: Text(context.tr('남겨 두기')),
         ),
         FilledButton(
           onPressed: () => Navigator.of(dialogContext).pop(true),
-          child: const Text('닫기'),
+          child: Text(context.tr('닫기')),
         ),
       ],
     ),
@@ -123,7 +127,7 @@ class _TaskSessionTypeSheetState extends ConsumerState<TaskSessionTypeSheet> {
 
     return SafeArea(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(
+        padding: EdgeInsets.fromLTRB(
           AppSizes.p24,
           AppSizes.p16,
           AppSizes.p24,
@@ -133,27 +137,34 @@ class _TaskSessionTypeSheetState extends ConsumerState<TaskSessionTypeSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('세션 종류 바꾸기', style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: AppSizes.p8),
             Text(
-              '지금은 ${widget.currentSessionType.wireValue}입니다.',
+              context.tr('세션 종류 바꾸기'),
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            SizedBox(height: AppSizes.p8),
+            Text(
+              context.tr('지금은 {type}입니다.', {
+                'type': widget.currentSessionType.wireValue,
+              }),
               style: Theme.of(context).textTheme.bodySmall,
             ),
-            const SizedBox(height: AppSizes.p16),
+            SizedBox(height: AppSizes.p16),
             for (final sessionType in targets) ...[
               OutlinedButton(
                 onPressed: _isChanging ? null : () => _change(sessionType),
                 style: OutlinedButton.styleFrom(
-                  minimumSize: const Size.fromHeight(AppSizes.minTouchTarget),
+                  minimumSize: Size.fromHeight(AppSizes.minTouchTarget),
                 ),
-                child: Text('${sessionType.wireValue}(으)로 바꾸기'),
+                child: Text(
+                  context.tr('{type}(으)로 바꾸기', {'type': sessionType.wireValue}),
+                ),
               ),
-              const SizedBox(height: AppSizes.p8),
+              SizedBox(height: AppSizes.p8),
             ],
             if (_failureMessage != null) ...[
-              const SizedBox(height: AppSizes.p8),
+              SizedBox(height: AppSizes.p8),
               Text(
-                _failureMessage!,
+                context.tr(_failureMessage!),
                 style: Theme.of(context).textTheme.bodySmall
                     ?.copyWith(color: Theme.of(context).colorScheme.error),
               ),

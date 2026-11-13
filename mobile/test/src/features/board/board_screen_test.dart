@@ -178,8 +178,10 @@ void main() {
       findsNothing,
       reason: '칸반은 구획 목록을 쓰지 않는다',
     );
-    final board = tester.widget<ListView>(find.byType(ListView).first);
-    expect(board.scrollDirection, Axis.horizontal, reason: '칸반은 옆으로 밀어 본다');
+    final todo = tester.getTopLeft(find.text('Todo'));
+    final progress = tester.getTopLeft(find.text('Progress'));
+    expect(progress.dx, greaterThan(todo.dx));
+    expect(progress.dy, todo.dy, reason: '상태 칸 머리글은 같은 행에 있다');
   });
 
   testWidgets('태스크 제목과 프로젝트 이름이 함께 보인다', (tester) async {

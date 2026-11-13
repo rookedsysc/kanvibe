@@ -1,3 +1,5 @@
+import '../../../../common/l10n/app_localizations.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -98,18 +100,20 @@ class _TerminalShortcutSettingsPageState
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('기본값을 복원할까요?'),
+        title: Text(context.tr('기본값을 복원할까요?')),
         content: Text(
-          '지운 기본 세팅 ${_removedDefaultIds.length}개가 다시 생겨요. 내 콤보는 그대로예요.',
+          context.tr('지운 기본 세팅 {count}개가 다시 생겨요. 내 콤보는 그대로예요.', {
+            'count': _removedDefaultIds.length,
+          }),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('취소'),
+            child: Text(context.tr('취소')),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('복원'),
+            child: Text(context.tr('복원')),
           ),
         ],
       ),
@@ -152,13 +156,18 @@ class _TerminalShortcutSettingsPageState
     final addedCount = imported.ids.length - draft.ids.length;
     setState(() => _loadDraft(imported));
     final message = switch (mode) {
-      _ImportMode.overwrite => '${source.name} 설정으로 덮어썼어요',
+      _ImportMode.overwrite => context.tr('{name} 설정으로 덮어썼어요', {
+        'name': source.name,
+      }),
       _ when addedCount == 0 => '가져올 새 단축키가 없어요',
-      _ => '${source.name} 설정에서 $addedCount개를 가져왔어요',
+      _ => context.tr('{name} 설정에서 {count}개를 가져왔어요', {
+        'name': source.name,
+        'count': addedCount,
+      }),
     };
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(message)));
+      ..showSnackBar(SnackBar(content: Text(context.tr(message))));
   }
 
   Future<void> _save() async {
@@ -191,9 +200,9 @@ class _TerminalShortcutSettingsPageState
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(
-          tooltip: '닫기',
+          tooltip: context.tr('닫기'),
           onPressed: _isSaving ? null : () => Navigator.pop(context),
-          icon: const Icon(Icons.close),
+          icon: Icon(Icons.close),
         ),
         actions: [
           if (_order != null)
@@ -201,7 +210,7 @@ class _TerminalShortcutSettingsPageState
               onPressed: _isSaving || _removedDefaultIds.isEmpty
                   ? null
                   : _restoreDefaults,
-              child: const Text('기본값 복원'),
+              child: Text(context.tr('기본값 복원')),
             ),
         ],
       ),
@@ -210,7 +219,7 @@ class _TerminalShortcutSettingsPageState
               hasError: settings.hasError,
               onRetry: () => ref.invalidate(terminalShortcutControllerProvider),
             )
-          : _buildDraftList(profiles ?? const {}),
+          : _buildDraftList(profiles ?? {}),
       // 하단 바에 두어야 가져오기 안내 스낵바가 적용 버튼을 덮지 않고 그 위에 뜬다
       bottomNavigationBar: _order == null
           ? null
@@ -237,20 +246,22 @@ class _TerminalShortcutSettingsPageState
       for (final id in _order!.where(_selected.contains)) shortcutsById[id]!,
     ];
     return ReorderableListView.builder(
-      padding: const EdgeInsets.symmetric(horizontal: AppSizes.p24),
+      padding: EdgeInsets.symmetric(horizontal: AppSizes.p24),
       buildDefaultDragHandles: false,
       header: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           SettingsPageTitle(
-            title: '${widget.sessionType.name} 단축키',
-            subtitle: '이 기기의 ${widget.sessionType.name} 세션에 적용돼요',
+            title: context.tr('{type} 단축키', {'type': widget.sessionType.name}),
+            subtitle: context.tr('이 기기의 {type} 세션에 적용돼요', {
+              'type': widget.sessionType.name,
+            }),
           ),
           SettingsCard(
             children: [
               SwitchListTile(
-                title: const Text('단축키 바 표시'),
-                subtitle: const Text('터미널 아래에 단축키 버튼을 보여요'),
+                title: Text(context.tr('단축키 바 표시')),
+                subtitle: Text(context.tr('터미널 아래에 단축키 버튼을 보여요')),
                 value: _enabled,
                 onChanged: _isSaving
                     ? null
@@ -258,12 +269,14 @@ class _TerminalShortcutSettingsPageState
               ),
             ],
           ),
-          const SettingsSectionLabel('단축키 바 미리보기'),
+          SettingsSectionLabel(context.tr('단축키 바 미리보기')),
           _ShortcutBarPreview(enabled: _enabled, shortcuts: visibleShortcuts),
           SettingsSectionLabel(
-            '바에 보일 단축키',
-            caption:
-                '체크한 단축키가 바에 보여요. 손잡이를 끌어 순서를 바꿔요 · 내 콤보 ${_combos.length}/$maxTerminalCombos',
+            context.tr('바에 보일 단축키'),
+            caption: context.tr(
+              '체크한 단축키가 바에 보여요. 손잡이를 끌어 순서를 바꿔요 · 내 콤보 {count}/{max}',
+              {'count': _combos.length, 'max': maxTerminalCombos},
+            ),
           ),
         ],
       ),
@@ -271,9 +284,9 @@ class _TerminalShortcutSettingsPageState
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _AddComboButton(onPressed: _canAddCombo ? _editCombo : null),
-          const SettingsSectionLabel(
-            '다른 세션에서 가져오기',
-            caption: '다른 세션 종류의 기본 세팅 표시와 콤보를 복사해요',
+          SettingsSectionLabel(
+            context.tr('다른 세션에서 가져오기'),
+            caption: context.tr('다른 세션 종류의 기본 세팅 표시와 콤보를 복사해요'),
           ),
           SettingsCard(
             children: [
@@ -293,7 +306,7 @@ class _TerminalShortcutSettingsPageState
                   ),
             ],
           ),
-          const SizedBox(height: AppSizes.p24),
+          SizedBox(height: AppSizes.p24),
         ],
       ),
       itemCount: _order!.length,
@@ -335,9 +348,9 @@ class _LoadingState extends StatelessWidget {
     child: hasError
         ? TextButton(
             onPressed: onRetry,
-            child: const Text('설정을 불러오지 못했어요 · 다시 시도'),
+            child: Text(context.tr('설정을 불러오지 못했어요 · 다시 시도')),
           )
-        : const CircularProgressIndicator(),
+        : CircularProgressIndicator(),
   );
 }
 
@@ -356,7 +369,7 @@ class _ShortcutBarPreview extends StatelessWidget {
         : null;
     return Container(
       height: 56,
-      padding: const EdgeInsets.symmetric(horizontal: AppSizes.p12),
+      padding: EdgeInsets.symmetric(horizontal: AppSizes.p12),
       alignment: Alignment.centerLeft,
       decoration: BoxDecoration(
         color: AppColors.terminalChrome,
@@ -365,8 +378,8 @@ class _ShortcutBarPreview extends StatelessWidget {
       ),
       child: emptyMessage != null
           ? Text(
-              emptyMessage,
-              style: const TextStyle(color: AppColors.textMuted),
+              context.tr(emptyMessage),
+              style: TextStyle(color: AppColors.textMuted),
             )
           : SingleChildScrollView(
               scrollDirection: Axis.horizontal,
@@ -374,8 +387,8 @@ class _ShortcutBarPreview extends StatelessWidget {
                 children: [
                   for (final shortcut in shortcuts)
                     Container(
-                      margin: const EdgeInsets.only(right: AppSizes.p8),
-                      padding: const EdgeInsets.symmetric(
+                      margin: EdgeInsets.only(right: AppSizes.p8),
+                      padding: EdgeInsets.symmetric(
                         horizontal: AppSizes.p12,
                         vertical: AppSizes.p8,
                       ),
@@ -421,7 +434,7 @@ class _ShortcutTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final kindLabel = shortcut.isCombo ? '콤보' : '기본 세팅';
     return Padding(
-      padding: const EdgeInsets.only(bottom: AppSizes.p8),
+      padding: EdgeInsets.only(bottom: AppSizes.p8),
       child: Material(
         color: AppColors.bgSurface,
         clipBehavior: Clip.antiAlias,
@@ -430,15 +443,15 @@ class _ShortcutTile extends StatelessWidget {
         ),
         child: CheckboxListTile(
           value: isSelected,
-          checkboxShape: const CircleBorder(),
+          checkboxShape: CircleBorder(),
           controlAffinity: ListTileControlAffinity.leading,
-          contentPadding: const EdgeInsets.only(left: AppSizes.p8),
+          contentPadding: EdgeInsets.only(left: AppSizes.p8),
           title: Row(
             children: [
               Flexible(
                 child: Text(shortcut.label, overflow: TextOverflow.ellipsis),
               ),
-              const SizedBox(width: AppSizes.p8),
+              SizedBox(width: AppSizes.p8),
               _ShortcutKindTag(isCombo: shortcut.isCombo),
             ],
           ),
@@ -452,21 +465,32 @@ class _ShortcutTile extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               PopupMenuButton<VoidCallback>(
-                tooltip: '${shortcut.label} $kindLabel 동작',
+                tooltip: context.tr('{name} {kind} 동작', {
+                  'name': shortcut.label,
+                  'kind': context.tr(kindLabel),
+                }),
                 enabled: !isSaving,
                 onSelected: (action) => action(),
                 itemBuilder: (_) => [
                   if (onEdit case final onEdit?)
-                    PopupMenuItem(value: onEdit, child: const Text('콤보 편집')),
-                  PopupMenuItem(value: onDelete, child: Text('$kindLabel 삭제')),
+                    PopupMenuItem(
+                      value: onEdit,
+                      child: Text(context.tr('콤보 편집')),
+                    ),
+                  PopupMenuItem(
+                    value: onDelete,
+                    child: Text(
+                      context.tr('{kind} 삭제', {'kind': context.tr(kindLabel)}),
+                    ),
+                  ),
                 ],
               ),
               ReorderableDragStartListener(
                 index: index,
                 enabled: !isSaving,
                 child: Semantics(
-                  label: '${shortcut.label} 순서 변경',
-                  child: const SizedBox.square(
+                  label: context.tr('{name} 순서 변경', {'name': shortcut.label}),
+                  child: SizedBox.square(
                     dimension: AppSizes.minTouchTarget,
                     child: Icon(Icons.drag_handle, color: AppColors.textMuted),
                   ),
@@ -489,14 +513,14 @@ class _ShortcutKindTag extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+    padding: EdgeInsets.symmetric(horizontal: 6, vertical: 1),
     decoration: BoxDecoration(
       color: isCombo ? AppColors.brandSubtle : AppColors.buttonNeutral,
       borderRadius: BorderRadius.circular(AppSizes.radiusMd),
     ),
     child: Text(
-      isCombo ? '콤보' : '기본',
-      style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+      context.tr(isCombo ? '콤보' : '기본'),
+      style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
     ),
   );
 }
@@ -512,16 +536,16 @@ class _AddComboButton extends StatelessWidget {
     child: TextButton.icon(
       onPressed: onPressed,
       style: TextButton.styleFrom(
-        minimumSize: const Size.fromHeight(56),
+        minimumSize: Size.fromHeight(56),
         backgroundColor: AppColors.bgSurface,
         foregroundColor: AppColors.brandPrimary,
-        textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+        textStyle: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(AppSizes.radiusCard),
         ),
       ),
-      icon: const Icon(Icons.add),
-      label: const Text('콤보 추가'),
+      icon: Icon(Icons.add),
+      label: Text(context.tr('콤보 추가')),
     ),
   );
 }
@@ -549,17 +573,20 @@ class _ImportSourceTile extends StatelessWidget {
       child: ListTile(
         enabled: hasSettings && onImport != null,
         onTap: onImport,
-        title: Text('${source.name} 설정'),
+        title: Text(context.tr('{name} 설정', {'name': source.name})),
         subtitle: Text(
           hasSettings
-              ? '바에 띄운 기본 세팅 $shownDefaultCount개 · 콤보 ${profile.combos.length}개'
-              : '바에 띄운 단축키가 없어요',
+              ? context.tr('바에 띄운 기본 세팅 {defaults}개 · 콤보 {combos}개', {
+                  'defaults': shownDefaultCount,
+                  'combos': profile.combos.length,
+                })
+              : context.tr('바에 띄운 단축키가 없어요'),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
         trailing: Text(
-          hasSettings ? '가져오기' : '',
-          style: const TextStyle(
+          hasSettings ? context.tr('가져오기') : '',
+          style: TextStyle(
             color: AppColors.brandPrimary,
             fontWeight: FontWeight.w600,
           ),
@@ -577,27 +604,29 @@ class _ImportModeSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) => SafeArea(
     child: Padding(
-      padding: const EdgeInsets.symmetric(vertical: AppSizes.p16),
+      padding: EdgeInsets.symmetric(vertical: AppSizes.p16),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: AppSizes.p24),
+            padding: EdgeInsets.symmetric(horizontal: AppSizes.p24),
             child: Text(
-              '${source.name} 설정을 어떻게 가져올까요?',
-              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+              context.tr('{name} 설정을 어떻게 가져올까요?', {'name': source.name}),
+              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
             ),
           ),
-          const SizedBox(height: AppSizes.p8),
+          SizedBox(height: AppSizes.p8),
           ListTile(
-            title: const Text('합치기'),
-            subtitle: const Text('같은 콤보는 건너뛰고 지금 설정에 더해요'),
+            title: Text(context.tr('합치기')),
+            subtitle: Text(context.tr('같은 콤보는 건너뛰고 지금 설정에 더해요')),
             onTap: () => Navigator.pop(context, _ImportMode.merge),
           ),
           ListTile(
-            title: const Text('덮어쓰기'),
-            subtitle: Text('지금 설정을 ${source.name} 설정과 똑같이 바꿔요'),
+            title: Text(context.tr('덮어쓰기')),
+            subtitle: Text(
+              context.tr('지금 설정을 {name} 설정과 똑같이 바꿔요', {'name': source.name}),
+            ),
             onTap: () => Navigator.pop(context, _ImportMode.overwrite),
           ),
         ],

@@ -18,6 +18,7 @@ import 'desktop_command.dart';
 import 'desktop_connection.dart';
 import 'pinned_http_client.dart';
 import 'pane_connection.dart';
+import 'header_close_retry_client.dart';
 
 /// 페어링 결과. 인증서 지문은 다음 요청부터 고정할 값이다
 class PairingResult {
@@ -35,11 +36,16 @@ class PairingResult {
 /// 페어링만 토큰 없이 호출하고 나머지는 전부 토큰을 실어 보낸다.
 /// 데스크탑의 `/api/hooks/*`는 hook 전용이라 TLS 포트에는 없고, 이 클라이언트도 그쪽을 부르지 않는다.
 class DesktopClient {
-  DesktopClient({http.Client? httpClient}) : _injectedHttpClient = httpClient;
+  DesktopClient({http.Client? httpClient})
+    : _injectedHttpClient = httpClient == null
+          ? null
+          : HeaderCloseRetryClient(httpClient);
 
   /// 테스트가 넣는 클라이언트. 있으면 연결과 무관하게 이것을 쓴다
   final http.Client? _injectedHttpClient;
-  late final http.Client _legacyPlaintextClient = http.Client();
+  late final http.Client _legacyPlaintextClient = HeaderCloseRetryClient(
+    http.Client(),
+  );
 
   /// 지문마다 클라이언트를 재사용해 요청마다 TLS 핸드셰이크를 하지 않는다
   final Map<String, http.Client> _pinnedClients = {};
@@ -56,7 +62,8 @@ class DesktopClient {
     if (fingerprint == null) return _legacyPlaintextClient;
     return _pinnedClients.putIfAbsent(
       fingerprint,
-      () => IOClient(createPinnedHttpClient(fingerprint)),
+      () =>
+          HeaderCloseRetryClient(IOClient(createPinnedHttpClient(fingerprint))),
     );
   }
 
@@ -187,11 +194,19 @@ class DesktopClient {
     String taskId,
     ChatSession session, {
     String? cursor,
+    String? query,
+    Set<String> roles = const {},
   }) async {
     final response = await _clientFor(connection)
         .get(
           connection
-              .buildHttpUri('', {'cursor': ?cursor, 'limit': '20'})
+              .buildHttpUri('', {
+                'cursor': ?cursor,
+                'limit': '20',
+                if (roles.isNotEmpty) 'roles': roles.join(','),
+                if (query != null && query.trim().isNotEmpty)
+                  'query': query.trim(),
+              })
               .replace(
                 pathSegments: [
                   'api',
@@ -805,6 +820,7 @@ class DesktopClient {
     String? baseBranch,
     String? description,
     String? priority,
+    String? sessionType,
   }) async {
     final response = await _clientFor(connection)
         .post(
@@ -819,6 +835,7 @@ class DesktopClient {
             'baseBranch': baseBranch,
             'description': description,
             'priority': priority,
+            'sessionType': ?sessionType,
           }),
         )
         .timeout(_createTaskTimeout);
@@ -1163,6 +1180,82 @@ class DesktopClient {
       command,
       requestId: 'cmd-${_nextRequestNumber++}',
       timeout: timeout ?? command.timeout,
+    );
+  }
+
+  Future<Map<String, dynamic>> requestJson(
+    DesktopConnection connection,
+    String method,
+    List<String> segments, {
+    Map<String, String>? query,
+    Map<String, dynamic>? body,
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
+    if (!const {'GET', 'POST', 'PATCH', 'PUT', 'DELETE'}.contains(method) ||
+        segments.any((segment) => segment.isEmpty || segment == '..')) {
+      throw ArgumentError('잘못된 모바일 요청입니다.');
+    }
+    final uri = connection
+        .buildHttpUri('')
+        .replace(
+          pathSegments: ['api', 'mobile', ...segments],
+          queryParameters: query,
+        );
+    final request = http.Request(method, uri)
+      ..headers.addAll(connection.authorizationHeaders);
+    if (body != null) {
+      request.headers['Content-Type'] = 'application/json';
+      request.body = jsonEncode(body);
+    }
+    final response = await http.Response.fromStream(
+      await _clientFor(connection).send(request).timeout(timeout),
+    ).timeout(timeout);
+    Map<String, dynamic>? payload;
+    try {
+      payload =
+          jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+    } on FormatException {
+      throw DesktopRequestException(
+        response.statusCode,
+        message: '데스크탑 응답을 읽지 못했습니다.',
+      );
+    }
+    if (response.statusCode < 200 ||
+        response.statusCode >= 300 ||
+        payload['success'] == false) {
+      throw DesktopRequestException(
+        response.statusCode,
+        message: payload['error'] is String ? payload['error'] as String : null,
+      );
+    }
+    return payload;
+  }
+
+  PaneStream openAuthenticatedTerminal(
+    DesktopConnection connection,
+    List<String> segments,
+  ) {
+    final uri = connection
+        .buildWebSocketUri('', const {})
+        .replace(
+          pathSegments: ['api', 'mobile', ...segments],
+          queryParameters: const {'cols': '80', 'rows': '24'},
+        );
+    final channel = IOWebSocketChannel.connect(
+      uri,
+      headers: connection.authorizationHeaders,
+      customClient: _webSocketClientFor(connection),
+      connectTimeout: _requestTimeout,
+    );
+    return PaneStream(
+      output: channel.stream.map((raw) => raw.toString()),
+      onWrite: (data) =>
+          channel.sink.add(jsonEncode({'type': 'input', 'data': data})),
+      onResize: (cols, rows) => channel.sink.add(
+        jsonEncode({'type': 'resize', 'cols': cols, 'rows': rows}),
+      ),
+      onClose: () => channel.sink.close(),
+      readCloseCode: () => channel.closeCode,
     );
   }
 

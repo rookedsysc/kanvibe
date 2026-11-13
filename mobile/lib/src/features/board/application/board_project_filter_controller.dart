@@ -5,6 +5,9 @@ import '../../../common/providers.dart';
 import '../data/board_snapshot.dart';
 import '../data/board_project_filter_store.dart';
 import 'board_desktop_filter_controller.dart';
+import 'board_pagination_controller.dart';
+import 'board_sort_controller.dart';
+import '../domain/board_view_options.dart';
 
 final boardProjectFilterStoreProvider = Provider<BoardProjectFilterStore>(
   (ref) => BoardProjectFilterStore(),
@@ -62,7 +65,13 @@ class BoardProjectFilterController extends Notifier<Set<String>> {
 }
 
 final filteredBoardProvider = Provider<AsyncValue<BoardSnapshot>>((ref) {
-  final board = ref.watch(boardProvider);
+  final initial = ref.watch(boardProvider);
+  final pagination = ref.watch(boardPaginationProvider);
+  final board = pagination.hasValue && !pagination.isLoading
+      ? AsyncData(pagination.requireValue.snapshot)
+      : initial.hasValue
+      ? AsyncData(initial.requireValue)
+      : initial;
   final connectionId = ref.watch(
     connectionControllerProvider.select(
       (value) => value.value?.activeConnection?.id,
@@ -71,8 +80,27 @@ final filteredBoardProvider = Provider<AsyncValue<BoardSnapshot>>((ref) {
   if (connectionId == null) return board;
   final selected = ref.watch(boardProjectFilterProvider(connectionId));
   final desktops = ref.watch(boardDesktopFilterProvider(connectionId));
-  return board.whenData(
-    (snapshot) =>
-        snapshot.filterByDesktops(desktops).filterByProjectIds(selected),
-  );
+  final kind = ref.watch(boardTaskKindProvider);
+  final sort = ref.watch(boardSortProvider).value ?? const [];
+  return board.whenData((snapshot) {
+    final filtered = snapshot
+        .filterByDesktops(desktops)
+        .filterByProjectIds(selected);
+    return filtered.withTasks({
+      for (final entry in filtered.tasksByStatus.entries)
+        entry.key: sortBoardTasks(
+          entry.value
+              .where(
+                (task) =>
+                    kind == BoardTaskKind.all ||
+                    (kind == BoardTaskKind.project) ==
+                        isProjectRoot(task, snapshot.projects),
+              )
+              .toList(),
+          sort,
+          snapshot.allTasks,
+          snapshot.projects,
+        ),
+    });
+  });
 });

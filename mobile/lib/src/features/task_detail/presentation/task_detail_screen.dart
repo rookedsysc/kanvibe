@@ -1,5 +1,14 @@
 import 'dart:async';
 
+import '../../ai_sessions/presentation/live_ai_sessions_screen.dart';
+import '../../diff/presentation/diff_screen.dart';
+import 'widgets/multi_pane_terminal.dart';
+import 'widgets/terminal_management_sheet.dart';
+import '../application/task_details_controller.dart';
+import 'task_editor_screen.dart';
+import 'related_tasks_screen.dart';
+import '../../../common/l10n/app_localizations.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -20,7 +29,6 @@ import '../../task_create/presentation/create_task_screen.dart';
 import '../domain/mirror_pane.dart';
 import 'pane_chat_shortcut.dart';
 import 'surface_unavailable_message.dart';
-import 'widgets/pane_terminal_view.dart';
 import 'widgets/task_info_sheet.dart';
 import 'widgets/task_session_type_sheet.dart';
 import 'widgets/task_status_sheet.dart';
@@ -28,10 +36,19 @@ import 'widgets/terminal_chrome_header.dart';
 
 /// 프로젝트·브랜치와 태스크 동작을 상단에 모으고 선택한 pane을 표시한다.
 class TaskDetailScreen extends ConsumerStatefulWidget {
-  const TaskDetailScreen({required this.task, super.key});
+  const TaskDetailScreen({
+    required this.task,
+    this.embedded = false,
+    this.onTaskDeleted,
+    this.initialWindowId,
+    super.key,
+  });
 
   /// 보드에서 고른 태스크. 제목뿐 아니라 정보 시트가 그리는 칸까지 이 안에 들어 있다
   final BoardTask task;
+  final String? initialWindowId;
+  final bool embedded;
+  final VoidCallback? onTaskDeleted;
 
   @override
   ConsumerState<TaskDetailScreen> createState() => _TaskDetailScreenState();
@@ -43,6 +60,7 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
   final _chatModePaneIds = <String>{};
   final _chatPaneIds = <String>{};
   final _chatPaneNumbers = <String, int>{};
+  bool _didSelectInitialWindow = false;
 
   /// 화면이 들고 있는 태스크. 상태를 옮기면 보드를 다시 받기 전에 여기부터 갈아 끼운다
   late BoardTask _task = widget.task;
@@ -80,10 +98,12 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
 
   /// 데스크탑 상세 화면처럼 사용자가 이 태스크를 실제로 보게 된 순간에만 알림을 읽음 처리한다.
   /// 다른 화면이 위에 덮였거나 앱이 백그라운드인 동안 도착한 알림은 다시 볼 때까지 안읽음으로 남긴다.
-  void _markTaskNotificationsReadWhenViewing() {
+  void _markTaskNotificationsReadWhenViewing({
+    bool refreshVisibleNotifications = false,
+  }) {
     final isViewingTask =
         _isAppResumed && (ModalRoute.isCurrentOf(context) ?? true);
-    if (isViewingTask && !_wasViewingTask) {
+    if (isViewingTask && (!_wasViewingTask || refreshVisibleNotifications)) {
       // 실패해도 다음에 화면을 다시 볼 때 같은 요청을 보내므로 화면 동작은 막지 않는다.
       unawaited(
         ref
@@ -130,7 +150,9 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
       }
       if (board.hasError) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('프로젝트를 불러오지 못했습니다. 잠시 뒤 다시 시도해 주세요.')),
+          SnackBar(
+            content: Text(context.tr('프로젝트를 불러오지 못했습니다. 잠시 뒤 다시 시도해 주세요.')),
+          ),
         );
         return;
       }
@@ -140,8 +162,10 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
           .firstOrNull;
       if (project == null) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('이 태스크의 원본 프로젝트를 찾을 수 없습니다. 데스크탑에서 프로젝트를 확인해 주세요.'),
+          SnackBar(
+            content: Text(
+              context.tr('이 태스크의 원본 프로젝트를 찾을 수 없습니다. 데스크탑에서 프로젝트를 확인해 주세요.'),
+            ),
           ),
         );
         return;
@@ -161,9 +185,15 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
       if (!mounted || created == null) {
         return;
       }
-      navigator.pushReplacement<void, void>(
-        MaterialPageRoute(builder: (_) => TaskDetailScreen(task: created)),
-      );
+      if (widget.embedded) {
+        navigator.push<void>(
+          MaterialPageRoute(builder: (_) => TaskDetailScreen(task: created)),
+        );
+      } else {
+        navigator.pushReplacement<void, void>(
+          MaterialPageRoute(builder: (_) => TaskDetailScreen(task: created)),
+        );
+      }
     } finally {
       if (mounted) {
         setState(() => _isPreparingCreateTask = false);
@@ -182,7 +212,9 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('터미널 탭을 추가하지 못했습니다. 잠시 뒤 다시 시도해 주세요.')),
+        SnackBar(
+          content: Text(context.tr('터미널 탭을 추가하지 못했습니다. 잠시 뒤 다시 시도해 주세요.')),
+        ),
       );
     }
   }
@@ -204,11 +236,14 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
         '실행 중인 프로세스를 확인하지 못했습니다. 탭을 닫으면 그 안의 프로세스가 종료됩니다.',
       );
     }
+    if (!mounted) return false;
     if (processNames.isEmpty) {
       return true;
     }
     return _askCloseConfirmation(
-      '${processNames.join(', ')} 실행 중인 탭을 닫으면 종료됩니다',
+      context.tr('{names} 실행 중인 탭을 닫으면 종료됩니다', {
+        'names': processNames.join(', '),
+      }),
     );
   }
 
@@ -217,18 +252,18 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
     final isConfirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        backgroundColor: AppColors.bgSurface,
-        title: const Text('탭을 닫을까요?'),
-        content: Text(message),
+        backgroundColor: context.colors.bgSurface,
+        title: Text(context.tr('탭을 닫을까요?')),
+        content: Text(context.tr(message)),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('취소'),
+            child: Text(context.tr('취소')),
           ),
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(true),
             style: TextButton.styleFrom(foregroundColor: AppColors.statusError),
-            child: const Text('닫기'),
+            child: Text(context.tr('닫기')),
           ),
         ],
       ),
@@ -269,20 +304,68 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
   void _showNotice(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(message)));
+        .showSnackBar(SnackBar(content: Text(context.tr(message))));
+  }
+
+  Future<void> _editTask() async {
+    final updated = await Navigator.of(context).push<BoardTask>(
+      MaterialPageRoute(builder: (_) => TaskEditorScreen(task: _task)),
+    );
+    if (mounted && updated != null) setState(() => _task = updated);
+  }
+
+  Future<void> _openRelatedTasks() async {
+    final projectId = _task.projectId;
+    if (projectId == null) return;
+    final selected = await Navigator.of(context).push<BoardTask>(
+      MaterialPageRoute(
+        builder: (_) => RelatedTasksScreen(
+          projectId: projectId,
+          baseBranch: _task.baseBranch,
+        ),
+      ),
+    );
+    if (!mounted || selected == null) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => TaskDetailScreen(task: selected)),
+    );
+  }
+
+  Future<void> _branchExistingTask() async {
+    final result = await AsyncValue.guard(() => ref.read(boardProvider.future));
+    if (!mounted) return;
+    if (result.hasError) {
+      _showNotice(context.tr('프로젝트를 불러오지 못했습니다. 잠시 뒤 다시 시도해 주세요.'));
+      return;
+    }
+    final board = result.requireValue;
+    final updated = await Navigator.of(context).push<BoardTask>(
+      MaterialPageRoute(
+        builder: (_) => CreateTaskScreen(
+          projects: board.creatableProjects,
+          defaultProjectId: _task.projectId,
+          defaultBaseBranch: _task.baseBranch,
+          existingTaskId: _task.id,
+        ),
+      ),
+    );
+    if (mounted && updated != null) {
+      setState(() => _task = updated);
+      ref.invalidate(surfacesProvider(_task.id));
+    }
   }
 
   Future<void> _openInfoSheet() => showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
-    backgroundColor: AppColors.bgSurface,
+    backgroundColor: context.colors.bgSurface,
     builder: (_) => TaskInfoSheet(task: _task),
   );
 
   Future<void> _openStatusSheet() async {
     final result = await showModalBottomSheet<TaskStatusSheetResult>(
       context: context,
-      backgroundColor: AppColors.bgSurface,
+      backgroundColor: context.colors.bgSurface,
       builder: (_) => TaskStatusSheet(task: _task),
     );
 
@@ -298,13 +381,20 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
-                '다른 데스크탑 $failedPeerCount곳에는 아직 남아 있습니다. 그 데스크탑이 켜지면 직접 삭제해 주세요.',
+                context.tr(
+                  '다른 데스크탑 {count}곳에는 아직 남아 있습니다. 그 데스크탑이 켜지면 직접 삭제해 주세요.',
+                  {'count': failedPeerCount},
+                ),
               ),
             ),
           );
         }
         // 지운 태스크의 화면에는 비출 pane이 없으니 보드로 돌아간다
-        Navigator.of(context).pop();
+        if (widget.embedded) {
+          widget.onTaskDeleted?.call();
+        } else {
+          Navigator.of(context).pop();
+        }
       case null:
         break;
     }
@@ -313,7 +403,7 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
   Future<void> _openSessionTypeSheet(SessionType currentSessionType) =>
       showModalBottomSheet<SessionType>(
         context: context,
-        backgroundColor: AppColors.bgSurface,
+        backgroundColor: context.colors.bgSurface,
         builder: (_) => TaskSessionTypeSheet(
           taskId: _task.id,
           currentSessionType: currentSessionType,
@@ -329,17 +419,29 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
 
     var opened = false;
     try {
+      final url =
+          _task.prUrl ??
+          await ref
+              .read(taskDetailsProvider(_task.id).notifier)
+              .findPullRequest();
+      if (!mounted) return;
+      if (url == null) {
+        messenger.showSnackBar(
+          SnackBar(content: Text(context.tr('연결된 PR을 찾지 못했습니다.'))),
+        );
+        return;
+      }
       opened = await launchUrl(
-        Uri.parse(_task.prUrl!),
+        Uri.parse(url),
         mode: LaunchMode.externalApplication,
       );
     } catch (_) {
       opened = false;
     }
 
-    if (!opened) {
+    if (!opened && mounted) {
       messenger.showSnackBar(
-        const SnackBar(content: Text('PR을 열 수 있는 앱이 없습니다.')),
+        SnackBar(content: Text(context.tr('PR을 열 수 있는 앱이 없습니다.'))),
       );
     }
   }
@@ -347,6 +449,11 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
   @override
   Widget build(BuildContext context) {
     ref.listen(taskNotificationUpdatesProvider(_task.id), (_, next) {
+      if (next.hasValue && next.value != null) {
+        _markTaskNotificationsReadWhenViewing(
+          refreshVisibleNotifications: true,
+        );
+      }
       final status = TaskStatus.fromWire(next.value?.status ?? '');
       if (status != null && status != _task.status) {
         setState(() => _task = _task.withStatus(status));
@@ -363,7 +470,7 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
           ),
           (
             id: 'chat-history',
-            label: '대화 기록',
+            label: context.tr('대화 기록'),
             icon: Icons.chat_bubble_outline,
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute<void>(
@@ -372,20 +479,104 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
             ),
           ),
           (
+            id: 'live-ai-sessions',
+            label: context.tr('실행 중 AI 세션'),
+            icon: Icons.smart_toy_outlined,
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => LiveAiSessionsScreen(
+                  taskId: _task.id,
+                  onSelectWindow: (windowId) {
+                    final panes =
+                        ref
+                            .read(surfacesProvider(_task.id))
+                            .value
+                            ?.surfaces
+                            .allPanes ??
+                        [];
+                    final pane = panes
+                        .where((pane) => pane.tabId == windowId)
+                        .firstOrNull;
+                    if (pane != null) {
+                      setState(() => _selectedPaneId = pane.id);
+                      Navigator.of(context).pop();
+                    } else {
+                      _showNotice(context.tr('해당 터미널 탭을 찾지 못했습니다.'));
+                    }
+                  },
+                ),
+              ),
+            ),
+          ),
+          (
+            id: 'task-diff',
+            label: context.tr('변경 파일'),
+            icon: Icons.difference_outlined,
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => DiffScreen(taskId: _task.id),
+              ),
+            ),
+          ),
+          (
+            id: 'manage-terminal',
+            label: context.tr('터미널 관리'),
+            icon: Icons.tune,
+            onPressed: surfaces.hasValue
+                ? () => showModalBottomSheet<void>(
+                    context: context,
+                    isScrollControlled: true,
+                    builder: (_) => TerminalManagementSheet(
+                      taskId: _task.id,
+                      selectedPaneId:
+                          _selectedPaneId ??
+                          surfaces
+                              .requireValue
+                              .surfaces
+                              .allPanes
+                              .firstOrNull
+                              ?.id ??
+                          '',
+                      isRemote: _task.isRemote,
+                    ),
+                  )
+                : null,
+          ),
+          (
+            id: 'edit-task',
+            label: context.tr('정보 수정'),
+            icon: Icons.edit_outlined,
+            onPressed: _editTask,
+          ),
+          if (_task.projectId != null)
+            (
+              id: 'related-tasks',
+              label: context.tr('프로젝트 작업'),
+              icon: Icons.account_tree_outlined,
+              onPressed: _openRelatedTasks,
+            ),
+          if (_task.branchName == null)
+            (
+              id: 'branch-existing-task',
+              label: context.tr('브랜치 작업으로 전환'),
+              icon: Icons.fork_right,
+              onPressed: _branchExistingTask,
+            ),
+          (
             id: 'task-info',
-            label: '정보',
+            label: context.tr('정보'),
             icon: Icons.info_outline,
             onPressed: _openInfoSheet,
           ),
           (
             id: 'task-status',
-            label: '상태 옮기기',
+            label: context.tr('상태 옮기기'),
             icon: Icons.swap_horiz,
             onPressed: _openStatusSheet,
           ),
           (
             id: 'change-session-type',
-            label: '세션 종류 바꾸기',
+            label: context.tr('세션 종류 바꾸기'),
             icon: Icons.terminal,
             onPressed: surfaces.hasValue
                 ? () => _openSessionTypeSheet(
@@ -393,10 +584,10 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
                   )
                 : null,
           ),
-          if (_task.prUrl != null)
+          if (_task.prUrl != null || _task.branchName != null)
             (
               id: 'task-pull-request',
-              label: 'PR 열기',
+              label: context.tr('PR 열기'),
               icon: Icons.call_merge,
               onPressed: _openPullRequest,
             ),
@@ -407,6 +598,7 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
         final isCompact = !isTabletLayout(constraints);
         return Scaffold(
           appBar: AppBar(
+            automaticallyImplyLeading: !widget.embedded,
             titleSpacing: AppSizes.p8,
             leadingWidth: AppSizes.minTouchTarget,
             title: TerminalChromeHeader(task: _task),
@@ -415,7 +607,7 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
                 Semantics(
                   identifier: 'task-more',
                   child: PopupMenuButton<VoidCallback>(
-                    tooltip: '태스크 메뉴',
+                    tooltip: context.tr('태스크 메뉴'),
                     onSelected: (action) => action(),
                     itemBuilder: (_) => [
                       for (final action in headerActions)
@@ -434,7 +626,7 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
                                         ? AppColors.brandPrimary
                                         : null,
                                   ),
-                                  const SizedBox(width: AppSizes.p12),
+                                  SizedBox(width: AppSizes.p12),
                                   Flexible(child: Text(action.label)),
                                 ],
                               ),
@@ -464,8 +656,7 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
               children: [
                 Expanded(
                   child: surfaces.when(
-                    loading: () =>
-                        const Center(child: CircularProgressIndicator()),
+                    loading: () => Center(child: CircularProgressIndicator()),
                     error: (error, _) => _SurfacesUnavailable(
                       reason: error is SurfaceUnavailableException
                           ? error.reason
@@ -526,6 +717,13 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
       );
     }
 
+    if (!_didSelectInitialWindow && widget.initialWindowId != null) {
+      _selectedPaneId = tabs
+          .where((pane) => pane.tabId == widget.initialWindowId)
+          .firstOrNull
+          ?.id;
+      _didSelectInitialWindow = true;
+    }
     final matchingIndex = tabs.indexWhere((pane) => pane.id == _selectedPaneId);
     final selectedIndex = matchingIndex < 0 ? 0 : matchingIndex;
     final selectedPaneId = tabs[selectedIndex].id;
@@ -613,15 +811,13 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
             excluding: chatMode || !routeActive,
             child: Offstage(
               offstage: chatMode,
-              child: PaneTerminalView(
+              child: MultiPaneTerminal(
                 taskId: _task.id,
-                pane: pane,
-                canResize: surfaces.canResize,
-                sessionType: surfaces.sessionType,
-                canRespondToDeviceQueries: surfaces.canRespondToDeviceQueries,
+                surfaces: surfaces,
+                selectedPane: pane,
+                onSelectedPane: (id) => setState(() => _selectedPaneId = id),
                 isActive: !chatMode && routeActive,
                 onToggleChat: _toggleSelectedPaneChat,
-                key: ValueKey(pane.id),
               ),
             ),
           ),
@@ -673,7 +869,7 @@ class _SurfaceTabBar extends StatelessWidget {
     return Container(
       height: AppSizes.minTouchTarget,
       color: AppColors.terminalChrome,
-      foregroundDecoration: const BoxDecoration(
+      foregroundDecoration: BoxDecoration(
         border: Border(bottom: BorderSide(color: AppColors.borderDefault)),
       ),
       child: Row(
@@ -681,7 +877,7 @@ class _SurfaceTabBar extends StatelessWidget {
           Expanded(
             child: ListView.builder(
               scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: AppSizes.p8),
+              padding: EdgeInsets.symmetric(horizontal: AppSizes.p8),
               itemCount: tabs.length,
               itemBuilder: (context, index) => _SurfaceTabButton(
                 tab: tabs[index],
@@ -696,13 +892,13 @@ class _SurfaceTabBar extends StatelessWidget {
             identifier: 'create-terminal-tab',
             child: IconButton(
               onPressed: onCreate,
-              tooltip: onCreate == null ? '터미널 추가 중…' : '터미널 탭 추가',
+              tooltip: context.tr(onCreate == null ? '터미널 추가 중…' : '터미널 탭 추가'),
               icon: onCreate == null
-                  ? const SizedBox.square(
+                  ? SizedBox.square(
                       dimension: AppSizes.p16,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
-                  : const Icon(Icons.add),
+                  : Icon(Icons.add, color: AppColors.textSecondary),
             ),
           ),
         ],
@@ -734,14 +930,16 @@ class _SurfaceTabButton extends StatelessWidget {
       identifier: 'terminal-tab-${tab.id}',
       selected: isSelected,
       button: true,
-      label:
-          '${chatLabel ?? (tab.command.isEmpty ? tab.id : tab.command)} ${tab.id} 탭',
+      label: context.tr('{name} {id} 탭', {
+        'name': chatLabel ?? (tab.command.isEmpty ? tab.id : tab.command),
+        'id': tab.id,
+      }),
       child: InkWell(
         onTap: onTap,
         child: Container(
           width: 160,
           alignment: Alignment.center,
-          padding: const EdgeInsets.only(left: AppSizes.p12),
+          padding: EdgeInsets.only(left: AppSizes.p12),
           // 밑줄이 높이를 차지하면 닫기 버튼이 최소 터치 크기보다 작아져 위에 덧그린다
           foregroundDecoration: BoxDecoration(
             border: Border(
@@ -769,8 +967,6 @@ class _SurfaceTabButton extends StatelessWidget {
                             fontSize: 13,
                             color: isSelected
                                 ? AppColors.textPrimary
-                                : chatLabel == null
-                                ? AppColors.textMuted
                                 : AppColors.textSecondary,
                             fontWeight: isSelected
                                 ? FontWeight.w700
@@ -779,7 +975,7 @@ class _SurfaceTabButton extends StatelessWidget {
                         ),
                       ),
                     ),
-                    const SizedBox(height: 2),
+                    SizedBox(height: 2),
                     Text(
                       chatLabel == null
                           ? '${tab.tabName} ${tab.id}'
@@ -787,10 +983,8 @@ class _SurfaceTabButton extends StatelessWidget {
                           ? '…${tab.id.substring(tab.id.length - 6)}'
                           : tab.id,
                       overflow: TextOverflow.ellipsis,
-                      style: chatLabel == null
-                          ? Theme.of(context).textTheme.labelSmall
-                          : Theme.of(context).textTheme.labelSmall
-                                ?.copyWith(color: AppColors.textSecondary),
+                      style: Theme.of(context).textTheme.labelSmall
+                          ?.copyWith(color: AppColors.textSecondary),
                     ),
                   ],
                 ),
@@ -799,13 +993,18 @@ class _SurfaceTabButton extends StatelessWidget {
                 identifier: 'close-terminal-tab-${tab.id}',
                 child: IconButton(
                   onPressed: onClose,
-                  tooltip: '탭 닫기',
+                  tooltip: context.tr('탭 닫기'),
                   iconSize: AppSizes.p16,
-                  constraints: const BoxConstraints.tightFor(
+                  constraints: BoxConstraints.tightFor(
                     width: AppSizes.minTouchTarget,
                     height: AppSizes.minTouchTarget,
                   ),
-                  icon: const Icon(Icons.close),
+                  icon: Icon(
+                    Icons.close,
+                    color: onClose == null
+                        ? AppColors.textMuted
+                        : AppColors.textSecondary,
+                  ),
                 ),
               ),
             ],
@@ -832,7 +1031,7 @@ class _SurfacesUnavailable extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(AppSizes.p24),
+        padding: EdgeInsets.all(AppSizes.p24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -841,8 +1040,8 @@ class _SurfacesUnavailable extends StatelessWidget {
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodyMedium,
             ),
-            const SizedBox(height: AppSizes.p16),
-            FilledButton(onPressed: onRetry, child: const Text('다시 시도')),
+            SizedBox(height: AppSizes.p16),
+            FilledButton(onPressed: onRetry, child: Text(context.tr('다시 시도'))),
           ],
         ),
       ),

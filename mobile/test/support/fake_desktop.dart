@@ -335,6 +335,7 @@ class FakeDesktopClient implements DesktopClient {
     String? baseBranch,
     String? description,
     String? priority,
+    String? sessionType,
   }) async {
     createCalls.add({
       'projectId': projectId,
@@ -342,6 +343,7 @@ class FakeDesktopClient implements DesktopClient {
       'baseBranch': baseBranch,
       'description': description,
       'priority': priority,
+      'sessionType': ?sessionType,
     });
 
     if (createError != null) {
@@ -485,7 +487,42 @@ class FakeDesktopClient implements DesktopClient {
     String taskId,
     ChatSession session, {
     String? cursor,
+    String? query,
+    Set<String> roles = const {},
   }) async => const ChatMessagePage(messages: []);
+
+  Future<Map<String, dynamic>> Function(
+    String method,
+    List<String> segments,
+    Map<String, String>? query,
+    Map<String, dynamic>? body,
+  )?
+  onJsonRequest;
+  PaneStream Function(List<String> segments)? onAuthenticatedTerminal;
+
+  @override
+  Future<Map<String, dynamic>> requestJson(
+    DesktopConnection connection,
+    String method,
+    List<String> segments, {
+    Map<String, String>? query,
+    Map<String, dynamic>? body,
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
+    final handler = onJsonRequest;
+    if (handler == null) throw DesktopRequestException(404);
+    return handler(method, segments, query, body);
+  }
+
+  @override
+  PaneStream openAuthenticatedTerminal(
+    DesktopConnection connection,
+    List<String> segments,
+  ) {
+    final handler = onAuthenticatedTerminal;
+    if (handler == null) throw StateError('로그인 터미널 응답이 준비되지 않았습니다.');
+    return handler(segments);
+  }
 
   @override
   Future<PaneChatSnapshot> fetchPaneChat(

@@ -6,9 +6,29 @@ import '../domain/task_status.dart';
 ///
 /// 데스크탑과 같은 조회를 쓰므로 정렬(최근 수정 순)과 done 페이지 크기가 데스크탑과 같다.
 class BoardSnapshot {
-  const BoardSnapshot({required this.tasksByStatus, this.projects = const []});
+  const BoardSnapshot({
+    required this.tasksByStatus,
+    this.projects = const [],
+    this.doneTotal = 0,
+    this.doneLimit = 20,
+  });
 
   final Map<TaskStatus, List<BoardTask>> tasksByStatus;
+  final int doneTotal;
+  final int doneLimit;
+  List<BoardTask> get allTasks =>
+      tasksByStatus.values.expand((tasks) => tasks).toList();
+  bool get hasMoreDone => tasksIn(TaskStatus.done).length < doneTotal;
+
+  BoardSnapshot withTasks(
+    Map<TaskStatus, List<BoardTask>> tasks, {
+    int? doneTotal,
+  }) => BoardSnapshot(
+    tasksByStatus: tasks,
+    projects: projects,
+    doneTotal: doneTotal ?? this.doneTotal,
+    doneLimit: doneLimit,
+  );
 
   /// 데스크탑에 등록된 프로젝트. 태스크 생성 화면이 고를 대상으로 쓴다
   final List<BoardProject> projects;
@@ -80,6 +100,8 @@ class BoardSnapshot {
               .toList(),
       },
       projects: projects,
+      doneTotal: doneTotal,
+      doneLimit: doneLimit,
     );
   }
 
@@ -99,6 +121,10 @@ class BoardSnapshot {
       for (final project in projects)
         if (project.color != null) project.id: project.color!,
     };
+    final projectIconsById = {
+      for (final project in projects)
+        if (project.iconDataUrl != null) project.id: project.iconDataUrl!,
+    };
     final rawTasks = json['tasks'];
     final tasksByStatus = <TaskStatus, List<BoardTask>>{};
 
@@ -113,13 +139,21 @@ class BoardSnapshot {
               entry,
               projectNamesById,
               projectColorsById: projectColorsById,
+              projectIconsById: projectIconsById,
             ),
           )
           .whereType<BoardTask>()
           .toList();
     }
 
-    return BoardSnapshot(tasksByStatus: tasksByStatus, projects: projects);
+    return BoardSnapshot(
+      tasksByStatus: tasksByStatus,
+      projects: projects,
+      doneTotal: json['doneTotal'] is int
+          ? json['doneTotal'] as int
+          : (tasksByStatus[TaskStatus.done]?.length ?? 0),
+      doneLimit: json['doneLimit'] is int ? json['doneLimit'] as int : 20,
+    );
   }
 
   /// 목록이 아닌 값이 오면 그 칸만 비운다. 응답 한 곳이 어긋났다고 보드 전체를 못 그리면 안 된다
