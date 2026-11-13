@@ -139,6 +139,144 @@ describe("gitOperations interactive remote transaction", () => {
     }));
   });
 
+  it("여러 청크의 출력 크기는 새 청크만 계산한다", async () => {
+    const child = createMockSSHProcess();
+    const chunk = "한글🙂".repeat(64);
+    let measuredCharacters = 0;
+    let searchedCharacters = 0;
+    mocks.spawn.mockImplementation(() => {
+      queueMicrotask(() => {
+        const original = Buffer.byteLength;
+        const measure = vi.spyOn(Buffer, "byteLength").mockImplementation((value, encoding) => {
+          if (typeof value === "string") measuredCharacters += value.length;
+          return original(value, encoding);
+        });
+        const originalSearch = String.prototype.lastIndexOf;
+        const search = vi.spyOn(String.prototype, "lastIndexOf").mockImplementation(function (this: string, value, position) {
+          if (value === `\n${REMOTE_COMMAND_EXIT_MARKER}:`) searchedCharacters += this.length;
+          return originalSearch.call(this, value, position);
+        });
+        try {
+          for (let index = 0; index < 128; index += 1) child.writeStdout(chunk);
+          completeRemoteCommand(child, "");
+        } finally {
+          measure.mockRestore();
+          search.mockRestore();
+        }
+      });
+      return child;
+    });
+    const { execGit } = await import("@/lib/gitOperations");
+    await expect(execGit("stream", "remote-host")).resolves.toBe(chunk.repeat(128));
+    expect(measuredCharacters).toBeLessThan(chunk.length * 128 * 3);
+    expect(searchedCharacters).toBeLessThan(chunk.length * 128 * 3);
+  });
+
+  it.each(["success", "maxBuffer"])("%s 확정 후 늦은 출력은 다시 처리하지 않는다", async (outcome) => {
+    const child = createMockSSHProcess();
+    let lateMeasurements = 0;
+    mocks.spawn.mockImplementation(() => {
+      queueMicrotask(() => {
+        if (outcome === "success") completeRemoteCommand(child, "ok");
+        else child.writeStdout("x".repeat(101));
+        const measure = vi.spyOn(Buffer, "byteLength");
+        try {
+          child.writeStdout("late stdout");
+          child.writeStderr("late stderr");
+          lateMeasurements = measure.mock.calls.length;
+        } finally {
+          measure.mockRestore();
+        }
+      });
+      return child;
+    });
+    const { execGit } = await import("@/lib/gitOperations");
+    const result = execGit("stream", "remote-host", { maxBufferBytes: 100 });
+    if (outcome === "success") await expect(result).resolves.toBe("ok");
+    else await expect(result).rejects.toThrow("exceeded maxBuffer");
+    expect(lateMeasurements).toBe(0);
+    expect(child.kill).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    { chunks: Array.from(`한글🙂\n${REMOTE_COMMAND_EXIT_MARKER}:0\r\n`), expected: "한글🙂" },
+    { chunks: [`before\n${REMOTE_COMMAND_EXIT_MARKER}:0\r`, "", "\n"], expected: "before" },
+    { chunks: [`before\n${REMOTE_COMMAND_EXIT_MARKER}:9\nignored\n${REMOTE_COMMAND_EXIT_MARKER}:0\n`], expected: `before\n${REMOTE_COMMAND_EXIT_MARKER}:9\nignored` },
+    { chunks: [`before\n${REMOTE_COMMAND_EXIT_MARKER}:0\nlast\n${REMOTE_COMMAND_EXIT_MARKER}:`], expected: `before\n${REMOTE_COMMAND_EXIT_MARKER}:0\nlast\n${REMOTE_COMMAND_EXIT_MARKER}:` },
+    { chunks: [`before\n${REMOTE_COMMAND_EXIT_MARKER}:x`, "ignored"], expected: `before\n${REMOTE_COMMAND_EXIT_MARKER}:xignored` },
+  ])("완료 마커의 청크 경계와 마지막 prefix 우선순위를 유지한다: $expected", async ({ chunks, expected }) => {
+    const child = createMockSSHProcess();
+    mocks.spawn.mockImplementation(() => {
+      queueMicrotask(() => {
+        for (const chunk of chunks) child.writeStdout(chunk);
+        child.close(0);
+      });
+      return child;
+    });
+    const { execGit } = await import("@/lib/gitOperations");
+    await expect(execGit("stream", "remote-host")).resolves.toBe(expected);
+  });
+
+  it("UTF-8 stdout와 stderr를 합산하고 정확한 한도까지 허용한다", async () => {
+    const child = createMockSSHProcess();
+    mocks.spawn.mockImplementation(() => {
+      queueMicrotask(() => {
+        child.writeStdout("한");
+        child.writeStderr("🙂");
+        child.writeStdout("글");
+        child.close(0);
+      });
+      return child;
+    });
+    const { execGit } = await import("@/lib/gitOperations");
+    await expect(execGit("stream", "remote-host", { maxBufferBytes: 10 })).resolves.toBe("한글");
+  });
+
+  it("청크 경계의 surrogate pair도 합쳐진 UTF-8 크기로 계산한다", async () => {
+    const child = createMockSSHProcess();
+    mocks.spawn.mockImplementation(() => {
+      queueMicrotask(() => {
+        child.writeStdout("\ud83d");
+        child.writeStdout("");
+        child.writeStdout("\ude42");
+        child.close(0);
+      });
+      return child;
+    });
+    const { execGit } = await import("@/lib/gitOperations");
+    await expect(execGit("stream", "remote-host", { maxBufferBytes: 4 })).resolves.toBe("🙂");
+  });
+
+  it("responder 요청 행을 제거한 뒤 출력 한도를 다시 사용할 수 있다", async () => {
+    const child = createMockSSHProcess();
+    const payload = "x".repeat(80);
+    const output = "한".repeat(25);
+    child.stdin.end.mockImplementation(() => queueMicrotask(() => {
+      child.writeStdout(output);
+      child.close(0);
+    }));
+    mocks.spawn.mockImplementation(() => {
+      queueMicrotask(() => child.writeStdout(`READY\t${payload}\n`));
+      return child;
+    });
+    const respond = vi.fn(async () => "reply");
+    const { execGit } = await import("@/lib/gitOperations");
+    await expect(execGit("transaction", "remote-host", { maxBufferBytes: 100, remoteStdinResponder: { marker: "READY", respond } })).resolves.toBe(output);
+    expect(respond).toHaveBeenCalledWith(payload);
+  });
+
+  it("responder 요청 제거 전에 한도를 넘으면 callback을 실행하지 않는다", async () => {
+    const child = createMockSSHProcess();
+    mocks.spawn.mockImplementation(() => {
+      queueMicrotask(() => child.writeStdout("READY\toversized\n"));
+      return child;
+    });
+    const respond = vi.fn(async () => "reply");
+    const { execGit } = await import("@/lib/gitOperations");
+    await expect(execGit("transaction", "remote-host", { maxBufferBytes: 10, remoteStdinResponder: { marker: "READY", respond } })).rejects.toThrow("exceeded maxBuffer");
+    expect(respond).not.toHaveBeenCalled();
+  });
+
   it("분할 수신한 요청 한 줄에 한 번만 응답하고 비밀 내용은 stdin으로 보낸다", async () => {
     const child = createMockSSHProcess();
     const respond = vi.fn(async (payload: string) => {
