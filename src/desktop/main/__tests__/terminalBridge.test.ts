@@ -40,6 +40,11 @@ vi.mock("@/lib/remoteSessionDependency", () => ({
   ensureRemoteSessionDependency: vi.fn(),
 }));
 
+const mockClearRemoteSSHTransportCooldown = vi.fn();
+vi.mock("@/lib/gitOperations", () => ({
+  clearRemoteSSHTransportCooldown: (...args: unknown[]) => mockClearRemoteSSHTransportCooldown(...args),
+}));
+
 vi.mock("@/desktop/main/services/paneLayoutService", () => ({
   getEffectivePaneLayout: vi.fn(),
 }));
@@ -210,6 +215,15 @@ describe("terminalBridge existing remote session migration", () => {
     expect(mockEnsureKanvibeHooksCurrent.mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(terminal.attachRemoteSession).mock.invocationCallOrder[0]);
   });
 
+  it("원격 터미널을 열 때 백그라운드 실패로 걸린 SSH cooldown을 원격 명령보다 먼저 해제한다", async () => {
+    const bridge = await importBridge();
+    const remoteSessionDependency = await import("@/lib/remoteSessionDependency");
+    await bridge.attachTaskTerminal(remoteTask(), null, new bridge.CallbackTerminalClient(() => {}));
+    expect(mockClearRemoteSSHTransportCooldown).toHaveBeenCalledWith("app-prod");
+    expect(mockClearRemoteSSHTransportCooldown.mock.invocationCallOrder[0])
+      .toBeLessThan(vi.mocked(remoteSessionDependency.ensureRemoteSessionDependency).mock.invocationCallOrder[0]);
+  });
+
   it("worktree 경로가 없는 기본 브랜치 세션도 프로젝트 경로의 훅을 검사한다", async () => {
     mockFindProjectBy.mockResolvedValue({ repoPath: "/remote/root" });
     const bridge = await importBridge();
@@ -221,11 +235,19 @@ describe("terminalBridge existing remote session migration", () => {
 
   it("마이그레이션 실패를 알리고 attach 실패를 반환하며 다음 요청은 재시도한다", async () => {
     mockEnsureKanvibeHooksCurrent.mockRejectedValueOnce(new Error("hooks write denied"));
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const bridge = await importBridge();
     const terminal = await import("@/lib/terminal");
     const client = new bridge.CallbackTerminalClient(() => {});
     await expect(bridge.attachTaskTerminal(remoteTask(), null, client)).rejects.toThrow("hooks write denied");
     expect(mockBroadcastTaskHookInstallFailed).toHaveBeenCalledWith({ taskId: "task-1", taskTitle: "existing task", error: "hooks write denied" });
+    expect(consoleErrorSpy).toHaveBeenCalledWith("터미널 연결 전 hooks 확인 실패:", expect.objectContaining({
+      taskId: "task-1",
+      targetPath: "/remote/repo",
+      sshHost: "app-prod",
+      error: "hooks write denied",
+    }));
+    consoleErrorSpy.mockRestore();
     expect(terminal.attachRemoteSession).not.toHaveBeenCalled();
     await bridge.attachTaskTerminal(remoteTask(), null, client);
     expect(terminal.attachRemoteSession).toHaveBeenCalledTimes(1);

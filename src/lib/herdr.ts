@@ -108,7 +108,12 @@ function readHerdrResult<T>(output: string): T {
   return response.result as T;
 }
 
-export async function runHerdrCommand<T>(sessionName: string, arguments_: string[], sshHost?: string | null): Promise<T> {
+export async function runHerdrCommand<T>(
+  sessionName: string,
+  arguments_: string[],
+  sshHost?: string | null,
+  shouldLogFailure = true,
+): Promise<T> {
   const { workspaceKey } = parseHerdrSessionTarget(sessionName);
   if (workspaceKey) {
     const workspaceId = await getHerdrWorkspaceId(sessionName, sshHost);
@@ -126,6 +131,7 @@ export async function runHerdrCommand<T>(sessionName: string, arguments_: string
   const output = await execGit(buildHerdrCommand(sessionName, arguments_), sshHost, {
     timeoutMs: HERDR_COMMAND_TIMEOUT_MS,
     retrySafe: arguments_[1] === "list" || (arguments_[0] === "pane" && ["get", "layout"].includes(arguments_[1])),
+    shouldLogFailure,
   });
   // send-text는 전송 성공 시 본문을 출력하지 않는다.
   if (!output && arguments_[0] === "pane" && arguments_[1] === "send-text") return undefined as T;
@@ -133,7 +139,8 @@ export async function runHerdrCommand<T>(sessionName: string, arguments_: string
 }
 
 export async function readHerdrTabs(sessionName: string, sshHost?: string | null): Promise<TerminalTab[]> {
-  const result = await runHerdrCommand<{ tabs: HerdrTab[] }>(sessionName, ["tab", "list"], sshHost);
+  // 탭 목록은 주기적으로 조회하므로 herdr 서버가 꺼져 있을 때의 실패를 매번 오류 로그로 남기지 않는다.
+  const result = await runHerdrCommand<{ tabs: HerdrTab[] }>(sessionName, ["tab", "list"], sshHost, false);
   return result.tabs.map((tab, index) => ({
     id: tab.tab_id,
     nativeIndex: index,

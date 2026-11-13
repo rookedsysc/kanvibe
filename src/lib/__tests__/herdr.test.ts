@@ -333,6 +333,15 @@ describe("Herdr API", () => {
     execGit.mockResolvedValue(JSON.stringify({ error: { code: "not_found", message: "missing session" } }));
     await expect(readHerdrTabs("feature")).rejects.toThrow("missing session");
   });
+  it("herdr 서버가 꺼져 있으면 실패하는 탭 목록 조회는 실패를 오류 로그로 남기지 않게 요청한다", async () => {
+    execGit.mockResolvedValue(JSON.stringify({ result: { tabs: [] } }));
+    await readHerdrTabs("feature", "remote");
+    expect(execGit).toHaveBeenCalledWith(
+      buildHerdrCommand("feature", ["tab", "list"]),
+      "remote",
+      expect.objectContaining({ shouldLogFailure: false }),
+    );
+  });
   it("소켓 응답이 여러 조각으로 와도 정확한 tab.move 요청을 한 번 전송한다", async () => {
     directory = await mkdtemp(path.join(tmpdir(), "kvht-"));
     const socketPath = path.join(directory, "api");
@@ -743,8 +752,8 @@ describe("readHerdrTaskPaneSize", () => {
     execGit.mockResolvedValueOnce(result({ pane: selected })).mockResolvedValueOnce(result({ layout: { ...layout, zoomed, focused_pane_id: focused } }));
     await expect(readHerdrTaskPaneSize("feature", "w1:p1", "remote")).resolves.toEqual({ cols, rows: 22 });
     expect(execGit.mock.calls).toEqual([
-      [buildHerdrCommand("feature", ["pane", "get", "w1:p1"]), "remote", { timeoutMs: 5000, retrySafe: true }],
-      [buildHerdrCommand("feature", ["pane", "layout", "--pane", "w1:p1"]), "remote", { timeoutMs: 5000, retrySafe: true }],
+      [buildHerdrCommand("feature", ["pane", "get", "w1:p1"]), "remote", { timeoutMs: 5000, retrySafe: true, shouldLogFailure: true }],
+      [buildHerdrCommand("feature", ["pane", "layout", "--pane", "w1:p1"]), "remote", { timeoutMs: 5000, retrySafe: true, shouldLogFailure: true }],
     ]);
   });
 
@@ -787,7 +796,7 @@ describe("readHerdrTaskPaneSize", () => {
     execGit.mockResolvedValueOnce(result({}));
     const { runHerdrCommand } = await import("@/lib/herdr");
     await runHerdrCommand("feature", args, "remote");
-    expect(execGit).toHaveBeenCalledWith(buildHerdrCommand("feature", args), "remote", { timeoutMs: 5000, retrySafe: false });
+    expect(execGit).toHaveBeenCalledWith(buildHerdrCommand("feature", args), "remote", { timeoutMs: 5000, retrySafe: false, shouldLogFailure: true });
   });
 
 });

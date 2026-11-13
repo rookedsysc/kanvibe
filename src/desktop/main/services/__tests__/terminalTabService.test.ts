@@ -96,6 +96,31 @@ describe("탭 목록 조회", () => {
     expect(result).toEqual({ ok: false, tabs: [], error: "tmux: command not found" });
   });
 
+  it("세션이 꺼져 있으면 실패하는 tmux window 목록 조회는 실패를 오류 로그로 남기지 않게 요청한다", async () => {
+    stubTask({ sshHost: "remote-mac" });
+    mockExecGit.mockResolvedValue("@1\t0\t1\tzsh");
+    const { listTerminalTabs } = await importService();
+
+    await listTerminalTabs("task-1");
+
+    const listWindowsCall = mockExecGit.mock.calls.find(([command]) => String(command).includes("list-windows"));
+    expect(listWindowsCall?.[1]).toBe("remote-mac");
+    expect(listWindowsCall?.[2]).toMatchObject({ shouldLogFailure: false });
+  });
+
+  it("탭 닫기 같은 사용자 조작 명령의 실패는 계속 오류 로그로 남긴다", async () => {
+    stubTask({});
+    mockExecGit.mockImplementation(async (command: string) => (
+      command.includes("list-windows") ? "@1\t0\t1\tzsh\n@2\t1\t0\tvim" : ""
+    ));
+    const { closeTerminalTab } = await importService();
+
+    await closeTerminalTab("task-1", "@1");
+
+    const killWindowCall = mockExecGit.mock.calls.find(([command]) => String(command).includes("kill-window"));
+    expect(killWindowCall?.[2]).toMatchObject({ shouldLogFailure: true });
+  });
+
   it("세션이 없는 태스크는 실패 결과를 준다", async () => {
     mockFindOneBy.mockResolvedValue({ id: "task-1", sessionType: null, sessionName: null });
     const { listTerminalTabs } = await importService();

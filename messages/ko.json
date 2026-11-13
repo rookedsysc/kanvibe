@@ -159,7 +159,7 @@
     "createTitle": "새 작업 생성",
     "createFailed": "작업 생성에 실패했습니다.",
     "createHooksBackgroundFailedTitle": "Hooks 자동 설치 실패",
-    "createHooksBackgroundFailedBody": "\"{taskTitle}\" 생성 후 hooks 자동 설치에 실패했습니다. 상세 화면의 Hooks 상태에서 다시 설치할 수 있습니다.",
+    "createHooksBackgroundFailedBody": "\"{taskTitle}\" hooks 자동 설치에 실패했습니다. 상세 화면의 Hooks 상태에서 다시 설치할 수 있습니다.",
     "peerDeletionFailedTitle": "다른 데스크탑에서는 삭제하지 못함",
     "peerDeletionFailedBody": "\"{taskTitle}\"을(를) 이 데스크탑에서는 지웠지만 {peerUrls}에는 남아 있습니다. 그 데스크탑이 켜지면 직접 삭제하세요.",
     "deleteConfirm": "이 작업을 삭제하시겠습니까?",
