@@ -7,7 +7,7 @@ import { once, EventEmitter } from "events";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PaneLayoutType } from "@/entities/PaneLayoutConfig";
 import { buildHerdrCommand, buildHerdrSessionCleanupCommand, sanitizeHerdrSessionName } from "@/lib/worktree";
-import { ensureHerdrRemoteMachine, ensureHerdrSession, listHerdrMirrorPanes, listHerdrRunningAgentPanes, moveHerdrTab, readHerdrTabs } from "@/lib/herdr";
+import { ensureHerdrRemoteMachine, ensureHerdrSession, listHerdrMirrorPanes, listHerdrRunningAgentPanes, moveHerdrTab, readHerdrTabs, readHerdrTaskPaneSize } from "@/lib/herdr";
 
 const { execGit, spawn, readTextFile, updateTextFile } = vi.hoisted(() => ({ execGit: vi.fn(), spawn: vi.fn(), readTextFile: vi.fn(), updateTextFile: vi.fn() }));
 vi.mock("@/lib/hostFileAccess", async (importOriginal) => ({
@@ -615,4 +615,70 @@ describe("공유 Herdr Spaces", () => {
     expect(updateTextFile).not.toHaveBeenCalled();
     expect(execGit.mock.calls.some(([c]) => c.includes("'workspace' 'create'"))).toBe(false);
   });
+});
+
+
+describe("readHerdrTaskPaneSize", () => {
+  const selected = { pane_id: "w1:p1", tab_id: "w1:t1", scroll: { max_offset_from_bottom: 120, viewport_rows: 22 } };
+  const layout = {
+    area: { x: 0, y: 0, width: 160, height: 50 }, focused_pane_id: "w1:p1", zoomed: false,
+    panes: [{ pane_id: "w1:p1", rect: { x: 0, y: 0, width: 78, height: 24 } }],
+  };
+  beforeEach(() => { execGit.mockReset(); readTextFile.mockReset(); });
+
+  it.each([
+    { zoomed: false, focused: "w1:p1", cols: 78 },
+    { zoomed: true, focused: "w1:p1", cols: 160 },
+    { zoomed: true, focused: "w1:p2", cols: 78 },
+  ])("reads only selected pane and layout for zoom state %j", async ({ zoomed, focused, cols }) => {
+    execGit.mockResolvedValueOnce(result({ pane: selected })).mockResolvedValueOnce(result({ layout: { ...layout, zoomed, focused_pane_id: focused } }));
+    await expect(readHerdrTaskPaneSize("feature", "w1:p1", "remote")).resolves.toEqual({ cols, rows: 22 });
+    expect(execGit.mock.calls).toEqual([
+      [buildHerdrCommand("feature", ["pane", "get", "w1:p1"]), "remote", { timeoutMs: 5000, retrySafe: true }],
+      [buildHerdrCommand("feature", ["pane", "layout", "--pane", "w1:p1"]), "remote", { timeoutMs: 5000, retrySafe: true }],
+    ]);
+  });
+
+  it.each([null, { ...selected, restore_error: "Saved directory is unavailable" }, { ...selected, pane_id: "w1:p2" }])("does not fetch layout for unavailable selected pane %j", async (pane) => {
+    execGit.mockResolvedValueOnce(result({ pane }));
+    await expect(readHerdrTaskPaneSize("feature", "w1:p1")).resolves.toBeNull();
+    expect(execGit).toHaveBeenCalledOnce();
+  });
+
+  it("does not grant a selected pane that disappeared from its layout", async () => {
+    execGit.mockResolvedValueOnce(result({ pane: selected })).mockResolvedValueOnce(result({ layout: { ...layout, panes: [] } }));
+    await expect(readHerdrTaskPaneSize("feature", "w1:p1")).resolves.toBeNull();
+    expect(execGit).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(["Connection reset by peer", "Permission denied (publickey)", "Host key verification failed"])("propagates connection failure %s without extra probes", async (message) => {
+    execGit.mockRejectedValueOnce(new Error(message));
+    await expect(readHerdrTaskPaneSize("feature", "w1:p1", "remote")).rejects.toThrow(message);
+    expect(execGit).toHaveBeenCalledOnce();
+  });
+
+  it("preserves kanvibe workspace namespace guards", async () => {
+    readTextFile.mockResolvedValue(JSON.stringify({ "task-a": "w1" }));
+    execGit.mockImplementation(async (command: string) => {
+      if (command.includes("'session' 'list'")) return JSON.stringify([{ name: "kanvibe", running: true, session_dir: "/shared", socket_path: "/shared/herdr.sock" }]);
+      if (command.includes("'pane' 'get'")) return result({ pane: selected });
+      if (command.includes("'pane' 'layout'")) return result({ layout });
+      throw new Error("Unexpected broad query");
+    });
+    await expect(readHerdrTaskPaneSize("kanvibe:task-a", "w1:p1", "remote")).resolves.toEqual({ cols: 78, rows: 22 });
+    const probes = execGit.mock.calls.filter(([command]) => command.includes("'pane'"));
+    expect(probes.map(([command]) => command)).toEqual([
+      buildHerdrCommand("kanvibe", ["pane", "get", "w1:p1"]),
+      buildHerdrCommand("kanvibe", ["pane", "layout", "--pane", "w1:p1"]),
+    ]);
+    await expect(readHerdrTaskPaneSize("kanvibe:task-a", "w2:p2", "remote")).rejects.toThrow("다른 Space");
+    expect(execGit.mock.calls.filter(([command]) => command.includes("'pane'"))).toHaveLength(2);
+  });
+  it.each([{ args: ["pane", "split", "w1:p1"] }, { args: ["pane", "send-text", "w1:p1", "hello"] }, { args: ["workspace", "create"] }])("keeps mutation %j outside the readonly retry whitelist", async ({ args }) => {
+    execGit.mockResolvedValueOnce(result({}));
+    const { runHerdrCommand } = await import("@/lib/herdr");
+    await runHerdrCommand("feature", args, "remote");
+    expect(execGit).toHaveBeenCalledWith(buildHerdrCommand("feature", args), "remote", { timeoutMs: 5000, retrySafe: false });
+  });
+
 });

@@ -190,6 +190,16 @@ KANVIBE_MOBILE_PUSH_RELAY_TOKEN='<relay-config-secret>' pnpm dev
 
 실기기에서는 앱 실행 중, 다른 앱 사용 중, 화면 잠금, 앱 종료 후의 네 경우에 PC hook으로 상태를 변경하고 알림 수신·클릭 이동을 확인한다. 다른 PC를 선택해 둔 상태에서도 같은 확인을 한다. 앱을 다시 열었을 때 보드가 최신 상태인지, 삭제된 태스크와 해제된 PC의 알림이 안내로 처리되는지도 확인한다. Firebase/APNs와 실기기가 없는 자동 테스트는 실제 푸시 전달을 검증하지 않는다.
 
+## 원격 Herdr 터미널 연결
+
+A에 등록된 원격 B의 Herdr pane은 A의 인증된 TLS API로 연결 권한을 받은 뒤 B에 직접 연결한다. B의 포트에 닿지 않으면 같은 B 스트림을 A가 중계한다. 연결 뒤 전송한 키는 재접속 때 다시 보내지 않으며, 화면을 떠나거나 앱이 배경으로 가면 준비 중인 요청과 소켓도 취소한다.
+
+`POST /api/mobile/tasks/:taskId/panes/:paneId/connection`은 일회 연결 권한과 B의 주소·인증서 지문을 돌려준다. 이 응답은 저장한 PC 페어링에 기록하지 않는다. B에는 task/pane capability만 보내고 A의 페어링 토큰은 전달하지 않는다. 직접 연결이 실패하면 기존 A의 `/api/mobile/stream`에 `grantId`를 붙여 연결한다. 권한 만료는 서버가 판단하므로 모바일 시계 차이로 거절하지 않는다. 이전 A의404/405, 로컬·지원하지 않는 세션과 평문 페어링은 기존 연결 경로를 사용한다.
+
+`common/network/pane_connection.dart`가 응답을 검증하고, `DesktopClient.openPaneStream`이 경로 선택과 취소를 맡는다. `pinned_http_client.dart`는 HTTP 인증 헤더를 보내기 전에 실제 TLS peer의 SHA256 지문을 확인한다. 위젯은 기다리던 연결 결과가 현재 화면의 것인지 확인하고 지난 결과는 닫는다.
+
+기기 검증은 `qa/mobile/lib/remoteTerminalFixture.cjs`와 `remote-terminal-transport` Maestro 흐름을 사용한다. 실제 B agent에 격리된 NDJSON 터미널 actor를 연결하여 직접/중계 입력·복귀·기기 해제와 입력 중복 여부를 확인한다. 이 actor는 실제 원격 Herdr 환경의 성능을 측정하지 않는다.
+
 ## 검증
 
 ```bash

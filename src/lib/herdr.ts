@@ -88,7 +88,7 @@ export async function runHerdrCommand<T>(sessionName: string, arguments_: string
   }
   const output = await execGit(buildHerdrCommand(sessionName, arguments_), sshHost, {
     timeoutMs: HERDR_COMMAND_TIMEOUT_MS,
-    retrySafe: arguments_[1] === "list",
+    retrySafe: arguments_[1] === "list" || (arguments_[0] === "pane" && ["get", "layout"].includes(arguments_[1])),
   });
   // send-text는 전송 성공 시 본문을 출력하지 않는다.
   if (!output && arguments_[0] === "pane" && arguments_[1] === "send-text") return undefined as T;
@@ -158,6 +158,20 @@ export async function listHerdrMirrorPanes(sessionName: string, sshHost?: string
     }));
   }));
   return panesByTab.flat();
+}
+
+export async function readHerdrTaskPaneSize(
+  sessionName: string, paneId: string, sshHost?: string | null,
+): Promise<{ cols: number; rows: number } | null> {
+  const { pane } = await runHerdrCommand<{ pane: HerdrPane | null }>(sessionName, ["pane", "get", paneId], sshHost);
+  if (!pane || pane.restore_error || pane.pane_id !== paneId) return null;
+  const { layout } = await runHerdrCommand<{ layout: HerdrTabLayout }>(sessionName, ["pane", "layout", "--pane", paneId], sshHost);
+  const rect = layout.panes.find((entry) => entry.pane_id === paneId)?.rect;
+  if (!rect) return null;
+  const cols = layout.zoomed && layout.focused_pane_id === paneId ? layout.area.width : rect.width;
+  const rows = pane.scroll?.viewport_rows;
+  if (![cols, rows].every((size) => Number.isInteger(size) && size > 0)) return null;
+  return { cols, rows };
 }
 
 /** 실행 명령은 탭 이름 표시용이라 읽지 못해도 pane 목록을 막지 않는다 */

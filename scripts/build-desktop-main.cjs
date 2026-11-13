@@ -34,7 +34,7 @@ function collectTypeScriptFiles(relativeRoot, files = []) {
   return files;
 }
 
-function main() {
+async function main() {
   const tempDir = mkdtempSync(path.join(os.tmpdir(), "kanvibe-desktop-build-"));
   const tempConfigPath = path.join(tempDir, "tsconfig.json");
   const files = [
@@ -62,6 +62,7 @@ function main() {
 
   try {
     writeFileSync(tempConfigPath, `${JSON.stringify(tempConfig, null, 2)}\n`);
+    await require("./build-remote-terminal-agent.cjs").buildRemoteTerminalAgent();
     execFileSync("pnpm", ["exec", "tsc", "-p", tempConfigPath], {
       stdio: "inherit",
       env: process.env,
@@ -71,4 +72,4 @@ function main() {
   }
 }
 
-main();
+main().catch((error) => { console.error(error); process.exitCode = 1; });
