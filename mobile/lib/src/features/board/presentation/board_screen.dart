@@ -128,7 +128,7 @@ class BoardScreen extends ConsumerWidget {
                 children: [
                   Text('프로젝트'),
                   Spacer(),
-                  Flexible(flex: 2, child: DesktopFilterButton()),
+                  DesktopFilterButton(),
                   ProjectFilterButton(),
                 ],
               ),

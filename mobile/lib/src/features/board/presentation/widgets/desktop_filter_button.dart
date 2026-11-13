@@ -31,7 +31,8 @@ class DesktopFilterButton extends ConsumerWidget {
       key: const ValueKey('desktop-filter'),
       identifier: 'desktop-filter',
       selected: count > 0,
-      child: OutlinedButton(
+      value: count == 0 ? '전체 데스크톱' : '$count개 선택',
+      child: IconButton(
         onPressed: connectionId == null || !board.hasValue || board.isLoading
             ? null
             : () => showModalBottomSheet<void>(
@@ -42,32 +43,18 @@ class DesktopFilterButton extends ConsumerWidget {
                 ),
                 builder: (_) => const _DesktopFilterSheet(),
               ),
-        style: OutlinedButton.styleFrom(
-          foregroundColor: AppColors.textPrimary,
-          backgroundColor: AppColors.bgPage,
-          side: BorderSide.none,
-          minimumSize: const Size(
-            AppSizes.minTouchTarget,
-            AppSizes.minTouchTarget,
-          ),
-          padding: const EdgeInsets.symmetric(horizontal: AppSizes.p8),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppSizes.radiusMd),
-          ),
+        constraints: const BoxConstraints(
+          minWidth: AppSizes.minTouchTarget,
+          minHeight: AppSizes.minTouchTarget,
         ),
-        child: Row(
-          children: [
-            const Icon(Icons.desktop_windows_outlined, size: 18),
-            const SizedBox(width: AppSizes.p8),
-            Flexible(
-              child: Text(
-                count == 0 ? '전체 데스크톱' : '데스크톱 $count개',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            const Icon(Icons.keyboard_arrow_down, size: 18),
-          ],
+        tooltip: '데스크톱 필터',
+        color: AppColors.textPrimary,
+        icon: Badge(
+          isLabelVisible: count > 0,
+          backgroundColor: AppColors.borderStrong,
+          textColor: AppColors.textPrimary,
+          label: Text('$count'),
+          child: const Icon(Icons.desktop_windows_outlined),
         ),
       ),
     );

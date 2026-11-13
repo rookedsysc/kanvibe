@@ -108,13 +108,14 @@ void main() {
     await tester.pumpAndSettle();
     final trigger = find.descendant(
       of: _control('desktop-filter'),
-      matching: find.byType(OutlinedButton),
+      matching: find.byType(IconButton),
     );
-    final unselectedColor = tester
-        .widget<OutlinedButton>(trigger)
-        .style!
-        .foregroundColor!
-        .resolve({});
+    final unselectedColor = tester.widget<IconButton>(trigger).color;
+    final desktopBadge = find.descendant(
+      of: _control('desktop-filter'),
+      matching: find.byType(Badge),
+    );
+    expect(tester.widget<Badge>(desktopBadge).isLabelVisible, isFalse);
     await tester.tap(_control('desktop-filter'));
     await tester.pumpAndSettle();
     await tester.tap(_control('desktop-filter-ssh-devbox'));
@@ -123,13 +124,10 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('local 태스크'), findsNothing);
     expect(find.text('remote 태스크'), findsOneWidget);
+    expect(tester.widget<IconButton>(trigger).color, unselectedColor);
     expect(
-      tester
-          .widget<OutlinedButton>(trigger)
-          .style!
-          .foregroundColor!
-          .resolve({}),
-      unselectedColor,
+      find.descendant(of: desktopBadge, matching: find.text('1')),
+      findsOneWidget,
     );
     await tester.tap(_control('desktop-filter'));
     await tester.pumpAndSettle();
@@ -139,7 +137,12 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('local 태스크'), findsOneWidget);
     expect(find.text('remote 태스크'), findsOneWidget);
-    await tester.tap(_control('desktop-filter'));
+    final selectedCount = find.descendant(
+      of: desktopBadge,
+      matching: find.text('2'),
+    );
+    expect(selectedCount, findsOneWidget);
+    await tester.tap(selectedCount);
     await tester.pumpAndSettle();
     await tester.tap(_control('desktop-filter-local'));
     await tester.pumpAndSettle();
@@ -157,6 +160,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('local 태스크'), findsOneWidget);
     expect(find.text('remote 태스크'), findsNothing);
+    expect(tester.widget<Badge>(desktopBadge).isLabelVisible, isFalse);
     expect(tester.takeException(), isNull);
   });
 
