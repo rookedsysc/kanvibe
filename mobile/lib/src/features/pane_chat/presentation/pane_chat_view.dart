@@ -7,6 +7,7 @@ import '../../../common/constants/app_theme.dart';
 import '../../chat_history/presentation/chat_message_tile.dart';
 import '../application/pane_chat_controller.dart';
 import '../domain/pane_chat.dart';
+import 'pane_chat_composer.dart';
 
 class PaneChatView extends ConsumerStatefulWidget {
   const PaneChatView({
@@ -27,7 +28,6 @@ class PaneChatView extends ConsumerStatefulWidget {
 
 class _PaneChatViewState extends ConsumerState<PaneChatView> {
   final _scroll = ScrollController();
-  final _drafts = <String, String>{};
   bool _showCli = false;
 
   @override
@@ -240,18 +240,24 @@ class _PaneChatViewState extends ConsumerState<PaneChatView> {
                                     key: messageKeys[index],
                                     message: message,
                                     provider: snapshot.provider ?? 'AI',
+                                    taskId: widget.target.taskId,
+                                    sessionId: snapshot.transcript.sessionId,
                                   );
                                 },
                               ),
                             ),
                           ),
                   ),
-                if (snapshot.provider != null)
-                  _PaneChatComposer(
+                if (snapshot.provider != null && snapshot.targetToken != null)
+                  PaneChatComposer(
                     key: ValueKey(draftKey),
-                    target: widget.target,
-                    initialDraft: _drafts[draftKey] ?? '',
-                    onDraftChanged: (text) => _drafts[draftKey] = text,
+                    target: (
+                      connectionId: state.connectionId,
+                      taskId: widget.target.taskId,
+                      paneId: widget.target.paneId,
+                      targetToken: snapshot.targetToken!,
+                    ),
+                    isActive: widget.isActive,
                     showPrompt: snapshot.inputState == PaneChatInputState.ready,
                     toolbar: Wrap(
                       crossAxisAlignment: WrapCrossAlignment.center,
@@ -415,117 +421,6 @@ class _PaneChatViewState extends ConsumerState<PaneChatView> {
           },
         );
       },
-    );
-  }
-}
-
-class _PaneChatComposer extends ConsumerStatefulWidget {
-  const _PaneChatComposer({
-    required this.target,
-    required this.initialDraft,
-    required this.onDraftChanged,
-    required this.toolbar,
-    required this.showPrompt,
-    this.cliScreen,
-    super.key,
-  });
-  final PaneChatTarget target;
-  final String initialDraft;
-  final ValueChanged<String> onDraftChanged;
-  final Widget toolbar;
-  final Widget? cliScreen;
-  final bool showPrompt;
-
-  @override
-  ConsumerState<_PaneChatComposer> createState() => _PaneChatComposerState();
-}
-
-class _PaneChatComposerState extends ConsumerState<_PaneChatComposer> {
-  late final _input = TextEditingController(text: widget.initialDraft);
-
-  @override
-  void dispose() {
-    _input.dispose();
-    super.dispose();
-  }
-
-  Future<void> _send() async {
-    final text = _input.text;
-    if (!await ref.read(paneChatProvider(widget.target).notifier).send(text)) {
-      return;
-    }
-    if (!mounted || _input.text != text) return;
-    _input.clear();
-    widget.onDraftChanged('');
-    setState(() {});
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final state = ref.watch(paneChatProvider(widget.target)).value;
-    return Container(
-      margin: const EdgeInsets.fromLTRB(
-        AppSizes.p12,
-        AppSizes.p4,
-        AppSizes.p12,
-        AppSizes.p12,
-      ),
-      padding: const EdgeInsets.all(AppSizes.p8),
-      decoration: BoxDecoration(
-        color: AppColors.bgSurface,
-        border: Border.all(color: AppColors.borderStrong),
-        borderRadius: BorderRadius.circular(AppSizes.radiusCard),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (widget.cliScreen != null) widget.cliScreen!,
-          if (widget.showPrompt)
-            Semantics(
-              identifier: 'pane-chat-input',
-              child: TextField(
-                controller: _input,
-                minLines: 1,
-                maxLines: 4,
-                keyboardType: TextInputType.multiline,
-                textInputAction: TextInputAction.newline,
-                onChanged: (text) {
-                  widget.onDraftChanged(text);
-                  setState(() {});
-                },
-                decoration: const InputDecoration(
-                  labelText: '현재 CLI에 메시지',
-                  hintText: '메시지를 입력하세요',
-                  border: InputBorder.none,
-                  enabledBorder: InputBorder.none,
-                  focusedBorder: InputBorder.none,
-                ),
-              ),
-            ),
-          Row(
-            children: [
-              Expanded(child: widget.toolbar),
-              if (widget.showPrompt)
-                Semantics(
-                  identifier: 'pane-chat-send',
-                  child: IconButton.filled(
-                    tooltip: '메시지 전송',
-                    onPressed:
-                        state?.canPrompt == true &&
-                            _input.text.trim().isNotEmpty
-                        ? _send
-                        : null,
-                    icon: const Icon(Icons.arrow_upward),
-                    constraints: const BoxConstraints(
-                      minWidth: AppSizes.minTouchTarget,
-                      minHeight: AppSizes.minTouchTarget,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ],
-      ),
     );
   }
 }

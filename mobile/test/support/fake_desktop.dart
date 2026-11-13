@@ -505,7 +505,45 @@ class FakeDesktopClient implements DesktopClient {
     PaneChatAction action, {
     String? text,
     PaneChatKey? key,
+    List<String>? attachmentIds,
+    String? requestId,
   }) async => throw StateError('No live pane fixture configured');
+
+  @override
+  Future<String> stagePaneChatAttachment(
+    DesktopConnection connection,
+    String taskId,
+    String targetToken, {
+    required String name,
+    required String mimeType,
+    required List<int> bytes,
+  }) async => throw StateError('No attachment fixture');
+
+  @override
+  Future<void> removePaneChatAttachment(
+    DesktopConnection connection,
+    String taskId,
+    String targetToken,
+    String id,
+  ) async => throw StateError('No attachment fixture');
+
+  @override
+  Future<List<PaneChatSuggestion>> getPaneChatSuggestions(
+    DesktopConnection connection,
+    String taskId,
+    String targetToken,
+    String kind,
+    String query,
+  ) async => const [];
+
+  @override
+  Future<List<int>> fetchChatAttachment(
+    DesktopConnection connection,
+    String taskId,
+    String provider,
+    String sessionId,
+    String attachmentId,
+  ) async => throw StateError('No media fixture');
 
   @override
   void close() {}

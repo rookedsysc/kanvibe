@@ -29,6 +29,7 @@ class PaneChatSnapshot {
     required this.transcript,
     required this.modelPickerSupported,
     this.sessionType,
+    this.composer = const PaneChatCapabilities(),
   });
 
   final String taskId;
@@ -42,10 +43,14 @@ class PaneChatSnapshot {
   final String? reason;
   final PaneChatTranscript transcript;
   final bool modelPickerSupported;
+  final PaneChatCapabilities composer;
 
   factory PaneChatSnapshot.fromJson(Map<String, dynamic> value) {
     final modelPicker = value['modelPicker'] as Map<String, dynamic>?;
     return PaneChatSnapshot(
+      composer: PaneChatCapabilities.fromJson(
+        value['composer'] as Map<String, dynamic>? ?? {},
+      ),
       taskId: value['taskId'] as String,
       paneId: value['paneId'] as String?,
       sessionType: value['sessionType'] as String?,
@@ -96,5 +101,43 @@ class PaneChatTranscript {
             )
             .toList(),
         nextCursor: value['nextCursor'] as String?,
+      );
+}
+
+class PaneChatCapabilities {
+  const PaneChatCapabilities({
+    this.attachments = false,
+    this.skills = false,
+    this.fileMentions = false,
+    this.maxAttachmentBytes = 10 * 1024 * 1024,
+    this.maxAttachments = 10,
+  });
+  final bool attachments, skills, fileMentions;
+  final int maxAttachmentBytes, maxAttachments;
+  factory PaneChatCapabilities.fromJson(Map<String, dynamic> value) =>
+      PaneChatCapabilities(
+        attachments: value['attachments'] == true,
+        skills: value['skills'] == true,
+        fileMentions: value['fileMentions'] == true,
+        maxAttachmentBytes:
+            value['maxAttachmentBytes'] as int? ?? 10 * 1024 * 1024,
+        maxAttachments: value['maxAttachments'] as int? ?? 10,
+      );
+}
+
+class PaneChatSuggestion {
+  const PaneChatSuggestion({
+    required this.id,
+    required this.label,
+    required this.description,
+    required this.insertText,
+  });
+  final String id, label, description, insertText;
+  factory PaneChatSuggestion.fromJson(Map<String, dynamic> value) =>
+      PaneChatSuggestion(
+        id: value['id'] as String,
+        label: value['label'] as String,
+        description: value['description'] as String? ?? '',
+        insertText: value['insertText'] as String,
       );
 }

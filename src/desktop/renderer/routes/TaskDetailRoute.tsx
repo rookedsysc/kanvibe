@@ -670,7 +670,7 @@ function InlineAiChatView({ taskId }: { taskId: string }) {
                 </button></div>
               ) : null}
               {selectedSession && !isDetailLoading && displayedMessages.map(({ message, key }) => (
-                <AiChatTranscriptMessage key={key} message={message} provider={selectedSession.provider} />
+                <AiChatTranscriptMessage key={key} message={message} provider={selectedSession.provider} attachmentContext={{ taskId, provider: selectedSession.provider, sessionId: selectedSession.id, sourceRef: selectedSession.sourceRef }} />
               ))}
               <div ref={latestMessageAnchorRef} aria-hidden="true" />
             </div>

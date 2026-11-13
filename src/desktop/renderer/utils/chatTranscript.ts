@@ -7,7 +7,7 @@ const MESSAGE_HASH_PRIME = 16777619;
 export function getChatTranscriptRows(messages: AggregatedAiMessage[], sessionKey: string | null) {
   const occurrences = new Map<string, number>();
   return messages.map((message) => {
-    const text = message.fullText || message.text;
+    const text = `${message.fullText || message.text}\u0000${message.attachments?.map(attachment => attachment.id).join(",") ?? ""}`;
     let hash = MESSAGE_HASH_OFFSET;
     for (let index = 0; index < text.length; index += 1) hash = Math.imul(hash ^ text.charCodeAt(index), MESSAGE_HASH_PRIME);
     const identity = `${message.role}:${message.timestamp ?? ""}:${hash >>> 0}`;

@@ -6,6 +6,7 @@ import { execGit } from "@/lib/gitOperations";
 import { getFileMtimeMs, quoteShellArgument, readTextFile } from "@/lib/hostFileAccess";
 import type {
   AggregatedAiMessage,
+  AiMessageAttachment,
   AggregatedAiSession,
   AiMessageRole,
   AiSessionMatchScope,
@@ -299,9 +300,9 @@ export function extractPlainText(value: unknown): string {
   return "";
 }
 
-export function makePreviewMessage(role: AiMessageRole, timestamp: unknown, text: string): AggregatedAiMessage | null {
+export function makePreviewMessage(role: AiMessageRole, timestamp: unknown, text: string, attachments: AiMessageAttachment[] = []): AggregatedAiMessage | null {
   const truncated = createTruncatedText(text);
-  if (!truncated.fullText) return null;
+  if (!truncated.fullText && !attachments.length) return null;
 
   return {
     role,
@@ -309,6 +310,7 @@ export function makePreviewMessage(role: AiMessageRole, timestamp: unknown, text
     text: truncated.previewText,
     fullText: truncated.fullText,
     isTruncated: truncated.isTruncated,
+    ...(attachments.length ? { attachments } : {}),
   };
 }
 

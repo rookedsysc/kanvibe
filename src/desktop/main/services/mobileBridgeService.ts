@@ -17,7 +17,7 @@ import {
   updateTaskStatus,
 } from "@/desktop/main/services/kanbanService";
 import { subscribeToBoardEvents } from "@/lib/boardNotifier";
-import { getAllProjects, getProjectBranches, getTaskAiSessions, getTaskAiSessionDetail, listSubdirectories, scanAndRegisterProjects } from "@/desktop/main/services/projectService";
+import { getAllProjects, getProjectBranches, getTaskAiSessions, getTaskAiSessionDetail, getTaskAiSessionAttachment, listSubdirectories, scanAndRegisterProjects } from "@/desktop/main/services/projectService";
 import { isAiSessionProvider } from "@/lib/aiSessions/providers";
 import type { AiMessageRole, AiSessionProvider } from "@/lib/aiSessions/types";
 import { attachTaskTerminal, CallbackTerminalClient } from "@/desktop/main/terminalBridge";
@@ -599,6 +599,17 @@ export async function getMobileAiSessionDetail(
   }
   const { sourceRef: _sourceRef, ...safeDetail } = detail;
   return safeDetail;
+}
+
+export async function getMobileAiSessionAttachment(taskId: string, provider: AiSessionProvider, sessionId: string, attachmentId: string, sourceRef?: string | null) {
+  const key = mobileAiSessionKey(taskId, provider, sessionId);
+  if (sourceRef == null && !mobileAiSourceCache.has(key)) await refreshMobileAiSource(taskId, provider, sessionId);
+  if (sourceRef == null && !mobileAiSourceCache.has(key)) return null;
+  try {
+    return await getTaskAiSessionAttachment(taskId, provider, sessionId, attachmentId, sourceRef ?? mobileAiSourceCache.get(key));
+  } catch {
+    throw new MobileTaskInputError("첨부 파일을 불러올 수 없습니다. 파일 형식·크기와 원본 파일을 확인해 주세요.");
+  }
 }
 
 function toMobileNotification(notification: AppNotification) {

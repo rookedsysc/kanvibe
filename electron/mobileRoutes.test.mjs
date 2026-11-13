@@ -1583,3 +1583,48 @@ describe("현재 pane 채팅 인증 및 대상 경계", () => {
     expect(bridge.sendPaneChatPrompt).not.toHaveBeenCalled();
   });
 });
+
+describe("채팅 composer 첨부와 자동완성 HTTP", () => {
+  const headers = { authorization: "Bearer good", "Content-Type": "application/json" };
+  beforeEach(() => {
+    bridge.stagePaneChatAttachment = vi.fn(async () => ({ id: "owned-id", name: "file.txt", mimeType: "text/plain", kind: "file", sizeBytes: 65537 }));
+    bridge.removePaneChatAttachment = vi.fn(async () => ({ success: true }));
+    bridge.getPaneChatSuggestions = vi.fn(async () => ({ targetToken: "token", items: [{ id: "skill:review", label: "review", description: "Review", insertText: "$review" }], truncated: false }));
+    bridge.sendPaneChatPrompt = vi.fn(async () => ({ success: true }));
+    bridge.getMobileAiSessionAttachment = vi.fn(async () => ({ id: "image-id", name: "image.png", mimeType: "image/png", dataUrl: "data:image/png;base64,aGVsbG8=" }));
+    bridge.isMobileAiSessionProvider = vi.fn((provider) => ["claude", "codex"].includes(provider));
+  });
+  it("인증 업로드만 기존 64KiB를 넘는 첨부 본문을 읽고 토큰을 보존한다", async () => {
+    const attachment = { name: "file.txt", mimeType: "text/plain", dataUrl: `data:text/plain;base64,${Buffer.alloc(65537).toString("base64")}` };
+    const result = await request("/api/mobile/tasks/task-1/pane-chat/attachments", { method: "POST", headers, body: JSON.stringify({ targetToken: "token", attachment }) });
+    expect(result).toMatchObject({ status: 200, body: { success: true, attachment: { id: "owned-id" } } });
+    expect(bridge.stagePaneChatAttachment).toHaveBeenCalledWith("task-1", "token", attachment);
+    expect((await request("/api/mobile/tasks/task-1/pane-chat/attachments", { method: "POST", body: JSON.stringify({ targetToken: "token", attachment }) })).status).toBe(401);
+    expect(bridge.stagePaneChatAttachment).toHaveBeenCalledTimes(1);
+  });
+  it("첨부 삭제와 검색에 같은 대상 토큰을 사용한다", async () => {
+    const body = JSON.stringify({ targetToken: "token", id: "owned-id" });
+    expect((await request("/api/mobile/tasks/task-1/pane-chat/attachments", { method: "DELETE", headers: { ...headers, "Content-Length": Buffer.byteLength(body) }, body })).status).toBe(200);
+    expect(bridge.removePaneChatAttachment).toHaveBeenCalledWith("task-1", "token", "owned-id");
+    const result = await request("/api/mobile/tasks/task-1/pane-chat/suggestions?targetToken=token&kind=skill&query=review", { headers });
+    expect(result).toMatchObject({ status: 200, body: { targetToken: "token", items: [{ insertText: "$review" }] } });
+    expect(bridge.getPaneChatSuggestions).toHaveBeenCalledWith("task-1", "token", "skill", "review");
+  });
+  it("첨부 ID와 중복 방지 식별자를 메시지와 함께 전달한다", async () => {
+    await request("/api/mobile/tasks/task-1/pane-chat/prompt", { method: "POST", headers, body: JSON.stringify({ targetToken: "token", text: "caption", attachmentIds: ["owned-id"], requestId: "once" }) });
+    expect(bridge.sendPaneChatPrompt).toHaveBeenCalledWith("task-1", "token", "caption", ["owned-id"], "once");
+  });
+  it("활성 CLI 없이 인증된 히스토리 첨부만 가져오고 누락 파일을 구분한다", async () => {
+    const url = "/api/mobile/tasks/task-1/ai-sessions/codex/session-1/attachments/image-id";
+    expect((await request(url)).status).toBe(401);
+    expect(bridge.getMobileAiSessionAttachment).not.toHaveBeenCalled();
+    expect((await request(url, { headers })).body.attachment).toMatchObject({ id: "image-id", mimeType: "image/png" });
+    expect(bridge.getMobileAiSessionAttachment).toHaveBeenCalledWith("task-1", "codex", "session-1", "image-id", undefined);
+    bridge.getMobileAiSessionAttachment.mockResolvedValue(null);
+    expect((await request(url, { headers })).status).toBe(404);
+  });
+  it("부분 전송 뒤 불확실한 결과는 재전송 유도 없이 명시한다", async () => {
+    bridge.sendPaneChatPrompt.mockRejectedValue(Object.assign(new Error("전송 결과 불확실"), { name: "PaneChatDeliveryUncertainError" }));
+    expect(await request("/api/mobile/tasks/task-1/pane-chat/prompt", { method: "POST", headers, body: JSON.stringify({ targetToken: "token", text: "caption", requestId: "once" }) })).toEqual({ status: 409, body: { success: false, error: "전송 결과 불확실", reason: "delivery-uncertain" } });
+  });
+});

@@ -1,4 +1,5 @@
 import path from "path";
+import { extractMessageAttachments } from "./messageAttachments";
 import {
   createReaderResult,
   createSessionDetail,
@@ -27,6 +28,7 @@ import {
 import type {
   AgentCallNode,
   AggregatedAiMessage,
+  AiMessageAttachment,
   AggregatedAiSession,
   AiMessageRole,
   AiSessionDetailReaderResult,
@@ -121,19 +123,19 @@ async function parseCodexSessionSummary(filePath: string, context: AiSessionRead
       continue;
     }
 
-    const parsedMessages = extractCodexEventMessages(event);
+    const parsedMessages = extractCodexEventMessages(event, filePath);
     for (const message of parsedMessages) {
       if (shouldSkipCodexMessage(message.role, message.text)) {
         continue;
       }
-      const messageKey = createCodexMessageKey(message.role, event.timestamp, message.text);
+      const messageKey = createCodexMessageKey(message.role, event.timestamp, message.text, message.attachments);
       if (seenMessages.has(messageKey)) {
         continue;
       }
       seenMessages.add(messageKey);
 
       if (message.role === "user" && !firstUserPrompt) {
-        firstUserPrompt = message.text;
+        firstUserPrompt = message.text || message.attachments?.map(attachment => attachment.name).join(", ") || null;
       }
 
       if (matchesCodexQuery(context.query, message.text)) {
@@ -190,11 +192,11 @@ async function parseCodexSessionDetail(
       continue;
     }
 
-    for (const message of extractCodexEventMessages(event)) {
+    for (const message of extractCodexEventMessages(event, filePath)) {
       if (shouldSkipCodexMessage(message.role, message.text)) {
         continue;
       }
-      const messageKey = createCodexMessageKey(message.role, event.timestamp, message.text);
+      const messageKey = createCodexMessageKey(message.role, event.timestamp, message.text, message.attachments);
       if (seenMessages.has(messageKey)) {
         continue;
       }
@@ -204,7 +206,7 @@ async function parseCodexSessionDetail(
         continue;
       }
 
-      if (context.query && !message.text.toLowerCase().includes(context.query.toLowerCase())) {
+      if (context.query && ![message.text, ...(message.attachments ?? []).map(attachment => attachment.name)].join("\n").toLowerCase().includes(context.query.toLowerCase())) {
         continue;
       }
 
@@ -212,7 +214,7 @@ async function parseCodexSessionDetail(
         title = truncateText(message.text, 80);
       }
 
-      const previewMessage = makePreviewMessage(message.role, event.timestamp, message.text);
+      const previewMessage = makePreviewMessage(message.role, event.timestamp, message.text, message.attachments);
       if (previewMessage) messages.push(previewMessage);
     }
   }
@@ -230,9 +232,9 @@ async function parseCodexSessionDetail(
   });
 }
 
-function extractCodexEventMessages(event: CodexRolloutEvent): Array<{ role: AiMessageRole; text: string }> {
+function extractCodexEventMessages(event: CodexRolloutEvent, sourceRef = ""): Array<{ role: AiMessageRole; text: string; attachments?: AiMessageAttachment[] }> {
   if (event.type === "response_item") {
-    return extractCodexPayloadMessages(event.payload ?? {});
+    return extractCodexPayloadMessages(event.payload ?? {}, sourceRef);
   }
 
   if (event.type === "event_msg") {
@@ -248,8 +250,8 @@ function extractCodexEventMessages(event: CodexRolloutEvent): Array<{ role: AiMe
   return [];
 }
 
-function createCodexMessageKey(role: AiMessageRole, timestamp: string | undefined, text: string): string {
-  return `${role}\u0000${timestamp ?? ""}\u0000${text}`;
+function createCodexMessageKey(role: AiMessageRole, timestamp: string | undefined, text: string, attachments?: AiMessageAttachment[]): string {
+  return `${role}\u0000${timestamp ?? ""}\u0000${text}\u0000${attachments?.map(attachment => attachment.id).join(",") ?? ""}`;
 }
 
 function shouldSkipCodexMessage(role: AiMessageRole, text: string): boolean {
@@ -275,11 +277,16 @@ function shouldSkipCodexMessage(role: AiMessageRole, text: string): boolean {
   return false;
 }
 
-function extractCodexPayloadMessages(payload: Record<string, unknown>): Array<{ role: AiMessageRole; text: string }> {
+function extractCodexPayloadMessages(payload: Record<string, unknown>, sourceRef: string): Array<{ role: AiMessageRole; text: string; attachments?: AiMessageAttachment[] }> {
   if (payload.type === "message") {
     const role = resolveCodexMessageRole(payload.role);
-    const text = extractPlainText(payload.content);
-    return text ? [{ role, text }] : [];
+    const attachments = extractMessageAttachments(payload.content, sourceRef);
+    const content = attachments.length && Array.isArray(payload.content)
+      ? payload.content.filter(part => !part || typeof part !== "object" || typeof part.text !== "string" || !/^<image(?:\s[^>]*)?>$|^<\/image>$/.test(part.text.trim()))
+      : payload.content;
+    const rawText = extractPlainText(content);
+    const text = attachments.length ? rawText.replace(/^(?:\[Image #\d+\]\s*)+/, "") : rawText;
+    return text || attachments.length ? [{ role, text, ...(attachments.length ? { attachments } : {}) }] : [];
   }
 
   if (payload.type === "reasoning") {

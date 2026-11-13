@@ -1,15 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SessionType } from "@/entities/KanbanTask";
 
-const mocks = vi.hoisted(() => ({ surface: vi.fn(), layout: vi.fn(), exec: vi.fn(), write: vi.fn(), binding: vi.fn(), claude: vi.fn(), codex: vi.fn(), focusHerdr: vi.fn(), tabs: vi.fn() }));
+const mocks = vi.hoisted(() => ({ surface: vi.fn(), layout: vi.fn(), exec: vi.fn(), write: vi.fn(), binding: vi.fn(), claude: vi.fn(), codex: vi.fn(), focusHerdr: vi.fn(), tabs: vi.fn(), catalog: vi.fn() }));
 vi.mock("../paneChatSurface", () => ({ readPaneChatSurface: mocks.surface, readPaneChatLayout: mocks.layout }));
 vi.mock("@/lib/gitOperations", () => ({ execGit: mocks.exec }));
 vi.mock("@/lib/terminal", () => ({ focusHerdrTaskPane: mocks.focusHerdr, listLocalTerminalTabs: mocks.tabs }));
 vi.mock("../mobileBridgeService", () => ({ writeToPane: mocks.write }));
+vi.mock("../paneChatComposerCatalog", () => ({ readPaneChatSuggestions: mocks.catalog }));
 vi.mock("@/lib/aiSessions/paneChatSessionBindings", () => ({ findPaneChatSessionBinding: mocks.binding }));
 vi.mock("@/lib/aiSessions/readClaudeSessions", () => ({ readClaudeSessionDetail: mocks.claude }));
 vi.mock("@/lib/aiSessions/readCodexSessions", () => ({ readCodexSessionDetail: mocks.codex }));
-import { focusPaneChatTerminal, getPaneChatLayout, getPaneChatSnapshot, sendPaneChatPrompt, interruptPaneChat, openPaneChatModelPicker, sendPaneChatKey } from "../paneChatService";
+import { focusPaneChatTerminal, getPaneChatLayout, getPaneChatSnapshot, getPaneChatSuggestions, stagePaneChatAttachment, removePaneChatAttachment, sendPaneChatPrompt, interruptPaneChat, openPaneChatModelPicker, sendPaneChatKey } from "../paneChatService";
 
 const processTable = (start = "Thu Nov 12 19:00:00 2026") => `100 1 100 200 ttys010 Thu Nov 12 18:00:00 2026 /bin/zsh /bin/zsh\n200 100 200 200 ttys010 ${start} /usr/bin/python3 python3 /tmp/codex\n300 100 300 200 ttys010 Thu Nov 12 18:00:00 2026 /tmp/claude /tmp/claude`;
 const surface = { task: { id: "task-chat", sessionType: SessionType.TMUX, sessionName: "kv-task", sshHost: null, worktreePath: "/repo", project: { repoPath: "/repo" } }, paneId: "%3", rootPid: 100, screen: "CLI screen", inputLine: "› ", cursorColumn: 2 };
@@ -23,6 +24,69 @@ beforeEach(() => {
 });
 
 describe("pane chat exact CLI control", () => {
+  it("pins catalog results and rejects a CLI change while suggestions are loading", async () => {
+    const target = await getPaneChatSnapshot("task-chat", "%3");
+    mocks.catalog.mockResolvedValue({ items: [{ id: "skill:review", label: "review", description: "Review", insertText: "$review" }], truncated: false });
+    expect(await getPaneChatSuggestions("task-chat", target.targetToken!, "skill", "review")).toMatchObject({ targetToken: target.targetToken, items: [{ insertText: "$review" }] });
+    mocks.catalog.mockImplementationOnce(async () => { mocks.exec.mockResolvedValue(processTable("Thu Nov 12 20:00:00 2026")); return { items: [], truncated: false }; });
+    await expect(getPaneChatSuggestions("task-chat", target.targetToken!, "file", "readme")).rejects.toMatchObject({ name: "PaneChatTargetChangedError" });
+    expect(mocks.write).not.toHaveBeenCalled();
+  });
+
+  it("permits the same request to retry after a definite pre-write refusal", async () => {
+    const target = await getPaneChatSnapshot("task-chat");
+    mocks.surface.mockResolvedValue({ ...surface, inputLine: "› native text", cursorColumn: 13 });
+    await expect(sendPaneChatPrompt("task-chat", target.targetToken!, "retry", [], "pre-write-retry")).rejects.toMatchObject({ name: "PaneChatInputError" });
+    expect(mocks.write).not.toHaveBeenCalled();
+    mocks.surface.mockResolvedValue(surface);
+    await sendPaneChatPrompt("task-chat", target.targetToken!, "retry", [], "pre-write-retry");
+    expect(mocks.write).toHaveBeenCalledTimes(2);
+  });
+
+  it("stages an actual image and pastes image-only input as a native attachment", async () => {
+    const target = await getPaneChatSnapshot("task-chat", "%3");
+    const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aOK0AAAAASUVORK5CYII=";
+    const attachment = await stagePaneChatAttachment("task-chat", target.targetToken!, { name: "image.png", mimeType: "image/png", dataUrl: `data:image/png;base64,${png}` });
+    expect(attachment).toMatchObject({ kind: "image", mimeType: "image/png", sizeBytes: 68 });
+    await sendPaneChatPrompt("task-chat", target.targetToken!, "", [attachment.id], "image-only");
+    expect(mocks.write.mock.calls).toHaveLength(2);
+    expect(mocks.write.mock.calls[0]).toEqual(["task-chat", "%3", expect.stringMatching(/^\x1b\[200~\/.+\.png\x1b\[201~$/)]);
+    expect(mocks.write.mock.calls[1]).toEqual(["task-chat", "%3", "\r"]);
+    await removePaneChatAttachment("task-chat", target.targetToken!, attachment.id);
+  });
+
+  it("rejects an attachment from another live CLI before writing any bytes", async () => {
+    const first = await getPaneChatSnapshot("task-chat", "%3");
+    const attachment = await stagePaneChatAttachment("task-chat", first.targetToken!, { name: "notes.txt", mimeType: "text/plain", dataUrl: "data:text/plain;base64,aGVsbG8=" });
+    const second = await getPaneChatSnapshot("task-chat");
+    await expect(sendPaneChatPrompt("task-chat", second.targetToken!, "read", [attachment.id])).rejects.toMatchObject({ name: "PaneChatInputError" });
+    expect(mocks.write).not.toHaveBeenCalled();
+    await removePaneChatAttachment("task-chat", first.targetToken!, attachment.id);
+  });
+
+  it("replays one request receipt and rejects the same id with another payload", async () => {
+    const target = await getPaneChatSnapshot("task-chat");
+    await sendPaneChatPrompt("task-chat", target.targetToken!, "once", [], "retry-one");
+    await sendPaneChatPrompt("task-chat", target.targetToken!, "once", [], "retry-one");
+    expect(mocks.write).toHaveBeenCalledTimes(2);
+    await expect(sendPaneChatPrompt("task-chat", target.targetToken!, "different", [], "retry-one")).rejects.toMatchObject({ name: "PaneChatInputError" });
+    expect(mocks.write).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not repeat a possibly accepted paste after an interrupted delivery", async () => {
+    const target = await getPaneChatSnapshot("task-chat");
+    mocks.write.mockRejectedValueOnce(new Error("socket closed after write"));
+    await expect(sendPaneChatPrompt("task-chat", target.targetToken!, "uncertain", [], "uncertain-one")).rejects.toThrow();
+    await expect(sendPaneChatPrompt("task-chat", target.targetToken!, "uncertain", [], "uncertain-one")).rejects.toThrow();
+    expect(mocks.write).toHaveBeenCalledTimes(1);
+  });
+
+  it("closes the native Codex skill-completion token before its one submit Enter", async () => {
+    const target = await getPaneChatSnapshot("task-chat");
+    await sendPaneChatPrompt("task-chat", target.targetToken!, "Use $qa-skill");
+    expect(mocks.write.mock.calls).toEqual([["task-chat", "%3", "\x1b[200~Use $qa-skill \x1b[201~"], ["task-chat", "%3", "\r"]]);
+  });
+
   it("restores the requested tmux pane before returning to raw terminal input", async () => {
     mocks.exec.mockResolvedValue("");
     expect(await focusPaneChatTerminal("task-chat", "%3")).toEqual({ success: true });

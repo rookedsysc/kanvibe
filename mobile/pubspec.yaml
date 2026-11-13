@@ -21,6 +21,7 @@ dependencies:
   firebase_messaging: ^17.0.0
   flutter_local_notifications: ^22.3.2
   flutter_markdown_plus: ^1.0.12
+  file_picker: 13.3.3
 
 dev_dependencies:
   flutter_test:

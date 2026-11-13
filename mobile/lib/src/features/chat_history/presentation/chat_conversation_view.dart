@@ -110,6 +110,8 @@ class _ChatConversationViewState extends ConsumerState<ChatConversationView> {
                           key: ValueKey('message:$index'),
                           message: state.page.messages[index],
                           provider: widget.session.provider,
+                          taskId: widget.taskId,
+                          sessionId: widget.session.id,
                         );
                       },
                     ),

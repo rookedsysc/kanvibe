@@ -6,6 +6,7 @@ import type {
   AggregatedAiSessionDetail,
   AggregatedAiSessionsResult,
   AiMessageRole,
+  AiSessionAttachmentContent,
   AiSessionProvider,
   LiveAiSessionsResult,
   RunningAgentPane,
@@ -138,6 +139,10 @@ export function getTaskAgentCallGraph(
   sessionId: string,
 ): Promise<AgentCallGraph | null> {
   return invokeDesktop("project", "getTaskAgentCallGraph", taskId, provider, sessionId);
+}
+
+export function getTaskAiSessionAttachment(taskId: string, provider: AiSessionProvider, sessionId: string, attachmentId: string, sourceRef?: string | null): Promise<AiSessionAttachmentContent | null> {
+  return invokeDesktop("project", "getTaskAiSessionAttachment", taskId, provider, sessionId, attachmentId, sourceRef);
 }
 
 export function getTaskAiSessions(

@@ -28,6 +28,7 @@ const findProjectOneByMock = vi.fn();
 const propagateTaskRegistrationToPeersMock = vi.fn();
 const getTaskAiSessionsMock = vi.fn();
 const getTaskAiSessionDetailMock = vi.fn();
+const getTaskAiSessionAttachmentMock = vi.fn();
 const attachTaskTerminalMock = vi.fn();
 const changeTaskSessionTypeMock = vi.fn();
 const isTaskSessionAliveMock = vi.fn();
@@ -130,6 +131,7 @@ vi.mock("@/desktop/main/services/projectService", () => ({
   scanAndRegisterProjects: (...args: unknown[]) => scanAndRegisterProjectsMock(...args),
   getTaskAiSessions: (...args: unknown[]) => getTaskAiSessionsMock(...args),
   getTaskAiSessionDetail: (...args: unknown[]) => getTaskAiSessionDetailMock(...args),
+  getTaskAiSessionAttachment: (...args: unknown[]) => getTaskAiSessionAttachmentMock(...args),
   getProjectBranches: (projectId: string) => getProjectBranchesMock(projectId),
 }));
 
@@ -155,6 +157,7 @@ const {
   getMobileBoard,
   getMobileAiSessions,
   getMobileAiSessionDetail,
+  getMobileAiSessionAttachment,
   getMobileTask,
   getMobileNotifications,
   markMobileNotificationRead,
@@ -1997,6 +2000,22 @@ describe("모바일 pane 단축키", () => {
 });
 
 describe("모바일 History 신뢰 경로 캐시", () => {
+  it("활성 CLI 없이 현재 task에서 발견한 기록의 첨부만 읽고 다른 task와 섞지 않는다", async () => {
+    getTaskAiSessionsMock.mockResolvedValueOnce({ sessions: [{ id: "image-session", provider: "codex", sourceRef: "/trusted/image-rollout.jsonl" }], sources: [] });
+    getTaskAiSessionAttachmentMock.mockResolvedValue({ id: "image-id", name: "image.png", mimeType: "image/png", dataUrl: "data:image/png;base64,image" });
+    expect(await getMobileAiSessionAttachment("history-image-task", "codex", "image-session", "image-id")).toMatchObject({ id: "image-id" });
+    expect(getTaskAiSessionAttachmentMock).toHaveBeenLastCalledWith("history-image-task", "codex", "image-session", "image-id", "/trusted/image-rollout.jsonl");
+    getTaskAiSessionsMock.mockResolvedValueOnce({ sessions: [], sources: [] });
+    const before = getTaskAiSessionAttachmentMock.mock.calls.length;
+    expect(await getMobileAiSessionAttachment("other-image-task", "codex", "image-session", "image-id")).toBeNull();
+    expect(getTaskAiSessionAttachmentMock).toHaveBeenCalledTimes(before);
+  });
+
+  it("기록 첨부의 내부 파일 오류를 모바일 응답에 노출하지 않는다", async () => {
+    getTaskAiSessionAttachmentMock.mockRejectedValueOnce(new Error("private host path"));
+    await expect(getMobileAiSessionAttachment("history-image-explicit", "codex", "image-session", "image-id", "/trusted/source")).rejects.toMatchObject({ name: "MobileTaskInputError", message: "첨부 파일을 불러올 수 없습니다. 파일 형식·크기와 원본 파일을 확인해 주세요." });
+  });
+
   it("목록에서 발견한 경로를 상세와 이전 페이지에 재사용하고 네트워크 응답에서는 제거한다", async () => {
     getTaskAiSessionsMock.mockResolvedValue({ sessions: [{ id: "s1", provider: "codex", sourceRef: "/trusted/rollout.jsonl" }], sources: [], nextCursor: null });
     getTaskAiSessionDetailMock.mockResolvedValue({ sessionId: "s1", provider: "codex", sourceRef: "/trusted/rollout.jsonl", messages: [] });

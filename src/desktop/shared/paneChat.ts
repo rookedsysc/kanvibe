@@ -2,6 +2,37 @@ import type { SessionType } from "@/entities/KanbanTask";
 import type { AggregatedAiMessage, AiSessionProvider } from "@/lib/aiSessions/types";
 
 export type PaneChatKey = "up" | "down" | "left" | "right" | "enter" | "escape";
+export const MAX_PANE_CHAT_ATTACHMENTS = 10;
+export const MAX_PANE_CHAT_SUGGESTIONS = 20;
+
+export interface PaneChatAttachmentInput {
+  name: string;
+  mimeType: string;
+  dataUrl: string;
+}
+
+export interface PaneChatAttachment {
+  id: string;
+  name: string;
+  mimeType: string;
+  kind: "image" | "file";
+  sizeBytes: number;
+  previewDataUrl?: string;
+}
+
+export type PaneChatSuggestionKind = "skill" | "command" | "file";
+export interface PaneChatSuggestion {
+  id: string;
+  label: string;
+  description: string;
+  insertText: string;
+}
+
+export interface PaneChatSuggestions {
+  targetToken: string;
+  items: PaneChatSuggestion[];
+  truncated: boolean;
+}
 
 export interface PaneChatBounds {
   left: number;
@@ -40,6 +71,7 @@ export interface PaneChatSnapshot {
     nextCursor: string | null;
   };
   modelPicker: { supported: boolean; mode: "native-cli" };
+  composer?: { attachments: boolean; skills: boolean; fileMentions: boolean; maxAttachmentBytes: number; maxAttachments: number };
 }
 
 export interface PaneChatActionResult {

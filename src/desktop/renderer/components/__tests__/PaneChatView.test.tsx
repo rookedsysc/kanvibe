@@ -88,7 +88,7 @@ describe("current pane chat", () => {
     const input = screen.getByRole("textbox") as HTMLTextAreaElement;
     fireEvent.change(input, { target: { value: "First line\nSecond line" } });
     fireEvent.click(screen.getByRole("button", { name: "send" }));
-    expect(actions.sendPaneChatPrompt).toHaveBeenCalledWith("task-1", "process-a", "First line\nSecond line");
+    expect(actions.sendPaneChatPrompt).toHaveBeenCalledWith("task-1", "process-a", "First line\nSecond line", [], expect.any(String));
     expect(input.value).toBe("First line\nSecond line");
     await act(async () => accept({ success: true }));
     await waitFor(() => expect(input.value).toBe(""));

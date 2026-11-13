@@ -7,11 +7,11 @@ import type { AggregatedAiMessage } from "@/lib/aiSessions/types";
 import { usePaneChat } from "@/desktop/renderer/hooks/usePaneChat";
 import type { TerminalTab } from "@/desktop/shared/terminalTabs";
 import type { PaneChatKey } from "@/desktop/shared/paneChat";
+import { PaneChatComposer } from "./PaneChatComposer";
 import { AiChatTranscriptMessage } from "./AiChatTranscriptMessage";
 
 const NEAR_BOTTOM_PX = 96;
 const EMPTY_MESSAGES: AggregatedAiMessage[] = [];
-const composerControlClass = "min-h-10 shrink-0 rounded-md px-2 text-xs text-text-secondary hover:bg-bg-page focus-visible:outline-2 focus-visible:outline-brand-primary disabled:opacity-40";
 const controlClass = "min-h-10 rounded-md border border-border-default bg-bg-surface px-3 text-xs text-text-primary hover:bg-bg-page focus-visible:outline-2 focus-visible:outline-brand-primary disabled:opacity-40";
 
 export function PaneChatView({ taskId, paneId, taskTitle, paneTabs = [], isVisible = true, onHistory, onTerminal }: {
@@ -27,50 +27,24 @@ export function PaneChatView({ taskId, paneId, taskTitle, paneTabs = [], isVisib
   const chat = usePaneChat(taskId, isVisible, paneId);
   const snapshot = chat.snapshot;
   const targetKey = snapshot?.targetToken ?? `${taskId}:unavailable`;
-  const currentTarget = useRef(targetKey);
-  currentTarget.current = targetKey;
-  const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [controlsTarget, setControlsTarget] = useState<string | null>(null);
-  const [sendFailed, setSendFailed] = useState(false);
   const [isDetached, setIsDetached] = useState(false);
   const viewport = useRef<HTMLDivElement>(null);
-  const composer = useRef<HTMLTextAreaElement>(null);
   const followLatest = useRef(true);
-  const draft = drafts[targetKey] ?? "";
   const controlsOpen = controlsTarget === targetKey;
   const disconnected = !snapshot?.canSend || chat.readError || !chat.isReady;
   const disabled = disconnected || chat.isBusy;
-  const inputReady = snapshot?.inputState === "ready";
   const messages = snapshot?.transcript.messages ?? EMPTY_MESSAGES;
   const paneName = paneTabs.find((tab) => tab.id === snapshot?.paneId)?.name;
 
   useEffect(() => {
-    const pane = composer.current?.closest("[data-pane-chat-id]");
-    if (isVisible && !disabled && !controlsOpen && pane?.contains(document.activeElement)) composer.current?.focus();
-  }, [isVisible, disabled, controlsOpen, targetKey]);
-
-  useEffect(() => {
     followLatest.current = true;
     setIsDetached(false);
-    setSendFailed(false);
   }, [targetKey]);
 
   useLayoutEffect(() => {
     if (followLatest.current && viewport.current) viewport.current.scrollTop = viewport.current.scrollHeight;
   }, [messages, targetKey, isVisible]);
-
-  async function submit() {
-    if (!draft.trim() || disabled || controlsOpen || !inputReady) return;
-    const key = targetKey;
-    const text = draft;
-    setSendFailed(false);
-    const accepted = await chat.send(text);
-    if (accepted) {
-      setDrafts((previous) => previous[key] === text ? { ...previous, [key]: "" } : previous);
-    } else if (currentTarget.current === key) {
-      setSendFailed(true);
-    }
-  }
 
   async function openModelPicker() {
     if (await chat.openModelPicker()) setControlsTarget(targetKey);
@@ -108,7 +82,7 @@ export function PaneChatView({ taskId, paneId, taskTitle, paneTabs = [], isVisib
             {snapshot.transcript.nextCursor ? <button type="button" onClick={onHistory} className="text-xs text-text-brand">{t("olderHint")}</button> : null}
             {messages.length === 0 ? <p className="text-sm text-text-secondary">{t("empty")}</p> : null}
             {getChatTranscriptRows(messages, snapshot.transcript.sessionId).map(({ message, key }) => (
-              <AiChatTranscriptMessage key={key} message={message} provider={snapshot.provider!} />
+              <AiChatTranscriptMessage key={key} message={message} provider={snapshot.provider!} attachmentContext={snapshot.transcript.sessionId ? { taskId, provider: snapshot.provider!, sessionId: snapshot.transcript.sessionId } : undefined} />
             ))}
           </> : null}
           {snapshot?.canSend && snapshot.transcript.status === "unavailable" ? <p className="text-xs text-text-secondary">{t("transcriptPending")}</p> : null}
@@ -138,21 +112,7 @@ export function PaneChatView({ taskId, paneId, taskTitle, paneTabs = [], isVisib
           <button type="button" disabled={disabled} onClick={() => void navigate("escape")} className={controlClass}>{t("cancel")}</button>
         </div>
       </div> : null}
-      <form onSubmit={(event) => { event.preventDefault(); void submit(); }} className="shrink-0 overflow-y-auto [scrollbar-gutter:stable] px-4 py-3 sm:px-8">
-        <div data-testid="pane-chat-composer" className="mx-auto max-w-3xl rounded-xl border border-border-default bg-bg-surface p-2 focus-within:border-brand-primary">
-          <textarea ref={composer} aria-label={t("placeholder")} title={t("draftHint")} placeholder={t("placeholder")} rows={2} value={draft} disabled={!chat.isReady || !snapshot?.targetToken || chat.isBusy} onChange={(event) => { setDrafts((previous) => ({ ...previous, [targetKey]: event.target.value })); setSendFailed(false); }} onKeyDown={(event) => {
-            if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void submit(); }
-          }} className="block max-h-48 min-h-16 w-full min-w-0 resize-y bg-transparent px-2 py-1 text-sm leading-6 text-text-primary outline-none placeholder:text-text-secondary" />
-          {(sendFailed || chat.actionError) ? <p role="alert" className="px-2 py-1 text-xs text-status-error">{chat.actionError || t("sendError")}</p> : null}
-          {snapshot?.canSend && !inputReady ? <p role="status" className="px-2 py-1 text-xs text-text-secondary">{t(snapshot.inputState === "occupied" ? "inputOccupied" : "inputWaiting")}</p> : null}
-          <div data-testid="pane-chat-composer-tools" className="mt-1 flex flex-wrap items-center gap-1">
-            <button type="button" disabled={disabled || !snapshot?.modelPicker.supported || !inputReady || controlsOpen} onClick={() => void openModelPicker()} className={composerControlClass}>{t("model")}</button>
-            <button type="button" disabled={disabled} aria-expanded={controlsOpen} onClick={() => setControlsTarget(controlsOpen ? null : targetKey)} className={composerControlClass}>{t("controls")}</button>
-            <button type="button" disabled={disabled} onClick={() => void chat.interrupt()} className={composerControlClass}>{t("stop")}</button>
-            <button type="submit" disabled={disabled || !draft.trim() || controlsOpen || !inputReady} className="ml-auto min-h-10 shrink-0 rounded-lg bg-brand-primary px-4 text-xs font-medium text-white hover:bg-brand-active focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary disabled:opacity-40">{chat.isBusy ? t("sending") : t("send")}</button>
-          </div>
-        </div>
-      </form>
+      <PaneChatComposer taskId={taskId} chat={chat} controlsOpen={controlsOpen} isVisible={isVisible} onModel={() => void openModelPicker()} onControls={() => setControlsTarget(controlsOpen ? null : targetKey)} />
     </section>
   );
 }

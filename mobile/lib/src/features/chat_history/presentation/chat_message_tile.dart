@@ -7,16 +7,20 @@ import '../../../common/constants/app_colors.dart';
 import '../../../common/constants/app_sizes.dart';
 import '../../../common/constants/app_theme.dart';
 import '../domain/chat_history.dart';
+import 'chat_attachment_tile.dart';
 
 class ChatMessageTile extends StatefulWidget {
   const ChatMessageTile({
     required this.message,
     required this.provider,
+    this.taskId,
+    this.sessionId,
     super.key,
   });
 
   final ChatMessage message;
   final String provider;
+  final String? taskId, sessionId;
 
   @override
   State<ChatMessageTile> createState() => _ChatMessageTileState();
@@ -105,7 +109,20 @@ class _ChatMessageTileState extends State<ChatMessageTile> {
                       : null,
                   child: Semantics(
                     label: isUser ? label : null,
-                    child: _MessageBody(text: message.text, isUser: isUser),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        for (final attachment in message.attachments)
+                          ChatAttachmentTile(
+                            attachment: attachment,
+                            taskId: widget.taskId,
+                            provider: widget.provider,
+                            sessionId: widget.sessionId,
+                          ),
+                        if (message.text.isNotEmpty)
+                          _MessageBody(text: message.text, isUser: isUser),
+                      ],
+                    ),
                   ),
                 ),
                 Row(
@@ -233,16 +250,7 @@ class _MessageBody extends StatelessWidget {
           '이미지: ${alt ?? title ?? uri.toString()}',
           style: textTheme.bodySmall,
         );
-        if ((uri.scheme != 'http' && uri.scheme != 'https') ||
-            uri.host.isEmpty) {
-          return fallback;
-        }
-        return Image.network(
-          uri.toString(),
-          semanticLabel: alt ?? title,
-          fit: BoxFit.contain,
-          errorBuilder: (_, _, _) => fallback,
-        );
+        return fallback;
       },
     );
   }

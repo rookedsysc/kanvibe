@@ -29,15 +29,24 @@ class ChatSession {
 }
 
 class ChatMessage {
-  const ChatMessage({required this.role, required this.text, this.timestamp});
+  const ChatMessage({
+    required this.role,
+    required this.text,
+    this.timestamp,
+    this.attachments = const [],
+  });
   final String role;
   final String text;
   final DateTime? timestamp;
+  final List<ChatAttachment> attachments;
 
   factory ChatMessage.fromJson(Map<String, dynamic> value) => ChatMessage(
     role: value['role'] as String,
     text: value['fullText'] as String? ?? value['text'] as String? ?? '',
     timestamp: DateTime.tryParse(value['timestamp'] as String? ?? ''),
+    attachments: (value['attachments'] as List? ?? [])
+        .map((entry) => ChatAttachment.fromJson(entry as Map<String, dynamic>))
+        .toList(),
   );
 }
 
@@ -76,4 +85,24 @@ class ChatMessagePage {
             .toList(),
         nextCursor: value['nextCursor'] as String?,
       );
+}
+
+class ChatAttachment {
+  const ChatAttachment({
+    required this.id,
+    required this.kind,
+    required this.name,
+    this.mimeType,
+    this.sizeBytes,
+  });
+  final String id, kind, name;
+  final String? mimeType;
+  final int? sizeBytes;
+  factory ChatAttachment.fromJson(Map<String, dynamic> value) => ChatAttachment(
+    id: value['id'] as String,
+    kind: value['kind'] as String,
+    name: value['name'] as String,
+    mimeType: value['mimeType'] as String?,
+    sizeBytes: value['sizeBytes'] as int?,
+  );
 }

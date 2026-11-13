@@ -4,8 +4,9 @@ import { AiProviderIcon } from "@/components/AiProviderIcon";
 import { AI_SESSION_PROVIDER_LABELS } from "@/lib/aiSessions/providers";
 import type { AggregatedAiMessage, AiSessionProvider } from "@/lib/aiSessions/types";
 import { AiSessionMessageContent } from "./AiSessionMessageContent";
+import { AiChatAttachment, type AiChatAttachmentContext } from "./AiChatAttachment";
 
-export function AiChatTranscriptMessage({ message, provider }: { message: AggregatedAiMessage; provider: AiSessionProvider }) {
+export function AiChatTranscriptMessage({ message, provider, attachmentContext }: { message: AggregatedAiMessage; provider: AiSessionProvider; attachmentContext?: AiChatAttachmentContext }) {
   const t = useTranslations("taskDetail");
   const [copyState, setCopyState] = useState<"idle" | "copied" | "error">("idle");
   const text = message.fullText || message.text;
@@ -32,17 +33,17 @@ export function AiChatTranscriptMessage({ message, provider }: { message: Aggreg
           {timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
         </time>
       ) : null}
-      <button
+      {text ? <button
         type="button"
         onClick={() => void copyMessage()}
         className="min-h-7 rounded px-2 py-1 text-xs text-text-secondary transition-colors hover:bg-bg-surface hover:text-text-primary focus-visible:outline-2 focus-visible:outline-brand-primary"
         aria-label={copyLabel}
       >
         <span aria-live="polite">{copyLabel}</span>
-      </button>
+      </button> : null}
     </div>
   );
-  const body = <AiSessionMessageContent text={text} isUserMessage={false} />;
+  const body = <>{text ? <AiSessionMessageContent text={text} isUserMessage={false} /> : null}{message.attachments?.map((attachment, index) => <AiChatAttachment key={`${attachment.id}:${index}`} attachment={attachment} context={attachmentContext} />)}</>;
 
   if (isDisclosure) {
     return (

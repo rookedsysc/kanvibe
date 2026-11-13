@@ -9,6 +9,7 @@ import { getGeminiHooksStatus, type GeminiHooksStatus } from "@/lib/geminiHooksS
 import { getCodexHooksStatus, type CodexHooksStatus } from "@/lib/codexHooksSetup";
 import { getOpenCodeHooksStatus, type OpenCodeHooksStatus } from "@/lib/openCodeHooksSetup";
 import { aggregateAiSessions, getAiSessionDetail } from "@/lib/aiSessions/aggregateAiSessions";
+import { readAiSessionAttachment } from "@/lib/aiSessions/readSessionAttachment";
 import { readAgentCallGraph } from "@/lib/aiSessions/agentCallGraph";
 import { readLiveAiSessions } from "@/lib/aiSessions/liveAiSessions";
 import { listRunningAgentPanes } from "@/lib/aiSessions/runningAgentPanes";
@@ -17,6 +18,7 @@ import type {
   AggregatedAiSessionDetail,
   AggregatedAiSessionsResult,
   AiMessageRole,
+  AiSessionAttachmentContent,
   AiSessionProvider,
   LiveAiSessionsResult,
   RunningAgentPane,
@@ -1442,6 +1444,18 @@ export async function getTaskAiSessionDetail(
  * 태스크 하나의 실행중 AI 세션과 서브태스크를 조회한다.
  * 보드 카드에 focus를 올렸을 때와 태스크 상세 패널이 열려 있을 때 짧은 주기로 다시 불린다.
  */
+export async function getTaskAiSessionAttachment(
+  taskId: string,
+  provider: AiSessionProvider,
+  sessionId: string,
+  attachmentId: string,
+  sourceRef?: string | null,
+): Promise<AiSessionAttachmentContent | null> {
+  const task = await (await getTaskRepository()).findOne({ where: { id: taskId }, relations: ["project"] });
+  if (!task?.project) return null;
+  return readAiSessionAttachment({ worktreePath: task.worktreePath || task.project.repoPath, repoPath: task.project.repoPath, sshHost: task.project.sshHost }, provider, sessionId, attachmentId, sourceRef);
+}
+
 export async function getTaskLiveAiSessions(taskId: string): Promise<LiveAiSessionsResult> {
   const taskRepo = await getTaskRepository();
   const task = await taskRepo.findOne({

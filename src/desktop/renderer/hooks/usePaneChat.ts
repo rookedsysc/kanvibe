@@ -92,7 +92,7 @@ export function usePaneChat(taskId: string, isVisible = true, paneId?: string) {
     readError, actionError, isBusy,
     isReady: isReady && result?.taskId === taskId && result.paneId === paneId,
     refresh: () => refreshRef.current(),
-    send: (text: string) => run((token) => actions.sendPaneChatPrompt(taskId, token, text)),
+    send: (text: string, attachmentIds?: string[], requestId?: string) => run((token) => actions.sendPaneChatPrompt(taskId, token, text, attachmentIds, requestId)),
     interrupt: () => run((token) => actions.interruptPaneChat(taskId, token)),
     openModelPicker: () => run((token) => actions.openPaneChatModelPicker(taskId, token)),
     sendKey: (key: PaneChatKey) => run((token) => actions.sendPaneChatKey(taskId, token, key)),

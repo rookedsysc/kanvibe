@@ -5,12 +5,28 @@ export type AiSessionMatchScope = "worktree";
 
 export type AiMessageRole = "user" | "assistant" | "tool" | "system" | "developer" | "reasoning" | "unknown";
 
+export interface AiMessageAttachment {
+  id: string;
+  kind: "image" | "file";
+  name: string;
+  mimeType: string | null;
+  sizeBytes: number | null;
+}
+
+export interface AiSessionAttachmentContent {
+  id: string;
+  name: string;
+  mimeType: string;
+  dataUrl: string;
+}
+
 export interface AggregatedAiMessage {
   role: AiMessageRole;
   timestamp: string | null;
   text: string;
   fullText: string;
   isTruncated: boolean;
+  attachments?: AiMessageAttachment[];
 }
 
 export interface AggregatedAiSession {

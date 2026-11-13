@@ -217,7 +217,16 @@ class PaneChatController extends AsyncNotifier<PaneChatState> {
     }
   }
 
-  Future<bool> send(String text) => _act(PaneChatAction.prompt, text: text);
+  Future<bool> send(
+    String text, {
+    List<String>? attachmentIds,
+    String? requestId,
+  }) => _act(
+    PaneChatAction.prompt,
+    text: text,
+    attachmentIds: attachmentIds,
+    requestId: requestId,
+  );
   Future<bool> interrupt() => _act(PaneChatAction.interrupt);
   Future<bool> openModelPicker() => _act(PaneChatAction.modelPicker);
   Future<bool> sendKey(PaneChatKey key) => _act(PaneChatAction.key, key: key);
@@ -234,6 +243,8 @@ class PaneChatController extends AsyncNotifier<PaneChatState> {
     PaneChatAction action, {
     String? text,
     PaneChatKey? key,
+    List<String>? attachmentIds,
+    String? requestId,
   }) async {
     final initial = state.value;
     final connection = _connection;
@@ -290,7 +301,13 @@ class PaneChatController extends AsyncNotifier<PaneChatState> {
         }
         return false;
       }
-      return await _performAction(action, text: text, key: key);
+      return await _performAction(
+        action,
+        text: text,
+        key: key,
+        attachmentIds: attachmentIds,
+        requestId: requestId,
+      );
     } finally {
       if (ref.mounted &&
           generation == _generation &&
@@ -319,6 +336,8 @@ class PaneChatController extends AsyncNotifier<PaneChatState> {
     PaneChatAction action, {
     String? text,
     PaneChatKey? key,
+    List<String>? attachmentIds,
+    String? requestId,
   }) async {
     final previous = state.value;
     final connection = _connection;
@@ -337,7 +356,8 @@ class PaneChatController extends AsyncNotifier<PaneChatState> {
       return false;
     }
     if (action == PaneChatAction.prompt &&
-        (text == null || text.trim().isEmpty)) {
+        ((text == null || text.trim().isEmpty) &&
+            (attachmentIds == null || attachmentIds.isEmpty))) {
       return false;
     }
     if (action == PaneChatAction.modelPicker &&
@@ -368,6 +388,8 @@ class PaneChatController extends AsyncNotifier<PaneChatState> {
             action,
             text: text,
             key: key,
+            attachmentIds: attachmentIds,
+            requestId: requestId,
           );
       if (!ref.mounted || generation != _generation) return false;
       accepted = true;
