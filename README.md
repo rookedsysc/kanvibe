@@ -57,17 +57,22 @@ Each runtime uses a separate SQLite database:
 | Run | Data directory | Lifetime |
 | --- | --- | --- |
 | Installed KanVibe | Existing Electron `userData` directory | Persistent; production data stays in place |
-| `pnpm dev` / `pnpm desktop:dev` | `<appData>/kanvibe-dev` | Persistent across restarts and worktrees |
+| `pnpm dev` / `pnpm desktop:dev` | `<appData>/kanvibe-dev` | Refreshed from the installed application's DB on every launch by default |
+| `pnpm dev --data-source=existing` | `<appData>/kanvibe-dev` | Keeps development data across restarts and worktrees |
 | `pnpm start` | `<appData>/kanvibe-qa` | Persistent across restarts, builds, and worktrees |
 | Installed KanVibe with `--qa` | `<appData>/kanvibe-qa` | Same persistent manual QA database |
 | Automated Electron QA | Run's explicit fixture directory, or a fresh temporary directory | Isolated per run |
 | Vitest / Playwright | Separate temporary test directories | Isolated from application data |
 
-`<appData>` is `~/Library/Application Support` on macOS. The database filename is `kanvibe.db` in each directory. Development and manual QA start with their own database on first launch; existing production data is neither moved nor copied. Subsequent launches reuse those databases and apply the existing schema migrations. A new bundled seed does not replace an existing database, so manual QA can test upgrades against previously created data. Rebuild with `pnpm build` before `pnpm start` when testing a new source version.
+`<appData>` is `~/Library/Application Support` on macOS. The database filename is `kanvibe.db` in each directory. Development defaults to `--data-source=application`: before opening the app, it copies every table from `<appData>/KanVibe/kanvibe.db` into the separate development database, including projects, tasks, app settings, and committed WAL data from a running application. Development changes affect the copy. Each default launch replaces previous development DB contents; use `pnpm dev --data-source=existing` to keep them. Close an existing development instance before restarting.
+
+For a different installation data directory, use `pnpm dev --data-source=application --application-data-dir="/path/to/application-data"`. If the default application DB is absent, development warns and uses its existing DB or bundled seed. An invalid explicit source, corrupt source DB, or shared source/target path or DB link stops startup. Copying uses SQLite's [Online Backup API](https://www.sqlite.org/backup.html). Repository/worktree paths still point to the same files on disk; this option copies the SQLite data, not repositories, running terminals, OS credentials, or Chromium caches.
+
+Manual QA reuses its own database and applies the existing schema migrations. A new bundled seed does not replace an existing manual QA database, so QA can test upgrades against previously created data. Rebuild with `pnpm build` before `pnpm start` when testing a new source version.
 
 To test an installed macOS build with the persistent QA database, run `open -na KanVibe --args --qa`. Close an existing manual QA instance first so both do not use the same QA database concurrently.
 
-An explicit `KANVIBE_APP_DATA_DIR` overrides the desktop data directory; use a distinct directory for each environment. Desktop DB selection follows that directory, ignoring an inherited `KANVIBE_DB_PATH`. Non-desktop database tools retain the `KANVIBE_DB_PATH` override. Automated QA callers should pass `appDataDir` explicitly when they want to reopen a particular fixture; the launcher does not reuse application paths inherited from the parent shell.
+An explicit `KANVIBE_APP_DATA_DIR` overrides the desktop data directory and defaults development to `existing` mode; use a distinct directory for each environment. Add `--data-source=application` explicitly to refresh that development directory from application data. Automated QA (`KANVIBE_QA_MODE=1`) always keeps its fixture and never copies application data. Desktop DB selection follows that directory, ignoring an inherited `KANVIBE_DB_PATH`. Non-desktop database tools retain the `KANVIBE_DB_PATH` override. Automated QA callers should pass `appDataDir` explicitly when they want to reopen a particular fixture; the launcher does not reuse application paths inherited from the parent shell.
 
 ## From your desk to your phone
 
