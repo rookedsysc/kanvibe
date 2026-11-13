@@ -1,0 +1,56 @@
+# prepareNotificationDesktop.cjs의 새 격리 fixture가 필요하다. 정본 러너의 내부 녹화를 사용한다.
+# 알림함을 거치지 않고 보드에서 태스크 상세를 열기만 해도, 데스크톱 상세 화면과 같은 저장소 경로로
+# 그 태스크의 알림만 읽음 처리되는지 확인한다.
+appId: ${APP_ID}
+env:
+  DESKTOP_API_FROM_HOST: http://127.0.0.1:39736
+  PROBE_API_FROM_HOST: http://127.0.0.1:19737
+  EXPECT_UNREAD: "-1"
+  EXPECT_TOTAL: "-1"
+  EXPECT_READ: ""
+  EXPECT_EVENT: "false"
+  DESKTOP_ACTION: ""
+tags:
+  - journey
+---
+- runScript:
+    file: ../scripts/assert-notification-state.js
+    env:
+      EXPECT_UNREAD: "3"
+      EXPECT_TOTAL: "4"
+- launchApp:
+    clearState: true
+- setOrientation: PORTRAIT
+- extendedWaitUntil:
+    visible: "데스크탑에 연결"
+    timeout: 90000
+- runScript:
+    file: ../scripts/issue-dev-pairing-code.js
+- runFlow:
+    file: ../subflows/fill-connection-form.yaml
+    env:
+      PAIRING_CODE: ${output.pairingCode}
+- extendedWaitUntil:
+    visible: "(?s).*Maestro Beta Root.*"
+    timeout: 40000
+- runScript:
+    file: ../scripts/assert-notification-state.js
+    env:
+      DESKTOP_ACTION: create-task-notification
+      EXPECT_UNREAD: "4"
+      EXPECT_TOTAL: "5"
+      EXPECT_EVENT: "true"
+- takeScreenshot: board-before-task-detail
+- tapOn: "(?s).*Maestro Beta Root.*"
+- extendedWaitUntil:
+    visible: "이 태스크에는 터미널 세션이 없습니다."
+    timeout: 20000
+# 다른 태스크의 알림은 그대로 두고 이 태스크의 알림 하나만 데스크톱 저장소에서 읽혀야 한다.
+- runScript:
+    file: ../scripts/assert-notification-state.js
+    env:
+      EXPECT_UNREAD: "3"
+      EXPECT_TOTAL: "5"
+      EXPECT_READ: taskDetail
+      EXPECT_EVENT: "true"
+- takeScreenshot: task-detail-marks-desktop-notification-read

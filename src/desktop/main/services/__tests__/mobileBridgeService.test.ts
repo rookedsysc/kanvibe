@@ -170,6 +170,7 @@ const {
   getMobileTask,
   getMobileNotifications,
   markMobileNotificationRead,
+  markMobileTaskNotificationsRead,
   markAllMobileNotificationsRead,
   onMobileNotificationsChanged,
   listMobilePushSubscriptions,
@@ -694,6 +695,22 @@ describe("모바일 알림함", () => {
     expect(await listNotifications()).toEqual([
       { ...notification, isRead: true },
       { ...notification, id: "inbox-2", taskId: null, isRead: true },
+    ]);
+  });
+
+  it("task 읽음은 데스크탑 원본에서 그 task의 안읽은 알림만 읽음 처리하고 개수를 돌려준다", async () => {
+    appSettingsStore.set("app_notifications", JSON.stringify([
+      notification,
+      { ...notification, id: "inbox-2" },
+      { ...notification, id: "inbox-3", taskId: "other-task" },
+    ]));
+
+    expect(await markMobileTaskNotificationsRead(notification.taskId!)).toBe(2);
+    expect(await markMobileTaskNotificationsRead(notification.taskId!)).toBe(0);
+    expect(await listNotifications()).toEqual([
+      { ...notification, isRead: true },
+      { ...notification, id: "inbox-2", isRead: true },
+      { ...notification, id: "inbox-3", taskId: "other-task" },
     ]);
   });
 

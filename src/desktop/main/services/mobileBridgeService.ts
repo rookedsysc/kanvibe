@@ -23,7 +23,7 @@ import type { AiMessageRole, AiSessionProvider } from "@/lib/aiSessions/types";
 import { attachTaskTerminal, CallbackTerminalClient } from "@/desktop/main/terminalBridge";
 import { createTerminalTab } from "@/desktop/main/services/terminalTabService";
 import { propagateTaskRegistrationToPeers } from "@/desktop/main/services/taskTargetPropagationService";
-import { listNotifications, markNotificationRead, markAllNotificationsRead, subscribeToNotificationChanges } from "@/desktop/main/notificationStore";
+import { listNotifications, markNotificationRead, markAllNotificationsRead, markTaskNotificationsRead, subscribeToNotificationChanges } from "@/desktop/main/notificationStore";
 import type { AppNotification } from "@/desktop/shared/notifications";
 import { SessionType, TaskStatus, type KanbanTask } from "@/entities/KanbanTask";
 import { TaskPriority } from "@/entities/TaskPriority";
@@ -649,6 +649,11 @@ export async function updateMobileNotificationSettings(input: unknown) {
 export async function markMobileNotificationRead(notificationId: string) {
   const notification = await markNotificationRead(notificationId);
   return notification ? toMobileNotification(notification) : null;
+}
+
+/** 데스크탑 상세 화면이 포커스를 받을 때와 같은 store 경로로 task 알림을 읽음 처리한다. */
+export async function markMobileTaskNotificationsRead(taskId: string): Promise<number> {
+  return markTaskNotificationsRead(taskId);
 }
 
 export async function markAllMobileNotificationsRead(): Promise<void> {

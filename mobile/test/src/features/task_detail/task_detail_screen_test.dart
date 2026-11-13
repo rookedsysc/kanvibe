@@ -20,6 +20,7 @@ import 'package:kanvibe_mobile/src/features/task_detail/presentation/widgets/ter
 import 'package:xterm/xterm.dart' as xterm;
 
 import '../../../support/fake_desktop.dart';
+import '../../../support/fake_notification_inbox.dart';
 
 /// 데스크탑 스크린샷과 같은 모양. window 하나가 좌우 두 pane으로 갈려 있고, 두 번째 window가 하나 더 있다
 const _twoPaneWindow = MirrorTab(
@@ -229,6 +230,51 @@ Future<void> _submitCreation(WidgetTester tester) async {
 }
 
 void main() {
+  group('알림 읽음', () {
+    testWidgets('상세 화면에 들어오면 데스크톱에 이 태스크의 알림 읽음을 요청한다', (tester) async {
+      final client = InboxDesktopClient(surfaces: _surfaces);
+      await pumpDetail(tester, size: phoneSize, desktopClient: client);
+
+      expect(client.readTaskCalls.map((call) => call.taskId), [_task.id]);
+    });
+
+    testWidgets('다른 화면이 덮인 동안에는 요청하지 않고 다시 보일 때 요청한다', (tester) async {
+      final client = InboxDesktopClient(surfaces: _surfaces);
+      await pumpDetail(tester, size: phoneSize, desktopClient: client);
+      final navigator = tester.state<NavigatorState>(find.byType(Navigator));
+
+      unawaited(
+        navigator.push(
+          MaterialPageRoute<void>(builder: (_) => const Text('덮는 화면')),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(client.readTaskCalls, hasLength(1));
+
+      navigator.pop();
+      await tester.pumpAndSettle();
+      expect(client.readTaskCalls.map((call) => call.taskId), [
+        _task.id,
+        _task.id,
+      ]);
+    });
+
+    testWidgets('앱이 전경을 벗어난 동안에는 요청하지 않고 돌아오면 요청한다', (tester) async {
+      final client = InboxDesktopClient(surfaces: _surfaces);
+      await pumpDetail(tester, size: phoneSize, desktopClient: client);
+
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      await tester.pump();
+      expect(client.readTaskCalls, hasLength(1));
+
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpAndSettle();
+      expect(client.readTaskCalls, hasLength(2));
+    });
+  });
+
   group('태스크 상단 반응형 액션', () {
     const taskWithPr = BoardTask(
       id: 'task-1',
