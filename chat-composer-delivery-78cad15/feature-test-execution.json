@@ -1,0 +1,76 @@
+{
+  "planItems": [
+    "C1",
+    "C2",
+    "C3",
+    "C4",
+    "C5",
+    "C6"
+  ],
+  "nodeFeatureTestEntries": [
+    {
+      "project": "dom",
+      "file": "src/desktop/renderer/components/__tests__/PaneChatComposer.test.tsx",
+      "executed": 16
+    },
+    {
+      "project": "dom",
+      "file": "src/desktop/renderer/components/__tests__/PaneChatView.test.tsx",
+      "executed": 12
+    },
+    {
+      "project": "dom",
+      "file": "src/desktop/renderer/components/__tests__/AiChatAttachment.test.tsx",
+      "executed": 5
+    },
+    {
+      "project": "dom",
+      "file": "src/lib/__tests__/remoteImagePaste.test.ts",
+      "executed": 7
+    },
+    {
+      "project": "dom",
+      "file": "src/lib/__tests__/attachmentContent.test.ts",
+      "executed": 7
+    },
+    {
+      "project": "node",
+      "file": "src/desktop/main/services/__tests__/mobileBridgeService.test.ts",
+      "executed": 183
+    },
+    {
+      "project": "node",
+      "file": "electron/mobileRoutes.test.mjs",
+      "executed": 166
+    },
+    {
+      "project": "node",
+      "file": "src/lib/aiSessions/__tests__/imageHistory.test.ts",
+      "executed": 12
+    },
+    {
+      "project": "node",
+      "file": "src/desktop/main/services/__tests__/paneChatService.test.ts",
+      "executed": 32
+    },
+    {
+      "project": "node",
+      "file": "src/desktop/main/services/__tests__/paneChatComposerCatalog.test.ts",
+      "executed": 6
+    },
+    {
+      "project": "node",
+      "file": "src/desktop/main/services/__tests__/paneChatAttachmentService.test.ts",
+      "executed": 6
+    },
+    {
+      "project": "node",
+      "file": "src/lib/aiSessions/__tests__/paneChatProcess.test.ts",
+      "executed": 10
+    }
+  ],
+  "nodeFeatureExecuted": 462,
+  "nodeFullSuite": 3123,
+  "flutterFullSuite": 534,
+  "explanation": "Runner counts include configured node/dom project executions. Every feature test file added or modified appears in the full test log; mobile composer/intake are also included in the full Flutter JSON runner report."
+}

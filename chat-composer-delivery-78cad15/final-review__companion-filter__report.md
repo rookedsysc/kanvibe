@@ -1,0 +1,13 @@
+# Independent C5 companion-record repair review
+
+**PASS.** Specification conformance and implementation quality: PASS for the assigned narrow repair. No remaining verified finding. No product source, apps, devices or services changed.
+
+Native image-only and captioned Claude JSONLs in `integration/native-final/claude-image-only/session-0.jsonl` and `integration/native-final/claude-image-caption/session-0.jsonl` contain internal user records with both `isMeta:true` and `turnCompanion:true`, plus a text block beginning `[Image: source: `. `native-companion-shape.json` records those exact shape checks without copying image payloads.
+
+The new private predicate in `readClaudeSessions.ts` requires all three properties. Its early returns cover detail rendering, list counts/title/search, latest conversation timestamp and current activity. Human image rows and their lazy attachment metadata remain available; unmarked literal source text stays visible. The change follows the existing reader ownership and does not alter media lookup authorization or provider framing.
+
+Independent isolated command: `/Users/rookedsysc/.nvm/versions/node/v24.22.1/bin/node node_modules/vitest/vitest.mjs run src/lib/aiSessions/__tests__/imageHistory.test.ts src/lib/aiSessions/__tests__/companionBoundary.review.test.ts` — **13/13 PASS, exit0** (`independent-green.log`). The12 history tests include both new regressions plus image-only/mixed content, media identities, authorization and bounded file behavior. The additional review-only test proves that singly marked, unmarked and inline source text survives, while only the fully marked prefix shape disappears. Its source is preserved in `companionBoundary.review.test.ts`. No repository test was weakened or edited by this reviewer.
+
+Implementation RED/GREEN evidence was checked: `../../claude-companion-red.log` has2 failed companion regressions/10 passed; `../../claude-companion-green.log` has12 passed. Reviewed source SHA256 values and current-tree comparison are in `source-binding.json`.
+
+The remaining QA repair diff was inspected at source level: Claude final-file-mention whitespace closes the native completion boundary while preserving other text; native process detection is limited to a version-named process with an actual Claude executable path; prior desktop/mobile lifetime closure remains valid. No further verified correctness blocker was found. Temporary Android drop diagnostics were excluded per coordinator instruction; the mobile owner's final drop implementation/QA handoff remains pending, and this review makes no device-drop or final full-CI claim.

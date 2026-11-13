@@ -1,0 +1,88 @@
+{
+  "final-analyze": {
+    "command": [
+      "flutter",
+      "analyze",
+      "--no-pub"
+    ],
+    "before": {
+      "head": "45c404119d73e59b23bbdc981696a89676661cc1",
+      "fingerprint": "fa502646a33af0e4b3bde17401edb3fc07a13e18"
+    },
+    "after": {
+      "head": "45c404119d73e59b23bbdc981696a89676661cc1",
+      "fingerprint": "fa502646a33af0e4b3bde17401edb3fc07a13e18"
+    },
+    "exitCode": 0
+  },
+  "final-tests": {
+    "command": [
+      "flutter",
+      "test",
+      "--reporter",
+      "json"
+    ],
+    "before": {
+      "head": "45c404119d73e59b23bbdc981696a89676661cc1",
+      "fingerprint": "fa502646a33af0e4b3bde17401edb3fc07a13e18"
+    },
+    "after": {
+      "head": "45c404119d73e59b23bbdc981696a89676661cc1",
+      "fingerprint": "fa502646a33af0e4b3bde17401edb3fc07a13e18"
+    },
+    "exitCode": 0
+  },
+  "final-profile": {
+    "command": [
+      "flutter",
+      "build",
+      "apk",
+      "--profile",
+      "--no-pub"
+    ],
+    "before": {
+      "head": "45c404119d73e59b23bbdc981696a89676661cc1",
+      "fingerprint": "fa502646a33af0e4b3bde17401edb3fc07a13e18"
+    },
+    "after": {
+      "head": "45c404119d73e59b23bbdc981696a89676661cc1",
+      "fingerprint": "fa502646a33af0e4b3bde17401edb3fc07a13e18"
+    },
+    "exitCode": 0
+  },
+  "final-owned-format": {
+    "command": [
+      "/Users/rookedsysc/fvm/versions/3.47.2/bin/dart",
+      "format",
+      "--output=none",
+      "--set-exit-if-changed",
+      "mobile/lib/src/common/network/desktop_client.dart",
+      "mobile/lib/src/features/chat_history/application/chat_attachment_provider.dart",
+      "mobile/lib/src/features/chat_history/domain/chat_history.dart",
+      "mobile/lib/src/features/chat_history/presentation/chat_attachment_tile.dart",
+      "mobile/lib/src/features/chat_history/presentation/chat_conversation_view.dart",
+      "mobile/lib/src/features/chat_history/presentation/chat_message_tile.dart",
+      "mobile/lib/src/features/pane_chat/application/pane_chat_composer_controller.dart",
+      "mobile/lib/src/features/pane_chat/application/pane_chat_controller.dart",
+      "mobile/lib/src/features/pane_chat/data/pane_chat_attachment_intake.dart",
+      "mobile/lib/src/features/pane_chat/domain/pane_chat.dart",
+      "mobile/lib/src/features/pane_chat/domain/pane_chat_attachment.dart",
+      "mobile/lib/src/features/pane_chat/presentation/pane_chat_attachment_strip.dart",
+      "mobile/lib/src/features/pane_chat/presentation/pane_chat_completion_menu.dart",
+      "mobile/lib/src/features/pane_chat/presentation/pane_chat_composer.dart",
+      "mobile/lib/src/features/pane_chat/presentation/pane_chat_view.dart",
+      "mobile/test/src/features/pane_chat/pane_chat_attachment_intake_test.dart",
+      "mobile/test/src/features/pane_chat/pane_chat_composer_test.dart",
+      "mobile/test/support/fake_desktop.dart"
+    ],
+    "before": {
+      "head": "45c404119d73e59b23bbdc981696a89676661cc1",
+      "fingerprint": "fa502646a33af0e4b3bde17401edb3fc07a13e18"
+    },
+    "after": {
+      "head": "45c404119d73e59b23bbdc981696a89676661cc1",
+      "fingerprint": "fa502646a33af0e4b3bde17401edb3fc07a13e18"
+    },
+    "exitCode": 0
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "headRefOid": "78cad15a5dbaf99460f6f674517712cc22edb89e",
+  "statusCheckRollup": [
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-11-13T03:29:36Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/rookedsysc/kanvibe/actions/runs/43359113663/job/131668131179",
+      "name": "Type Check & Test",
+      "startedAt": "2026-11-13T03:27:44Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-11-13T03:29:15Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://dash.cloudflare.com/5b5f3f8530f8fc7d6b6871ae8e5165e2/workers/services/view/kanvibe/production/builds/a4a43135-6cac-45f6-86f6-a07797c7044e",
+      "name": "Workers Builds: kanvibe",
+      "startedAt": "2026-11-13T03:29:15Z",
+      "status": "COMPLETED",
+      "workflowName": ""
+    }
+  ],
+  "url": "https://github.com/rookedsysc/kanvibe/pull/443",
+  "checkedAt": "2026-11-13T03:30:40.202702+00:00"
+}

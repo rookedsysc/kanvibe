@@ -1,0 +1,32 @@
+{
+  "transport": {
+    "live-pane-a": {
+      "byteCount": 865,
+      "markerCounts": {
+        "Mobile-skill-button-C3-20261113": 1,
+        "Mobile-typed-dollar-C3-20261113": 1,
+        "Mobile-command-C3-20261113": 1,
+        "Mobile-file-mention-C3-20261113": 1,
+        "Mobile-drop-caption-C6-20261113": 1
+      }
+    },
+    "live-pane-b": {
+      "byteCount": 24,
+      "markerCounts": {
+        "Mobile-skill-button-C3-20261113": 0,
+        "Mobile-typed-dollar-C3-20261113": 0,
+        "Mobile-command-C3-20261113": 0,
+        "Mobile-file-mention-C3-20261113": 0,
+        "Mobile-drop-caption-C6-20261113": 0
+      }
+    }
+  },
+  "drop": {
+    "expectedSha256": "f0a1762c8b9cc4982dd39cd20d276803245838efa3ed17381de0492535fda17f",
+    "expectedBytes": 153,
+    "serverExactByteMatches": [
+      "/Users/rookedsysc/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/feat-chat-ui/qa-results/roky-harness/chat-composer-delivery/integration/desktop-verified/app-data/pane-chat-attachments/draft-UA3OK4/d19515ca-ed6e-45c0-a136-64a025f3818b.png"
+    ]
+  },
+  "scope": "Owned fixture only; real Android OS drag and authenticated HTTP; native CLI fixture echoes transport, actual provider execution is separately verified by parent native probes."
+}

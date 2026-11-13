@@ -1,0 +1,29 @@
+{
+  "pass": true,
+  "at": "2026-11-13T03:59:49.900577+00:00",
+  "ownedProcessesStopped": true,
+  "sourceCopiesRemoved": [
+    "/private/var/folders/5_/twty8vcx36b1xwst32879wv00000gn/T/kanvibe-composer-electron-aheb403_",
+    "/private/var/folders/5_/twty8vcx36b1xwst32879wv00000gn/T/kanvibe-composer-electron-qgjuo98m",
+    "/private/var/folders/5_/twty8vcx36b1xwst32879wv00000gn/T/kanvibe-composer-electron-vymw77v5"
+  ],
+  "modelHomesRemoved": [
+    "/private/tmp/kv-chat-OjyylG",
+    "/private/tmp/kv-chat-UR2huH",
+    "/private/tmp/kv-chat-yu3J97",
+    "/private/var/folders/5_/twty8vcx36b1xwst32879wv00000gn/T/kv-native-submit-1jd9r55l",
+    "/private/var/folders/5_/twty8vcx36b1xwst32879wv00000gn/T/kv-native-submit-95pe2vb4",
+    "/private/var/folders/5_/twty8vcx36b1xwst32879wv00000gn/T/kv-native-submit-mumd4v2q",
+    "/private/var/folders/5_/twty8vcx36b1xwst32879wv00000gn/T/kv-native-submit-rh5o2hyk",
+    "/private/var/folders/5_/twty8vcx36b1xwst32879wv00000gn/T/kv-native-submit-co4_ilii"
+  ],
+  "ownedPortsReleased": [
+    20364,
+    20374,
+    54777,
+    54778,
+    55395
+  ],
+  "userAppModified": false,
+  "userApp9736StillListeningPid": 47303
+}

@@ -1,0 +1,18 @@
+{
+  "launchHead": "45c404119d73e59b23bbdc981696a89676661cc1",
+  "launchFullTreeFingerprint": "fa502646a33af0e4b3bde17401edb3fc07a13e18",
+  "currentHead": "45c404119d73e59b23bbdc981696a89676661cc1",
+  "currentFullTreeFingerprint": "3bd960923db0e24f548c2a42e257352006908ead",
+  "nodeInputFileCount": 720,
+  "nodeInputSha256": "45394beab54a47b8c94542c4efb9a0236de576f974c7ec940d1f5e75dc930d9d",
+  "rootNodeMismatches": [],
+  "actualRuntimeMismatchesAfterDocumentedQaOverrides": [],
+  "scope": "Tracked Node source/config/test inputs; mobile sources are independently compiled and verified by mobile role. Full-tree fingerprint can change for mobile-only edits without changing consumed Node inputs.",
+  "documentedQaOverrides": [
+    "DEV_HOOK_SERVER_PORT19736\u219220364",
+    "QA helper external runtime copy location"
+  ],
+  "runtimeWorkspace": "/private/var/folders/5_/twty8vcx36b1xwst32879wv00000gn/T/kanvibe-composer-electron-vymw77v5/runtime",
+  "finalRootCommit": "78cad15a5dbaf99460f6f674517712cc22edb89e",
+  "finalCommitNodeMismatches": []
+}

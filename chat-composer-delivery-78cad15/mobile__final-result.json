@@ -1,0 +1,24 @@
+{
+  "head": "78cad15a5dbaf99460f6f674517712cc22edb89e",
+  "flutterTests": {
+    "success": 534
+  },
+  "nativePassedFlows": {
+    "final-picker-file": true,
+    "final-lifetime-overlay-settled": true,
+    "final-paste-drop-probe": true,
+    "final-completion-native-key": true,
+    "final-history-row": true,
+    "final-overlay-drop": true
+  },
+  "c3LogicalCases": {
+    "skillButton": "PASS (ack/assertions in final-completions; flow later failed on IME action)",
+    "typedDollar": "PASS (ack/assertions in final-completions; flow later failed on IME action)",
+    "nativeKeyCommand": "PASS final-completion-native-key",
+    "fileMentionWithSpaces": "PASS final-completion-native-key"
+  },
+  "nativeDrop": "PASS original production DecorView; helper Activity InputSink caused early false failures; Service overlay corrected test environment only",
+  "iosRuntime": "BLOCKED baseline Xcode26.0.1 vsFirebase13 SDK requirement26.2; standalone bridge Swift typecheck0",
+  "externalHardwareShortcut": "UNVERIFIED priorADBmodified-key limitation",
+  "allProductSourceEditsFinished": true
+}

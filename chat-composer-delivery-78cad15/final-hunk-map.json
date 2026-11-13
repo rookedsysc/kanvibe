@@ -1,0 +1,2463 @@
+{
+  "head": "78cad15a5dbaf99460f6f674517712cc22edb89e",
+  "base": "fa5b414bf8c54b756bd5006610b69563c3c2c98c",
+  "fingerprint": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+  "fileCount": 126,
+  "hunkCount": 392,
+  "composerFiles": 68,
+  "unmapped": 0,
+  "gateEnablingRepair": 0,
+  "toolingEnforcedFormat": 0,
+  "files": [
+    {
+      "file": "README.md",
+      "plan": "C1-C6: document user-visible attachment/completion/native delivery and history behavior",
+      "task": "composer-delivery",
+      "hunks": [
+        {
+          "range": "@@ -101 +101,11 @@ Open task search from anywhere and filter by project or branch name. In Worktree",
+          "plan": "C1-C6: document user-visible attachment/completion/native delivery and history behavior"
+        }
+      ]
+    },
+    {
+      "file": "docs/research/chat-ui-orca-paseo.md",
+      "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA",
+      "task": "prior-approved-chat-ui",
+      "hunks": [
+        {
+          "range": "@@ -0,0 +1,156 @@",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        }
+      ]
+    },
+    {
+      "file": "electron/hookServer.js",
+      "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA",
+      "task": "prior-approved-chat-ui",
+      "hunks": [
+        {
+          "range": "@@ -43 +43,3 @@ function createHookServer({ host, port, mobileTlsPort, mobileTlsDirectory, isDev",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        }
+      ]
+    },
+    {
+      "file": "electron/httpBody.js",
+      "plan": "C1/C3/C5: authenticated upload/suggestions/media transport, route-specific body limit and contract tests",
+      "task": "composer-delivery",
+      "hunks": [
+        {
+          "range": "@@ -11 +11 @@ const MAX_BODY_BYTES = 64 * 1024;",
+          "plan": "C1/C3/C5: authenticated upload/suggestions/media transport, route-specific body limit and contract tests"
+        },
+        {
+          "range": "@@ -18 +18 @@ function readJsonBody(request) {",
+          "plan": "C1/C3/C5: authenticated upload/suggestions/media transport, route-specific body limit and contract tests"
+        }
+      ]
+    },
+    {
+      "file": "electron/main.js",
+      "plan": "P1 shared configurable shortcut and collision/capture tests",
+      "task": "prior-approved-chat-ui",
+      "hunks": [
+        {
+          "range": "@@ -802,0 +803,6 @@ function attachWindowHandlers(browserWindow) {",
+          "plan": "P1 shared configurable shortcut and collision/capture tests"
+        }
+      ]
+    },
+    {
+      "file": "electron/mobileRoutes.js",
+      "plan": "C1/C3/C5: authenticated upload/suggestions/media transport, route-specific body limit and contract tests",
+      "task": "composer-delivery",
+      "hunks": [
+        {
+          "range": "@@ -65,0 +66,4 @@ const AI_SESSIONS_PATH_PATTERN = /^\\/api\\/mobile\\/tasks\\/([^/]+)\\/ai-sessions(?:",
+          "plan": "C1/C3/C5: authenticated upload/suggestions/media transport, route-specific body limit and contract tests"
+        },
+        {
+          "range": "@@ -183,0 +188,15 @@ async function handleMobileRequest(request, response, { bridge, host, port, isDe",
+          "plan": "C1/C3/C5: authenticated upload/suggestions/media transport, route-specific body limit and contract tests"
+        },
+        {
+          "range": "@@ -349,0 +369,39 @@ async function handleNotificationSubscriptionRequest(request, response, bridge)",
+          "plan": "C1/C3/C5: authenticated upload/suggestions/media transport, route-specific body limit and contract tests"
+        }
+      ]
+    },
+    {
+      "file": "electron/mobileRoutes.test.mjs",
+      "plan": "C1/C3/C5: authenticated upload/suggestions/media transport, route-specific body limit and contract tests",
+      "task": "composer-delivery",
+      "hunks": [
+        {
+          "range": "@@ -1562,0 +1563,76 @@ describe(\"모바일 프로젝트 폴더 등록\", () => {",
+          "plan": "C1/C3/C5: authenticated upload/suggestions/media transport, route-specific body limit and contract tests"
+        }
+      ]
+    },
+    {
+      "file": "electron/preload.js",
+      "plan": "P1 shared configurable shortcut and collision/capture tests",
+      "task": "prior-approved-chat-ui",
+      "hunks": [
+        {
+          "range": "@@ -204,0 +205,7 @@ contextBridge.exposeInMainWorld(\"kanvibeDesktop\", {",
+          "plan": "P1 shared configurable shortcut and collision/capture tests"
+        }
+      ]
+    },
+    {
+      "file": "messages/en.json",
+      "plan": "C1/C3/C5: attachment, completion and image history labels in supported locale",
+      "task": "composer-delivery",
+      "hunks": [
+        {
+          "range": "@@ -305,0 +306 @@",
+          "plan": "C1/C3/C5: attachment, completion and image history labels in supported locale"
+        },
+        {
+          "range": "@@ -393,0 +395,52 @@",
+          "plan": "C1/C3/C5: attachment, completion and image history labels in supported locale"
+        },
+        {
+          "range": "@@ -474,0 +528,12 @@",
+          "plan": "C1/C3/C5: attachment, completion and image history labels in supported locale"
+        }
+      ]
+    },
+    {
+      "file": "messages/ko.json",
+      "plan": "C1/C3/C5: attachment, completion and image history labels in supported locale",
+      "task": "composer-delivery",
+      "hunks": [
+        {
+          "range": "@@ -305,0 +306 @@",
+          "plan": "C1/C3/C5: attachment, completion and image history labels in supported locale"
+        },
+        {
+          "range": "@@ -393,0 +395,52 @@",
+          "plan": "C1/C3/C5: attachment, completion and image history labels in supported locale"
+        },
+        {
+          "range": "@@ -474,0 +528,12 @@",
+          "plan": "C1/C3/C5: attachment, completion and image history labels in supported locale"
+        }
+      ]
+    },
+    {
+      "file": "messages/zh.json",
+      "plan": "C1/C3/C5: attachment, completion and image history labels in supported locale",
+      "task": "composer-delivery",
+      "hunks": [
+        {
+          "range": "@@ -304,0 +305 @@",
+          "plan": "C1/C3/C5: attachment, completion and image history labels in supported locale"
+        },
+        {
+          "range": "@@ -392,0 +394,20 @@",
+          "plan": "C1/C3/C5: attachment, completion and image history labels in supported locale"
+        },
+        {
+          "range": "@@ -473,0 +495,12 @@",
+          "plan": "C1/C3/C5: attachment, completion and image history labels in supported locale"
+        }
+      ]
+    },
+    {
+      "file": "mobile/.maestro/flows/chat-history-multi-pc.yaml",
+      "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA",
+      "task": "prior-approved-chat-ui",
+      "hunks": [
+        {
+          "range": "@@ -22 +22 @@ env:",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        },
+        {
+          "range": "@@ -112 +112 @@ env:",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        }
+      ]
+    },
+    {
+      "file": "mobile/.maestro/flows/chat-history.yaml",
+      "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA",
+      "task": "prior-approved-chat-ui",
+      "hunks": [
+        {
+          "range": "@@ -5 +5 @@ env:",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        },
+        {
+          "range": "@@ -34,0 +35 @@ env:",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        },
+        {
+          "range": "@@ -56,0 +58 @@ env:",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        },
+        {
+          "range": "@@ -60,0 +63 @@ env:",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        },
+        {
+          "range": "@@ -96 +99 @@ env:",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        },
+        {
+          "range": "@@ -97,0 +101 @@ env:",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        },
+        {
+          "range": "@@ -99 +102,0 @@ env:",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        },
+        {
+          "range": "@@ -107,6 +110,2 @@ env:",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        },
+        {
+          "range": "@@ -130,0 +130 @@ env:",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        },
+        {
+          "range": "@@ -134,0 +135 @@ env:",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        },
+        {
+          "range": "@@ -137,0 +139 @@ env:",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        },
+        {
+          "range": "@@ -141,0 +144 @@ env:",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        },
+        {
+          "range": "@@ -154 +157 @@ env:",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        }
+      ]
+    },
+    {
+      "file": "mobile/.maestro/flows/focused-pane-chat.yaml",
+      "plan": "P5 mobile selected-pane mode/shortcut + native QA",
+      "task": "prior-approved-chat-ui",
+      "hunks": [
+        {
+          "range": "@@ -0,0 +1,102 @@",
+          "plan": "P5 mobile selected-pane mode/shortcut + native QA"
+        }
+      ]
+    },
+    {
+      "file": "mobile/.maestro/flows/pane-chat.yaml",
+      "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA",
+      "task": "prior-approved-chat-ui",
+      "hunks": [
+        {
+          "range": "@@ -0,0 +1,87 @@",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        }
+      ]
+    },
+    {
+      "file": "mobile/README.md",
+      "plan": "P5 mobile selected-pane mode/shortcut + native QA",
+      "task": "prior-approved-chat-ui",
+      "hunks": [
+        {
+          "range": "@@ -194,0 +195,2 @@ KANVIBE_MOBILE_PUSH_RELAY_TOKEN='<relay-config-secret>' pnpm dev",
+          "plan": "P5 mobile selected-pane mode/shortcut + native QA"
+        }
+      ]
+    },
+    {
+      "file": "mobile/android/app/src/main/kotlin/com/kanvibe/kanvibe_mobile/MainActivity.kt",
+      "plan": "C6: native intake and mobile composer integration, picker dependency/wiring or behavior tests",
+      "task": "composer-delivery",
+      "hunks": [
+        {
+          "range": "@@ -3,0 +4 @@ import io.flutter.embedding.android.FlutterActivity",
+          "plan": "C6: native intake and mobile composer integration, picker dependency/wiring or behavior tests"
+        },
+        {
+          "range": "@@ -5 +6,14 @@ import io.flutter.embedding.android.FlutterActivity",
+          "plan": "C6: native intake and mobile composer integration, picker dependency/wiring or behavior tests"
+        }
+      ]
+    },
+    {
+      "file": "mobile/android/app/src/main/kotlin/com/kanvibe/kanvibe_mobile/PaneChatAttachmentBridge.kt",
+      "plan": "C6: native intake and mobile composer integration, picker dependency/wiring or behavior tests",
+      "task": "composer-delivery",
+      "hunks": [
+        {
+          "range": "@@ -0,0 +1,185 @@",
+          "plan": "C6: native intake and mobile composer integration, picker dependency/wiring or behavior tests"
+        }
+      ]
+    },
+    {
+      "file": "mobile/ios/Runner.xcodeproj/project.pbxproj",
+      "plan": "C6: native intake and mobile composer integration, picker dependency/wiring or behavior tests",
+      "task": "composer-delivery",
+      "hunks": [
+        {
+          "range": "@@ -14,0 +15 @@",
+          "plan": "C6: native intake and mobile composer integration, picker dependency/wiring or behavior tests"
+        },
+        {
+          "range": "@@ -52,0 +54 @@",
+          "plan": "C6: native intake and mobile composer integration, picker dependency/wiring or behavior tests"
+        },
+        {
+          "range": "@@ -127,0 +130 @@",
+          "plan": "C6: native intake and mobile composer integration, picker dependency/wiring or behavior tests"
+        },
+        {
+          "range": "@@ -292,0 +296 @@",
+          "plan": "C6: native intake and mobile composer integration, picker dependency/wiring or behavior tests"
+        }
+      ]
+    },
+    {
+      "file": "mobile/ios/Runner/AppDelegate.swift",
+      "plan": "C6: native intake and mobile composer integration, picker dependency/wiring or behavior tests",
+      "task": "composer-delivery",
+      "hunks": [
+        {
+          "range": "@@ -16,0 +17,3 @@ import UserNotifications",
+          "plan": "C6: native intake and mobile composer integration, picker dependency/wiring or behavior tests"
+        }
+      ]
+    },
+    {
+      "file": "mobile/ios/Runner/PaneChatAttachmentPlugin.swift",
+      "plan": "C6: native intake and mobile composer integration, picker dependency/wiring or behavior tests",
+      "task": "composer-delivery",
+      "hunks": [
+        {
+          "range": "@@ -0,0 +1,198 @@",
+          "plan": "C6: native intake and mobile composer integration, picker dependency/wiring or behavior tests"
+        }
+      ]
+    },
+    {
+      "file": "mobile/lib/src/common/network/desktop_client.dart",
+      "plan": "C6: native intake and mobile composer integration, picker dependency/wiring or behavior tests",
+      "task": "composer-delivery",
+      "hunks": [
+        {
+          "range": "@@ -13,0 +14 @@ import '../../features/notifications/domain/notification_settings.dart';",
+          "plan": "C6: native intake and mobile composer integration, picker dependency/wiring or behavior tests"
+        },
+        {
+          "range": "@@ -216,0 +218,228 @@ class DesktopClient {",
+          "plan": "C6: native intake and mobile composer integration, picker dependency/wiring or behavior tests"
+        }
+      ]
+    },
+    {
+      "file": "mobile/lib/src/features/chat_history/application/chat_attachment_provider.dart",
+      "plan": "C5/C6: authenticated mobile image history, image-only rows and retry presentation",
+      "task": "composer-delivery",
+      "hunks": [
+        {
+          "range": "@@ -0,0 +1,29 @@",
+          "plan": "C5/C6: authenticated mobile image history, image-only rows and retry presentation"
+        }
+      ]
+    },
+    {
+      "file": "mobile/lib/src/features/chat_history/domain/chat_history.dart",
+      "plan": "C5/C6: authenticated mobile image history, image-only rows and retry presentation",
+      "task": "composer-delivery",
+      "hunks": [
+        {
+          "range": "@@ -6,0 +7,2 @@ class ChatSession {",
+          "plan": "C5/C6: authenticated mobile image history, image-only rows and retry presentation"
+        },
+        {
+          "range": "@@ -11,0 +14,2 @@ class ChatSession {",
+          "plan": "C5/C6: authenticated mobile image history, image-only rows and retry presentation"
+        },
+        {
+          "range": "@@ -21,0 +26,2 @@ class ChatSession {",
+          "plan": "C5/C6: authenticated mobile image history, image-only rows and retry presentation"
+        },
+        {
+          "range": "@@ -26 +32,6 @@ class ChatMessage {",
+          "plan": "C5/C6: authenticated mobile image history, image-only rows and retry presentation"
+        },
+        {
+          "range": "@@ -29,0 +41 @@ class ChatMessage {",
+          "plan": "C5/C6: authenticated mobile image history, image-only rows and retry presentation"
+        },
+        {
+          "range": "@@ -34,0 +47,3 @@ class ChatMessage {",
+          "plan": "C5/C6: authenticated mobile image history, image-only rows and retry presentation"
+        },
+        {
+          "range": "@@ -73,0 +89,20 @@ class ChatMessagePage {",
+          "plan": "C5/C6: authenticated mobile image history, image-only rows and retry presentation"
+        }
+      ]
+    },
+    {
+      "file": "mobile/lib/src/features/chat_history/presentation/chat_attachment_tile.dart",
+      "plan": "C5/C6: authenticated mobile image history, image-only rows and retry presentation",
+      "task": "composer-delivery",
+      "hunks": [
+        {
+          "range": "@@ -0,0 +1,103 @@",
+          "plan": "C5/C6: authenticated mobile image history, image-only rows and retry presentation"
+        }
+      ]
+    },
+    {
+      "file": "mobile/lib/src/features/chat_history/presentation/chat_conversation_view.dart",
+      "plan": "C5/C6: authenticated mobile image history, image-only rows and retry presentation",
+      "task": "composer-delivery",
+      "hunks": [
+        {
+          "range": "@@ -0,0 +1,169 @@",
+          "plan": "C5/C6: authenticated mobile image history, image-only rows and retry presentation"
+        }
+      ]
+    },
+    {
+      "file": "mobile/lib/src/features/chat_history/presentation/chat_history_screen.dart",
+      "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA",
+      "task": "prior-approved-chat-ui",
+      "hunks": [
+        {
+          "range": "@@ -2 +1,0 @@ import 'package:flutter/material.dart';",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        },
+        {
+          "range": "@@ -6,0 +6 @@ import '../../../common/constants/app_sizes.dart';",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        },
+        {
+          "range": "@@ -8,0 +9 @@ import '../domain/chat_history.dart';",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        },
+        {
+          "range": "@@ -20,0 +22,2 @@ class _ChatHistoryScreenState extends ConsumerState<ChatHistoryScreen> {",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        },
+        {
+          "range": "@@ -27,0 +31,5 @@ class _ChatHistoryScreenState extends ConsumerState<ChatHistoryScreen> {",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        },
+        {
+          "range": "@@ -29,0 +38,11 @@ class _ChatHistoryScreenState extends ConsumerState<ChatHistoryScreen> {",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        },
+        {
+          "range": "@@ -31 +49,0 @@ class _ChatHistoryScreenState extends ConsumerState<ChatHistoryScreen> {",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        },
+        {
+          "range": "@@ -33 +51 @@ class _ChatHistoryScreenState extends ConsumerState<ChatHistoryScreen> {",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        },
+        {
+          "range": "@@ -35,13 +53,36 @@ class _ChatHistoryScreenState extends ConsumerState<ChatHistoryScreen> {",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        },
+        {
+          "range": "@@ -50,26 +91,21 @@ class _ChatHistoryScreenState extends ConsumerState<ChatHistoryScreen> {",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        },
+        {
+          "range": "@@ -76,0 +113,2 @@ class _ChatHistoryScreenState extends ConsumerState<ChatHistoryScreen> {",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        },
+        {
+          "range": "@@ -78,13 +116,42 @@ class _ChatHistoryScreenState extends ConsumerState<ChatHistoryScreen> {",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        },
+        {
+          "range": "@@ -93,45 +160,4 @@ class _ChatHistoryScreenState extends ConsumerState<ChatHistoryScreen> {",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        },
+        {
+          "range": "@@ -139,2 +165,8 @@ class _ChatHistoryScreenState extends ConsumerState<ChatHistoryScreen> {",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        },
+        {
+          "range": "@@ -142,6 +174,15 @@ class _ChatHistoryScreenState extends ConsumerState<ChatHistoryScreen> {",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        },
+        {
+          "range": "@@ -148,0 +190,127 @@ class _ChatHistoryScreenState extends ConsumerState<ChatHistoryScreen> {",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        },
+        {
+          "range": "@@ -151,4 +319,4 @@ class _ChatHistoryScreenState extends ConsumerState<ChatHistoryScreen> {",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        },
+        {
+          "range": "@@ -156,6 +324,39 @@ class _ChatHistoryScreenState extends ConsumerState<ChatHistoryScreen> {",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        },
+        {
+          "range": "@@ -168 +369 @@ class _ChatHistoryScreenState extends ConsumerState<ChatHistoryScreen> {",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        },
+        {
+          "range": "@@ -178,10 +379,8 @@ class ChatMessagesScreen extends ConsumerWidget {",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        },
+        {
+          "range": "@@ -189,77 +388,5 @@ class ChatMessagesScreen extends ConsumerWidget {",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        }
+      ]
+    },
+    {
+      "file": "mobile/lib/src/features/chat_history/presentation/chat_message_tile.dart",
+      "plan": "C5/C6: authenticated mobile image history, image-only rows and retry presentation",
+      "task": "composer-delivery",
+      "hunks": [
+        {
+          "range": "@@ -0,0 +1,257 @@",
+          "plan": "C5/C6: authenticated mobile image history, image-only rows and retry presentation"
+        }
+      ]
+    },
+    {
+      "file": "mobile/lib/src/features/pane_chat/application/pane_chat_composer_controller.dart",
+      "plan": "C1/C3/C6: pane-owned draft, upload lifetime, suggestions, request identity and mobile race regressions",
+      "task": "composer-delivery",
+      "hunks": [
+        {
+          "range": "@@ -0,0 +1,468 @@",
+          "plan": "C1/C3/C6: pane-owned draft, upload lifetime, suggestions, request identity and mobile race regressions"
+        }
+      ]
+    },
+    {
+      "file": "mobile/lib/src/features/pane_chat/application/pane_chat_controller.dart",
+      "plan": "C6: native intake and mobile composer integration, picker dependency/wiring or behavior tests",
+      "task": "composer-delivery",
+      "hunks": [
+        {
+          "range": "@@ -0,0 +1,432 @@",
+          "plan": "C6: native intake and mobile composer integration, picker dependency/wiring or behavior tests"
+        }
+      ]
+    },
+    {
+      "file": "mobile/lib/src/features/pane_chat/data/pane_chat_attachment_intake.dart",
+      "plan": "C6: native intake and mobile composer integration, picker dependency/wiring or behavior tests",
+      "task": "composer-delivery",
+      "hunks": [
+        {
+          "range": "@@ -0,0 +1,298 @@",
+          "plan": "C6: native intake and mobile composer integration, picker dependency/wiring or behavior tests"
+        }
+      ]
+    },
+    {
+      "file": "mobile/lib/src/features/pane_chat/domain/pane_chat.dart",
+      "plan": "C6: native intake and mobile composer integration, picker dependency/wiring or behavior tests",
+      "task": "composer-delivery",
+      "hunks": [
+        {
+          "range": "@@ -0,0 +1,143 @@",
+          "plan": "C6: native intake and mobile composer integration, picker dependency/wiring or behavior tests"
+        }
+      ]
+    },
+    {
+      "file": "mobile/lib/src/features/pane_chat/domain/pane_chat_attachment.dart",
+      "plan": "C6: native intake and mobile composer integration, picker dependency/wiring or behavior tests",
+      "task": "composer-delivery",
+      "hunks": [
+        {
+          "range": "@@ -0,0 +1,15 @@",
+          "plan": "C6: native intake and mobile composer integration, picker dependency/wiring or behavior tests"
+        }
+      ]
+    },
+    {
+      "file": "mobile/lib/src/features/pane_chat/presentation/pane_chat_attachment_strip.dart",
+      "plan": "C6: native intake and mobile composer integration, picker dependency/wiring or behavior tests",
+      "task": "composer-delivery",
+      "hunks": [
+        {
+          "range": "@@ -0,0 +1,100 @@",
+          "plan": "C6: native intake and mobile composer integration, picker dependency/wiring or behavior tests"
+        }
+      ]
+    },
+    {
+      "file": "mobile/lib/src/features/pane_chat/presentation/pane_chat_completion_menu.dart",
+      "plan": "C6: native intake and mobile composer integration, picker dependency/wiring or behavior tests",
+      "task": "composer-delivery",
+      "hunks": [
+        {
+          "range": "@@ -0,0 +1,47 @@",
+          "plan": "C6: native intake and mobile composer integration, picker dependency/wiring or behavior tests"
+        }
+      ]
+    },
+    {
+      "file": "mobile/lib/src/features/pane_chat/presentation/pane_chat_composer.dart",
+      "plan": "C6: native intake and mobile composer integration, picker dependency/wiring or behavior tests",
+      "task": "composer-delivery",
+      "hunks": [
+        {
+          "range": "@@ -0,0 +1,404 @@",
+          "plan": "C6: native intake and mobile composer integration, picker dependency/wiring or behavior tests"
+        }
+      ]
+    },
+    {
+      "file": "mobile/lib/src/features/pane_chat/presentation/pane_chat_view.dart",
+      "plan": "C6: native intake and mobile composer integration, picker dependency/wiring or behavior tests",
+      "task": "composer-delivery",
+      "hunks": [
+        {
+          "range": "@@ -0,0 +1,449 @@",
+          "plan": "C6: native intake and mobile composer integration, picker dependency/wiring or behavior tests"
+        }
+      ]
+    },
+    {
+      "file": "mobile/lib/src/features/task_detail/presentation/pane_chat_shortcut.dart",
+      "plan": "P5 mobile selected-pane mode/shortcut + native QA",
+      "task": "prior-approved-chat-ui",
+      "hunks": [
+        {
+          "range": "@@ -0,0 +1,14 @@",
+          "plan": "P5 mobile selected-pane mode/shortcut + native QA"
+        }
+      ]
+    },
+    {
+      "file": "mobile/lib/src/features/task_detail/presentation/task_detail_screen.dart",
+      "plan": "P5 mobile selected-pane mode/shortcut + native QA",
+      "task": "prior-approved-chat-ui",
+      "hunks": [
+        {
+          "range": "@@ -13,0 +14 @@ import '../../notifications/application/mobile_notification_controller.dart';",
+          "plan": "P5 mobile selected-pane mode/shortcut + native QA"
+        },
+        {
+          "range": "@@ -16,0 +18 @@ import '../domain/mirror_pane.dart';",
+          "plan": "P5 mobile selected-pane mode/shortcut + native QA"
+        },
+        {
+          "range": "@@ -36,0 +39,3 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {",
+          "plan": "P5 mobile selected-pane mode/shortcut + native QA"
+        },
+        {
+          "range": "@@ -42,0 +48,21 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {",
+          "plan": "P5 mobile selected-pane mode/shortcut + native QA"
+        },
+        {
+          "range": "@@ -290 +316 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {",
+          "plan": "P5 mobile selected-pane mode/shortcut + native QA"
+        },
+        {
+          "range": "@@ -329 +355 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {",
+          "plan": "P5 mobile selected-pane mode/shortcut + native QA"
+        },
+        {
+          "range": "@@ -420,0 +447,6 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {",
+          "plan": "P5 mobile selected-pane mode/shortcut + native QA"
+        },
+        {
+          "range": "@@ -424,0 +457,13 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {",
+          "plan": "P5 mobile selected-pane mode/shortcut + native QA"
+        },
+        {
+          "range": "@@ -435,0 +481,2 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {",
+          "plan": "P5 mobile selected-pane mode/shortcut + native QA"
+        },
+        {
+          "range": "@@ -440,0 +488 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {",
+          "plan": "P5 mobile selected-pane mode/shortcut + native QA"
+        },
+        {
+          "range": "@@ -442,2 +490,3 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {",
+          "plan": "P5 mobile selected-pane mode/shortcut + native QA"
+        },
+        {
+          "range": "@@ -450 +499,46 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {",
+          "plan": "P5 mobile selected-pane mode/shortcut + native QA"
+        },
+        {
+          "range": "@@ -456,12 +550,52 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {",
+          "plan": "P5 mobile selected-pane mode/shortcut + native QA"
+        },
+        {
+          "range": "@@ -472,0 +607 @@ class _SurfaceTabBar extends StatelessWidget {",
+          "plan": "P5 mobile selected-pane mode/shortcut + native QA"
+        },
+        {
+          "range": "@@ -479,0 +615 @@ class _SurfaceTabBar extends StatelessWidget {",
+          "plan": "P5 mobile selected-pane mode/shortcut + native QA"
+        },
+        {
+          "range": "@@ -501,0 +638 @@ class _SurfaceTabBar extends StatelessWidget {",
+          "plan": "P5 mobile selected-pane mode/shortcut + native QA"
+        },
+        {
+          "range": "@@ -529,0 +667 @@ class _SurfaceTabButton extends StatelessWidget {",
+          "plan": "P5 mobile selected-pane mode/shortcut + native QA"
+        },
+        {
+          "range": "@@ -535,0 +674 @@ class _SurfaceTabButton extends StatelessWidget {",
+          "plan": "P5 mobile selected-pane mode/shortcut + native QA"
+        },
+        {
+          "range": "@@ -548 +687,2 @@ class _SurfaceTabButton extends StatelessWidget {",
+          "plan": "P5 mobile selected-pane mode/shortcut + native QA"
+        },
+        {
+          "range": "@@ -572,11 +712,17 @@ class _SurfaceTabButton extends StatelessWidget {",
+          "plan": "P5 mobile selected-pane mode/shortcut + native QA"
+        },
+        {
+          "range": "@@ -588 +734,5 @@ class _SurfaceTabButton extends StatelessWidget {",
+          "plan": "P5 mobile selected-pane mode/shortcut + native QA"
+        },
+        {
+          "range": "@@ -590 +740,4 @@ class _SurfaceTabButton extends StatelessWidget {",
+          "plan": "P5 mobile selected-pane mode/shortcut + native QA"
+        }
+      ]
+    },
+    {
+      "file": "mobile/lib/src/features/task_detail/presentation/widgets/pane_terminal_view.dart",
+      "plan": "P5 mobile selected-pane mode/shortcut + native QA",
+      "task": "prior-approved-chat-ui",
+      "hunks": [
+        {
+          "range": "@@ -15,0 +16 @@ import '../../../task_create/domain/session_type.dart';",
+          "plan": "P5 mobile selected-pane mode/shortcut + native QA"
+        },
+        {
+          "range": "@@ -25,0 +27,2 @@ class PaneTerminalView extends ConsumerStatefulWidget {",
+          "plan": "P5 mobile selected-pane mode/shortcut + native QA"
+        },
+        {
+          "range": "@@ -33,0 +37,2 @@ class PaneTerminalView extends ConsumerStatefulWidget {",
+          "plan": "P5 mobile selected-pane mode/shortcut + native QA"
+        },
+        {
+          "range": "@@ -83,0 +89 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>",
+          "plan": "P5 mobile selected-pane mode/shortcut + native QA"
+        },
+        {
+          "range": "@@ -98,0 +105,4 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>",
+          "plan": "P5 mobile selected-pane mode/shortcut + native QA"
+        },
+        {
+          "range": "@@ -121,0 +132 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>",
+          "plan": "P5 mobile selected-pane mode/shortcut + native QA"
+        },
+        {
+          "range": "@@ -423,0 +435,10 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>",
+          "plan": "P5 mobile selected-pane mode/shortcut + native QA"
+        }
+      ]
+    },
+    {
+      "file": "mobile/pubspec.lock",
+      "plan": "C6: native intake and mobile composer integration, picker dependency/wiring or behavior tests",
+      "task": "composer-delivery",
+      "hunks": [
+        {
+          "range": "@@ -11,0 +12,8 @@ packages:",
+          "plan": "C6: native intake and mobile composer integration, picker dependency/wiring or behavior tests"
+        },
+        {
+          "range": "@@ -75,0 +84,8 @@ packages:",
+          "plan": "C6: native intake and mobile composer integration, picker dependency/wiring or behavior tests"
+        },
+        {
+          "range": "@@ -123,0 +140,40 @@ packages:",
+          "plan": "C6: native intake and mobile composer integration, picker dependency/wiring or behavior tests"
+        },
+        {
+          "range": "@@ -232,0 +289,8 @@ packages:",
+          "plan": "C6: native intake and mobile composer integration, picker dependency/wiring or behavior tests"
+        },
+        {
+          "range": "@@ -394,0 +459,8 @@ packages:",
+          "plan": "C6: native intake and mobile composer integration, picker dependency/wiring or behavior tests"
+        },
+        {
+          "range": "@@ -743,0 +816,8 @@ packages:",
+          "plan": "C6: native intake and mobile composer integration, picker dependency/wiring or behavior tests"
+        }
+      ]
+    },
+    {
+      "file": "mobile/pubspec.yaml",
+      "plan": "C6: native intake and mobile composer integration, picker dependency/wiring or behavior tests",
+      "task": "composer-delivery",
+      "hunks": [
+        {
+          "range": "@@ -22,0 +23,2 @@ dependencies:",
+          "plan": "C6: native intake and mobile composer integration, picker dependency/wiring or behavior tests"
+        }
+      ]
+    },
+    {
+      "file": "mobile/test/src/features/chat_history/chat_history_test.dart",
+      "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA",
+      "task": "prior-approved-chat-ui",
+      "hunks": [
+        {
+          "range": "@@ -4,0 +5 @@ import 'package:flutter/material.dart';",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        },
+        {
+          "range": "@@ -11,0 +13 @@ import 'package:kanvibe_mobile/src/common/providers.dart';",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        },
+        {
+          "range": "@@ -14,0 +17 @@ import 'package:kanvibe_mobile/src/features/chat_history/presentation/chat_histo",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        },
+        {
+          "range": "@@ -227,0 +231 @@ void main() {",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        },
+        {
+          "range": "@@ -235,0 +240,334 @@ void main() {",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        }
+      ]
+    },
+    {
+      "file": "mobile/test/src/features/pane_chat/pane_chat_attachment_intake_test.dart",
+      "plan": "C6: native intake and mobile composer integration, picker dependency/wiring or behavior tests",
+      "task": "composer-delivery",
+      "hunks": [
+        {
+          "range": "@@ -0,0 +1,335 @@",
+          "plan": "C6: native intake and mobile composer integration, picker dependency/wiring or behavior tests"
+        }
+      ]
+    },
+    {
+      "file": "mobile/test/src/features/pane_chat/pane_chat_composer_test.dart",
+      "plan": "C1/C3/C6: pane-owned draft, upload lifetime, suggestions, request identity and mobile race regressions",
+      "task": "composer-delivery",
+      "hunks": [
+        {
+          "range": "@@ -0,0 +1,930 @@",
+          "plan": "C1/C3/C6: pane-owned draft, upload lifetime, suggestions, request identity and mobile race regressions"
+        }
+      ]
+    },
+    {
+      "file": "mobile/test/src/features/pane_chat/pane_chat_test.dart",
+      "plan": "P5 mobile selected-pane mode/shortcut + native QA",
+      "task": "prior-approved-chat-ui",
+      "hunks": [
+        {
+          "range": "@@ -0,0 +1,1027 @@",
+          "plan": "P5 mobile selected-pane mode/shortcut + native QA"
+        }
+      ]
+    },
+    {
+      "file": "mobile/test/src/features/task_detail/task_detail_screen_test.dart",
+      "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA",
+      "task": "prior-approved-chat-ui",
+      "hunks": [
+        {
+          "range": "@@ -258 +258 @@ void main() {",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        }
+      ]
+    },
+    {
+      "file": "mobile/test/support/fake_desktop.dart",
+      "plan": "C6: native intake and mobile composer integration, picker dependency/wiring or behavior tests",
+      "task": "composer-delivery",
+      "hunks": [
+        {
+          "range": "@@ -12,0 +13 @@ import 'package:kanvibe_mobile/src/features/chat_history/domain/chat_history.dar",
+          "plan": "C6: native intake and mobile composer integration, picker dependency/wiring or behavior tests"
+        },
+        {
+          "range": "@@ -482,0 +484,65 @@ class FakeDesktopClient implements DesktopClient {",
+          "plan": "C6: native intake and mobile composer integration, picker dependency/wiring or behavior tests"
+        }
+      ]
+    },
+    {
+      "file": "qa/electron/flows/ai-session-history.cjs",
+      "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA",
+      "task": "prior-approved-chat-ui",
+      "hunks": [
+        {
+          "range": "@@ -572,0 +573,2 @@ async function main() {",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        },
+        {
+          "range": "@@ -623,0 +626 @@ async function main() {",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        },
+        {
+          "range": "@@ -626,0 +630 @@ async function main() {",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        },
+        {
+          "range": "@@ -683 +686,0 @@ async function main() {",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        },
+        {
+          "range": "@@ -689,0 +693 @@ async function main() {",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        },
+        {
+          "range": "@@ -808,0 +813 @@ async function main() {",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        },
+        {
+          "range": "@@ -824,0 +830,3 @@ async function main() {",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        },
+        {
+          "range": "@@ -845,6 +853 @@ async function main() {",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        },
+        {
+          "range": "@@ -866 +869,6 @@ async function main() {",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        },
+        {
+          "range": "@@ -874,6 +882 @@ async function main() {",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        },
+        {
+          "range": "@@ -891,0 +895,33 @@ async function main() {",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        },
+        {
+          "range": "@@ -918,0 +955,3 @@ async function main() {",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        },
+        {
+          "range": "@@ -936,0 +976 @@ async function main() {",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        },
+        {
+          "range": "@@ -938 +978 @@ async function main() {",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        },
+        {
+          "range": "@@ -952 +992 @@ async function main() {",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        },
+        {
+          "range": "@@ -959 +999 @@ async function main() {",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        },
+        {
+          "range": "@@ -967 +1007 @@ async function main() {",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        }
+      ]
+    },
+    {
+      "file": "qa/electron/lib/pane-chat-cli.py",
+      "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA",
+      "task": "prior-approved-chat-ui",
+      "hunks": [
+        {
+          "range": "@@ -0,0 +1,138 @@",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        }
+      ]
+    },
+    {
+      "file": "qa/electron/lib/paneChatScenario.cjs",
+      "plan": "QA entrypoint selector contract changed by P2/P5",
+      "task": "prior-approved-chat-ui",
+      "hunks": [
+        {
+          "range": "@@ -0,0 +1,94 @@",
+          "plan": "QA entrypoint selector contract changed by P2/P5"
+        }
+      ]
+    },
+    {
+      "file": "qa/mobile/lib/prepareChatHistoryDesktop.cjs",
+      "plan": "QA entrypoint selector contract changed by P2/P5",
+      "task": "prior-approved-chat-ui",
+      "hunks": [
+        {
+          "range": "@@ -16 +16,5 @@ const selectedPort = portIndex >= 0 ? Number(process.argv[portIndex + 1]) : 1973",
+          "plan": "QA entrypoint selector contract changed by P2/P5"
+        },
+        {
+          "range": "@@ -24 +28,2 @@ const desktopApi = `http://127.0.0.1:${selectedPort}`;",
+          "plan": "QA entrypoint selector contract changed by P2/P5"
+        },
+        {
+          "range": "@@ -71,0 +77 @@ async function main() {",
+          "plan": "QA entrypoint selector contract changed by P2/P5"
+        },
+        {
+          "range": "@@ -89,0 +96 @@ async function main() {",
+          "plan": "QA entrypoint selector contract changed by P2/P5"
+        },
+        {
+          "range": "@@ -99 +106 @@ async function main() {",
+          "plan": "QA entrypoint selector contract changed by P2/P5"
+        },
+        {
+          "range": "@@ -109 +116,5 @@ async function main() {",
+          "plan": "QA entrypoint selector contract changed by P2/P5"
+        },
+        {
+          "range": "@@ -116 +127 @@ async function main() {",
+          "plan": "QA entrypoint selector contract changed by P2/P5"
+        },
+        {
+          "range": "@@ -120 +131 @@ async function main() {",
+          "plan": "QA entrypoint selector contract changed by P2/P5"
+        },
+        {
+          "range": "@@ -122,0 +134,7 @@ async function main() {",
+          "plan": "QA entrypoint selector contract changed by P2/P5"
+        },
+        {
+          "range": "@@ -156 +174,11 @@ async function main() {",
+          "plan": "QA entrypoint selector contract changed by P2/P5"
+        }
+      ]
+    },
+    {
+      "file": "src/desktop/main/__tests__/desktopShortcutRouting.test.ts",
+      "plan": "P1 shared configurable shortcut and collision/capture tests",
+      "task": "prior-approved-chat-ui",
+      "hunks": [
+        {
+          "range": "@@ -30,0 +31,9 @@ describe(\"desktop shortcut routing\", () => {",
+          "plan": "P1 shared configurable shortcut and collision/capture tests"
+        }
+      ]
+    },
+    {
+      "file": "src/desktop/main/serviceRegistry.ts",
+      "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA",
+      "task": "prior-approved-chat-ui",
+      "hunks": [
+        {
+          "range": "@@ -10,0 +11 @@ import * as mobileBridge from \"@/desktop/main/services/mobileBridgeService\";",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        },
+        {
+          "range": "@@ -29,0 +31 @@ export const desktopServices = {",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        }
+      ]
+    },
+    {
+      "file": "src/desktop/main/services/__tests__/appSettingsService.test.ts",
+      "plan": "P1 shared configurable shortcut and collision/capture tests",
+      "task": "prior-approved-chat-ui",
+      "hunks": [
+        {
+          "range": "@@ -171 +171 @@ describe(\"단축키 재배정 설정\", () => {",
+          "plan": "P1 shared configurable shortcut and collision/capture tests"
+        },
+        {
+          "range": "@@ -175 +175 @@ describe(\"단축키 재배정 설정\", () => {",
+          "plan": "P1 shared configurable shortcut and collision/capture tests"
+        }
+      ]
+    },
+    {
+      "file": "src/desktop/main/services/__tests__/hookService.test.ts",
+      "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA",
+      "task": "prior-approved-chat-ui",
+      "hunks": [
+        {
+          "range": "@@ -32,0 +33 @@ const mocks = vi.hoisted(() => ({",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        },
+        {
+          "range": "@@ -53,0 +55,4 @@ vi.mock(\"@/lib/gitOperations\", () => ({",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        },
+        {
+          "range": "@@ -297,0 +303,20 @@ describe(\"hook 상태 저장 위치 소유권\", () => {",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        }
+      ]
+    },
+    {
+      "file": "src/desktop/main/services/__tests__/mobileBridgeService.test.ts",
+      "plan": "C1/C3/C5: authenticated upload/suggestions/media transport, route-specific body limit and contract tests",
+      "task": "composer-delivery",
+      "hunks": [
+        {
+          "range": "@@ -30,0 +31 @@ const getTaskAiSessionDetailMock = vi.fn();",
+          "plan": "C1/C3/C5: authenticated upload/suggestions/media transport, route-specific body limit and contract tests"
+        },
+        {
+          "range": "@@ -141,0 +143 @@ vi.mock(\"@/desktop/main/services/projectService\", () => ({",
+          "plan": "C1/C3/C5: authenticated upload/suggestions/media transport, route-specific body limit and contract tests"
+        },
+        {
+          "range": "@@ -166,0 +169 @@ const {",
+          "plan": "C1/C3/C5: authenticated upload/suggestions/media transport, route-specific body limit and contract tests"
+        },
+        {
+          "range": "@@ -2008,0 +2012,16 @@ describe(\"모바일 History 신뢰 경로 캐시\", () => {",
+          "plan": "C1/C3/C5: authenticated upload/suggestions/media transport, route-specific body limit and contract tests"
+        },
+        {
+          "range": "@@ -2429,0 +2449,13 @@ describe(\"Herdr 세션 미러\", () => {",
+          "plan": "C1/C3/C5: authenticated upload/suggestions/media transport, route-specific body limit and contract tests"
+        }
+      ]
+    },
+    {
+      "file": "src/desktop/main/services/__tests__/paneChatAttachmentService.test.ts",
+      "plan": "C1/C2: private host/pane/lease-owned attachment staging, retained files, quotas and cleanup",
+      "task": "composer-delivery",
+      "hunks": [
+        {
+          "range": "@@ -0,0 +1,65 @@",
+          "plan": "C1/C2: private host/pane/lease-owned attachment staging, retained files, quotas and cleanup"
+        }
+      ]
+    },
+    {
+      "file": "src/desktop/main/services/__tests__/paneChatComposerCatalog.test.ts",
+      "plan": "C3: host/provider-correct bounded skill/command/file catalog and source/error tests",
+      "task": "composer-delivery",
+      "hunks": [
+        {
+          "range": "@@ -0,0 +1,84 @@",
+          "plan": "C3: host/provider-correct bounded skill/command/file catalog and source/error tests"
+        }
+      ]
+    },
+    {
+      "file": "src/desktop/main/services/__tests__/paneChatService.test.ts",
+      "plan": "C1/C2/C3/C4: real CLI pane contract, owner validation, attachments, completion and single-submit token boundaries",
+      "task": "composer-delivery",
+      "hunks": [
+        {
+          "range": "@@ -0,0 +1,254 @@",
+          "plan": "C1/C2/C3/C4: real CLI pane contract, owner validation, attachments, completion and single-submit token boundaries"
+        }
+      ]
+    },
+    {
+      "file": "src/desktop/main/services/__tests__/paneChatSurface.test.ts",
+      "plan": "P4 read-only layout, exact target/focus and Herdr projection repairs",
+      "task": "prior-approved-chat-ui",
+      "hunks": [
+        {
+          "range": "@@ -0,0 +1,204 @@",
+          "plan": "P4 read-only layout, exact target/focus and Herdr projection repairs"
+        }
+      ]
+    },
+    {
+      "file": "src/desktop/main/services/hookService.ts",
+      "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA",
+      "task": "prior-approved-chat-ui",
+      "hunks": [
+        {
+          "range": "@@ -5,0 +6 @@ import { persistTaskStateForTask } from \"@/desktop/main/services/kanvibeTaskStat",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        },
+        {
+          "range": "@@ -17,0 +19 @@ export interface HookStatusInput {",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        },
+        {
+          "range": "@@ -69,0 +72,9 @@ export async function updateHookTaskStatus(input: HookStatusInput, sourceSshHost",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        }
+      ]
+    },
+    {
+      "file": "src/desktop/main/services/mobileBridgeService.ts",
+      "plan": "C1/C3/C5: authenticated upload/suggestions/media transport, route-specific body limit and contract tests",
+      "task": "composer-delivery",
+      "hunks": [
+        {
+          "range": "@@ -20 +20 @@ import { subscribeToBoardEvents } from \"@/lib/boardNotifier\";",
+          "plan": "C1/C3/C5: authenticated upload/suggestions/media transport, route-specific body limit and contract tests"
+        },
+        {
+          "range": "@@ -130,0 +131 @@ const MIRROR_COMMAND_TIMEOUT_MS = 5_000;",
+          "plan": "C1/C3/C5: authenticated upload/suggestions/media transport, route-specific body limit and contract tests"
+        },
+        {
+          "range": "@@ -611,0 +613,11 @@ export async function getMobileAiSessionDetail(",
+          "plan": "C1/C3/C5: authenticated upload/suggestions/media transport, route-specific body limit and contract tests"
+        },
+        {
+          "range": "@@ -1979,0 +1992,37 @@ function stopMirrorProcess(child: ChildProcess): void {",
+          "plan": "C1/C3/C5: authenticated upload/suggestions/media transport, route-specific body limit and contract tests"
+        }
+      ]
+    },
+    {
+      "file": "src/desktop/main/services/paneChatAttachmentService.ts",
+      "plan": "C1/C2: private host/pane/lease-owned attachment staging, retained files, quotas and cleanup",
+      "task": "composer-delivery",
+      "hunks": [
+        {
+          "range": "@@ -0,0 +1,101 @@",
+          "plan": "C1/C2: private host/pane/lease-owned attachment staging, retained files, quotas and cleanup"
+        }
+      ]
+    },
+    {
+      "file": "src/desktop/main/services/paneChatComposerCatalog.ts",
+      "plan": "C3: host/provider-correct bounded skill/command/file catalog and source/error tests",
+      "task": "composer-delivery",
+      "hunks": [
+        {
+          "range": "@@ -0,0 +1,158 @@",
+          "plan": "C3: host/provider-correct bounded skill/command/file catalog and source/error tests"
+        }
+      ]
+    },
+    {
+      "file": "src/desktop/main/services/paneChatService.ts",
+      "plan": "C1/C2/C3/C4: real CLI pane contract, owner validation, attachments, completion and single-submit token boundaries",
+      "task": "composer-delivery",
+      "hunks": [
+        {
+          "range": "@@ -0,0 +1,305 @@",
+          "plan": "C1/C2/C3/C4: real CLI pane contract, owner validation, attachments, completion and single-submit token boundaries"
+        }
+      ]
+    },
+    {
+      "file": "src/desktop/main/services/paneChatSurface.ts",
+      "plan": "P4 read-only layout, exact target/focus and Herdr projection repairs",
+      "task": "prior-approved-chat-ui",
+      "hunks": [
+        {
+          "range": "@@ -0,0 +1,168 @@",
+          "plan": "P4 read-only layout, exact target/focus and Herdr projection repairs"
+        }
+      ]
+    },
+    {
+      "file": "src/desktop/main/services/projectService.ts",
+      "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup",
+      "task": "composer-delivery",
+      "hunks": [
+        {
+          "range": "@@ -11,0 +12 @@ import { aggregateAiSessions, getAiSessionDetail } from \"@/lib/aiSessions/aggreg",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -19,0 +21 @@ import type {",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -1489,0 +1492,12 @@ export async function getTaskAiSessionDetail(",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        }
+      ]
+    },
+    {
+      "file": "src/desktop/renderer/actions/paneChat.ts",
+      "plan": "C1/C2/C3/C4: real CLI pane contract, owner validation, attachments, completion and single-submit token boundaries",
+      "task": "composer-delivery",
+      "hunks": [
+        {
+          "range": "@@ -0,0 +1,32 @@",
+          "plan": "C1/C2/C3/C4: real CLI pane contract, owner validation, attachments, completion and single-submit token boundaries"
+        }
+      ]
+    },
+    {
+      "file": "src/desktop/renderer/actions/project.ts",
+      "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup",
+      "task": "composer-delivery",
+      "hunks": [
+        {
+          "range": "@@ -8,0 +9 @@ import type {",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -147,0 +149,4 @@ export function getTaskAgentCallGraph(",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        }
+      ]
+    },
+    {
+      "file": "src/desktop/renderer/components/AiChatAttachment.tsx",
+      "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup",
+      "task": "composer-delivery",
+      "hunks": [
+        {
+          "range": "@@ -0,0 +1,80 @@",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        }
+      ]
+    },
+    {
+      "file": "src/desktop/renderer/components/AiChatTranscriptMessage.tsx",
+      "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup",
+      "task": "composer-delivery",
+      "hunks": [
+        {
+          "range": "@@ -0,0 +1,70 @@",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        }
+      ]
+    },
+    {
+      "file": "src/desktop/renderer/components/AiSessionMessageContent.tsx",
+      "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA",
+      "task": "prior-approved-chat-ui",
+      "hunks": [
+        {
+          "range": "@@ -134,0 +135,2 @@ function MermaidDiagram({ definition, index, isUserMessage }: { definition: stri",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        }
+      ]
+    },
+    {
+      "file": "src/desktop/renderer/components/PaneChatComposer.tsx",
+      "plan": "C1/C3: pane draft/attachment owner, retry/dispose/ACK races, completion keyboard and intake UI",
+      "task": "composer-delivery",
+      "hunks": [
+        {
+          "range": "@@ -0,0 +1,181 @@",
+          "plan": "C1/C3: pane draft/attachment owner, retry/dispose/ACK races, completion keyboard and intake UI"
+        }
+      ]
+    },
+    {
+      "file": "src/desktop/renderer/components/PaneChatView.tsx",
+      "plan": "C1/C2/C3/C4: real CLI pane contract, owner validation, attachments, completion and single-submit token boundaries",
+      "task": "composer-delivery",
+      "hunks": [
+        {
+          "range": "@@ -0,0 +1,118 @@",
+          "plan": "C1/C2/C3/C4: real CLI pane contract, owner validation, attachments, completion and single-submit token boundaries"
+        }
+      ]
+    },
+    {
+      "file": "src/desktop/renderer/components/Terminal.tsx",
+      "plan": "P3-P4 pane-local overlays, lifecycle, targeting and protocol regression",
+      "task": "prior-approved-chat-ui",
+      "hunks": [
+        {
+          "range": "@@ -6,0 +7 @@ import { REQUEST_ACTIVE_TERMINAL_FOCUS_EVENT, hasTerminalFocusBlocker } from \"@/",
+          "plan": "P3-P4 pane-local overlays, lifecycle, targeting and protocol regression"
+        },
+        {
+          "range": "@@ -18,0 +20,2 @@ interface TerminalProps {",
+          "plan": "P3-P4 pane-local overlays, lifecycle, targeting and protocol regression"
+        },
+        {
+          "range": "@@ -80 +83 @@ function loadNerdFontFamily(): Promise<string | null> {",
+          "plan": "P3-P4 pane-local overlays, lifecycle, targeting and protocol regression"
+        },
+        {
+          "range": "@@ -84,0 +88,3 @@ export default function Terminal({ taskId, tabId = null, isHidden = false, isRem",
+          "plan": "P3-P4 pane-local overlays, lifecycle, targeting and protocol regression"
+        },
+        {
+          "range": "@@ -162,0 +169,5 @@ export default function Terminal({ taskId, tabId = null, isHidden = false, isRem",
+          "plan": "P3-P4 pane-local overlays, lifecycle, targeting and protocol regression"
+        },
+        {
+          "range": "@@ -211,0 +223 @@ export default function Terminal({ taskId, tabId = null, isHidden = false, isRem",
+          "plan": "P3-P4 pane-local overlays, lifecycle, targeting and protocol regression"
+        },
+        {
+          "range": "@@ -268,0 +281,7 @@ export default function Terminal({ taskId, tabId = null, isHidden = false, isRem",
+          "plan": "P3-P4 pane-local overlays, lifecycle, targeting and protocol regression"
+        },
+        {
+          "range": "@@ -348,0 +368 @@ export default function Terminal({ taskId, tabId = null, isHidden = false, isRem",
+          "plan": "P3-P4 pane-local overlays, lifecycle, targeting and protocol regression"
+        },
+        {
+          "range": "@@ -357 +377 @@ export default function Terminal({ taskId, tabId = null, isHidden = false, isRem",
+          "plan": "P3-P4 pane-local overlays, lifecycle, targeting and protocol regression"
+        },
+        {
+          "range": "@@ -433,0 +454 @@ export default function Terminal({ taskId, tabId = null, isHidden = false, isRem",
+          "plan": "P3-P4 pane-local overlays, lifecycle, targeting and protocol regression"
+        }
+      ]
+    },
+    {
+      "file": "src/desktop/renderer/components/TerminalLoader.tsx",
+      "plan": "P3-P4 pane-local overlays, lifecycle, targeting and protocol regression",
+      "task": "prior-approved-chat-ui",
+      "hunks": [
+        {
+          "range": "@@ -12,0 +13,3 @@ interface TerminalLoaderProps {",
+          "plan": "P3-P4 pane-local overlays, lifecycle, targeting and protocol regression"
+        },
+        {
+          "range": "@@ -19 +22 @@ interface TerminalLoaderProps {",
+          "plan": "P3-P4 pane-local overlays, lifecycle, targeting and protocol regression"
+        },
+        {
+          "range": "@@ -23 +26 @@ export default function TerminalLoader({ taskId, tabs, isRemote }: TerminalLoade",
+          "plan": "P3-P4 pane-local overlays, lifecycle, targeting and protocol regression"
+        },
+        {
+          "range": "@@ -40 +43 @@ export default function TerminalLoader({ taskId, tabs, isRemote }: TerminalLoade",
+          "plan": "P3-P4 pane-local overlays, lifecycle, targeting and protocol regression"
+        }
+      ]
+    },
+    {
+      "file": "src/desktop/renderer/components/TerminalPaneChatLayer.tsx",
+      "plan": "P3-P4 pane-local overlays, lifecycle, targeting and protocol regression",
+      "task": "prior-approved-chat-ui",
+      "hunks": [
+        {
+          "range": "@@ -0,0 +1,200 @@",
+          "plan": "P3-P4 pane-local overlays, lifecycle, targeting and protocol regression"
+        }
+      ]
+    },
+    {
+      "file": "src/desktop/renderer/components/__tests__/AiChatAttachment.test.tsx",
+      "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup",
+      "task": "composer-delivery",
+      "hunks": [
+        {
+          "range": "@@ -0,0 +1,72 @@",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        }
+      ]
+    },
+    {
+      "file": "src/desktop/renderer/components/__tests__/AiChatTranscriptMessage.test.tsx",
+      "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA",
+      "task": "prior-approved-chat-ui",
+      "hunks": [
+        {
+          "range": "@@ -0,0 +1,51 @@",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        }
+      ]
+    },
+    {
+      "file": "src/desktop/renderer/components/__tests__/PaneChatComposer.test.tsx",
+      "plan": "C1/C3: pane draft/attachment owner, retry/dispose/ACK races, completion keyboard and intake UI",
+      "task": "composer-delivery",
+      "hunks": [
+        {
+          "range": "@@ -0,0 +1,240 @@",
+          "plan": "C1/C3: pane draft/attachment owner, retry/dispose/ACK races, completion keyboard and intake UI"
+        }
+      ]
+    },
+    {
+      "file": "src/desktop/renderer/components/__tests__/PaneChatView.test.tsx",
+      "plan": "C1/C2/C3/C4: real CLI pane contract, owner validation, attachments, completion and single-submit token boundaries",
+      "task": "composer-delivery",
+      "hunks": [
+        {
+          "range": "@@ -0,0 +1,190 @@",
+          "plan": "C1/C2/C3/C4: real CLI pane contract, owner validation, attachments, completion and single-submit token boundaries"
+        }
+      ]
+    },
+    {
+      "file": "src/desktop/renderer/components/__tests__/TaskQuickSearchDialog.test.tsx",
+      "plan": "P1 shared configurable shortcut and collision/capture tests",
+      "task": "prior-approved-chat-ui",
+      "hunks": [
+        {
+          "range": "@@ -117 +117 @@ describe(\"TaskQuickSearchDialog\", () => {",
+          "plan": "P1 shared configurable shortcut and collision/capture tests"
+        },
+        {
+          "range": "@@ -124 +124 @@ describe(\"TaskQuickSearchDialog\", () => {",
+          "plan": "P1 shared configurable shortcut and collision/capture tests"
+        }
+      ]
+    },
+    {
+      "file": "src/desktop/renderer/components/__tests__/Terminal.test.tsx",
+      "plan": "P3-P4 pane-local overlays, lifecycle, targeting and protocol regression",
+      "task": "prior-approved-chat-ui",
+      "hunks": [
+        {
+          "range": "@@ -205,0 +206,31 @@ describe(\"Desktop Terminal\", () => {",
+          "plan": "P3-P4 pane-local overlays, lifecycle, targeting and protocol regression"
+        }
+      ]
+    },
+    {
+      "file": "src/desktop/renderer/components/__tests__/TerminalLoader.test.tsx",
+      "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA",
+      "task": "prior-approved-chat-ui",
+      "hunks": [
+        {
+          "range": "@@ -55,0 +56,14 @@ describe(\"TerminalLoader\", () => {",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        }
+      ]
+    },
+    {
+      "file": "src/desktop/renderer/components/__tests__/TerminalPaneChatLayer.test.tsx",
+      "plan": "P3-P4 pane-local overlays, lifecycle, targeting and protocol regression",
+      "task": "prior-approved-chat-ui",
+      "hunks": [
+        {
+          "range": "@@ -0,0 +1,124 @@",
+          "plan": "P3-P4 pane-local overlays, lifecycle, targeting and protocol regression"
+        }
+      ]
+    },
+    {
+      "file": "src/desktop/renderer/hooks/usePaneChat.ts",
+      "plan": "C1/C2/C3/C4: real CLI pane contract, owner validation, attachments, completion and single-submit token boundaries",
+      "task": "composer-delivery",
+      "hunks": [
+        {
+          "range": "@@ -0,0 +1,100 @@",
+          "plan": "C1/C2/C3/C4: real CLI pane contract, owner validation, attachments, completion and single-submit token boundaries"
+        }
+      ]
+    },
+    {
+      "file": "src/desktop/renderer/hooks/usePaneChatComposer.ts",
+      "plan": "C1/C3: pane draft/attachment owner, retry/dispose/ACK races, completion keyboard and intake UI",
+      "task": "composer-delivery",
+      "hunks": [
+        {
+          "range": "@@ -0,0 +1,144 @@",
+          "plan": "C1/C3: pane draft/attachment owner, retry/dispose/ACK races, completion keyboard and intake UI"
+        }
+      ]
+    },
+    {
+      "file": "src/desktop/renderer/routes/TaskDetailRoute.tsx",
+      "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup",
+      "task": "composer-delivery",
+      "hunks": [
+        {
+          "range": "@@ -0,0 +1 @@",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -2 +3 @@ import { AI_SESSION_PROVIDER_LABELS, AI_SESSION_PROVIDERS } from \"@/lib/aiSessio",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -37 +38 @@ import AiUsagePanel from \"@/desktop/renderer/components/AiUsagePanel\";",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -72 +73 @@ import { useRefreshSignal } from \"@/desktop/renderer/utils/refresh\";",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -77 +77,0 @@ import type {",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -93,0 +94 @@ const INLINE_CHAT_SESSION_LIMIT = 20;",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -102 +103 @@ type DetailPanel = \"overview\" | \"status\" | \"liveSessions\" | \"usage\";",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -244,7 +244,0 @@ const AI_SESSION_PROVIDER_STYLES: Partial<Record<AggregatedAiSession[\"provider\"]",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -288,0 +283,4 @@ function InlineAiChatView({ taskId }: { taskId: string }) {",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -418,0 +417,2 @@ function InlineAiChatView({ taskId }: { taskId: string }) {",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -446 +446 @@ function InlineAiChatView({ taskId }: { taskId: string }) {",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -456 +456 @@ function InlineAiChatView({ taskId }: { taskId: string }) {",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -468,0 +469,9 @@ function InlineAiChatView({ taskId }: { taskId: string }) {",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -531,0 +541,2 @@ function InlineAiChatView({ taskId }: { taskId: string }) {",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -560,35 +571,8 @@ function InlineAiChatView({ taskId }: { taskId: string }) {",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -596,2 +580,15 @@ function InlineAiChatView({ taskId }: { taskId: string }) {",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -599,32 +596,9 @@ function InlineAiChatView({ taskId }: { taskId: string }) {",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -632,4 +606,2 @@ function InlineAiChatView({ taskId }: { taskId: string }) {",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -638,46 +610,19 @@ function InlineAiChatView({ taskId }: { taskId: string }) {",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -685,3 +630,8 @@ function InlineAiChatView({ taskId }: { taskId: string }) {",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -690,3 +640,2 @@ function InlineAiChatView({ taskId }: { taskId: string }) {",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -694,16 +643,11 @@ function InlineAiChatView({ taskId }: { taskId: string }) {",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -712,3 +656,3 @@ function InlineAiChatView({ taskId }: { taskId: string }) {",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -716,16 +660,10 @@ function InlineAiChatView({ taskId }: { taskId: string }) {",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -733,11 +671,7 @@ function InlineAiChatView({ taskId }: { taskId: string }) {",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -744,0 +679,3 @@ function InlineAiChatView({ taskId }: { taskId: string }) {",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -747 +684 @@ function InlineAiChatView({ taskId }: { taskId: string }) {",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -749,0 +687 @@ function InlineAiChatView({ taskId }: { taskId: string }) {",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -755 +693 @@ function AiSessionProviderIcon({ provider, testId = true }: { provider: Aggregat",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -783,44 +720,0 @@ function InlineAiChatEmpty({ text, compact = false }: { text: string; compact?:",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -867 +761 @@ function TaskDetailContent({ id }: { id: string }) {",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -918,11 +812,4 @@ function TaskDetailContent({ id }: { id: string }) {",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -930,0 +818,21 @@ function TaskDetailContent({ id }: { id: string }) {",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -1014 +922 @@ function TaskDetailContent({ id }: { id: string }) {",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -1023 +931 @@ function TaskDetailContent({ id }: { id: string }) {",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -1071 +979 @@ function TaskDetailContent({ id }: { id: string }) {",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -1834,4 +1742,8 @@ function TaskDetailContent({ id }: { id: string }) {",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -1878 +1790,11 @@ function TaskDetailContent({ id }: { id: string }) {",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -1892,0 +1815,2 @@ function TaskDetailContent({ id }: { id: string }) {",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -1894,0 +1819 @@ function TaskDetailContent({ id }: { id: string }) {",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -1899 +1824 @@ function TaskDetailContent({ id }: { id: string }) {",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        }
+      ]
+    },
+    {
+      "file": "src/desktop/renderer/routes/__tests__/ShortcutSettingsRoute.test.tsx",
+      "plan": "P1 shared configurable shortcut and collision/capture tests",
+      "task": "prior-approved-chat-ui",
+      "hunks": [
+        {
+          "range": "@@ -80,0 +81,9 @@ describe(\"ShortcutSettingsRoute\", () => {",
+          "plan": "P1 shared configurable shortcut and collision/capture tests"
+        },
+        {
+          "range": "@@ -102 +111 @@ describe(\"ShortcutSettingsRoute\", () => {",
+          "plan": "P1 shared configurable shortcut and collision/capture tests"
+        },
+        {
+          "range": "@@ -105 +114 @@ describe(\"ShortcutSettingsRoute\", () => {",
+          "plan": "P1 shared configurable shortcut and collision/capture tests"
+        }
+      ]
+    },
+    {
+      "file": "src/desktop/renderer/routes/__tests__/TaskDetailRoute.test.tsx",
+      "plan": "P1-P2 pane action/header shortcut and restored history entry",
+      "task": "prior-approved-chat-ui",
+      "hunks": [
+        {
+          "range": "@@ -33,0 +34 @@ const mocks = vi.hoisted(() => ({",
+          "plan": "P1-P2 pane action/header shortcut and restored history entry"
+        },
+        {
+          "range": "@@ -70,0 +72,8 @@ function createDeferred<T>() {",
+          "plan": "P1-P2 pane action/header shortcut and restored history entry"
+        },
+        {
+          "range": "@@ -316,0 +326,6 @@ describe(\"TaskDetailRoute\", () => {",
+          "plan": "P1-P2 pane action/header shortcut and restored history entry"
+        },
+        {
+          "range": "@@ -1416,0 +1432 @@ describe(\"TaskDetailRoute\", () => {",
+          "plan": "P1-P2 pane action/header shortcut and restored history entry"
+        },
+        {
+          "range": "@@ -1764 +1780 @@ describe(\"TaskDetailRoute\", () => {",
+          "plan": "P1-P2 pane action/header shortcut and restored history entry"
+        },
+        {
+          "range": "@@ -2305,0 +2322,25 @@ describe(\"TaskDetailRoute\", () => {",
+          "plan": "P1-P2 pane action/header shortcut and restored history entry"
+        },
+        {
+          "range": "@@ -2524,0 +2566 @@ describe(\"TaskDetailRoute\", () => {",
+          "plan": "P1-P2 pane action/header shortcut and restored history entry"
+        },
+        {
+          "range": "@@ -3279,0 +3322,127 @@ describe(\"TaskDetailRoute\", () => {",
+          "plan": "P1-P2 pane action/header shortcut and restored history entry"
+        }
+      ]
+    },
+    {
+      "file": "src/desktop/renderer/utils/chatTranscript.ts",
+      "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup",
+      "task": "composer-delivery",
+      "hunks": [
+        {
+          "range": "@@ -0,0 +1,18 @@",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        }
+      ]
+    },
+    {
+      "file": "src/desktop/renderer/utils/terminalFocus.ts",
+      "plan": "P1-P2 pane action/header shortcut and restored history entry",
+      "task": "prior-approved-chat-ui",
+      "hunks": [
+        {
+          "range": "@@ -1,0 +2 @@ export const REQUEST_ACTIVE_TERMINAL_FOCUS_EVENT = \"kanvibe:request-terminal-foc",
+          "plan": "P1-P2 pane action/header shortcut and restored history entry"
+        },
+        {
+          "range": "@@ -3,0 +5,4 @@ export const TERMINAL_FOCUS_BLOCKER_ATTRIBUTE = \"data-terminal-focus-blocker\";",
+          "plan": "P1-P2 pane action/header shortcut and restored history entry"
+        }
+      ]
+    },
+    {
+      "file": "src/desktop/shared/__tests__/shortcutBindings.test.ts",
+      "plan": "P1 shared configurable shortcut and collision/capture tests",
+      "task": "prior-approved-chat-ui",
+      "hunks": [
+        {
+          "range": "@@ -336,0 +337,12 @@ describe(\"단축키 재배정\", () => {",
+          "plan": "P1 shared configurable shortcut and collision/capture tests"
+        }
+      ]
+    },
+    {
+      "file": "src/desktop/shared/keyboardShortcut.ts",
+      "plan": "P1 shared configurable shortcut and collision/capture tests",
+      "task": "prior-approved-chat-ui",
+      "hunks": [
+        {
+          "range": "@@ -45,0 +46 @@ export const SHORTCUTS = {",
+          "plan": "P1 shared configurable shortcut and collision/capture tests"
+        }
+      ]
+    },
+    {
+      "file": "src/desktop/shared/paneChat.ts",
+      "plan": "C1/C2/C3/C4: real CLI pane contract, owner validation, attachments, completion and single-submit token boundaries",
+      "task": "composer-delivery",
+      "hunks": [
+        {
+          "range": "@@ -0,0 +1,79 @@",
+          "plan": "C1/C2/C3/C4: real CLI pane contract, owner validation, attachments, completion and single-submit token boundaries"
+        }
+      ]
+    },
+    {
+      "file": "src/desktop/shared/shortcutBindings.ts",
+      "plan": "P1 shared configurable shortcut and collision/capture tests",
+      "task": "prior-approved-chat-ui",
+      "hunks": [
+        {
+          "range": "@@ -42 +42,2 @@ export type ShortcutCommandId =",
+          "plan": "P1 shared configurable shortcut and collision/capture tests"
+        },
+        {
+          "range": "@@ -105,0 +107 @@ export const SHORTCUT_COMMAND_DEFINITIONS: readonly ShortcutCommandDefinition[]",
+          "plan": "P1 shared configurable shortcut and collision/capture tests"
+        }
+      ]
+    },
+    {
+      "file": "src/lib/__tests__/attachmentContent.test.ts",
+      "plan": "C1/C2/C5: bounded byte/MIME validation shared by staging and authorized history",
+      "task": "composer-delivery",
+      "hunks": [
+        {
+          "range": "@@ -0,0 +1,20 @@",
+          "plan": "C1/C2/C5: bounded byte/MIME validation shared by staging and authorized history"
+        }
+      ]
+    },
+    {
+      "file": "src/lib/__tests__/herdr.test.ts",
+      "plan": "P4 read-only layout, exact target/focus and Herdr projection repairs",
+      "task": "prior-approved-chat-ui",
+      "hunks": [
+        {
+          "range": "@@ -10 +10 @@ import { buildHerdrCommand, buildHerdrSessionCleanupCommand, sanitizeHerdrSessio",
+          "plan": "P4 read-only layout, exact target/focus and Herdr projection repairs"
+        },
+        {
+          "range": "@@ -620,0 +621,28 @@ describe(\"공유 Herdr Spaces\", () => {",
+          "plan": "P4 read-only layout, exact target/focus and Herdr projection repairs"
+        }
+      ]
+    },
+    {
+      "file": "src/lib/__tests__/herdrClientProxy.test.ts",
+      "plan": "P4 read-only layout, exact target/focus and Herdr projection repairs",
+      "task": "prior-approved-chat-ui",
+      "hunks": [
+        {
+          "range": "@@ -33 +33 @@ function paneInput(tag: 13 | 14, target: string): Buffer {",
+          "plan": "P4 read-only layout, exact target/focus and Herdr projection repairs"
+        },
+        {
+          "range": "@@ -35 +35 @@ function snapshot(bootId = \"boot-1\", workspaceId = \"w1\", tabId = \"w1:t1\"): Buffe",
+          "plan": "P4 read-only layout, exact target/focus and Herdr projection repairs"
+        },
+        {
+          "range": "@@ -115,0 +116,28 @@ describe(\"Herdr 클라이언트 endpoint 프록시\", () => {",
+          "plan": "P4 read-only layout, exact target/focus and Herdr projection repairs"
+        },
+        {
+          "range": "@@ -156,0 +185,13 @@ describe(\"Herdr 클라이언트 endpoint 프록시\", () => {",
+          "plan": "P4 read-only layout, exact target/focus and Herdr projection repairs"
+        },
+        {
+          "range": "@@ -335,0 +377 @@ describe(\"Herdr 클라이언트 endpoint 프록시\", () => {",
+          "plan": "P4 read-only layout, exact target/focus and Herdr projection repairs"
+        },
+        {
+          "range": "@@ -338,0 +381 @@ describe(\"Herdr 클라이언트 endpoint 프록시\", () => {",
+          "plan": "P4 read-only layout, exact target/focus and Herdr projection repairs"
+        }
+      ]
+    },
+    {
+      "file": "src/lib/__tests__/remoteImagePaste.test.ts",
+      "plan": "C2: bounded private local/SSH file staging, preserving terminal image paste API",
+      "task": "composer-delivery",
+      "hunks": [
+        {
+          "range": "@@ -97,0 +98,13 @@ describe(\"remoteImagePaste.transferImageToRemoteHost\", () => {",
+          "plan": "C2: bounded private local/SSH file staging, preserving terminal image paste API"
+        },
+        {
+          "range": "@@ -112 +125 @@ describe(\"remoteImagePaste.transferImageToRemoteHost\", () => {",
+          "plan": "C2: bounded private local/SSH file staging, preserving terminal image paste API"
+        }
+      ]
+    },
+    {
+      "file": "src/lib/__tests__/shellHookChatMetadata.test.ts",
+      "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA",
+      "task": "prior-approved-chat-ui",
+      "hunks": [
+        {
+          "range": "@@ -0,0 +1,43 @@",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        }
+      ]
+    },
+    {
+      "file": "src/lib/__tests__/terminal.test.ts",
+      "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA",
+      "task": "prior-approved-chat-ui",
+      "hunks": [
+        {
+          "range": "@@ -1292,0 +1293,17 @@ describe(\"attachRemoteSession — ssh 바이너리 기반 연결\", () => {",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        }
+      ]
+    },
+    {
+      "file": "src/lib/__tests__/terminalSessionLifecycle.test.ts",
+      "plan": "P4 read-only layout, exact target/focus and Herdr projection repairs",
+      "task": "prior-approved-chat-ui",
+      "hunks": [
+        {
+          "range": "@@ -8 +8 @@ import { SessionType } from \"@/entities/KanbanTask\";",
+          "plan": "P4 read-only layout, exact target/focus and Herdr projection repairs"
+        },
+        {
+          "range": "@@ -9,0 +10 @@ const { createHerdrClientProxy, readHerdrMapping } = vi.hoisted(() => ({",
+          "plan": "P4 read-only layout, exact target/focus and Herdr projection repairs"
+        },
+        {
+          "range": "@@ -12,0 +14 @@ vi.mock(\"@/lib/herdrClientProxy\", () => ({ createHerdrClientProxy }));",
+          "plan": "P4 read-only layout, exact target/focus and Herdr projection repairs"
+        },
+        {
+          "range": "@@ -118,0 +121 @@ beforeEach(() => {",
+          "plan": "P4 read-only layout, exact target/focus and Herdr projection repairs"
+        },
+        {
+          "range": "@@ -712,0 +716,29 @@ describe(\"공유 Herdr Space 클라이언트\", () => {",
+          "plan": "P4 read-only layout, exact target/focus and Herdr projection repairs"
+        }
+      ]
+    },
+    {
+      "file": "src/lib/aiSessions/__tests__/imageHistory.test.ts",
+      "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup",
+      "task": "composer-delivery",
+      "hunks": [
+        {
+          "range": "@@ -0,0 +1,185 @@",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        }
+      ]
+    },
+    {
+      "file": "src/lib/aiSessions/__tests__/paneChatProcess.test.ts",
+      "plan": "C2/C4: identify actual installed Claude native process while preserving false-positive guards",
+      "task": "composer-delivery",
+      "hunks": [
+        {
+          "range": "@@ -0,0 +1,34 @@",
+          "plan": "C2/C4: identify actual installed Claude native process while preserving false-positive guards"
+        }
+      ]
+    },
+    {
+      "file": "src/lib/aiSessions/__tests__/paneChatSessionBindings.test.ts",
+      "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA",
+      "task": "prior-approved-chat-ui",
+      "hunks": [
+        {
+          "range": "@@ -0,0 +1,81 @@",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        }
+      ]
+    },
+    {
+      "file": "src/lib/aiSessions/__tests__/paneChatSessionBindingsIntegration.test.ts",
+      "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA",
+      "task": "prior-approved-chat-ui",
+      "hunks": [
+        {
+          "range": "@@ -0,0 +1,62 @@",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        }
+      ]
+    },
+    {
+      "file": "src/lib/aiSessions/__tests__/readAiSessions.test.ts",
+      "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA",
+      "task": "prior-approved-chat-ui",
+      "hunks": [
+        {
+          "range": "@@ -378,2 +377,0 @@ describe(\"AI session history readers\", () => {",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        },
+        {
+          "range": "@@ -380,0 +379,2 @@ describe(\"AI session history readers\", () => {",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        },
+        {
+          "range": "@@ -382,0 +383,3 @@ describe(\"AI session history readers\", () => {",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        }
+      ]
+    },
+    {
+      "file": "src/lib/aiSessions/__tests__/shared.test.ts",
+      "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA",
+      "task": "prior-approved-chat-ui",
+      "hunks": [
+        {
+          "range": "@@ -13,0 +14,21 @@ describe(\"sortMessagesDescending\", () => {",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        }
+      ]
+    },
+    {
+      "file": "src/lib/aiSessions/messageAttachments.ts",
+      "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup",
+      "task": "composer-delivery",
+      "hunks": [
+        {
+          "range": "@@ -0,0 +1,48 @@",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        }
+      ]
+    },
+    {
+      "file": "src/lib/aiSessions/paneChatProcess.ts",
+      "plan": "C2/C4: identify actual installed Claude native process while preserving false-positive guards",
+      "task": "composer-delivery",
+      "hunks": [
+        {
+          "range": "@@ -0,0 +1,79 @@",
+          "plan": "C2/C4: identify actual installed Claude native process while preserving false-positive guards"
+        }
+      ]
+    },
+    {
+      "file": "src/lib/aiSessions/paneChatSessionBindings.ts",
+      "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA",
+      "task": "prior-approved-chat-ui",
+      "hunks": [
+        {
+          "range": "@@ -0,0 +1,102 @@",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        }
+      ]
+    },
+    {
+      "file": "src/lib/aiSessions/readClaudeSessions.ts",
+      "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup",
+      "task": "composer-delivery",
+      "hunks": [
+        {
+          "range": "@@ -1,0 +2 @@ import path from \"path\";",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -49,0 +51,3 @@ interface ClaudeProjectEvent {",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -60,0 +65,10 @@ interface ClaudeSessionAccumulator {",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -97,0 +112 @@ export async function readClaudeSessionDetail(",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -101,0 +117 @@ export async function readClaudeSessionDetail(",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -105 +121,3 @@ export async function readClaudeSessionDetail(",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -107,0 +126 @@ export async function readClaudeSessionDetail(",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -115,2 +134,3 @@ export async function readClaudeSessionDetail(",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -124 +144 @@ export async function readClaudeSessionDetail(",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -139 +159 @@ export async function readClaudeSessionDetail(",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -193,0 +214 @@ function findLatestClaudeConversationTimestamp(events: unknown[]): string | null",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -196 +217 @@ function findLatestClaudeConversationTimestamp(events: unknown[]): string | null",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -251,0 +273 @@ function consumeClaudeListEvent(",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -258 +280,4 @@ function consumeClaudeListEvent(",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -262,3 +287,3 @@ function consumeClaudeListEvent(",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -267 +292 @@ function consumeClaudeListEvent(",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -272 +297 @@ function consumeClaudeListEvent(",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -380,0 +406 @@ function findLatestRoleText(events: unknown[], role: \"assistant\" | \"user\"): stri",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        }
+      ]
+    },
+    {
+      "file": "src/lib/aiSessions/readCodexSessions.ts",
+      "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup",
+      "task": "composer-delivery",
+      "hunks": [
+        {
+          "range": "@@ -1,0 +2 @@ import path from \"path\";",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -29,0 +31 @@ import type {",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -124 +126 @@ async function parseCodexSessionSummary(filePath: string, context: AiSessionRead",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -129 +131 @@ async function parseCodexSessionSummary(filePath: string, context: AiSessionRead",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -136 +138 @@ async function parseCodexSessionSummary(filePath: string, context: AiSessionRead",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -193 +195 @@ async function parseCodexSessionDetail(",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -197 +199 @@ async function parseCodexSessionDetail(",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -207 +209 @@ async function parseCodexSessionDetail(",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -215 +217 @@ async function parseCodexSessionDetail(",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -233 +235 @@ async function parseCodexSessionDetail(",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -235 +237 @@ function extractCodexEventMessages(event: CodexRolloutEvent): Array<{ role: AiMe",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -251,2 +253,2 @@ function extractCodexEventMessages(event: CodexRolloutEvent): Array<{ role: AiMe",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -278 +280 @@ function shouldSkipCodexMessage(role: AiMessageRole, text: string): boolean {",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -281,2 +283,7 @@ function extractCodexPayloadMessages(payload: Record<string, unknown>): Array<{",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        }
+      ]
+    },
+    {
+      "file": "src/lib/aiSessions/readSessionAttachment.ts",
+      "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup",
+      "task": "composer-delivery",
+      "hunks": [
+        {
+          "range": "@@ -0,0 +1,75 @@",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        }
+      ]
+    },
+    {
+      "file": "src/lib/aiSessions/shared.ts",
+      "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup",
+      "task": "composer-delivery",
+      "hunks": [
+        {
+          "range": "@@ -8,0 +9 @@ import type {",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -98 +99,2 @@ export function sortMessagesDescending(messages: AggregatedAiMessage[]): Aggrega",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -301 +303 @@ export function extractPlainText(value: unknown): string {",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -303 +305 @@ export function makePreviewMessage(role: AiMessageRole, timestamp: unknown, text",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -310,0 +313 @@ export function makePreviewMessage(role: AiMessageRole, timestamp: unknown, text",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        }
+      ]
+    },
+    {
+      "file": "src/lib/aiSessions/types.ts",
+      "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup",
+      "task": "composer-delivery",
+      "hunks": [
+        {
+          "range": "@@ -7,0 +8,15 @@ export type AiMessageRole = \"user\" | \"assistant\" | \"tool\" | \"system\" | \"develope",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        },
+        {
+          "range": "@@ -13,0 +29 @@ export interface AggregatedAiMessage {",
+          "plan": "C5: image-aware history, scoped authenticated lazy media, native framing and companion cleanup"
+        }
+      ]
+    },
+    {
+      "file": "src/lib/attachmentContent.ts",
+      "plan": "C1/C2/C5: bounded byte/MIME validation shared by staging and authorized history",
+      "task": "composer-delivery",
+      "hunks": [
+        {
+          "range": "@@ -0,0 +1,27 @@",
+          "plan": "C1/C2/C5: bounded byte/MIME validation shared by staging and authorized history"
+        }
+      ]
+    },
+    {
+      "file": "src/lib/herdr.ts",
+      "plan": "P4 read-only layout, exact target/focus and Herdr projection repairs",
+      "task": "prior-approved-chat-ui",
+      "hunks": [
+        {
+          "range": "@@ -48,0 +49,37 @@ export function buildHerdrClientCommand(sessionName: string, socketPath: string)",
+          "plan": "P4 read-only layout, exact target/focus and Herdr projection repairs"
+        }
+      ]
+    },
+    {
+      "file": "src/lib/herdrClientProxy.ts",
+      "plan": "P4 read-only layout, exact target/focus and Herdr projection repairs",
+      "task": "prior-approved-chat-ui",
+      "hunks": [
+        {
+          "range": "@@ -12,0 +13 @@ const POPUP_INPUT_TAG = 14;",
+          "plan": "P4 read-only layout, exact target/focus and Herdr projection repairs"
+        },
+        {
+          "range": "@@ -42,0 +44,8 @@ function readString(payload: Buffer, position: number): [string, number] {",
+          "plan": "P4 read-only layout, exact target/focus and Herdr projection repairs"
+        },
+        {
+          "range": "@@ -105,0 +115,3 @@ class HerdrEndpointConnection {",
+          "plan": "P4 read-only layout, exact target/focus and Herdr projection repairs"
+        },
+        {
+          "range": "@@ -121,0 +134,6 @@ class HerdrEndpointConnection {",
+          "plan": "P4 read-only layout, exact target/focus and Herdr projection repairs"
+        },
+        {
+          "range": "@@ -155,0 +174 @@ class HerdrEndpointConnection {",
+          "plan": "P4 read-only layout, exact target/focus and Herdr projection repairs"
+        },
+        {
+          "range": "@@ -167,0 +187,32 @@ class HerdrEndpointConnection {",
+          "plan": "P4 read-only layout, exact target/focus and Herdr projection repairs"
+        },
+        {
+          "range": "@@ -205 +256 @@ class HerdrEndpointConnection {",
+          "plan": "P4 read-only layout, exact target/focus and Herdr projection repairs"
+        },
+        {
+          "range": "@@ -208,0 +260,2 @@ class HerdrEndpointConnection {",
+          "plan": "P4 read-only layout, exact target/focus and Herdr projection repairs"
+        },
+        {
+          "range": "@@ -237,0 +291,2 @@ class HerdrEndpointConnection {",
+          "plan": "P4 read-only layout, exact target/focus and Herdr projection repairs"
+        },
+        {
+          "range": "@@ -248,0 +304,2 @@ export async function createHerdrClientProxy(upstreamSocketPath: string, workspa",
+          "plan": "P4 read-only layout, exact target/focus and Herdr projection repairs"
+        },
+        {
+          "range": "@@ -273,0 +331,2 @@ export async function createHerdrClientProxy(upstreamSocketPath: string, workspa",
+          "plan": "P4 read-only layout, exact target/focus and Herdr projection repairs"
+        }
+      ]
+    },
+    {
+      "file": "src/lib/remoteImagePaste.ts",
+      "plan": "C2: bounded private local/SSH file staging, preserving terminal image paste API",
+      "task": "composer-delivery",
+      "hunks": [
+        {
+          "range": "@@ -33,0 +34,9 @@ export async function transferImageToRemoteHost(",
+          "plan": "C2: bounded private local/SSH file staging, preserving terminal image paste API"
+        },
+        {
+          "range": "@@ -35 +44 @@ export async function transferImageToRemoteHost(",
+          "plan": "C2: bounded private local/SSH file staging, preserving terminal image paste API"
+        },
+        {
+          "range": "@@ -37 +46 @@ export async function transferImageToRemoteHost(",
+          "plan": "C2: bounded private local/SSH file staging, preserving terminal image paste API"
+        },
+        {
+          "range": "@@ -40 +49 @@ export async function transferImageToRemoteHost(",
+          "plan": "C2: bounded private local/SSH file staging, preserving terminal image paste API"
+        }
+      ]
+    },
+    {
+      "file": "src/lib/shellHookProvider.ts",
+      "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA",
+      "task": "prior-approved-chat-ui",
+      "hunks": [
+        {
+          "range": "@@ -92 +92 @@ ${buildShellTaskIdResolver(taskId)}",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        }
+      ]
+    },
+    {
+      "file": "src/lib/shellHookScript.ts",
+      "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA",
+      "task": "prior-approved-chat-ui",
+      "hunks": [
+        {
+          "range": "@@ -14,0 +15 @@ const HOOK_NOTIFY_TIMEOUT_SECONDS = 3;",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        },
+        {
+          "range": "@@ -46 +47,9 @@ export interface ShellTaskIdBindingStatus {",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        },
+        {
+          "range": "@@ -47,0 +57 @@ export function buildShellKanvibeStatusUpdater(status: ShellHookStatus) {",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        },
+        {
+          "range": "@@ -92 +102 @@ kanvibe_post_status() {",
+          "plan": "Earlier approved pane chat/history implementation and five-pass design; see docs/research/chat-ui-orca-paseo.md and prior chat-ui QA"
+        }
+      ]
+    },
+    {
+      "file": "src/lib/terminal.ts",
+      "plan": "P4 read-only layout, exact target/focus and Herdr projection repairs",
+      "task": "prior-approved-chat-ui",
+      "hunks": [
+        {
+          "range": "@@ -2 +2 @@ import path from \"path\";",
+          "plan": "P4 read-only layout, exact target/focus and Herdr projection repairs"
+        },
+        {
+          "range": "@@ -65,0 +66 @@ const DEFAULT_TERMINAL_ROWS = 30;",
+          "plan": "P4 read-only layout, exact target/focus and Herdr projection repairs"
+        },
+        {
+          "range": "@@ -545,0 +547,2 @@ async function prepareHerdrTaskClient(sessionName: string, workspaceId: string |",
+          "plan": "P4 read-only layout, exact target/focus and Herdr projection repairs"
+        },
+        {
+          "range": "@@ -553,0 +557 @@ async function prepareHerdrTaskClient(sessionName: string, workspaceId: string |",
+          "plan": "P4 read-only layout, exact target/focus and Herdr projection repairs"
+        },
+        {
+          "range": "@@ -557,0 +562,2 @@ async function prepareHerdrTaskClient(sessionName: string, workspaceId: string |",
+          "plan": "P4 read-only layout, exact target/focus and Herdr projection repairs"
+        },
+        {
+          "range": "@@ -574,0 +581,16 @@ async function prepareHerdrTaskClient(sessionName: string, workspaceId: string |",
+          "plan": "P4 read-only layout, exact target/focus and Herdr projection repairs"
+        },
+        {
+          "range": "@@ -578,0 +601,9 @@ export function getHerdrTaskActiveTabId(taskId: string): string | null {",
+          "plan": "P4 read-only layout, exact target/focus and Herdr projection repairs"
+        },
+        {
+          "range": "@@ -1129,0 +1161,13 @@ export function attachClientToTerminalTab(taskId: string, tabId: string, ws: Web",
+          "plan": "P4 read-only layout, exact target/focus and Herdr projection repairs"
+        }
+      ]
+    },
+    {
+      "file": "src/types/kanvibeDesktop.d.ts",
+      "plan": "P1 shared configurable shortcut and collision/capture tests",
+      "task": "prior-approved-chat-ui",
+      "hunks": [
+        {
+          "range": "@@ -19,0 +20 @@ interface KanvibeDesktopApi {",
+          "plan": "P1 shared configurable shortcut and collision/capture tests"
+        }
+      ]
+    }
+  ]
+}

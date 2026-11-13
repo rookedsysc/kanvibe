@@ -1,0 +1,324 @@
+{
+  "behaviorVerdict": "PASS",
+  "scope": "Independent isolated desktop composer, real Codex/Claude protocol, authorized and ended-session image history. Mobile verdict and full repository quality/CI are owned by coordinator/mobile role.",
+  "source": {
+    "head": "45c404119d73e59b23bbdc981696a89676661cc1",
+    "nodeInputFileCount": 720,
+    "nodeInputSha256": "45394beab54a47b8c94542c4efb9a0236de576f974c7ec940d1f5e75dc930d9d",
+    "rootNodeMismatches": 0,
+    "runtimeMismatchesAfterDocumentedOverrides": 0,
+    "artifact": "source-integrity-verified.json",
+    "finalRootCommit": "78cad15a5dbaf99460f6f674517712cc22edb89e",
+    "finalCommitNodeMismatches": 0
+  },
+  "gates": [
+    {
+      "name": "pane baseline",
+      "pass": true,
+      "count": 7,
+      "countUnit": "runner checks",
+      "artifact": "desktop-verified/pane-chat-result.json",
+      "exitCode": 0
+    },
+    {
+      "name": "history baseline",
+      "pass": true,
+      "count": 5,
+      "countUnit": "runner checks",
+      "artifact": "desktop-verified/desktop-ui-result.json",
+      "exitCode": 0
+    },
+    {
+      "name": "composer intake",
+      "pass": true,
+      "count": 11,
+      "countUnit": "runner checks",
+      "artifact": "desktop-intake-verified/result.json",
+      "exitCode": 0
+    },
+    {
+      "name": "route/unmount quota",
+      "pass": true,
+      "count": 2,
+      "countUnit": "runner checks",
+      "artifact": "quota-navigation-verified/result.json",
+      "exitCode": 0
+    },
+    {
+      "name": "authorized media/history",
+      "pass": true,
+      "count": 4,
+      "countUnit": "runner checks",
+      "artifact": "history-verified/result.json",
+      "exitCode": 0
+    },
+    {
+      "name": "real native CLI",
+      "pass": true,
+      "count": 15,
+      "countUnit": "native cases",
+      "artifact": "native-verified/result.json",
+      "exitCode": 0
+    },
+    {
+      "name": "real ended image history",
+      "pass": true,
+      "count": 2,
+      "countUnit": "runner checks",
+      "artifact": "native-ended-history-verified/result.json",
+      "exitCode": 0
+    }
+  ],
+  "nativeCases": [
+    {
+      "name": "codex-skill",
+      "pass": true,
+      "sendClicks": 1,
+      "userModelRequests": 1,
+      "skillMarker": true,
+      "exactImageBytes": false,
+      "endedDiscovered": true,
+      "endedAttachmentCount": 0,
+      "endedMessageCount": 2,
+      "literalPreserved": null
+    },
+    {
+      "name": "codex-image-only",
+      "pass": true,
+      "sendClicks": 1,
+      "userModelRequests": 1,
+      "skillMarker": false,
+      "exactImageBytes": true,
+      "endedDiscovered": true,
+      "endedAttachmentCount": 1,
+      "endedMessageCount": 2,
+      "literalPreserved": null
+    },
+    {
+      "name": "codex-image-caption",
+      "pass": true,
+      "sendClicks": 1,
+      "userModelRequests": 1,
+      "skillMarker": false,
+      "exactImageBytes": true,
+      "endedDiscovered": true,
+      "endedAttachmentCount": 1,
+      "endedMessageCount": 2,
+      "literalPreserved": null
+    },
+    {
+      "name": "codex-file-only",
+      "pass": true,
+      "sendClicks": 1,
+      "userModelRequests": 1,
+      "skillMarker": false,
+      "exactImageBytes": false,
+      "endedDiscovered": true,
+      "endedAttachmentCount": 0,
+      "endedMessageCount": 2,
+      "literalPreserved": null
+    },
+    {
+      "name": "codex-file-spaces",
+      "pass": true,
+      "sendClicks": 1,
+      "userModelRequests": 1,
+      "skillMarker": false,
+      "exactImageBytes": false,
+      "endedDiscovered": true,
+      "endedAttachmentCount": 0,
+      "endedMessageCount": 2,
+      "literalPreserved": null
+    },
+    {
+      "name": "codex-file-mention-spaces",
+      "pass": true,
+      "sendClicks": 1,
+      "userModelRequests": 1,
+      "skillMarker": false,
+      "exactImageBytes": false,
+      "endedDiscovered": true,
+      "endedAttachmentCount": 0,
+      "endedMessageCount": 2,
+      "literalPreserved": null
+    },
+    {
+      "name": "codex-plain",
+      "pass": true,
+      "sendClicks": 1,
+      "userModelRequests": 1,
+      "skillMarker": false,
+      "exactImageBytes": false,
+      "endedDiscovered": true,
+      "endedAttachmentCount": 0,
+      "endedMessageCount": 2,
+      "literalPreserved": null
+    },
+    {
+      "name": "claude-skill",
+      "pass": true,
+      "sendClicks": 1,
+      "userModelRequests": 1,
+      "skillMarker": true,
+      "exactImageBytes": false,
+      "endedDiscovered": true,
+      "endedAttachmentCount": 0,
+      "endedMessageCount": 5,
+      "literalPreserved": null
+    },
+    {
+      "name": "claude-image-only",
+      "pass": true,
+      "sendClicks": 1,
+      "userModelRequests": 1,
+      "skillMarker": false,
+      "exactImageBytes": true,
+      "endedDiscovered": true,
+      "endedAttachmentCount": 1,
+      "endedMessageCount": 2,
+      "literalPreserved": null
+    },
+    {
+      "name": "claude-image-caption",
+      "pass": true,
+      "sendClicks": 1,
+      "userModelRequests": 1,
+      "skillMarker": false,
+      "exactImageBytes": true,
+      "endedDiscovered": true,
+      "endedAttachmentCount": 1,
+      "endedMessageCount": 2,
+      "literalPreserved": null
+    },
+    {
+      "name": "claude-file-only",
+      "pass": true,
+      "sendClicks": 1,
+      "userModelRequests": 1,
+      "skillMarker": false,
+      "exactImageBytes": false,
+      "endedDiscovered": true,
+      "endedAttachmentCount": 0,
+      "endedMessageCount": 2,
+      "literalPreserved": null
+    },
+    {
+      "name": "claude-file-spaces",
+      "pass": true,
+      "sendClicks": 1,
+      "userModelRequests": 1,
+      "skillMarker": false,
+      "exactImageBytes": false,
+      "endedDiscovered": true,
+      "endedAttachmentCount": 0,
+      "endedMessageCount": 2,
+      "literalPreserved": null
+    },
+    {
+      "name": "claude-file-mention-spaces",
+      "pass": true,
+      "sendClicks": 1,
+      "userModelRequests": 1,
+      "skillMarker": false,
+      "exactImageBytes": false,
+      "endedDiscovered": true,
+      "endedAttachmentCount": 0,
+      "endedMessageCount": 2,
+      "literalPreserved": null
+    },
+    {
+      "name": "claude-plain",
+      "pass": true,
+      "sendClicks": 1,
+      "userModelRequests": 1,
+      "skillMarker": false,
+      "exactImageBytes": false,
+      "endedDiscovered": true,
+      "endedAttachmentCount": 0,
+      "endedMessageCount": 2,
+      "literalPreserved": null
+    },
+    {
+      "name": "claude-literal-image-source",
+      "pass": true,
+      "sendClicks": 1,
+      "userModelRequests": 1,
+      "skillMarker": false,
+      "exactImageBytes": false,
+      "endedDiscovered": true,
+      "endedAttachmentCount": 0,
+      "endedMessageCount": 2,
+      "literalPreserved": true
+    }
+  ],
+  "paidModelCalls": 0,
+  "osClipboardReadOrMutation": false,
+  "findingsResolved": [
+    "Installed Claude version-named process discovery",
+    "Claude generic file completion consumed sole Enter",
+    "Claude image companion metadata rendered as user bubble",
+    "Unsent ready attachments leaked quota after actual task route unmount"
+  ],
+  "visualComparison": {
+    "reference": "../../chat-composer-capabilities/reference-checklist.md; local Orca/Paseo source only, not their runtime",
+    "observed": "Attachment preview/removal, suggestions above input, searchable skills, compact controls and clean image history visually inspected; no clipping observed at1440x960."
+  },
+  "limitations": [
+    "Native file chooser event and real on-disk file were exercised; OS dialog pixels unverified because Orca executable is unavailable.",
+    "Paste/drop used untrusted renderer ClipboardEvent/DataTransfer/DragEvent with actual staging. OS clipboard was not accessed; OS clipboard paste/default browser behavior is not claimed.",
+    "Local response fixtures prove actual CLI loading of image bytes and skill text; model understanding/tool execution are not claimed."
+  ],
+  "recording": {
+    "status": "all recordings finalized; full decode exit0",
+    "finalPassVideo": "desktop-verified/video/960a5f18d31db31f3f0bc13c0e01cf1f.webm",
+    "durationSeconds": 797.76,
+    "remuxRequired": false,
+    "probe": "verified-recording-probe.json",
+    "continuationDirectory": "desktop-verified/video-resumed",
+    "continuationFinalized": true,
+    "continuationVideos": [
+      {
+        "path": "desktop-verified/video-resumed/2c817b19d4934b3b053e6dd2c889a32c.webm",
+        "durationSeconds": 36.12,
+        "decodeExitCode": 0,
+        "finalized": true
+      },
+      {
+        "path": "desktop-verified/video-resumed/6408d74237984cfa29a27c04e3a498a6.webm",
+        "durationSeconds": 36.64,
+        "decodeExitCode": 0,
+        "finalized": true
+      },
+      {
+        "path": "desktop-verified/video-resumed/9b4e883cbdd53d1517342506a8345c56.webm",
+        "durationSeconds": 1381.76,
+        "decodeExitCode": 0,
+        "finalized": true
+      }
+    ]
+  },
+  "cleanup": {
+    "status": "PASS; complete",
+    "artifact": "cleanup.json",
+    "compactArtifact": "cleanup-summary.json",
+    "ownedPortsReleased": [
+      20364,
+      20374,
+      54777,
+      54778,
+      55395
+    ],
+    "sourceCopiesRemoved": 3,
+    "ownedModelHomesRemoved": 8,
+    "archivedSessionJsonlCount": 151,
+    "userApp9736StillListeningPid": 47303,
+    "userAppOrDatabaseModified": false,
+    "deviceOperations": []
+  },
+  "recovery": {
+    "sameAppDataAndPairing": true,
+    "sameTaskAndPaneIds": true,
+    "artifact": "desktop-verified/recovery-result.json",
+    "cause": "Prior owned app had no windows and closed listeners; initiator not established. Exact owned PID exited and fixture resumed."
+  }
+}
