@@ -459,6 +459,9 @@ describe("terminal 세션 탭 레지스트리", () => {
   });
 });
 
+/** 명령과 상관없이 같은 응답을 돌려주는 mock용. workspace w1과 그 안의 정상 pane 하나가 있는 Herdr 서버다 */
+const HEALTHY_HERDR_SERVER_OUTPUT = JSON.stringify({ result: { workspaces: [{ workspace_id: "w1" }], panes: [{ pane_id: "w1:p1" }] } });
+
 describe("Herdr 원격 machine 연결", () => {
   const config = { host: "host", hostname: "host", port: 22, username: "user", privateKeyPath: "/key" };
 
@@ -469,7 +472,7 @@ describe("Herdr 원격 machine 연결", () => {
       if (command.includes("'machine' 'list'")) return "[]";
       if (command.includes("'machine' 'add'")) return new Promise<string>((resolve) => { finishRegistration = resolve; });
       expect(sshHost).toBe("host");
-      return JSON.stringify({ result: { workspaces: [{ workspace_id: "w1" }] } });
+      return HEALTHY_HERDR_SERVER_OUTPUT;
     });
     const terminal = await importTerminalModule();
 
@@ -495,7 +498,7 @@ describe("Herdr 원격 machine 연결", () => {
     vi.mocked(git.execGit).mockImplementation(async (command) => {
       if (command.includes(`'machine' '${failedCommand}'`)) throw new Error("machine unavailable");
       if (command.includes("'machine' 'list'")) return "[]";
-      return JSON.stringify({ result: { workspaces: [{ workspace_id: "w1" }] } });
+      return HEALTHY_HERDR_SERVER_OUTPUT;
     });
     const terminal = await importTerminalModule();
     const ws = createMockWs();
@@ -513,7 +516,7 @@ describe("Herdr 원격 machine 연결", () => {
 
   it("로컬 Herdr 접속에서는 원격 machine을 조회하지 않는다", async () => {
     const git = await import("@/lib/gitOperations");
-    vi.mocked(git.execGit).mockResolvedValue(JSON.stringify({ result: { workspaces: [{ workspace_id: "w1" }] } }));
+    vi.mocked(git.execGit).mockResolvedValue(HEALTHY_HERDR_SERVER_OUTPUT);
     const terminal = await importTerminalModule();
 
     await terminal.attachLocalSession("local-machine-task", null, SessionType.HERDR, "project-task", createMockWs() as never, "/work");
@@ -527,7 +530,7 @@ describe("Herdr PTY 수명", () => {
   it.each([false, true])("준비 중 닫힌 %s 원격 클라이언트에는 PTY를 만들지 않는다", async (remote) => {
     const git = await import("@/lib/gitOperations");
     let finishBootstrap!: (output: string) => void;
-    vi.mocked(git.execGit).mockResolvedValue(JSON.stringify({ result: { workspaces: [{ workspace_id: "w1" }] } })).mockImplementationOnce(() => new Promise<string>((resolve) => {
+    vi.mocked(git.execGit).mockResolvedValue(HEALTHY_HERDR_SERVER_OUTPUT).mockImplementationOnce(() => new Promise<string>((resolve) => {
       finishBootstrap = resolve;
     }));
     const terminal = await importTerminalModule();
@@ -538,7 +541,7 @@ describe("Herdr PTY 수명", () => {
 
     ws.readyState = 3;
     ws.triggerClose();
-    finishBootstrap(JSON.stringify({ result: { workspaces: [{ workspace_id: "w1" }] } }));
+    finishBootstrap(HEALTHY_HERDR_SERVER_OUTPUT);
     await attaching;
 
     expect(spawnedPtys).toHaveLength(0);
@@ -552,7 +555,7 @@ describe("Herdr PTY 수명", () => {
   ])("동시 연결 준비 중 취소된 클라이언트는 남기지 않는다 (remote=%s, cancelledFirst=%s)", async (remote, cancelledFirst) => {
     const git = await import("@/lib/gitOperations");
     let finishBootstrap!: (output: string) => void;
-    vi.mocked(git.execGit).mockResolvedValue(JSON.stringify({ result: { workspaces: [{ workspace_id: "w1" }] } })).mockImplementationOnce(() => new Promise<string>((resolve) => {
+    vi.mocked(git.execGit).mockResolvedValue(HEALTHY_HERDR_SERVER_OUTPUT).mockImplementationOnce(() => new Promise<string>((resolve) => {
       finishBootstrap = resolve;
     }));
     const terminal = await importTerminalModule();
@@ -565,7 +568,7 @@ describe("Herdr PTY 수명", () => {
     const attaching = clients.map(attach);
     cancelled.readyState = 3;
     cancelled.triggerClose();
-    finishBootstrap(JSON.stringify({ result: { workspaces: [{ workspace_id: "w1" }] } }));
+    finishBootstrap(HEALTHY_HERDR_SERVER_OUTPUT);
     await Promise.all(attaching);
 
     expect(spawnedPtys).toHaveLength(1);
@@ -580,7 +583,7 @@ describe("Herdr PTY 수명", () => {
 
   it.each([false, true])("동시 %s 원격 연결에서도 PTY 하나를 공유하고 마지막 창만 분리한다", async (remote) => {
     const git = await import("@/lib/gitOperations");
-    vi.mocked(git.execGit).mockResolvedValue(JSON.stringify({ result: { workspaces: [{ workspace_id: "w1" }] } }));
+    vi.mocked(git.execGit).mockResolvedValue(HEALTHY_HERDR_SERVER_OUTPUT);
     const terminal = await importTerminalModule();
     const first = createMockWs();
     const second = createMockWs();
@@ -662,7 +665,7 @@ describe("공유 Herdr Space 클라이언트", () => {
     const git = await import("@/lib/gitOperations");
     vi.mocked(git.execGit).mockImplementation(async (command) => command.includes("'session' 'list'")
       ? JSON.stringify({ sessions: [{ name: "kanvibe", running: true, session_dir: "/config/herdr/sessions/kanvibe", socket_path: "/config/herdr/sessions/kanvibe/herdr.sock" }] })
-      : JSON.stringify({ result: { workspaces: [{ workspace_id: "w1" }, { workspace_id: "w2" }] } }));
+      : JSON.stringify({ result: { workspaces: [{ workspace_id: "w1" }, { workspace_id: "w2" }], panes: [{ pane_id: "w1:p1" }, { pane_id: "w2:p1" }] } }));
   });
   it.each([false, true])("공유 Space는 클라이언트 중계를 통해 연결하고 PTY 종료 때 중계도 닫는다 (remote=%s)", async (remote) => {
     const proxy = { socketPath: "/tmp/proxy/client", request: vi.fn(), getActiveTabId: () => "w1:t1", close: vi.fn(async () => {}) };
