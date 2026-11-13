@@ -10,6 +10,7 @@ const { pathToFileURL } = require("node:url");
 const { app, BrowserWindow, clipboard, ipcMain, powerMonitor, session, shell } = require("electron");
 const { createDesktopDiagnostics, resolveDesktopLogPath, serializeErrorForLog } = require("./diagnostics");
 const { applyAppDataDirectoryOverride } = require("./runtimeEnvironment");
+const { prepareDevelopmentDatabase } = require("./developmentDatabase");
 
 const DEFAULT_LOCALE = "ko";
 const APP_ICON_PATH = path.join(app.getAppPath(), "public", "branding", "app-icon.png");
@@ -1125,6 +1126,14 @@ app.whenReady().then(async () => {
     app.dock.setIcon(APP_ICON_PATH);
   }
   initializeDiagnostics();
+  try {
+    await prepareDevelopmentDatabase(app, { isDevelopment: SHOULD_USE_SOURCE_MODULES });
+  } catch (error) {
+    logDiagnostic("main:development-database-failed", { error: serializeErrorForLog(error) });
+    console.error("[kanvibe] Development database preparation failed:", error);
+    app.exit(1);
+    return;
+  }
   ensureRuntimeEnvironment();
   diagnostics.log("main:startup", {
     appPath: app.getAppPath(),
