@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../common/providers.dart';
 import '../data/board_snapshot.dart';
 import '../data/board_project_filter_store.dart';
+import 'board_desktop_filter_controller.dart';
 
 final boardProjectFilterStoreProvider = Provider<BoardProjectFilterStore>(
   (ref) => BoardProjectFilterStore(),
@@ -69,5 +70,9 @@ final filteredBoardProvider = Provider<AsyncValue<BoardSnapshot>>((ref) {
   );
   if (connectionId == null) return board;
   final selected = ref.watch(boardProjectFilterProvider(connectionId));
-  return board.whenData((snapshot) => snapshot.filterByProjectIds(selected));
+  final desktops = ref.watch(boardDesktopFilterProvider(connectionId));
+  return board.whenData(
+    (snapshot) =>
+        snapshot.filterByDesktops(desktops).filterByProjectIds(selected),
+  );
 });

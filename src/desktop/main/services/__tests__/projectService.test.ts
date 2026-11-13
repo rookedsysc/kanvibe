@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   execGit: vi.fn(),
+  isPathMissing: vi.fn(async (_targetPath: string, _sshHost?: string | null) => false),
   homedir: vi.fn(() => "/home/tester"),
   validateGitRepo: vi.fn(),
   getDefaultBranch: vi.fn(),
@@ -54,7 +55,7 @@ vi.mock("@/lib/database", () => ({
    */
   getTaskRepository: async () => {
     const taskRepo = await mocks.getTaskRepository();
-    return { findOne: vi.fn(async () => null), ...taskRepo };
+    return { find: vi.fn(async () => []), findOne: vi.fn(async () => null), ...taskRepo };
   },
 }));
 
@@ -180,12 +181,153 @@ vi.mock("@/lib/kanvibeHooksInstaller", () => ({
 }));
 
 vi.mock("@/lib/hostFileAccess", () => ({
+  isPathMissing: mocks.isPathMissing,
   readTextFile: mocks.readTextFile,
   readTextFiles: mocks.readTextFiles,
   writeTextFile: mocks.writeTextFile,
   writeTextFileIfAbsent: mocks.writeTextFileIfAbsent,
   quoteShellArgument: mocks.quoteShellArgument,
 }));
+
+describe("projectService sync deleted paths", () => {
+  const project = { id: "cleanup-project", name: "api", repoPath: "/workspace/api", defaultBranch: "main", sshHost: null };
+  const rootTask = { id: "cleanup-root", projectId: project.id, branchName: "main", baseBranch: "main", worktreePath: project.repoPath, sshHost: null, sessionType: "tmux" };
+  const removedTask = { ...rootTask, id: "removed-task", branchName: "removed", worktreePath: "/workspace/api__worktrees/removed" };
+  let tasks: typeof rootTask[];
+  let projects: typeof project[];
+
+  beforeEach(() => {
+    vi.resetModules();
+    vi.clearAllMocks();
+    mocks.isPathMissing.mockReset().mockResolvedValue(false);
+    mocks.execGit.mockResolvedValue("");
+    mocks.listWorktrees.mockResolvedValue([{ path: project.repoPath, branch: "main", isBare: false }]);
+    tasks = [{ ...rootTask }, { ...removedTask }];
+    projects = [{ ...project }];
+    const manager = {
+      findOneBy: vi.fn(async () => projects[0]),
+      delete: vi.fn(async () => { tasks = []; }),
+      remove: vi.fn(async () => { projects = []; }),
+    };
+    mocks.getProjectRepository.mockResolvedValue({
+      find: vi.fn(async () => projects),
+      manager: { transaction: vi.fn(async (action) => action(manager)) },
+    });
+    mocks.getTaskRepository.mockResolvedValue({
+      find: vi.fn(async () => [...tasks]),
+      findOneBy: vi.fn(async (criteria: { branchName: string; projectId: string }) => tasks.find((task) => task.branchName === criteria.branchName && task.projectId === criteria.projectId) ?? null),
+      save: vi.fn(async (task) => task),
+      delete: vi.fn(async (criteria: { id: string }) => {
+        const previousCount = tasks.length;
+        tasks = tasks.filter((task) => task.id !== criteria.id);
+        return { affected: previousCount - tasks.length };
+      }),
+    });
+  });
+
+  it("삭제된 프로젝트는 관련 태스크와 함께 정리하고 다시 만들지 않는다", async () => {
+    mocks.isPathMissing.mockResolvedValue(true);
+    const { syncRegisteredProjectWorktrees } = await import("@/desktop/main/services/projectService");
+    const result = await syncRegisteredProjectWorktrees();
+    expect(projects).toEqual([]);
+    expect(tasks).toEqual([]);
+    expect(result.changed).toBe(true);
+    expect(mocks.writeTextFile).not.toHaveBeenCalled();
+  });
+
+  it("보드를 먼저 조회해도 삭제된 프로젝트 경로를 복구하지 않아 sync로 정리된다", async () => {
+    vi.useFakeTimers();
+    try {
+      mocks.isPathMissing.mockResolvedValue(true);
+      const { getAllProjects, syncRegisteredProjectWorktrees } = await import("@/desktop/main/services/projectService");
+      await getAllProjects();
+      await vi.runOnlyPendingTimersAsync();
+      expect(mocks.writeTextFile).not.toHaveBeenCalled();
+      await syncRegisteredProjectWorktrees();
+      expect(projects).toEqual([]);
+      expect(tasks).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("삭제된 worktree만 정리하며 Git 목록에 남아 있어도 다시 만들지 않는다", async () => {
+    mocks.isPathMissing.mockImplementation(async (targetPath) => targetPath === removedTask.worktreePath);
+    mocks.listWorktrees.mockResolvedValue([
+      { path: project.repoPath, branch: "main", isBare: false },
+      { path: removedTask.worktreePath, branch: "removed", isBare: false },
+    ]);
+    const { syncRegisteredProjectWorktrees } = await import("@/desktop/main/services/projectService");
+    const result = await syncRegisteredProjectWorktrees();
+    expect(tasks.map((task) => task.id)).toEqual([rootTask.id]);
+    expect(projects).toHaveLength(1);
+    expect(result.changed).toBe(true);
+    expect(result.registeredWorktrees).toEqual([]);
+    expect(mocks.detachSession).not.toHaveBeenCalled();
+    expect(mocks.writeTextFile.mock.calls.map(([targetPath]) => targetPath))
+      .not.toContain(`${removedTask.worktreePath}/.kanvibe/status.json`);
+  });
+
+  it("Git 목록 조회 실패와 경로 없는 태스크는 삭제 근거로 사용하지 않는다", async () => {
+    tasks.push({ ...rootTask, id: "session-only", worktreePath: null as unknown as string });
+    mocks.listWorktrees.mockResolvedValue([]);
+    const { syncRegisteredProjectWorktrees } = await import("@/desktop/main/services/projectService");
+    await syncRegisteredProjectWorktrees();
+    expect(tasks.map((task) => task.id)).toEqual([rootTask.id, removedTask.id, "session-only"]);
+    expect(projects).toHaveLength(1);
+  });
+
+  it("Git으로 이동한 worktree는 기존 태스크 ID와 메타데이터를 유지한다", async () => {
+    const movedPath = "/workspace/api__worktrees/moved";
+    Object.assign(tasks[1], { prUrl: "https://github.com/example/api/pull/1", agentType: "codex" });
+    mocks.isPathMissing.mockImplementation(async (targetPath) => targetPath === removedTask.worktreePath);
+    mocks.listWorktrees.mockResolvedValue([
+      { path: project.repoPath, branch: "main", isBare: false },
+      { path: movedPath, branch: removedTask.branchName, isBare: false },
+    ]);
+    const { syncRegisteredProjectWorktrees } = await import("@/desktop/main/services/projectService");
+    await syncRegisteredProjectWorktrees();
+    expect(tasks).toContainEqual(expect.objectContaining({
+      id: removedTask.id, worktreePath: movedPath,
+      prUrl: "https://github.com/example/api/pull/1", agentType: "codex",
+    }));
+  });
+
+  it("삭제된 기본 브랜치 worktree를 다시 만들지 않고 프로젝트 기본 태스크를 유지한다", async () => {
+    const missingRootPath = "/workspace/api__worktrees/main";
+    tasks[0].worktreePath = missingRootPath;
+    mocks.isPathMissing.mockImplementation(async (targetPath) => targetPath === missingRootPath);
+    mocks.listWorktrees.mockResolvedValue([
+      { path: project.repoPath, branch: "", isBare: true },
+      { path: missingRootPath, branch: "main", isBare: false },
+    ]);
+    const { syncRegisteredProjectWorktrees } = await import("@/desktop/main/services/projectService");
+    await syncRegisteredProjectWorktrees();
+    expect(tasks.map((task) => task.id)).toContain(rootTask.id);
+    expect(mocks.writeTextFile.mock.calls.map(([targetPath]) => targetPath))
+      .not.toContain(`${missingRootPath}/.kanvibe/status.json`);
+  });
+
+  it("태스크의 SSH 정보가 비었으면 프로젝트 호스트에서 경로를 확인한다", async () => {
+    projects[0] = { ...project, sshHost: "devbox" as unknown as null };
+    mocks.isPathMissing.mockImplementation(async (targetPath, host) => targetPath === removedTask.worktreePath && !host);
+    const { syncRegisteredProjectWorktrees } = await import("@/desktop/main/services/projectService");
+    await syncRegisteredProjectWorktrees();
+    expect(tasks.map((task) => task.id)).toContain(removedTask.id);
+    expect(mocks.isPathMissing).toHaveBeenCalledWith(removedTask.worktreePath, "devbox");
+  });
+
+  it.each(["SSH connection refused", "EACCES"])("경로 확인 실패 시 레코드를 보존한다: %s", async (reason) => {
+    mocks.isPathMissing.mockRejectedValue(new Error(reason));
+    const { syncRegisteredProjectWorktrees } = await import("@/desktop/main/services/projectService");
+    const result = await syncRegisteredProjectWorktrees();
+    expect(tasks).toHaveLength(2);
+    expect(projects).toHaveLength(1);
+    expect(result.errors.join(" ")).toContain(reason);
+    expect(mocks.writeTextFile).not.toHaveBeenCalled();
+    mocks.isPathMissing.mockReset().mockResolvedValue(false);
+  });
+});
 
 describe("projectService.deleteProject", () => {
   beforeEach(() => {

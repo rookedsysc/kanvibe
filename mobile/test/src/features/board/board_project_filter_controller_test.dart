@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kanvibe_mobile/src/common/providers.dart';
 import 'package:kanvibe_mobile/src/features/board/application/board_project_filter_controller.dart';
+import 'package:kanvibe_mobile/src/features/board/application/board_desktop_filter_controller.dart';
 import 'package:kanvibe_mobile/src/features/board/domain/task_status.dart';
 import 'package:kanvibe_mobile/src/features/board/data/board_project_filter_store.dart';
 
@@ -13,6 +14,81 @@ import '../../../support/fake_desktop.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() => FlutterSecureStorage.setMockInitialValues({}));
+
+  test('원격 orphan 태스크를 프로젝트 필터로 제외해도 호스트 선택은 유지한다', () async {
+    final container = ProviderContainer.test(
+      overrides: [
+        desktopClientProvider.overrideWithValue(
+          FakeDesktopClient(
+            board: {
+              'projects': [
+                {'id': 'local', 'name': 'Local'},
+              ],
+              'tasks': {
+                'todo': [
+                  {
+                    'id': 'local-task',
+                    'title': 'Local',
+                    'projectId': 'local',
+                    'status': 'todo',
+                  },
+                  {
+                    'id': 'remote-task',
+                    'title': 'Remote',
+                    'sshHost': 'devbox',
+                    'status': 'todo',
+                  },
+                ],
+              },
+            },
+          ),
+        ),
+        connectionStoreProvider.overrideWithValue(FakeConnectionStore()),
+      ],
+    );
+    await container.read(boardProvider.future);
+    container
+        .read(boardDesktopFilterProvider('127.0.0.1:9736').notifier)
+        .toggleDesktop('ssh:devbox');
+    container
+        .read(boardProjectFilterProvider('127.0.0.1:9736').notifier)
+        .toggleProject('local');
+    expect(
+      container
+          .read(filteredBoardProvider)
+          .requireValue
+          .tasksIn(TaskStatus.todo),
+      isEmpty,
+    );
+  });
+
+  test('데스크톱 필터 선택은 연결한 PC별로 분리하고 전체로 복원한다', () {
+    final container = ProviderContainer.test();
+    container
+        .read(boardDesktopFilterProvider('first').notifier)
+        .toggleDesktop('ssh:devbox');
+    container
+        .read(boardDesktopFilterProvider('second').notifier)
+        .toggleDesktop('local');
+    expect(container.read(boardDesktopFilterProvider('first')), {'ssh:devbox'});
+    container
+        .read(boardDesktopFilterProvider('first').notifier)
+        .toggleDesktop('local');
+    expect(container.read(boardDesktopFilterProvider('first')), {
+      'ssh:devbox',
+      'local',
+    });
+    container
+        .read(boardDesktopFilterProvider('first').notifier)
+        .toggleDesktop('ssh:devbox');
+    expect(container.read(boardDesktopFilterProvider('first')), {'local'});
+    expect(container.read(boardDesktopFilterProvider('second')), {'local'});
+    container
+        .read(boardDesktopFilterProvider('first').notifier)
+        .showAllDesktops();
+    expect(container.read(boardDesktopFilterProvider('first')), isEmpty);
+    expect(container.read(boardDesktopFilterProvider('second')), {'local'});
+  });
 
   test('앱 재실행 후 PC별 선택과 전체 해제를 복원한다', () async {
     var container = ProviderContainer();
