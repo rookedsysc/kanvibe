@@ -58,6 +58,7 @@ function createBridge(overrides = {}) {
     getMobileNotifications: vi.fn(async () => [INBOX_NOTIFICATION]),
     markMobileNotificationRead: vi.fn(async () => ({ ...INBOX_NOTIFICATION, isRead: true })),
     markAllMobileNotificationsRead: vi.fn(async () => {}),
+    markMobileTaskNotificationsRead: vi.fn(async () => 2),
     onMobileNotificationsChanged: vi.fn((listener) => {
       notificationChangeListeners.add(listener);
       return () => notificationChangeListeners.delete(listener);
@@ -546,10 +547,18 @@ describe("모바일 알림함 경로", () => {
     expect(bridge.markAllMobileNotificationsRead).toHaveBeenCalledTimes(1);
   });
 
+  it("task 알림 읽음 요청은 경로의 task 식별자를 풀어 서비스에 넘기고 읽음 처리한 개수를 돌려준다", async () => {
+    expect(await request("/api/mobile/tasks/task%201/notifications/read", { method: "POST", headers })).toEqual({
+      status: 200, body: { success: true, count: 2 },
+    });
+    expect(bridge.markMobileTaskNotificationsRead).toHaveBeenCalledWith("task 1");
+  });
+
   it.each([
     ["GET", "/api/mobile/notifications", "getMobileNotifications"],
     ["PATCH", "/api/mobile/notifications/notice-1/read", "markMobileNotificationRead"],
     ["POST", "/api/mobile/notifications/read-all", "markAllMobileNotificationsRead"],
+    ["POST", "/api/mobile/tasks/task-1/notifications/read", "markMobileTaskNotificationsRead"],
   ])("%s %s는 인증 전 서비스를 호출하지 않는다", async (method, path, service) => {
     expect(await request(path, { method })).toEqual({
       status: 401, body: { success: false, error: "연결되지 않은 기기입니다" },
@@ -561,6 +570,7 @@ describe("모바일 알림함 경로", () => {
     ["GET", "/api/mobile/notifications", "getMobileNotifications"],
     ["PATCH", "/api/mobile/notifications/notice-1/read", "markMobileNotificationRead"],
     ["POST", "/api/mobile/notifications/read-all", "markAllMobileNotificationsRead"],
+    ["POST", "/api/mobile/tasks/task-1/notifications/read", "markMobileTaskNotificationsRead"],
   ])("%s %s 서비스 오류는 내부 내용을 감춘 500으로 답한다", async (method, path, service) => {
     bridge[service].mockRejectedValue(new Error("private settings path"));
 

@@ -18,6 +18,7 @@ const PRE_AUTH_PANE_BYTES = 1024 * 1024;
 const PRE_AUTH_PANE_MESSAGES = 256;
 const NOTIFICATIONS_PATH = "/api/mobile/notifications";
 const NOTIFICATION_READ_PATH_PATTERN = /^\/api\/mobile\/notifications\/([^/]+)\/read$/;
+const TASK_NOTIFICATIONS_READ_PATH_PATTERN = /^\/api\/mobile\/tasks\/([^/]+)\/notifications\/read$/;
 
 /**
  * 연결이 해제되어 끊는 스트림의 종료 코드.
@@ -182,6 +183,13 @@ async function handleMobileRequest(request, response, { bridge, host, port, isDe
     if (request.method === "PATCH" && notificationReadMatch) {
       const notification = await bridge.markMobileNotificationRead(decodeURIComponent(notificationReadMatch[1]));
       writeJson(response, notification ? 200 : 404, notification ? { success: true, notification } : { success: false, error: "없는 알림입니다" });
+      return true;
+    }
+
+    const taskNotificationsReadMatch = requestUrl.pathname.match(TASK_NOTIFICATIONS_READ_PATH_PATTERN);
+    if (request.method === "POST" && taskNotificationsReadMatch) {
+      const count = await bridge.markMobileTaskNotificationsRead(decodeURIComponent(taskNotificationsReadMatch[1]));
+      writeJson(response, 200, { success: true, count });
       return true;
     }
 
