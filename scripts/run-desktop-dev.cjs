@@ -162,6 +162,7 @@ async function main() {
     installProjectDependencies();
   }
 
+  await require("./build-remote-terminal-agent.cjs").buildRemoteTerminalAgent();
   const devServerPort = await resolveDevServerPort();
   const devServerUrl = `http://${DEV_SERVER_HOST}:${devServerPort}`;
   const viteProcess = spawnViteServer(devServerPort);

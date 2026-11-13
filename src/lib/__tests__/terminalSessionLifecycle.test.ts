@@ -5,11 +5,14 @@ import { spawnSync } from "child_process";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { SessionType } from "@/entities/KanbanTask";
 
-const { createHerdrClientProxy } = vi.hoisted(() => ({ createHerdrClientProxy: vi.fn() }));
+const { createHerdrClientProxy, readHerdrMapping } = vi.hoisted(() => ({
+  createHerdrClientProxy: vi.fn(),
+  readHerdrMapping: vi.fn(async () => JSON.stringify({ "task-a": "w1", "task-b": "w2" })),
+}));
 vi.mock("@/lib/herdrClientProxy", () => ({ createHerdrClientProxy }));
 vi.mock("@/lib/hostFileAccess", async (importOriginal) => ({
   ...await importOriginal<typeof import("@/lib/hostFileAccess")>(),
-  readTextFile: async () => JSON.stringify({ "task-a": "w1", "task-b": "w2" }),
+  readTextFile: readHerdrMapping,
   updateTextFile: async (_path: string, update: (content: string) => string | Promise<string>) => {
     await update(JSON.stringify({ "task-a": "w1", "task-b": "w2" }));
   },
@@ -667,6 +670,7 @@ describe("공유 Herdr Space 클라이언트", () => {
       ? terminal.attachRemoteSession("task-a", null, "host", SessionType.HERDR, "kanvibe:task-a", ws as never, config, 120, 30, "/work")
       : terminal.attachLocalSession("task-a", null, SessionType.HERDR, "kanvibe:task-a", ws as never, "/work"));
     expect(createHerdrClientProxy).toHaveBeenCalledWith(expect.any(String), "w1");
+    expect(readHerdrMapping).toHaveBeenCalledOnce();
     expect(spawnCalls[0].args.join(" ")).toContain("HERDR_CLIENT_SOCKET_PATH=");
     expect(spawnCalls[0].args.join(" ")).not.toContain("--session 'kanvibe'");
     if (remote) {

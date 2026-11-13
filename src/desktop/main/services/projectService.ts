@@ -30,7 +30,7 @@ import { detachSession } from "@/lib/terminal";
 import type { KanvibeTaskSession } from "@/lib/kanvibeProjectState";
 import { getAvailableHosts as readAvailableHosts } from "@/lib/sshConfig";
 import { getDefaultSessionType } from "@/desktop/main/services/appSettingsService";
-import { ensureKanvibeHooksCurrent, installKanvibeHooks, installKanvibeHookProvider, scheduleKanvibeHooksInstall } from "@/lib/kanvibeHooksInstaller";
+import { ensureKanvibeHooksCurrent, getKanvibeHooksStatuses, installKanvibeHooks, installKanvibeHookProvider, scheduleKanvibeHooksInstall } from "@/lib/kanvibeHooksInstaller";
 import {
   persistTaskStateAtPath as persistTaskState,
   readPersistedTaskStatusAtPath as readPersistedTaskStatus,
@@ -411,7 +411,7 @@ async function resolveTaskHookTarget(task: {
   branchName?: string | null;
   baseBranch?: string | null;
   project: Project | null;
-}) {
+}, options?: { readOnly?: boolean }) {
   if (!task.project) {
     return null;
   }
@@ -425,7 +425,9 @@ async function resolveTaskHookTarget(task: {
     };
   }
 
-  const { task: projectRootTask } = await ensureProjectRootTask(task.project);
+  const projectRootTask = options?.readOnly
+    ? await getProjectRootTask(task.project.id, task.project.defaultBranch)
+    : (await ensureProjectRootTask(task.project)).task;
   return {
     targetPath,
     taskId: projectRootTask?.id ?? task.id,
@@ -1093,7 +1095,7 @@ export async function getProjectHooksStatus(
   const project = await repo.findOneBy({ id: projectId });
   if (!project) return null;
 
-  const { task } = await ensureProjectRootTask(project);
+  const task = await getProjectRootTask(project.id, project.defaultBranch);
   return getClaudeHooksStatus(project.repoPath, task?.id, project.sshHost);
 }
 
@@ -1119,6 +1121,18 @@ export async function installProjectHooks(
   }
 }
 
+export async function getTaskHooksStatuses(
+  taskId: string,
+): Promise<Awaited<ReturnType<typeof getKanvibeHooksStatuses>> | null> {
+  const taskRepo = await getTaskRepository();
+  const task = await taskRepo.findOne({ where: { id: taskId }, relations: ["project"] });
+  if (!task?.project) return null;
+
+  const hookTarget = await resolveTaskHookTarget(task, { readOnly: true });
+  if (!hookTarget) return null;
+  return getKanvibeHooksStatuses(hookTarget.targetPath, hookTarget.taskId, hookTarget.sshHost);
+}
+
 /** 태스크의 worktree 또는 프로젝트 경로에서 Claude Code hooks 상태를 조회한다 */
 export async function getTaskHooksStatus(
   taskId: string
@@ -1127,10 +1141,9 @@ export async function getTaskHooksStatus(
   const task = await taskRepo.findOne({ where: { id: taskId }, relations: ["project"] });
   if (!task?.project) return null;
 
-  const hookTarget = await resolveTaskHookTarget(task);
+  const hookTarget = await resolveTaskHookTarget(task, { readOnly: true });
   if (!hookTarget) return null;
 
-  await ensureKanvibeHooksCurrent(hookTarget.targetPath, hookTarget.taskId, hookTarget.sshHost);
   return getClaudeHooksStatus(hookTarget.targetPath, hookTarget.taskId, hookTarget.sshHost);
 }
 
@@ -1166,7 +1179,7 @@ export async function getProjectGeminiHooksStatus(
   const project = await repo.findOneBy({ id: projectId });
   if (!project) return null;
 
-  const { task } = await ensureProjectRootTask(project);
+  const task = await getProjectRootTask(project.id, project.defaultBranch);
   return getGeminiHooksStatus(project.repoPath, task?.id, project.sshHost);
 }
 
@@ -1200,10 +1213,9 @@ export async function getTaskGeminiHooksStatus(
   const task = await taskRepo.findOne({ where: { id: taskId }, relations: ["project"] });
   if (!task?.project) return null;
 
-  const hookTarget = await resolveTaskHookTarget(task);
+  const hookTarget = await resolveTaskHookTarget(task, { readOnly: true });
   if (!hookTarget) return null;
 
-  await ensureKanvibeHooksCurrent(hookTarget.targetPath, hookTarget.taskId, hookTarget.sshHost);
   return getGeminiHooksStatus(hookTarget.targetPath, hookTarget.taskId, hookTarget.sshHost);
 }
 
@@ -1238,7 +1250,7 @@ export async function getProjectCodexHooksStatus(
   const project = await repo.findOneBy({ id: projectId });
   if (!project) return null;
 
-  const { task } = await ensureProjectRootTask(project);
+  const task = await getProjectRootTask(project.id, project.defaultBranch);
   return getCodexHooksStatus(project.repoPath, task?.id, project.sshHost);
 }
 
@@ -1270,10 +1282,9 @@ export async function getTaskCodexHooksStatus(
   const task = await taskRepo.findOne({ where: { id: taskId }, relations: ["project"] });
   if (!task?.project) return null;
 
-  const hookTarget = await resolveTaskHookTarget(task);
+  const hookTarget = await resolveTaskHookTarget(task, { readOnly: true });
   if (!hookTarget) return null;
 
-  await ensureKanvibeHooksCurrent(hookTarget.targetPath, hookTarget.taskId, hookTarget.sshHost);
   return getCodexHooksStatus(hookTarget.targetPath, hookTarget.taskId, hookTarget.sshHost);
 }
 
@@ -1360,10 +1371,9 @@ export async function getTaskOpenCodeHooksStatus(
   });
   if (!task?.project) return null;
 
-  const hookTarget = await resolveTaskHookTarget(task);
+  const hookTarget = await resolveTaskHookTarget(task, { readOnly: true });
   if (!hookTarget) return null;
 
-  await ensureKanvibeHooksCurrent(hookTarget.targetPath, hookTarget.taskId, hookTarget.sshHost);
   return getOpenCodeHooksStatus(hookTarget.targetPath, hookTarget.taskId, hookTarget.sshHost);
 }
 

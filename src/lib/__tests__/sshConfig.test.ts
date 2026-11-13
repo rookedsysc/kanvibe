@@ -153,7 +153,7 @@ describe("sshConfig.buildSSHArgs", () => {
 
     // Then
     expect(result).toEqual({
-      controlPath: "/home/local-user/.kanvibe/ssh-%C",
+      controlPath: expect.stringMatching(/^\/home\/local-user\/\.kanvibe\/ssh-[a-f0-9]{12}-%C$/),
       controlPersist: "10m",
     });
   });
@@ -167,7 +167,7 @@ describe("sshConfig.buildSSHArgs", () => {
 
     // Then
     expect(result).toEqual({
-      controlPath: "/home/local-user/.kanvibe/ssh-%C-3",
+      controlPath: expect.stringMatching(/^\/home\/local-user\/\.kanvibe\/ssh-[a-f0-9]{12}-%C-3$/),
       controlPersist: "10m",
     });
   });
@@ -230,4 +230,23 @@ describe("sshConfig.buildSCPArgs", () => {
       "app-prod:/tmp/kanvibe-paste-abc.png",
     ]);
   });
+});
+
+it("isolates control sockets across process module lifetimes", async () => {
+  vi.resetModules();
+  const first = (await import("@/lib/sshConfig")).getKanvibeSSHConnectionReuseOptions().controlPath;
+  vi.resetModules();
+  const second = (await import("@/lib/sshConfig")).getKanvibeSSHConnectionReuseOptions().controlPath;
+  expect(first).not.toBe(second);
+  expect(first).not.toBe("/home/local-user/.kanvibe/ssh-%C");
+});
+
+
+it("does not reuse the same master identity after authentication settings change", async () => {
+  const { getKanvibeSSHConnectionReuseOptions } = await import("@/lib/sshConfig");
+  const config = { host: "remote-host", hostname: "example.com", port: 22, username: "tester", privateKeyPath: "/tmp/key-a" };
+  const first = getKanvibeSSHConnectionReuseOptions(0, config).controlPath;
+  const second = getKanvibeSSHConnectionReuseOptions(0, { ...config, privateKeyPath: "/tmp/key-b" }).controlPath;
+  expect(first).not.toBe(second);
+  expect(first).not.toContain("key-a");
 });

@@ -16,6 +16,7 @@ import '../../features/task_detail/domain/mirror_pane.dart';
 import 'desktop_command.dart';
 import 'desktop_connection.dart';
 import 'pinned_http_client.dart';
+import 'pane_connection.dart';
 
 /// 페어링 결과. 인증서 지문은 다음 요청부터 고정할 값이다
 class PairingResult {
@@ -670,31 +671,174 @@ class DesktopClient {
     }
   }
 
-  /// pane 하나를 구독한다. 첫 프레임은 현재 화면이고 그 뒤로는 바뀌는 부분만 온다
-  PaneStream openPaneStream(
+  /// 직접 경로는 쓰기 전에만 선택한다. 연결이 끊긴 뒤 보낸 키를 재전송하지 않는다.
+  Future<PaneStream> openPaneStream(
     DesktopConnection connection,
     String taskId,
-    String paneId,
-  ) {
-    final channel = IOWebSocketChannel.connect(
+    String paneId, {
+    Future<void>? cancelled,
+  }) async {
+    final cancellation = Completer<void>();
+    cancelled?.then((_) {
+      if (!cancellation.isCompleted) cancellation.complete();
+    });
+    final grant = connection.isEncrypted
+        ? await _preparePaneConnection(connection, taskId, paneId, cancellation)
+        : null;
+    if (cancellation.isCompleted) throw http.RequestAbortedException();
+    if (grant != null) {
+      try {
+        return await _connectPaneStream(
+          grant.directUri,
+          {'Authorization': 'Bearer ${grant.token}'},
+          grant.certificateFingerprint,
+          cancellation.future,
+          _directPaneConnectTimeout,
+        );
+      } catch (_) {
+        if (cancellation.isCompleted) throw http.RequestAbortedException();
+        // 직접 TCP 경로가 막혀도 같은 권한을 A의 인증된 고정 relay 경로로 전달할 수 있다.
+      }
+    }
+    return _connectPaneStream(
       connection.buildWebSocketUri('/api/mobile/stream', {
         'taskId': taskId,
         'paneId': paneId,
+        if (grant != null) 'grantId': grant.grantId,
       }),
-      headers: connection.authorizationHeaders,
-      customClient: _webSocketClientFor(connection),
+      connection.authorizationHeaders,
+      connection.certificateFingerprint,
+      cancellation.future,
+      _requestTimeout,
     );
+  }
 
+  // 기존 첫 화면 제한15초 안에 relay를 시도할 여유를 남긴다.
+  static const _directPaneConnectTimeout = Duration(seconds: 2);
+
+  Future<PaneConnection?> _preparePaneConnection(
+    DesktopConnection connection,
+    String taskId,
+    String paneId,
+    Completer<void> cancellation,
+  ) async {
+    final uri = connection
+        .buildHttpUri('/')
+        .replace(
+          pathSegments: [
+            'api',
+            'mobile',
+            'tasks',
+            taskId,
+            'panes',
+            paneId,
+            'connection',
+          ],
+        );
+    final request = http.AbortableRequest(
+      'POST',
+      uri,
+      abortTrigger: cancellation.future,
+    )..headers.addAll(connection.authorizationHeaders);
+    final response =
+        await _awaitPaneSetup(
+          _clientFor(connection).send(request).then(http.Response.fromStream),
+          cancellation.future,
+        ).timeout(
+          _requestTimeout,
+          onTimeout: () {
+            if (!cancellation.isCompleted) cancellation.complete();
+            throw TimeoutException('Terminal connection preparation timed out');
+          },
+        );
+    if (response.statusCode == 404 || response.statusCode == 405) return null;
+    if (response.statusCode != 200) {
+      throw DesktopRequestException(
+        response.statusCode,
+        message: _readErrorMessage(response.body),
+      );
+    }
+    final body = jsonDecode(response.body);
+    if (body is! Map<String, dynamic> ||
+        body['success'] != true ||
+        !body.containsKey('connection')) {
+      throw const FormatException('터미널 연결 응답이 올바르지 않습니다.');
+    }
+    return body['connection'] == null
+        ? null
+        : PaneConnection.fromJson(body['connection']);
+  }
+
+  Future<PaneStream> _connectPaneStream(
+    Uri uri,
+    Map<String, String> headers,
+    String? fingerprint,
+    Future<void> cancelled,
+    Duration timeout,
+  ) async {
+    final attemptClosed = Completer<void>();
+    final client = fingerprint == null
+        ? HttpClient()
+        : createPinnedHttpClient(fingerprint, cancelled: attemptClosed.future);
+    final channel = IOWebSocketChannel.connect(
+      uri,
+      headers: headers,
+      customClient: client,
+    );
+    var closed = false;
+    void close() {
+      if (closed) return;
+      closed = true;
+      attemptClosed.complete();
+      client.close(force: true);
+      unawaited(channel.sink.close().catchError((_) {}));
+    }
+
+    cancelled.then((_) => close());
+    try {
+      await _awaitPaneSetup(channel.ready, cancelled).timeout(timeout);
+      if (closed) throw http.RequestAbortedException();
+    } catch (_) {
+      // Future.timeout는 실제 소켓을 취소하지 않으므로 늦은 handshake도 이 시도와 함께 닫는다.
+      close();
+      unawaited(channel.stream.drain<void>().catchError((_) {}));
+      rethrow;
+    }
     return PaneStream(
-      output: channel.stream.map((event) => event.toString()),
-      onWrite: channel.sink.add,
-      onResize: (cols, rows) => channel.sink.add(
-        utf8.encode(jsonEncode({'type': 'resize', 'cols': cols, 'rows': rows})),
-      ),
-      onClose: channel.sink.close,
+      output: channel.stream
+          .map((event) => event.toString())
+          .transform(
+            StreamTransformer<String, String>.fromHandlers(
+              handleDone: (sink) {
+                close();
+                sink.close();
+              },
+            ),
+          ),
+      onWrite: (input) {
+        if (!closed) channel.sink.add(input);
+      },
+      onResize: (cols, rows) {
+        if (!closed) {
+          channel.sink.add(
+            utf8.encode(
+              jsonEncode({'type': 'resize', 'cols': cols, 'rows': rows}),
+            ),
+          );
+        }
+      },
+      onClose: () async {
+        close();
+      },
       readCloseCode: () => channel.closeCode,
     );
   }
+
+  Future<T> _awaitPaneSetup<T>(Future<T> operation, Future<void> cancelled) =>
+      Future.any([
+        operation,
+        cancelled.then<T>((_) => throw http.RequestAbortedException()),
+      ]);
 
   /// 터미널 화면과 관계없이 hook 상태 변경을 받는다.
   DesktopEventStream openEventStream(DesktopConnection connection) {
@@ -910,7 +1054,29 @@ class PaneStream {
   /// 소켓이 왜 닫혔는지. 서버가 나눠 보낸 사유를 위젯이 읽을 유일한 통로다
   final int? Function() readCloseCode;
 
-  void write(String input) => onWrite(input);
+  // B의 WebSocket frame 제한과 맞추되 Unicode 문자를 프레임 사이에서 자르지 않는다.
+  static const _maxInputBytes = 1024 * 1024;
+
+  void write(String input) {
+    if (utf8.encode(input).length <= _maxInputBytes) {
+      onWrite(input);
+      return;
+    }
+    final chunk = StringBuffer();
+    var bytes = 0;
+    for (final rune in input.runes) {
+      final character = String.fromCharCode(rune);
+      final size = utf8.encode(character).length;
+      if (bytes + size > _maxInputBytes) {
+        onWrite(chunk.toString());
+        chunk.clear();
+        bytes = 0;
+      }
+      chunk.write(character);
+      bytes += size;
+    }
+    if (chunk.isNotEmpty) onWrite(chunk.toString());
+  }
 
   void resize(int cols, int rows) => onResize(cols, rows);
 

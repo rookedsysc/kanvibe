@@ -32,6 +32,15 @@ const attachTaskTerminalMock = vi.fn();
 const changeTaskSessionTypeMock = vi.fn();
 const isTaskSessionAliveMock = vi.fn();
 const getSessionDependencyStatusMock = vi.fn();
+const remoteTransport = vi.hoisted(() => ({
+  prepareRemoteTerminalGrant: vi.fn(),
+  attachRemoteTerminalRelay: vi.fn(),
+  revokeRemoteTerminalDevice: vi.fn(),
+  revokeRemoteTerminalGrant: vi.fn(),
+  revokeRemoteTerminalTask: vi.fn(),
+  stopRemoteTerminalAgents: vi.fn(),
+}));
+vi.mock("@/desktop/main/services/remoteTerminalService", () => remoteTransport);
 let defaultSessionTypeSetting = SessionType.TMUX;
 
 /** 데스크탑 PTY 대신 세우는 가짜. 테스트가 출력을 흘리고 셸을 끝낼 수 있다 */
@@ -2072,6 +2081,7 @@ describe("Herdr 세션 미러", () => {
     if (command === herdrCommand("pane", "get", "w1:p1")) {
       return herdrResult({ pane: { pane_id: "w1:p1", tab_id: "w1:t1", scroll: { max_offset_from_bottom: historyRows, viewport_rows: 38 } } });
     }
+    if (command.includes("'pane' 'get'")) return herdrResult({ pane: null });
     if (command.includes("'pane' 'read'")) return `history-${historyRows}`;
     return "";
   });
@@ -2094,6 +2104,115 @@ describe("Herdr 세션 미러", () => {
     findOneByMock.mockResolvedValue(HERDR_TASK);
     stubHerdrSession();
     spawnMock.mockImplementation(() => createObserver());
+  });
+
+  describe("B 지속 연결 권한", () => {
+    const descriptor = {
+      version: 1 as const, grantId: "scoped-grant", expiresAt: Date.now() + 60_000,
+      direct: { host: "b.example", port: 19443, path: "/stream/scoped-grant", token: "capability", certificateFingerprint: "b".repeat(64) },
+    };
+    beforeEach(() => {
+      Object.values(remoteTransport).forEach((mock) => mock.mockReset());
+      remoteTransport.prepareRemoteTerminalGrant.mockResolvedValue(descriptor);
+    });
+    afterEach(async () => { await stopAllPaneMirrors(); });
+
+    it("검증한 원격 Herdr pane만 해당 기기의 권한으로 준비한다", async () => {
+      findOneByMock.mockResolvedValue({ ...HERDR_TASK, sshHost: "remote-b" });
+      const { prepareMobilePaneConnection } = await import("@/desktop/main/services/mobileBridgeService");
+      await expect(prepareMobilePaneConnection("herdr-task", "w1:p1", "device-one")).resolves.toEqual(descriptor);
+      expect(remoteTransport.prepareRemoteTerminalGrant).toHaveBeenCalledWith({
+        sshHost: "remote-b", sessionName: "herdr-session", taskId: "herdr-task", paneId: "w1:p1", deviceId: "device-one", cols: 120, rows: 38,
+      });
+      const commands = execGitMock.mock.calls.map(([command]) => command);
+      expect(commands).toEqual(expect.arrayContaining([herdrCommand("pane", "get", "w1:p1"), herdrCommand("pane", "layout", "--pane", "w1:p1")]));
+      expect(commands).toHaveLength(2);
+    });
+
+    it("다른 pane과 로컬 pane에는 B 권한을 발급하지 않는다", async () => {
+      const { prepareMobilePaneConnection } = await import("@/desktop/main/services/mobileBridgeService");
+      await expect(prepareMobilePaneConnection("herdr-task", "w1:p1", "device-one")).resolves.toBeNull();
+      findOneByMock.mockResolvedValue({ ...HERDR_TASK, sshHost: "remote-b" });
+      await expect(prepareMobilePaneConnection("herdr-task", "w9:p9", "device-one")).rejects.toMatchObject({ name: "SurfaceUnavailableError", reason: "session-not-running" });
+      expect(remoteTransport.prepareRemoteTerminalGrant).not.toHaveBeenCalled();
+    });
+
+    it("기존 legacy 구독이 남아 있으면 두 번째 controller를 준비하지 않는다", async () => {
+      const unsubscribe = await subscribeToPane("herdr-task", "w1:p1", () => {}, () => {});
+      findOneByMock.mockResolvedValue({ ...HERDR_TASK, sshHost: "remote-b" });
+      const { prepareMobilePaneConnection } = await import("@/desktop/main/services/mobileBridgeService");
+      await expect(prepareMobilePaneConnection("herdr-task", "w1:p1", "device-one")).resolves.toBeNull();
+      expect(remoteTransport.prepareRemoteTerminalGrant).not.toHaveBeenCalled();
+      unsubscribe();
+    });
+
+    it("세션 변경 중 도착한 늦은 권한을 폐기한다", async () => {
+      findOneByMock.mockResolvedValue({ ...HERDR_TASK, sshHost: "remote-b" });
+      let finish!: (value: typeof descriptor) => void;
+      let started!: () => void;
+      const preparing = new Promise<void>((resolve) => { started = resolve; });
+      remoteTransport.prepareRemoteTerminalGrant.mockImplementation(() => new Promise((resolve) => { finish = resolve; started(); }));
+      const { prepareMobilePaneConnection } = await import("@/desktop/main/services/mobileBridgeService");
+      const pending = prepareMobilePaneConnection("herdr-task", "w1:p1", "device-one");
+      const failure = expect(pending).rejects.toMatchObject({ name: "SurfaceUnavailableError" });
+      await preparing;
+      broadcastTaskSessionChanged({ taskId: "herdr-task" });
+      finish(descriptor);
+      await failure;
+      expect(remoteTransport.revokeRemoteTerminalTask).toHaveBeenCalledWith("herdr-task");
+    });
+
+    it("기기 연결 해제는 B에 열린 권한도 폐기한다", async () => {
+      const token = await pairOneDevice();
+      const [device] = await listPairedMobileDevices();
+      await expect(unpairMobileDeviceByToken(`Bearer ${token}`)).resolves.toBe(true);
+      expect(remoteTransport.revokeRemoteTerminalDevice).toHaveBeenCalledWith(device.deviceId);
+    });
+
+    it("task 조회를 기다리는 동안 해제된 기기의 권한을 새로 만들지 않는다", async () => {
+      const token = await pairOneDevice();
+      const [device] = await listPairedMobileDevices();
+      let finish!: (task: object) => void;
+      let started!: () => void;
+      const reading = new Promise<void>((resolve) => { started = resolve; });
+      findOneByMock.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; started(); }));
+      const { prepareMobilePaneConnection } = await import("@/desktop/main/services/mobileBridgeService");
+      const pending = prepareMobilePaneConnection("herdr-task", "w1:p1", device.deviceId);
+      const rejected = expect(pending).rejects.toMatchObject({ name: "SurfaceUnavailableError" });
+      await reading;
+      await unpairMobileDeviceByToken(`Bearer ${token}`);
+      finish({ ...HERDR_TASK, sshHost: "remote-b" });
+      await rejected;
+      expect(remoteTransport.prepareRemoteTerminalGrant).not.toHaveBeenCalled();
+    });
+
+    it("늦게 생긴 legacy 소유권 때문에 다른 pane의 B 접속까지 폐기하지 않는다", async () => {
+      findOneByMock.mockResolvedValue({ ...HERDR_TASK, sshHost: "remote-b" });
+      let finish!: (value: typeof descriptor) => void;
+      let started!: () => void;
+      const preparing = new Promise<void>((resolve) => { started = resolve; });
+      remoteTransport.prepareRemoteTerminalGrant.mockImplementation(() => new Promise((resolve) => { finish = resolve; started(); }));
+      const { prepareMobilePaneConnection } = await import("@/desktop/main/services/mobileBridgeService");
+      const pending = prepareMobilePaneConnection("herdr-task", "w1:p1", "device-one");
+      await preparing;
+      findOneByMock.mockResolvedValue(HERDR_TASK);
+      const unsubscribe = await subscribeToPane("herdr-task", "w1:p1", () => {}, () => {});
+      finish(descriptor);
+      await expect(pending).resolves.toBeNull();
+      expect(remoteTransport.revokeRemoteTerminalGrant).toHaveBeenCalledWith("scoped-grant");
+      expect(remoteTransport.revokeRemoteTerminalTask).not.toHaveBeenCalled();
+      unsubscribe();
+    });
+
+    it("relay의 grant와 기기·task·pane 범위를 변경하지 않는다", async () => {
+      const relay = { write: vi.fn(), close: vi.fn() };
+      remoteTransport.attachRemoteTerminalRelay.mockResolvedValue(relay);
+      const { openRemoteMobilePaneStream } = await import("@/desktop/main/services/mobileBridgeService");
+      const onData = vi.fn(); const onClose = vi.fn();
+      await expect(openRemoteMobilePaneStream("herdr-task", "w1:p1", "device-one", "scoped-grant", onData, onClose)).resolves.toBe(relay);
+      expect(remoteTransport.attachRemoteTerminalRelay).toHaveBeenCalledWith("scoped-grant", "device-one", "herdr-task", "w1:p1", onData, onClose);
+      expect(execGitMock).not.toHaveBeenCalled();
+    });
   });
 
   afterEach(() => {
