@@ -45,7 +45,7 @@ class DesktopFilterButton extends ConsumerWidget {
         style: OutlinedButton.styleFrom(
           foregroundColor: AppColors.textPrimary,
           backgroundColor: AppColors.bgPage,
-          side: const BorderSide(color: AppColors.borderDefault),
+          side: BorderSide.none,
           minimumSize: const Size(
             AppSizes.minTouchTarget,
             AppSizes.minTouchTarget,
