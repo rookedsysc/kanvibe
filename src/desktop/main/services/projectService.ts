@@ -32,7 +32,7 @@ import { detachSession } from "@/lib/terminal";
 import type { KanvibeTaskSession } from "@/lib/kanvibeProjectState";
 import { getAvailableHosts as readAvailableHosts } from "@/lib/sshConfig";
 import { getDefaultSessionType } from "@/desktop/main/services/appSettingsService";
-import { ensureKanvibeHooksCurrent, installKanvibeHooks, installKanvibeHookProvider, scheduleKanvibeHooksInstall } from "@/lib/kanvibeHooksInstaller";
+import { ensureKanvibeHooksCurrent, getKanvibeHooksStatuses, installKanvibeHooks, installKanvibeHookProvider, scheduleKanvibeHooksInstall } from "@/lib/kanvibeHooksInstaller";
 import {
   persistTaskStateAtPath as persistTaskState,
   readPersistedTaskStatusAtPath as readPersistedTaskStatus,
@@ -44,6 +44,7 @@ import {
   syncProjectColorWithKanvibeState,
 } from "@/desktop/main/services/kanvibeProjectColorService";
 import { mapWithConcurrency } from "@/lib/aiSessions/shared";
+import { isPathMissing } from "@/lib/hostFileAccess";
 
 /** 아이콘 backfill 동시 실행 수. GitHub에 과도한 동시 요청을 보내지 않으면서 순차 대기를 줄이는 값 */
 const PROJECT_ICON_BACKFILL_CONCURRENCY = 8;
@@ -138,7 +139,9 @@ async function resolveProjectDefaultBranchWorktreePath(project: Pick<Project, "r
       return null;
     }
 
-    return worktrees.find((worktree) => !worktree.isBare && worktree.branch === project.defaultBranch)?.path ?? null;
+    const defaultWorktree = worktrees.find((worktree) => !worktree.isBare && worktree.branch === project.defaultBranch);
+    if (!defaultWorktree || await isPathMissing(defaultWorktree.path, project.sshHost)) return null;
+    return defaultWorktree.path;
   } catch {
     return null;
   }
@@ -308,7 +311,7 @@ async function ensureProjectRootTask(
     suppressRemoteConnectionErrorLogging?: boolean;
   },
 ): Promise<{ task: Awaited<ReturnType<typeof getProjectRootTask>>; repaired: boolean }> {
-  if (isProjectRootRepairBlocked(project.id)) {
+  if (isProjectRootRepairBlocked(project.id) || await isPathMissing(project.repoPath, project.sshHost)) {
     return { task: null, repaired: false };
   }
 
@@ -413,7 +416,7 @@ async function resolveTaskHookTarget(task: {
   branchName?: string | null;
   baseBranch?: string | null;
   project: Project | null;
-}) {
+}, options?: { readOnly?: boolean }) {
   if (!task.project) {
     return null;
   }
@@ -427,7 +430,9 @@ async function resolveTaskHookTarget(task: {
     };
   }
 
-  const { task: projectRootTask } = await ensureProjectRootTask(task.project);
+  const projectRootTask = options?.readOnly
+    ? await getProjectRootTask(task.project.id, task.project.defaultBranch)
+    : (await ensureProjectRootTask(task.project)).task;
   return {
     targetPath,
     taskId: projectRootTask?.id ?? task.id,
@@ -746,7 +751,23 @@ async function syncProjectWorktrees(
   };
 
   try {
-    result.changed = await syncSharedProjectColor(project) || result.changed;
+    const worktrees = await listWorktrees(project.repoPath, project.sshHost);
+    const projectTasks = worktrees.length > 0
+      ? await taskRepo.find({ where: { projectId: project.id } }) : [];
+    for (const task of projectTasks) {
+      if (task.branchName === project.defaultBranch || !task.worktreePath) continue;
+      if (!await isPathMissing(task.worktreePath, task.sshHost ?? project.sshHost)) continue;
+      const movedWorktree = worktrees.find((worktree) => (
+        !worktree.isBare && worktree.branch && worktree.branch === task.branchName
+        && worktree.path !== project.repoPath
+        && (task.sshHost ?? project.sshHost) === project.sshHost
+      ));
+      if (movedWorktree && !await isPathMissing(movedWorktree.path, project.sshHost)) continue;
+      const deleted = await taskRepo.delete({ id: task.id, projectId: project.id, worktreePath: task.worktreePath });
+      if (deleted.affected) {
+        result.changed = true;
+      }
+    }
 
     const { repaired } = await ensureProjectRootTask(project, {
       repairHooks: false,
@@ -754,10 +775,9 @@ async function syncProjectWorktrees(
     });
     result.changed = result.changed || repaired;
 
-    const worktrees = await listWorktrees(project.repoPath, project.sshHost);
-
     for (const wt of worktrees) {
       if (wt.isBare || !wt.branch) continue;
+      if (await isPathMissing(wt.path, project.sshHost)) continue;
 
       /** 메인 작업 디렉토리(프로젝트 루트)는 기본 브랜치 태스크와 중복되므로 건너뛴다 */
       if (wt.path === project.repoPath) continue;
@@ -863,10 +883,14 @@ async function syncProjectWorktrees(
         sshHost: project.sshHost ?? null,
       });
     }
+    if (worktrees.length > 0) {
+      result.changed = await syncSharedProjectColor(project) || result.changed;
+    }
   } catch (error) {
     result.errors.push(
       `${project.name} worktree 스캔 실패: ${error instanceof Error ? error.message : "알 수 없는 오류"}`,
     );
+    return result;
   }
 
   /** 메인 브랜치 태스크에 활성 세션이 있으면 자동 연결한다 */
@@ -917,10 +941,23 @@ export async function syncRegisteredProjectWorktrees(
     changed: false,
   };
 
-  mergedResult.changed = await backfillMissingProjectIcons(projects);
+  const existingProjects: Project[] = [];
+  for (const project of projects) {
+    try {
+      if (await isPathMissing(project.repoPath, project.sshHost)) {
+        mergedResult.changed = await deleteProject(project.id) || mergedResult.changed;
+      } else {
+        existingProjects.push(project);
+      }
+    } catch (error) {
+      mergedResult.errors.push(`${project.name} 경로 확인 실패: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  mergedResult.changed = await backfillMissingProjectIcons(existingProjects) || mergedResult.changed;
 
   const projectResults: RegisteredProjectWorktreeSyncResult[] = [];
-  for (const project of projects) {
+  for (const project of existingProjects) {
     projectResults.push(await syncProjectWorktrees(project, taskRepo));
   }
 
@@ -1095,7 +1132,7 @@ export async function getProjectHooksStatus(
   const project = await repo.findOneBy({ id: projectId });
   if (!project) return null;
 
-  const { task } = await ensureProjectRootTask(project);
+  const task = await getProjectRootTask(project.id, project.defaultBranch);
   return getClaudeHooksStatus(project.repoPath, task?.id, project.sshHost);
 }
 
@@ -1121,6 +1158,18 @@ export async function installProjectHooks(
   }
 }
 
+export async function getTaskHooksStatuses(
+  taskId: string,
+): Promise<Awaited<ReturnType<typeof getKanvibeHooksStatuses>> | null> {
+  const taskRepo = await getTaskRepository();
+  const task = await taskRepo.findOne({ where: { id: taskId }, relations: ["project"] });
+  if (!task?.project) return null;
+
+  const hookTarget = await resolveTaskHookTarget(task, { readOnly: true });
+  if (!hookTarget) return null;
+  return getKanvibeHooksStatuses(hookTarget.targetPath, hookTarget.taskId, hookTarget.sshHost);
+}
+
 /** 태스크의 worktree 또는 프로젝트 경로에서 Claude Code hooks 상태를 조회한다 */
 export async function getTaskHooksStatus(
   taskId: string
@@ -1129,10 +1178,9 @@ export async function getTaskHooksStatus(
   const task = await taskRepo.findOne({ where: { id: taskId }, relations: ["project"] });
   if (!task?.project) return null;
 
-  const hookTarget = await resolveTaskHookTarget(task);
+  const hookTarget = await resolveTaskHookTarget(task, { readOnly: true });
   if (!hookTarget) return null;
 
-  await ensureKanvibeHooksCurrent(hookTarget.targetPath, hookTarget.taskId, hookTarget.sshHost);
   return getClaudeHooksStatus(hookTarget.targetPath, hookTarget.taskId, hookTarget.sshHost);
 }
 
@@ -1168,7 +1216,7 @@ export async function getProjectGeminiHooksStatus(
   const project = await repo.findOneBy({ id: projectId });
   if (!project) return null;
 
-  const { task } = await ensureProjectRootTask(project);
+  const task = await getProjectRootTask(project.id, project.defaultBranch);
   return getGeminiHooksStatus(project.repoPath, task?.id, project.sshHost);
 }
 
@@ -1202,10 +1250,9 @@ export async function getTaskGeminiHooksStatus(
   const task = await taskRepo.findOne({ where: { id: taskId }, relations: ["project"] });
   if (!task?.project) return null;
 
-  const hookTarget = await resolveTaskHookTarget(task);
+  const hookTarget = await resolveTaskHookTarget(task, { readOnly: true });
   if (!hookTarget) return null;
 
-  await ensureKanvibeHooksCurrent(hookTarget.targetPath, hookTarget.taskId, hookTarget.sshHost);
   return getGeminiHooksStatus(hookTarget.targetPath, hookTarget.taskId, hookTarget.sshHost);
 }
 
@@ -1240,7 +1287,7 @@ export async function getProjectCodexHooksStatus(
   const project = await repo.findOneBy({ id: projectId });
   if (!project) return null;
 
-  const { task } = await ensureProjectRootTask(project);
+  const task = await getProjectRootTask(project.id, project.defaultBranch);
   return getCodexHooksStatus(project.repoPath, task?.id, project.sshHost);
 }
 
@@ -1272,10 +1319,9 @@ export async function getTaskCodexHooksStatus(
   const task = await taskRepo.findOne({ where: { id: taskId }, relations: ["project"] });
   if (!task?.project) return null;
 
-  const hookTarget = await resolveTaskHookTarget(task);
+  const hookTarget = await resolveTaskHookTarget(task, { readOnly: true });
   if (!hookTarget) return null;
 
-  await ensureKanvibeHooksCurrent(hookTarget.targetPath, hookTarget.taskId, hookTarget.sshHost);
   return getCodexHooksStatus(hookTarget.targetPath, hookTarget.taskId, hookTarget.sshHost);
 }
 
@@ -1362,10 +1408,9 @@ export async function getTaskOpenCodeHooksStatus(
   });
   if (!task?.project) return null;
 
-  const hookTarget = await resolveTaskHookTarget(task);
+  const hookTarget = await resolveTaskHookTarget(task, { readOnly: true });
   if (!hookTarget) return null;
 
-  await ensureKanvibeHooksCurrent(hookTarget.targetPath, hookTarget.taskId, hookTarget.sshHost);
   return getOpenCodeHooksStatus(hookTarget.targetPath, hookTarget.taskId, hookTarget.sshHost);
 }
 

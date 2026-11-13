@@ -5,6 +5,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { DragDropContext, type DropResult } from "@hello-pangea/dnd";
 import BoardPageFindBar from "./BoardPageFindBar";
 import BoardSortPicker from "./BoardSortPicker";
+import DesktopFilter from "./DesktopFilter";
 import Column from "./Column";
 import CreateTaskModal from "./CreateTaskModal";
 import ProjectRegistryDialog from "./ProjectRegistryDialog";
@@ -350,6 +351,7 @@ export default function Board({
     projects.map((p) => p.id),
   );
   const [taskKindFilter, setTaskKindFilter] = useTaskKindFilterParams();
+  const [selectedDesktops, setSelectedDesktops] = useState<string[]>([]);
   const [sortPreference, setSortPreference] = useBoardSortPreference();
   const [doneTotal, setDoneTotal] = useState(initialDoneTotal);
   const [doneOffset, setDoneOffset] = useState(initialDoneLimit);
@@ -398,6 +400,15 @@ export default function Board({
     [projects],
   );
 
+  const desktopHosts = useMemo(() => Array.from(new Set([
+    ...sshHosts,
+    ...projects.map((project) => project.sshHost),
+    ...Object.values(tasks).flat().map((task) => task.sshHost),
+  ].filter((host): host is string => Boolean(host)))).sort(), [projects, sshHosts, tasks]);
+  const activeDesktopFilters = useMemo(() => selectedDesktops.filter((desktop) => (
+    desktop === "local" || desktopHosts.some((host) => desktop === `ssh:${host}`)
+  )), [desktopHosts, selectedDesktops]);
+
   /** 필터 드롭다운에 표시할 메인 프로젝트 목록 (worktree 제외) */
   const filterableProjects = useMemo(
     () => projects.filter((p) => !p.isWorktree),
@@ -410,12 +421,15 @@ export default function Board({
     [selectedProjectIds, projects],
   );
 
-  /** 프로젝트 + task kind 필터가 적용된 태스크 목록 */
-  const hasActiveBoardTaskFilter = projectFilterSet !== null || taskKindFilter !== "all";
-  const boardTaskFilter = useCallback<BoardTaskFilter>((task) => (
-    matchesProjectFilter(task, projectFilterSet)
-    && matchesTaskKindFilter(task, taskKindFilter, projectLookup)
-  ), [projectFilterSet, projectLookup, taskKindFilter]);
+  /** 선택한 보드 필터를 모두 만족하는 태스크만 표시한다 */
+  const hasActiveBoardTaskFilter = projectFilterSet !== null || taskKindFilter !== "all" || activeDesktopFilters.length > 0;
+  const boardTaskFilter = useCallback<BoardTaskFilter>((task) => {
+    const host = task.sshHost || projectLookup.get(task.projectId ?? "")?.sshHost;
+    const taskDesktop = host ? `ssh:${host}` : "local";
+    return matchesProjectFilter(task, projectFilterSet)
+      && matchesTaskKindFilter(task, taskKindFilter, projectLookup)
+      && (activeDesktopFilters.length === 0 || activeDesktopFilters.includes(taskDesktop));
+  }, [activeDesktopFilters, projectFilterSet, projectLookup, taskKindFilter]);
 
   const filteredTasks = useMemo(() => {
     if (!hasActiveBoardTaskFilter) return tasks;
@@ -957,7 +971,7 @@ export default function Board({
           height={32}
           className="kanvibe-brand-logo mr-auto hidden h-8 w-auto shrink-0 pr-6 xl:block"
         />
-        <div className="flex items-center gap-3 [-webkit-app-region:no-drag]">
+        <div className="flex flex-wrap items-center justify-end gap-3 [-webkit-app-region:no-drag]">
           <div
             role="group"
             aria-label={t("taskKindFilter.label")}
@@ -996,6 +1010,7 @@ export default function Board({
               compact
             />
           </div>
+          <DesktopFilter hosts={desktopHosts} selectedDesktops={activeDesktopFilters} onChange={setSelectedDesktops} />
           <BoardSortPicker preference={sortPreference} onChange={setSortPreference} />
           <button
             type="button"

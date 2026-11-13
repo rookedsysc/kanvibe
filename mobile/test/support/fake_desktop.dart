@@ -424,11 +424,12 @@ class FakeDesktopClient implements DesktopClient {
   }
 
   @override
-  PaneStream openPaneStream(
+  Future<PaneStream> openPaneStream(
     DesktopConnection connection,
     String taskId,
-    String paneId,
-  ) {
+    String paneId, {
+    Future<void>? cancelled,
+  }) async {
     final controller = StreamController<String>.broadcast();
     openedPanes[paneId] = controller;
 

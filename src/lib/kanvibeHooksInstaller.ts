@@ -14,6 +14,7 @@ import {
   type KanvibeHookProvider,
   type KanvibeHookProviderModule,
   type KanvibeHookStatus,
+  type KanvibeHookStatuses,
 } from "@/lib/kanvibeHookProviders";
 
 const HOOK_INSTALL_MAX_ATTEMPTS = 3;
@@ -60,21 +61,41 @@ export async function ensureKanvibeHooksCurrent(
     activeHookEnsureJobs,
     buildHookInstallKey(targetPath, taskId, sshHost, "all"),
     async () => {
-      if (await inspectKanvibeHooksCurrent(targetPath, taskId, sshHost)) return false;
+      if ((await inspectKanvibeHooksState(targetPath, taskId, sshHost)).isCurrent) return false;
       await installKanvibeHooks(targetPath, taskId, sshHost);
-      if (!await inspectKanvibeHooksCurrent(targetPath, taskId, sshHost)) {
-        throw new Error("hooks 검증 실패: 최신 전송 파일 또는 현재 client 등록이 없습니다.");
+      const verification = await inspectKanvibeHooksState(targetPath, taskId, sshHost);
+      if (!verification.isCurrent) {
+        throw new Error(`hooks 검증 실패: ${verification.failures.join(", ")}`);
       }
       return true;
     },
   );
 }
 
-async function inspectKanvibeHooksCurrent(
+export async function getKanvibeHooksStatuses(
   targetPath: string,
   taskId: string,
   sshHost?: string | null,
-): Promise<boolean> {
+): Promise<KanvibeHookStatuses> {
+  const providerPaths = getKanvibeHookProviderModules().flatMap((providerModule) => (
+    providerModule.buildFiles(targetPath, taskId, "", new Map(), sshHost).map((file) => file.filePath)
+  ));
+  const paths = [...new Set([...providerPaths, getKanvibeTargetsPath(targetPath, sshHost)])];
+  const files = await readTextFiles(paths, sshHost, { strictHostKeyChecking: true });
+  const [claude, gemini, codex, openCode] = await Promise.all([
+    KANVIBE_HOOK_PROVIDER_MODULES.claude.getStatus(targetPath, taskId, sshHost, files),
+    KANVIBE_HOOK_PROVIDER_MODULES.gemini.getStatus(targetPath, taskId, sshHost, files),
+    KANVIBE_HOOK_PROVIDER_MODULES.codex.getStatus(targetPath, taskId, sshHost, files),
+    KANVIBE_HOOK_PROVIDER_MODULES.openCode.getStatus(targetPath, taskId, sshHost, files),
+  ]);
+  return { claude, gemini, codex, openCode };
+}
+
+async function inspectKanvibeHooksState(
+  targetPath: string,
+  taskId: string,
+  sshHost?: string | null,
+): Promise<{ isCurrent: boolean; failures: string[] }> {
   const cliPath = buildTaskCliFile(targetPath, sshHost).filePath;
   const targetsPath = getKanvibeTargetsPath(targetPath, sshHost);
   const providerModules = getKanvibeHookProviderModules();
@@ -89,13 +110,13 @@ async function inspectKanvibeHooksCurrent(
   const verificationKey = buildHookInstallKey(targetPath, taskId, sshHost, "all");
   const hookServerPort = getHookServerPort();
   const fingerprint = getHookFilesFingerprint(files, clientId, hookServerPort);
-  if (sshHost && verifiedRemoteHookFiles.get(verificationKey) === fingerprint) return true;
+  if (sshHost && verifiedRemoteHookFiles.get(verificationKey) === fingerprint) return { isCurrent: true, failures: [] };
   verifiedRemoteHookFiles.delete(verificationKey);
   const statuses = await Promise.all(providerModules.map(async (providerModule) => ({
     providerModule,
     status: await providerModule.getStatus(targetPath, taskId, sshHost, ...(sshHost ? [files] : [])),
   })));
-  const hasCurrentProviders = statuses.every(({ providerModule, status }) => {
+  const failures = statuses.flatMap(({ providerModule, status }) => {
     const failedChecks = getHookVerificationFailedChecks(status);
     // 등록의 IP는 재접속 때 바뀔 수 있으므로 현재 client ID로 확인한다.
     const fileChecks = getFatalHookVerificationFailedChecks(providerModule.label, status, failedChecks)
@@ -104,17 +125,19 @@ async function inspectKanvibeHooksCurrent(
       const hasUnavailableConnection = status.hasReachableHookServer === false || status.hasExpectedHookServerUrl === false;
       if (!hasUnavailableConnection) throw new Error(`${providerModule.label} hooks 검사 결과를 확인할 수 없습니다.`);
     }
-    return fileChecks.length === 0;
+    return fileChecks.length > 0 ? [`${providerModule.label}(${fileChecks.join(", ")})`] : [];
   });
   const cliFile = files.get(cliPath);
   const hasCurrentCli = cliFile?.exists === true && cliFile.content.includes(HOOK_TRANSPORT_VERSION_MARKER);
   const ownTarget = parseKanvibeTargets(files.get(targetsPath)?.content ?? "").targets
     .find((target) => target.clientId === clientId && target.taskId === taskId);
   const hasCurrentTarget = Boolean(ownTarget?.token) && ownTarget?.transport === (sshHost ? "ssh" : "local");
-  const isCurrent = hasCurrentProviders && hasCurrentCli && hasCurrentTarget;
+  if (!hasCurrentCli) failures.push("task.sh(최신 전송 파일이 없습니다)");
+  if (!hasCurrentTarget) failures.push("targets.json(현재 client 등록이 없습니다)");
+  const isCurrent = failures.length === 0;
   // provider가 같은 파일 묶음을 검증했을 때만 재사용해, 검사 도중 바뀐 파일을 정상으로 기억하지 않는다.
   if (sshHost && isCurrent) verifiedRemoteHookFiles.set(verificationKey, fingerprint);
-  return isCurrent;
+  return { isCurrent, failures };
 }
 
 function getHookFilesFingerprint(

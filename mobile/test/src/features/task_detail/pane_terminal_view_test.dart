@@ -1,4 +1,8 @@
 import 'dart:convert';
+import 'dart:async';
+
+import 'package:kanvibe_mobile/src/common/network/desktop_client.dart';
+import 'package:kanvibe_mobile/src/common/network/desktop_connection.dart';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -14,6 +18,34 @@ import 'package:xterm/xterm.dart' as xterm;
 import 'package:kanvibe_mobile/src/features/task_detail/presentation/widgets/terminal_shortcut_bar.dart';
 
 import '../../../support/fake_desktop.dart';
+
+class DeferredPaneClient extends FakeDesktopClient {
+  final openings = <Completer<PaneStream>>[];
+  final cancelledOpenings = <int>[];
+  final arguments = <(DesktopConnection, String, String)>[];
+
+  @override
+  Future<PaneStream> openPaneStream(
+    DesktopConnection connection,
+    String taskId,
+    String paneId, {
+    Future<void>? cancelled,
+  }) {
+    final index = openings.length;
+    final pending = Completer<PaneStream>();
+    openings.add(pending);
+    arguments.add((connection, taskId, paneId));
+    cancelled?.then((_) => cancelledOpenings.add(index));
+    return pending.future;
+  }
+
+  Future<void> finishOpening(int index) async {
+    final args = arguments[index];
+    openings[index].complete(
+      await super.openPaneStream(args.$1, args.$2, args.$3),
+    );
+  }
+}
 
 const _pane = MirrorPane(
   id: '%19',
@@ -258,11 +290,16 @@ void main() {
       '\x1b[?2026h\x1b[?25l\x1b]8;;\x1b\\\x1b[2J\x1b[1;1H\x1b[0;38;5;2;49mframe-row\x1b[0m'
       '\x1b[2;3H\x1b[?25h\x1b[?2026l\x1b[2;3H\x1b[?25h',
     );
-    stream.add('\x1b[?2026h\x1b[?25l\x1b[1;7Hdiff\x1b[0m\x1b[2;3H\x1b[?25h\x1b[?2026l');
+    stream.add(
+      '\x1b[?2026h\x1b[?25l\x1b[1;7Hdiff\x1b[0m\x1b[2;3H\x1b[?25h\x1b[?2026l',
+    );
     await tester.pumpAndSettle();
 
     final terminal = mountedTerminal(tester);
-    final lines = terminal.buffer.lines.toList().map((line) => line.getText().trimRight()).toList();
+    final lines = terminal.buffer.lines
+        .toList()
+        .map((line) => line.getText().trimRight())
+        .toList();
     final viewportTop = terminal.buffer.scrollBack;
     expect(lines, contains('history-5'));
     expect(lines[viewportTop], 'frame-diff');
@@ -1019,6 +1056,74 @@ void main() {
           .fontSize,
       14,
     );
+  });
+
+  testWidgets('준비 중 화면을 떠나면 취소하고 늦은 stream도 닫는다', (tester) async {
+    final client = DeferredPaneClient();
+    await pumpPane(
+      tester,
+      _pane,
+      client: client,
+      store: FakeConnectionStore(),
+      canResize: true,
+    );
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+    expect(client.cancelledOpenings, [0]);
+    await client.finishOpening(0);
+    await tester.pumpAndSettle();
+    expect(client.closedPanes, [_pane.id]);
+    expect(client.resizedPanes, isEmpty);
+  });
+
+  testWidgets('준비 중 background가 되면 이전 결과를 닫고 복귀 연결만 사용한다', (tester) async {
+    final client = DeferredPaneClient();
+    await pumpPane(
+      tester,
+      _pane,
+      client: client,
+      store: FakeConnectionStore(),
+      canResize: true,
+    );
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pump();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+    expect(client.cancelledOpenings, [0]);
+    expect(client.openings, hasLength(2));
+    await client.finishOpening(0);
+    await tester.pumpAndSettle();
+    expect(client.resizedPanes, isEmpty);
+    await client.finishOpening(1);
+    await tester.pumpAndSettle();
+    expect(client.closedPanes, [_pane.id]);
+    expect(client.resizedPanes[_pane.id], hasLength(1));
+  });
+
+  testWidgets('준비 중15초가 지나면 늦은 결과를 닫고 재시도할 수 있다', (tester) async {
+    final client = DeferredPaneClient();
+    await pumpPane(
+      tester,
+      _pane,
+      client: client,
+      store: FakeConnectionStore(),
+      canResize: true,
+    );
+    await tester.pump(const Duration(seconds: 15));
+    expect(client.cancelledOpenings, [0]);
+    expect(find.textContaining('터미널 응답이 없습니다'), findsOneWidget);
+    await client.finishOpening(0);
+    await tester.pumpAndSettle();
+    expect(client.closedPanes, [_pane.id]);
+    expect(client.resizedPanes, isEmpty);
+    await tester.tap(find.text('다시 연결'));
+    await tester.pumpAndSettle();
+    await client.finishOpening(1);
+    await tester.pumpAndSettle();
+    client.openedPanes[_pane.id]!.add('new-frame');
+    await tester.pumpAndSettle();
+    expect(find.textContaining('터미널 응답이 없습니다'), findsNothing);
+    expect(mountedTerminal(tester).buffer.getText(), contains('new-frame'));
   });
 
   testWidgets('앱이 배경으로 가면 연결을 닫고 돌아올 때 현재 크기를 다시 보낸다', (tester) async {

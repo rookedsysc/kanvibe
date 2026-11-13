@@ -1,5 +1,5 @@
 import { execFile, spawn } from "child_process";
-import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import path from "path";
 import { promisify } from "util";
@@ -28,6 +28,7 @@ vi.mock("fs/promises", async () => {
 
 vi.mock("@/lib/gitOperations", () => ({
   execGit: mocks.execGit,
+  resolvePathForShell: (targetPath: string) => quoteForPosixShell(targetPath),
 }));
 
 function quoteForPosixShell(value: string): string {
@@ -45,6 +46,53 @@ function wrapLikeRemoteExecGit(command: string): string {
 
   return `sh -lc ${quoteForPosixShell(wrappedCommand)}`;
 }
+
+describe("hostFileAccess.isPathMissing", () => {
+  let directory: string;
+
+  beforeEach(async () => {
+    directory = await mkdtemp(path.join(tmpdir(), "kanvibe-presence-"));
+    mocks.execGit.mockReset();
+    mocks.execGit.mockImplementation(async (command: string) => {
+      const { stdout } = await execFileAsync("sh", ["-lc", command]);
+      return stdout.trim();
+    });
+  });
+
+  afterEach(async () => {
+    await chmod(path.join(directory, "locked"), 0o700).catch(() => undefined);
+    await rm(directory, { recursive: true, force: true });
+  });
+
+  it.each([null, "remote-host"])("없는 중첩 경로만 삭제된 것으로 판별한다: %s", async (host) => {
+    const { isPathMissing } = await import("@/lib/hostFileAccess");
+    const missing = path.join(directory, "repo's folder", "worktree");
+    await expect(isPathMissing(directory, host)).resolves.toBe(false);
+    await expect(isPathMissing(missing, host)).resolves.toBe(true);
+    await expect(stat(missing)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it.each([null, "remote-host"])("끊어진 심볼릭 링크는 삭제로 취급하지 않는다: %s", async (host) => {
+    const { isPathMissing } = await import("@/lib/hostFileAccess");
+    const link = path.join(directory, "repo-link");
+    await symlink(path.join(directory, "removed-target"), link);
+    await expect(isPathMissing(link, host)).resolves.toBe(false);
+  });
+
+  it.each([null, "remote-host"])("상위 디렉토리 접근이 거절되면 삭제로 취급하지 않는다: %s", async (host) => {
+    const { isPathMissing } = await import("@/lib/hostFileAccess");
+    const locked = path.join(directory, "locked");
+    await mkdir(locked);
+    await chmod(locked, 0o000);
+    await expect(isPathMissing(path.join(locked, "repo"), host)).rejects.toThrow();
+  });
+
+  it("SSH 접속 실패를 삭제로 취급하지 않는다", async () => {
+    const { isPathMissing } = await import("@/lib/hostFileAccess");
+    mocks.execGit.mockRejectedValue(new Error("SSH connection refused"));
+    await expect(isPathMissing("/workspace/repo", "offline-host")).rejects.toThrow("SSH connection refused");
+  });
+});
 
 describe("hostFileAccess.readTextFiles", () => {
   let tempDir: string;

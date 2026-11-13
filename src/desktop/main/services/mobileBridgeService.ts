@@ -96,9 +96,18 @@ import {
   releaseTaskTerminalViewport,
   writeTerminalTabInput,
 } from "@/lib/terminal";
-import { listHerdrMirrorPanes, readHerdrPaneExtent } from "@/lib/herdr";
+import { listHerdrMirrorPanes, readHerdrPaneExtent, readHerdrTaskPaneSize } from "@/lib/herdr";
 import { getSessionDependencyStatus } from "@/lib/remoteSessionDependency";
 import { isSessionAlive, quoteForPosixShell } from "@/lib/worktree";
+import {
+  attachRemoteTerminalRelay,
+  prepareRemoteTerminalGrant,
+  revokeRemoteTerminalGrant,
+  revokeRemoteTerminalDevice,
+  revokeRemoteTerminalTask,
+  stopRemoteTerminalAgents,
+} from "@/desktop/main/services/remoteTerminalService";
+import type { RemoteTerminalGrant } from "@/lib/remoteTerminalProtocol";
 
 /**
  * 모바일 클라이언트가 데스크탑을 읽고, 터미널 pane을 비추고, 태스크를 만들거나 옮기는 경로.
@@ -1024,6 +1033,7 @@ export function onMobileDeviceUnpaired(listener: MobileDeviceUnpairedListener): 
 
 /** 알림은 [withDeviceList] 줄 밖에서 돈다. 듣는 쪽이 오래 걸려도 다음 목록 변경이 그만큼 밀리면 안 된다 */
 function notifyMobileDeviceUnpaired(deviceId: string): void {
+  revokeRemoteTerminalDevice(deviceId);
   mobileDeviceUnpairedListeners.forEach((listener) => listener(deviceId));
 }
 
@@ -1400,6 +1410,64 @@ function buildSubscriptionKey(taskId: string, paneId: string): string {
   return `${taskId}#${paneId}`;
 }
 
+let stopRemoteSessionWatch: (() => void) | null = null;
+
+export async function prepareMobilePaneConnection(
+  taskId: string,
+  paneId: string,
+  deviceId: string,
+): Promise<RemoteTerminalGrant | null> {
+  if (paneViewportShutdown) throw new Error("데스크탑이 종료 중입니다.");
+  const key = buildSubscriptionKey(taskId, paneId);
+  // A legacy viewport owns the same native controller until its final client releases it.
+  if (paneSubscriptions.has(key) || paneViewports.has(key)) return null;
+  let invalidated = false;
+  let deviceUnpaired = false;
+  const stopPendingWatch = watchTaskSessionChange(taskId, () => { invalidated = true; });
+  const stopDeviceWatch = onMobileDeviceUnpaired((changedDeviceId) => { if (changedDeviceId === deviceId) deviceUnpaired = true; });
+  try {
+    const task = await findMirrorTask(taskId);
+    const target = toMirrorSessionTarget(task);
+    if (!target.sshHost || target.sessionType !== SessionType.HERDR) return null;
+    if (!stopRemoteSessionWatch) {
+      stopRemoteSessionWatch = subscribeToBoardEvents((event) => {
+        if (event.type === "task-session-changed") revokeRemoteTerminalTask(event.taskId);
+      });
+    }
+    const size = await readHerdrTaskPaneSize(target.sessionName, paneId, target.sshHost);
+    if (!size || invalidated || deviceUnpaired) throw new SurfaceUnavailableError("session-not-running");
+    const grant = await prepareRemoteTerminalGrant({
+      sshHost: target.sshHost, sessionName: target.sessionName,
+      taskId, paneId, deviceId, cols: size.cols, rows: size.rows,
+    });
+    if (invalidated || deviceUnpaired || paneViewportShutdown || paneSubscriptions.has(key) || paneViewports.has(key)) {
+      if (grant) revokeRemoteTerminalGrant(grant.grantId);
+      if (invalidated || deviceUnpaired || paneViewportShutdown) throw new SurfaceUnavailableError("session-not-running");
+      return null;
+    }
+    return grant;
+  } finally {
+    stopPendingWatch();
+    stopDeviceWatch();
+  }
+}
+
+export async function openRemoteMobilePaneStream(
+  taskId: string,
+  paneId: string,
+  deviceId: string,
+  grantId: string | null,
+  onData: (data: string) => void,
+  onClose: (code: number, reason: string) => void,
+): Promise<Awaited<ReturnType<typeof attachRemoteTerminalRelay>> | null> {
+  if (!grantId) {
+    const grant = await prepareMobilePaneConnection(taskId, paneId, deviceId);
+    if (!grant) return null;
+    grantId = grant.grantId;
+  }
+  return attachRemoteTerminalRelay(grantId, deviceId, taskId, paneId, onData, onClose);
+}
+
 /** 이 pane이 태스크의 세션 안에 있는지 확인한다. 조회 명령은 `getTaskSurfaces`가 쓰는 것과 같다 */
 async function ensurePaneBelongsToSession(
   target: MirrorSessionTarget,
@@ -1611,6 +1679,9 @@ async function subscribeToTerminalTab(
  */
 export async function stopAllPaneMirrors(shutdown = false): Promise<void> {
   if (shutdown) paneViewportShutdown = true;
+  stopRemoteSessionWatch?.();
+  stopRemoteSessionWatch = null;
+  stopRemoteTerminalAgents();
   const restorations: Promise<void>[] = [];
   for (const [key, group] of paneViewports) {
     group.clients.clear();

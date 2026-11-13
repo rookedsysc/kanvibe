@@ -1,5 +1,5 @@
 import path from "path";
-import { ensureHerdrRemoteMachine, ensureHerdrSession, getHerdrWorkspaceId, getHerdrClientSocketPath, readHerdrClientTabBarPosition } from "@/lib/herdr";
+import { ensureHerdrRemoteMachine, ensureHerdrSession, getHerdrClientSocketPath, readHerdrClientTabBarPosition } from "@/lib/herdr";
 import { existsSync } from "fs";
 import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
@@ -539,7 +539,7 @@ interface LocalPtySpawnPlan {
   cwd: string;
 }
 
-async function prepareHerdrTaskClient(sessionName: string, sshHost?: string): Promise<{
+async function prepareHerdrTaskClient(sessionName: string, workspaceId: string | null, sshHost?: string): Promise<{
   proxy: Awaited<ReturnType<typeof createHerdrClientProxy>>;
   workspaceId: string;
   forwardingArgs: string[];
@@ -548,7 +548,6 @@ async function prepareHerdrTaskClient(sessionName: string, sshHost?: string): Pr
   sshHost?: string;
   close(): Promise<void>;
 }> {
-  const workspaceId = await getHerdrWorkspaceId(sessionName, sshHost);
   if (!workspaceId) throw new Error("공유 Herdr Space를 찾을 수 없습니다.");
   const serverSocketPath = await getHerdrClientSocketPath(sessionName, sshHost);
   const forwardingDirectory = sshHost ? await mkdtemp(path.join(tmpdir(), "kvhf-")) : null;
@@ -714,9 +713,10 @@ async function spawnLocalSession(
    * terminal: 멀티플렉서가 없으므로 준비할 세션도 없다.
    */
   let zellijNeedsCreation = false;
+  let herdrWorkspaceId: string | null = null;
 
   if (sessionType === SessionType.HERDR) {
-    await ensureHerdrSession(sessionName, cwd || process.env.HOME || "/", tmuxPaneLayout);
+    herdrWorkspaceId = await ensureHerdrSession(sessionName, cwd || process.env.HOME || "/", tmuxPaneLayout);
     if (ws.readyState !== ws.OPEN) return;
   }
 
@@ -763,7 +763,7 @@ async function spawnLocalSession(
   }
 
   const herdrClient = sessionType === SessionType.HERDR && parseHerdrSessionTarget(sessionName).workspaceKey
-    ? await prepareHerdrTaskClient(sessionName) : undefined;
+    ? await prepareHerdrTaskClient(sessionName, herdrWorkspaceId) : undefined;
   if (ws.readyState !== ws.OPEN) {
     await herdrClient?.close();
     return;
@@ -861,8 +861,9 @@ async function spawnRemoteSession(
   const initialRows = rows ?? DEFAULT_TERMINAL_ROWS;
   const terminalEnvironment = createLocalShellEnvironment();
   const terminalKey = buildTerminalKey(taskId, tabId);
+  let herdrWorkspaceId: string | null = null;
   if (sessionType === SessionType.HERDR) {
-    await ensureHerdrSession(sessionName, worktreePath || "~", tmuxPaneLayout, sshHost);
+    herdrWorkspaceId = await ensureHerdrSession(sessionName, worktreePath || "~", tmuxPaneLayout, sshHost);
     if (ws.readyState !== ws.OPEN) return;
     void ensureHerdrRemoteMachine(sessionName, sshHost).catch((error: unknown) => {
       console.warn(`[kanvibe] Herdr machine 등록 실패 (${sshHost}/${parseHerdrSessionTarget(sessionName).serverName}):`, error);
@@ -898,7 +899,7 @@ async function spawnRemoteSession(
   }
 
   const herdrClient = sessionType === SessionType.HERDR && parseHerdrSessionTarget(sessionName).workspaceKey
-    ? await prepareHerdrTaskClient(sessionName, sshHost) : undefined;
+    ? await prepareHerdrTaskClient(sessionName, herdrWorkspaceId, sshHost) : undefined;
   if (ws.readyState !== ws.OPEN) {
     await herdrClient?.close();
     return;

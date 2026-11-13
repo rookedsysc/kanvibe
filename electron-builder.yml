@@ -12,6 +12,7 @@ directories:
 files:
   - build/renderer/**/*
   - build/main/**/*
+  - build/remote/**/*
   - electron/**/*
   - messages/**/*
   - package.json

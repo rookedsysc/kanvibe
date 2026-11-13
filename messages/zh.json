@@ -70,6 +70,9 @@
     "title": "",
     "newTask": "+ 新任务",
     "allProjects": "所有项目",
+    "desktopFilter": "桌面筛选",
+    "allDesktops": "所有桌面",
+    "selectedDesktops": "{count} 个桌面",
     "taskKindFilter": {
       "label": "任务类型筛选",
       "options": {

@@ -18,6 +18,7 @@ import '../data/board_snapshot.dart';
 import '../domain/board_task.dart';
 import '../domain/task_status.dart';
 import 'widgets/project_filter_button.dart';
+import 'widgets/desktop_filter_button.dart';
 import 'widgets/task_delete_dialogs.dart';
 
 /// 첫 화면. 태스크를 상태별로 나눠 보여 준다.
@@ -124,7 +125,12 @@ class BoardScreen extends ConsumerWidget {
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: AppSizes.p16),
               child: Row(
-                children: [Text('프로젝트'), Spacer(), ProjectFilterButton()],
+                children: [
+                  Text('프로젝트'),
+                  Spacer(),
+                  DesktopFilterButton(),
+                  ProjectFilterButton(),
+                ],
               ),
             ),
             Expanded(

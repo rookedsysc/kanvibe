@@ -149,6 +149,37 @@ describe("kanvibeHooksInstaller", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
   });
 
+  it("일괄 원격 상태 조회는 한 strict snapshot을 네 provider에 전달하고 쓰지 않는다", async () => {
+    const snapshot = buildReadResults({ "/remote/repo/.kanvibe/targets.json": '{"targets":[]}' });
+    mockReadTextFiles.mockResolvedValue(snapshot);
+    mockGetCodexHooksStatus.mockResolvedValue({ installed: false, hasConfigEntry: false });
+    const { getKanvibeHooksStatuses } = await import("../kanvibeHooksInstaller");
+
+    const statuses = await getKanvibeHooksStatuses("/remote/repo", "task-1", "remote-host");
+
+    expect(statuses.codex).toEqual({ installed: false, hasConfigEntry: false });
+    expect(mockReadTextFiles).toHaveBeenCalledTimes(1);
+    expect(mockReadTextFiles).toHaveBeenCalledWith(expect.arrayContaining([
+      "/remote/repo/.claude/settings.json", "/remote/repo/.gemini/settings.json",
+      "/remote/repo/.codex/config.toml", "/remote/repo/.kanvibe/targets.json",
+    ]), "remote-host", { strictHostKeyChecking: true });
+    for (const getStatus of [mockGetClaudeHooksStatus, mockGetGeminiHooksStatus, mockGetCodexHooksStatus, mockGetOpenCodeHooksStatus]) {
+      expect(getStatus).toHaveBeenCalledWith("/remote/repo", "task-1", "remote-host", snapshot);
+    }
+    expect(mockRegisterKanvibeHookTarget).not.toHaveBeenCalled();
+    expect(mockWriteHookProviderFiles).not.toHaveBeenCalled();
+    expect(mockGetHookClientId).not.toHaveBeenCalled();
+  });
+
+  it("일괄 원격 상태 조회의 snapshot 실패는 설치 없이 전달한다", async () => {
+    mockReadTextFiles.mockRejectedValue(new Error("SSH read failed"));
+    const { getKanvibeHooksStatuses } = await import("../kanvibeHooksInstaller");
+
+    await expect(getKanvibeHooksStatuses("/remote/repo", "task-1", "remote-host")).rejects.toThrow("SSH read failed");
+    expect(mockGetClaudeHooksStatus).not.toHaveBeenCalled();
+    expect(mockWriteHookProviderFiles).not.toHaveBeenCalled();
+  });
+
   it("전체 설치는 worktree의 .kanvibe/task.sh를 실행 권한으로 함께 기록한다", async () => {
     // Given
     const { installKanvibeHooks } = await import("@/lib/kanvibeHooksInstaller");
@@ -930,7 +961,7 @@ describe("kanvibeHooksInstaller conditional migration", () => {
         .forEach((file) => files.set(file.filePath, { exists: true, content: file.content }));
     });
     const { ensureKanvibeHooksCurrent } = await import("../kanvibeHooksInstaller");
-    await expect(ensureKanvibeHooksCurrent(repoPath, "task-1", "remote-host")).rejects.toThrow("hooks 검증 실패");
+    await expect(ensureKanvibeHooksCurrent(repoPath, "task-1", "remote-host")).rejects.toThrow("task.sh");
   });
 
   it("터널 도달 실패만으로 최신 파일을 다시 쓰지 않는다", async () => {
