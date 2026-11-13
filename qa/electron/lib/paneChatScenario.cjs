@@ -41,7 +41,7 @@ async function runPaneChatScenario({ page, invoke, taskId, repo, fakeHome, runDi
   await write(first.id, `/usr/bin/python3 ${quote(path.join(executableDir, "codex"))} codex live-pane-a\r`);
   const initial = await until(read, (snapshot) => snapshot.provider === "codex" && snapshot.inputState === "ready", "Codex foreground");
   assert.equal(initial.paneId, first.id);
-  await page.getByRole("button", { name: "AI 채팅", exact: true }).click();
+  await page.getByTestId("pane-chat-toggle").click();
   const input = page.getByRole("textbox", { name: "현재 CLI에 메시지 보내기…" });
   await input.waitFor({ state: "visible" });
   await input.fill("Pane A first line\nPane A second line");
@@ -71,7 +71,7 @@ async function runPaneChatScenario({ page, invoke, taskId, repo, fakeHome, runDi
   await until(read, (snapshot) => snapshot.provider === "claude" && snapshot.inputState === "ready", "Claude foreground");
   const stale = await invoke("paneChat", "sendPaneChatPrompt", taskId, initial.targetToken, "Must never reach B").then(() => null, (error) => error.message);
   assert.match(stale, /변경|changed/i);
-  await page.getByRole("button", { name: "AI 채팅", exact: true }).click();
+  await page.getByTestId("pane-chat-toggle").click();
   const secondSnapshot = await read();
   assert.equal(secondSnapshot.paneId, secondTab.id);
   assert.equal(secondSnapshot.provider, "claude");

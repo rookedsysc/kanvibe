@@ -1,8 +1,14 @@
 import { invokeDesktop } from "@/desktop/renderer/ipc";
-import type { PaneChatActionResult, PaneChatKey, PaneChatSnapshot } from "@/desktop/shared/paneChat";
+import type { PaneChatActionResult, PaneChatKey, PaneChatLayout, PaneChatSnapshot } from "@/desktop/shared/paneChat";
 
-export const getPaneChatSnapshot = (taskId: string): Promise<PaneChatSnapshot> =>
-  invokeDesktop("paneChat", "getPaneChatSnapshot", taskId);
+export const getPaneChatLayout = (taskId: string, terminalTabId?: string): Promise<PaneChatLayout> =>
+  invokeDesktop("paneChat", "getPaneChatLayout", taskId, terminalTabId);
+
+export const focusPaneChatTerminal = (taskId: string, paneId: string): Promise<PaneChatActionResult> =>
+  invokeDesktop("paneChat", "focusPaneChatTerminal", taskId, paneId);
+
+export const getPaneChatSnapshot = (taskId: string, paneId?: string): Promise<PaneChatSnapshot> =>
+  invokeDesktop("paneChat", "getPaneChatSnapshot", taskId, paneId);
 
 export const sendPaneChatPrompt = (taskId: string, targetToken: string, text: string): Promise<PaneChatActionResult> =>
   invokeDesktop("paneChat", "sendPaneChatPrompt", taskId, targetToken, text);

@@ -299,6 +299,7 @@
       },
       "commands": {
         "taskDetailDock": "Dock {index} · {item}",
+        "terminalToggleChat": "切换当前窗格终端/聊天",
         "taskDetailUsage": "AI 用量面板",
         "taskSearch": "任务快速搜索",
         "boardNotification": "通知中心",
@@ -387,6 +388,10 @@
     "configure": "设置"
   },
   "taskDetail": {
+    "paneChat": {
+      "returnError": "无法返回此窗格的终端，请重试。",
+      "toggle": "切换当前窗格终端/聊天"
+    },
     "backToBoard": "返回看板",
     "moveToTodo": "待办",
     "moveToProgress": "进行中",

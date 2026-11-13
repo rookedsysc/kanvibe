@@ -1,14 +1,17 @@
 import { randomUUID } from "node:crypto";
 import path from "node:path";
+import { SessionType } from "@/entities/KanbanTask";
 import { execGit } from "@/lib/gitOperations";
+import { focusHerdrTaskPane, listLocalTerminalTabs } from "@/lib/terminal";
+import { quoteForPosixShell } from "@/lib/worktree";
 import { getHomeDirectory } from "@/lib/hostFileAccess";
 import { readJsonLinesHead } from "@/lib/aiSessions/shared";
 import { readClaudeSessionDetail } from "@/lib/aiSessions/readClaudeSessions";
 import { readCodexSessionDetail } from "@/lib/aiSessions/readCodexSessions";
 import { findPaneChatProcess, type PaneChatProcess } from "@/lib/aiSessions/paneChatProcess";
 import { findPaneChatSessionBinding } from "@/lib/aiSessions/paneChatSessionBindings";
-import type { PaneChatActionResult, PaneChatKey, PaneChatSnapshot } from "@/desktop/shared/paneChat";
-import { readPaneChatSurface, type PaneChatSurface } from "./paneChatSurface";
+import type { PaneChatActionResult, PaneChatKey, PaneChatLayout, PaneChatSnapshot } from "@/desktop/shared/paneChat";
+import { readPaneChatLayout, readPaneChatSurface, type PaneChatSurface } from "./paneChatSurface";
 import { writeToPane } from "./mobileBridgeService";
 
 const PROCESS_TABLE_COMMAND = "ps -wwaxo pid=,ppid=,pgid=,tpgid=,tty=,lstart=,ucomm=,args=";
@@ -108,6 +111,36 @@ async function readTranscript(surface: PaneChatSurface, process: PaneChatProcess
   const detail = await reader(context, binding.sessionId, binding.sourceRef, null, TRANSCRIPT_PAGE_LIMIT);
   if (!detail) return emptyTranscript("exact-session-unavailable");
   return { status: "available", reason: null, sessionId: detail.sessionId, messages: detail.messages, nextCursor: detail.nextCursor };
+}
+
+export async function getPaneChatLayout(taskId: string, terminalTabId?: string): Promise<PaneChatLayout> {
+  if (typeof taskId !== "string" || !taskId || (terminalTabId !== undefined && (typeof terminalTabId !== "string" || !terminalTabId))) throw inputError("태스크와 터미널 식별자가 올바르지 않습니다.");
+  try { return await readPaneChatLayout(taskId, terminalTabId); }
+  catch {
+    // 이전 좌표를 남기면 바뀐 레이아웃의 다른 pane을 가릴 수 있다.
+    return { activePaneId: null, panes: [] };
+  }
+}
+
+export async function focusPaneChatTerminal(taskId: string, paneId: string): Promise<PaneChatActionResult> {
+  if (typeof taskId !== "string" || !taskId || typeof paneId !== "string" || !paneId) throw inputError("태스크와 pane 식별자가 올바르지 않습니다.");
+  const surface = await readPaneChatSurface(taskId, paneId, false);
+  if (!surface || surface.paneId !== paneId) throw changedTargetError();
+  const { task } = surface;
+  if (task.sessionType === SessionType.HERDR) {
+    await focusHerdrTaskPane(taskId, paneId);
+  } else if (task.sessionType === SessionType.TERMINAL) {
+    if (!listLocalTerminalTabs(taskId).some((tab) => tab.id === paneId && tab.isActive)) throw changedTargetError();
+  } else {
+    const command = task.sessionType === SessionType.TMUX
+      ? `tmux select-pane -t ${quoteForPosixShell(paneId)}`
+      : task.sessionType === SessionType.ZELLIJ
+        ? `zellij --session ${quoteForPosixShell(task.sessionName!)} action focus-pane-id ${quoteForPosixShell(paneId)}`
+        : null;
+    if (!command) throw changedTargetError();
+    await execGit(command, task.sshHost, { timeoutMs: PROCESS_PROBE_TIMEOUT_MS });
+  }
+  return { success: true };
 }
 
 export async function getPaneChatSnapshot(taskId: string, paneId?: string): Promise<PaneChatSnapshot> {

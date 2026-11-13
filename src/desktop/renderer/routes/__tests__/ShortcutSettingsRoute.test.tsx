@@ -78,6 +78,15 @@ describe("ShortcutSettingsRoute", () => {
     expect(mocks.notifyShortcutBindingsChanged).toHaveBeenCalled();
   });
 
+  it("pane 전환 단축키를 녹화하면 정규화한 binding을 저장하고 Electron에 알린다", async () => {
+    renderShortcutSettings();
+    const row = findRecordButtonFor("commands.terminalToggleChat:0:");
+    fireEvent.click(within(row).getByText("record"));
+    fireEvent.keyDown(window, { key: "j", ctrlKey: true, altKey: true });
+    await waitFor(() => expect(mocks.setShortcutBindings).toHaveBeenCalledWith(expect.objectContaining({ terminalToggleChat: "Mod+Alt+J" })));
+    expect(mocks.notifyShortcutBindingsChanged).toHaveBeenCalled();
+  });
+
   /** 같은 조합이 두 명령에 붙으면 뒤 명령은 영영 실행되지 않는다 */
   it("이미 쓰는 조합은 저장하지 않고 어떤 명령과 겹치는지 알린다", async () => {
     renderShortcutSettings();
@@ -99,10 +108,10 @@ describe("ShortcutSettingsRoute", () => {
 
     const firstDockRow = findRecordButtonFor("commands.taskDetailDock:1:info");
     fireEvent.click(within(firstDockRow).getByText("record"));
-    fireEvent.keyDown(window, { key: "j", ctrlKey: true, shiftKey: true });
+    fireEvent.keyDown(window, { key: "y", ctrlKey: true, shiftKey: true });
     await waitFor(() => {
       expect(mocks.setShortcutBindings).toHaveBeenCalledWith(expect.objectContaining({
-        taskDetailDock1: "Mod+Shift+J",
+        taskDetailDock1: "Mod+Shift+Y",
       }));
     });
 

@@ -150,7 +150,6 @@ async function main() {
       const closeUpdate = page.locator("button[aria-label*='업데이트'][aria-label*='닫기']").first();
       if (await closeUpdate.isVisible().catch(() => false)) await closeUpdate.click();
       await page.getByRole('button', { name: 'AI 채팅', exact: true }).click();
-      await page.getByRole('button', { name: '히스토리', exact: true }).click();
       const list = page.getByTestId('ai-session-list');
       await list.waitFor({ state: 'visible', timeout: 30000 });
       const first = page.getByRole('button', { name: `Codex ${historyPrefix} session 24`, exact: true });
@@ -167,7 +166,6 @@ async function main() {
       await page.getByRole('button', { name: 'AI 채팅', exact: true }).click();
       await page.getByTestId('inline-ai-chat').waitFor({ state: 'detached' });
       await page.getByRole('button', { name: 'AI 채팅', exact: true }).click();
-      await page.getByRole('button', { name: '히스토리', exact: true }).click();
       await first.waitFor({ state: 'visible' });
       await page.screenshot({ path: path.join(runDir, 'desktop-history-reopen.png') });
       fs.writeFileSync(path.join(runDir, 'desktop-ui-result.json'), JSON.stringify({ pass: true, checks: ['real pairing HTTP contract', '26sessions paginated', 'selected latest messages', 'older messages', 'reopen History'] }, null, 2));

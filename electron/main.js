@@ -799,6 +799,12 @@ function attachWindowHandlers(browserWindow) {
       return;
     }
 
+    if (shortcutCommand === "terminalToggleChat" && isTaskDetailRoute) {
+      event.preventDefault();
+      browserWindow.webContents.send("kanvibe:terminal-toggle-chat-shortcut");
+      return;
+    }
+
     /** 사용량 단축키도 dock 단축키와 같은 이유로 터미널이 입력을 먹기 전에 가로챈다 */
     if (shortcutCommand === "taskDetailUsage" && isTaskDetailRoute) {
       event.preventDefault();

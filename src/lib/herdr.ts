@@ -46,6 +46,43 @@ export function buildHerdrClientCommand(sessionName: string, socketPath: string)
   return `env -u HERDR_ENV -u HERDR_SOCKET_PATH -u HERDR_PANE_ID -u HERDR_WORKSPACE_ID -u HERDR_TAB_ID HERDR_SESSION=${quoteShellArgument(serverName)} HERDR_CLIENT_SOCKET_PATH=${quoteShellArgument(socketPath)} ${HERDR_EXECUTABLE} client`;
 }
 
+export async function readHerdrClientTabBarPosition(sshHost?: string): Promise<"top" | "bottom" | null> {
+  try {
+    const configPath = await execGit('printf "%s" "${HERDR_CONFIG_PATH:-${XDG_CONFIG_HOME:-$HOME/.config}/herdr/config.toml}"', sshHost, { timeoutMs: HERDR_COMMAND_TIMEOUT_MS });
+    if (!path.posix.isAbsolute(configPath)) return null;
+    const target = quoteShellArgument(configPath);
+    const content = await execGit(`if test -e ${target}; then cat ${target}; fi`, sshHost, { timeoutMs: HERDR_COMMAND_TIMEOUT_MS });
+    let section = "";
+    let position: "top" | "bottom" = "top";
+    let foundPosition = false;
+    for (const original of content.split(/\r?\n/)) {
+      const line = original.trim();
+      if (!line || line.startsWith("#")) continue;
+      // 해석할 수 없는 TOML에서 위치를 추측하면 pane 밖을 덮을 수 있다.
+      if (line.includes('"""') || line.includes("'''")) return null;
+      if (line.startsWith("[")) {
+        const table = /^\[([^\]]+)\]\s*(?:#.*)?$/.exec(line);
+        if (table?.[1].includes("\\")) return null;
+        section = table?.[1].trim().replace(/^(["'])(.*)\1$/, "$2") ?? "";
+        continue;
+      }
+      if (!section && /^(?:ui|"ui"|'ui')\s*=/.test(line)) return null;
+      if (section === "ui" && /^["'][^=]*\\/.test(line)) return null;
+      const key = section === "ui"
+        ? /^(?:tab_bar_position|"tab_bar_position"|'tab_bar_position')\s*=\s*(.*)$/.exec(line)
+        : !section ? /^(?:ui|"ui"|'ui')\s*\.\s*(?:tab_bar_position|"tab_bar_position"|'tab_bar_position')\s*=\s*(.*)$/.exec(line) : null;
+      if (!key) continue;
+      const value = /^(?:"(top|bottom)"|'(top|bottom)')\s*(?:#.*)?$/.exec(key[1]);
+      if (!value || foundPosition) return null;
+      position = (value[1] ?? value[2]) as "top" | "bottom";
+      foundPosition = true;
+    }
+    return position;
+  } catch {
+    return null;
+  }
+}
+
 interface HerdrTab {
   tab_id: string;
   number: number;

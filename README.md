@@ -93,11 +93,13 @@ Open task search from anywhere and filter by project or branch name. In Worktree
 
 ### 2. Task Detail Shortcuts
 
-Use numbered dock shortcuts on a task detail page to open task metadata, hook status, AI chat, and PR actions before the keystroke reaches the embedded terminal.
+Use numbered dock shortcuts on a task detail page to open task metadata, hook status, AI chat history, and PR actions before the keystroke reaches the embedded terminal.
 
-AI chat controls the CLI in the focused desktop pane or selected mobile pane. It preserves the terminal while switching views and provides a composer, interrupt, the CLI's native model picker, and confirmation controls. History opens separately and shares the message design. Claude/Codex transcripts are matched to the running process through hook session identity or an exact open file; unavailable mappings show the current CLI screen. Prompt delivery requires a verified empty CLI input line.
+Use the terminal header chat icon or `Mod+Shift+J` (`Command` on macOS, `Control` elsewhere) to switch the focused pane between terminal and chat. The shortcut can be reassigned in Settings. Each pane retains its own mode and draft; other split panes and terminal tabs remain available. The existing AI chat dock icon opens history directly. AI chat controls the CLI in the focused desktop pane or selected mobile pane and provides a composer, interrupt, the CLI's native model picker, and confirmation controls. History opens separately and shares the message design. Claude/Codex transcripts are matched to the running process through hook session identity or an exact open file; unavailable mappings show the current CLI screen. Prompt delivery requires a verified empty CLI input line.
 
-The desktop implementation lives in `renderer/components/PaneChatView`, `renderer/hooks/usePaneChat`, and `main/services/paneChatService`, with wire types in `desktop/shared/paneChat.ts`. Mobile uses `features/pane_chat` and authenticated `/api/mobile/tasks/:taskId/pane-chat` endpoints. Local terminal, tmux, and Herdr input are supported. Zellij prompt controls stay disabled without an exact process identity; automatic desktop targeting of remote tmux sessions is not yet supported.
+The desktop implementation lives in `renderer/components/TerminalPaneChatLayer`, `renderer/components/PaneChatView`, `renderer/hooks/usePaneChat`, and `main/services/paneChatService`, with wire types in `desktop/shared/paneChat.ts`. Mobile uses `features/pane_chat` and authenticated `/api/mobile/tasks/:taskId/pane-chat` endpoints. Local terminal, tmux, and Herdr input are supported. Zellij prompt controls stay disabled without an exact process identity; automatic desktop targeting of remote tmux sessions is not yet supported.
+
+Close Herdr's own dialogs before switching to chat. Herdr pane placement uses the attached client's negotiated workspace size and tab bar configuration; an unrecognized configuration or stale size keeps the original terminal visible.
 
 <img src="./docs/images/readme/kanvibe-detail-shortcut.png" alt="Task detail shortcut panel" width="100%">
 

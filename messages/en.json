@@ -300,6 +300,7 @@
       },
       "commands": {
         "taskDetailDock": "Dock {index} · {item}",
+        "terminalToggleChat": "Toggle current pane terminal/chat",
         "taskDetailUsage": "AI usage panel",
         "taskSearch": "Task quick search",
         "boardNotification": "Notification center",
@@ -389,6 +390,8 @@
   },
   "taskDetail": {
     "paneChat": {
+      "returnError": "Could not return to this pane’s terminal. Please try again.",
+      "toggle": "Toggle current pane terminal/chat",
       "currentPane": "Current pane chat",
       "history": "History",
       "terminal": "Switch to terminal",

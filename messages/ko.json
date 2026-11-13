@@ -300,6 +300,7 @@
       },
       "commands": {
         "taskDetailDock": "도크 {index} · {item}",
+        "terminalToggleChat": "현재 pane 터미널/채팅 전환",
         "taskDetailUsage": "AI 사용량 패널",
         "taskSearch": "작업 빠른 검색",
         "boardNotification": "알림 센터",
@@ -389,6 +390,8 @@
   },
   "taskDetail": {
     "paneChat": {
+      "returnError": "현재 pane의 터미널로 돌아가지 못했습니다. 다시 시도해 주세요.",
+      "toggle": "현재 pane 터미널/채팅 전환",
       "currentPane": "현재 pane 채팅",
       "history": "히스토리",
       "terminal": "터미널로 전환",

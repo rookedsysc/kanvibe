@@ -7,7 +7,7 @@ import { once, EventEmitter } from "events";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PaneLayoutType } from "@/entities/PaneLayoutConfig";
 import { buildHerdrCommand, buildHerdrSessionCleanupCommand, sanitizeHerdrSessionName } from "@/lib/worktree";
-import { ensureHerdrRemoteMachine, ensureHerdrSession, listHerdrMirrorPanes, listHerdrRunningAgentPanes, moveHerdrTab, readHerdrTabs } from "@/lib/herdr";
+import { ensureHerdrRemoteMachine, ensureHerdrSession, listHerdrMirrorPanes, listHerdrRunningAgentPanes, moveHerdrTab, readHerdrTabs, readHerdrClientTabBarPosition } from "@/lib/herdr";
 
 const { execGit, spawn, readTextFile, updateTextFile } = vi.hoisted(() => ({ execGit: vi.fn(), spawn: vi.fn(), readTextFile: vi.fn(), updateTextFile: vi.fn() }));
 vi.mock("@/lib/hostFileAccess", async (importOriginal) => ({
@@ -583,5 +583,34 @@ describe("공유 Herdr Spaces", () => {
     await expect(ensureHerdrSession("kanvibe:task-a", "/work/a")).rejects.toThrow();
     expect(updateTextFile).not.toHaveBeenCalled();
     expect(execGit.mock.calls.some(([c]) => c.includes("'workspace' 'create'"))).toBe(false);
+  });
+});
+
+
+describe("Herdr client tab bar projection config", () => {
+  beforeEach(() => { execGit.mockReset(); });
+  it.each([
+    ["", "top"],
+    ['[ui]\ntab_bar_position = "bottom" # client setting', "bottom"],
+    ["[ui]\ntab_bar_position = 'top'", "top"],
+    ['ui.tab_bar_position = "bottom"', "bottom"],
+    ['["ui"]\n"tab_bar_position" = "bottom"', "bottom"],
+    ['[keys]\ntab_bar_position = "bottom"', "top"],
+    ['[ui]\ntab_bar_position = "left"', null],
+    ['ui = { tab_bar_position = "bottom" }', null],
+    ['[ui]\ntab_bar_position = "top"\ntab_bar_position = "bottom"', null],
+  ])("config %s resolves to %s", async (content, expected) => {
+    execGit.mockResolvedValueOnce("/isolated/config/herdr.toml").mockResolvedValueOnce(content);
+    expect(await readHerdrClientTabBarPosition("remote")).toBe(expected);
+    expect(execGit.mock.calls[0][0]).toContain("HERDR_CONFIG_PATH");
+    expect(execGit.mock.calls[0][0]).toContain("XDG_CONFIG_HOME");
+    expect(execGit.mock.calls[1][0]).toContain("/isolated/config/herdr.toml");
+    expect(execGit.mock.calls.every((call) => call[1] === "remote")).toBe(true);
+  });
+  it("fails closed when config cannot be read or its path is relative to an unknown client cwd", async () => {
+    execGit.mockRejectedValueOnce(new Error("unreachable"));
+    expect(await readHerdrClientTabBarPosition("remote")).toBeNull();
+    execGit.mockResolvedValueOnce("relative/config.toml");
+    expect(await readHerdrClientTabBarPosition()).toBeNull();
   });
 });

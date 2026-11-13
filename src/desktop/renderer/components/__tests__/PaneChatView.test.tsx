@@ -44,6 +44,21 @@ function open() {
 }
 
 describe("current pane chat", () => {
+  it("queries the explicit pane instead of following another terminal's focus", async () => {
+    render(<PaneChatView taskId="task-1" paneId="%3" onHistory={vi.fn()} onTerminal={vi.fn()} />);
+    await screen.findByText("Exact pane response");
+    expect(actions.getPaneChatSnapshot).toHaveBeenCalledWith("task-1", "%3");
+  });
+
+  it("does not send a previous pane snapshot while the next pane is loading", async () => {
+    const view = render(<PaneChatView taskId="task-1" paneId="%3" onHistory={vi.fn()} onTerminal={vi.fn()} />);
+    await screen.findByText("Exact pane response");
+    actions.getPaneChatSnapshot.mockReturnValue(new Promise(() => {}));
+    view.rerender(<PaneChatView taskId="task-1" paneId="%4" onHistory={vi.fn()} onTerminal={vi.fn()} />);
+    expect((screen.getByRole("textbox") as HTMLTextAreaElement).disabled).toBe(true);
+    expect(actions.sendPaneChatPrompt).not.toHaveBeenCalled();
+  });
+
   it("leads with the task title and only names the exact snapshot pane", async () => {
     const paneId = "67adc931-cb8d-46da-af83-651880ce17e2";
     actions.getPaneChatSnapshot.mockResolvedValue({ ...snapshot(), paneId });

@@ -14,8 +14,9 @@ const EMPTY_MESSAGES: AggregatedAiMessage[] = [];
 const composerControlClass = "min-h-10 shrink-0 rounded-md px-2 text-xs text-text-secondary hover:bg-bg-page focus-visible:outline-2 focus-visible:outline-brand-primary disabled:opacity-40";
 const controlClass = "min-h-10 rounded-md border border-border-default bg-bg-surface px-3 text-xs text-text-primary hover:bg-bg-page focus-visible:outline-2 focus-visible:outline-brand-primary disabled:opacity-40";
 
-export function PaneChatView({ taskId, taskTitle, paneTabs = [], isVisible = true, onHistory, onTerminal }: {
+export function PaneChatView({ taskId, paneId, taskTitle, paneTabs = [], isVisible = true, onHistory, onTerminal }: {
   taskId: string;
+  paneId?: string;
   taskTitle?: string;
   paneTabs?: Pick<TerminalTab, "id" | "name">[];
   isVisible?: boolean;
@@ -23,7 +24,7 @@ export function PaneChatView({ taskId, taskTitle, paneTabs = [], isVisible = tru
   onTerminal: () => void;
 }) {
   const t = useTranslations("taskDetail.paneChat");
-  const chat = usePaneChat(taskId, isVisible);
+  const chat = usePaneChat(taskId, isVisible, paneId);
   const snapshot = chat.snapshot;
   const targetKey = snapshot?.targetToken ?? `${taskId}:unavailable`;
   const currentTarget = useRef(targetKey);
@@ -33,6 +34,7 @@ export function PaneChatView({ taskId, taskTitle, paneTabs = [], isVisible = tru
   const [sendFailed, setSendFailed] = useState(false);
   const [isDetached, setIsDetached] = useState(false);
   const viewport = useRef<HTMLDivElement>(null);
+  const composer = useRef<HTMLTextAreaElement>(null);
   const followLatest = useRef(true);
   const draft = drafts[targetKey] ?? "";
   const controlsOpen = controlsTarget === targetKey;
@@ -41,6 +43,11 @@ export function PaneChatView({ taskId, taskTitle, paneTabs = [], isVisible = tru
   const inputReady = snapshot?.inputState === "ready";
   const messages = snapshot?.transcript.messages ?? EMPTY_MESSAGES;
   const paneName = paneTabs.find((tab) => tab.id === snapshot?.paneId)?.name;
+
+  useEffect(() => {
+    const pane = composer.current?.closest("[data-pane-chat-id]");
+    if (isVisible && !disabled && !controlsOpen && pane?.contains(document.activeElement)) composer.current?.focus();
+  }, [isVisible, disabled, controlsOpen, targetKey]);
 
   useEffect(() => {
     followLatest.current = true;
@@ -133,7 +140,7 @@ export function PaneChatView({ taskId, taskTitle, paneTabs = [], isVisible = tru
       </div> : null}
       <form onSubmit={(event) => { event.preventDefault(); void submit(); }} className="shrink-0 overflow-y-auto [scrollbar-gutter:stable] px-4 py-3 sm:px-8">
         <div data-testid="pane-chat-composer" className="mx-auto max-w-3xl rounded-xl border border-border-default bg-bg-surface p-2 focus-within:border-brand-primary">
-          <textarea aria-label={t("placeholder")} title={t("draftHint")} placeholder={t("placeholder")} rows={2} value={draft} disabled={!chat.isReady || !snapshot?.targetToken || chat.isBusy} onChange={(event) => { setDrafts((previous) => ({ ...previous, [targetKey]: event.target.value })); setSendFailed(false); }} onKeyDown={(event) => {
+          <textarea ref={composer} aria-label={t("placeholder")} title={t("draftHint")} placeholder={t("placeholder")} rows={2} value={draft} disabled={!chat.isReady || !snapshot?.targetToken || chat.isBusy} onChange={(event) => { setDrafts((previous) => ({ ...previous, [targetKey]: event.target.value })); setSendFailed(false); }} onKeyDown={(event) => {
             if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void submit(); }
           }} className="block max-h-48 min-h-16 w-full min-w-0 resize-y bg-transparent px-2 py-1 text-sm leading-6 text-text-primary outline-none placeholder:text-text-secondary" />
           {(sendFailed || chat.actionError) ? <p role="alert" className="px-2 py-1 text-xs text-status-error">{chat.actionError || t("sendError")}</p> : null}

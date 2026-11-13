@@ -202,6 +202,13 @@ contextBridge.exposeInMainWorld("kanvibeDesktop", {
       ipcRenderer.removeListener("kanvibe:task-detail-dock-shortcut", handler);
     };
   },
+  onTerminalToggleChatShortcut(listener) {
+    const handler = () => listener();
+    ipcRenderer.on("kanvibe:terminal-toggle-chat-shortcut", handler);
+    return () => {
+      ipcRenderer.removeListener("kanvibe:terminal-toggle-chat-shortcut", handler);
+    };
+  },
   onTaskDetailUsageShortcut(listener) {
     const handler = () => listener();
     ipcRenderer.on("kanvibe:task-detail-usage-shortcut", handler);

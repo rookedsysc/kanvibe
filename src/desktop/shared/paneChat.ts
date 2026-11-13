@@ -3,6 +3,25 @@ import type { AggregatedAiMessage, AiSessionProvider } from "@/lib/aiSessions/ty
 
 export type PaneChatKey = "up" | "down" | "left" | "right" | "enter" | "escape";
 
+export interface PaneChatBounds {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+export interface PaneChatLayoutPane {
+  id: string;
+  tabId: string;
+  /** 셀 단위 좌표이며, null은 분할 없는 plain PTY 전체 영역이다. */
+  bounds: PaneChatBounds | null;
+}
+
+export interface PaneChatLayout {
+  activePaneId: string | null;
+  panes: PaneChatLayoutPane[];
+}
+
 export interface PaneChatSnapshot {
   taskId: string;
   paneId: string | null;

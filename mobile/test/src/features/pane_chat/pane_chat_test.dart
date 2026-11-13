@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -787,6 +788,13 @@ void main() {
       await tester.enterText(find.byType(TextField).last, 'first pane draft');
       await tester.tap(find.text('2 · $readable'));
       await tester.pumpAndSettle();
+      expect(find.byType(PaneChatView), findsNothing);
+      expect(
+        client.readTargets.every((target) => target.paneId == ids.first),
+        isTrue,
+      );
+      await tester.tap(find.text('채팅', findRichText: true));
+      await tester.pumpAndSettle();
       expect(client.readTargets.last.paneId, ids.last);
       expect(find.text('2 · $readable · codex'), findsOneWidget);
       expect(
@@ -807,6 +815,78 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump();
     });
+  }
+
+  for (final platform in [TargetPlatform.android, TargetPlatform.macOS]) {
+    testWidgets('외부 키보드 채팅 전환은 선택 pane만 바꾸고 히스토리에서는 멈춘다: $platform', (
+      tester,
+    ) async {
+      tester.view.physicalSize = phoneSize;
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final client = _PaneFixtureClient();
+      await tester.pumpWidget(
+        wrapWithApp(
+          const TaskDetailScreen(
+            task: BoardTask(
+              id: 'task-1',
+              title: '현재 CLI',
+              status: TaskStatus.progress,
+            ),
+          ),
+          client: client,
+          size: phoneSize,
+        ),
+      );
+      await tester.pumpAndSettle();
+      final modifier = platform == TargetPlatform.macOS
+          ? LogicalKeyboardKey.metaLeft
+          : LogicalKeyboardKey.controlLeft;
+      Future<void> toggle() async {
+        await tester.sendKeyDownEvent(modifier);
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+        await tester.sendKeyEvent(LogicalKeyboardKey.keyJ);
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+        await tester.sendKeyUpEvent(modifier);
+        await tester.pumpAndSettle();
+      }
+
+      await tester.tap(find.bySemanticsIdentifier('pane-terminal'));
+      await tester.pumpAndSettle();
+      final inputBeforeToggle = [...?client.writtenInput['%19']];
+      await toggle();
+      expect(client.writtenInput['%19'] ?? [], inputBeforeToggle);
+      expect(find.text('현재 %19 답변'), findsOneWidget);
+      await tester.enterText(find.byType(TextField).last, 'A draft');
+      await tester.tap(find.bySemanticsIdentifier('terminal-tab-%20'));
+      await tester.pumpAndSettle();
+      expect(find.byType(PaneChatView), findsNothing);
+      await toggle();
+      expect(find.text('현재 %20 답변'), findsOneWidget);
+      await toggle();
+      expect(find.byType(PaneChatView), findsNothing);
+      await tester.tap(find.bySemanticsIdentifier('terminal-tab-%19'));
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<TextField>(find.byType(TextField).last).controller!.text,
+        'A draft',
+      );
+      await tester.tap(find.byTooltip('태스크 메뉴'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('대화 기록'));
+      await tester.pumpAndSettle();
+      await toggle();
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      expect(find.text('현재 %19 답변'), findsOneWidget);
+      expect(
+        tester.widget<TextField>(find.byType(TextField).last).controller!.text,
+        'A draft',
+      );
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    }, variant: TargetPlatformVariant({platform}));
   }
 
   testWidgets('선택 pane을 바꾸면 입력을 분리하고 터미널 전환은 원래 스트림을 유지한다', (tester) async {
@@ -841,6 +921,11 @@ void main() {
     expect(client.resizedPanes['%19']!.length, resizeCount);
     await tester.enterText(find.byType(TextField).last, '첫 pane 초안');
     await tester.tap(find.bySemanticsIdentifier('terminal-tab-%20'));
+    await tester.pumpAndSettle();
+    expect(find.text('현재 %20 답변'), findsNothing);
+    expect(find.byType(PaneChatView), findsNothing);
+    expect(client.readTargets.map((value) => value.paneId), ['%19']);
+    await tester.tap(find.text('채팅', findRichText: true));
     await tester.pumpAndSettle();
     expect(find.text('현재 %20 답변'), findsOneWidget);
     expect(

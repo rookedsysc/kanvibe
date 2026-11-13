@@ -1425,9 +1425,8 @@ describe("TaskDetailRoute", () => {
       dockShortcutListener?.(3);
     });
 
-    expect(await screen.findByTestId("pane-chat")).toBeTruthy();
-    expect(mocks.getTaskAiSessions).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "history" }));
+    expect(await screen.findByTestId("inline-ai-chat")).toBeTruthy();
+    expect(screen.queryByTestId("pane-chat")).toBeNull();
     await waitFor(() => {
       expect(mocks.getTaskAiSessions).toHaveBeenCalledWith("task-1", undefined, null, 20);
     });
@@ -1750,7 +1749,6 @@ describe("TaskDetailRoute", () => {
     expect(mocks.getTaskAiSessions).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: "aiSessions.inlineChat" }));
-    fireEvent.click(await screen.findByRole("button", { name: "history" }));
 
     expect(await screen.findByTestId("inline-ai-chat")).toBeTruthy();
     await waitFor(() => {
@@ -2306,7 +2304,6 @@ describe("TaskDetailRoute", () => {
     expect(mocks.getTaskAiSessions).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: "aiSessions.inlineChat" }));
-    fireEvent.click(await screen.findByRole("button", { name: "history" }));
 
     await waitFor(() => {
       expect(mocks.getTaskAiSessions).toHaveBeenCalledTimes(1);
@@ -2336,7 +2333,6 @@ describe("TaskDetailRoute", () => {
     });
     render(<TaskDetailRoute />);
     fireEvent.click(await screen.findByRole("button", { name: "aiSessions.inlineChat" }));
-    fireEvent.click(await screen.findByRole("button", { name: "history" }));
     const row = await screen.findByRole("button", { name: `Claude ${title ?? prompt}` });
     expect(row.querySelector("p")?.textContent ?? null).toBe(hasPreview ? prompt : null);
     expect(row.querySelector("span.truncate")?.textContent).toBe(title ?? prompt);
@@ -2385,7 +2381,6 @@ describe("TaskDetailRoute", () => {
     render(<TaskDetailRoute />);
 
     fireEvent.click(await screen.findByRole("button", { name: "aiSessions.inlineChat" }));
-    fireEvent.click(await screen.findByRole("button", { name: "history" }));
 
     expect(await screen.findByRole("button", { name: /Newest chat/ })).toBeTruthy();
     expect(mocks.getTaskAiSessions).toHaveBeenCalledWith("task-1", undefined, null, 20);
@@ -2441,7 +2436,6 @@ describe("TaskDetailRoute", () => {
     render(<TaskDetailRoute />);
 
     fireEvent.click(await screen.findByRole("button", { name: "aiSessions.inlineChat" }));
-    fireEvent.click(await screen.findByRole("button", { name: "history" }));
     expect(await screen.findByRole("button", { name: /Claude newest/ })).toBeTruthy();
 
     fireEvent.click(screen.getByTestId("ai-session-filter-codex"));
@@ -2469,7 +2463,6 @@ describe("TaskDetailRoute", () => {
     });
     render(<TaskDetailRoute />);
     fireEvent.click(await screen.findByRole("button", { name: "aiSessions.inlineChat" }));
-    fireEvent.click(await screen.findByRole("button", { name: "history" }));
     const session = await screen.findByRole("button", { name: "Hermes New provider chat" });
     const filter = screen.getByTestId("ai-session-filter-hermes");
     expect(filter.textContent).toContain("1");
@@ -2546,7 +2539,6 @@ describe("TaskDetailRoute", () => {
     render(<TaskDetailRoute />);
 
     fireEvent.click(await screen.findByRole("button", { name: "aiSessions.inlineChat" }));
-    fireEvent.click(await screen.findByRole("button", { name: "history" }));
     fireEvent.click(await screen.findByRole("button", { name: /Markdown diagram chat/ }));
 
     expect(await screen.findByRole("heading", { level: 2, name: "작업 요약" })).toBeTruthy();
@@ -2626,7 +2618,6 @@ describe("TaskDetailRoute", () => {
     render(<TaskDetailRoute />);
 
     fireEvent.click(await screen.findByRole("button", { name: "aiSessions.inlineChat" }));
-    fireEvent.click(await screen.findByRole("button", { name: "history" }));
     fireEvent.click(await screen.findByRole("button", { name: /Claude paged chat/ }));
 
     expect(await screen.findByText("Newest answer")).toBeTruthy();
@@ -2715,7 +2706,6 @@ describe("TaskDetailRoute", () => {
     render(<TaskDetailRoute />);
 
     fireEvent.click(await screen.findByRole("button", { name: "aiSessions.inlineChat" }));
-    fireEvent.click(await screen.findByRole("button", { name: "history" }));
     fireEvent.click(await screen.findByRole("button", { name: /Claude filtered chat/ }));
     expect(await screen.findByText("Current assistant answer")).toBeTruthy();
 
@@ -2815,7 +2805,6 @@ describe("TaskDetailRoute", () => {
     render(<TaskDetailRoute />);
 
     fireEvent.click(await screen.findByRole("button", { name: "aiSessions.inlineChat" }));
-    fireEvent.click(await screen.findByRole("button", { name: "history" }));
     fireEvent.click(await screen.findByRole("button", { name: /Claude scrolled chat/ }));
 
     const messagePane = await screen.findByTestId("ai-session-messages");
@@ -2867,7 +2856,6 @@ describe("TaskDetailRoute", () => {
 
     render(<TaskDetailRoute />);
     fireEvent.click(await screen.findByRole("button", { name: "aiSessions.inlineChat" }));
-    fireEvent.click(await screen.findByRole("button", { name: "history" }));
     fireEvent.click(await screen.findByRole("button", { name: /Copy chat/ }));
     fireEvent.click(await screen.findByRole("button", { name: "aiSessions.copyMessage" }));
 
@@ -2911,7 +2899,6 @@ describe("TaskDetailRoute", () => {
     render(<TaskDetailRoute />);
 
     fireEvent.click(await screen.findByRole("button", { name: "aiSessions.inlineChat" }));
-    fireEvent.click(await screen.findByRole("button", { name: "history" }));
 
     expect(await screen.findByTestId("ai-session-list")).toBeTruthy();
     for (const provider of ["gemini", "claude", "opencode", "codex"]) {
@@ -2959,7 +2946,6 @@ describe("TaskDetailRoute", () => {
     render(<TaskDetailRoute />);
 
     fireEvent.click(await screen.findByRole("button", { name: "aiSessions.inlineChat" }));
-    fireEvent.click(await screen.findByRole("button", { name: "history" }));
     await screen.findByTestId("ai-session-list");
 
     fireEvent.click(screen.getByTestId("ai-session-filter-claude"));
@@ -3010,7 +2996,6 @@ describe("TaskDetailRoute", () => {
     render(<TaskDetailRoute />);
 
     fireEvent.click(await screen.findByRole("button", { name: "aiSessions.inlineChat" }));
-    fireEvent.click(await screen.findByRole("button", { name: "history" }));
     const searchInput = screen.getByLabelText("aiSessions.searchLabel");
     fireEvent.change(searchInput, { target: { value: "database migration" } });
     fireEvent.submit(searchInput.closest("form")!);
@@ -3058,7 +3043,6 @@ describe("TaskDetailRoute", () => {
     render(<TaskDetailRoute />);
 
     fireEvent.click(await screen.findByRole("button", { name: "aiSessions.inlineChat" }));
-    fireEvent.click(await screen.findByRole("button", { name: "history" }));
     expect(await screen.findByRole("button", { name: /Initial chat/ })).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "aiSessions.loadMoreSessions" }));
@@ -3148,7 +3132,6 @@ describe("TaskDetailRoute", () => {
     render(<TaskDetailRoute />);
 
     fireEvent.click(await screen.findByRole("button", { name: "aiSessions.inlineChat" }));
-    fireEvent.click(await screen.findByRole("button", { name: "history" }));
     fireEvent.click(await screen.findByRole("button", { name: /Claude answer/ }));
 
     await waitFor(() => {
@@ -3343,7 +3326,6 @@ describe("TaskDetailRoute", () => {
     ] });
     render(<TaskDetailRoute />);
     fireEvent.click(await screen.findByRole("button", { name: "aiSessions.inlineChat" }));
-    fireEvent.click(await screen.findByRole("button", { name: "history" }));
     fireEvent.click(await screen.findByRole("button", { name: "Claude Back history" }));
     expect(await screen.findByText("Saved answer")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "aiSessions.backToHistory" }));
@@ -3368,7 +3350,6 @@ describe("TaskDetailRoute", () => {
     ] });
     render(<TaskDetailRoute />);
     fireEvent.click(await screen.findByRole("button", { name: "aiSessions.inlineChat" }));
-    fireEvent.click(await screen.findByRole("button", { name: "history" }));
     fireEvent.click(await screen.findByRole("button", { name: "Claude Anchor history" }));
     await screen.findByText("Latest answer");
     const pane = screen.getByTestId("ai-session-messages");
@@ -3401,7 +3382,6 @@ describe("TaskDetailRoute", () => {
     ] });
     render(<TaskDetailRoute />);
     fireEvent.click(await screen.findByRole("button", { name: "aiSessions.inlineChat" }));
-    fireEvent.click(await screen.findByRole("button", { name: "history" }));
     fireEvent.click(await screen.findByRole("button", { name: "Claude Disclosure history" }));
     const pane = screen.getByTestId("ai-session-messages");
     await waitFor(() => expect(pane.querySelectorAll("details").length).toBe(2));
@@ -3415,6 +3395,49 @@ describe("TaskDetailRoute", () => {
     expect(disclosures[2]).toBe(latestTool);
     expect(disclosures[2].open).toBe(true);
     expect(disclosures[0].open).toBe(false);
+  });
+
+  it("pane 전환 버튼과 양쪽 단축키는 터미널에 전달하고 dock은 기록을 연다", async () => {
+    let shortcut: (() => void) | undefined;
+    window.kanvibeDesktop = { isDesktop: true, onTerminalToggleChatShortcut: (listener: () => void) => { shortcut = listener; return () => { shortcut = undefined; }; } };
+    mocks.getSidebarDefaultCollapsed.mockResolvedValue(true);
+    mocks.getTaskById.mockResolvedValue({ ...notificationReadTargetTask, sessionType: "tmux", sessionName: "pane-shortcut-test" });
+    const toggle = vi.fn();
+    window.addEventListener("kanvibe:toggle-pane-chat", toggle);
+    try {
+      render(<BoardCommandProvider><TaskDetailRoute /></BoardCommandProvider>);
+      fireEvent.click(await screen.findByTestId("pane-chat-toggle"));
+      expect(toggle).toHaveBeenCalledTimes(1);
+      fireEvent.keyDown(window, { key: "J", ctrlKey: true, shiftKey: true });
+      expect(toggle).toHaveBeenCalledTimes(2);
+      act(() => shortcut?.());
+      expect(toggle).toHaveBeenCalledTimes(3);
+      expect(screen.getByLabelText("terminal input")).toBeTruthy();
+      fireEvent.click(screen.getByRole("button", { name: "aiSessions.inlineChat" }));
+      expect(await screen.findByTestId("inline-ai-chat")).toBeTruthy();
+      act(() => shortcut?.());
+      expect(toggle).toHaveBeenCalledTimes(3);
+    } finally {
+      window.removeEventListener("kanvibe:toggle-pane-chat", toggle);
+    }
+  });
+
+  it("모달이 열려 있으면 pane 전환 단축키를 차단한다", async () => {
+    let shortcut: (() => void) | undefined;
+    window.kanvibeDesktop = { isDesktop: true, onTerminalToggleChatShortcut: (listener: () => void) => { shortcut = listener; return () => {}; } };
+    mocks.getSidebarDefaultCollapsed.mockResolvedValue(true);
+    mocks.getTaskById.mockResolvedValue({ ...notificationReadTargetTask, sessionType: "tmux", sessionName: "pane-shortcut-test" });
+    const toggle = vi.fn();
+    window.addEventListener("kanvibe:toggle-pane-chat", toggle);
+    try {
+      render(<BoardCommandProvider><TaskDetailShortcutBlocker /><TaskDetailRoute /></BoardCommandProvider>);
+      await screen.findByLabelText("terminal input");
+      fireEvent.keyDown(window, { key: "J", ctrlKey: true, shiftKey: true });
+      act(() => shortcut?.());
+      expect(toggle).not.toHaveBeenCalled();
+    } finally {
+      window.removeEventListener("kanvibe:toggle-pane-chat", toggle);
+    }
   });
 
 });

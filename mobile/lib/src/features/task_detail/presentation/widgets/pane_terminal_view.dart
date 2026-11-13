@@ -13,6 +13,7 @@ import '../../../../common/network/desktop_connection.dart';
 import '../../../../common/providers.dart';
 import '../../domain/mirror_pane.dart';
 import '../../../task_create/domain/session_type.dart';
+import '../pane_chat_shortcut.dart';
 import 'terminal_soft_keyboard.dart';
 
 /// 선택한 pane을 화면 너비에 맞춰 표시한다.
@@ -24,6 +25,7 @@ class PaneTerminalView extends ConsumerStatefulWidget {
     this.sessionType = SessionType.terminal,
     this.canRespondToDeviceQueries = false,
     this.isActive = true,
+    this.onToggleChat,
     super.key,
   });
 
@@ -33,6 +35,7 @@ class PaneTerminalView extends ConsumerStatefulWidget {
   final bool canResize;
   final bool canRespondToDeviceQueries;
   final bool isActive;
+  final VoidCallback? onToggleChat;
 
   @override
   ConsumerState<PaneTerminalView> createState() => _PaneTerminalViewState();
@@ -395,6 +398,16 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
                       controller: _terminalController,
                       autoResize: widget.canResize,
                       hardwareKeyboardOnly: true,
+                      onKeyEvent: (_, event) {
+                        if (widget.isActive &&
+                            widget.onToggleChat != null &&
+                            paneChatShortcut(Theme.of(context).platform)
+                                .accepts(event, HardwareKeyboard.instance)) {
+                          widget.onToggleChat!();
+                          return KeyEventResult.handled;
+                        }
+                        return KeyEventResult.ignored;
+                      },
                       scrollController: _verticalScroll,
                       backgroundOpacity: 0,
                       theme: _terminalTheme,

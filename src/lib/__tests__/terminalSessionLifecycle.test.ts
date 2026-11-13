@@ -5,8 +5,9 @@ import { spawnSync } from "child_process";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { SessionType } from "@/entities/KanbanTask";
 
-const { createHerdrClientProxy } = vi.hoisted(() => ({ createHerdrClientProxy: vi.fn() }));
+const { createHerdrClientProxy, readHerdrClientTabBarPosition } = vi.hoisted(() => ({ createHerdrClientProxy: vi.fn(), readHerdrClientTabBarPosition: vi.fn(async () => "top") }));
 vi.mock("@/lib/herdrClientProxy", () => ({ createHerdrClientProxy }));
+vi.mock("@/lib/herdr", async (importOriginal) => ({ ...await importOriginal<typeof import("@/lib/herdr")>(), readHerdrClientTabBarPosition }));
 vi.mock("@/lib/hostFileAccess", async (importOriginal) => ({
   ...await importOriginal<typeof import("@/lib/hostFileAccess")>(),
   readTextFile: async () => JSON.stringify({ "task-a": "w1", "task-b": "w2" }),
@@ -113,6 +114,7 @@ beforeEach(() => {
   vi.resetModules();
   spawnedPtys.length = 0;
   spawnCalls.length = 0;
+  readHerdrClientTabBarPosition.mockResolvedValue("top");
 });
 
 describe("Zellij 모바일 viewport 소유권", () => {
@@ -704,6 +706,35 @@ describe("공유 Herdr Space 클라이언트", () => {
     expect(proxyA.request).toHaveBeenCalledWith("tab.focus", { tab_id: "w1:t2" });
     expect(proxyB.request).not.toHaveBeenCalled();
     await expect(terminal.focusHerdrTaskTab("task-a", "w2:t1")).rejects.toThrow("다른 Space");
+    terminal.killAllTerminalSessions();
+  });
+  it("채팅에서 돌아갈 pane은 task 소유 Herdr 클라이언트만 선택하고 다른 Space와 끊긴 연결은 거부한다", async () => {
+    const proxyA = { socketPath: "/tmp/a/client", request: vi.fn(async () => {}), getActiveTabId: () => "w1:t1", close: vi.fn(async () => {}) };
+    const proxyB = { ...proxyA, socketPath: "/tmp/b/client", request: vi.fn(async () => {}) };
+    createHerdrClientProxy.mockResolvedValueOnce(proxyA).mockResolvedValueOnce(proxyB);
+    const terminal = await importTerminalModule();
+    await expect(terminal.focusHerdrTaskPane("task-a", "w1:p2")).rejects.toThrow("연결");
+    await terminal.attachLocalSession("task-a", null, SessionType.HERDR, "kanvibe:task-a", createMockWs() as never, "/work/a");
+    await terminal.attachLocalSession("task-b", null, SessionType.HERDR, "kanvibe:task-b", createMockWs() as never, "/work/b");
+    await terminal.focusHerdrTaskPane("task-a", "w1:p2");
+    expect(proxyA.request.mock.calls).toEqual([["pane.focus", { pane_id: "w1:p2" }]]);
+    expect(proxyB.request).not.toHaveBeenCalled();
+    await expect(terminal.focusHerdrTaskPane("task-a", "w2:p1")).rejects.toThrow("다른 Space");
+    expect(proxyA.request).toHaveBeenCalledTimes(1);
+    terminal.killAllTerminalSessions();
+  });
+  it.each(["top", "bottom"] as const)("Herdr pane은 클라이언트 surface 크기와 %s 탭 위치로 실제 화면에 투영한다", async (position) => {
+    readHerdrClientTabBarPosition.mockResolvedValue(position);
+    let surfaceCols = 134;
+    const proxy = { socketPath: "/tmp/a/client", request: vi.fn(async () => {}), getActiveTabId: () => "w1:t1", getSurfaceSize: () => ({ cols: surfaceCols, rows: 47 }), close: vi.fn(async () => {}) };
+    createHerdrClientProxy.mockResolvedValueOnce(proxy);
+    const terminal = await importTerminalModule();
+    await terminal.attachLocalSession("task-a", null, SessionType.HERDR, "kanvibe:task-a", createMockWs() as never, "/work/a", 160, 48);
+    expect(await terminal.getHerdrTaskSurfaceBounds("task-a")).toEqual({ left: 26, top: position === "top" ? 1 : 0, width: 134, height: 47 });
+    surfaceCols = 156;
+    expect(await terminal.getHerdrTaskSurfaceBounds("task-a")).toEqual({ left: 4, top: position === "top" ? 1 : 0, width: 156, height: 47 });
+    readHerdrClientTabBarPosition.mockResolvedValue(position === "top" ? "bottom" : "top");
+    expect(await terminal.getHerdrTaskSurfaceBounds("task-a")).toBeNull();
     terminal.killAllTerminalSessions();
   });
 });

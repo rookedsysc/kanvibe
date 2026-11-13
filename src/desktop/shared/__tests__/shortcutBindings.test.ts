@@ -334,3 +334,15 @@ describe("단축키 재배정", () => {
     }, "linux")).toEqual({});
   });
 });
+
+
+describe("현재 pane 채팅 전환 단축키", () => {
+  it.each([
+    { platform: "mac", renderer: { metaKey: true }, electron: { meta: true } },
+    { platform: "linux", renderer: { ctrlKey: true }, electron: { control: true } },
+  ] as const)("$platform에서 renderer와 Electron이 동일한 전환을 인식한다", ({ platform, renderer, electron }) => {
+    expect(findShortcutCommandForEvent(DEFAULT_SHORTCUT_BINDINGS, new KeyboardEvent("keydown", { key: "J", shiftKey: true, ...renderer }), platform)).toBe("terminalToggleChat");
+    expect(findShortcutCommandForElectronInput(DEFAULT_SHORTCUT_BINDINGS, { type: "keyDown", key: "J", shift: true, ...electron }, platform)).toBe("terminalToggleChat");
+    expect(findShortcutCommandForEvent(DEFAULT_SHORTCUT_BINDINGS, new KeyboardEvent("keydown", { key: "j", ...renderer }), platform)).not.toBe("terminalToggleChat");
+  });
+});

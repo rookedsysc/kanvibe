@@ -15,6 +15,7 @@ import '../../pane_chat/presentation/pane_chat_view.dart';
 import '../../task_create/domain/session_type.dart';
 import '../../task_create/presentation/create_task_screen.dart';
 import '../domain/mirror_pane.dart';
+import 'pane_chat_shortcut.dart';
 import 'surface_unavailable_message.dart';
 import 'widgets/pane_terminal_view.dart';
 import 'widgets/task_info_sheet.dart';
@@ -35,7 +36,7 @@ class TaskDetailScreen extends ConsumerStatefulWidget {
 
 class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
   String? _selectedPaneId;
-  bool _chatMode = false;
+  final _chatModePaneIds = <String>{};
   final _chatPaneIds = <String>{};
   final _chatPaneNumbers = <String, int>{};
 
@@ -43,6 +44,27 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
   late BoardTask _task = widget.task;
 
   bool _isPreparingCreateTask = false;
+
+  void _setPaneChatMode(String paneId, bool enabled) {
+    setState(() {
+      if (enabled) {
+        _chatModePaneIds.add(paneId);
+        _chatPaneIds.add(paneId);
+      } else {
+        _chatModePaneIds.remove(paneId);
+      }
+    });
+  }
+
+  void _toggleSelectedPaneChat() {
+    if (!(ModalRoute.isCurrentOf(context) ?? true)) return;
+    final panes = ref.read(surfacesProvider(_task.id)).value?.surfaces.allPanes;
+    if (panes == null || panes.isEmpty) return;
+    final pane =
+        panes.where((pane) => pane.id == _selectedPaneId).firstOrNull ??
+        panes.first;
+    _setPaneChatMode(pane.id, !_chatModePaneIds.contains(pane.id));
+  }
 
   Future<void> _openCreateTask() async {
     if (_isPreparingCreateTask) {
@@ -330,7 +352,7 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
             ),
         ];
 
-    return LayoutBuilder(
+    final content = LayoutBuilder(
       builder: (context, constraints) {
         final isCompact = !isTabletLayout(constraints);
         return Scaffold(
@@ -422,6 +444,12 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
         );
       },
     );
+    return CallbackShortcuts(
+      bindings: {
+        paneChatShortcut(Theme.of(context).platform): _toggleSelectedPaneChat,
+      },
+      child: Focus(autofocus: true, child: content),
+    );
   }
 
   Widget _buildSurfaces(TaskSurfaces surfaces, {required bool isCreating}) {
@@ -450,16 +478,17 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
 
     final matchingIndex = tabs.indexWhere((pane) => pane.id == _selectedPaneId);
     final selectedIndex = matchingIndex < 0 ? 0 : matchingIndex;
+    final selectedPaneId = tabs[selectedIndex].id;
+    final chatMode = _chatModePaneIds.contains(selectedPaneId);
 
     return Column(
       children: [
         _SurfaceTabBar(
           tabs: tabs,
-          chatLabels: _chatMode ? chatLabels : const {},
+          chatLabels: _chatPaneIds.isNotEmpty ? chatLabels : const {},
           selectedIndex: selectedIndex,
           onSelected: (index) => setState(() {
             _selectedPaneId = tabs[index].id;
-            if (_chatMode) _chatPaneIds.add(tabs[index].id);
           }),
           onCreate: isCreating ? null : _createTerminalTab,
           // 탭이 하나뿐이면 세션이 끝나 버리므로 닫을 수 없다
@@ -472,13 +501,13 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
             Expanded(
               child: Semantics(
                 identifier: 'pane-terminal-mode',
-                selected: !_chatMode,
+                selected: !chatMode,
                 child: TextButton.icon(
-                  onPressed: () => setState(() => _chatMode = false),
+                  onPressed: () => _setPaneChatMode(selectedPaneId, false),
                   icon: const Icon(Icons.terminal, size: AppSizes.p16),
                   label: const Text('터미널'),
                   style: TextButton.styleFrom(
-                    foregroundColor: !_chatMode
+                    foregroundColor: !chatMode
                         ? AppColors.brandPrimary
                         : AppColors.textSecondary,
                   ),
@@ -488,19 +517,16 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
             Expanded(
               child: Semantics(
                 identifier: 'pane-chat-mode',
-                selected: _chatMode,
+                selected: chatMode,
                 child: TextButton.icon(
-                  onPressed: () => setState(() {
-                    _chatMode = true;
-                    _chatPaneIds.add(tabs[selectedIndex].id);
-                  }),
+                  onPressed: () => _setPaneChatMode(selectedPaneId, true),
                   icon: const Icon(
                     Icons.chat_bubble_outline,
                     size: AppSizes.p16,
                   ),
                   label: const Text('채팅'),
                   style: TextButton.styleFrom(
-                    foregroundColor: _chatMode
+                    foregroundColor: chatMode
                         ? AppColors.brandPrimary
                         : AppColors.textSecondary,
                   ),
@@ -527,22 +553,24 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
     Map<String, String> chatLabels,
   ) {
     final routeActive = ModalRoute.isCurrentOf(context) ?? true;
+    final chatMode = _chatModePaneIds.contains(pane.id);
     return KeyedSubtree(
       key: ValueKey(surfaces.sessionType),
       child: Stack(
         fit: StackFit.expand,
         children: [
           ExcludeFocus(
-            excluding: _chatMode || !routeActive,
+            excluding: chatMode || !routeActive,
             child: Offstage(
-              offstage: _chatMode,
+              offstage: chatMode,
               child: PaneTerminalView(
                 taskId: _task.id,
                 pane: pane,
                 canResize: surfaces.canResize,
                 sessionType: surfaces.sessionType,
                 canRespondToDeviceQueries: surfaces.canRespondToDeviceQueries,
-                isActive: !_chatMode && routeActive,
+                isActive: !chatMode && routeActive,
+                onToggleChat: _toggleSelectedPaneChat,
                 key: ValueKey(pane.id),
               ),
             ),
@@ -552,17 +580,17 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
           ))
             Offstage(
               key: ValueKey('pane-chat:${chatPane.id}'),
-              offstage: !_chatMode || chatPane.id != pane.id,
+              offstage: !chatMode || chatPane.id != pane.id,
               child: ExcludeFocus(
-                excluding: !_chatMode || chatPane.id != pane.id || !routeActive,
+                excluding: !chatMode || chatPane.id != pane.id || !routeActive,
                 child: TickerMode(
-                  enabled: _chatMode && chatPane.id == pane.id && routeActive,
+                  enabled: chatMode && chatPane.id == pane.id && routeActive,
                   child: PaneChatView(
                     target: (taskId: _task.id, paneId: chatPane.id),
                     paneLabel: chatLabels[chatPane.id],
-                    isActive:
-                        _chatMode && chatPane.id == pane.id && routeActive,
-                    onReturnToTerminal: () => setState(() => _chatMode = false),
+                    isActive: chatMode && chatPane.id == pane.id && routeActive,
+                    onReturnToTerminal: () =>
+                        _setPaneChatMode(chatPane.id, false),
                   ),
                 ),
               ),

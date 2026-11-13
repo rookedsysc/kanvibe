@@ -43,6 +43,7 @@ export const SHORTCUTS = {
   terminalWindowClose: "Mod+Shift+W",
   terminalTabPrevious: "Mod+Shift+[",
   terminalTabNext: "Mod+Shift+]",
+  terminalToggleChat: "Mod+Shift+J",
   taskDetailUsage: "Mod+0",
 } as const;
 

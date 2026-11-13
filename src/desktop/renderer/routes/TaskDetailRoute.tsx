@@ -35,7 +35,6 @@ import {
 } from "@/desktop/renderer/actions/project";
 import AiUsagePanel from "@/desktop/renderer/components/AiUsagePanel";
 import { AiChatTranscriptMessage } from "@/desktop/renderer/components/AiChatTranscriptMessage";
-import { PaneChatView } from "@/desktop/renderer/components/PaneChatView";
 import {
   useBoardCommands,
   useHasBoardShortcutBlocker,
@@ -70,7 +69,7 @@ import { INITIAL_DESKTOP_LOAD_TIMEOUT_MS, logDesktopInitialLoadTimeout } from "@
 import { rememberBoardFocusTask } from "@/desktop/renderer/utils/boardFocusTarget";
 import { buildRouteCacheKey, readRouteCache, removeRouteCache, writeRouteCache } from "@/desktop/renderer/utils/routeCache";
 import { useRefreshSignal } from "@/desktop/renderer/utils/refresh";
-import { requestActiveTerminalFocusAfterUiSettles } from "@/desktop/renderer/utils/terminalFocus";
+import { requestActiveTerminalFocusAfterUiSettles, requestTogglePaneChat } from "@/desktop/renderer/utils/terminalFocus";
 import { SessionType, TaskStatus } from "@/entities/KanbanTask";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 import type {
@@ -100,7 +99,7 @@ const AGENT_TAG_STYLES: Record<string, string> = {
 };
 
 type DetailPanel = "overview" | "status" | "liveSessions" | "usage";
-type MainView = "terminal" | "chat" | "history";
+type MainView = "terminal" | "history";
 type TaskDetailDockItem = {
   id: TaskDetailDockItemId;
   label: string;
@@ -809,18 +808,32 @@ function TaskDetailContent({ id }: { id: string }) {
     requestActiveTerminalFocusAfterUiSettles();
   }, [id, terminalTabs]);
 
-  const toggleChatView = useCallback(() => {
-    setMainView((current) => {
-      const nextView = current === "terminal" ? "chat" : "terminal";
-      if (nextView === "chat") {
-        markDefaultPanelDismissed();
-        setActivePanel(null);
-      } else {
-        requestActiveTerminalFocusAfterUiSettles();
-      }
-      return nextView;
-    });
+  const toggleHistoryView = useCallback(() => {
+    markDefaultPanelDismissed();
+    setActivePanel(null);
+    setMainView((current) => current === "history" ? "terminal" : "history");
   }, [markDefaultPanelDismissed]);
+
+  const togglePaneChat = useCallback(() => {
+    if (!hasTerminal || mainView !== "terminal" || hasShortcutBlocker) return;
+    requestTogglePaneChat();
+  }, [hasTerminal, mainView, hasShortcutBlocker]);
+
+  useEffect(() => {
+    function handlePaneChatShortcut(event: KeyboardEvent) {
+      if (findShortcutCommandForEvent(shortcutBindings, event, shortcutPlatform) !== "terminalToggleChat") return;
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      togglePaneChat();
+    }
+    window.addEventListener("keydown", handlePaneChatShortcut, { capture: true });
+    const unsubscribe = window.kanvibeDesktop?.onTerminalToggleChatShortcut?.(togglePaneChat);
+    return () => {
+      window.removeEventListener("keydown", handlePaneChatShortcut, { capture: true });
+      unsubscribe?.();
+    };
+  }, [shortcutBindings, shortcutPlatform, togglePaneChat]);
 
   /**
    * PR 자리를 눌렀을 때 링크가 아직 없으면 그 자리에서 찾아 연다.
@@ -905,7 +918,7 @@ function TaskDetailContent({ id }: { id: string }) {
       {
         id: "chat",
         label: resolveTaskDetailDockLabel(t, "chat"),
-        isActive: mainView !== "terminal",
+        isActive: mainView === "history",
         renderIcon: () => (
           <HugeiconsIcon
             icon={Chatting01Icon}
@@ -914,7 +927,7 @@ function TaskDetailContent({ id }: { id: string }) {
             aria-hidden="true"
           />
         ),
-        onActivate: toggleChatView,
+        onActivate: toggleHistoryView,
       },
       {
         id: "live-sessions",
@@ -962,7 +975,7 @@ function TaskDetailContent({ id }: { id: string }) {
     });
 
     return items;
-  }, [mainView, openInVsCode, openPullRequest, state, statusPanelLabel, t, toggleChatView, toggleDetailPanel, visiblePanel]);
+  }, [mainView, openInVsCode, openPullRequest, state, statusPanelLabel, t, toggleHistoryView, toggleDetailPanel, visiblePanel]);
 
   // dock 항목을 렌더 시점에 ref로 넘겨두면 shortcut 구독을 다시 등록하지 않아도 항상 최신 dock을 실행한다.
   // 구독을 dock 변경마다 재등록하면 커밋과 effect flush 사이에 들어온 shortcut이 이전 dock(빈 배열)을 보고 무시된다.
@@ -1732,13 +1745,10 @@ function TaskDetailContent({ id }: { id: string }) {
       <main className="ml-14 flex h-full min-w-0 flex-col">
         {mainView === "history" ? (
           <div className="flex min-h-0 flex-1 flex-col">
-            <button type="button" onClick={() => setMainView("chat")} className="self-start rounded-md px-4 py-2 text-xs text-text-brand">← {t("paneChat.currentPane")}</button>
+            <button type="button" onClick={() => { setMainView("terminal"); requestActiveTerminalFocusAfterUiSettles(); }} className="self-start rounded-md px-4 py-2 text-xs text-text-brand">← {t("terminal")}</button>
             <InlineAiChatView taskId={state.task.id} />
           </div>
         ) : null}
-        <div className={mainView === "chat" ? "flex min-h-0 flex-1 flex-col" : "hidden"}>
-          <PaneChatView taskId={state.task.id} taskTitle={state.task.title} paneTabs={terminalTabs.tabs} isVisible={mainView === "chat"} onHistory={() => setMainView("history")} onTerminal={() => { setMainView("terminal"); requestActiveTerminalFocusAfterUiSettles(); }} />
-        </div>
         {hasTerminal ? (
           <div className={mainView === "terminal" ? "flex-1 flex flex-col min-h-0 rounded-lg overflow-hidden shadow-md transition-all duration-200 ease-out" : "hidden"}>
             <div className="bg-terminal-chrome flex items-center gap-3 px-4 py-2.5 shrink-0">
@@ -1781,7 +1791,17 @@ function TaskDetailContent({ id }: { id: string }) {
               ) : (
                 <span className="text-xs text-terminal-text font-mono truncate">{state.task.sessionName ?? t("terminal")}</span>
               )}
-              <div className="ml-auto">
+              <button
+                type="button"
+                data-testid="pane-chat-toggle"
+                onClick={togglePaneChat}
+                title={`${t("paneChat.toggle")} (${formatShortcutForDisplay(shortcutBindings.terminalToggleChat, shortcutPlatform)})`}
+                aria-label={t("paneChat.toggle")}
+                className="ml-auto flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-terminal-text hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-brand-primary"
+              >
+                <HugeiconsIcon icon={Chatting01Icon} size={18} strokeWidth={1.6} aria-hidden="true" />
+              </button>
+              <div>
                 <NotificationCenterButton ref={notificationCenterRef} buttonClassName="text-terminal-text hover:text-white hover:bg-white/10" panelClassName="mt-3" />
               </div>
             </div>
@@ -1796,6 +1816,8 @@ function TaskDetailContent({ id }: { id: string }) {
               <TerminalLoader
                 key={`${state.task.sessionType}:${state.task.sessionName}`}
                 taskId={state.task.id}
+                taskTitle={state.task.title}
+                onHistory={() => setMainView("history")}
                 tabs={state.task.sessionType === SessionType.TERMINAL ? terminalTabs.tabs : undefined}
                 isRemote={Boolean(state.task.sshHost)}
                 isHidden={mainView !== "terminal"}

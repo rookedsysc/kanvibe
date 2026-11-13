@@ -10,6 +10,7 @@ const ENDPOINT_REQUEST_TAG = 15;
 const ENDPOINT_RESPONSE_TAG = 18;
 const PANE_INPUT_TAG = 13;
 const POPUP_INPUT_TAG = 14;
+const ENDPOINT_RESIZE_TAG = 12;
 const MAX_FRAME_BYTES = 32 * 1024 * 1024;
 const MAX_ENDPOINT_REQUEST_BYTES = 1024 * 1024;
 const REQUEST_TIMEOUT_MS = 5_000;
@@ -38,6 +39,14 @@ function readString(payload: Buffer, position: number): [string, number] {
   }
   if (length === undefined || position + length > payload.length) throw new Error("Herdr 문자열이 끊겼습니다.");
   return [payload.subarray(position, position + length).toString("utf8"), position + length];
+}
+
+function readUnsigned(payload: Buffer, position: number): [number, number] {
+  const marker = payload[position++];
+  if (marker < 251) return [marker, position];
+  if (marker === 251 && position + 2 <= payload.length) return [payload.readUInt16LE(position), position + 2];
+  if (marker === 252 && position + 4 <= payload.length) return [payload.readUInt32LE(position), position + 4];
+  throw new Error("Herdr surface 크기가 올바르지 않습니다.");
 }
 
 function frame(payload: Buffer): Buffer {
@@ -87,6 +96,8 @@ class HerdrEndpointConnection {
   private queuedInputBytes = 0;
   private activeTabId: string | null = null;
   private activePaneId: string | null = null;
+  private surfaceSize: { cols: number; rows: number } | null = null;
+  private surfaceActive = false;
 
   constructor(private readonly client: Socket, upstreamSocketPath: string, private readonly workspaceId: string) {
     this.upstream = connect(upstreamSocketPath);
@@ -104,6 +115,10 @@ class HerdrEndpointConnection {
   }
 
   getActivePaneId(): string | null { return this.activePaneId; }
+
+  getSurfaceSize(): { cols: number; rows: number } | null {
+    return this.initialized && !this.awaitingInitialWorkspace && this.surfaceActive ? this.surfaceSize : null;
+  }
 
   request(method: string, params: Record<string, unknown>, initialize = false): Promise<void> {
     if (this.closed) return Promise.reject(new Error("Herdr 클라이언트 연결이 종료됐습니다."));
@@ -139,6 +154,7 @@ class HerdrEndpointConnection {
   }
 
   private forwardInput(payload: Buffer): void {
+    this.receiveSurfaceState(payload);
     // 초기 화면의 pane ID가 다른 task를 가리킬 수 있어 그 입력은 재전송하지 않는다.
     if ((this.awaitingInitialWorkspace || !this.initialized)
       && (payload[0] === PANE_INPUT_TAG || payload[0] === POPUP_INPUT_TAG)) return;
@@ -149,6 +165,38 @@ class HerdrEndpointConnection {
       return;
     }
     this.writeThrough(this.client, this.upstream, frame(payload));
+  }
+
+  private receiveSurfaceState(payload: Buffer): void {
+    if (payload[0] === ENDPOINT_CONTROL_TAG) {
+      const [kind, position] = readString(payload, 1);
+      if (kind !== "endpoint.hello.v1") return;
+      const [json] = readString(payload, position);
+      const hello = JSON.parse(json);
+      this.surfaceActive = hello.generation === 1 && hello.surface_active === true;
+      this.setSurfaceSize(hello.surface_size?.cols, hello.surface_size?.rows);
+    } else if (payload[0] === ENDPOINT_RESIZE_TAG) {
+      try {
+        const [, cellWidthEnd] = readUnsigned(payload, 1);
+        const [, cellHeightEnd] = readUnsigned(payload, cellWidthEnd);
+        const [cols, colsEnd] = readUnsigned(payload, cellHeightEnd);
+        const [rows, rowsEnd] = readUnsigned(payload, colsEnd);
+        if (rowsEnd + 1 !== payload.length || payload[rowsEnd] > 1) throw new Error("알 수 없는 Herdr resize 프레임입니다.");
+        this.setSurfaceSize(cols, rows);
+      } catch {
+        // 알 수 없는 프레임도 중계하되, 추측한 좌표로 다른 pane을 덮지 않는다.
+        this.surfaceSize = null;
+      }
+    } else if (payload[0] === ENDPOINT_REQUEST_TAG) {
+      const [, position] = readString(payload, 1);
+      const [json] = readString(payload, position);
+      const request = JSON.parse(json);
+      if (request.method === "client_shell.surface.set") this.surfaceActive = request.params?.active === true;
+    }
+  }
+
+  private setSurfaceSize(cols: unknown, rows: unknown): void {
+    this.surfaceSize = typeof cols === "number" && typeof rows === "number" && Number.isInteger(cols) && Number.isInteger(rows) && cols > 0 && rows > 0 ? { cols, rows } : null;
   }
 
   private writeThrough(source: Socket, destination: Socket, bytes: Buffer): void {
@@ -224,6 +272,7 @@ class HerdrEndpointConnection {
     this.closed = true;
     this.activeTabId = null;
     this.activePaneId = null;
+    this.surfaceSize = null;
     for (const id of this.pending.keys()) this.finishRequest(id, error);
     this.queuedInput = [];
     this.client.destroy();
@@ -236,6 +285,7 @@ export async function createHerdrClientProxy(upstreamSocketPath: string, workspa
   request(method: string, params: Record<string, unknown>): Promise<void>;
   getActiveTabId(): string | null;
   getActivePaneId(): string | null;
+  getSurfaceSize(): { cols: number; rows: number } | null;
   close(): Promise<void>;
 }> {
   const directory = await mkdtemp(path.join(tmpdir(), "kvhc-"));
@@ -262,6 +312,7 @@ export async function createHerdrClientProxy(upstreamSocketPath: string, workspa
     request: (method, params) => connection?.request(method, params) ?? Promise.reject(new Error("Herdr 클라이언트가 아직 연결되지 않았습니다.")),
     getActiveTabId: () => connection?.getActiveTabId() ?? null,
     getActivePaneId: () => connection?.getActivePaneId() ?? null,
+    getSurfaceSize: () => connection?.getSurfaceSize() ?? null,
     close: () => closing ??= (async () => {
       connection?.destroy();
       await new Promise<void>((resolve) => server.close(() => resolve()));
