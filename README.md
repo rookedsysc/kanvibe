@@ -52,17 +52,20 @@ open -a KanVibe
 
 ### Development and QA databases
 
-Each runtime uses a separate SQLite database:
+Each runtime uses a separate SQLite database and a separate hook server port, so they can run at the same time. The mobile TLS port is always the hook port + 10.
 
-| Run | Data directory | Lifetime |
-| --- | --- | --- |
-| Installed KanVibe | Existing Electron `userData` directory | Persistent; production data stays in place |
-| `pnpm dev` / `pnpm desktop:dev` | `<appData>/kanvibe-dev` | Refreshed from the installed application's DB on every launch by default |
-| `pnpm dev --data-source=existing` | `<appData>/kanvibe-dev` | Keeps development data across restarts and worktrees |
-| `pnpm start` | `<appData>/kanvibe-qa` | Persistent across restarts, builds, and worktrees |
-| Installed KanVibe with `--qa` | `<appData>/kanvibe-qa` | Same persistent manual QA database |
-| Automated Electron QA | Run's explicit fixture directory, or a fresh temporary directory | Isolated per run |
-| Vitest / Playwright | Separate temporary test directories | Isolated from application data |
+| Run | Data directory | Lifetime | Hook / mobile TLS port |
+| --- | --- | --- | --- |
+| Installed KanVibe | Existing Electron `userData` directory | Persistent; production data stays in place | `9736` / `9746` |
+| `pnpm dev` / `pnpm desktop:dev` | `<appData>/kanvibe-dev` | Refreshed from the installed application's DB on every launch by default | `19736` / `19746` |
+| `pnpm dev --data-source=existing` | `<appData>/kanvibe-dev` | Keeps development data across restarts and worktrees | `19736` / `19746` |
+| `pnpm start` | `<appData>/kanvibe-qa` | Persistent across restarts, builds, and worktrees | `29736` / `29746` |
+| Installed KanVibe with `--qa` | `<appData>/kanvibe-qa` | Same persistent manual QA database | `29736` / `29746` |
+| Automated Electron QA | Run's explicit fixture directory, or a fresh temporary directory | Isolated per run | A free port chosen per run |
+| Mobile Maestro QA desktop | Run's fixture directory | Isolated per run | `39736` / `39746` |
+| Vitest / Playwright | Separate temporary test directories | Isolated from application data | — |
+
+A launcher that must pick the port itself passes `--kanvibe-hook-port=<port>` to Electron. Automated Electron QA does this for every run.
 
 `<appData>` is `~/Library/Application Support` on macOS. The database filename is `kanvibe.db` in each directory. Development defaults to `--data-source=application`: before opening the app, it copies every table from `<appData>/KanVibe/kanvibe.db` into the separate development database, including projects, tasks, app settings, and committed WAL data from a running application. Development changes affect the copy. Each default launch replaces previous development DB contents; use `pnpm dev --data-source=existing` to keep them. Close an existing development instance before restarting.
 

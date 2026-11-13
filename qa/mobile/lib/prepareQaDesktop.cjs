@@ -15,7 +15,9 @@ const { execFileSync, spawn } = require("node:child_process");
  * 트리에 내놓지 않아서, 모바일에서 친 키가 실제로 pane에 닿았는지는 기기 화면만 봐서는 단정할 수 없다.
  */
 
-const DESKTOP_API = "http://127.0.0.1:19736";
+/** 모바일 QA 데스크탑은 pnpm dev(19736)와 함께 켜 둘 수 있도록 고정 포트를 따로 쓴다. Maestro 플로우가 이 포트를 그대로 적어 둔다 */
+const DESKTOP_HOOK_PORT = 39736;
+const DESKTOP_API = `http://127.0.0.1:${DESKTOP_HOOK_PORT}`;
 const PROBE_PORT = 19737;
 const FIXTURE_PROJECT_NAME = "kanvibe-qa-fixture";
 const FIXTURE_PROJECT_ID = "00000000-0000-4000-8000-000000000001";
@@ -78,7 +80,7 @@ function startDesktop(runDir, appDataDir) {
   const logPath = path.join(runDir, "desktop.log");
   const logFile = fs.openSync(logPath, "a");
 
-  const desktop = spawn("pnpm", ["dev"], {
+  const desktop = spawn("pnpm", ["dev", `--kanvibe-hook-port=${DESKTOP_HOOK_PORT}`], {
     cwd: path.resolve(__dirname, "../../.."),
     env: { ...process.env, KANVIBE_APP_DATA_DIR: appDataDir },
     stdio: ["ignore", logFile, logFile],

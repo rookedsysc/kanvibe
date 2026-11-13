@@ -16,7 +16,8 @@ tags:
 - hideKeyboard
 - tapOn: "포트"
 - eraseText: 5
-- inputText: ${DESKTOP_MOBILE_PORT || "9746"}
+# 페어링 코드를 받는 hook 포트(19737)와 같은 데스크탑의 TLS 포트(hook + 10)에 연결한다. 설치된 앱의 9746에 붙지 않게 한다.
+- inputText: ${DESKTOP_MOBILE_PORT || "19747"}
 - hideKeyboard
 - tapOn: "연결 코드"
 - runScript:
