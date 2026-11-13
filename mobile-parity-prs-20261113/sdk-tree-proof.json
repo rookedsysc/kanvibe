@@ -1,0 +1,9 @@
+{
+  "sdkCommit": "95148047a2d9c8f122159294b0e3b33e4c2b7868",
+  "base": "c0185004d187fa7ca162c318d62b40e1c26392a6",
+  "gateFingerprint": "d927a0d30c7fb5787125a4fe85f3dc7e9a75de5b",
+  "commitMatchesGate": true,
+  "sourceScope": [
+    "mobile/android/build.gradle.kts"
+  ]
+}

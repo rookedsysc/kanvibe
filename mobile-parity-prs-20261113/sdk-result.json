@@ -1,0 +1,36 @@
+{
+  "mode": "release",
+  "exitCode": 0,
+  "command": [
+    "/home/crookedbot/.local/share/kanvibe-toolchains/flutter/bin/flutter",
+    "build",
+    "apk",
+    "--release",
+    "--target-platform",
+    "android-x64",
+    "--no-pub"
+  ],
+  "startedAt": 1794573663.15609,
+  "completedAt": 1794573936.6942735,
+  "apkInputsBefore": "f1502cabd546f6c06e0f639e8a7ba481f85f3e1138fe69b65f92e6799d934fec",
+  "apkInputsAfter": "f1502cabd546f6c06e0f639e8a7ba481f85f3e1138fe69b65f92e6799d934fec",
+  "apkInputsUnchanged": true,
+  "baselineApk": "/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-not-implemented-mobile-feature/qa-results/roky-harness/mobile-parity-20261113/device/pane-titlefix-release/app-release.apk",
+  "baselineApkSha256": "06a6b46a1a7b17e0973a8f4337d8b83c0732454d75c33f7b84b77f15b7ee3478",
+  "baselineSigning": {
+    "verifyExitCode": 0,
+    "signerCertificateSha256": "af4b55d3faa7e006ad3675989f4a6b007820132b6ce76ee2462c1355396eaada"
+  },
+  "signingKeyPropertiesPresent": false,
+  "installAttempted": false,
+  "apk": "/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-not-implemented-mobile-feature/qa-results/roky-harness/mobile-parity-20261113/device/publish-sdk-only-release/app-release.apk",
+  "apkSha256": "7c3ed68f2a9c592365d225860f15be7a9e5fbd86bf013f09becf12af7e897728",
+  "apkBytes": 24282391,
+  "signing": {
+    "verifyExitCode": 0,
+    "signerCertificateSha256": "af4b55d3faa7e006ad3675989f4a6b007820132b6ce76ee2462c1355396eaada"
+  },
+  "sameSigningCertificateAsInstalledBaseline": true,
+  "badgingExitCode": 0,
+  "passed": true
+}
