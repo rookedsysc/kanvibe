@@ -17,7 +17,7 @@ InboxNotification inboxNotice({
 );
 
 class InboxDesktopClient extends FakeDesktopClient {
-  InboxDesktopClient({super.tasksById});
+  InboxDesktopClient({super.tasksById, super.board});
   final notificationsByConnection = <String, List<InboxNotification>>{};
   final inboxFetches = <String>[];
   final readCalls = <({String connectionId, String id})>[];

@@ -18,10 +18,10 @@ trap 'kill "${FIXTURE_PID}" 2>/dev/null || true; wait "${FIXTURE_PID}" 2>/dev/nu
 
 for port in 19836 19837; do
   for _ in $(seq 30); do
-    if curl --silent --fail "http://127.0.0.1:${port}/health" >/dev/null; then break; fi
+    if curl --insecure --silent --fail "https://127.0.0.1:${port}/health" >/dev/null; then break; fi
     sleep 1
   done
-  curl --silent --fail "http://127.0.0.1:${port}/health" >/dev/null
+  curl --insecure --silent --fail "https://127.0.0.1:${port}/health" >/dev/null
 done
 
 APP_ID="${APP_ID}" \
