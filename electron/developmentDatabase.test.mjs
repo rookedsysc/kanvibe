@@ -107,6 +107,46 @@ describe("development application dataset", () => {
       .prepare("SELECT title FROM kanban_tasks WHERE id = 'task'").get().title).toBe("Latest application task");
   });
 
+  it("does not copy the application's hook client ID into the development database", async () => {
+    const source = sourceDatabase();
+    source.exec("INSERT INTO app_settings (id, key, value) VALUES ('client', 'hook_client_id', 'application-client')");
+
+    await prepare();
+
+    const target = openDatabase(path.join(targetDirectory, "kanvibe.db"));
+    expect(target.prepare("SELECT value FROM app_settings WHERE key = 'hook_client_id'").get()).toBeUndefined();
+    expect(target.prepare("SELECT value FROM app_settings WHERE key = 'theme'").get().value).toBe("dark");
+    expect(source.prepare("SELECT value FROM app_settings WHERE key = 'hook_client_id'").get().value).toBe("application-client");
+  });
+
+  it("keeps the development hook client ID across database refreshes", async () => {
+    const source = sourceDatabase();
+    source.exec("INSERT INTO app_settings (id, key, value) VALUES ('client', 'hook_client_id', 'application-client')");
+    await prepare();
+    const targetPath = path.join(targetDirectory, "kanvibe.db");
+    const previousTarget = openDatabase(targetPath);
+    previousTarget.exec("INSERT INTO app_settings (id, key, value) VALUES ('dev-client', 'hook_client_id', 'development-client')");
+    previousTarget.close();
+
+    await prepare();
+
+    expect(openDatabase(targetPath).prepare("SELECT value FROM app_settings WHERE key = 'hook_client_id'").all())
+      .toEqual([{ value: "development-client" }]);
+  });
+
+  it("drops a development hook client ID that an older copy took from the application", async () => {
+    const source = sourceDatabase();
+    source.exec("INSERT INTO app_settings (id, key, value) VALUES ('client', 'hook_client_id', 'application-client')");
+    const targetPath = path.join(targetDirectory, "kanvibe.db");
+    // 이 수정 전의 복사본처럼 설치 앱의 ID가 그대로 들어 있는 dev DB를 만든다.
+    await source.backup(targetPath);
+
+    await prepare();
+
+    expect(openDatabase(targetPath).prepare("SELECT value FROM app_settings WHERE key = 'hook_client_id'").get())
+      .toBeUndefined();
+  });
+
   it("preserves development edits with --data-source=existing", async () => {
     sourceDatabase();
     const target = openDatabase(path.join(targetDirectory, "kanvibe.db"));

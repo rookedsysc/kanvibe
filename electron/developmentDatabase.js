@@ -1,3 +1,4 @@
+const { randomUUID } = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
 const { getRequestedAppDataDirectory } = require("./runtimeEnvironment");
@@ -53,11 +54,56 @@ async function prepareDevelopmentDatabase(app, { isDevelopment, env = process.en
   const source = new Database(sourcePath, { readonly: true, fileMustExist: true });
   const targetPath = path.join(targetDirectory, "kanvibe.db");
   try {
+    const applicationHookClientId = readHookClientId(source);
+    const developmentHookClientId = readPreviousDevelopmentHookClientId(Database, targetPath);
     // Online backup includes committed WAL pages while the installed app stays open.
     await source.backup(targetPath);
+    replaceHookClientId(
+      Database,
+      targetPath,
+      developmentHookClientId === applicationHookClientId ? null : developmentHookClientId,
+    );
     console.log(`[kanvibe] Copied application database: ${sourcePath} -> ${targetPath}`);
   } finally {
     source.close();
+  }
+}
+
+/**
+ * hook client ID는 targets.json 항목과 원격 터널 소켓 이름을 정하는 설치별 ID다.
+ * 설치 앱의 ID를 dev 앱이 함께 쓰면 dev 앱이 targets.json의 설치 앱 항목을 덮어써 설치 앱에 알림이 오지 않으므로,
+ * 복사본에는 dev 앱이 이전에 쓰던 ID만 남기고 없으면 dev 앱이 처음 쓸 때 새로 만들게 둔다.
+ */
+const HOOK_CLIENT_ID_KEY = "hook_client_id";
+
+function readHookClientId(database) {
+  return database.prepare("SELECT value FROM app_settings WHERE key = ?").get(HOOK_CLIENT_ID_KEY)?.value ?? null;
+}
+
+function readPreviousDevelopmentHookClientId(Database, targetPath) {
+  if (!fs.existsSync(targetPath)) return null;
+  let target;
+  try {
+    target = new Database(targetPath, { readonly: true, fileMustExist: true });
+    return readHookClientId(target);
+  } catch {
+    // 읽을 수 없는 이전 dev DB는 곧 덮어쓰므로 dev 앱이 새 ID를 받게 둔다.
+    return null;
+  } finally {
+    target?.close();
+  }
+}
+
+function replaceHookClientId(Database, targetPath, hookClientId) {
+  const target = new Database(targetPath, { fileMustExist: true });
+  try {
+    target.prepare("DELETE FROM app_settings WHERE key = ?").run(HOOK_CLIENT_ID_KEY);
+    if (hookClientId) {
+      target.prepare("INSERT INTO app_settings (id, key, value) VALUES (?, ?, ?)")
+        .run(randomUUID(), HOOK_CLIENT_ID_KEY, hookClientId);
+    }
+  } finally {
+    target.close();
   }
 }
 
