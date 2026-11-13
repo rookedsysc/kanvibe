@@ -11,6 +11,27 @@ describe("sortMessagesDescending", () => {
 
     expect(result.map((message) => message.text)).toEqual(["new", "mid", "old"]);
   });
+
+  it("같은 시각의 사용자 입력과 응답은 클라이언트가 뒤집어도 파일의 추가 순서를 유지한다", () => {
+    const messages = [
+      { role: "user" as const, timestamp: "2026-11-12T10:00:00.000Z", text: "질문", fullText: "질문", isTruncated: false },
+      { role: "assistant" as const, timestamp: "2026-11-12T19:00:00.000+09:00", text: "응답", fullText: "응답", isTruncated: false },
+      { role: "user" as const, timestamp: "2026-11-12T10:01:00.000Z", text: "후속 질문", fullText: "후속 질문", isTruncated: false },
+    ];
+    const result = sortMessagesDescending(messages);
+    expect(result.map((message) => message.text)).toEqual(["후속 질문", "응답", "질문"]);
+    expect([...result].reverse().map((message) => message.text)).toEqual(["질문", "응답", "후속 질문"]);
+    expect(messages.map((message) => message.text)).toEqual(["질문", "응답", "후속 질문"]);
+  });
+
+  it("시각이 없는 메시지끼리도 추가 순서를 역순 페이지에 보존한다", () => {
+    const messages = [
+      { role: "user" as const, timestamp: null, text: "질문", fullText: "질문", isTruncated: false },
+      { role: "assistant" as const, timestamp: null, text: "응답", fullText: "응답", isTruncated: false },
+    ];
+    expect(sortMessagesDescending(messages).map((message) => message.text)).toEqual(["응답", "질문"]);
+  });
+
 });
 
 describe("normalizeText", () => {

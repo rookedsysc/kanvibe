@@ -95,6 +95,19 @@ describe("remoteImagePaste.transferImageToRemoteHost", () => {
     mocks.rm.mockResolvedValue(undefined);
   });
 
+  it("preserves a generic attachment extension without changing the image transport", async () => {
+    const child = new FakeChildProcess();
+    mocks.spawn.mockReturnValue(child);
+    const { transferFileToRemoteHost } = await import("@/lib/remoteImagePaste");
+    const result = transferFileToRemoteHost(SSH_CONFIG, Buffer.from("document"), "pdf");
+    await vi.waitFor(() => expect(mocks.spawn).toHaveBeenCalled());
+    child.emit("close", 0);
+    expect(await result).toBe("/tmp/kanvibe-paste-fixed-uuid.pdf");
+    expect(mocks.writeFile).toHaveBeenCalledWith("/tmp/kanvibe-paste-xyz/fixed-uuid.pdf", Buffer.from("document"), { mode: 0o600 });
+    expect(mocks.spawn.mock.calls[0][1]).toContain("app-prod:/tmp/kanvibe-paste-fixed-uuid.pdf");
+    await expect(transferFileToRemoteHost(SSH_CONFIG, Buffer.from("bad"), "../bad")).rejects.toThrow();
+  });
+
   it("uploads the image via scp and resolves the remote path on exit code 0", async () => {
     // Given
     const child = new FakeChildProcess();
@@ -109,7 +122,7 @@ describe("remoteImagePaste.transferImageToRemoteHost", () => {
 
     // Then
     expect(result).toBe("/tmp/kanvibe-paste-fixed-uuid.png");
-    expect(mocks.writeFile).toHaveBeenCalledWith("/tmp/kanvibe-paste-xyz/fixed-uuid.png", Buffer.from("image-bytes"));
+    expect(mocks.writeFile).toHaveBeenCalledWith("/tmp/kanvibe-paste-xyz/fixed-uuid.png", Buffer.from("image-bytes"), { mode: 0o600 });
     expect(mocks.spawn).toHaveBeenCalledWith("scp", [
       "-i",
       "/tmp/test-key",

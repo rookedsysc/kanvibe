@@ -39,7 +39,8 @@ export type ShortcutCommandId =
   | "terminalTabClose"
   | "terminalWindowClose"
   | "terminalTabPrevious"
-  | "terminalTabNext";
+  | "terminalTabNext"
+  | "terminalToggleChat";
 
 /** 설정 화면에서 명령을 묶어 보여 주는 단위 */
 export type ShortcutCommandGroup = "taskDetailDock" | "taskDetail" | "board" | "terminal";
@@ -103,6 +104,7 @@ export const SHORTCUT_COMMAND_DEFINITIONS: readonly ShortcutCommandDefinition[] 
   { id: "terminalWindowClose", group: "terminal", defaultShortcut: SHORTCUTS.terminalWindowClose, labelKey: "terminalWindowClose" },
   { id: "terminalTabPrevious", group: "terminal", defaultShortcut: SHORTCUTS.terminalTabPrevious, labelKey: "terminalTabPrevious" },
   { id: "terminalTabNext", group: "terminal", defaultShortcut: SHORTCUTS.terminalTabNext, labelKey: "terminalTabNext" },
+  { id: "terminalToggleChat", group: "terminal", defaultShortcut: SHORTCUTS.terminalToggleChat, labelKey: "terminalToggleChat" },
   ...TERMINAL_TAB_SHORTCUT_INDEXES.map<ShortcutCommandDefinition>((tabIndex) => ({
     id: createTerminalTabCommandId(tabIndex),
     group: "terminal",

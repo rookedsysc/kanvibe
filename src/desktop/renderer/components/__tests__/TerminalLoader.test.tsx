@@ -53,4 +53,18 @@ describe("TerminalLoader", () => {
     expect(screen.getByTestId("terminal-t1").parentElement?.className).toContain("hidden");
     expect(screen.getByTestId("terminal-t2").parentElement?.className).not.toContain("hidden");
   });
+
+  it("채팅 전환 동안 같은 터미널 DOM을 유지하고 모든 탭의 입력 포커스를 막는다", () => {
+    const { rerender } = render(<TerminalLoader taskId="task-1" tabs={TABS} />);
+    const activeTerminal = screen.getByTestId("terminal-t2");
+
+    rerender(<TerminalLoader taskId="task-1" tabs={TABS} isHidden />);
+
+    expect(screen.getByTestId("terminal-t2")).toBe(activeTerminal);
+    expect(mockTerminalRender).toHaveBeenLastCalledWith("task-1", "t2", true);
+
+    rerender(<TerminalLoader taskId="task-1" tabs={TABS} />);
+    expect(screen.getByTestId("terminal-t2")).toBe(activeTerminal);
+    expect(mockTerminalRender).toHaveBeenLastCalledWith("task-1", "t2", false);
+  });
 });

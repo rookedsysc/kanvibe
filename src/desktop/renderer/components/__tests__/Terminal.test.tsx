@@ -203,6 +203,37 @@ describe("Desktop Terminal", () => {
     expect(container.firstElementChild?.getAttribute("aria-busy")).toBe("false");
   });
 
+  it("채팅 pane 복귀는 키보드만 차단하고 터미널 프로토콜 응답을 유지한다", async () => {
+    const invoke = vi.fn(async (_namespace: string, method: string) => method === "focusPaneChatTerminal" ? { success: true } : method === "getPaneChatLayout"
+      ? { activePaneId: "tab-chat", panes: [{ id: "tab-chat", tabId: "tab-chat", bounds: null }] }
+      : { taskId: "chat-task", paneId: "tab-chat", provider: null, targetToken: null, canSend: false, inputState: "unknown", screen: "", transcript: { status: "unavailable", messages: [], nextCursor: null }, modelPicker: { supported: false } });
+    window.kanvibeDesktop!.invoke = invoke;
+    const onHistory = vi.fn();
+    const view = render(<Terminal taskId="chat-task" tabId="tab-chat" onHistory={onHistory} />);
+    await waitFor(() => expect(screen.queryByRole("status")).toBeNull());
+    await act(async () => { window.dispatchEvent(new Event("kanvibe:toggle-pane-chat")); });
+    await screen.findByTestId("pane-chat");
+    const terminal = latestXtermInstance!;
+    view.rerender(<Terminal taskId="chat-task" tabId="tab-chat" onHistory={onHistory} isHidden />);
+    view.rerender(<Terminal taskId="chat-task" tabId="tab-chat" onHistory={onHistory} />);
+    await waitFor(() => expect(screen.getByTestId("pane-chat").parentElement!.style.display).toBe("flex"));
+    mockTerminalFocus.mockClear();
+    act(() => { window.dispatchEvent(new Event("kanvibe:request-terminal-focus")); });
+    expect(mockTerminalFocus).not.toHaveBeenCalled();
+    const onData = terminal.onData.mock.calls[0][0] as (bytes: string) => void;
+    onData("\x1b[2;3R");
+    expect(mockWriteTerminal).toHaveBeenCalledWith("chat-task", "tab-chat", "\x1b[2;3R");
+    const keyHandler = terminal.attachCustomKeyEventHandler.mock.calls[0][0] as (event: KeyboardEvent) => boolean;
+    expect(keyHandler(new KeyboardEvent("keydown", { key: "x" }))).toBe(false);
+    const paste = new Event("paste", { bubbles: true, cancelable: true });
+    act(() => { (terminal.open.mock.calls[0][0] as HTMLElement).dispatchEvent(paste); });
+    expect(paste.defaultPrevented).toBe(true);
+    await act(async () => { fireEvent.click(screen.getAllByRole("button", { name: "terminal" })[0]); });
+    expect(keyHandler(new KeyboardEvent("keydown", { key: "x" }))).toBe(true);
+    onData("terminal typing");
+    expect(mockWriteTerminal).toHaveBeenCalledWith("chat-task", "tab-chat", "terminal typing");
+  });
+
   it("언어가 바뀌어도 연결과 스크롤백을 유지하며 화면 문구만 바꾼다", async () => {
     const pending = createDeferred<{ ok: boolean }>();
     mockOpenTerminal.mockReturnValue(pending.promise);

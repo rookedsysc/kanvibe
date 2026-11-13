@@ -19,7 +19,7 @@ env:
           id: android:id/input_method_nav_back
 - tapOn: "(Back|뒤로)"
 - extendedWaitUntil:
-    visible: "채팅 History"
+    visible: "대화 기록"
     timeout: 10000
 - runFlow:
     when:
@@ -109,7 +109,7 @@ env:
           id: android:id/input_method_nav_back
 - tapOn: "(Back|뒤로)"
 - extendedWaitUntil:
-    visible: "채팅 History"
+    visible: "대화 기록"
     timeout: 10000
 - runFlow:
     when:

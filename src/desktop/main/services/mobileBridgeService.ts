@@ -17,7 +17,7 @@ import {
   updateTaskStatus,
 } from "@/desktop/main/services/kanbanService";
 import { subscribeToBoardEvents } from "@/lib/boardNotifier";
-import { getAllProjects, getProjectBranches, getTaskAiSessions, getTaskAiSessionDetail, listSubdirectories, scanAndRegisterProjects } from "@/desktop/main/services/projectService";
+import { getAllProjects, getProjectBranches, getTaskAiSessions, getTaskAiSessionDetail, getTaskAiSessionAttachment, listSubdirectories, scanAndRegisterProjects } from "@/desktop/main/services/projectService";
 import { isAiSessionProvider } from "@/lib/aiSessions/providers";
 import type { AiMessageRole, AiSessionProvider } from "@/lib/aiSessions/types";
 import { attachTaskTerminal, CallbackTerminalClient } from "@/desktop/main/terminalBridge";
@@ -128,6 +128,7 @@ import type { RemoteTerminalGrant } from "@/lib/remoteTerminalProtocol";
 
 /** 조회 명령은 짧게 끝나야 모바일 화면이 멈춘 것처럼 보이지 않는다 */
 const MIRROR_COMMAND_TIMEOUT_MS = 5_000;
+const MAX_CHAT_OBSERVE_FRAME_BYTES = 1024 * 1024;
 const VIEWPORT_SETTLE_POLL_INTERVAL_MS = 50;
 
 /**
@@ -607,6 +608,17 @@ export async function getMobileAiSessionDetail(
   }
   const { sourceRef: _sourceRef, ...safeDetail } = detail;
   return safeDetail;
+}
+
+export async function getMobileAiSessionAttachment(taskId: string, provider: AiSessionProvider, sessionId: string, attachmentId: string, sourceRef?: string | null) {
+  const key = mobileAiSessionKey(taskId, provider, sessionId);
+  if (sourceRef == null && !mobileAiSourceCache.has(key)) await refreshMobileAiSource(taskId, provider, sessionId);
+  if (sourceRef == null && !mobileAiSourceCache.has(key)) return null;
+  try {
+    return await getTaskAiSessionAttachment(taskId, provider, sessionId, attachmentId, sourceRef ?? mobileAiSourceCache.get(key));
+  } catch {
+    throw new MobileTaskInputError("첨부 파일을 불러올 수 없습니다. 파일 형식·크기와 원본 파일을 확인해 주세요.");
+  }
 }
 
 function toMobileNotification(notification: AppNotification) {
@@ -1975,6 +1987,43 @@ function stopMirrorProcess(child: ChildProcess): void {
   } catch {
     child.kill("SIGTERM");
   }
+}
+
+export async function readHerdrPaneFrameForChat(taskId: string, paneId: string): Promise<{ output: string; width: number; height: number }> {
+  const target = await findMirrorSessionTarget(taskId);
+  if (target.sessionType !== SessionType.HERDR) throw new Error("Herdr pane이 아닙니다.");
+  const pane = (await listMirrorPanes(target)).find((entry) => entry.id === paneId);
+  if (!pane) throw new PaneNotFoundError();
+  const child = await spawnMirrorProcess(buildHerdrObservePaneCommand(target.sessionName, paneId, pane.width, pane.height), target.sshHost);
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let buffered = "";
+    const finish = (error?: Error, value?: { output: string; width: number; height: number }) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      stopMirrorProcess(child);
+      if (error) reject(error); else resolve(value!);
+    };
+    const timer = setTimeout(() => finish(new Error("Herdr 화면 응답 시간 초과")), MIRROR_COMMAND_TIMEOUT_MS);
+    child.stdout?.setEncoding("utf8");
+    child.stdout?.on("data", (chunk: string) => {
+      buffered += chunk;
+      if (Buffer.byteLength(buffered, "utf8") > MAX_CHAT_OBSERVE_FRAME_BYTES) { finish(new Error("Herdr 화면 크기 초과")); return; }
+      const lines = buffered.split("\n");
+      buffered = lines.pop() ?? "";
+      for (const line of lines) {
+        const record = parseHerdrObserveRecord(line);
+        if (record?.type === "frame" && record.isFullScreen) {
+          finish(undefined, { output: record.output, width: record.width ?? pane.width, height: record.height ?? pane.height });
+          break;
+        }
+      }
+    });
+    child.stderr?.resume();
+    child.once("error", (error) => finish(error));
+    child.once("exit", () => finish(new Error("Herdr 화면 연결이 종료됐습니다.")));
+  });
 }
 
 /** 모바일에서 누른 키를 pane에 그대로 넣는다 */

@@ -30,6 +30,7 @@ const mocks = vi.hoisted(() => ({
   writeTextFile: vi.fn(),
   readTextFile: vi.fn(),
   execGit: vi.fn(),
+  recordPaneChatSessionBinding: vi.fn(),
 }));
 
 vi.mock("@/entities/KanbanTask", () => entityMocks);
@@ -49,6 +50,10 @@ vi.mock("@/lib/boardNotifier", () => ({
 
 vi.mock("@/lib/gitOperations", () => ({
   execGit: mocks.execGit,
+}));
+
+vi.mock("@/lib/aiSessions/paneChatSessionBindings", () => ({
+  recordPaneChatSessionBinding: mocks.recordPaneChatSessionBinding,
 }));
 
 vi.mock("@/lib/hostFileAccess", () => ({
@@ -294,5 +299,25 @@ describe("hook 상태 저장 위치 소유권", () => {
       expect(mocks.writeTextFile).not.toHaveBeenCalled();
       expect(mocks.execGit).not.toHaveBeenCalled();
     }
+  });
+
+  it("로컬 hook 메타데이터는 저장소에서 읽은 task 범위로만 바인딩한다", async () => {
+    const project = { id: "project", name: "repo", repoPath: "/fixture/root", defaultBranch: "main" };
+    mocks.taskRepo.findOne.mockResolvedValue({ id: "task", title: "task", projectId: "project", project, worktreePath: "/fixture/feature", sshHost: null });
+    const metadata = { provider: "claude", hookPid: 123, payloadBase64: "e30=" };
+    const { updateHookTaskStatus } = await import("@/desktop/main/services/hookService");
+    expect((await updateHookTaskStatus({ taskId: "task", status: "progress", agentSession: metadata })).success).toBe(true);
+    expect(mocks.recordPaneChatSessionBinding).toHaveBeenCalledWith({ taskId: "task", worktreePath: "/fixture/feature", repoPath: "/fixture/root", sshHost: null }, metadata);
+  });
+
+  it("원격 task의 메타데이터는 해당 호스트 터널로 들어왔을 때만 바인딩한다", async () => {
+    const project = { id: "project", name: "repo", repoPath: "/fixture/root", defaultBranch: "main", sshHost: "remote" };
+    mocks.taskRepo.findOne.mockResolvedValue({ id: "task", title: "task", projectId: "project", project, worktreePath: "/fixture/feature", sshHost: "remote" });
+    const metadata = { provider: "codex", hookPid: 123, payloadBase64: "e30=" };
+    const { updateHookTaskStatus } = await import("@/desktop/main/services/hookService");
+    await updateHookTaskStatus({ taskId: "task", status: "progress", agentSession: metadata });
+    expect(mocks.recordPaneChatSessionBinding).not.toHaveBeenCalled();
+    await updateHookTaskStatus({ taskId: "task", status: "progress", agentSession: metadata }, new Set(["remote"]));
+    expect(mocks.recordPaneChatSessionBinding).toHaveBeenCalledWith(expect.objectContaining({ sshHost: "remote" }), metadata);
   });
 });
