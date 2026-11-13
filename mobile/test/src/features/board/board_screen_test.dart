@@ -2,11 +2,14 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:kanvibe_mobile/src/features/notifications/application/notification_inbox_controller.dart';
 import 'package:kanvibe_mobile/src/common/network/desktop_command.dart';
 import 'package:kanvibe_mobile/src/features/board/presentation/board_screen.dart';
 import 'package:kanvibe_mobile/src/features/connection/presentation/desktop_connections_screen.dart';
 
 import '../../../support/fake_desktop.dart';
+import '../../../support/fake_notification_inbox.dart';
 
 Map<String, dynamic> boardWith({
   List<Map<String, dynamic>> progress = const [],
@@ -26,6 +29,100 @@ Map<String, dynamic> boardWith({
 };
 
 void main() {
+  for (final size in [phoneSize, tabletSize]) {
+    testWidgets('태스크별 미읽음 알림 수를 표시한다: $size', (tester) async {
+      await tester.binding.setSurfaceSize(size);
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final client = InboxDesktopClient(
+        board: boardWith(
+          progress: [
+            {'id': 't2', 'title': '알림 없는 태스크', 'status': 'progress'},
+          ],
+        ),
+      );
+      client.notificationsByConnection['127.0.0.1:9736'] = [
+        inboxNotice(taskId: 't1'),
+        inboxNotice(id: 'n2', taskId: 't1'),
+        inboxNotice(id: 'read', taskId: 't1', isRead: true),
+        inboxNotice(id: 'read-t2', taskId: 't2', isRead: true),
+        inboxNotice(id: 'no-task', taskId: null),
+        inboxNotice(id: 'missing-task', taskId: 'missing'),
+      ];
+      await tester.pumpWidget(
+        wrapWithApp(const BoardScreen(), client: client, size: size),
+      );
+      await tester.pumpAndSettle();
+
+      final indicator = find.byKey(const ValueKey('task-unread-t1'));
+      expect(indicator, findsOneWidget);
+      expect(
+        find.descendant(of: indicator, matching: find.text('2')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const ValueKey('task-unread-t2')), findsNothing);
+      expect(
+        tester.widget<Semantics>(indicator).properties.label,
+        '읽지 않은 알림 2개',
+      );
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('알림 갱신과 개별·전체 읽음 처리가 태스크 배지에 반영된다', (tester) async {
+    await tester.binding.setSurfaceSize(phoneSize);
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final client = InboxDesktopClient(board: boardWith());
+    client.notificationsByConnection['127.0.0.1:9736'] = [
+      inboxNotice(taskId: 't1'),
+    ];
+    await tester.pumpWidget(
+      wrapWithApp(const BoardScreen(), client: client, size: phoneSize),
+    );
+    await tester.pumpAndSettle();
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(BoardScreen)),
+    );
+    final indicator = find.byKey(const ValueKey('task-unread-t1'));
+    expect(
+      find.descendant(of: indicator, matching: find.text('1')),
+      findsOneWidget,
+    );
+
+    client.notificationsByConnection['127.0.0.1:9736']!.add(
+      inboxNotice(id: 'n2', taskId: 't1'),
+    );
+    container.invalidate(notificationInboxProvider);
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(of: indicator, matching: find.text('2')),
+      findsOneWidget,
+    );
+
+    await container.read(notificationInboxProvider.notifier).markRead('n1');
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(of: indicator, matching: find.text('1')),
+      findsOneWidget,
+    );
+    await container.read(notificationInboxProvider.notifier).markAllRead();
+    await tester.pumpAndSettle();
+    expect(indicator, findsNothing);
+  });
+
+  testWidgets('알림 조회 실패가 태스크 목록을 가리지 않는다', (tester) async {
+    await tester.binding.setSurfaceSize(phoneSize);
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final client = InboxDesktopClient(board: boardWith());
+    client.onFetch = (_) async => throw StateError('알림 조회 실패');
+    await tester.pumpWidget(
+      wrapWithApp(const BoardScreen(), client: client, size: phoneSize),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('할 일 하나'), findsOneWidget);
+    expect(find.byKey(const ValueKey('task-unread-t1')), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('홈 상단은 알림과 더보기로 줄이고 등록과 새로고침을 메뉴에 둔다', (tester) async {
     await tester.binding.setSurfaceSize(phoneSize);
     final client = FakeDesktopClient(board: boardWith());
