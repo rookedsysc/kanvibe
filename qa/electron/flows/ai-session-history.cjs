@@ -570,6 +570,8 @@ async function main() {
   let page;
   let cdpSession;
   let traceStarted = false;
+  let rendererVideo;
+  let rendererVideoPath = null;
   let fixture;
   let seededTask;
   let headlessCodexResult = null;
@@ -621,9 +623,11 @@ async function main() {
       outputDir: run.runDir,
       appDataDir: path.join(run.runDir, "app-data"),
       viewport: { width: 1600, height: 1000 },
+      recordVideo: { dir: path.join(run.runDir, "videos"), size: { width: 1600, height: 1000 } },
     });
     app = launched.app;
     page = launched.page;
+    rendererVideo = page.video();
 
     app.process().on("exit", (code, signal) => {
       if (isExpectedShutdown) return;
@@ -680,13 +684,13 @@ async function main() {
     }, seededTask.id);
     await page.waitForTimeout(1200);
     await dismissUpdateDialogIfPresent(page);
-    await page.getByText("이 작업에는 연결된 터미널 세션이 없습니다.", { exact: false }).first().waitFor({ state: "visible", timeout: 20000 });
     await page.getByRole("button", { name: "AI 채팅" }).waitFor({ state: "visible", timeout: 15000 });
     await takeScreenshot(page, run, "task-detail-before-ai-history-load", screenshots);
 
     await check("Opening AI chat view shows the AI session panel without selecting a conversation", async () => {
       await dismissUpdateDialogIfPresent(page);
       await page.getByRole("button", { name: "AI 채팅" }).click({ timeout: 15000 });
+      await page.getByRole("button", { name: "히스토리", exact: true }).click();
       await page.locator("[data-testid='inline-ai-chat']").waitFor({ state: "visible", timeout: 15000 });
 
       const manualLoadButton = page.getByRole("button", { name: "히스토리 불러오기" });
@@ -806,6 +810,7 @@ async function main() {
           codeBlock: textIncludes("pre code", "const qaResult = 'markdown-rendered';"),
           strongText: textIncludes("strong", "Strong text"),
           mermaidSvg: Boolean(root.querySelector("[data-testid='ai-session-mermaid-diagram'] svg")),
+          mermaidLabelText: Array.from(root.querySelectorAll("[data-testid='ai-session-mermaid-diagram'] svg text")).map((node) => node.textContent || "").join(" "),
           mermaidFallback: Boolean(root.querySelector("[data-testid='ai-session-mermaid-fallback']")),
           unsafeScript: Boolean(root.querySelector(".ai-session-markdown script")),
           unsafeStyle: Boolean(root.querySelector(".ai-session-markdown [style]")),
@@ -822,6 +827,9 @@ async function main() {
       if (!renderState.codeBlock) failures.push("missing fenced code block");
       if (!renderState.strongText) failures.push("missing strong text");
       if (!renderState.mermaidSvg) failures.push("missing Mermaid SVG");
+      for (const label of ["AI history loaded", "Markdown rendered", "Mermaid SVG rendered"]) {
+        if (!renderState.mermaidLabelText.includes(label)) failures.push(`missing visible Mermaid SVG text: ${label}`);
+      }
       if (renderState.mermaidFallback) failures.push("Mermaid fell back to raw pre/code");
       if (renderState.unsafeScript) failures.push("script tag survived sanitizer");
       if (renderState.unsafeStyle) failures.push("style attribute survived sanitizer");
@@ -842,12 +850,7 @@ async function main() {
       await page.getByRole("button", { name: "시스템 입력" }).click({ timeout: 15000 });
       await page.waitForTimeout(1000);
       await waitForText(page, "Claude system instructions");
-      const detailText = await page.locator("[data-testid='inline-ai-chat']").evaluate((root) => {
-        const body = root.children.item(1);
-        const detailColumn = body?.children.item(1);
-        const messageArea = detailColumn?.lastElementChild;
-        return messageArea?.textContent || "";
-      });
+      const detailText = await page.getByTestId("ai-session-messages").textContent();
       const assistantVisible = detailText.includes("Claude QA assistant answer");
       const userVisible = detailText.includes("Claude QA prompt: verify manual AI history loading");
       const toolVisible = detailText.includes("Claude QA tool result text");
@@ -863,7 +866,12 @@ async function main() {
       const searchInput = page.locator("#ai-session-search");
       await searchInput.fill("database migration rollback");
       await page.getByRole("button", { name: "검색" }).click({ timeout: 15000 });
-      await page.locator("[data-testid='ai-session-list']").waitFor({ state: "visible", timeout: 20000 });
+      await page.waitForFunction(() => {
+        const submit = document.querySelector("#ai-session-search")?.form?.querySelector("button[type='submit']");
+        const list = document.querySelector("[data-testid='ai-session-list']");
+        return submit && !submit.disabled && list?.textContent.includes("Claude QA prompt: verify manual AI history loading")
+          && !list.textContent.includes("Gemini QA answer");
+      }, null, { timeout: 20000 });
       assertTextVisibility(
         await getSessionListText(page),
         ["Claude QA prompt: verify manual AI history loading"],
@@ -871,12 +879,7 @@ async function main() {
       );
       await page.getByRole("button", { name: /claude .*manual AI history|claude .*Claude QA prompt/i }).click({ timeout: 15000 });
       await waitForText(page, "Body-search marker: database migration rollback");
-      const detailText = await page.locator("[data-testid='inline-ai-chat']").evaluate((root) => {
-        const body = root.children.item(1);
-        const detailColumn = body?.children.item(1);
-        const messageArea = detailColumn?.lastElementChild;
-        return messageArea?.textContent || "";
-      });
+      const detailText = await page.getByTestId("ai-session-messages").textContent();
       assertTextVisibility(detailText, ["Body-search marker: database migration rollback"], ["Claude system instructions", "Claude QA tool result text"]);
       return "search query matched body-only Claude assistant text, narrowed the list, and reopened the matching chat message";
     });
@@ -887,6 +890,39 @@ async function main() {
         await page.getByRole("button", { name: label }).waitFor({ state: "visible", timeout: 10000 });
       }
       return "all role filter buttons are visible";
+    });
+
+    await check("Responsive transcript and history preserve navigation at 768px and 390px", async () => {
+      await page.evaluate(() => document.getElementById("kanvibe-qa-step-overlay")?.remove());
+      await page.locator("#ai-session-search").fill("");
+      await page.getByRole("button", { name: "검색" }).click({ timeout: 15000 });
+      await page.waitForFunction(() => {
+        const submit = document.querySelector("#ai-session-search")?.form?.querySelector("button[type='submit']");
+        return submit && !submit.disabled && document.querySelector("[data-testid='ai-session-list']")?.textContent.includes("Gemini QA answer");
+      }, null, { timeout: 20000 });
+      const claudeSession = () => page.getByRole("button", { name: /claude .*manual AI history|claude .*Claude QA prompt/i });
+      await claudeSession().click({ timeout: 15000 });
+      await waitForText(page, "Claude QA assistant answer");
+      await page.getByTestId("ai-session-messages").evaluate((pane) => { pane.scrollTop = 0; });
+      await takeScreenshot(page, run, "desktop-transcript-final", screenshots);
+      for (const width of [768, 390]) {
+        await page.setViewportSize({ width, height: 844 });
+        await page.getByRole("button", { name: "대화 기록으로 돌아가기" }).waitFor({ state: "visible", timeout: 10000 });
+        await page.getByTestId("ai-session-messages").waitFor({ state: "visible", timeout: 10000 });
+        await page.getByTestId("ai-session-messages").evaluate((pane) => { pane.scrollTop = 0; });
+        const overflows = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
+        if (overflows) throw new Error(`page overflows horizontally at ${width}px`);
+        await takeScreenshot(page, run, `transcript-${width}px`, screenshots);
+        await page.getByRole("button", { name: "대화 기록으로 돌아가기" }).click({ timeout: 15000 });
+        await claudeSession().waitFor({ state: "visible", timeout: 10000 });
+        await page.getByTestId("ai-session-messages").waitFor({ state: "hidden", timeout: 10000 });
+        assertTextVisibility(await getSessionListText(page), ["Claude QA prompt: verify manual AI history loading", "Gemini QA answer"], []);
+        await takeScreenshot(page, run, `history-${width}px`, screenshots);
+        await claudeSession().click({ timeout: 15000 });
+        await waitForText(page, "Claude QA assistant answer");
+      }
+      await page.setViewportSize({ width: 1600, height: 1000 });
+      return "768px and 390px show one region at a time; back restores the filtered history, and selecting a saved session reopens its transcript without horizontal overflow";
     });
 
     await check("CDP runtime/network diagnostics captured", async () => {
@@ -916,6 +952,9 @@ async function main() {
     writeJson(run.cdpDiagnosticsPath, cdpCollector.summary());
     if (cdpSession) await cdpSession.detach().catch(() => {});
     if (app) await app.close().catch(() => {});
+    if (rendererVideo) {
+      rendererVideoPath = await rendererVideo.path().catch(() => null);
+    }
     process.env.HOME = previousHome;
   }
 
@@ -934,8 +973,9 @@ async function main() {
   });
 
   const ok = checks.every((item) => item.ok);
+  if (rendererVideoPath) notes.push(`Electron renderer recording: ${rendererVideoPath}`);
   if (fs.existsSync(run.videoPath)) notes.push("Actual X11 screen recording captured with ffmpeg.");
-  else notes.push("No mp4 was present when flow finished; wrapper script is expected to fail if recording is missing.");
+  else if (!rendererVideoPath) notes.push("No recording was present when the flow finished.");
   notes.push(`Fake HOME for provider history fixtures: ${fakeHome}`);
   if (fixture) notes.push(`Fixture repo/worktree: ${fixture.repoDir} / ${fixture.worktreePath}`);
   if (headlessCodexResult?.state === "passed") {
@@ -949,14 +989,14 @@ async function main() {
 
   const result = {
     ok,
-    scope: "Electron UI QA for AI session history controls: manual history loading, provider icon rail OR filtering, message-level provider icons, Markdown rendering, Mermaid SVG rendering, sanitizer behavior, body-text chat search across Claude/Codex/OpenCode/Gemini history, session detail rendering, and role filter narrowing",
+    scope: "Electron UI QA for responsive chat/history navigation at desktop, 768px and 390px; manual history loading, provider icon rail OR filtering, message-level provider icons, Markdown rendering, Mermaid SVG rendering, sanitizer behavior, body-text chat search across Claude/Codex/OpenCode/Gemini history, session detail rendering, and role filter narrowing",
     branch: gitValue(["branch", "--show-current"]),
     commit: gitValue(["rev-parse", "--short", "HEAD"]),
     checks,
     errors,
     diagnostics,
     screenshots,
-    videoPath: fs.existsSync(run.videoPath) ? run.videoPath : null,
+    videoPath: fs.existsSync(run.videoPath) ? run.videoPath : rendererVideoPath,
     tracePath: fs.existsSync(run.tracePath) ? run.tracePath : null,
     cdpDiagnosticsPath: fs.existsSync(run.cdpDiagnosticsPath) ? run.cdpDiagnosticsPath : null,
     headlessCodex: headlessCodexResult,
@@ -964,7 +1004,7 @@ async function main() {
   };
 
   writeReport(run, result);
-  console.log(JSON.stringify({ ok, runDir: run.runDir, reportPath: path.join(run.runDir, "report.md"), videoPath: run.videoPath }, null, 2));
+  console.log(JSON.stringify({ ok, runDir: run.runDir, reportPath: path.join(run.runDir, "report.md"), videoPath: result.videoPath }, null, 2));
   process.exit(ok ? 0 : 1);
 }
 

@@ -13,6 +13,7 @@ import '../../../../common/network/desktop_connection.dart';
 import '../../../../common/providers.dart';
 import '../../domain/mirror_pane.dart';
 import '../../../task_create/domain/session_type.dart';
+import '../pane_chat_shortcut.dart';
 import 'terminal_soft_keyboard.dart';
 
 /// 선택한 pane을 화면 너비에 맞춰 표시한다.
@@ -23,6 +24,8 @@ class PaneTerminalView extends ConsumerStatefulWidget {
     this.canResize = false,
     this.sessionType = SessionType.terminal,
     this.canRespondToDeviceQueries = false,
+    this.isActive = true,
+    this.onToggleChat,
     super.key,
   });
 
@@ -31,6 +34,8 @@ class PaneTerminalView extends ConsumerStatefulWidget {
   final MirrorPane pane;
   final bool canResize;
   final bool canRespondToDeviceQueries;
+  final bool isActive;
+  final VoidCallback? onToggleChat;
 
   @override
   ConsumerState<PaneTerminalView> createState() => _PaneTerminalViewState();
@@ -54,6 +59,7 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
   bool _isSuspended = false;
   bool _isShortcutBusy = false;
   int _streamGeneration = 0;
+  Completer<void>? _streamCancellation;
 
   static const _screenRedrawPrefix = '\x1b[H\x1b[2J\x1b[3J';
   static const _firstFrameTimeout = Duration(seconds: 15);
@@ -80,6 +86,7 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
     _terminalController.addListener(_applyDeferredRedraw);
 
     _terminal.onOutput = (data) {
+      if (!widget.isActive) return;
       // 멀티플렉서가 응답한 질의 원문도 미러에 남으므로 파싱 중 생긴 자동 응답만 막는다.
       if (_isParsingRemoteOutput && !widget.canRespondToDeviceQueries) return;
       if (_failureMessage == null) _stream?.write(data);
@@ -95,6 +102,10 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
   @override
   void didUpdateWidget(PaneTerminalView oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (!oldWidget.isActive && widget.isActive) {
+      _lastSentSize = null;
+      _sendViewport(_terminal.viewWidth, _terminal.viewHeight);
+    }
     if (widget.canResize &&
         (widget.pane.width != oldWidget.pane.width ||
             widget.pane.height != oldWidget.pane.height)) {
@@ -118,6 +129,7 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
   void _sendViewport(int cols, int rows) {
     final size = (cols: cols, rows: rows);
     if (!widget.canResize ||
+        !widget.isActive ||
         _stream == null ||
         _isSuspended ||
         _failureMessage != null ||
@@ -138,6 +150,7 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
         state == AppLifecycleState.detached) {
       _isSuspended = true;
       _streamGeneration += 1;
+      _cancelStreamPreparation();
       _firstFrameTimer?.cancel();
       unawaited(_subscription?.cancel());
       unawaited(_stream?.close());
@@ -147,10 +160,19 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
 
   Future<void> _openStream() async {
     final generation = ++_streamGeneration;
+    _cancelStreamPreparation();
+    final cancellation = Completer<void>();
+    _streamCancellation = cancellation;
     _pendingEscape = '';
     _deferredOutput.clear();
     _terminalController.clearSelection();
     _firstFrameTimer = Timer(_firstFrameTimeout, () {
+      if (generation != _streamGeneration) return;
+      _streamGeneration += 1;
+      _cancelStreamPreparation();
+      unawaited(_subscription?.cancel());
+      unawaited(_stream?.close());
+      _stream = null;
       _failStream('터미널 응답이 없습니다. 데스크탑 연결을 확인한 뒤 다시 연결해 주세요.');
     });
     try {
@@ -161,9 +183,21 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
         _failStream('데스크탑에 연결되어 있지 않습니다. 다시 페어링해 주세요.');
         return;
       }
-      final stream = ref
+      final stream = await ref
           .read(desktopClientProvider)
-          .openPaneStream(connection, widget.taskId, widget.pane.id);
+          .openPaneStream(
+            connection,
+            widget.taskId,
+            widget.pane.id,
+            cancelled: cancellation.future,
+          );
+      if (!mounted ||
+          _isSuspended ||
+          generation != _streamGeneration ||
+          _failureMessage != null) {
+        unawaited(stream.close());
+        return;
+      }
       _connection = connection;
       _stream = stream;
       _lastSentSize = null;
@@ -256,7 +290,17 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
     return ready.replaceAll('\x1bk', '\x1b]2;');
   }
 
+  void _cancelStreamPreparation() {
+    final cancellation = _streamCancellation;
+    _streamCancellation = null;
+    if (cancellation != null && !cancellation.isCompleted) {
+      cancellation.complete();
+    }
+  }
+
   Future<void> _retryStream() async {
+    _streamGeneration += 1;
+    _cancelStreamPreparation();
     _firstFrameTimer?.cancel();
     unawaited(_subscription?.cancel());
     unawaited(_stream?.close());
@@ -310,6 +354,7 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
     _firstFrameTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _streamGeneration += 1;
+    _cancelStreamPreparation();
     _horizontalScroll.dispose();
     _verticalScroll.dispose();
     _terminalController.removeListener(_applyDeferredRedraw);
@@ -387,6 +432,16 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
                       controller: _terminalController,
                       autoResize: widget.canResize,
                       hardwareKeyboardOnly: true,
+                      onKeyEvent: (_, event) {
+                        if (widget.isActive &&
+                            widget.onToggleChat != null &&
+                            paneChatShortcut(Theme.of(context).platform)
+                                .accepts(event, HardwareKeyboard.instance)) {
+                          widget.onToggleChat!();
+                          return KeyEventResult.handled;
+                        }
+                        return KeyEventResult.ignored;
+                      },
                       scrollController: _verticalScroll,
                       backgroundOpacity: 0,
                       theme: _terminalTheme,

@@ -824,6 +824,7 @@ export async function removeTaskRegistration(taskId: string): Promise<boolean> {
   if (!task) return false;
 
   await repo.remove(task);
+  broadcastTaskSessionChanged({ taskId });
   broadcastBoardUpdate();
   return true;
 }
@@ -874,6 +875,7 @@ export async function deleteTaskAcrossTargets(
   await deleteTaskResources(task);
 
   await repo.remove(task);
+  broadcastTaskSessionChanged({ taskId });
   broadcastBoardUpdate();
   return { isDeleted: true, peerResults };
 }
@@ -949,6 +951,7 @@ export async function deleteTasks(taskIds: string[]): Promise<string[]> {
       await propagateDeletionToTaskPeers(task);
       await deleteTaskResources(task);
       await repo.remove(task);
+      broadcastTaskSessionChanged({ taskId });
       deletedTaskIds.push(task.id);
     }
   } finally {

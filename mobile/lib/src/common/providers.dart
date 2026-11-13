@@ -94,6 +94,10 @@ class ConnectionController extends AsyncNotifier<SavedConnections> {
     );
   }
 
+  Future<void> rename(String id, String name) async {
+    await _change((registry) => registry.rename(id, name));
+  }
+
   /// 지정한 PC를 데스크탑과 이 기기 양쪽에서 제거한다.
   ///
   /// PC가 꺼져 있어도 로컬 목록에서는 제거하고, 원격 해제 실패 여부를 화면에 돌려준다.
@@ -241,6 +245,41 @@ class TaskSurfacesController extends AsyncNotifier<TaskSurfacesState> {
     } on DesktopRequestException catch (error) {
       await _forgetRejectedConnection(ref, error, connection);
       rethrow;
+    }
+  }
+
+  Future<void> startSession() async {
+    if (state.isLoading || (state.hasValue && state.requireValue.isMutating)) {
+      return;
+    }
+    final generation = _generation;
+    state = const AsyncLoading();
+    try {
+      final connection = (await ref.read(connectionControllerProvider.future))
+          .activeConnection;
+      if (connection == null) {
+        throw const DesktopDisconnectedException();
+      }
+      if (!ref.mounted || generation != _generation) return;
+      final result = await ref
+          .read(desktopClientProvider)
+          .runCommand(connection, DesktopCommand.startSession(taskId));
+      if (!ref.mounted || generation != _generation) return;
+      final surfaces = TaskSurfaces.fromJson(
+        result['surfaces'] as Map<String, dynamic>,
+      );
+      state = AsyncData(TaskSurfacesState(surfaces));
+    } catch (error, stackTrace) {
+      if (!ref.mounted || generation != _generation) return;
+      final reason = error is DesktopCommandFailure
+          ? SurfaceUnavailableReason.fromWire(error.code)
+          : SurfaceUnavailableReason.unknown;
+      state = AsyncError(
+        reason == SurfaceUnavailableReason.unknown
+            ? error
+            : SurfaceUnavailableException(reason),
+        stackTrace,
+      );
     }
   }
 

@@ -6,12 +6,12 @@ appId: ${APP_ID}
     when:
       platform: Android
     commands:
-      - tapOn: "10[\\s\\S]*19746"
+      - tapOn: "10[\\s\\S]*39746"
 - runFlow:
     when:
       platform: iOS
     commands:
-      - tapOn: "127[\\s\\S]*19746"
+      - tapOn: "127[\\s\\S]*39746"
 - extendedWaitUntil:
     visible: "연결된 PC"
     timeout: 10000

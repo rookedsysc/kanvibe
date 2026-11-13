@@ -9,15 +9,14 @@ const process = require("node:process");
 const { pathToFileURL } = require("node:url");
 const { app, BrowserWindow, clipboard, ipcMain, powerMonitor, session, shell } = require("electron");
 const { createDesktopDiagnostics, resolveDesktopLogPath, serializeErrorForLog } = require("./diagnostics");
-const { applyAppDataDirectoryOverride } = require("./runtimeEnvironment");
+const { applyAppDataDirectoryOverride, resolveHookServerPort } = require("./runtimeEnvironment");
+const { prepareDevelopmentDatabase } = require("./developmentDatabase");
 
 const DEFAULT_LOCALE = "ko";
 const APP_ICON_PATH = path.join(app.getAppPath(), "public", "branding", "app-icon.png");
 const RENDERER_DEV_URL = process.env.KANVIBE_RENDERER_URL || null;
 const SHOULD_USE_SOURCE_MODULES = Boolean(RENDERER_DEV_URL);
-const DEV_HOOK_SERVER_PORT = 19736;
-const PACKAGED_HOOK_SERVER_PORT = 9736;
-const HOOK_SERVER_PORT = SHOULD_USE_SOURCE_MODULES ? DEV_HOOK_SERVER_PORT : PACKAGED_HOOK_SERVER_PORT;
+const HOOK_SERVER_PORT = resolveHookServerPort(app, process.env);
 /** 모바일 E2E가 페어링 코드를 직접 받아 가는 경로는 소스로 띄운 개발 실행에서만 연다. `pnpm start`와 패키지된 앱에는 없다 */
 const IS_DEV_PAIRING_ROUTE_ENABLED = SHOULD_USE_SOURCE_MODULES && !app.isPackaged;
 const RENDERER_ABORT_RECOVERY_TIMEOUT_MS = 1000;
@@ -799,6 +798,12 @@ function attachWindowHandlers(browserWindow) {
       return;
     }
 
+    if (shortcutCommand === "terminalToggleChat" && isTaskDetailRoute) {
+      event.preventDefault();
+      browserWindow.webContents.send("kanvibe:terminal-toggle-chat-shortcut");
+      return;
+    }
+
     /** 사용량 단축키도 dock 단축키와 같은 이유로 터미널이 입력을 먹기 전에 가로챈다 */
     if (shortcutCommand === "taskDetailUsage" && isTaskDetailRoute) {
       event.preventDefault();
@@ -1125,6 +1130,14 @@ app.whenReady().then(async () => {
     app.dock.setIcon(APP_ICON_PATH);
   }
   initializeDiagnostics();
+  try {
+    await prepareDevelopmentDatabase(app, { isDevelopment: SHOULD_USE_SOURCE_MODULES });
+  } catch (error) {
+    logDiagnostic("main:development-database-failed", { error: serializeErrorForLog(error) });
+    console.error("[kanvibe] Development database preparation failed:", error);
+    app.exit(1);
+    return;
+  }
   ensureRuntimeEnvironment();
   diagnostics.log("main:startup", {
     appPath: app.getAppPath(),

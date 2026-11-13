@@ -1,0 +1,87 @@
+appId: ${APP_ID}
+env:
+  DESKTOP_PORT: "19748"
+  DESKTOP_API_FROM_HOST: http://127.0.0.1:19738
+---
+- launchApp:
+    clearState: true
+- setOrientation: PORTRAIT
+- extendedWaitUntil:
+    visible: "데스크탑에 연결"
+    timeout: 90000
+- runScript:
+    file: ../scripts/issue-dev-pairing-code.js
+- tapOn: "데스크탑 주소"
+- inputText: "10.0.2.2"
+- tapOn: "포트"
+- eraseText: 5
+- inputText: ${DESKTOP_PORT}
+- tapOn: "연결 코드"
+- inputText: ${output.pairingCode}
+- scrollUntilVisible:
+    element: "연결"
+    direction: DOWN
+    timeout: 60000
+- tapOn: "연결"
+- extendedWaitUntil:
+    visible: "(?s).*Chat History Fixture.*"
+    timeout: 40000
+- tapOn: "(?s).*Chat History Fixture.*"
+- tapOn:
+    text: "^채팅$"
+    enabled: true
+    retryTapIfNoChange: true
+- extendedWaitUntil:
+    visible:
+      id: pane-chat-input
+    timeout: 30000
+- tapOn:
+    id: pane-chat-input
+- inputText: "From Android"
+- tapOn:
+    id: pane-chat-send
+- hideKeyboard
+- extendedWaitUntil:
+    visible: "(?s).*live-pane-a received on fixture-deep: From Android.*"
+    timeout: 30000
+- takeScreenshot: mobile-live-response
+- tapOn:
+    text: "^모델$"
+    enabled: true
+    retryTapIfNoChange: true
+- extendedWaitUntil:
+    visible: "(?s).*Select model.*"
+    timeout: 30000
+- takeScreenshot: mobile-model-picker
+- tapOn:
+    text: "^아래$"
+    enabled: true
+- extendedWaitUntil:
+    visible: "(?s).*› 1\\. fixture-fast.*"
+    timeout: 15000
+- tapOn:
+    text: "^확인$"
+    enabled: true
+- extendedWaitUntil:
+    visible: "(?s).*model: fixture-fast.*"
+    timeout: 30000
+- tapOn: "대화 보기"
+- tapOn:
+    id: pane-chat-input
+- inputText: "Android changed model"
+- tapOn:
+    id: pane-chat-send
+- hideKeyboard
+- extendedWaitUntil:
+    visible: "(?s).*live-pane-a received on fixture-fast: Android changed model.*"
+    timeout: 30000
+- takeScreenshot: mobile-selected-model-response
+- tapOn:
+    text: "^터미널$"
+    enabled: true
+    retryTapIfNoChange: true
+- tapOn:
+    text: "^채팅$"
+    enabled: true
+    retryTapIfNoChange: true
+- assertVisible: "(?s).*Android changed model.*"

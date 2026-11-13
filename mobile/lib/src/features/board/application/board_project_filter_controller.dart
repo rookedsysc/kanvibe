@@ -1,26 +1,64 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../common/providers.dart';
 import '../data/board_snapshot.dart';
+import '../data/board_project_filter_store.dart';
+import 'board_desktop_filter_controller.dart';
+
+final boardProjectFilterStoreProvider = Provider<BoardProjectFilterStore>(
+  (ref) => BoardProjectFilterStore(),
+);
 
 final boardProjectFilterProvider =
     NotifierProvider.family<BoardProjectFilterController, Set<String>, String>(
       BoardProjectFilterController.new,
     );
 
+/// 기기 저장소가 실패해도 보드는 메모리의 선택으로 계속 사용할 수 있다.
 class BoardProjectFilterController extends Notifier<Set<String>> {
-  BoardProjectFilterController(String connectionId);
+  BoardProjectFilterController(this._connectionId);
+
+  final String _connectionId;
+  int _revision = 0;
+  Future<void> _pendingSave = Future.value();
 
   @override
-  Set<String> build() => const {};
-
-  void toggleProject(String projectId) {
-    final selected = {...state};
-    if (!selected.remove(projectId)) selected.add(projectId);
-    state = Set.unmodifiable(selected);
+  Set<String> build() {
+    _restore(++_revision);
+    return const {};
   }
 
-  void showAllProjects() => state = const {};
+  Future<void> _restore(int revision) async {
+    try {
+      final selected = await ref
+          .read(boardProjectFilterStoreProvider)
+          .read(_connectionId);
+      if (ref.mounted && revision == _revision) state = selected;
+    } catch (error) {
+      debugPrint('프로젝트 필터 복원 실패: $error');
+    }
+  }
+
+  Future<void> _save(Set<String> selected) {
+    ++_revision;
+    state = selected;
+    final store = ref.read(boardProjectFilterStoreProvider);
+    _pendingSave = _pendingSave
+        .then((_) => store.write(_connectionId, selected))
+        .catchError((Object error) {
+          debugPrint('프로젝트 필터 저장 실패: $error');
+        });
+    return _pendingSave;
+  }
+
+  Future<void> toggleProject(String projectId) {
+    final selected = {...state};
+    if (!selected.remove(projectId)) selected.add(projectId);
+    return _save(Set.unmodifiable(selected));
+  }
+
+  Future<void> showAllProjects() => _save(const {});
 }
 
 final filteredBoardProvider = Provider<AsyncValue<BoardSnapshot>>((ref) {
@@ -32,5 +70,9 @@ final filteredBoardProvider = Provider<AsyncValue<BoardSnapshot>>((ref) {
   );
   if (connectionId == null) return board;
   final selected = ref.watch(boardProjectFilterProvider(connectionId));
-  return board.whenData((snapshot) => snapshot.filterByProjectIds(selected));
+  final desktops = ref.watch(boardDesktopFilterProvider(connectionId));
+  return board.whenData(
+    (snapshot) =>
+        snapshot.filterByDesktops(desktops).filterByProjectIds(selected),
+  );
 });

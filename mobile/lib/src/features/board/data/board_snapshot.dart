@@ -22,6 +22,33 @@ class BoardSnapshot {
 
   bool get isEmpty => tasksByStatus.values.every((tasks) => tasks.isEmpty);
 
+  List<String> get desktopHosts => <String>{
+    for (final project in projects)
+      if (project.sshHost != null) project.sshHost!,
+    for (final tasks in tasksByStatus.values)
+      for (final task in tasks)
+        if (task.sshHost != null) task.sshHost!,
+  }.toList()..sort();
+
+  BoardSnapshot filterByDesktops(Set<String> selected) {
+    final available = {'local', for (final host in desktopHosts) 'ssh:$host'};
+    final active = selected.intersection(available);
+    if (active.isEmpty) return this;
+    final projectHosts = {
+      for (final project in projects) project.id: project.sshHost,
+    };
+    return BoardSnapshot(
+      tasksByStatus: {
+        for (final entry in tasksByStatus.entries)
+          entry.key: entry.value.where((task) {
+            final host = task.sshHost ?? projectHosts[task.projectId];
+            return active.contains(host == null ? 'local' : 'ssh:$host');
+          }).toList(),
+      },
+      projects: projects,
+    );
+  }
+
   BoardSnapshot filterByProjectIds(Set<String> selectedIds) {
     final selectedProjects = creatableProjects
         .where((project) => selectedIds.contains(project.id))

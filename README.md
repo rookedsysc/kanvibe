@@ -50,6 +50,33 @@ open -a KanVibe
 
 **Mobile terminal compatibility:** `herdr`, `tmux`, `zellij`, and `terminal` sessions are all supported. Herdr sessions keep their original grid and are read by scrolling.
 
+### Development and QA databases
+
+Each runtime uses a separate SQLite database and a separate hook server port, so they can run at the same time. The mobile TLS port is always the hook port + 10.
+
+| Run | Data directory | Lifetime | Hook / mobile TLS port |
+| --- | --- | --- | --- |
+| Installed KanVibe | Existing Electron `userData` directory | Persistent; production data stays in place | `9736` / `9746` |
+| `pnpm dev` / `pnpm desktop:dev` | `<appData>/kanvibe-dev` | Refreshed from the installed application's DB on every launch by default | `19736` / `19746` |
+| `pnpm dev --data-source=existing` | `<appData>/kanvibe-dev` | Keeps development data across restarts and worktrees | `19736` / `19746` |
+| `pnpm start` | `<appData>/kanvibe-qa` | Persistent across restarts, builds, and worktrees | `29736` / `29746` |
+| Installed KanVibe with `--qa` | `<appData>/kanvibe-qa` | Same persistent manual QA database | `29736` / `29746` |
+| Automated Electron QA | Run's explicit fixture directory, or a fresh temporary directory | Isolated per run | A free port chosen per run |
+| Mobile Maestro QA desktop | Run's fixture directory | Isolated per run | `39736` / `39746` |
+| Vitest / Playwright | Separate temporary test directories | Isolated from application data | — |
+
+A launcher that must pick the port itself passes `--kanvibe-hook-port=<port>` to Electron. Automated Electron QA does this for every run.
+
+`<appData>` is `~/Library/Application Support` on macOS. The database filename is `kanvibe.db` in each directory. Development defaults to `--data-source=application`: before opening the app, it copies every table from `<appData>/KanVibe/kanvibe.db` into the separate development database, including projects, tasks, app settings, and committed WAL data from a running application. Development changes affect the copy. Each default launch replaces previous development DB contents; use `pnpm dev --data-source=existing` to keep them. Close an existing development instance before restarting.
+
+For a different installation data directory, use `pnpm dev --data-source=application --application-data-dir="/path/to/application-data"`. If the default application DB is absent, development warns and uses its existing DB or bundled seed. An invalid explicit source, corrupt source DB, or shared source/target path or DB link stops startup. Copying uses SQLite's [Online Backup API](https://www.sqlite.org/backup.html). Repository/worktree paths still point to the same files on disk; this option copies the SQLite data, not repositories, running terminals, OS credentials, or Chromium caches.
+
+Manual QA reuses its own database and applies the existing schema migrations. A new bundled seed does not replace an existing manual QA database, so QA can test upgrades against previously created data. Rebuild with `pnpm build` before `pnpm start` when testing a new source version.
+
+To test an installed macOS build with the persistent QA database, run `open -na KanVibe --args --qa`. Close an existing manual QA instance first so both do not use the same QA database concurrently.
+
+An explicit `KANVIBE_APP_DATA_DIR` overrides the desktop data directory and defaults development to `existing` mode; use a distinct directory for each environment. Add `--data-source=application` explicitly to refresh that development directory from application data. Automated QA (`KANVIBE_QA_MODE=1`) always keeps its fixture and never copies application data. Desktop DB selection follows that directory, ignoring an inherited `KANVIBE_DB_PATH`. Non-desktop database tools retain the `KANVIBE_DB_PATH` override. Automated QA callers should pass `appDataDir` explicitly when they want to reopen a particular fixture; the launcher does not reuse application paths inherited from the parent shell.
+
 ## From your desk to your phone
 
 1. **See what needs attention.** Agent hooks update the board as work moves through progress, waiting, and review.
@@ -74,7 +101,17 @@ Open task search from anywhere and filter by project or branch name. In Worktree
 
 ### 2. Task Detail Shortcuts
 
-Use numbered dock shortcuts on a task detail page to open task metadata, hook status, AI chat, and PR actions before the keystroke reaches the embedded terminal.
+Use numbered dock shortcuts on a task detail page to open task metadata, hook status, AI chat history, and PR actions before the keystroke reaches the embedded terminal.
+
+Use the terminal header chat icon or `Mod+Shift+J` (`Command` on macOS, `Control` elsewhere) to switch the focused pane between terminal and chat. The shortcut can be reassigned in Settings. Each pane retains its own mode and draft; other split panes and terminal tabs remain available. The existing AI chat dock icon opens history directly. AI chat controls the CLI in the focused desktop pane or selected mobile pane and provides a composer, interrupt, the CLI's native model picker, and confirmation controls. History opens separately and shares the message design. Claude/Codex transcripts are matched to the running process through hook session identity or an exact open file; unavailable mappings show the current CLI screen. Prompt delivery requires a verified empty CLI input line.
+
+Claude and Codex chat composers support photos and files, including image-only messages. Choose attachments, paste an image, or drop files into the composer; review thumbnails and remove or retry individual uploads before sending. Mobile also provides photo/file selection and supported native image-paste/drop actions. Each message accepts up to 10 attachments of 10 MiB each. PNG, JPEG, GIF, and WebP are supported as images. Drafts and pending attachments stay with their pane, and failed sends preserve them.
+
+Use the skill button to search installed skills, or type `$`, `/`, or `@` for skill, command, and worktree-file suggestions. Arrow keys and Enter/Tab select a suggestion; Escape closes the list. The inserted syntax matches the current CLI. Conversation history preserves image-only messages and loads images through the connected desktop, including after the CLI has stopped. Deleted or unavailable files show a retry state. Uploaded files remain on the CLI host for its use; removing an unsent attachment deletes only that staged upload.
+
+The desktop implementation lives in `renderer/components/TerminalPaneChatLayer`, `renderer/components/PaneChatView`, `renderer/hooks/usePaneChat`, and `main/services/paneChatService`, with wire types in `desktop/shared/paneChat.ts`. Mobile uses `features/pane_chat` and authenticated `/api/mobile/tasks/:taskId/pane-chat` endpoints. Local terminal, tmux, and Herdr input are supported. Zellij prompt controls stay disabled without an exact process identity; automatic desktop targeting of remote tmux sessions is not yet supported.
+
+Close Herdr's own dialogs before switching to chat. Herdr pane placement uses the attached client's negotiated workspace size and tab bar configuration; an unrecognized configuration or stale size keeps the original terminal visible.
 
 <img src="./docs/images/readme/kanvibe-detail-shortcut.png" alt="Task detail shortcut panel" width="100%">
 
@@ -258,6 +295,8 @@ For an SSH task, connect to that task's SSH host first, then run the command the
 ### Mobile Companion (Flutter)
 
 - View tasks by status on phones; tablets at 768dp and wider show Kanban columns. Filter projects and switch between saved PCs.
+- Select multiple local and SSH desktops together with projects. Filters use neutral checkmarks without selected accent colors. The desktop control lives in `src/components/DesktopFilter.tsx`; mobile uses the board feature's snapshot and per-connection filter controllers.
+- Sync cleans registrations for deleted repository directories and task worktrees. Connection or permission failures preserve records; files, branches, and running sessions stay intact.
 - Open the task’s existing tmux, Zellij, or plain terminal session. Each tab shows one pane on both phones and tablets; add a shell tab without returning to the PC.
 - Read terminal output and type with the on-screen keyboard, including in SSH remote tasks. Create tasks, change status, inspect task details, and open the linked PR.
 - tmux and plain terminals adapt their rows and columns to the mobile viewport. The PC’s shared terminal size changes while you view it and restores after you leave; Herdr and Zellij use scrolling instead.

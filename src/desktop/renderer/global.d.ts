@@ -22,7 +22,7 @@ declare global {
       focusExistingInternalRoute?: (route: string) => Promise<boolean>;
       onBoardEvent: (listener: (event: BoardEventPayload) => void) => () => void;
       /** tabId는 terminal 세션에서만 탭 식별자를 담고, tmux·zellij 세션에서는 null이다 */
-      openTerminal: (taskId: string, tabId: string | null, cols: number, rows: number) => Promise<{ ok: boolean; error?: string }>;
+      openTerminal: (taskId: string, tabId: string | null, cols: number, rows: number) => Promise<{ ok: boolean; error?: string; retryAfterMs?: number }>;
       writeTerminal: (taskId: string, tabId: string | null, data: string) => void;
       resizeTerminal: (taskId: string, tabId: string | null, cols: number, rows: number) => void;
       focusTerminal: (taskId: string) => void;

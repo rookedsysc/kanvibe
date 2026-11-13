@@ -6,7 +6,7 @@
 # 뒤 절반은 모바일 시트로 되돌리며 기존 세션 닫기 확인을 거치는지 본다.
 appId: ${APP_ID}
 env:
-  DESKTOP_API_FROM_HOST: http://127.0.0.1:19736
+  DESKTOP_API_FROM_HOST: http://127.0.0.1:39736
 ---
 - launchApp:
     clearState: true
@@ -20,6 +20,7 @@ env:
     visible:
       id: pane-terminal
     timeout: 20000
+- runFlow: ../subflows/opens-task-menu.yaml
 - tapOn:
     id: change-session-type
 - extendedWaitUntil:
@@ -40,6 +41,7 @@ env:
       id: pane-terminal
     timeout: 30000
 - takeScreenshot: 02-데스크탑-변경-후-재연결
+- runFlow: ../subflows/opens-task-menu.yaml
 - tapOn:
     id: change-session-type
 - extendedWaitUntil:
@@ -60,6 +62,7 @@ env:
     visible:
       id: pane-terminal
     timeout: 30000
+- runFlow: ../subflows/opens-task-menu.yaml
 - tapOn:
     id: change-session-type
 - extendedWaitUntil:

@@ -39,6 +39,48 @@ class _DesktopConnectionsScreenState
     }
   }
 
+  Future<void> _rename(DesktopConnection connection) async {
+    if (_busyId != null) return;
+    setState(() => _busyId = connection.id);
+    var name = connection.name;
+    try {
+      final newName = await showDialog<String>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('PC 이름 수정'),
+          content: TextFormField(
+            initialValue: name,
+            autofocus: true,
+            decoration: const InputDecoration(
+              labelText: 'PC 이름 (선택)',
+              helperText: '비워 두면 주소를 표시합니다.',
+            ),
+            onChanged: (value) => name = value,
+            onFieldSubmitted: (value) => Navigator.of(context).pop(value),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('취소'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(name),
+              child: const Text('저장'),
+            ),
+          ],
+        ),
+      );
+      if (newName == null || !mounted) return;
+      await ref
+          .read(connectionControllerProvider.notifier)
+          .rename(connection.id, newName);
+    } catch (_) {
+      if (mounted) _showMessage('PC 이름을 저장하지 못했습니다. 다시 시도해 주세요.');
+    } finally {
+      if (mounted) setState(() => _busyId = null);
+    }
+  }
+
   Future<void> _remove(DesktopConnection connection) async {
     if (_busyId != null) return;
     final confirmed = await showDialog<bool>(
@@ -187,6 +229,13 @@ class _DesktopConnectionsScreenState
                                 color: AppColors.brandPrimary,
                                 semanticLabel: '현재 PC',
                               ),
+                            IconButton(
+                              onPressed: _busyId == null
+                                  ? () => _rename(connection)
+                                  : null,
+                              tooltip: '${connection.displayName} 이름 수정',
+                              icon: const Icon(Icons.edit_outlined),
+                            ),
                             IconButton(
                               onPressed: _busyId == null
                                   ? () => _remove(connection)

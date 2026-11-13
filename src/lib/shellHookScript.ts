@@ -12,6 +12,7 @@ export type ShellHookStatus = "progress" | "pending" | "review" | "done";
  * 응답하지 않는 client 하나가 hook 전체를 붙잡지 않도록 통보에 상한을 둔다.
  */
 const HOOK_NOTIFY_TIMEOUT_SECONDS = 3;
+const HOOK_CHAT_PAYLOAD_MAX_BYTES = 64 * 1_024;
 
 function escapeShellDoubleQuotedValue(value: string) {
   return value
@@ -43,8 +44,17 @@ export interface ShellTaskIdBindingStatus {
  * hook이 상태를 status.json에 기록하고 targets.json의 모든 client에 병렬로 통보하는 shell 조각을 만든다.
  * 프로젝트 색상은 project.json에 따로 있으므로 이 경로에서는 건드리지 않는다.
  */
-export function buildShellKanvibeStatusUpdater(status: ShellHookStatus) {
+export function buildShellKanvibeStatusUpdater(status: ShellHookStatus, provider?: "claude" | "codex") {
+  const agentMetadata = provider ? [
+    'KANVIBE_AGENT_SESSION_JSON=',
+    // 남은 stdin도 비워야 큰 hook 본문을 쓰는 CLI에 broken pipe가 발생하지 않는다.
+    `KANVIBE_HOOK_PAYLOAD_BASE64="$(if [ ! -t 0 ]; then { command -p head -c ${HOOK_CHAT_PAYLOAD_MAX_BYTES}; command -p cat >/dev/null; } 2>/dev/null | base64 | tr -d "\\r\\n"; fi)"`,
+    'if [ -n "${KANVIBE_HOOK_PAYLOAD_BASE64}" ]; then',
+    `  KANVIBE_AGENT_SESSION_JSON=",\\"agentSession\\":{\\"provider\\":\\"${provider}\\",\\"hookPid\\":$$,\\"payloadBase64\\":\\"\${KANVIBE_HOOK_PAYLOAD_BASE64}\\"}"`,
+    'fi',
+  ].join("\n") : "KANVIBE_AGENT_SESSION_JSON=";
   return `KANVIBE_STATUS="${status}"
+${agentMetadata}
 KANVIBE_REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || (cd "$(dirname "\${BASH_SOURCE[0]}")/../.." && pwd))"
 KANVIBE_STATE_DIR="\${KANVIBE_REPO_ROOT}/.kanvibe"
 KANVIBE_TASK_STATE_FILE="\${KANVIBE_STATE_DIR}/status.json"
@@ -89,7 +99,7 @@ ${buildShellHookTransportResolver()}
 kanvibe_post_status() {
   curl -fsS --max-time ${HOOK_NOTIFY_TIMEOUT_SECONDS} -X POST "$@" --url "\${KANVIBE_TARGET_URL%/}/api/hooks/status" \
     -H "Content-Type: application/json" \
-    -d "{\\"taskId\\": \\"\${KANVIBE_TARGET_TASK_ID}\\", \\"status\\": \\"${status}\\"}"
+    -d "{\\"taskId\\": \\"\${KANVIBE_TARGET_TASK_ID}\\", \\"status\\": \\"${status}\\"\${KANVIBE_AGENT_SESSION_JSON}}"
 }
 
 printf '%s\n' "\${KANVIBE_TARGET_ROWS}" | {

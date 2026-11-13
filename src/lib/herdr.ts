@@ -5,7 +5,7 @@ import { tmpdir } from "os";
 import path from "path";
 import { setTimeout as delay } from "timers/promises";
 import { PaneLayoutType } from "@/entities/PaneLayoutConfig";
-import { execGit, isSSHTransportError } from "@/lib/gitOperations";
+import { execGit, isSSHConnectionError } from "@/lib/gitOperations";
 import type { TmuxPaneLayoutConfig } from "@/lib/worktree";
 import { buildSSHArgs, getKanvibeSSHConnectionHealthOptions, parseSSHConfig } from "@/lib/sshConfig";
 import { quoteShellArgument, readTextFile, updateTextFile } from "@/lib/hostFileAccess";
@@ -16,9 +16,10 @@ import type { AiSessionProvider, RunningAgentPane } from "@/lib/aiSessions/types
 
 const HERDR_COMMAND_TIMEOUT_MS = 5_000;
 const HERDR_START_TIMEOUT_MS = 30_000;
-const sessionBootstraps = new Map<string, Promise<void>>();
-const sharedBootstraps = new Map<string, Promise<void>>();
+const sessionBootstraps = new Map<string, Promise<string | null>>();
+const sharedBootstraps = new Map<string, Promise<string | null>>();
 const workspaceMappingPaths = new Map<string, string>();
+let remoteMachineRegistration = Promise.resolve();
 
 const HERDR_EXECUTABLE = `"$(command -v herdr || printf '%s' "$HOME/.local/bin/herdr")"`;
 
@@ -43,6 +44,43 @@ export function buildHerdrClientCommand(sessionName: string, socketPath: string)
   const { serverName } = parseHerdrSessionTarget(sessionName);
   // --session은 client socket override를 무시하므로 이 클라이언트의 env로만 지정한다.
   return `env -u HERDR_ENV -u HERDR_SOCKET_PATH -u HERDR_PANE_ID -u HERDR_WORKSPACE_ID -u HERDR_TAB_ID HERDR_SESSION=${quoteShellArgument(serverName)} HERDR_CLIENT_SOCKET_PATH=${quoteShellArgument(socketPath)} ${HERDR_EXECUTABLE} client`;
+}
+
+export async function readHerdrClientTabBarPosition(sshHost?: string): Promise<"top" | "bottom" | null> {
+  try {
+    const configPath = await execGit('printf "%s" "${HERDR_CONFIG_PATH:-${XDG_CONFIG_HOME:-$HOME/.config}/herdr/config.toml}"', sshHost, { timeoutMs: HERDR_COMMAND_TIMEOUT_MS });
+    if (!path.posix.isAbsolute(configPath)) return null;
+    const target = quoteShellArgument(configPath);
+    const content = await execGit(`if test -e ${target}; then cat ${target}; fi`, sshHost, { timeoutMs: HERDR_COMMAND_TIMEOUT_MS });
+    let section = "";
+    let position: "top" | "bottom" = "top";
+    let foundPosition = false;
+    for (const original of content.split(/\r?\n/)) {
+      const line = original.trim();
+      if (!line || line.startsWith("#")) continue;
+      // 해석할 수 없는 TOML에서 위치를 추측하면 pane 밖을 덮을 수 있다.
+      if (line.includes('"""') || line.includes("'''")) return null;
+      if (line.startsWith("[")) {
+        const table = /^\[([^\]]+)\]\s*(?:#.*)?$/.exec(line);
+        if (table?.[1].includes("\\")) return null;
+        section = table?.[1].trim().replace(/^(["'])(.*)\1$/, "$2") ?? "";
+        continue;
+      }
+      if (!section && /^(?:ui|"ui"|'ui')\s*=/.test(line)) return null;
+      if (section === "ui" && /^["'][^=]*\\/.test(line)) return null;
+      const key = section === "ui"
+        ? /^(?:tab_bar_position|"tab_bar_position"|'tab_bar_position')\s*=\s*(.*)$/.exec(line)
+        : !section ? /^(?:ui|"ui"|'ui')\s*\.\s*(?:tab_bar_position|"tab_bar_position"|'tab_bar_position')\s*=\s*(.*)$/.exec(line) : null;
+      if (!key) continue;
+      const value = /^(?:"(top|bottom)"|'(top|bottom)')\s*(?:#.*)?$/.exec(key[1]);
+      if (!value || foundPosition) return null;
+      position = (value[1] ?? value[2]) as "top" | "bottom";
+      foundPosition = true;
+    }
+    return position;
+  } catch {
+    return null;
+  }
 }
 
 interface HerdrTab {
@@ -90,7 +128,11 @@ export async function runHerdrCommand<T>(
       arguments_ = [...arguments_, "--workspace", workspaceId!];
     }
   }
-  const output = await execGit(buildHerdrCommand(sessionName, arguments_), sshHost, { timeoutMs: HERDR_COMMAND_TIMEOUT_MS, shouldLogFailure });
+  const output = await execGit(buildHerdrCommand(sessionName, arguments_), sshHost, {
+    timeoutMs: HERDR_COMMAND_TIMEOUT_MS,
+    retrySafe: arguments_[1] === "list" || (arguments_[0] === "pane" && ["get", "layout"].includes(arguments_[1])),
+    shouldLogFailure,
+  });
   // send-text는 전송 성공 시 본문을 출력하지 않는다.
   if (!output && arguments_[0] === "pane" && arguments_[1] === "send-text") return undefined as T;
   return readHerdrResult<T>(output);
@@ -160,6 +202,20 @@ export async function listHerdrMirrorPanes(sessionName: string, sshHost?: string
     }));
   }));
   return panesByTab.flat();
+}
+
+export async function readHerdrTaskPaneSize(
+  sessionName: string, paneId: string, sshHost?: string | null,
+): Promise<{ cols: number; rows: number } | null> {
+  const { pane } = await runHerdrCommand<{ pane: HerdrPane | null }>(sessionName, ["pane", "get", paneId], sshHost);
+  if (!pane || pane.restore_error || pane.pane_id !== paneId) return null;
+  const { layout } = await runHerdrCommand<{ layout: HerdrTabLayout }>(sessionName, ["pane", "layout", "--pane", paneId], sshHost);
+  const rect = layout.panes.find((entry) => entry.pane_id === paneId)?.rect;
+  if (!rect) return null;
+  const cols = layout.zoomed && layout.focused_pane_id === paneId ? layout.area.width : rect.width;
+  const rows = pane.scroll?.viewport_rows;
+  if (![cols, rows].every((size) => Number.isInteger(size) && size > 0)) return null;
+  return { cols, rows };
 }
 
 /** 실행 명령은 탭 이름 표시용이라 읽지 못해도 pane 목록을 막지 않는다 */
@@ -257,7 +313,7 @@ export function ensureHerdrSession(
   cwd: string,
   layout?: TmuxPaneLayoutConfig | null,
   sshHost?: string | null,
-): Promise<void> {
+): Promise<string | null> {
   const key = JSON.stringify([sshHost ?? null, sessionName]);
   const current = sessionBootstraps.get(key);
   if (current) return current;
@@ -271,6 +327,21 @@ export function ensureHerdrSession(
   if (parseHerdrSessionTarget(sessionName).workspaceKey) sharedBootstraps.set(sharedKey, bootstrap);
   sessionBootstraps.set(key, bootstrap);
   return bootstrap;
+}
+
+export function ensureHerdrRemoteMachine(sessionName: string, sshHost: string): Promise<void> {
+  const { serverName } = parseHerdrSessionTarget(sessionName);
+  remoteMachineRegistration = remoteMachineRegistration.catch(() => {}).then(async () => {
+    const machines: { target: string; session: string }[] = JSON.parse(await execGit(
+      buildHerdrCommand(serverName, ["machine", "list", "--json"]), null, { timeoutMs: HERDR_COMMAND_TIMEOUT_MS },
+    ));
+    if (machines.some((machine) => machine.target === sshHost && machine.session === serverName)) return;
+    await execGit(
+      `${buildHerdrCommand(serverName, ["machine", "add", sshHost, "--remote-session", serverName])} </dev/null`,
+      null, { timeoutMs: HERDR_START_TIMEOUT_MS },
+    );
+  });
+  return remoteMachineRegistration;
 }
 
 async function startHerdrServer(sessionName: string, sshHost?: string | null): Promise<void> {
@@ -294,13 +365,13 @@ async function startHerdrServer(sessionName: string, sshHost?: string | null): P
   });
 }
 
-async function bootstrapHerdrSession(sessionName: string, cwd: string, layout?: TmuxPaneLayoutConfig | null, sshHost?: string | null): Promise<void> {
+async function bootstrapHerdrSession(sessionName: string, cwd: string, layout?: TmuxPaneLayoutConfig | null, sshHost?: string | null): Promise<string | null> {
   const { serverName, workspaceKey } = parseHerdrSessionTarget(sessionName);
   let workspaces: { workspace_id: string }[];
   try {
     ({ workspaces } = await runHerdrCommand<{ workspaces: { workspace_id: string }[] }>(serverName, ["workspace", "list"], sshHost));
   } catch (error) {
-    if (isSSHTransportError(error)) throw error;
+    if (isSSHConnectionError(error)) throw error;
     await startHerdrServer(serverName, sshHost);
     const deadline = Date.now() + HERDR_START_TIMEOUT_MS;
     for (;;) {
@@ -308,30 +379,58 @@ async function bootstrapHerdrSession(sessionName: string, cwd: string, layout?: 
         ({ workspaces } = await runHerdrCommand<{ workspaces: { workspace_id: string }[] }>(serverName, ["workspace", "list"], sshHost));
         break;
       } catch (startError) {
-        if (isSSHTransportError(startError) || Date.now() >= deadline) throw startError;
+        if (isSSHConnectionError(startError) || Date.now() >= deadline) throw startError;
         await delay(100);
       }
     }
   }
   if (!workspaceKey) {
-    if (workspaces.length === 0) await createHerdrWorkspace(serverName, cwd, layout, null, sshHost);
-    return;
+    if (workspaces.length === 0 || !(await closeUnrestorableHerdrPanes(serverName, null, sshHost))) {
+      await createHerdrWorkspace(serverName, cwd, layout, null, sshHost);
+    }
+    return null;
   }
   const mappingPath = await getWorkspaceMappingPath(sshHost);
-  parseWorkspaceMapping(await readTextFile(mappingPath, sshHost));
+  const mapping = parseWorkspaceMapping(await readTextFile(mappingPath, sshHost));
+  if (Object.hasOwn(mapping, workspaceKey) && workspaces.some((space) => space.workspace_id === mapping[workspaceKey])
+    && await closeUnrestorableHerdrPanes(serverName, mapping[workspaceKey], sshHost)) {
+    return mapping[workspaceKey];
+  }
+  let workspaceId: string | null = null;
   let createdId: string | undefined;
   try {
     await updateTextFile(mappingPath, async (content) => {
       const mapping = parseWorkspaceMapping(content);
       const live = await runHerdrCommand<{ workspaces: { workspace_id: string }[] }>(serverName, ["workspace", "list"], sshHost);
-      if (Object.hasOwn(mapping, workspaceKey) && live.workspaces.some((space) => space.workspace_id === mapping[workspaceKey])) return content;
+      if (Object.hasOwn(mapping, workspaceKey) && live.workspaces.some((space) => space.workspace_id === mapping[workspaceKey])) {
+        workspaceId = mapping[workspaceKey];
+        return content;
+      }
       createdId = await createHerdrWorkspace(serverName, cwd, layout, workspaceKey, sshHost);
+      workspaceId = createdId;
       return JSON.stringify({ ...mapping, [workspaceKey]: createdId });
     }, sshHost, 0o600);
   } catch (error) {
     if (createdId) await runHerdrCommand(serverName, ["workspace", "close", createdId], sshHost);
     throw error;
   }
+  return workspaceId;
+}
+
+/**
+ * 저장된 작업 경로가 사라져 Herdr가 복원하지 못한 pane을 닫는다.
+ * 이런 pane은 프로세스 없이 오류 문구만 보여 주고 Herdr에 다시 띄우는 명령도 없어서, 닫는 것 말고는 되살릴 방법이 없다.
+ * workspaceId가 있으면 공유 서버에서 그 task Space의 pane만 다루고, 없으면 task 전용 서버의 pane 전체를 다룬다.
+ * 반환값은 정상 pane이 하나라도 남았는지다. 모두 닫혔다면 Herdr가 workspace도 함께 닫으므로 호출자가 새로 만들어야 한다.
+ */
+async function closeUnrestorableHerdrPanes(serverName: string, workspaceId: string | null, sshHost?: string | null): Promise<boolean> {
+  const { panes } = await runHerdrCommand<{ panes: HerdrPane[] }>(serverName, ["pane", "list"], sshHost);
+  const workspacePanes = workspaceId ? panes.filter((pane) => pane.pane_id.startsWith(`${workspaceId}:`)) : panes;
+  const unrestorablePanes = workspacePanes.filter((pane) => pane.restore_error);
+  for (const pane of unrestorablePanes) {
+    await runHerdrCommand(serverName, ["pane", "close", pane.pane_id], sshHost);
+  }
+  return unrestorablePanes.length < workspacePanes.length;
 }
 
 async function createHerdrWorkspace(serverName: string, cwd: string, layout: TmuxPaneLayoutConfig | null | undefined, workspaceKey: string | null, sshHost?: string | null): Promise<string> {
@@ -387,7 +486,7 @@ async function applyHerdrLayout(sessionName: string, rootPaneId: string, cwd: st
 }
 
 async function listHerdrSessions(sshHost?: string | null): Promise<HerdrSession[]> {
-  const output = await execGit(buildHerdrCommand("default", ["session", "list", "--json"]), sshHost, { timeoutMs: HERDR_COMMAND_TIMEOUT_MS });
+  const output = await execGit(buildHerdrCommand("default", ["session", "list", "--json"]), sshHost, { timeoutMs: HERDR_COMMAND_TIMEOUT_MS, retrySafe: true });
   const response = JSON.parse(output);
   if (!Array.isArray(response.sessions)) throw new Error("Herdr 세션 목록이 올바르지 않습니다.");
   return response.sessions;

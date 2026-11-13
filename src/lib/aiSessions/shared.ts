@@ -6,6 +6,7 @@ import { execGit } from "@/lib/gitOperations";
 import { getFileMtimeMs, quoteShellArgument, readTextFile } from "@/lib/hostFileAccess";
 import type {
   AggregatedAiMessage,
+  AiMessageAttachment,
   AggregatedAiSession,
   AiMessageRole,
   AiSessionMatchScope,
@@ -95,7 +96,8 @@ export function sortSessionsDescending(sessions: AggregatedAiSession[]): Aggrega
 }
 
 export function sortMessagesDescending(messages: AggregatedAiMessage[]): AggregatedAiMessage[] {
-  return [...messages].sort((left, right) => {
+  // 같은 시각에도 나중에 추가된 기록을 먼저 반환해야 화면에서 뒤집을 때 원래 대화 순서가 된다.
+  return [...messages].reverse().sort((left, right) => {
     const leftValue = Date.parse(left.timestamp ?? "");
     const rightValue = Date.parse(right.timestamp ?? "");
 
@@ -298,9 +300,9 @@ export function extractPlainText(value: unknown): string {
   return "";
 }
 
-export function makePreviewMessage(role: AiMessageRole, timestamp: unknown, text: string): AggregatedAiMessage | null {
+export function makePreviewMessage(role: AiMessageRole, timestamp: unknown, text: string, attachments: AiMessageAttachment[] = []): AggregatedAiMessage | null {
   const truncated = createTruncatedText(text);
-  if (!truncated.fullText) return null;
+  if (!truncated.fullText && !attachments.length) return null;
 
   return {
     role,
@@ -308,6 +310,7 @@ export function makePreviewMessage(role: AiMessageRole, timestamp: unknown, text
     text: truncated.previewText,
     fullText: truncated.fullText,
     isTruncated: truncated.isTruncated,
+    ...(attachments.length ? { attachments } : {}),
   };
 }
 

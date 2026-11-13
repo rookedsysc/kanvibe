@@ -3,6 +3,7 @@
  */
 import { EventEmitter } from "node:events";
 import http from "node:http";
+import https from "node:https";
 import net from "node:net";
 import { createRequire } from "node:module";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -13,6 +14,7 @@ const { handleMobileRequest, attachMobileStreamServer } = require("./mobileRoute
 const { MAX_BODY_BYTES, readJsonBody } = require("./httpBody");
 
 const HOST = "127.0.0.1";
+const transportCertificate = require("selfsigned").generate([{ name: "commonName", value: HOST }], { keySize: 2048 });
 
 let bridge;
 let server;
@@ -45,6 +47,8 @@ function createBridge(overrides = {}) {
     pairMobileDevice: vi.fn(async () => "paired-token"),
     unpairMobileDeviceByToken: vi.fn(async () => true),
     getMobileBoard: vi.fn(async () => ({ columns: [] })),
+    getMobileDirectories: vi.fn(async () => ["Documents", "Projects"]),
+    scanMobileProjects: vi.fn(async () => ({ registered: ["kanvibe"], skipped: [], errors: [], worktreeTasks: [], registeredWorktrees: [], hooksSetup: [] })),
     getMobileTask: vi.fn(async () => ({ id: "task-1", title: "알림 태스크", projectName: "kanvibe" })),
     getMobileNotificationSettings: vi.fn(async () => ({ isEnabled: true, enabledStatuses: ["review"] })),
     updateMobileNotificationSettings: vi.fn(async (settings) => settings),
@@ -61,6 +65,8 @@ function createBridge(overrides = {}) {
     updateMobileNotificationSubscription: vi.fn(async () => true),
     deleteMobileNotificationSubscription: vi.fn(async () => true),
     getTaskSurfaces: vi.fn(async () => ({ panes: [] })),
+    prepareMobilePaneConnection: vi.fn(async () => null),
+    openRemoteMobilePaneStream: vi.fn(async () => null),
     createMobileTerminalTab: vi.fn(async () => ({
       surfaces: { taskId: "task-1", sessionType: "tmux", canResize: true, tabs: [] },
       paneId: "%20",
@@ -90,16 +96,18 @@ function createBridge(overrides = {}) {
 }
 
 /** hookServer와 같은 방식으로 얹어야 "우리 경로가 아니면 false" 계약까지 같이 검증된다 */
-function startServer({ isDevPairingRouteEnabled = false } = {}) {
+async function startServer({ isDevPairingRouteEnabled = false, secure = false } = {}) {
+  const certificate = secure ? await transportCertificate : null;
   return new Promise((resolve) => {
     openSockets = [];
-    const created = http.createServer(async (request, response) => {
+    const listener = async (request, response) => {
       if (await handleMobileRequest(request, response, { bridge, host: HOST, port, isDevPairingRouteEnabled })) {
         return;
       }
       response.writeHead(200, { "Content-Type": "application/json" });
       response.end(JSON.stringify({ handledBy: "hook-fallthrough" }));
-    });
+    };
+    const created = secure ? https.createServer({ cert: certificate.cert, key: certificate.private }, listener) : http.createServer(listener);
     created.on("connection", (socket) => openSockets.push(socket));
     streamServer = attachMobileStreamServer(created, {
       bridge,
@@ -121,7 +129,8 @@ function startServer({ isDevPairingRouteEnabled = false } = {}) {
 
 function request(path, { method = "GET", headers = {}, body } = {}) {
   return new Promise((resolve, reject) => {
-    const clientRequest = http.request({ host: HOST, port, path, method, headers }, (response) => {
+    const transport = server instanceof https.Server ? https : http;
+    const clientRequest = transport.request({ host: HOST, port, path, method, headers, rejectUnauthorized: false }, (response) => {
       let raw = "";
       response.setEncoding("utf8");
       response.on("data", (chunk) => {
@@ -313,7 +322,7 @@ describe("모바일 상태 알림 경로", () => {
     const event = { type: "task-status-changed", eventId: "event-1", taskId: "task-1", title: "kanvibe", body: "review", status: "review", createdAt: "2026-10-23T00:00:00Z" };
     mobileEventListeners.forEach((listener) => { listener({ type: "board-updated" }); listener(event); });
     await waitFor(() => messages.length === 3);
-    expect(messages).toEqual([{ type: "connected", commands: ["delete-task", "remove-task-registration", "get-tab-close-info", "close-tab"] }, { type: "board-updated" }, event]);
+    expect(messages).toEqual([{ type: "connected", commands: ["delete-task", "remove-task-registration", "get-tab-close-info", "close-tab", "start-session"] }, { type: "board-updated" }, event]);
     expect(bridge.subscribeToPane).not.toHaveBeenCalled();
     notifyUnpaired("device-second");
     expect(client.readyState).toBe(WebSocket.OPEN);
@@ -362,10 +371,36 @@ describe("상태 WebSocket 명령", () => {
     return messages.find((message) => message.requestId === requestId);
   }
 
+  it("세션 시작 명령은 준비된 pane을 요청한 소켓에 돌려준다", async () => {
+    const { client, messages } = await connectEvents();
+    const surfaces = { taskId: "task-1", sessionType: "herdr", canResize: true, tabs: [{ id: "w1:t1", panes: [{ id: "w1:p1", command: "codex" }] }] };
+    bridge.getTaskSurfaces.mockResolvedValue(surfaces);
+
+    sendCommand(client, { command: "start-session", taskId: "task-1" });
+
+    expect(await nextResult(messages)).toEqual({ type: "command-result", requestId: "r1", ok: true, surfaces });
+  });
+
+  it.each(["", null, 1])("세션 시작은 잘못된 taskId %s를 거절한다", async (taskId) => {
+    const { client, messages } = await connectEvents();
+    sendCommand(client, { command: "start-session", taskId });
+
+    expect(await nextResult(messages)).toMatchObject({ ok: false, code: "invalid-command" });
+    expect(bridge.getTaskSurfaces).not.toHaveBeenCalled();
+  });
+
+  it.each(["herdr-missing", "remote-unreachable", "session-not-running", "no-session"])("세션 시작 실패 사유 %s를 유지한다", async (reason) => {
+    const { client, messages } = await connectEvents();
+    bridge.getTaskSurfaces.mockRejectedValue(Object.assign(new Error(reason), { name: "SurfaceUnavailableError", reason }));
+    sendCommand(client, { command: "start-session", taskId: "task-1" });
+
+    expect(await nextResult(messages)).toMatchObject({ ok: false, code: reason, error: "세션을 시작하지 못했습니다" });
+  });
+
   it("연결 확인에 지원하는 명령 목록을 싣는다", async () => {
     const { messages } = await connectEvents();
 
-    expect(messages[0]).toEqual({ type: "connected", commands: ["delete-task", "remove-task-registration", "get-tab-close-info", "close-tab"] });
+    expect(messages[0]).toEqual({ type: "connected", commands: ["delete-task", "remove-task-registration", "get-tab-close-info", "close-tab", "start-session"] });
   });
 
   it("삭제 결과는 요청한 소켓에만 돌려주고 다른 기기의 소켓에는 보내지 않는다", async () => {
@@ -546,7 +581,7 @@ describe("모바일 알림함 경로", () => {
     notificationChangeListeners.forEach((listener) => listener());
 
     await waitFor(() => firstMessages.length === 2 && secondMessages.length === 2);
-    expect(firstMessages).toEqual([{ type: "connected", commands: ["delete-task", "remove-task-registration", "get-tab-close-info", "close-tab"] }, { type: "notifications-changed" }]);
+    expect(firstMessages).toEqual([{ type: "connected", commands: ["delete-task", "remove-task-registration", "get-tab-close-info", "close-tab", "start-session"] }, { type: "notifications-changed" }]);
     expect(secondMessages).toEqual(firstMessages);
     first.close();
     second.close();
@@ -1465,4 +1500,263 @@ it("실제 Codex fixture 리더의 목록과 상세가 HTTP 계약으로 이어�
     vi.unstubAllEnvs();
     await rm(home, { recursive: true, force: true });
   }
+});
+
+
+describe("모바일 프로젝트 폴더 등록", () => {
+  const headers = { Authorization: "Bearer good" };
+  const scan = (body, requestHeaders = headers) => request("/api/mobile/projects/scan", {
+    method: "POST", headers: requestHeaders, body: JSON.stringify(body),
+  });
+
+  it("연결된 PC의 홈 폴더부터 하위 폴더 이름을 조회한다", async () => {
+    const response = await request("/api/mobile/directories", { headers });
+    expect(response).toEqual({ status: 200, body: { success: true, directories: ["Documents", "Projects"] } });
+    expect(bridge.getMobileDirectories).toHaveBeenCalledWith("~");
+    await request("/api/mobile/directories?path=%2Fworkspace%2Fspace%20repo", { headers });
+    expect(bridge.getMobileDirectories).toHaveBeenLastCalledWith("/workspace/space repo");
+  });
+
+  it("인증 없이는 폴더 조회와 프로젝트 등록을 모두 막는다", async () => {
+    expect((await request("/api/mobile/directories")).status).toBe(401);
+    expect((await scan({ rootPath: "/workspace" }, {})).status).toBe(401);
+    expect(bridge.getMobileDirectories).not.toHaveBeenCalled();
+    expect(bridge.scanMobileProjects).not.toHaveBeenCalled();
+  });
+
+  it("선택한 폴더만 기존 스캔 서비스에 넘기고 등록 결과를 반환한다", async () => {
+    const response = await scan({ rootPath: "~/Projects", sshHost: "unselected-host" });
+    expect(response.status).toBe(200);
+    expect(response.body.result.registered).toEqual(["kanvibe"]);
+    expect(bridge.scanMobileProjects).toHaveBeenCalledWith("~/Projects");
+  });
+
+  it.each([{}, { rootPath: "" }, { rootPath: "   " }, { rootPath: 42 }, null, []])("등록 경로 없는 본문 %j를 거절한다", async (body) => {
+    expect((await scan(body)).status).toBe(400);
+    expect(bridge.scanMobileProjects).not.toHaveBeenCalled();
+  });
+
+  it("잘못된 JSON은 서비스를 부르지 않고 거절한다", async () => {
+    const response = await request("/api/mobile/projects/scan", { method: "POST", headers, body: "{" });
+    expect(response.status).toBe(400);
+    expect(bridge.scanMobileProjects).not.toHaveBeenCalled();
+  });
+
+  it("이미 등록된 폴더는 재시도해도 skipped 결과를 그대로 보여 준다", async () => {
+    bridge.scanMobileProjects.mockResolvedValue({ registered: [], skipped: ["/workspace/kanvibe"], errors: [], worktreeTasks: [], registeredWorktrees: [], hooksSetup: [] });
+    expect((await scan({ rootPath: "/workspace" })).body.result.skipped).toEqual(["/workspace/kanvibe"]);
+  });
+
+  it("없는 폴더는 서비스가 제공한 안전한 안내로 응답한다", async () => {
+    bridge.getMobileDirectories.mockRejectedValue(inputError("폴더를 찾을 수 없습니다"));
+    const response = await request("/api/mobile/directories?path=%2Fmissing", { headers });
+    expect(response).toEqual({ status: 400, body: { success: false, error: "폴더를 찾을 수 없습니다" } });
+  });
+
+  it("내부 스캔 오류 메시지는 네트워크 응답에서 숨긴다", async () => {
+    bridge.scanMobileProjects.mockRejectedValue(new Error("secret filesystem path"));
+    const response = await scan({ rootPath: "/workspace" });
+    expect(response).toEqual({ status: 500, body: { success: false, error: "서버 오류" } });
+  });
+});
+
+describe("현재 pane 채팅 인증 및 대상 경계", () => {
+  const headers = { authorization: "Bearer good", "Content-Type": "application/json" };
+  beforeEach(() => {
+    bridge.getPaneChatSnapshot = vi.fn(async () => ({ taskId: "task-1", paneId: "%3", canSend: true, inputState: "ready", targetToken: "opaque-token" }));
+    bridge.sendPaneChatPrompt = vi.fn(async () => ({ success: true }));
+    bridge.interruptPaneChat = vi.fn(async () => ({ success: true }));
+  });
+  it("인증된 기기는 요청한 정확한 pane 스냅샷을 읽는다", async () => {
+    const result = await request("/api/mobile/tasks/task-1/pane-chat?paneId=%253", { headers });
+    expect(result).toMatchObject({ status: 200, body: { success: true, snapshot: { paneId: "%3", targetToken: "opaque-token" } } });
+    expect(bridge.getPaneChatSnapshot).toHaveBeenCalledWith("task-1", "%3");
+  });
+  it("토큰 없는 기기는 스냅샷과 메시지 전송에 접근할 수 없다", async () => {
+    expect((await request("/api/mobile/tasks/task-1/pane-chat")).status).toBe(401);
+    expect((await request("/api/mobile/tasks/task-1/pane-chat/prompt", { method: "POST", body: JSON.stringify({ targetToken: "opaque-token", text: "Hi" }) })).status).toBe(401);
+    expect(bridge.getPaneChatSnapshot).not.toHaveBeenCalled();
+    expect(bridge.sendPaneChatPrompt).not.toHaveBeenCalled();
+  });
+  it("인증과 대상 토큰을 보존해 메시지를 서비스에 전달한다", async () => {
+    const result = await request("/api/mobile/tasks/task-1/pane-chat/prompt", { method: "POST", headers, body: JSON.stringify({ targetToken: "opaque-token", text: "First\nSecond" }) });
+    expect(result).toEqual({ status: 200, body: { success: true } });
+    expect(bridge.sendPaneChatPrompt).toHaveBeenCalledWith("task-1", "opaque-token", "First\nSecond");
+  });
+  it("대상이 교체되면 충돌을 반환하고 빈 토큰은 거부한다", async () => {
+    bridge.interruptPaneChat.mockRejectedValue(Object.assign(new Error("대상 변경"), { name: "PaneChatTargetChangedError" }));
+    expect(await request("/api/mobile/tasks/task-1/pane-chat/interrupt", { method: "POST", headers, body: JSON.stringify({ targetToken: "stale-token" }) })).toEqual({ status: 409, body: { success: false, error: "대상 변경", reason: "target-changed" } });
+    expect((await request("/api/mobile/tasks/task-1/pane-chat/prompt", { method: "POST", headers, body: JSON.stringify({ text: "Hi" }) })).status).toBe(400);
+    expect(bridge.sendPaneChatPrompt).not.toHaveBeenCalled();
+  });
+});
+
+describe("채팅 composer 첨부와 자동완성 HTTP", () => {
+  const headers = { authorization: "Bearer good", "Content-Type": "application/json" };
+  beforeEach(() => {
+    bridge.stagePaneChatAttachment = vi.fn(async () => ({ id: "owned-id", name: "file.txt", mimeType: "text/plain", kind: "file", sizeBytes: 65537 }));
+    bridge.removePaneChatAttachment = vi.fn(async () => ({ success: true }));
+    bridge.getPaneChatSuggestions = vi.fn(async () => ({ targetToken: "token", items: [{ id: "skill:review", label: "review", description: "Review", insertText: "$review" }], truncated: false }));
+    bridge.sendPaneChatPrompt = vi.fn(async () => ({ success: true }));
+    bridge.getMobileAiSessionAttachment = vi.fn(async () => ({ id: "image-id", name: "image.png", mimeType: "image/png", dataUrl: "data:image/png;base64,aGVsbG8=" }));
+    bridge.isMobileAiSessionProvider = vi.fn((provider) => ["claude", "codex"].includes(provider));
+  });
+  it("인증 업로드만 기존 64KiB를 넘는 첨부 본문을 읽고 토큰을 보존한다", async () => {
+    const attachment = { name: "file.txt", mimeType: "text/plain", dataUrl: `data:text/plain;base64,${Buffer.alloc(65537).toString("base64")}` };
+    const result = await request("/api/mobile/tasks/task-1/pane-chat/attachments", { method: "POST", headers, body: JSON.stringify({ targetToken: "token", attachment }) });
+    expect(result).toMatchObject({ status: 200, body: { success: true, attachment: { id: "owned-id" } } });
+    expect(bridge.stagePaneChatAttachment).toHaveBeenCalledWith("task-1", "token", attachment);
+    expect((await request("/api/mobile/tasks/task-1/pane-chat/attachments", { method: "POST", body: JSON.stringify({ targetToken: "token", attachment }) })).status).toBe(401);
+    expect(bridge.stagePaneChatAttachment).toHaveBeenCalledTimes(1);
+  });
+  it("첨부 삭제와 검색에 같은 대상 토큰을 사용한다", async () => {
+    const body = JSON.stringify({ targetToken: "token", id: "owned-id" });
+    expect((await request("/api/mobile/tasks/task-1/pane-chat/attachments", { method: "DELETE", headers: { ...headers, "Content-Length": Buffer.byteLength(body) }, body })).status).toBe(200);
+    expect(bridge.removePaneChatAttachment).toHaveBeenCalledWith("task-1", "token", "owned-id");
+    const result = await request("/api/mobile/tasks/task-1/pane-chat/suggestions?targetToken=token&kind=skill&query=review", { headers });
+    expect(result).toMatchObject({ status: 200, body: { targetToken: "token", items: [{ insertText: "$review" }] } });
+    expect(bridge.getPaneChatSuggestions).toHaveBeenCalledWith("task-1", "token", "skill", "review");
+  });
+  it("첨부 ID와 중복 방지 식별자를 메시지와 함께 전달한다", async () => {
+    await request("/api/mobile/tasks/task-1/pane-chat/prompt", { method: "POST", headers, body: JSON.stringify({ targetToken: "token", text: "caption", attachmentIds: ["owned-id"], requestId: "once" }) });
+    expect(bridge.sendPaneChatPrompt).toHaveBeenCalledWith("task-1", "token", "caption", ["owned-id"], "once");
+  });
+  it("활성 CLI 없이 인증된 히스토리 첨부만 가져오고 누락 파일을 구분한다", async () => {
+    const url = "/api/mobile/tasks/task-1/ai-sessions/codex/session-1/attachments/image-id";
+    expect((await request(url)).status).toBe(401);
+    expect(bridge.getMobileAiSessionAttachment).not.toHaveBeenCalled();
+    expect((await request(url, { headers })).body.attachment).toMatchObject({ id: "image-id", mimeType: "image/png" });
+    expect(bridge.getMobileAiSessionAttachment).toHaveBeenCalledWith("task-1", "codex", "session-1", "image-id", undefined);
+    bridge.getMobileAiSessionAttachment.mockResolvedValue(null);
+    expect((await request(url, { headers })).status).toBe(404);
+  });
+  it("부분 전송 뒤 불확실한 결과는 재전송 유도 없이 명시한다", async () => {
+    bridge.sendPaneChatPrompt.mockRejectedValue(Object.assign(new Error("전송 결과 불확실"), { name: "PaneChatDeliveryUncertainError" }));
+    expect(await request("/api/mobile/tasks/task-1/pane-chat/prompt", { method: "POST", headers, body: JSON.stringify({ targetToken: "token", text: "caption", requestId: "once" }) })).toEqual({ status: 409, body: { success: false, error: "전송 결과 불확실", reason: "delivery-uncertain" } });
+  });
+});
+
+describe("원격 pane 지속 연결 경로", () => {
+  const connectionPath = "/api/mobile/tasks/task-1/panes/w1%3Ap1/connection";
+  const grant = {
+    version: 1, grantId: "grant-one", expiresAt: 2_000_000_000_000,
+    direct: { host: "b.example", port: 19443, path: "/stream/grant-one", token: "B-only-capability", certificateFingerprint: "b".repeat(64) },
+  };
+  const useTls = async () => {
+    for (const socket of openSockets) socket.destroy();
+    await new Promise((resolve) => server.close(resolve));
+    server = await startServer({ secure: true });
+  };
+
+  it("인증된 TLS 요청에만 task/pane/device 범위의 B 접속 정보를 보낸다", async () => {
+    await useTls();
+    bridge.prepareMobilePaneConnection.mockResolvedValue(grant);
+    const response = await request(connectionPath, { method: "POST", headers: { authorization: "Bearer good" } });
+    expect(response).toEqual({ status: 200, body: { success: true, connection: grant } });
+    expect(bridge.prepareMobilePaneConnection).toHaveBeenCalledWith("task-1", "w1:p1", "device-good");
+  });
+
+  it("평문 A 접속에는 B 접속 토큰을 발급하지 않는다", async () => {
+    bridge.prepareMobilePaneConnection.mockResolvedValue(grant);
+    const response = await request(connectionPath, { method: "POST", headers: { authorization: "Bearer good" } });
+    expect(response).toEqual({ status: 200, body: { success: true, connection: null } });
+    expect(bridge.prepareMobilePaneConnection).not.toHaveBeenCalled();
+  });
+
+  it("연결 준비 중 해제된 기기에는 B capability를 반환하지 않는다", async () => {
+    await useTls();
+    bridge.prepareMobilePaneConnection.mockImplementation(async () => {
+      bridge.authorizeMobileRequest.mockResolvedValue(null);
+      return grant;
+    });
+    const response = await request(connectionPath, { method: "POST", headers: { authorization: "Bearer good" } });
+    expect(response.status).toBe(401);
+    expect(response.body).not.toHaveProperty("connection");
+  });
+
+  it("유효하지 않은 pane 접속 준비는 세션 오류로 응답한다", async () => {
+    await useTls();
+    bridge.prepareMobilePaneConnection.mockRejectedValue(Object.assign(new Error("missing pane"), { name: "SurfaceUnavailableError", reason: "session-not-running" }));
+    const response = await request(connectionPath, { method: "POST", headers: { authorization: "Bearer good" } });
+    expect(response).toEqual({ status: 409, body: { success: false, reason: "session-not-running" } });
+  });
+
+  it("A relay 핸드셰이크 중 연결이 해제된 기기를 다시 인증하고 닫는다", async () => {
+    bridge.authorizeMobileRequest.mockResolvedValueOnce("device-good").mockResolvedValue(null);
+    const client = new WebSocket(`ws://${HOST}:${port}/api/mobile/stream?taskId=task-1&paneId=w1%3Ap1`, { headers: { authorization: "Bearer good" } });
+    const closed = waitForClose(client);
+    await new Promise((resolve, reject) => { client.once("open", resolve); client.once("error", reject); });
+    await waitFor(() => bridge.authorizeMobileRequest.mock.calls.length === 2);
+    await expect(closed).resolves.toEqual({ code: 4001, reason: "device-unpaired" });
+  });
+
+  it("다시 인증하는 동안 받은 키는 승인 뒤에만 B relay로 보낸다", async () => {
+    let authorize;
+    bridge.authorizeMobileRequest.mockResolvedValueOnce("device-good").mockImplementation(() => new Promise((resolve) => { authorize = resolve; }));
+    const relay = { write: vi.fn(), close: vi.fn() };
+    bridge.openRemoteMobilePaneStream.mockResolvedValue(relay);
+    const client = new WebSocket(`ws://${HOST}:${port}/api/mobile/stream?taskId=task-1&paneId=w1%3Ap1`, { headers: { authorization: "Bearer good" } });
+    await new Promise((resolve, reject) => { client.once("open", resolve); client.once("error", reject); });
+    client.send("pending-input");
+    const pong = new Promise((resolve) => client.once("pong", resolve)); client.ping(); await pong;
+    expect(bridge.openRemoteMobilePaneStream).not.toHaveBeenCalled();
+    expect(bridge.subscribeToPane).not.toHaveBeenCalled();
+    expect(relay.write).not.toHaveBeenCalled();
+    authorize("device-good");
+    await waitFor(() => relay.write.mock.calls.length === 1);
+    expect(relay.write.mock.calls[0].map((value) => typeof value === "boolean" ? value : value.toString())).toEqual(["pending-input", false]);
+    client.close();
+  });
+
+  it("다시 인증하는 동안 해제된 기기의 상태 명령은 실행하지 않는다", async () => {
+    let authorize;
+    bridge.authorizeMobileRequest.mockResolvedValueOnce("device-good").mockImplementation(() => new Promise((resolve) => { authorize = resolve; }));
+    const client = new WebSocket(`ws://${HOST}:${port}/api/mobile/events`, { headers: { authorization: "Bearer good" } });
+    const messages = [];
+    client.on("message", (data) => messages.push(data.toString()));
+    const closed = waitForClose(client);
+    await new Promise((resolve, reject) => { client.once("open", resolve); client.once("error", reject); });
+    client.send(JSON.stringify({ type: "command", requestId: "blocked", command: "start-session", taskId: "task-1" }));
+    const pong = new Promise((resolve) => client.once("pong", resolve)); client.ping(); await pong;
+    expect(bridge.getTaskSurfaces).not.toHaveBeenCalled();
+    expect(messages).toEqual([]);
+    authorize(null);
+    await expect(closed).resolves.toEqual({ code: 4001, reason: "device-unpaired" });
+    expect(bridge.getTaskSurfaces).not.toHaveBeenCalled();
+  });
+
+  it("B relay는 입력과 크기 프레임을 기존 SSH 명령 경로 없이 전달한다", async () => {
+    const relay = { write: vi.fn(), close: vi.fn() };
+    let emit;
+    bridge.openRemoteMobilePaneStream.mockImplementation(async (_task, _pane, _device, _grant, onData) => { emit = onData; return relay; });
+    const client = new WebSocket(`ws://${HOST}:${port}/api/mobile/stream?taskId=task-1&paneId=w1%3Ap1&grantId=grant-one`, { headers: { authorization: "Bearer good" } });
+    await new Promise((resolve, reject) => { client.once("open", resolve); client.once("error", reject); });
+    await waitFor(() => bridge.openRemoteMobilePaneStream.mock.calls.length === 1);
+    const output = new Promise((resolve) => client.once("message", (data) => resolve(data.toString())));
+    emit("B terminal output");
+    await expect(output).resolves.toBe("B terminal output");
+    client.send("ls\n");
+    const resize = Buffer.from(JSON.stringify({ type: "resize", cols: 100, rows: 30 }));
+    client.send(resize);
+    await waitFor(() => relay.write.mock.calls.length === 2);
+    expect(relay.write.mock.calls.map(([data, binary]) => [data.toString(), binary])).toEqual([["ls\n", false], [resize.toString(), true]]);
+    expect(bridge.writeToPane).not.toHaveBeenCalled();
+    expect(bridge.claimPaneViewport).not.toHaveBeenCalled();
+    expect(bridge.subscribeToPane).not.toHaveBeenCalled();
+    const closed = waitForClose(client); client.close(); await closed;
+    await waitFor(() => relay.close.mock.calls.length === 1);
+  });
+
+  it("relay 준비 중 닫힌 모바일의 늦은 결과를 즉시 닫는다", async () => {
+    const relay = { write: vi.fn(), close: vi.fn() };
+    let finish;
+    bridge.openRemoteMobilePaneStream.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+    const client = new WebSocket(`ws://${HOST}:${port}/api/mobile/stream?taskId=task-1&paneId=w1%3Ap1`, { headers: { authorization: "Bearer good" } });
+    await new Promise((resolve, reject) => { client.once("open", resolve); client.once("error", reject); });
+    await waitFor(() => typeof finish === "function");
+    const closed = waitForClose(client); client.close(); await closed;
+    finish(relay);
+    await waitFor(() => relay.close.mock.calls.length === 1);
+    expect(relay.write).not.toHaveBeenCalled();
+  });
 });

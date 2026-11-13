@@ -21,6 +21,10 @@ class NotificationInboxState {
   final bool isUpdating;
 
   int get unreadCount => notifications.where((entry) => !entry.isRead).length;
+
+  int unreadCountForTask(String taskId) => notifications
+      .where((entry) => !entry.isRead && entry.taskId == taskId)
+      .length;
 }
 
 class NotificationInboxController

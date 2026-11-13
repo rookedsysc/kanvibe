@@ -101,6 +101,69 @@ Future<void> _closeFilter(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets('데스크톱을 연속 복수 선택하고 프로젝트 필터와 함께 적용한다', (tester) async {
+    await tester.pumpWidget(
+      _app(client: FakeDesktopClient(board: _filterBoard())),
+    );
+    await tester.pumpAndSettle();
+    final trigger = find.descendant(
+      of: _control('desktop-filter'),
+      matching: find.byType(IconButton),
+    );
+    final unselectedColor = tester.widget<IconButton>(trigger).color;
+    final desktopBadge = find.descendant(
+      of: _control('desktop-filter'),
+      matching: find.byType(Badge),
+    );
+    expect(tester.widget<Badge>(desktopBadge).isLabelVisible, isFalse);
+    await tester.tap(_control('desktop-filter'));
+    await tester.pumpAndSettle();
+    await tester.tap(_control('desktop-filter-ssh-devbox'));
+    await tester.pumpAndSettle();
+    await tester.tap(_control('desktop-filter-close'));
+    await tester.pumpAndSettle();
+    expect(find.text('local 태스크'), findsNothing);
+    expect(find.text('remote 태스크'), findsOneWidget);
+    expect(tester.widget<IconButton>(trigger).color, unselectedColor);
+    expect(
+      find.descendant(of: desktopBadge, matching: find.text('1')),
+      findsOneWidget,
+    );
+    await tester.tap(_control('desktop-filter'));
+    await tester.pumpAndSettle();
+    await tester.tap(_control('desktop-filter-local'));
+    await tester.pumpAndSettle();
+    await tester.tap(_control('desktop-filter-close'));
+    await tester.pumpAndSettle();
+    expect(find.text('local 태스크'), findsOneWidget);
+    expect(find.text('remote 태스크'), findsOneWidget);
+    final selectedCount = find.descendant(
+      of: desktopBadge,
+      matching: find.text('2'),
+    );
+    expect(selectedCount, findsOneWidget);
+    await tester.tap(selectedCount);
+    await tester.pumpAndSettle();
+    await tester.tap(_control('desktop-filter-local'));
+    await tester.pumpAndSettle();
+    await tester.tap(_control('desktop-filter-close'));
+    await tester.pumpAndSettle();
+    await _openFilter(tester);
+    await tester.tap(_control('project-filter-option-local'));
+    await _closeFilter(tester);
+    expect(find.text('remote 태스크'), findsNothing);
+    await tester.tap(_control('desktop-filter'));
+    await tester.pumpAndSettle();
+    await tester.tap(_control('desktop-filter-all'));
+    await tester.pumpAndSettle();
+    await tester.tap(_control('desktop-filter-close'));
+    await tester.pumpAndSettle();
+    expect(find.text('local 태스크'), findsOneWidget);
+    expect(find.text('remote 태스크'), findsNothing);
+    expect(tester.widget<Badge>(desktopBadge).isLabelVisible, isFalse);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('연속 입력은 마지막 fuzzy 검색만 적용하고 보드를 추가 요청하지 않는다', (tester) async {
     final client = FakeDesktopClient(board: _filterBoard());
     await tester.pumpWidget(_app(client: client));

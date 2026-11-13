@@ -114,14 +114,14 @@ describe("TaskQuickSearchDialog", () => {
   it("prop이 없으면 공유 단축키 스토어에 저장된 조합으로 연다", async () => {
     mocks.getShortcutBindings.mockResolvedValue({
       ...DEFAULT_SHORTCUT_BINDINGS,
-      taskSearch: "Mod+Shift+J",
+      taskSearch: "Mod+Shift+Y",
     });
     await loadShortcutBindings();
 
     render(<TaskQuickSearchDialog />);
 
     fireEvent.keyDown(window, {
-      key: "j",
+      key: "y",
       ctrlKey: true,
       shiftKey: true,
     });

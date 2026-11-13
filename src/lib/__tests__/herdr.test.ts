@@ -7,7 +7,7 @@ import { once, EventEmitter } from "events";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PaneLayoutType } from "@/entities/PaneLayoutConfig";
 import { buildHerdrCommand, buildHerdrSessionCleanupCommand, sanitizeHerdrSessionName } from "@/lib/worktree";
-import { ensureHerdrSession, listHerdrMirrorPanes, listHerdrRunningAgentPanes, moveHerdrTab, readHerdrTabs } from "@/lib/herdr";
+import { ensureHerdrRemoteMachine, ensureHerdrSession, listHerdrMirrorPanes, listHerdrRunningAgentPanes, moveHerdrTab, readHerdrTabs, readHerdrClientTabBarPosition, readHerdrTaskPaneSize } from "@/lib/herdr";
 
 const { execGit, spawn, readTextFile, updateTextFile } = vi.hoisted(() => ({ execGit: vi.fn(), spawn: vi.fn(), readTextFile: vi.fn(), updateTextFile: vi.fn() }));
 vi.mock("@/lib/hostFileAccess", async (importOriginal) => ({
@@ -20,10 +20,16 @@ vi.mock("@/lib/sshConfig", async (importOriginal) => ({
   ...await importOriginal<typeof import("@/lib/sshConfig")>(),
   parseSSHConfig: async () => [{ host: "remote", hostname: "remote.test", port: 2202, username: "user", privateKeyPath: "/key" }],
 }));
-vi.mock("@/lib/gitOperations", () => ({ execGit, isSSHTransportError: (error: Error) => error.message.includes("SSH transport") }));
+vi.mock("@/lib/gitOperations", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/lib/gitOperations")>(),
+  execGit,
+}));
 
 const result = (value: unknown) => JSON.stringify({ id: "test", result: value });
 const commandFor = (args: string[]) => buildHerdrCommand("feature", args);
+/** 정상 pane 하나가 있는 workspace w1만 가진 task 전용 서버 */
+const respondAsHealthyServer = async (command: string) => command.includes("'pane' 'list'")
+  ? result({ panes: [{ pane_id: "w1:p1" }] }) : result({ workspaces: [{ workspace_id: "w1" }] });
 let directory: string | undefined;
 let server: ReturnType<typeof createServer> | undefined;
 
@@ -48,6 +54,108 @@ describe("Herdr 세션 이름", () => {
   });
 });
 
+describe("Herdr 원격 machine 등록", () => {
+  beforeEach(() => { execGit.mockReset(); });
+
+  it.each(["kanvibe:task-a", "feature"])("%s의 실제 서버 세션을 로컬 machine에 등록한다", async (sessionName) => {
+    execGit.mockResolvedValueOnce("[]").mockResolvedValueOnce("Saved SSH machine profile. Remote server is ready.");
+
+    await ensureHerdrRemoteMachine(sessionName, "remote");
+
+    const serverName = sessionName === "feature" ? "feature" : "kanvibe";
+    expect(execGit.mock.calls).toEqual([
+      [buildHerdrCommand(serverName, ["machine", "list", "--json"]), null, { timeoutMs: 5_000 }],
+      [`${buildHerdrCommand(serverName, ["machine", "add", "remote", "--remote-session", serverName])} </dev/null`, null, { timeoutMs: 30_000 }],
+    ]);
+  });
+
+  it.each([true, false])("기존 프로필의 이름과 활성화 상태(%s)를 보존한다", async (enabled) => {
+    execGit.mockResolvedValueOnce(JSON.stringify([{ id: "opaque-id", label: "사용자 이름", target: "remote", session: "kanvibe", enabled }]));
+
+    await ensureHerdrRemoteMachine("kanvibe:task-a", "remote");
+
+    expect(execGit).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    { target: "remote", session: "default" },
+    { target: "other-remote", session: "kanvibe" },
+  ])("다른 호스트 또는 세션의 프로필과 구분한다: %j", async (existing) => {
+    execGit.mockResolvedValueOnce(JSON.stringify([existing])).mockResolvedValueOnce("");
+
+    await ensureHerdrRemoteMachine("kanvibe:task-a", "remote");
+
+    expect(execGit.mock.calls[1][0]).toContain("'machine' 'add' 'remote' '--remote-session' 'kanvibe'");
+  });
+
+  it("동일 호스트의 동시 접속과 재접속은 중복 등록하지 않는다", async () => {
+    const machines: { target: string; session: string }[] = [];
+    execGit.mockImplementation(async (command: string) => {
+      if (command.includes("'machine' 'list'")) return JSON.stringify(machines);
+      machines.push({ target: "remote", session: "kanvibe" });
+      return "";
+    });
+
+    await Promise.all([
+      ensureHerdrRemoteMachine("kanvibe:task-a", "remote"),
+      ensureHerdrRemoteMachine("kanvibe:task-b", "remote"),
+    ]);
+    await ensureHerdrRemoteMachine("kanvibe:task-a", "remote");
+
+    expect(machines).toEqual([{ target: "remote", session: "kanvibe" }]);
+    expect(execGit.mock.calls.filter(([command]) => command.includes("'machine' 'add'"))).toHaveLength(1);
+  });
+
+  it("다른 호스트의 catalog 저장도 직렬화한다", async () => {
+    let releaseList!: (value: string) => void;
+    execGit.mockImplementationOnce(() => new Promise<string>((resolve) => { releaseList = resolve; }))
+      .mockResolvedValueOnce("")
+      .mockResolvedValueOnce(JSON.stringify([{ target: "remote-a", session: "kanvibe" }]))
+      .mockResolvedValueOnce("");
+
+    const first = ensureHerdrRemoteMachine("kanvibe:task-a", "remote-a");
+    const second = ensureHerdrRemoteMachine("kanvibe:task-b", "remote-b");
+    await vi.waitFor(() => expect(execGit).toHaveBeenCalledOnce());
+    releaseList("[]");
+    await Promise.all([first, second]);
+
+    expect(execGit.mock.calls.map(([command]) => command)).toEqual([
+      buildHerdrCommand("kanvibe", ["machine", "list", "--json"]),
+      `${buildHerdrCommand("kanvibe", ["machine", "add", "remote-a", "--remote-session", "kanvibe"])} </dev/null`,
+      buildHerdrCommand("kanvibe", ["machine", "list", "--json"]),
+      `${buildHerdrCommand("kanvibe", ["machine", "add", "remote-b", "--remote-session", "kanvibe"])} </dev/null`,
+    ]);
+  });
+
+  it.each(["lookup", "add"])("%s 실패 뒤 다음 요청은 재시도한다", async (failure) => {
+    if (failure === "add") execGit.mockResolvedValueOnce("[]");
+    execGit.mockRejectedValueOnce(new Error("machine failed"));
+    await expect(ensureHerdrRemoteMachine("kanvibe:task-a", "remote")).rejects.toThrow("machine failed");
+    execGit.mockResolvedValueOnce("[]").mockResolvedValueOnce("");
+
+    await expect(ensureHerdrRemoteMachine("kanvibe:task-a", "remote")).resolves.toBeUndefined();
+    expect(execGit.mock.calls.at(-1)?.[0]).toContain("'machine' 'add' 'remote'");
+  });
+
+  it.each(["invalid json", "{}"])("잘못된 목록 응답(%s)에는 프로필을 쓰지 않는다", async (output) => {
+    execGit.mockResolvedValueOnce(output);
+
+    await expect(ensureHerdrRemoteMachine("kanvibe:task-a", "remote")).rejects.toThrow();
+
+    expect(execGit).toHaveBeenCalledOnce();
+  });
+
+  it("사용자가 삭제한 프로필은 다음 접속에서 다시 등록한다", async () => {
+    execGit.mockResolvedValueOnce(JSON.stringify([{ target: "remote", session: "kanvibe" }]));
+    await ensureHerdrRemoteMachine("kanvibe:task-a", "remote");
+    execGit.mockResolvedValueOnce("[]").mockResolvedValueOnce("");
+
+    await ensureHerdrRemoteMachine("kanvibe:task-a", "remote");
+
+    expect(execGit.mock.calls.at(-1)?.[0]).toContain("'machine' 'add' 'remote'");
+  });
+});
+
 describe("Herdr 부트스트랩", () => {
   it("로컬 서버를 앱의 프로세스 그룹과 분리하고 셸 환경을 정리한다", async () => {
     vi.stubEnv("PORT", "4884");
@@ -59,7 +167,7 @@ describe("Herdr 부트스트랩", () => {
       return server;
     });
     execGit.mockRejectedValueOnce(new Error("server not running"))
-      .mockResolvedValue(result({ workspaces: [{ workspace_id: "w1" }] }));
+      .mockImplementation(respondAsHealthyServer);
 
     await ensureHerdrSession("feature", "/work");
 
@@ -72,7 +180,7 @@ describe("Herdr 부트스트랩", () => {
     expect(environment).not.toHaveProperty("KANVIBE_HOOK_PORT");
     expect(server.unref).toHaveBeenCalledOnce();
     expect(execGit.mock.calls.map(([command]) => command)).toEqual([
-      commandFor(["workspace", "list"]), commandFor(["workspace", "list"]),
+      commandFor(["workspace", "list"]), commandFor(["workspace", "list"]), commandFor(["pane", "list"]),
     ]);
   });
   it("로컬 서버 시작 실패를 연결 요청에 전달한다", async () => {
@@ -88,15 +196,15 @@ describe("Herdr 부트스트랩", () => {
   it("SSH 서버는 원격 호스트에서 시작하고 준비를 확인한다", async () => {
     execGit.mockRejectedValueOnce(new Error("server not running"))
       .mockResolvedValueOnce("")
-      .mockResolvedValueOnce(result({ workspaces: [{ workspace_id: "w1" }] }));
+      .mockImplementation(respondAsHealthyServer);
     await ensureHerdrSession("feature", "/work", null, "remote");
     expect(spawn).not.toHaveBeenCalled();
     expect(execGit).toHaveBeenCalledWith(`nohup ${commandFor(["server"])} </dev/null >/dev/null 2>&1 &`, "remote");
   });
   it("기존 세션에 다시 연결하면 레이아웃과 명령을 재실행하지 않는다", async () => {
-    execGit.mockResolvedValue(result({ workspaces: [{ workspace_id: "w1" }] }));
+    execGit.mockImplementation(respondAsHealthyServer);
     await ensureHerdrSession("feature", "/work", { layoutType: PaneLayoutType.QUAD, panes: [{ position: 0, command: "do-not-repeat" }] });
-    expect(execGit.mock.calls.map(([command]) => command)).toEqual([commandFor(["workspace", "list"])]);
+    expect(execGit.mock.calls.map(([command]) => command)).toEqual([commandFor(["workspace", "list"]), commandFor(["pane", "list"])]);
   });
   it.each([
     [PaneLayoutType.SINGLE, [], ["w1:p1"]],
@@ -121,14 +229,96 @@ describe("Herdr 부트스트랩", () => {
     expect(execGit.mock.calls.every((call) => call[1] === "remote")).toBe(true);
   });
   it("동시 연결 요청이 레이아웃을 중복 생성하지 않는다", async () => {
-    execGit.mockResolvedValue(result({ workspaces: [{ workspace_id: "w1" }] }));
+    execGit.mockImplementation(respondAsHealthyServer);
     await Promise.all([ensureHerdrSession("feature", "/work"), ensureHerdrSession("feature", "/work")]);
+    expect(execGit.mock.calls.map(([command]) => command)).toEqual([commandFor(["workspace", "list"]), commandFor(["pane", "list"])]);
+  });
+  it.each([
+    "Connection reset by peer",
+    "Permission denied (publickey)",
+    "Host key verification failed",
+    "SSH 명령이 5초 안에 완료되지 않았습니다.",
+  ])("접속 실패를 세션 부재로 판단해 원격 서버를 시작하지 않는다: %s", async (message) => {
+    execGit.mockRejectedValue(new Error(message));
+    await expect(ensureHerdrSession("feature", "/work", null, "remote")).rejects.toThrow(message);
     expect(execGit).toHaveBeenCalledTimes(1);
   });
-  it("SSH 전송 실패 시 원격 서버를 새로 시작하지 않는다", async () => {
-    execGit.mockRejectedValue(new Error("SSH transport"));
-    await expect(ensureHerdrSession("feature", "/work", null, "remote")).rejects.toThrow("SSH transport");
-    expect(execGit).toHaveBeenCalledTimes(1);
+  describe("작업 경로가 사라져 복원하지 못한 pane", () => {
+    const unavailable = "Saved directory is unavailable. Restore the directory and restart this session.";
+    const sharedCommandFor = (args: string[]) => buildHerdrCommand("kanvibe", args);
+
+    /** 공유 서버의 workspace·pane 목록과 Space 연결 파일을 흉내 낸다. pane을 닫으면 목록에서도 사라진다 */
+    function mockSharedHerdrServer(panes: { pane_id: string; restore_error?: string }[]) {
+      let mapping = JSON.stringify({ "task-a": "w1", "task-b": "w2" });
+      let livePanes = [...panes];
+      readTextFile.mockImplementation(async () => mapping);
+      updateTextFile.mockImplementation(async (_path: string, update: (content: string) => Promise<string>) => {
+        mapping = await update(mapping);
+      });
+      execGit.mockImplementation(async (command: string) => {
+        if (command.includes("'session' 'list'")) return JSON.stringify({ sessions: [{ name: "kanvibe", running: true, socket_path: "/s/herdr.sock", session_dir: "/s" }] });
+        if (command.includes("'workspace' 'list'")) {
+          const ids = [...new Set(livePanes.map((pane) => pane.pane_id.split(":")[0]))];
+          return result({ workspaces: ids.map((workspace_id) => ({ workspace_id })) });
+        }
+        if (command.includes("'pane' 'list'")) return result({ panes: livePanes.map((pane) => ({ ...pane, tab_id: `${pane.pane_id.split(":")[0]}:t1` })) });
+        if (command.includes("'pane' 'close'")) {
+          livePanes = livePanes.filter((pane) => !command.includes(`'${pane.pane_id}'`));
+          return result({ type: "ok" });
+        }
+        if (command.includes("'workspace' 'create'")) {
+          livePanes.push({ pane_id: "w3:p1" });
+          return result({ root_pane: { pane_id: "w3:p1" } });
+        }
+        return "";
+      });
+      return { readMapping: () => JSON.parse(mapping) as Record<string, string> };
+    }
+
+    it("task Space의 복원 실패 pane만 닫고 기존 Space를 그대로 쓴다", async () => {
+      mockSharedHerdrServer([
+        { pane_id: "w1:p1" },
+        { pane_id: "w1:p2", restore_error: unavailable },
+        { pane_id: "w2:p1", restore_error: unavailable },
+      ]);
+
+      await expect(ensureHerdrSession("kanvibe:task-a", "/work")).resolves.toBe("w1");
+
+      const commands = execGit.mock.calls.map(([command]) => command);
+      expect(commands.filter((command) => command.includes("'pane' 'close'"))).toEqual([sharedCommandFor(["pane", "close", "w1:p2"])]);
+      expect(commands.some((command) => command.includes("'workspace' 'create'"))).toBe(false);
+    });
+
+    it("task Space의 pane이 모두 복원 실패면 닫고 새 Space를 만들어 연결한다", async () => {
+      const server = mockSharedHerdrServer([
+        { pane_id: "w1:p1", restore_error: unavailable },
+        { pane_id: "w2:p1" },
+      ]);
+
+      await expect(ensureHerdrSession("kanvibe:task-a", "/work")).resolves.toBe("w3");
+
+      const commands = execGit.mock.calls.map(([command]) => command);
+      expect(commands).toContain(sharedCommandFor(["pane", "close", "w1:p1"]));
+      expect(commands).toContain(sharedCommandFor(["workspace", "create", "--cwd", "/work", "--label", "task-a", "--no-focus"]));
+      expect(server.readMapping()).toEqual({ "task-a": "w3", "task-b": "w2" });
+    });
+
+    it("task 전용 서버의 pane이 모두 복원 실패면 새 workspace를 만든다", async () => {
+      let livePanes: { pane_id: string; restore_error?: string }[] = [{ pane_id: "w1:p1", restore_error: unavailable }];
+      execGit.mockImplementation(async (command: string) => {
+        if (command.includes("'workspace' 'list'")) return result({ workspaces: livePanes.length ? [{ workspace_id: "w1" }] : [] });
+        if (command.includes("'pane' 'list'")) return result({ panes: livePanes });
+        if (command.includes("'pane' 'close'")) { livePanes = []; return result({ type: "ok" }); }
+        if (command.includes("'workspace' 'create'")) return result({ root_pane: { pane_id: "w2:p1" } });
+        return "";
+      });
+
+      await ensureHerdrSession("feature", "/work");
+
+      const commands = execGit.mock.calls.map(([command]) => command);
+      expect(commands).toContain(commandFor(["pane", "close", "w1:p1"]));
+      expect(commands).toContain(commandFor(["workspace", "create", "--cwd", "/work", "--focus"]));
+    });
   });
   it("초기 레이아웃 실패 시 해당 신규 세션을 정리한다", async () => {
     execGit.mockResolvedValueOnce(result({ workspaces: [] })).mockResolvedValueOnce(result({ root_pane: { pane_id: "w1:p1" } }))
@@ -346,6 +536,7 @@ describe("공유 Herdr Spaces", () => {
     execGit.mockImplementation(async (command: string) => {
       if (command.includes("'session' 'list'")) return JSON.stringify({ sessions: [{ name: "kanvibe", running: true, session_dir: "/config/kanvibe", socket_path: "/config/kanvibe/herdr.sock" }] });
       if (command.includes("'workspace' 'list'")) return result({ workspaces: spaces });
+      if (command.includes("'pane' 'list'")) return result({ panes: spaces.map((space) => ({ pane_id: `${space.workspace_id}:p1` })) });
       if (command.includes("'workspace' 'create'")) {
         const id = `w${spaces.length + 1}`;
         spaces.push({ workspace_id: id, label: id });
@@ -369,6 +560,29 @@ describe("공유 Herdr Spaces", () => {
     expect(execGit.mock.calls.some(([c]) => c.includes("'workspace' 'create'") || c.includes("'pane' 'send-text'"))).toBe(false);
     await readHerdrTabs("kanvibe:task-a");
     expect(execGit.mock.calls.at(-1)?.[0]).toBe(buildHerdrCommand("kanvibe", ["tab", "list", "--workspace", "w1"]));
+  });
+  it.each([undefined, "remote"])("살아 있는 Space는 매핑을 쓰지 않고 확인한 ID를 돌려준다 (host=%s)", async (sshHost) => {
+    mapping = { "task-a": "w1" };
+    spaces = [{ workspace_id: "w1", label: "renamed" }];
+
+    await expect(ensureHerdrSession("kanvibe:task-a", "/work/a", null, sshHost)).resolves.toBe("w1");
+
+    expect(updateTextFile).not.toHaveBeenCalled();
+    expect(readTextFile).toHaveBeenCalledOnce();
+    expect(execGit.mock.calls.filter(([command]) => command.includes("'workspace' 'list'"))).toHaveLength(1);
+  });
+  it("다른 접속이 먼저 발급한 Space는 잠금 안에서 재확인하고 그대로 반환한다", async () => {
+    readTextFile.mockResolvedValueOnce("{}");
+    updateTextFile.mockImplementationOnce(async (_path, update) => {
+      mapping = { "task-a": "wA", "task-b": "wB" };
+      spaces = [{ workspace_id: "wA", label: "a" }, { workspace_id: "wB", label: "b" }];
+      mapping = JSON.parse(await update(JSON.stringify(mapping)));
+    });
+
+    await expect(ensureHerdrSession("kanvibe:task-a", "/work/a")).resolves.toBe("wA");
+
+    expect(mapping).toEqual({ "task-a": "wA", "task-b": "wB" });
+    expect(execGit.mock.calls.some(([command]) => command.includes("'workspace' 'create'"))).toBe(false);
   });
   it("한 task의 탭 mutation으로 다른 task를 선택할 수 없다", async () => {
     mapping = { "task-a": "w1" };
@@ -450,7 +664,7 @@ describe("공유 Herdr Spaces", () => {
   });
   it("네이티브에서 닫힌 Space는 새로 생성하고 연결 ID를 갱신한다", async () => {
     mapping = { "task-a": "w9" };
-    await ensureHerdrSession("kanvibe:task-a", "/work/a");
+    await expect(ensureHerdrSession("kanvibe:task-a", "/work/a")).resolves.toBe("w1");
     expect(mapping).toEqual({ "task-a": "w1" });
     expect(spaces).toHaveLength(1);
   });
@@ -491,4 +705,98 @@ describe("공유 Herdr Spaces", () => {
     expect(updateTextFile).not.toHaveBeenCalled();
     expect(execGit.mock.calls.some(([c]) => c.includes("'workspace' 'create'"))).toBe(false);
   });
+});
+
+
+describe("Herdr client tab bar projection config", () => {
+  beforeEach(() => { execGit.mockReset(); });
+  it.each([
+    ["", "top"],
+    ['[ui]\ntab_bar_position = "bottom" # client setting', "bottom"],
+    ["[ui]\ntab_bar_position = 'top'", "top"],
+    ['ui.tab_bar_position = "bottom"', "bottom"],
+    ['["ui"]\n"tab_bar_position" = "bottom"', "bottom"],
+    ['[keys]\ntab_bar_position = "bottom"', "top"],
+    ['[ui]\ntab_bar_position = "left"', null],
+    ['ui = { tab_bar_position = "bottom" }', null],
+    ['[ui]\ntab_bar_position = "top"\ntab_bar_position = "bottom"', null],
+  ])("config %s resolves to %s", async (content, expected) => {
+    execGit.mockResolvedValueOnce("/isolated/config/herdr.toml").mockResolvedValueOnce(content);
+    expect(await readHerdrClientTabBarPosition("remote")).toBe(expected);
+    expect(execGit.mock.calls[0][0]).toContain("HERDR_CONFIG_PATH");
+    expect(execGit.mock.calls[0][0]).toContain("XDG_CONFIG_HOME");
+    expect(execGit.mock.calls[1][0]).toContain("/isolated/config/herdr.toml");
+    expect(execGit.mock.calls.every((call) => call[1] === "remote")).toBe(true);
+  });
+  it("fails closed when config cannot be read or its path is relative to an unknown client cwd", async () => {
+    execGit.mockRejectedValueOnce(new Error("unreachable"));
+    expect(await readHerdrClientTabBarPosition("remote")).toBeNull();
+    execGit.mockResolvedValueOnce("relative/config.toml");
+    expect(await readHerdrClientTabBarPosition()).toBeNull();
+  });
+});
+
+describe("readHerdrTaskPaneSize", () => {
+  const selected = { pane_id: "w1:p1", tab_id: "w1:t1", scroll: { max_offset_from_bottom: 120, viewport_rows: 22 } };
+  const layout = {
+    area: { x: 0, y: 0, width: 160, height: 50 }, focused_pane_id: "w1:p1", zoomed: false,
+    panes: [{ pane_id: "w1:p1", rect: { x: 0, y: 0, width: 78, height: 24 } }],
+  };
+  beforeEach(() => { execGit.mockReset(); readTextFile.mockReset(); });
+
+  it.each([
+    { zoomed: false, focused: "w1:p1", cols: 78 },
+    { zoomed: true, focused: "w1:p1", cols: 160 },
+    { zoomed: true, focused: "w1:p2", cols: 78 },
+  ])("reads only selected pane and layout for zoom state %j", async ({ zoomed, focused, cols }) => {
+    execGit.mockResolvedValueOnce(result({ pane: selected })).mockResolvedValueOnce(result({ layout: { ...layout, zoomed, focused_pane_id: focused } }));
+    await expect(readHerdrTaskPaneSize("feature", "w1:p1", "remote")).resolves.toEqual({ cols, rows: 22 });
+    expect(execGit.mock.calls).toEqual([
+      [buildHerdrCommand("feature", ["pane", "get", "w1:p1"]), "remote", { timeoutMs: 5000, retrySafe: true, shouldLogFailure: true }],
+      [buildHerdrCommand("feature", ["pane", "layout", "--pane", "w1:p1"]), "remote", { timeoutMs: 5000, retrySafe: true, shouldLogFailure: true }],
+    ]);
+  });
+
+  it.each([null, { ...selected, restore_error: "Saved directory is unavailable" }, { ...selected, pane_id: "w1:p2" }])("does not fetch layout for unavailable selected pane %j", async (pane) => {
+    execGit.mockResolvedValueOnce(result({ pane }));
+    await expect(readHerdrTaskPaneSize("feature", "w1:p1")).resolves.toBeNull();
+    expect(execGit).toHaveBeenCalledOnce();
+  });
+
+  it("does not grant a selected pane that disappeared from its layout", async () => {
+    execGit.mockResolvedValueOnce(result({ pane: selected })).mockResolvedValueOnce(result({ layout: { ...layout, panes: [] } }));
+    await expect(readHerdrTaskPaneSize("feature", "w1:p1")).resolves.toBeNull();
+    expect(execGit).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(["Connection reset by peer", "Permission denied (publickey)", "Host key verification failed"])("propagates connection failure %s without extra probes", async (message) => {
+    execGit.mockRejectedValueOnce(new Error(message));
+    await expect(readHerdrTaskPaneSize("feature", "w1:p1", "remote")).rejects.toThrow(message);
+    expect(execGit).toHaveBeenCalledOnce();
+  });
+
+  it("preserves kanvibe workspace namespace guards", async () => {
+    readTextFile.mockResolvedValue(JSON.stringify({ "task-a": "w1" }));
+    execGit.mockImplementation(async (command: string) => {
+      if (command.includes("'session' 'list'")) return JSON.stringify([{ name: "kanvibe", running: true, session_dir: "/shared", socket_path: "/shared/herdr.sock" }]);
+      if (command.includes("'pane' 'get'")) return result({ pane: selected });
+      if (command.includes("'pane' 'layout'")) return result({ layout });
+      throw new Error("Unexpected broad query");
+    });
+    await expect(readHerdrTaskPaneSize("kanvibe:task-a", "w1:p1", "remote")).resolves.toEqual({ cols: 78, rows: 22 });
+    const probes = execGit.mock.calls.filter(([command]) => command.includes("'pane'"));
+    expect(probes.map(([command]) => command)).toEqual([
+      buildHerdrCommand("kanvibe", ["pane", "get", "w1:p1"]),
+      buildHerdrCommand("kanvibe", ["pane", "layout", "--pane", "w1:p1"]),
+    ]);
+    await expect(readHerdrTaskPaneSize("kanvibe:task-a", "w2:p2", "remote")).rejects.toThrow("다른 Space");
+    expect(execGit.mock.calls.filter(([command]) => command.includes("'pane'"))).toHaveLength(2);
+  });
+  it.each([{ args: ["pane", "split", "w1:p1"] }, { args: ["pane", "send-text", "w1:p1", "hello"] }, { args: ["workspace", "create"] }])("keeps mutation %j outside the readonly retry whitelist", async ({ args }) => {
+    execGit.mockResolvedValueOnce(result({}));
+    const { runHerdrCommand } = await import("@/lib/herdr");
+    await runHerdrCommand("feature", args, "remote");
+    expect(execGit).toHaveBeenCalledWith(buildHerdrCommand("feature", args), "remote", { timeoutMs: 5000, retrySafe: false, shouldLogFailure: true });
+  });
+
 });

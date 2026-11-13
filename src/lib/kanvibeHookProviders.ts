@@ -37,6 +37,13 @@ export type KanvibeHookStatus =
   | CodexHooksStatus
   | OpenCodeHooksStatus;
 
+export interface KanvibeHookStatuses {
+  claude: ClaudeHooksStatus;
+  gemini: GeminiHooksStatus;
+  codex: CodexHooksStatus;
+  openCode: OpenCodeHooksStatus;
+}
+
 /**
  * AI CLI 하나의 hook 설치 규약.
  * 로컬/원격, 단일 provider/일괄 설치가 모두 같은 산출물 생성 규칙을 공유하도록 묶는다.
@@ -63,10 +70,11 @@ export interface KanvibeHookProviderModule {
     repoPath: string,
     taskId?: string,
     sshHost?: string | null,
+    existingFiles?: Map<string, TextFileReadResult>,
   ) => Promise<KanvibeHookStatus>;
 }
 
-export const KANVIBE_HOOK_PROVIDER_MODULES: Record<KanvibeHookProvider, KanvibeHookProviderModule> = {
+export const KANVIBE_HOOK_PROVIDER_MODULES = {
   claude: {
     provider: "claude",
     label: "Claude",
@@ -126,7 +134,7 @@ export const KANVIBE_HOOK_PROVIDER_MODULES: Record<KanvibeHookProvider, KanvibeH
     install: setupOpenCodeHooks,
     getStatus: getOpenCodeHooksStatus,
   },
-};
+} satisfies Record<KanvibeHookProvider, KanvibeHookProviderModule>;
 
 export function getKanvibeHookProviderModules(): KanvibeHookProviderModule[] {
   return Object.values(KANVIBE_HOOK_PROVIDER_MODULES);

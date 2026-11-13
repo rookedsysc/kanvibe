@@ -19,7 +19,7 @@ env:
           id: android:id/input_method_nav_back
 - tapOn: "(Back|뒤로)"
 - extendedWaitUntil:
-    visible: "채팅 History"
+    visible: "대화 기록"
     timeout: 10000
 - runFlow:
     when:
@@ -29,6 +29,7 @@ env:
       - tapOn:
           id: android:id/input_method_nav_back
 - tapOn: "(Back|뒤로)"
+- runFlow: ../subflows/opens-task-menu.yaml
 - extendedWaitUntil:
     visible:
       id: chat-history
@@ -86,6 +87,7 @@ env:
 - assertNotVisible: "(?s)${PRIMARY_TASK_TITLE}(?:\n.*)?"
 - takeScreenshot: history-second-pc-board
 - tapOn: "(?s).*${SECOND_TASK_TITLE}.*"
+- runFlow: ../subflows/opens-task-menu.yaml
 - tapOn:
     id: chat-history
 - extendedWaitUntil:
@@ -107,7 +109,7 @@ env:
           id: android:id/input_method_nav_back
 - tapOn: "(Back|뒤로)"
 - extendedWaitUntil:
-    visible: "채팅 History"
+    visible: "대화 기록"
     timeout: 10000
 - runFlow:
     when:
@@ -117,6 +119,7 @@ env:
       - tapOn:
           id: android:id/input_method_nav_back
 - tapOn: "(Back|뒤로)"
+- runFlow: ../subflows/opens-task-menu.yaml
 - extendedWaitUntil:
     visible:
       id: chat-history
@@ -141,6 +144,7 @@ env:
     timeout: 15000
 - assertNotVisible: "(?s).*${SECOND_TASK_TITLE}.*"
 - tapOn: "(?s)${PRIMARY_TASK_TITLE}(?:\n.*)?"
+- runFlow: ../subflows/opens-task-menu.yaml
 - tapOn:
     id: chat-history
 - extendedWaitUntil:

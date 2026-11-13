@@ -23,7 +23,7 @@ export default function SessionTypeEditor({ taskId, currentSessionType, sshHost 
   const [error, setError] = useState<string | null>(null);
 
   function handleChange(nextSessionType: SessionType) {
-    if (nextSessionType === currentSessionType) {
+    if (isPending || nextSessionType === currentSessionType) {
       return;
     }
 
@@ -52,7 +52,7 @@ export default function SessionTypeEditor({ taskId, currentSessionType, sshHost 
   }
 
   return (
-    <div className="flex flex-col items-end gap-1">
+    <div className="flex flex-col items-end gap-1" aria-busy={isPending}>
       <select
         value={currentSessionType}
         onChange={(event) => handleChange(event.target.value as SessionType)}
@@ -61,7 +61,8 @@ export default function SessionTypeEditor({ taskId, currentSessionType, sshHost 
       >
         <SessionTypeOptions />
       </select>
-      {error && <p className="text-xs text-status-error">{error}</p>}
+      {isPending && <p role="status" className="text-xs text-text-muted">{t("sessionTypeChanging")}</p>}
+      {error && <p role="alert" className="text-xs text-status-error">{error}</p>}
     </div>
   );
 }

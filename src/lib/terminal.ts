@@ -1,5 +1,5 @@
 import path from "path";
-import { ensureHerdrSession, getHerdrWorkspaceId, getHerdrClientSocketPath } from "@/lib/herdr";
+import { ensureHerdrRemoteMachine, ensureHerdrSession, getHerdrClientSocketPath, readHerdrClientTabBarPosition } from "@/lib/herdr";
 import { existsSync } from "fs";
 import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
@@ -63,6 +63,7 @@ const activeTerminals = new Map<string, TerminalEntry>();
 /** 크기를 받지 못한 PTY가 쓰는 기본 크기. 미러가 아직 없는 PTY의 크기를 미리 알릴 때도 같은 값을 쓴다 */
 const DEFAULT_TERMINAL_COLS = 120;
 const DEFAULT_TERMINAL_ROWS = 30;
+const HERDR_TAB_BAR_ROWS = 1;
 
 /**
  * tmux와 zellij는 태스크당 PTY 하나를 멀티플렉서에 붙이고 탭은 멀티플렉서 안에 있다.
@@ -538,24 +539,28 @@ interface LocalPtySpawnPlan {
   cwd: string;
 }
 
-async function prepareHerdrTaskClient(sessionName: string, sshHost?: string): Promise<{
+async function prepareHerdrTaskClient(sessionName: string, workspaceId: string | null, sshHost?: string): Promise<{
   proxy: Awaited<ReturnType<typeof createHerdrClientProxy>>;
   workspaceId: string;
   forwardingArgs: string[];
   clientSocketPath: string;
+  tabBarPosition: "top" | "bottom" | null;
+  sshHost?: string;
   close(): Promise<void>;
 }> {
-  const workspaceId = await getHerdrWorkspaceId(sessionName, sshHost);
   if (!workspaceId) throw new Error("공유 Herdr Space를 찾을 수 없습니다.");
   const serverSocketPath = await getHerdrClientSocketPath(sessionName, sshHost);
   const forwardingDirectory = sshHost ? await mkdtemp(path.join(tmpdir(), "kvhf-")) : null;
   const upstream = forwardingDirectory ? path.join(forwardingDirectory, "upstream") : serverSocketPath;
   try {
     const proxy = await createHerdrClientProxy(upstream, workspaceId);
+    const tabBarPosition = await readHerdrClientTabBarPosition(sshHost);
     const remoteProxyPath = `/tmp/kvhc-${randomUUID()}.sock`;
     return {
       proxy,
       workspaceId,
+      tabBarPosition,
+      sshHost,
       clientSocketPath: sshHost ? remoteProxyPath : proxy.socketPath,
       forwardingArgs: sshHost ? [
         "-o", "ExitOnForwardFailure=yes", "-o", "StreamLocalBindUnlink=yes",
@@ -573,8 +578,33 @@ async function prepareHerdrTaskClient(sessionName: string, sshHost?: string): Pr
   }
 }
 
+export function getHerdrTaskActivePaneId(taskId: string): string | null {
+  return [...activeTerminals.values()].find((entry) => entry.taskId === taskId && entry.herdrClient)?.herdrClient?.proxy.getActivePaneId() ?? null;
+}
+
+export async function getHerdrTaskSurfaceBounds(taskId: string): Promise<{ left: number; top: number; width: number; height: number } | null> {
+  const entry = [...activeTerminals.values()].find((terminal) => terminal.taskId === taskId && terminal.herdrClient);
+  const client = entry?.herdrClient;
+  if (!entry || !client || !client.tabBarPosition || await readHerdrClientTabBarPosition(client.sshHost) !== client.tabBarPosition) return null;
+  const surface = client.proxy.getSurfaceSize();
+  if (!surface) return null;
+  const left = entry.pty.cols - surface.cols;
+  const tabRows = entry.pty.rows - surface.rows;
+  if (left < 0 || (tabRows !== 0 && tabRows !== HERDR_TAB_BAR_ROWS)) return null;
+  return { left, top: client.tabBarPosition === "top" ? tabRows : 0, width: surface.cols, height: surface.rows };
+}
+
 export function getHerdrTaskActiveTabId(taskId: string): string | null {
   return [...activeTerminals.values()].find((entry) => entry.taskId === taskId && entry.herdrClient)?.herdrClient?.proxy.getActiveTabId() ?? null;
+}
+
+export async function focusHerdrTaskPane(taskId: string, paneId: string): Promise<void> {
+  const clients = [...activeTerminals.values()].filter((entry) => entry.taskId === taskId && entry.herdrClient);
+  if (clients.length === 0) throw new Error("Herdr task 클라이언트가 연결되지 않았습니다.");
+  for (const entry of clients) {
+    if (!paneId.startsWith(`${entry.herdrClient!.workspaceId}:`)) throw new Error("다른 Space의 pane을 선택할 수 없습니다.");
+  }
+  await Promise.all(clients.map((entry) => entry.herdrClient!.proxy.request("pane.focus", { pane_id: paneId })));
 }
 
 export async function focusHerdrTaskTab(taskId: string, tabId: string): Promise<void> {
@@ -683,9 +713,10 @@ async function spawnLocalSession(
    * terminal: 멀티플렉서가 없으므로 준비할 세션도 없다.
    */
   let zellijNeedsCreation = false;
+  let herdrWorkspaceId: string | null = null;
 
   if (sessionType === SessionType.HERDR) {
-    await ensureHerdrSession(sessionName, cwd || process.env.HOME || "/", tmuxPaneLayout);
+    herdrWorkspaceId = await ensureHerdrSession(sessionName, cwd || process.env.HOME || "/", tmuxPaneLayout);
     if (ws.readyState !== ws.OPEN) return;
   }
 
@@ -732,7 +763,7 @@ async function spawnLocalSession(
   }
 
   const herdrClient = sessionType === SessionType.HERDR && parseHerdrSessionTarget(sessionName).workspaceKey
-    ? await prepareHerdrTaskClient(sessionName) : undefined;
+    ? await prepareHerdrTaskClient(sessionName, herdrWorkspaceId) : undefined;
   if (ws.readyState !== ws.OPEN) {
     await herdrClient?.close();
     return;
@@ -830,9 +861,13 @@ async function spawnRemoteSession(
   const initialRows = rows ?? DEFAULT_TERMINAL_ROWS;
   const terminalEnvironment = createLocalShellEnvironment();
   const terminalKey = buildTerminalKey(taskId, tabId);
+  let herdrWorkspaceId: string | null = null;
   if (sessionType === SessionType.HERDR) {
-    await ensureHerdrSession(sessionName, worktreePath || "~", tmuxPaneLayout, sshHost);
+    herdrWorkspaceId = await ensureHerdrSession(sessionName, worktreePath || "~", tmuxPaneLayout, sshHost);
     if (ws.readyState !== ws.OPEN) return;
+    void ensureHerdrRemoteMachine(sessionName, sshHost).catch((error: unknown) => {
+      console.warn(`[kanvibe] Herdr machine 등록 실패 (${sshHost}/${parseHerdrSessionTarget(sessionName).serverName}):`, error);
+    });
   }
 
 
@@ -864,7 +899,7 @@ async function spawnRemoteSession(
   }
 
   const herdrClient = sessionType === SessionType.HERDR && parseHerdrSessionTarget(sessionName).workspaceKey
-    ? await prepareHerdrTaskClient(sessionName, sshHost) : undefined;
+    ? await prepareHerdrTaskClient(sessionName, herdrWorkspaceId, sshHost) : undefined;
   if (ws.readyState !== ws.OPEN) {
     await herdrClient?.close();
     return;
@@ -1121,6 +1156,19 @@ export function attachClientToTerminalTab(taskId: string, tabId: string, ws: Web
   });
   attachClientToEntry(terminalKey, entry, ws);
   return screenUntilNow;
+}
+
+export function readTaskTerminalAttachment(taskId: string): { pid: number; sessionType: SessionType; sessionName: string } | null {
+  const entry = activeTerminals.get(buildTerminalKey(taskId, null));
+  return entry ? { pid: entry.pty.pid, sessionType: entry.sessionType, sessionName: entry.sessionName } : null;
+}
+
+export function readLocalTerminalTabSnapshot(taskId: string, tabId: string): { pid: number; screen: string; inputLine: string | null; cursorColumn: number | null } | null {
+  const entry = activeTerminals.get(buildTerminalKey(taskId, tabId));
+  if (!entry || entry.sessionType !== SessionType.TERMINAL) return null;
+  const buffer = entry.screen?.terminal.buffer.active;
+  const screen = buffer ? Array.from({ length: entry.screen!.terminal.rows }, (_, row) => buffer.getLine(buffer.baseY + row)?.translateToString(true) ?? "").join("\n").trimEnd() : "";
+  return { pid: entry.pty.pid, screen, inputLine: buffer?.getLine(buffer.baseY + buffer.cursorY)?.translateToString(true) ?? null, cursorColumn: buffer?.cursorX ?? null };
 }
 
 /**

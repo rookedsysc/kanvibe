@@ -1,0 +1,102 @@
+appId: ${APP_ID}
+env:
+  DESKTOP_API_FROM_HOST: http://127.0.0.1:20736
+  PROBE_API_FROM_HOST: http://127.0.0.1:20737
+  EXPECT_REGISTERED: "false"
+tags:
+  - journey
+---
+- runScript: ../scripts/assert-project-registration.js
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible: "데스크탑에 연결"
+    timeout: 90000
+- runScript: ../scripts/issue-dev-pairing-code.js
+- tapOn: "데스크탑 주소"
+- eraseText
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - inputText: "10.0.2.2"
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - inputText: "127.0.0.1"
+- tapOn: "포트"
+- eraseText
+- inputText: "20746"
+- tapOn: "연결 코드"
+- inputText: ${output.pairingCode}
+- scrollUntilVisible:
+    element: "연결"
+    direction: DOWN
+    timeout: 10000
+- tapOn: "연결"
+- extendedWaitUntil:
+    visible:
+      id: board-more
+    timeout: 40000
+- assertVisible:
+    id: project-filter
+- takeScreenshot: home-compact-header
+- tapOn:
+    id: board-more
+- tapOn: "프로젝트 등록"
+- extendedWaitUntil:
+    visible:
+      id: project-path
+    timeout: 10000
+- tapOn:
+    id: project-path
+- eraseText
+- inputText: ${output.browsePath}
+- tapOn: "경로 열기"
+- extendedWaitUntil:
+    visible:
+      id: project-folder-${output.projectName}
+    timeout: 15000
+- takeScreenshot: desktop-folders
+- tapOn:
+    id: project-folder-${output.projectName}
+- extendedWaitUntil:
+    visible: "하위 폴더가 없습니다. 이 폴더에서 등록할 수 있습니다."
+    timeout: 15000
+- takeScreenshot: selected-project-folder
+- tapOn:
+    id: project-scan
+- extendedWaitUntil:
+    visible: "프로젝트 1개 등록"
+    timeout: 120000
+- takeScreenshot: registration-result
+- runScript:
+    file: ../scripts/assert-project-registration.js
+    env:
+      EXPECT_REGISTERED: "true"
+- tapOn:
+    id: project-scan
+- extendedWaitUntil:
+    visible: "(?s).*이미 등록.*"
+    timeout: 120000
+- runScript:
+    file: ../scripts/assert-project-registration.js
+    env:
+      EXPECT_REGISTERED: "true"
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - pressKey: Back
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - tapOn: "Back"
+- extendedWaitUntil:
+    visible:
+      id: board-more
+    timeout: 10000
+- assertVisible: "(?s).*maestro-mobile-register.*"
+- takeScreenshot: registered-project-on-board

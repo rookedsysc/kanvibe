@@ -89,7 +89,7 @@ ${headerComments}
 
 KANVIBE_URL="${kanvibeUrl}"
 ${buildShellTaskIdResolver(taskId)}
-${buildShellKanvibeStatusUpdater(definition.status)}
+${buildShellKanvibeStatusUpdater(definition.status, agentLabel === "Claude Code" ? "claude" : agentLabel === "Codex" ? "codex" : undefined)}
 
 ${trailingLines}
 `;
@@ -141,13 +141,14 @@ export async function readShellHookProviderState(options: {
   extraFilePaths?: string[];
   taskId?: string;
   sshHost?: string | null;
+  files?: Map<string, TextFileReadResult>;
 }): Promise<ShellHookProviderState> {
   const { repoPath, hooksDir, definitions, extraFilePaths = [], taskId, sshHost } = options;
   const pathModule = resolvePathModule(sshHost);
   const scriptPaths = definitions.map((definition) => pathModule.join(hooksDir, definition.fileName));
   const targetsPath = getKanvibeTargetsPath(repoPath, sshHost);
 
-  const files = await readTextFiles([...scriptPaths, ...extraFilePaths, targetsPath], sshHost, { strictHostKeyChecking: true });
+  const files = options.files ?? await readTextFiles([...scriptPaths, ...extraFilePaths, targetsPath], sshHost, { strictHostKeyChecking: true });
   const scriptFiles = scriptPaths.map((scriptPath) => files.get(scriptPath) ?? emptyFile());
   const scriptContents = scriptFiles.map((file) => file.content);
 

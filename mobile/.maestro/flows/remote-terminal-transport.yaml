@@ -1,0 +1,88 @@
+appId: ${APP_ID}
+env:
+  PROBE_API_FROM_HOST: http://127.0.0.1:19881
+tags:
+  - remote-terminal-transport
+---
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible: "데스크탑에 연결"
+    timeout: 60000
+- tapOn: "데스크탑 주소"
+- inputText: "10.0.2.2"
+- tapOn: "포트"
+- eraseText
+- inputText: "19880"
+- tapOn: "연결 코드"
+- inputText: "123456"
+- hideKeyboard
+- scrollUntilVisible:
+    element: "연결"
+    direction: DOWN
+    timeout: 10000
+- tapOn: "연결"
+- extendedWaitUntil:
+    visible: "(?s).*Direct B.*"
+    timeout: 40000
+- tapOn: "(?s).*Direct B.*"
+- extendedWaitUntil:
+    visible:
+      id: pane-terminal
+    timeout: 20000
+- takeScreenshot: 01-direct-ready
+- tapOn:
+    id: pane-terminal
+- inputText: "DIRECT_OK"
+- pressKey: Enter
+- runScript:
+    file: ../scripts/assert-remote-terminal-transport.js
+    env:
+      TASK: direct
+      MARKER: DIRECT_OK
+- takeScreenshot: 02-direct-input
+- pressKey: Home
+- launchApp:
+    stopApp: false
+- extendedWaitUntil:
+    visible:
+      id: pane-terminal
+    timeout: 20000
+- tapOn:
+    id: pane-terminal
+- inputText: "DIRECT_RESUMED"
+- pressKey: Enter
+- runScript:
+    file: ../scripts/assert-remote-terminal-transport.js
+    env:
+      TASK: direct
+      MARKER: DIRECT_RESUMED
+- hideKeyboard
+- runFlow: ../subflows/goes-back-to-board.yaml
+- tapOn: "(?s).*Relay B.*"
+- extendedWaitUntil:
+    visible:
+      id: pane-terminal
+    timeout: 20000
+- takeScreenshot: 03-relay-ready
+- tapOn:
+    id: pane-terminal
+- inputText: "RELAY_OK"
+- pressKey: Enter
+- runScript:
+    file: ../scripts/assert-remote-terminal-transport.js
+    env:
+      TASK: relay
+      MARKER: RELAY_OK
+- takeScreenshot: 04-relay-input
+- evalScript: ${http.post(PROBE_API_FROM_HOST + '/revoke', {body:''})}
+- extendedWaitUntil:
+    notVisible:
+      id: pane-terminal
+    timeout: 20000
+# 해제한 PC가 저장소에서도 제거되어 앱을 다시 열어도 페어링 화면으로 가는지 확인한다.
+- launchApp
+- extendedWaitUntil:
+    visible: "데스크탑에 연결"
+    timeout: 20000
+- takeScreenshot: 05-revoked

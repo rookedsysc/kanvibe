@@ -1,4 +1,8 @@
 import 'dart:convert';
+import 'dart:async';
+
+import 'package:kanvibe_mobile/src/common/network/desktop_client.dart';
+import 'package:kanvibe_mobile/src/common/network/desktop_connection.dart';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -14,6 +18,34 @@ import 'package:xterm/xterm.dart' as xterm;
 import 'package:kanvibe_mobile/src/features/task_detail/presentation/widgets/terminal_shortcut_bar.dart';
 
 import '../../../support/fake_desktop.dart';
+
+class DeferredPaneClient extends FakeDesktopClient {
+  final openings = <Completer<PaneStream>>[];
+  final cancelledOpenings = <int>[];
+  final arguments = <(DesktopConnection, String, String)>[];
+
+  @override
+  Future<PaneStream> openPaneStream(
+    DesktopConnection connection,
+    String taskId,
+    String paneId, {
+    Future<void>? cancelled,
+  }) {
+    final index = openings.length;
+    final pending = Completer<PaneStream>();
+    openings.add(pending);
+    arguments.add((connection, taskId, paneId));
+    cancelled?.then((_) => cancelledOpenings.add(index));
+    return pending.future;
+  }
+
+  Future<void> finishOpening(int index) async {
+    final args = arguments[index];
+    openings[index].complete(
+      await super.openPaneStream(args.$1, args.$2, args.$3),
+    );
+  }
+}
 
 const _pane = MirrorPane(
   id: '%19',
@@ -150,6 +182,42 @@ Future<void> sendImeBuffer(
   await tester.pump();
 }
 
+Future<void> sendImeReplacement(
+  WidgetTester tester, {
+  required String base,
+  required String previous,
+  required String next,
+  bool composing = true,
+}) async {
+  final setClient = tester.testTextInput.log.lastWhere(
+    (call) => call.method == 'TextInput.setClient',
+  );
+  final clientId = (setClient.arguments as List)[0] as int;
+  final call = MethodCall('TextInputClient.updateEditingStateWithDeltas', [
+    clientId,
+    {
+      'deltas': [
+        {
+          'oldText': '$base$previous',
+          'deltaText': next,
+          'deltaStart': base.length,
+          'deltaEnd': base.length + previous.length,
+          'selectionBase': base.length + next.length,
+          'selectionExtent': base.length + next.length,
+          'composingBase': composing ? base.length : -1,
+          'composingExtent': composing ? base.length + next.length : -1,
+        },
+      ],
+    },
+  ]);
+  await tester.binding.defaultBinaryMessenger.handlePlatformMessage(
+    SystemChannels.textInput.name,
+    SystemChannels.textInput.codec.encodeMethodCall(call),
+    (_) {},
+  );
+  await tester.pump();
+}
+
 void main() {
   for (final mode in [
     (escape: '\x1b[?1006h', up: '\x1b[<64;', down: '\x1b[<65;'),
@@ -222,11 +290,16 @@ void main() {
       '\x1b[?2026h\x1b[?25l\x1b]8;;\x1b\\\x1b[2J\x1b[1;1H\x1b[0;38;5;2;49mframe-row\x1b[0m'
       '\x1b[2;3H\x1b[?25h\x1b[?2026l\x1b[2;3H\x1b[?25h',
     );
-    stream.add('\x1b[?2026h\x1b[?25l\x1b[1;7Hdiff\x1b[0m\x1b[2;3H\x1b[?25h\x1b[?2026l');
+    stream.add(
+      '\x1b[?2026h\x1b[?25l\x1b[1;7Hdiff\x1b[0m\x1b[2;3H\x1b[?25h\x1b[?2026l',
+    );
     await tester.pumpAndSettle();
 
     final terminal = mountedTerminal(tester);
-    final lines = terminal.buffer.lines.toList().map((line) => line.getText().trimRight()).toList();
+    final lines = terminal.buffer.lines
+        .toList()
+        .map((line) => line.getText().trimRight())
+        .toList();
     final viewportTop = terminal.buffer.scrollBack;
     expect(lines, contains('history-5'));
     expect(lines[viewportTop], 'frame-diff');
@@ -985,6 +1058,74 @@ void main() {
     );
   });
 
+  testWidgets('준비 중 화면을 떠나면 취소하고 늦은 stream도 닫는다', (tester) async {
+    final client = DeferredPaneClient();
+    await pumpPane(
+      tester,
+      _pane,
+      client: client,
+      store: FakeConnectionStore(),
+      canResize: true,
+    );
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+    expect(client.cancelledOpenings, [0]);
+    await client.finishOpening(0);
+    await tester.pumpAndSettle();
+    expect(client.closedPanes, [_pane.id]);
+    expect(client.resizedPanes, isEmpty);
+  });
+
+  testWidgets('준비 중 background가 되면 이전 결과를 닫고 복귀 연결만 사용한다', (tester) async {
+    final client = DeferredPaneClient();
+    await pumpPane(
+      tester,
+      _pane,
+      client: client,
+      store: FakeConnectionStore(),
+      canResize: true,
+    );
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pump();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+    expect(client.cancelledOpenings, [0]);
+    expect(client.openings, hasLength(2));
+    await client.finishOpening(0);
+    await tester.pumpAndSettle();
+    expect(client.resizedPanes, isEmpty);
+    await client.finishOpening(1);
+    await tester.pumpAndSettle();
+    expect(client.closedPanes, [_pane.id]);
+    expect(client.resizedPanes[_pane.id], hasLength(1));
+  });
+
+  testWidgets('준비 중15초가 지나면 늦은 결과를 닫고 재시도할 수 있다', (tester) async {
+    final client = DeferredPaneClient();
+    await pumpPane(
+      tester,
+      _pane,
+      client: client,
+      store: FakeConnectionStore(),
+      canResize: true,
+    );
+    await tester.pump(const Duration(seconds: 15));
+    expect(client.cancelledOpenings, [0]);
+    expect(find.textContaining('터미널 응답이 없습니다'), findsOneWidget);
+    await client.finishOpening(0);
+    await tester.pumpAndSettle();
+    expect(client.closedPanes, [_pane.id]);
+    expect(client.resizedPanes, isEmpty);
+    await tester.tap(find.text('다시 연결'));
+    await tester.pumpAndSettle();
+    await client.finishOpening(1);
+    await tester.pumpAndSettle();
+    client.openedPanes[_pane.id]!.add('new-frame');
+    await tester.pumpAndSettle();
+    expect(find.textContaining('터미널 응답이 없습니다'), findsNothing);
+    expect(mountedTerminal(tester).buffer.getText(), contains('new-frame'));
+  });
+
   testWidgets('앱이 배경으로 가면 연결을 닫고 돌아올 때 현재 크기를 다시 보낸다', (tester) async {
     final client = FakeDesktopClient();
     await pumpPane(
@@ -1153,6 +1294,131 @@ void main() {
     await sendImeBuffer(tester, base: base, previous: 't', next: 'to');
 
     expect(client.writtenInput['%19']?.join(), 'to');
+  });
+
+  for (final scenario in [
+    (previous: '안녕ㅎ', next: '안녕하', expected: '\x7f하'),
+    (previous: '한글', next: '한그리', expected: '\x7f그리'),
+    (previous: '안녕하', next: '안녕ㅎ', expected: '\x7fㅎ'),
+    (previous: '한', next: '한ㄱ', expected: 'ㄱ'),
+    (previous: 'ㄱ', next: '가', expected: '\x7f가'),
+    (previous: '😀한', next: '😀하', expected: '\x7f하'),
+  ]) {
+    testWidgets(
+      '한국어 IME 교체는 바뀐 끝부분만 전송한다: ${scenario.previous} → ${scenario.next}',
+      (tester) async {
+        final client = FakeDesktopClient();
+        await pumpPane(
+          tester,
+          _pane,
+          client: client,
+          store: FakeConnectionStore(),
+        );
+        final base = await attachSoftKeyboard(tester);
+        await sendImeReplacement(
+          tester,
+          base: base,
+          previous: '',
+          next: scenario.previous,
+        );
+        client.writtenInput['%19']!.clear();
+
+        await sendImeReplacement(
+          tester,
+          base: base,
+          previous: scenario.previous,
+          next: scenario.next,
+        );
+
+        expect(client.writtenInput['%19']!.join(), scenario.expected);
+      },
+    );
+  }
+
+  for (final scenario in [
+    (previous: '안녕ㅎ', intermediate: null, next: '안녕하', expected: '\x7f하'),
+    (previous: '안ㄴ', intermediate: '안', next: '안녀', expected: '\x7f녀'),
+  ]) {
+    testWidgets('iOS 한국어 IME 삭제·삽입 묶음은 최종 변경분만 전송한다: ${scenario.next}', (
+      tester,
+    ) async {
+      final client = FakeDesktopClient();
+      await pumpPane(
+        tester,
+        _pane,
+        client: client,
+        store: FakeConnectionStore(),
+      );
+      final base = await attachSoftKeyboard(tester);
+      final prefix = '${base}echo ';
+      await sendImeBuffer(
+        tester,
+        base: base,
+        previous: '',
+        next: 'echo ${scenario.previous}',
+      );
+      client.writtenInput['%19']!.clear();
+      final deltas = <Map<String, Object>>[];
+      var text = '$prefix${scenario.previous}';
+      void addEdit(int start, int end, String inserted) {
+        final next = start < 0 ? text : text.replaceRange(start, end, inserted);
+        deltas.add({
+          'oldText': text,
+          'deltaText': inserted,
+          'deltaStart': start,
+          'deltaEnd': end,
+          'selectionBase': next.length,
+          'selectionExtent': next.length,
+          'composingBase': -1,
+          'composingExtent': -1,
+        });
+        text = next;
+      }
+
+      if (scenario.intermediate case final intermediate?) {
+        addEdit(-1, -1, '');
+        addEdit(prefix.length, text.length, '');
+        addEdit(prefix.length, prefix.length, intermediate);
+      }
+      addEdit(-1, -1, '');
+      addEdit(prefix.length - 1, text.length, '');
+      addEdit(prefix.length - 1, prefix.length - 1, ' ');
+      addEdit(prefix.length, prefix.length, scenario.next);
+      final setClient = tester.testTextInput.log.lastWhere(
+        (call) => call.method == 'TextInput.setClient',
+      );
+      await tester.binding.defaultBinaryMessenger.handlePlatformMessage(
+        SystemChannels.textInput.name,
+        SystemChannels.textInput.codec.encodeMethodCall(
+          MethodCall('TextInputClient.updateEditingStateWithDeltas', [
+            (setClient.arguments as List)[0],
+            {'deltas': deltas},
+          ]),
+        ),
+        (_) {},
+      );
+      await tester.pump();
+
+      expect(client.writtenInput['%19']!.join(), scenario.expected);
+    });
+  }
+
+  testWidgets('한국어 IME 확정은 이미 전송한 문자열을 지우거나 재전송하지 않는다', (tester) async {
+    final client = FakeDesktopClient();
+    await pumpPane(tester, _pane, client: client, store: FakeConnectionStore());
+    final base = await attachSoftKeyboard(tester);
+    await sendImeReplacement(tester, base: base, previous: '', next: '한글');
+    client.writtenInput['%19']!.clear();
+
+    await sendImeReplacement(
+      tester,
+      base: base,
+      previous: '한글',
+      next: '한글',
+      composing: false,
+    );
+
+    expect(client.writtenInput['%19'], isEmpty);
   });
 
   /// 지우기는 이제 xterm이 아니라 이 앱의 입력기가 받는다. 글자 수만큼 백스페이스가 나가야 셸이 지운다

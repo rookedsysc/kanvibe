@@ -1,4 +1,6 @@
 import { buildHerdrCommand, quoteForPosixShell } from "@/lib/worktree";
+import { MAX_MIRROR_LINES, type TerminalCursorPosition } from "@/lib/remoteTerminalProtocol";
+export { buildScreenRedraw, type TerminalCursorPosition } from "@/lib/remoteTerminalProtocol";
 
 /**
  * 모바일 클라이언트에 pane 하나를 그대로 비추기 위한 명령 빌더와 출력 파서.
@@ -157,13 +159,6 @@ function parseGeometry(raw: {
   return { left, top, width, height };
 }
 
-/** pane 보이는 영역 안의 칸 좌표(0부터)와 그 영역의 높이 */
-export interface TerminalCursorPosition {
-  x: number;
-  y: number;
-  paneHeight: number;
-}
-
 /** 커서와 접속 전에 활성화된 화면·마우스 모드를 함께 읽는다. */
 export function buildTmuxPaneStateCommand(paneId: string): string {
   return `tmux display-message -p -t ${quoteForPosixShell(paneId)} '#{cursor_x} #{cursor_y} #{pane_height} #{alternate_on} #{mouse_standard_flag} #{mouse_button_flag} #{mouse_all_flag} #{mouse_sgr_flag} #{mouse_utf8_flag}'`;
@@ -179,32 +174,6 @@ export function parseTmuxPaneState(output: string): { cursor: TerminalCursorPosi
   if (mouseMode !== null) restoreSequences += `\x1b[?${mouseMode}h`;
   if (mouseEncoding !== null) restoreSequences += `\x1b[?${mouseEncoding}h`;
   return { cursor: { x: Number(x), y: Number(y), paneHeight: Number(paneHeight) }, restoreSequences };
-}
-
-const MAX_MIRROR_LINES = 2000;
-
-/** 화면, 스크롤백을 지우고 커서를 맨 위로 보낸다. 덤프를 받을 때마다 이어 붙이지 않고 다시 그리기 위해서다 */
-const CLEAR_SCREEN_AND_SCROLLBACK = "\x1b[H\x1b[2J\x1b[3J";
-
-/**
- * 떠 온 화면 텍스트를 터미널이 처음부터 다시 그리는 출력으로 바꾼다.
- *
- * `capture-pane`과 `dump-screen`은 줄 끝에 LF만 붙인다. 터미널은 LF를 "아래로 한 칸"으로만 읽으므로 그대로 쓰면
- * 다음 줄이 앞 줄이 끝난 열에서 시작해 화면이 계단처럼 밀린다. 줄마다 CR을 붙여 줄 처음으로 돌려보낸다.
- */
-export function buildScreenRedraw(screen: string, cursor: TerminalCursorPosition | null): string {
-  const lines = screen.split(/\r?\n/).slice(-MAX_MIRROR_LINES).join("\r\n");
-  return `${CLEAR_SCREEN_AND_SCROLLBACK}${lines}${cursor ? buildCursorMoveFromLastLine(cursor) : ""}`;
-}
-
-/**
- * 덤프 앞에는 스크롤백이 붙고 모바일 화면 높이도 pane과 다를 수 있어, 절대 좌표로는 커서가 놓일 줄을 알 수 없다.
- * 덤프의 마지막 줄은 언제나 pane 보이는 영역의 맨 아랫줄이므로, 다 쓴 뒤 그 줄에서 위로 올라가 커서 줄을 찾는다.
- */
-function buildCursorMoveFromLastLine(cursor: TerminalCursorPosition): string {
-  const rowsAboveLastLine = cursor.paneHeight - 1 - cursor.y;
-  const moveUp = rowsAboveLastLine > 0 ? `\x1b[${rowsAboveLastLine}A` : "";
-  return `${moveUp}\x1b[${cursor.x + 1}G`;
 }
 
 /**
@@ -482,31 +451,7 @@ export function buildHerdrControlPaneCommand(sessionName: string, paneId: string
   return buildHerdrCommand(sessionName, ["terminal", "session", "control", paneId, "--cols", String(cols), "--rows", String(rows)]);
 }
 
-export type HerdrObserveRecord =
-  | { type: "frame"; isFullScreen: boolean; output: string; width?: number; height?: number }
-  | { type: "closed" };
-
-/** observe가 내보내는 NDJSON 한 줄을 읽는다. 모르는 레코드는 null이다 */
-export function parseHerdrObserveRecord(line: string): HerdrObserveRecord | null {
-  let record: { type?: unknown; bytes?: unknown; full?: unknown; width?: unknown; height?: unknown };
-  try {
-    record = JSON.parse(line);
-  } catch {
-    return null;
-  }
-  if (record.type === "terminal.closed") {
-    return { type: "closed" };
-  }
-  if (record.type !== "terminal.frame" || typeof record.bytes !== "string") {
-    return null;
-  }
-  return {
-    type: "frame",
-    isFullScreen: record.full === true,
-    output: Buffer.from(record.bytes, "base64").toString("utf8"),
-    ...(typeof record.width === "number" && typeof record.height === "number" ? { width: record.width, height: record.height } : {}),
-  };
-}
+export { parseHerdrObserveRecord, type HerdrObserveRecord } from "@/lib/remoteTerminalProtocol";
 
 /**
  * 모바일에서 누른 키를 Herdr pane에 넣는다.

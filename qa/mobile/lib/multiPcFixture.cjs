@@ -1,13 +1,15 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
-const http = require("node:http");
+const https = require("node:https");
+const path = require("node:path");
+const { loadOrCreateMobileTlsCertificate } = require("../../../electron/mobileTlsCertificate.js");
 
 // 모바일의 저장/전환 여정만 검증하는 두 개의 격리된 PC API.
 // 실제 KanVibe API 계약은 기존 prepareQaDesktop.cjs 여정이 검증한다.
-function startPc(port, title) {
+function startPc(port, title, certificate) {
   const token = `qa-token-${port}`;
   let paired = false;
 
-  const server = http.createServer(async (request, response) => {
+  const server = https.createServer(certificate, async (request, response) => {
     const json = (status, body) => {
       response.writeHead(status, { "Content-Type": "application/json" });
       response.end(JSON.stringify(body));
@@ -30,9 +32,15 @@ function startPc(port, title) {
     if (request.url === "/api/mobile/board" && request.method === "GET") {
       return json(200, {
         board: {
-          projects: [],
+          projects: [
+            { id: "primary", name: "Primary", repoPath: "/qa/primary" },
+            { id: "secondary", name: "Secondary", repoPath: "/qa/secondary" },
+          ],
           tasks: {
-            todo: [{ id: `qa-${port}`, title, status: "todo" }],
+            todo: [
+              { id: `qa-${port}`, title, status: "todo", projectId: "primary" },
+              { id: `qa-secondary-${port}`, title: `${title} secondary`, status: "todo", projectId: "secondary" },
+            ],
             progress: [], pending: [], review: [], done: [],
           },
         },
@@ -53,7 +61,19 @@ function startPc(port, title) {
   return server;
 }
 
-const servers = [startPc(19836, "Studio task"), startPc(19837, "Home task")];
+const servers = [];
+async function main() {
+  const certificateDirectory = path.resolve(process.argv[2] ?? "qa-results/mobile-multi-pc/tls");
+  for (const [port, title] of [[19836, "Studio task"], [19837, "Home task"]]) {
+    const certificate = await loadOrCreateMobileTlsCertificate(path.join(certificateDirectory, String(port)));
+    servers.push(startPc(port, title, certificate));
+  }
+}
+main().catch((error) => {
+  console.error(error);
+  close();
+  process.exitCode = 1;
+});
 function close() {
   for (const server of servers) server.close();
 }

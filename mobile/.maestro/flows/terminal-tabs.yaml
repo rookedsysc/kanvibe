@@ -1,6 +1,6 @@
 appId: ${APP_ID}
 env:
-  DESKTOP_API_FROM_HOST: http://127.0.0.1:19736
+  DESKTOP_API_FROM_HOST: http://127.0.0.1:39736
   PROBE_API_FROM_HOST: http://127.0.0.1:19737
 ---
 - launchApp:
@@ -12,7 +12,7 @@ env:
 - runFlow: ../subflows/pairs-and-opens-board.yaml
 - runFlow: ../subflows/opens-session-task-terminal.yaml
 - assertVisible:
-    id: create-task-from-current
+    id: "task-more|create-task-from-current"
 - assertVisible:
     id: create-terminal-tab
 - assertNotVisible: "출력 수신 중"

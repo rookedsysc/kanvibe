@@ -1149,6 +1149,7 @@ describe("kanbanService.createTask", () => {
     );
     expect(mocks.taskRepo.remove).toHaveBeenNthCalledWith(1, taskA);
     expect(mocks.taskRepo.remove).toHaveBeenNthCalledWith(2, taskB);
+    expect(mocks.broadcastTaskSessionChanged.mock.calls).toEqual([[{ taskId: taskA.id }], [{ taskId: taskB.id }]]);
     expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(1);
   });
 
@@ -1274,6 +1275,7 @@ describe("kanbanService.createTask", () => {
       const { removeTaskRegistration } = await import("@/desktop/main/services/kanbanService");
       await expect(removeTaskRegistration("task-shared")).resolves.toBe(true);
       expect(mocks.taskRepo.remove).toHaveBeenCalledWith(sharedTask);
+      expect(mocks.broadcastTaskSessionChanged).toHaveBeenCalledWith({ taskId: "task-shared" });
       expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(1);
       expect(mocks.execGit).not.toHaveBeenCalled();
       expect(mocks.propagateTaskDeletionToPeers).not.toHaveBeenCalled();
@@ -1288,6 +1290,7 @@ describe("kanbanService.createTask", () => {
       await expect(removeTaskRegistration("missing")).resolves.toBe(false);
       expect(mocks.taskRepo.remove).not.toHaveBeenCalled();
       expect(mocks.broadcastBoardUpdate).not.toHaveBeenCalled();
+      expect(mocks.broadcastTaskSessionChanged).not.toHaveBeenCalled();
     });
 
     it("SSH 실패는 저장소 손상으로 바꾸거나 삭제하지 않는다", async () => {
@@ -1330,6 +1333,7 @@ describe("kanbanService.createTask", () => {
       expect(relayedDeletion).toEqual({ isDeleted: true, peerResults: [] });
       expect(mocks.propagateTaskDeletionToPeers).toHaveBeenCalledTimes(1);
       expect(mocks.taskRepo.remove).toHaveBeenCalledTimes(2);
+      expect(mocks.broadcastTaskSessionChanged.mock.calls).toEqual([[{ taskId: "task-shared" }], [{ taskId: "task-shared" }]]);
     });
 
     it("다른 client 일부에서 지우지 못해도 이 client의 삭제는 마치고, task가 남은 client를 화면에 알린다", async () => {

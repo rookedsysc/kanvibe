@@ -27,6 +27,7 @@ export default defineConfig({
       ...process.env,
       PATH: runtimePath,
       KANVIBE_APP_DATA_DIR: appDataDir,
+      KANVIBE_DB_PATH: path.join(appDataDir, "kanvibe.db"),
     },
   },
 });

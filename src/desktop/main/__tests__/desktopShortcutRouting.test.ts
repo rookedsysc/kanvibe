@@ -28,6 +28,15 @@ describe("desktop shortcut routing", () => {
     expect(source).toContain("const isTaskDetailRoute = isTaskDetailRouteUrl(browserWindow.webContents.getURL());");
   });
 
+  it("현재 pane 전환은 태스크 상세에서만 PTY 입력 전에 전달한다", () => {
+    const source = readMainSource();
+    expect(source).toContain('shortcutCommand === "terminalToggleChat" && isTaskDetailRoute');
+    expect(source).toContain('browserWindow.webContents.send("kanvibe:terminal-toggle-chat-shortcut")');
+    const preload = readFileSync(path.join(process.cwd(), "electron", "preload.js"), "utf8");
+    expect(preload).toContain('onTerminalToggleChatShortcut(listener)');
+    expect(preload).toContain('ipcRenderer.removeListener("kanvibe:terminal-toggle-chat-shortcut", handler)');
+  });
+
   /** 저장된 재배정을 읽지 않으면 설정 화면에서 바꾼 단축키가 main 경로에서만 옛 조합으로 남는다 */
   it("저장된 단축키 재배정을 읽어 두고 변경 알림에 다시 읽는다", () => {
     const source = readMainSource();

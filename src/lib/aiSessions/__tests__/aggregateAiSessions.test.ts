@@ -35,7 +35,7 @@ vi.mock("@/lib/aiSessions/readGeminiSessions", () => ({
 }));
 
 vi.mock("@/lib/gitOperations", () => ({
-  isSSHTransportError: mockIsSSHTransportError,
+  isSSHConnectionError: mockIsSSHTransportError,
 }));
 
 vi.mock("@/lib/aiSessions/readAdditionalFileSessions", () => ({

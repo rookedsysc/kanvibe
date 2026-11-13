@@ -7,14 +7,17 @@ import 'package:http/io_client.dart';
 import 'package:web_socket_channel/io.dart';
 
 import '../../features/board/domain/task_status.dart';
+import '../../features/project_registry/data/project_scan_result.dart';
 import '../../features/chat_history/domain/chat_history.dart';
 import '../../features/notifications/domain/inbox_notification.dart';
 import '../../features/notifications/domain/notification_settings.dart';
+import '../../features/pane_chat/domain/pane_chat.dart';
 import '../../features/task_create/domain/session_type.dart';
 import '../../features/task_detail/domain/mirror_pane.dart';
 import 'desktop_command.dart';
 import 'desktop_connection.dart';
 import 'pinned_http_client.dart';
+import 'pane_connection.dart';
 
 /// 페어링 결과. 인증서 지문은 다음 요청부터 고정할 값이다
 class PairingResult {
@@ -210,6 +213,234 @@ class DesktopClient {
       (jsonDecode(response.body) as Map<String, dynamic>)['detail']
           as Map<String, dynamic>,
     );
+  }
+
+  // Foreground-process inspection and exact transcript lookup can each outlast a normal board request.
+  static const _paneChatTimeout = Duration(seconds: 30);
+
+  Future<PaneChatSnapshot> fetchPaneChat(
+    DesktopConnection connection,
+    PaneChatTarget target,
+  ) async {
+    final response = await _clientFor(connection)
+        .get(
+          connection
+              .buildHttpUri('/')
+              .replace(
+                pathSegments: [
+                  'api',
+                  'mobile',
+                  'tasks',
+                  target.taskId,
+                  'pane-chat',
+                ],
+                queryParameters: {'paneId': target.paneId},
+              ),
+          headers: connection.authorizationHeaders,
+        )
+        .timeout(_paneChatTimeout);
+    if (response.statusCode != 200) {
+      throw DesktopRequestException(
+        response.statusCode,
+        message: _readErrorMessage(response.body),
+      );
+    }
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    final snapshot = PaneChatSnapshot.fromJson(
+      body['snapshot'] as Map<String, dynamic>,
+    );
+    if (snapshot.taskId != target.taskId ||
+        (snapshot.paneId != null && snapshot.paneId != target.paneId)) {
+      throw const FormatException('선택한 pane과 응답의 대상이 다릅니다.');
+    }
+    return snapshot;
+  }
+
+  Future<void> sendPaneChatAction(
+    DesktopConnection connection,
+    String taskId,
+    String targetToken,
+    PaneChatAction action, {
+    String? text,
+    PaneChatKey? key,
+    List<String>? attachmentIds,
+    String? requestId,
+  }) async {
+    final response = await _clientFor(connection)
+        .post(
+          connection
+              .buildHttpUri('/')
+              .replace(
+                pathSegments: [
+                  'api',
+                  'mobile',
+                  'tasks',
+                  taskId,
+                  'pane-chat',
+                  action.path,
+                ],
+              ),
+          headers: {
+            ...connection.authorizationHeaders,
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({
+            'targetToken': targetToken,
+            if (action == PaneChatAction.prompt) 'text': text,
+            if (action == PaneChatAction.key) 'key': key?.name,
+            'attachmentIds': ?attachmentIds,
+            'requestId': ?requestId,
+          }),
+        )
+        .timeout(_paneChatTimeout);
+    if (response.statusCode != 200) {
+      throw DesktopRequestException(
+        response.statusCode,
+        message: _readErrorMessage(response.body),
+      );
+    }
+    if ((jsonDecode(response.body) as Map<String, dynamic>)['success'] !=
+        true) {
+      throw const FormatException('CLI가 동작을 수락하지 않았습니다.');
+    }
+  }
+
+  Uri _paneComposerUri(
+    DesktopConnection connection,
+    String taskId,
+    String part, [
+    Map<String, String>? query,
+  ]) => connection
+      .buildHttpUri('/')
+      .replace(
+        pathSegments: ['api', 'mobile', 'tasks', taskId, 'pane-chat', part],
+        queryParameters: query,
+      );
+
+  Map<String, dynamic> _composerBody(http.Response response) {
+    if (response.statusCode != 200) {
+      throw DesktopRequestException(
+        response.statusCode,
+        message: _readErrorMessage(response.body),
+      );
+    }
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    if (body['success'] != true) throw const FormatException('요청을 완료하지 못했습니다.');
+    return body;
+  }
+
+  Future<String> stagePaneChatAttachment(
+    DesktopConnection connection,
+    String taskId,
+    String targetToken, {
+    required String name,
+    required String mimeType,
+    required List<int> bytes,
+  }) async {
+    final response = await _clientFor(connection)
+        .post(
+          _paneComposerUri(connection, taskId, 'attachments'),
+          headers: {
+            ...connection.authorizationHeaders,
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({
+            'targetToken': targetToken,
+            'attachment': {
+              'name': name,
+              'mimeType': mimeType,
+              'dataUrl': 'data:$mimeType;base64,${base64Encode(bytes)}',
+            },
+          }),
+        )
+        .timeout(_paneChatTimeout);
+    return (_composerBody(response)['attachment'] as Map<String, dynamic>)['id']
+        as String;
+  }
+
+  Future<void> removePaneChatAttachment(
+    DesktopConnection connection,
+    String taskId,
+    String targetToken,
+    String id,
+  ) async {
+    final response = await _clientFor(connection)
+        .delete(
+          _paneComposerUri(connection, taskId, 'attachments'),
+          headers: {
+            ...connection.authorizationHeaders,
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({'targetToken': targetToken, 'id': id}),
+        )
+        .timeout(_paneChatTimeout);
+    _composerBody(response);
+  }
+
+  Future<List<PaneChatSuggestion>> getPaneChatSuggestions(
+    DesktopConnection connection,
+    String taskId,
+    String targetToken,
+    String kind,
+    String query,
+  ) async {
+    final response = await _clientFor(connection)
+        .get(
+          _paneComposerUri(connection, taskId, 'suggestions', {
+            'targetToken': targetToken,
+            'kind': kind,
+            'query': query,
+          }),
+          headers: connection.authorizationHeaders,
+        )
+        .timeout(_paneChatTimeout);
+    final body = _composerBody(response);
+    if (body['targetToken'] != targetToken) {
+      throw const FormatException('CLI 대상이 변경되었습니다.');
+    }
+    return (body['items'] as List)
+        .map(
+          (item) => PaneChatSuggestion.fromJson(item as Map<String, dynamic>),
+        )
+        .toList();
+  }
+
+  Future<List<int>> fetchChatAttachment(
+    DesktopConnection connection,
+    String taskId,
+    String provider,
+    String sessionId,
+    String attachmentId,
+  ) async {
+    final uri = connection
+        .buildHttpUri('/')
+        .replace(
+          pathSegments: [
+            'api',
+            'mobile',
+            'tasks',
+            taskId,
+            'ai-sessions',
+            provider,
+            sessionId,
+            'attachments',
+            attachmentId,
+          ],
+        );
+    final response = await _clientFor(connection)
+        .get(uri, headers: connection.authorizationHeaders)
+        .timeout(_paneChatTimeout);
+    final attachment =
+        _composerBody(response)['attachment'] as Map<String, dynamic>;
+    final data = UriData.parse(attachment['dataUrl'] as String);
+    if (!data.mimeType.startsWith('image/')) {
+      throw const FormatException('이미지 형식이 아닙니다.');
+    }
+    final bytes = data.contentAsBytes();
+    if (bytes.length > 10 * 1024 * 1024) {
+      throw const FormatException('이미지가 너무 큽니다.');
+    }
+    return bytes;
   }
 
   Future<List<InboxNotification>> fetchNotifications(
@@ -476,6 +707,44 @@ class DesktopClient {
     );
   }
 
+  Future<List<String>> fetchProjectDirectories(
+    DesktopConnection connection,
+    String path,
+  ) async {
+    final response = await _clientFor(connection)
+        .get(
+          connection.buildHttpUri('/api/mobile/directories', {'path': path}),
+          headers: connection.authorizationHeaders,
+        )
+        .timeout(_requestTimeout);
+    if (response.statusCode != 200) {
+      throw DesktopRequestException(response.statusCode);
+    }
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    return List<String>.from(body['directories'] as List);
+  }
+
+  Future<ProjectScanResult> scanProjects(
+    DesktopConnection connection,
+    String rootPath,
+  ) async {
+    final response = await _clientFor(connection)
+        .post(
+          connection.buildHttpUri('/api/mobile/projects/scan'),
+          headers: {
+            ...connection.authorizationHeaders,
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({'rootPath': rootPath}),
+        )
+        .timeout(_createTaskTimeout);
+    if (response.statusCode != 200) {
+      throw DesktopRequestException(response.statusCode);
+    }
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    return ProjectScanResult.fromJson(body['result'] as Map<String, dynamic>);
+  }
+
   /// 태스크 생성 화면의 베이스 브랜치 칸을 채운다
   Future<List<String>> fetchProjectBranches(
     DesktopConnection connection,
@@ -631,31 +900,174 @@ class DesktopClient {
     }
   }
 
-  /// pane 하나를 구독한다. 첫 프레임은 현재 화면이고 그 뒤로는 바뀌는 부분만 온다
-  PaneStream openPaneStream(
+  /// 직접 경로는 쓰기 전에만 선택한다. 연결이 끊긴 뒤 보낸 키를 재전송하지 않는다.
+  Future<PaneStream> openPaneStream(
     DesktopConnection connection,
     String taskId,
-    String paneId,
-  ) {
-    final channel = IOWebSocketChannel.connect(
+    String paneId, {
+    Future<void>? cancelled,
+  }) async {
+    final cancellation = Completer<void>();
+    cancelled?.then((_) {
+      if (!cancellation.isCompleted) cancellation.complete();
+    });
+    final grant = connection.isEncrypted
+        ? await _preparePaneConnection(connection, taskId, paneId, cancellation)
+        : null;
+    if (cancellation.isCompleted) throw http.RequestAbortedException();
+    if (grant != null) {
+      try {
+        return await _connectPaneStream(
+          grant.directUri,
+          {'Authorization': 'Bearer ${grant.token}'},
+          grant.certificateFingerprint,
+          cancellation.future,
+          _directPaneConnectTimeout,
+        );
+      } catch (_) {
+        if (cancellation.isCompleted) throw http.RequestAbortedException();
+        // 직접 TCP 경로가 막혀도 같은 권한을 A의 인증된 고정 relay 경로로 전달할 수 있다.
+      }
+    }
+    return _connectPaneStream(
       connection.buildWebSocketUri('/api/mobile/stream', {
         'taskId': taskId,
         'paneId': paneId,
+        if (grant != null) 'grantId': grant.grantId,
       }),
-      headers: connection.authorizationHeaders,
-      customClient: _webSocketClientFor(connection),
+      connection.authorizationHeaders,
+      connection.certificateFingerprint,
+      cancellation.future,
+      _requestTimeout,
     );
+  }
 
+  // 기존 첫 화면 제한15초 안에 relay를 시도할 여유를 남긴다.
+  static const _directPaneConnectTimeout = Duration(seconds: 2);
+
+  Future<PaneConnection?> _preparePaneConnection(
+    DesktopConnection connection,
+    String taskId,
+    String paneId,
+    Completer<void> cancellation,
+  ) async {
+    final uri = connection
+        .buildHttpUri('/')
+        .replace(
+          pathSegments: [
+            'api',
+            'mobile',
+            'tasks',
+            taskId,
+            'panes',
+            paneId,
+            'connection',
+          ],
+        );
+    final request = http.AbortableRequest(
+      'POST',
+      uri,
+      abortTrigger: cancellation.future,
+    )..headers.addAll(connection.authorizationHeaders);
+    final response =
+        await _awaitPaneSetup(
+          _clientFor(connection).send(request).then(http.Response.fromStream),
+          cancellation.future,
+        ).timeout(
+          _requestTimeout,
+          onTimeout: () {
+            if (!cancellation.isCompleted) cancellation.complete();
+            throw TimeoutException('Terminal connection preparation timed out');
+          },
+        );
+    if (response.statusCode == 404 || response.statusCode == 405) return null;
+    if (response.statusCode != 200) {
+      throw DesktopRequestException(
+        response.statusCode,
+        message: _readErrorMessage(response.body),
+      );
+    }
+    final body = jsonDecode(response.body);
+    if (body is! Map<String, dynamic> ||
+        body['success'] != true ||
+        !body.containsKey('connection')) {
+      throw const FormatException('터미널 연결 응답이 올바르지 않습니다.');
+    }
+    return body['connection'] == null
+        ? null
+        : PaneConnection.fromJson(body['connection']);
+  }
+
+  Future<PaneStream> _connectPaneStream(
+    Uri uri,
+    Map<String, String> headers,
+    String? fingerprint,
+    Future<void> cancelled,
+    Duration timeout,
+  ) async {
+    final attemptClosed = Completer<void>();
+    final client = fingerprint == null
+        ? HttpClient()
+        : createPinnedHttpClient(fingerprint, cancelled: attemptClosed.future);
+    final channel = IOWebSocketChannel.connect(
+      uri,
+      headers: headers,
+      customClient: client,
+    );
+    var closed = false;
+    void close() {
+      if (closed) return;
+      closed = true;
+      attemptClosed.complete();
+      client.close(force: true);
+      unawaited(channel.sink.close().catchError((_) {}));
+    }
+
+    cancelled.then((_) => close());
+    try {
+      await _awaitPaneSetup(channel.ready, cancelled).timeout(timeout);
+      if (closed) throw http.RequestAbortedException();
+    } catch (_) {
+      // Future.timeout는 실제 소켓을 취소하지 않으므로 늦은 handshake도 이 시도와 함께 닫는다.
+      close();
+      unawaited(channel.stream.drain<void>().catchError((_) {}));
+      rethrow;
+    }
     return PaneStream(
-      output: channel.stream.map((event) => event.toString()),
-      onWrite: channel.sink.add,
-      onResize: (cols, rows) => channel.sink.add(
-        utf8.encode(jsonEncode({'type': 'resize', 'cols': cols, 'rows': rows})),
-      ),
-      onClose: channel.sink.close,
+      output: channel.stream
+          .map((event) => event.toString())
+          .transform(
+            StreamTransformer<String, String>.fromHandlers(
+              handleDone: (sink) {
+                close();
+                sink.close();
+              },
+            ),
+          ),
+      onWrite: (input) {
+        if (!closed) channel.sink.add(input);
+      },
+      onResize: (cols, rows) {
+        if (!closed) {
+          channel.sink.add(
+            utf8.encode(
+              jsonEncode({'type': 'resize', 'cols': cols, 'rows': rows}),
+            ),
+          );
+        }
+      },
+      onClose: () async {
+        close();
+      },
       readCloseCode: () => channel.closeCode,
     );
   }
+
+  Future<T> _awaitPaneSetup<T>(Future<T> operation, Future<void> cancelled) =>
+      Future.any([
+        operation,
+        cancelled.then<T>((_) => throw http.RequestAbortedException()),
+      ]);
 
   /// 터미널 화면과 관계없이 hook 상태 변경을 받는다.
   DesktopEventStream openEventStream(DesktopConnection connection) {
@@ -871,7 +1283,29 @@ class PaneStream {
   /// 소켓이 왜 닫혔는지. 서버가 나눠 보낸 사유를 위젯이 읽을 유일한 통로다
   final int? Function() readCloseCode;
 
-  void write(String input) => onWrite(input);
+  // B의 WebSocket frame 제한과 맞추되 Unicode 문자를 프레임 사이에서 자르지 않는다.
+  static const _maxInputBytes = 1024 * 1024;
+
+  void write(String input) {
+    if (utf8.encode(input).length <= _maxInputBytes) {
+      onWrite(input);
+      return;
+    }
+    final chunk = StringBuffer();
+    var bytes = 0;
+    for (final rune in input.runes) {
+      final character = String.fromCharCode(rune);
+      final size = utf8.encode(character).length;
+      if (bytes + size > _maxInputBytes) {
+        onWrite(chunk.toString());
+        chunk.clear();
+        bytes = 0;
+      }
+      chunk.write(character);
+      bytes += size;
+    }
+    if (chunk.isNotEmpty) onWrite(chunk.toString());
+  }
 
   void resize(int cols, int rows) => onResize(cols, rows);
 

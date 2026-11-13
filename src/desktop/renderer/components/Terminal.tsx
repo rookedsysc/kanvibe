@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslations } from "next-intl";
 import "@xterm/xterm/css/xterm.css";
 import { createTerminalOptions, installMacShiftSelectionPatch } from "@/lib/terminalMouseSelection";
 import { installOsc52ClipboardHandler } from "@/lib/terminalClipboard";
 import { REQUEST_ACTIVE_TERMINAL_FOCUS_EVENT, hasTerminalFocusBlocker } from "@/desktop/renderer/utils/terminalFocus";
+import { TerminalPaneChatLayer, type TerminalChatGrid } from "./TerminalPaneChatLayer";
 
 interface TerminalProps {
   taskId: string;
@@ -15,6 +17,8 @@ interface TerminalProps {
   isHidden?: boolean;
   /** 원격(SSH) 세션에서만 클립보드 이미지 붙여넣기를 가로챈다. 로컬 세션은 기존 텍스트 붙여넣기만 유지한다 */
   isRemote?: boolean;
+  taskTitle?: string;
+  onHistory?: () => void;
 }
 
 const NERD_FONT_FAMILY = "JetBrainsMono Nerd Font Mono";
@@ -76,8 +80,18 @@ function loadNerdFontFamily(): Promise<string | null> {
   return nerdFontLoadPromise;
 }
 
-export default function Terminal({ taskId, tabId = null, isHidden = false, isRemote = false }: TerminalProps) {
+export default function Terminal({ taskId, tabId = null, isHidden = false, isRemote = false, taskTitle, onHistory }: TerminalProps) {
+  const t = useTranslations("taskDetail");
+  const translationsRef = useRef(t);
+  translationsRef.current = t;
   const containerRef = useRef<HTMLDivElement>(null);
+  const chatFocusedRef = useRef(false);
+  const [chatGrid, setChatGrid] = useState<TerminalChatGrid | null>(null);
+  const onChatFocusChange = useCallback((focused: boolean) => { chatFocusedRef.current = focused; }, []);
+  const cancelRetryRef = useRef<(() => void) | null>(null);
+  const [connectionStatus, setConnectionStatus] = useState<"connecting" | "reconnecting" | "ready" | "error">("connecting");
+  const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [connectionAttempt, setConnectionAttempt] = useState(0);
   /** connect는 taskId·tabId에만 묶여 있어야 하므로, 표시 여부·원격 여부는 ref로 읽는다 */
   const isHiddenRef = useRef(isHidden);
   const isRemoteRef = useRef(isRemote);
@@ -90,12 +104,15 @@ export default function Terminal({ taskId, tabId = null, isHidden = false, isRem
       return undefined;
     }
 
+    setConnectionStatus("connecting");
+    setConnectionError(null);
     const pasteEventTarget = containerRef.current;
     const [{ Terminal: XTerm }, { FitAddon }, { WebLinksAddon }] = await loadTerminalModules();
     if (signal.aborted) {
       return;
     }
     let isTerminalDisposed = false;
+    let isTerminalOpen = false;
 
     const terminal = new XTerm(createTerminalOptions(FALLBACK_FONT_FAMILY));
     const cleanups: (() => void)[] = [() => terminal.dispose()];
@@ -149,6 +166,11 @@ export default function Terminal({ taskId, tabId = null, isHidden = false, isRem
 
       /** capture 단계로 등록해야 xterm이 자신의 textarea(target)에 붙인 붙여넣기 처리보다 먼저 가로챌 수 있다 */
       const handlePaste = (event: ClipboardEvent) => {
+        if (chatFocusedRef.current) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          return;
+        }
         if (!isRemoteRef.current) {
           return;
         }
@@ -198,6 +220,7 @@ export default function Terminal({ taskId, tabId = null, isHidden = false, isRem
       };
 
       terminal.attachCustomKeyEventHandler((event) => {
+        if (chatFocusedRef.current) return false;
         if (event.type !== "keydown") {
           return true;
         }
@@ -240,7 +263,8 @@ export default function Terminal({ taskId, tabId = null, isHidden = false, isRem
       cleanups.push(unsubscribeData);
 
       const unsubscribeClose = window.kanvibeDesktop!.onTerminalClose((event: { taskId: string; tabId: string | null; reason: string | null }) => {
-        if (isThisTerminal(event)) {
+        // 실패한 open도 close를 보낼 수 있으므로 연결이 끝나기 전에는 최종 오류를 그리지 않는다.
+        if (isThisTerminal(event) && isTerminalOpen) {
           terminal.writeln(`\r\n\x1b[31m${event.reason || "연결이 종료되었습니다."}\x1b[0m`);
         }
       });
@@ -254,6 +278,13 @@ export default function Terminal({ taskId, tabId = null, isHidden = false, isRem
 
         fitAddon.fit();
         window.kanvibeDesktop!.resizeTerminal(taskId, tabId, terminal.cols, terminal.rows);
+        const screen = pasteEventTarget.querySelector<HTMLElement>(".xterm-screen");
+        if (screen) {
+          const bounds = screen.getBoundingClientRect();
+          const containerBounds = pasteEventTarget.getBoundingClientRect();
+          const next = { cols: terminal.cols, rows: terminal.rows, left: bounds.left - containerBounds.left, top: bounds.top - containerBounds.top, width: bounds.width, height: bounds.height };
+          setChatGrid((current) => current && Object.keys(next).every((key) => current[key as keyof TerminalChatGrid] === next[key as keyof TerminalChatGrid]) ? current : next);
+        }
       };
 
       const scheduleTerminalSync = () => {
@@ -288,16 +319,53 @@ export default function Terminal({ taskId, tabId = null, isHidden = false, isRem
         return;
       }
       cleanups.push(() => window.kanvibeDesktop!.closeTerminal(taskId, tabId));
-      const terminalReady = await window.kanvibeDesktop!.openTerminal(taskId, tabId, terminal.cols, terminal.rows);
+      let terminalReady = await window.kanvibeDesktop!.openTerminal(taskId, tabId, terminal.cols, terminal.rows);
       if (signal.aborted) {
         return;
       }
-      if (!terminalReady.ok) {
-        terminal.writeln(`\r\n\x1b[31m${terminalReady.error || "터미널 연결 실패"}\x1b[0m`);
-        return;
+
+      // 재시도 힌트는 일시적인 전송 실패에만 온다. 자동 재연결은 한 번으로 제한한다.
+      const retryAfterMs = terminalReady.retryAfterMs;
+      if (!terminalReady.ok && typeof retryAfterMs === "number" && Number.isFinite(retryAfterMs) && retryAfterMs > 0) {
+        setConnectionStatus("reconnecting");
+        const didWait = !isHiddenRef.current && await new Promise<boolean>((resolve) => {
+          const finish = (didWait: boolean) => {
+            window.clearTimeout(timer);
+            signal.removeEventListener("abort", cancel);
+            cancelRetryRef.current = null;
+            resolve(didWait);
+          };
+          const cancel = () => finish(false);
+          const timer = window.setTimeout(() => finish(true), retryAfterMs);
+          cancelRetryRef.current = cancel;
+          signal.addEventListener("abort", cancel, { once: true });
+        });
+        if (signal.aborted) {
+          return;
+        }
+        if (!didWait) {
+          setConnectionError(translationsRef.current("terminalReconnectPaused"));
+          setConnectionStatus("error");
+          return;
+        }
+        terminalReady = await window.kanvibeDesktop!.openTerminal(taskId, tabId, terminal.cols, terminal.rows);
+        if (signal.aborted) {
+          return;
+        }
       }
 
+      if (!terminalReady.ok) {
+        const error = terminalReady.error || translationsRef.current("terminalConnectionFailed");
+        terminal.writeln(`\r\n\x1b[31m${error}\x1b[0m`);
+        setConnectionError(error);
+        setConnectionStatus("error");
+        return;
+      }
+      isTerminalOpen = true;
+      setConnectionStatus("ready");
+
       terminal.onData((data) => {
+        // 커서 조회 같은 프로토콜 응답도 여기로 오므로 사용자 입력은 키보드·붙여넣기 경계에서 차단한다.
         window.kanvibeDesktop!.writeTerminal(taskId, tabId, data);
       });
 
@@ -306,7 +374,7 @@ export default function Terminal({ taskId, tabId = null, isHidden = false, isRem
       });
 
       const focusCurrentTerminal = () => {
-        if (hasTerminalFocusBlocker()) {
+        if (isHiddenRef.current || chatFocusedRef.current || hasTerminalFocusBlocker()) {
           return;
         }
 
@@ -360,13 +428,50 @@ export default function Terminal({ taskId, tabId = null, isHidden = false, isRem
     void connect(controller.signal, (dispose) => { cleanup = dispose; })
       .catch((error) => {
         console.error("데스크톱 터미널 초기화 실패:", error);
+        if (!controller.signal.aborted) {
+          setConnectionError(error instanceof Error ? error.message : translationsRef.current("terminalConnectionFailed"));
+          setConnectionStatus("error");
+        }
       });
 
     return () => {
       controller.abort();
       cleanup?.();
     };
-  }, [connect]);
+  }, [connect, connectionAttempt]);
 
-  return <div ref={containerRef} className="w-full h-full overflow-hidden bg-terminal-bg" />;
+  useEffect(() => {
+    if (isHidden) {
+      cancelRetryRef.current?.();
+    }
+  }, [isHidden]);
+
+  const isConnecting = connectionStatus === "connecting" || connectionStatus === "reconnecting";
+
+  return (
+    <div className="relative w-full h-full overflow-hidden bg-terminal-bg" aria-busy={isConnecting}>
+      <div ref={containerRef} className="w-full h-full" />
+      {onHistory ? <TerminalPaneChatLayer key={`${taskId}:${tabId ?? "multiplexer"}`} taskId={taskId} terminalTabId={tabId ?? undefined} taskTitle={taskTitle} terminalRef={containerRef} metrics={chatGrid} isVisible={!isHidden && connectionStatus === "ready"} onHistory={onHistory} onChatFocusChange={onChatFocusChange} /> : null}
+      {isConnecting && (
+        <div className="absolute inset-0 flex items-center justify-center bg-terminal-bg text-text-muted">
+          <p role="status" className="flex items-center gap-2 text-sm">
+            <span aria-hidden="true" className="h-4 w-4 rounded-full border-2 border-current border-t-transparent motion-safe:animate-spin" />
+            {t(connectionStatus === "reconnecting" ? "terminalReconnecting" : "terminalConnecting")}
+          </p>
+        </div>
+      )}
+      {connectionStatus === "error" && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-terminal-bg px-4 text-center">
+          <p role="alert" className="text-sm text-status-error break-words max-w-full">{connectionError}</p>
+          <button
+            type="button"
+            onClick={() => setConnectionAttempt((attempt) => attempt + 1)}
+            className="rounded px-3 py-1.5 text-xs bg-button-neutral text-text-primary hover:border-brand-primary border border-border-default focus:outline-none focus:ring-1 focus:ring-brand-primary"
+          >
+            {t("terminalRetry")}
+          </button>
+        </div>
+      )}
+    </div>
+  );
 }

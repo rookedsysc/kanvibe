@@ -14,6 +14,8 @@ const { runMobileCommand, SUPPORTED_COMMANDS } = require("./mobileCommands.js");
 const MOBILE_PATH_PREFIX = "/api/mobile/";
 const STREAM_PATH = "/api/mobile/stream";
 const EVENTS_PATH = "/api/mobile/events";
+const PRE_AUTH_PANE_BYTES = 1024 * 1024;
+const PRE_AUTH_PANE_MESSAGES = 256;
 const NOTIFICATIONS_PATH = "/api/mobile/notifications";
 const NOTIFICATION_READ_PATH_PATTERN = /^\/api\/mobile\/notifications\/([^/]+)\/read$/;
 
@@ -47,6 +49,7 @@ const LOOPBACK_ADDRESSES = new Set(["127.0.0.1", "::1", "::ffff:127.0.0.1"]);
 
 /** 태스크 pane 경로에서 태스크 id를 꺼낸다 */
 const SURFACES_PATH_PATTERN = /^\/api\/mobile\/tasks\/([^/]+)\/surfaces$/;
+const PANE_CONNECTION_PATH_PATTERN = /^\/api\/mobile\/tasks\/([^/]+)\/panes\/([^/]+)\/connection$/;
 const PANE_SHORTCUTS_PATH_PATTERN = /^\/api\/mobile\/tasks\/([^/]+)\/panes\/([^/]+)\/shortcuts$/;
 const TASK_TABS_PATH_PATTERN = /^\/api\/mobile\/tasks\/([^/]+)\/tabs$/;
 
@@ -60,6 +63,10 @@ const TASK_STATUS_PATH_PATTERN = /^\/api\/mobile\/tasks\/([^/]+)\/status$/;
 const TASK_SESSION_TYPE_PATH_PATTERN = /^\/api\/mobile\/tasks\/([^/]+)\/session-type$/;
 const TASK_SESSION_ALIVE_PATH_PATTERN = /^\/api\/mobile\/tasks\/([^/]+)\/session-alive$/;
 const AI_SESSIONS_PATH_PATTERN = /^\/api\/mobile\/tasks\/([^/]+)\/ai-sessions(?:\/([^/]+)\/([^/]+))?$/;
+const AI_SESSION_ATTACHMENT_PATH_PATTERN = /^\/api\/mobile\/tasks\/([^/]+)\/ai-sessions\/([^/]+)\/([^/]+)\/attachments\/([^/]+)$/;
+const PANE_CHAT_PATH_PATTERN = /^\/api\/mobile\/tasks\/([^/]+)\/pane-chat(?:\/(prompt|interrupt|model-picker|key|attachments|suggestions))?$/;
+// 10MiB 파일의 base64와 JSON 메타데이터를 수용하며, 다른 요청의 64KiB 한도는 유지한다.
+const MAX_PANE_CHAT_ATTACHMENT_BODY_BYTES = 14 * 1024 * 1024;
 const AI_MESSAGE_ROLES = new Set(["user", "assistant", "tool", "system", "developer", "reasoning", "unknown"]);
 const AI_HISTORY_PAGE_LIMIT = 100;
 
@@ -96,7 +103,8 @@ async function handleMobileRequest(request, response, { bridge, host, port, isDe
       return true;
     }
 
-    if (!(await bridge.authorizeMobileRequest(request.headers.authorization))) {
+    const deviceId = await bridge.authorizeMobileRequest(request.headers.authorization);
+    if (!deviceId) {
       writeJson(response, 401, { success: false, error: "연결되지 않은 기기입니다" });
       return true;
     }
@@ -108,6 +116,30 @@ async function handleMobileRequest(request, response, { bridge, host, port, isDe
 
     if (request.method === "GET" && requestUrl.pathname === "/api/mobile/board") {
       writeJson(response, 200, { success: true, board: await bridge.getMobileBoard() });
+      return true;
+    }
+
+    if (request.method === "GET" && requestUrl.pathname === "/api/mobile/directories") {
+      const directories = await bridge.getMobileDirectories(requestUrl.searchParams.get("path") ?? "~");
+      writeJson(response, 200, { success: true, directories });
+      return true;
+    }
+
+    if (request.method === "POST" && requestUrl.pathname === "/api/mobile/projects/scan") {
+      let body;
+      try {
+        body = await readJsonBody(request);
+      } catch {
+        writeJson(response, 400, { success: false, error: "잘못된 요청입니다" });
+        return true;
+      }
+      const rootPath = readText(body?.rootPath);
+      if (!rootPath) {
+        writeJson(response, 400, { success: false, error: "폴더 경로가 필요합니다" });
+        return true;
+      }
+      const result = await bridge.scanMobileProjects(rootPath);
+      writeJson(response, 200, { success: true, result });
       return true;
     }
 
@@ -153,6 +185,21 @@ async function handleMobileRequest(request, response, { bridge, host, port, isDe
       return true;
     }
 
+    const paneChatMatch = requestUrl.pathname.match(PANE_CHAT_PATH_PATTERN);
+    if (paneChatMatch && ((request.method === "GET" && (!paneChatMatch[2] || paneChatMatch[2] === "suggestions")) || (request.method === "POST" && paneChatMatch[2] && paneChatMatch[2] !== "suggestions") || (request.method === "DELETE" && paneChatMatch[2] === "attachments"))) {
+      await handlePaneChatRequest(request, response, bridge, decodeURIComponent(paneChatMatch[1]), paneChatMatch[2], requestUrl.searchParams);
+      return true;
+    }
+
+    const attachmentMatch = requestUrl.pathname.match(AI_SESSION_ATTACHMENT_PATH_PATTERN);
+    if (request.method === "GET" && attachmentMatch) {
+      const [taskId, provider, sessionId, attachmentId] = attachmentMatch.slice(1).map(decodeURIComponent);
+      if (!bridge.isMobileAiSessionProvider(provider)) { writeJson(response, 400, { success: false, error: "지원하지 않는 CLI입니다" }); return true; }
+      const attachment = await bridge.getMobileAiSessionAttachment(taskId, provider, sessionId, attachmentId, requestUrl.searchParams.get("sourceRef") ?? undefined);
+      writeJson(response, attachment ? 200 : 404, attachment ? { success: true, attachment } : { success: false, error: "첨부 파일을 찾을 수 없습니다" });
+      return true;
+    }
+
     const historyMatch = requestUrl.pathname.match(AI_SESSIONS_PATH_PATTERN);
     if (request.method === "GET" && historyMatch) {
       await handleAiHistoryRequest(response, bridge, requestUrl.searchParams, historyMatch);
@@ -163,6 +210,38 @@ async function handleMobileRequest(request, response, { bridge, host, port, isDe
     if (request.method === "GET" && taskMatch) {
       const task = await bridge.getMobileTask(decodeURIComponent(taskMatch[1]));
       writeJson(response, task ? 200 : 404, task ? { success: true, task } : { success: false, error: "없는 태스크입니다" });
+      return true;
+    }
+
+    const paneConnectionMatch = requestUrl.pathname.match(PANE_CONNECTION_PATH_PATTERN);
+    if (request.method === "POST" && paneConnectionMatch) {
+      response.setHeader("Cache-Control", "no-store");
+      if (request.socket.encrypted !== true || typeof bridge.prepareMobilePaneConnection !== "function") {
+        writeJson(response, 200, { success: true, connection: null });
+        return true;
+      }
+      let connection;
+      try {
+        connection = await bridge.prepareMobilePaneConnection(
+          decodeURIComponent(paneConnectionMatch[1]), decodeURIComponent(paneConnectionMatch[2]), deviceId,
+        );
+      } catch (error) {
+        if (await bridge.authorizeMobileRequest(request.headers.authorization) !== deviceId) {
+          writeJson(response, 401, { success: false, error: "연결되지 않은 기기입니다" });
+          return true;
+        }
+        if (error && error.name === "SurfaceUnavailableError") {
+          writeJson(response, 409, { success: false, reason: error.reason });
+          return true;
+        }
+        throw error;
+      }
+      // Pairing may have been revoked while B's first connection was being prepared.
+      if (await bridge.authorizeMobileRequest(request.headers.authorization) !== deviceId) {
+        writeJson(response, 401, { success: false, error: "연결되지 않은 기기입니다" });
+        return true;
+      }
+      writeJson(response, 200, { success: true, connection });
       return true;
     }
 
@@ -285,6 +364,45 @@ async function handleNotificationSubscriptionRequest(request, response, bridge) 
     });
   }
   writeJson(response, registered ? 200 : 401, registered ? { success: true } : { success: false, error: "연결되지 않은 기기입니다" });
+}
+
+async function handlePaneChatRequest(request, response, bridge, taskId, action, searchParams) {
+  try {
+    if (request.method === "GET") {
+      if (action === "suggestions") {
+        const token = searchParams.get("targetToken");
+        if (!token) { writeJson(response, 400, { success: false, error: "CLI 대상 토큰이 필요합니다" }); return; }
+        const result = await bridge.getPaneChatSuggestions(taskId, token, searchParams.get("kind"), searchParams.get("query") ?? "");
+        writeJson(response, 200, { success: true, ...result });
+        return;
+      }
+      const snapshot = await bridge.getPaneChatSnapshot(taskId, searchParams.get("paneId") ?? undefined);
+      writeJson(response, 200, { success: true, snapshot });
+      return;
+    }
+    let body;
+    try { body = await readJsonBody(request, action === "attachments" && request.method === "POST" ? MAX_PANE_CHAT_ATTACHMENT_BODY_BYTES : undefined); }
+    catch { writeJson(response, 400, { success: false, error: "잘못된 요청입니다" }); return; }
+    if (!body || typeof body !== "object" || typeof body.targetToken !== "string" || !body.targetToken) {
+      writeJson(response, 400, { success: false, error: "CLI 대상 토큰이 필요합니다" });
+      return;
+    }
+    let result;
+    if (action === "attachments") {
+      if (request.method === "DELETE") result = await bridge.removePaneChatAttachment(taskId, body.targetToken, body.id);
+      else result = { success: true, attachment: await bridge.stagePaneChatAttachment(taskId, body.targetToken, body.attachment) };
+    }
+    else if (action === "prompt") result = await bridge.sendPaneChatPrompt(taskId, body.targetToken, body.text, ...(body.attachmentIds === undefined && body.requestId === undefined ? [] : [body.attachmentIds, body.requestId]));
+    else if (action === "interrupt") result = await bridge.interruptPaneChat(taskId, body.targetToken);
+    else if (action === "model-picker") result = await bridge.openPaneChatModelPicker(taskId, body.targetToken);
+    else result = await bridge.sendPaneChatKey(taskId, body.targetToken, body.key);
+    writeJson(response, 200, result);
+  } catch (error) {
+    if (error?.name === "PaneChatInputError") writeJson(response, 400, { success: false, error: error.message });
+    else if (error?.name === "PaneChatTargetChangedError") writeJson(response, 409, { success: false, error: error.message, reason: "target-changed" });
+    else if (error?.name === "PaneChatDeliveryUncertainError") writeJson(response, 409, { success: false, error: error.message, reason: "delivery-uncertain" });
+    else { console.error("[kanvibe] Pane chat request failed:", error); writeJson(response, 500, { success: false, error: "서버 오류" }); }
+  }
 }
 
 async function handlePairRequest(request, response, bridge) {
@@ -622,30 +740,43 @@ function attachMobileStreamServer(server, { bridge, notifications, host, port })
       }
 
       webSocketServer.handleUpgrade(request, socket, head, (webSocket) => {
-        /**
-         * 인증이 끝나고 이 등록이 돌기까지의 짧은 사이에 해제가 오면 그 소켓 하나는 놓친다.
-         * 핸드셰이크 뒤에 페어링을 다시 읽으면 막히지만 upgrade마다 조회가 한 번 더 늘고,
-         * 놓친 기기도 다음 요청에서 401을 받아 앱이 페어링 화면으로 돌아간다.
-         */
         registerDeviceSocket(deviceId, webSocket);
-        if (requestUrl.pathname === EVENTS_PATH) {
-          eventSockets.add(webSocket);
-          webSocket.once("close", () => {
-            eventSockets.delete(webSocket);
-            forgetDeviceSocket(deviceId, webSocket);
-          });
-          /** 앱은 이 목록에 없는 명령을 보내지 않고 업데이트 안내를 띄운다. 모르는 명령을 조용히 버리는 구버전에는 이 필드가 없다 */
-          webSocket.send(JSON.stringify({ type: "connected", commands: SUPPORTED_COMMANDS }));
-          webSocket.on("message", (data, isBinary) => {
-            if (!isBinary) void answerMobileCommand(webSocket, bridge, data);
-          });
-          /** 핸드셰이크 중 해제된 기기를 놓쳐도 다음 HTTP 요청 없이 이 소켓을 닫는다 */
-          void bridge.authorizeMobileRequest(request.headers.authorization).then((currentDeviceId) => {
-            if (currentDeviceId !== deviceId) webSocket.close(DEVICE_UNPAIRED_CLOSE_CODE, "device-unpaired");
-          }).catch(() => webSocket.close(DEVICE_UNPAIRED_CLOSE_CODE, "device-unpaired"));
-          return;
-        }
-        openPaneStream(webSocket, bridge, taskId, paneId, () => forgetDeviceSocket(deviceId, webSocket));
+        webSocket.once("close", () => forgetDeviceSocket(deviceId, webSocket));
+        const pendingFrames = [];
+        let pendingBytes = 0;
+        // A second pairing read may await storage; buffer only a bounded amount until it succeeds.
+        const bufferFrame = (data, binary) => {
+          pendingBytes += data.length;
+          if (pendingBytes > PRE_AUTH_PANE_BYTES || pendingFrames.length >= PRE_AUTH_PANE_MESSAGES) {
+            webSocket.close(1009, "authentication-pending");
+            return;
+          }
+          pendingFrames.push([data, binary]);
+        };
+        webSocket.on("message", bufferFrame);
+        // Recheck after registration so revocation cannot miss a socket created during pairing lookup.
+        void bridge.authorizeMobileRequest(request.headers.authorization).then((currentDeviceId) => {
+          if (currentDeviceId !== deviceId) {
+            webSocket.close(DEVICE_UNPAIRED_CLOSE_CODE, "device-unpaired");
+            return;
+          }
+          if (webSocket.readyState !== webSocket.OPEN) return;
+          if (requestUrl.pathname === EVENTS_PATH) {
+            eventSockets.add(webSocket);
+            webSocket.once("close", () => eventSockets.delete(webSocket));
+            /** 앱은 이 목록에 없는 명령을 보내지 않고 업데이트 안내를 띄운다. 모르는 명령을 조용히 버리는 구버전에는 이 필드가 없다 */
+            webSocket.send(JSON.stringify({ type: "connected", commands: SUPPORTED_COMMANDS }));
+            webSocket.on("message", (data, isBinary) => {
+              if (!isBinary) void answerMobileCommand(webSocket, bridge, data);
+            });
+          } else {
+            void openPaneStream(webSocket, bridge, taskId, paneId, deviceId, requestUrl.searchParams.get("grantId"), () => forgetDeviceSocket(deviceId, webSocket))
+              .catch(() => webSocket.close(4000, "stream-failed"));
+          }
+          webSocket.off("message", bufferFrame);
+          for (const [data, binary] of pendingFrames) webSocket.emit("message", data, binary);
+          pendingFrames.length = 0;
+        }).catch(() => webSocket.close(DEVICE_UNPAIRED_CLOSE_CODE, "device-unpaired"));
       });
     } catch (error) {
       console.error("[kanvibe] Mobile stream upgrade failed:", error);
@@ -665,8 +796,9 @@ async function answerMobileCommand(webSocket, bridge, data) {
 }
 
 /** [onClosed]는 닫힌 소켓을 기기 지도에서 지운다. 죽은 소켓이 남아 있으면 나중의 해제가 남의 자리를 뒤진다 */
-async function openPaneStream(webSocket, bridge, taskId, paneId, onClosed) {
+async function openPaneStream(webSocket, bridge, taskId, paneId, deviceId, grantId, onClosed) {
   let unsubscribe = null;
+  let remoteRelay = null;
   let isClosed = false;
   let viewport = null;
   let finishSubscribing;
@@ -680,6 +812,7 @@ async function openPaneStream(webSocket, bridge, taskId, paneId, onClosed) {
     isClosed = true;
     onClosed();
     stopWatchingSession();
+    remoteRelay?.close();
     if (unsubscribe) {
       unsubscribe();
       unsubscribe = null;
@@ -699,18 +832,22 @@ async function openPaneStream(webSocket, bridge, taskId, paneId, onClosed) {
    */
   webSocket.on("message", (data, isBinary) => {
     let resize = null;
-    if (isBinary) {
-      try {
-        if (data.length > 256) return;
-        const message = JSON.parse(data.toString());
-        if (message?.type !== "resize" || ![message.cols, message.rows].every((value) => Number.isInteger(value) && value >= 1 && value <= 500)) return;
-        resize = message;
-      } catch {
-        return;
-      }
-    }
     writeQueue = writeQueue.then(async () => {
       if (isClosed || webSocket.readyState !== webSocket.OPEN) return;
+      if (remoteRelay) {
+        remoteRelay.write(data, isBinary);
+        return;
+      }
+      if (isBinary) {
+        try {
+          if (data.length > 256) return;
+          const message = JSON.parse(data.toString());
+          if (message?.type !== "resize" || ![message.cols, message.rows].every((value) => Number.isInteger(value) && value >= 1 && value <= 500)) return;
+          resize = message;
+        } catch {
+          return;
+        }
+      }
       if (resize) {
         viewport ??= await bridge.claimPaneViewport(taskId, paneId);
         const snapshot = await viewport.resize(resize.cols, resize.rows);
@@ -729,6 +866,15 @@ async function openPaneStream(webSocket, bridge, taskId, paneId, onClosed) {
   });
 
   try {
+    if (typeof bridge.openRemoteMobilePaneStream === "function") {
+      remoteRelay = await bridge.openRemoteMobilePaneStream(
+        taskId, paneId, deviceId, grantId,
+        (chunk) => { if (!isClosed && webSocket.readyState === webSocket.OPEN) webSocket.send(chunk); },
+        (code, reason) => { if (!isClosed && webSocket.readyState === webSocket.OPEN) webSocket.close(code, reason); },
+      );
+      if (isClosed) { remoteRelay?.close(); return; }
+      if (remoteRelay) return;
+    }
     const stop = await bridge.subscribeToPane(
       taskId,
       paneId,

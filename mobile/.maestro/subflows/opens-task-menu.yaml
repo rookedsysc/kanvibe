@@ -1,0 +1,13 @@
+appId: ${APP_ID}
+---
+- extendedWaitUntil:
+    visible:
+      id: "task-more|create-task-from-current"
+    timeout: 10000
+- runFlow:
+    when:
+      visible:
+        id: task-more
+    commands:
+      - tapOn:
+          id: task-more

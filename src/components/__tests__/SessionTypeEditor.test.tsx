@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import SessionTypeEditor from "../SessionTypeEditor";
 import { SessionType } from "@/entities/KanbanTask";
@@ -38,6 +38,36 @@ describe("SessionTypeEditor", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it("의존성 확인과 변경을 기다리는 동안 상태를 표시하고 중복 제출을 막는다", async () => {
+    let resolveDependency!: (ready: boolean) => void;
+    let resolveChange!: (task: { id: string }) => void;
+    mocks.ensureSessionDependencyWithPrompt.mockReturnValue(new Promise<boolean>((resolve) => { resolveDependency = resolve; }));
+    mocks.changeTaskSessionType.mockReturnValue(new Promise<{ id: string }>((resolve) => { resolveChange = resolve; }));
+    mocks.isTaskSessionAlive.mockResolvedValue(false);
+    render(<SessionTypeEditor taskId="task-1" currentSessionType={SessionType.HERDR} sshHost="build-host" />);
+
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "tmux" } });
+    expect(screen.getByRole("status").textContent).toBe("sessionTypeChanging");
+    expect((screen.getByRole("combobox") as HTMLSelectElement).disabled).toBe(true);
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "zellij" } });
+    expect(mocks.ensureSessionDependencyWithPrompt).toHaveBeenCalledTimes(1);
+    await act(async () => { resolveDependency(true); });
+    expect(screen.getByRole("status")).toBeTruthy();
+    await act(async () => { resolveChange({ id: "task-1" }); });
+    await waitFor(() => expect(screen.queryByRole("status")).toBeNull());
+    expect(mocks.changeTaskSessionType).toHaveBeenCalledTimes(1);
+  });
+
+  it("변경 예외를 그대로 표시하고 파괴적인 변경을 자동 반복하지 않는다", async () => {
+    mocks.isTaskSessionAlive.mockResolvedValue(false);
+    mocks.changeTaskSessionType.mockRejectedValue(new Error("SSH transport failure"));
+    render(<SessionTypeEditor taskId="task-1" currentSessionType={SessionType.HERDR} sshHost="build-host" />);
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "tmux" } });
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toBe("SSH transport failure"));
+    await waitFor(() => expect(screen.queryByRole("status")).toBeNull());
+    expect(mocks.changeTaskSessionType).toHaveBeenCalledTimes(1);
   });
 
   it("기존 세션이 켜져 있으면 닫을지 묻고 확인하면 기존 세션을 닫으며 바꾼다", async () => {
