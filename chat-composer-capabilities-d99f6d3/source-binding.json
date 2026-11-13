@@ -1,0 +1,14 @@
+{
+  "head": "d99f6d375eb85ed6eeac8d4b15f8092e1bc27fa5",
+  "fingerprint": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+  "files": {
+    "src/desktop/renderer/components/PaneChatView.tsx": "8a6f8970b3379e2467e50a435f89f456a74a4c1738aa0f88f213efd312cb4f32",
+    "src/desktop/main/services/paneChatService.ts": "bae6d451f7e2ca7f7071824b2e5b00dda7c025166b139c484663a134317cf8b8",
+    "src/desktop/shared/paneChat.ts": "a29ea48df5b84211e0d51d71eee4b1e312fb02733aa702aeade16bf323f84349",
+    "mobile/lib/src/features/pane_chat/presentation/pane_chat_view.dart": "6b6a275d992d682190bea520970a6c51644f87eae7eb71d378ef5cdc67243462",
+    "mobile/lib/src/features/pane_chat/application/pane_chat_controller.dart": "d72bb26147f68021c80eddca18c9c838561a8a17f54573bcb10f2c7b604ecb6f",
+    "src/lib/aiSessions/shared.ts": "18710e6bbbb22e332ddd4aaaa730e736dfd9925da76b6f1c7e2ebae6e44bccf5",
+    "src/lib/aiSessions/types.ts": "cbe86f9418a0e1ee226cf7d10583f1f2414dd954bdc2701a9b1987a00fe8d0f4"
+  },
+  "scope": "QA only; no product changes; provider model execution excluded from PASS."
+}

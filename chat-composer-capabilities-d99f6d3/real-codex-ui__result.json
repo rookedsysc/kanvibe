@@ -1,0 +1,41 @@
+{
+  "sourceHead": "d99f6d375eb85ed6eeac8d4b15f8092e1bc27fa5",
+  "marker": "QA_INTERACTIVE_SKILL_RESOLVED_836d12",
+  "actualBinary": "/opt/homebrew/bin/codex",
+  "localProvider": "http://127.0.0.1:51980/v1",
+  "paidModelCalls": false,
+  "skillFile": "/private/tmp/kv-chat-VLkYAg/.codex/skills/qa-composer-probe",
+  "steps": [
+    "accepted trust for isolated owned fixture repo only",
+    "submitted literal $qa-composer-probe through actual KanVibe composer"
+  ],
+  "pass": false,
+  "paneId": "f835e37a-6656-4e3a-9d30-29f4582160d9-3",
+  "nativeSnapshot": {
+    "taskId": "f835e37a-6656-4e3a-9d30-29f4582160d9",
+    "paneId": "f835e37a-6656-4e3a-9d30-29f4582160d9-3",
+    "sessionType": "terminal",
+    "provider": "codex",
+    "targetToken": "02ddd86c-18bc-493b-8bb9-a436493d4c19",
+    "canSend": true,
+    "inputState": "ready",
+    "screen": " \n  >_ OpenAI Codex (v0.167.2)\n     /Users/rookedsysc/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/feat-chat-ui/qa-results/roky-harness/…/desktop-runtime/fixture-repo\n \n \n› Ask Codex to do anything\n \n  qa-local default · /Users/rookedsysc/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/feat-chat-ui/qa-results/roky-harness/chat-composer-capabilitie…",
+    "reason": null,
+    "transcript": {
+      "status": "unavailable",
+      "reason": "exact-session-unavailable",
+      "sessionId": null,
+      "messages": [],
+      "nextCursor": null
+    },
+    "modelPicker": {
+      "supported": true,
+      "mode": "native-cli"
+    }
+  },
+  "appComposerEnabled": true,
+  "sendEnabled": true,
+  "requestCount": 0,
+  "skillExpandedInActualUiProviderRequest": false,
+  "status": "SKILL_MARKER_NOT_OBSERVED"
+}

@@ -1,0 +1,48 @@
+{
+  "head": "d99f6d375eb85ed6eeac8d4b15f8092e1bc27fa5",
+  "scope": "Shared parser execution only. No history UI image rendering claim.",
+  "cases": [
+    {
+      "name": "claude-image-only",
+      "input": [
+        {
+          "type": "image",
+          "source": {
+            "type": "base64",
+            "media_type": "image/png",
+            "data": "QA_FIXTURE_ONLY"
+          }
+        }
+      ],
+      "extractedText": ""
+    },
+    {
+      "name": "codex-image-only",
+      "input": [
+        {
+          "type": "input_image",
+          "image_url": "data:image/png;base64,QA_FIXTURE_ONLY"
+        }
+      ],
+      "extractedText": ""
+    },
+    {
+      "name": "mixed-text-image",
+      "input": [
+        {
+          "type": "text",
+          "text": "사진을 확인해주세요"
+        },
+        {
+          "type": "image",
+          "source": {
+            "type": "base64",
+            "media_type": "image/png",
+            "data": "QA_FIXTURE_ONLY"
+          }
+        }
+      ],
+      "extractedText": "사진을 확인해주세요"
+    }
+  ]
+}

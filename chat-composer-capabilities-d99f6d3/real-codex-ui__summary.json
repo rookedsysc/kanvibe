@@ -1,0 +1,42 @@
+{
+  "head": "d99f6d375eb85ed6eeac8d4b15f8092e1bc27fa5",
+  "actualCli": "Codex0.167.2",
+  "localProviderOnly": true,
+  "firstSkillSend": {
+    "composerEnabled": true,
+    "sendEnabled": true,
+    "requestCount": 0,
+    "skillExpanded": false,
+    "status": "SKILL_MARKER_NOT_OBSERVED"
+  },
+  "afterExtraUiEnter": {
+    "secondEnterViaUi": true,
+    "skillMarkerInProviderRequest": true,
+    "inputState": "ready",
+    "transcript": {
+      "status": "available",
+      "reason": null,
+      "sessionId": "01a1d27e-6621-7c72-ab23-2d9e8a44b4da",
+      "messages": [
+        {
+          "role": "assistant",
+          "timestamp": "2026-11-13T01:24:16.896Z",
+          "text": "QA_INTERACTIVE_PROVIDER_RESPONSE",
+          "fullText": "QA_INTERACTIVE_PROVIDER_RESPONSE",
+          "isTruncated": false
+        },
+        {
+          "role": "user",
+          "timestamp": "2026-11-13T01:24:16.873Z",
+          "text": "$qa-composer-probe",
+          "fullText": "$qa-composer-probe",
+          "isTruncated": false
+        }
+      ],
+      "nextCursor": null
+    }
+  },
+  "plainTextSingleSend": {
+    "reachedProvider": true
+  }
+}

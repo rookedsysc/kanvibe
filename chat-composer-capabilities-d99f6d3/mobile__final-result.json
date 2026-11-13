@@ -1,0 +1,81 @@
+{
+  "qaOnly": true,
+  "head": "d99f6d375eb85ed6eeac8d4b15f8092e1bc27fa5",
+  "fingerprint": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+  "sourceFilesMatchReusedApk": 218,
+  "apkSha256": "8d86cfae158d841aa124406c8cc38ac18080cd23887e2781b97d8b96c27e8b59",
+  "nativeFlow": {
+    "exitCode": 0,
+    "passed": 1,
+    "total": 1,
+    "seconds": 74.783,
+    "recordingStatus": "recorded",
+    "video": "/Users/rookedsysc/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/feat-chat-ui/qa-results/roky-harness/chat-composer-capabilities/mobile/native-run/videos/20261113-101802-22769-chat-composer-capabilities-chat-composer-capabilities.mp4"
+  },
+  "capabilities": {
+    "appPhotoFileAttachmentPicker": {
+      "status": "NOT_IMPLEMENTED",
+      "evidence": "Composer controls and source only model/CLI/interrupt/send; no attachment picker or attachment field in prompt request"
+    },
+    "nativePhotoGalleryOrClipboardPaste": {
+      "status": "UNVERIFIED",
+      "reason": "No native gallery/photo paste was attempted. Missing app picker does not prove every OS keyboard or clipboard insertion path fails."
+    },
+    "appSkillPickerAutocomplete": {
+      "status": "NOT_IMPLEMENTED",
+      "evidence": "No skill list/completion logic in onChanged; actual dollar and slash typing screenshots show no app picker"
+    },
+    "literalDollarSkillTransport": {
+      "status": "PASS",
+      "evidence": "Exact literal string accepted once by reserved real fixture PTY; never by other pane"
+    },
+    "literalSlashCommandTransport": {
+      "status": "PASS",
+      "evidence": "Exact /help string accepted once by reserved real fixture PTY; never by other pane"
+    },
+    "realProviderSkillSlashExecutionViaMobileUI": {
+      "status": "UNVERIFIED",
+      "reason": "Device flow targets deterministic echo CLI fixture only; root standalone nativeCLI/localprovider probes are separate evidence"
+    }
+  },
+  "transportProof": {
+    "pass": true,
+    "checks": {
+      "literalDollarSkillExactlyOnceOnA": true,
+      "literalSlashExactlyOnceOnA": true,
+      "skillNeverOnB": true,
+      "slashNeverOnB": true,
+      "skillBracketedPaste": true,
+      "slashBracketedPaste": true
+    },
+    "literalSkillText": "$roky-harness-skill mobile-skill-9b9f8ae732",
+    "literalSlashText": "/help mobile-slash-9b9f8ae732",
+    "reservedPaneId": "f835e37a-6656-4e3a-9d30-29f4582160d9-1",
+    "fixture": "/Users/rookedsysc/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/feat-chat-ui/qa-results/roky-harness/chat-composer-capabilities/desktop-runtime/fixture.json",
+    "actualProviderExecution": "UNVERIFIED: deterministic echo CLI fixture, transport evidence only"
+  },
+  "deviceVisibleButtonLabels": [
+    "Back",
+    "태스크 메뉴",
+    "1 · zsh f835e37a-6656-4e3a-9d30-29f4582160d9-1 탭\n1 · zsh\n…60d9-1",
+    "탭 닫기",
+    "2 · zsh f835e37a-6656-4e3a-9d30-29f4582160d9-2 탭\n2 · zsh\n…60d9-2",
+    "탭 닫기",
+    "터미널 탭 추가",
+    "터미널",
+    "채팅",
+    "현재 CLI 다시 확인",
+    "메시지 복사",
+    "메시지 복사",
+    "메시지 복사",
+    "메시지 복사",
+    "메시지 복사",
+    "모델",
+    "CLI",
+    "중단",
+    "메시지 전송"
+  ],
+  "productModified": false,
+  "commitMade": false,
+  "recordedAt": "2026-11-13T01:20:58.909811+00:00"
+}

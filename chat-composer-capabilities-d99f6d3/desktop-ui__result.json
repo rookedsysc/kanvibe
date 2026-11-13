@@ -1,0 +1,116 @@
+{
+  "sourceHead": "d99f6d375eb85ed6eeac8d4b15f8092e1bc27fa5",
+  "qaOnly": true,
+  "osClipboardReadOrMutation": false,
+  "providerApi": "deterministic CLI fixture; no paid model request",
+  "checks": [
+    {
+      "name": "autocomplete $qa",
+      "status": "NOT_IMPLEMENTED",
+      "draft": "$qa",
+      "menuCount": 0,
+      "ptyUnchanged": true
+    },
+    {
+      "name": "autocomplete /",
+      "status": "NOT_IMPLEMENTED",
+      "draft": "/",
+      "menuCount": 0,
+      "ptyUnchanged": true
+    },
+    {
+      "name": "autocomplete @qa",
+      "status": "NOT_IMPLEMENTED",
+      "draft": "@qa",
+      "menuCount": 0,
+      "ptyUnchanged": true
+    },
+    {
+      "name": "image-only paste",
+      "status": "NOT_IMPLEMENTED",
+      "event": {
+        "defaultPrevented": false,
+        "providedFiles": 1,
+        "mime": "image/png",
+        "bytes": 68,
+        "isTrusted": false
+      },
+      "observed": {
+        "draft": "",
+        "filenameVisible": 0,
+        "fileInputCount": 0,
+        "ptyUnchanged": true
+      },
+      "note": "Real renderer DOM image clipboard event; OS clipboard was not read or changed. Synthetic event default browser action is not claimed."
+    },
+    {
+      "name": "image drop",
+      "status": "NOT_IMPLEMENTED",
+      "event": {
+        "dragoverPrevented": false,
+        "dropPrevented": false,
+        "providedFiles": 1,
+        "isTrusted": false
+      },
+      "draft": "",
+      "filenameVisible": 0,
+      "ptyUnchanged": true
+    },
+    {
+      "name": "caption plus attempted images",
+      "status": "TEXT_ONLY",
+      "caption": "QA-photo-caption-1794532671245",
+      "rawPtyDeltaBase64": "G1syMDB+UUEtcGhvdG8tY2FwdGlvbi0xNzk0NTMyNjcxMjQ1G1syMDF+DQ==",
+      "exactTextOnly": true,
+      "imageFilenameOrMimeTransmitted": false
+    },
+    {
+      "name": "literal skill syntax $qa-composer-probe",
+      "status": "TRANSPORT_PASS_ONLY",
+      "exactBytes": true,
+      "rawPtyDeltaBase64": "G1syMDB+JHFhLWNvbXBvc2VyLXByb2JlG1syMDF+DQ==",
+      "realSkillInvocationProven": false
+    },
+    {
+      "name": "literal skill syntax /qa-composer-probe",
+      "status": "TRANSPORT_PASS_ONLY",
+      "exactBytes": true,
+      "rawPtyDeltaBase64": "G1syMDB+L3FhLWNvbXBvc2VyLXByb2JlG1syMDF+DQ==",
+      "realSkillInvocationProven": false
+    }
+  ],
+  "screenshots": [
+    "/Users/rookedsysc/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/feat-chat-ui/qa-results/roky-harness/chat-composer-capabilities/desktop-ui/composer-affordances.png",
+    "/Users/rookedsysc/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/feat-chat-ui/qa-results/roky-harness/chat-composer-capabilities/desktop-ui/dollar-no-autocomplete.png",
+    "/Users/rookedsysc/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/feat-chat-ui/qa-results/roky-harness/chat-composer-capabilities/desktop-ui/slash-no-autocomplete.png",
+    "/Users/rookedsysc/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/feat-chat-ui/qa-results/roky-harness/chat-composer-capabilities/desktop-ui/file-mention-no-autocomplete.png",
+    "/Users/rookedsysc/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/feat-chat-ui/qa-results/roky-harness/chat-composer-capabilities/desktop-ui/image-paste-no-attachment.png",
+    "/Users/rookedsysc/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/feat-chat-ui/qa-results/roky-harness/chat-composer-capabilities/desktop-ui/image-drop-no-attachment.png",
+    "/Users/rookedsysc/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/feat-chat-ui/qa-results/roky-harness/chat-composer-capabilities/desktop-ui/caption-without-image-preview.png",
+    "/Users/rookedsysc/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/feat-chat-ui/qa-results/roky-harness/chat-composer-capabilities/desktop-ui/caption-only-cli-receipt.png",
+    "/Users/rookedsysc/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/feat-chat-ui/qa-results/roky-harness/chat-composer-capabilities/desktop-ui/literal-skill-text-transport-only.png"
+  ],
+  "paneId": "f835e37a-6656-4e3a-9d30-29f4582160d9-2",
+  "controls": {
+    "buttonLabels": [
+      "모델 선택",
+      "CLI 조작",
+      "중단",
+      "보내기"
+    ],
+    "fileInputCount": 0,
+    "attachButtonCount": 0,
+    "skillPickerCount": 0
+  },
+  "completed": true,
+  "capabilityVerdict": {
+    "textTransport": "PASS",
+    "modelAndHistory": "baseline runner PASS on same source",
+    "imageFilePicker": "NOT_IMPLEMENTED",
+    "imagePaste": "NOT_IMPLEMENTED",
+    "imageDrop": "NOT_IMPLEMENTED",
+    "skillPicker": "NOT_IMPLEMENTED",
+    "slashDollarAtAutocomplete": "NOT_IMPLEMENTED",
+    "realSkillInvocation": "UNVERIFIED; root independently owns actual provider test"
+  }
+}
