@@ -136,8 +136,8 @@ function spawnViteServer(port) {
   });
 }
 
-function spawnElectron(devServerUrl) {
-  return spawn("pnpm", ["exec", "electron", "--no-sandbox", "."], {
+function spawnElectron(devServerUrl, appArgs) {
+  return spawn("pnpm", ["exec", "electron", "--no-sandbox", ".", ...appArgs], {
     stdio: "inherit",
     env: {
       ...process.env,
@@ -185,7 +185,7 @@ async function main() {
     throw error;
   }
 
-  const electronProcess = spawnElectron(devServerUrl);
+  const electronProcess = spawnElectron(devServerUrl, process.argv.slice(2));
   electronProcess.on("exit", (code) => {
     stopChildren();
     process.exit(code ?? 0);
