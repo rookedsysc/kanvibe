@@ -1,0 +1,29 @@
+{
+  "commit": "dcda31af9f8639d07d579643cd01df5e21ede797",
+  "files": {
+    "direct.png": {
+      "sha256": "14a51ccd91a8e88c718c32c364d8c122852cfa1f7bb25b9f851c94532e1fbbab",
+      "bytes": 114634
+    },
+    "relay.png": {
+      "sha256": "c3971135524903b62d572f93382658986360fb82c0f30d9ef271ebd4e311a3fa",
+      "bytes": 113340
+    },
+    "unpaired.png": {
+      "sha256": "3cc2ece386a83aed55afd0bb69839e7cc4c4551268a22aa6d684b249fe6d232c",
+      "bytes": 104107
+    },
+    "android.mp4": {
+      "sha256": "57440827ceaf88fb56fe1fb4a33a042f448cab0ac7d8c7cf993a9f6596e32a3f",
+      "bytes": 1880406
+    },
+    "qa-summary.md": {
+      "sha256": "f638735f2dcbcfc98b5559a45c352d50ca29a00470db62c31f08b554f88ae05e",
+      "bytes": 2855
+    },
+    "transport-observations.json": {
+      "sha256": "8bbdc45d9148d910c950c9cd0a5eb977c158a4f92c3cb1df072942c6ec62acad",
+      "bytes": 567
+    }
+  }
+}

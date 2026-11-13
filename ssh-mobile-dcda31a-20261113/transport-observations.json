@@ -1,0 +1,27 @@
+{
+  "commit": "dcda31af9f8639d07d579643cd01df5e21ede797",
+  "device": "emulator-5580",
+  "counts": {
+    "direct": {
+      "metadata": 2,
+      "relayAttaches": 0,
+      "relayInputs": 0
+    },
+    "relay": {
+      "metadata": 1,
+      "relayAttaches": 1,
+      "relayInputs": 9
+    }
+  },
+  "tasks": {
+    "direct": {
+      "controllerStarts": 2,
+      "input": "DIRECT_OK\rDIRECT_RESUMED\r"
+    },
+    "relay": {
+      "controllerStarts": 1,
+      "input": "RELAY_OK\r"
+    }
+  },
+  "apkSHA256": "ae1d869055e145c71b8220f84dbab6915740f8a2f4ea62e35d90f65ada9448ab"
+}
