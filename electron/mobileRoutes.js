@@ -1,4 +1,7 @@
 const { WebSocketServer } = require("ws");
+const { handleMobileFeatureRequest } = require("./mobileFeatureRoutes.js");
+const { attachMobileAiLoginStream } = require("./mobileAiRoutes.js");
+const AI_LOGIN_PATH_PATTERN = /^\/api\/mobile\/ai\/accounts\/[^/]+\/login$/;
 
 const { readJsonBody, writeJson } = require("./httpBody.js");
 const { runMobileCommand, SUPPORTED_COMMANDS } = require("./mobileCommands.js");
@@ -110,6 +113,8 @@ async function handleMobileRequest(request, response, { bridge, host, port, isDe
       return true;
     }
 
+    if (await handleMobileFeatureRequest(request, response, { bridge, requestUrl })) return true;
+
     if (request.method === "DELETE" && requestUrl.pathname === "/api/mobile/device") {
       await handleUnpairRequest(request, response, bridge);
       return true;
@@ -121,7 +126,10 @@ async function handleMobileRequest(request, response, { bridge, host, port, isDe
     }
 
     if (request.method === "GET" && requestUrl.pathname === "/api/mobile/directories") {
-      const directories = await bridge.getMobileDirectories(requestUrl.searchParams.get("path") ?? "~");
+      const directoryPath = requestUrl.searchParams.get("path") ?? "~";
+      const directories = requestUrl.searchParams.has("sshHost")
+        ? await bridge.getMobileRemoteDirectories(directoryPath, requestUrl.searchParams.get("sshHost"))
+        : await bridge.getMobileDirectories(directoryPath);
       writeJson(response, 200, { success: true, directories });
       return true;
     }
@@ -139,7 +147,9 @@ async function handleMobileRequest(request, response, { bridge, host, port, isDe
         writeJson(response, 400, { success: false, error: "폴더 경로가 필요합니다" });
         return true;
       }
-      const result = await bridge.scanMobileProjects(rootPath);
+      const result = body.sshHost !== undefined
+        ? await bridge.scanMobileRemoteProjects(rootPath, body.sshHost)
+        : await bridge.scanMobileProjects(rootPath);
       writeJson(response, 200, { success: true, result });
       return true;
     }
@@ -305,6 +315,10 @@ async function handleMobileRequest(request, response, { bridge, host, port, isDe
     writeJson(response, 404, { success: false, error: "Not found" });
     return true;
   } catch (error) {
+    if (error?.name === "MobileFeatureError" && [400, 404, 409].includes(error.statusCode)) {
+      writeJson(response, error.statusCode, { success: false, error: error.message });
+      return true;
+    }
     if (error?.name === "MobileTaskInputError") {
       writeJson(response, 400, { success: false, error: error.message });
       return true;
@@ -494,6 +508,7 @@ async function handleCreateTaskRequest(request, response, bridge) {
     baseBranch: readText(body.baseBranch),
     description: readText(body.description),
     priority: readText(body.priority),
+    ...(body.sessionType !== undefined ? { sessionType: body.sessionType } : {}),
   };
 
   if (!draft.projectId || !draft.branchName) {
@@ -676,6 +691,7 @@ function attachMobileStreamServer(server, { bridge, notifications, host, port })
    * 남은 기기가 있으면 그 화면은 그대로 흘러야 하고, 마지막 구독자가 나가면 서비스 쪽 참조 수가 스트림을 알아서 멈춘다.
    */
   const stopUnpaired = bridge.onMobileDeviceUnpaired((deviceId) => {
+    bridge.closeMobileAiLoginsForDevice?.(deviceId);
     const sockets = socketsByDeviceId.get(deviceId);
     if (!sockets) {
       return;
@@ -709,6 +725,7 @@ function attachMobileStreamServer(server, { bridge, notifications, host, port })
     stopNotifications();
     stopUnpaired();
     notifications?.stopMobileNotifications?.();
+    bridge.closeAllMobileAiLogins?.();
     for (const socket of webSocketServer.clients) socket.close(1001, "server-shutdown");
     webSocketServer.close();
   };
@@ -727,7 +744,7 @@ function attachMobileStreamServer(server, { bridge, notifications, host, port })
   server.on("upgrade", async (request, socket, head) => {
     try {
       const requestUrl = new URL(request.url || "", `http://${host}:${port}`);
-      if (requestUrl.pathname !== STREAM_PATH && requestUrl.pathname !== EVENTS_PATH) {
+      if (requestUrl.pathname !== STREAM_PATH && requestUrl.pathname !== EVENTS_PATH && !AI_LOGIN_PATH_PATTERN.test(requestUrl.pathname)) {
         socket.destroy();
         return;
       }
@@ -769,7 +786,10 @@ function attachMobileStreamServer(server, { bridge, notifications, host, port })
             return;
           }
           if (webSocket.readyState !== webSocket.OPEN) return;
-          if (requestUrl.pathname === EVENTS_PATH) {
+          if (AI_LOGIN_PATH_PATTERN.test(requestUrl.pathname)) {
+            void attachMobileAiLoginStream(webSocket, { bridge, deviceId, requestUrl })
+              .catch(() => webSocket.close(1011, "login-failed"));
+          } else if (requestUrl.pathname === EVENTS_PATH) {
             eventSockets.add(webSocket);
             webSocket.once("close", () => eventSockets.delete(webSocket));
             /** 앱은 이 목록에 없는 명령을 보내지 않고 업데이트 안내를 띄운다. 모르는 명령을 조용히 버리는 구버전에는 이 필드가 없다 */

@@ -1,10 +1,22 @@
 import { randomUUID } from "node:crypto";
 import { buildTaskStatusNotification } from "@/desktop/shared/taskNotifications";
-import { subscribeToBoardEvents } from "@/lib/boardNotifier";
+import { subscribeToBoardEvents, type BoardEventPayload } from "@/lib/boardNotifier";
 import type { MobilePushSubscription } from "@/lib/mobilePairing";
 import { getNotificationSettings } from "@/desktop/main/services/appSettingsService";
 
-export type MobileEvent = { type: "board-updated" } | {
+interface MobileOperationalWarning {
+  type: "operational-warning";
+  eventId: string;
+  kind: "hook-status-target-missing" | "task-hook-install-failed";
+  taskId: string;
+  title: string;
+  body: string;
+  status: string;
+  createdAt: string;
+  shouldNotify: boolean;
+}
+
+export type MobileEvent = { type: "board-updated" } | MobileOperationalWarning | {
   type: "task-status-changed";
   eventId: string;
   taskId: string;
@@ -72,6 +84,10 @@ export function startMobileNotifications(options: MobileNotificationOptions): vo
       broadcastMobileEvent({ type: "board-updated" });
       return;
     }
+    if (event.type === "hook-status-target-missing" || event.type === "task-hook-install-failed") {
+      void deliverOperationalWarning(event, options, delivery);
+      return;
+    }
     if (event.type !== "task-status-changed") return;
 
     const notification = buildTaskStatusNotification({ ...event, locale: "ko" });
@@ -98,8 +114,33 @@ export function startMobileNotifications(options: MobileNotificationOptions): vo
   });
 }
 
+async function deliverOperationalWarning(
+  event: Extract<BoardEventPayload, { type: "hook-status-target-missing" | "task-hook-install-failed" }>,
+  options: MobileNotificationOptions,
+  delivery: NotificationDelivery,
+): Promise<void> {
+  const warning: MobileOperationalWarning = {
+    type: "operational-warning", eventId: randomUUID(), kind: event.type, taskId: event.taskId,
+    title: event.type === "task-hook-install-failed" ? "Hook 설치 실패" : "Hook 대상 태스크 없음",
+    body: event.type === "task-hook-install-failed" ? "데스크탑에서 태스크의 Hook 설치 상태를 확인해 주세요." : "상태를 변경할 태스크를 찾지 못했습니다. 데스크탑에서 연결을 확인해 주세요.",
+    status: event.type === "hook-status-target-missing" ? event.requestedStatus : "",
+    createdAt: new Date().toISOString(), shouldNotify: false,
+  };
+  try {
+    if (event.type === "hook-status-target-missing") {
+      const settings = await getNotificationSettings();
+      warning.shouldNotify = settings.isEnabled && settings.enabledStatuses.includes(event.requestedStatus);
+    }
+    if (delivery.isStopped) return;
+    broadcastMobileEvent(warning);
+    if (warning.shouldNotify && options.relayUrl && options.relayToken) await deliverPushNotifications(warning, options, delivery);
+  } catch {
+    if (!delivery.isStopped) console.error("[kanvibe] Mobile operational warning delivery failed");
+  }
+}
+
 async function deliverPushNotifications(
-  event: Extract<MobileEvent, { type: "task-status-changed" }>,
+  event: Extract<MobileEvent, { type: "task-status-changed" | "operational-warning" }>,
   options: MobileNotificationOptions,
   delivery: NotificationDelivery,
 ): Promise<void> {

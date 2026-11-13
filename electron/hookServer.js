@@ -42,7 +42,12 @@ function createHookServer({ host, port, mobileTlsPort, mobileTlsDirectory, isDev
   const lanPlaintext = require(getRuntimeModulePath("desktop", "main", "services", "lanPlaintextService"));
   const mobileBridgeBase = require(getRuntimeModulePath("desktop", "main", "services", "mobileBridgeService"));
   const paneChat = require(getRuntimeModulePath("desktop", "main", "services", "paneChatService"));
-  const mobileBridge = { ...mobileBridgeBase, ...paneChat };
+  const mobileBridge = {
+    ...mobileBridgeBase,
+    ...paneChat,
+    ...require(getRuntimeModulePath("desktop", "main", "services", "mobileFeatureService")),
+    ...require(getRuntimeModulePath("desktop", "main", "services", "mobileAiService")),
+  };
   const mobileNotifications = require(getRuntimeModulePath("desktop", "main", "services", "mobileNotificationService"));
   const taskCli = require(getRuntimeModulePath("desktop", "main", "services", "taskCliService"));
   const { handleMobileRequest, attachMobileStreamServer } = require("./mobileRoutes.js");

@@ -296,8 +296,8 @@ describe("zellij pane 명령", () => {
 
 describe("pane 단축키 명령", () => {
   it.each([
-    ["split-right", "tmux split-window -h -d -t '%19'"],
-    ["split-down", "tmux split-window -v -d -t '%19'"],
+    ["split-right", "tmux split-window -h -d -t '%19' -c '#{pane_current_path}'"],
+    ["split-down", "tmux split-window -v -d -t '%19' -c '#{pane_current_path}'"],
     ["toggle-fullscreen", "tmux resize-pane -Z -t '%19'"],
     ["copy-mode", "tmux copy-mode -t '%19'"],
     ["scroll-up", "tmux copy-mode -t '%19' && tmux send-keys -X -t '%19' page-up"],

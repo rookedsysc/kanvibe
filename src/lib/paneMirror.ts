@@ -389,8 +389,8 @@ export function buildZellijWritePaneCommand(sessionName: string, paneId: string,
 export function buildTmuxPaneShortcutCommand(paneId: string, action: string): string | null {
   const target = quoteForPosixShell(paneId);
   switch (action) {
-    case "split-right": return `tmux split-window -h -d -t ${target}`;
-    case "split-down": return `tmux split-window -v -d -t ${target}`;
+    case "split-right": return `tmux split-window -h -d -t ${target} -c '#{pane_current_path}'`;
+    case "split-down": return `tmux split-window -v -d -t ${target} -c '#{pane_current_path}'`;
     case "toggle-fullscreen": return `tmux resize-pane -Z -t ${target}`;
     case "copy-mode": return `tmux copy-mode -t ${target}`;
     case "scroll-up": return `tmux copy-mode -t ${target} && tmux send-keys -X -t ${target} page-up`;

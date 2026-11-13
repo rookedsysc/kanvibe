@@ -11,6 +11,7 @@ const { app, BrowserWindow, clipboard, ipcMain, powerMonitor, session, shell } =
 const { createDesktopDiagnostics, resolveDesktopLogPath, serializeErrorForLog } = require("./diagnostics");
 const { applyAppDataDirectoryOverride, resolveHookServerPort } = require("./runtimeEnvironment");
 const { prepareDevelopmentDatabase } = require("./developmentDatabase");
+const { getUserWindows } = require("./diagramWorkerWindows");
 
 const DEFAULT_LOCALE = "ko";
 const APP_ICON_PATH = path.join(app.getAppPath(), "public", "branding", "app-icon.png");
@@ -160,7 +161,7 @@ function attachRendererDiagnostics(browserWindow) {
 registerProcessDiagnostics();
 
 function broadcastNotificationsChanged() {
-  for (const window of BrowserWindow.getAllWindows()) {
+  for (const window of getUserWindows(BrowserWindow)) {
     if (!window.isDestroyed()) {
       window.webContents.send("kanvibe:notifications-changed");
     }
@@ -169,7 +170,7 @@ function broadcastNotificationsChanged() {
 
 /** 단축키 재배정은 저장한 창만이 아니라 열려 있는 모든 창의 렌더러 캐시에 반영돼야 한다 */
 function broadcastShortcutBindingsChanged() {
-  for (const window of BrowserWindow.getAllWindows()) {
+  for (const window of getUserWindows(BrowserWindow)) {
     if (!window.isDestroyed()) {
       window.webContents.send("kanvibe:shortcut-bindings-changed");
     }
@@ -177,7 +178,7 @@ function broadcastShortcutBindingsChanged() {
 }
 
 function broadcastNotificationActivated(appNotification) {
-  for (const window of BrowserWindow.getAllWindows()) {
+  for (const window of getUserWindows(BrowserWindow)) {
     sendNotificationActivated(window, appNotification);
   }
 }
@@ -434,7 +435,7 @@ function normalizeNotificationLocale(locale) {
 function getDesktopNotificationLocale() {
   const activeWindow = mainWindow && !mainWindow.isDestroyed()
     ? mainWindow
-    : BrowserWindow.getAllWindows().find((window) => !window.isDestroyed()) || null;
+    : getUserWindows(BrowserWindow).find((window) => !window.isDestroyed()) || null;
 
   const currentUrl = activeWindow?.webContents.getURL() || "";
   const matchedLocale = currentUrl.match(/#\/([^/?#]+)/)?.[1];
@@ -460,7 +461,7 @@ function getNotificationTargetPath(appNotification) {
 }
 
 function getAvailableWindows() {
-  return BrowserWindow.getAllWindows().filter((window) => !window.isDestroyed());
+  return getUserWindows(BrowserWindow).filter((window) => !window.isDestroyed());
 }
 
 function focusWindow(window) {
@@ -1045,7 +1046,7 @@ function registerBoardEventForwarding() {
         console.error("[kanvibe] board event notification failed:", error);
       }
 
-      for (const window of BrowserWindow.getAllWindows()) {
+      for (const window of getUserWindows(BrowserWindow)) {
         if (!window.isDestroyed()) {
           window.webContents.send("kanvibe:board-event", payload);
         }
@@ -1166,7 +1167,7 @@ app.whenReady().then(async () => {
   stopBackgroundTaskSync = startBackgroundTaskSync();
 
   app.on("activate", async () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
+    if (getUserWindows(BrowserWindow).length === 0) {
       await createMainWindow();
     }
   });
