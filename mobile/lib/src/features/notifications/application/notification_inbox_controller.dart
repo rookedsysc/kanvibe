@@ -43,12 +43,7 @@ class NotificationInboxController
         .inboxUpdates
         .listen((connectionId) {
           if (!ref.mounted || connectionId != _connection?.id) return;
-          // 재조회에는 이전 isUpdating도 남으므로 로딩 중 신호까지 보류하면 갱신을 잃는다.
-          if (!state.isLoading && state.value?.isUpdating == true) {
-            _refreshPending = true;
-          } else {
-            ref.invalidateSelf();
-          }
+          _refreshInbox();
         });
     ref.onDispose(() => unawaited(subscription.cancel()));
     final connection = (await connections).activeConnection;
@@ -87,6 +82,26 @@ class NotificationInboxController
     await ref.read(desktopClientProvider).markAllNotificationsRead(connection);
     return previous.map((entry) => entry.asRead()).toList();
   });
+
+  /// 태스크 상세를 보고 있을 때 데스크탑과 같은 경로로 그 태스크의 알림을 읽음 처리한다.
+  Future<void> markTaskRead(String taskId) async {
+    final connections = await ref.read(connectionControllerProvider.future);
+    final connection = connections.activeConnection;
+    if (connection == null) return;
+    await ref
+        .read(desktopClientProvider)
+        .markTaskNotificationsRead(connection, taskId);
+    if (ref.mounted) _refreshInbox();
+  }
+
+  void _refreshInbox() {
+    // 재조회에는 이전 isUpdating도 남으므로 로딩 중 신호까지 보류하면 갱신을 잃는다.
+    if (!state.isLoading && state.value?.isUpdating == true) {
+      _refreshPending = true;
+    } else {
+      ref.invalidateSelf();
+    }
+  }
 
   bool _isCurrent(int generation, DesktopConnection connection) {
     if (!ref.mounted || generation != _generation) return false;

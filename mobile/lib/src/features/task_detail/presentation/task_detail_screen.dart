@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -11,6 +13,7 @@ import '../../board/domain/board_task.dart';
 import '../../board/domain/task_status.dart';
 import '../../chat_history/presentation/chat_history_screen.dart';
 import '../../notifications/application/mobile_notification_controller.dart';
+import '../../notifications/application/notification_inbox_controller.dart';
 import '../../pane_chat/presentation/pane_chat_view.dart';
 import '../../task_create/domain/session_type.dart';
 import '../../task_create/presentation/create_task_screen.dart';
@@ -34,7 +37,8 @@ class TaskDetailScreen extends ConsumerStatefulWidget {
   ConsumerState<TaskDetailScreen> createState() => _TaskDetailScreenState();
 }
 
-class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
+class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
+    with WidgetsBindingObserver {
   String? _selectedPaneId;
   final _chatModePaneIds = <String>{};
   final _chatPaneIds = <String>{};
@@ -44,6 +48,52 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
   late BoardTask _task = widget.task;
 
   bool _isPreparingCreateTask = false;
+
+  bool _isAppResumed =
+      (WidgetsBinding.instance.lifecycleState ?? AppLifecycleState.resumed) ==
+      AppLifecycleState.resumed;
+  bool _wasViewingTask = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _markTaskNotificationsReadWhenViewing();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _isAppResumed = state == AppLifecycleState.resumed;
+    _markTaskNotificationsReadWhenViewing();
+  }
+
+  /// 데스크탑 상세 화면처럼 사용자가 이 태스크를 실제로 보게 된 순간에만 알림을 읽음 처리한다.
+  /// 다른 화면이 위에 덮였거나 앱이 백그라운드인 동안 도착한 알림은 다시 볼 때까지 안읽음으로 남긴다.
+  void _markTaskNotificationsReadWhenViewing() {
+    final isViewingTask =
+        _isAppResumed && (ModalRoute.isCurrentOf(context) ?? true);
+    if (isViewingTask && !_wasViewingTask) {
+      // 실패해도 다음에 화면을 다시 볼 때 같은 요청을 보내므로 화면 동작은 막지 않는다.
+      unawaited(
+        ref
+            .read(notificationInboxProvider.notifier)
+            .markTaskRead(_task.id)
+            .catchError((Object _) {}),
+      );
+    }
+    _wasViewingTask = isViewingTask;
+  }
 
   void _setPaneChatMode(String paneId, bool enabled) {
     setState(() {

@@ -264,6 +264,12 @@ class FakeDesktopClient implements DesktopClient {
   Future<void> markAllNotificationsRead(DesktopConnection connection) async {}
 
   @override
+  Future<void> markTaskNotificationsRead(
+    DesktopConnection connection,
+    String taskId,
+  ) async {}
+
+  @override
   Future<void> registerNotifications(
     DesktopConnection connection, {
     required String pushToken,

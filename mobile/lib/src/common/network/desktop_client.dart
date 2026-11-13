@@ -548,6 +548,31 @@ class DesktopClient {
     }
   }
 
+  /// 태스크 상세를 보고 있을 때 데스크탑과 같은 경로로 그 태스크의 알림을 읽음 처리한다.
+  Future<void> markTaskNotificationsRead(
+    DesktopConnection connection,
+    String taskId,
+  ) async {
+    final uri = connection
+        .buildHttpUri('/api/mobile/tasks')
+        .replace(
+          pathSegments: [
+            'api',
+            'mobile',
+            'tasks',
+            taskId,
+            'notifications',
+            'read',
+          ],
+        );
+    final response = await _clientFor(connection)
+        .post(uri, headers: connection.authorizationHeaders)
+        .timeout(_requestTimeout);
+    if (response.statusCode != 200) {
+      throw DesktopRequestException(response.statusCode);
+    }
+  }
+
   /// 알림을 누른 시점의 태스크를 다시 읽는다. 삭제된 태스크는 더 이상 열 수 없다.
   Future<Map<String, dynamic>?> fetchTask(
     DesktopConnection connection,
