@@ -6,6 +6,7 @@ import { tmpdir } from "os";
 import { randomUUID } from "crypto";
 import { createHerdrClientProxy } from "@/lib/herdrClientProxy";
 import { getRemoteHostConnection } from "@/lib/remoteHostConnection";
+import type { RemoteHostPty } from "@/lib/remoteHostPtyConnection";
 import { SessionType } from "@/entities/KanbanTask";
 import { PaneLayoutType } from "@/entities/PaneLayoutConfig";
 import { execSync } from "child_process";
@@ -36,7 +37,8 @@ import type { TerminalTab } from "@/desktop/shared/terminalTabs";
  * 이 모듈이 PTY의 유일한 소유자다. 탭 조작도 여기 있는 PTY를 통해서만 이뤄진다.
  */
 interface TerminalEntry {
-  pty: import("node-pty").IPty;
+  pty: Pick<import("node-pty").IPty, "pid" | "process" | "cols" | "rows" | "write" | "resize" | "kill" | "onData" | "onExit"> | RemoteHostPty;
+  remotePty?: RemoteHostPty;
   clients: Set<WebSocket>;
   sessionType: SessionType;
   sessionName: string;
@@ -129,6 +131,46 @@ export function listLocalTerminalTabs(taskId: string): TerminalTab[] {
   return toTerminalTabs(getTabState(taskId));
 }
 
+/** 앱 메모리에서 사라진 원격 탭을 daemon의 현재 소유 세션 목록으로 복원한다. */
+export async function listRemoteTerminalTabs(taskId: string, sshHost: string, sessionName: string): Promise<TerminalTab[]> {
+  if (localTerminalTabs.has(taskId)) return listLocalTerminalTabs(taskId);
+  const connection = await getRemoteHostConnection(sshHost);
+  if (!connection) return listLocalTerminalTabs(taskId);
+  const sessions = await connection.listPtySessions();
+  if (!localTerminalTabs.has(taskId)) {
+    const tabs: { id: string; name: string }[] = [];
+    for (const session of sessions) {
+      let key: unknown;
+      try { key = JSON.parse(session.key); } catch { continue; }
+      if (!Array.isArray(key) || key[1] !== SessionType.TERMINAL || key[2] !== sessionName || typeof key[0] !== "string" || !key[0].startsWith(`${taskId}#`)) continue;
+      const id = key[0].slice(taskId.length + 1);
+      if (!tabs.some(tab => tab.id === id)) tabs.push({ id, name: getDefaultTabName() });
+    }
+    if (tabs.length) {
+      const nextTabNumber = Math.max(0, ...tabs.map(tab => Number(tab.id.slice(taskId.length + 1))).filter(Number.isSafeInteger)) + 1;
+      localTerminalTabs.set(taskId, { tabs, activeTabId: tabs[0].id, nextTabNumber });
+    }
+  }
+  return listLocalTerminalTabs(taskId);
+}
+
+/** attach가 끊긴 탭도 소유 session ID로 닫는다. 조회/close 실패를 성공으로 보고하지 않는다. */
+export async function closeRemoteTerminalTab(taskId: string, tabId: string, sshHost: string, sessionName: string): Promise<number> {
+  await listRemoteTerminalTabs(taskId, sshHost, sessionName);
+  const entry = activeTerminals.get(buildTerminalKey(taskId, tabId));
+  const connection = await getRemoteHostConnection(sshHost);
+  if (connection) {
+    if (entry?.remotePty) await connection.closePtySession(entry.remotePty.sessionId);
+    else {
+      const key = JSON.stringify([buildTerminalKey(taskId, tabId), SessionType.TERMINAL, sessionName]);
+      const session = (await connection.listPtySessions()).find(session => session.key === key);
+      if (session) await connection.closePtySession(session.sessionId);
+    }
+    destroyTerminal(buildTerminalKey(taskId, tabId), "remote-close-acknowledged");
+  }
+  return closeLocalTerminalTab(taskId, tabId);
+}
+
 export function getLocalTerminalTabProcess(taskId: string, tabId: string): string | null {
   return activeTerminals.get(buildTerminalKey(taskId, tabId))?.pty.process || null;
 }
@@ -158,7 +200,7 @@ export function closeLocalTerminalTab(taskId: string, tabId: string): number {
     return state.tabs.length;
   }
 
-  destroyTerminal(buildTerminalKey(taskId, tabId), "close-terminal-tab");
+  destroyTerminal(buildTerminalKey(taskId, tabId), "close-terminal-tab", true);
   state.tabs.splice(closedIndex, 1);
 
   if (state.tabs.length === 0) {
@@ -198,7 +240,7 @@ export function moveLocalTerminalTab(taskId: string, tabId: string, targetIndex:
   state.tabs.splice(targetIndex, 0, movedTab);
 }
 
-/** 앱 종료 경로. terminal 세션은 KanVibe가 소유하므로 남겨두면 고아 프로세스가 된다 */
+/** 앱 종료 경로. 원격 PTY는 daemon 소유이므로 detach하고, 로컬 PTY만 종료한다. */
 export function killAllTerminalSessions(): void {
   for (const terminalKey of [...activeTerminals.keys()]) {
     destroyTerminal(terminalKey, "app-quit");
@@ -247,7 +289,7 @@ function releaseTerminalClient(terminalKey: string, ws: WebSocket, triggerLabel:
 }
 
 /** PTY를 죽이고 붙어 있던 클라이언트를 모두 닫는다 */
-function destroyTerminal(terminalKey: string, triggerLabel?: string): void {
+function destroyTerminal(terminalKey: string, triggerLabel?: string, closeOwnedSession = false): void {
   const entry = activeTerminals.get(terminalKey);
   if (!entry) {
     debugLog("destroyTerminal 호출 (entry 없음)", { terminalKey, triggerLabel });
@@ -264,6 +306,7 @@ function destroyTerminal(terminalKey: string, triggerLabel?: string): void {
   activeTerminals.delete(terminalKey);
 
   try {
+    if (closeOwnedSession) entry.remotePty?.closeSession();
     entry.pty.kill();
   } catch {
     // 이미 종료된 경우 무시
@@ -305,20 +348,27 @@ function registerTerminalEntry(
       firstDataLogged = true;
       debugLog(`${debugLabel} PTY 첫 데이터 수신`, { terminalKey, sample: data.slice(0, 200) });
     }
-    entry.screen?.terminal.write(data);
+    let rendered: Promise<void> | undefined;
+    if (entry.screen) {
+      const screen = entry.screen;
+      if (entry.remotePty) rendered = new Promise<void>(resolve => screen.terminal.write(data, resolve));
+      else screen.terminal.write(data);
+    }
     for (const client of entry.clients) {
       if (client.readyState === client.OPEN) {
+        if (client.bufferedAmount > 8 * 1024 * 1024) { client.close(1013, "Terminal output backpressure limit"); continue; }
         client.send(data);
       }
     }
+    return rendered;
   });
 
-  entry.pty.onExit(({ exitCode, signal }) => {
+  entry.pty.onExit(({ exitCode, signal, ...status }) => {
     if (activeTerminals.get(terminalKey) !== entry) return;
     debugLog(`${debugLabel} PTY onExit`, { terminalKey, exitCode, signal });
     destroyTerminal(terminalKey, `${debugLabel}-pty-exit`);
     /** 셸이 스스로 끝난 탭은 목록에서도 사라져야 사용자가 죽은 탭을 클릭하지 않는다 */
-    if (entry.tabId) {
+    if (entry.tabId && !("detached" in status && status.detached)) {
       removeClosedTab(entry.taskId, entry.tabId);
     }
   });
@@ -869,6 +919,19 @@ async function spawnRemoteSession(
   const terminalEnvironment = createLocalShellEnvironment();
   const terminalKey = buildTerminalKey(taskId, tabId);
   let herdrWorkspaceId: string | null = null;
+  if (sessionType !== SessionType.HERDR) {
+    const connection = await getRemoteHostConnection(sshHost);
+    if (connection) {
+      const remotePty = await connection.openPty({
+        key: JSON.stringify([terminalKey, sessionType, sessionName]),
+        command: buildRemoteAttachCommand(sessionType, sessionName, worktreePath, tmuxPaneLayout),
+        cols: initialCols, rows: initialRows,
+      });
+      if (ws.readyState !== ws.OPEN) { remotePty.kill(); return; }
+      registerTerminalEntry(terminalKey, { pty: remotePty, remotePty, clients: new Set(), sessionType, sessionName, taskId, tabId }, ws, "Host");
+      return;
+    }
+  }
   if (sessionType === SessionType.HERDR) {
     herdrWorkspaceId = await ensureHerdrSession(sessionName, worktreePath || "~", tmuxPaneLayout, sshHost);
     if (ws.readyState !== ws.OPEN) return;
@@ -972,8 +1035,7 @@ function buildRemoteAttachCommand(
 
 /**
  * 멀티플렉서 없이 원격 로그인 셸만 띄운다.
- * 이 셸은 SSH 연결에 매여 있어 연결이 끊기면 실행 중이던 작업도 함께 사라진다.
- * 원격에서 작업을 살려두려면 tmux나 zellij 세션을 골라야 한다.
+ * host transport에서는 daemon이 이 셸의 PTY를 소유하고 재attach할 수 있다.
  */
 function buildRemotePlainShellCommand(worktreePath?: string | null): string {
   const launchLoginShell = 'exec "${SHELL:-/bin/sh}" -l';

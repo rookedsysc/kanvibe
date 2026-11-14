@@ -20,6 +20,7 @@ async function buildRemoteTerminalAgent() {
   await build({
     configFile: false,
     logLevel: "warn",
+    resolve: { conditions: ["node", "import"], mainFields: ["main"] },
     build: {
       target: "node18", outDir: path.join(__dirname, "..", "build", "remote"), emptyOutDir: false,
       lib: { entry: path.join(__dirname, "..", "src", "lib", "remoteHostServer.ts"), formats: ["cjs"], fileName: () => "host-server.cjs" },
@@ -27,6 +28,7 @@ async function buildRemoteTerminalAgent() {
       minify: false,
     },
   });
+  await require("./build-remote-host-pty.cjs").buildRemoteHostPty(path.join(__dirname, "..", "build", "remote"));
 }
 if (require.main === module) buildRemoteTerminalAgent().catch((error) => { console.error(error); process.exitCode = 1; });
 module.exports = { buildRemoteTerminalAgent };

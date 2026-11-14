@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
 import { connect, createServer, type Socket } from "node:net";
 import { request } from "node:http";
@@ -66,11 +66,11 @@ describe("real host provider and client", () => {
     const received: string[] = [];
     second.setHookHandler(async (record) => { received.push(Buffer.from(String(record.body), "base64").toString()); return { status: 200, headers: { "content-type": "text/plain" }, body: Buffer.from("ack").toString("base64") }; });
     const bulk = Array.from({ length: 20 }, () => first.execute("head -c 131072 /dev/zero", { timeoutMs: 10_000 }));
-    expect(await hook("client-two", '{"status":"review"}')).toEqual({ status: 200, body: "ack" });
+    expect(await hook("client-two", '{"taskId":"fixture","status":"review"}')).toEqual({ status: 200, body: "ack" });
     expect(await second.execute("printf interactive")).toBe("interactive");
     const outputs = await Promise.all(bulk);
     expect(outputs.every((output) => output.length === 131072)).toBe(true);
-    expect(received).toEqual(['{"status":"review"}']);
+    expect(received).toEqual(['{"taskId":"fixture","status":"review"}']);
   });
   it("forwards binary native bytes and detach preserves its upstream server", async () => {
     const connection = await attach();
@@ -100,13 +100,13 @@ describe("real host provider and client", () => {
       await new Promise<void>((resolve) => upstream.close(() => resolve()));
     }
   });
-  it("reports offline hook failure and does not replay after reconnect", async () => {
+  it("retains offline status hooks and replays after handler installation", async () => {
     const first = await attach(); first.close();
     await new Promise((resolve) => setTimeout(resolve, 10));
-    expect((await hook("client-one", "old-event")).status).toBe(503);
+    expect((await hook("client-one", '{"taskId":"fixture","status":"review"}')).status).toBe(202);
     const second = await attach(); let events = 0;
     second.setHookHandler(async () => { events += 1; return { status: 200, headers: {}, body: "" }; });
     expect(await second.execute("printf snapshot")).toBe("snapshot");
-    expect(events).toBe(0);
+    await vi.waitFor(() => expect(events).toBe(1));
   });
 });

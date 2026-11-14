@@ -7,6 +7,7 @@ import { builtinModules } from "node:module";
 import { createServer, connect, type Socket } from "node:net";
 import { request } from "node:http";
 import path from "node:path";
+import { homedir } from "node:os";
 import { createHostRecordDecoder, encodeHostRecord, type HostRecord } from "../remoteHostProtocol";
 import { startRemoteHostServer } from "../remoteHostServer";
 import { HOST_BOOTSTRAP_LOADER } from "../remoteHostBootstrap";
@@ -104,16 +105,17 @@ describe("remote host provider", () => {
       expect(upstream.listening).toBe(true);
     } finally { await new Promise<void>((resolve) => upstream.close(() => resolve())); }
   });
-  it("routes hooks to one desktop, reports offline503 and never replays", async () => {
-    await start(); expect((await post("offline")).status).toBe(503);
+  it("routes live hooks to one desktop and durably accepts offline status events", async () => {
+    await start(); expect((await post("offline", '{"taskId":"fixture","status":"done"}')).status).toBe(202);
     const peer = await client(); await peer.next("ready");
-    const pending = post("client-one", '{"status":"done"}'); const hook = await peer.next("hook.request");
+    peer.send({ type: "hook.subscribe", id: "subscribe" });
+    const pending = post("client-one", '{"taskId":"fixture","status":"done"}'); const hook = await peer.next("hook.request");
     expect(hook.path).toBe("/api/hooks/status");
-    expect(Buffer.from(String(hook.body), "base64").toString()).toBe('{"status":"done"}');
+    expect(Buffer.from(String(hook.body), "base64").toString()).toBe('{"taskId":"fixture","status":"done"}');
     peer.send({ type: "hook.response", id: hook.id, status: 202, headers: { "content-type": "application/json" }, body: Buffer.from('{"ok":true}').toString("base64") });
     expect(await pending).toEqual({ status: 202, body: '{"ok":true}' });
     peer.socket.destroy();
-    expect((await post("client-one")).status).toBe(503);
+    expect((await post("client-one", '{"taskId":"fixture","status":"done"}')).status).toBe(202);
   });
   it("rejects duplicate live client IDs without replacing the first desktop", async () => {
     await start(); const first = await client(); const original = await first.next("ready");
@@ -170,12 +172,23 @@ describe("remote host provider", () => {
   });
 });
 
+async function waitForHostFixtureExit(pid: number | undefined): Promise<void> {
+  if (!pid) return;
+  const deadline = Date.now() + 2000;
+  while (true) {
+    try { process.kill(pid, 0); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code === "ESRCH") return; throw error; }
+    if (Date.now() >= deadline) throw new Error("Owned host fixture did not stop: " + pid);
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
+}
+
 describe("standalone host bootstrap", () => {
   it("publishes one complete immutable bundle for eight concurrent loaders", async () => {
     const namespace = `qa-r-${randomUUID().slice(0, 8)}`;
     const bundleDirectory = await mkdtemp("/tmp/kvhost-race-");
     const { build } = await import("vite");
-    await build({ configFile: false, logLevel: "silent", build: {
+    await build({ configFile: false, logLevel: "silent", resolve: { conditions: ["node", "import"], mainFields: ["main"] }, build: {
       target: "node18", outDir: bundleDirectory, emptyOutDir: true, minify: false,
       lib: { entry: path.resolve("src/lib/remoteHostServer.ts"), formats: ["cjs"], fileName: () => "host-server.cjs" },
       rollupOptions: { external: [...builtinModules, ...builtinModules.map((name) => `node:${name}`)] },
@@ -221,6 +234,8 @@ describe("standalone host bootstrap", () => {
     } finally {
       peers.forEach((peer) => { peer.child.stdin.end(); peer.child.kill(); });
       if (daemonPid) process.kill(daemonPid, "SIGTERM");
+      await waitForHostFixtureExit(daemonPid);
+      await rm(path.join(homedir(), ".local", "state", "kanvibe", "host", namespace), { recursive: true, force: true });
       await rm(`/tmp/kv-${process.getuid!()}/${namespace}`, { recursive: true, force: true });
       await rm(bundleDirectory, { recursive: true, force: true });
     }
@@ -229,7 +244,7 @@ describe("standalone host bootstrap", () => {
     const namespace = `qa-b-${randomUUID().slice(0, 8)}`;
     const bundleDirectory = await mkdtemp("/tmp/kvhost-bundle-");
     const { build } = await import("vite");
-    await build({ configFile: false, logLevel: "silent", build: {
+    await build({ configFile: false, logLevel: "silent", resolve: { conditions: ["node", "import"], mainFields: ["main"] }, build: {
       target: "node18", outDir: bundleDirectory, emptyOutDir: true, minify: false,
       lib: { entry: path.resolve("src/lib/remoteHostServer.ts"), formats: ["cjs"], fileName: () => "host-server.cjs" },
       rollupOptions: { external: [...builtinModules, ...builtinModules.map((name) => `node:${name}`)] },
@@ -271,8 +286,9 @@ describe("standalone host bootstrap", () => {
       return { child, next, send: (record: HostRecord) => child.stdin!.write(encodeHostRecord(record)) };
     };
     let stop: Awaited<ReturnType<typeof started>> | undefined;
+    let daemonPid: number | undefined;
     try {
-      const first = await started(); const one = await first.next("ready");
+      const first = await started(); const one = await first.next("ready"); daemonPid = Number(one.pid);
       first.child.stdin!.end();
       const second = await started(); stop = second; const two = await second.next("ready");
       expect(two.instanceId).toBe(one.instanceId); expect(two.pid).toBe(one.pid);
@@ -283,6 +299,8 @@ describe("standalone host bootstrap", () => {
     } finally {
       if (stop) { stop.send({ type: "stop", id: "owned-stop" }); await stop.next("stopped"); }
       children.forEach((child) => { child.stdin?.end(); child.kill(); });
+      await waitForHostFixtureExit(daemonPid);
+      await rm(path.join(homedir(), ".local", "state", "kanvibe", "host", namespace), { recursive: true, force: true });
       await rm(`/tmp/kv-${process.getuid!()}/${namespace}`, { recursive: true, force: true });
       await rm(bundleDirectory, { recursive: true, force: true });
     }

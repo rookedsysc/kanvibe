@@ -11,6 +11,7 @@ import { promisify } from "node:util";
 import { buildSSHArgs, getKanvibeSSHConnectionHealthOptions, parseSSHConfig, type SSHHostConfig } from "./sshConfig";
 import { createLocalShellEnvironment } from "./shellEnvironment";
 import { HOST_BOOTSTRAP_LOADER } from "./remoteHostBootstrap";
+import { openRemoteHostPty, type RemotePtyOptions, type RemotePtySession, type RemoteHostPty } from "./remoteHostPtyConnection";
 import { createHostRecordDecoder, decodeHostBytes, encodeHostRecord, HOST_BUFFER_BYTES, HOST_CHUNK_BYTES, HOST_PROTOCOL_VERSION, isValidHostNamespace, type HostRecord } from "./remoteHostProtocol";
 
 export interface HostProcess extends EventEmitter {
@@ -19,7 +20,8 @@ export interface HostProcess extends EventEmitter {
   stderr: Readable;
   kill(signal?: NodeJS.Signals): boolean;
 }
-interface Bootstrap { source: string; hash: string; namespace: string; clientId: string }
+interface PtyArtifactFile { path: string; sha256: string; data: string; mode: number }
+interface Bootstrap { source: string; hash: string; namespace: string; clientId: string; nativeArtifacts?: { common: PtyArtifactFile[]; platforms: Record<string, PtyArtifactFile[]> } }
 interface ExecuteOptions {
   timeoutMs?: number;
   maxBufferBytes?: number;
@@ -72,10 +74,10 @@ export function stopRemoteHostConnections(): void {
   live.clear();
 }
 
-async function readHostSource(): Promise<string> {
+async function readHostSource(fileName = "host-server.cjs"): Promise<string> {
   let directory = __dirname;
   for (let depth = 0; depth < 9; depth += 1) {
-    try { return await readFile(path.join(directory, "build", "remote", "host-server.cjs"), "utf8"); }
+    try { return await readFile(path.join(directory, "build", "remote", fileName), "utf8"); }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
     const parent = path.dirname(directory);
     if (parent === directory) break;
@@ -115,13 +117,14 @@ export async function getRemoteHostConnection(sshHost: string): Promise<HostConn
 
 async function startSSHHost(config: SSHHostConfig, identity: { namespace: string; clientId: string }): Promise<HostConnection | null> {
   const source = await readHostSource();
+  const nativeArtifacts = JSON.parse(await readHostSource("host-pty-artifacts.json")) as Bootstrap["nativeArtifacts"];
   const hash = createHash("sha256").update(source).digest("hex");
   const command = `kanvibe_node=$(command -v node) || { printf '{"type":"unsupported"}\\n'; exit 0; }; "$kanvibe_node" -e 'process.exit(process.platform!=="win32" && Number(process.versions.node.split(".")[0])>=18?0:1)' || { printf '{"type":"unsupported"}\\n'; exit 0; }; exec "$kanvibe_node" -e ${shellQuote(HOST_BOOTSTRAP_LOADER)}`;
   const child = spawn("ssh", [
     ...buildSSHArgs(config, { disableTty: true, strictHostKeyChecking: true, connectionHealth: getKanvibeSSHConnectionHealthOptions() }),
     `sh -lc ${shellQuote(command)}`,
   ], { env: createLocalShellEnvironment(), stdio: ["pipe", "pipe", "pipe"] });
-  return connectHostProcess(child, { source, hash, ...identity });
+  return connectHostProcess(child, { source, hash, nativeArtifacts, ...identity });
 }
 
 export function connectHostProcess(child: HostProcess, bootstrap: Bootstrap): Promise<HostConnection | null> {
@@ -129,6 +132,7 @@ export function connectHostProcess(child: HostProcess, bootstrap: Bootstrap): Pr
     let stage: "bootstrap" | "bridge" | "framed" = "bootstrap";
     let preamble = Buffer.alloc(0);
     let settled = false;
+    let expectedPtyHash: string | undefined;
     let stderr = "";
     const connection = new HostConnection(child);
     const timer = setTimeout(() => fail(new Error("Host bootstrap timed out")), START_TIMEOUT_MS);
@@ -141,6 +145,7 @@ export function connectHostProcess(child: HostProcess, bootstrap: Bootstrap): Pr
     const decode = createHostRecordDecoder((record) => {
       if (!settled) {
         if (record.type !== "ready" || record.version !== HOST_PROTOCOL_VERSION || record.namespace !== bootstrap.namespace || record.buildHash !== bootstrap.hash || typeof record.instanceId !== "string" || !Number.isSafeInteger(record.pid) || !Array.isArray(record.capabilities) || !["exec", "socket", "hooks"].every((capability) => (record.capabilities as unknown[]).includes(capability))) throw new Error("Host handshake mismatch");
+        if (expectedPtyHash && (record.ptyArtifactHash !== expectedPtyHash || !(record.capabilities as unknown[]).includes("pty"))) throw new Error("Host PTY artifact handshake mismatch");
         settled = true; clearTimeout(timer); connection.instanceId = record.instanceId; connection.remotePid = record.pid as number; resolve(connection);
       } else connection.receive(record);
     });
@@ -154,7 +159,20 @@ export function connectHostProcess(child: HostProcess, bootstrap: Bootstrap): Pr
           const record = JSON.parse(preamble.subarray(0, newline).toString());
           preamble = preamble.subarray(newline + 1);
           if (record.type === "unsupported" && stage === "bootstrap") { settled = true; clearTimeout(timer); resolve(null); connection.close(); return; }
-          if (stage === "bootstrap" && record.type === "bootstrap-ready") { stage = "bridge"; child.stdin.write(`${JSON.stringify(bootstrap)}\n`); }
+          if (stage === "bootstrap" && record.type === "bootstrap-ready") {
+            stage = "bridge";
+            const { nativeArtifacts, ...payload } = bootstrap;
+            let pty;
+            if (nativeArtifacts) {
+              const platform = `${record.platform}-${record.arch}`;
+              const nativeFiles = nativeArtifacts.platforms[platform];
+              if (!nativeFiles || Number(record.napi) < 8) throw new Error(`Remote PTY capability unavailable for ${platform} / Node-API ${record.napi}`);
+              const files = [...nativeArtifacts.common, ...nativeFiles];
+              expectedPtyHash = createHash("sha256").update(JSON.stringify(files)).digest("hex");
+              pty = { platform, files, hash: expectedPtyHash };
+            }
+            child.stdin.write(`${JSON.stringify({ ...payload, ...(pty ? { pty } : {}) })}\n`);
+          }
           else if (stage === "bridge" && record.type === "bridge-ready") {
             stage = "framed";
             connection.send({ type: "hello", version: HOST_PROTOCOL_VERSION, namespace: bootstrap.namespace, clientId: bootstrap.clientId, role: "desktop", buildHash: bootstrap.hash });
@@ -177,6 +195,35 @@ export class HostConnection extends EventEmitter {
   private hookHandler?: HostHookHandler;
   constructor(private child: HostProcess) { super(); }
 
+  openPty(options: RemotePtyOptions): Promise<RemoteHostPty> {
+    if (this.receivers.size >= MAX_PENDING) return Promise.reject(new Error("Host request capacity exceeded"));
+    return openRemoteHostPty(record => this.send(record), (id, receive) => {
+      this.receivers.set(id, receive); return () => { this.receivers.delete(id); };
+    }, options);
+  }
+
+  async listPtySessions(): Promise<RemotePtySession[]> {
+    const record = await this.requestPty("pty.list", {}, "pty.sessions");
+    if (!Array.isArray(record.sessions) || record.sessions.some(session => !session || typeof session.sessionId !== "string" || typeof session.key !== "string" || !Number.isSafeInteger(session.pid))) throw new Error("Invalid PTY session list");
+    return record.sessions as RemotePtySession[];
+  }
+
+  async closePtySession(sessionId: string): Promise<void> { await this.requestPty("pty.close", { sessionId }, "pty.closed"); }
+
+  private requestPty(type: string, fields: object, expected: string): Promise<HostRecord> {
+    if (this.receivers.size >= MAX_PENDING) return Promise.reject(new Error("Host request capacity exceeded"));
+    return new Promise((resolve, reject) => {
+      const id = randomUUID();
+      const finish = (error?: Error, record?: HostRecord) => { clearTimeout(timer); this.receivers.delete(id); if (error) reject(error); else resolve(record!); };
+      const timer = setTimeout(() => finish(new Error("PTY request timed out; outcome may be unknown")), START_TIMEOUT_MS);
+      this.receivers.set(id, record => {
+        if (record.type === expected) finish(undefined, record);
+        else if (record.type === "pty.error" || record.type === "disconnected") finish(new Error(String(record.error ?? "Host disconnected; PTY request outcome may be unknown")));
+      });
+      try { this.send({ type, id, ...fields }); } catch (error) { finish(error as Error); }
+    });
+  }
+
   send(record: HostRecord): boolean {
     if (this.closed || this.child.stdin.writableLength > HOST_BUFFER_BYTES) throw new Error("Host transport disconnected or backpressured");
     return this.child.stdin.write(encodeHostRecord(record));
@@ -190,7 +237,10 @@ export class HostConnection extends EventEmitter {
     if (typeof record.id === "string") this.receivers.get(record.id)?.(record);
   }
 
-  setHookHandler(handler: HostHookHandler): void { this.hookHandler = handler; }
+  setHookHandler(handler: HostHookHandler): void {
+    this.hookHandler = handler;
+    this.send({ type: "hook.subscribe", id: randomUUID() });
+  }
 
   private async answerHook(request: HostRecord): Promise<void> {
     try {
