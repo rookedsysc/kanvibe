@@ -929,42 +929,6 @@ async function propagateDeletionToTaskPeers(task: KanbanTask): Promise<PeerTarge
   return peerResults;
 }
 
-/** 여러 작업을 삭제한다. worktree와 세션이 있으면 함께 정리하고 다른 client로 전파하며, board update는 한 번만 보낸다 */
-export async function deleteTasks(taskIds: string[]): Promise<string[]> {
-  const uniqueTaskIds = [...new Set(taskIds)];
-  if (uniqueTaskIds.length === 0) {
-    return [];
-  }
-
-  const repo = await getTaskRepository();
-  const tasks = await repo.find({
-    where: { id: In(uniqueTaskIds) },
-  });
-  const taskById = new Map(tasks.map((task) => [task.id, task]));
-  const deletedTaskIds: string[] = [];
-
-  try {
-    for (const taskId of uniqueTaskIds) {
-      const task = taskById.get(taskId);
-      if (!task) {
-        continue;
-      }
-
-      await propagateDeletionToTaskPeers(task);
-      await deleteTaskResources(task);
-      await repo.remove(task);
-      broadcastTaskSessionChanged({ taskId });
-      deletedTaskIds.push(task.id);
-    }
-  } finally {
-    if (deletedTaskIds.length > 0) {
-      broadcastBoardUpdate();
-    }
-  }
-
-  return deletedTaskIds;
-}
-
 /**
  * 기존 작업에서 브랜치를 분기한다.
  * worktree + 세션을 생성하고 상태를 progress로 변경한다.
@@ -1240,29 +1204,33 @@ export async function moveTaskToColumn(
  * 작업의 브랜치에 연결된 PR URL을 조회하여 DB에 저장한다.
  * `gh pr list` CLI를 사용하며, PR이 없으면 null을 유지한다.
  */
+/**
+ * PR이 없으면 null을 돌려준다. gh가 없을 때도 조회할 수단이 없으니 같은 null이다.
+ * 그 밖의 조회 실패는 던진다. null로 삼키면 화면이 인증·네트워크 오류를 "PR 없음"으로 안내한다.
+ */
 export async function fetchAndSavePrUrl(taskId: string): Promise<string | null> {
   const repo = await getTaskRepository();
   const task = await repo.findOneBy({ id: taskId });
   if (!task?.branchName) return null;
 
+  let prUrl: string | null;
   try {
     const { cwd, sshHost } = await resolveTaskGitContext(task);
-    const prUrl = await getPrUrlFromGitHubCli(task.branchName, cwd, sshHost);
-
-    if (prUrl) {
-      const updateResult = await repo.update(
-        { id: task.id, branchName: task.branchName },
-        { prUrl },
-      );
-      if (updateResult.affected === 0) return null;
-      broadcastBoardUpdate();
-      return prUrl;
-    }
+    prUrl = await getPrUrlFromGitHubCli(task.branchName, cwd, sshHost);
   } catch (error) {
     console.error("PR URL 조회 실패:", error);
+    throw error;
   }
 
-  return null;
+  if (!prUrl) return null;
+
+  const updateResult = await repo.update(
+    { id: task.id, branchName: task.branchName },
+    { prUrl },
+  );
+  if (updateResult.affected === 0) return null;
+  broadcastBoardUpdate();
+  return prUrl;
 }
 
 export async function syncActiveTaskPullRequests(

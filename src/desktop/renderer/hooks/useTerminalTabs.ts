@@ -9,6 +9,7 @@ import {
   selectTerminalTab,
 } from "@/desktop/renderer/actions/terminalTabs";
 import { useIsWindowActive } from "@/desktop/renderer/hooks/useIsWindowActive";
+import { useTrackedAction } from "@/desktop/renderer/hooks/useTrackedAction";
 import type { TerminalTab } from "@/desktop/shared/terminalTabs";
 
 /**
@@ -26,11 +27,31 @@ interface UseTerminalTabsOptions {
   isVisible: boolean;
 }
 
+/** 탭 바가 어느 탭에서 무엇을 처리 중인지 보일 수 있게 진행 중인 명령을 알린다 */
+export interface TerminalTabPendingAction {
+  kind: "create" | "select" | "close" | "rename" | "move";
+  /** 추가처럼 아직 대상 탭이 없는 명령은 null이다 */
+  tabId: string | null;
+}
+
+type TerminalTabCommand =
+  | { kind: "create"; tabId: null }
+  | { kind: "select"; tabId: string }
+  | { kind: "close"; tabId: string; onClosed: (shouldCloseWindow: boolean) => void }
+  | { kind: "rename"; tabId: string; name: string }
+  | { kind: "move"; tabId: string; targetIndex: number };
+
 export interface TerminalTabsController {
   tabs: TerminalTab[];
   activeTab: TerminalTab | null;
   /** 탭 목록을 읽지 못한 이유. 멀티플렉서가 없거나 세션이 죽은 경우다 */
   error: string | null;
+  /** 첫 조회가 끝났는지. 아직 기다리는 중인 빈 목록과 실제로 탭이 없는 목록을 가른다 */
+  isTabListLoaded: boolean;
+  pendingAction: TerminalTabPendingAction | null;
+  /** 마지막 탭 명령이 실패한 이유. 다시 시도하거나 다음 명령이 성공하면 지워진다 */
+  actionError: string | null;
+  retryAction: () => Promise<void>;
   refresh: () => Promise<void>;
   createTab: () => Promise<void>;
   selectTab: (tabId: string) => Promise<void>;
@@ -54,6 +75,7 @@ export function useTerminalTabs({
 }: UseTerminalTabsOptions): TerminalTabsController {
   const [tabs, setTabs] = useState<TerminalTab[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [isTabListLoaded, setIsTabListLoaded] = useState(false);
   const tabsRef = useRef<TerminalTab[]>([]);
   const isWindowActive = useIsWindowActive();
 
@@ -71,6 +93,7 @@ export function useTerminalTabs({
     refreshState.active = true;
     setTabs([]);
     setError(null);
+    setIsTabListLoaded(false);
     return () => {
       refreshState.active = false;
     };
@@ -97,12 +120,14 @@ export function useTerminalTabs({
           }
           setTabs(result.ok ? result.tabs : []);
           setError(result.ok ? null : result.error ?? null);
+          setIsTabListLoaded(true);
         } catch (error) {
           if (!isCurrent()) {
             return;
           }
           setTabs([]);
           setError(error instanceof Error ? error.message : "터미널 탭 목록을 읽지 못했습니다.");
+          setIsTabListLoaded(true);
         }
       } while (refreshState.queued && isCurrent());
     })().finally(() => {
@@ -149,33 +174,69 @@ export function useTerminalTabs({
     });
   }, [refresh, sessionType, taskId]);
 
-  const selectTab = useCallback(async (tabId: string) => {
-    /** 폴링을 기다리면 클릭이 굼떠 보이므로 먼저 화면을 바꾸고 실제 상태로 덮어쓴다 */
-    setTabs((currentTabs) => currentTabs.map((tab) => ({ ...tab, isActive: tab.id === tabId })));
-    await selectTerminalTab(taskId, tabId);
-    await refresh();
-  }, [refresh, taskId]);
+  /**
+   * 탭 명령은 한 번에 하나만 보낸다. 응답 전에 같은 명령이 겹치면 탭이 두 개 생기거나 순서가 뒤엉킨다.
+   * 성공이든 실패든 끝나면 다시 읽어, 실패한 선택이나 이름 변경이 화면에 남지 않고 실제 상태로 돌아온다.
+   */
+  const tabCommand = useTrackedAction(async (command: TerminalTabCommand) => {
+    try {
+      switch (command.kind) {
+        case "create":
+          await createTerminalTab(taskId);
+          return;
+        case "select":
+          /** 폴링을 기다리면 클릭이 굼떠 보이므로 먼저 화면을 바꾸고 실제 상태로 덮어쓴다 */
+          setTabs((currentTabs) => currentTabs.map((tab) => ({ ...tab, isActive: tab.id === command.tabId })));
+          await selectTerminalTab(taskId, command.tabId);
+          return;
+        case "close": {
+          const result = await closeTerminalTab(taskId, command.tabId);
+          command.onClosed(result.shouldCloseWindow ?? false);
+          return;
+        }
+        case "rename":
+          await renameTerminalTab(taskId, command.tabId, command.name);
+          return;
+        case "move":
+          await moveTerminalTab(taskId, command.tabId, command.targetIndex);
+      }
+    } finally {
+      await refresh();
+    }
+  });
+  const runTabCommand = tabCommand.run;
 
-  const createTab = useCallback(async () => {
-    await createTerminalTab(taskId);
-    await refresh();
-  }, [refresh, taskId]);
+  const selectTab = useCallback(
+    (tabId: string) => runTabCommand({ kind: "select", tabId }),
+    [runTabCommand],
+  );
+
+  const createTab = useCallback(
+    () => runTabCommand({ kind: "create", tabId: null }),
+    [runTabCommand],
+  );
 
   const closeTab = useCallback(async (tabId: string) => {
-    const result = await closeTerminalTab(taskId, tabId);
-    await refresh();
-    return result.shouldCloseWindow ?? false;
-  }, [refresh, taskId]);
+    let shouldCloseWindow = false;
+    await runTabCommand({
+      kind: "close",
+      tabId,
+      onClosed: (closesWindow) => {
+        shouldCloseWindow = closesWindow;
+      },
+    });
+    return shouldCloseWindow;
+  }, [runTabCommand]);
 
-  const renameTab = useCallback(async (tabId: string, name: string) => {
-    await renameTerminalTab(taskId, tabId, name);
-    await refresh();
-  }, [refresh, taskId]);
+  const renameTab = useCallback(
+    (tabId: string, name: string) => runTabCommand({ kind: "rename", tabId, name }),
+    [runTabCommand],
+  );
 
-  const moveTab = useCallback(async (tabId: string, targetIndex: number) => {
-    await moveTerminalTab(taskId, tabId, targetIndex);
-    await refresh();
-  }, [refresh, taskId]);
+  const moveTab = useCallback(
+    (tabId: string, targetIndex: number) => runTabCommand({ kind: "move", tabId, targetIndex }),
+    [runTabCommand],
+  );
 
   /** 목록 끝에서 반대쪽으로 넘어가, 탭이 두 개일 때도 같은 키를 계속 눌러 오갈 수 있다 */
   const selectRelativeTab = useCallback(async (offset: number) => {
@@ -202,6 +263,12 @@ export function useTerminalTabs({
     tabs,
     activeTab: tabs.find((tab) => tab.isActive) ?? null,
     error,
+    isTabListLoaded,
+    pendingAction: tabCommand.pendingArgs
+      ? { kind: tabCommand.pendingArgs[0].kind, tabId: tabCommand.pendingArgs[0].tabId }
+      : null,
+    actionError: tabCommand.error,
+    retryAction: tabCommand.retry,
     refresh,
     createTab,
     selectTab,

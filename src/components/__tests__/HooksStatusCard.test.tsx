@@ -78,6 +78,9 @@ const messages = {
       reinstall: "Reinstall",
     },
   },
+  common: {
+    retry: "Retry",
+  },
 };
 
 describe("HooksStatusCard", () => {
@@ -237,5 +240,32 @@ describe("HooksStatusCard", () => {
     });
     expect(screen.getByText("Hooks installed successfully")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Reinstall Claude" })).toBeTruthy();
+  });
+  it("설치 요청이 결과 없이 실패해도 사유와 다시 시도를 보이고 다시 시도하면 같은 도구를 설치한다", async () => {
+    mockInstallTaskHooks
+      .mockRejectedValueOnce(new Error("ipc closed"))
+      .mockResolvedValueOnce({ success: true, status: { installed: true } });
+    renderCard({
+      taskId: "task-1",
+      initialClaudeStatus: null,
+      initialGeminiStatus: null,
+      initialCodexStatus: null,
+      initialOpenCodeStatus: null,
+      isRemote: false,
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Install Hooks Claude" }));
+
+    const failure = await screen.findByRole("alert");
+    expect(failure.textContent).toContain("Hooks installation failed");
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+
+    await waitFor(() => {
+      expect(mockInstallTaskHooks).toHaveBeenCalledTimes(2);
+    });
+    await waitFor(() => {
+      expect(screen.queryByRole("alert")).toBeNull();
+    });
   });
 });

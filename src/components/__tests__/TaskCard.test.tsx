@@ -791,3 +791,88 @@ describe("TaskCard - Priority Badge", () => {
     });
   });
 });
+
+describe("TaskCard - 삭제 요청 상태", () => {
+  const onContextMenu = vi.fn();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    window.kanvibeDesktop = {
+      isDesktop: true,
+      focusExistingInternalRoute: vi.fn().mockResolvedValue(false),
+    } as unknown as NonNullable<typeof window.kanvibeDesktop>;
+  });
+
+  it("삭제 중인 카드는 진행 문구와 busy 상태를 보이고 상세 진입과 우클릭 메뉴를 막는다", () => {
+    render(
+      <TaskCard task={createTask()} index={0} onContextMenu={onContextMenu} deletionState={{ status: "deleting" }} />,
+    );
+
+    const card = screen.getByRole("link", { name: /Test Task/ });
+    expect(card.getAttribute("aria-busy")).toBe("true");
+    expect(screen.getByRole("status").textContent).toContain("deleting");
+
+    fireEvent.click(card);
+    fireEvent.contextMenu(card);
+
+    expect(mocks.push).not.toHaveBeenCalled();
+    expect(onContextMenu).not.toHaveBeenCalled();
+  });
+
+  it("삭제에 실패한 카드는 사유를 alert로 알리고 다시 시도를 누르면 같은 task로 재시도를 요청한다", () => {
+    const onRetryDelete = vi.fn();
+    const task = createTask();
+    render(
+      <TaskCard
+        task={task}
+        index={0}
+        onContextMenu={onContextMenu}
+        deletionState={{ status: "failed", reason: "peer timeout" }}
+        onRetryDelete={onRetryDelete}
+      />,
+    );
+
+    expect(screen.getByRole("alert").textContent).toContain('deleteFailed:{"reason":"peer timeout"}');
+
+    fireEvent.click(screen.getByRole("button", { name: "retryDelete" }));
+
+    expect(onRetryDelete).toHaveBeenCalledWith(task);
+  });
+});
+
+describe("TaskCard - 이동 저장 상태", () => {
+  const onContextMenu = vi.fn();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("저장 중인 카드는 저장 중 문구와 busy 상태를 보인다", () => {
+    render(
+      <TaskCard task={createTask()} index={0} onContextMenu={onContextMenu} moveState={{ status: "saving" }} />,
+    );
+
+    expect(screen.getByRole("link", { name: /Test Task/ }).getAttribute("aria-busy")).toBe("true");
+    expect(screen.getByRole("status").textContent).toContain("moveSaving");
+  });
+
+  it("이동 저장에 실패한 카드는 사유를 알리고 다시 옮기기를 누르면 재시도를 요청한다", () => {
+    const onRetryMove = vi.fn();
+    const task = createTask();
+    render(
+      <TaskCard
+        task={task}
+        index={0}
+        onContextMenu={onContextMenu}
+        moveState={{ status: "failed", reason: "db locked", targetStatus: TaskStatus.REVIEW }}
+        onRetryMove={onRetryMove}
+      />,
+    );
+
+    expect(screen.getByRole("alert").textContent).toContain('moveFailed:{"reason":"db locked"}');
+
+    fireEvent.click(screen.getByRole("button", { name: "retryMove" }));
+
+    expect(onRetryMove).toHaveBeenCalledWith(task);
+  });
+});

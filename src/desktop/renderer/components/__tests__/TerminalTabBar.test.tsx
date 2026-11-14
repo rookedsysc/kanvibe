@@ -185,4 +185,32 @@ describe("TerminalTabBar", () => {
 
     expect(handlers.onMove).not.toHaveBeenCalled();
   });
+
+  it("탭을 추가하는 동안 추가 버튼을 막고 진행 중임을 알린다", () => {
+    const handlers = renderTabBar({ pendingAction: { kind: "create", tabId: null } });
+
+    const createButton = screen.getByTestId("terminal-tab-new") as HTMLButtonElement;
+    expect(createButton.disabled).toBe(true);
+    expect(createButton.getAttribute("aria-busy")).toBe("true");
+    fireEvent.click(createButton);
+    expect(handlers.onCreate).not.toHaveBeenCalled();
+  });
+
+  it("처리 중인 탭을 busy로 표시한다", () => {
+    renderTabBar({ pendingAction: { kind: "rename", tabId: "@2" } });
+
+    const [firstTab, secondTab] = screen.getAllByRole("tab");
+    expect(firstTab.getAttribute("aria-busy")).toBeNull();
+    expect(secondTab.getAttribute("aria-busy")).toBe("true");
+  });
+
+  it("탭 명령이 실패하면 사유와 다시 시도를 보인다", () => {
+    const onRetryAction = vi.fn();
+    renderTabBar({ actionError: "tmux gone", onRetryAction });
+
+    expect(screen.getByRole("alert").textContent).toContain("terminalTabActionFailed:tmux gone");
+    fireEvent.click(screen.getByRole("button", { name: "retry" }));
+    expect(onRetryAction).toHaveBeenCalledTimes(1);
+  });
 });
+

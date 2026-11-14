@@ -125,4 +125,67 @@ describe("BulkSessionTypeChangeSettings", () => {
     });
     expect(mocks.changeAllTaskSessionTypes).not.toHaveBeenCalled();
   });
+  it("호스트 준비와 변경 단계를 차례로 알리고 진행 중에는 다시 적용할 수 없다", async () => {
+    // Given
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    mocks.getSessionTypeChangeTargets.mockResolvedValue({ taskCount: 4, liveSessionCount: 0, sshHosts: [null, "build-host"] });
+    let resolveSecondHost: (value: boolean) => void = () => {};
+    mocks.ensureSessionDependencyWithPrompt
+      .mockResolvedValueOnce(true)
+      .mockReturnValueOnce(new Promise((resolve) => {
+        resolveSecondHost = resolve;
+      }));
+    let resolveChange: (value: { changedCount: number; failedCount: number }) => void = () => {};
+    mocks.changeAllTaskSessionTypes.mockReturnValueOnce(new Promise((resolve) => {
+      resolveChange = resolve;
+    }));
+    render(<BulkSessionTypeChangeSettings defaultSessionType={SessionType.TMUX} />);
+
+    // When
+    applyBulkChange(SessionType.ZELLIJ);
+
+    // Then
+    await waitFor(() => {
+      expect(screen.getByRole("status").textContent).toBe('bulkSessionTypePreparingHost:{"current":2,"total":2}');
+    });
+    expect((screen.getByRole("button", { name: "bulkSessionTypeApply" }) as HTMLButtonElement).disabled).toBe(true);
+
+    resolveSecondHost(true);
+    await waitFor(() => {
+      expect(screen.getByRole("status").textContent).toBe('bulkSessionTypeChanging:{"count":4}');
+    });
+
+    resolveChange({ changedCount: 4, failedCount: 0 });
+    await waitFor(() => {
+      expect(screen.getByRole("status").textContent).toContain("bulkSessionTypeChangeResult");
+    });
+    expect(mocks.getSessionTypeChangeTargets).toHaveBeenCalledTimes(1);
+  });
+
+  it("일부 task가 실패하면 결과를 오류로 알리고 다시 적용하면 남은 task를 다시 바꾼다", async () => {
+    // Given
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    mocks.getSessionTypeChangeTargets
+      .mockResolvedValueOnce({ taskCount: 3, liveSessionCount: 0, sshHosts: [null] })
+      .mockResolvedValueOnce({ taskCount: 1, liveSessionCount: 0, sshHosts: [null] });
+    mocks.changeAllTaskSessionTypes
+      .mockResolvedValueOnce({ changedCount: 2, failedCount: 1 })
+      .mockResolvedValueOnce({ changedCount: 1, failedCount: 0 });
+    render(<BulkSessionTypeChangeSettings defaultSessionType={SessionType.TMUX} />);
+
+    // When
+    applyBulkChange(SessionType.ZELLIJ);
+
+    // Then
+    expect((await screen.findByRole("alert")).textContent).toContain('bulkSessionTypeChangeResult:{"changedCount":2,"failedCount":1}');
+
+    fireEvent.click(screen.getByRole("button", { name: "bulkSessionTypeRetryFailed" }));
+
+    await waitFor(() => {
+      expect(mocks.changeAllTaskSessionTypes).toHaveBeenCalledTimes(2);
+    });
+    await waitFor(() => {
+      expect(screen.queryByRole("alert")).toBeNull();
+    });
+  });
 });

@@ -1098,61 +1098,6 @@ describe("kanbanService.createTask", () => {
     );
   });
 
-  it("deleteTasks는 선택 task들을 순서대로 정리하고 삭제한 뒤 board update를 한 번만 브로드캐스트한다", async () => {
-    // Given
-    const taskA = {
-      id: "task-merge-a",
-      projectId: "project-1",
-      branchName: "feature/merge-a",
-      worktreePath: "/workspace/repo__worktrees/feature-merge-a",
-      sshHost: null,
-      sessionType: null,
-      sessionName: null,
-    };
-    const taskB = {
-      id: "task-merge-b",
-      projectId: "project-1",
-      branchName: "feature/merge-b",
-      worktreePath: "/workspace/repo__worktrees/feature-merge-b",
-      sshHost: null,
-      sessionType: null,
-      sessionName: null,
-    };
-    mocks.taskRepo.find.mockResolvedValue([taskB, taskA]);
-    mocks.taskRepo.remove.mockImplementation(async (value) => value);
-    mocks.projectRepo.findOneBy.mockResolvedValue({
-      id: "project-1",
-      repoPath: "/workspace/repo",
-      sshHost: null,
-    });
-
-    const { deleteTasks } = await import("@/desktop/main/services/kanbanService");
-
-    // When
-    const result = await deleteTasks(["task-merge-a", "missing-task", "task-merge-b", "task-merge-a"]);
-
-    // Then
-    expect(result).toEqual(["task-merge-a", "task-merge-b"]);
-    expect(mocks.removeWorktreeAndBranch).toHaveBeenNthCalledWith(
-      1,
-      "/workspace/repo",
-      "feature/merge-a",
-      null,
-      { throwOnError: true, worktreePath: "/workspace/repo__worktrees/feature-merge-a" },
-    );
-    expect(mocks.removeWorktreeAndBranch).toHaveBeenNthCalledWith(
-      2,
-      "/workspace/repo",
-      "feature/merge-b",
-      null,
-      { throwOnError: true, worktreePath: "/workspace/repo__worktrees/feature-merge-b" },
-    );
-    expect(mocks.taskRepo.remove).toHaveBeenNthCalledWith(1, taskA);
-    expect(mocks.taskRepo.remove).toHaveBeenNthCalledWith(2, taskB);
-    expect(mocks.broadcastTaskSessionChanged.mock.calls).toEqual([[{ taskId: taskA.id }], [{ taskId: taskB.id }]]);
-    expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(1);
-  });
-
   describe("다른 client로의 삭제 전파", () => {
     const sharedTask = {
       id: "task-shared",
@@ -1357,22 +1302,6 @@ describe("kanbanService.createTask", () => {
       });
     });
 
-    it("일괄 삭제도 task마다 다른 client로 전파한다", async () => {
-      // Given
-      const otherTask = { ...sharedTask, id: "task-other", branchName: "feat/other", worktreePath: "/remote/repo__worktrees/feat-other" };
-      mocks.taskRepo.find.mockResolvedValue([sharedTask, otherTask]);
-      mocks.taskRepo.remove.mockImplementation(async (value) => value);
-      const { deleteTasks } = await import("@/desktop/main/services/kanbanService");
-
-      // When
-      await deleteTasks(["task-shared", "task-other"]);
-
-      // Then
-      expect(mocks.propagateTaskDeletionToPeers.mock.calls).toEqual([
-        ["/remote/repo__worktrees/feat-shared", "devbox"],
-        ["/remote/repo__worktrees/feat-other", "devbox"],
-      ]);
-    });
   });
 
   it("task 내용 수정 후 board update를 브로드캐스트한다", async () => {
@@ -1827,6 +1756,28 @@ describe("kanbanService.createTask", () => {
     expect(result).toBeNull();
     expect(mocks.taskRepo.save).not.toHaveBeenCalled();
     expect(consoleErrorSpy).not.toHaveBeenCalled();
+  });
+
+  it("gh 조회가 다른 이유로 실패하면 PR 없음(null) 대신 오류를 그대로 던진다", async () => {
+    // Given
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.taskRepo.findOneBy.mockResolvedValue({
+      id: "task-5b",
+      projectId: "project-1",
+      branchName: "feat/auth",
+      prUrl: null,
+    });
+    mocks.projectRepo.findOneBy.mockResolvedValue({
+      id: "project-1",
+      repoPath: "/workspace/repo",
+    });
+    mocks.execGit.mockRejectedValue(new Error("HTTP 401: Bad credentials"));
+
+    const { fetchAndSavePrUrl } = await import("@/desktop/main/services/kanbanService");
+
+    // When / Then
+    await expect(fetchAndSavePrUrl("task-5b")).rejects.toThrow("HTTP 401: Bad credentials");
+    expect(mocks.taskRepo.update).not.toHaveBeenCalled();
   });
 
   it("원격 프로젝트는 프로젝트 repo 경로와 SSH를 사용해 gh CLI로 PR URL을 조회한다", async () => {

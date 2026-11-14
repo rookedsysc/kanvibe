@@ -14,7 +14,9 @@ const {
   mockRedirect,
   mockGetNotificationUnreadOnlyEnabled,
   mockSetNotificationUnreadOnlyEnabled,
+  mockShowActionStatus,
 } = vi.hoisted(() => ({
+  mockShowActionStatus: vi.fn(),
   mockListNotifications: vi.fn(),
   mockMarkNotificationRead: vi.fn(),
   mockMarkAllNotificationsRead: vi.fn(),
@@ -38,6 +40,10 @@ vi.mock("@/desktop/renderer/actions/notifications", () => ({
   markNotificationRead: mockMarkNotificationRead,
   markAllNotificationsRead: mockMarkAllNotificationsRead,
   activateNotification: mockActivateNotification,
+}));
+
+vi.mock("@/desktop/renderer/components/ActionStatusToast", () => ({
+  showActionStatus: mockShowActionStatus,
 }));
 
 vi.mock("@/desktop/renderer/actions/kanban", () => ({
@@ -121,6 +127,72 @@ describe("NotificationCenterButton", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it("알림 목록을 읽지 못하면 알림 없음 대신 사유와 다시 시도를 보이고 다시 불러온다", async () => {
+    mockListNotifications
+      .mockRejectedValueOnce(new Error("db closed"))
+      .mockResolvedValueOnce([createNotification("n1", { isRead: false, createdAt: "2026-05-01T00:00:00.000Z" })]);
+
+    render(<NotificationCenterButton />);
+    fireEvent.click(screen.getByRole("button", { name: "notifications" }));
+
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    expect(screen.queryByText("noNotifications")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "retry" }));
+
+    expect(await screen.findByRole("button", { name: /n1 title/ })).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("모두 읽음 처리 중에는 버튼을 막고 실패하면 사유와 다시 시도를 보인다", async () => {
+    mockListNotifications.mockResolvedValue([createNotification("n1", { isRead: false, createdAt: "2026-05-01T00:00:00.000Z" })]);
+    let rejectMarkAll: (error: Error) => void = () => {};
+    mockMarkAllNotificationsRead.mockReturnValueOnce(new Promise((_, reject) => {
+      rejectMarkAll = reject;
+    }));
+
+    render(<NotificationCenterButton />);
+    fireEvent.click(screen.getByRole("button", { name: "notifications" }));
+    await screen.findByRole("button", { name: /n1 title/ });
+
+    fireEvent.click(screen.getByRole("button", { name: "markAllRead" }));
+    const pendingButton = await screen.findByRole("button", { name: "markingAllRead" });
+    expect((pendingButton as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(pendingButton);
+    expect(mockMarkAllNotificationsRead).toHaveBeenCalledTimes(1);
+
+    rejectMarkAll(new Error("db locked"));
+
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "markAllRead" })).toBeTruthy();
+  });
+
+  it("알림 열기 중에는 같은 알림을 다시 열지 않고 실패하면 토스트로 알린다", async () => {
+    mockListNotifications.mockResolvedValue([createNotification("n1", { isRead: false, createdAt: "2026-05-01T00:00:00.000Z" })]);
+    let rejectMarkRead: (error: Error) => void = () => {};
+    mockMarkNotificationRead.mockReturnValueOnce(new Promise((_, reject) => {
+      rejectMarkRead = reject;
+    }));
+
+    render(<NotificationCenterButton />);
+    fireEvent.click(screen.getByRole("button", { name: "notifications" }));
+    const row = await screen.findByRole("button", { name: /n1 title/ });
+
+    fireEvent.click(row);
+    await waitFor(() => {
+      expect(row.getAttribute("aria-busy")).toBe("true");
+    });
+    fireEvent.click(row);
+    expect(mockMarkNotificationRead).toHaveBeenCalledTimes(1);
+
+    rejectMarkRead(new Error("db locked"));
+
+    await waitFor(() => {
+      expect(mockShowActionStatus).toHaveBeenCalledWith({ kind: "failure", message: "notificationOpenFailed" });
+    });
+    expect(mockRedirect).not.toHaveBeenCalled();
   });
 
   it("shows a popup instead of redirecting when the task no longer exists", async () => {

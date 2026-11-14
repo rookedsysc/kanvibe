@@ -24,6 +24,10 @@
     "notFoundTitle": "페이지를 찾을 수 없습니다",
     "notFoundDescription": "요청한 경로가 없거나 이미 이동되었습니다.",
     "loading": "로딩 중...",
+    "retry": "다시 시도",
+    "loadDelayed": "조회가 지연되고 있습니다. 계속 기다리는 중…",
+    "loadFailed": "불러오지 못했습니다: {reason}",
+    "refreshFailed": "최신 데이터를 불러오지 못해 이전 데이터를 표시합니다: {reason}",
     "sessionDependency": {
       "localTarget": "현재 로컬 환경",
       "remoteTarget": "{host}",
@@ -56,7 +60,12 @@
       "taskPullFailure": "Task pull 실패",
       "worktreeFailure": "Worktree sync 실패",
       "emptyMerged": "이번 검토에서 삭제할 merge PR task가 없습니다.",
-      "emptyRegistered": "이번 검토에서 새로 등록된 worktree가 없습니다."
+      "emptyRegistered": "이번 검토에서 새로 등록된 worktree가 없습니다.",
+      "deleteProgress": "{total}개 중 {processed}개 처리 중…",
+      "deleteSummary": "{total}개 중 {succeeded}개 삭제, {failed}개 실패",
+      "deleteSucceeded": "삭제됨",
+      "deleteFailed": "삭제 실패",
+      "retryFailedDeletes": "실패한 항목 다시 시도"
     },
     "releaseUpdate": {
       "eyebrow": "새 릴리스",
@@ -65,7 +74,15 @@
       "viewRelease": "릴리스 보기",
       "dontShowVersionAgain": "이 버전 다시 보지 않기",
       "dismissOverlay": "업데이트 dialog 닫기"
-    }
+    },
+    "open": "열기",
+    "closeAndContinue": "닫기 (백그라운드에서 계속)",
+    "saving": "저장 중…",
+    "saveFailed": "저장하지 못했습니다: {reason}",
+    "markingAllRead": "모두 읽음 처리 중…",
+    "markAllReadFailed": "모두 읽음 처리하지 못했습니다: {reason}",
+    "notificationOpenFailed": "알림을 열지 못했습니다: {reason}",
+    "notificationMarkReadFailed": "읽음 처리하지 못했습니다: {reason}"
   },
   "board": {
     "title": "",
@@ -163,12 +180,21 @@
     "peerDeletionFailedTitle": "다른 데스크탑에서는 삭제하지 못함",
     "peerDeletionFailedBody": "\"{taskTitle}\"을(를) 이 데스크탑에서는 지웠지만 {peerUrls}에는 남아 있습니다. 그 데스크탑이 켜지면 직접 삭제하세요.",
     "deleteConfirm": "이 작업을 삭제하시겠습니까?",
+    "deleting": "삭제 중…",
+    "deleteFailed": "삭제하지 못했습니다: {reason}",
+    "retryDelete": "다시 시도",
+    "moveSaving": "저장 중…",
+    "moveFailed": "옮기지 못해 원래 위치로 되돌렸습니다: {reason}",
+    "retryMove": "다시 옮기기",
     "priority": "우선순위",
     "priorityLow": "!",
     "priorityMedium": "!!",
     "priorityHigh": "!!!",
     "priorityNone": "없음",
-    "inheritedPriority": "프로젝트 root task에서 물려받은 우선순위입니다."
+    "inheritedPriority": "프로젝트 root task에서 물려받은 우선순위입니다.",
+    "createSucceeded": "\"{title}\" 작업을 만들었습니다",
+    "createFailedWithReason": "작업을 만들지 못했습니다: {reason}",
+    "branchesLoading": "브랜치 목록을 불러오는 중…"
   },
   "branch": {
     "title": "브랜치 분기",
@@ -181,7 +207,9 @@
     "submit": "분기",
     "submitting": "생성 중...",
     "validationError": "프로젝트와 브랜치 이름은 필수입니다.",
-    "failedError": "브랜치 분기에 실패했습니다."
+    "failedError": "브랜치 분기에 실패했습니다.",
+    "succeeded": "\"{branchName}\" 브랜치로 분기했습니다",
+    "failedWithReason": "분기하지 못했습니다: {reason}"
   },
   "contextMenu": {
     "branchOff": "브랜치 분기",
@@ -321,7 +349,20 @@
         "terminalTabNext": "다음 터미널 탭",
         "terminalTab": "터미널 탭 {index}번으로 이동"
       }
-    }
+    },
+    "mobilePairingIssuingCode": "코드를 만드는 중…",
+    "mobilePairingClearingCode": "코드를 지우는 중…",
+    "mobilePairingDisconnecting": "연결을 끊는 중…",
+    "mobilePairingDevicesLoadFailed": "연결된 기기 목록을 읽지 못했습니다.",
+    "scanFailed": "스캔하지 못했습니다: {reason}",
+    "deletingProject": "삭제 중…",
+    "deleteProjectFailed": "프로젝트를 삭제하지 못했습니다: {reason}",
+    "deleteProjectSucceeded": "\"{name}\" 프로젝트를 삭제했습니다",
+    "bulkSessionTypeChecking": "바꿀 작업을 확인하는 중…",
+    "bulkSessionTypePreparingHost": "호스트 {current}/{total} 세션 도구 준비 중…",
+    "bulkSessionTypeChanging": "작업 {count}개의 세션 타입을 바꾸는 중…",
+    "bulkSessionTypeRetryFailed": "실패한 작업 다시 적용",
+    "settingSaveFailed": "설정을 저장하지 못해 이전 값으로 되돌렸습니다: {reason}"
   },
   "taskSearch": {
     "title": "태스크 빠른 검색",
@@ -338,7 +379,12 @@
     "viewKanbanLabel": "칸반 보드로 보기",
     "viewWorkspaceLabel": "워크스페이스로 보기 (task 리스트 + 터미널)",
     "empty": "일치하는 명령이 없습니다",
-    "hint": "↑↓ 이동 · Enter 실행 · Esc 닫기"
+    "hint": "↑↓ 이동 · Enter 실행 · Esc 닫기",
+    "syncRunning": "동기화하는 중…",
+    "syncNoChanges": "동기화 완료: 변경 없음",
+    "syncBoardUpdated": "동기화 완료: 보드를 갱신했습니다",
+    "syncReviewNeeded": "동기화 완료: 확인할 항목이 있습니다",
+    "syncFailed": "동기화하지 못했습니다: {reason}"
   },
   "workspace": {
     "taskListLabel": "작업 목록",
@@ -450,6 +496,8 @@
     "moveToReview": "Review",
     "moveToDone": "Done",
     "delete": "삭제",
+    "deleting": "삭제 중…",
+    "deleteFailed": "삭제하지 못했습니다: {reason}",
     "terminal": "터미널",
     "noTerminal": "이 작업에는 연결된 터미널 세션이 없습니다.",
     "connectTerminal": "터미널 연결",
@@ -632,7 +680,15 @@
     },
     "openInVsCode": "VS Code에서 열기",
     "openInVsCodeFailed": "VS Code를 열지 못했습니다. `code` 명령을 PATH에서 찾을 수 있는지 확인하세요.",
-    "pullRequestNotFound": "이 브랜치에 연결된 PR을 찾지 못했습니다."
+    "pullRequestNotFound": "이 브랜치에 연결된 PR을 찾지 못했습니다.",
+    "movingStatus": "{status}(으)로 옮기는 중…",
+    "statusChangeFailed": "상태를 바꾸지 못했습니다: {reason}",
+    "terminalTabCreating": "터미널 탭 추가 중…",
+    "terminalTabActionFailed": "탭 작업에 실패했습니다: {reason}",
+    "pullRequestLookupFailed": "PR을 조회하지 못했습니다: {reason}",
+    "imagePasteSending": "이미지를 원격으로 보내는 중…",
+    "imagePasteFailed": "이미지를 보내지 못했습니다: {reason}",
+    "imagePasteRetry": "다시 보내기"
   },
   "projectBranchTasks": {
     "title": "프로젝트 작업",
@@ -660,7 +716,8 @@
     "viewDiff": "Diff 보기",
     "fileCount": "{count}개 파일 변경",
     "viewed": "확인 완료",
-    "markViewed": "확인"
+    "markViewed": "확인",
+    "unsavedChanges": "저장하지 않은 변경"
   },
   "aiAccounts": {
     "title": "AI 계정",
@@ -683,6 +740,10 @@
       "already-exists": "같은 이름의 계정이 이미 있습니다.",
       "manual-logout-required": "이 계정은 앱에서 로그아웃할 수 없어 목록에서만 지웠습니다."
     },
-    "usageSection": "사용량"
+    "usageSection": "사용량",
+    "adding": "추가 중…",
+    "addFailed": "계정을 추가하지 못했습니다: {reason}",
+    "removing": "삭제 중…",
+    "removeFailed": "계정을 삭제하지 못했습니다: {reason}"
   }
 }

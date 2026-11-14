@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import ProjectSettings from "../ProjectSettings";
 import { SessionType } from "@/entities/KanbanTask";
@@ -20,7 +20,7 @@ vi.mock("next-intl", () => ({
       return enMessages.settings.deleteConfirm.replace(/\{(\w+)\}/g, (_, name: string) => values?.[name] ?? `{${name}}`);
     }
 
-    return key;
+    return values ? `${key}:${JSON.stringify(values)}` : key;
   },
 }));
 
@@ -81,6 +81,15 @@ function createProject(): Project {
     iconDataUrl: null,
     createdAt: new Date(),
   };
+}
+
+/** 같은 화면의 다른 영역도 오류 알림을 띄우므로, 설정 저장 실패 알림만 문구로 골라낸다 */
+async function findSettingSaveFailure(message: string) {
+  return waitFor(() => {
+    const saveFailure = screen.getAllByRole("alert").find((alert) => alert.textContent?.includes(message));
+    expect(saveFailure).toBeTruthy();
+    return saveFailure as HTMLElement;
+  });
 }
 
 describe("ProjectSettings", () => {
@@ -418,4 +427,98 @@ describe("ProjectSettings", () => {
     expect(mockSetBackgroundSyncIntervalMs).toHaveBeenLastCalledWith(20 * 60_000);
   });
 
+  it("vim mode 저장이 실패하면 저장된 값으로 되돌리고 사유와 다시 시도를 보인다", async () => {
+    const onVimModeEnabledChange = vi.fn();
+    mockSetVimModeEnabled
+      .mockRejectedValueOnce(new Error("settings db locked"))
+      .mockResolvedValueOnce(undefined);
+
+    render(
+      <ProjectSettings
+        isOpen
+        onClose={vi.fn()}
+        projects={[createProject()]}
+        sshHosts={[]}
+        sidebarDefaultCollapsed={false}
+        defaultSessionType={SessionType.TMUX}
+        vimModeEnabled
+        onVimModeEnabledChange={onVimModeEnabledChange}
+        notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
+        backgroundSyncSettings={{ isEnabled: true, intervalMs: 10 * 60_000 }}
+      />,
+    );
+
+    const vimModeSwitch = screen.getByRole("switch", { name: "vimModeEnabled" });
+    fireEvent.click(vimModeSwitch);
+
+    const saveFailure = await findSettingSaveFailure('settingSaveFailed:{"reason":"settings db locked"}');
+    expect(vimModeSwitch.getAttribute("aria-checked")).toBe("true");
+    expect(onVimModeEnabledChange).toHaveBeenLastCalledWith(true);
+
+    fireEvent.click(within(saveFailure).getByRole("button", { name: "retry" }));
+
+    await waitFor(() => {
+      expect(vimModeSwitch.getAttribute("aria-checked")).toBe("false");
+    });
+    expect(mockSetVimModeEnabled).toHaveBeenCalledTimes(2);
+    await waitFor(() => {
+      expect(screen.queryByText(/settingSaveFailed/)).toBeNull();
+    });
+  });
+
+  it("한 설정을 저장하는 동안 그 설정만 막고 다른 설정은 바꿀 수 있다", async () => {
+    let resolveVimSave: () => void = () => {};
+    mockSetVimModeEnabled.mockReturnValueOnce(new Promise<void>((resolve) => {
+      resolveVimSave = resolve;
+    }));
+
+    render(
+      <ProjectSettings
+        isOpen
+        onClose={vi.fn()}
+        projects={[createProject()]}
+        sshHosts={[]}
+        sidebarDefaultCollapsed={false}
+        defaultSessionType={SessionType.TMUX}
+        vimModeEnabled
+        notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
+        backgroundSyncSettings={{ isEnabled: true, intervalMs: 10 * 60_000 }}
+      />,
+    );
+
+    const vimModeSwitch = screen.getByRole("switch", { name: "vimModeEnabled" });
+    fireEvent.click(vimModeSwitch);
+
+    expect((vimModeSwitch as HTMLButtonElement).disabled).toBe(true);
+    const sidebarSwitch = screen.getAllByRole("switch")[0];
+    expect((sidebarSwitch as HTMLButtonElement).disabled).toBe(false);
+
+    resolveVimSave();
+    await waitFor(() => {
+      expect((vimModeSwitch as HTMLButtonElement).disabled).toBe(false);
+    });
+  });
+
+  it("알림 설정 저장이 실패하면 이전 값으로 되돌린다", async () => {
+    mockSetNotificationEnabled.mockRejectedValueOnce(new Error("ipc closed"));
+
+    render(
+      <ProjectSettings
+        isOpen
+        onClose={vi.fn()}
+        projects={[createProject()]}
+        sshHosts={[]}
+        sidebarDefaultCollapsed={false}
+        defaultSessionType={SessionType.TMUX}
+        notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
+        backgroundSyncSettings={{ isEnabled: true, intervalMs: 10 * 60_000 }}
+      />,
+    );
+
+    const notificationSwitch = screen.getAllByRole("switch")[1];
+    fireEvent.click(notificationSwitch);
+
+    await findSettingSaveFailure('settingSaveFailed:{"reason":"ipc closed"}');
+    expect(notificationSwitch.getAttribute("aria-checked")).toBe("true");
+  });
 });

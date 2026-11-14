@@ -1,15 +1,18 @@
 "use client";
 
-import { useState, useEffect, useTransition } from "react";
-import { useTranslations } from "next-intl";
+import { useState, useEffect, useRef, useTransition } from "react";
+import { useLocale, useTranslations } from "next-intl";
 import { branchFromTask } from "@/desktop/renderer/actions/kanban";
-import { getProjectBranches } from "@/desktop/renderer/actions/project";
+import { useProjectBranches } from "@/desktop/renderer/hooks/useProjectBranches";
 import { SessionType, type KanbanTask } from "@/entities/KanbanTask";
 import type { Project } from "@/entities/Project";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 import BranchSearchInput from "./BranchSearchInput";
+import ProjectBranchesStatusNotice from "./ProjectBranchesStatusNotice";
 import SessionTypeOptions from "./SessionTypeOptions";
 import { ensureSessionDependencyWithPrompt } from "@/desktop/renderer/utils/sessionDependencyPrompt";
+import { navigateToTaskDetail } from "@/desktop/renderer/utils/taskNavigation";
+import { showActionStatus } from "@/desktop/renderer/components/ActionStatusToast";
 
 interface BranchTaskModalProps {
   task: KanbanTask;
@@ -31,11 +34,11 @@ export default function BranchTaskModal({
 }: BranchTaskModalProps) {
   const t = useTranslations("branch");
   const tc = useTranslations("common");
+  const locale = useLocale();
   const [isPending, startTransition] = useTransition();
   const [selectedProjectId, setSelectedProjectId] = useState(
     projects[0]?.id || ""
   );
-  const [branches, setBranches] = useState<string[]>([]);
   const [baseBranch, setBaseBranch] = useState(() =>
     findProjectDefaultBranch(projects, projects[0]?.id || "")
   );
@@ -44,24 +47,30 @@ export default function BranchTaskModal({
     (defaultSessionType as SessionType) || SessionType.HERDR
   );
   const [error, setError] = useState<string | null>(null);
+  /** 응답을 기다리는 동안 제출을 한 번만 받는다. 상태값은 같은 틱의 연속 제출을 막지 못해 ref로 막는다 */
+  const isSubmittingRef = useRef(false);
+  /** 분기 중 모달을 닫으면 결과를 토스트로 알리기 위해 열려 있는지 기억한다 */
+  const isModalMountedRef = useRef(true);
   const selectedProjectName = projects.find((project) => project.id === selectedProjectId)?.name;
+  const {
+    branches,
+    status: branchesStatus,
+    failureReason: branchesFailureReason,
+    reload: reloadBranches,
+  } = useProjectBranches(selectedProjectId);
 
   useEffect(() => {
-    if (!selectedProjectId) return;
-
-    let active = true;
-    getProjectBranches(selectedProjectId).then((result) => {
-      if (active) setBranches(result);
-    }).catch(() => {
-      if (active) setBranches([]);
-    });
-    return () => { active = false; };
-  }, [selectedProjectId]);
+    isModalMountedRef.current = true;
+    return () => {
+      isModalMountedRef.current = false;
+    };
+  }, []);
 
   useEscapeKey(onClose);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (isSubmittingRef.current) return;
     setError(null);
 
     if (!selectedProjectId || !branchName) {
@@ -69,24 +78,41 @@ export default function BranchTaskModal({
       return;
     }
 
+    isSubmittingRef.current = true;
     startTransition(async () => {
       try {
         if (sessionType === SessionType.HERDR && !await ensureSessionDependencyWithPrompt(
           sessionType, projects.find((project) => project.id === selectedProjectId)?.sshHost, tc,
         )) return;
 
-        await branchFromTask(
+        const branchedTask = await branchFromTask(
           task.id,
           selectedProjectId,
           baseBranch,
           branchName,
           sessionType
         );
-        onClose();
+        if (isModalMountedRef.current) {
+          onClose();
+          return;
+        }
+
+        showActionStatus({
+          kind: "success",
+          message: t("succeeded", { branchName }),
+          action: branchedTask
+            ? { label: tc("open"), onAction: () => void navigateToTaskDetail(branchedTask.id, { currentLocale: locale }) }
+            : undefined,
+        });
       } catch (err) {
-        setError(
-          err instanceof Error ? err.message : t("failedError")
-        );
+        const reason = err instanceof Error ? err.message : t("failedError");
+        if (isModalMountedRef.current) {
+          setError(reason);
+        } else {
+          showActionStatus({ kind: "failure", message: t("failedWithReason", { reason }) });
+        }
+      } finally {
+        isSubmittingRef.current = false;
       }
     });
   }
@@ -94,7 +120,6 @@ export default function BranchTaskModal({
   function handleProjectChange(projectId: string) {
     setSelectedProjectId(projectId);
     setBaseBranch(findProjectDefaultBranch(projects, projectId));
-    setBranches([]);
   }
 
   return (
@@ -139,6 +164,11 @@ export default function BranchTaskModal({
               onChange={setBaseBranch}
               projectName={selectedProjectName}
             />
+            <ProjectBranchesStatusNotice
+              status={branchesStatus}
+              failureReason={branchesFailureReason}
+              onRetry={reloadBranches}
+            />
           </div>
 
           <div>
@@ -174,7 +204,7 @@ export default function BranchTaskModal({
               onClick={onClose}
               className="px-4 py-2 text-sm text-text-muted hover:text-text-primary transition-colors"
             >
-              {tc("cancel")}
+              {isPending ? tc("closeAndContinue") : tc("cancel")}
             </button>
             <button
               type="submit"

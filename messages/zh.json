@@ -24,6 +24,10 @@
     "notFoundTitle": "页面不存在",
     "notFoundDescription": "你访问的路径不存在，或已经被移动。",
     "loading": "加载中...",
+    "retry": "重试",
+    "loadDelayed": "加载时间比平时更长，仍在等待…",
+    "loadFailed": "加载失败：{reason}",
+    "refreshFailed": "无法刷新，正在显示之前的数据：{reason}",
     "sessionDependency": {
       "localTarget": "当前本机环境",
       "remoteTarget": "{host}",
@@ -55,7 +59,12 @@
       "taskPullFailure": "Task pull 失败",
       "worktreeFailure": "Worktree 同步失败",
       "emptyMerged": "本次检查中没有需要删除的已合并 PR 任务。",
-      "emptyRegistered": "本次检查中没有新注册的 worktree。"
+      "emptyRegistered": "本次检查中没有新注册的 worktree。",
+      "deleteProgress": "正在处理 {processed}/{total}…",
+      "deleteSummary": "共 {total} 个，已删除 {succeeded} 个，失败 {failed} 个",
+      "deleteSucceeded": "已删除",
+      "deleteFailed": "删除失败",
+      "retryFailedDeletes": "重试失败项"
     },
     "releaseUpdate": {
       "eyebrow": "新版本",
@@ -64,7 +73,15 @@
       "viewRelease": "查看版本",
       "dontShowVersionAgain": "不再显示此版本",
       "dismissOverlay": "关闭更新对话框"
-    }
+    },
+    "open": "打开",
+    "closeAndContinue": "关闭（后台继续）",
+    "saving": "正在保存…",
+    "saveFailed": "保存失败：{reason}",
+    "markingAllRead": "正在全部标为已读…",
+    "markAllReadFailed": "无法全部标为已读：{reason}",
+    "notificationOpenFailed": "无法打开通知：{reason}",
+    "notificationMarkReadFailed": "无法标为已读：{reason}"
   },
   "board": {
     "title": "",
@@ -162,12 +179,21 @@
     "peerDeletionFailedTitle": "未能在其他桌面删除",
     "peerDeletionFailedBody": "“{taskTitle}”已在此桌面删除，但仍保留在 {peerUrls}。请在该桌面恢复在线后手动删除。",
     "deleteConfirm": "确定要删除此任务吗？",
+    "deleting": "正在删除…",
+    "deleteFailed": "删除失败：{reason}",
+    "retryDelete": "重试",
+    "moveSaving": "正在保存…",
+    "moveFailed": "移动失败，已恢复原位置：{reason}",
+    "retryMove": "重新移动",
     "priority": "优先级",
     "priorityLow": "!",
     "priorityMedium": "!!",
     "priorityHigh": "!!!",
     "priorityNone": "无",
-    "inheritedPriority": "继承自项目根任务的优先级。"
+    "inheritedPriority": "继承自项目根任务的优先级。",
+    "createSucceeded": "已创建“{title}”",
+    "createFailedWithReason": "创建任务失败：{reason}",
+    "branchesLoading": "正在加载分支…"
   },
   "branch": {
     "title": "创建分支",
@@ -180,7 +206,9 @@
     "submit": "创建分支",
     "submitting": "创建中...",
     "validationError": "项目和分支名称为必填项。",
-    "failedError": "创建分支失败。"
+    "failedError": "创建分支失败。",
+    "succeeded": "已分支到“{branchName}”",
+    "failedWithReason": "分支失败：{reason}"
   },
   "contextMenu": {
     "branchOff": "创建分支",
@@ -320,7 +348,20 @@
         "terminalTabNext": "下一个终端标签",
         "terminalTab": "跳到终端标签 {index}"
       }
-    }
+    },
+    "mobilePairingIssuingCode": "正在生成代码…",
+    "mobilePairingClearingCode": "正在清除代码…",
+    "mobilePairingDisconnecting": "正在断开连接…",
+    "mobilePairingDevicesLoadFailed": "无法读取已连接的设备。",
+    "scanFailed": "扫描失败：{reason}",
+    "deletingProject": "正在删除…",
+    "deleteProjectFailed": "删除项目失败：{reason}",
+    "deleteProjectSucceeded": "已删除项目“{name}”",
+    "bulkSessionTypeChecking": "正在检查要更改的任务…",
+    "bulkSessionTypePreparingHost": "正在准备主机 {current}/{total} 的会话工具…",
+    "bulkSessionTypeChanging": "正在更改 {count} 个任务的会话类型…",
+    "bulkSessionTypeRetryFailed": "重新应用失败的任务",
+    "settingSaveFailed": "无法保存设置，已恢复之前的值：{reason}"
   },
   "taskSearch": {
     "title": "快速任务搜索",
@@ -337,7 +378,12 @@
     "viewKanbanLabel": "以看板显示",
     "viewWorkspaceLabel": "以工作区显示（任务列表 + 终端）",
     "empty": "没有匹配的命令",
-    "hint": "↑↓ 导航 · Enter 运行 · Esc 关闭"
+    "hint": "↑↓ 导航 · Enter 运行 · Esc 关闭",
+    "syncRunning": "正在同步…",
+    "syncNoChanges": "同步完成：无变更",
+    "syncBoardUpdated": "同步完成：已更新看板",
+    "syncReviewNeeded": "同步完成：有需要确认的项目",
+    "syncFailed": "同步失败：{reason}"
   },
   "workspace": {
     "taskListLabel": "任务列表",
@@ -417,6 +463,8 @@
     "moveToReview": "审核",
     "moveToDone": "完成",
     "delete": "删除",
+    "deleting": "正在删除…",
+    "deleteFailed": "删除失败：{reason}",
     "terminal": "终端",
     "noTerminal": "此任务没有关联的终端会话。",
     "connectTerminal": "连接终端",
@@ -599,7 +647,15 @@
     },
     "openInVsCode": "在 VS Code 中打开",
     "openInVsCodeFailed": "无法启动 VS Code。请确认 `code` 命令在 PATH 中。",
-    "pullRequestNotFound": "该分支没有关联的 PR。"
+    "pullRequestNotFound": "该分支没有关联的 PR。",
+    "movingStatus": "正在移动到 {status}…",
+    "statusChangeFailed": "无法更改状态：{reason}",
+    "terminalTabCreating": "正在添加终端标签…",
+    "terminalTabActionFailed": "标签操作失败：{reason}",
+    "pullRequestLookupFailed": "无法查询 PR：{reason}",
+    "imagePasteSending": "正在发送图片到远程…",
+    "imagePasteFailed": "图片发送失败：{reason}",
+    "imagePasteRetry": "重新发送"
   },
   "projectBranchTasks": {
     "title": "项目任务",
@@ -627,7 +683,8 @@
     "viewDiff": "查看差异",
     "fileCount": "已更改 {count} 个文件",
     "viewed": "已查看",
-    "markViewed": "查看"
+    "markViewed": "查看",
+    "unsavedChanges": "未保存的更改"
   },
   "aiAccounts": {
     "title": "AI 账号",
@@ -650,6 +707,10 @@
       "already-exists": "已存在同名账号。",
       "manual-logout-required": "该账号无法在应用内登出，因此仅从列表中移除。"
     },
-    "usageSection": "用量"
+    "usageSection": "用量",
+    "adding": "正在添加…",
+    "addFailed": "无法添加账户：{reason}",
+    "removing": "正在删除…",
+    "removeFailed": "无法删除账户：{reason}"
   }
 }

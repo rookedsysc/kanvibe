@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import BoardRoute from "@/desktop/renderer/routes/BoardRoute";
 import { INITIAL_DESKTOP_LOAD_TIMEOUT_MS } from "@/desktop/renderer/utils/loadingTimeout";
@@ -28,6 +28,12 @@ function createDeferred<T>() {
   });
   return { promise, resolve, reject };
 }
+
+vi.mock("next-intl", () => ({
+  useTranslations: () => (key: string, values?: Record<string, unknown>) => (
+    values ? `${key}:${JSON.stringify(values)}` : key
+  ),
+}));
 
 vi.mock("@/components/Board", () => ({
   default: ({
@@ -72,6 +78,7 @@ vi.mock("@/desktop/renderer/utils/refresh", () => ({
 describe("BoardRoute", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.getTasksByStatus.mockReset();
     sessionStorage.clear();
     mocks.getAvailableHosts.mockResolvedValue([]);
     mocks.getAllProjects.mockResolvedValue([]);
@@ -182,23 +189,38 @@ describe("BoardRoute", () => {
     expect(sessionStorage.getItem(BOARD_FOCUS_TASK_CACHE_KEY)).toBeNull();
   });
 
-  it("초기 데이터 로딩이 실패해도 Loading 화면에 고착되지 않는다", async () => {
+  it("초기 데이터 로딩이 실패하면 빈 보드 대신 실패 사유와 재시도를 보이고 재시도로 다시 불러온다", async () => {
+    // Given
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
-    mocks.getTasksByStatus.mockRejectedValue(new Error("database failed"));
+    mocks.getTasksByStatus
+      .mockRejectedValueOnce(new Error("database failed"))
+      .mockResolvedValueOnce({
+        tasks: { todo: [{ id: "task-1", title: "retried task" }], progress: [], pending: [], review: [], done: [] },
+        doneTotal: 0,
+        doneLimit: 20,
+      });
 
     try {
+      // When
       render(<BoardRoute />);
 
+      // Then
+      const alert = await screen.findByRole("alert");
+      expect(alert.textContent).toContain('loadFailed:{"reason":"database failed"}');
+      expect(screen.queryByTestId("board-titles")).toBeNull();
+
+      fireEvent.click(screen.getByRole("button", { name: "retry" }));
+
       await waitFor(() => {
-        expect(screen.queryByText("Loading...")).toBeNull();
+        expect(screen.getByTestId("board-titles").textContent).toBe("retried task");
       });
-      expect(screen.getByTestId("board-titles").textContent).toBe("");
+      expect(screen.queryByRole("alert")).toBeNull();
     } finally {
       consoleError.mockRestore();
     }
   });
 
-  it("should not stay on the loading screen when initial data loading never settles", async () => {
+  it("초기 데이터 로딩이 오래 걸리면 빈 보드를 만들지 않고 지연 안내를 띄운 채 기다린다", async () => {
     // Given
     vi.useFakeTimers();
     mocks.getTasksByStatus.mockReturnValue(new Promise(() => {}));
@@ -210,7 +232,41 @@ describe("BoardRoute", () => {
     });
 
     // Then
-    expect(screen.queryByText("Loading...")).toBeNull();
-    expect(screen.getByTestId("board-titles").textContent).toBe("");
+    expect(screen.getByRole("status").textContent).toBe("loadDelayed");
+    expect(screen.getByTestId("board-route-skeleton")).toBeTruthy();
+    expect(screen.queryByTestId("board-titles")).toBeNull();
+  });
+
+  it("캐시가 있는 상태에서 갱신이 실패하면 캐시 보드를 유지하고 갱신 실패 배너를 보인다", async () => {
+    // Given
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    sessionStorage.setItem(BOARD_CACHE_KEY, JSON.stringify({
+      tasks: {
+        tasks: { todo: [{ id: "cached-task", title: "cached board task" }], progress: [], pending: [], review: [], done: [] },
+        doneTotal: 0,
+        doneLimit: 20,
+      },
+      sshHosts: [],
+      projects: [],
+      sidebarDefaultCollapsed: false,
+      doneAlertDismissed: false,
+      notificationSettings: { isEnabled: true, enabledStatuses: [] },
+      defaultSessionType: "tmux",
+      taskSearchShortcut: "Mod+Shift+O",
+      vimModeEnabled: true,
+    }));
+    mocks.getTasksByStatus.mockRejectedValue(new Error("ipc closed"));
+
+    try {
+      // When
+      render(<BoardRoute />);
+
+      // Then
+      const alert = await screen.findByRole("alert");
+      expect(alert.textContent).toContain('refreshFailed:{"reason":"ipc closed"}');
+      expect(screen.getByTestId("board-titles").textContent).toBe("cached board task");
+    } finally {
+      consoleError.mockRestore();
+    }
   });
 });

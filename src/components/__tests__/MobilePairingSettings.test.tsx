@@ -182,3 +182,47 @@ describe("MobilePairingSettings", () => {
     expect(await screen.findByText("Could not create a pairing code.")).toBeTruthy();
   });
 });
+
+describe("MobilePairingSettings - 작업 상태", () => {
+  it("기기 목록을 읽지 못하면 연결된 기기를 지우지 않고 읽지 못했다고 알리며 다시 읽을 수 있다", async () => {
+    mockListPairedMobileDevices
+      .mockResolvedValueOnce([PAIRED_DEVICE])
+      .mockRejectedValueOnce(new Error("데스크탑 통로 없음"))
+      .mockResolvedValueOnce([PAIRED_DEVICE]);
+    mockUnpairMobileDevice.mockResolvedValueOnce(undefined);
+
+    render(<MobilePairingSettings />);
+    await screen.findByText("iPhone");
+    await userEvent.click(screen.getByRole("button", { name: "Disconnect" }));
+
+    expect(await screen.findByRole("button", { name: "Retry" })).toBeTruthy();
+    expect(screen.getByText("iPhone")).toBeTruthy();
+
+    await userEvent.click(screen.getByRole("button", { name: "Retry" }));
+
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Retry" })).toBeNull());
+    expect(mockListPairedMobileDevices).toHaveBeenCalledTimes(3);
+  });
+
+  it("코드를 만드는 동안 다른 연결 작업을 막아 겹쳐 보내지 않는다", async () => {
+    let resolveStart: (value: { code: string; expiresAt: number }) => void = () => {};
+    mockStartMobilePairing.mockReturnValueOnce(new Promise((resolve) => {
+      resolveStart = resolve;
+    }));
+    mockListPairedMobileDevices.mockResolvedValue([PAIRED_DEVICE]);
+
+    render(<MobilePairingSettings />);
+    await screen.findByText("iPhone");
+    const issueButton = screen.getByRole("button", { name: "Create pairing code" });
+    await userEvent.click(issueButton);
+
+    const buttons = screen.getAllByRole("button") as HTMLButtonElement[];
+    expect(buttons.every((button) => button.disabled)).toBe(true);
+    await userEvent.click(screen.getByText("Disconnect"));
+    expect(mockUnpairMobileDevice).not.toHaveBeenCalled();
+    expect(mockStartMobilePairing).toHaveBeenCalledTimes(1);
+
+    resolveStart({ code: "654321", expiresAt: Date.now() + 300_000 });
+    expect(await screen.findByText("654321")).toBeTruthy();
+  });
+});
