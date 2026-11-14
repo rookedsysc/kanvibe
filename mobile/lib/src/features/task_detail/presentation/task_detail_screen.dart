@@ -7,9 +7,11 @@ import '../../../common/constants/app_sizes.dart';
 import '../../../common/constants/app_theme.dart';
 import '../../../common/network/desktop_command.dart';
 import '../../../common/providers.dart';
+import '../../board/application/task_deletion.dart';
 import '../../board/domain/board_task.dart';
 import '../../board/domain/task_status.dart';
 import '../../chat_history/presentation/chat_history_screen.dart';
+import '../application/task_mutation.dart';
 import '../../notifications/application/mobile_notification_controller.dart';
 import '../../pane_chat/presentation/pane_chat_view.dart';
 import '../../task_create/domain/session_type.dart';
@@ -44,6 +46,10 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
   late BoardTask _task = widget.task;
 
   bool _isPreparingCreateTask = false;
+
+  /// 닫고 있는 탭과 지금 단계의 문구. 확인 창으로 답을 기다리는 동안은 문구가 없다.
+  /// 이 값이 있는 동안 다른 닫기와 추가는 받지 않는다
+  ({String paneId, String? progressLabel})? _closingTab;
 
   void _setPaneChatMode(String paneId, bool enabled) {
     setState(() {
@@ -164,6 +170,10 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
 
   Future<bool> _askCloseConfirmation(String message) async {
     if (!mounted) return false;
+    // 프로세스 확인은 끝났고 이제 사용자의 답을 기다린다
+    setState(
+      () => _closingTab = (paneId: _closingTab!.paneId, progressLabel: null),
+    );
     final isConfirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -186,12 +196,27 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
     return isConfirmed ?? false;
   }
 
-  /// 누른 탭 하나만 닫는다. 선택한 탭을 닫으면 앞 탭으로, 맨 앞이면 다음 탭으로 옮긴다
+  /// 누른 탭 하나만 닫는다. 확인하는 동안과 닫는 동안 대상 탭에 진행을 보이고 다른 닫기는 받지 않는다
   Future<void> _closeTab(List<MirrorPane> tabs, MirrorPane tab) async {
-    if (!await _confirmCloseTab(tab) || !mounted) {
+    if (_closingTab != null) {
       return;
     }
+    setState(() => _closingTab = (paneId: tab.id, progressLabel: '닫기 확인 중…'));
+    try {
+      if (!await _confirmCloseTab(tab) || !mounted) {
+        return;
+      }
+      setState(() => _closingTab = (paneId: tab.id, progressLabel: '닫는 중…'));
+      await _sendCloseTab(tabs, tab);
+    } finally {
+      if (mounted) {
+        setState(() => _closingTab = null);
+      }
+    }
+  }
 
+  /// 선택한 탭을 닫으면 앞 탭으로, 맨 앞이면 다음 탭으로 옮긴다
+  Future<void> _sendCloseTab(List<MirrorPane> tabs, MirrorPane tab) async {
     final closedIndex = tabs.indexWhere((pane) => pane.id == tab.id);
     try {
       final surfaces = await ref
@@ -229,35 +254,30 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
     builder: (_) => TaskInfoSheet(task: _task),
   );
 
-  Future<void> _openStatusSheet() async {
-    final result = await showModalBottomSheet<TaskStatusSheetResult>(
-      context: context,
-      backgroundColor: AppColors.bgSurface,
-      builder: (_) => TaskStatusSheet(task: _task),
-    );
+  /// 옮긴 결과는 시트가 아니라 `taskMutationProvider`에서 받는다. 시트를 먼저 닫아도 반영된다
+  Future<void> _openStatusSheet() => showModalBottomSheet<void>(
+    context: context,
+    backgroundColor: AppColors.bgSurface,
+    builder: (_) => TaskStatusSheet(task: _task),
+  );
 
-    if (!mounted) {
-      return;
+  /// 삭제는 시트가 닫힌 뒤에도 controller에서 끝나므로, 시트의 결과가 아니라 삭제 상태를 보고 보드로 돌아간다
+  void _leaveDeletedTask(int failedPeerCount) {
+    // 앱 전체의 messenger에 띄워야 보드로 돌아간 뒤에도 경고가 보인다
+    if (failedPeerCount > 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '다른 데스크탑 $failedPeerCount곳에는 아직 남아 있습니다. 그 데스크탑이 켜지면 직접 삭제해 주세요.',
+          ),
+        ),
+      );
     }
-    switch (result) {
-      case TaskStatusMoved(:final status):
-        setState(() => _task = _task.withStatus(status));
-      case TaskDeleted(:final failedPeerCount):
-        // 앱 전체의 messenger에 띄워야 보드로 돌아간 뒤에도 경고가 보인다
-        if (failedPeerCount > 0) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                '다른 데스크탑 $failedPeerCount곳에는 아직 남아 있습니다. 그 데스크탑이 켜지면 직접 삭제해 주세요.',
-              ),
-            ),
-          );
-        }
-        // 지운 태스크의 화면에는 비출 pane이 없으니 보드로 돌아간다
-        Navigator.of(context).pop();
-      case null:
-        break;
-    }
+    // 시트가 아직 열려 있으면 함께 닫고, 지운 태스크의 화면에는 비출 pane이 없으니 보드로 돌아간다
+    final detailRoute = ModalRoute.of(context);
+    Navigator.of(context)
+      ..popUntil((route) => route == detailRoute)
+      ..pop();
   }
 
   Future<void> _openSessionTypeSheet(SessionType currentSessionType) =>
@@ -296,6 +316,22 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(taskDeletionProvider.select((progress) => progress[_task.id]), (
+      _,
+      next,
+    ) {
+      if (next is TaskDeletionDone) {
+        _leaveDeletedTask(next.failedPeerCount);
+      }
+    });
+    ref.listen(taskMutationProvider.select((progress) => progress[_task.id]), (
+      _,
+      next,
+    ) {
+      if (next is TaskStatusMoved && next.status != _task.status) {
+        setState(() => _task = _task.withStatus(next.status));
+      }
+    });
     ref.listen(taskNotificationUpdatesProvider(_task.id), (_, next) {
       final status = TaskStatus.fromWire(next.value?.status ?? '');
       if (status != null && status != _task.status) {
@@ -434,7 +470,8 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
                     ),
                     data: (value) => _buildSurfaces(
                       value.surfaces,
-                      isCreating: value.isMutating,
+                      isCreating: value.isCreating,
+                      isMutating: value.isMutating,
                     ),
                   ),
                 ),
@@ -452,7 +489,11 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
     );
   }
 
-  Widget _buildSurfaces(TaskSurfaces surfaces, {required bool isCreating}) {
+  Widget _buildSurfaces(
+    TaskSurfaces surfaces, {
+    required bool isCreating,
+    required bool isMutating,
+  }) {
     final tabs = surfaces.allPanes;
     final chatLabels = <String, String>{};
     for (final pane in tabs) {
@@ -490,9 +531,13 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
           onSelected: (index) => setState(() {
             _selectedPaneId = tabs[index].id;
           }),
-          onCreate: isCreating ? null : _createTerminalTab,
+          isCreating: isCreating,
+          closingTab: _closingTab,
+          onCreate: isMutating || _closingTab != null
+              ? null
+              : _createTerminalTab,
           // 탭이 하나뿐이면 세션이 끝나 버리므로 닫을 수 없다
-          onClose: isCreating || tabs.length == 1
+          onClose: isMutating || _closingTab != null || tabs.length == 1
               ? null
               : (tab) => _closeTab(tabs, tab),
         ),
@@ -607,6 +652,8 @@ class _SurfaceTabBar extends StatelessWidget {
     required this.chatLabels,
     required this.selectedIndex,
     required this.onSelected,
+    required this.isCreating,
+    required this.closingTab,
     required this.onCreate,
     required this.onClose,
   });
@@ -615,6 +662,10 @@ class _SurfaceTabBar extends StatelessWidget {
   final Map<String, String> chatLabels;
   final int selectedIndex;
   final ValueChanged<int> onSelected;
+
+  /// 탭을 추가하는 중일 때만 추가 버튼에 진행을 보인다. 닫기 같은 다른 요청 중에는 버튼만 막는다
+  final bool isCreating;
+  final ({String paneId, String? progressLabel})? closingTab;
   final VoidCallback? onCreate;
   final ValueChanged<MirrorPane>? onClose;
 
@@ -639,6 +690,9 @@ class _SurfaceTabBar extends StatelessWidget {
                 isSelected: index == selectedIndex,
                 onTap: () => onSelected(index),
                 onClose: onClose == null ? null : () => onClose!(tabs[index]),
+                closingLabel: closingTab?.paneId == tabs[index].id
+                    ? closingTab!.progressLabel
+                    : null,
               ),
             ),
           ),
@@ -646,8 +700,8 @@ class _SurfaceTabBar extends StatelessWidget {
             identifier: 'create-terminal-tab',
             child: IconButton(
               onPressed: onCreate,
-              tooltip: onCreate == null ? '터미널 추가 중…' : '터미널 탭 추가',
-              icon: onCreate == null
+              tooltip: isCreating ? '터미널 추가 중…' : '터미널 탭 추가',
+              icon: isCreating
                   ? const SizedBox.square(
                       dimension: AppSizes.p16,
                       child: CircularProgressIndicator(strokeWidth: 2),
@@ -668,6 +722,7 @@ class _SurfaceTabButton extends StatelessWidget {
     required this.isSelected,
     required this.onTap,
     required this.onClose,
+    this.closingLabel,
   });
 
   final MirrorPane tab;
@@ -677,6 +732,9 @@ class _SurfaceTabButton extends StatelessWidget {
 
   /// null이면 닫을 수 없는 탭이다
   final VoidCallback? onClose;
+
+  /// 이 탭을 닫는 중이면 그 단계 문구. 탭 이름 아래 줄 대신 보인다
+  final String? closingLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -731,11 +789,12 @@ class _SurfaceTabButton extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      chatLabel == null
-                          ? '${tab.tabName} ${tab.id}'
-                          : tab.id.length > 16
-                          ? '…${tab.id.substring(tab.id.length - 6)}'
-                          : tab.id,
+                      closingLabel ??
+                          (chatLabel == null
+                              ? '${tab.tabName} ${tab.id}'
+                              : tab.id.length > 16
+                              ? '…${tab.id.substring(tab.id.length - 6)}'
+                              : tab.id),
                       overflow: TextOverflow.ellipsis,
                       style: chatLabel == null
                           ? Theme.of(context).textTheme.labelSmall
@@ -755,7 +814,12 @@ class _SurfaceTabButton extends StatelessWidget {
                     width: AppSizes.minTouchTarget,
                     height: AppSizes.minTouchTarget,
                   ),
-                  icon: const Icon(Icons.close),
+                  icon: closingLabel == null
+                      ? const Icon(Icons.close)
+                      : const SizedBox.square(
+                          dimension: AppSizes.p12,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
                 ),
               ),
             ],

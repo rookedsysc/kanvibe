@@ -136,7 +136,12 @@ class FakeDesktopClient implements DesktopClient {
   final Map<String, dynamic> board;
   final Map<String, Map<String, dynamic>> boardsByHost;
   final Map<String, Map<String, dynamic>> tasksById;
-  final Object? boardError;
+
+  /// 테스트가 도중에 바꿔 끼울 수 있다. 첫 조회는 성공하고 새로고침만 실패하는 경우를 흉내낸다
+  Object? boardError;
+
+  /// 정해 두면 보드 응답을 이 함수가 끝낼 때까지 붙잡는다
+  Future<Map<String, dynamic>> Function()? onFetchBoard;
   final String? pairToken;
 
   /// 테스트가 도중에 바꿔 끼울 수 있다. 데스크탑이 세션을 바꾼 뒤 다시 받은 pane을 흉내낸다
@@ -147,6 +152,9 @@ class FakeDesktopClient implements DesktopClient {
   final createdTabCalls = <({String taskId, String connectionId})>[];
   final Object? unpairError;
   final List<String> branches;
+
+  /// 정해 두면 브랜치 목록 응답을 이 함수가 대신한다. 지연이나 실패를 흉내낸다
+  Future<List<String>> Function()? onFetchProjectBranches;
   final Map<String, dynamic> createdTask;
   final Object? createError;
   final Object? statusError;
@@ -226,6 +234,9 @@ class FakeDesktopClient implements DesktopClient {
     boardCalls.add(connection.id);
     if (boardError != null) {
       throw boardError!;
+    }
+    if (onFetchBoard != null) {
+      return onFetchBoard!();
     }
     return boardsByHost[connection.host] ?? board;
   }
@@ -319,7 +330,8 @@ class FakeDesktopClient implements DesktopClient {
   Future<List<String>> fetchProjectBranches(
     DesktopConnection connection,
     String projectId,
-  ) async => branches;
+  ) async =>
+      onFetchProjectBranches != null ? onFetchProjectBranches!() : branches;
 
   @override
   Future<Map<String, dynamic>> createTask(

@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../common/constants/app_sizes.dart';
-import '../../../common/network/desktop_client.dart';
 import '../../../common/providers.dart';
 import '../../board/domain/board_project.dart';
-import '../../board/domain/board_task.dart';
 import '../../board/domain/task_priority.dart';
+import '../../task_detail/presentation/task_detail_screen.dart';
+import '../application/task_creation.dart';
 
 /// 태스크를 새로 만드는 화면.
 ///
@@ -43,6 +43,9 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
   TaskPriority? _priority;
 
   bool _isCreating = false;
+
+  /// 생성 응답이 늦어 보드를 다시 읽어 결과를 확인하는 동안
+  bool _isConfirmingCreation = false;
   String? _failureMessage;
 
   @override
@@ -76,76 +79,91 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
     });
   }
 
+  /// 생성은 service가 끝까지 들고 있다. 화면을 먼저 나가면 결과를 앱 범위 안내로 알린다
   Future<void> _create() async {
     final project = _selectedProject;
     if (project == null || !_formKey.currentState!.validate()) {
       return;
     }
 
-    final connection = ref
-        .read(connectionControllerProvider)
-        .value
-        ?.activeConnection;
-    if (connection == null) {
-      return;
-    }
-
     final navigator = Navigator.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final branchName = _branchNameController.text.trim();
     setState(() {
       _isCreating = true;
       _failureMessage = null;
     });
 
-    final Map<String, dynamic> created;
-    try {
-      created = await ref
-          .read(desktopClientProvider)
-          .createTask(
-            connection,
-            projectId: project.id,
-            branchName: _branchNameController.text.trim(),
-            baseBranch: _baseBranch,
-            description: _descriptionController.text.trim(),
-            priority: _priority?.wireValue,
-          );
-    } catch (error) {
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _isCreating = false;
-        _failureMessage = _createFailureMessage(error);
-      });
-      return;
-    }
+    final outcome = await ref
+        .read(taskCreationServiceProvider)
+        .create(
+          project: project,
+          branchName: branchName,
+          baseBranch: _baseBranch,
+          description: _descriptionController.text.trim(),
+          priority: _priority?.wireValue,
+          onConfirming: () {
+            if (mounted) setState(() => _isConfirmingCreation = true);
+          },
+        );
 
     if (!mounted) {
+      _announceOutcomeAfterLeaving(
+        outcome,
+        branchName: branchName,
+        navigator: navigator,
+        messenger: messenger,
+      );
       return;
     }
 
-    /// 보드에도 새 태스크가 보여야 돌아갔을 때 빈자리가 아니다
-    ref.invalidate(boardProvider);
-
-    navigator.pop(
-      BoardTask.fromJson(
-        created,
-        {project.id: project.name},
-        projectColorsById: {
-          if (project.color != null) project.id: project.color!,
-        },
-      ),
-    );
+    switch (outcome) {
+      case TaskCreationSucceeded(:final task):
+        navigator.pop(task);
+      case TaskCreationFailed(:final message):
+        setState(() {
+          _isCreating = false;
+          _isConfirmingCreation = false;
+          _failureMessage = message;
+        });
+      case TaskCreationSkipped():
+        setState(() => _isCreating = false);
+    }
   }
 
-  /// 데스크탑이 값을 거절한 것만 사유를 그대로 옮긴다.
-  ///
-  /// 그 밖의 실패 메시지에는 git 명령줄과 데스크탑의 경로가 섞여 있어 기기로 오지 않는다.
-  /// 무엇이 잘못됐는지는 데스크탑에서만 볼 수 있으므로 그쪽을 보라고 말해 준다.
-  String _createFailureMessage(Object error) {
-    if (error is! DesktopRequestException) {
-      return '데스크탑에 닿지 못했습니다. 잠시 뒤 다시 시도해 주세요.';
+  /// 화면을 나간 뒤 끝난 생성은 보드나 상세 위에 결과를 띄운다. 성공하면 바로 그 태스크로 들어갈 수 있게 한다
+  void _announceOutcomeAfterLeaving(
+    TaskCreationOutcome outcome, {
+    required String branchName,
+    required NavigatorState navigator,
+    required ScaffoldMessengerState messenger,
+  }) {
+    if (!messenger.mounted) {
+      return;
     }
-    return error.message ?? '태스크를 만들지 못했습니다. 데스크탑에서 자세한 사유를 확인해 주세요.';
+    final snackBar = switch (outcome) {
+      TaskCreationSucceeded(:final task) => SnackBar(
+        content: Text('$branchName 태스크를 만들었습니다.'),
+        action: SnackBarAction(
+          label: '열기',
+          onPressed: () => navigator.push(
+            MaterialPageRoute<void>(
+              builder: (_) => TaskDetailScreen(task: task),
+            ),
+          ),
+        ),
+      ),
+      TaskCreationUnconfirmed(:final message) => SnackBar(
+        content: Text(message),
+      ),
+      TaskCreationFailed(:final message) => SnackBar(
+        content: Text('$branchName 태스크를 만들지 못했습니다: $message'),
+      ),
+      TaskCreationSkipped() => null,
+    };
+    if (snackBar != null) {
+      messenger.showSnackBar(snackBar);
+    }
   }
 
   @override
@@ -244,11 +262,19 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
                 const SizedBox(height: AppSizes.p24),
                 FilledButton(
                   onPressed: _isCreating ? null : _create,
-                  child: Text(_isCreating ? '만드는 중…' : '만들기'),
+                  child: Text(
+                    _isConfirmingCreation
+                        ? '결과 확인 중…'
+                        : _isCreating
+                        ? '만드는 중…'
+                        : '만들기',
+                  ),
                 ),
                 const SizedBox(height: AppSizes.p8),
                 Text(
-                  '데스크탑에 worktree와 터미널 세션이 함께 만들어져 조금 걸립니다.',
+                  _isCreating
+                      ? '화면을 나가도 생성은 계속되고, 끝나면 알려 드립니다.'
+                      : '데스크탑에 worktree와 터미널 세션이 함께 만들어져 조금 걸립니다.',
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.labelSmall,
                 ),
@@ -265,6 +291,7 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
 ///
 /// 프로젝트를 고르기 전에는 물어볼 것이 없어 비활성으로 둔다.
 /// 목록을 못 받아도 칸을 닫지 않고 기본 브랜치 하나만 남긴다. 그 이름이면 대개 만들 수 있다.
+/// 다만 다른 브랜치가 없는 것처럼 보이지 않도록 조회 중과 조회 실패를 칸 아래에 따로 알린다.
 class _BaseBranchField extends ConsumerWidget {
   const _BaseBranchField({
     required this.project,
@@ -291,23 +318,47 @@ class _BaseBranchField extends ConsumerWidget {
       );
     }
 
-    final branches = ref
-        .watch(projectBranchesProvider(currentProject.id))
-        .value;
-    final options = {?selectedBranch, ...?branches}.toList();
+    final branchesProvider = projectBranchesProvider(currentProject.id);
+    final branchList = ref.watch(branchesProvider);
+    final options = {?selectedBranch, ...?branchList.value}.toList();
+    final hasBranchListFailed = branchList.hasError && !branchList.isLoading;
 
-    return DropdownButtonFormField<String>(
-      isExpanded: true,
-      initialValue: selectedBranch,
-      decoration: const InputDecoration(labelText: '베이스 브랜치'),
-      items: [
-        for (final branch in options)
-          DropdownMenuItem(
-            value: branch,
-            child: Text(branch, maxLines: 1, overflow: TextOverflow.ellipsis),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        DropdownButtonFormField<String>(
+          isExpanded: true,
+          initialValue: selectedBranch,
+          decoration: InputDecoration(
+            labelText: '베이스 브랜치',
+            helperText: branchList.isLoading ? '브랜치 목록을 불러오는 중…' : null,
+            errorText: hasBranchListFailed
+                ? '브랜치 목록을 불러오지 못해 기본 브랜치만 보입니다.'
+                : null,
+          ),
+          items: [
+            for (final branch in options)
+              DropdownMenuItem(
+                value: branch,
+                child: Text(
+                  branch,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+          ],
+          onChanged: isEnabled ? onChanged : null,
+        ),
+        if (hasBranchListFailed)
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              onPressed: () => ref.invalidate(branchesProvider),
+              child: const Text('다시 불러오기'),
+            ),
           ),
       ],
-      onChanged: isEnabled ? onChanged : null,
     );
   }
 }

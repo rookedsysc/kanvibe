@@ -133,6 +133,9 @@ class BoardScreen extends ConsumerWidget {
                 ],
               ),
             ),
+            // 이전 카드를 보여 주는 동안 갱신이 실패했으면 그 사실을 숨기지 않는다
+            if (board.hasError && board.hasValue)
+              _BoardStaleNotice(onRetry: () => ref.invalidate(boardProvider)),
             Expanded(
               child: filteredBoard.when(
                 loading: () => const Center(child: CircularProgressIndicator()),
@@ -140,7 +143,10 @@ class BoardScreen extends ConsumerWidget {
                   onRetry: () => ref.invalidate(boardProvider),
                 ),
                 data: (snapshot) => RefreshIndicator(
-                  onRefresh: () async => ref.invalidate(boardProvider),
+                  onRefresh: () => _refreshBoard(
+                    ProviderScope.containerOf(context, listen: false),
+                    ScaffoldMessenger.of(context),
+                  ),
                   child: LayoutBuilder(
                     builder: (context, constraints) =>
                         isTabletLayout(constraints)
@@ -151,6 +157,59 @@ class BoardScreen extends ConsumerWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 최신 보드를 받지 못해 이전 카드를 보여 주고 있다는 안내. 삭제·생성 뒤 갱신처럼 사용자가 직접 새로고침하지 않은 실패도 여기서 드러난다
+class _BoardStaleNotice extends StatelessWidget {
+  const _BoardStaleNotice({required this.onRetry});
+
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final errorColor = Theme.of(context).colorScheme.error;
+    return Semantics(
+      liveRegion: true,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: AppSizes.p16),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                '최신 보드를 불러오지 못해 이전 내용을 보여 줍니다.',
+                style: Theme.of(context).textTheme.bodySmall
+                    ?.copyWith(color: errorColor),
+              ),
+            ),
+            TextButton(onPressed: onRetry, child: const Text('다시 시도')),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 당겨서 새로고침은 보드를 실제로 다시 받을 때까지 표시를 유지한다.
+///
+/// 다시 받지 못하면 이전 카드를 그대로 두고, 무엇이 실패했는지와 다시 시도를 SnackBar로 알린다.
+Future<void> _refreshBoard(
+  ProviderContainer container,
+  ScaffoldMessengerState messenger,
+) async {
+  container.invalidate(boardProvider);
+  try {
+    await container.read(boardProvider.future);
+  } catch (_) {
+    messenger.showSnackBar(
+      SnackBar(
+        content: const Text('보드를 새로 고치지 못했습니다. 이전 내용을 보여 줍니다.'),
+        action: SnackBarAction(
+          label: '다시 시도',
+          onPressed: () => _refreshBoard(container, messenger),
         ),
       ),
     );
@@ -348,35 +407,18 @@ class _TaskCard extends ConsumerWidget {
 
   /// 길게 눌러 지운다. 커밋하지 않은 변경이 있으면 상세 화면의 삭제처럼 강제 삭제를 한 번 더 묻는다
   Future<void> _deleteTask(BuildContext context, WidgetRef ref) async {
-    final connection = ref
-        .read(connectionControllerProvider)
-        .value
-        ?.activeConnection;
-    final client = ref.read(desktopClientProvider);
-    final container = ProviderScope.containerOf(context, listen: false);
+    final deletion = ref.read(taskDeletionProvider.notifier);
     final messenger = ScaffoldMessenger.of(context);
-    if (connection == null ||
-        !await confirmTaskDeletion(context) ||
-        !context.mounted) {
+    if (!await confirmTaskDeletion(context) || !context.mounted) {
       return;
     }
 
-    var outcome = await requestTaskDeletion(
-      client,
-      connection,
-      task.id,
-      isForced: false,
-    );
+    var outcome = await deletion.delete(task.id, isForced: false);
     if (outcome is TaskDeletionNeedsForce) {
       if (context.mounted &&
           await confirmForcedTaskDeletion(context) &&
           context.mounted) {
-        outcome = await requestTaskDeletion(
-          client,
-          connection,
-          task.id,
-          isForced: true,
-        );
+        outcome = await deletion.delete(task.id, isForced: true);
       } else {
         return;
       }
@@ -388,20 +430,17 @@ class _TaskCard extends ConsumerWidget {
           !context.mounted) {
         return;
       }
-      outcome = await requestTaskDeletion(
-        client,
-        connection,
+      outcome = await deletion.delete(
         task.id,
         isForced: false,
         isRegistrationOnly: true,
       );
     }
 
-    // 새로고침으로 카드가 사라져도 앱 범위의 보드 갱신과 삭제 결과 안내는 끝낸다.
-    if (!messenger.mounted) {
+    // 보드 갱신은 controller가 맡는다. 새로고침으로 카드가 사라져도 결과 안내는 앱 범위의 messenger로 끝낸다.
+    if (outcome == null || !messenger.mounted) {
       return;
     }
-    container.invalidate(boardProvider);
     _announceDeletion(messenger, outcome);
   }
 
@@ -428,15 +467,25 @@ class _TaskCard extends ConsumerWidget {
         (value) => value.value?.unreadCountForTask(task.id) ?? 0,
       ),
     );
+    final isDeleting = ref.watch(
+      taskDeletionProvider.select(
+        (progress) => progress[task.id] is TaskDeletionRunning,
+      ),
+    );
     return Material(
       color: AppColors.bgSurface,
       borderRadius: BorderRadius.circular(AppSizes.radiusLg),
       child: InkWell(
         borderRadius: BorderRadius.circular(AppSizes.radiusLg),
-        onTap: () => Navigator.of(context).push(
-          MaterialPageRoute<void>(builder: (_) => TaskDetailScreen(task: task)),
-        ),
-        onLongPress: () => _deleteTask(context, ref),
+        // 지우는 중인 카드는 들어가거나 다시 지울 대상이 아니다
+        onTap: isDeleting
+            ? null
+            : () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => TaskDetailScreen(task: task),
+                ),
+              ),
+        onLongPress: isDeleting ? null : () => _deleteTask(context, ref),
         child: Container(
           constraints: const BoxConstraints(minHeight: AppSizes.minTouchTarget),
           padding: const EdgeInsets.all(AppSizes.p12),
@@ -515,8 +564,35 @@ class _TaskCard extends ConsumerWidget {
                     ),
                 ],
               ),
+              if (isDeleting) const _TaskDeletingIndicator(),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TaskDeletingIndicator extends StatelessWidget {
+  const _TaskDeletingIndicator();
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      liveRegion: true,
+      child: Padding(
+        padding: const EdgeInsets.only(top: AppSizes.p8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const LinearProgressIndicator(color: AppColors.statusError),
+            const SizedBox(height: AppSizes.p4),
+            Text(
+              '삭제하는 중…',
+              style: Theme.of(context).textTheme.labelSmall
+                  ?.copyWith(color: AppColors.statusError),
+            ),
+          ],
         ),
       ),
     );

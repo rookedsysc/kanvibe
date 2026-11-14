@@ -62,7 +62,11 @@ class BoardProjectFilterController extends Notifier<Set<String>> {
 }
 
 final filteredBoardProvider = Provider<AsyncValue<BoardSnapshot>>((ref) {
-  final board = ref.watch(boardProvider);
+  final fetchedBoard = ref.watch(boardProvider);
+  // 새로고침이 실패해도 이미 받은 카드는 그대로 보인다. 실패는 보드 화면이 카드 위에 따로 알린다
+  final board = fetchedBoard.hasError && fetchedBoard.hasValue
+      ? AsyncData(fetchedBoard.value!)
+      : fetchedBoard;
   final connectionId = ref.watch(
     connectionControllerProvider.select(
       (value) => value.value?.activeConnection?.id,
