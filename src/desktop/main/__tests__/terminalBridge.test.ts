@@ -206,13 +206,13 @@ describe("terminalBridge existing remote session migration", () => {
     return { id: "task-1", title: "existing task", sshHost: "app-prod", worktreePath: "/remote/repo", sessionType: "tmux", sessionName: "existing" } as import("@/entities/KanbanTask").KanbanTask;
   }
 
-  it("모바일과 데스크톱 공통 attach가 기존 세션을 붙이기 전에 훅을 검사한다", async () => {
+  it("모바일과 데스크톱 공통 attach 이후 백그라운드로 훅을 검사한다", async () => {
     const bridge = await importBridge();
     const terminal = await import("@/lib/terminal");
     const client = new bridge.CallbackTerminalClient(() => {});
     await bridge.attachTaskTerminal(remoteTask(), null, client);
     expect(mockEnsureKanvibeHooksCurrent).toHaveBeenCalledWith("/remote/repo", "task-1", "app-prod");
-    expect(mockEnsureKanvibeHooksCurrent.mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(terminal.attachRemoteSession).mock.invocationCallOrder[0]);
+    expect(vi.mocked(terminal.attachRemoteSession).mock.invocationCallOrder[0]).toBeLessThan(mockEnsureKanvibeHooksCurrent.mock.invocationCallOrder[0]);
   });
 
   it("원격 터미널을 열 때 백그라운드 실패로 걸린 SSH cooldown을 원격 명령보다 먼저 해제한다", async () => {
@@ -230,27 +230,29 @@ describe("terminalBridge existing remote session migration", () => {
     const task = { ...remoteTask(), worktreePath: null, projectId: "project-1" };
     await bridge.attachTaskTerminal(task, null, new bridge.CallbackTerminalClient(() => {}));
     expect(mockFindProjectBy).toHaveBeenCalledWith({ id: "project-1" });
-    expect(mockEnsureKanvibeHooksCurrent).toHaveBeenCalledWith("/remote/root", "task-1", "app-prod");
+    await vi.waitFor(() => expect(mockEnsureKanvibeHooksCurrent).toHaveBeenCalledWith("/remote/root", "task-1", "app-prod"));
   });
 
-  it("마이그레이션 실패를 알리고 attach 실패를 반환하며 다음 요청은 재시도한다", async () => {
+  it("백그라운드 hook 실패를 알리되 열린 터미널은 유지하고 다음 요청은 재시도한다", async () => {
     mockEnsureKanvibeHooksCurrent.mockRejectedValueOnce(new Error("hooks write denied"));
     const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const bridge = await importBridge();
     const terminal = await import("@/lib/terminal");
     const client = new bridge.CallbackTerminalClient(() => {});
-    await expect(bridge.attachTaskTerminal(remoteTask(), null, client)).rejects.toThrow("hooks write denied");
+    await expect(bridge.attachTaskTerminal(remoteTask(), null, client)).resolves.toBeUndefined();
+    await vi.waitFor(() => expect(mockBroadcastTaskHookInstallFailed).toHaveBeenCalled());
+    expect(client.readyState).toBe(client.OPEN);
     expect(mockBroadcastTaskHookInstallFailed).toHaveBeenCalledWith({ taskId: "task-1", taskTitle: "existing task", error: "hooks write denied" });
-    expect(consoleErrorSpy).toHaveBeenCalledWith("터미널 연결 전 hooks 확인 실패:", expect.objectContaining({
+    expect(consoleErrorSpy).toHaveBeenCalledWith("터미널 hooks 확인 실패:", expect.objectContaining({
       taskId: "task-1",
       targetPath: "/remote/repo",
       sshHost: "app-prod",
       error: "hooks write denied",
     }));
     consoleErrorSpy.mockRestore();
-    expect(terminal.attachRemoteSession).not.toHaveBeenCalled();
-    await bridge.attachTaskTerminal(remoteTask(), null, client);
     expect(terminal.attachRemoteSession).toHaveBeenCalledTimes(1);
+    await bridge.attachTaskTerminal(remoteTask(), null, client);
+    expect(terminal.attachRemoteSession).toHaveBeenCalledTimes(2);
   });
 
   it("일시적인 SSH 재연결 대기를 hook 설치 실패 알림으로 표시하지 않는다", async () => {
@@ -260,8 +262,57 @@ describe("terminalBridge existing remote session migration", () => {
     const window = { id: 101, isDestroyed: () => false, send: vi.fn() } as unknown as import("electron").WebContents;
 
     await expect(bridge.openTerminal(window, "task-1", null, 100, 30)).resolves.toEqual({
-      ok: false, error: "SSH transport cooldown", retryAfterMs: 3200,
+      ok: true,
     });
+    await vi.waitFor(() => expect(mockEnsureKanvibeHooksCurrent).toHaveBeenCalled());
     expect(mockBroadcastTaskHookInstallFailed).not.toHaveBeenCalled();
   });
+
+  it("hook 지연 중에도 attach와 terminal 입력 경로를 사용할 수 있다", async () => {
+    let finish!: (value: boolean) => void;
+    mockEnsureKanvibeHooksCurrent.mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }));
+    const bridge = await importBridge();
+    const terminal = await import("@/lib/terminal");
+    const onInput = vi.fn();
+    vi.mocked(terminal.attachRemoteSession).mockImplementationOnce(async (...args) => {
+      args[5].on("message", onInput);
+    });
+    const window = { id: 102, isDestroyed: () => false, send: vi.fn() } as unknown as import("electron").WebContents;
+    mockFindOneBy.mockResolvedValue(remoteTask());
+    let opened = false;
+    const pending = bridge.openTerminal(window, "task-1", null, 100, 30).then((result) => { opened = true; return result; });
+    try {
+      await vi.waitFor(() => expect(opened).toBe(true), { timeout: 200 });
+      expect(await pending).toEqual({ ok: true });
+      expect(terminal.attachRemoteSession).toHaveBeenCalledTimes(1);
+      bridge.writeTerminal(102, "task-1", null, "pwd\r");
+      expect(onInput).toHaveBeenCalledWith(Buffer.from("pwd\r"));
+    } finally { finish(false); await pending; }
+  });
+
+  it.each(["tmux", "herdr"])("초기 pane 명령은 hook 준비 뒤에만 실행 경로로 진입한다 (%s)", async (sessionType) => {
+    let finish!: (value: boolean) => void;
+    mockEnsureKanvibeHooksCurrent.mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }));
+    const layout = await import("@/desktop/main/services/paneLayoutService");
+    vi.mocked(layout.getEffectivePaneLayout).mockResolvedValueOnce({ panes: [{ position: 0, command: "codex" }] } as never);
+    const bridge = await importBridge();
+    const terminal = await import("@/lib/terminal");
+    const pending = bridge.attachTaskTerminal({ ...remoteTask(), sessionType } as never, null, new bridge.CallbackTerminalClient(() => {}));
+    await vi.waitFor(() => expect(mockEnsureKanvibeHooksCurrent).toHaveBeenCalled());
+    expect(terminal.attachRemoteSession).not.toHaveBeenCalled();
+    finish(false);
+    await pending;
+    expect(terminal.attachRemoteSession).toHaveBeenCalledTimes(1);
+  });
+
+  it("hook 준비 실패 시 초기 pane 명령의 자동 실행은 시작하지 않는다", async () => {
+    const layout = await import("@/desktop/main/services/paneLayoutService");
+    vi.mocked(layout.getEffectivePaneLayout).mockResolvedValueOnce({ panes: [{ position: 0, command: "codex" }] } as never);
+    mockEnsureKanvibeHooksCurrent.mockRejectedValueOnce(new Error("hook unavailable"));
+    const bridge = await importBridge();
+    const terminal = await import("@/lib/terminal");
+    await expect(bridge.attachTaskTerminal(remoteTask(), null, new bridge.CallbackTerminalClient(() => {}))).rejects.toThrow("hook unavailable");
+    expect(terminal.attachRemoteSession).not.toHaveBeenCalled();
+  });
+
 });

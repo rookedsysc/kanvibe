@@ -225,13 +225,12 @@ async function readGitDiffFiles(taskId: string): Promise<DiffFile[] | null> {
 export async function getGitDiffFiles(
   taskId: string
 ): Promise<DiffFile[]> {
-  const files = await readGitDiffFiles(taskId);
-  if (!files) {
-    return [];
+  const queuedIndex = diffRefreshQueue.indexOf(taskId);
+  if (queuedIndex >= 0) {
+    diffRefreshQueue.splice(queuedIndex, 1);
+    queuedDiffTasks.delete(taskId);
   }
-
-  await saveTaskDiffStats(taskId, summarizeDiffFiles(files));
-  return files;
+  return (await refreshTaskDiffFiles(taskId)) ?? [];
 }
 
 /** baseBranch 기준의 원본 파일 내용을 조회한다. 파일이 존재하지 않으면 빈 문자열을 반환한다 */
@@ -395,7 +394,7 @@ export async function saveFileContent(
   }
 }
 
-/** 집계 하나를 캐시에 덮어쓴다. 저장에 실패해도 조회 결과는 그대로 쓰이도록 삼킨다 */
+/** 집계 저장 실패는 기록하고 파일 목록 조회는 유지한다 */
 async function saveTaskDiffStats(taskId: string, stats: TaskDiffStats): Promise<void> {
   try {
     const repo = await getTaskDiffStatsRepository();
@@ -405,7 +404,7 @@ async function saveTaskDiffStats(taskId: string, stats: TaskDiffStats): Promise<
   }
 }
 
-/** 저장돼 있는 집계 전부. 보드가 진행 중이 아닌 카드의 배지를 그리는 값이다 */
+/** 보드가 갱신을 기다리지 않고 표시할 마지막 집계 */
 async function loadCachedTaskDiffStats(): Promise<Record<string, TaskDiffStats>> {
   try {
     const repo = await getTaskDiffStatsRepository();
@@ -421,31 +420,51 @@ async function loadCachedTaskDiffStats(): Promise<Record<string, TaskDiffStats>>
   }
 }
 
-/**
- * 태스크별 변경 집계를 돌려준다. `taskIdsToRefresh`에 담긴 태스크만 git을 다시 돌리고 그 결과를 캐시에 남긴다.
- *
- * 보드는 진행 중인 태스크만 새로 집계하고 나머지 칸은 마지막으로 저장된 값을 보여주므로,
- * 반환값에는 방금 계산한 집계와 저장돼 있던 집계가 함께 담긴다.
- * 카드마다 IPC를 열면 왕복이 카드 수만큼 쌓이므로 조회는 이 한 번으로 끝낸다.
- *
- * 다시 돌린 조회가 실패한 태스크는 캐시를 건드리지 않는다. 일시적인 실패로 배지가 0으로 주저앉지 않게 한다.
- */
+// SSH dependency/session 준비와 경쟁하는 background diff 작업 수만 제한한다.
+const DIFF_REFRESH_CONCURRENCY = 2;
+const pendingDiffReads = new Map<string, Promise<DiffFile[] | null>>();
+const queuedDiffTasks = new Set<string>();
+const diffRefreshQueue: string[] = [];
+let activeDiffRefreshes = 0;
+
+function refreshTaskDiffFiles(taskId: string): Promise<DiffFile[] | null> {
+  const pending = pendingDiffReads.get(taskId);
+  if (pending) return pending;
+
+  const refresh = (async () => {
+    const files = await readGitDiffFiles(taskId);
+    if (files) await saveTaskDiffStats(taskId, summarizeDiffFiles(files));
+    return files;
+  })().finally(() => { pendingDiffReads.delete(taskId); });
+  // 저장까지 공유해 늦은 동일 task 응답이 새 집계를 덮어쓰지 않게 한다.
+  pendingDiffReads.set(taskId, refresh);
+  return refresh;
+}
+
+function scheduleTaskDiffRefresh(taskId: string): void {
+  if (queuedDiffTasks.has(taskId) || pendingDiffReads.has(taskId)) return;
+  queuedDiffTasks.add(taskId);
+  diffRefreshQueue.push(taskId);
+  drainDiffRefreshQueue();
+}
+
+function drainDiffRefreshQueue(): void {
+  while (activeDiffRefreshes < DIFF_REFRESH_CONCURRENCY && diffRefreshQueue.length) {
+    const taskId = diffRefreshQueue.shift()!;
+    activeDiffRefreshes += 1;
+    void refreshTaskDiffFiles(taskId).finally(() => {
+      queuedDiffTasks.delete(taskId);
+      activeDiffRefreshes -= 1;
+      drainDiffRefreshQueue();
+    });
+  }
+}
+
+/** 저장된 집계를 먼저 반환한다. 완료된 갱신은 다음 조회부터 항목별로 표시한다. */
 export async function getTaskDiffStats(
   taskIdsToRefresh: string[]
 ): Promise<Record<string, TaskDiffStats>> {
-  const refreshedEntries = await Promise.all(
-    taskIdsToRefresh.map(async (taskId) => {
-      const files = await readGitDiffFiles(taskId);
-      if (!files) {
-        return null;
-      }
-
-      const stats = summarizeDiffFiles(files);
-      await saveTaskDiffStats(taskId, stats);
-      return [taskId, stats] as const;
-    })
-  );
-
   const cachedStats = await loadCachedTaskDiffStats();
-  return { ...cachedStats, ...Object.fromEntries(refreshedEntries.filter((entry) => entry !== null)) };
+  for (const taskId of taskIdsToRefresh) scheduleTaskDiffRefresh(taskId);
+  return cachedStats;
 }
