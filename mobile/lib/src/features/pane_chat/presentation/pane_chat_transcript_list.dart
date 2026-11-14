@@ -171,8 +171,8 @@ class _PaneChatTranscriptListState
                 ? IconButton.filledTonal(
                     tooltip: '최신 메시지로 이동',
                     style: IconButton.styleFrom(
-                      backgroundColor: AppColors.bgSurface,
-                      foregroundColor: AppColors.textPrimary,
+                      backgroundColor: context.colors.bgSurface,
+                      foregroundColor: context.colors.textPrimary,
                     ),
                     onPressed: _jumpToLatest,
                     icon: const Icon(Icons.arrow_downward),
@@ -293,8 +293,8 @@ class _ToolRunCardState extends State<_ToolRunCard> {
     return Container(
       margin: const EdgeInsets.only(bottom: AppSizes.p16),
       decoration: BoxDecoration(
-        color: AppColors.bgSurface,
-        border: Border.all(color: AppColors.borderDefault),
+        color: context.colors.bgSurface,
+        border: Border.all(color: context.colors.borderDefault),
         borderRadius: BorderRadius.circular(AppSizes.radiusLg),
       ),
       clipBehavior: Clip.antiAlias,
@@ -324,13 +324,13 @@ class _ToolRunCardState extends State<_ToolRunCard> {
                           summary,
                           overflow: TextOverflow.ellipsis,
                           style: Theme.of(context).textTheme.bodySmall
-                              ?.copyWith(color: AppColors.textSecondary),
+                              ?.copyWith(color: context.colors.textSecondary),
                         ),
                       ),
                       Icon(
                         _expanded ? Icons.expand_more : Icons.chevron_right,
                         size: AppSizes.p16,
-                        color: AppColors.textSecondary,
+                        color: context.colors.textSecondary,
                       ),
                     ],
                   ),

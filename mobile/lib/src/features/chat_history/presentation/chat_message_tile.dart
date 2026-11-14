@@ -96,7 +96,7 @@ class _ChatMessageTileState extends State<ChatMessageTile> {
                       ],
                     ),
                     style: TextButton.styleFrom(
-                      foregroundColor: AppColors.textSecondary,
+                      foregroundColor: context.colors.textSecondary,
                       minimumSize: const Size(0, AppSizes.minTouchTarget),
                       padding: const EdgeInsets.symmetric(
                         horizontal: AppSizes.p8,
@@ -115,7 +115,7 @@ class _ChatMessageTileState extends State<ChatMessageTile> {
                               label,
                               overflow: TextOverflow.ellipsis,
                               style: Theme.of(context).textTheme.bodySmall
-                                  ?.copyWith(color: AppColors.textSecondary),
+                                  ?.copyWith(color: context.colors.textSecondary),
                             ),
                           ),
                           if (timeLabel != null) ...[
@@ -141,8 +141,8 @@ class _ChatMessageTileState extends State<ChatMessageTile> {
                       : EdgeInsets.zero,
                   decoration: isUser
                       ? BoxDecoration(
-                          color: AppColors.bgSurface,
-                          border: Border.all(color: AppColors.borderDefault),
+                          color: context.colors.bgSurface,
+                          border: Border.all(color: context.colors.borderDefault),
                           // 꼬리 쪽 모서리만 좁혀 내가 보낸 말풍선임을 드러낸다
                           borderRadius: const BorderRadius.only(
                             topLeft: Radius.circular(AppSizes.radiusCard),
@@ -205,7 +205,7 @@ class _CopyMessageButton extends StatelessWidget {
     return IconButton(
       tooltip: '메시지 복사',
       icon: const Icon(Icons.copy_outlined, size: AppSizes.p16),
-      color: AppColors.textSecondary,
+      color: context.colors.textSecondary,
       constraints: const BoxConstraints(
         minWidth: AppSizes.minTouchTarget,
         minHeight: AppSizes.minTouchTarget,

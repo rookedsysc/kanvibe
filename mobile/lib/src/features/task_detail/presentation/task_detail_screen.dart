@@ -859,14 +859,14 @@ class _PaneChatToggle extends ConsumerWidget {
       child: OutlinedButton.icon(
         onPressed: onPressed,
         icon: const Icon(Icons.forum_outlined, size: AppSizes.p16),
-        label: const Text('채팅'),
+        label: Text(context.tr('채팅')),
         style: OutlinedButton.styleFrom(
-          foregroundColor: AppColors.textPrimary,
-          backgroundColor: AppColors.buttonNeutral,
+          foregroundColor: context.colors.textPrimary,
+          backgroundColor: context.colors.buttonNeutral,
           minimumSize: const Size(0, AppSizes.minTouchTarget),
           padding: const EdgeInsets.symmetric(horizontal: AppSizes.p12),
           side: BorderSide(
-            color: isChatMode ? AppColors.brandPrimary : AppColors.borderStrong,
+            color: isChatMode ? AppColors.brandPrimary : context.colors.borderStrong,
           ),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(AppSizes.radiusCard),

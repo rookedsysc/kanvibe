@@ -178,6 +178,11 @@ class FakeDesktopClient implements DesktopClient {
   /// 삭제가 아닌 명령에 대한 응답. 테스트가 명령마다 값이나 예외를 정한다
   Future<Map<String, dynamic>> Function(DesktopCommand command)? onRunCommand;
 
+  final paneChatSubscriptionCalls = <DesktopCommand>[];
+
+  /// 지정하면 구독을 아는 데스크탑처럼 답한다
+  Map<String, dynamic> Function(DesktopCommand command)? onPaneChatSubscription;
+
   /// 지워 달라고 보낸 요청. 강제 여부까지 봐야 거절 뒤 강제 삭제로 다시 보냈는지 안다
   final deleteCalls = <({String taskId, bool isForced})>[];
   final removedRegistrationIds = <String>[];
@@ -422,6 +427,13 @@ class FakeDesktopClient implements DesktopClient {
     DesktopCommand command, {
     Duration? timeout,
   }) async {
+    if (command.name == 'set-pane-chat-subscription') {
+      paneChatSubscriptionCalls.add(command);
+      final answer = onPaneChatSubscription;
+      // 기본은 구독을 모르는 데스크탑이다. 그러면 앱은 주기 조회로 동작한다
+      if (answer == null) throw const DesktopUpdateRequiredException();
+      return answer(command);
+    }
     commandCalls.add(command);
     if (command.name == 'remove-task-registration') {
       removedRegistrationIds.add(command.fields['taskId']! as String);
@@ -569,6 +581,7 @@ class FakeDesktopClient implements DesktopClient {
     PaneChatKey? key,
     List<String>? attachmentIds,
     String? requestId,
+    Map<String, Object?>? modelSettingChange,
   }) async => throw StateError('No live pane fixture configured');
 
   @override

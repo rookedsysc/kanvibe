@@ -7,6 +7,7 @@ import '../../../common/constants/app_theme.dart';
 import '../application/pane_chat_controller.dart';
 import '../domain/pane_chat.dart';
 import 'pane_chat_composer.dart';
+import 'pane_chat_model_settings_card.dart';
 import 'pane_chat_transcript_list.dart';
 
 class PaneChatView extends ConsumerStatefulWidget {
@@ -26,6 +27,11 @@ class PaneChatView extends ConsumerStatefulWidget {
 
 class _PaneChatViewState extends ConsumerState<PaneChatView> {
   bool _showCli = false;
+
+  bool _showsModelSettings = false;
+
+  /// 컨트롤러에 마지막으로 알린 CLI 화면 표시 여부
+  bool _reportedShowScreen = false;
 
   @override
   void initState() {
@@ -81,6 +87,17 @@ class _PaneChatViewState extends ConsumerState<PaneChatView> {
             !snapshot.transcript.available ||
             snapshot.inputState != PaneChatInputState.ready;
         final draftKey = '${state.connectionId}:${snapshot.targetToken}';
+        // 현재 모델을 알아야 고를 수 있는 옵션이 정해진다. 모르면 CLI의 선택기를 여는 예전 방식으로 둔다
+        final modelSettings = snapshot.modelSettings?.currentModel == null
+            ? null
+            : snapshot.modelSettings;
+        if (showScreen != _reportedShowScreen) {
+          _reportedShowScreen = showScreen;
+          // 빌드 중에는 구독을 바꿀 수 없어 프레임이 끝난 뒤에 알린다
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) notifier.setWantsScreen(showScreen);
+          });
+        }
         return LayoutBuilder(
           builder: (context, constraints) {
             final compact = constraints.maxHeight < 360;
@@ -157,8 +174,13 @@ class _PaneChatViewState extends ConsumerState<PaneChatView> {
                                 horizontal: AppSizes.p8,
                               ),
                             ),
-                            onPressed:
-                                state.canPrompt && snapshot.modelPickerSupported
+                            onPressed: modelSettings != null
+                                ? () => setState(
+                                    () => _showsModelSettings =
+                                        !_showsModelSettings,
+                                  )
+                                : state.canPrompt &&
+                                      snapshot.modelPickerSupported
                                 ? () async {
                                     if (await notifier.openModelPicker() &&
                                         mounted) {
@@ -214,82 +236,96 @@ class _PaneChatViewState extends ConsumerState<PaneChatView> {
                         ),
                       ],
                     ),
-                    cliScreen: showScreen
-                        ? Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Container(
-                                width: double.infinity,
-                                padding: const EdgeInsets.all(AppSizes.p12),
-                                decoration: BoxDecoration(
-                                  color: AppColors.terminalBg,
-                                  borderRadius: BorderRadius.circular(
-                                    AppSizes.radiusLg,
-                                  ),
-                                ),
-                                child: ConstrainedBox(
-                                  constraints: BoxConstraints(
-                                    maxHeight: constraints.maxHeight * 0.2,
-                                  ),
-                                  child: SingleChildScrollView(
-                                    child: Semantics(
-                                      identifier: 'pane-chat-screen',
-                                      child: SelectableText(
-                                        snapshot.screen.isEmpty
-                                            ? '현재 CLI 화면이 비어 있습니다.'
-                                            : snapshot.screen,
-                                        style: monoStyle(),
-                                      ),
+                    cliScreen: _stackAboveInput(
+                      modelSettings != null && _showsModelSettings
+                          ? PaneChatModelSettingsCard(
+                              settings: modelSettings,
+                              isEnabled: state.canPrompt,
+                              onChange: notifier.changeModelSetting,
+                            )
+                          : null,
+                      showScreen
+                          ? Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.all(AppSizes.p12),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.terminalBg,
+                                    borderRadius: BorderRadius.circular(
+                                      AppSizes.radiusLg,
                                     ),
                                   ),
-                                ),
-                              ),
-                              Wrap(
-                                alignment: WrapAlignment.center,
-                                children: [
-                                  for (final control in const [
-                                    (PaneChatKey.up, Icons.arrow_upward, '위'),
-                                    (
-                                      PaneChatKey.down,
-                                      Icons.arrow_downward,
-                                      '아래',
+                                  child: ConstrainedBox(
+                                    constraints: BoxConstraints(
+                                      maxHeight: constraints.maxHeight * 0.2,
                                     ),
-                                    (PaneChatKey.left, Icons.arrow_back, '왼쪽'),
-                                    (
-                                      PaneChatKey.right,
-                                      Icons.arrow_forward,
-                                      '오른쪽',
-                                    ),
-                                    (
-                                      PaneChatKey.enter,
-                                      Icons.keyboard_return,
-                                      '확인',
-                                    ),
-                                    (PaneChatKey.escape, Icons.close, '취소'),
-                                  ])
-                                    Semantics(
-                                      identifier:
-                                          'pane-chat-${control.$1.name}',
-                                      child: IconButton(
-                                        tooltip: control.$3,
-                                        onPressed: state.canControl
-                                            ? () => notifier.sendKey(control.$1)
-                                            : null,
-                                        icon: Icon(
-                                          control.$2,
-                                          size: AppSizes.p24,
-                                        ),
-                                        constraints: const BoxConstraints(
-                                          minWidth: AppSizes.minTouchTarget,
-                                          minHeight: AppSizes.minTouchTarget,
+                                    child: SingleChildScrollView(
+                                      child: Semantics(
+                                        identifier: 'pane-chat-screen',
+                                        child: SelectableText(
+                                          snapshot.screen.isEmpty
+                                              ? '현재 CLI 화면이 비어 있습니다.'
+                                              : snapshot.screen,
+                                          style: monoStyle(),
                                         ),
                                       ),
                                     ),
-                                ],
-                              ),
-                            ],
-                          )
-                        : null,
+                                  ),
+                                ),
+                                Wrap(
+                                  alignment: WrapAlignment.center,
+                                  children: [
+                                    for (final control in const [
+                                      (PaneChatKey.up, Icons.arrow_upward, '위'),
+                                      (
+                                        PaneChatKey.down,
+                                        Icons.arrow_downward,
+                                        '아래',
+                                      ),
+                                      (
+                                        PaneChatKey.left,
+                                        Icons.arrow_back,
+                                        '왼쪽',
+                                      ),
+                                      (
+                                        PaneChatKey.right,
+                                        Icons.arrow_forward,
+                                        '오른쪽',
+                                      ),
+                                      (
+                                        PaneChatKey.enter,
+                                        Icons.keyboard_return,
+                                        '확인',
+                                      ),
+                                      (PaneChatKey.escape, Icons.close, '취소'),
+                                    ])
+                                      Semantics(
+                                        identifier:
+                                            'pane-chat-${control.$1.name}',
+                                        child: IconButton(
+                                          tooltip: control.$3,
+                                          onPressed: state.canControl
+                                              ? () =>
+                                                    notifier.sendKey(control.$1)
+                                              : null,
+                                          icon: Icon(
+                                            control.$2,
+                                            size: AppSizes.p24,
+                                          ),
+                                          constraints: const BoxConstraints(
+                                            minWidth: AppSizes.minTouchTarget,
+                                            minHeight: AppSizes.minTouchTarget,
+                                          ),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ],
+                            )
+                          : null,
+                    ),
                   ),
               ],
             );
@@ -305,6 +341,16 @@ class _PaneChatViewState extends ConsumerState<PaneChatView> {
       },
     );
   }
+}
+
+/// 모델 설정과 CLI 화면을 입력창 위에 차례로 놓는다. 둘 다 없으면 자리를 만들지 않는다
+Widget? _stackAboveInput(Widget? modelSettings, Widget? cliScreen) {
+  if (modelSettings == null) return cliScreen;
+  if (cliScreen == null) return modelSettings;
+  return Column(
+    mainAxisSize: MainAxisSize.min,
+    children: [modelSettings, cliScreen],
+  );
 }
 
 class _PaneChatNotice extends StatelessWidget {

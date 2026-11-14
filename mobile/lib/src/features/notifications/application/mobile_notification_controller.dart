@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../common/network/desktop_client.dart';
 import '../../../common/network/desktop_connection.dart';
+import '../../../common/network/desktop_socket_events.dart';
 import '../../../common/providers.dart';
 import '../../connection/domain/saved_connections.dart';
 import '../data/mobile_notifications.dart';
@@ -46,6 +47,7 @@ final mobileNotificationControllerProvider =
         onDeviceUnpaired: (connection) => ref
             .read(connectionControllerProvider.notifier)
             .forgetLocally(connection.id, connection.token),
+        onPaneChatEvent: ref.read(desktopSocketEventsProvider).add,
       );
       ref.listen(connectionControllerProvider, (_, next) {
         controller.setConnections(next.value ?? const SavedConnections());
@@ -78,6 +80,7 @@ class MobileNotificationController {
     required this.notifications,
     required this.onBoardChanged,
     required this.onDeviceUnpaired,
+    required this.onPaneChatEvent,
   }) {
     _foregroundSubscription = notifications.foregroundMessages.listen(
       _receivePush,
@@ -101,6 +104,10 @@ class MobileNotificationController {
   final MobileNotifications notifications;
   final void Function(String connectionId) onBoardChanged;
   final Future<void> Function(DesktopConnection connection) onDeviceUnpaired;
+
+  /// pane 채팅이 듣는 소켓 이벤트. 연결됨·끊김도 함께 알려 push와 주기 조회를 오가게 한다
+  final void Function(String connectionId, Map<String, dynamic> event)
+  onPaneChatEvent;
   final _openRequests = StreamController<TaskNotification>.broadcast();
   final _taskUpdates = StreamController<TaskNotification>.broadcast();
   final _inboxUpdates = StreamController<String>.broadcast();
@@ -219,6 +226,12 @@ class MobileNotificationController {
     if (session.isClosed || !_isActive || !_isCurrent(session.connection)) {
       return;
     }
+    final type = json['type'];
+    if (type is String && type.startsWith('pane-chat-')) {
+      onPaneChatEvent(session.connection.id, json);
+      return;
+    }
+    if (type == 'connected') onPaneChatEvent(session.connection.id, json);
     if (json['type'] == 'connected' || json['type'] == 'board-updated') {
       session.retrySeconds = 1;
       onBoardChanged(session.connection.id);
@@ -316,6 +329,7 @@ class MobileNotificationController {
     }
     unawaited(session.subscription?.cancel());
     unawaited(session.stream?.close());
+    onPaneChatEvent(session.connection.id, const {'type': 'disconnected'});
     session.retry = Timer(Duration(seconds: session.retrySeconds), () {
       session.retry = null;
       _connectSession(session);
@@ -336,6 +350,8 @@ class MobileNotificationController {
     session.retry?.cancel();
     unawaited(session.subscription?.cancel());
     unawaited(session.stream?.close());
+    // 컨트롤러가 정리되는 중에는 듣는 쪽도 함께 사라지므로 알리지 않는다
+    if (!_isDisposed) onPaneChatEvent(id, const {'type': 'disconnected'});
   }
 
   Future<void> _refreshPushToken() async {

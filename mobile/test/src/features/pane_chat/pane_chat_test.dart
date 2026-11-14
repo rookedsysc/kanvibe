@@ -743,6 +743,43 @@ void main() {
     await tester.pump();
   });
 
+  testWidgets('CLI가 잠깐 입력을 받지 못해도 입력창의 포커스와 쓰던 글은 유지된다', (tester) async {
+    var inputState = 'ready';
+    final client = DesktopClient(
+      httpClient: MockClient(
+        (request) async =>
+            response({'snapshot': snapshotJson(inputState: inputState)}),
+      ),
+    );
+    final container = setup(client);
+    addTearDown(container.dispose);
+    addTearDown(client.close);
+    await pumpChat(tester, container);
+    await tester.enterText(find.byType(TextField), '쓰던 글');
+    await tester.pumpAndSettle();
+    final editable = find.descendant(
+      of: find.byType(TextField, skipOffstage: false),
+      matching: find.byType(EditableText, skipOffstage: false),
+      skipOffstage: false,
+    );
+    final focusNode = tester.widget<EditableText>(editable).focusNode;
+    expect(focusNode.hasFocus, isTrue);
+
+    for (final next in ['occupied', 'ready']) {
+      inputState = next;
+      await container.read(paneChatProvider(target).notifier).refresh();
+      await tester.pumpAndSettle();
+      final input = tester.widget<EditableText>(editable);
+      expect(input.focusNode, same(focusNode));
+      expect(input.focusNode.hasFocus, isTrue);
+      expect(input.controller.text, '쓰던 글');
+    }
+    expect(find.byType(TextField), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+    container.dispose();
+    await tester.pump();
+  });
+
   testWidgets('새 응답이 앞에 추가되어도 펼친 추론은 유지된다', (tester) async {
     var withNewReply = false;
     final client = DesktopClient(
@@ -776,6 +813,144 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
     container.dispose();
     await tester.pump();
+  });
+
+  group('모델 설정 선택창', () {
+    const levels = [
+      {'id': 'low', 'label': 'Light'},
+      {'id': 'medium', 'label': 'Medium'},
+      {'id': 'max', 'label': 'Max'},
+    ];
+    Map<String, dynamic> settings({String model = 'opus'}) => {
+      'model': model,
+      'effort': model == 'plain' ? null : 'medium',
+      'isFast': false,
+      'models': [
+        {
+          'id': 'opus',
+          'label': 'Opus',
+          'effortLevels': levels,
+          'supportsFast': true,
+        },
+        {
+          'id': 'sonnet',
+          'label': 'Sonnet',
+          'effortLevels': levels,
+          'supportsFast': false,
+        },
+        {
+          'id': 'plain',
+          'label': 'Plain',
+          'effortLevels': [],
+          'supportsFast': false,
+        },
+      ],
+    };
+
+    late ProviderContainer openedContainer;
+
+    Future<List<Map<String, dynamic>>> openSettings(
+      WidgetTester tester, {
+      String model = 'opus',
+    }) async {
+      final changes = <Map<String, dynamic>>[];
+      final client = DesktopClient(
+        httpClient: MockClient((request) async {
+          if (request.method == 'GET') {
+            return response({
+              'snapshot': {
+                ...snapshotJson(),
+                'modelSettings': settings(model: model),
+              },
+            });
+          }
+          expect(request.url.pathSegments.last, 'model-setting');
+          changes.add(
+            (jsonDecode(request.body) as Map<String, dynamic>)['change']
+                as Map<String, dynamic>,
+          );
+          return response({'success': true});
+        }),
+      );
+      openedContainer = setup(client);
+      addTearDown(client.close);
+      await pumpChat(tester, openedContainer);
+      await tester.tap(find.text('모델'));
+      await tester.pumpAndSettle();
+      return changes;
+    }
+
+    Future<void> close(WidgetTester tester) async {
+      await tester.pumpWidget(const SizedBox.shrink());
+      openedContainer.dispose();
+      await tester.pump();
+    }
+
+    testWidgets('현재 effort와 모델을 보여 주고 슬라이더를 끝까지 밀면 그 단계로 바꾼다', (tester) async {
+      final changes = await openSettings(tester);
+      final card = find.bySemanticsIdentifier('pane-chat-model-settings');
+      expect(
+        find.descendant(of: card, matching: find.text('Medium')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: card, matching: find.text('Opus')),
+        findsOneWidget,
+      );
+      await tester.drag(find.byType(Slider), const Offset(400, 0));
+      await tester.pumpAndSettle();
+      expect(changes, [
+        {'kind': 'effort', 'effort': 'max'},
+      ]);
+      expect(
+        find.descendant(of: card, matching: find.text('Max')),
+        findsOneWidget,
+      );
+      await close(tester);
+    });
+
+    testWidgets('빠른 모드 토글과 되돌리기, 모델 고르기를 각각 한 건의 변경으로 보낸다', (tester) async {
+      final changes = await openSettings(tester);
+      await tester.tap(find.byTooltip('빠른 모드 켜기'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('effort 기본값으로 되돌리기'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.bySemanticsIdentifier('pane-chat-model-name'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Sonnet'));
+      await tester.pumpAndSettle();
+      expect(changes, [
+        {'kind': 'fast', 'isFast': true},
+        {'kind': 'reset'},
+        {'kind': 'model', 'model': 'sonnet'},
+      ]);
+      await close(tester);
+    });
+
+    testWidgets('빠른 모드를 지원하지 않는 모델에는 번개 버튼이 없다', (tester) async {
+      await openSettings(tester, model: 'sonnet');
+      expect(find.bySemanticsIdentifier('pane-chat-fast-mode'), findsNothing);
+      expect(find.byType(Slider), findsOneWidget);
+      await close(tester);
+    });
+
+    testWidgets('고를 옵션이 없는 모델에는 슬라이더·번개·되돌리기가 없고 모델만 바꿀 수 있다', (tester) async {
+      final changes = await openSettings(tester, model: 'plain');
+      expect(find.byType(Slider), findsNothing);
+      expect(find.bySemanticsIdentifier('pane-chat-fast-mode'), findsNothing);
+      expect(
+        find.bySemanticsIdentifier('pane-chat-effort-reset'),
+        findsNothing,
+      );
+      await tester.tap(find.bySemanticsIdentifier('pane-chat-model-name'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Opus'));
+      await tester.pumpAndSettle();
+      expect(changes, [
+        {'kind': 'model', 'model': 'opus'},
+      ]);
+      await close(tester);
+    });
   });
 
   testWidgets('보낸 메시지는 응답을 기다리지 않고 바로 보이고 기록에 나타나면 한 번만 남는다', (tester) async {
