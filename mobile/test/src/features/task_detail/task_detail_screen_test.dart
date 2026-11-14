@@ -17,7 +17,6 @@ import 'package:kanvibe_mobile/src/features/task_create/presentation/create_task
 import 'package:kanvibe_mobile/src/features/task_detail/domain/mirror_pane.dart';
 import 'package:kanvibe_mobile/src/features/task_detail/presentation/task_detail_screen.dart';
 import 'package:kanvibe_mobile/src/features/task_detail/presentation/widgets/pane_terminal_view.dart';
-import 'package:kanvibe_mobile/src/features/task_detail/presentation/widgets/multi_pane_terminal.dart';
 import 'package:kanvibe_mobile/src/features/task_detail/presentation/widgets/terminal_chrome_header.dart';
 import 'package:xterm/xterm.dart' as xterm;
 
@@ -287,6 +286,37 @@ void main() {
     });
   });
 
+  for (final width in [390.0, 768.0, 1024.0]) {
+    testWidgets('$width 폭에서 선택한 pane만 열고 탭으로 전환한다', (tester) async {
+      final client = await pumpDetail(tester, size: Size(width, 844));
+      expect(find.byType(PaneTerminalView), findsOneWidget);
+      expect(client.openedPanes.keys, ['%19']);
+      client.openedPanes['%19']!.add('ready');
+      await tester.pump();
+      terminalIn(tester, '%19').textInput('left input');
+      expect(client.writtenInput['%19'], contains('left input'));
+      expect(client.writtenInput['%20'], isNull);
+
+      await tester.tap(find.text('zsh').first);
+      await tester.pumpAndSettle();
+      expect(find.byType(PaneTerminalView), findsOneWidget);
+      expect(
+        tester.widget<PaneTerminalView>(find.byType(PaneTerminalView)).pane.id,
+        '%20',
+      );
+      expect(client.closedPanes, contains('%19'));
+      client.openedPanes['%20']!.add('ready');
+      await tester.pump();
+      terminalIn(tester, '%20').textInput('right input');
+      expect(client.writtenInput['%20'], contains('right input'));
+      expect(client.writtenInput['%19'], isNot(contains('right input')));
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+      expect(client.closedPanes, contains('%20'));
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   group('태스크 상단 반응형 액션', () {
     const taskWithPr = BoardTask(
       id: 'task-1',
@@ -297,38 +327,26 @@ void main() {
       prUrl: 'https://github.com/example/repo/pull/1',
     );
     for (final width in [320.0, 390.0, 767.0, 768.0, 1024.0]) {
-      testWidgets('$width 폭에서 좁은 화면은 메뉴 하나, 넓은 화면은 열 개의 작업 액션을 보인다', (
-        tester,
-      ) async {
+      testWidgets('$width 폭에서 태스크 액션은 메뉴 하나로 표시한다', (tester) async {
         await pumpDetail(tester, size: Size(width, 844), task: taskWithPr);
         final appBar = tester.widget<AppBar>(find.byType(AppBar));
-        expect(appBar.actions!.length, width < 768 ? 1 : 10);
+        expect(appBar.actions!.length, 1);
         expect(tester.takeException(), isNull);
-        if (width < 768) {
-          expect(
-            find.bySemanticsIdentifier('create-task-from-current'),
-            findsNothing,
-          );
-          await tester.tap(find.byTooltip('태스크 메뉴'));
-          await tester.pumpAndSettle();
-          for (final label in [
-            '새 태스크',
-            '대화 기록',
-            '정보',
-            '상태 옮기기',
-            '세션 종류 바꾸기',
-            'PR 열기',
-          ]) {
-            expect(find.text(label), findsOneWidget);
-          }
-        } else {
-          expect(find.byTooltip('태스크 메뉴'), findsNothing);
-          await _showTaskActions(tester);
-          expect(find.byTooltip('PR 열기'), findsOneWidget);
-          expect(
-            find.bySemanticsIdentifier('create-task-from-current'),
-            findsOneWidget,
-          );
+        expect(
+          find.bySemanticsIdentifier('create-task-from-current'),
+          findsNothing,
+        );
+        await tester.tap(find.byTooltip('태스크 메뉴'));
+        await tester.pumpAndSettle();
+        for (final label in [
+          '새 태스크',
+          '대화 기록',
+          '정보',
+          '상태 옮기기',
+          '세션 종류 바꾸기',
+          'PR 열기',
+        ]) {
+          expect(find.text(label), findsOneWidget);
         }
       });
     }
@@ -379,13 +397,13 @@ void main() {
       expect(find.text('세션 종류 바꾸기'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
-    testWidgets('폴더블 펼침과 접힘에 따라 메뉴와 아이콘이 전환된다', (tester) async {
+    testWidgets('폴더블을 펼치거나 접어도 메뉴를 유지한다', (tester) async {
       await _pumpCreationDetail(tester, size: const Size(390, 844));
       expect(find.byTooltip('태스크 메뉴'), findsOneWidget);
       await tester.binding.setSurfaceSize(const Size(1024, 844));
       await tester.pumpAndSettle();
-      expect(find.byTooltip('태스크 메뉴'), findsNothing);
-      expect(find.byTooltip('정보'), findsOneWidget);
+      expect(find.byTooltip('태스크 메뉴'), findsOneWidget);
+      expect(find.byTooltip('정보'), findsNothing);
       await tester.binding.setSurfaceSize(const Size(390, 844));
       await tester.pumpAndSettle();
       expect(find.byTooltip('태스크 메뉴'), findsOneWidget);
@@ -952,7 +970,7 @@ void main() {
       await tester.pump();
       await tester.tap(find.text('selected').first);
       await tester.pump();
-      expect(find.byType(MultiPaneTerminal), findsNothing);
+      expect(find.byType(PaneTerminalView), findsNothing);
       pending.completeError(StateError('creation failed'));
       await failed;
       await tester.pump();
@@ -1086,13 +1104,13 @@ void main() {
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 100));
         if (initialWindow == null) {
-          expect(find.byType(MultiPaneTerminal), findsOneWidget);
+          expect(find.byType(PaneTerminalView), findsOneWidget);
           await tester.tap(find.text('selected').first);
           await tester.pump();
           await tester.pump();
         }
         expect(client.surfaceRequests.last, (minimal: true, tabId: '@11'));
-        expect(find.byType(MultiPaneTerminal), findsNothing);
+        expect(find.byType(PaneTerminalView), findsNothing);
         expect(client.openedPanes.keys, isNot(contains('%21')));
         expect(client.openedPanes.keys, isNot(contains('%22')));
         requiredGeometry.complete(
@@ -1132,34 +1150,12 @@ void main() {
         final views = tester
             .widgetList<PaneTerminalView>(find.byType(PaneTerminalView))
             .toList();
-        expect(views.map((view) => view.pane.id), ['%21', '%22']);
-        expect(views.map((view) => view.pane.width), [60, 40]);
-        expect(views.map((view) => view.pane.left), [0, 60]);
+        expect(views.map((view) => view.pane.id), ['%21']);
+        expect(views.map((view) => view.pane.width), [60]);
+        expect(views.map((view) => view.pane.left), [0]);
       },
     );
   }
-
-  testWidgets('넓은 화면은 같은 window의 두 pane을 함께 보인다', (tester) async {
-    await pumpDetail(tester, size: tabletSize);
-    expect(find.text('claude'), findsOneWidget);
-    expect(find.text('zsh'), findsOneWidget);
-    expect(find.byType(PaneTerminalView), findsNWidgets(2));
-  });
-
-  testWidgets('넓은 화면에서 다른 pane 탭을 고르면 입력 대상도 바뀐다', (tester) async {
-    final client = await pumpDetail(tester, size: tabletSize);
-    await tester.tap(find.text('zsh'));
-    await tester.pumpAndSettle();
-    expect(find.byType(PaneTerminalView), findsNWidgets(2));
-    terminalIn(tester, '%20').textInput('ls');
-    expect(client.writtenInput['%20'], contains('ls'));
-    expect(client.writtenInput['%19'], isNull);
-    expect(
-      client.closedPanes,
-      isNot(contains('%19')),
-      reason: '같은 window의 다른 pane은 계속 표시된다',
-    );
-  });
 
   testWidgets('화면을 떠나면 pane 구독이 닫힌다', (tester) async {
     final client = await pumpDetail(tester, size: phoneSize);
@@ -1297,20 +1293,23 @@ void main() {
   });
 
   group('데스크탑 태스크 화면에서 옮겨 온 것', () {
-    testWidgets('넓은 화면에서 프로젝트 배지와 브랜치 및 새 태스크는 정보 버튼과 같은 AppBar에 있다', (
-      tester,
-    ) async {
+    testWidgets('넓은 화면에서 프로젝트와 브랜치를 표시하고 작업은 메뉴에서 고른다', (tester) async {
       await pumpDetail(tester, size: tabletSize);
 
       final appBar = find.byType(AppBar);
       for (final target in [
         find.text('kanvibe-repo'),
         find.text('feat/kanvibe-mobile'),
-        find.bySemanticsIdentifier('create-task-from-current'),
-        find.byTooltip('정보'),
+        find.byTooltip('태스크 메뉴'),
       ]) {
         expect(find.descendant(of: appBar, matching: target), findsOneWidget);
       }
+      await _showTaskActions(tester);
+      expect(
+        find.bySemanticsIdentifier('create-task-from-current'),
+        findsOneWidget,
+      );
+      expect(find.byTooltip('정보'), findsOneWidget);
       expect(find.text('출력 수신 중'), findsNothing);
       expect(find.byTooltip('붙여넣기'), findsNothing);
     });

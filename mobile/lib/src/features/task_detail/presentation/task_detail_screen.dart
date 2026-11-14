@@ -2,7 +2,7 @@ import 'dart:async';
 
 import '../../ai_sessions/presentation/live_ai_sessions_screen.dart';
 import '../../diff/presentation/diff_screen.dart';
-import 'widgets/multi_pane_terminal.dart';
+import 'widgets/pane_terminal_view.dart';
 import 'widgets/terminal_management_sheet.dart';
 import '../application/task_details_controller.dart';
 import 'task_editor_screen.dart';
@@ -631,98 +631,79 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
             ),
         ];
 
-    final content = LayoutBuilder(
-      builder: (context, constraints) {
-        final isCompact = !isTabletLayout(constraints);
-        return Scaffold(
-          appBar: AppBar(
-            automaticallyImplyLeading: !widget.embedded,
-            titleSpacing: AppSizes.p8,
-            leadingWidth: AppSizes.minTouchTarget,
-            title: TerminalChromeHeader(task: _task),
-            actions: [
-              if (isCompact)
-                Semantics(
-                  identifier: 'task-more',
-                  child: PopupMenuButton<VoidCallback>(
-                    tooltip: context.tr('태스크 메뉴'),
-                    onSelected: (action) => action(),
-                    itemBuilder: (_) => [
-                      for (final action in headerActions)
-                        PopupMenuItem<VoidCallback>(
-                          value: action.onPressed,
-                          enabled: action.onPressed != null,
-                          child: Semantics(
-                            identifier: action.id,
-                            child: Tooltip(
-                              message: action.label,
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    action.icon,
-                                    color: action.id == 'task-pull-request'
-                                        ? AppColors.brandPrimary
-                                        : null,
-                                  ),
-                                  SizedBox(width: AppSizes.p12),
-                                  Flexible(child: Text(action.label)),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                )
-              else
+    final content = Scaffold(
+      appBar: AppBar(
+        automaticallyImplyLeading: !widget.embedded,
+        titleSpacing: AppSizes.p8,
+        leadingWidth: AppSizes.minTouchTarget,
+        title: TerminalChromeHeader(task: _task),
+        actions: [
+          Semantics(
+            identifier: 'task-more',
+            child: PopupMenuButton<VoidCallback>(
+              tooltip: context.tr('태스크 메뉴'),
+              onSelected: (action) => action(),
+              itemBuilder: (_) => [
                 for (final action in headerActions)
-                  Semantics(
-                    identifier: action.id,
-                    child: IconButton(
-                      onPressed: action.onPressed,
-                      icon: Icon(action.icon),
-                      tooltip: action.label,
-                      color: action.id == 'task-pull-request'
-                          ? AppColors.brandPrimary
-                          : null,
+                  PopupMenuItem<VoidCallback>(
+                    value: action.onPressed,
+                    enabled: action.onPressed != null,
+                    child: Semantics(
+                      identifier: action.id,
+                      child: Tooltip(
+                        message: action.label,
+                        child: Row(
+                          children: [
+                            Icon(
+                              action.icon,
+                              color: action.id == 'task-pull-request'
+                                  ? AppColors.brandPrimary
+                                  : null,
+                            ),
+                            SizedBox(width: AppSizes.p12),
+                            Flexible(child: Text(action.label)),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
-            ],
-          ),
-          body: SafeArea(
-            child: Column(
-              children: [
-                Expanded(
-                  child: surfaces.when(
-                    loading: () => Center(child: CircularProgressIndicator()),
-                    error: (error, _) => _SurfacesUnavailable(
-                      reason: error is SurfaceUnavailableException
-                          ? error.reason
-                          : SurfaceUnavailableReason.unknown,
-                      message: switch (error) {
-                        DesktopUpdateRequiredException() =>
-                          desktopUpdateRequiredMessage,
-                        DesktopDisconnectedException() =>
-                          desktopDisconnectedMessage,
-                        DesktopCommandFailure() => error.message,
-                        _ => null,
-                      },
-                      onRetry: () => ref
-                          .read(surfacesProvider(_task.id).notifier)
-                          .startSession(),
-                    ),
-                    data: (value) => _buildSurfaces(
-                      value.surfaces,
-                      isCreating: value.isCreating,
-                      isMutating: value.isMutating,
-                    ),
-                  ),
-                ),
               ],
             ),
           ),
-        );
-      },
+        ],
+      ),
+      body: SafeArea(
+        child: Column(
+          children: [
+            Expanded(
+              child: surfaces.when(
+                loading: () => Center(child: CircularProgressIndicator()),
+                error: (error, _) => _SurfacesUnavailable(
+                  reason: error is SurfaceUnavailableException
+                      ? error.reason
+                      : SurfaceUnavailableReason.unknown,
+                  message: switch (error) {
+                    DesktopUpdateRequiredException() =>
+                      desktopUpdateRequiredMessage,
+                    DesktopDisconnectedException() =>
+                      desktopDisconnectedMessage,
+                    DesktopCommandFailure() => error.message,
+                    _ => null,
+                  },
+                  onRetry: () => ref
+                      .read(surfacesProvider(_task.id).notifier)
+                      .startSession(),
+                ),
+                data: (value) => _buildSurfaces(
+                  value.surfaces,
+                  isCreating: value.isCreating,
+                  isMutating: value.isMutating,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
     return CallbackShortcuts(
       bindings: {
@@ -829,11 +810,15 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
             excluding: chatMode || !routeActive,
             child: Offstage(
               offstage: chatMode,
-              child: MultiPaneTerminal(
+              child: PaneTerminalView(
+                key: ValueKey('${surfaces.sessionType.name}:${pane.id}'),
                 taskId: _task.id,
-                surfaces: surfaces,
-                selectedPane: pane,
-                onSelectedPane: (id) => setState(() => _selectedPaneId = id),
+                pane: pane,
+                canResize: surfaces.canResize,
+                canRefreshHistory: surfaces.canRefreshHistory,
+                canPrepareDirectConnection: surfaces.canPrepareDirectConnection,
+                sessionType: surfaces.sessionType,
+                canRespondToDeviceQueries: surfaces.canRespondToDeviceQueries,
                 isActive: !chatMode && routeActive,
                 onToggleChat: _toggleSelectedPaneChat,
               ),
@@ -904,7 +889,9 @@ class _PaneChatToggle extends ConsumerWidget {
           minimumSize: const Size(0, AppSizes.minTouchTarget),
           padding: const EdgeInsets.symmetric(horizontal: AppSizes.p12),
           side: BorderSide(
-            color: isChatMode ? AppColors.brandPrimary : context.colors.borderStrong,
+            color: isChatMode
+                ? AppColors.brandPrimary
+                : context.colors.borderStrong,
           ),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(AppSizes.radiusCard),
