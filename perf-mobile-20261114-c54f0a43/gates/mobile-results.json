@@ -1,0 +1,20 @@
+[
+  {
+    "command": "/home/crookedbot/fvm/versions/3.47.2/bin/flutter analyze",
+    "cwd": "mobile",
+    "exit": 0,
+    "log": "/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe/.git/worktrees/perf-kanvibe-mobile-performance/commit-skill-qa/analyze.log"
+  },
+  {
+    "command": "/home/crookedbot/fvm/versions/3.47.2/bin/dart format --output=none --set-exit-if-changed lib test",
+    "cwd": "mobile",
+    "exit": 0,
+    "log": "/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe/.git/worktrees/perf-kanvibe-mobile-performance/commit-skill-qa/format.log"
+  },
+  {
+    "command": "/home/crookedbot/fvm/versions/3.47.2/bin/flutter test",
+    "cwd": "mobile",
+    "exit": 0,
+    "log": "/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe/.git/worktrees/perf-kanvibe-mobile-performance/commit-skill-qa/flutter-test.log"
+  }
+]

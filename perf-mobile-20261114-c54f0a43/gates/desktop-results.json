@@ -1,0 +1,17 @@
+[
+  {
+    "command": "pnpm check",
+    "exit": 0,
+    "log": "/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe/.git/worktrees/perf-kanvibe-mobile-performance/commit-skill-qa/check.log"
+  },
+  {
+    "command": "pnpm test",
+    "exit": 0,
+    "log": "/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe/.git/worktrees/perf-kanvibe-mobile-performance/commit-skill-qa/test.log"
+  },
+  {
+    "command": "pnpm build",
+    "exit": 0,
+    "log": "/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe/.git/worktrees/perf-kanvibe-mobile-performance/commit-skill-qa/build.log"
+  }
+]

@@ -1,0 +1,97 @@
+
+> kanvibe@1.5.5 build /home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance
+> pnpm build:renderer && pnpm build:main
+
+
+> kanvibe@1.5.5 build:renderer /home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance
+> vite build
+
+vite v7.3.1 building client environment for production...
+transforming...
+✓ 2834 modules transformed.
+rendering chunks...
+computing gzip size...
+build/renderer/diagram-worker.html                                0.64 kB │ gzip:   0.36 kB
+build/renderer/index.html                                        16.02 kB │ gzip:   1.64 kB
+build/renderer/assets/terminalClipboard-DDGTF8rc.css              3.62 kB │ gzip:   0.99 kB
+build/renderer/assets/app-BVA-etuw.css                           80.36 kB │ gzip:  14.56 kB
+build/renderer/assets/channel-DPpfp7Mb.js                         0.12 kB │ gzip:   0.13 kB
+build/renderer/assets/init-Gi6I4Gst.js                            0.15 kB │ gzip:   0.13 kB
+build/renderer/assets/chunk-QZHKN3VN-vsFZcbao.js                  0.19 kB │ gzip:   0.16 kB
+build/renderer/assets/chunk-4BX2VUAB-igtRIMij.js                  0.23 kB │ gzip:   0.17 kB
+build/renderer/assets/chunk-55IACEB6-ChYvAw1-.js                  0.24 kB │ gzip:   0.21 kB
+build/renderer/assets/chunk-FMBD7UC4-BBvEJClo.js                  0.37 kB │ gzip:   0.27 kB
+build/renderer/assets/stateDiagram-v2-BHNVJYJU-D7-CPUn8.js        0.40 kB │ gzip:   0.29 kB
+build/renderer/assets/classDiagram-4FO5ZUOK-BlQCT7j6.js           0.47 kB │ gzip:   0.32 kB
+build/renderer/assets/classDiagram-v2-Q7XG4LA2-BlQCT7j6.js        0.47 kB │ gzip:   0.32 kB
+build/renderer/assets/chunk-2J33WTMH-CK6gfu-6.js                  0.51 kB │ gzip:   0.36 kB
+build/renderer/assets/infoDiagram-5YYISTIA-Cn9_jHPx.js            0.59 kB │ gzip:   0.41 kB
+build/renderer/assets/v4-BKrj-4V8.js                              0.89 kB │ gzip:   0.48 kB
+build/renderer/assets/NotFoundRoute-B9Zd1ZtU.js                   0.97 kB │ gzip:   0.48 kB
+build/renderer/assets/ordinal-Cboi1Yqb.js                         1.19 kB │ gzip:   0.57 kB
+build/renderer/assets/addon-fit-DX4qG4td.js                       1.21 kB │ gzip:   0.51 kB
+build/renderer/assets/diagramWorker-CYrv1MyB.js                   1.57 kB │ gzip:   0.86 kB
+build/renderer/assets/terminalClipboard-Bb_A2xut.js               1.77 kB │ gzip:   0.94 kB
+build/renderer/assets/chunk-ND2GUHAM-3JriJ9dB.js                  1.88 kB │ gzip:   0.83 kB
+build/renderer/assets/addon-web-links-DIbG5aQx.js                 2.39 kB │ gzip:   1.17 kB
+build/renderer/assets/diagram-5GNKFQAL-_81NUjPF.js                2.76 kB │ gzip:   1.37 kB
+build/renderer/assets/arc-D-Gh1Zfz.js                             3.44 kB │ gzip:   1.49 kB
+build/renderer/assets/diagram-LMA3HP47-C9fGrrSS.js                4.22 kB │ gzip:   1.83 kB
+build/renderer/assets/ShortcutSettingsRoute-CYGqpM7-.js           4.32 kB │ gzip:   1.72 kB
+build/renderer/assets/defaultLocale-DX6XiGOO.js                   4.69 kB │ gzip:   2.18 kB
+build/renderer/assets/pieDiagram-4H26LBE5-B_TrsppP.js             5.27 kB │ gzip:   2.34 kB
+build/renderer/assets/AiUsagePanel-DRNTJQ2U.js                    5.63 kB │ gzip:   1.99 kB
+build/renderer/assets/linear-ChBLncri.js                          5.66 kB │ gzip:   2.31 kB
+build/renderer/assets/diagram-2AECGRRQ-Ba3Wi5Yp.js                5.82 kB │ gzip:   2.46 kB
+build/renderer/assets/AiAccountsRoute-C52Xokov.js                 7.31 kB │ gzip:   2.60 kB
+build/renderer/assets/PaneLayoutRoute-Cz2iGfDk.js                10.22 kB │ gzip:   3.28 kB
+build/renderer/assets/stateDiagram-AJRCARHV-QcnJ5HJJ.js          10.36 kB │ gzip:   3.62 kB
+build/renderer/assets/TaskWorkspaceRoute-DXJTgO7_.js             10.62 kB │ gzip:   4.19 kB
+build/renderer/assets/diagram-KO2AKTUF-D3VAG7Zt.js               10.72 kB │ gzip:   4.14 kB
+build/renderer/assets/dagre-BM42HDAG-DlEvpMDA.js                 11.14 kB │ gzip:   4.11 kB
+build/renderer/assets/diagram-OG6HWLK6-CwFPK7ag.js               15.81 kB │ gzip:   5.66 kB
+build/renderer/assets/ishikawaDiagram-YF4QCWOH-D-j0apDH.js       17.47 kB │ gzip:   6.65 kB
+build/renderer/assets/kanban-definition-UN3LZRKU-DhaXVuql.js     20.30 kB │ gzip:   7.21 kB
+build/renderer/assets/SettingsRoute-Gy--9OC6.js                  20.55 kB │ gzip:   4.98 kB
+build/renderer/assets/mindmap-definition-RKZ34NQL-DlNoxK4X.js    22.60 kB │ gzip:   7.58 kB
+build/renderer/assets/sankeyDiagram-5OEKKPKP-Bi755rGm.js         23.20 kB │ gzip:   8.57 kB
+build/renderer/assets/journeyDiagram-JHISSGLW-DB1LGTxP.js        23.57 kB │ gzip:   8.35 kB
+build/renderer/assets/graph--OzhPTMs.js                          23.92 kB │ gzip:   8.32 kB
+build/renderer/assets/wardleyDiagram-YWT4CUSO-C2PR-TCU.js        25.51 kB │ gzip:   6.79 kB
+build/renderer/assets/erDiagram-TEJ5UH35-BLG7aTEF.js             26.86 kB │ gzip:   9.35 kB
+build/renderer/assets/gitGraphDiagram-PVQCEYII-Ch12exHO.js       29.42 kB │ gzip:   8.70 kB
+build/renderer/assets/timeline-definition-PNZ67QCA-DoYNcLyA.js   30.83 kB │ gzip:  10.16 kB
+build/renderer/assets/requirementDiagram-4Y6WPE33-BuztfvCG.js    31.01 kB │ gzip:   9.74 kB
+build/renderer/assets/DiffRoute-D4BQyJGp.js                      31.59 kB │ gzip:   9.94 kB
+build/renderer/assets/dayjs.min-BvYt32Ps.js                      33.55 kB │ gzip:  13.05 kB
+build/renderer/assets/quadrantDiagram-W4KKPZXB-BFvQLBj4.js       34.02 kB │ gzip:   9.99 kB
+build/renderer/assets/layout-SsrduOYp.js                         35.84 kB │ gzip:  12.87 kB
+build/renderer/assets/chunk-AQP2D5EJ-BOIMVwIZ.js                 37.11 kB │ gzip:  12.11 kB
+build/renderer/assets/xychartDiagram-2RQKCTM6-CgkpJUqM.js        40.40 kB │ gzip:  11.56 kB
+build/renderer/assets/vennDiagram-CIIHVFJN-CC2FkmQO.js           41.43 kB │ gzip:  15.48 kB
+build/renderer/assets/chunk-727SXJPM-BP3SmnoQ.js                 48.98 kB │ gzip:  15.72 kB
+build/renderer/assets/flowDiagram-I6XJVG4X-3ayHlAOk.js           60.51 kB │ gzip:  19.37 kB
+build/renderer/assets/ganttDiagram-6RSMTGT7-DiZpHINb.js          69.58 kB │ gzip:  23.48 kB
+build/renderer/assets/c4Diagram-AAUBKEIU-BuJalPeA.js             69.95 kB │ gzip:  19.64 kB
+build/renderer/assets/TaskDetailRoute-DvDWR7jP.js                71.26 kB │ gzip:  21.02 kB
+build/renderer/assets/blockDiagram-GPEHLZMM-o0bLdDmR.js          73.72 kB │ gzip:  21.26 kB
+build/renderer/assets/cose-bilkent-S5V4N54A-BxM1Xdmv.js          81.71 kB │ gzip:  22.48 kB
+build/renderer/assets/sequenceDiagram-3UESZ5HK-zSWFnNgt.js      116.87 kB │ gzip:  31.04 kB
+build/renderer/assets/architectureDiagram-3BPJPVTR-BG0jMmaV.js  149.44 kB │ gzip:  42.19 kB
+build/renderer/assets/useTerminalTabs-CFbX0geS.js               219.24 kB │ gzip:  72.73 kB
+build/renderer/assets/katex-HP8lGamR.js                         261.31 kB │ gzip:  77.57 kB
+build/renderer/assets/xterm-B-qIQCd3.js                         329.31 kB │ gzip:  83.04 kB
+build/renderer/assets/cytoscape.esm-D3_iZ_3b.js                 442.92 kB │ gzip: 141.93 kB
+build/renderer/assets/mermaid.core-BuXNInjq.js                  574.21 kB │ gzip: 132.32 kB
+build/renderer/assets/wardley-L42UT6IY-B6DwiAlE.js              612.68 kB │ gzip: 147.52 kB
+build/renderer/assets/app-D6bkHkuc.js                           928.61 kB │ gzip: 272.03 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 14.10s
+
+> kanvibe@1.5.5 build:main /home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance
+> node scripts/build-desktop-main.cjs
+

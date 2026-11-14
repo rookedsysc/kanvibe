@@ -1,0 +1,2662 @@
+
+> kanvibe@1.5.5 pretest /home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance
+> node scripts/ensure-native-runtime.cjs
+
+
+> kanvibe@1.5.5 test /home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance
+> vitest run
+
+
+ RUN  v4.0.18 /home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance
+
+stderr | src/desktop/renderer/routes/__tests__/TaskDetailRoute.test.tsx > TaskDetailRoute > VS Code 실행 요청이 던지면 실패 알림을 띄운다
+VS Code 실행 요청 실패: Error: db down
+    at /home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/desktop/renderer/routes/__tests__/TaskDetailRoute.test.tsx:1261:46
+    at file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/@vitest/runner/dist/index.js:145:11
+    at file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/@vitest/runner/dist/index.js:915:26
+    at file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/@vitest/runner/dist/index.js:1243:20
+    at new Promise (<anonymous>)
+    at runWithTimeout (file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/@vitest/runner/dist/index.js:1209:10)
+    at file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/@vitest/runner/dist/index.js:1653:37
+    at Traces.$ (file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/vitest/dist/chunks/traces.CCmnQaNT.js:142:27)
+    at trace (file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/vitest/dist/chunks/test.B8ej_ZHS.js:239:21)
+    at runTest (file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/@vitest/runner/dist/index.js:1653:12)
+
+ ✓ |dom| src/lib/__tests__/kanvibeTargetsConcurrency.test.ts (20 tests) 6382ms
+   ✓ preserves all concurrent distinct clients with local repository access  369ms
+   ✓ preserves all concurrent distinct clients with remote repository access  600ms
+   ✓ preserves all concurrent distinct clients with mixed repository access  340ms
+     ✓ keeps registrations made by two separate processes  980ms
+   ✓ does not reclaim a local owner from another host by its PID  500ms
+   ✓ preserves an ownerless local lock and reports its path  458ms
+   ✓ does not reclaim a fixture-host owner from another host by its PID  617ms
+   ✓ preserves an ownerless fixture-host lock and reports its path  589ms
+   ✓ publishes only complete JSON while fixture-host readers run during writes  1232ms
+ ✓ |dom| src/desktop/renderer/routes/__tests__/TaskDetailRoute.test.tsx (85 tests) 8137ms
+     ✓ 채팅 상세 메시지는 markdown과 mermaid 다이어그램을 렌더링하고 위험한 HTML은 제거한다  301ms
+     ✓ 역할 필터 변경 뒤 늦게 도착한 이전 메시지 페이지를 상세에 섞지 않는다  412ms
+     ✓ 채팅 메시지별 복사 버튼으로 원문을 clipboard에 복사한다  404ms
+     ✓ AI 채팅 상세는 사용자 입력, 시스템 입력, AI 답변과 추가 역할 필터를 전달한다  356ms
+     ✓ 대화에서 기록으로 돌아가면 세션 목록을 유지하고 다시 선택할 수 있다  303ms
+     ✓ 이전 메시지를 추가해도 읽던 위치를 보존하며 최신 메시지 버튼으로 돌아간다  463ms
+ ✓ |dom| src/lib/__tests__/herdr.test.ts (101 tests) 5160ms
+     ✓ 응답하지 않는 서버는 시간 초과로 실패하고 변경 요청을 재전송하지 않는다  5004ms
+ ✓ |dom| src/lib/__tests__/kanvibeHooksInstaller.test.ts (53 tests) 3728ms
+     ✓ invalidates OpenCode registration after a bulk file installation  422ms
+     ✓ 다른 task의 등록 누락을 이전 task의 검증으로 감추지 않는다  1515ms
+     ✓ 쓰기 실패는 실패로 남고 다음 접속에서 재시도한다  1513ms
+ ✓ |dom| src/lib/__tests__/herdrClientProxy.test.ts (19 tests) 2323ms
+     ✓ 큰 분할 프레임은 입력 크기에 비례한 복사로 원문을 중계한다  2252ms
+ ✓ |dom| src/desktop/renderer/routes/__tests__/TaskWorkspaceRoute.test.tsx (6 tests) 3351ms
+     ✓ 왼쪽 리스트에서 다른 task를 고르면 오른쪽 터미널이 그 task로 바뀐다  328ms
+     ✓ 검색으로 불러온 DONE과 더보기 중복 응답은 다음 페이지를 건너뛰지 않는다  2367ms
+ ✓ |dom| src/desktop/renderer/components/__tests__/PaneChatComposer.test.tsx (16 tests) 3105ms
+     ✓ supports skill button and pointer selection, command/file lookup, Escape, and IME  694ms
+     ✓ ignores stale catalog responses and retries a visible lookup error  659ms
+ ✓ |dom| src/lib/__tests__/hostFileAccess.test.ts (38 tests) 3126ms
+     ✓ 8MiB 현재 파일의 base64 요청도 callback에 전달하고 더 작은 결과로 교체한다  1158ms
+     ✓ 원격 기록 명령은 POSIX sh에서 실행 가능하고 기존 파일을 덮지 않는다  463ms
+stderr | src/desktop/renderer/components/__tests__/WorkspaceTaskList.test.tsx > WorkspaceTaskList > 검색어는 제목·브랜치·프로젝트 이름에서 대소문자 구분 없이 찾는다
+An update to WorkspaceTaskList inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+
+stderr | src/desktop/renderer/components/__tests__/WorkspaceTaskList.test.tsx > WorkspaceTaskList > 상태 칩은 여러 개를 함께 고를 수 있고, 다시 누르면 해제된다
+An update to WorkspaceTaskList inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+
+stderr | src/components/__tests__/Board.test.tsx > Board defaultSessionType sync > 데스크톱 필터는 여러 호스트를 선택하고 개별 해제와 전체 복원을 지원한다
+An update to Board inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+
+stderr | src/components/__tests__/Board.test.tsx > Board defaultSessionType sync > 설정 버튼을 누르면 현재 locale의 settings 페이지로 이동한다
+An update to Board inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to Board inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+
+stderr | src/components/__tests__/Board.test.tsx > Board defaultSessionType sync > 프로젝트/태스크 필터를 전체 프로젝트 필터 왼쪽에 같은 높이/포인트 컬러로 렌더링한다
+An update to Board inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+
+stderr | src/components/__tests__/Board.test.tsx > Board defaultSessionType sync > task kind filter 버튼을 프로젝트 필터 옆에 렌더링하고 선택 변경을 요청한다
+An update to Board inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to Board inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+
+stderr | src/components/__tests__/Board.test.tsx > Board defaultSessionType sync > Project 필터 선택 시 기본 브랜치 root task만 표시한다
+An update to Board inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to Board inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+
+stderr | src/components/__tests__/Board.test.tsx > Board defaultSessionType sync > Task 필터 선택 시 project root를 제외한 작업만 표시한다
+An update to Board inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to Board inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+
+stderr | src/components/__tests__/Board.test.tsx > Board defaultSessionType sync > All 필터 선택 시 project root와 일반 작업을 모두 표시한다
+An update to Board inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to Board inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+
+stderr | src/components/__tests__/Board.test.tsx > Board defaultSessionType sync > 인증 UI가 없는 보드 상단에는 로그아웃 버튼을 표시하지 않는다
+An update to Board inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to Board inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+
+stderr | src/desktop/renderer/components/__tests__/WorkspaceTaskList.test.tsx > WorkspaceTaskList > 같은 작업을 재검색해도 새 검색 요청이면 필터로 숨긴 선택을 다시 보여 준다
+An update to WorkspaceTaskList inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+
+stderr | src/desktop/renderer/components/__tests__/WorkspaceTaskList.test.tsx > WorkspaceTaskList > 선택이 숨겨져 있으면 목록 포커스 단축키는 첫 표시 작업도 함께 선택한다
+An update to WorkspaceTaskList inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+
+ ✓ |dom| src/desktop/renderer/components/__tests__/WorkspaceTaskList.test.tsx (17 tests) 2752ms
+     ✓ ↑↓는 정렬된 표시 순서로 선택하고 경계에서 멈춘다  320ms
+ ✓ |dom| src/components/__tests__/Board.test.tsx (46 tests) 2696ms
+     ✓ 데스크톱 필터는 여러 호스트를 선택하고 개별 해제와 전체 복원을 지원한다  704ms
+ ✓ |dom| src/components/__tests__/MobilePairingSettings.test.tsx (13 tests) 1965ms
+     ✓ 데스크탑이 버린 코드는 남은 시간이 있어도 화면에서 지운다  1312ms
+ ✓ |dom| src/lib/__tests__/hookSocketTransport.test.ts (59 tests) 2446ms
+ ✓ |dom| src/lib/__tests__/taskCliScript.test.ts (23 tests) 1577ms
+       ✓ 원격 실행처럼 셸을 두 번 거쳐도 본문과 인자가 그대로 전달된다  351ms
+ ✓ |dom| src/desktop/renderer/components/__tests__/Terminal.test.tsx (29 tests) 1317ms
+ ✓ |dom| src/components/__tests__/HooksStatusDialog.test.tsx (26 tests) 368ms
+ ✓ |dom| src/components/__tests__/NotificationCenterButton.test.tsx (19 tests) 1103ms
+ ✓ |dom| src/components/__tests__/TaskDetailTitleCard.test.tsx (14 tests) 689ms
+ ✓ |dom| src/desktop/renderer/components/__tests__/PaneChatView.test.tsx (12 tests) 1142ms
+stderr | src/desktop/renderer/__tests__/App.test.tsx > App > 보드 화면에서도 창 닫기 명령을 받아 창을 닫는다
+단축키 설정 조회 실패: Error: [vitest] No "getShortcutBindings" export is defined on the "@/desktop/renderer/actions/appSettings" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError (file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17)
+    at Object.get (file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16)
+    at loadShortcutBindings (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/desktop/renderer/utils/shortcutBindings.ts:80:35)
+    at /home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/desktop/renderer/App.tsx:121:10
+    at Object.react_stack_bottom_frame (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/react-dom/cjs/react-dom-client.development.js:25989:20)
+    at runWithFiberInDEV (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/react-dom/cjs/react-dom-client.development.js:874:13)
+    at commitHookEffectListMount (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/react-dom/cjs/react-dom-client.development.js:13249:29)
+    at commitHookPassiveMountEffects (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/react-dom/cjs/react-dom-client.development.js:13336:11)
+    at commitPassiveMountOnFiber (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/react-dom/cjs/react-dom-client.development.js:15484:13)
+    at recursivelyTraversePassiveMountEffects (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/react-dom/cjs/react-dom-client.development.js:15439:11) {
+  codeFrame: 'vi.mock(import("@/desktop/renderer/actions/appSettings"), async (importOriginal) => {\n' +
+    '  const actual = await importOriginal()\n' +
+    '  return {\n' +
+    '    ...actual,\n' +
+    '    // your mocked methods\n' +
+    '  }\n' +
+    '})'
+}
+
+stderr | src/desktop/renderer/__tests__/App.test.tsx > App > 보드에서 Mod+W 키 입력만으로도 창을 닫는다
+단축키 설정 조회 실패: Error: [vitest] No "getShortcutBindings" export is defined on the "@/desktop/renderer/actions/appSettings" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError (file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17)
+    at Object.get (file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16)
+    at loadShortcutBindings (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/desktop/renderer/utils/shortcutBindings.ts:80:35)
+    at /home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/desktop/renderer/App.tsx:121:10
+    at Object.react_stack_bottom_frame (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/react-dom/cjs/react-dom-client.development.js:25989:20)
+    at runWithFiberInDEV (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/react-dom/cjs/react-dom-client.development.js:874:13)
+    at commitHookEffectListMount (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/react-dom/cjs/react-dom-client.development.js:13249:29)
+    at commitHookPassiveMountEffects (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/react-dom/cjs/react-dom-client.development.js:13336:11)
+    at commitPassiveMountOnFiber (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/react-dom/cjs/react-dom-client.development.js:15484:13)
+    at recursivelyTraversePassiveMountEffects (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/react-dom/cjs/react-dom-client.development.js:15439:11) {
+  codeFrame: 'vi.mock(import("@/desktop/renderer/actions/appSettings"), async (importOriginal) => {\n' +
+    '  const actual = await importOriginal()\n' +
+    '  return {\n' +
+    '    ...actual,\n' +
+    '    // your mocked methods\n' +
+    '  }\n' +
+    '})'
+}
+
+stderr | src/desktop/renderer/__tests__/App.test.tsx > App > 태스크 상세에서 Mod+W를 눌러도 App은 창을 닫지 않는다
+단축키 설정 조회 실패: Error: [vitest] No "getShortcutBindings" export is defined on the "@/desktop/renderer/actions/appSettings" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError (file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17)
+    at Object.get (file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16)
+    at loadShortcutBindings (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/desktop/renderer/utils/shortcutBindings.ts:80:35)
+    at /home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/desktop/renderer/App.tsx:121:10
+    at Object.react_stack_bottom_frame (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/react-dom/cjs/react-dom-client.development.js:25989:20)
+    at runWithFiberInDEV (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/react-dom/cjs/react-dom-client.development.js:874:13)
+    at commitHookEffectListMount (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/react-dom/cjs/react-dom-client.development.js:13249:29)
+    at commitHookPassiveMountEffects (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/react-dom/cjs/react-dom-client.development.js:13336:11)
+    at commitPassiveMountOnFiber (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/react-dom/cjs/react-dom-client.development.js:15484:13)
+    at recursivelyTraversePassiveMountEffects (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/react-dom/cjs/react-dom-client.development.js:15439:11) {
+  codeFrame: 'vi.mock(import("@/desktop/renderer/actions/appSettings"), async (importOriginal) => {\n' +
+    '  const actual = await importOriginal()\n' +
+    '  return {\n' +
+    '    ...actual,\n' +
+    '    // your mocked methods\n' +
+    '  }\n' +
+    '})'
+}
+
+stderr | src/desktop/renderer/__tests__/App.test.tsx > App > 창 닫기가 아닌 탭 명령은 App이 처리하지 않는다
+단축키 설정 조회 실패: Error: [vitest] No "getShortcutBindings" export is defined on the "@/desktop/renderer/actions/appSettings" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError (file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17)
+    at Object.get (file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16)
+    at loadShortcutBindings (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/desktop/renderer/utils/shortcutBindings.ts:80:35)
+    at /home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/desktop/renderer/App.tsx:121:10
+    at Object.react_stack_bottom_frame (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/react-dom/cjs/react-dom-client.development.js:25989:20)
+    at runWithFiberInDEV (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/react-dom/cjs/react-dom-client.development.js:874:13)
+    at commitHookEffectListMount (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/react-dom/cjs/react-dom-client.development.js:13249:29)
+    at commitHookPassiveMountEffects (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/react-dom/cjs/react-dom-client.development.js:13336:11)
+    at commitPassiveMountOnFiber (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/react-dom/cjs/react-dom-client.development.js:15484:13)
+    at recursivelyTraversePassiveMountEffects (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/react-dom/cjs/react-dom-client.development.js:15439:11) {
+  codeFrame: 'vi.mock(import("@/desktop/renderer/actions/appSettings"), async (importOriginal) => {\n' +
+    '  const actual = await importOriginal()\n' +
+    '  return {\n' +
+    '    ...actual,\n' +
+    '    // your mocked methods\n' +
+    '  }\n' +
+    '})'
+}
+
+stderr | src/desktop/renderer/__tests__/App.test.tsx > App > shows board route on index
+단축키 설정 조회 실패: Error: [vitest] No "getShortcutBindings" export is defined on the "@/desktop/renderer/actions/appSettings" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError (file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17)
+    at Object.get (file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16)
+    at loadShortcutBindings (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/desktop/renderer/utils/shortcutBindings.ts:80:35)
+    at /home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/desktop/renderer/App.tsx:121:10
+    at Object.react_stack_bottom_frame (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/react-dom/cjs/react-dom-client.development.js:25989:20)
+    at runWithFiberInDEV (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/react-dom/cjs/react-dom-client.development.js:874:13)
+    at commitHookEffectListMount (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/react-dom/cjs/react-dom-client.development.js:13249:29)
+    at commitHookPassiveMountEffects (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/react-dom/cjs/react-dom-client.development.js:13336:11)
+    at commitPassiveMountOnFiber (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/react-dom/cjs/react-dom-client.development.js:15484:13)
+    at recursivelyTraversePassiveMountEffects (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/react-dom/cjs/react-dom-client.development.js:15439:11) {
+  codeFrame: 'vi.mock(import("@/desktop/renderer/actions/appSettings"), async (importOriginal) => {\n' +
+    '  const actual = await importOriginal()\n' +
+    '  return {\n' +
+    '    ...actual,\n' +
+    '    // your mocked methods\n' +
+    '  }\n' +
+    '})'
+}
+
+stderr | src/desktop/renderer/__tests__/App.test.tsx > App > shows settings route
+단축키 설정 조회 실패: Error: [vitest] No "getShortcutBindings" export is defined on the "@/desktop/renderer/actions/appSettings" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError (file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17)
+    at Object.get (file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16)
+    at loadShortcutBindings (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/desktop/renderer/utils/shortcutBindings.ts:80:35)
+    at /home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/desktop/renderer/App.tsx:121:10
+    at Object.react_stack_bottom_frame (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/react-dom/cjs/react-dom-client.development.js:25989:20)
+    at runWithFiberInDEV (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/react-dom/cjs/react-dom-client.development.js:874:13)
+    at commitHookEffectListMount (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/react-dom/cjs/react-dom-client.development.js:13249:29)
+    at commitHookPassiveMountEffects (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/react-dom/cjs/react-dom-client.development.js:13336:11)
+    at commitPassiveMountOnFiber (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/react-dom/cjs/react-dom-client.development.js:15484:13)
+    at recursivelyTraversePassiveMountEffects (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/react-dom/cjs/react-dom-client.development.js:15439:11) {
+  codeFrame: 'vi.mock(import("@/desktop/renderer/actions/appSettings"), async (importOriginal) => {\n' +
+    '  const actual = await importOriginal()\n' +
+    '  return {\n' +
+    '    ...actual,\n' +
+    '    // your mocked methods\n' +
+    '  }\n' +
+    '})'
+}
+
+ ✓ |dom| src/desktop/renderer/routes/__tests__/ShortcutSettingsRoute.test.tsx (14 tests) 542ms
+stderr | src/desktop/renderer/__tests__/App.test.tsx > App > debounces board update events and refreshes all visible data
+단축키 설정 조회 실패: Error: [vitest] No "getShortcutBindings" export is defined on the "@/desktop/renderer/actions/appSettings" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError (file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17)
+    at Object.get (file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16)
+    at loadShortcutBindings (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/desktop/renderer/utils/shortcutBindings.ts:80:35)
+    at /home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/desktop/renderer/App.tsx:121:10
+    at Object.react_stack_bottom_frame (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/react-dom/cjs/react-dom-client.development.js:25989:20)
+    at runWithFiberInDEV (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/react-dom/cjs/react-dom-client.development.js:874:13)
+    at commitHookEffectListMount (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/react-dom/cjs/react-dom-client.development.js:13249:29)
+    at commitHookPassiveMountEffects (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/react-dom/cjs/react-dom-client.development.js:13336:11)
+    at commitPassiveMountOnFiber (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/react-dom/cjs/react-dom-client.development.js:15484:13)
+    at recursivelyTraversePassiveMountEffects (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/react-dom/cjs/react-dom-client.development.js:15439:11) {
+  codeFrame: 'vi.mock(import("@/desktop/renderer/actions/appSettings"), async (importOriginal) => {\n' +
+    '  const actual = await importOriginal()\n' +
+    '  return {\n' +
+    '    ...actual,\n' +
+    '    // your mocked methods\n' +
+    '  }\n' +
+    '})'
+}
+
+stderr | src/desktop/renderer/__tests__/App.test.tsx > App > does not show a background sync review dialog from pending activation on route entry
+단축키 설정 조회 실패: Error: [vitest] No "getShortcutBindings" export is defined on the "@/desktop/renderer/actions/appSettings" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError (file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17)
+    at Object.get (file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16)
+    at loadShortcutBindings (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/desktop/renderer/utils/shortcutBindings.ts:80:35)
+    at /home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/desktop/renderer/App.tsx:121:10
+    at Object.react_stack_bottom_frame (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/react-dom/cjs/react-dom-client.development.js:25989:20)
+    at runWithFiberInDEV (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/react-dom/cjs/react-dom-client.development.js:874:13)
+    at commitHookEffectListMount (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/react-dom/cjs/react-dom-client.development.js:13249:29)
+    at commitHookPassiveMountEffects (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/react-dom/cjs/react-dom-client.development.js:13336:11)
+    at commitPassiveMountOnFiber (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/react-dom/cjs/react-dom-client.development.js:15484:13)
+    at recursivelyTraversePassiveMountEffects (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/react-dom/cjs/react-dom-client.development.js:15439:11) {
+  codeFrame: 'vi.mock(import("@/desktop/renderer/actions/appSettings"), async (importOriginal) => {\n' +
+    '  const actual = await importOriginal()\n' +
+    '  return {\n' +
+    '    ...actual,\n' +
+    '    // your mocked methods\n' +
+    '  }\n' +
+    '})'
+}
+
+stderr | src/desktop/renderer/__tests__/App.test.tsx > App > shows a background sync review dialog when a notification is activated
+단축키 설정 조회 실패: Error: [vitest] No "getShortcutBindings" export is defined on the "@/desktop/renderer/actions/appSettings" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError (file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17)
+    at Object.get (file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16)
+    at loadShortcutBindings (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/desktop/renderer/utils/shortcutBindings.ts:80:35)
+    at /home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/desktop/renderer/App.tsx:121:10
+    at Object.react_stack_bottom_frame (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/react-dom/cjs/react-dom-client.development.js:25989:20)
+    at runWithFiberInDEV (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/react-dom/cjs/react-dom-client.development.js:874:13)
+    at commitHookEffectListMount (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/react-dom/cjs/react-dom-client.development.js:13249:29)
+    at commitHookPassiveMountEffects (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/react-dom/cjs/react-dom-client.development.js:13336:11)
+    at commitPassiveMountOnFiber (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/react-dom/cjs/react-dom-client.development.js:15484:13)
+    at recursivelyTraversePassiveMountEffects (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/react-dom/cjs/react-dom-client.development.js:15439:11) {
+  codeFrame: 'vi.mock(import("@/desktop/renderer/actions/appSettings"), async (importOriginal) => {\n' +
+    '  const actual = await importOriginal()\n' +
+    '  return {\n' +
+    '    ...actual,\n' +
+    '    // your mocked methods\n' +
+    '  }\n' +
+    '})'
+}
+
+ ✓ |dom| src/desktop/renderer/__tests__/App.test.tsx (9 tests) 835ms
+     ✓ 태스크 상세에서 Mod+W를 눌러도 App은 창을 닫지 않는다  309ms
+     ✓ shows settings route  306ms
+ ✓ |dom| src/desktop/renderer/components/__tests__/CommandPaletteDialog.test.tsx (11 tests) 589ms
+ ✓ |dom| src/desktop/renderer/components/__tests__/AiChatFilePreview.test.tsx (12 tests) 770ms
+ ✓ |dom| src/desktop/renderer/components/__tests__/TaskQuickSearchDialog.test.tsx (18 tests) 679ms
+ ✓ |dom| src/desktop/renderer/components/__tests__/DiffPageClient.test.tsx (9 tests) 296ms
+ ✓ |dom| src/lib/__tests__/remoteTerminalTransport.test.ts (3 tests) 723ms
+     ✓ direct와 A relay의 연속 입력이 같은 B controller 하나에 도착한다  412ms
+ ✓ |dom| src/components/__tests__/CreateTaskModal.test.tsx (12 tests) 687ms
+ ✓ |dom| src/components/__tests__/TaskCard.test.tsx (34 tests) 661ms
+ ✓ |dom| src/desktop/renderer/routes/__tests__/PaneLayoutRoute.test.tsx (6 tests) 971ms
+     ✓ does not mount an empty editor after timeout and hydrates the delayed saved layout  363ms
+ ✓ |dom| src/lib/__tests__/kanvibeProjectConcurrency.test.ts (6 tests) 855ms
+   ✓ preserves concurrent color and high priority with remote repository access  307ms
+ ✓ |dom| src/components/__tests__/ProjectSettings.test.tsx (11 tests) 1148ms
+     ✓ 테마 설정을 변경하면 즉시 DOM 테마와 저장 값을 갱신한다  344ms
+ ✓ |dom| src/components/__tests__/BranchTaskModal.test.tsx (7 tests) 631ms
+ ✓ |dom| src/components/__tests__/BoardSortPicker.test.tsx (7 tests) 749ms
+ ✓ |dom| src/components/__tests__/FolderSearchInput.test.tsx (8 tests) 628ms
+ ✓ |dom| src/components/__tests__/CountUpNumber.test.tsx (3 tests) 490ms
+     ✓ 값이 바뀌면 굴러가는 동안 표시하고 결국 새 값에 도달한다  454ms
+ ✓ |dom| src/components/__tests__/DoneStatusButton.test.tsx (7 tests) 371ms
+ ✓ |dom| src/desktop/renderer/components/__tests__/ReleaseUpdateDialog.test.tsx (12 tests) 535ms
+ ✓ |dom| src/components/__tests__/HooksStatusCard.test.tsx (7 tests) 567ms
+ ✓ |dom| src/components/__tests__/BranchSearchInput.test.tsx (3 tests) 574ms
+     ✓ 드롭다운이 열린 상태에서도 Tab은 다음 입력창으로 이동한다  320ms
+ ✓ |dom| src/components/__tests__/ProjectRegistryDialog.test.tsx (11 tests) 444ms
+ ✓ |dom| src/desktop/renderer/__tests__/navigation.test.tsx (8 tests) 438ms
+stderr | src/lib/__tests__/terminal.test.ts > attachLocalSession — tmux 세션 자동 생성 > should keep attaching to an alive local session when hiding the tmux status bar fails
+[터미널] 기존 tmux 세션 상태바 정리 실패: Error: set-option failed
+    at /home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/lib/__tests__/terminal.test.ts:182:15
+    at Mock (file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/@vitest/spy/dist/index.js:285:34)
+    at execSync (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/lib/__tests__/terminal.test.ts:18:39)
+    at hideExistingLocalTmuxStatusBar (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/lib/terminal.ts:484:5)
+    at spawnLocalSession (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/lib/terminal.ts:738:7)
+    at /home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/lib/terminal.ts:689:5
+    at trackTerminalCreation (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/lib/terminal.ts:367:19)
+    at attachLocalSession (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/lib/terminal.ts:688:9)
+    at /home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/lib/__tests__/terminal.test.ts:188:18
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+
+stderr | src/lib/__tests__/terminal.test.ts > attachLocalSession — tmux 세션 자동 생성 > should retry local bootstrap without the user tmux config when the first attempt fails
+[터미널] 사용자 tmux 설정으로 세션 생성에 실패해 설정 없이 재시도합니다: Error: no sessions
+    at /home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/lib/__tests__/terminal.test.ts:410:17
+    at Mock (file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/@vitest/spy/dist/index.js:285:34)
+    at execSync (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/lib/__tests__/terminal.test.ts:18:39)
+    at runBootstrap (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/lib/terminal.ts:510:5)
+    at bootstrapLocalTmuxSession (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/lib/terminal.ts:520:5)
+    at spawnLocalSession (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/lib/terminal.ts:726:9)
+    at /home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/lib/terminal.ts:689:5
+    at trackTerminalCreation (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/lib/terminal.ts:367:19)
+    at attachLocalSession (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/lib/terminal.ts:688:9)
+    at /home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/lib/__tests__/terminal.test.ts:417:11
+
+stderr | src/lib/__tests__/terminal.test.ts > attachLocalSession — tmux 세션 자동 생성 > should close ws when session creation fails
+[터미널] 사용자 tmux 설정으로 세션 생성에 실패해 설정 없이 재시도합니다: Error: tmux creation failed
+    at /home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/lib/__tests__/terminal.test.ts:530:15
+    at Mock (file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/@vitest/spy/dist/index.js:285:34)
+    at execSync (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/lib/__tests__/terminal.test.ts:18:39)
+    at runBootstrap (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/lib/terminal.ts:510:5)
+    at bootstrapLocalTmuxSession (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/lib/terminal.ts:520:5)
+    at spawnLocalSession (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/lib/terminal.ts:726:9)
+    at /home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/lib/terminal.ts:689:5
+    at trackTerminalCreation (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/lib/terminal.ts:367:19)
+    at attachLocalSession (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/lib/terminal.ts:688:9)
+    at /home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/lib/__tests__/terminal.test.ts:536:18
+[터미널] tmux 세션 자동 생성 실패: Error: tmux creation failed
+    at /home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/lib/__tests__/terminal.test.ts:530:15
+    at Mock (file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/@vitest/spy/dist/index.js:285:34)
+    at execSync (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/lib/__tests__/terminal.test.ts:18:39)
+    at runBootstrap (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/lib/terminal.ts:510:5)
+    at bootstrapLocalTmuxSession (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/lib/terminal.ts:527:5)
+    at spawnLocalSession (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/lib/terminal.ts:726:9)
+    at /home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/lib/terminal.ts:689:5
+    at trackTerminalCreation (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/lib/terminal.ts:367:19)
+    at attachLocalSession (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/lib/terminal.ts:688:9)
+    at /home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/lib/__tests__/terminal.test.ts:536:18
+
+stdout | src/lib/__tests__/terminal.test.ts > attachLocalSession — zellij 세션 생성 및 레이아웃 적용 > should spawn new zellij session with --session flag when session does not exist
+[터미널] zellij sessionName="feat-login", needsCreation=true, cwd=/workspace
+
+stdout | src/lib/__tests__/terminal.test.ts > attachLocalSession — zellij 세션 생성 및 레이아웃 적용 > should include --new-session-with-layout when KDL layout file exists
+[터미널] zellij sessionName="feat-login", needsCreation=true, cwd=/workspace
+
+stdout | src/lib/__tests__/terminal.test.ts > attachLocalSession — zellij 세션 생성 및 레이아웃 적용 > should attach to existing zellij session without creating new one
+[터미널] zellij sessionName="feat-login", needsCreation=false, cwd=/workspace
+
+stdout | src/lib/__tests__/terminal.test.ts > attachLocalSession — zellij 세션 생성 및 레이아웃 적용 > should not include layout flag when layout file does not exist
+[터미널] zellij sessionName="feat-login", needsCreation=true, cwd=/workspace
+
+stdout | src/lib/__tests__/terminal.test.ts > attachLocalSession — zellij 세션 생성 및 레이아웃 적용 > should skip layout file check when cwd is not provided
+[터미널] zellij sessionName="feat-login", needsCreation=true, cwd=undefined
+
+stdout | src/lib/__tests__/terminal.test.ts > attachLocalSession — zellij 세션 생성 및 레이아웃 적용 > should treat an exited local zellij session as missing so it can be recreated
+[터미널] zellij sessionName="feat-login", needsCreation=true, cwd=/workspace
+
+stderr | src/lib/__tests__/terminal.test.ts > pane 채팅 plain terminal 화면 > 색상과 커서 제어 바이트 대신 xterm에 그려진 현재 글자를 반환한다
+Error: cols must be numeric, value: undefined
+    at a._sanitizeAndValidateOption (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/@xterm/headless/lib-headless/xterm-headless.js:1:130829)
+    at new a (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/@xterm/headless/lib-headless/xterm-headless.js:1:129060)
+    at new b (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/@xterm/headless/lib-headless/xterm-headless.js:1:4334)
+    at new o (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/@xterm/headless/lib-headless/xterm-headless.js:1:135877)
+    at new l (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/@xterm/headless/lib-headless/xterm-headless.js:1:179085)
+    at createTerminalScreen (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/lib/terminal.ts:283:20)
+    at registerTerminalEntry (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/lib/terminal.ts:297:20)
+    at spawnLocalSession (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/lib/terminal.ts:788:3)
+Error: rows must be numeric, value: undefined
+    at a._sanitizeAndValidateOption (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/@xterm/headless/lib-headless/xterm-headless.js:1:130829)
+    at new a (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/@xterm/headless/lib-headless/xterm-headless.js:1:129060)
+    at new b (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/@xterm/headless/lib-headless/xterm-headless.js:1:4334)
+    at new o (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/@xterm/headless/lib-headless/xterm-headless.js:1:135877)
+    at new l (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/@xterm/headless/lib-headless/xterm-headless.js:1:179085)
+    at createTerminalScreen (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/lib/terminal.ts:283:20)
+    at registerTerminalEntry (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/lib/terminal.ts:297:20)
+    at spawnLocalSession (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/lib/terminal.ts:788:3)
+
+ ✓ |dom| src/lib/__tests__/terminal.test.ts (36 tests) 446ms
+ ✓ |dom| src/desktop/renderer/components/__tests__/TerminalTabBar.test.tsx (16 tests) 352ms
+stderr | src/lib/__tests__/gitOperations.test.ts > gitOperations interactive remote transaction > maxBuffer 확정 후 늦은 출력은 다시 처리하지 않는다
+[remote-ssh] command failed {
+  sshHost: 'remote-host',
+  command: 'stream',
+  sshArgs: [
+    '-o',
+    'ProxyCommand=false',
+    '-i',
+    '/tmp/test-key',
+    '-p',
+    '22',
+    '-o',
+    'BatchMode=yes',
+    '-o',
+    'IdentitiesOnly=yes',
+    '-T',
+    '-o',
+    'ControlMaster=no',
+    '-o',
+    'ControlPersist=10m',
+    '-o',
+    'ControlPath=/home/local-user/.kanvibe/ssh-d1964d5ab2e7-61308b68e86b6c5edf4b-0',
+    '-o',
+    'ConnectTimeout=8',
+    '-o',
+    'ServerAliveInterval=5',
+    '-o',
+    'ServerAliveCountMax=2',
+    'remote-host',
+    `sh -lc 'sh -lc '"'"'stream'"'"'; __kanvibe_status=$?; printf '"'"'\\n__KANVIBE_REMOTE_COMMAND_EXIT_7b3f6e5d__:%s\\n'"'"' "$__kanvibe_status"; exit "$__kanvibe_status"'`
+  ],
+  error: 'SSH command output exceeded maxBuffer'
+}
+
+stderr | src/lib/__tests__/gitOperations.test.ts > gitOperations interactive remote transaction > responder 요청 제거 전에 한도를 넘으면 callback을 실행하지 않는다
+[remote-ssh] command failed {
+  sshHost: 'remote-host',
+  command: 'transaction',
+  sshArgs: [
+    '-o',
+    'ProxyCommand=false',
+    '-i',
+    '/tmp/test-key',
+    '-p',
+    '22',
+    '-o',
+    'BatchMode=yes',
+    '-o',
+    'IdentitiesOnly=yes',
+    '-T',
+    '-o',
+    'ControlMaster=no',
+    '-o',
+    'ControlPersist=10m',
+    '-o',
+    'ControlPath=/home/local-user/.kanvibe/ssh-ced4aefec05d-61308b68e86b6c5edf4b-0',
+    '-o',
+    'ConnectTimeout=8',
+    '-o',
+    'ServerAliveInterval=5',
+    '-o',
+    'ServerAliveCountMax=2',
+    'remote-host',
+    `sh -lc 'sh -lc '"'"'transaction'"'"'; __kanvibe_status=$?; printf '"'"'\\n__KANVIBE_REMOTE_COMMAND_EXIT_7b3f6e5d__:%s\\n'"'"' "$__kanvibe_status"; exit "$__kanvibe_status"'`
+  ],
+  error: 'SSH command output exceeded maxBuffer'
+}
+
+stderr | src/lib/__tests__/gitOperations.test.ts > gitOperations interactive remote transaction > callback 예외는 입력과 SSH 프로세스를 닫고 재실행하지 않는다
+[remote-ssh] command failed {
+  sshHost: 'remote-host',
+  command: 'transaction',
+  sshArgs: [
+    '-o',
+    'ProxyCommand=false',
+    '-i',
+    '/tmp/test-key',
+    '-p',
+    '22',
+    '-o',
+    'BatchMode=yes',
+    '-o',
+    'IdentitiesOnly=yes',
+    '-T',
+    '-o',
+    'ControlMaster=no',
+    '-o',
+    'ControlPersist=10m',
+    '-o',
+    'ControlPath=/home/local-user/.kanvibe/ssh-7ae74391f178-61308b68e86b6c5edf4b-0',
+    '-o',
+    'ConnectTimeout=8',
+    '-o',
+    'ServerAliveInterval=5',
+    '-o',
+    'ServerAliveCountMax=2',
+    'remote-host',
+    `sh -lc 'sh -lc '"'"'transaction'"'"'; __kanvibe_status=$?; printf '"'"'\\n__KANVIBE_REMOTE_COMMAND_EXIT_7b3f6e5d__:%s\\n'"'"' "$__kanvibe_status"; exit "$__kanvibe_status"'`
+  ],
+  error: 'update rejected'
+}
+
+stderr | src/lib/__tests__/gitOperations.test.ts > gitOperations interactive remote transaction > 응답 후 transport가 끊겨도 callback이나 transaction을 재실행하지 않는다
+[remote-ssh] command failed {
+  sshHost: 'remote-host',
+  command: 'transaction',
+  sshArgs: [
+    '-o',
+    'ProxyCommand=false',
+    '-i',
+    '/tmp/test-key',
+    '-p',
+    '22',
+    '-o',
+    'BatchMode=yes',
+    '-o',
+    'IdentitiesOnly=yes',
+    '-T',
+    '-o',
+    'ControlMaster=no',
+    '-o',
+    'ControlPersist=10m',
+    '-o',
+    'ControlPath=/home/local-user/.kanvibe/ssh-c71cb3d707f1-61308b68e86b6c5edf4b-0',
+    '-o',
+    'ConnectTimeout=8',
+    '-o',
+    'ServerAliveInterval=5',
+    '-o',
+    'ServerAliveCountMax=2',
+    'remote-host',
+    `sh -lc 'sh -lc '"'"'transaction'"'"'; __kanvibe_status=$?; printf '"'"'\\n__KANVIBE_REMOTE_COMMAND_EXIT_7b3f6e5d__:%s\\n'"'"' "$__kanvibe_status"; exit "$__kanvibe_status"'`
+  ],
+  error: 'Command failed: ssh exited with 255'
+}
+
+stderr | src/lib/__tests__/gitOperations.test.ts > gitOperations interactive remote transaction > 요청 직후 SSH가 종료되면 아직 시작하지 않은 callback을 실행하지 않는다
+[remote-ssh] command failed {
+  sshHost: 'remote-host',
+  command: 'transaction',
+  sshArgs: [
+    '-o',
+    'ProxyCommand=false',
+    '-i',
+    '/tmp/test-key',
+    '-p',
+    '22',
+    '-o',
+    'BatchMode=yes',
+    '-o',
+    'IdentitiesOnly=yes',
+    '-T',
+    '-o',
+    'ControlMaster=no',
+    '-o',
+    'ControlPersist=10m',
+    '-o',
+    'ControlPath=/home/local-user/.kanvibe/ssh-7663ca558f78-61308b68e86b6c5edf4b-0',
+    '-o',
+    'ConnectTimeout=8',
+    '-o',
+    'ServerAliveInterval=5',
+    '-o',
+    'ServerAliveCountMax=2',
+    'remote-host',
+    `sh -lc 'sh -lc '"'"'transaction'"'"'; __kanvibe_status=$?; printf '"'"'\\n__KANVIBE_REMOTE_COMMAND_EXIT_7b3f6e5d__:%s\\n'"'"' "$__kanvibe_status"; exit "$__kanvibe_status"'`
+  ],
+  error: 'Command failed: ssh exited with 255'
+}
+
+stderr | src/lib/__tests__/gitOperations.test.ts > gitOperations interactive remote transaction > transport 오류와 cooldown 오류에 실제 남은 재시도 시간을 첨부한다
+[remote-ssh] command failed {
+  sshHost: 'remote-host',
+  command: 'command',
+  sshArgs: [
+    '-o',
+    'ProxyCommand=false',
+    '-i',
+    '/tmp/test-key',
+    '-p',
+    '22',
+    '-o',
+    'BatchMode=yes',
+    '-o',
+    'IdentitiesOnly=yes',
+    '-T',
+    '-o',
+    'ControlMaster=no',
+    '-o',
+    'ControlPersist=10m',
+    '-o',
+    'ControlPath=/home/local-user/.kanvibe/ssh-8bf270efef76-61308b68e86b6c5edf4b-0',
+    '-o',
+    'ConnectTimeout=8',
+    '-o',
+    'ServerAliveInterval=5',
+    '-o',
+    'ServerAliveCountMax=2',
+    'remote-host',
+    `sh -lc 'sh -lc '"'"'command'"'"'; __kanvibe_status=$?; printf '"'"'\\n__KANVIBE_REMOTE_COMMAND_EXIT_7b3f6e5d__:%s\\n'"'"' "$__kanvibe_status"; exit "$__kanvibe_status"'`
+  ],
+  error: 'Command failed: ssh exited with 255'
+}
+
+stderr | src/lib/__tests__/gitOperations.test.ts > gitOperations.resolvePathForShell > 원격 명령별 출력 한도를 적용한다
+[remote-ssh] command failed {
+  sshHost: 'remote-host',
+  command: 'cat chat.jsonl',
+  sshArgs: [
+    '-o',
+    'ProxyCommand=false',
+    '-i',
+    '/tmp/test-key',
+    '-p',
+    '2202',
+    '-o',
+    'BatchMode=yes',
+    '-o',
+    'IdentitiesOnly=yes',
+    '-T',
+    '-o',
+    'ControlMaster=no',
+    '-o',
+    'ControlPersist=10m',
+    '-o',
+    'ControlPath=/home/local-user/.kanvibe/ssh-d09898e7775e-2b3a011365ad255c458e-0',
+    '-o',
+    'ConnectTimeout=8',
+    '-o',
+    'ServerAliveInterval=5',
+    '-o',
+    'ServerAliveCountMax=2',
+    'remote-host',
+    `sh -lc 'sh -lc '"'"'cat chat.jsonl'"'"'; __kanvibe_status=$?; printf '"'"'\\n__KANVIBE_REMOTE_COMMAND_EXIT_7b3f6e5d__:%s\\n'"'"' "$__kanvibe_status"; exit "$__kanvibe_status"'`
+  ],
+  error: 'SSH command output exceeded maxBuffer'
+}
+
+ ✓ |dom| src/desktop/renderer/routes/__tests__/BoardViewRoute.test.tsx (5 tests) 346ms
+     ✓ 저장된 보드 뷰가 workspace면 워크스페이스를 보여 준다  328ms
+ ✓ |dom| src/lib/__tests__/gitOperations.test.ts (57 tests) 340ms
+ ✓ |dom| src/components/__tests__/BulkSessionTypeChangeSettings.test.tsx (5 tests) 397ms
+ ✓ |dom| src/components/__tests__/AutoConnectTerminalSession.test.tsx (5 tests) 330ms
+ ✓ |dom| src/components/__tests__/ProjectSelector.test.tsx (10 tests) 305ms
+ ✓ |dom| src/desktop/renderer/components/__tests__/AiSessionMessageContent.test.tsx (7 tests) 321ms
+ ✓ |dom| src/desktop/renderer/components/__tests__/AiChatTranscriptMessage.test.tsx (8 tests) 284ms
+ ✓ |dom| src/components/__tests__/SessionTypeEditor.test.tsx (7 tests) 318ms
+ ✓ |dom| src/desktop/renderer/components/__tests__/AiChatAttachment.test.tsx (5 tests) 286ms
+ ✓ |dom| src/components/__tests__/DoneConfirmDialog.test.tsx (6 tests) 274ms
+stdout | src/lib/__tests__/terminalSessionLifecycle.test.ts > Zellij 모바일 viewport 소유권 > 모바일 크기를 유지하고 마지막에 최신 PC 크기를 복원한다
+[터미널] zellij sessionName="proj-main", needsCreation=true, cwd=/work
+
+stdout | src/lib/__tests__/terminalSessionLifecycle.test.ts > Zellij 모바일 viewport 소유권 > 접속 중 PC 변경이 없으면 원래 크기를 복원한다
+[터미널] zellij sessionName="proj-main", needsCreation=true, cwd=/work
+
+stdout | src/lib/__tests__/terminalSessionLifecycle.test.ts > Zellij 모바일 viewport 소유권 > 닫힌 Zellij PTY는 viewport 복원으로 다시 만들지 않는다
+[터미널] zellij sessionName="proj-main", needsCreation=true, cwd=/work
+
+stderr | src/lib/__tests__/terminalSessionLifecycle.test.ts > 같은 터미널을 동시에 열 때 > 먼저 온 쪽이 PTY를 띄우지 못하면 기다리던 쪽도 닫고 거절한다
+[터미널] PTY spawn 실패: Error: spawn failed
+    at Proxy.<anonymous> (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/lib/__tests__/terminalSessionLifecycle.test.ts:296:13)
+    at Proxy.Mock (file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/@vitest/spy/dist/index.js:285:34)
+    at spawnLocalSession (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/lib/terminal.ts:774:22)
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+
+stderr | src/lib/__tests__/terminalSessionLifecycle.test.ts > 같은 터미널을 동시에 열 때 > 실패한 뒤 다시 열면 새로 띄운다
+[터미널] PTY spawn 실패: Error: spawn failed
+    at Proxy.<anonymous> (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/lib/__tests__/terminalSessionLifecycle.test.ts:316:13)
+    at Proxy.Mock (file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/@vitest/spy/dist/index.js:285:34)
+    at spawnLocalSession (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/lib/terminal.ts:774:22)
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+
+stderr | src/lib/__tests__/terminalSessionLifecycle.test.ts > Herdr PTY 수명 > 동시 연결 준비 중 취소된 클라이언트는 남기지 않는다 (remote=true, cancelledFirst=false)
+[kanvibe] Herdr machine 등록 실패 (host/project-task): TypeError: machines.some is not a function
+    at /home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/lib/herdr.ts:367:18
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+
+stderr | src/lib/__tests__/terminalSessionLifecycle.test.ts > Herdr PTY 수명 > 동시 연결 준비 중 취소된 클라이언트는 남기지 않는다 (remote=true, cancelledFirst=true)
+[kanvibe] Herdr machine 등록 실패 (host/project-task): TypeError: machines.some is not a function
+    at /home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/lib/herdr.ts:367:18
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+
+stderr | src/lib/__tests__/terminalSessionLifecycle.test.ts > Herdr PTY 수명 > 동시 true 원격 연결에서도 PTY 하나를 공유하고 마지막 창만 분리한다
+[kanvibe] Herdr machine 등록 실패 (host/project-task): TypeError: machines.some is not a function
+    at /home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/lib/herdr.ts:367:18
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+
+stderr | src/lib/__tests__/terminalSessionLifecycle.test.ts > 공유 Herdr Space 클라이언트 > 공유 Space는 클라이언트 중계를 통해 연결하고 PTY 종료 때 중계도 닫는다 (remote=true)
+[kanvibe] Herdr machine 등록 실패 (host/kanvibe): TypeError: machines.some is not a function
+    at /home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/lib/herdr.ts:367:18
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+
+ ✓ |dom| src/lib/__tests__/terminalSessionLifecycle.test.ts (46 tests) 304ms
+ ✓ |dom| src/desktop/renderer/components/__tests__/AiAccountLoginTerminal.test.tsx (4 tests) 233ms
+ ✓ |dom| src/components/__tests__/TaskContextMenu.test.tsx (3 tests) 281ms
+ ✓ |dom| src/lib/__tests__/remoteImagePaste.test.ts (7 tests) 226ms
+ ✓ |dom| src/desktop/renderer/hooks/__tests__/usePolledValue.test.tsx (3 tests) 207ms
+ ✓ |dom| src/desktop/renderer/components/__tests__/BoardEventAlert.test.tsx (5 tests) 224ms
+ ✓ |dom| src/components/__tests__/TaskCardLiveSessions.test.tsx (4 tests) 233ms
+ ✓ |dom| src/desktop/renderer/hooks/__tests__/useTaskKindFilterParams.test.tsx (5 tests) 220ms
+ ✓ |dom| src/desktop/renderer/components/__tests__/LiveAiSessionPanel.test.tsx (14 tests) 215ms
+ ✓ |dom| src/desktop/renderer/components/__tests__/BoardCommandProvider.test.tsx (12 tests) 228ms
+ ✓ |dom| src/desktop/renderer/hooks/__tests__/useAiUsage.test.ts (6 tests) 187ms
+ ✓ |dom| src/desktop/renderer/components/__tests__/NotificationListener.test.tsx (3 tests) 176ms
+ ✓ |dom| src/components/__tests__/TaskDiffStats.test.tsx (6 tests) 215ms
+ ✓ |dom| src/lib/__tests__/gitExclude.test.ts (9 tests) 205ms
+ ✓ |dom| src/desktop/renderer/components/__tests__/TerminalPaneChatLayer.test.tsx (7 tests) 178ms
+ ✓ |dom| src/desktop/renderer/components/__tests__/AiUsagePanel.test.tsx (19 tests) 154ms
+stderr | src/lib/__tests__/openCodeHooksSetup.test.ts > openCodeHooksSetup > setupOpenCodeHooks - file operations > should create plugin file at .opencode/plugins/kanvibe-plugin.ts
+[hooks] git exclude 패턴 추가 실패 {
+  repoPath: '/tmp/opencode-test-Tels04',
+  sshHost: null,
+  error: "Command failed: git -C '/tmp/opencode-test-Tels04' rev-parse --path-format=absolute --git-common-dir\n" +
+    'fatal: not a git repository (or any parent up to mount point /)\n' +
+    'Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\n'
+}
+
+stderr | src/lib/__tests__/openCodeHooksSetup.test.ts > openCodeHooksSetup > setupOpenCodeHooks - file operations > should generate plugin file containing KanvibePlugin and /api/hooks/status
+[hooks] git exclude 패턴 추가 실패 {
+  repoPath: '/tmp/opencode-test-vDgfRO',
+  sshHost: null,
+  error: "Command failed: git -C '/tmp/opencode-test-vDgfRO' rev-parse --path-format=absolute --git-common-dir\n" +
+    'fatal: not a git repository (or any parent up to mount point /)\n' +
+    'Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\n'
+}
+
+stderr | src/lib/__tests__/openCodeHooksSetup.test.ts > openCodeHooksSetup > setupOpenCodeHooks - file operations > should generate plugin with all event handlers for status tracking
+[hooks] git exclude 패턴 추가 실패 {
+  repoPath: '/tmp/opencode-test-rcoQmn',
+  sshHost: null,
+  error: "Command failed: git -C '/tmp/opencode-test-rcoQmn' rev-parse --path-format=absolute --git-common-dir\n" +
+    'fatal: not a git repository (or any parent up to mount point /)\n' +
+    'Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\n'
+}
+
+stderr | src/lib/__tests__/openCodeHooksSetup.test.ts > openCodeHooksSetup > setupOpenCodeHooks - file operations > should map event types to correct statuses
+[hooks] git exclude 패턴 추가 실패 {
+  repoPath: '/tmp/opencode-test-cNmNoP',
+  sshHost: null,
+  error: "Command failed: git -C '/tmp/opencode-test-cNmNoP' rev-parse --path-format=absolute --git-common-dir\n" +
+    'fatal: not a git repository (or any parent up to mount point /)\n' +
+    'Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\n'
+}
+
+stderr | src/lib/__tests__/openCodeHooksSetup.test.ts > openCodeHooksSetup > setupOpenCodeHooks - file operations > should filter subagent sessions before updating statuses
+[hooks] git exclude 패턴 추가 실패 {
+  repoPath: '/tmp/opencode-test-9xzMhA',
+  sshHost: null,
+  error: "Command failed: git -C '/tmp/opencode-test-9xzMhA' rev-parse --path-format=absolute --git-common-dir\n" +
+    'fatal: not a git repository (or any parent up to mount point /)\n' +
+    'Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\n'
+}
+
+stderr | src/lib/__tests__/openCodeHooksSetup.test.ts > openCodeHooksSetup > setupOpenCodeHooks - file operations > should not fail when called twice (overwrites existing plugin)
+[hooks] git exclude 패턴 추가 실패 {
+  repoPath: '/tmp/opencode-test-3LG4Es',
+  sshHost: null,
+  error: "Command failed: git -C '/tmp/opencode-test-3LG4Es' rev-parse --path-format=absolute --git-common-dir\n" +
+    'fatal: not a git repository (or any parent up to mount point /)\n' +
+    'Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\n'
+}
+
+stderr | src/lib/__tests__/openCodeHooksSetup.test.ts > openCodeHooksSetup > setupOpenCodeHooks - file operations > should not fail when called twice (overwrites existing plugin)
+[hooks] git exclude 패턴 추가 실패 {
+  repoPath: '/tmp/opencode-test-3LG4Es',
+  sshHost: null,
+  error: "Command failed: git -C '/tmp/opencode-test-3LG4Es' rev-parse --path-format=absolute --git-common-dir\n" +
+    'fatal: not a git repository (or any parent up to mount point /)\n' +
+    'Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\n'
+}
+
+stderr | src/lib/__tests__/openCodeHooksSetup.test.ts > openCodeHooksSetup > setupOpenCodeHooks - file operations > should repair stale branch-bound plugin content on reinstall
+[hooks] git exclude 패턴 추가 실패 {
+  repoPath: '/tmp/opencode-test-yeycaJ',
+  sshHost: null,
+  error: "Command failed: git -C '/tmp/opencode-test-yeycaJ' rev-parse --path-format=absolute --git-common-dir\n" +
+    'fatal: not a git repository (or any parent up to mount point /)\n' +
+    'Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\n'
+}
+
+stderr | src/lib/__tests__/openCodeHooksSetup.test.ts > openCodeHooksSetup > invalidates registration after writing the plugin
+[hooks] git exclude 패턴 추가 실패 {
+  repoPath: '/tmp/opencode-test-RmTGuY',
+  sshHost: null,
+  error: "Command failed: git -C '/tmp/opencode-test-RmTGuY' rev-parse --path-format=absolute --git-common-dir\n" +
+    'fatal: not a git repository (or any parent up to mount point /)\n' +
+    'Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\n'
+}
+
+stderr | src/lib/__tests__/openCodeHooksSetup.test.ts > openCodeHooksSetup > getOpenCodeHooksStatus > should return installed: true after setup
+[hooks] git exclude 패턴 추가 실패 {
+  repoPath: '/tmp/opencode-test-0TR1ua',
+  sshHost: null,
+  error: "Command failed: git -C '/tmp/opencode-test-0TR1ua' rev-parse --path-format=absolute --git-common-dir\n" +
+    'fatal: not a git repository (or any parent up to mount point /)\n' +
+    'Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\n'
+}
+
+stderr | src/lib/__tests__/openCodeHooksSetup.test.ts > openCodeHooksSetup > getOpenCodeHooksStatus > 구형 전송 버전 OpenCode plugin은 재설치 대상으로 본다
+[hooks] git exclude 패턴 추가 실패 {
+  repoPath: '/tmp/opencode-test-Uy1xhh',
+  sshHost: null,
+  error: "Command failed: git -C '/tmp/opencode-test-Uy1xhh' rev-parse --path-format=absolute --git-common-dir\n" +
+    'fatal: not a git repository (or any parent up to mount point /)\n' +
+    'Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\n'
+}
+
+stderr | src/lib/__tests__/openCodeHooksSetup.test.ts > openCodeHooksSetup > getOpenCodeHooksStatus > legacy status.md OpenCode plugin은 설치된 것으로 보지 않는다
+[hooks] git exclude 패턴 추가 실패 {
+  repoPath: '/tmp/opencode-test-h3Iwp1',
+  sshHost: null,
+  error: "Command failed: git -C '/tmp/opencode-test-h3Iwp1' rev-parse --path-format=absolute --git-common-dir\n" +
+    'fatal: not a git repository (or any parent up to mount point /)\n' +
+    'Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\n'
+}
+
+stderr | src/lib/__tests__/openCodeHooksSetup.test.ts > openCodeHooksSetup > getOpenCodeHooksStatus > common exclude 갱신 없는 OpenCode plugin은 설치된 것으로 보지 않는다
+[hooks] git exclude 패턴 추가 실패 {
+  repoPath: '/tmp/opencode-test-4s6SuD',
+  sshHost: null,
+  error: "Command failed: git -C '/tmp/opencode-test-4s6SuD' rev-parse --path-format=absolute --git-common-dir\n" +
+    'fatal: not a git repository (or any parent up to mount point /)\n' +
+    'Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\n'
+}
+
+stderr | src/lib/__tests__/openCodeHooksSetup.test.ts > openCodeHooksSetup > getOpenCodeHooksStatus > should keep installed true and surface diagnostics when the CLI registry omits the installed plugin
+[hooks] git exclude 패턴 추가 실패 {
+  repoPath: '/tmp/opencode-test-J02IIi',
+  sshHost: null,
+  error: "Command failed: git -C '/tmp/opencode-test-J02IIi' rev-parse --path-format=absolute --git-common-dir\n" +
+    'fatal: not a git repository (or any parent up to mount point /)\n' +
+    'Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\n'
+}
+
+stderr | src/lib/__tests__/openCodeHooksSetup.test.ts > openCodeHooksSetup > getOpenCodeHooksStatus > should keep installed true and surface diagnostics when the CLI registry query fails
+[hooks] git exclude 패턴 추가 실패 {
+  repoPath: '/tmp/opencode-test-MjsICQ',
+  sshHost: null,
+  error: "Command failed: git -C '/tmp/opencode-test-MjsICQ' rev-parse --path-format=absolute --git-common-dir\n" +
+    'fatal: not a git repository (or any parent up to mount point /)\n' +
+    'Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\n'
+}
+
+stderr | src/lib/__tests__/openCodeHooksSetup.test.ts > openCodeHooksSetup > getOpenCodeHooksStatus > should keep installed true and surface diagnostics when duplicate kanvibe plugins are registered
+[hooks] git exclude 패턴 추가 실패 {
+  repoPath: '/tmp/opencode-test-KSDLRa',
+  sshHost: null,
+  error: "Command failed: git -C '/tmp/opencode-test-KSDLRa' rev-parse --path-format=absolute --git-common-dir\n" +
+    'fatal: not a git repository (or any parent up to mount point /)\n' +
+    'Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\n'
+}
+
+stderr | src/lib/__tests__/openCodeHooksSetup.test.ts > openCodeHooksSetup > getOpenCodeHooksStatus > targets.json에 등록되지 않은 task는 설치된 것으로 보지 않는다
+[hooks] git exclude 패턴 추가 실패 {
+  repoPath: '/tmp/opencode-test-SFPyp7',
+  sshHost: null,
+  error: "Command failed: git -C '/tmp/opencode-test-SFPyp7' rev-parse --path-format=absolute --git-common-dir\n" +
+    'fatal: not a git repository (or any parent up to mount point /)\n' +
+    'Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\n'
+}
+
+ ✓ |dom| src/lib/__tests__/openCodeHooksSetup.test.ts (19 tests) 170ms
+ ✓ |dom| src/components/__tests__/PrioritySelector.test.tsx (6 tests) 166ms
+stderr | src/lib/__tests__/codexHooksSetup.test.ts > codexHooksSetup > setupCodexHooks - file operations > should create all codex hook script files
+[hooks] git exclude 패턴 추가 실패 {
+  repoPath: '/tmp/codex-test-qA4eOB',
+  sshHost: null,
+  error: "Command failed: git -C '/tmp/codex-test-qA4eOB' rev-parse --path-format=absolute --git-common-dir\n" +
+    'fatal: not a git repository (or any parent up to mount point /)\n' +
+    'Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\n'
+}
+
+stderr | src/lib/__tests__/codexHooksSetup.test.ts > codexHooksSetup > setupCodexHooks - file operations > should create config.toml and hooks.json entries
+[hooks] git exclude 패턴 추가 실패 {
+  repoPath: '/tmp/codex-test-Ful5Et',
+  sshHost: null,
+  error: "Command failed: git -C '/tmp/codex-test-Ful5Et' rev-parse --path-format=absolute --git-common-dir\n" +
+    'fatal: not a git repository (or any parent up to mount point /)\n' +
+    'Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\n'
+}
+
+stderr | src/lib/__tests__/codexHooksSetup.test.ts > codexHooksSetup > setupCodexHooks - file operations > should mark as installed when all hook files and config exist
+[hooks] git exclude 패턴 추가 실패 {
+  repoPath: '/tmp/codex-test-dJtt37',
+  sshHost: null,
+  error: "Command failed: git -C '/tmp/codex-test-dJtt37' rev-parse --path-format=absolute --git-common-dir\n" +
+    'fatal: not a git repository (or any parent up to mount point /)\n' +
+    'Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\n'
+}
+
+ ✓ |dom| src/lib/__tests__/shellHookChatMetadata.test.ts (3 tests) 160ms
+stderr | src/lib/__tests__/codexHooksSetup.test.ts > codexHooksSetup > setupCodexHooks - file operations > legacy status.md Codex hook은 설치된 것으로 보지 않는다
+[hooks] git exclude 패턴 추가 실패 {
+  repoPath: '/tmp/codex-test-eogBjq',
+  sshHost: null,
+  error: "Command failed: git -C '/tmp/codex-test-eogBjq' rev-parse --path-format=absolute --git-common-dir\n" +
+    'fatal: not a git repository (or any parent up to mount point /)\n' +
+    'Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\n'
+}
+
+stderr | src/lib/__tests__/codexHooksSetup.test.ts > codexHooksSetup > setupCodexHooks - file operations > should not duplicate hook registrations on reinstall
+[hooks] git exclude 패턴 추가 실패 {
+  repoPath: '/tmp/codex-test-RhhfxQ',
+  sshHost: null,
+  error: "Command failed: git -C '/tmp/codex-test-RhhfxQ' rev-parse --path-format=absolute --git-common-dir\n" +
+    'fatal: not a git repository (or any parent up to mount point /)\n' +
+    'Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\n'
+}
+
+stderr | src/lib/__tests__/codexHooksSetup.test.ts > codexHooksSetup > setupCodexHooks - file operations > should not duplicate hook registrations on reinstall
+[hooks] git exclude 패턴 추가 실패 {
+  repoPath: '/tmp/codex-test-RhhfxQ',
+  sshHost: null,
+  error: "Command failed: git -C '/tmp/codex-test-RhhfxQ' rev-parse --path-format=absolute --git-common-dir\n" +
+    'fatal: not a git repository (or any parent up to mount point /)\n' +
+    'Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\n'
+}
+
+stderr | src/lib/__tests__/codexHooksSetup.test.ts > codexHooksSetup > setupCodexHooks - file operations > should replace legacy notify config on reinstall
+[hooks] git exclude 패턴 추가 실패 {
+  repoPath: '/tmp/codex-test-gqxdHl',
+  sshHost: null,
+  error: "Command failed: git -C '/tmp/codex-test-gqxdHl' rev-parse --path-format=absolute --git-common-dir\n" +
+    'fatal: not a git repository (or any parent up to mount point /)\n' +
+    'Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\n'
+}
+
+stderr | src/lib/__tests__/codexHooksSetup.test.ts > codexHooksSetup > getCodexHooksStatus > should detect installed status correctly
+[hooks] git exclude 패턴 추가 실패 {
+  repoPath: '/tmp/codex-test-iudNuR',
+  sshHost: null,
+  error: "Command failed: git -C '/tmp/codex-test-iudNuR' rev-parse --path-format=absolute --git-common-dir\n" +
+    'fatal: not a git repository (or any parent up to mount point /)\n' +
+    'Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\n'
+}
+
+stderr | src/lib/__tests__/codexHooksSetup.test.ts > codexHooksSetup > getCodexHooksStatus > should keep installed true when reachability fails but the hook configuration matches
+[hooks] git exclude 패턴 추가 실패 {
+  repoPath: '/tmp/codex-test-sm7m6A',
+  sshHost: null,
+  error: "Command failed: git -C '/tmp/codex-test-sm7m6A' rev-parse --path-format=absolute --git-common-dir\n" +
+    'fatal: not a git repository (or any parent up to mount point /)\n' +
+    'Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\n'
+}
+
+stderr | src/lib/__tests__/codexHooksSetup.test.ts > codexHooksSetup > getCodexHooksStatus > targets.json에 등록되지 않은 task는 설치된 것으로 보지 않는다
+[hooks] git exclude 패턴 추가 실패 {
+  repoPath: '/tmp/codex-test-fnphW7',
+  sshHost: null,
+  error: "Command failed: git -C '/tmp/codex-test-fnphW7' rev-parse --path-format=absolute --git-common-dir\n" +
+    'fatal: not a git repository (or any parent up to mount point /)\n' +
+    'Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\n'
+}
+
+ ✓ |dom| src/lib/__tests__/codexHooksSetup.test.ts (16 tests) 167ms
+ ✓ |dom| src/components/__tests__/SessionTypeOptions.test.tsx (1 test) 145ms
+ ✓ |dom| src/lib/__tests__/databaseMigrations.test.ts (13 tests) 137ms
+stderr | src/lib/__tests__/geminiHooksSetup.test.ts > geminiHooksSetup > setupGeminiHooks > should create hook scripts and settings.json in .gemini directory
+[hooks] git exclude 패턴 추가 실패 {
+  repoPath: '/tmp/kanvibe-test-1794630635160',
+  sshHost: null,
+  error: "Command failed: git -C '/tmp/kanvibe-test-1794630635160' rev-parse --path-format=absolute --git-common-dir\n" +
+    'fatal: not a git repository (or any parent up to mount point /)\n' +
+    'Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\n'
+}
+
+ ✓ |dom| src/hooks/__tests__/useTaskNotification.test.ts (7 tests) 110ms
+stderr | src/lib/__tests__/geminiHooksSetup.test.ts > geminiHooksSetup > setupGeminiHooks > should preserve existing settings.json entries when adding hooks
+[hooks] git exclude 패턴 추가 실패 {
+  repoPath: '/tmp/kanvibe-test-1794630635195',
+  sshHost: null,
+  error: "Command failed: git -C '/tmp/kanvibe-test-1794630635195' rev-parse --path-format=absolute --git-common-dir\n" +
+    'fatal: not a git repository (or any parent up to mount point /)\n' +
+    'Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\n'
+}
+
+stderr | src/lib/__tests__/geminiHooksSetup.test.ts > geminiHooksSetup > setupGeminiHooks > should not duplicate hooks when called multiple times
+[hooks] git exclude 패턴 추가 실패 {
+  repoPath: '/tmp/kanvibe-test-1794630635204',
+  sshHost: null,
+  error: "Command failed: git -C '/tmp/kanvibe-test-1794630635204' rev-parse --path-format=absolute --git-common-dir\n" +
+    'fatal: not a git repository (or any parent up to mount point /)\n' +
+    'Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\n'
+}
+
+stderr | src/lib/__tests__/geminiHooksSetup.test.ts > geminiHooksSetup > setupGeminiHooks > should not duplicate hooks when called multiple times
+[hooks] git exclude 패턴 추가 실패 {
+  repoPath: '/tmp/kanvibe-test-1794630635204',
+  sshHost: null,
+  error: "Command failed: git -C '/tmp/kanvibe-test-1794630635204' rev-parse --path-format=absolute --git-common-dir\n" +
+    'fatal: not a git repository (or any parent up to mount point /)\n' +
+    'Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\n'
+}
+
+stderr | src/lib/__tests__/geminiHooksSetup.test.ts > geminiHooksSetup > setupGeminiHooks > should repair stale Gemini hook command entries on reinstall
+[hooks] git exclude 패턴 추가 실패 {
+  repoPath: '/tmp/kanvibe-test-1794630635221',
+  sshHost: null,
+  error: "Command failed: git -C '/tmp/kanvibe-test-1794630635221' rev-parse --path-format=absolute --git-common-dir\n" +
+    'fatal: not a git repository (or any parent up to mount point /)\n' +
+    'Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\n'
+}
+
+stderr | src/lib/__tests__/geminiHooksSetup.test.ts > geminiHooksSetup > setupGeminiHooks > should repair stale Gemini hook command entries on reinstall
+[hooks] git exclude 패턴 추가 실패 {
+  repoPath: '/tmp/kanvibe-test-1794630635221',
+  sshHost: null,
+  error: "Command failed: git -C '/tmp/kanvibe-test-1794630635221' rev-parse --path-format=absolute --git-common-dir\n" +
+    'fatal: not a git repository (or any parent up to mount point /)\n' +
+    'Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\n'
+}
+
+stderr | src/lib/__tests__/geminiHooksSetup.test.ts > geminiHooksSetup > getGeminiHooksStatus > should return installed: true after setupGeminiHooks
+[hooks] git exclude 패턴 추가 실패 {
+  repoPath: '/tmp/kanvibe-test-1794630635239',
+  sshHost: null,
+  error: "Command failed: git -C '/tmp/kanvibe-test-1794630635239' rev-parse --path-format=absolute --git-common-dir\n" +
+    'fatal: not a git repository (or any parent up to mount point /)\n' +
+    'Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\n'
+}
+
+stderr | src/lib/__tests__/geminiHooksSetup.test.ts > geminiHooksSetup > getGeminiHooksStatus > legacy status.md Gemini hook은 설치된 것으로 보지 않는다
+[hooks] git exclude 패턴 추가 실패 {
+  repoPath: '/tmp/kanvibe-test-1794630635249',
+  sshHost: null,
+  error: "Command failed: git -C '/tmp/kanvibe-test-1794630635249' rev-parse --path-format=absolute --git-common-dir\n" +
+    'fatal: not a git repository (or any parent up to mount point /)\n' +
+    'Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\n'
+}
+
+stderr | src/lib/__tests__/geminiHooksSetup.test.ts > geminiHooksSetup > getGeminiHooksStatus > targets.json에 등록되지 않은 task는 설치된 것으로 보지 않는다
+[hooks] git exclude 패턴 추가 실패 {
+  repoPath: '/tmp/kanvibe-test-1794630635276',
+  sshHost: null,
+  error: "Command failed: git -C '/tmp/kanvibe-test-1794630635276' rev-parse --path-format=absolute --git-common-dir\n" +
+    'fatal: not a git repository (or any parent up to mount point /)\n' +
+    'Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\n'
+}
+
+ ✓ |dom| src/lib/__tests__/geminiHooksSetup.test.ts (9 tests) 128ms
+stderr | src/lib/__tests__/claudeHooksSetup.test.ts > claudeHooksSetup > 모든 hook 스크립트는 인증 헤더 없이 상태만 전송한다
+[hooks] git exclude 패턴 추가 실패 {
+  repoPath: '/tmp/claude-hook-test-2tXvxa',
+  sshHost: null,
+  error: "Command failed: git -C '/tmp/claude-hook-test-2tXvxa' rev-parse --path-format=absolute --git-common-dir\n" +
+    'fatal: not a git repository (or any parent up to mount point /)\n' +
+    'Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\n'
+}
+
+ ✓ |dom| src/desktop/renderer/routes/__tests__/BoardRoute.test.tsx (5 tests) 117ms
+stderr | src/lib/__tests__/claudeHooksSetup.test.ts > claudeHooksSetup > legacy status.md Claude hook은 설치된 것으로 보지 않고 재설치로 복구한다
+[hooks] git exclude 패턴 추가 실패 {
+  repoPath: '/tmp/claude-hook-test-NmOp9R',
+  sshHost: null,
+  error: "Command failed: git -C '/tmp/claude-hook-test-NmOp9R' rev-parse --path-format=absolute --git-common-dir\n" +
+    'fatal: not a git repository (or any parent up to mount point /)\n' +
+    'Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\n'
+}
+
+stderr | src/lib/__tests__/claudeHooksSetup.test.ts > claudeHooksSetup > legacy status.md Claude hook은 설치된 것으로 보지 않고 재설치로 복구한다
+[hooks] git exclude 패턴 추가 실패 {
+  repoPath: '/tmp/claude-hook-test-NmOp9R',
+  sshHost: null,
+  error: "Command failed: git -C '/tmp/claude-hook-test-NmOp9R' rev-parse --path-format=absolute --git-common-dir\n" +
+    'fatal: not a git repository (or any parent up to mount point /)\n' +
+    'Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\n'
+}
+
+stderr | src/lib/__tests__/claudeHooksSetup.test.ts > claudeHooksSetup > stale Claude hook command entries are not treated as installed and are repaired on reinstall
+[hooks] git exclude 패턴 추가 실패 {
+  repoPath: '/tmp/claude-hook-test-dFLK5s',
+  sshHost: null,
+  error: "Command failed: git -C '/tmp/claude-hook-test-dFLK5s' rev-parse --path-format=absolute --git-common-dir\n" +
+    'fatal: not a git repository (or any parent up to mount point /)\n' +
+    'Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\n'
+}
+
+stderr | src/lib/__tests__/claudeHooksSetup.test.ts > claudeHooksSetup > stale Claude hook command entries are not treated as installed and are repaired on reinstall
+[hooks] git exclude 패턴 추가 실패 {
+  repoPath: '/tmp/claude-hook-test-dFLK5s',
+  sshHost: null,
+  error: "Command failed: git -C '/tmp/claude-hook-test-dFLK5s' rev-parse --path-format=absolute --git-common-dir\n" +
+    'fatal: not a git repository (or any parent up to mount point /)\n' +
+    'Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\n'
+}
+
+stderr | src/lib/__tests__/claudeHooksSetup.test.ts > claudeHooksSetup > keeps Claude installed when hook server reachability fails but configuration is correct
+[hooks] git exclude 패턴 추가 실패 {
+  repoPath: '/tmp/claude-hook-test-zqO6pf',
+  sshHost: null,
+  error: "Command failed: git -C '/tmp/claude-hook-test-zqO6pf' rev-parse --path-format=absolute --git-common-dir\n" +
+    'fatal: not a git repository (or any parent up to mount point /)\n' +
+    'Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\n'
+}
+
+stderr | src/lib/__tests__/claudeHooksSetup.test.ts > claudeHooksSetup > targets.json에 등록되지 않은 task는 설치된 것으로 보지 않는다
+[hooks] git exclude 패턴 추가 실패 {
+  repoPath: '/tmp/claude-hook-test-2ChxEX',
+  sshHost: null,
+  error: "Command failed: git -C '/tmp/claude-hook-test-2ChxEX' rev-parse --path-format=absolute --git-common-dir\n" +
+    'fatal: not a git repository (or any parent up to mount point /)\n' +
+    'Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\n'
+}
+
+stderr | src/lib/__tests__/claudeHooksSetup.test.ts > claudeHooksSetup > 다른 client가 hook script를 덮어써도 targets.json에 등록된 client는 설치 상태를 유지한다
+[hooks] git exclude 패턴 추가 실패 {
+  repoPath: '/tmp/claude-hook-test-vA8RGD',
+  sshHost: null,
+  error: "Command failed: git -C '/tmp/claude-hook-test-vA8RGD' rev-parse --path-format=absolute --git-common-dir\n" +
+    'fatal: not a git repository (or any parent up to mount point /)\n' +
+    'Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\n'
+}
+
+stderr | src/lib/__tests__/claudeHooksSetup.test.ts > claudeHooksSetup > 다른 client가 hook script를 덮어써도 targets.json에 등록된 client는 설치 상태를 유지한다
+[hooks] git exclude 패턴 추가 실패 {
+  repoPath: '/tmp/claude-hook-test-vA8RGD',
+  sshHost: null,
+  error: "Command failed: git -C '/tmp/claude-hook-test-vA8RGD' rev-parse --path-format=absolute --git-common-dir\n" +
+    'fatal: not a git repository (or any parent up to mount point /)\n' +
+    'Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\n'
+}
+
+ ✓ |dom| src/lib/__tests__/claudeHooksSetup.test.ts (6 tests) 153ms
+ ✓ |dom| src/lib/__tests__/gitLiteralPaths.test.ts (4 tests) 116ms
+ ✓ |dom| src/desktop/renderer/hooks/__tests__/useMarkTaskNotificationsReadWhenFocused.test.tsx (6 tests) 85ms
+ ✓ |dom| src/components/__tests__/DiffFileTree.test.tsx (8 tests) 113ms
+ ✓ |dom| src/desktop/renderer/hooks/__tests__/useTaskDiffStats.test.tsx (5 tests) 98ms
+ ✓ |dom| src/lib/__tests__/shellHookScript.test.ts (14 tests) 147ms
+ ✓ |dom| src/desktop/renderer/components/__tests__/AgentCallGraphPanel.test.tsx (8 tests) 107ms
+ ✓ |dom| src/desktop/renderer/hooks/__tests__/useTerminalTabs.test.tsx (3 tests) 74ms
+ ✓ |dom| src/components/__tests__/TaskDetailInfoCard.test.tsx (7 tests) 69ms
+ ✓ |dom| src/lib/__tests__/attachmentContent.test.ts (7 tests) 69ms
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+ ✓ |dom| src/lib/__tests__/terminalClipboard.test.ts (15 tests) 67ms
+ ✓ |dom| src/components/__tests__/PriorityEditor.test.tsx (4 tests) 54ms
+stderr | src/lib/__tests__/worktree.test.ts > createWorktreeWithSession — Zellij KDL layout file persistence > should fallback gracefully when getEffectivePaneLayout fails
+Zellij pane 레이아웃 조회 실패 (단일 pane으로 생성): Error: DB error
+    at /home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/lib/__tests__/worktree.test.ts:1057:50
+    at file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/@vitest/runner/dist/index.js:145:11
+    at file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/@vitest/runner/dist/index.js:915:26
+    at file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/@vitest/runner/dist/index.js:1243:20
+    at new Promise (<anonymous>)
+    at runWithTimeout (file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/@vitest/runner/dist/index.js:1209:10)
+    at file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/@vitest/runner/dist/index.js:1653:37
+    at Traces.$ (file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/vitest/dist/chunks/traces.CCmnQaNT.js:142:27)
+    at trace (file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/vitest/dist/chunks/test.B8ej_ZHS.js:239:21)
+    at runTest (file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/@vitest/runner/dist/index.js:1653:12)
+
+ ✓ |dom| src/lib/__tests__/worktree.test.ts (60 tests) 46ms
+ ✓ |dom| src/components/__tests__/ProjectIcon.test.tsx (5 tests) 40ms
+ ✓ |dom| src/desktop/renderer/hooks/__tests__/useUnreadNotificationCountByTask.test.tsx (3 tests) 36ms
+ ✓ |dom| src/desktop/renderer/components/__tests__/TerminalLoader.test.tsx (5 tests) 35ms
+ ✓ |dom| src/lib/__tests__/remoteSessionDependency.test.ts (13 tests) 35ms
+ ✓ |dom| src/desktop/renderer/hooks/__tests__/useFlipReflow.test.tsx (3 tests) 33ms
+ ✓ |dom| src/lib/__tests__/hookInstallBundle.test.ts (21 tests) 46ms
+ ✓ |dom| kanvibe.test.ts (1 test) 36ms
+ ✓ |dom| src/components/__tests__/Column.test.tsx (1 test) 27ms
+ ✓ |dom| src/lib/__tests__/kanvibeStateSymlink.test.ts (5 tests) 24ms
+ ✓ |dom| src/lib/__tests__/githubCliDependency.test.ts (5 tests) 25ms
+ ✓ |dom| src/lib/__tests__/sshConfig.test.ts (11 tests) 20ms
+ ✓ |dom| src/lib/__tests__/mobilePairing.test.ts (28 tests) 20ms
+ ✓ |dom| src/lib/__tests__/openCodePluginRegistry.test.ts (9 tests) 19ms
+ ✓ |dom| src/lib/__tests__/hookServerStatus.test.ts (7 tests) 21ms
+ ✓ |dom| src/lib/__tests__/kanvibeProjectState.test.ts (32 tests) 18ms
+ ✓ |dom| src/lib/__tests__/paneMirror.test.ts (77 tests) 14ms
+ ✓ |dom| src/lib/__tests__/terminalTabs.test.ts (38 tests) 16ms
+ ✓ |dom| src/lib/__tests__/hookEndpoint.test.ts (6 tests) 14ms
+ ✓ |dom| src/lib/__tests__/boardNotifier.test.ts (5 tests) 15ms
+ ✓ |dom| src/desktop/shared/__tests__/shortcutBindings.test.ts (30 tests) 13ms
+ ✓ |dom| src/desktop/renderer/utils/__tests__/githubCliDependencyPrompt.test.ts (3 tests) 16ms
+ ✓ |dom| src/desktop/renderer/utils/__tests__/boardTaskSort.test.ts (11 tests) 11ms
+ ✓ |dom| src/lib/__tests__/hookFileWriter.test.ts (7 tests) 13ms
+stderr | src/lib/__tests__/runDesktopDevScript.test.ts > run-desktop-dev 개발 서버 포트 > 선호 포트를 다른 프로세스가 쓰고 있으면 비어 있는 다른 포트를 고른다
+[kanvibe] Port 39459 is already in use. Starting the dev server on 37873 instead.
+
+ ✓ |dom| src/lib/__tests__/runDesktopDevScript.test.ts (3 tests) 11ms
+ ✓ |dom| src/desktop/renderer/utils/__tests__/shortcutBindings.test.ts (3 tests) 15ms
+ ✓ |dom| src/desktop/renderer/utils/__tests__/keyboardShortcut.test.ts (28 tests) 14ms
+ ✓ |dom| src/desktop/renderer/utils/__tests__/taskNavigation.test.ts (2 tests) 11ms
+ ✓ |dom| src/lib/__tests__/githubProjectIcon.test.ts (8 tests) 9ms
+ ✓ |dom| src/lib/__tests__/gitExclude.remote.test.ts (1 test) 9ms
+ ✓ |dom| src/lib/__tests__/hookTargetRegistration.test.ts (9 tests) 12ms
+ ✓ |dom| src/desktop/renderer/utils/__tests__/sessionDependencyPrompt.test.ts (3 tests) 7ms
+ ✓ |dom| src/desktop/renderer/actions/__tests__/diff.test.ts (6 tests) 9ms
+ ✓ |dom| src/desktop/renderer/utils/__tests__/fetchPrUrlWithPrompt.test.ts (3 tests) 13ms
+ ✓ |dom| src/lib/__tests__/desktopDiagnostics.test.ts (4 tests) 9ms
+ ✓ |dom| src/desktop/renderer/actions/__tests__/project.test.ts (2 tests) 7ms
+ ✓ |dom| src/lib/__tests__/databasePaths.test.ts (5 tests) 6ms
+ ✓ |dom| src/lib/__tests__/projectColor.test.ts (11 tests) 8ms
+ ✓ |dom| src/lib/__tests__/terminalMouseSelection.test.ts (4 tests) 5ms
+ ✓ |dom| src/desktop/renderer/actions/__tests__/kanban.test.ts (1 test) 7ms
+ ✓ |dom| src/styles/__tests__/globals.test.ts (3 tests) 4ms
+ ✓ |dom| src/lib/__tests__/packageScripts.test.ts (5 tests) 4ms
+ ✓ |dom| src/styles/__tests__/colorTokens.test.ts (2 tests) 3ms
+ ✓ |dom| src/desktop/shared/__tests__/taskNotifications.test.ts (4 tests) 4ms
+ ✓ |dom| src/desktop/shared/__tests__/releaseUpdates.test.ts (4 tests) 5ms
+ ✓ |dom| src/desktop/shared/__tests__/taskDiffStats.test.ts (3 tests) 5ms
+ ✓ |dom| src/desktop/shared/__tests__/boardSort.test.ts (6 tests) 3ms
+ ✓ |dom| src/utils/__tests__/projectSearch.test.ts (11 tests) 5ms
+ ✓ |dom| src/lib/__tests__/ensureNativeRuntimeScript.test.ts (5 tests) 5ms
+ ✓ |dom| src/lib/__tests__/mainWindowOptions.test.ts (1 test) 4ms
+ ✓ |dom| src/lib/__tests__/runtimeImportSafety.test.ts (1 test) 7ms
+ ✓ |dom| src/lib/__tests__/shellEnvironment.test.ts (1 test) 4ms
+ ✓ |dom| src/lib/__tests__/electronBuilderConfig.test.ts (3 tests) 3ms
+ ✓ |dom| src/lib/__tests__/postinstallScript.test.ts (1 test) 2ms
+ ✓ |node| src/desktop/main/services/__tests__/paneChatService.test.ts (32 tests) 8107ms
+     ✓ permits the same request to retry after a definite pre-write refusal  503ms
+     ✓ stages an actual image and pastes image-only input as a native attachment  809ms
+     ✓ replays one request receipt and rejects the same id with another payload  502ms
+     ✓ closes the native Codex skill-completion token before its one submit Enter  502ms
+     ✓ closes a staged Claude file reference before one submit Enter (caption=)  503ms
+     ✓ closes a staged Claude file reference before one submit Enter (caption=Read this file)  502ms
+     ✓ preserves Claude text while terminating only a final file mention (Read @/repo/file.txt)  502ms
+     ✓ preserves Claude text while terminating only a final file mention (Read @"/repo/file with spaces.txt")  502ms
+     ✓ preserves Claude text while terminating only a final file mention (Read @"/repo/file \"quoted\".txt")  502ms
+     ✓ preserves Claude text while terminating only a final file mention (Read @/repo/file.txt )  501ms
+     ✓ preserves Claude text while terminating only a final file mention (Read @/repo/file.txt please)  501ms
+     ✓ preserves Claude text while terminating only a final file mention (Contact person@example.com)  500ms
+     ✓ pastes multiline text and submits a separate CR to the same fenced process  503ms
+     ✓ does not submit CR if the CLI exits after paste  502ms
+     ✓ opens the real Codex picker by typing its command, and permits only known navigation keys  745ms
+No active zellij sessions found.
+stdout | src/desktop/main/services/__tests__/mobileBridgeService.test.ts > 모바일 화면 크기 > Zellij 분할 pane의 실제 격자를 맞추고 마지막 연결 뒤 PC 격자를 복원한다
+[터미널] zellij sessionName="zellij-viewport", needsCreation=true, cwd=undefined
+
+No active zellij sessions found.
+stdout | src/desktop/main/services/__tests__/mobileBridgeService.test.ts > 모바일 화면 크기 > Zellij는 모바일 마지막 요청을 우선하고 남은 연결의 격자로 돌아간다
+[터미널] zellij sessionName="zellij-viewport", needsCreation=true, cwd=undefined
+
+No active zellij sessions found.
+stdout | src/desktop/main/services/__tests__/mobileBridgeService.test.ts > 모바일 화면 크기 > Zellij 다중 탭도 모바일 선택 pane을 PC에서 열고 폰 격자로 맞춘다
+[터미널] zellij sessionName="zellij-viewport", needsCreation=true, cwd=undefined
+
+No active zellij sessions found.
+stdout | src/desktop/main/services/__tests__/mobileBridgeService.test.ts > 모바일 화면 크기 > 이미 같은 격자여도 새로 선택한 Zellij 탭을 PC에서 연다
+[터미널] zellij sessionName="zellij-viewport", needsCreation=true, cwd=undefined
+
+No active zellij sessions found.
+stdout | src/desktop/main/services/__tests__/mobileBridgeService.test.ts > 모바일 화면 크기 > 같은 Zellij 탭을 다시 선택해도 이어서 격자를 조정한다
+[터미널] zellij sessionName="zellij-viewport", needsCreation=true, cwd=undefined
+
+No active zellij sessions found.
+stdout | src/desktop/main/services/__tests__/mobileBridgeService.test.ts > 모바일 화면 크기 > Zellij 탭 전환 실패를 성공으로 처리하지 않고 lease 해제 시 PC 크기를 복원한다
+[터미널] zellij sessionName="zellij-viewport", needsCreation=true, cwd=undefined
+
+No active zellij sessions found.
+stdout | src/desktop/main/services/__tests__/mobileBridgeService.test.ts > 모바일 화면 크기 > Zellij 고정 floating pane은 정확히 맞추고 연결이 끝나면 좌표와 크기를 복원한다
+[터미널] zellij sessionName="zellij-viewport", needsCreation=true, cwd=undefined
+
+No active zellij sessions found.
+stdout | src/desktop/main/services/__tests__/mobileBridgeService.test.ts > 모바일 화면 크기 > Zellij 여러 floating pane을 번갈아 봐도 마지막에 각 원래 배치를 복원한다
+[터미널] zellij sessionName="zellij-viewport", needsCreation=true, cwd=undefined
+
+ ✓ |node| src/desktop/main/services/__tests__/remoteTerminalService.test.ts (14 tests) 10713ms
+     ✓ serves direct WSS and relay through one helper/controller with exact Unicode and NUL input  1387ms
+     ✓ keeps unused capabilities across abandoned direct handshakes so relay fallback works  948ms
+     ✓ rejects wrong scoped relay and bad direct bearer before granting a websocket  306ms
+     ✓ B admission remains usable when A's clock is a day behind  671ms
+     ✓ revokes one grant without closing another active stream belonging to the same task  857ms
+     ✓ opens a freshly granted controller after the old controller exits on SIGTERM  862ms
+     ✓ clamps only initial native geometry to the mobile viewport bound for a wide desktop pane  633ms
+     ✓ reads B's restored baseline when an unused ticket was issued during another viewport lease  1203ms
+     ✓ does not spawn a controller after every client leaves during the asynchronous geometry read  1002ms
+     ✓ keeps another device's pending claim when the first requester is revoked during geometry lookup  1095ms
+     ✓ cancels the entire owned geometry query process group when the SSH owner ends  507ms
+stderr | src/desktop/main/services/__tests__/mobileBridgeService.test.ts > 모바일 pane 종료 정보 > 조회가 실패하면 없다고 단정하지 않고 오류를 올린다
+[kanvibe] Mobile session start failed: Error: [vitest] No "getPaneLayoutConfigRepository" export is defined on the "@/lib/database" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError (file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17)
+    at Object.get (file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16)
+    at getGlobalPaneLayout (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/desktop/main/services/paneLayoutService.ts:11:22)
+    at getEffectivePaneLayout (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/desktop/main/services/paneLayoutService.ts:29:10)
+    at attachTaskTerminal (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/desktop/main/terminalBridge.ts:205:13)
+    at /home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/desktop/main/services/__tests__/mobileBridgeService.test.ts:483:5
+    at Mock (file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/@vitest/spy/dist/index.js:285:34)
+    at attachTaskTerminal (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/desktop/main/services/__tests__/mobileBridgeService.test.ts:87:67)
+    at startMultiplexerSessionIfMissing (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/desktop/main/services/mobileBridgeService.ts:443:11)
+    at getTaskSurfaces (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/desktop/main/services/mobileBridgeService.ts:251:3) {
+  codeFrame: 'vi.mock(import("@/lib/database"), async (importOriginal) => {\n' +
+    '  const actual = await importOriginal()\n' +
+    '  return {\n' +
+    '    ...actual,\n' +
+    '    // your mocked methods\n' +
+    '  }\n' +
+    '})'
+}
+
+stderr | src/desktop/main/services/__tests__/mobileBridgeService.test.ts > 미러 자식 프로세스의 수명 > 자식이 error로 죽으면 구독자에게 알린다
+[kanvibe] Mirror stream failed: Error: boom
+    at /home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/desktop/main/services/__tests__/mobileBridgeService.test.ts:543:81
+    at Set.forEach (<anonymous>)
+    at Object.die (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/desktop/main/services/__tests__/mobileBridgeService.test.ts:543:50)
+    at /home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/desktop/main/services/__tests__/mobileBridgeService.test.ts:1380:17
+    at file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/@vitest/runner/dist/index.js:915:20
+
+stderr | src/desktop/main/services/__tests__/mobileBridgeService.test.ts > 세션이 아직 없는 태스크 > 세션을 띄우지 못하면 서버 오류 대신 세션이 꺼져 있다는 사유를 알린다
+[kanvibe] Mobile session start failed: Error: tmux 세션 생성에 실패했습니다.
+    at /home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/desktop/main/services/__tests__/mobileBridgeService.test.ts:1714:13
+    at /home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/desktop/main/services/__tests__/mobileBridgeService.test.ts:1694:13
+    at Mock (file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/@vitest/spy/dist/index.js:285:34)
+    at attachTaskTerminal (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/desktop/main/services/__tests__/mobileBridgeService.test.ts:87:67)
+    at startMultiplexerSessionIfMissing (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/desktop/main/services/mobileBridgeService.ts:443:11)
+    at getTaskSurfaces (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/desktop/main/services/mobileBridgeService.ts:251:3)
+    at /home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/desktop/main/services/__tests__/mobileBridgeService.test.ts:1717:5
+    at file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/@vitest/runner/dist/index.js:915:20
+
+stderr | src/desktop/main/services/__tests__/mobileBridgeService.test.ts > 세션이 아직 없는 태스크 > 원격 호스트에 닿지 못하면 세션을 띄우지 않고 연결 실패를 따로 알린다
+[kanvibe] Mobile remote host unreachable: Error: ssh: connect to host devbox port 22: Operation timed out
+    at /home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/desktop/main/services/__tests__/mobileBridgeService.test.ts:1725:35
+    at file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/@vitest/runner/dist/index.js:145:11
+    at file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/@vitest/runner/dist/index.js:915:26
+    at file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/@vitest/runner/dist/index.js:1243:20
+    at new Promise (<anonymous>)
+    at runWithTimeout (file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/@vitest/runner/dist/index.js:1209:10)
+    at file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/@vitest/runner/dist/index.js:1653:37
+    at Traces.$ (file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/vitest/dist/chunks/traces.CCmnQaNT.js:142:27)
+    at trace (file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/vitest/dist/chunks/test.B8ej_ZHS.js:239:21)
+    at runTest (file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/@vitest/runner/dist/index.js:1653:12)
+
+ ✓ |node| electron/mobileRoutes.test.mjs (177 tests) 1115ms
+stderr | src/desktop/main/services/__tests__/mobileBridgeService.test.ts > Herdr 세션 미러 > 이력 확인이 실패해 끝을 알리면 observe와 다음 확인을 함께 멈춘다
+[kanvibe] Herdr observe restart failed: Error: ssh disconnected
+    at /home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/desktop/main/services/__tests__/mobileBridgeService.test.ts:2670:45
+    at Mock (file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/@vitest/spy/dist/index.js:285:34)
+    at execGit (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/desktop/main/services/__tests__/mobileBridgeService.test.ts:102:58)
+    at runHerdrCommand (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/lib/herdr.ts:138:24)
+    at readHerdrPaneExtent (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/lib/herdr.ts:252:26)
+    at refreshHistory (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/desktop/main/services/mobileBridgeService.ts:1943:9)
+    at /home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/desktop/main/services/mobileBridgeService.ts:1969:40
+    at callTimer (file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/vitest/dist/chunks/vi.2VT5v0um.js:2111:25)
+    at doTickInner (file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/vitest/dist/chunks/vi.2VT5v0um.js:2714:30)
+    at doTick (file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/vitest/dist/chunks/vi.2VT5v0um.js:2795:21)
+
+ ✓ |node| src/desktop/main/services/__tests__/mobileBridgeService.test.ts (190 tests) 3099ms
+     ✓ zellij 새 탭의 pane이 늦게 나타나도 생성 명령을 반복하지 않고 기다린다  501ms
+     ✓ 이력과 늦은 구독자의 재전송도 현재 모바일 격자를 사용하고 옛 프레임을 버린다  1005ms
+stderr | src/desktop/main/services/__tests__/hookTunnelService.test.ts > hookTunnelService > 터널이 끊기면 다시 연결하고, 금세 또 끊기면 대기를 늘린다
+[kanvibe] Hook tunnel to host-a closed (exit 255): 
+
+stderr | src/desktop/main/services/__tests__/hookTunnelService.test.ts > hookTunnelService > 터널이 끊기면 다시 연결하고, 금세 또 끊기면 대기를 늘린다
+[kanvibe] Hook tunnel to host-a closed (exit 255): 
+
+stderr | src/desktop/main/services/__tests__/hookTunnelService.test.ts > hookTunnelService > 잠자기에서 깨면 살아 있어 보이는 연결을 끊고 곧바로 다시 잇는다
+[kanvibe] Hook tunnel to host-a closed (exit null): 
+
+ ✓ |node| src/desktop/main/services/__tests__/hookTunnelService.test.ts (18 tests) 708ms
+ ✓ |node| src/lib/aiSessions/__tests__/readSqliteAgentSessions.test.ts (7 tests) 777ms
+ ✓ |node| src/desktop/main/services/__tests__/mobileNotificationService.test.ts (11 tests) 583ms
+direnv: .envrc is blocked
+sh: 1: cd: can't cd to /tmp/kanvibe-gh-command-0ngCuu/gone
+stderr | src/desktop/main/services/__tests__/kanbanService.test.ts > kanbanService 세션 타입 변경 > 일괄 변경은 대상 task를 모두 바꾸고 닫기를 고르면 전환에 성공한 task의 기존 세션만 정리하며 실패 건수를 센다
+터미널 세션 생성 실패: Error: zellij 레이아웃 준비 실패
+    at /home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/desktop/main/services/__tests__/kanbanService.test.ts:3298:15
+    at Mock (file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/@vitest/spy/dist/index.js:285:34)
+    at createTaskTerminalSession (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/desktop/main/services/kanbanService.ts:1061:27)
+    at changeTaskSessionType (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/desktop/main/services/kanbanService.ts:1134:23)
+    at runWorker (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/lib/aiSessions/shared.ts:273:31)
+    at async Promise.all (index 1)
+    at mapWithConcurrency (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/lib/aiSessions/shared.ts:277:3)
+    at changeAllTaskSessionTypes (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/desktop/main/services/kanbanService.ts:1168:24)
+    at /home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/desktop/main/services/__tests__/kanbanService.test.ts:3305:20
+    at file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/@vitest/runner/dist/index.js:915:20
+
+ ✓ |node| src/desktop/main/services/__tests__/kanbanService.test.ts (91 tests) 721ms
+stderr | src/desktop/main/services/__tests__/diffService.test.ts > getTaskDiffStats > 조회에 실패한 태스크는 저장된 집계를 덮어쓰지 않는다
+git diff 파일 목록 조회 실패: Error: git 실행 실패
+    at /home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/desktop/main/services/__tests__/diffService.test.ts:184:37
+    at file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/@vitest/runner/dist/index.js:145:11
+    at file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/@vitest/runner/dist/index.js:915:26
+    at file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/@vitest/runner/dist/index.js:1243:20
+    at new Promise (<anonymous>)
+    at runWithTimeout (file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/@vitest/runner/dist/index.js:1209:10)
+    at file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/@vitest/runner/dist/index.js:1653:37
+    at Traces.$ (file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/vitest/dist/chunks/traces.CCmnQaNT.js:142:27)
+    at trace (file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/vitest/dist/chunks/test.B8ej_ZHS.js:239:21)
+    at runTest (file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/@vitest/runner/dist/index.js:1653:12)
+
+ ✓ |node| qa/electron/lib/launchElectron.test.mjs (6 tests) 559ms
+     ✓ honors an explicit CDP port when provided  540ms
+Switched to a new branch 'feature'
+stderr | src/desktop/main/services/__tests__/diffService.test.ts > diff 실패와 경로 경계 > 잘못된 revision은 캐시를 보존하고 정상 빈 diff만 0으로 저장한다
+git diff 파일 목록 조회 실패: Error: Command failed: printf '%s\0' '__KANVIBE_DIFF_NAME_STATUS__' && git -C '/tmp/kanvibe-diff-failure-Ax9byp' diff 'missing-base...main' --name-status -z && printf '%s\0' '__KANVIBE_DIFF_NUMSTAT__' && git -C '/tmp/kanvibe-diff-failure-Ax9byp' diff 'missing-base...main' --numstat -z && printf '%s\0' '__KANVIBE_DIFF_WORKING_TREE__' && git -C '/tmp/kanvibe-diff-failure-Ax9byp' status --porcelain --untracked-files=all -z
+fatal: ambiguous argument 'missing-base...main': unknown revision or path not in the working tree.
+Use '--' to separate paths from revisions, like this:
+'git <command> [<revision>...] -- [<file>...]'
+
+    at genericNodeError (node:internal/errors:985:15)
+    at wrappedFn (node:internal/errors:539:14)
+    at checkExecSyncError (node:child_process:925:11)
+    at Proxy.execSync (node:child_process:997:15)
+    at /home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/desktop/main/services/__tests__/diffService.test.ts:273:67
+    at Mock (file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/@vitest/spy/dist/index.js:285:34)
+    at readGitDiffFiles (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/desktop/main/services/diffService.ts:150:33)
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at /home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/desktop/main/services/diffService.ts:438:21
+    at async Promise.all (index 0) {
+  status: 128,
+  signal: null,
+  output: [
+    null,
+    '__KANVIBE_DIFF_NAME_STATUS__\x00',
+    "fatal: ambiguous argument 'missing-base...main': unknown revision or path not in the working tree.\n" +
+      "Use '--' to separate paths from revisions, like this:\n" +
+      "'git <command> [<revision>...] -- [<file>...]'\n"
+  ],
+  pid: 3964395,
+  stdout: '__KANVIBE_DIFF_NAME_STATUS__\x00',
+  stderr: "fatal: ambiguous argument 'missing-base...main': unknown revision or path not in the working tree.\n" +
+    "Use '--' to separate paths from revisions, like this:\n" +
+    "'git <command> [<revision>...] -- [<file>...]'\n"
+}
+
+stderr | src/desktop/main/services/__tests__/diffService.test.ts > diff 실패와 경로 경계 > 점 두 개로 시작하는 내부 파일은 읽고 저장하며 상위 경로는 차단한다 (host=null)
+파일 저장 실패: Error: 잘못된 파일 경로: worktree 외부 접근이 감지되었습니다
+    at validateFilePath (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/desktop/main/services/diffService.ts:95:11)
+    at Module.saveFileContent (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/desktop/main/services/diffService.ts:386:26)
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at /home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/desktop/main/services/__tests__/diffService.test.ts:305:14
+    at file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/@vitest/runner/dist/index.js:915:20
+
+stderr | src/desktop/main/services/__tests__/diffService.test.ts > diff 실패와 경로 경계 > 점 두 개로 시작하는 내부 파일은 읽고 저장하며 상위 경로는 차단한다 (host=null)
+파일 저장 실패: Error: 잘못된 파일 경로: 절대 경로는 허용되지 않습니다
+    at validateFilePath (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/desktop/main/services/diffService.ts:89:11)
+    at Module.saveFileContent (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/desktop/main/services/diffService.ts:386:26)
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at /home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/desktop/main/services/__tests__/diffService.test.ts:306:14
+    at file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/@vitest/runner/dist/index.js:915:20
+
+stderr | src/desktop/main/services/__tests__/diffService.test.ts > diff 실패와 경로 경계 > 점 두 개로 시작하는 내부 파일은 읽고 저장하며 상위 경로는 차단한다 (host=remote-host)
+파일 저장 실패: Error: 잘못된 파일 경로: worktree 외부 접근이 감지되었습니다
+    at validateFilePath (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/desktop/main/services/diffService.ts:95:11)
+    at Module.saveFileContent (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/desktop/main/services/diffService.ts:386:26)
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at /home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/desktop/main/services/__tests__/diffService.test.ts:305:14
+    at file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/@vitest/runner/dist/index.js:915:20
+
+stderr | src/desktop/main/services/__tests__/diffService.test.ts > diff 실패와 경로 경계 > 점 두 개로 시작하는 내부 파일은 읽고 저장하며 상위 경로는 차단한다 (host=remote-host)
+파일 저장 실패: Error: 잘못된 파일 경로: 절대 경로는 허용되지 않습니다
+    at validateFilePath (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/desktop/main/services/diffService.ts:89:11)
+    at Module.saveFileContent (/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/desktop/main/services/diffService.ts:386:26)
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at /home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/desktop/main/services/__tests__/diffService.test.ts:306:14
+    at file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/@vitest/runner/dist/index.js:915:20
+
+Switched to a new branch 'feature'
+Switched to a new branch 'feature'
+Switched to a new branch 'feature'
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService sync deleted paths > 삭제된 worktree만 정리하며 Git 목록에 남아 있어도 다시 만들지 않는다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/api',
+  sshHost: null,
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService sync deleted paths > 삭제된 worktree만 정리하며 Git 목록에 남아 있어도 다시 만들지 않는다
+[project-color] 프로젝트 색상 조회 실패 {
+  projectId: 'cleanup-project',
+  error: 'projectRepo.findOneBy is not a function'
+}
+
+Switched to a new branch 'feature'
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService sync deleted paths > Git 목록 조회 실패와 경로 없는 태스크는 삭제 근거로 사용하지 않는다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/api',
+  sshHost: null,
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService sync deleted paths > Git으로 이동한 worktree는 기존 태스크 ID와 메타데이터를 유지한다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/api',
+  sshHost: null,
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService sync deleted paths > Git으로 이동한 worktree는 기존 태스크 ID와 메타데이터를 유지한다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/api__worktrees/moved',
+  sshHost: null,
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService sync deleted paths > Git으로 이동한 worktree는 기존 태스크 ID와 메타데이터를 유지한다
+[project-color] 프로젝트 색상 조회 실패 {
+  projectId: 'cleanup-project',
+  error: 'projectRepo.findOneBy is not a function'
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService sync deleted paths > 삭제된 기본 브랜치 worktree를 다시 만들지 않고 프로젝트 기본 태스크를 유지한다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/api',
+  sshHost: null,
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService sync deleted paths > 삭제된 기본 브랜치 worktree를 다시 만들지 않고 프로젝트 기본 태스크를 유지한다
+[project-color] 프로젝트 색상 조회 실패 {
+  projectId: 'cleanup-project',
+  error: 'projectRepo.findOneBy is not a function'
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService sync deleted paths > 태스크의 SSH 정보가 비었으면 프로젝트 호스트에서 경로를 확인한다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/api',
+  sshHost: 'devbox',
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService sync deleted paths > 태스크의 SSH 정보가 비었으면 프로젝트 호스트에서 경로를 확인한다
+[project-color] 프로젝트 색상 조회 실패 {
+  projectId: 'cleanup-project',
+  error: 'projectRepo.findOneBy is not a function'
+}
+
+Switched to a new branch 'feature'
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService remote registration flow > 원격 스캔은 세션 의존성 검증 없이 git 저장소 검색을 진행한다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/api',
+  sshHost: 'remote-host',
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService remote registration flow > 원격 스캔은 세션 의존성 검증 없이 git 저장소 검색을 진행한다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/api',
+  sshHost: 'remote-host',
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService remote registration flow > 원격 세션 생성이 실패해도 프로젝트 등록은 유지한다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/api',
+  sshHost: 'remote-host',
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService remote registration flow > 원격 세션 생성이 실패해도 프로젝트 등록은 유지한다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/api',
+  sshHost: 'remote-host',
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService remote registration flow > 원격 프로젝트 기본 브랜치 task는 자동 tmux 세션을 만들지 않는다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/api',
+  sshHost: 'remote-host',
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService remote registration flow > 원격 프로젝트 기본 브랜치 task는 자동 tmux 세션을 만들지 않는다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/api',
+  sshHost: 'remote-host',
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService remote registration flow > bare common repo 형태의 기본 브랜치 task는 worktreePath를 null로 저장한다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/remote/repo',
+  sshHost: 'remote-host',
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService remote registration flow > bare common repo 형태의 기본 브랜치 task는 worktreePath를 null로 저장한다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/remote/repo',
+  sshHost: 'remote-host',
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService remote registration flow > 다른 PC에 같은 이름의 프로젝트가 있으면 상위 폴더를 붙이지 않고 그대로 등록한다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/home/rookedsysc/Documents/kanvibe/kanvibe',
+  sshHost: 'remote-host',
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService remote registration flow > 다른 PC에 같은 이름의 프로젝트가 있으면 상위 폴더를 붙이지 않고 그대로 등록한다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/home/rookedsysc/Documents/kanvibe/kanvibe',
+  sshHost: 'remote-host',
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+Switched to a new branch 'feature'
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService remote registration flow > 같은 PC에 같은 이름의 프로젝트가 있으면 상위 폴더를 붙여 구분한다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/home/tester/Documents/kanvibe',
+  sshHost: 'remote-host',
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService remote registration flow > 같은 PC에 같은 이름의 프로젝트가 있으면 상위 폴더를 붙여 구분한다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/home/tester/Documents/kanvibe',
+  sshHost: 'remote-host',
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService remote registration flow > 프로젝트 등록은 GitHub 아이콘 조회를 기다리지 않고 저장을 마친 뒤 백그라운드로 아이콘을 채운다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/api',
+  sshHost: null,
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService remote registration flow > 프로젝트 등록은 GitHub 아이콘 조회를 기다리지 않고 저장을 마친 뒤 백그라운드로 아이콘을 채운다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/api',
+  sshHost: null,
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService remote registration flow > 아이콘 조회 도중 프로젝트가 삭제되면 아이콘을 다시 저장하지 않는다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/api',
+  sshHost: null,
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService remote registration flow > 아이콘 조회 도중 프로젝트가 삭제되면 아이콘을 다시 저장하지 않는다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/api',
+  sshHost: null,
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+ ✓ |node| src/desktop/main/services/__tests__/diffService.test.ts (28 tests) 591ms
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > 로컬 OpenCode hook 설치 시 OpenCode provider만 다시 설치한다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/repo',
+  sshHost: null,
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > 프로젝트 루트 경로 task에서 Claude hook 재설치를 누르면 Claude provider만 현재 root task에 다시 바인딩한다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/repo',
+  sshHost: null,
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > 로컬 기본 브랜치 태스크가 TODO로 남아도 repo 경로에 hooks를 자동 설치한다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/api',
+  sshHost: null,
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > 로컬 기본 브랜치 태스크가 TODO로 남아도 repo 경로에 hooks를 자동 설치한다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/api',
+  sshHost: null,
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > 이미 등록된 레거시 프로젝트 목록 조회는 즉시 반환하고 root task 복구는 백그라운드에서 진행한다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/api',
+  sshHost: null,
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > 이미 등록된 레거시 프로젝트 목록 조회는 즉시 반환하고 root task 복구는 백그라운드에서 진행한다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/api',
+  sshHost: null,
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > 기존 root task 백그라운드 복구가 한 번 실패해도 다음 조회에서 다시 재시도한다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/api',
+  sshHost: null,
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > 기존 root task 백그라운드 복구가 한 번 실패해도 다음 조회에서 다시 재시도한다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/api',
+  sshHost: null,
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > 원격 root hook 상태 조회는 getAllProjects 백그라운드에서 발생하지 않는다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/api',
+  sshHost: 'remote-host',
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > 원격 root hook 설치 오류는 getAllProjects 백그라운드에서 발생하지 않는다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/remote/techtaurant-be',
+  sshHost: 'remote-host',
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > 레거시 프로젝트에서 기본 브랜치 task가 없어도 project hook 재설치를 계속 진행한다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/api',
+  sshHost: null,
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > 레거시 프로젝트에서 기본 브랜치 task가 없어도 project hook 재설치를 계속 진행한다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/api',
+  sshHost: null,
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > 스캔으로 발견한 로컬 TODO worktree 태스크에도 hooks를 자동 설치한다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/api',
+  sshHost: null,
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > 스캔으로 발견한 로컬 TODO worktree 태스크에도 hooks를 자동 설치한다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/api',
+  sshHost: null,
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > 스캔으로 발견한 로컬 TODO worktree 태스크에도 hooks를 자동 설치한다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/api',
+  sshHost: null,
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > 스캔으로 발견한 로컬 TODO worktree 태스크에도 hooks를 자동 설치한다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/api-worktrees/feature-login',
+  sshHost: null,
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > 스캔으로 발견한 로컬 TODO worktree 태스크에도 hooks를 자동 설치한다
+[project-color] 프로젝트 색상 조회 실패 {
+  projectId: 'project-1',
+  error: 'projectRepo.findOneBy is not a function'
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > 프로젝트 스캔은 git submodule을 별도 프로젝트로 등록하지 않는다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/app',
+  sshHost: null,
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > 프로젝트 스캔은 git submodule을 별도 프로젝트로 등록하지 않는다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/app',
+  sshHost: null,
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > 프로젝트 스캔은 git submodule을 별도 프로젝트로 등록하지 않는다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/app',
+  sshHost: null,
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > 프로젝트 스캔은 git submodule을 별도 프로젝트로 등록하지 않는다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/app',
+  sshHost: null,
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > worktree 경로만 스캔돼도 원격 호스트를 보존한다 (tmux=false)
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/remote/repo',
+  sshHost: 'remote-host',
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > worktree 경로만 스캔돼도 원격 호스트를 보존한다 (tmux=false)
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/remote/repo__worktrees/feature-login',
+  sshHost: 'remote-host',
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > worktree 경로만 스캔돼도 원격 호스트를 보존한다 (tmux=false)
+[project-color] 프로젝트 색상 조회 실패 {
+  projectId: 'project-1',
+  error: 'projectRepo.findOneBy is not a function'
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > worktree 경로만 스캔돼도 원격 호스트를 보존한다 (tmux=true)
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/remote/repo',
+  sshHost: 'remote-host',
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > worktree 경로만 스캔돼도 원격 호스트를 보존한다 (tmux=true)
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/remote/repo__worktrees/feature-login',
+  sshHost: 'remote-host',
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > worktree 경로만 스캔돼도 원격 호스트를 보존한다 (tmux=true)
+[project-color] 프로젝트 색상 조회 실패 {
+  projectId: 'project-1',
+  error: 'projectRepo.findOneBy is not a function'
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > worktree 경로만 스캔돼도 원격 호스트를 보존한다 (tmux=true)
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/remote/repo',
+  sshHost: 'remote-host',
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > tmux 세션이 없고 Herdr 세션이 살아 있으면 Herdr 세션으로 연결한다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/remote/repo',
+  sshHost: 'remote-host',
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > tmux 세션이 없고 Herdr 세션이 살아 있으면 Herdr 세션으로 연결한다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/remote/repo__worktrees/feature-login',
+  sshHost: 'remote-host',
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > tmux 세션이 없고 Herdr 세션이 살아 있으면 Herdr 세션으로 연결한다
+[project-color] 프로젝트 색상 조회 실패 {
+  projectId: 'project-1',
+  error: 'projectRepo.findOneBy is not a function'
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > tmux 세션이 없고 Herdr 세션이 살아 있으면 Herdr 세션으로 연결한다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/remote/repo',
+  sshHost: 'remote-host',
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > 원격 스캔은 root hook 상태 조회 실패와 무관하게 worktree 등록을 계속 진행한다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/remote/repo',
+  sshHost: 'remote-host',
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > 원격 스캔은 root hook 상태 조회 실패와 무관하게 worktree 등록을 계속 진행한다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/remote/repo',
+  sshHost: 'remote-host',
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > 원격 스캔은 root hook 상태 조회 실패와 무관하게 worktree 등록을 계속 진행한다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/remote/repo',
+  sshHost: 'remote-host',
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > 원격 스캔은 root hook 상태 조회 실패와 무관하게 worktree 등록을 계속 진행한다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/remote/repo__worktrees/feature-login',
+  sshHost: 'remote-host',
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > 원격 스캔은 root hook 상태 조회 실패와 무관하게 worktree 등록을 계속 진행한다
+[project-color] 프로젝트 색상 조회 실패 {
+  projectId: 'project-1',
+  error: 'projectRepo.findOneBy is not a function'
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > 프로젝트 스캔 후 worktree 후속 처리는 현재 스캔에서 찾은 저장소만 대상으로 한다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/api',
+  sshHost: null,
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > 프로젝트 스캔 후 worktree 후속 처리는 현재 스캔에서 찾은 저장소만 대상으로 한다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/api',
+  sshHost: null,
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > 프로젝트 스캔 후 worktree 후속 처리는 현재 스캔에서 찾은 저장소만 대상으로 한다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/api',
+  sshHost: null,
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > 프로젝트 스캔 후 worktree 후속 처리는 현재 스캔에서 찾은 저장소만 대상으로 한다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/api',
+  sshHost: null,
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > 브랜치명만 같은 다른 orphan task는 현재 프로젝트 worktree에 재사용하지 않는다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/api',
+  sshHost: null,
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > 브랜치명만 같은 다른 orphan task는 현재 프로젝트 worktree에 재사용하지 않는다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/api',
+  sshHost: null,
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > 브랜치명만 같은 다른 orphan task는 현재 프로젝트 worktree에 재사용하지 않는다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/api',
+  sshHost: null,
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > 브랜치명만 같은 다른 orphan task는 현재 프로젝트 worktree에 재사용하지 않는다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/api-worktrees/feature-login',
+  sshHost: null,
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > 브랜치명만 같은 다른 orphan task는 현재 프로젝트 worktree에 재사용하지 않는다
+[project-color] 프로젝트 색상 조회 실패 {
+  projectId: 'project-1',
+  error: 'projectRepo.findOneBy is not a function'
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > 등록된 프로젝트 background sync는 기존 root hooks를 자동 복구하지 않는다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/api',
+  sshHost: null,
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > 등록된 프로젝트 background sync는 기존 root hooks를 자동 복구하지 않는다
+[project-color] 프로젝트 색상 조회 실패 {
+  projectId: 'project-1',
+  error: 'projectRepo.findOneBy is not a function'
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > git 저장소 판정이 SSH 연결 실패로 끝나면 저장소가 아니라고 보지 않고 기존 동기화를 진행한다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/remote/api',
+  sshHost: 'remote-mac',
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > 등록된 원격 프로젝트 background sync는 기존 root hook 복구를 예약하지 않는다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/remote/api',
+  sshHost: 'remote-host',
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > 등록된 원격 프로젝트 background sync는 기존 root hook 복구를 예약하지 않는다
+[project-color] 프로젝트 색상 조회 실패 {
+  projectId: 'project-1',
+  error: 'projectRepo.findOneBy is not a function'
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > 등록된 프로젝트 background sync는 새 worktree를 TODO task로 등록한다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/api',
+  sshHost: null,
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > 등록된 프로젝트 background sync는 새 worktree를 TODO task로 등록한다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/api__worktrees/feature-sync',
+  sshHost: null,
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > 등록된 프로젝트 background sync는 새 worktree를 TODO task로 등록한다
+[project-color] 프로젝트 색상 조회 실패 {
+  projectId: 'project-1',
+  error: 'projectRepo.findOneBy is not a function'
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > 등록된 프로젝트 background sync는 활성 세션이 있어도 .kanvibe 상태가 없으면 새 worktree를 TODO task로 등록한다
+[project-color] 프로젝트 색상 조회 실패 {
+  projectId: 'project-1',
+  error: 'projectRepo.findOneBy is not a function'
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > worktree sync는 기존 기준 브랜치를 보존하고 누락된 값만 보충한다: 'feature/parent' / null
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/api',
+  sshHost: null,
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > worktree sync는 기존 기준 브랜치를 보존하고 누락된 값만 보충한다: 'feature/parent' / null
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/api__worktrees/feature-child',
+  sshHost: null,
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > worktree sync는 기존 기준 브랜치를 보존하고 누락된 값만 보충한다: 'feature/parent' / null
+[project-color] 프로젝트 색상 조회 실패 {
+  projectId: 'project-1',
+  error: 'projectRepo.findOneBy is not a function'
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > worktree sync는 기존 기준 브랜치를 보존하고 누락된 값만 보충한다: 'feature/parent' / 'review'
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/api',
+  sshHost: null,
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > worktree sync는 기존 기준 브랜치를 보존하고 누락된 값만 보충한다: 'feature/parent' / 'review'
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/api__worktrees/feature-child',
+  sshHost: null,
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > worktree sync는 기존 기준 브랜치를 보존하고 누락된 값만 보충한다: 'feature/parent' / 'review'
+[project-color] 프로젝트 색상 조회 실패 {
+  projectId: 'project-1',
+  error: 'projectRepo.findOneBy is not a function'
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > worktree sync는 기존 기준 브랜치를 보존하고 누락된 값만 보충한다: null / null
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/api',
+  sshHost: null,
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > worktree sync는 기존 기준 브랜치를 보존하고 누락된 값만 보충한다: null / null
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/api__worktrees/feature-child',
+  sshHost: null,
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > worktree sync는 기존 기준 브랜치를 보존하고 누락된 값만 보충한다: null / null
+[project-color] 프로젝트 색상 조회 실패 {
+  projectId: 'project-1',
+  error: 'projectRepo.findOneBy is not a function'
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > worktree sync는 기존 기준 브랜치를 보존하고 누락된 값만 보충한다: '' / null
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/api',
+  sshHost: null,
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > worktree sync는 기존 기준 브랜치를 보존하고 누락된 값만 보충한다: '' / null
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/api__worktrees/feature-child',
+  sshHost: null,
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > worktree sync는 기존 기준 브랜치를 보존하고 누락된 값만 보충한다: '' / null
+[project-color] 프로젝트 색상 조회 실패 {
+  projectId: 'project-1',
+  error: 'projectRepo.findOneBy is not a function'
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > 등록된 프로젝트 background sync는 .kanvibe task 상태가 있으면 그 상태로 새 worktree를 등록한다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/api',
+  sshHost: null,
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > 등록된 프로젝트 background sync는 .kanvibe task 상태가 있으면 그 상태로 새 worktree를 등록한다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/api__worktrees/feature-review',
+  sshHost: null,
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > 등록된 프로젝트 background sync는 .kanvibe task 상태가 있으면 그 상태로 새 worktree를 등록한다
+[project-color] 프로젝트 색상 조회 실패 {
+  projectId: 'project-1',
+  error: 'projectRepo.findOneBy is not a function'
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > 등록된 프로젝트 background sync는 기존 worktree task도 .kanvibe task 상태대로 갱신한다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/api',
+  sshHost: null,
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > 등록된 프로젝트 background sync는 기존 worktree task도 .kanvibe task 상태대로 갱신한다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/api__worktrees/feature-pending',
+  sshHost: null,
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > 등록된 프로젝트 background sync는 기존 worktree task도 .kanvibe task 상태대로 갱신한다
+[project-color] 프로젝트 색상 조회 실패 {
+  projectId: 'project-1',
+  error: 'projectRepo.findOneBy is not a function'
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > 등록된 프로젝트 background sync는 orphan worktree task도 .kanvibe 상태대로 연결한다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/api',
+  sshHost: null,
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > 등록된 프로젝트 background sync는 orphan worktree task도 .kanvibe 상태대로 연결한다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/api__worktrees/feature-orphan',
+  sshHost: null,
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > 등록된 프로젝트 background sync는 orphan worktree task도 .kanvibe 상태대로 연결한다
+[project-color] 프로젝트 색상 조회 실패 {
+  projectId: 'project-1',
+  error: 'projectRepo.findOneBy is not a function'
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > 원격 등록 프로젝트의 새 worktree hooks 설치는 백그라운드로 예약한다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/remote/api',
+  sshHost: 'remote-host',
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > 원격 등록 프로젝트의 새 worktree hooks 설치는 백그라운드로 예약한다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/remote/api__worktrees/feature-sync',
+  sshHost: 'remote-host',
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > 원격 등록 프로젝트의 새 worktree hooks 설치는 백그라운드로 예약한다
+[project-color] 프로젝트 색상 조회 실패 {
+  projectId: 'project-1',
+  error: 'projectRepo.findOneBy is not a function'
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > 등록된 프로젝트 background sync는 프로젝트별 worktree 조회를 직렬로 실행한다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/api-a',
+  sshHost: null,
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > 등록된 프로젝트 background sync는 프로젝트별 worktree 조회를 직렬로 실행한다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/api-b',
+  sshHost: null,
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > 등록된 프로젝트 background sync는 아이콘 backfill을 순차 worktree 스캔과 분리해 병렬로 실행한다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/api-a',
+  sshHost: null,
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > 등록된 프로젝트 background sync는 아이콘 backfill을 순차 worktree 스캔과 분리해 병렬로 실행한다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/api-b',
+  sshHost: null,
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService local hook installation > 등록된 프로젝트 background sync는 아이콘 backfill을 순차 worktree 스캔과 분리해 병렬로 실행한다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/api-c',
+  sshHost: null,
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService task description sync > 다른 기기가 task.json에 남긴 설명을 DB로 가져온다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/api',
+  sshHost: null,
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService task description sync > 다른 기기가 task.json에 남긴 설명을 DB로 가져온다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/api-worktrees/feature-login',
+  sshHost: null,
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService task description sync > 다른 기기가 task.json에 남긴 설명을 DB로 가져온다
+[project-color] 프로젝트 색상 조회 실패 {
+  projectId: 'project-1',
+  error: 'projectRepo.findOneBy is not a function'
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService task description sync > 다른 KanVibe가 task.json에 남긴 세션이 다르면 그 세션을 따르고 이전 터미널 연결을 끊는다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/api',
+  sshHost: null,
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService task description sync > 다른 KanVibe가 task.json에 남긴 세션이 다르면 그 세션을 따르고 이전 터미널 연결을 끊는다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/api-worktrees/feature-login',
+  sshHost: null,
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService task description sync > 다른 KanVibe가 task.json에 남긴 세션이 다르면 그 세션을 따르고 이전 터미널 연결을 끊는다
+[project-color] 프로젝트 색상 조회 실패 {
+  projectId: 'project-1',
+  error: 'projectRepo.findOneBy is not a function'
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService task description sync > task.json의 세션이 이미 같으면 저장하지도 연결을 끊지도 않는다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/api',
+  sshHost: null,
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService task description sync > task.json의 세션이 이미 같으면 저장하지도 연결을 끊지도 않는다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/api',
+  sshHost: null,
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService task description sync > task.json의 세션이 이미 같으면 저장하지도 연결을 끊지도 않는다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/api-worktrees/feature-login',
+  sshHost: null,
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService task description sync > task.json의 세션이 이미 같으면 저장하지도 연결을 끊지도 않는다
+[project-color] 프로젝트 색상 조회 실패 {
+  projectId: 'project-1',
+  error: 'projectRepo.findOneBy is not a function'
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService task description sync > task.json이 없으면 DB에 있던 설명을 지우지 않는다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/api',
+  sshHost: null,
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService task description sync > task.json이 없으면 DB에 있던 설명을 지우지 않는다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/api-worktrees/feature-login',
+  sshHost: null,
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService task description sync > task.json이 없으면 DB에 있던 설명을 지우지 않는다
+[project-color] 프로젝트 색상 조회 실패 {
+  projectId: 'project-1',
+  error: 'projectRepo.findOneBy is not a function'
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService task description sync > task priority가 있으면 project priority보다 우선해 DB로 가져온다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/api',
+  sshHost: null,
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService task description sync > task priority가 있으면 project priority보다 우선해 DB로 가져온다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/api-worktrees/feature-login',
+  sshHost: null,
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService task description sync > task priority가 있으면 project priority보다 우선해 DB로 가져온다
+[project-color] 프로젝트 색상 조회 실패 {
+  projectId: 'project-1',
+  error: 'projectRepo.findOneBy is not a function'
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService task description sync > task priority가 없으면 project priority를 DB로 가져온다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/api',
+  sshHost: null,
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService task description sync > task priority가 없으면 project priority를 DB로 가져온다
+.kanvibe 상태 디렉터리 git exclude 갱신 실패: {
+  repoPath: '/workspace/api-worktrees/feature-login',
+  sshHost: null,
+  error: "Cannot read properties of undefined (reading 'replace')"
+}
+
+stderr | src/desktop/main/services/__tests__/projectService.test.ts > projectService task description sync > task priority가 없으면 project priority를 DB로 가져온다
+[project-color] 프로젝트 색상 조회 실패 {
+  projectId: 'project-1',
+  error: 'projectRepo.findOneBy is not a function'
+}
+
+ ✓ |node| src/desktop/main/services/__tests__/projectService.test.ts (83 tests) 581ms
+ ✓ |node| src/lib/aiSessions/__tests__/readAdditionalFileSessions.test.ts (31 tests) 397ms
+ ✓ |node| src/desktop/main/__tests__/mobileDiagramWorker.test.ts (9 tests) 377ms
+ ✓ |node| src/lib/aiSessions/__tests__/paneChatSessionBindingsIntegration.test.ts (2 tests) 332ms
+ ✓ |node| src/lib/aiSessions/__tests__/liveAiSessions.test.ts (17 tests) 354ms
+stderr | src/desktop/main/__tests__/terminalBridge.test.ts > terminalBridge existing remote session migration > 일시적인 SSH 재연결 대기를 hook 설치 실패 알림으로 표시하지 않는다
+터미널 연결 전 hooks 확인 실패: {
+  taskId: 'task-1',
+  taskTitle: 'existing task',
+  targetPath: '/remote/repo',
+  sshHost: 'app-prod',
+  error: 'SSH transport cooldown'
+}
+
+ ✓ |node| src/desktop/main/__tests__/terminalBridge.test.ts (19 tests) 343ms
+ ✓ |node| electron/mobileAiRoutes.test.mjs (11 tests) 280ms
+ ✓ |node| src/desktop/main/services/__tests__/mobileDiagramRenderService.test.ts (24 tests) 300ms
+ ✓ |node| electron/developmentDatabase.test.mjs (23 tests) 309ms
+ ✓ |node| src/desktop/main/services/__tests__/hookService.test.ts (10 tests) 236ms
+ ✓ |node| src/lib/aiSessions/__tests__/legacyOpenCodeSessions.test.ts (4 tests) 209ms
+ ✓ |node| src/desktop/main/services/__tests__/aiUsageService.test.ts (10 tests) 203ms
+ ✓ |node| src/desktop/main/services/__tests__/taskTargetPropagationService.test.ts (6 tests) 167ms
+ ✓ |node| src/desktop/main/services/__tests__/mobileFeatureIntegration.test.ts (7 tests) 205ms
+ ✓ |node| electron/mobileTlsCertificate.test.mjs (3 tests) 155ms
+ ✓ |node| src/lib/aiSessions/__tests__/readAiSessions.test.ts (16 tests) 176ms
+ ✓ |node| src/desktop/main/services/__tests__/terminalTabService.test.ts (46 tests) 129ms
+ ✓ |node| src/desktop/main/services/__tests__/paneChatComposerCatalog.test.ts (6 tests) 98ms
+ ✓ |node| electron/mobileAiMount.test.mjs (3 tests) 97ms
+ ✓ |node| src/desktop/main/services/__tests__/aiAccountService.test.ts (15 tests) 76ms
+ ✓ |node| src/desktop/main/services/__tests__/mobileAiService.test.ts (23 tests) 67ms
+ ✓ |node| electron/taskCliRoutes.test.mjs (8 tests) 95ms
+ ✓ |node| src/lib/aiSessions/__tests__/imageHistory.test.ts (12 tests) 74ms
+ ✓ |node| electron/hookTransportGuard.test.mjs (9 tests) 93ms
+ ✓ |node| src/lib/aiUsage/__tests__/accountDiscovery.test.ts (18 tests) 65ms
+ ✓ |node| qa/electron/lib/fixtureRepository.test.mjs (3 tests) 57ms
+stderr | src/desktop/main/services/__tests__/backgroundTaskSyncService.test.ts > backgroundTaskSyncService > worktree sync 단계가 예외로 실패해도 PR sync와 pull sync를 계속 실행한다
+[background-task-sync] worktree sync failed: Error: project repository unavailable
+    at /home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/src/desktop/main/services/__tests__/backgroundTaskSyncService.test.ts:316:60
+    at file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/@vitest/runner/dist/index.js:145:11
+    at file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/@vitest/runner/dist/index.js:915:26
+    at file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/@vitest/runner/dist/index.js:1243:20
+    at new Promise (<anonymous>)
+    at runWithTimeout (file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/@vitest/runner/dist/index.js:1209:10)
+    at file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/@vitest/runner/dist/index.js:1653:37
+    at Traces.$ (file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/vitest/dist/chunks/traces.CCmnQaNT.js:142:27)
+    at trace (file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/vitest/dist/chunks/test.B8ej_ZHS.js:239:21)
+    at runTest (file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/@vitest/runner/dist/index.js:1653:12)
+
+ ✓ |node| src/desktop/main/services/__tests__/backgroundTaskSyncService.test.ts (15 tests) 36ms
+ ✓ |node| electron/browserOriginGuard.test.mjs (2 tests) 56ms
+ ✓ |node| docs-site/lib/__tests__/docsSite.test.js (36 tests) 37ms
+ ✓ |node| src/lib/aiSessions/__tests__/paneChatSessionBindings.test.ts (6 tests) 31ms
+ ✓ |node| src/lib/aiSessions/__tests__/shared.test.ts (13 tests) 24ms
+ ✓ |node| src/desktop/main/__tests__/notificationStore.test.ts (12 tests) 23ms
+ ✓ |node| src/desktop/main/services/__tests__/releaseUpdateService.test.ts (7 tests) 23ms
+ ✓ |node| src/desktop/main/__tests__/mobileAiLoginBridge.test.ts (12 tests) 27ms
+ ✓ |node| src/desktop/main/services/__tests__/paneChatAttachmentService.test.ts (6 tests) 31ms
+ ✓ |node| src/desktop/main/services/__tests__/kanvibeTaskStateService.test.ts (8 tests) 32ms
+ ✓ |node| src/lib/aiSessions/__tests__/providerHistoryIntegration.test.ts (1 test) 22ms
+ ✓ |node| src/desktop/main/services/__tests__/desktopNotificationService.test.ts (5 tests) 30ms
+ ✓ |node| src/lib/aiSessions/__tests__/geminiJsonl.test.ts (2 tests) 35ms
+ ✓ |node| src/desktop/main/services/__tests__/paneChatSurface.test.ts (20 tests) 18ms
+ ✓ |node| src/desktop/main/services/__tests__/mobileFeatureServices.test.ts (31 tests) 16ms
+ ✓ |node| src/lib/aiUsage/__tests__/readClaudeUsage.test.ts (23 tests) 13ms
+ ✓ |node| src/desktop/main/services/__tests__/appSettingsService.test.ts (28 tests) 17ms
+ ✓ |node| src/desktop/main/services/__tests__/taskCliService.test.ts (23 tests) 14ms
+ ✓ |node| docs-site/lib/__tests__/docsNavigation.test.js (22 tests) 17ms
+ ✓ |node| src/lib/aiUsage/__tests__/claudeCredentials.test.ts (23 tests) 22ms
+ ✓ |node| src/lib/aiUsage/__tests__/atomicCredentialsWrite.test.ts (4 tests) 25ms
+ ✓ |node| src/desktop/main/services/__tests__/editorService.test.ts (5 tests) 34ms
+stderr | src/desktop/main/services/__tests__/lanPlaintextService.test.ts > lanPlaintextService > 설정을 읽지 못하면 닫을 근거가 없어 기존처럼 연다
+[kanvibe] LAN plaintext check failed: db down
+
+ ✓ |node| src/desktop/main/services/__tests__/lanPlaintextService.test.ts (12 tests) 19ms
+ ✓ |node| electron/mobileCommands.test.mjs (30 tests) 16ms
+ ✓ |node| src/lib/aiUsage/__tests__/providerCli.test.ts (15 tests) 10ms
+ ✓ |node| src/desktop/main/services/__tests__/taskCliTokenService.test.ts (3 tests) 14ms
+stderr | electron/mobileFeatureRoutes.test.mjs > authenticated mobile parity routes > returns safe generic errors for unexpected provider failures
+[kanvibe] Mobile feature request failed: Error: secret command
+    at /home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/electron/mobileFeatureRoutes.test.mjs:25:156
+    at file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/@vitest/runner/dist/index.js:145:11
+    at file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/@vitest/runner/dist/index.js:915:26
+    at file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/@vitest/runner/dist/index.js:1243:20
+    at new Promise (<anonymous>)
+    at runWithTimeout (file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/@vitest/runner/dist/index.js:1209:10)
+    at file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/@vitest/runner/dist/index.js:1653:37
+    at Traces.$ (file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/vitest/dist/chunks/traces.CCmnQaNT.js:142:27)
+    at trace (file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/vitest/dist/chunks/test.B8ej_ZHS.js:239:21)
+    at runTest (file:///home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-kanvibe-mobile-performance/node_modules/@vitest/runner/dist/index.js:1653:12)
+
+ ✓ |node| electron/mobileFeatureRoutes.test.mjs (5 tests) 10ms
+ ✓ |node| src/lib/aiSessions/__tests__/openCodeQueryScope.test.ts (2 tests) 12ms
+ ✓ |node| src/lib/aiSessions/__tests__/cacheHostIdentity.test.ts (3 tests) 10ms
+ ✓ |node| electron/diagnostics.test.mjs (4 tests) 10ms
+ ✓ |node| src/desktop/main/services/__tests__/kanvibeProjectColorService.test.ts (15 tests) 10ms
+ ✓ |node| docs-site/lib/__tests__/docsNotFound.test.js (3 tests) 8ms
+ ✓ |node| electron/runtimeEnvironment.test.mjs (21 tests) 8ms
+ ✓ |node| electron/mobileDiagramRoutes.test.mjs (9 tests) 10ms
+stderr | src/lib/aiUsage/__tests__/claudeOAuthRefresh.test.ts > refreshClaudeCredentials > 토큰 엔드포인트가 429를 주면 병합하지 않고 null을 돌려준다
+[ai-usage] Claude 토큰 갱신 실패: HTTP 429
+
+stderr | src/lib/aiUsage/__tests__/claudeOAuthRefresh.test.ts > refreshClaudeCredentials > 네트워크 오류도 null로 흡수한다
+[ai-usage] Claude 토큰 갱신 요청 실패: network down
+
+ ✓ |node| src/lib/aiUsage/__tests__/claudeOAuthRefresh.test.ts (11 tests) 7ms
+ ✓ |node| src/lib/aiUsage/__tests__/aggregateAiUsage.test.ts (4 tests) 7ms
+ ✓ |node| src/lib/aiUsage/__tests__/geminiOAuthClient.test.ts (3 tests) 6ms
+ ✓ |node| src/lib/aiSessions/__tests__/paneChatProcess.test.ts (10 tests) 5ms
+ ✓ |node| src/desktop/main/__tests__/aiAccountLoginBridge.test.ts (4 tests) 5ms
+ ✓ |node| src/lib/aiSessions/__tests__/messageFiles.test.ts (12 tests) 7ms
+ ✓ |node| src/lib/aiSessions/__tests__/aggregateAiSessions.test.ts (5 tests) 5ms
+ ✓ |node| src/lib/aiUsage/__tests__/readCodexUsage.test.ts (6 tests) 6ms
+ ✓ |node| src/lib/aiUsage/__tests__/readGeminiUsage.test.ts (5 tests) 5ms
+ ✓ |node| src/desktop/main/__tests__/desktopShortcutRouting.test.ts (9 tests) 6ms
+ ✓ |node| src/lib/aiSessions/__tests__/parseCacheFreshness.test.ts (6 tests) 7ms
+ ✓ |node| src/lib/aiUsage/__tests__/usageSnapshotCache.test.ts (9 tests) 5ms
+ ✓ |node| src/lib/aiSessions/__tests__/historyPerformance.test.ts (6 tests) 5ms
+ ✓ |node| src/desktop/main/__tests__/windowOpen.test.ts (11 tests) 4ms
+ ✓ |node| src/lib/aiUsage/__tests__/accountRegistry.test.ts (7 tests) 4ms
+ ✓ |node| src/lib/aiUsage/__tests__/providerConfigDir.test.ts (8 tests) 4ms
+ ✓ |node| src/desktop/main/__tests__/runtimeEnvironment.test.ts (5 tests) 4ms
+ ✓ |node| src/desktop/main/__tests__/clipboardImageReadBridge.test.ts (2 tests) 3ms
+ ✓ |node| src/desktop/main/__tests__/terminalPasteImageBridge.test.ts (2 tests) 3ms
+ ✓ |node| electron/diagramWorkerWindows.test.mjs (1 test) 2ms
+ ✓ |node| src/desktop/main/__tests__/terminalClipboardBridge.test.ts (2 tests) 2ms
+ ✓ |node| src/desktop/main/__tests__/embeddedDocumentNavigation.test.ts (1 test) 2ms
+
+ Test Files  235 passed (235)
+      Tests  3376 passed (3376)
+   Start at  13:29:30
+   Duration  113.48s (transform 6.38s, setup 0ms, import 27.00s, tests 109.56s, environment 61.83s)
+

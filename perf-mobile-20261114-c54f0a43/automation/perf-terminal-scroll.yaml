@@ -1,0 +1,87 @@
+# tmux 픽스처 터미널의 손가락 스크롤과, Herdr 세션의 지난 출력 갱신 및 전체 화면 프로그램 휠 전달을 기기에서 확인한다.
+appId: ${APP_ID}
+env:
+  DESKTOP_API_FROM_HOST: http://127.0.0.1:39736
+  PROBE_API_FROM_HOST: http://127.0.0.1:19737
+---
+- launchApp:
+    clearState: true
+- runFlow: ../../../../mobile/.maestro/subflows/pairs-and-opens-board.yaml
+- scrollUntilVisible:
+    element: "(?s).*Maestro Fixture Session.*"
+    direction: UP
+    timeout: 15000
+- tapOn: "(?s).*Maestro Fixture Session.*"
+- extendedWaitUntil:
+    visible:
+      id: pane-terminal
+    timeout: 40000
+- takeScreenshot: 20-tmux-터미널
+- runFlow: ../../../../mobile/.maestro/subflows/opens-task-menu.yaml
+- tapOn: "새 태스크"
+- extendedWaitUntil:
+    visible: "(?s).*브랜치 이름.*"
+    timeout: 10000
+- tapOn: "(?s).*브랜치 이름.*"
+- inputText: maestro/perf-herdr
+- pressKey: Enter
+- scrollUntilVisible:
+    element: "만들기"
+    direction: DOWN
+- takeScreenshot: 20b-새-태스크-폼
+- tapOn: "만들기"
+- extendedWaitUntil:
+    visible:
+      id: pane-terminal
+    timeout: 30000
+- tapOn:
+    id: pane-terminal
+- inputText: "seq 1 300 | sed 's/^/herdr-line-/'"
+- pressKey: Enter
+- extendedWaitUntil:
+    visible: "기다리기 전용 문구"
+    timeout: 6000
+    optional: true
+- takeScreenshot: 21-herdr-최신-출력
+- swipe:
+    from:
+      id: pane-terminal
+    direction: DOWN
+- swipe:
+    from:
+      id: pane-terminal
+    direction: DOWN
+- takeScreenshot: 22-herdr-지난-출력
+- swipe:
+    from:
+      id: pane-terminal
+    direction: UP
+- swipe:
+    from:
+      id: pane-terminal
+    direction: UP
+- swipe:
+    from:
+      id: pane-terminal
+    direction: UP
+- tapOn:
+    id: pane-terminal
+- inputText: "/tmp/claude-1000/-home-crookedbot-Documents-github-crookedbot-rookedsysc-kanvibe--worktrees-perf-kanvibe-mobile-performance/64c6918e-62a2-47b1-aac6-ffb53476447a/scratchpad/kvw/codex /tmp/claude-1000/-home-crookedbot-Documents-github-crookedbot-rookedsysc-kanvibe--worktrees-perf-kanvibe-mobile-performance/64c6918e-62a2-47b1-aac6-ffb53476447a/scratchpad/kvw/w.py"
+- pressKey: Enter
+# 프로그램이 뜬 뒤 출력이 잠잠해지면 데스크탑이 전체 화면·마우스 모드를 알린 화면을 다시 보낸다.
+- extendedWaitUntil:
+    visible: "기다리기 전용 문구"
+    timeout: 6000
+    optional: true
+- takeScreenshot: 23-herdr-전체화면-프로그램
+- swipe:
+    from:
+      id: pane-terminal
+    direction: DOWN
+- runScript:
+    file: ../../../../mobile/.maestro/scripts/assert-terminal-command-ran.js
+    env:
+      MARKER: WHEEL_UP_RECEIVED
+      BRANCH_NAME: maestro/perf-herdr
+- takeScreenshot: 24-herdr-휠-전달-후
+- assertTrue: ${output.terminalCommandRan}

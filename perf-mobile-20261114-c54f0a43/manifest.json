@@ -1,0 +1,254 @@
+{
+  "verifiedCommit": "c54f0a436fa9c694c1b7cedee0276c39b81a30cc",
+  "gateHead": "06953dbc59f0515ccefd0c86ab0487d49c50f474",
+  "gateFingerprint": "484b98c38c2947d50ea0f0edd621a2a63a66457b",
+  "historicalDeviceBase": "a0720586",
+  "historicalDeviceNote": "Device runs precede dev integration and later follow-up fixes; they do not verify the current commit. Fullscreen wheel delivery used a Codex-mode substitute, not real Codex.",
+  "files": [
+    {
+      "path": "perf-mobile-20261114-c54f0a43/screenshots/desktop-dark-1000.png",
+      "source": "qa-results/roky-harness/20261113-mobile/desktop-chat-dark-1000.png",
+      "bytes": 55944,
+      "sha256": "e806fca677cad0dbdb2a62c42f8784271d2d9fdf1d111ce0d4fdf0d0e16f7b3e",
+      "gitBlob": "c927c4ba4c53b01d58c2b2cd5acfd032bd50c2e6"
+    },
+    {
+      "path": "perf-mobile-20261114-c54f0a43/screenshots/desktop-dark-420.png",
+      "source": "qa-results/roky-harness/20261113-mobile/desktop-chat-dark-420.png",
+      "bytes": 47598,
+      "sha256": "8d92b24c9d1631fe0c29bf1650950a4f56816fb2140dee28fca0dca6b5ccd81e",
+      "gitBlob": "d652ee8bc219bcf5deab777bac093c5d36489dd4"
+    },
+    {
+      "path": "perf-mobile-20261114-c54f0a43/screenshots/desktop-light-1000.png",
+      "source": "qa-results/roky-harness/20261113-mobile/desktop-chat-light-1000.png",
+      "bytes": 55332,
+      "sha256": "692ae9e5a4690478b3352d83369a92103a1084bd4871ecb1e4cdf51c7a548011",
+      "gitBlob": "89163a42aad45daf20146326cc266af38737f416"
+    },
+    {
+      "path": "perf-mobile-20261114-c54f0a43/videos/terminal.mp4",
+      "source": "qa-results/roky-harness/20261113-mobile/device/perf-20261114-005229-perf-terminal-scroll/maestro/videos/perf-20261114-005229-perf-terminal-scroll-perf-terminal-scroll.mp4",
+      "bytes": 4294419,
+      "sha256": "fbb18306da5994afa1c747c986ecff7bb3a97b76055ca6e2d23bb1ca17b3491d",
+      "gitBlob": "42342b0c32b1d14ea678f12311676e111ca09cca"
+    },
+    {
+      "path": "perf-mobile-20261114-c54f0a43/reports/terminal.md",
+      "source": "qa-results/roky-harness/20261113-mobile/device/perf-20261114-005229-perf-terminal-scroll/maestro/report.md",
+      "bytes": 1967,
+      "sha256": "f280ac60531ba9b0aa836e585ba4448e54ebc6cbc8bd668e95aeb9acbdb52c7b",
+      "gitBlob": "80393b7a6a829351752439dfd39d81d9807a6806"
+    },
+    {
+      "path": "perf-mobile-20261114-c54f0a43/reports/terminal-junit.xml",
+      "source": "qa-results/roky-harness/20261113-mobile/device/perf-20261114-005229-perf-terminal-scroll/maestro/junit.xml",
+      "bytes": 493,
+      "sha256": "8de8353f132d3a1f2569883d93175c5bdd32741ba780ea5caa1f1be4bb04ec7a",
+      "gitBlob": "ca0b2d0c42176c9945814dd08dc3afcd80c58949"
+    },
+    {
+      "path": "perf-mobile-20261114-c54f0a43/screenshots/terminal/02.png",
+      "source": "qa-results/roky-harness/20261113-mobile/device/perf-20261114-005229-perf-terminal-scroll/maestro/test-output/2026-11-14_005236/recording-wrapper/takeScreenshot/02-페어링-후-보드.png",
+      "bytes": 115521,
+      "sha256": "7fa5b724017fe485823ff00364749b30ac202e1af21c0a689f68ff386040ed20",
+      "gitBlob": "93825e03682a0faf324f2b8034efab2ff4d5168b"
+    },
+    {
+      "path": "perf-mobile-20261114-c54f0a43/screenshots/terminal/03.png",
+      "source": "qa-results/roky-harness/20261113-mobile/device/perf-20261114-005229-perf-terminal-scroll/maestro/test-output/2026-11-14_005236/recording-wrapper/takeScreenshot/20-tmux-터미널.png",
+      "bytes": 120459,
+      "sha256": "4f1183a1f80c76c442ac78263eccf4c809e3474d0e8ba43443ec5b6e7291c27f",
+      "gitBlob": "fbdc920033511a7d2f21e08d04447cf68774fe73"
+    },
+    {
+      "path": "perf-mobile-20261114-c54f0a43/screenshots/terminal/04.png",
+      "source": "qa-results/roky-harness/20261113-mobile/device/perf-20261114-005229-perf-terminal-scroll/maestro/test-output/2026-11-14_005236/recording-wrapper/takeScreenshot/20b-새-태스크-폼.png",
+      "bytes": 82066,
+      "sha256": "4f7866509ea0459728b318d97aeff1c47692b61b7e86008f1844d3bb48e42744",
+      "gitBlob": "848a276b80fb89f0444a7ec13afd03d4e6f1b093"
+    },
+    {
+      "path": "perf-mobile-20261114-c54f0a43/screenshots/terminal/05.png",
+      "source": "qa-results/roky-harness/20261113-mobile/device/perf-20261114-005229-perf-terminal-scroll/maestro/test-output/2026-11-14_005236/recording-wrapper/takeScreenshot/21-herdr-최신-출력.png",
+      "bytes": 216527,
+      "sha256": "7a1e9226bc0eb84d346680a72e34e79428ad2f353829caab7fdcfdac5f158eb0",
+      "gitBlob": "89146e4b12a760657bd73b1e1b968c5eb80d1b9a"
+    },
+    {
+      "path": "perf-mobile-20261114-c54f0a43/screenshots/terminal/06.png",
+      "source": "qa-results/roky-harness/20261113-mobile/device/perf-20261114-005229-perf-terminal-scroll/maestro/test-output/2026-11-14_005236/recording-wrapper/takeScreenshot/22-herdr-지난-출력.png",
+      "bytes": 202523,
+      "sha256": "45d6708e98920a881e6bb3e030412e5ef3b08c91e4c37a7fc9c81a208007c6b3",
+      "gitBlob": "e9d9b5c6d3ec648ecefd655785862c8cc4f7acbf"
+    },
+    {
+      "path": "perf-mobile-20261114-c54f0a43/screenshots/terminal/07.png",
+      "source": "qa-results/roky-harness/20261113-mobile/device/perf-20261114-005229-perf-terminal-scroll/maestro/test-output/2026-11-14_005236/recording-wrapper/takeScreenshot/23-herdr-전체화면-프로그램.png",
+      "bytes": 115300,
+      "sha256": "23c041fbcbbb5dfa54d5b26f1fed0b4207455c6d531f7fa95dc4450d948fbb44",
+      "gitBlob": "791fd61e15e803e86455d852747cef87b647a95f"
+    },
+    {
+      "path": "perf-mobile-20261114-c54f0a43/screenshots/terminal/08.png",
+      "source": "qa-results/roky-harness/20261113-mobile/device/perf-20261114-005229-perf-terminal-scroll/maestro/test-output/2026-11-14_005236/recording-wrapper/takeScreenshot/24-herdr-휠-전달-후.png",
+      "bytes": 130148,
+      "sha256": "bcda17d89d74c3f1872bca7732f45799d78cacc527e986778642553cfdb04f32",
+      "gitBlob": "006dd0e58409418591ed98f8d214206c21ab3e78"
+    },
+    {
+      "path": "perf-mobile-20261114-c54f0a43/videos/history.mp4",
+      "source": "qa-results/roky-harness/20261113-mobile/device/perf-20261114-005538-chat-history/maestro/videos/perf-20261114-005538-chat-history-chat-history.mp4",
+      "bytes": 19681431,
+      "sha256": "b612be95bad0073da5e680ee65bb689bdfd3f38edc0947a3816042823400fa99",
+      "gitBlob": "7f683a7cb856d8c631f9586ead09c1f45b46a228"
+    },
+    {
+      "path": "perf-mobile-20261114-c54f0a43/reports/history.md",
+      "source": "qa-results/roky-harness/20261113-mobile/device/perf-20261114-005538-chat-history/maestro/report.md",
+      "bytes": 1855,
+      "sha256": "21bfff98492a9b73a439994193c6265c21a794b11c0abcdeb63a78b5f69a8512",
+      "gitBlob": "406828b061b1839c5f4f0cafdcb045ad8f83411f"
+    },
+    {
+      "path": "perf-mobile-20261114-c54f0a43/reports/history-junit.xml",
+      "source": "qa-results/roky-harness/20261113-mobile/device/perf-20261114-005538-chat-history/maestro/junit.xml",
+      "bytes": 483,
+      "sha256": "d0bc1289d68cd0a22b53fabc152d757c066bf782c887c886e86f1416eb2ab5a7",
+      "gitBlob": "b05f0c5cb379f373f17acfa2284d316ca1c0edd9"
+    },
+    {
+      "path": "perf-mobile-20261114-c54f0a43/screenshots/history/01.png",
+      "source": "qa-results/roky-harness/20261113-mobile/device/perf-20261114-005538-chat-history/maestro/test-output/2026-11-14_005543/recording-wrapper/takeScreenshot/history-copy-feedback.png",
+      "bytes": 157704,
+      "sha256": "bec95b473de956d371df01e7d4ea608808a3ad3e5ed6ea13a33736ffaae30bfa",
+      "gitBlob": "a1ae6eaf5f6d3762e61ab5e253a44bab73c6cb71"
+    },
+    {
+      "path": "perf-mobile-20261114-c54f0a43/screenshots/history/02.png",
+      "source": "qa-results/roky-harness/20261113-mobile/device/perf-20261114-005538-chat-history/maestro/test-output/2026-11-14_005543/recording-wrapper/takeScreenshot/history-list.png",
+      "bytes": 147458,
+      "sha256": "f8abb4d94858f92056806ccc005e16b5d02851d9083c4582adf1e39f8401cae8",
+      "gitBlob": "557be8e60473dfb277d7f8262129ce64dbeb99d3"
+    },
+    {
+      "path": "perf-mobile-20261114-c54f0a43/screenshots/history/03.png",
+      "source": "qa-results/roky-harness/20261113-mobile/device/perf-20261114-005538-chat-history/maestro/test-output/2026-11-14_005543/recording-wrapper/takeScreenshot/history-messages.png",
+      "bytes": 135885,
+      "sha256": "9844b85f962c82ac7e949273e3cf5cd5d145d675d9b49a29e2ec43cbf4105903",
+      "gitBlob": "7de695c8f2710a57ff0092272acc5c23dfb9dc85"
+    },
+    {
+      "path": "perf-mobile-20261114-c54f0a43/screenshots/history/04.png",
+      "source": "qa-results/roky-harness/20261113-mobile/device/perf-20261114-005538-chat-history/maestro/test-output/2026-11-14_005543/recording-wrapper/takeScreenshot/history-native-clipboard-pasted.png",
+      "bytes": 168152,
+      "sha256": "b6fe0c9e47a883e2e1930b11d4e7d1bc4743eb7b33dff1f943904ab3b87ddc33",
+      "gitBlob": "69e4489fcd2429969a7b52d13eb984ea2fac479a"
+    },
+    {
+      "path": "perf-mobile-20261114-c54f0a43/screenshots/history/05.png",
+      "source": "qa-results/roky-harness/20261113-mobile/device/perf-20261114-005538-chat-history/maestro/test-output/2026-11-14_005543/recording-wrapper/takeScreenshot/history-older-messages.png",
+      "bytes": 129330,
+      "sha256": "dd904de508cee49deb2164cce9863bcb19d49a4ac6ef35fe303ebb27c8f63310",
+      "gitBlob": "5d1baf21ff52f85f294f2fd133bf9926465586a8"
+    },
+    {
+      "path": "perf-mobile-20261114-c54f0a43/screenshots/history/06.png",
+      "source": "qa-results/roky-harness/20261113-mobile/device/perf-20261114-005538-chat-history/maestro/test-output/2026-11-14_005543/recording-wrapper/takeScreenshot/history-provider-filter.png",
+      "bytes": 147458,
+      "sha256": "f8abb4d94858f92056806ccc005e16b5d02851d9083c4582adf1e39f8401cae8",
+      "gitBlob": "557be8e60473dfb277d7f8262129ce64dbeb99d3"
+    },
+    {
+      "path": "perf-mobile-20261114-c54f0a43/screenshots/history/07.png",
+      "source": "qa-results/roky-harness/20261113-mobile/device/perf-20261114-005538-chat-history/maestro/test-output/2026-11-14_005543/recording-wrapper/takeScreenshot/history-reentry.png",
+      "bytes": 136314,
+      "sha256": "4adcf00bed9be8c26238eaf5154988206a0847a303ab7ebe687564a9567e6bfc",
+      "gitBlob": "5fbf6089d85b163f0cc6ee1ecd9a80ee45c5c1d8"
+    },
+    {
+      "path": "perf-mobile-20261114-c54f0a43/reports/desktop-history-failed.md",
+      "source": "qa-output/perf-chat-ui-1/report.md",
+      "bytes": 6632,
+      "sha256": "f4f0f3db1c802f0f0ee403146d8c55721df8a828c27647f7ef8ffc02c89faed1",
+      "gitBlob": "dba01cc27f866bc7d3e4e2058d6b9e260407b35b"
+    },
+    {
+      "path": "perf-mobile-20261114-c54f0a43/videos/desktop-history-failed.mp4",
+      "source": "qa-output/perf-chat-ui-1/run.mp4",
+      "bytes": 526218,
+      "sha256": "29b818712e760afc03a06e7ef733e02e0c21177475f8a6ea99e5fd39900321ee",
+      "gitBlob": "fbaaadcf5cb7e528dfbd4e9a3fb597ff665dc504"
+    },
+    {
+      "path": "perf-mobile-20261114-c54f0a43/screenshots/desktop-history-failed/01-task-detail-before-ai-history-load.png",
+      "source": "qa-output/perf-chat-ui-1/screenshots/01-task-detail-before-ai-history-load.png",
+      "bytes": 36438,
+      "sha256": "c4d675a6d607b72f96c4a799fa84308637898c35365eec4d61ef78ef71ad81b4",
+      "gitBlob": "dffc0868789d9f07fe2147b079dbcf3c6d69ca29"
+    },
+    {
+      "path": "perf-mobile-20261114-c54f0a43/automation/perf-terminal-scroll.yaml",
+      "source": "qa-results/roky-harness/20261113-mobile/flows/perf-terminal-scroll.yaml",
+      "bytes": 2744,
+      "sha256": "e1178574e6204000cf4b5349e084d69913c7dade2c362cf411378ae6557a5300",
+      "gitBlob": "784fa19044b34421917264ab217356e26d76dd8e"
+    },
+    {
+      "path": "perf-mobile-20261114-c54f0a43/gates/check.log",
+      "source": "git-dir/commit-skill-qa/check.log",
+      "bytes": 146,
+      "sha256": "2406b302a40fbbe1becf2f13de61338aee1a37e2245c2b08c8db21c2c20a926d",
+      "gitBlob": "795b1bbf40bdd7cdc0e376b22f22a319b340a07e"
+    },
+    {
+      "path": "perf-mobile-20261114-c54f0a43/gates/test.log",
+      "source": "git-dir/commit-skill-qa/test.log",
+      "bytes": 188406,
+      "sha256": "b9f855db7665c06103897d9d1396fa88a0d42a00251e4f883119a964bf0b06c4",
+      "gitBlob": "26bde249a6d860cb7d481ae74435fcc89bedabf9"
+    },
+    {
+      "path": "perf-mobile-20261114-c54f0a43/gates/build.log",
+      "source": "git-dir/commit-skill-qa/build.log",
+      "bytes": 7954,
+      "sha256": "b216597691ae5de3b61bd641c90a3bbf3a9ecb862a82caf86c34ccb6eb4013e7",
+      "gitBlob": "88dfe2d1cc06acea06263b4ad9e952070a5e57c5"
+    },
+    {
+      "path": "perf-mobile-20261114-c54f0a43/gates/analyze.log",
+      "source": "git-dir/commit-skill-qa/analyze.log",
+      "bytes": 1863,
+      "sha256": "7c3fe694b7eee18149092ccb1a7281905e217e4bc8f54ec109e75e525714c0fb",
+      "gitBlob": "a41e03409d27fdf74c2dfa1003d49847e2efb881"
+    },
+    {
+      "path": "perf-mobile-20261114-c54f0a43/gates/format.log",
+      "source": "git-dir/commit-skill-qa/format.log",
+      "bytes": 49,
+      "sha256": "fbf3067a7a6d44f627a2d8dc6a1938aa71970b46e242bb5875e837c586148651",
+      "gitBlob": "191faf404d72dabe6f7adc546e748c7e056bab2c"
+    },
+    {
+      "path": "perf-mobile-20261114-c54f0a43/gates/flutter-test.log",
+      "source": "git-dir/commit-skill-qa/flutter-test.log",
+      "bytes": 206674,
+      "sha256": "cfa2a3c31b0ebb8cb2ab966627ea6fb1622700d3b45924bf5256b682e64807a7",
+      "gitBlob": "5410cf15e26d2d85c9ee0b8d97904b7b00a2ed18"
+    },
+    {
+      "path": "perf-mobile-20261114-c54f0a43/gates/desktop-results.json",
+      "source": "git-dir/commit-skill-qa/desktop-results.json",
+      "bytes": 609,
+      "sha256": "3862eed8d4844bbeabc7363b31d28da00a74d581f9ebb62e69080c1c831ac95a",
+      "gitBlob": "31c6d925e4644e837a7772a31e0306f937b8140c"
+    },
+    {
+      "path": "perf-mobile-20261114-c54f0a43/gates/mobile-results.json",
+      "source": "git-dir/commit-skill-qa/mobile-results.json",
+      "bytes": 860,
+      "sha256": "5c88c0315bc2236b8cb333f3ffd7adbec0e3f4f947acffa943ce4b3775713bbd",
+      "gitBlob": "02ba8cf802be7510d156c2d0244b3f20098876e6"
+    }
+  ]
+}
