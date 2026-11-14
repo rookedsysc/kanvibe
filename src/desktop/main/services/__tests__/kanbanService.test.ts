@@ -142,7 +142,7 @@ function expectGitHubCliCommand(command: string, repoPath: string, ghArguments: 
   /** 등록된 경로가 저장소를 감싼 상위 폴더면 바로 아래 저장소로 내려가야 조회가 성립한다 */
   expect(command).toContain('if [ ! -e "$repo/.git" ]');
   /** .envrc에 GitHub 인증을 심어 둔 저장소는 direnv를 태우지 않으면 권한 없이 실패한다 */
-  expect(command).toContain(`if [ -f "$repo/.envrc" ] && command -v direnv`);
+  expect(command).toContain(`if [ -n "$envrcDirectory" ] && command -v direnv`);
   expect(command).toContain(`direnv exec "$repo" gh ${ghArguments} || gh ${ghArguments}`);
   expect(command).toContain(`else gh ${ghArguments}`);
 }
@@ -3020,6 +3020,20 @@ describe("kanbanService gh 실행 셸 명령", () => {
     // Given
     const repositoryPath = createRepository("direnv-repo");
     nodeFs.writeFileSync(nodePath.join(repositoryPath, ".envrc"), "export GH_TOKEN=token\n");
+    const command = await captureGitHubCliCommand(repositoryPath);
+
+    // When
+    const output = runGitHubCliCommand(command, createShellStubs());
+
+    // Then
+    expect(output).toBe(`direnv:${repositoryPath}`);
+  });
+
+  /** 저장소마다가 아니라 상위 폴더에 경로별로 GitHub 인증을 둔 경우도 direnv는 그 설정을 읽는다 */
+  it(".envrc가 상위 경로에만 있어도 direnv를 태워 gh를 부른다", async () => {
+    // Given
+    nodeFs.writeFileSync(nodePath.join(workspaceRoot, ".envrc"), "export GH_TOKEN=token\n");
+    const repositoryPath = createRepository(nodePath.join("work", "direnv-parent-repo"));
     const command = await captureGitHubCliCommand(repositoryPath);
 
     // When
