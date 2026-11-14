@@ -954,7 +954,7 @@ export async function deleteTasks(taskIds: string[]): Promise<string[]> {
       await deleteTaskResources(task);
       await repo.remove(task);
       broadcastTaskSessionChanged({ taskId });
-      deletedTaskIds.push(task.id);
+      deletedTaskIds.push(taskId);
     }
   } finally {
     if (deletedTaskIds.length > 0) {

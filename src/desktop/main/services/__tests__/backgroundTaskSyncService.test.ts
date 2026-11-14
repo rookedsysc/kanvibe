@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   syncActiveTaskPulls: vi.fn(),
   broadcastBoardUpdate: vi.fn(),
   broadcastBackgroundSyncReviewNeeded: vi.fn(),
+  broadcastBackgroundSyncStatus: vi.fn(),
   getBackgroundSyncEnabled: vi.fn().mockResolvedValue(true),
   getBackgroundSyncIntervalMs: vi.fn().mockResolvedValue(10 * 60_000),
   registerBackgroundSyncIntervalChangedCallback: vi.fn(),
@@ -24,6 +25,7 @@ vi.mock("@/desktop/main/services/kanbanService", () => ({
 vi.mock("@/lib/boardNotifier", () => ({
   broadcastBoardUpdate: mocks.broadcastBoardUpdate,
   broadcastBackgroundSyncReviewNeeded: mocks.broadcastBackgroundSyncReviewNeeded,
+  broadcastBackgroundSyncStatus: mocks.broadcastBackgroundSyncStatus,
 }));
 
 vi.mock("@/desktop/main/services/appSettingsService", () => ({
@@ -40,6 +42,25 @@ async function flushBackgroundSyncCycle() {
 }
 
 describe("backgroundTaskSyncService", () => {
+  it("shares one run across clients and exposes its progress and completion", async () => {
+    let finishWorktrees!: (value: unknown) => void;
+    mocks.syncRegisteredProjectWorktrees.mockImplementationOnce(() => new Promise((resolve) => { finishWorktrees = resolve; }));
+    const service = await import("@/desktop/main/services/backgroundTaskSyncService");
+    expect(service.getBackgroundTaskSyncStatus().isRunning).toBe(false);
+    const first = service.runBackgroundTaskSyncNow();
+    const second = service.runBackgroundTaskSyncNow();
+    expect(first).toBe(second);
+    expect(service.startBackgroundTaskSyncNow()).toMatchObject({ isRunning: true, phase: "worktrees", completedStages: 0 });
+    await Promise.resolve();
+    expect(mocks.syncRegisteredProjectWorktrees).toHaveBeenCalledTimes(1);
+    finishWorktrees({ worktreeTasks: [], registeredWorktrees: [], hooksSetup: [], errors: [], changed: false });
+    await first;
+    expect(service.getBackgroundTaskSyncStatus()).toMatchObject({ isRunning: false, phase: "completed", completedStages: 3, reviewNeeded: false });
+    expect(mocks.syncActiveTaskPullRequests).toHaveBeenCalledTimes(1);
+    expect(mocks.syncActiveTaskPulls).toHaveBeenCalledTimes(1);
+    await service.runBackgroundTaskSyncNow();
+    expect(mocks.syncRegisteredProjectWorktrees).toHaveBeenCalledTimes(2);
+  });
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();

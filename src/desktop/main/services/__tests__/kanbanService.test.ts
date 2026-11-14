@@ -1098,6 +1098,17 @@ describe("kanbanService.createTask", () => {
     );
   });
 
+  it("deleteTasks는 ORM이 삭제한 entity ID를 비워도 실제 삭제한 ID를 반환한다", async () => {
+    const task = { id: "removed-task", project: null, branchName: null, worktreePath: null, sessionType: null, sessionName: null };
+    mocks.taskRepo.find.mockResolvedValue([task]);
+    mocks.taskRepo.remove.mockImplementationOnce(async (entity) => {
+      entity.id = undefined;
+      return entity;
+    });
+    const { deleteTasks } = await import("@/desktop/main/services/kanbanService");
+    expect(await deleteTasks(["removed-task"])).toEqual(["removed-task"]);
+  });
+
   it("deleteTasks는 선택 task들을 순서대로 정리하고 삭제한 뒤 board update를 한 번만 브로드캐스트한다", async () => {
     // Given
     const taskA = {

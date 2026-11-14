@@ -402,9 +402,14 @@ Task status changes via AI Agent Hooks trigger **browser notifications** with pr
 - **Real-time alerts** — Instant notifications for task status changes
 - **Background mode** — Notifications work even when KanVibe is not focused
 - **Smart navigation** — Click notification → task detail page (with correct language)
+
 - **Configurable** — Enable/disable per project and filter by status (PROGRESS, PENDING, REVIEW, DONE)
 
 Setup: Browser will prompt for permission on first visit. Configure filters in **Project Settings** → **Notifications**.
+
+Background sync runs once per desktop, even when automatic, desktop, and mobile requests overlap. The notification center shows worktree discovery, PR checks, pull progress, and completion; a detected-item button opens the review dialog. Deletion starts in the background and closes the dialog; the Cleaning up button reopens the same progress and results. Closing the dialog or changing screens does not stop cleanup. Sync results stay in the inbox even when OS notifications are disabled.
+
+The main service owns sync status (`backgroundTaskSyncService`); `useBackgroundTaskSync`, `BackgroundSyncStatus`, `useBackgroundSyncReview`, and `BackgroundSyncReviewDialog` render the desktop notification flow. Mobile uses the notifications feature's shared `backgroundSyncProvider` and `BackgroundSyncCard`. Mobile status/start requests use `GET /api/mobile/sync/status` and `POST /api/mobile/sync/start`; both return a status snapshot immediately, and subsequent stages arrive over the existing event socket.
 
 #### Hook API Endpoints
 

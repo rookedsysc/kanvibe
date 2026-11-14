@@ -33,6 +33,18 @@ vi.mock("@/desktop/main/services/appSettingsService", () => ({
 }));
 
 describe("desktopNotificationService", () => {
+  it("stores sync results quietly in the inbox even when OS notifications are disabled", async () => {
+    mocks.getNotificationSettings.mockResolvedValue({ isEnabled: false, enabledStatuses: [] });
+    mocks.createNotification.mockResolvedValue({ created: true, notification: { id: "sync-result" } });
+    const onNotificationsChanged = vi.fn();
+    const { deliverBoardEventNotification } = await import("../desktopNotificationService");
+    await expect(deliverBoardEventNotification({
+      type: "background-sync-review-needed", mergedPullRequests: [], registeredWorktrees: [],
+    }, "ko", { onNotificationsChanged })).resolves.toBe(true);
+    expect(mocks.createNotification).toHaveBeenCalledOnce();
+    expect(onNotificationsChanged).toHaveBeenCalledOnce();
+    expect(notificationInstances).toHaveLength(0);
+  });
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();

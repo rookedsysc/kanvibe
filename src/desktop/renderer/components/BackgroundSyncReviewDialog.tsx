@@ -1,33 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect } from "react";
 import { useTranslations } from "next-intl";
-import { deleteTask } from "@/desktop/renderer/actions/kanban";
-import type { AppNotification } from "@/desktop/shared/notifications";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
-import type {
-  BackgroundSyncFailurePayload,
-  BackgroundSyncPulledTaskPayload,
-  BackgroundSyncRegisteredWorktreePayload,
-  BackgroundSyncReviewPayload,
-  TaskPrMergedDetectedPayload,
-} from "@/lib/boardNotifier";
-
-function buildMergedPrEventKey(taskId: string, prUrl: string, mergedAt: string) {
-  return `${taskId}:${prUrl}:${mergedAt}`;
-}
-
-function getMergedPrEventKey(payload: TaskPrMergedDetectedPayload) {
-  return buildMergedPrEventKey(payload.taskId, payload.prUrl, payload.mergedAt);
-}
-
-function getBackgroundSyncReviewPayload(notification: AppNotification | null | undefined): BackgroundSyncReviewPayload | null {
-  if (notification?.action?.type !== "background-sync-review") {
-    return null;
-  }
-
-  return notification.action.payload;
-}
+import { useBackgroundSyncReview, openBackgroundSyncReview, closeBackgroundSyncReview, deleteBackgroundSyncReviewTasks, toggleBackgroundSyncReviewTask } from "@/desktop/renderer/hooks/useBackgroundSyncReview";
+import type { AppNotification } from "@/desktop/shared/notifications";
+import type { BackgroundSyncFailurePayload, BackgroundSyncPulledTaskPayload, BackgroundSyncRegisteredWorktreePayload } from "@/lib/boardNotifier";
 
 function getBackgroundSyncFailureLabelKey(operation: BackgroundSyncFailurePayload["operation"]) {
   if (operation === "pull-request-sync") {
@@ -41,133 +19,22 @@ function getBackgroundSyncFailureLabelKey(operation: BackgroundSyncFailurePayloa
   return "worktreeFailure";
 }
 
-/** 선택한 task 하나의 삭제 결과. 일괄 삭제가 중간에 실패해도 어느 task가 지워졌는지 남긴다 */
-type PrMergeDeleteResult =
-  | { status: "pending" }
-  | { status: "succeeded" }
-  | { status: "failed"; reason: string };
-
 export default function BackgroundSyncReviewDialog() {
   const tc = useTranslations("common");
   const tr = useTranslations("common.backgroundSyncReview");
   const tm = useTranslations("common.prMergeAlert");
-  const [isPrMergeDeletePending, startPrMergeDeleteTransition] = useTransition();
-  const [backgroundSyncReview, setBackgroundSyncReview] = useState<BackgroundSyncReviewPayload | null>(null);
-  const [selectedPrMergeEventKeys, setSelectedPrMergeEventKeys] = useState<string[]>([]);
-  const [prMergeDeleteResultByTaskId, setPrMergeDeleteResultByTaskId] = useState<Record<string, PrMergeDeleteResult>>({});
-
-  useEffect(() => {
-    let isActive = true;
-
-    const applyNotification = (notification: AppNotification | null | undefined) => {
-      if (!isActive) {
-        return;
-      }
-
-      const payload = getBackgroundSyncReviewPayload(notification);
-      if (!payload) {
-        return;
-      }
-
-      setBackgroundSyncReview(payload);
-      setSelectedPrMergeEventKeys(payload.mergedPullRequests.map(getMergedPrEventKey));
-      setPrMergeDeleteResultByTaskId({});
-    };
-
-    const dispose = window.kanvibeDesktop?.onNotificationActivated?.((notification: AppNotification) => {
-      applyNotification(notification);
-    });
-
-    return () => {
-      isActive = false;
-      dispose?.();
-    };
-  }, []);
-
-  const selectedPrMergeEventKeySet = useMemo(
-    () => new Set(selectedPrMergeEventKeys),
-    [selectedPrMergeEventKeys],
-  );
-
-  const togglePrMergeSelection = useCallback((eventKey: string) => {
-    setSelectedPrMergeEventKeys((current) => (
-      current.includes(eventKey)
-        ? current.filter((key) => key !== eventKey)
-        : [...current, eventKey]
-    ));
-  }, []);
-
-  const handlePrMergeCancel = useCallback(() => {
-    setBackgroundSyncReview(null);
-    setSelectedPrMergeEventKeys([]);
-    setPrMergeDeleteResultByTaskId({});
-  }, []);
-
-  /**
-   * 대상마다 따로 지워 처리 수와 대상별 결과를 화면에 남긴다.
-   * 모두 지워지면 예전처럼 대화상자를 닫고, 하나라도 실패하면 열어 둔 채 실패한 대상만 다시 시도하게 한다.
-   */
-  const deletePrMergeTasks = useCallback((taskIds: string[]) => {
-    setPrMergeDeleteResultByTaskId((current) => {
-      const next = { ...current };
-      for (const taskId of taskIds) {
-        next[taskId] = { status: "pending" };
-      }
-      return next;
-    });
-
-    startPrMergeDeleteTransition(async () => {
-      let hasFailure = false;
-      for (const taskId of taskIds) {
-        let result: PrMergeDeleteResult;
-        try {
-          await deleteTask(taskId);
-          result = { status: "succeeded" };
-        } catch (error) {
-          hasFailure = true;
-          result = { status: "failed", reason: error instanceof Error ? error.message : String(error) };
-        }
-        setPrMergeDeleteResultByTaskId((current) => ({ ...current, [taskId]: result }));
-      }
-
-      if (!hasFailure) {
-        handlePrMergeCancel();
-      }
-    });
-  }, [handlePrMergeCancel, startPrMergeDeleteTransition]);
-
-  useEscapeKey(handlePrMergeCancel, {
-    enabled: Boolean(backgroundSyncReview) && !isPrMergeDeletePending,
-  });
-
-  const handlePrMergeConfirm = useCallback(() => {
-    if (!backgroundSyncReview) {
-      return;
-    }
-
-    const selectedEventKeys = new Set(selectedPrMergeEventKeys);
-    const selectedTaskIds = backgroundSyncReview.mergedPullRequests
-      .filter((alert) => selectedEventKeys.has(getMergedPrEventKey(alert)))
-      .map((alert) => alert.taskId);
-
-    if (selectedTaskIds.length === 0) {
-      handlePrMergeCancel();
-      return;
-    }
-
-    deletePrMergeTasks(selectedTaskIds);
-  }, [backgroundSyncReview, deletePrMergeTasks, handlePrMergeCancel, selectedPrMergeEventKeys]);
-
-  const handleRetryFailedPrMergeDeletes = useCallback(() => {
-    const failedTaskIds = Object.entries(prMergeDeleteResultByTaskId)
-      .filter(([, result]) => result.status === "failed")
-      .map(([taskId]) => taskId);
-    deletePrMergeTasks(failedTaskIds);
-  }, [deletePrMergeTasks, prMergeDeleteResultByTaskId]);
-
-  if (!backgroundSyncReview) {
-    return null;
-  }
+  const state = useBackgroundSyncReview();
+  useEffect(() => window.kanvibeDesktop?.onNotificationActivated?.((notification: AppNotification) => openBackgroundSyncReview(notification)), []);
+  useEscapeKey(closeBackgroundSyncReview, { enabled: state.isOpen });
+  if (!state.isOpen || state.notification?.action?.type !== "background-sync-review") return null;
+  const backgroundSyncReview = state.notification.action.payload;
+  const isPrMergeDeletePending = state.isCleaning;
+  const selectedPrMergeEventKeys = state.selectedTaskIds;
+  const selectedPrMergeEventKeySet = new Set(state.selectedTaskIds);
+  const prMergeDeleteResultByTaskId = state.results;
+  const handlePrMergeCancel = closeBackgroundSyncReview;
+  const handlePrMergeConfirm = () => { void deleteBackgroundSyncReviewTasks(); };
+  const handleRetryFailedPrMergeDeletes = () => { void deleteBackgroundSyncReviewTasks(true); };
 
   const pulledTasks = backgroundSyncReview.pulledTasks ?? [];
   const backgroundSyncFailures = backgroundSyncReview.failures ?? [];
@@ -179,15 +46,16 @@ export default function BackgroundSyncReviewDialog() {
   const hasPrMergeDeleteFailures = !isPrMergeDeletePending && prMergeDeleteFailedCount > 0;
 
   return (
-    <div className="fixed inset-0 z-[520] flex items-center justify-center bg-bg-overlay">
-      <div className="w-full max-w-2xl rounded-xl border border-border-default bg-bg-surface p-6 shadow-lg">
+    <div data-terminal-focus-blocker="true" className="fixed inset-0 z-[520] flex items-center justify-center bg-bg-overlay p-4">
+      <div role="dialog" aria-modal="true" aria-label={tr("title")} className="w-full max-w-2xl max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-xl border border-border-default bg-bg-surface p-6 shadow-lg break-words [overflow-wrap:anywhere]">
         <h2 className="mb-2 text-lg font-semibold text-text-primary">
           {tr("title")}
         </h2>
         <p className="text-sm text-text-secondary">
           {tr("message")}
+          <span className="mt-2 block">{tr("backgroundProcessing")}</span>
         </p>
-        <div className="mt-4 max-h-[360px] space-y-5 overflow-y-auto pr-1">
+        <div className="mt-4 max-h-[50dvh] space-y-5 overflow-y-auto pr-1">
           <section>
             <h3 className="text-sm font-semibold text-text-primary">{tr("mergedSection")}</h3>
             {backgroundSyncReview.mergedPullRequests.length === 0 ? (
@@ -195,7 +63,7 @@ export default function BackgroundSyncReviewDialog() {
             ) : (
               <div className="mt-3 space-y-3">
                 {backgroundSyncReview.mergedPullRequests.map((alert) => {
-                  const eventKey = getMergedPrEventKey(alert);
+                  const eventKey = alert.taskId;
                   const deleteResult = prMergeDeleteResultByTaskId[alert.taskId];
                   return (
                     <label
@@ -205,7 +73,7 @@ export default function BackgroundSyncReviewDialog() {
                       <input
                         type="checkbox"
                         checked={selectedPrMergeEventKeySet.has(eventKey)}
-                        onChange={() => togglePrMergeSelection(eventKey)}
+                        onChange={() => toggleBackgroundSyncReviewTask(eventKey)}
                         disabled={hasPrMergeDeleteStarted}
                         aria-label={alert.taskTitle}
                         className="mt-0.5 h-4 w-4 rounded border-border-default text-brand-primary focus:ring-brand-primary"
@@ -375,11 +243,10 @@ export default function BackgroundSyncReviewDialog() {
               })}
           </p>
         ) : null}
-        <div className="mt-5 flex justify-end gap-2">
+        <div className="mt-5 flex flex-wrap justify-end gap-2">
           <button
             type="button"
             onClick={handlePrMergeCancel}
-            disabled={isPrMergeDeletePending}
             className="rounded-md border border-border-default bg-bg-page px-4 py-1.5 text-sm text-text-secondary transition-colors hover:border-brand-primary"
           >
             {tc(hasPrMergeDeleteStarted ? "close" : "cancel")}
@@ -400,7 +267,7 @@ export default function BackgroundSyncReviewDialog() {
               aria-busy={isPrMergeDeletePending || undefined}
               className="rounded-md bg-brand-primary px-4 py-1.5 text-sm text-text-inverse transition-colors hover:bg-brand-hover disabled:opacity-50"
             >
-              {tc(hasSelectedPrMergeTasks ? "delete" : "confirm")}
+              {hasSelectedPrMergeTasks ? tr("deleteInBackground") : tc("confirm")}
             </button>
           )}
         </div>

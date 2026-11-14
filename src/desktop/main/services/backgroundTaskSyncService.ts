@@ -7,6 +7,7 @@ import {
 } from "@/desktop/main/services/kanbanService";
 import {
   broadcastBackgroundSyncReviewNeeded,
+  broadcastBackgroundSyncStatus,
   broadcastBoardUpdate,
   type BackgroundSyncFailurePayload,
 } from "@/lib/boardNotifier";
@@ -16,6 +17,7 @@ import {
   registerBackgroundSyncIntervalChangedCallback,
   registerBackgroundSyncEnabledChangedCallback,
 } from "@/desktop/main/services/appSettingsService";
+import type { BackgroundTaskSyncStatus } from "@/desktop/shared/backgroundTaskSync";
 
 const INITIAL_SYNC_DELAY_MS = 20_000;
 const FALLBACK_SYNC_INTERVAL_MS = 10 * 60_000;
@@ -23,6 +25,19 @@ const FALLBACK_SYNC_INTERVAL_MS = 10 * 60_000;
 let activeBackgroundTaskSyncStop: (() => void) | null = null;
 let activeBackgroundTaskSyncCycle: Promise<BackgroundTaskSyncRunResult> | null = null;
 const emittedMergeEventKeys = new Set<string>();
+let backgroundTaskSyncStatus: BackgroundTaskSyncStatus = {
+  phase: "idle", isRunning: false, completedStages: 0,
+  reviewNeeded: false, boardUpdated: false, error: null,
+};
+
+export function getBackgroundTaskSyncStatus(): BackgroundTaskSyncStatus {
+  return { ...backgroundTaskSyncStatus };
+}
+
+function updateBackgroundTaskSyncStatus(update: Partial<BackgroundTaskSyncStatus>) {
+  backgroundTaskSyncStatus = { ...backgroundTaskSyncStatus, ...update };
+  broadcastBackgroundSyncStatus(getBackgroundTaskSyncStatus());
+}
 
 export interface BackgroundTaskSyncRunResult {
   reviewNeeded: boolean;
@@ -102,6 +117,7 @@ async function executeBackgroundTaskSyncCycle(): Promise<BackgroundTaskSyncRunRe
       reason,
     }),
   );
+  updateBackgroundTaskSyncStatus({ phase: "pull-requests", completedStages: 1 });
   const prSync = await runBackgroundSyncStage(
     "pull request sync",
     () => syncActiveTaskPullRequests(emittedMergeEventKeys),
@@ -112,6 +128,7 @@ async function executeBackgroundTaskSyncCycle(): Promise<BackgroundTaskSyncRunRe
       reason,
     }),
   );
+  updateBackgroundTaskSyncStatus({ phase: "pulls", completedStages: 2 });
   const pullSync = await runBackgroundSyncStage(
     "task pull sync",
     syncActiveTaskPulls,
@@ -165,10 +182,28 @@ function runSharedBackgroundTaskSyncCycle(): Promise<BackgroundTaskSyncRunResult
     return activeBackgroundTaskSyncCycle;
   }
 
-  activeBackgroundTaskSyncCycle = executeBackgroundTaskSyncCycle().finally(() => {
-    activeBackgroundTaskSyncCycle = null;
+  activeBackgroundTaskSyncCycle = Promise.resolve().then(executeBackgroundTaskSyncCycle).then(
+    (result) => {
+      updateBackgroundTaskSyncStatus({ ...result, phase: "completed", isRunning: false, completedStages: 3 });
+      return result;
+    },
+    (error: unknown) => {
+      updateBackgroundTaskSyncStatus({ phase: "failed", isRunning: false, error: getErrorMessage(error) });
+      throw error;
+    },
+  ).finally(() => { activeBackgroundTaskSyncCycle = null; });
+  updateBackgroundTaskSyncStatus({
+    phase: "worktrees", isRunning: true, completedStages: 0,
+    reviewNeeded: false, boardUpdated: false, error: null,
   });
   return activeBackgroundTaskSyncCycle;
+}
+
+export function startBackgroundTaskSyncNow(): BackgroundTaskSyncStatus {
+  void runSharedBackgroundTaskSyncCycle().catch((error: unknown) => {
+    console.error("[background-task-sync] Manual sync failed:", error);
+  });
+  return getBackgroundTaskSyncStatus();
 }
 
 export function runBackgroundTaskSyncNow(): Promise<BackgroundTaskSyncRunResult> {

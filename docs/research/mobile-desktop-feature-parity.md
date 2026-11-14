@@ -86,7 +86,7 @@
 | S03 | 시스템·라이트·다크 테마 선택 | 테마 선택과 저장. 모바일은 다크 테마 고정이다. | 미구현. [Desktop 테마](../../src/components/ProjectSettings.tsx#L173), [Mobile 다크 고정](../../mobile/lib/src/common/constants/app_theme.dart#L12) |
 | S04 | 다국어 화면 | 한국어·영어·중국어 UI 리소스와 locale 적용. 모바일 주요 UI는 한국어 문자열이고 locale delegate가 없다. Desktop의 언어 선택 버튼은 확인하지 않았다. | 미구현. [Desktop locale](../../src/desktop/renderer/utils/locales.ts#L1), [Mobile 앱 설정](../../mobile/lib/src/app.dart#L116) |
 | S05 | PC 백그라운드 동기화 제어 | 동기화 켜기·주기 변경·즉시 실행. 모바일 새로고침은 보드 재조회이며 이 동작과 다르다. PC가 자동 동기화한 결과의 보드 갱신은 수신한다. | 부분 구현. [Desktop 주기 설정](../../src/components/ProjectSettings.tsx#L435), [즉시 실행](../../src/desktop/renderer/components/CommandPaletteDialog.tsx#L54), [Mobile 이벤트 반영](../../src/desktop/main/services/mobileNotificationService.ts#L70) |
-| S06 | 동기화 결과 검토와 후속 처리 | 새 worktree·자동 pull·실패 내역·병합 PR 태스크 검토, 선택 태스크 삭제. 모바일 알림함은 텍스트를 읽지만 검토 액션은 실행하지 않는다. | 부분 구현. [Desktop 검토](../../src/desktop/renderer/components/BackgroundSyncReviewDialog.tsx#L55), [알림 액션](../../src/components/NotificationCenterButton.tsx#L232), [Mobile task 없는 알림](../../mobile/lib/src/features/notifications/presentation/notification_center_screen.dart#L109) |
+| S06 | 동기화 결과 검토와 후속 처리 | 새 worktree·자동 pull·실패 내역·병합 PR 태스크 검토, 선택 태스크 삭제. 모바일 알림함은 텍스트를 읽지만 검토 액션은 실행하지 않는다. | 부분 구현. [Desktop 검토](../../src/desktop/renderer/components/BackgroundSyncReviewDialog.tsx#L24), [알림 액션](../../src/components/NotificationCenterButton.tsx#L232), [Mobile task 없는 알림](../../mobile/lib/src/features/notifications/presentation/notification_center_screen.dart#L109) |
 
 ## 알림의 세부 동작
 

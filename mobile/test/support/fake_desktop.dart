@@ -540,6 +540,20 @@ class FakeDesktopClient implements DesktopClient {
     Duration timeout = const Duration(seconds: 30),
   }) async {
     final handler = onJsonRequest;
+    if (handler == null &&
+        method == 'GET' &&
+        segments.join('/') == 'sync/status') {
+      return {
+        'status': {
+          'phase': 'idle',
+          'isRunning': false,
+          'completedStages': 0,
+          'reviewNeeded': false,
+          'boardUpdated': false,
+          'error': null,
+        },
+      };
+    }
     if (handler == null) throw DesktopRequestException(404);
     return handler(method, segments, query, body);
   }
