@@ -2,7 +2,8 @@ import { constants } from "fs";
 import { open } from "fs/promises";
 import path from "path";
 import { getTaskDiffStatsRepository, getTaskRepository } from "@/lib/database";
-import { execGit } from "@/lib/gitOperations";
+import { In } from "typeorm";
+import { execGit, runWithBackgroundSSHCommands } from "@/lib/gitOperations";
 import { quoteShellArgument, readTextFile, writeTextFile } from "@/lib/hostFileAccess";
 import { summarizeDiffFiles, type TaskDiffStats } from "@/desktop/shared/taskDiffStats";
 
@@ -225,11 +226,6 @@ async function readGitDiffFiles(taskId: string): Promise<DiffFile[] | null> {
 export async function getGitDiffFiles(
   taskId: string
 ): Promise<DiffFile[]> {
-  const queuedIndex = diffRefreshQueue.indexOf(taskId);
-  if (queuedIndex >= 0) {
-    diffRefreshQueue.splice(queuedIndex, 1);
-    queuedDiffTasks.delete(taskId);
-  }
   return (await refreshTaskDiffFiles(taskId)) ?? [];
 }
 
@@ -420,12 +416,7 @@ async function loadCachedTaskDiffStats(): Promise<Record<string, TaskDiffStats>>
   }
 }
 
-// SSH dependency/session 준비와 경쟁하는 background diff 작업 수만 제한한다.
-const DIFF_REFRESH_CONCURRENCY = 2;
 const pendingDiffReads = new Map<string, Promise<DiffFile[] | null>>();
-const queuedDiffTasks = new Set<string>();
-const diffRefreshQueue: string[] = [];
-let activeDiffRefreshes = 0;
 
 function refreshTaskDiffFiles(taskId: string): Promise<DiffFile[] | null> {
   const pending = pendingDiffReads.get(taskId);
@@ -441,22 +432,22 @@ function refreshTaskDiffFiles(taskId: string): Promise<DiffFile[] | null> {
   return refresh;
 }
 
-function scheduleTaskDiffRefresh(taskId: string): void {
-  if (queuedDiffTasks.has(taskId) || pendingDiffReads.has(taskId)) return;
-  queuedDiffTasks.add(taskId);
-  diffRefreshQueue.push(taskId);
-  drainDiffRefreshQueue();
-}
+/** 진행 중이 아닌 task의 갱신을 시작한다. 같은 task의 조회와 저장은 refreshTaskDiffFiles가 공유한다 */
+async function scheduleTaskDiffRefreshes(taskIds: string[]): Promise<void> {
+  const unscheduledTaskIds = taskIds.filter((taskId) => (
+    !pendingDiffReads.has(taskId)
+  ));
+  if (unscheduledTaskIds.length === 0) return;
 
-function drainDiffRefreshQueue(): void {
-  while (activeDiffRefreshes < DIFF_REFRESH_CONCURRENCY && diffRefreshQueue.length) {
-    const taskId = diffRefreshQueue.shift()!;
-    activeDiffRefreshes += 1;
-    void refreshTaskDiffFiles(taskId).finally(() => {
-      queuedDiffTasks.delete(taskId);
-      activeDiffRefreshes -= 1;
-      drainDiffRefreshQueue();
-    });
+  try {
+    const repo = await getTaskRepository();
+    const tasks = await repo.find({ where: { id: In(unscheduledTaskIds) }, select: { id: true } });
+    for (const task of tasks) {
+      // 보드 배지 갱신은 기다리는 사용자가 없으므로 원격 명령의 background 우선순위만 지정한다.
+      void runWithBackgroundSSHCommands(() => refreshTaskDiffFiles(task.id));
+    }
+  } catch (error) {
+    console.error("변경 집계 갱신 예약 실패:", error);
   }
 }
 
@@ -464,7 +455,9 @@ function drainDiffRefreshQueue(): void {
 export async function getTaskDiffStats(
   taskIdsToRefresh: string[]
 ): Promise<Record<string, TaskDiffStats>> {
-  const cachedStats = await loadCachedTaskDiffStats();
-  for (const taskId of taskIdsToRefresh) scheduleTaskDiffRefresh(taskId);
+  const [cachedStats] = await Promise.all([
+    loadCachedTaskDiffStats(),
+    scheduleTaskDiffRefreshes(taskIdsToRefresh),
+  ]);
   return cachedStats;
 }

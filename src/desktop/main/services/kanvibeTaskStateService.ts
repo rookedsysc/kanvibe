@@ -82,19 +82,42 @@ export async function persistTaskStateAtPath(
   }
 }
 
-async function ensureKanvibeStateDirectoryExcluded(
+/**
+ * git exclude 확인은 원격에서 호스트 키를 검증하는 새 SSH 접속을 두세 번 쓴다. 에이전트 hook 이벤트마다
+ * 되풀이하면 그 접속들이 호스트별 인증 순서를 채워, 터미널 준비와 화면 조회가 그 뒤에서 기다린다.
+ * 확인에 성공한 저장소는 이 시간 동안 다시 확인하지 않는다. 누군가 exclude를 지워도 이 시간 뒤에는 복구된다.
+ */
+const STATE_DIRECTORY_EXCLUDE_RECHECK_MS = 10 * 60_000;
+const stateDirectoryExcludeChecks = new Map<string, { startedAt: number; check: Promise<void> }>();
+
+function ensureKanvibeStateDirectoryExcluded(
   repoPath: string,
   sshHost?: string | null,
 ): Promise<void> {
-  try {
-    await addAiToolPatternsToGitExclude(repoPath, sshHost);
-  } catch (error) {
-    console.warn(".kanvibe 상태 디렉터리 git exclude 갱신 실패:", {
-      repoPath,
-      sshHost: sshHost ?? null,
-      error: getErrorMessage(error),
-    });
+  const checkKey = JSON.stringify([sshHost ?? null, repoPath]);
+  const recentCheck = stateDirectoryExcludeChecks.get(checkKey);
+  if (recentCheck && Date.now() - recentCheck.startedAt < STATE_DIRECTORY_EXCLUDE_RECHECK_MS) {
+    return recentCheck.check;
   }
+
+  const startedCheck = { startedAt: Date.now(), check: Promise.resolve() };
+  stateDirectoryExcludeChecks.set(checkKey, startedCheck);
+  startedCheck.check = (async () => {
+    try {
+      await addAiToolPatternsToGitExclude(repoPath, sshHost);
+    } catch (error) {
+      // 실패한 확인은 기억하지 않아 다음 기록이 다시 시도한다.
+      if (stateDirectoryExcludeChecks.get(checkKey) === startedCheck) {
+        stateDirectoryExcludeChecks.delete(checkKey);
+      }
+      console.warn(".kanvibe 상태 디렉터리 git exclude 갱신 실패:", {
+        repoPath,
+        sshHost: sshHost ?? null,
+        error: getErrorMessage(error),
+      });
+    }
+  })();
+  return startedCheck.check;
 }
 
 export async function persistTaskStateForTask(task: TaskWithOptionalLocation): Promise<void> {

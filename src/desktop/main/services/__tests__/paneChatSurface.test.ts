@@ -5,7 +5,7 @@ vi.mock("../kanbanService", () => ({ getTaskById: mocks.task }));
 vi.mock("@/lib/gitOperations", () => ({ execGit: mocks.exec }));
 vi.mock("@/lib/terminal", () => ({ listLocalTerminalTabs: mocks.tabs, readLocalTerminalTabSnapshot: mocks.snapshot, readTaskTerminalAttachment: mocks.attachment, getHerdrTaskActivePaneId: mocks.herdrFocus, getHerdrTaskSurfaceBounds: mocks.herdrBounds }));
 vi.mock("../mobileBridgeService", () => ({ readHerdrPaneFrameForChat: mocks.herdrFrame }));
-vi.mock("@/lib/herdr", () => ({ listHerdrMirrorPanes: mocks.herdrPanes, readHerdrTabs: mocks.herdrTabs, runHerdrCommand: mocks.herdr }));
+vi.mock("@/lib/herdr", () => ({ listHerdrTaskPaneTabIds: mocks.herdrPanes, readHerdrTabs: mocks.herdrTabs, runHerdrCommand: mocks.herdr }));
 import { readPaneChatLayout, readPaneChatSurface } from "../paneChatSurface";
 function withAttachedClient(resolve: (command: string) => string) {
   return async (command: string) => {
@@ -89,7 +89,7 @@ describe("pane chat visible layout", () => {
     mocks.task.mockResolvedValue({ ...task, sessionType: SessionType.HERDR });
     mocks.herdrFocus.mockReturnValue("w1:p2");
     mocks.herdrBounds.mockReturnValue({ left: 26, top: 1, width: 100, height: 23 });
-    mocks.herdrPanes.mockResolvedValue([{ id: "w1:p1", tabId: "w1:t1" }, { id: "w1:p2", tabId: "w1:t1" }, { id: "w1:p9", tabId: "w1:t2" }]);
+    mocks.herdrPanes.mockResolvedValue([{ paneId: "w1:p1", tabId: "w1:t1" }, { paneId: "w1:p2", tabId: "w1:t1" }, { paneId: "w1:p9", tabId: "w1:t2" }]);
     mocks.herdr.mockImplementation(async (_session: string, args: string[]) => args[1] === "process-info"
       ? { process_info: { shell_pid: 300 } }
       : { layout: { area: { x: 0, y: 0, width: 100, height: 23 }, focused_pane_id: "w1:p2", zoomed: true, panes: [{ pane_id: "w1:p1", rect: { x: 0, y: 0, width: 49, height: 23 } }, { pane_id: "w1:p2", rect: { x: 50, y: 0, width: 50, height: 23 } }] } });
@@ -102,7 +102,7 @@ describe("pane chat visible layout", () => {
     mocks.task.mockResolvedValue({ ...task, sessionType: SessionType.HERDR });
     mocks.herdrFocus.mockReturnValue("w1:p1");
     mocks.herdrBounds.mockReturnValue({ left: 26, top: 1, width: 100, height: 23 });
-    mocks.herdrPanes.mockResolvedValue([{ id: "w1:p1", tabId: "w1:t1" }]);
+    mocks.herdrPanes.mockResolvedValue([{ paneId: "w1:p1", tabId: "w1:t1" }]);
     mocks.herdr.mockImplementation(async (_session: string, args: string[]) => args[1] === "process-info"
       ? { process_info: { shell_pid: 300 } }
       : { layout: { area: { x: 0, y: 0, width: 156, height: 23 }, focused_pane_id: "w1:p1", zoomed: false, panes: [{ pane_id: "w1:p1", rect: { x: 0, y: 0, width: 156, height: 23 } }] } });
@@ -187,18 +187,23 @@ describe("pane chat surface ownership", () => {
   it("Herdr task client가 보고한 pane의 native frame에서 입력 줄과 커서를 읽는다", async () => {
     mocks.task.mockResolvedValue({ ...task, sessionType: SessionType.HERDR });
     mocks.herdrFocus.mockReturnValue("w1:p2");
-    mocks.herdrPanes.mockResolvedValue([{ id: "w1:p1", tabId: "w1:t1" }, { id: "w1:p2", tabId: "w1:t2" }]);
+    mocks.herdrPanes.mockResolvedValue([{ paneId: "w1:p1", tabId: "w1:t1" }, { paneId: "w1:p2", tabId: "w1:t2" }]);
     mocks.herdr.mockResolvedValue({ process_info: { pane_id: "w1:p2", shell_pid: 300, foreground_processes: [{ pid: 300 }] } });
     mocks.herdrFrame.mockResolvedValue({ output: "\x1b[2J\x1b[HOpenAI Codex\r\nModel: native\r\n› \x1b[3;3H\x1b[?25h", width: 80, height: 24 });
     expect(await readPaneChatSurface("task")).toMatchObject({ paneId: "w1:p2", rootPid: 300, inputLine: "› ", cursorColumn: 2, screen: "OpenAI Codex\nModel: native\n›" });
     expect(mocks.herdrFrame).toHaveBeenCalledWith("task", "w1:p2");
+    // 폴링마다 도는 경로라 pane 식별자 목록 한 번과 선택한 pane의 프로세스 조회 한 번만 쓴다.
+    expect(mocks.herdrPanes).toHaveBeenCalledTimes(1);
+    expect(mocks.herdr).toHaveBeenCalledTimes(1);
   });
   it("Herdr desktop client의 정확한 focus가 없으면 서버 global focus로 대신하지 않는다", async () => {
     mocks.task.mockResolvedValue({ ...task, sessionType: SessionType.HERDR });
-    mocks.herdrPanes.mockResolvedValue([{ id: "w1:p1", tabId: "w1:t1" }]);
+    mocks.herdrPanes.mockResolvedValue([{ paneId: "w1:p1", tabId: "w1:t1" }]);
     mocks.herdrFocus.mockReturnValue(null);
     expect(await readPaneChatSurface("task")).toBeNull();
     expect(mocks.herdrFrame).not.toHaveBeenCalled();
+    // 확인할 pane이 없으면 원격 pane 목록을 읽지 않는다.
+    expect(mocks.herdrPanes).not.toHaveBeenCalled();
   });
 
 });

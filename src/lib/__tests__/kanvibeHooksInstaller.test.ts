@@ -255,14 +255,132 @@ describe("kanvibeHooksInstaller", () => {
     // When
     await installKanvibeHooks("/remote/repo", "task-2", "remote-host");
 
-    // Then
-    expect(mockReadTextFiles).toHaveBeenCalledTimes(1);
-    expect(mockReadTextFiles).toHaveBeenCalledWith([
+    // Then: 설치 입력 읽기 한 번과 설치 뒤 검증 읽기 한 번이 전부다.
+    expect(mockReadTextFiles).toHaveBeenCalledTimes(2);
+    expect(mockReadTextFiles).toHaveBeenNthCalledWith(1, [
       "/remote/repo/.claude/settings.json",
       "/remote/repo/.gemini/settings.json",
       "/remote/repo/.codex/config.toml",
       "/remote/repo/.codex/hooks.json",
     ], "remote-host", { strictHostKeyChecking: true });
+  });
+
+  it("원격 설치 검증은 provider마다 따로 읽지 않고 한 번 읽은 파일 묶음을 모든 provider에 넘긴다", async () => {
+    // Given
+    const installInputs = buildReadResults();
+    const verificationSnapshot = buildReadResults({ "/remote/repo/.kanvibe/targets.json": '{"targets":[]}' });
+    mockReadTextFiles.mockResolvedValueOnce(installInputs).mockResolvedValueOnce(verificationSnapshot);
+    const { installKanvibeHooks } = await import("@/lib/kanvibeHooksInstaller");
+
+    // When
+    await installKanvibeHooks("/remote/repo", "task-2", "remote-host");
+
+    // Then
+    expect(mockReadTextFiles).toHaveBeenNthCalledWith(2, expect.arrayContaining([
+      "/remote/repo/.claude/settings.json", "/remote/repo/.kanvibe/targets.json",
+    ]), "remote-host", { strictHostKeyChecking: true });
+    for (const getStatus of [mockGetClaudeHooksStatus, mockGetGeminiHooksStatus, mockGetCodexHooksStatus, mockGetOpenCodeHooksStatus]) {
+      expect(getStatus).toHaveBeenCalledTimes(1);
+      expect(getStatus).toHaveBeenCalledWith("/remote/repo", "task-2", "remote-host", verificationSnapshot);
+    }
+  });
+
+  it("검증용 묶음 읽기가 실패하면 provider별로 다시 읽어 실패한 provider만 가려낸다", async () => {
+    // Given
+    mockReadTextFiles.mockResolvedValueOnce(buildReadResults()).mockRejectedValueOnce(new Error("원격 파일 검사 실패"));
+    mockGetCodexHooksStatus.mockRejectedValue(new Error("codex 설정을 읽을 수 없습니다"));
+    const { installKanvibeHookFiles, scheduleKanvibeHooksVerification } = await import("@/lib/kanvibeHooksInstaller");
+    await installKanvibeHookFiles("/remote/repo", "task-2", "remote-host");
+    const onFailure = vi.fn();
+
+    // When
+    vi.useFakeTimers();
+    try {
+      scheduleKanvibeHooksVerification("/remote/repo", "task-2", "remote-host", { onFailure });
+      await vi.runAllTimersAsync();
+    } finally {
+      vi.useRealTimers();
+    }
+
+    // Then
+    expect(mockGetClaudeHooksStatus).toHaveBeenCalledWith("/remote/repo", "task-2", "remote-host");
+    expect(mockGetCodexHooksStatus).toHaveBeenCalledWith("/remote/repo", "task-2", "remote-host");
+    expect(onFailure).toHaveBeenCalledTimes(1);
+    expect(String(onFailure.mock.calls[0][0])).toContain("Codex");
+    expect(String(onFailure.mock.calls[0][0])).not.toContain("Claude");
+  });
+
+  it("같은 대상의 상태 조회가 겹치면 원격 읽기 하나를 함께 쓰고, 끝난 뒤의 조회는 다시 읽는다", async () => {
+    // Given
+    let finishRead!: (files: Map<string, TextFileReadResult>) => void;
+    mockReadTextFiles.mockImplementationOnce(() => new Promise((resolve) => { finishRead = resolve; }));
+    const { getKanvibeHooksStatuses } = await import("@/lib/kanvibeHooksInstaller");
+
+    // When: 창 두 개가 같은 task의 상태 패널을 동시에 연다
+    const first = getKanvibeHooksStatuses("/remote/repo", "task-1", "remote-host");
+    const second = getKanvibeHooksStatuses("/remote/repo", "task-1", "remote-host");
+    const otherTask = getKanvibeHooksStatuses("/remote/repo", "task-other", "remote-host");
+    await flushMicrotasks();
+
+    // Then: 같은 대상은 읽기 하나, 다른 task는 따로 읽는다
+    expect(mockReadTextFiles).toHaveBeenCalledTimes(2);
+    finishRead(buildReadResults());
+    expect(await first).toEqual(await second);
+    await otherTask;
+    expect(mockGetClaudeHooksStatus).toHaveBeenCalledTimes(2);
+
+    // 방금 읽은 원격 상태는 30초 동안 다시 읽지 않는다.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      await getKanvibeHooksStatuses("/remote/repo", "task-1", "remote-host");
+      expect(mockReadTextFiles).toHaveBeenCalledTimes(2);
+
+      vi.advanceTimersByTime(30_000);
+      await getKanvibeHooksStatuses("/remote/repo", "task-1", "remote-host");
+      expect(mockReadTextFiles).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("로컬 hook 상태는 읽기가 싸므로 매번 새로 읽는다", async () => {
+    const { getKanvibeHooksStatuses } = await import("@/lib/kanvibeHooksInstaller");
+
+    await getKanvibeHooksStatuses("/repo", "task-1", null);
+    await getKanvibeHooksStatuses("/repo", "task-1", null);
+
+    expect(mockReadTextFiles).toHaveBeenCalledTimes(2);
+  });
+
+  it("이 앱이 hook을 설치하면 기억해 둔 원격 상태를 버려 다음 조회가 설치 결과를 읽는다", async () => {
+    const { getKanvibeHooksStatuses, installKanvibeHookFiles } = await import("@/lib/kanvibeHooksInstaller");
+    mockGetClaudeHooksStatus.mockResolvedValueOnce({ installed: false });
+    expect((await getKanvibeHooksStatuses("/remote/repo", "task-1", "remote-host")).claude).toEqual({ installed: false });
+
+    await installKanvibeHookFiles("/remote/repo", "task-1", "remote-host");
+
+    expect((await getKanvibeHooksStatuses("/remote/repo", "task-1", "remote-host")).claude).toEqual({ installed: true });
+  });
+
+  it("설치가 끝나면 설치 전에 시작한 상태 조회를 이후 조회가 이어받지 않는다", async () => {
+    // Given: 설치 전에 시작해 아직 끝나지 않은 상태 조회
+    let finishStaleRead!: (files: Map<string, TextFileReadResult>) => void;
+    mockReadTextFiles.mockImplementationOnce(() => new Promise((resolve) => { finishStaleRead = resolve; }));
+    const { getKanvibeHooksStatuses, installKanvibeHookFiles } = await import("@/lib/kanvibeHooksInstaller");
+    const staleRead = getKanvibeHooksStatuses("/remote/repo", "task-1", "remote-host");
+    await flushMicrotasks();
+    expect(mockReadTextFiles).toHaveBeenCalledTimes(1);
+
+    // When
+    await installKanvibeHookFiles("/remote/repo", "task-1", "remote-host");
+    const readCountAfterInstall = mockReadTextFiles.mock.calls.length;
+    const freshRead = getKanvibeHooksStatuses("/remote/repo", "task-1", "remote-host");
+    await flushMicrotasks();
+
+    // Then: 설치 전 조회가 아직 진행 중이어도 새 조회는 파일을 다시 읽는다
+    expect(mockReadTextFiles).toHaveBeenCalledTimes(readCountAfterInstall + 1);
+    finishStaleRead(buildReadResults());
+    await Promise.all([staleRead, freshRead]);
   });
 
   it("설치는 제거된 .kanvibe/hooks-targets.json을 읽거나 쓰지 않는다", async () => {
@@ -381,10 +499,12 @@ describe("kanvibeHooksInstaller", () => {
 
       await vi.runAllTimersAsync();
 
-      expect(mockGetClaudeHooksStatus).toHaveBeenCalledWith("/remote/repo", "task-2", "remote-host");
-      expect(mockGetGeminiHooksStatus).toHaveBeenCalledWith("/remote/repo", "task-2", "remote-host");
-      expect(mockGetCodexHooksStatus).toHaveBeenCalledWith("/remote/repo", "task-2", "remote-host");
-      expect(mockGetOpenCodeHooksStatus).toHaveBeenCalledWith("/remote/repo", "task-2", "remote-host");
+      expect(mockReadTextFiles).toHaveBeenCalledTimes(1);
+      const verificationSnapshot = await mockReadTextFiles.mock.results[0].value;
+      expect(mockGetClaudeHooksStatus).toHaveBeenCalledWith("/remote/repo", "task-2", "remote-host", verificationSnapshot);
+      expect(mockGetGeminiHooksStatus).toHaveBeenCalledWith("/remote/repo", "task-2", "remote-host", verificationSnapshot);
+      expect(mockGetCodexHooksStatus).toHaveBeenCalledWith("/remote/repo", "task-2", "remote-host", verificationSnapshot);
+      expect(mockGetOpenCodeHooksStatus).toHaveBeenCalledWith("/remote/repo", "task-2", "remote-host", verificationSnapshot);
       expect(mockWriteHookProviderFiles).not.toHaveBeenCalled();
       expect(onSuccess).toHaveBeenCalledTimes(1);
       expect(onFailure).not.toHaveBeenCalled();
@@ -747,7 +867,7 @@ describe("kanvibeHooksInstaller", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     // Then
-    expect(mockGetClaudeHooksStatus).toHaveBeenCalledWith("/remote/repo", "task-2", "remote-host");
+    expect(mockGetClaudeHooksStatus).toHaveBeenCalledWith("/remote/repo", "task-2", "remote-host", expect.any(Map));
     expect(resolved).toBe(false);
 
     resolveClaudeVerification({ installed: true });

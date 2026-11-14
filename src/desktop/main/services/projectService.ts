@@ -944,6 +944,32 @@ function scheduleProjectWorktreeSync(
   return job;
 }
 
+type ProjectPathCheck = { isMissing: boolean } | { error: unknown };
+
+/**
+ * 프로젝트 경로가 남아 있는지 확인한다. 같은 호스트는 차례로, 다른 호스트끼리는 동시에 확인한다.
+ * 모두 한 줄로 세우면 느리거나 끊긴 호스트 하나가 다른 호스트와 로컬 프로젝트의 동기화까지 미룬다.
+ */
+async function checkProjectPathsByHost(projects: Project[]): Promise<Map<string, ProjectPathCheck>> {
+  const projectsByHost = new Map<string, Project[]>();
+  for (const project of projects) {
+    const hostKey = project.sshHost ?? "";
+    projectsByHost.set(hostKey, [...(projectsByHost.get(hostKey) ?? []), project]);
+  }
+
+  const pathChecks = new Map<string, ProjectPathCheck>();
+  await Promise.all([...projectsByHost.values()].map(async (hostProjects) => {
+    for (const project of hostProjects) {
+      try {
+        pathChecks.set(project.id, { isMissing: await isPathMissing(project.repoPath, project.sshHost) });
+      } catch (error) {
+        pathChecks.set(project.id, { error });
+      }
+    }
+  }));
+  return pathChecks;
+}
+
 export async function syncRegisteredProjectWorktrees(
   projectsInput?: Project[],
 ): Promise<RegisteredProjectWorktreeSyncResult> {
@@ -958,10 +984,18 @@ export async function syncRegisteredProjectWorktrees(
     changed: false,
   };
 
+  const pathChecks = await checkProjectPathsByHost(projects);
   const existingProjects: Project[] = [];
   for (const project of projects) {
+    const pathCheck = pathChecks.get(project.id);
+    if (!pathCheck || "error" in pathCheck) {
+      const reason = pathCheck?.error instanceof Error ? pathCheck.error.message : String(pathCheck?.error);
+      mergedResult.errors.push(`${project.name} 경로 확인 실패: ${reason}`);
+      continue;
+    }
+
     try {
-      if (await isPathMissing(project.repoPath, project.sshHost)) {
+      if (pathCheck.isMissing) {
         mergedResult.changed = await deleteProject(project.id) || mergedResult.changed;
       } else {
         existingProjects.push(project);
@@ -973,10 +1007,10 @@ export async function syncRegisteredProjectWorktrees(
 
   mergedResult.changed = await backfillMissingProjectIcons(existingProjects) || mergedResult.changed;
 
-  const projectResults: RegisteredProjectWorktreeSyncResult[] = [];
-  for (const project of existingProjects) {
-    projectResults.push(await scheduleProjectWorktreeSync(project, taskRepo));
-  }
+  // 같은 호스트의 프로젝트는 scheduleProjectWorktreeSync가 차례로 세우므로, 한꺼번에 예약해 호스트끼리만 겹치게 한다.
+  const projectResults = await Promise.all(
+    existingProjects.map((project) => scheduleProjectWorktreeSync(project, taskRepo)),
+  );
 
   for (const projectResult of projectResults) {
     mergeRegisteredProjectWorktreeSyncResult(

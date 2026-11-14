@@ -211,8 +211,19 @@ export async function attachTaskTerminal(
     return;
   }
 
+  const connectionStartedAt = Date.now();
+  const phaseDurations: Record<string, number> = {};
+  const measurePhase = async <T>(phaseName: string, runPhase: () => Promise<T>): Promise<T> => {
+    const phaseStartedAt = Date.now();
+    try {
+      return await runPhase();
+    } finally {
+      phaseDurations[phaseName] = Date.now() - phaseStartedAt;
+    }
+  };
+
   clearRemoteSSHTransportCooldown(task.sshHost);
-  await ensureRemoteSessionDependency(sessionType, task.sshHost);
+  await measurePhase("dependencyCheckMs", () => ensureRemoteSessionDependency(sessionType, task.sshHost));
   if (client.readyState !== client.OPEN) return;
 
   const resolved = await resolveRemoteSshConfig(task.id);
@@ -225,14 +236,15 @@ export async function attachTaskTerminal(
   // 초기 pane 명령은 hook을 필요로 할 수 있으므로 자동 실행 순서를 유지한다.
   const hooksRequiredBeforeAttach = tmuxPaneLayout?.panes.some((pane) => pane.command.trim());
   if (hooksRequiredBeforeAttach) {
-    await ensureTerminalHooks(task);
+    await measurePhase("hooksBeforeAttachMs", () => ensureTerminalHooks(task));
     if (client.readyState !== client.OPEN) return;
   }
 
-  await attachRemoteSession(
+  const remoteSshHost = task.sshHost;
+  await measurePhase("sessionAttachMs", () => attachRemoteSession(
     task.id,
     tabId,
-    task.sshHost,
+    remoteSshHost,
     sessionType,
     sessionName,
     client as never,
@@ -241,7 +253,15 @@ export async function attachTaskTerminal(
     rows,
     task.worktreePath,
     tmuxPaneLayout,
-  );
+  ));
+  // "연결 중"이 길 때 의존성 확인, hook 선행 확인, 세션 준비 중 어디에서 걸렸는지 가릴 수 있게 남긴다.
+  console.log("[터미널] 원격 연결 단계", {
+    taskId: task.id,
+    sshHost: remoteSshHost,
+    sessionType,
+    totalMs: Date.now() - connectionStartedAt,
+    ...phaseDurations,
+  });
   if (!hooksRequiredBeforeAttach && client.readyState === client.OPEN) {
     // 실패 알림은 ensureTerminalHooks가 처리한다. 열린 터미널의 수명과 분리한다.
     void ensureTerminalHooks(task).catch(() => {});

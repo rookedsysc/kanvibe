@@ -68,6 +68,16 @@ const ACTIVE_PULL_TASK_STATUSES = [
 ];
 const ACTIVE_TASK_PULL_GIT_TIMEOUT_MS = 10_000;
 const ACTIVE_TASK_PR_GITHUB_CLI_TIMEOUT_MS = 10_000;
+/**
+ * gh 인증은 사용자가 그 호스트에서 직접 고쳐야 풀린다. 그 전까지 같은 저장소에 자동 조회를 되풀이하면 실패할 원격 명령만 쌓인다.
+ * 이 시간 동안은 기억한 실패를 그대로 돌려주고, 사용자가 직접 요청한 조회는 기억과 무관하게 실행한다.
+ */
+const GITHUB_CLI_AUTH_FAILURE_COOLDOWN_MS = 5 * 60_000;
+/** 보드 갱신마다 따라 도는 자동 PR 조회를 task당 이 간격에 한 번으로 줄인다 */
+const AUTOMATIC_PR_LOOKUP_MIN_INTERVAL_MS = 30_000;
+const gitHubCliAuthFailures = new Map<string, { until: number; error: unknown }>();
+const automaticPrLookupAttempts = new Map<string, number>();
+const activePrUrlLookups = new Map<string, { isAutomatic: boolean; lookup: Promise<string | null> }>();
 const notifiedPullFailureKeys = new Set<string>();
 
 interface CleanupTaskResourcesOptions {
@@ -283,12 +293,64 @@ function getGitHubCliExecOptions(sshHost?: string | null): ExecGitOptions | unde
   return sshHost ? undefined : { timeoutMs: ACTIVE_TASK_PR_GITHUB_CLI_TIMEOUT_MS };
 }
 
+function buildGitHubCliAuthFailureKey(cwd: string, sshHost?: string | null): string {
+  return JSON.stringify([sshHost ?? null, cwd]);
+}
+
+function isGitHubCliAuthenticationError(error: unknown): boolean {
+  return /gh auth login|GH_TOKEN|HTTP 401|Bad credentials/i.test(getErrorMessage(error));
+}
+
+/** 이 저장소에서 최근에 gh 인증이 실패했으면 그 오류를 돌려준다 */
+function findRecentGitHubCliAuthFailure(cwd: string, sshHost?: string | null): unknown {
+  const failureKey = buildGitHubCliAuthFailureKey(cwd, sshHost);
+  const failure = gitHubCliAuthFailures.get(failureKey);
+  if (!failure) {
+    return undefined;
+  }
+  if (Date.now() >= failure.until) {
+    gitHubCliAuthFailures.delete(failureKey);
+    return undefined;
+  }
+  return failure.error;
+}
+
+/**
+ * 저장소 안에서 gh PR 조회를 실행하고 인증 실패를 저장소 단위로 기억한다.
+ * 인증은 `.envrc`로 경로마다 다를 수 있어 호스트가 아니라 호스트와 저장소 경로를 함께 키로 쓴다.
+ * @param shouldReuseRecentAuthFailure true면 최근 인증 실패가 남아 있을 때 원격 명령 없이 그 오류를 다시 던진다
+ */
+async function execGitHubCliPullRequestQuery(
+  cwd: string,
+  sshHost: string | null | undefined,
+  ghArguments: string,
+  shouldReuseRecentAuthFailure: boolean,
+): Promise<string> {
+  const recentAuthFailure = shouldReuseRecentAuthFailure ? findRecentGitHubCliAuthFailure(cwd, sshHost) : undefined;
+  if (recentAuthFailure !== undefined) {
+    throw recentAuthFailure;
+  }
+
+  const failureKey = buildGitHubCliAuthFailureKey(cwd, sshHost);
+  try {
+    const output = await execGit(buildGitHubCliCommand(cwd, ghArguments), sshHost, getGitHubCliExecOptions(sshHost));
+    gitHubCliAuthFailures.delete(failureKey);
+    return output;
+  } catch (error) {
+    if (isGitHubCliAuthenticationError(error)) {
+      gitHubCliAuthFailures.set(failureKey, { until: Date.now() + GITHUB_CLI_AUTH_FAILURE_COOLDOWN_MS, error });
+    }
+    throw error;
+  }
+}
+
 async function getPrUrlFromGitHubCli(branchName: string, cwd: string, sshHost?: string | null): Promise<string | null> {
   try {
-    const output = await execGit(
-      buildGitHubCliCommand(cwd, `pr list --head ${quoteForShell(branchName)} --json url -q '.[0].url'`),
+    const output = await execGitHubCliPullRequestQuery(
+      cwd,
       sshHost,
-      getGitHubCliExecOptions(sshHost),
+      `pr list --head ${quoteForShell(branchName)} --json url -q '.[0].url'`,
+      false,
     );
     if (isMissingRepositoryOutput(output)) {
       return null;
@@ -336,10 +398,12 @@ async function getPrInfoFromGitHubCli(
   sshHost?: string | null,
 ): Promise<GitHubPullRequestInfo | null> {
   try {
-    const output = await execGit(
-      buildGitHubCliCommand(cwd, `pr list --head ${quoteForShell(branchName)} --state all --json url,state,mergedAt,updatedAt`),
+    // 백그라운드 동기화는 같은 저장소의 task마다 이 조회를 부르므로, 인증이 깨진 저장소에서는 첫 실패를 나머지가 함께 쓴다.
+    const output = await execGitHubCliPullRequestQuery(
+      cwd,
       sshHost,
-      getGitHubCliExecOptions(sshHost),
+      `pr list --head ${quoteForShell(branchName)} --state all --json url,state,mergedAt,updatedAt`,
+      true,
     );
     if (!output.trim() || isMissingRepositoryOutput(output)) {
       return null;
@@ -1244,7 +1308,43 @@ export async function moveTaskToColumn(
  * PR이 없으면 null을 돌려준다. gh가 없을 때도 조회할 수단이 없으니 같은 null이다.
  * 그 밖의 조회 실패는 던진다. null로 삼키면 화면이 인증·네트워크 오류를 "PR 없음"으로 안내한다.
  */
-export async function fetchAndSavePrUrl(taskId: string): Promise<string | null> {
+export function fetchAndSavePrUrl(
+  taskId: string,
+  options: { isAutomatic?: boolean } = {},
+): Promise<string | null> {
+  /**
+   * 여러 창이 같은 task를 동시에 물으면 gh 조회 하나를 함께 쓴다. 다만 자동 조회는 기억한 인증 실패를 만나면
+   * gh를 부르지 않고 끝나므로, 사용자가 직접 요청한 조회는 자동 조회에 합류하지 않는다.
+   */
+  const isAutomatic = options.isAutomatic === true;
+  const activeLookup = activePrUrlLookups.get(taskId);
+  if (activeLookup && (isAutomatic || !activeLookup.isAutomatic)) {
+    return activeLookup.lookup;
+  }
+
+  /**
+   * 화면이 스스로 건 조회는 보드 갱신마다 다시 오므로 task당 간격을 둔다. 그 사이에 PR이 생기면
+   * 다음 자동 조회나 백그라운드 동기화, 사용자가 직접 누른 조회가 찾아낸다.
+   */
+  if (isAutomatic) {
+    const lastAttemptAt = automaticPrLookupAttempts.get(taskId);
+    if (lastAttemptAt !== undefined && Date.now() - lastAttemptAt < AUTOMATIC_PR_LOOKUP_MIN_INTERVAL_MS) {
+      return Promise.resolve(null);
+    }
+    automaticPrLookupAttempts.set(taskId, Date.now());
+  }
+
+  const startedLookup = { isAutomatic, lookup: Promise.resolve<string | null>(null) };
+  activePrUrlLookups.set(taskId, startedLookup);
+  startedLookup.lookup = lookUpAndSavePrUrl(taskId, isAutomatic).finally(() => {
+    if (activePrUrlLookups.get(taskId) === startedLookup) {
+      activePrUrlLookups.delete(taskId);
+    }
+  });
+  return startedLookup.lookup;
+}
+
+async function lookUpAndSavePrUrl(taskId: string, isAutomatic: boolean): Promise<string | null> {
   const repo = await getTaskRepository();
   const task = await repo.findOneBy({ id: taskId });
   if (!task?.branchName) return null;
@@ -1252,6 +1352,8 @@ export async function fetchAndSavePrUrl(taskId: string): Promise<string | null> 
   let prUrl: string | null;
   try {
     const { cwd, sshHost } = await resolveTaskGitContext(task);
+    // 이미 한 번 알린 인증 실패를 화면 갱신마다 다시 던지지 않는다.
+    if (isAutomatic && findRecentGitHubCliAuthFailure(cwd, sshHost) !== undefined) return null;
     prUrl = await getPrUrlFromGitHubCli(task.branchName, cwd, sshHost);
   } catch (error) {
     console.error("PR URL 조회 실패:", error);
