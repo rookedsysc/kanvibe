@@ -1,5 +1,7 @@
 import type { KanbanTask, TaskStatus } from "@/entities/KanbanTask";
-import { getProjectRepository } from "@/lib/database";
+import { Raw } from "typeorm";
+import { getProjectRepository, getTaskRepository } from "@/lib/database";
+import { broadcastBoardUpdate } from "@/lib/boardNotifier";
 import { addAiToolPatternsToGitExclude } from "@/lib/gitExclude";
 import { persistProjectPriorityToKanvibeState } from "@/desktop/main/services/kanvibeProjectColorService";
 import type { KanvibeTaskSyncState } from "@/lib/kanvibeProjectState";
@@ -43,6 +45,28 @@ export async function readPersistedTaskStatusAtPath(
   }
 
   return (await readKanvibeTaskState(repoPath, sshHost))?.status ?? null;
+}
+
+export async function refreshHostTaskStatuses(sshHosts: ReadonlySet<string>, isCurrent: () => boolean): Promise<void> {
+  const repository = await getTaskRepository();
+  const tasks = await repository.find({ relations: ["project"] });
+  let changed = false;
+  for (const task of tasks) {
+    const sshHost = task.sshHost ?? task.project?.sshHost;
+    if (!sshHost || !sshHosts.has(sshHost) || !isCurrent()) continue;
+    const repoPath = task.worktreePath || (task.branchName === task.project?.defaultBranch ? task.project?.repoPath : null);
+    if (!repoPath) continue;
+    try {
+      const status = await readPersistedTaskStatusAtPath(repoPath, sshHost);
+      if (!status || status === task.status || !isCurrent()) continue;
+      const updatedAt = Raw((column) => `julianday(${column}) = julianday(:snapshotUpdatedAt)`, { snapshotUpdatedAt: task.updatedAt.toISOString() });
+      const result = await repository.update({ id: task.id, status: task.status, updatedAt }, { status });
+      changed = changed || Boolean(result.affected);
+    } catch (error) {
+      console.warn("[kanvibe] Host status snapshot failed:", { taskId: task.id, sshHost, error: getErrorMessage(error) });
+    }
+  }
+  if (changed && isCurrent()) broadcastBoardUpdate();
 }
 
 /** 다른 기기가 남긴 상태와 설명을 함께 읽는다. 기록이 없으면 null이라 DB 값을 그대로 둔다 */

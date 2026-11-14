@@ -9,6 +9,8 @@ import { buildHookSocketFileName, buildRemoteHookSocketPrepareCommand } from "@/
 import { getProjectRepository, getTaskRepository } from "@/lib/database";
 import { createLocalShellEnvironment } from "@/lib/shellEnvironment";
 import { buildSSHArgs, parseSSHConfig, type SSHHostConfig } from "@/lib/sshConfig";
+import { configureRemoteHostTransport, getRemoteHostConnection, getRemoteHostEndpointKey, getRemoteHostNamespace, stopRemoteHostConnections, type HostConnection } from "@/lib/remoteHostConnection";
+import { decodeHostBytes, HOST_RECORD_BYTES, type HostRecord } from "@/lib/remoteHostProtocol";
 
 /**
  * 원격 호스트의 hook·CLI가 평문 포트 대신 SSH 안으로 데스크탑에 돌아오도록 호스트별 `ssh -R` 터널을 유지한다.
@@ -38,6 +40,7 @@ interface HookTunnel {
   localServer: http.Server;
   localSocketPath: string;
   sshProcess: ChildProcess | null;
+  hostConnection?: HostConnection;
   reconnectTimer: NodeJS.Timeout | null;
   reconnectDelayMs: number;
   isClosed: boolean;
@@ -87,6 +90,22 @@ async function findSSHHostConfig(sshHost: string): Promise<SSHHostConfig> {
 
 async function connectHookTunnel(tunnel: HookTunnel): Promise<void> {
   const hostConfig = await findSSHHostConfig(tunnel.connectHost);
+  const hostConnection = await getRemoteHostConnection(tunnel.connectHost);
+  if (tunnel.isClosed) return;
+  if (hostConnection) {
+    tunnel.hostConnection = hostConnection;
+    hostConnection.setHookHandler((record) => forwardHostHookRequest(tunnel, record));
+    void import("@/desktop/main/services/kanvibeTaskStateService").then(({ refreshHostTaskStatuses }) => (
+      refreshHostTaskStatuses(tunnel.sshHosts, () => !tunnel.isClosed && tunnel.hostConnection === hostConnection)
+    )).catch((error) => console.warn("[kanvibe] Host status refresh failed:", error));
+    hostConnection.once("close", () => {
+      if (tunnel.hostConnection === hostConnection) {
+        tunnel.hostConnection = undefined;
+        if (!tunnel.isClosed) startHookTunnelConnection(tunnel);
+      }
+    });
+    return;
+  }
   const clientId = await getOrCreateHookClientId();
   const remoteSocketPath = (await execGit(
     buildRemoteHookSocketPrepareCommand(clientId),
@@ -136,6 +155,45 @@ async function connectHookTunnel(tunnel: HookTunnel): Promise<void> {
     }
     console.warn(`[kanvibe] Hook tunnel to ${tunnel.connectHost} closed (exit ${exitCode}): ${lastErrorOutput}`);
     scheduleHookTunnelReconnect(tunnel);
+  });
+}
+
+
+async function forwardJournalHookRequest(tunnel: HookTunnel, record: HostRecord): Promise<{ status: number; headers: Record<string, string>; body: string }> {
+  let input;
+  try { input = JSON.parse(decodeHostBytes(record.body, HOST_RECORD_BYTES / 2).toString("utf8")); }
+  catch { return { status: 400, headers: {}, body: "" }; }
+  const { updateJournalHookTaskStatus } = await import("@/desktop/main/services/hookService");
+  const result = await updateJournalHookTaskStatus(input, tunnel.sshHosts);
+  return { status: result.status ?? 200, headers: { "content-type": "application/json" }, body: Buffer.from(JSON.stringify(result)).toString("base64") };
+}
+
+function forwardHostHookRequest(tunnel: HookTunnel, record: HostRecord): Promise<{ status: number; headers: Record<string, string>; body: string }> {
+  if (record.journal !== undefined) {
+    const journal = record.journal as { sequence?: unknown; receivedAt?: unknown; replay?: unknown } | null;
+    if (tunnel.isClosed || record.path !== "/api/hooks/status" || record.method !== "POST"
+      || typeof record.id !== "string" || !/^[A-Za-z0-9-]{1,128}$/.test(record.id)
+      || !journal || !Number.isSafeInteger(journal.sequence) || Number(journal.sequence) < 1
+      || !Number.isSafeInteger(journal.receivedAt) || Number(journal.receivedAt) < 0 || typeof journal.replay !== "boolean") {
+      return Promise.resolve({ status: 400, headers: {}, body: Buffer.from(JSON.stringify({ success: false, error: "Invalid journal hook envelope" })).toString("base64") });
+    }
+    if (journal.replay) return forwardJournalHookRequest(tunnel, record);
+  }
+  return new Promise((resolve, reject) => {
+    if (tunnel.isClosed || typeof record.path !== "string" || typeof record.method !== "string") { reject(new Error("Invalid hook request")); return; }
+    const request = http.request({ socketPath: tunnel.localSocketPath, path: record.path, method: record.method, headers: record.headers as http.OutgoingHttpHeaders }, (response) => {
+      const chunks: Buffer[] = []; let size = 0;
+      response.on("data", (chunk: Buffer) => { size += chunk.length; if (size > HOST_RECORD_BYTES / 2) { response.destroy(new Error("Hook response too large")); return; } chunks.push(chunk); });
+      response.once("error", reject);
+      response.once("end", () => {
+        const headers: Record<string, string> = {};
+        for (const [key, value] of Object.entries(response.headers)) if (typeof value === "string") headers[key] = value;
+        resolve({ status: response.statusCode ?? 502, headers, body: Buffer.concat(chunks).toString("base64") });
+      });
+    });
+    request.setTimeout(12_000, () => request.destroy(new Error("Hook request timed out")));
+    request.once("error", reject);
+    try { request.end(decodeHostBytes(record.body, HOST_RECORD_BYTES / 2)); } catch (error) { request.destroy(); reject(error); }
   });
 }
 
@@ -204,7 +262,8 @@ async function openHookTunnel(sshHost: string): Promise<void> {
     return;
   }
 
-  const endpointKey = buildEndpointKey(await findSSHHostConfig(sshHost));
+  const hostConfig = await findSSHHostConfig(sshHost);
+  const endpointKey = getRemoteHostNamespace() ? await getRemoteHostEndpointKey(hostConfig) : buildEndpointKey(hostConfig);
   const sameEndpointTunnel = tunnelsByEndpoint.get(endpointKey);
   if (sameEndpointTunnel) {
     sameEndpointTunnel.sshHosts.add(sshHost);
@@ -271,7 +330,7 @@ function runHookTunnelReconcile(): void {
   });
 }
 
-export function startHookTunnels(requestListenerForHosts: (sshHosts: ReadonlySet<string>) => RequestListener): void {
+export function startHookTunnels(requestListenerForHosts: (sshHosts: ReadonlySet<string>) => RequestListener, namespace?: string): void {
   /** Windows의 OpenSSH는 Unix 소켓 전달을 지원하지 않아 HTTP 경로만 쓴다 */
   if (process.platform === "win32" || createHostRequestListener) {
     return;
@@ -279,7 +338,13 @@ export function startHookTunnels(requestListenerForHosts: (sshHosts: ReadonlySet
   createHostRequestListener = requestListenerForHosts;
   /** mkdtemp는 추측할 수 없는 이름의 0700 디렉터리를 만들므로 같은 머신의 다른 사용자가 끼어들지 못한다 */
   localSocketDirectory = mkdtempSync(LOCAL_SOCKET_DIRECTORY_PREFIX);
-  runHookTunnelReconcile();
+  if (namespace) {
+    void getOrCreateHookClientId().then((clientId) => {
+      if (createHostRequestListener !== requestListenerForHosts) return;
+      configureRemoteHostTransport({ namespace, clientId });
+      runHookTunnelReconcile();
+    }).catch((error) => console.warn("[kanvibe] Host transport configuration failed:", error));
+  } else runHookTunnelReconcile();
   reconcileTimer = setInterval(runHookTunnelReconcile, TUNNEL_RECONCILE_INTERVAL_MS);
   reconcileTimer.unref();
 }
@@ -288,7 +353,9 @@ export function startHookTunnels(requestListenerForHosts: (sshHosts: ReadonlySet
 export function reconnectHookTunnels(): void {
   for (const tunnel of tunnelsByEndpoint.values()) {
     tunnel.reconnectDelayMs = TUNNEL_RECONNECT_MIN_DELAY_MS;
-    if (tunnel.sshProcess) {
+    if (tunnel.hostConnection) {
+      tunnel.hostConnection.close();
+    } else if (tunnel.sshProcess) {
       tunnel.sshProcess.kill();
     } else if (tunnel.reconnectTimer) {
       clearTimeout(tunnel.reconnectTimer);
@@ -311,4 +378,5 @@ export function stopHookTunnels(): void {
     localSocketDirectory = null;
   }
   createHostRequestListener = null;
+  stopRemoteHostConnections();
 }

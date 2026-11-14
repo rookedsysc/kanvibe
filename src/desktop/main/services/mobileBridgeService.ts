@@ -88,10 +88,12 @@ import { buildSSHArgs, getKanvibeSSHConnectionHealthOptions, parseSSHConfig } fr
 import {
   attachClientToTerminalTab,
   closeLocalTerminalTab,
+  closeRemoteTerminalTab,
   getLocalTerminalTabProcess,
   getTerminalTabSize,
   getTaskTerminalSize,
   listLocalTerminalTabs,
+  listRemoteTerminalTabs,
   releaseTerminalTabViewport,
   resizeTerminalTab,
   resizeTaskTerminalViewport,
@@ -247,6 +249,7 @@ export async function getTaskSurfaces(taskId: string, options?: { metadata?: "mi
   }
 
   if (target.sessionType === SessionType.TERMINAL) {
+    if (target.sshHost) await listRemoteTerminalTabs(taskId, target.sshHost, target.sessionName);
     return { taskId, sessionType: target.sessionType, canResize: true, canRefreshHistory: false, canPrepareDirectConnection: false, tabs: listTerminalMirrorTabs(taskId) };
   }
 
@@ -342,7 +345,8 @@ async function closeSessionPane(taskId: string, paneId: string): Promise<{ surfa
 
   const target = await findMirrorSessionTarget(taskId);
   if (target.sessionType === SessionType.TERMINAL) {
-    closeLocalTerminalTab(taskId, pane.tabId);
+    if (target.sshHost) await closeRemoteTerminalTab(taskId, pane.tabId, target.sshHost, target.sessionName);
+    else closeLocalTerminalTab(taskId, pane.tabId);
   } else {
     await runMirrorCommand(buildClosePaneCommand(target, paneId), target.sshHost);
   }
@@ -1394,6 +1398,7 @@ export async function claimPaneViewport(taskId: string, paneId: string): Promise
   if (paneViewportShutdown) throw new Error("데스크탑이 종료 중입니다.");
   const task = await findMirrorTask(taskId);
   const target = toMirrorSessionTarget(task);
+  if (target.sessionType === SessionType.TERMINAL && target.sshHost) await listRemoteTerminalTabs(taskId, target.sshHost, target.sessionName);
   const panes = target.sessionType === SessionType.TERMINAL
     ? listTerminalMirrorTabs(taskId).flatMap((tab) => tab.panes)
     : await listMirrorPanes(target, { metadata: "minimal", selectedPaneId: paneId });
@@ -1685,6 +1690,7 @@ async function subscribeToTerminalTab(
   onChunk: (chunk: string) => void,
   onEnd: () => void,
 ): Promise<() => void> {
+  if (task.sshHost && task.sessionName) await listRemoteTerminalTabs(task.id, task.sshHost, task.sessionName);
   if (!listLocalTerminalTabs(task.id).some((tab) => tab.id === tabId)) {
     throw new SurfaceUnavailableError("session-not-running");
   }

@@ -2,6 +2,7 @@ import { exec, spawn } from "child_process";
 import { promisify } from "util";
 import { homedir } from "os";
 import { AsyncLocalStorage } from "node:async_hooks";
+import { getRemoteHostConnection } from "@/lib/remoteHostConnection";
 import {
   buildSSHArgs,
   ensureKanvibeSSHControlDirectory,
@@ -950,6 +951,31 @@ export async function execGit(
   options?: ExecGitOptions,
 ): Promise<string> {
   if (sshHost) {
+    const timeoutMs = getRemoteSSHCommandTimeoutMs(options);
+    const deadline = Date.now() + timeoutMs;
+    const connection = await getRemoteHostConnection(sshHost);
+    if (connection) {
+      const context = { sshHost, active: true };
+      const responder = options?.remoteStdinResponder;
+      const execute = async () => connection.execute(command, {
+        ...options,
+        timeoutMs: remainingSSHTimeout(deadline),
+        ...(responder ? { remoteStdinResponder: {
+          ...responder,
+          respond: (payload) => remoteSSHResponderContext.run(context, () => responder.respond(payload)),
+        } } : {}),
+      });
+      const responderContext = remoteSSHResponderContext.getStore();
+      const isNestedResponder = responderContext?.active && responderContext.sshHost === sshHost;
+      const shouldQueueBackground = remoteSSHCommandPriority.getStore() === "background" && !isNestedResponder;
+      const result = shouldQueueBackground
+        ? runLimitedRemoteCommand(sshHost, execute, deadline)
+        : execute();
+      return result.catch((error) => {
+        if (isSSHCommandTimeoutError(error)) throw normalizeSSHExecError(error, sshHost, timeoutMs, true);
+        throw error;
+      }).finally(() => { context.active = false; });
+    }
     return execRemote(sshHost, command, options);
   }
   return execLocal(command, options);

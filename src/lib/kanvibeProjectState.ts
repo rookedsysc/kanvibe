@@ -2,6 +2,7 @@ import path from "path";
 import { SessionType, TaskStatus } from "@/entities/KanbanTask";
 import { TaskPriority } from "@/entities/TaskPriority";
 import { isValidHookClientId } from "@/lib/hookSocketPath";
+import { isValidHostNamespace } from "@/lib/remoteHostProtocol";
 import { findSymbolicLinkPath, readTextFile, readTextFiles, updateTextFile, writeTextFile, writeTextFileIfAbsent } from "@/lib/hostFileAccess";
 
 export const KANVIBE_DIR_NAME = ".kanvibe";
@@ -63,9 +64,10 @@ export interface KanvibeHookTarget {
   taskId: string;
   /** 이 client가 task CLI 요청을 받을 때 확인하는 task 단위 자격 증명. 파일을 읽을 수 있는 사용자만 쓸 수 있다 */
   token?: string;
-  /** 원격 hook·CLI가 찾는 이 client의 터널 소켓 이름. IP가 바뀌어도 그대로다 */
+  /** 원격 hook·CLI의 데스크탑 라우팅 ID. 이전 전송에서는 소켓 이름에도 쓴다 */
   clientId?: string;
   transport?: "local" | "ssh";
+  remoteHostNamespace?: string;
 }
 
 /** targets.json은 task CLI 자격 증명을 담으므로 소유자만 읽게 한다 */
@@ -540,7 +542,8 @@ function normalizeKanvibeTarget(target: unknown): KanvibeHookTarget | null {
 
   const url = normalizeKanvibeTargetUrl(candidate.url);
   const taskId = candidate.taskId.trim();
-  if (!url || !taskId || (candidate.transport !== undefined && candidate.transport !== "local" && candidate.transport !== "ssh")) {
+  if (!url || !taskId || (candidate.transport !== undefined && candidate.transport !== "local" && candidate.transport !== "ssh")
+    || (candidate.remoteHostNamespace !== undefined && !isValidHostNamespace(candidate.remoteHostNamespace))) {
     return null;
   }
 
@@ -551,6 +554,7 @@ function normalizeKanvibeTarget(target: unknown): KanvibeHookTarget | null {
     ...(token ? { token } : {}),
     ...(isValidHookClientId(candidate.clientId) ? { clientId: candidate.clientId } : {}),
     ...(candidate.transport === "local" || candidate.transport === "ssh" ? { transport: candidate.transport } : {}),
+    ...(isValidHostNamespace(candidate.remoteHostNamespace) ? { remoteHostNamespace: candidate.remoteHostNamespace } : {}),
   };
 }
 
