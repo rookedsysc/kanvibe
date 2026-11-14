@@ -135,9 +135,8 @@ describe("getTaskDiffStats", () => {
 
     const { getTaskDiffStats } = await import("@/desktop/main/services/diffService");
 
-    await expect(getTaskDiffStats(["task-progress"])).resolves.toEqual({
-      "task-progress": { fileCount: 1, additions: 12, deletions: 3 },
-    });
+    await expect(getTaskDiffStats(["task-progress"])).resolves.toEqual({});
+    await vi.waitFor(() => expect(mocks.taskDiffStatsRepo.save).toHaveBeenCalled());
     expect(mocks.execGit).toHaveBeenCalledTimes(1);
     expect(mocks.taskDiffStatsRepo.save).toHaveBeenCalledWith({
       taskId: "task-progress",
@@ -158,8 +157,9 @@ describe("getTaskDiffStats", () => {
 
     await expect(getTaskDiffStats(["task-progress"])).resolves.toEqual({
       "task-review": { fileCount: 4, additions: 40, deletions: 8 },
-      "task-progress": { fileCount: 1, additions: 12, deletions: 3 },
+      "task-progress": { fileCount: 1, additions: 1, deletions: 1 },
     });
+    await vi.waitFor(() => expect(mocks.taskDiffStatsRepo.save).toHaveBeenCalled());
     expect(mocks.execGit).toHaveBeenCalledTimes(1);
   });
 
@@ -274,9 +274,10 @@ describe("diff 실패와 경로 경계", () => {
       const service = await import("@/desktop/main/services/diffService");
 
       expect(await service.getTaskDiffStats(["fixture"])).toEqual({ fixture: { fileCount: 8, additions: 21, deletions: 5 } });
+      await service.getGitDiffFiles("fixture");
       expect(mocks.taskDiffStatsRepo.save).not.toHaveBeenCalled();
       task.baseBranch = "main";
-      expect(await service.getTaskDiffStats(["fixture"])).toEqual({ fixture: { fileCount: 0, additions: 0, deletions: 0 } });
+      expect(await service.getGitDiffFiles("fixture")).toEqual([]);
       expect(mocks.taskDiffStatsRepo.save).toHaveBeenCalledWith({ taskId: "fixture", fileCount: 0, additions: 0, deletions: 0 });
     } finally {
       rmSync(directory, { recursive: true, force: true });
@@ -461,4 +462,87 @@ describe("rename 원본 내용", () => {
       rmSync(directory, { recursive: true, force: true });
     }
   });
+});
+
+
+describe("cached lazy diff refresh", () => {
+  const output = (additions: number) => ["__KANVIBE_DIFF_NAME_STATUS__", "M\0a.ts", "__KANVIBE_DIFF_NUMSTAT__", `${additions}\t0\ta.ts`, "__KANVIBE_DIFF_WORKING_TREE__"].join("\0") + "\0";
+  beforeEach(() => {
+    vi.resetModules(); vi.resetAllMocks();
+    const cache = new Map<string, object>([["slow", { taskId: "slow", fileCount: 1, additions: 9, deletions: 0 }]]);
+    mocks.taskDiffStatsRepo.find.mockImplementation(async () => [...cache.values()]);
+    mocks.taskDiffStatsRepo.save.mockImplementation(async (record) => { cache.set(record.taskId, record); });
+    mocks.taskRepo.findOne.mockImplementation(async ({ where }) => ({ id: where.id, worktreePath: `/repo/${where.id}`, branchName: where.id, baseBranch: "dev" }));
+  });
+
+  it("느린 git을 기다리지 않고 cache를 반환하고 완료된 항목부터 다음 조회에 보여준다", async () => {
+    let finish!: (value: string) => void;
+    mocks.execGit.mockImplementation((command: string) => command.includes("/repo/slow") ? new Promise<string>((resolve) => { finish = resolve; }) : Promise.resolve(output(3)));
+    const service = await import("@/desktop/main/services/diffService");
+    let initial: unknown;
+    const pending = service.getTaskDiffStats(["slow", "fast"]).then((value) => { initial = value; });
+    try {
+      await vi.waitFor(() => expect(initial).toEqual({ slow: { fileCount: 1, additions: 9, deletions: 0 } }), { timeout: 200 });
+      await vi.waitFor(() => expect(mocks.taskDiffStatsRepo.save).toHaveBeenCalledWith({ taskId: "fast", fileCount: 1, additions: 3, deletions: 0 }));
+      expect(await service.getTaskDiffStats([])).toEqual({ slow: { fileCount: 1, additions: 9, deletions: 0 }, fast: { fileCount: 1, additions: 3, deletions: 0 } });
+    } finally { finish(output(7)); await pending; }
+    await vi.waitFor(() => expect(mocks.taskDiffStatsRepo.save).toHaveBeenCalledWith({ taskId: "slow", fileCount: 1, additions: 7, deletions: 0 }));
+  });
+
+  it("refresh를 두 개로 제한하고 진행/대기 중인 task 중복은 합친다", async () => {
+    const finish: Array<(value: string) => void> = [];
+    mocks.execGit.mockImplementation(() => new Promise<string>((resolve) => { finish.push(resolve); }));
+    const service = await import("@/desktop/main/services/diffService");
+    const first = service.getTaskDiffStats(["one", "two", "three", "one"]);
+    const duplicate = service.getTaskDiffStats(["one", "two", "three"]);
+    try {
+      await vi.waitFor(() => expect(mocks.execGit).toHaveBeenCalledTimes(2), { timeout: 200 });
+      finish[1](output(2));
+      await vi.waitFor(() => expect(mocks.execGit).toHaveBeenCalledTimes(3));
+      expect(mocks.taskDiffStatsRepo.save).toHaveBeenCalledTimes(1);
+    } finally {
+      for (const resolve of finish) resolve(output(1));
+      await Promise.all([first, duplicate]);
+    }
+    await vi.waitFor(() => expect(mocks.taskDiffStatsRepo.save).toHaveBeenCalledTimes(3));
+  });
+
+  it("상세와 board가 같은 task 읽기와 저장을 공유하고 옛 요청의 역전을 막는다", async () => {
+    let finish!: (value: string) => void;
+    mocks.execGit.mockImplementationOnce(() => new Promise<string>((resolve) => { finish = resolve; }));
+    const service = await import("@/desktop/main/services/diffService");
+    const detail = service.getGitDiffFiles("same");
+    const duplicateDetail = service.getGitDiffFiles("same");
+    const board = service.getTaskDiffStats(["same", "same"]);
+    await vi.waitFor(() => expect(mocks.execGit).toHaveBeenCalled());
+    const count = mocks.execGit.mock.calls.length;
+    finish(output(1));
+    await Promise.all([detail, duplicateDetail, board]);
+    expect(count).toBe(1);
+    expect(mocks.taskDiffStatsRepo.save).toHaveBeenCalledTimes(1);
+    mocks.execGit.mockResolvedValue(output(8));
+    await service.getGitDiffFiles("same");
+    expect(await service.getTaskDiffStats([])).toMatchObject({ same: { additions: 8 } });
+  });
+
+  it("대기 중인 board task를 상세에서 먼저 읽으면 queue에서 제거해 다시 읽지 않는다", async () => {
+    const finish = new Map<string, (value: string) => void>();
+    mocks.execGit.mockImplementation((command: string) => new Promise<string>((resolve) => {
+      const taskId = ["one", "two", "three"].find((id) => command.includes(`/repo/${id}`))!;
+      finish.set(taskId, resolve);
+    }));
+    const service = await import("@/desktop/main/services/diffService");
+    await service.getTaskDiffStats(["one", "two", "three"]);
+    await vi.waitFor(() => expect(finish.size).toBe(2));
+    const detail = service.getGitDiffFiles("three");
+    await vi.waitFor(() => expect(finish.has("three")).toBe(true));
+    finish.get("three")!(output(3));
+    await detail;
+    finish.get("one")!(output(1));
+    finish.get("two")!(output(2));
+    await vi.waitFor(() => expect(mocks.taskDiffStatsRepo.save).toHaveBeenCalledTimes(3));
+    expect(mocks.execGit).toHaveBeenCalledTimes(3);
+    expect(await service.getTaskDiffStats([])).toMatchObject({ three: { additions: 3 } });
+  });
+
 });

@@ -910,6 +910,30 @@ describe("TaskDetailRoute", () => {
     expect(mocks.getTaskById).toHaveBeenCalledTimes(taskLoadCountBeforeClose);
   });
 
+  it("diff 응답이 느려도 task 화면과 terminal 입력을 사용할 수 있다", async () => {
+    const pendingDiff = createDeferred<[]>();
+    mocks.getGitDiffFiles.mockReturnValueOnce(pendingDiff.promise);
+    mocks.getTaskById.mockResolvedValue({
+      id: "task-1", title: "slow diff task", branchName: "perf/slow-diff", baseBranch: "dev",
+      sessionType: "tmux", sessionName: "slow-diff-session", sshHost: "remote-host",
+      projectId: "project-1", project: { id: "project-1", name: "kanvibe" },
+      status: "todo", worktreePath: "/remote/slow-diff", prUrl: null,
+    });
+    render(<TaskDetailRoute />);
+    try {
+      expect((await screen.findByTestId("task-title")).textContent).toBe("slow diff task");
+      await waitFor(() => expect(mocks.getGitDiffFiles).toHaveBeenCalledWith("task-1"));
+      const input = await screen.findByLabelText("terminal input");
+      fireEvent.change(input, { target: { value: "pwd" } });
+      expect((input as HTMLInputElement).value).toBe("pwd");
+      fireEvent.click(screen.getByRole("button", { name: "close" }));
+      expect(screen.queryByTestId("task-title")).toBeNull();
+      expect(screen.getByLabelText("terminal input")).toBe(input);
+    } finally {
+      await act(async () => { pendingDiff.resolve([]); });
+    }
+  });
+
   it("터미널 탭 왼쪽 배지에 프로젝트 아이콘·이름과 태스크 이름을 함께 표시한다", async () => {
     mocks.getTaskById.mockResolvedValue({
       id: "task-1",
