@@ -489,7 +489,7 @@ describe("cached lazy diff refresh", () => {
     await vi.waitFor(() => expect(mocks.taskDiffStatsRepo.save).toHaveBeenCalledWith({ taskId: "slow", fileCount: 1, additions: 7, deletions: 0 }));
   });
 
-  it("refresh를 두 개로 제한하고 진행/대기 중인 task 중복은 합친다", async () => {
+  it("같은 호스트의 refresh를 두 개로 제한하고 진행/대기 중인 task 중복은 합친다", async () => {
     const finish: Array<(value: string) => void> = [];
     mocks.execGit.mockImplementation(() => new Promise<string>((resolve) => { finish.push(resolve); }));
     const service = await import("@/desktop/main/services/diffService");
@@ -543,6 +543,146 @@ describe("cached lazy diff refresh", () => {
     await vi.waitFor(() => expect(mocks.taskDiffStatsRepo.save).toHaveBeenCalledTimes(3));
     expect(mocks.execGit).toHaveBeenCalledTimes(3);
     expect(await service.getTaskDiffStats([])).toMatchObject({ three: { additions: 3 } });
+  });
+
+  it("포화된 호스트와 다른 호스트·local의 background diff를 독립적으로 갱신한다", async () => {
+    mocks.taskRepo.findOne.mockImplementation(async ({ where }) => ({
+      id: where.id, worktreePath: `/repo/${where.id}`, branchName: where.id, baseBranch: "dev",
+      sshHost: where.id.startsWith("a-") ? "host-a" : where.id.startsWith("b-") ? "host-b" : null,
+    }));
+    const finish = new Map<string, (value: string) => void>();
+    mocks.execGit.mockImplementation((command: string) => {
+      const taskId = command.match(/\/repo\/([^']+)/)![1];
+      return taskId.startsWith("a-")
+        ? new Promise<string>((resolve) => { finish.set(taskId, resolve); })
+        : Promise.resolve(output(4));
+    });
+    const service = await import("@/desktop/main/services/diffService");
+    await service.getTaskDiffStats(["a-one", "a-two", "a-three", "b-one", "local-one", "a-three"]);
+    try {
+      await vi.waitFor(async () => expect(await service.getTaskDiffStats([])).toMatchObject({
+        "b-one": { fileCount: 1, additions: 4, deletions: 0 },
+        "local-one": { fileCount: 1, additions: 4, deletions: 0 },
+      }), { timeout: 200 });
+      expect([...finish.keys()]).toEqual(["a-one", "a-two"]);
+      finish.get("a-one")!(output(1));
+      await vi.waitFor(() => expect(finish.has("a-three")).toBe(true));
+    } finally {
+      for (const resolve of finish.values()) resolve(output(2));
+      await vi.waitFor(() => expect(finish.has("a-three")).toBe(true));
+      finish.get("a-three")!(output(2));
+      await vi.waitFor(() => expect(mocks.taskDiffStatsRepo.save).toHaveBeenCalledTimes(5));
+    }
+    expect(await service.getTaskDiffStats([])).toMatchObject({
+      "a-three": { fileCount: 1, additions: 2, deletions: 0 },
+    });
+    expect(mocks.execGit).toHaveBeenCalledTimes(5);
+  });
+
+  it("background host 조회가 늦어도 먼저 끝난 상세 결과를 다시 조회하지 않는다", async () => {
+    const task = { id: "race", worktreePath: "/repo/race", branchName: "race", baseBranch: "dev", sshHost: "host-a" };
+    let finishLookup!: (value: typeof task) => void;
+    mocks.taskRepo.findOne.mockImplementationOnce(() => new Promise((resolve) => { finishLookup = resolve; }));
+    mocks.taskRepo.findOne.mockResolvedValue(task);
+    mocks.execGit.mockResolvedValue(output(6));
+    const service = await import("@/desktop/main/services/diffService");
+    await service.getTaskDiffStats(["race"]);
+    const detail = service.getGitDiffFiles("race");
+    try {
+      await vi.waitFor(async () => expect(await service.getTaskDiffStats([])).toMatchObject({
+        race: { fileCount: 1, additions: 6, deletions: 0 },
+      }), { timeout: 200 });
+    } finally {
+      finishLookup(task);
+      await detail;
+    }
+    await service.getTaskDiffStats([]);
+    expect(mocks.execGit).toHaveBeenCalledTimes(1);
+    expect(mocks.taskDiffStatsRepo.save).toHaveBeenCalledTimes(1);
+  });
+
+  it("느린 host metadata 두 건이 다른 호스트의 갱신을 막지 않는다", async () => {
+    const finish: Array<(value: unknown) => void> = [];
+    mocks.taskRepo.findOne.mockImplementation(({ where }) => where.id.startsWith("slow-")
+      ? new Promise((resolve) => { finish.push(resolve); })
+      : Promise.resolve({ id: where.id, worktreePath: `/repo/${where.id}`, branchName: where.id, baseBranch: "dev", sshHost: "host-fast" }));
+    mocks.execGit.mockResolvedValue(output(5));
+    const service = await import("@/desktop/main/services/diffService");
+    await service.getTaskDiffStats(["slow-one", "slow-two", "fast"]);
+    try {
+      await vi.waitFor(async () => expect(await service.getTaskDiffStats([])).toMatchObject({
+        fast: { fileCount: 1, additions: 5, deletions: 0 },
+      }), { timeout: 200 });
+    } finally {
+      for (const resolve of finish) resolve(null);
+      await vi.waitFor(async () => expect(await service.getTaskDiffStats([])).toMatchObject({
+        fast: { fileCount: 1, additions: 5, deletions: 0 },
+      }));
+    }
+  });
+
+  it("host metadata 조회 실패는 다른 task를 막지 않고 다음 조회에서 재시도한다", async () => {
+    const failure = new Error("metadata temporarily unavailable");
+    mocks.taskRepo.findOne.mockRejectedValueOnce(failure);
+    mocks.taskRepo.findOne.mockImplementation(async ({ where }) => ({
+      id: where.id, worktreePath: `/repo/${where.id}`, branchName: where.id, baseBranch: "dev", sshHost: "host-a",
+    }));
+    mocks.execGit.mockResolvedValue(output(7));
+    const service = await import("@/desktop/main/services/diffService");
+    await service.getTaskDiffStats(["retry", "other"]);
+    await vi.waitFor(async () => expect(await service.getTaskDiffStats([])).toMatchObject({
+      other: { fileCount: 1, additions: 7, deletions: 0 },
+    }));
+    await service.getTaskDiffStats(["retry"]);
+    await vi.waitFor(async () => expect(await service.getTaskDiffStats([])).toMatchObject({
+      retry: { fileCount: 1, additions: 7, deletions: 0 },
+    }));
+    expect(mocks.execGit).toHaveBeenCalledTimes(2);
+  });
+
+  it("취소된 host 조회의 늦은 성공이 새 갱신을 오염시키지 않는다", async () => {
+    const task = { id: "race", worktreePath: "/repo/detail", branchName: "race", baseBranch: "dev", sshHost: "host-a" };
+    let finishOld!: (value: typeof task) => void;
+    let finishNew!: (value: typeof task) => void;
+    mocks.taskRepo.findOne
+      .mockImplementationOnce(() => new Promise((resolve) => { finishOld = resolve; }))
+      .mockResolvedValueOnce(task)
+      .mockImplementationOnce(() => new Promise((resolve) => { finishNew = resolve; }));
+    mocks.execGit.mockImplementation(async (command: string) =>
+      output(command.includes("/repo/stale") ? 1 : command.includes("/repo/fresh") ? 9 : 6));
+    const service = await import("@/desktop/main/services/diffService");
+    await service.getTaskDiffStats(["race"]);
+    await service.getGitDiffFiles("race");
+    await service.getTaskDiffStats(["race"]);
+    finishOld({ ...task, worktreePath: "/repo/stale" });
+    finishNew({ ...task, worktreePath: "/repo/fresh" });
+    await vi.waitFor(async () => expect(await service.getTaskDiffStats([])).toMatchObject({
+      race: { fileCount: 1, additions: 9, deletions: 0 },
+    }), { timeout: 200 });
+    expect(mocks.execGit.mock.calls.some(([command]) => command.includes("/repo/stale"))).toBe(false);
+  });
+
+  it("취소된 host 조회의 늦은 실패가 새 갱신을 취소하지 않는다", async () => {
+    const task = { id: "race", worktreePath: "/repo/detail", branchName: "race", baseBranch: "dev", sshHost: "host-a" };
+    let rejectOld!: (error: Error) => void;
+    let finishNew!: (value: typeof task) => void;
+    mocks.taskRepo.findOne
+      .mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectOld = reject; }))
+      .mockResolvedValueOnce(task)
+      .mockImplementationOnce(() => new Promise((resolve) => { finishNew = resolve; }));
+    mocks.execGit.mockImplementation(async (command: string) =>
+      output(command.includes("/repo/stale") ? 1 : command.includes("/repo/fresh") ? 9 : 6));
+    const service = await import("@/desktop/main/services/diffService");
+    await service.getTaskDiffStats(["race"]);
+    await service.getGitDiffFiles("race");
+    await service.getTaskDiffStats(["race"]);
+    rejectOld(new Error("cancelled lookup failed late"));
+    await service.getGitDiffFiles("barrier");
+    finishNew({ ...task, worktreePath: "/repo/fresh" });
+    await vi.waitFor(async () => expect(await service.getTaskDiffStats([])).toMatchObject({
+      race: { fileCount: 1, additions: 9, deletions: 0 },
+    }), { timeout: 200 });
+    expect(mocks.execGit.mock.calls.some(([command]) => command.includes("/repo/stale"))).toBe(false);
   });
 
 });

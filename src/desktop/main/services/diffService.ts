@@ -123,6 +123,8 @@ async function getTaskWorktreeInfo(taskId: string) {
   };
 }
 
+type TaskWorktreeInfo = Awaited<ReturnType<typeof getTaskWorktreeInfo>>;
+
 /** git status의 porcelain 포맷 문자를 DiffFile 상태로 변환한다 */
 function parseWorkingTreeStatus(
   xy: string
@@ -142,10 +144,10 @@ function parseWorkingTreeStatus(
  * 변경 파일 목록을 조회하되 실패를 `null`로 구분해 돌려준다.
  * 조회에 실패한 것과 정말 아무것도 바뀌지 않은 것을 같은 빈 배열로 뭉치면 캐시를 0으로 덮어쓰게 된다.
  */
-async function readGitDiffFiles(taskId: string): Promise<DiffFile[] | null> {
+async function readGitDiffFiles(taskId: string, worktreeInfo?: TaskWorktreeInfo): Promise<DiffFile[] | null> {
   try {
     const { worktreePath, branchName, baseBranch, sshHost } =
-      await getTaskWorktreeInfo(taskId);
+      worktreeInfo ?? await getTaskWorktreeInfo(taskId);
 
     const commandOutput = await execGit(
       buildGitDiffFilesCommand(worktreePath, baseBranch, branchName),
@@ -225,11 +227,11 @@ async function readGitDiffFiles(taskId: string): Promise<DiffFile[] | null> {
 export async function getGitDiffFiles(
   taskId: string
 ): Promise<DiffFile[]> {
-  const queuedIndex = diffRefreshQueue.indexOf(taskId);
+  const queuedIndex = diffRefreshQueue.findIndex((request) => request.taskId === taskId);
   if (queuedIndex >= 0) {
     diffRefreshQueue.splice(queuedIndex, 1);
-    queuedDiffTasks.delete(taskId);
   }
+  queuedDiffTasks.delete(taskId);
   return (await refreshTaskDiffFiles(taskId)) ?? [];
 }
 
@@ -420,19 +422,19 @@ async function loadCachedTaskDiffStats(): Promise<Record<string, TaskDiffStats>>
   }
 }
 
-// SSH dependency/session 준비와 경쟁하는 background diff 작업 수만 제한한다.
-const DIFF_REFRESH_CONCURRENCY = 2;
+// 한 호스트의 느린 diff가 다른 호스트와 local 갱신을 막지 않게 한다.
+const DIFF_REFRESH_CONCURRENCY_PER_HOST = 2;
 const pendingDiffReads = new Map<string, Promise<DiffFile[] | null>>();
-const queuedDiffTasks = new Set<string>();
-const diffRefreshQueue: string[] = [];
-let activeDiffRefreshes = 0;
+const queuedDiffTasks = new Map<string, symbol>();
+const diffRefreshQueue: Array<{ taskId: string; generation: symbol; worktreeInfo: TaskWorktreeInfo }> = [];
+const activeDiffRefreshesByHost = new Map<string | null, number>();
 
-function refreshTaskDiffFiles(taskId: string): Promise<DiffFile[] | null> {
+function refreshTaskDiffFiles(taskId: string, worktreeInfo?: TaskWorktreeInfo): Promise<DiffFile[] | null> {
   const pending = pendingDiffReads.get(taskId);
   if (pending) return pending;
 
   const refresh = (async () => {
-    const files = await readGitDiffFiles(taskId);
+    const files = await readGitDiffFiles(taskId, worktreeInfo);
     if (files) await saveTaskDiffStats(taskId, summarizeDiffFiles(files));
     return files;
   })().finally(() => { pendingDiffReads.delete(taskId); });
@@ -443,18 +445,32 @@ function refreshTaskDiffFiles(taskId: string): Promise<DiffFile[] | null> {
 
 function scheduleTaskDiffRefresh(taskId: string): void {
   if (queuedDiffTasks.has(taskId) || pendingDiffReads.has(taskId)) return;
-  queuedDiffTasks.add(taskId);
-  diffRefreshQueue.push(taskId);
-  drainDiffRefreshQueue();
+  const generation = Symbol(taskId);
+  queuedDiffTasks.set(taskId, generation);
+  void getTaskWorktreeInfo(taskId).then((worktreeInfo) => {
+    if (queuedDiffTasks.get(taskId) !== generation) return;
+    diffRefreshQueue.push({ taskId, generation, worktreeInfo });
+    drainDiffRefreshQueue();
+  }).catch((error) => {
+    if (queuedDiffTasks.get(taskId) !== generation) return;
+    queuedDiffTasks.delete(taskId);
+    console.error("git diff 갱신 대상 조회 실패:", error);
+  });
 }
 
 function drainDiffRefreshQueue(): void {
-  while (activeDiffRefreshes < DIFF_REFRESH_CONCURRENCY && diffRefreshQueue.length) {
-    const taskId = diffRefreshQueue.shift()!;
-    activeDiffRefreshes += 1;
-    void refreshTaskDiffFiles(taskId).finally(() => {
-      queuedDiffTasks.delete(taskId);
-      activeDiffRefreshes -= 1;
+  for (;;) {
+    const index = diffRefreshQueue.findIndex(({ worktreeInfo }) =>
+      (activeDiffRefreshesByHost.get(worktreeInfo.sshHost || null) ?? 0) < DIFF_REFRESH_CONCURRENCY_PER_HOST);
+    if (index < 0) return;
+    const [{ taskId, generation, worktreeInfo }] = diffRefreshQueue.splice(index, 1);
+    const host = worktreeInfo.sshHost || null;
+    activeDiffRefreshesByHost.set(host, (activeDiffRefreshesByHost.get(host) ?? 0) + 1);
+    void refreshTaskDiffFiles(taskId, worktreeInfo).finally(() => {
+      if (queuedDiffTasks.get(taskId) === generation) queuedDiffTasks.delete(taskId);
+      const active = activeDiffRefreshesByHost.get(host)! - 1;
+      if (active) activeDiffRefreshesByHost.set(host, active);
+      else activeDiffRefreshesByHost.delete(host);
       drainDiffRefreshQueue();
     });
   }
