@@ -44,7 +44,7 @@ describe("소켓 명령 검증", () => {
     expect(bridge.deleteMobileTask).not.toHaveBeenCalled();
   });
   it("지원하는 명령 이름을 connected 이벤트와 같은 목록으로 노출한다", () => {
-    expect(SUPPORTED_COMMANDS).toEqual(["delete-task", "remove-task-registration", "get-tab-close-info", "close-tab", "start-session"]);
+    expect(SUPPORTED_COMMANDS).toEqual(["delete-task", "remove-task-registration", "get-tab-close-info", "close-tab", "start-session", "set-pane-chat-subscription"]);
   });
 
   it.each(["rename-task", "toString", "constructor", "__proto__", ""])("알 수 없는 명령 %j은 지원하지 않는다는 응답을 requestId와 함께 돌려준다", async (name) => {
@@ -93,6 +93,48 @@ describe("소켓 명령 검증", () => {
 
     expect(await runMobileCommand(bridge, Buffer.from(oversized))).toBeNull();
     expect(bridge.deleteMobileTask).not.toHaveBeenCalled();
+  });
+
+  it("pane 채팅 구독은 보낸 소켓을 구독자로 넘기고 pane마다 최신 여부를 돌려준다", async () => {
+    const connection = { owner: {}, send: vi.fn() };
+    bridge.setPaneChatSubscriptions = vi.fn(() => [{ taskId: "task-1", paneId: "%1", freshness: "current" }]);
+    const panes = [
+      { taskId: "task-1", paneId: "%1", detail: "chat", wantsScreen: true, cursor: { epoch: "epoch-a", seq: 0 } },
+      { taskId: "task-1", paneId: "%2", detail: "agent" },
+    ];
+
+    const result = await runMobileCommand(bridge, command({ command: "set-pane-chat-subscription", panes }), connection);
+
+    expect(result).toEqual({ type: "command-result", requestId: "r1", ok: true, panes: [{ taskId: "task-1", paneId: "%1", freshness: "current" }] });
+    expect(bridge.setPaneChatSubscriptions).toHaveBeenCalledWith(connection.owner, [
+      panes[0],
+      { taskId: "task-1", paneId: "%2", detail: "agent", wantsScreen: false, cursor: null },
+    ], connection.send);
+  });
+
+  it("빈 구독 목록은 전부 해제하라는 뜻으로 그대로 넘긴다", async () => {
+    const connection = { owner: {}, send: vi.fn() };
+    bridge.setPaneChatSubscriptions = vi.fn(() => []);
+
+    expect(await runMobileCommand(bridge, command({ command: "set-pane-chat-subscription", panes: [] }), connection))
+      .toEqual({ type: "command-result", requestId: "r1", ok: true, panes: [] });
+    expect(bridge.setPaneChatSubscriptions).toHaveBeenCalledWith(connection.owner, [], connection.send);
+  });
+
+  it.each([
+    ["목록이 아닌 panes", { panes: "task-1" }],
+    ["너무 많은 pane", { panes: Array.from({ length: 5 }, (_, index) => ({ taskId: "t", paneId: `%${index}`, detail: "agent" })) }],
+    ["모르는 detail", { panes: [{ taskId: "t", paneId: "%1", detail: "all" }] }],
+    ["빈 paneId", { panes: [{ taskId: "t", paneId: "", detail: "chat" }] }],
+    ["음수 순번", { panes: [{ taskId: "t", paneId: "%1", detail: "chat", cursor: { epoch: "e", seq: -1 } }] }],
+    ["문자열 wantsScreen", { panes: [{ taskId: "t", paneId: "%1", detail: "chat", wantsScreen: "yes" }] }],
+  ])("형식이 틀린 pane 채팅 구독(%s)은 구독을 바꾸지 않고 거절한다", async (_, fields) => {
+    bridge.setPaneChatSubscriptions = vi.fn();
+
+    const result = await runMobileCommand(bridge, command({ command: "set-pane-chat-subscription", ...fields }), { owner: {}, send: vi.fn() });
+
+    expect(result).toMatchObject({ ok: false, code: "invalid-command" });
+    expect(bridge.setPaneChatSubscriptions).not.toHaveBeenCalled();
   });
 
   it("64자 requestId와 Buffer 입력은 그대로 처리한다", async () => {

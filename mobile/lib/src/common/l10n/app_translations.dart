@@ -991,6 +991,7 @@ const appTranslations = <String, (String, String)>{
     "仍保留在另外 {count} 台电脑上。请在这些电脑上线后手动删除。",
   ),
   "{name} {id} 탭": ("{name} {id} tab", "{name} {id} 标签页"),
+  "채팅": ("Chat", "聊天"),
   "지운 기본 세팅 {count}개가 다시 생겨요. 내 콤보는 그대로예요.": (
     "Restore {count} removed default shortcuts. Your combos are preserved.",
     "恢复 {count} 个已删除的默认快捷键。自定义组合将保留。",

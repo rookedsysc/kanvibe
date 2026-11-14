@@ -28,9 +28,7 @@ env:
     timeout: 40000
 - tapOn: "(?s).*Chat History Fixture.*"
 - tapOn:
-    text: "^채팅$"
-    enabled: true
-    retryTapIfNoChange: true
+    id: pane-chat-toggle
 - extendedWaitUntil:
     visible:
       id: pane-chat-input
@@ -49,22 +47,20 @@ env:
     enabled: true
     retryTapIfNoChange: true
 - extendedWaitUntil:
-    visible: "(?s).*Select model.*"
+    visible:
+      id: pane-chat-model-settings
     timeout: 30000
-- takeScreenshot: mobile-model-picker
+- takeScreenshot: mobile-model-settings
 - tapOn:
-    text: "^아래$"
-    enabled: true
+    id: pane-chat-model-name
+- tapOn: "Fixture Fast"
 - extendedWaitUntil:
-    visible: "(?s).*› 1\\. fixture-fast.*"
-    timeout: 15000
-- tapOn:
-    text: "^확인$"
-    enabled: true
-- extendedWaitUntil:
-    visible: "(?s).*model: fixture-fast.*"
+    visible:
+      id: pane-chat-fast-mode
     timeout: 30000
-- tapOn: "대화 보기"
+- tapOn:
+    text: "^모델$"
+    enabled: true
 - tapOn:
     id: pane-chat-input
 - inputText: "Android changed model"
@@ -75,11 +71,9 @@ env:
     timeout: 30000
 - takeScreenshot: mobile-selected-model-response
 - tapOn:
-    text: "^터미널$"
-    enabled: true
-    retryTapIfNoChange: true
+    id: pane-chat-toggle
+- assertNotVisible:
+    id: pane-chat-input
 - tapOn:
-    text: "^채팅$"
-    enabled: true
-    retryTapIfNoChange: true
+    id: pane-chat-toggle
 - assertVisible: "(?s).*Android changed model.*"

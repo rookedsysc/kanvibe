@@ -290,6 +290,7 @@ class DesktopClient {
     PaneChatKey? key,
     List<String>? attachmentIds,
     String? requestId,
+    Map<String, Object?>? modelSettingChange,
   }) async {
     final response = await _clientFor(connection)
         .post(
@@ -315,6 +316,7 @@ class DesktopClient {
             if (action == PaneChatAction.key) 'key': key?.name,
             'attachmentIds': ?attachmentIds,
             'requestId': ?requestId,
+            'change': ?modelSettingChange,
           }),
         )
         .timeout(_paneChatTimeout);

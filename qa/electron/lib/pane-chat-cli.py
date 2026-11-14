@@ -25,6 +25,13 @@ recording = transcript.open("a", buffering=1)
 audit = (root / f"{session_id}-input.jsonl").open("a", buffering=1)
 model = 0
 models = ["fixture-fast", "fixture-deep"]
+# 모델 설정 선택창이 읽는 값. 실제 CLI처럼 기록에 남기고 슬래시 명령으로 바꾼다.
+# Claude 쪽은 선택창의 고정 모델 목록과 맞도록 실제 모델 ID를 기록에 쓴다.
+DEFAULT_EFFORT = "low" if provider == "codex" else "medium"
+effort = DEFAULT_EFFORT
+fast = False
+claude_model = "claude-opus-5-5"
+CLAUDE_MODEL_IDS = {"fable": "claude-fable-5-2", "opus": "claude-opus-5-5", "sonnet": "claude-sonnet-5-5", "haiku": "claude-haiku-5-5"}
 picker = False
 draft = ""
 paste = False
@@ -38,13 +45,61 @@ def write_event(role, text):
     else:
         event = {"type": role, "sessionId": session_id, "cwd": str(root),
                  "timestamp": timestamp, "message": {"role": role, "content": text}}
+        if role == "assistant":
+            event["effort"] = effort
+            event["requestedModel"] = claude_model
+            event["message"]["model"] = claude_model
+            event["message"]["usage"] = {"speed": "fast" if fast else "standard"}
     recording.write(json.dumps(event) + "\n")
+
+
+def write_settings():
+    """Codex는 턴 사이에 바뀐 설정을 이 이벤트로 남긴다."""
+    recording.write(json.dumps({"type": "event_msg", "payload": {"type": "thread_settings_applied", "thread_settings": {
+        "model": models[model], "reasoning_effort": effort, "service_tier": "priority" if fast else None}}}) + "\n")
+
+
+def write_command_output(text):
+    """Claude Code는 설정 명령의 결과를 이 모양의 user 기록으로 남긴다."""
+    recording.write(json.dumps({"type": "user", "sessionId": session_id, "cwd": str(root),
+                                "message": {"role": "user", "content": f"<local-command-stdout>{text}</local-command-stdout>"}}) + "\n")
+
+
+def apply_setting_command(command):
+    """모델 설정 명령이면 적용하고 True를 돌려준다. `/model`만 치면 선택기를 여는 예전 동작은 건드리지 않는다."""
+    global model, effort, fast, claude_model
+    words = command.split()
+    if provider == "codex" and words[:1] == ["/model"] and len(words) > 1:
+        for word in words[1:]:
+            if word.startswith("--reasoning="):
+                effort = word.split("=", 1)[1]
+            elif word.startswith("--speed="):
+                fast = word.split("=", 1)[1] == "priority"
+            elif word in models:
+                model = models.index(word)
+                effort = DEFAULT_EFFORT
+        write_settings()
+        return True
+    if provider == "claude" and len(words) == 2 and words[0] in ("/model", "/effort", "/fast"):
+        if words[0] == "/model" and words[1] in CLAUDE_MODEL_IDS:
+            claude_model = CLAUDE_MODEL_IDS[words[1]]
+            write_command_output(f"Set model to `{words[1].capitalize()} 5.5` and saved as your default for new sessions")
+        elif words[0] == "/effort":
+            effort = DEFAULT_EFFORT if words[1] == "auto" else words[1]
+            write_command_output(f"Set effort level to {effort} (saved as your default for new sessions)")
+        elif words[0] == "/fast":
+            fast = words[1] == "on"
+        return True
+    return False
 
 
 if provider == "codex":
     recording.write(json.dumps({"type": "session_meta", "payload": {"id": session_id, "cwd": str(root)}}) + "\n")
+    recording.write(json.dumps({"type": "turn_context", "payload": {"model": models[model], "effort": effort}}) + "\n")
 else:
     recording.write(json.dumps({"type": "system", "sessionId": session_id, "cwd": str(root)}) + "\n")
+    write_command_output("Set model to `Opus 5.5` and saved as your default for new sessions")
+    write_command_output(f"Set effort level to {effort} (saved as your default for new sessions)")
 
 
 def screen():
@@ -56,7 +111,8 @@ def screen():
         sys.stdout.write("↑ ↓ choose · Enter confirm · Esc cancel\r\n")
     else:
         marker = "❯" if provider == "claude" else "›"
-        sys.stdout.write(f"{provider} · {session_id}\r\nmodel: {models[model]}\r\nReady for a prompt\r\n{marker} {draft}")
+        shown_model = models[model] if provider == "codex" else f"{models[model]} ({claude_model})"
+        sys.stdout.write(f"{provider} · {session_id}\r\nmodel: {shown_model}\r\neffort: {effort} · speed: {'fast' if fast else 'standard'}\r\nReady for a prompt\r\n{marker} {draft}")
     sys.stdout.flush()
 
 
@@ -116,9 +172,14 @@ try:
             elif byte == b"\r" and not paste:
                 if picker:
                     picker = False
+                    if provider == "codex":
+                        write_settings()
                     screen()
                 elif draft.strip() == "/model":
                     picker = True
+                    draft = ""
+                    screen()
+                elif apply_setting_command(draft.strip()):
                     draft = ""
                     screen()
                 elif draft.strip():

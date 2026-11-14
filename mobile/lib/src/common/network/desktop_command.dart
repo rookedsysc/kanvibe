@@ -41,6 +41,15 @@ class DesktopCommand {
         'paneId': paneId,
       }, _closeTabTimeout);
 
+  /// push로 받으려는 pane 전체를 통째로 바꾼다. 빈 목록이면 전부 해제한다.
+  ///
+  /// 응답의 `panes`는 pane마다 가진 위치가 최신인지(`current`) 다시 받아야 하는지(`behind`)를 알려 준다
+  factory DesktopCommand.setPaneChatSubscription(
+    List<Map<String, Object?>> panes,
+  ) => DesktopCommand._('set-pane-chat-subscription', {
+    'panes': panes,
+  }, _lookupTimeout);
+
   final String name;
   final Map<String, Object?> fields;
 

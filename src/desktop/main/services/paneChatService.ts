@@ -4,9 +4,10 @@ import { SessionType } from "@/entities/KanbanTask";
 import { execGit } from "@/lib/gitOperations";
 import { focusHerdrTaskPane, listLocalTerminalTabs } from "@/lib/terminal";
 import { quoteForPosixShell } from "@/lib/worktree";
-import { getHomeDirectory } from "@/lib/hostFileAccess";
+import { getHomeDirectory, readTextFile } from "@/lib/hostFileAccess";
 import { MAX_ATTACHMENT_BYTES } from "@/lib/attachmentContent";
-import { readJsonLinesHead } from "@/lib/aiSessions/shared";
+import { readJsonLinesHead, readJsonLinesTail } from "@/lib/aiSessions/shared";
+import { buildPaneChatModelCommand, buildPaneChatModelSettings, parseCodexModelCatalog, parsePaneChatModelSettingChange, readClaudeModelState, readCodexModelState, type PaneChatModelOption, type PaneChatModelSettings } from "@/lib/aiSessions/paneChatModelSettings";
 import { readClaudeSessionDetail } from "@/lib/aiSessions/readClaudeSessions";
 import { readCodexSessionDetail } from "@/lib/aiSessions/readCodexSessions";
 import { findPaneChatProcess, type PaneChatProcess } from "@/lib/aiSessions/paneChatProcess";
@@ -23,6 +24,10 @@ const MAX_PROMPT_BYTES = 64 * 1024;
 const MAX_TARGET_LEASES = 256;
 const TARGET_LEASE_TTL_MS = 10 * 60 * 1_000;
 const TRANSCRIPT_PAGE_LIMIT = 100;
+/** 현재 모델 설정을 찾으려고 기록의 끝에서 읽는 줄 수. 최근 응답 하나만 들어 있으면 된다 */
+const MODEL_STATE_TAIL_LINES = 200;
+/** Codex 모델 목록은 CLI가 가끔 갱신하는 캐시라, 매번 다시 읽지 않고 이 시간 동안 재사용한다 */
+const CODEX_MODEL_CATALOG_TTL_MS = 60_000;
 // Orca CLI bridge와 같은 간격으로 붙여넣기 처리가 끝난 뒤 Enter를 보내고 선택기 명령은 한 글자씩 친다.
 const PROMPT_SUBMIT_DELAY_MS = 500;
 const PICKER_CHARACTER_DELAY_MS = 40;
@@ -93,8 +98,14 @@ async function requireReadyInput(taskId: string, token: string): Promise<void> {
 function emptyTranscript(reason: string): PaneChatSnapshot["transcript"] {
   return { status: "unavailable", reason, sessionId: null, messages: [], nextCursor: null };
 }
-async function readTranscript(surface: PaneChatSurface, process: PaneChatProcess): Promise<PaneChatSnapshot["transcript"]> {
-  if (process.provider !== "claude" && process.provider !== "codex") return emptyTranscript("provider-transcript-unavailable");
+interface ReadTranscript {
+  transcript: PaneChatSnapshot["transcript"];
+  /** 대화를 읽어 온 JSONL 파일. 연결하지 못했으면 null이다 */
+  sourceRef: string | null;
+}
+async function readTranscript(surface: PaneChatSurface, process: PaneChatProcess): Promise<ReadTranscript> {
+  const unavailable = (reason: string): ReadTranscript => ({ transcript: emptyTranscript(reason), sourceRef: null });
+  if (process.provider !== "claude" && process.provider !== "codex") return unavailable("provider-transcript-unavailable");
   const { task } = surface;
   let binding = await findPaneChatSessionBinding({ taskId: task.id, sshHost: task.sshHost, provider: process.provider, providerPid: process.pid, processStartTime: process.processStartTime });
   if (!binding) {
@@ -114,12 +125,12 @@ async function readTranscript(surface: PaneChatSurface, process: PaneChatProcess
       // CLI가 쓰기 사이에 JSONL을 닫을 수 있다. 열린 파일이 없으면 다른 기록을 연결하지 않는다.
     }
   }
-  if (!binding) return emptyTranscript("exact-session-unavailable");
+  if (!binding) return unavailable("exact-session-unavailable");
   const context = { worktreePath: task.worktreePath ?? task.project?.repoPath ?? null, repoPath: task.project?.repoPath ?? null, sshHost: task.sshHost };
   const reader = process.provider === "claude" ? readClaudeSessionDetail : readCodexSessionDetail;
   const detail = await reader(context, binding.sessionId, binding.sourceRef, null, TRANSCRIPT_PAGE_LIMIT);
-  if (!detail) return emptyTranscript("exact-session-unavailable");
-  return { status: "available", reason: null, sessionId: detail.sessionId, messages: detail.messages, nextCursor: detail.nextCursor };
+  if (!detail) return unavailable("exact-session-unavailable");
+  return { transcript: { status: "available", reason: null, sessionId: detail.sessionId, messages: detail.messages, nextCursor: detail.nextCursor }, sourceRef: binding.sourceRef ?? null };
 }
 
 export async function getPaneChatLayout(taskId: string, terminalTabId?: string): Promise<PaneChatLayout> {
@@ -152,21 +163,65 @@ export async function focusPaneChatTerminal(taskId: string, paneId: string): Pro
   return { success: true };
 }
 
+const codexModelCatalogs = new Map<string, { readAt: number; models: PaneChatModelOption[] }>();
+
+async function readCodexModelCatalog(sshHost: string | null | undefined): Promise<PaneChatModelOption[]> {
+  const hostKey = sshHost ?? "";
+  const cached = codexModelCatalogs.get(hostKey);
+  if (cached && Date.now() - cached.readAt < CODEX_MODEL_CATALOG_TTL_MS) return cached.models;
+  const home = await getHomeDirectory(sshHost);
+  const models = parseCodexModelCatalog(JSON.parse(await readTextFile(path.posix.join(home, ".codex", "models_cache.json"), sshHost)));
+  codexModelCatalogs.set(hostKey, { readAt: Date.now(), models });
+  return models;
+}
+
+async function readModelSettings(provider: "claude" | "codex", sourceRef: string, sshHost: string | null | undefined): Promise<PaneChatModelSettings> {
+  const records = await readJsonLinesTail(sourceRef, MODEL_STATE_TAIL_LINES, sshHost);
+  if (provider === "claude") return buildPaneChatModelSettings(provider, readClaudeModelState(records), []);
+  return buildPaneChatModelSettings(provider, readCodexModelState(records), await readCodexModelCatalog(sshHost));
+}
+
+export interface PaneChatReading {
+  snapshot: PaneChatSnapshot;
+  /** 이 데스크탑의 파일 시스템에서 바로 감시할 수 있는 대화 기록 파일. 원격 태스크이거나 기록을 연결하지 못했으면 null이다 */
+  localTranscriptFile: string | null;
+}
+
 export async function getPaneChatSnapshot(taskId: string, paneId?: string): Promise<PaneChatSnapshot> {
+  return (await readPaneChat(taskId, paneId)).snapshot;
+}
+
+/** pane에서 돌고 있는 에이전트 CLI의 이름만 확인한다. 화면과 대화 기록은 읽지 않는다 */
+export async function getPaneChatAgentProvider(taskId: string, paneId: string): Promise<PaneChatSnapshot["provider"]> {
+  try {
+    const surface = await readPaneChatSurface(taskId, paneId, false);
+    return surface ? (await inspectProcess(surface))?.provider ?? null : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function readPaneChat(taskId: string, paneId?: string): Promise<PaneChatReading> {
+  const reading = (snapshot: PaneChatSnapshot, localTranscriptFile: string | null = null): PaneChatReading => ({ snapshot, localTranscriptFile });
   if (typeof taskId !== "string" || !taskId || (paneId !== undefined && typeof paneId !== "string")) throw inputError("태스크와 pane 식별자가 올바르지 않습니다.");
   const disabled: PaneChatSnapshot = { taskId, paneId: null, sessionType: null, provider: null, targetToken: null, canSend: false, inputState: "unknown", screen: "", reason: "pane-unavailable", transcript: emptyTranscript("exact-session-unavailable"), modelPicker: { supported: false, mode: "native-cli" } };
   let surface: PaneChatSurface | null;
-  try { surface = await readPaneChatSurface(taskId, paneId); } catch { return disabled; }
-  if (!surface) return disabled;
+  try { surface = await readPaneChatSurface(taskId, paneId); } catch { return reading(disabled); }
+  if (!surface) return reading(disabled);
   const snapshot = { ...disabled, paneId: surface.paneId, sessionType: surface.task.sessionType, screen: surface.screen };
   let process: PaneChatProcess | null;
-  try { process = await inspectProcess(surface); } catch { return { ...snapshot, reason: "process-inspection-unavailable" }; }
-  if (!process) return { ...snapshot, reason: "no-foreground-ai-cli" };
+  try { process = await inspectProcess(surface); } catch { return reading({ ...snapshot, reason: "process-inspection-unavailable" }); }
+  if (!process) return reading({ ...snapshot, reason: "no-foreground-ai-cli" });
   const targetToken = leaseTarget(surface, process, paneId);
   let transcript = emptyTranscript("exact-session-unavailable");
-  try { transcript = await readTranscript(surface, process); } catch { /* 기록 조회 실패가 별도로 검증한 CLI 입력까지 막지는 않는다. */ }
+  let sourceRef: string | null = null;
+  try { ({ transcript, sourceRef } = await readTranscript(surface, process)); } catch { /* 기록 조회 실패가 별도로 검증한 CLI 입력까지 막지는 않는다. */ }
   const supportsComposer = process.provider === "claude" || process.provider === "codex";
-  return { ...snapshot, provider: process.provider, targetToken, canSend: true, inputState: readInputState(surface, process), reason: null, transcript, modelPicker: { supported: supportsComposer, mode: "native-cli" }, composer: { attachments: supportsComposer, skills: supportsComposer, fileMentions: supportsComposer, maxAttachmentBytes: MAX_ATTACHMENT_BYTES, maxAttachments: MAX_PANE_CHAT_ATTACHMENTS } };
+  let modelSettings: PaneChatModelSettings | undefined;
+  if (sourceRef && (process.provider === "claude" || process.provider === "codex")) {
+    try { modelSettings = await readModelSettings(process.provider, sourceRef, surface.task.sshHost); } catch { /* 모델 설정을 못 읽어도 대화와 입력은 그대로 쓸 수 있다. */ }
+  }
+  return reading({ ...snapshot, provider: process.provider, targetToken, canSend: true, inputState: readInputState(surface, process), reason: null, transcript, modelPicker: { supported: supportsComposer, mode: "native-cli" }, ...(modelSettings ? { modelSettings } : {}), composer: { attachments: supportsComposer, skills: supportsComposer, fileMentions: supportsComposer, maxAttachmentBytes: MAX_ATTACHMENT_BYTES, maxAttachments: MAX_PANE_CHAT_ATTACHMENTS } }, surface.task.sshHost ? null : sourceRef);
 }
 
 async function assertTarget(taskId: string, token: string): Promise<TargetLease> {
@@ -192,6 +247,10 @@ async function serializeAction(taskId: string, token: string, action: () => Prom
   mutations.set(taskId, current);
   try { await current; return { success: true }; }
   finally { if (mutations.get(taskId) === current) mutations.delete(taskId); }
+}
+/** 이 태스크의 pane에 프롬프트나 명령을 치고 있는 중인지. 그동안의 입력란은 사용자가 아니라 KanVibe가 채운 것이다 */
+export function isPaneChatActionInProgress(taskId: string): boolean {
+  return mutations.has(taskId);
 }
 const delay = (milliseconds: number) => new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
 
@@ -295,6 +354,28 @@ export function openPaneChatModelPicker(taskId: string, targetToken: string): Pr
     if (lease.process.provider !== "claude" && lease.process.provider !== "codex") throw inputError("이 CLI의 모델 선택기는 지원되지 않습니다.");
     await requireReadyInput(taskId, targetToken);
     for (const character of "/model") { await writeFenced(taskId, targetToken, character); await delay(PICKER_CHARACTER_DELAY_MS); }
+    await delay(PROMPT_SUBMIT_DELAY_MS);
+    await writeFenced(taskId, targetToken, "\r");
+  });
+}
+/**
+ * 모델·effort·빠른 모드를 CLI의 슬래시 명령으로 바꾼다.
+ *
+ * 명령은 지금 읽은 선택지 목록으로만 만든다. Claude가 모델 전환을 되물으면 CLI 화면에 그 확인이 뜨고, 답은 사용자가 한다.
+ */
+export function changePaneChatModelSetting(taskId: string, targetToken: string, requestedChange: unknown): Promise<PaneChatActionResult> {
+  const change = parsePaneChatModelSettingChange(requestedChange);
+  if (!change) return Promise.reject(inputError("모델 설정 변경 형식이 올바르지 않습니다."));
+  return serializeAction(taskId, targetToken, async () => {
+    const lease = await assertTarget(taskId, targetToken);
+    const { provider } = lease.process;
+    if (provider !== "claude" && provider !== "codex") throw inputError("이 CLI의 모델 설정은 지원되지 않습니다.");
+    await requireReadyInput(taskId, targetToken);
+    const { modelSettings } = (await readPaneChat(taskId, lease.requestedPaneId)).snapshot;
+    const command = modelSettings ? buildPaneChatModelCommand(provider, modelSettings, change) : null;
+    if (!command) throw inputError("지금은 이 설정을 바꿀 수 없습니다. 터미널에서 현재 상태를 확인해 주세요.");
+    // 여러 글자를 한꺼번에 쓰면 CLI가 붙여넣기로 받아 명령으로 해석하지 않으므로 한 글자씩 친다
+    for (const character of command) { await writeToPane(taskId, lease.paneId, character); await delay(PICKER_CHARACTER_DELAY_MS); }
     await delay(PROMPT_SUBMIT_DELAY_MS);
     await writeFenced(taskId, targetToken, "\r");
   });

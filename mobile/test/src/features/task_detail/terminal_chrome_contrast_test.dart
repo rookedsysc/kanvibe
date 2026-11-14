@@ -59,13 +59,9 @@ void main() {
         );
         await tester.pumpAndSettle();
         final title = tester.widget<Text>(find.text('zsh'));
-        final detail = tester.widget<Text>(find.text('Agent tab %1'));
+        expect(find.text('Agent tab %1'), findsNothing);
         expect(
           contrast(title.style!.color!, AppColors.terminalChrome),
-          greaterThanOrEqualTo(4.5),
-        );
-        expect(
-          contrast(detail.style!.color!, AppColors.terminalChrome),
           greaterThanOrEqualTo(4.5),
         );
         final add = tester.widget<Icon>(find.byIcon(Icons.add));

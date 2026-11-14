@@ -214,6 +214,20 @@ class _PaneChatComposerState extends ConsumerState<PaneChatComposer> {
     return KeyEventResult.ignored;
   }
 
+  void _startFileMention() {
+    final selection = _input.selection;
+    final caret = selection.isValid ? selection.baseOffset : _input.text.length;
+    final needsSpace =
+        caret > 0 && !_input.text[caret - 1].contains(RegExp(r'\s'));
+    final mention = needsSpace ? ' @' : '@';
+    // 입력 변화를 듣는 쪽이 방금 넣은 @를 보고 파일 후보를 불러온다
+    _input.value = TextEditingValue(
+      text: _input.text.replaceRange(caret, caret, mention),
+      selection: TextSelection.collapsed(offset: caret + mention.length),
+    );
+    _focus.requestFocus();
+  }
+
   void _showSkills() {
     final selection = _input.selection;
     final caret = selection.isValid ? selection.baseOffset : _input.text.length;
@@ -290,8 +304,8 @@ class _PaneChatComposerState extends ConsumerState<PaneChatComposer> {
       ),
       padding: const EdgeInsets.all(AppSizes.p8),
       decoration: BoxDecoration(
-        color: AppColors.bgSurface,
-        border: Border.all(color: AppColors.borderStrong),
+        color: context.colors.bgSurface,
+        border: Border.all(color: context.colors.borderStrong),
         borderRadius: BorderRadius.circular(AppSizes.radiusCard),
       ),
       child: Column(
@@ -318,8 +332,11 @@ class _PaneChatComposerState extends ConsumerState<PaneChatComposer> {
               selectedIndex: _selectedIndex,
               onSelect: _choose,
             ),
-          if (widget.showPrompt)
-            Focus(
+          // CLI가 잠깐 입력을 받지 못하는 동안에도 입력창을 없애지 않고 가려만 둔다.
+          // 없앴다가 다시 만들면 방금 메시지를 보낸 사람의 포커스와 키보드가 풀린다
+          Offstage(
+            offstage: !widget.showPrompt,
+            child: Focus(
               onKeyEvent: _onKey,
               child: Semantics(
                 identifier: 'pane-chat-input',
@@ -346,6 +363,7 @@ class _PaneChatComposerState extends ConsumerState<PaneChatComposer> {
                 ),
               ),
             ),
+          ),
           Row(
             children: [
               if (widget.showPrompt && attachmentsEnabled)
@@ -357,6 +375,18 @@ class _PaneChatComposerState extends ConsumerState<PaneChatComposer> {
                         ? _showAttachments
                         : null,
                     icon: const Icon(Icons.add),
+                  ),
+                ),
+              if (widget.showPrompt &&
+                  pane?.snapshot.composer.fileMentions == true)
+                Semantics(
+                  identifier: 'pane-chat-mention',
+                  child: IconButton(
+                    tooltip: '파일 참조',
+                    onPressed: widget.isActive && pane?.canPrompt == true
+                        ? _startFileMention
+                        : null,
+                    icon: const Icon(Icons.alternate_email),
                   ),
                 ),
               if (widget.showPrompt && pane?.snapshot.composer.skills == true)

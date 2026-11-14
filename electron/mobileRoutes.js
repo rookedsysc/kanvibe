@@ -69,7 +69,7 @@ const TASK_SESSION_ALIVE_PATH_PATTERN = /^\/api\/mobile\/tasks\/([^/]+)\/session
 const AI_SESSIONS_PATH_PATTERN = /^\/api\/mobile\/tasks\/([^/]+)\/ai-sessions(?:\/([^/]+)\/([^/]+))?$/;
 const AI_SESSION_ATTACHMENT_PATH_PATTERN = /^\/api\/mobile\/tasks\/([^/]+)\/ai-sessions\/([^/]+)\/([^/]+)\/attachments\/([^/]+)$/;
 const TASK_FILE_PATH_PATTERN = /^\/api\/mobile\/tasks\/([^/]+)\/workspace-file$/;
-const PANE_CHAT_PATH_PATTERN = /^\/api\/mobile\/tasks\/([^/]+)\/pane-chat(?:\/(prompt|interrupt|model-picker|key|attachments|suggestions))?$/;
+const PANE_CHAT_PATH_PATTERN = /^\/api\/mobile\/tasks\/([^/]+)\/pane-chat(?:\/(prompt|interrupt|model-picker|model-setting|key|attachments|suggestions))?$/;
 // 10MiB 파일의 base64와 JSON 메타데이터를 수용하며, 다른 요청의 64KiB 한도는 유지한다.
 const MAX_PANE_CHAT_ATTACHMENT_BODY_BYTES = 14 * 1024 * 1024;
 const AI_MESSAGE_ROLES = new Set(["user", "assistant", "tool", "system", "developer", "reasoning", "unknown"]);
@@ -429,7 +429,7 @@ async function handlePaneChatRequest(request, response, bridge, taskId, action, 
         writeJson(response, 200, { success: true, ...result });
         return;
       }
-      const snapshot = await bridge.getPaneChatSnapshot(taskId, searchParams.get("paneId") ?? undefined);
+      const snapshot = await bridge.getSequencedPaneChatSnapshot(taskId, searchParams.get("paneId") ?? undefined);
       writeJson(response, 200, { success: true, snapshot });
       return;
     }
@@ -448,6 +448,7 @@ async function handlePaneChatRequest(request, response, bridge, taskId, action, 
     else if (action === "prompt") result = await bridge.sendPaneChatPrompt(taskId, body.targetToken, body.text, ...(body.attachmentIds === undefined && body.requestId === undefined ? [] : [body.attachmentIds, body.requestId]));
     else if (action === "interrupt") result = await bridge.interruptPaneChat(taskId, body.targetToken);
     else if (action === "model-picker") result = await bridge.openPaneChatModelPicker(taskId, body.targetToken);
+    else if (action === "model-setting") result = await bridge.changePaneChatModelSetting(taskId, body.targetToken, body.change);
     else result = await bridge.sendPaneChatKey(taskId, body.targetToken, body.key);
     writeJson(response, 200, result);
   } catch (error) {
@@ -822,7 +823,11 @@ function attachMobileStreamServer(server, { bridge, notifications, host, port })
               .catch(() => webSocket.close(1011, "login-failed"));
           } else if (requestUrl.pathname === EVENTS_PATH) {
             eventSockets.add(webSocket);
-            webSocket.once("close", () => eventSockets.delete(webSocket));
+            webSocket.once("close", () => {
+              eventSockets.delete(webSocket);
+              // 닫힌 소켓의 구독이 남으면 아무도 받지 않는 pane을 계속 읽는다
+              bridge.clearPaneChatSubscriptions(webSocket);
+            });
             /** 앱은 이 목록에 없는 명령을 보내지 않고 업데이트 안내를 띄운다. 모르는 명령을 조용히 버리는 구버전에는 이 필드가 없다 */
             webSocket.send(JSON.stringify({ type: "connected", commands: SUPPORTED_COMMANDS }));
             webSocket.on("message", (data, isBinary) => {
@@ -848,7 +853,13 @@ function attachMobileStreamServer(server, { bridge, notifications, host, port })
 
 /** 명령 한 건을 처리해 요청한 소켓 하나에만 응답한다. 처리 중에 소켓이 닫혔으면 응답할 곳이 없다 */
 async function answerMobileCommand(webSocket, bridge, data) {
-  const result = await runMobileCommand(bridge, data);
+  const connection = {
+    owner: webSocket,
+    send: (event) => {
+      if (webSocket.readyState === webSocket.OPEN) webSocket.send(JSON.stringify(event));
+    },
+  };
+  const result = await runMobileCommand(bridge, data, connection);
   if (result && webSocket.readyState === webSocket.OPEN) {
     webSocket.send(JSON.stringify(result));
   }

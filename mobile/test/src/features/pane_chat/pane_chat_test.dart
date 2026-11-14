@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:kanvibe_mobile/src/common/constants/app_colors.dart';
 import 'package:kanvibe_mobile/src/common/constants/app_theme.dart';
 import 'package:kanvibe_mobile/src/common/network/desktop_client.dart';
 import 'package:kanvibe_mobile/src/common/network/desktop_connection.dart';
@@ -742,6 +743,43 @@ void main() {
     await tester.pump();
   });
 
+  testWidgets('CLI가 잠깐 입력을 받지 못해도 입력창의 포커스와 쓰던 글은 유지된다', (tester) async {
+    var inputState = 'ready';
+    final client = DesktopClient(
+      httpClient: MockClient(
+        (request) async =>
+            response({'snapshot': snapshotJson(inputState: inputState)}),
+      ),
+    );
+    final container = setup(client);
+    addTearDown(container.dispose);
+    addTearDown(client.close);
+    await pumpChat(tester, container);
+    await tester.enterText(find.byType(TextField), '쓰던 글');
+    await tester.pumpAndSettle();
+    final editable = find.descendant(
+      of: find.byType(TextField, skipOffstage: false),
+      matching: find.byType(EditableText, skipOffstage: false),
+      skipOffstage: false,
+    );
+    final focusNode = tester.widget<EditableText>(editable).focusNode;
+    expect(focusNode.hasFocus, isTrue);
+
+    for (final next in ['occupied', 'ready']) {
+      inputState = next;
+      await container.read(paneChatProvider(target).notifier).refresh();
+      await tester.pumpAndSettle();
+      final input = tester.widget<EditableText>(editable);
+      expect(input.focusNode, same(focusNode));
+      expect(input.focusNode.hasFocus, isTrue);
+      expect(input.controller.text, '쓰던 글');
+    }
+    expect(find.byType(TextField), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+    container.dispose();
+    await tester.pump();
+  });
+
   testWidgets('새 응답이 앞에 추가되어도 펼친 추론은 유지된다', (tester) async {
     var withNewReply = false;
     final client = DesktopClient(
@@ -777,12 +815,292 @@ void main() {
     await tester.pump();
   });
 
+  group('모델 설정 선택창', () {
+    const levels = [
+      {'id': 'low', 'label': 'Light'},
+      {'id': 'medium', 'label': 'Medium'},
+      {'id': 'max', 'label': 'Max'},
+    ];
+    Map<String, dynamic> settings({String model = 'opus'}) => {
+      'model': model,
+      'effort': model == 'plain' ? null : 'medium',
+      'isFast': false,
+      'models': [
+        {
+          'id': 'opus',
+          'label': 'Opus',
+          'effortLevels': levels,
+          'supportsFast': true,
+        },
+        {
+          'id': 'sonnet',
+          'label': 'Sonnet',
+          'effortLevels': levels,
+          'supportsFast': false,
+        },
+        {
+          'id': 'plain',
+          'label': 'Plain',
+          'effortLevels': [],
+          'supportsFast': false,
+        },
+      ],
+    };
+
+    late ProviderContainer openedContainer;
+
+    Future<List<Map<String, dynamic>>> openSettings(
+      WidgetTester tester, {
+      String model = 'opus',
+    }) async {
+      final changes = <Map<String, dynamic>>[];
+      final client = DesktopClient(
+        httpClient: MockClient((request) async {
+          if (request.method == 'GET') {
+            return response({
+              'snapshot': {
+                ...snapshotJson(),
+                'modelSettings': settings(model: model),
+              },
+            });
+          }
+          expect(request.url.pathSegments.last, 'model-setting');
+          changes.add(
+            (jsonDecode(request.body) as Map<String, dynamic>)['change']
+                as Map<String, dynamic>,
+          );
+          return response({'success': true});
+        }),
+      );
+      openedContainer = setup(client);
+      addTearDown(client.close);
+      await pumpChat(tester, openedContainer);
+      await tester.tap(find.text('모델'));
+      await tester.pumpAndSettle();
+      return changes;
+    }
+
+    Future<void> close(WidgetTester tester) async {
+      await tester.pumpWidget(const SizedBox.shrink());
+      openedContainer.dispose();
+      await tester.pump();
+    }
+
+    testWidgets('현재 effort와 모델을 보여 주고 슬라이더를 끝까지 밀면 그 단계로 바꾼다', (tester) async {
+      final changes = await openSettings(tester);
+      final card = find.bySemanticsIdentifier('pane-chat-model-settings');
+      expect(
+        find.descendant(of: card, matching: find.text('Medium')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: card, matching: find.text('Opus')),
+        findsOneWidget,
+      );
+      await tester.drag(find.byType(Slider), const Offset(400, 0));
+      await tester.pumpAndSettle();
+      expect(changes, [
+        {'kind': 'effort', 'effort': 'max'},
+      ]);
+      expect(
+        find.descendant(of: card, matching: find.text('Max')),
+        findsOneWidget,
+      );
+      await close(tester);
+    });
+
+    testWidgets('빠른 모드 토글과 되돌리기, 모델 고르기를 각각 한 건의 변경으로 보낸다', (tester) async {
+      final changes = await openSettings(tester);
+      await tester.tap(find.byTooltip('빠른 모드 켜기'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('effort 기본값으로 되돌리기'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.bySemanticsIdentifier('pane-chat-model-name'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Sonnet'));
+      await tester.pumpAndSettle();
+      expect(changes, [
+        {'kind': 'fast', 'isFast': true},
+        {'kind': 'reset'},
+        {'kind': 'model', 'model': 'sonnet'},
+      ]);
+      await close(tester);
+    });
+
+    testWidgets('빠른 모드를 지원하지 않는 모델에는 번개 버튼이 없다', (tester) async {
+      await openSettings(tester, model: 'sonnet');
+      expect(find.bySemanticsIdentifier('pane-chat-fast-mode'), findsNothing);
+      expect(find.byType(Slider), findsOneWidget);
+      await close(tester);
+    });
+
+    testWidgets('고를 옵션이 없는 모델에는 슬라이더·번개·되돌리기가 없고 모델만 바꿀 수 있다', (tester) async {
+      final changes = await openSettings(tester, model: 'plain');
+      expect(find.byType(Slider), findsNothing);
+      expect(find.bySemanticsIdentifier('pane-chat-fast-mode'), findsNothing);
+      expect(
+        find.bySemanticsIdentifier('pane-chat-effort-reset'),
+        findsNothing,
+      );
+      await tester.tap(find.bySemanticsIdentifier('pane-chat-model-name'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Opus'));
+      await tester.pumpAndSettle();
+      expect(changes, [
+        {'kind': 'model', 'model': 'opus'},
+      ]);
+      await close(tester);
+    });
+  });
+
+  testWidgets('보낸 메시지는 응답을 기다리지 않고 바로 보이고 기록에 나타나면 한 번만 남는다', (tester) async {
+    final delivered = Completer<void>();
+    var recorded = false;
+    final client = DesktopClient(
+      httpClient: MockClient((request) async {
+        if (request.method == 'GET') {
+          final snapshot = snapshotJson();
+          if (recorded) {
+            (snapshot['transcript'] as Map<String, dynamic>)['messages'] = [
+              {'role': 'user', 'fullText': '바로 보일 질문'},
+              {'role': 'assistant', 'fullText': '현재 %19 답변'},
+            ];
+          }
+          return response({'snapshot': snapshot});
+        }
+        await delivered.future;
+        recorded = true;
+        return response({'success': true});
+      }),
+    );
+    final container = setup(client);
+    addTearDown(container.dispose);
+    addTearDown(client.close);
+    await pumpChat(tester, container);
+    await tester.enterText(find.byType(TextField), '바로 보일 질문');
+    await tester.pump();
+    await tester.tap(find.byTooltip('메시지 전송'));
+    await tester.pump();
+    await tester.pump();
+    expect(find.bySemanticsIdentifier('pane-chat-pending'), findsOneWidget);
+    expect(find.text('바로 보일 질문'), findsOneWidget);
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).controller!.text,
+      isEmpty,
+    );
+    delivered.complete();
+    await tester.pumpAndSettle();
+    expect(find.bySemanticsIdentifier('pane-chat-pending'), findsNothing);
+    expect(find.text('바로 보일 질문'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+    container.dispose();
+    await tester.pump();
+  });
+
+  testWidgets('연달아 실행한 도구는 한 줄로 접히고 펼치면 실행한 순서대로 보인다', (tester) async {
+    final client = DesktopClient(
+      httpClient: MockClient((_) async {
+        final snapshot = snapshotJson();
+        (snapshot['transcript'] as Map<String, dynamic>)['messages'] = [
+          {'role': 'assistant', 'fullText': '수정을 마쳤습니다'},
+          {'role': 'tool', 'fullText': 'Edit auth.ts'},
+          {'role': 'tool', 'fullText': 'Read auth.ts'},
+          {'role': 'user', 'fullText': '로그인 오류 고쳐줘'},
+        ];
+        return response({'snapshot': snapshot});
+      }),
+    );
+    final container = setup(client);
+    addTearDown(container.dispose);
+    addTearDown(client.close);
+    await pumpChat(tester, container);
+    expect(find.text('도구 실행 2개'), findsOneWidget);
+    expect(find.text('Read auth.ts'), findsNothing);
+    expect(find.text('Edit auth.ts'), findsNothing);
+    await tester.tap(find.text('도구 실행 2개'));
+    await tester.pumpAndSettle();
+    expect(
+      tester.getTopLeft(find.text('Read auth.ts')).dy,
+      lessThan(tester.getTopLeft(find.text('Edit auth.ts')).dy),
+    );
+    await container.read(paneChatProvider(target).notifier).refresh();
+    await tester.pumpAndSettle();
+    expect(find.text('Read auth.ts'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+    container.dispose();
+    await tester.pump();
+  });
+
+  testWidgets('에이전트가 없는 pane에는 채팅 버튼이 없고 있는 pane에서는 테두리 색으로 켜짐을 알린다', (
+    tester,
+  ) async {
+    tester.view.physicalSize = phoneSize;
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final client = _PaneFixtureClient(agentPaneIds: {'%19'});
+    await tester.pumpWidget(
+      wrapWithApp(
+        const TaskDetailScreen(
+          task: BoardTask(
+            id: 'task-1',
+            title: '현재 CLI',
+            status: TaskStatus.progress,
+          ),
+        ),
+        client: client,
+        size: phoneSize,
+      ),
+    );
+    await tester.pumpAndSettle();
+    final toggle = find.bySemanticsIdentifier('pane-chat-toggle');
+    Color borderColor() => tester
+        .widget<OutlinedButton>(
+          find.descendant(
+            of: toggle,
+            matching: find.byWidgetPredicate(
+              (widget) => widget is OutlinedButton,
+            ),
+          ),
+        )
+        .style!
+        .side!
+        .resolve({})!
+        .color;
+    expect(find.bySemanticsIdentifier('pane-terminal-mode'), findsNothing);
+    expect(find.bySemanticsIdentifier('pane-chat-mode'), findsNothing);
+    expect(borderColor(), AppColors.borderStrong);
+    await tester.tap(toggle);
+    await tester.pumpAndSettle();
+    expect(find.byType(PaneChatView), findsOneWidget);
+    expect(borderColor(), AppColors.brandPrimary);
+    await tester.tap(toggle);
+    await tester.pumpAndSettle();
+    expect(find.byType(PaneChatView), findsNothing);
+    expect(borderColor(), AppColors.borderStrong);
+    await tester.tap(find.bySemanticsIdentifier('terminal-tab-%20'));
+    await tester.pumpAndSettle();
+    expect(toggle, findsNothing);
+    await tester.tap(find.byTooltip('태스크 메뉴'));
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(
+        of: find.bySemanticsIdentifier('chat-history'),
+        matching: find.byIcon(Icons.history),
+      ),
+      findsOneWidget,
+    );
+    expect(find.byIcon(Icons.chat_bubble_outline), findsNothing);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+  });
+
   for (final (name, command, readable) in [
     ('work', '', 'work'),
     ('', 'codex', 'codex'),
     ('', '', 'pane'),
   ]) {
-    testWidgets('채팅 탭은 중복·빈 이름을 구별하고 정확한 pane과 초안을 유지한다: $readable', (
+    testWidgets('탭은 번호 없이 이름만 보이고 채팅은 정확한 pane과 초안을 유지한다: $readable', (
       tester,
     ) async {
       const ids = ['same-uuid-prefix-0001', 'same-uuid-prefix-0002'];
@@ -825,27 +1143,29 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('채팅', findRichText: true));
       await tester.pumpAndSettle();
-      expect(find.text('1 · $readable'), findsOneWidget);
-      expect(find.text('2 · $readable'), findsOneWidget);
-      expect(find.text('1 · $readable · codex'), findsOneWidget);
+      for (final id in ids) {
+        expect(
+          find.descendant(
+            of: find.bySemanticsIdentifier('terminal-tab-$id'),
+            matching: find.text(readable),
+          ),
+          findsOneWidget,
+        );
+      }
+      expect(find.textContaining(' · '), findsNothing);
       expect(find.byTooltip(ids.first), findsWidgets);
       await tester.enterText(find.byType(TextField).last, 'first pane draft');
-      await tester.tap(find.text('2 · $readable'));
+      await tester.tap(find.bySemanticsIdentifier('terminal-tab-${ids.last}'));
       await tester.pumpAndSettle();
       expect(find.byType(PaneChatView), findsNothing);
-      expect(
-        client.readTargets.every((target) => target.paneId == ids.first),
-        isTrue,
-      );
       await tester.tap(find.text('채팅', findRichText: true));
       await tester.pumpAndSettle();
       expect(client.readTargets.last.paneId, ids.last);
-      expect(find.text('2 · $readable · codex'), findsOneWidget);
       expect(
         tester.widget<TextField>(find.byType(TextField).last).controller!.text,
         isEmpty,
       );
-      await tester.tap(find.text('1 · $readable'));
+      await tester.tap(find.bySemanticsIdentifier('terminal-tab-${ids.first}'));
       await tester.pumpAndSettle();
       expect(
         tester.widget<TextField>(find.byType(TextField).last).controller!.text,
@@ -968,7 +1288,6 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('현재 %20 답변'), findsNothing);
     expect(find.byType(PaneChatView), findsNothing);
-    expect(client.readTargets.map((value) => value.paneId), ['%19']);
     await tester.tap(find.text('채팅', findRichText: true));
     await tester.pumpAndSettle();
     expect(find.text('현재 %20 답변'), findsOneWidget);
@@ -976,7 +1295,7 @@ void main() {
       tester.widget<TextField>(find.byType(TextField).last).controller!.text,
       isEmpty,
     );
-    expect(client.readTargets.map((value) => value.paneId), ['%19', '%20']);
+    expect(client.readTargets.last.paneId, '%20');
     await tester.tap(
       find.byWidgetPredicate(
         (widget) =>
@@ -990,7 +1309,7 @@ void main() {
       '첫 pane 초안',
     );
     final beforeReturn = client.openedPanes['%19'];
-    await tester.tap(find.text('터미널', findRichText: true));
+    await tester.tap(find.bySemanticsIdentifier('pane-chat-toggle'));
     await tester.pumpAndSettle();
     expect(identical(beforeReturn, client.openedPanes['%19']), isTrue);
     final readsWhileHidden = client.readTargets.length;
@@ -1022,7 +1341,7 @@ void main() {
 }
 
 class _PaneFixtureClient extends FakeDesktopClient {
-  _PaneFixtureClient({TaskSurfaces? surfaces})
+  _PaneFixtureClient({TaskSurfaces? surfaces, this.agentPaneIds})
     : super(
         surfaces:
             surfaces ??
@@ -1060,12 +1379,18 @@ class _PaneFixtureClient extends FakeDesktopClient {
       );
   final readTargets = <PaneChatTarget>[];
 
+  /// null이면 모든 pane에서 에이전트가 돌고 있다고 답한다
+  final Set<String>? agentPaneIds;
+
   @override
   Future<PaneChatSnapshot> fetchPaneChat(
     DesktopConnection connection,
     PaneChatTarget target,
   ) async {
     readTargets.add(target);
-    return PaneChatSnapshot.fromJson(snapshotJson(target: target));
+    final hasAgent = agentPaneIds?.contains(target.paneId) ?? true;
+    return PaneChatSnapshot.fromJson(
+      snapshotJson(target: target, provider: hasAgent ? 'codex' : null),
+    );
   }
 }

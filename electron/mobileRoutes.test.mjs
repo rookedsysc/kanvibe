@@ -73,6 +73,8 @@ function createBridge(overrides = {}) {
       paneId: "%20",
     })),
     subscribeToPane: vi.fn(async () => () => {}),
+    setPaneChatSubscriptions: vi.fn((owner, targets) => targets.map(({ taskId, paneId }) => ({ taskId, paneId, freshness: "behind" }))),
+    clearPaneChatSubscriptions: vi.fn(),
     writeToPane: vi.fn(async () => {}),
     executeMobileTerminalShortcut: vi.fn(async () => ({ surfaces: { tabs: [] }, screen: "screen" })),
     claimPaneViewport: vi.fn(async () => ({ resize: vi.fn(async () => {}), release: vi.fn(async () => {}) })),
@@ -315,6 +317,37 @@ describe("모바일 상태 알림 경로", () => {
     expect((await request("/api/mobile/tasks/missing", { headers: { authorization: "Bearer good" } })).status).toBe(404);
   });
 
+  it("pane 채팅 push는 구독한 소켓에만 가고, 소켓이 닫히면 그 구독을 지운다", async () => {
+    const open = async () => {
+      const messages = [];
+      const client = new WebSocket(`ws://${HOST}:${port}/api/mobile/events`, { headers: { authorization: "Bearer good" } });
+      client.on("message", (message) => messages.push(JSON.parse(message.toString())));
+      await new Promise((resolve, reject) => { client.once("open", resolve); client.once("error", reject); });
+      await waitFor(() => messages.length === 1);
+      return { client, messages };
+    };
+    const subscriber = await open();
+    const bystander = await open();
+    const pane = { taskId: "task-1", paneId: "%3", detail: "chat", wantsScreen: true, cursor: { epoch: "epoch-a", seq: 4 } };
+    subscriber.client.send(JSON.stringify({ type: "command", requestId: "sub-1", command: "set-pane-chat-subscription", panes: [pane] }));
+    await waitFor(() => subscriber.messages.length === 2);
+    expect(subscriber.messages[1]).toEqual({ type: "command-result", requestId: "sub-1", ok: true, panes: [{ taskId: "task-1", paneId: "%3", freshness: "behind" }] });
+    const [owner, targets, send] = bridge.setPaneChatSubscriptions.mock.calls[0];
+    expect(targets).toEqual([pane]);
+
+    const pushed = { type: "pane-chat-rows", taskId: "task-1", paneId: "%3", epoch: "epoch-a", rows: [{ seq: 5, message: { role: "assistant", fullText: "새 답변" } }] };
+    send(pushed);
+    await waitFor(() => subscriber.messages.length === 3);
+    expect(subscriber.messages[2]).toEqual(pushed);
+    expect(bystander.messages).toHaveLength(1);
+
+    subscriber.client.close();
+    await waitFor(() => bridge.clearPaneChatSubscriptions.mock.calls.length === 1);
+    expect(bridge.clearPaneChatSubscriptions).toHaveBeenCalledWith(owner);
+    expect(() => send(pushed)).not.toThrow();
+    bystander.client.close();
+  });
+
   it("상태 WebSocket은 연결 확인과 보드·태스크 알림을 보내고 다른 기기 해제에 영향받지 않는다", async () => {
     const messages = [];
     const client = new WebSocket(`ws://${HOST}:${port}/api/mobile/events`, { headers: { authorization: "Bearer good" } });
@@ -324,7 +357,7 @@ describe("모바일 상태 알림 경로", () => {
     const event = { type: "task-status-changed", eventId: "event-1", taskId: "task-1", title: "kanvibe", body: "review", status: "review", createdAt: "2026-10-23T00:00:00Z" };
     mobileEventListeners.forEach((listener) => { listener({ type: "board-updated" }); listener(event); });
     await waitFor(() => messages.length === 3);
-    expect(messages).toEqual([{ type: "connected", commands: ["delete-task", "remove-task-registration", "get-tab-close-info", "close-tab", "start-session"] }, { type: "board-updated" }, event]);
+    expect(messages).toEqual([{ type: "connected", commands: ["delete-task", "remove-task-registration", "get-tab-close-info", "close-tab", "start-session", "set-pane-chat-subscription"] }, { type: "board-updated" }, event]);
     expect(bridge.subscribeToPane).not.toHaveBeenCalled();
     notifyUnpaired("device-second");
     expect(client.readyState).toBe(WebSocket.OPEN);
@@ -402,7 +435,7 @@ describe("상태 WebSocket 명령", () => {
   it("연결 확인에 지원하는 명령 목록을 싣는다", async () => {
     const { messages } = await connectEvents();
 
-    expect(messages[0]).toEqual({ type: "connected", commands: ["delete-task", "remove-task-registration", "get-tab-close-info", "close-tab", "start-session"] });
+    expect(messages[0]).toEqual({ type: "connected", commands: ["delete-task", "remove-task-registration", "get-tab-close-info", "close-tab", "start-session", "set-pane-chat-subscription"] });
   });
 
   it("삭제 결과는 요청한 소켓에만 돌려주고 다른 기기의 소켓에는 보내지 않는다", async () => {
@@ -592,7 +625,7 @@ describe("모바일 알림함 경로", () => {
     notificationChangeListeners.forEach((listener) => listener());
 
     await waitFor(() => firstMessages.length === 2 && secondMessages.length === 2);
-    expect(firstMessages).toEqual([{ type: "connected", commands: ["delete-task", "remove-task-registration", "get-tab-close-info", "close-tab", "start-session"] }, { type: "notifications-changed" }]);
+    expect(firstMessages).toEqual([{ type: "connected", commands: ["delete-task", "remove-task-registration", "get-tab-close-info", "close-tab", "start-session", "set-pane-chat-subscription"] }, { type: "notifications-changed" }]);
     expect(secondMessages).toEqual(firstMessages);
     first.close();
     second.close();
@@ -1585,19 +1618,19 @@ describe("모바일 프로젝트 폴더 등록", () => {
 describe("현재 pane 채팅 인증 및 대상 경계", () => {
   const headers = { authorization: "Bearer good", "Content-Type": "application/json" };
   beforeEach(() => {
-    bridge.getPaneChatSnapshot = vi.fn(async () => ({ taskId: "task-1", paneId: "%3", canSend: true, inputState: "ready", targetToken: "opaque-token" }));
+    bridge.getSequencedPaneChatSnapshot = vi.fn(async () => ({ taskId: "task-1", paneId: "%3", canSend: true, inputState: "ready", targetToken: "opaque-token" }));
     bridge.sendPaneChatPrompt = vi.fn(async () => ({ success: true }));
     bridge.interruptPaneChat = vi.fn(async () => ({ success: true }));
   });
   it("인증된 기기는 요청한 정확한 pane 스냅샷을 읽는다", async () => {
     const result = await request("/api/mobile/tasks/task-1/pane-chat?paneId=%253", { headers });
     expect(result).toMatchObject({ status: 200, body: { success: true, snapshot: { paneId: "%3", targetToken: "opaque-token" } } });
-    expect(bridge.getPaneChatSnapshot).toHaveBeenCalledWith("task-1", "%3");
+    expect(bridge.getSequencedPaneChatSnapshot).toHaveBeenCalledWith("task-1", "%3");
   });
   it("토큰 없는 기기는 스냅샷과 메시지 전송에 접근할 수 없다", async () => {
     expect((await request("/api/mobile/tasks/task-1/pane-chat")).status).toBe(401);
     expect((await request("/api/mobile/tasks/task-1/pane-chat/prompt", { method: "POST", body: JSON.stringify({ targetToken: "opaque-token", text: "Hi" }) })).status).toBe(401);
-    expect(bridge.getPaneChatSnapshot).not.toHaveBeenCalled();
+    expect(bridge.getSequencedPaneChatSnapshot).not.toHaveBeenCalled();
     expect(bridge.sendPaneChatPrompt).not.toHaveBeenCalled();
   });
   it("인증과 대상 토큰을 보존해 메시지를 서비스에 전달한다", async () => {
@@ -1605,6 +1638,18 @@ describe("현재 pane 채팅 인증 및 대상 경계", () => {
     expect(result).toEqual({ status: 200, body: { success: true } });
     expect(bridge.sendPaneChatPrompt).toHaveBeenCalledWith("task-1", "opaque-token", "First\nSecond");
   });
+  it("모델 설정 변경은 대상 토큰과 변경 내용을 그대로 넘기고 거절은 400으로 알린다", async () => {
+    const headers = { authorization: "Bearer good" };
+    bridge.changePaneChatModelSetting = vi.fn(async () => ({ success: true }));
+    const change = { kind: "effort", effort: "high" };
+    const send = (requestHeaders) => request("/api/mobile/tasks/task-1/pane-chat/model-setting", { method: "POST", headers: requestHeaders, body: JSON.stringify({ targetToken: "opaque-token", change }) });
+    expect(await send(headers)).toEqual({ status: 200, body: { success: true } });
+    expect(bridge.changePaneChatModelSetting).toHaveBeenCalledWith("task-1", "opaque-token", change);
+    bridge.changePaneChatModelSetting.mockRejectedValue(Object.assign(new Error("지금은 이 설정을 바꿀 수 없습니다."), { name: "PaneChatInputError" }));
+    expect(await send(headers)).toEqual({ status: 400, body: { success: false, error: "지금은 이 설정을 바꿀 수 없습니다." } });
+    expect((await send(undefined)).status).toBe(401);
+  });
+
   it("대상이 교체되면 충돌을 반환하고 빈 토큰은 거부한다", async () => {
     bridge.interruptPaneChat.mockRejectedValue(Object.assign(new Error("대상 변경"), { name: "PaneChatTargetChangedError" }));
     expect(await request("/api/mobile/tasks/task-1/pane-chat/interrupt", { method: "POST", headers, body: JSON.stringify({ targetToken: "stale-token" }) })).toEqual({ status: 409, body: { success: false, error: "대상 변경", reason: "target-changed" } });
