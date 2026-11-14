@@ -422,3 +422,34 @@ describe("TaskQuickSearchDialog", () => {
   });
 
 });
+
+describe("TaskQuickSearchDialog - 목록 조회 실패", () => {
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    mocks.hasShortcutBlocker = false;
+    mocks.getShortcutBindings.mockResolvedValue({ ...DEFAULT_SHORTCUT_BINDINGS });
+    await loadShortcutBindings();
+    Object.defineProperty(Element.prototype, "scrollIntoView", {
+      configurable: true,
+      value: mocks.scrollIntoView,
+    });
+  });
+
+  it("task 목록 조회가 실패하면 검색 결과 없음 대신 사유와 다시 시도를 보이고 다시 불러온다", async () => {
+    mocks.getSearchableTasks
+      .mockRejectedValueOnce(new Error("db closed"))
+      .mockResolvedValueOnce([
+        { id: "task-local", title: "Local Task", branchName: "feat/local-search", projectId: "project-local", projectName: "kanvibe-web", sshHost: null, status: "todo", updatedAt: "2026-04-30T00:00:00.000Z" },
+      ]);
+    render(<TaskQuickSearchDialog shortcut="Ctrl+K" />);
+    fireEvent.keyDown(window, { key: "k", ctrlKey: true });
+
+    expect((await screen.findByRole("alert")).textContent).toContain("common.loadFailed");
+    expect(screen.queryByText("taskSearch.empty")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "common.retry" }));
+
+    expect(await screen.findByText("feat/local-search")).toBeTruthy();
+    expect(mocks.getSearchableTasks).toHaveBeenCalledTimes(2);
+  });
+});

@@ -712,6 +712,103 @@ describe("gitOperations.resolvePathForShell", () => {
     }
   });
 
+  it("cooldown을 해제하면 같은 SSH host의 다음 명령이 다시 SSH 연결을 시도한다", async () => {
+    // Given
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.execFile.mockImplementation((_file: string, _args: string[], _options: unknown, callback: (error: null, result: { stdout: string }) => void) => {
+      callback(null, { stdout: "" });
+    });
+    let isTransportDown = true;
+    mocks.spawn.mockImplementation(() => {
+      const child = createMockSSHProcess();
+      queueMicrotask(() => {
+        if (isTransportDown) {
+          child.writeStderr("Connection reset by 100.99.109.53 port 22\n");
+          child.close(255);
+          return;
+        }
+
+        completeRemoteCommand(child, "attached");
+      });
+      return child;
+    });
+
+    vi.doMock("@/lib/sshConfig", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("@/lib/sshConfig")>();
+      return {
+        ...actual,
+        parseSSHConfig: vi.fn(async () => [{
+          host: "remote-host",
+          hostname: "example.com",
+          port: 2202,
+          username: "tester",
+          privateKeyPath: "/tmp/test-key",
+        }]),
+      };
+    });
+
+    const { execGit, clearRemoteSSHTransportCooldown } = await import("@/lib/gitOperations");
+
+    try {
+      await expect(execGit("background-sync", "remote-host")).rejects.toThrow(/Connection reset/);
+      await expect(execGit("blocked-command", "remote-host")).rejects.toThrow(/최근 SSH transport 실패/);
+      const spawnCountBeforeClear = mocks.spawn.mock.calls.length;
+      isTransportDown = false;
+
+      // When
+      clearRemoteSSHTransportCooldown("remote-host");
+
+      // Then
+      await expect(execGit("terminal-attach", "remote-host")).resolves.toBe("attached");
+      expect(mocks.spawn).toHaveBeenCalledTimes(spawnCountBeforeClear + 1);
+      expect(getSpawnedRemoteCommand(spawnCountBeforeClear)).toContain("terminal-attach");
+    } finally {
+      consoleErrorSpy.mockRestore();
+    }
+  });
+
+  it("실패를 기록하지 않기로 한 원격 명령은 실패해도 오류 로그를 남기지 않는다", async () => {
+    // Given
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.spawn.mockImplementation(() => {
+      const child = createMockSSHProcess();
+      queueMicrotask(() => {
+        child.writeStderr("can't find session: kanvibe-dev\n");
+        completeRemoteCommand(child, "", 1);
+      });
+      return child;
+    });
+
+    vi.doMock("@/lib/sshConfig", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("@/lib/sshConfig")>();
+      return {
+        ...actual,
+        parseSSHConfig: vi.fn(async () => [{
+          host: "remote-host",
+          hostname: "example.com",
+          port: 2202,
+          username: "tester",
+          privateKeyPath: "/tmp/test-key",
+        }]),
+      };
+    });
+
+    const { execGit } = await import("@/lib/gitOperations");
+
+    try {
+      // When
+      await expect(execGit("tmux list-windows -t 'kanvibe-dev'", "remote-host", { shouldLogFailure: false })).rejects.toThrow();
+      const loggedCountAfterQuietCommand = consoleErrorSpy.mock.calls.length;
+      await expect(execGit("tmux list-windows -t 'kanvibe-dev'", "remote-host")).rejects.toThrow();
+
+      // Then
+      expect(loggedCountAfterQuietCommand).toBe(0);
+      expect(consoleErrorSpy).toHaveBeenCalledWith("[remote-ssh] command failed", expect.objectContaining({ sshHost: "remote-host" }));
+    } finally {
+      consoleErrorSpy.mockRestore();
+    }
+  });
+
   it("SSH transport 오류는 3회 안에 성공하면 원격 명령 결과를 반환한다", async () => {
     // Given
     const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});

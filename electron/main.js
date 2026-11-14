@@ -11,6 +11,7 @@ const { app, BrowserWindow, clipboard, ipcMain, powerMonitor, session, shell } =
 const { createDesktopDiagnostics, resolveDesktopLogPath, serializeErrorForLog } = require("./diagnostics");
 const { applyAppDataDirectoryOverride, resolveHookServerPort } = require("./runtimeEnvironment");
 const { prepareDevelopmentDatabase } = require("./developmentDatabase");
+const { getUserWindows } = require("./diagramWorkerWindows");
 
 const DEFAULT_LOCALE = "ko";
 const APP_ICON_PATH = path.join(app.getAppPath(), "public", "branding", "app-icon.png");
@@ -160,7 +161,7 @@ function attachRendererDiagnostics(browserWindow) {
 registerProcessDiagnostics();
 
 function broadcastNotificationsChanged() {
-  for (const window of BrowserWindow.getAllWindows()) {
+  for (const window of getUserWindows(BrowserWindow)) {
     if (!window.isDestroyed()) {
       window.webContents.send("kanvibe:notifications-changed");
     }
@@ -169,7 +170,7 @@ function broadcastNotificationsChanged() {
 
 /** 단축키 재배정은 저장한 창만이 아니라 열려 있는 모든 창의 렌더러 캐시에 반영돼야 한다 */
 function broadcastShortcutBindingsChanged() {
-  for (const window of BrowserWindow.getAllWindows()) {
+  for (const window of getUserWindows(BrowserWindow)) {
     if (!window.isDestroyed()) {
       window.webContents.send("kanvibe:shortcut-bindings-changed");
     }
@@ -177,7 +178,7 @@ function broadcastShortcutBindingsChanged() {
 }
 
 function broadcastNotificationActivated(appNotification) {
-  for (const window of BrowserWindow.getAllWindows()) {
+  for (const window of getUserWindows(BrowserWindow)) {
     sendNotificationActivated(window, appNotification);
   }
 }
@@ -434,7 +435,7 @@ function normalizeNotificationLocale(locale) {
 function getDesktopNotificationLocale() {
   const activeWindow = mainWindow && !mainWindow.isDestroyed()
     ? mainWindow
-    : BrowserWindow.getAllWindows().find((window) => !window.isDestroyed()) || null;
+    : getUserWindows(BrowserWindow).find((window) => !window.isDestroyed()) || null;
 
   const currentUrl = activeWindow?.webContents.getURL() || "";
   const matchedLocale = currentUrl.match(/#\/([^/?#]+)/)?.[1];
@@ -460,7 +461,7 @@ function getNotificationTargetPath(appNotification) {
 }
 
 function getAvailableWindows() {
-  return BrowserWindow.getAllWindows().filter((window) => !window.isDestroyed());
+  return getUserWindows(BrowserWindow).filter((window) => !window.isDestroyed());
 }
 
 function focusWindow(window) {
@@ -709,6 +710,14 @@ function attachWindowHandlers(browserWindow) {
 
   browserWindow.webContents.on("did-create-window", (childWindow) => {
     registerAppWindow(childWindow);
+  });
+
+  /**
+   * 창 안에 넣은 문서는 스스로 다른 주소로 옮겨 가지 못한다.
+   * 채팅 파일 미리보기가 AI가 만든 HTML을 실행하므로, 그 문서가 주소를 바꿔 파일 내용을 밖으로 실어 보내는 길을 막는다.
+   */
+  browserWindow.webContents.on("will-frame-navigate", (event) => {
+    if (!event.isMainFrame) event.preventDefault();
   });
 
   browserWindow.webContents.on("before-input-event", (event, input) => {
@@ -1045,7 +1054,7 @@ function registerBoardEventForwarding() {
         console.error("[kanvibe] board event notification failed:", error);
       }
 
-      for (const window of BrowserWindow.getAllWindows()) {
+      for (const window of getUserWindows(BrowserWindow)) {
         if (!window.isDestroyed()) {
           window.webContents.send("kanvibe:board-event", payload);
         }
@@ -1166,7 +1175,7 @@ app.whenReady().then(async () => {
   stopBackgroundTaskSync = startBackgroundTaskSync();
 
   app.on("activate", async () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
+    if (getUserWindows(BrowserWindow).length === 0) {
       await createMainWindow();
     }
   });

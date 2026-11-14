@@ -30,6 +30,7 @@ class DeferredPaneClient extends FakeDesktopClient {
     String taskId,
     String paneId, {
     Future<void>? cancelled,
+    bool canPrepareDirectConnection = true,
   }) {
     final index = openings.length;
     final pending = Completer<PaneStream>();
@@ -65,8 +66,10 @@ Future<void> pumpPane(
   required FakeDesktopClient client,
   required FakeConnectionStore store,
   bool canResize = false,
+  bool canRefreshHistory = false,
   bool canRespondToDeviceQueries = false,
   TextScaler textScaler = TextScaler.noScaling,
+  EdgeInsets screenInsets = EdgeInsets.zero,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
@@ -84,12 +87,16 @@ Future<void> pumpPane(
           child: SizedBox(
             width: phoneSize.width,
             height: phoneSize.height,
-            child: PaneTerminalView(
-              canResize: canResize,
-              canRespondToDeviceQueries: canRespondToDeviceQueries,
-              taskId: 'task-1',
-              pane: pane,
-              key: ValueKey(pane.id),
+            child: Padding(
+              padding: screenInsets,
+              child: PaneTerminalView(
+                canResize: canResize,
+                canRefreshHistory: canRefreshHistory,
+                canRespondToDeviceQueries: canRespondToDeviceQueries,
+                taskId: 'task-1',
+                pane: pane,
+                key: ValueKey(pane.id),
+              ),
             ),
           ),
         ),
@@ -247,6 +254,121 @@ void main() {
       expect(tester.testTextInput.isVisible, isFalse);
     });
   }
+
+  for (final touched in [
+    (column: 4, row: 2, report: '\x1b[<64;5;3M'),
+    (column: 0, row: 0, report: '\x1b[<64;1;1M'),
+  ]) {
+    testWidgets(
+      '화면 가운데 놓인 터미널의 휠 보고는 손가락이 닿은 칸 ${touched.report.substring(5)}을 가리킨다',
+      (tester) async {
+        final client = FakeDesktopClient();
+        await pumpPane(
+          tester,
+          _pane,
+          client: client,
+          store: FakeConnectionStore(),
+          canResize: true,
+          screenInsets: const EdgeInsets.only(top: 160),
+        );
+        client.openedPanes[_pane.id]!.add(
+          '\x1b[?1049h\x1b[?1000h\x1b[?1006hready',
+        );
+        await tester.pumpAndSettle();
+
+        await tester.dragFrom(
+          terminalCellPosition(tester, touched.column, touched.row),
+          const Offset(0, 250),
+        );
+        await tester.pumpAndSettle();
+
+        expect((client.writtenInput[_pane.id] ?? []).first, touched.report);
+      },
+    );
+  }
+
+  testWidgets('화면 프레임만 받는 세션은 맨 아래에서 올려 보기 시작할 때 이력 갱신을 한 번 요청한다', (
+    tester,
+  ) async {
+    final client = FakeDesktopClient();
+    await pumpPane(
+      tester,
+      _pane,
+      client: client,
+      store: FakeConnectionStore(),
+      canRefreshHistory: true,
+    );
+    client.openedPanes[_pane.id]!.add(
+      List.generate(180, (i) => 'line-$i\r\n').join(),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.drag(find.byType(xterm.TerminalView), const Offset(0, 300));
+    await tester.pumpAndSettle();
+    expect(client.historyRefreshRequests, [_pane.id]);
+
+    /// 이미 지난 출력을 보는 중에 더 올리는 것은 갱신할 이유가 아니다. 다시 보내면 읽던 자리의 내용이 바뀐다
+    await tester.drag(find.byType(xterm.TerminalView), const Offset(0, 300));
+    await tester.pumpAndSettle();
+    expect(client.historyRefreshRequests, [_pane.id]);
+  });
+
+  testWidgets('올려 보는 중에 더 긴 이력을 다시 받아도 맨 아래에서 올려 본 거리를 지킨다', (tester) async {
+    final client = FakeDesktopClient();
+    await pumpPane(
+      tester,
+      _pane,
+      client: client,
+      store: FakeConnectionStore(),
+      canRefreshHistory: true,
+    );
+    String history(int count) =>
+        '\x1b[H\x1b[2J\x1b[3J${List.generate(count, (i) => 'line-$i').join('\r\n')}';
+    client.openedPanes[_pane.id]!.add(history(180));
+    await tester.pumpAndSettle();
+    final scroll = tester
+        .widget<xterm.TerminalView>(find.byType(xterm.TerminalView))
+        .scrollController!;
+    await tester.drag(find.byType(xterm.TerminalView), const Offset(0, 300));
+    await tester.pumpAndSettle();
+    final distanceFromLatest = scroll.position.maxScrollExtent - scroll.offset;
+    expect(distanceFromLatest, greaterThan(0));
+
+    client.openedPanes[_pane.id]!.add(history(480));
+    await tester.pumpAndSettle();
+
+    expect(
+      scroll.position.maxScrollExtent - scroll.offset,
+      closeTo(distanceFromLatest, 1),
+    );
+  });
+
+  testWidgets('이력을 스스로 쌓는 세션과 전체 화면 프로그램에서는 이력 갱신을 요청하지 않는다', (tester) async {
+    final client = FakeDesktopClient();
+    await pumpPane(tester, _pane, client: client, store: FakeConnectionStore());
+    client.openedPanes[_pane.id]!.add(
+      List.generate(180, (i) => 'line-$i\r\n').join(),
+    );
+    await tester.pumpAndSettle();
+    await tester.drag(find.byType(xterm.TerminalView), const Offset(0, 300));
+    await tester.pumpAndSettle();
+    expect(client.historyRefreshRequests, isEmpty);
+
+    await pumpPane(
+      tester,
+      _pane,
+      client: client,
+      store: FakeConnectionStore(),
+      canRefreshHistory: true,
+    );
+    client.openedPanes[_pane.id]!.add(
+      '\x1b[?1049h\x1b[?1000h\x1b[?1006hfull-screen',
+    );
+    await tester.pumpAndSettle();
+    await tester.drag(find.byType(xterm.TerminalView), const Offset(0, 300));
+    await tester.pumpAndSettle();
+    expect(client.historyRefreshRequests, isEmpty);
+  });
 
   for (final canResize in [false, true]) {
     testWidgets('손가락으로 이전 출력과 최신 출력을 왕복한다 resize=$canResize', (tester) async {

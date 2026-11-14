@@ -3,6 +3,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import TerminalLoader from "../TerminalLoader";
 import type { TerminalTab } from "@/desktop/shared/terminalTabs";
 
+vi.mock("next-intl", () => ({
+  useTranslations: () => (key: string, values?: Record<string, string>) => (
+    values ? `${key}:${Object.values(values).join(",")}` : key
+  ),
+}));
+
 const { mockTerminalRender } = vi.hoisted(() => ({
   mockTerminalRender: vi.fn(),
 }));
@@ -66,5 +72,29 @@ describe("TerminalLoader", () => {
     rerender(<TerminalLoader taskId="task-1" tabs={TABS} />);
     expect(screen.getByTestId("terminal-t2")).toBe(activeTerminal);
     expect(mockTerminalRender).toHaveBeenLastCalledWith("task-1", "t2", false);
+  });
+
+  it("탭 목록을 읽지 못하면 빈 화면 대신 사유와 다시 시도를 보인다", () => {
+    const onRetryTabs = vi.fn();
+    render(<TerminalLoader taskId="task-1" tabs={[]} tabsError="session missing" isTabListLoaded onRetryTabs={onRetryTabs} />);
+
+    expect(screen.getByRole("alert").textContent).toContain("loadFailed:session missing");
+    screen.getByRole("button", { name: "retry" }).click();
+    expect(onRetryTabs).toHaveBeenCalledTimes(1);
+    expect(mockTerminalRender).not.toHaveBeenCalled();
+  });
+
+  it("탭 목록을 기다리는 동안 불러오는 중을 알린다", () => {
+    render(<TerminalLoader taskId="task-1" tabs={[]} isTabListLoaded={false} />);
+
+    expect(screen.getByRole("status").textContent).toContain("loading");
+  });
+
+  it("탭이 하나도 없으면 새 탭을 열 수 있게 한다", () => {
+    const onCreateTab = vi.fn();
+    render(<TerminalLoader taskId="task-1" tabs={[]} isTabListLoaded onCreateTab={onCreateTab} />);
+
+    screen.getByRole("button", { name: "newTerminalTab" }).click();
+    expect(onCreateTab).toHaveBeenCalledTimes(1);
   });
 });

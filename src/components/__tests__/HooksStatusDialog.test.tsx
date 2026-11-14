@@ -758,4 +758,34 @@ describe("HooksStatusDialog", () => {
       });
     });
   });
+  it("설치 요청이 결과 없이 실패하면 설치 중 표시를 거두고 사유와 다시 시도를 보인다", async () => {
+    // Given
+    mockInstallTaskHooks
+      .mockRejectedValueOnce(new Error("ipc closed"))
+      .mockResolvedValueOnce({ success: false });
+    const props = {
+      isOpen: true,
+      onClose: vi.fn(),
+      taskId: "task-1",
+      claudeStatus: null,
+      geminiStatus: null,
+      codexStatus: null,
+      openCodeStatus: null,
+      isRemote: false,
+    };
+
+    // When
+    renderDialog(props);
+    fireEvent.click(screen.getAllByText("installHooks")[0]);
+
+    // Then
+    const failure = await screen.findByRole("alert");
+    expect(failure.textContent).toContain("hooksInstallFailed");
+    expect(screen.queryByText("installingHooks")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "retry" }));
+    await waitFor(() => {
+      expect(mockInstallTaskHooks).toHaveBeenCalledTimes(2);
+    });
+  });
 });

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
+import { dismissActionStatus, showActionStatus } from "@/desktop/renderer/components/ActionStatusToast";
 import "@xterm/xterm/css/xterm.css";
 import { createTerminalOptions, installMacShiftSelectionPatch } from "@/lib/terminalMouseSelection";
 import { installOsc52ClipboardHandler } from "@/lib/terminalClipboard";
@@ -143,12 +144,31 @@ export default function Terminal({ taskId, tabId = null, isHidden = false, isRem
        * 원격 세션의 CLI(예: Claude Code)는 헤드리스 서버라 로컬 클립보드 이미지를 직접 읽을 수 없다.
        * 그래서 로컬 클립보드 이미지를 감지하면 scp로 원격에 옮기고, 그 경로만 텍스트로 붙여넣는다.
        */
+      /** 전송은 바로 시작하되, 전송 시간이 이미지마다 달라도 붙여넣은 순서대로 경로를 쓰도록 쓰기만 한 줄로 세운다 */
+      let remotePathWriteQueue: Promise<void> = Promise.resolve();
+
       const sendImageToRemoteTerminal = (imageDataUrl: string) => {
-        void window.kanvibeDesktop!.pasteImageToRemoteTerminal(taskId, imageDataUrl).then((result: { ok: boolean; remotePath?: string; error?: string }) => {
-          if (result.ok && result.remotePath) {
-            window.kanvibeDesktop!.writeTerminal(taskId, tabId, result.remotePath);
-          } else {
-            terminal.writeln(`\r\n\x1b[31m${result.error || "이미지 전송 실패"}\x1b[0m`);
+        const progressId = showActionStatus({ kind: "progress", message: translationsRef.current("imagePasteSending") });
+        const transfer: Promise<{ ok: boolean; remotePath?: string; error?: string }> =
+          window.kanvibeDesktop!.pasteImageToRemoteTerminal(taskId, imageDataUrl);
+
+        remotePathWriteQueue = remotePathWriteQueue.then(async () => {
+          try {
+            const result = await transfer;
+            if (result.ok && result.remotePath) {
+              window.kanvibeDesktop!.writeTerminal(taskId, tabId, result.remotePath);
+            } else {
+              terminal.writeln(`\r\n\x1b[31m${result.error || "이미지 전송 실패"}\x1b[0m`);
+            }
+          } catch (error) {
+            console.error("Failed to paste image to remote terminal", error);
+            showActionStatus({
+              kind: "failure",
+              message: translationsRef.current("imagePasteFailed", { reason: error instanceof Error ? error.message : String(error) }),
+              action: { label: translationsRef.current("imagePasteRetry"), onAction: () => sendImageToRemoteTerminal(imageDataUrl) },
+            });
+          } finally {
+            dismissActionStatus(progressId);
           }
         });
       };

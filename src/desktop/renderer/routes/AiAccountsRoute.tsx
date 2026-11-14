@@ -3,7 +3,9 @@ import { useTranslations } from "next-intl";
 import { AiProviderIcon } from "@/components/AiProviderIcon";
 import AiAccountLoginTerminal from "@/desktop/renderer/components/AiAccountLoginTerminal";
 import AiUsagePanel from "@/desktop/renderer/components/AiUsagePanel";
+import InlineLoadError from "@/components/InlineLoadError";
 import { Link } from "@/desktop/renderer/navigation";
+import { useTrackedAction } from "@/desktop/renderer/hooks/useTrackedAction";
 import {
   addAiAccount,
   listAiAccounts,
@@ -35,20 +37,30 @@ function groupAccountsByProvider(accounts: AiAccountSummary[]): ProviderAccountG
 function AccountRow({
   account,
   isLoginOpen,
+  isRemoving,
+  isRemoveDisabled,
+  removeFailureReason,
   onLogin,
   onRemove,
+  onRetryRemove,
 }: {
   account: AiAccountSummary;
   isLoginOpen: boolean;
+  isRemoving: boolean;
+  /** 다른 계정을 지우는 중이면 겹쳐 지우지 않도록 막는다 */
+  isRemoveDisabled: boolean;
+  removeFailureReason: string | null;
   onLogin: () => void;
   onRemove: () => void;
+  onRetryRemove: () => void;
 }) {
   const t = useTranslations("aiAccounts");
 
   return (
     <div
-      className="flex items-center gap-2 rounded-md border border-border-subtle bg-bg-page px-3 py-2"
+      className="flex flex-wrap items-center gap-2 rounded-md border border-border-subtle bg-bg-page px-3 py-2"
       data-testid="ai-account-row"
+      aria-busy={isRemoving || undefined}
     >
       <div className="min-w-0 flex-1">
         <p
@@ -83,11 +95,20 @@ function AccountRow({
         <button
           type="button"
           onClick={onRemove}
-          className="shrink-0 rounded-md border border-border-default px-2 py-1 text-[11px] text-text-secondary transition-colors hover:text-text-primary"
+          disabled={isRemoveDisabled}
+          className="shrink-0 rounded-md border border-border-default px-2 py-1 text-[11px] text-text-secondary transition-colors hover:text-text-primary disabled:opacity-50"
           data-testid="ai-account-remove"
         >
-          {t("remove")}
+          {isRemoving ? t("removing") : t("remove")}
         </button>
+      ) : null}
+
+      {removeFailureReason ? (
+        <InlineLoadError
+          className="basis-full"
+          message={t("removeFailed", { reason: removeFailureReason })}
+          onRetry={onRetryRemove}
+        />
       ) : null}
     </div>
   );
@@ -103,9 +124,9 @@ function AddAccountForm({
   const t = useTranslations("aiAccounts");
   const [accountName, setAccountName] = useState("");
   const [errorKey, setErrorKey] = useState<string | null>(null);
-
-  async function submitAccountName() {
-    const result = await addAiAccount(provider, accountName.trim());
+  /** 응답 전에 다시 눌러 같은 계정을 두 번 만들지 않게 막고, 요청 자체가 실패하면 사유를 남긴다 */
+  const accountAddition = useTrackedAction(async (trimmedName: string) => {
+    const result = await addAiAccount(provider, trimmedName);
     if (result.outcome !== "ok" || !result.accountRoot) {
       setErrorKey(result.outcome);
       return;
@@ -114,6 +135,11 @@ function AddAccountForm({
     setErrorKey(null);
     setAccountName("");
     onAdded(result.accountRoot);
+  });
+
+  function submitAccountName() {
+    setErrorKey(null);
+    void accountAddition.run(accountName.trim());
   }
 
   return (
@@ -129,16 +155,24 @@ function AddAccountForm({
         />
         <button
           type="button"
-          onClick={() => void submitAccountName()}
-          disabled={!accountName.trim()}
+          onClick={submitAccountName}
+          disabled={!accountName.trim() || accountAddition.isPending}
+          aria-busy={accountAddition.isPending || undefined}
           className="shrink-0 rounded-md border border-border-default px-2 py-1 text-[11px] text-text-secondary transition-colors hover:text-text-primary disabled:opacity-50"
           data-testid="ai-account-add"
         >
-          {t("addAccount")}
+          {accountAddition.isPending ? t("adding") : t("addAccount")}
         </button>
       </div>
       {errorKey ? (
         <p className="mt-1 text-[11px] text-status-error">{t(`errors.${errorKey}`)}</p>
+      ) : null}
+      {accountAddition.error ? (
+        <InlineLoadError
+          className="mt-1"
+          message={t("addFailed", { reason: accountAddition.error })}
+          onRetry={() => void accountAddition.retry()}
+        />
       ) : null}
     </div>
   );
@@ -146,15 +180,20 @@ function AddAccountForm({
 
 export default function AiAccountsRoute() {
   const t = useTranslations("aiAccounts");
+  const tc = useTranslations("common");
   const [accounts, setAccounts] = useState<AiAccountSummary[] | null>(null);
   const [activeLogin, setActiveLogin] = useState<ActiveLoginSession | null>(null);
+  /** 목록 조회 실패. 계정이 없는 것과 구분해, 빈 목록 대신 사유와 재시도를 보인다 */
+  const [loadFailureReason, setLoadFailureReason] = useState<string | null>(null);
+  const [removalTargetRoot, setRemovalTargetRoot] = useState<string | null>(null);
 
   const loadAccounts = useCallback(async () => {
     try {
       setAccounts(await listAiAccounts());
+      setLoadFailureReason(null);
     } catch (error) {
       console.error("Failed to load AI accounts:", error);
-      setAccounts((currentAccounts) => currentAccounts ?? []);
+      setLoadFailureReason(error instanceof Error ? error.message : String(error));
     }
   }, []);
 
@@ -171,19 +210,33 @@ export default function AiAccountsRoute() {
     void loadAccounts();
   }, [loadAccounts]);
 
-  async function removeAccount(account: AiAccountSummary) {
+  /** 한 번에 한 계정만 지운다. 실패하면 그 계정 행에 사유와 재시도를 남긴다 */
+  const accountRemoval = useTrackedAction(async (account: AiAccountSummary) => {
+    setRemovalTargetRoot(account.accountRoot);
+    await removeAiAccount(account.provider, account.accountRoot);
+    await loadAccounts();
+  });
+
+  function removeAccount(account: AiAccountSummary) {
     if (!window.confirm(t("removeConfirm", { label: account.label }))) {
       return;
     }
 
-    await removeAiAccount(account.provider, account.accountRoot);
-    await loadAccounts();
+    void accountRemoval.run(account);
   }
 
   if (!accounts) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-bg-page text-text-muted">
-        Loading...
+      <div className="flex min-h-screen items-center justify-center bg-bg-page p-6 text-text-muted">
+        {loadFailureReason ? (
+          <InlineLoadError
+            className="w-full max-w-md"
+            message={tc("loadFailed", { reason: loadFailureReason })}
+            onRetry={() => void loadAccounts()}
+          />
+        ) : (
+          "Loading..."
+        )}
       </div>
     );
   }
@@ -200,6 +253,13 @@ export default function AiAccountsRoute() {
             {t("backToSettings")}
           </Link>
         </div>
+
+        {loadFailureReason ? (
+          <InlineLoadError
+            message={tc("refreshFailed", { reason: loadFailureReason })}
+            onRetry={() => void loadAccounts()}
+          />
+        ) : null}
 
         {activeLogin ? (
           <section className="rounded-xl border border-border-default bg-bg-surface p-5">
@@ -251,11 +311,17 @@ export default function AiAccountsRoute() {
                     key={account.accountRoot}
                     account={account}
                     isLoginOpen={activeLogin?.accountRoot === account.accountRoot}
+                    isRemoving={accountRemoval.pendingArgs?.[0].accountRoot === account.accountRoot}
+                    isRemoveDisabled={accountRemoval.isPending}
+                    removeFailureReason={
+                      removalTargetRoot === account.accountRoot ? accountRemoval.error : null
+                    }
                     onLogin={() => setActiveLogin({
                       provider: account.provider,
                       accountRoot: account.accountRoot,
                     })}
-                    onRemove={() => void removeAccount(account)}
+                    onRemove={() => removeAccount(account)}
+                    onRetryRemove={() => void accountRemoval.retry()}
                   />
                 ))}
               </div>
@@ -270,7 +336,7 @@ export default function AiAccountsRoute() {
             />
           </section>
         ))}
-      </div>
     </div>
-  );
+  </div>
+);
 }

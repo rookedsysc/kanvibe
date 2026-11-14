@@ -10,6 +10,7 @@ import 'package:kanvibe_mobile/src/common/network/desktop_connection.dart';
 import 'package:kanvibe_mobile/src/common/providers.dart';
 import 'package:kanvibe_mobile/src/features/board/domain/task_status.dart';
 import 'package:kanvibe_mobile/src/features/chat_history/domain/chat_history.dart';
+import 'package:kanvibe_mobile/src/features/chat_history/domain/task_file.dart';
 import 'package:kanvibe_mobile/src/features/pane_chat/domain/pane_chat.dart';
 import 'package:kanvibe_mobile/src/features/connection/data/connection_store.dart';
 import 'package:kanvibe_mobile/src/features/connection/domain/saved_connections.dart';
@@ -136,7 +137,12 @@ class FakeDesktopClient implements DesktopClient {
   final Map<String, dynamic> board;
   final Map<String, Map<String, dynamic>> boardsByHost;
   final Map<String, Map<String, dynamic>> tasksById;
-  final Object? boardError;
+
+  /// 테스트가 도중에 바꿔 끼울 수 있다. 첫 조회는 성공하고 새로고침만 실패하는 경우를 흉내낸다
+  Object? boardError;
+
+  /// 정해 두면 보드 응답을 이 함수가 끝낼 때까지 붙잡는다
+  Future<Map<String, dynamic>> Function()? onFetchBoard;
   final String? pairToken;
 
   /// 테스트가 도중에 바꿔 끼울 수 있다. 데스크탑이 세션을 바꾼 뒤 다시 받은 pane을 흉내낸다
@@ -147,6 +153,9 @@ class FakeDesktopClient implements DesktopClient {
   final createdTabCalls = <({String taskId, String connectionId})>[];
   final Object? unpairError;
   final List<String> branches;
+
+  /// 정해 두면 브랜치 목록 응답을 이 함수가 대신한다. 지연이나 실패를 흉내낸다
+  Future<List<String>> Function()? onFetchProjectBranches;
   final Map<String, dynamic> createdTask;
   final Object? createError;
   final Object? statusError;
@@ -210,6 +219,8 @@ class FakeDesktopClient implements DesktopClient {
 
   final writtenInput = <String, List<String>>{};
   final resizedPanes = <String, List<({int cols, int rows})>>{};
+  final historyRefreshRequests = <String>[];
+  int paneStreamOpenCount = 0;
 
   @override
   Future<void> unpairDevice(DesktopConnection connection) async {
@@ -226,6 +237,9 @@ class FakeDesktopClient implements DesktopClient {
     boardCalls.add(connection.id);
     if (boardError != null) {
       throw boardError!;
+    }
+    if (onFetchBoard != null) {
+      return onFetchBoard!();
     }
     return boardsByHost[connection.host] ?? board;
   }
@@ -262,6 +276,12 @@ class FakeDesktopClient implements DesktopClient {
 
   @override
   Future<void> markAllNotificationsRead(DesktopConnection connection) async {}
+
+  @override
+  Future<void> markTaskNotificationsRead(
+    DesktopConnection connection,
+    String taskId,
+  ) async {}
 
   @override
   Future<void> registerNotifications(
@@ -319,7 +339,8 @@ class FakeDesktopClient implements DesktopClient {
   Future<List<String>> fetchProjectBranches(
     DesktopConnection connection,
     String projectId,
-  ) async => branches;
+  ) async =>
+      onFetchProjectBranches != null ? onFetchProjectBranches!() : branches;
 
   @override
   Future<Map<String, dynamic>> createTask(
@@ -329,6 +350,7 @@ class FakeDesktopClient implements DesktopClient {
     String? baseBranch,
     String? description,
     String? priority,
+    String? sessionType,
   }) async {
     createCalls.add({
       'projectId': projectId,
@@ -336,6 +358,7 @@ class FakeDesktopClient implements DesktopClient {
       'baseBranch': baseBranch,
       'description': description,
       'priority': priority,
+      'sessionType': ?sessionType,
     });
 
     if (createError != null) {
@@ -429,9 +452,11 @@ class FakeDesktopClient implements DesktopClient {
     String taskId,
     String paneId, {
     Future<void>? cancelled,
+    bool canPrepareDirectConnection = true,
   }) async {
     final controller = StreamController<String>.broadcast();
     openedPanes[paneId] = controller;
+    paneStreamOpenCount += 1;
 
     return PaneStream(
       output: controller.stream,
@@ -440,6 +465,7 @@ class FakeDesktopClient implements DesktopClient {
         cols: cols,
         rows: rows,
       )),
+      onRefreshHistory: () => historyRefreshRequests.add(paneId),
       onClose: () async {
         closedPanes.add(paneId);
         await controller.close();
@@ -479,7 +505,42 @@ class FakeDesktopClient implements DesktopClient {
     String taskId,
     ChatSession session, {
     String? cursor,
+    String? query,
+    Set<String> roles = const {},
   }) async => const ChatMessagePage(messages: []);
+
+  Future<Map<String, dynamic>> Function(
+    String method,
+    List<String> segments,
+    Map<String, String>? query,
+    Map<String, dynamic>? body,
+  )?
+  onJsonRequest;
+  PaneStream Function(List<String> segments)? onAuthenticatedTerminal;
+
+  @override
+  Future<Map<String, dynamic>> requestJson(
+    DesktopConnection connection,
+    String method,
+    List<String> segments, {
+    Map<String, String>? query,
+    Map<String, dynamic>? body,
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
+    final handler = onJsonRequest;
+    if (handler == null) throw DesktopRequestException(404);
+    return handler(method, segments, query, body);
+  }
+
+  @override
+  PaneStream openAuthenticatedTerminal(
+    DesktopConnection connection,
+    List<String> segments,
+  ) {
+    final handler = onAuthenticatedTerminal;
+    if (handler == null) throw StateError('로그인 터미널 응답이 준비되지 않았습니다.');
+    return handler(segments);
+  }
 
   @override
   Future<PaneChatSnapshot> fetchPaneChat(
@@ -545,6 +606,22 @@ class FakeDesktopClient implements DesktopClient {
     String sessionId,
     String attachmentId,
   ) async => throw StateError('No media fixture');
+
+  /// 경로별로 돌려줄 파일 본문. 값이 예외면 그대로 던져 실패 화면을 볼 수 있게 한다
+  final taskFilesByPath = <String, Object>{};
+  final requestedTaskFilePaths = <String>[];
+
+  @override
+  Future<TaskFile> fetchTaskFile(
+    DesktopConnection connection,
+    String taskId,
+    String path,
+  ) async {
+    requestedTaskFilePaths.add(path);
+    final fixture = taskFilesByPath[path];
+    if (fixture is String) return TaskFile(path: path, content: fixture);
+    throw fixture ?? StateError('No task file fixture');
+  }
 
   @override
   void close() {}

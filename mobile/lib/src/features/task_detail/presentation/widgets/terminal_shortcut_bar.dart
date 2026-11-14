@@ -1,3 +1,5 @@
+import '../../../../common/l10n/app_localizations.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -39,7 +41,7 @@ class _TerminalShortcutBarState extends ConsumerState<TerminalShortcutBar> {
       canRequestFocus: false,
       descendantsAreFocusable: false,
       child: Container(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           color: AppColors.terminalChrome,
           border: Border(top: BorderSide(color: AppColors.borderDefault)),
         ),
@@ -49,12 +51,12 @@ class _TerminalShortcutBarState extends ConsumerState<TerminalShortcutBar> {
             Semantics(
               container: true,
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
+                padding: EdgeInsets.symmetric(horizontal: 8),
                 child: Text(
                   widget.sessionType == SessionType.terminal
                       ? '키'
                       : widget.sessionType.name,
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: AppColors.textSecondary,
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
@@ -67,19 +69,16 @@ class _TerminalShortcutBarState extends ConsumerState<TerminalShortcutBar> {
                   ? SingleChildScrollView(
                       key: ValueKey(widget.sessionType),
                       scrollDirection: Axis.horizontal,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 2,
-                        vertical: 2,
-                      ),
+                      padding: EdgeInsets.symmetric(horizontal: 2, vertical: 2),
                       child: visibleShortcuts.isEmpty
                           ? TextButton(
                               onPressed: _openSettings,
                               style: TextButton.styleFrom(
-                                minimumSize: const Size(0, 32),
+                                minimumSize: Size(0, 32),
                                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                textStyle: const TextStyle(fontSize: 12),
+                                textStyle: TextStyle(fontSize: 12),
                               ),
-                              child: const Text('단축키 추가'),
+                              child: Text(context.tr('단축키 추가')),
                             )
                           : Row(
                               children: [
@@ -89,16 +88,18 @@ class _TerminalShortcutBarState extends ConsumerState<TerminalShortcutBar> {
                             ),
                     )
                   : Padding(
-                      padding: const EdgeInsets.only(left: 12),
+                      padding: EdgeInsets.only(left: 12),
                       child: Text(
-                        '${widget.sessionType.name} · 단축키 꺼짐',
-                        style: const TextStyle(color: AppColors.textSecondary),
+                        context.tr('{type} · 단축키 꺼짐', {
+                          'type': widget.sessionType.name,
+                        }),
+                        style: TextStyle(color: AppColors.textSecondary),
                       ),
                     ),
             ),
             _control(
               'shortcut-settings',
-              '${widget.sessionType.name} 단축키 설정',
+              context.tr('{type} 단축키 설정', {'type': widget.sessionType.name}),
               Icons.tune,
               _openSettings,
             ),
@@ -131,13 +132,13 @@ class _TerminalShortcutBarState extends ConsumerState<TerminalShortcutBar> {
   ) => Semantics(
     identifier: id,
     child: IconButton(
-      constraints: const BoxConstraints.tightFor(width: 36, height: 36),
-      padding: const EdgeInsets.all(4),
+      constraints: BoxConstraints.tightFor(width: 36, height: 36),
+      padding: EdgeInsets.all(4),
       style: IconButton.styleFrom(
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
         visualDensity: VisualDensity.standard,
       ),
-      tooltip: tooltip,
+      tooltip: context.tr(tooltip),
       onPressed: onPressed,
       icon: Icon(icon, size: 18),
     ),
@@ -147,7 +148,7 @@ class _TerminalShortcutBarState extends ConsumerState<TerminalShortcutBar> {
     return Semantics(
       identifier: 'shortcut-${shortcut.id}',
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 2),
+        padding: EdgeInsets.symmetric(horizontal: 2),
         child: Tooltip(
           message: shortcut.description,
           child: TextButton(
@@ -156,20 +157,17 @@ class _TerminalShortcutBarState extends ConsumerState<TerminalShortcutBar> {
                 ? null
                 : () => widget.onShortcut(shortcut),
             style: TextButton.styleFrom(
-              minimumSize: const Size(40, 32),
+              minimumSize: Size(40, 32),
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               visualDensity: VisualDensity.standard,
-              padding: const EdgeInsets.symmetric(horizontal: 8),
+              padding: EdgeInsets.symmetric(horizontal: 8),
               foregroundColor: AppColors.textPrimary,
               backgroundColor: AppColors.buttonNeutral,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(6),
-                side: const BorderSide(color: AppColors.borderStrong),
+                side: BorderSide(color: AppColors.borderStrong),
               ),
-              textStyle: const TextStyle(
-                fontFamily: monoFontFamily,
-                fontSize: 12,
-              ),
+              textStyle: TextStyle(fontFamily: monoFontFamily, fontSize: 12),
             ),
             child: Text(shortcut.label),
           ),

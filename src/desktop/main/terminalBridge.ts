@@ -7,6 +7,7 @@ import { SessionType, type KanbanTask } from "@/entities/KanbanTask";
 import { attachLocalSession, attachRemoteSession, focusSession } from "@/lib/terminal";
 import { parseSSHConfig, type SSHHostConfig } from "@/lib/sshConfig";
 import { ensureRemoteSessionDependency } from "@/lib/remoteSessionDependency";
+import { clearRemoteSSHTransportCooldown } from "@/lib/gitOperations";
 import { getEffectivePaneLayout } from "@/desktop/main/services/paneLayoutService";
 import { decodeDataUrlToBuffer, transferImageToRemoteHost } from "@/lib/remoteImagePaste";
 
@@ -210,6 +211,7 @@ export async function attachTaskTerminal(
     return;
   }
 
+  clearRemoteSSHTransportCooldown(task.sshHost);
   await ensureRemoteSessionDependency(sessionType, task.sshHost);
   if (client.readyState !== client.OPEN) return;
 
@@ -230,11 +232,19 @@ export async function attachTaskTerminal(
     try {
       await ensureKanvibeHooksCurrent(hookTargetPath, task.id, task.sshHost);
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "hooks 설정 실패";
+      console.error("터미널 연결 전 hooks 확인 실패:", {
+        taskId: task.id,
+        taskTitle: task.title,
+        targetPath: hookTargetPath,
+        sshHost: task.sshHost,
+        error: errorMessage,
+      });
       if (!getTerminalRetryAfterMs(error)) {
         broadcastTaskHookInstallFailed({
           taskId: task.id,
           taskTitle: task.title,
-          error: error instanceof Error ? error.message : "hooks 설정 실패",
+          error: errorMessage,
         });
       }
       throw error;

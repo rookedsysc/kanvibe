@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useRef, useEffect, useTransition } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useRouter } from "@/desktop/renderer/navigation";
 import { useTranslations } from "next-intl";
 import type { KanbanTask } from "@/entities/KanbanTask";
 import { updateTask } from "@/desktop/renderer/actions/kanban";
+import { useTrackedAction } from "@/desktop/renderer/hooks/useTrackedAction";
 import TaskStatusBadge from "@/components/TaskStatusBadge";
 import ProjectBranchTasksModal from "@/components/ProjectBranchTasksModal";
 
@@ -17,11 +18,17 @@ export default function TaskDetailTitleCard({ task, taskId }: TaskDetailTitleCar
   const [showBranchTasksModal, setShowBranchTasksModal] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState(task.description ?? "");
-  const [isPending, startTransition] = useTransition();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const router = useRouter();
   const t = useTranslations("taskDetail");
   const tc = useTranslations("common");
+  /** 저장 중에는 버튼·Enter 어느 쪽으로 눌러도 한 번만 보내고, 실패하면 편집을 열어 둔 채 사유를 남긴다 */
+  const descriptionSave = useTrackedAction(async (newDescription: string | null) => {
+    await updateTask(taskId, { description: newDescription });
+    setIsEditing(false);
+    router.refresh();
+  });
+  const isPending = descriptionSave.isPending;
 
   /** 편집 모드 진입 시 textarea에 포커스하고 커서를 끝으로 이동 */
   useEffect(() => {
@@ -37,6 +44,8 @@ export default function TaskDetailTitleCard({ task, taskId }: TaskDetailTitleCar
   }
 
   function handleCancel() {
+    if (isPending) return;
+    descriptionSave.clearError();
     setIsEditing(false);
     setDraft(task.description ?? "");
   }
@@ -50,11 +59,7 @@ export default function TaskDetailTitleCard({ task, taskId }: TaskDetailTitleCar
       return;
     }
 
-    startTransition(async () => {
-      await updateTask(taskId, { description: newDescription });
-      setIsEditing(false);
-      router.refresh();
-    });
+    void descriptionSave.run(newDescription);
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -103,7 +108,7 @@ export default function TaskDetailTitleCard({ task, taskId }: TaskDetailTitleCar
         </div>
 
         {/* description 인라인 수정 영역 */}
-        <div className={isPending ? "opacity-50 pointer-events-none mt-3" : "mt-3"}>
+        <div className="mt-3" aria-busy={isPending || undefined}>
           {isEditing ? (
             <div>
               <textarea
@@ -111,6 +116,7 @@ export default function TaskDetailTitleCard({ task, taskId }: TaskDetailTitleCar
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 onKeyDown={handleKeyDown}
+                readOnly={isPending}
                 rows={4}
                 className="w-full text-sm text-text-primary bg-bg-page border border-border-default rounded-md p-2 leading-relaxed resize-y focus:outline-none focus:border-brand-primary"
               />
@@ -118,18 +124,25 @@ export default function TaskDetailTitleCard({ task, taskId }: TaskDetailTitleCar
                 <button
                   type="button"
                   onClick={handleCancel}
-                  className="px-3 py-1.5 text-xs text-text-secondary bg-bg-page border border-border-default rounded-md hover:border-border-strong transition-colors"
+                  disabled={isPending}
+                  className="px-3 py-1.5 text-xs text-text-secondary bg-bg-page border border-border-default rounded-md hover:border-border-strong transition-colors disabled:opacity-50"
                 >
                   {tc("cancel")}
                 </button>
                 <button
                   type="button"
                   onClick={handleSave}
-                  className="px-3 py-1.5 text-xs text-white bg-brand-primary rounded-md hover:opacity-90 transition-opacity"
+                  disabled={isPending}
+                  className="px-3 py-1.5 text-xs text-white bg-brand-primary rounded-md hover:opacity-90 transition-opacity disabled:cursor-progress disabled:opacity-60"
                 >
-                  {tc("save")}
+                  {isPending ? tc("saving") : tc("save")}
                 </button>
               </div>
+              {descriptionSave.error ? (
+                <p role="alert" className="mt-2 text-xs text-status-error">
+                  {tc("saveFailed", { reason: descriptionSave.error })}
+                </p>
+              ) : null}
             </div>
           ) : (
             <button

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import {
   setSidebarDefaultCollapsed,
@@ -14,6 +14,7 @@ import {
   type ThemePreference,
 } from "@/desktop/renderer/actions/appSettings";
 import MobilePairingSettings from "@/components/MobilePairingSettings";
+import InlineLoadError from "@/components/InlineLoadError";
 import { SessionType } from "@/entities/KanbanTask";
 import { Link } from "@/desktop/renderer/navigation";
 import type { Project } from "@/entities/Project";
@@ -31,6 +32,22 @@ const STATUS_OPTIONS = [
   { value: "pending", labelKey: "pending" },
   { value: "review", labelKey: "review" },
 ] as const;
+
+/** 저장 상태를 따로 보이는 설정 항목. 한 항목의 저장이 다른 항목의 입력을 막지 않게 나눈다 */
+type SettingKey = "theme" | "sidebar" | "sessionType" | "notifications" | "backgroundSync" | "vimMode";
+
+/** 화면 값을 먼저 바꾸고 저장한다. 저장에 실패하면 restore로 마지막 저장값을 되돌린다 */
+interface SettingChange {
+  apply: () => void;
+  restore: () => void;
+  save: () => Promise<unknown>;
+}
+
+interface SettingSaveFailure {
+  key: SettingKey;
+  reason: string;
+  change: SettingChange;
+}
 
 interface ProjectSettingsProps {
   isOpen?: boolean;
@@ -99,8 +116,8 @@ export default function ProjectSettings({
 }: ProjectSettingsProps) {
   const t = useTranslations("settings");
   const tb = useTranslations("board.columns");
-  const [isPending, startTransition] = useTransition();
-  const [isNotificationPending, startNotificationTransition] = useTransition();
+  const [savingSettingKeys, setSavingSettingKeys] = useState<ReadonlySet<SettingKey>>(() => new Set());
+  const [settingSaveFailure, setSettingSaveFailure] = useState<SettingSaveFailure | null>(null);
   const [selectedDefaultSessionType, setSelectedDefaultSessionType] = useState(defaultSessionType);
   const [localVimModeEnabled, setLocalVimModeEnabled] = useState(vimModeEnabled);
   const [localNotificationSettings, setLocalNotificationSettings] = useState(notificationSettings);
@@ -170,13 +187,98 @@ export default function ProjectSettings({
 
   if (!isPage && !isOpen) return null;
 
-  function handleThemePreferenceChange(nextThemePreference: ThemePreference) {
+  function updateSavingSettingKey(key: SettingKey, isSaving: boolean) {
+    setSavingSettingKeys((current) => {
+      const next = new Set(current);
+      if (isSaving) {
+        next.add(key);
+      } else {
+        next.delete(key);
+      }
+      return next;
+    });
+  }
+
+  /**
+   * 설정을 화면에 먼저 반영하고 저장한다. 실패한 값을 유효한 설정처럼 남기지 않도록 저장값으로 되돌리고,
+   * 같은 변경을 다시 시도할 수 있게 실패를 그 항목 옆에 남긴다.
+   */
+  function saveSetting(key: SettingKey, change: SettingChange) {
+    change.apply();
+    updateSavingSettingKey(key, true);
+    setSettingSaveFailure((current) => (current?.key === key ? null : current));
+    void change.save()
+      .catch((error: unknown) => {
+        change.restore();
+        setSettingSaveFailure({
+          key,
+          reason: error instanceof Error ? error.message : String(error),
+          change,
+        });
+      })
+      .finally(() => updateSavingSettingKey(key, false));
+  }
+
+  function renderSettingSaveFailure(key: SettingKey) {
+    if (settingSaveFailure?.key !== key) {
+      return null;
+    }
+
+    const { change } = settingSaveFailure;
+    return (
+      <InlineLoadError
+        className="mt-2"
+        message={t("settingSaveFailed", { reason: settingSaveFailure.reason })}
+        onRetry={() => saveSetting(key, change)}
+      />
+    );
+  }
+
+  function applyThemeSelection(nextThemePreference: ThemePreference) {
     setLocalThemePreference(nextThemePreference);
     applyThemePreference(nextThemePreference);
     notifyThemePreferenceChanged(nextThemePreference);
     onThemePreferenceChange?.(nextThemePreference);
-    startTransition(async () => {
-      await setThemePreference(nextThemePreference);
+  }
+
+  function handleThemePreferenceChange(nextThemePreference: ThemePreference) {
+    const previousThemePreference = localThemePreference;
+    saveSetting("theme", {
+      apply: () => applyThemeSelection(nextThemePreference),
+      restore: () => applyThemeSelection(previousThemePreference),
+      save: () => setThemePreference(nextThemePreference),
+    });
+  }
+
+  /** 알림 설정은 저장되는 동안 이전 props가 화면 값을 덮지 않게 pending으로 붙잡아 둔다 */
+  function saveNotificationSettings(nextSettings: typeof notificationSettings, save: () => Promise<unknown>) {
+    const previousSettings = localNotificationSettings;
+    saveSetting("notifications", {
+      apply: () => {
+        setLocalNotificationSettings(nextSettings);
+        setPendingNotificationSettings(nextSettings);
+      },
+      restore: () => {
+        setLocalNotificationSettings(previousSettings);
+        setPendingNotificationSettings(null);
+      },
+      save,
+    });
+  }
+
+  function saveBackgroundSyncSettings(nextSettings: typeof backgroundSyncSettings, save: () => Promise<unknown>) {
+    const previousSettings = localBackgroundSyncSettings;
+    saveSetting("backgroundSync", {
+      apply: () => {
+        setLocalBackgroundSyncSettings(nextSettings);
+        setPendingBackgroundSyncSettings(nextSettings);
+      },
+      restore: () => {
+        setLocalBackgroundSyncSettings(previousSettings);
+        setPendingBackgroundSyncSettings(null);
+        setBackgroundSyncIntervalInputValue(formatSyncIntervalMinutes(previousSettings.intervalMs));
+      },
+      save,
     });
   }
 
@@ -251,7 +353,7 @@ export default function ProjectSettings({
                   key={value}
                   type="button"
                   onClick={() => handleThemePreferenceChange(value)}
-                  disabled={isPending}
+                  disabled={savingSettingKeys.has("theme")}
                   className={`rounded-[5px] px-2.5 py-1 text-xs font-medium transition-colors ${
                     localThemePreference === value
                       ? "bg-bg-surface text-text-primary shadow-xs"
@@ -263,6 +365,7 @@ export default function ProjectSettings({
               ))}
             </div>
           </div>
+          {renderSettingSaveFailure("theme")}
         </div>
 
         {/* AI 계정 관리 링크 */}
@@ -304,13 +407,16 @@ export default function ProjectSettings({
               role="switch"
               aria-checked={localSidebarDefaultCollapsed}
               onClick={() => {
-                const nextCollapsed = !localSidebarDefaultCollapsed;
-                setLocalSidebarDefaultCollapsed(nextCollapsed);
-                startTransition(async () => {
-                  await setSidebarDefaultCollapsed(nextCollapsed);
+                const previousCollapsed = localSidebarDefaultCollapsed;
+                const nextCollapsed = !previousCollapsed;
+                saveSetting("sidebar", {
+                  apply: () => setLocalSidebarDefaultCollapsed(nextCollapsed),
+                  restore: () => setLocalSidebarDefaultCollapsed(previousCollapsed),
+                  save: () => setSidebarDefaultCollapsed(nextCollapsed),
                 });
               }}
-              disabled={isPending}
+              disabled={savingSettingKeys.has("sidebar")}
+              aria-busy={savingSettingKeys.has("sidebar") || undefined}
               className={`relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors ${
                 localSidebarDefaultCollapsed ? "bg-brand-primary" : "bg-border-default"
               }`}
@@ -322,6 +428,7 @@ export default function ProjectSettings({
               />
             </button>
           </label>
+          {renderSettingSaveFailure("sidebar")}
         </div>
 
         {/* 작업 생성 설정 */}
@@ -337,19 +444,25 @@ export default function ProjectSettings({
             <select
               value={selectedDefaultSessionType}
               onChange={(e) => {
+                const previousSessionType = selectedDefaultSessionType;
                 const nextSessionType = e.target.value as SessionType;
-                setSelectedDefaultSessionType(nextSessionType);
-                startTransition(async () => {
-                  await setDefaultSessionType(nextSessionType);
-                  onDefaultSessionTypeChange?.(nextSessionType);
+                saveSetting("sessionType", {
+                  apply: () => setSelectedDefaultSessionType(nextSessionType),
+                  restore: () => setSelectedDefaultSessionType(previousSessionType),
+                  save: async () => {
+                    await setDefaultSessionType(nextSessionType);
+                    onDefaultSessionTypeChange?.(nextSessionType);
+                  },
                 });
               }}
-              disabled={isPending}
+              disabled={savingSettingKeys.has("sessionType")}
+              aria-busy={savingSettingKeys.has("sessionType") || undefined}
               className="px-2 py-1 text-sm bg-bg-page border border-border-default rounded-md text-text-primary focus:outline-none focus:border-brand-primary transition-colors"
             >
               <SessionTypeOptions />
             </select>
           </div>
+          {renderSettingSaveFailure("sessionType")}
           <BulkSessionTypeChangeSettings defaultSessionType={selectedDefaultSessionType} />
         </div>
 
@@ -373,14 +486,12 @@ export default function ProjectSettings({
                aria-checked={localNotificationSettings.isEnabled}
                onClick={() => {
                  const nextEnabled = !localNotificationSettings.isEnabled;
-                  const nextSettings = { ...localNotificationSettings, isEnabled: nextEnabled };
-                  setLocalNotificationSettings(nextSettings);
-                  setPendingNotificationSettings(nextSettings);
-                  startNotificationTransition(async () => {
-                    await setNotificationEnabled(nextEnabled);
-                  });
+                 saveNotificationSettings(
+                   { ...localNotificationSettings, isEnabled: nextEnabled },
+                   () => setNotificationEnabled(nextEnabled),
+                 );
                }}
-               disabled={isNotificationPending}
+               disabled={savingSettingKeys.has("notifications")}
                className={`relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors ${
                  localNotificationSettings.isEnabled ? "bg-brand-primary" : "bg-border-default"
                }`}
@@ -406,17 +517,15 @@ export default function ProjectSettings({
                   <button
                     key={value}
                     type="button"
-                    disabled={isNotificationPending}
+                    disabled={savingSettingKeys.has("notifications")}
                     onClick={() => {
                       const nextStatuses = isSelected
                         ? localNotificationSettings.enabledStatuses.filter((s) => s !== value)
                         : [...localNotificationSettings.enabledStatuses, value];
-                      const nextSettings = { ...localNotificationSettings, enabledStatuses: nextStatuses };
-                      setLocalNotificationSettings(nextSettings);
-                      setPendingNotificationSettings(nextSettings);
-                      startNotificationTransition(async () => {
-                        await setNotificationStatuses(nextStatuses);
-                      });
+                      saveNotificationSettings(
+                        { ...localNotificationSettings, enabledStatuses: nextStatuses },
+                        () => setNotificationStatuses(nextStatuses),
+                      );
                     }}
                     className={`px-2.5 py-1 text-xs rounded-full border transition-colors ${
                       isSelected
@@ -430,6 +539,7 @@ export default function ProjectSettings({
               })}
             </div>
           </div>
+          {renderSettingSaveFailure("notifications")}
         </div>
 
         {/* 백그라운드 Sync 설정 */}
@@ -450,14 +560,12 @@ export default function ProjectSettings({
               aria-checked={localBackgroundSyncSettings.isEnabled}
               onClick={() => {
                 const nextEnabled = !localBackgroundSyncSettings.isEnabled;
-                const nextSettings = { ...localBackgroundSyncSettings, isEnabled: nextEnabled };
-                setLocalBackgroundSyncSettings(nextSettings);
-                setPendingBackgroundSyncSettings(nextSettings);
-                startTransition(async () => {
-                  await setBackgroundSyncEnabled(nextEnabled);
-                });
+                saveBackgroundSyncSettings(
+                  { ...localBackgroundSyncSettings, isEnabled: nextEnabled },
+                  () => setBackgroundSyncEnabled(nextEnabled),
+                );
               }}
-              disabled={isPending}
+              disabled={savingSettingKeys.has("backgroundSync")}
               className={`relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors ${
                 localBackgroundSyncSettings.isEnabled ? "bg-brand-primary" : "bg-border-default"
               }`}
@@ -495,12 +603,10 @@ export default function ProjectSettings({
                   const nextIntervalMs = minutes * 60_000;
                   if (nextIntervalMs === localBackgroundSyncSettings.intervalMs) return;
 
-                  const nextSettings = { ...localBackgroundSyncSettings, intervalMs: nextIntervalMs };
-                  setLocalBackgroundSyncSettings(nextSettings);
-                  setPendingBackgroundSyncSettings(nextSettings);
-                  startTransition(async () => {
-                    await saveBackgroundSyncIntervalMs(nextIntervalMs);
-                  });
+                  saveBackgroundSyncSettings(
+                    { ...localBackgroundSyncSettings, intervalMs: nextIntervalMs },
+                    () => saveBackgroundSyncIntervalMs(nextIntervalMs),
+                  );
                 }}
                 onBlur={() => {
                   if (parseSyncIntervalMinutes(backgroundSyncIntervalInputValue) === null) {
@@ -512,6 +618,7 @@ export default function ProjectSettings({
               <span className="text-sm text-text-muted">{t("backgroundSyncIntervalUnit")}</span>
             </div>
           </div>
+          {renderSettingSaveFailure("backgroundSync")}
         </div>
 
         {/* 키보드 설정 */}
@@ -530,14 +637,22 @@ export default function ProjectSettings({
               aria-label={t("vimModeEnabled")}
               aria-checked={localVimModeEnabled}
               onClick={() => {
-                const nextEnabled = !localVimModeEnabled;
-                setLocalVimModeEnabled(nextEnabled);
-                onVimModeEnabledChange?.(nextEnabled);
-                startTransition(async () => {
-                  await setVimModeEnabled(nextEnabled);
+                const previousEnabled = localVimModeEnabled;
+                const nextEnabled = !previousEnabled;
+                saveSetting("vimMode", {
+                  apply: () => {
+                    setLocalVimModeEnabled(nextEnabled);
+                    onVimModeEnabledChange?.(nextEnabled);
+                  },
+                  restore: () => {
+                    setLocalVimModeEnabled(previousEnabled);
+                    onVimModeEnabledChange?.(previousEnabled);
+                  },
+                  save: () => setVimModeEnabled(nextEnabled),
                 });
               }}
-              disabled={isPending}
+              disabled={savingSettingKeys.has("vimMode")}
+              aria-busy={savingSettingKeys.has("vimMode") || undefined}
               className={`relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors ${
                 localVimModeEnabled ? "bg-brand-primary" : "bg-border-default"
               }`}
@@ -549,6 +664,7 @@ export default function ProjectSettings({
               />
             </button>
           </label>
+          {renderSettingSaveFailure("vimMode")}
 
           <Link
             href="/settings/shortcuts"

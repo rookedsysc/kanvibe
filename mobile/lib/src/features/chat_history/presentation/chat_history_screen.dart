@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../common/l10n/app_localizations.dart';
 import '../../../common/constants/app_colors.dart';
 import '../../../common/constants/app_sizes.dart';
 import '../../../common/providers.dart';
@@ -18,7 +19,7 @@ class ChatHistoryScreen extends ConsumerStatefulWidget {
 
 class _ChatHistoryScreenState extends ConsumerState<ChatHistoryScreen> {
   final _search = TextEditingController();
-  String? _provider;
+  final Set<String> _providers = {};
   ChatSession? _selected;
   static const _sessionListWidth = 320.0;
 
@@ -41,7 +42,7 @@ class _ChatHistoryScreenState extends ConsumerState<ChatHistoryScreen> {
         if (previous != next) {
           setState(() {
             _selected = null;
-            _provider = null;
+            _providers.clear();
           });
         }
       },
@@ -101,8 +102,8 @@ class _ChatHistoryScreenState extends ConsumerState<ChatHistoryScreen> {
                           final sessions = state.page.sessions
                               .where(
                                 (session) =>
-                                    _provider == null ||
-                                    session.provider == _provider,
+                                    _providers.isEmpty ||
+                                    _providers.contains(session.provider),
                               )
                               .toList();
                           final providers = {
@@ -130,9 +131,13 @@ class _ChatHistoryScreenState extends ConsumerState<ChatHistoryScreen> {
                                           padding: const EdgeInsets.only(
                                             right: AppSizes.p8,
                                           ),
-                                          child: ChoiceChip(
-                                            label: Text(agent ?? '전체'),
-                                            selected: agent == _provider,
+                                          child: FilterChip(
+                                            label: Text(
+                                              agent ?? context.tr('전체'),
+                                            ),
+                                            selected: agent == null
+                                                ? _providers.isEmpty
+                                                : _providers.contains(agent),
                                             selectedColor:
                                                 AppColors.brandSubtle,
                                             backgroundColor:
@@ -140,18 +145,34 @@ class _ChatHistoryScreenState extends ConsumerState<ChatHistoryScreen> {
                                             checkmarkColor:
                                                 AppColors.brandPrimary,
                                             side: BorderSide(
-                                              color: agent == _provider
+                                              color:
+                                                  (agent == null
+                                                      ? _providers.isEmpty
+                                                      : _providers.contains(
+                                                          agent,
+                                                        ))
                                                   ? AppColors.brandPrimary
                                                   : AppColors.borderDefault,
                                             ),
                                             labelStyle: TextStyle(
-                                              color: agent == _provider
+                                              color:
+                                                  (agent == null
+                                                      ? _providers.isEmpty
+                                                      : _providers.contains(
+                                                          agent,
+                                                        ))
                                                   ? AppColors.textPrimary
                                                   : AppColors.textSecondary,
                                             ),
-                                            onSelected: (_) => setState(
-                                              () => _provider = agent,
-                                            ),
+                                            onSelected: (_) => setState(() {
+                                              if (agent == null) {
+                                                _providers.clear();
+                                              } else if (!_providers.remove(
+                                                agent,
+                                              )) {
+                                                _providers.add(agent);
+                                              }
+                                            }),
                                           ),
                                         ),
                                     ],
@@ -180,7 +201,7 @@ class _ChatHistoryScreenState extends ConsumerState<ChatHistoryScreen> {
                                   },
                                   child: ListView.builder(
                                     key: PageStorageKey(
-                                      'chat-history:${widget.taskId}:$_provider',
+                                      'chat-history:${widget.taskId}:${_providers.join(',')}',
                                     ),
                                     physics:
                                         const AlwaysScrollableScrollPhysics(),
@@ -215,7 +236,8 @@ class _ChatHistoryScreenState extends ConsumerState<ChatHistoryScreen> {
                                               ? Center(
                                                   child: Text(
                                                     _search.text.isNotEmpty ||
-                                                            _provider != null
+                                                            _providers
+                                                                .isNotEmpty
                                                         ? '검색 조건에 맞는 대화가 없습니다.'
                                                         : '이 태스크의 대화 기록이 없습니다.',
                                                   ),

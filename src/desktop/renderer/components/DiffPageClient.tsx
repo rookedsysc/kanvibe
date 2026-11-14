@@ -254,6 +254,7 @@ export default function DiffPageClient({ taskId, files }: DiffPageClientProps) {
                     saving: t("saving"),
                     saved: t("saved"),
                     saveError: t("saveError"),
+                    unsavedChanges: t("unsavedChanges"),
                   }}
                 />
               )}

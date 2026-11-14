@@ -255,8 +255,9 @@ const MISSING_REPOSITORY_MARKER = "kanvibe-missing-repository";
  * 후보가 둘 이상이면 어느 쪽이 이 태스크의 저장소인지 알 수 없어 승격하지 않는다. 엉뚱한 저장소의 PR을
  * 링크하는 것보다 조회가 실패하는 편이 낫다.
  *
- * `.envrc`가 있으면 direnv를 태워 gh를 부른다. GitHub 인증을 `.envrc`에 심어 둔 경우 셸을 거치지 않고
- * gh를 부르면 인증이 빠진 채로 돌아 권한 없음으로 실패한다. direnv 경로 자체가 실패할 수도 있어
+ * 저장소나 그 상위 경로에 `.envrc`가 있으면 direnv를 태워 gh를 부른다. GitHub 인증을 `.envrc`에 심어 둔 경우
+ * 셸을 거치지 않고 gh를 부르면 인증이 빠진 채로 돌아 권한 없음으로 실패한다. direnv는 가장 가까운 상위 `.envrc`를
+ * 읽으므로, `~/work`처럼 상위 폴더에 경로별로 둔 설정도 같은 방식으로 찾는다. direnv 경로 자체가 실패할 수도 있어
  * (`direnv allow` 안 된 `.envrc` 등) 평범한 gh 호출로 되돌아간다.
  *
  * 명령 문자열에 `>/dev/null 2>&1`을 넣지 않는다. `shouldLogRemoteCommandFailure`가 그 패턴을 조용한
@@ -267,7 +268,8 @@ function buildGitHubCliCommand(repoPath: string, ghArguments: string): string {
     `repo=${quoteForShell(repoPath)}`,
     'if [ ! -e "$repo/.git" ]; then nested=""; nestedCount=0; for candidate in "$repo"/*/; do if [ -e "$candidate.git" ]; then nested="${candidate%/}"; nestedCount=$((nestedCount + 1)); fi; done; if [ "$nestedCount" -eq 1 ]; then repo="$nested"; fi; fi',
     `cd "$repo" || { printf %s ${quoteForShell(MISSING_REPOSITORY_MARKER)}; exit 0; }`,
-    `if [ -f "$repo/.envrc" ] && command -v direnv >/dev/null; then direnv exec "$repo" gh ${ghArguments} || gh ${ghArguments}; else gh ${ghArguments}; fi`,
+    'envrcDirectory=""; directory="$PWD"; while :; do if [ -f "$directory/.envrc" ]; then envrcDirectory="$directory"; break; fi; if [ "$directory" = "/" ]; then break; fi; directory=$(dirname "$directory"); done',
+    `if [ -n "$envrcDirectory" ] && command -v direnv >/dev/null; then direnv exec "$repo" gh ${ghArguments} || gh ${ghArguments}; else gh ${ghArguments}; fi`,
   ].join("; ");
 }
 
@@ -1238,29 +1240,33 @@ export async function moveTaskToColumn(
  * 작업의 브랜치에 연결된 PR URL을 조회하여 DB에 저장한다.
  * `gh pr list` CLI를 사용하며, PR이 없으면 null을 유지한다.
  */
+/**
+ * PR이 없으면 null을 돌려준다. gh가 없을 때도 조회할 수단이 없으니 같은 null이다.
+ * 그 밖의 조회 실패는 던진다. null로 삼키면 화면이 인증·네트워크 오류를 "PR 없음"으로 안내한다.
+ */
 export async function fetchAndSavePrUrl(taskId: string): Promise<string | null> {
   const repo = await getTaskRepository();
   const task = await repo.findOneBy({ id: taskId });
   if (!task?.branchName) return null;
 
+  let prUrl: string | null;
   try {
     const { cwd, sshHost } = await resolveTaskGitContext(task);
-    const prUrl = await getPrUrlFromGitHubCli(task.branchName, cwd, sshHost);
-
-    if (prUrl) {
-      const updateResult = await repo.update(
-        { id: task.id, branchName: task.branchName },
-        { prUrl },
-      );
-      if (updateResult.affected === 0) return null;
-      broadcastBoardUpdate();
-      return prUrl;
-    }
+    prUrl = await getPrUrlFromGitHubCli(task.branchName, cwd, sshHost);
   } catch (error) {
     console.error("PR URL 조회 실패:", error);
+    throw error;
   }
 
-  return null;
+  if (!prUrl) return null;
+
+  const updateResult = await repo.update(
+    { id: task.id, branchName: task.branchName },
+    { prUrl },
+  );
+  if (updateResult.affected === 0) return null;
+  broadcastBoardUpdate();
+  return prUrl;
 }
 
 export async function syncActiveTaskPullRequests(

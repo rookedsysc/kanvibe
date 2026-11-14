@@ -1,4 +1,7 @@
 const { WebSocketServer } = require("ws");
+const { handleMobileFeatureRequest } = require("./mobileFeatureRoutes.js");
+const { attachMobileAiLoginStream } = require("./mobileAiRoutes.js");
+const AI_LOGIN_PATH_PATTERN = /^\/api\/mobile\/ai\/accounts\/[^/]+\/login$/;
 
 const { readJsonBody, writeJson } = require("./httpBody.js");
 const { runMobileCommand, SUPPORTED_COMMANDS } = require("./mobileCommands.js");
@@ -18,6 +21,7 @@ const PRE_AUTH_PANE_BYTES = 1024 * 1024;
 const PRE_AUTH_PANE_MESSAGES = 256;
 const NOTIFICATIONS_PATH = "/api/mobile/notifications";
 const NOTIFICATION_READ_PATH_PATTERN = /^\/api\/mobile\/notifications\/([^/]+)\/read$/;
+const TASK_NOTIFICATIONS_READ_PATH_PATTERN = /^\/api\/mobile\/tasks\/([^/]+)\/notifications\/read$/;
 
 /**
  * 연결이 해제되어 끊는 스트림의 종료 코드.
@@ -64,6 +68,7 @@ const TASK_SESSION_TYPE_PATH_PATTERN = /^\/api\/mobile\/tasks\/([^/]+)\/session-
 const TASK_SESSION_ALIVE_PATH_PATTERN = /^\/api\/mobile\/tasks\/([^/]+)\/session-alive$/;
 const AI_SESSIONS_PATH_PATTERN = /^\/api\/mobile\/tasks\/([^/]+)\/ai-sessions(?:\/([^/]+)\/([^/]+))?$/;
 const AI_SESSION_ATTACHMENT_PATH_PATTERN = /^\/api\/mobile\/tasks\/([^/]+)\/ai-sessions\/([^/]+)\/([^/]+)\/attachments\/([^/]+)$/;
+const TASK_FILE_PATH_PATTERN = /^\/api\/mobile\/tasks\/([^/]+)\/workspace-file$/;
 const PANE_CHAT_PATH_PATTERN = /^\/api\/mobile\/tasks\/([^/]+)\/pane-chat(?:\/(prompt|interrupt|model-picker|key|attachments|suggestions))?$/;
 // 10MiB 파일의 base64와 JSON 메타데이터를 수용하며, 다른 요청의 64KiB 한도는 유지한다.
 const MAX_PANE_CHAT_ATTACHMENT_BODY_BYTES = 14 * 1024 * 1024;
@@ -109,6 +114,8 @@ async function handleMobileRequest(request, response, { bridge, host, port, isDe
       return true;
     }
 
+    if (await handleMobileFeatureRequest(request, response, { bridge, requestUrl })) return true;
+
     if (request.method === "DELETE" && requestUrl.pathname === "/api/mobile/device") {
       await handleUnpairRequest(request, response, bridge);
       return true;
@@ -120,7 +127,10 @@ async function handleMobileRequest(request, response, { bridge, host, port, isDe
     }
 
     if (request.method === "GET" && requestUrl.pathname === "/api/mobile/directories") {
-      const directories = await bridge.getMobileDirectories(requestUrl.searchParams.get("path") ?? "~");
+      const directoryPath = requestUrl.searchParams.get("path") ?? "~";
+      const directories = requestUrl.searchParams.has("sshHost")
+        ? await bridge.getMobileRemoteDirectories(directoryPath, requestUrl.searchParams.get("sshHost"))
+        : await bridge.getMobileDirectories(directoryPath);
       writeJson(response, 200, { success: true, directories });
       return true;
     }
@@ -138,7 +148,9 @@ async function handleMobileRequest(request, response, { bridge, host, port, isDe
         writeJson(response, 400, { success: false, error: "폴더 경로가 필요합니다" });
         return true;
       }
-      const result = await bridge.scanMobileProjects(rootPath);
+      const result = body.sshHost !== undefined
+        ? await bridge.scanMobileRemoteProjects(rootPath, body.sshHost)
+        : await bridge.scanMobileProjects(rootPath);
       writeJson(response, 200, { success: true, result });
       return true;
     }
@@ -185,6 +197,13 @@ async function handleMobileRequest(request, response, { bridge, host, port, isDe
       return true;
     }
 
+    const taskNotificationsReadMatch = requestUrl.pathname.match(TASK_NOTIFICATIONS_READ_PATH_PATTERN);
+    if (request.method === "POST" && taskNotificationsReadMatch) {
+      const count = await bridge.markMobileTaskNotificationsRead(decodeURIComponent(taskNotificationsReadMatch[1]));
+      writeJson(response, 200, { success: true, count });
+      return true;
+    }
+
     const paneChatMatch = requestUrl.pathname.match(PANE_CHAT_PATH_PATTERN);
     if (paneChatMatch && ((request.method === "GET" && (!paneChatMatch[2] || paneChatMatch[2] === "suggestions")) || (request.method === "POST" && paneChatMatch[2] && paneChatMatch[2] !== "suggestions") || (request.method === "DELETE" && paneChatMatch[2] === "attachments"))) {
       await handlePaneChatRequest(request, response, bridge, decodeURIComponent(paneChatMatch[1]), paneChatMatch[2], requestUrl.searchParams);
@@ -197,6 +216,12 @@ async function handleMobileRequest(request, response, { bridge, host, port, isDe
       if (!bridge.isMobileAiSessionProvider(provider)) { writeJson(response, 400, { success: false, error: "지원하지 않는 CLI입니다" }); return true; }
       const attachment = await bridge.getMobileAiSessionAttachment(taskId, provider, sessionId, attachmentId, requestUrl.searchParams.get("sourceRef") ?? undefined);
       writeJson(response, attachment ? 200 : 404, attachment ? { success: true, attachment } : { success: false, error: "첨부 파일을 찾을 수 없습니다" });
+      return true;
+    }
+
+    const taskFileMatch = requestUrl.pathname.match(TASK_FILE_PATH_PATTERN);
+    if (request.method === "GET" && taskFileMatch) {
+      await handleTaskFileRequest(response, bridge, decodeURIComponent(taskFileMatch[1]), requestUrl.searchParams.get("path"));
       return true;
     }
 
@@ -297,6 +322,10 @@ async function handleMobileRequest(request, response, { bridge, host, port, isDe
     writeJson(response, 404, { success: false, error: "Not found" });
     return true;
   } catch (error) {
+    if (error?.name === "MobileFeatureError" && [400, 404, 409].includes(error.statusCode)) {
+      writeJson(response, error.statusCode, { success: false, error: error.message });
+      return true;
+    }
     if (error?.name === "MobileTaskInputError") {
       writeJson(response, 400, { success: false, error: error.message });
       return true;
@@ -304,6 +333,30 @@ async function handleMobileRequest(request, response, { bridge, host, port, isDe
     console.error("[kanvibe] Mobile request failed:", error);
     writeJson(response, 500, { success: false, error: "서버 오류" });
     return true;
+  }
+}
+
+/** 파일을 열지 못한 사유별 응답. 화면이 사유에 맞는 안내를 고르도록 `reason`도 함께 싣는다 */
+const TASK_FILE_FAILURE_RESPONSES = {
+  "outside-worktree": { status: 400, error: "작업 폴더 밖의 파일은 열 수 없습니다" },
+  "not-found": { status: 404, error: "파일을 찾을 수 없습니다" },
+  "too-large": { status: 413, error: "파일이 너무 커서 열 수 없습니다" },
+  unreadable: { status: 500, error: "파일을 읽을 수 없습니다" },
+};
+
+async function handleTaskFileRequest(response, bridge, taskId, filePath) {
+  if (!filePath) {
+    writeJson(response, 400, { success: false, error: "파일 경로가 필요합니다" });
+    return;
+  }
+  try {
+    writeJson(response, 200, { success: true, file: await bridge.getMobileTaskFile(taskId, filePath) });
+  } catch (error) {
+    const failure = error?.name === "TaskWorkspaceFileError" && Object.hasOwn(TASK_FILE_FAILURE_RESPONSES, error.reason)
+      ? TASK_FILE_FAILURE_RESPONSES[error.reason]
+      : null;
+    if (!failure) throw error;
+    writeJson(response, failure.status, { success: false, error: failure.error, reason: error.reason });
   }
 }
 
@@ -486,6 +539,7 @@ async function handleCreateTaskRequest(request, response, bridge) {
     baseBranch: readText(body.baseBranch),
     description: readText(body.description),
     priority: readText(body.priority),
+    ...(body.sessionType !== undefined ? { sessionType: body.sessionType } : {}),
   };
 
   if (!draft.projectId || !draft.branchName) {
@@ -668,6 +722,7 @@ function attachMobileStreamServer(server, { bridge, notifications, host, port })
    * 남은 기기가 있으면 그 화면은 그대로 흘러야 하고, 마지막 구독자가 나가면 서비스 쪽 참조 수가 스트림을 알아서 멈춘다.
    */
   const stopUnpaired = bridge.onMobileDeviceUnpaired((deviceId) => {
+    bridge.closeMobileAiLoginsForDevice?.(deviceId);
     const sockets = socketsByDeviceId.get(deviceId);
     if (!sockets) {
       return;
@@ -701,6 +756,7 @@ function attachMobileStreamServer(server, { bridge, notifications, host, port })
     stopNotifications();
     stopUnpaired();
     notifications?.stopMobileNotifications?.();
+    bridge.closeAllMobileAiLogins?.();
     for (const socket of webSocketServer.clients) socket.close(1001, "server-shutdown");
     webSocketServer.close();
   };
@@ -719,7 +775,7 @@ function attachMobileStreamServer(server, { bridge, notifications, host, port })
   server.on("upgrade", async (request, socket, head) => {
     try {
       const requestUrl = new URL(request.url || "", `http://${host}:${port}`);
-      if (requestUrl.pathname !== STREAM_PATH && requestUrl.pathname !== EVENTS_PATH) {
+      if (requestUrl.pathname !== STREAM_PATH && requestUrl.pathname !== EVENTS_PATH && !AI_LOGIN_PATH_PATTERN.test(requestUrl.pathname)) {
         socket.destroy();
         return;
       }
@@ -761,7 +817,10 @@ function attachMobileStreamServer(server, { bridge, notifications, host, port })
             return;
           }
           if (webSocket.readyState !== webSocket.OPEN) return;
-          if (requestUrl.pathname === EVENTS_PATH) {
+          if (AI_LOGIN_PATH_PATTERN.test(requestUrl.pathname)) {
+            void attachMobileAiLoginStream(webSocket, { bridge, deviceId, requestUrl })
+              .catch(() => webSocket.close(1011, "login-failed"));
+          } else if (requestUrl.pathname === EVENTS_PATH) {
             eventSockets.add(webSocket);
             webSocket.once("close", () => eventSockets.delete(webSocket));
             /** 앱은 이 목록에 없는 명령을 보내지 않고 업데이트 안내를 띄운다. 모르는 명령을 조용히 버리는 구버전에는 이 필드가 없다 */
@@ -792,6 +851,16 @@ async function answerMobileCommand(webSocket, bridge, data) {
   const result = await runMobileCommand(bridge, data);
   if (result && webSocket.readyState === webSocket.OPEN) {
     webSocket.send(JSON.stringify(result));
+  }
+}
+
+/** 터미널 스트림의 이진 프레임은 입력이 아니라 제어 요청이다. 읽을 수 없으면 버린다 */
+function parsePaneControlMessage(data) {
+  if (data.length > 256) return null;
+  try {
+    return JSON.parse(data.toString());
+  } catch {
+    return null;
   }
 }
 
@@ -834,19 +903,19 @@ async function openPaneStream(webSocket, bridge, taskId, paneId, deviceId, grant
     let resize = null;
     writeQueue = writeQueue.then(async () => {
       if (isClosed || webSocket.readyState !== webSocket.OPEN) return;
+      const control = isBinary ? parsePaneControlMessage(data) : null;
+      /** 이력 갱신은 이 데스크탑의 미러만 아는 요청이라 B의 중계로 넘기지 않는다. 넘기면 B가 잘못된 크기 요청으로 읽고 연결을 끊는다 */
+      if (control?.type === "refresh-history") {
+        if (!remoteRelay) await bridge.refreshPaneHistory(taskId, paneId);
+        return;
+      }
       if (remoteRelay) {
         remoteRelay.write(data, isBinary);
         return;
       }
       if (isBinary) {
-        try {
-          if (data.length > 256) return;
-          const message = JSON.parse(data.toString());
-          if (message?.type !== "resize" || ![message.cols, message.rows].every((value) => Number.isInteger(value) && value >= 1 && value <= 500)) return;
-          resize = message;
-        } catch {
-          return;
-        }
+        if (control?.type !== "resize" || ![control.cols, control.rows].every((value) => Number.isInteger(value) && value >= 1 && value <= 500)) return;
+        resize = control;
       }
       if (resize) {
         viewport ??= await bridge.claimPaneViewport(taskId, paneId);

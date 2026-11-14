@@ -245,15 +245,8 @@ vi.mock("@/components/DeleteTaskButton", () => ({
 }));
 
 vi.mock("@/components/DoneStatusButton", () => ({
-  default: ({ statusChangeAction }: { statusChangeAction: (formData: FormData) => Promise<void> }) => (
-    <button
-      type="button"
-      onClick={() => {
-        const formData = new FormData();
-        formData.set("status", "done");
-        void statusChangeAction(formData);
-      }}
-    >
+  default: ({ onMoveToDone, isDisabled }: { onMoveToDone: () => void; isDisabled?: boolean }) => (
+    <button type="button" disabled={isDisabled} onClick={onMoveToDone}>
       done
     </button>
   ),
@@ -651,7 +644,7 @@ describe("TaskDetailRoute", () => {
     expect(mocks.markTaskNotificationsRead).not.toHaveBeenCalled();
   });
 
-  it("초기 task 조회가 끝나지 않아도 Loading 화면에 고착되지 않는다", async () => {
+  it("초기 task 조회가 오래 걸리면 task 없음 화면 대신 지연 안내를 띄운 채 기다린다", async () => {
     vi.useFakeTimers();
     mocks.getTaskById.mockReturnValue(new Promise(() => {}));
 
@@ -660,8 +653,74 @@ describe("TaskDetailRoute", () => {
       await vi.advanceTimersByTimeAsync(INITIAL_DESKTOP_LOAD_TIMEOUT_MS);
     });
 
-    expect(screen.queryByText("Loading...")).toBeNull();
-    expect(screen.getByText("taskNotFound")).toBeTruthy();
+    expect(screen.getByText("loadDelayed")).toBeTruthy();
+    expect(screen.queryByText("taskNotFound")).toBeNull();
+  });
+
+  it("초기 task 조회가 실패하면 task 없음 화면 대신 실패 사유와 재시도를 보이고 재시도로 다시 불러온다", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.getTaskById.mockReset();
+    mocks.getTaskById
+      .mockRejectedValueOnce(new Error("db locked"))
+      .mockResolvedValueOnce(null);
+
+    render(<TaskDetailRoute />);
+
+    expect(await screen.findByText("loadFailed")).toBeTruthy();
+    expect(screen.queryByText("taskNotFound")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "retry" }));
+
+    expect(await screen.findByText("taskNotFound")).toBeTruthy();
+    expect(screen.queryByText("loadFailed")).toBeNull();
+  });
+
+  it("캐시된 task를 보여 주는 중 조회가 실패하면 캐시 화면을 유지하고 갱신 실패 배너를 보인다", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    sessionStorage.setItem(TASK_DETAIL_CACHE_KEY, JSON.stringify({
+      task: {
+        id: "task-1",
+        title: "cached task title",
+        description: null,
+        branchName: "feat/cached",
+        baseBranch: "main",
+        prUrl: null,
+        sessionType: null,
+        sessionName: null,
+        sshHost: null,
+        projectId: "project-1",
+        project: { id: "project-1", name: "kanvibe" },
+        status: "todo",
+        agentType: null,
+        worktreePath: "/repo__worktrees/cached",
+      },
+      baseBranchTaskId: null,
+      diffFiles: [],
+      claudeHooksStatus: null,
+      geminiHooksStatus: null,
+      codexHooksStatus: null,
+      openCodeHooksStatus: null,
+      aiSessions: {
+        isRemote: false,
+        targetPath: null,
+        repoPath: null,
+        sessions: [],
+        sources: [],
+      },
+      projects: [],
+      defaultSessionType: "tmux",
+      sidebarDefaultCollapsed: false,
+      sidebarHintDismissed: false,
+      doneAlertDismissed: false,
+    }));
+    mocks.getTaskById.mockRejectedValue(new Error("ipc closed"));
+
+    render(<TaskDetailRoute />);
+
+    expect(await screen.findByText("refreshFailed")).toBeTruthy();
+    expect(screen.queryByText("taskNotFound")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "info" }));
+    expect(screen.getByTestId("task-title").textContent).toBe("cached task title");
   });
 
   it("stale cache의 레거시 사이드바 힌트 값은 아이콘 패널 UI에 렌더링하지 않는다", () => {
@@ -1218,6 +1277,94 @@ describe("TaskDetailRoute", () => {
 
     await waitFor(() => {
       expect(mocks.fetchPrUrlWithPrompt.mock.calls.length).toBe(autoLookupCallCount + 1);
+    });
+  });
+
+  it("PR 조회가 실패하면 PR 없음이 아니라 조회 실패로 알린다", async () => {
+    const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.fetchPrUrlWithPrompt.mockResolvedValueOnce(null).mockRejectedValueOnce(new Error("gh auth failed"));
+    mocks.getTaskById.mockResolvedValue({
+      id: "task-1",
+      title: "task title",
+      description: null,
+      branchName: "feat/detail-shortcut",
+      baseBranch: "main",
+      prUrl: null,
+      sessionType: "tmux",
+      sessionName: "task-session",
+      sshHost: null,
+      projectId: "project-1",
+      project: { id: "project-1", name: "kanvibe" },
+      status: "todo",
+      agentType: null,
+      worktreePath: "/repo__worktrees/detail-shortcut",
+    });
+
+    render(
+      <BoardCommandProvider>
+        <TaskDetailRoute />
+      </BoardCommandProvider>,
+    );
+
+    await screen.findByLabelText("terminal input");
+
+    await waitFor(() => {
+      expect(mocks.fetchPrUrlWithPrompt).toHaveBeenCalledTimes(1);
+    });
+    fireEvent.keyDown(window, { key: "4", ctrlKey: true });
+
+    await waitFor(() => {
+      expect(alertSpy).toHaveBeenCalledWith("pullRequestLookupFailed");
+    });
+    expect(alertSpy).not.toHaveBeenCalledWith("pullRequestNotFound");
+  });
+
+  it("PR 조회를 기다리는 동안 PR 자리에 진행을 보이고 다시 눌러도 한 번만 조회한다", async () => {
+    vi.spyOn(window, "alert").mockImplementation(() => {});
+    let resolveLookup: (value: string | null) => void = () => {};
+    mocks.fetchPrUrlWithPrompt.mockResolvedValueOnce(null).mockReturnValueOnce(new Promise((resolve) => {
+      resolveLookup = resolve;
+    }));
+    mocks.getTaskById.mockResolvedValue({
+      id: "task-1",
+      title: "task title",
+      description: null,
+      branchName: "feat/detail-shortcut",
+      baseBranch: "main",
+      prUrl: null,
+      sessionType: "tmux",
+      sessionName: "task-session",
+      sshHost: null,
+      projectId: "project-1",
+      project: { id: "project-1", name: "kanvibe" },
+      status: "todo",
+      agentType: null,
+      worktreePath: "/repo__worktrees/detail-shortcut",
+    });
+
+    render(
+      <BoardCommandProvider>
+        <TaskDetailRoute />
+      </BoardCommandProvider>,
+    );
+
+    await screen.findByLabelText("terminal input");
+
+    await waitFor(() => {
+      expect(mocks.fetchPrUrlWithPrompt).toHaveBeenCalledTimes(1);
+    });
+    fireEvent.keyDown(window, { key: "4", ctrlKey: true });
+    fireEvent.keyDown(window, { key: "4", ctrlKey: true });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "PR" }).getAttribute("aria-busy")).toBe("true");
+    });
+    expect(mocks.fetchPrUrlWithPrompt).toHaveBeenCalledTimes(2);
+
+    resolveLookup(null);
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "PR" }).getAttribute("aria-busy")).toBeNull();
     });
   });
 
@@ -1842,6 +1989,86 @@ describe("TaskDetailRoute", () => {
 
     expect(await screen.findByTestId("hooks-status-card")).toBeTruthy();
     expect(screen.getByText("done")).toBeTruthy();
+  });
+
+  it("상태 이동 응답을 기다리는 동안 대상 버튼에 진행 문구를 보이고 다른 상태 요청을 막는다", async () => {
+    const task = {
+      id: "task-1",
+      title: "task title",
+      description: null,
+      branchName: "feat/status-move",
+      baseBranch: "main",
+      prUrl: null,
+      sessionType: null,
+      sessionName: null,
+      sshHost: null,
+      projectId: "project-1",
+      project: { id: "project-1", name: "kanvibe" },
+      status: "todo",
+      agentType: null,
+      worktreePath: "/repo__worktrees/status-move",
+    };
+    mocks.getTaskById.mockResolvedValue(task);
+    let resolveMove: (value: unknown) => void = () => {};
+    mocks.updateTaskStatus.mockReturnValueOnce(new Promise((resolve) => {
+      resolveMove = resolve;
+    }));
+
+    render(<TaskDetailRoute />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "actions · hooksStatus" }));
+    fireEvent.click(screen.getByRole("button", { name: "moveToReview" }));
+
+    const pendingButton = await screen.findByRole("button", { name: "movingStatus" });
+    expect(pendingButton.getAttribute("aria-busy")).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "moveToProgress" }));
+
+    expect(mocks.updateTaskStatus).toHaveBeenCalledTimes(1);
+    expect(mocks.updateTaskStatus).toHaveBeenCalledWith("task-1", "review");
+
+    await act(async () => {
+      resolveMove({ ...task, status: "review" });
+    });
+
+    expect(await screen.findByRole("button", { name: "moveToTodo" })).toBeTruthy();
+  });
+
+  it("상태 이동이 실패하면 현재 상태를 유지하고 사유와 다시 시도를 보인다", async () => {
+    const task = {
+      id: "task-1",
+      title: "task title",
+      description: null,
+      branchName: "feat/status-move",
+      baseBranch: "main",
+      prUrl: null,
+      sessionType: null,
+      sessionName: null,
+      sshHost: null,
+      projectId: "project-1",
+      project: { id: "project-1", name: "kanvibe" },
+      status: "todo",
+      agentType: null,
+      worktreePath: "/repo__worktrees/status-move",
+    };
+    mocks.getTaskById.mockResolvedValue(task);
+    mocks.updateTaskStatus
+      .mockRejectedValueOnce(new Error("db locked"))
+      .mockResolvedValueOnce({ ...task, status: "review" });
+
+    render(<TaskDetailRoute />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "actions · hooksStatus" }));
+    fireEvent.click(screen.getByRole("button", { name: "moveToReview" }));
+
+    expect((await screen.findByRole("alert")).textContent).toContain("statusChangeFailed");
+    expect(screen.getByRole("button", { name: "moveToReview" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "retry" }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: "moveToReview" })).toBeNull();
+    });
+    expect(mocks.updateTaskStatus).toHaveBeenCalledTimes(2);
   });
 
   it("Done 상태로 변경해도 상세 화면을 유지한다", async () => {
@@ -2549,7 +2776,8 @@ describe("TaskDetailRoute", () => {
 
     expect(await screen.findByRole("heading", { level: 2, name: "작업 요약" })).toBeTruthy();
     expect(screen.getByText("첫 번째 항목").tagName).toBe("LI");
-    expect(screen.getByText("const value = 1;").closest("pre")).toBeTruthy();
+    /** 코드는 색을 입히느라 여러 조각으로 나뉘므로 블록 전체의 글자로 확인한다 */
+    expect([...document.querySelectorAll("pre")].map((block) => block.textContent)).toContain("const value = 1;\n");
     expect(await screen.findByTestId("rendered-mermaid-svg")).toBeTruthy();
     expect(screen.getByText(/graph TD/)).toBeTruthy();
     expect(screen.queryByText(/alert\("xss"\)/)).toBeNull();

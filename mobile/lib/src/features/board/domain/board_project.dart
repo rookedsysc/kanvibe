@@ -10,6 +10,7 @@ class BoardProject {
     this.color,
     this.repoPath,
     this.sshHost,
+    this.iconDataUrl,
   });
 
   final String id;
@@ -17,6 +18,7 @@ class BoardProject {
   final String? color;
   final String? repoPath;
   final String? sshHost;
+  final String? iconDataUrl;
 
   /// 베이스 브랜치 칸의 처음 값. 데스크탑 생성 화면도 프로젝트를 고르면 이 값을 먼저 넣는다
   final String defaultBranch;
@@ -53,6 +55,7 @@ class BoardProject {
       color: json['color'] is String ? json['color'] as String : null,
       repoPath: _readString(json['repoPath']),
       sshHost: _readString(json['sshHost']),
+      iconDataUrl: _readString(json['iconDataUrl']),
       defaultBranch: json['defaultBranch'] is String
           ? json['defaultBranch'] as String
           : 'main',

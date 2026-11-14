@@ -121,6 +121,48 @@ test("실제 HTTP 요청이 식별자를 보존한 시스템 알림과 서명된
   assert.equal(message.android.notification.tag, message.android.collapse_key);
 });
 
+test("운영 경고는 상태 변경으로 바꾸지 않고 원래 종류와 식별자를 FCM에 전달한다", async (context) => {
+  const messages = [];
+  const url = await startRelay(context, async (url, options) => {
+    if (url === "https://oauth2.googleapis.com/token") {
+      return Response.json({ access_token: "test-only-access-token", expires_in: 3600 });
+    }
+    messages.push(JSON.parse(options.body).message);
+    return Response.json({ name: "projects/kanvibe-relay-test/messages/warning-1" });
+  });
+  const payload = notification();
+  payload.data.type = "operational-warning";
+  payload.data.kind = "hook-status-target-missing";
+
+  const response = await send(url, payload);
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { success: true });
+  assert.equal(messages.length, 1);
+  assert.deepEqual(messages[0].data, payload.data);
+  assert.deepEqual(messages[0].notification, payload.notification);
+  assert.equal(messages[0].data.type, "operational-warning");
+});
+
+test("운영 경고의 미지원 종류와 추가 필드는 공급자 호출 전에 거절한다", async (context) => {
+  let upstreamCalls = 0;
+  const url = await startRelay(context, async () => { upstreamCalls += 1; });
+  const cases = [
+    { type: "operational-warning", kind: "arbitrary-command" },
+    { type: "operational-warning", kind: "task-hook-install-failed" },
+    { type: "operational-warning", kind: "hook-status-target-missing", command: "unsupported" },
+    { type: "task-status-changed", kind: "hook-status-target-missing" },
+  ];
+  for (const fields of cases) {
+    const payload = notification();
+    Object.assign(payload.data, fields);
+    const response = await send(url, payload);
+    assert.equal(response.status, 400);
+    assert.deepEqual(await response.json(), { error: "invalid_notification" });
+  }
+  assert.equal(upstreamCalls, 0);
+});
+
 test("같은 PC와 태스크의 알림만 병합하고 OAuth 토큰을 만료 전에 갱신한다", async (context) => {
   const messages = [];
   let oauthCalls = 0;

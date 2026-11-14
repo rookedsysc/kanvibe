@@ -3,6 +3,7 @@ import { IntlProvider } from "next-intl";
 import { HashRouter, Navigate, Outlet, Route, Routes, useParams } from "react-router-dom";
 import { BoardCommandProvider } from "@/desktop/renderer/components/BoardCommandProvider";
 import BoardEventAlert from "@/desktop/renderer/components/BoardEventAlert";
+import ActionStatusToast from "@/desktop/renderer/components/ActionStatusToast";
 import BackgroundSyncReviewDialog from "@/desktop/renderer/components/BackgroundSyncReviewDialog";
 import NotificationListener from "@/desktop/renderer/components/NotificationListener";
 import ReleaseUpdateDialog from "@/desktop/renderer/components/ReleaseUpdateDialog";
@@ -106,6 +107,7 @@ function LocaleShell() {
         <NotificationListener />
         <ReleaseUpdateDialog />
         <BoardEventAlert />
+        <ActionStatusToast />
         <BackgroundSyncReviewDialog />
         <Outlet />
       </BoardCommandProvider>

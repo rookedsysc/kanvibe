@@ -333,6 +333,15 @@ describe("Herdr API", () => {
     execGit.mockResolvedValue(JSON.stringify({ error: { code: "not_found", message: "missing session" } }));
     await expect(readHerdrTabs("feature")).rejects.toThrow("missing session");
   });
+  it("herdr 서버가 꺼져 있으면 실패하는 탭 목록 조회는 실패를 오류 로그로 남기지 않게 요청한다", async () => {
+    execGit.mockResolvedValue(JSON.stringify({ result: { tabs: [] } }));
+    await readHerdrTabs("feature", "remote");
+    expect(execGit).toHaveBeenCalledWith(
+      buildHerdrCommand("feature", ["tab", "list"]),
+      "remote",
+      expect.objectContaining({ shouldLogFailure: false }),
+    );
+  });
   it("소켓 응답이 여러 조각으로 와도 정확한 tab.move 요청을 한 번 전송한다", async () => {
     directory = await mkdtemp(path.join(tmpdir(), "kvht-"));
     const socketPath = path.join(directory, "api");
@@ -743,8 +752,8 @@ describe("readHerdrTaskPaneSize", () => {
     execGit.mockResolvedValueOnce(result({ pane: selected })).mockResolvedValueOnce(result({ layout: { ...layout, zoomed, focused_pane_id: focused } }));
     await expect(readHerdrTaskPaneSize("feature", "w1:p1", "remote")).resolves.toEqual({ cols, rows: 22 });
     expect(execGit.mock.calls).toEqual([
-      [buildHerdrCommand("feature", ["pane", "get", "w1:p1"]), "remote", { timeoutMs: 5000, retrySafe: true }],
-      [buildHerdrCommand("feature", ["pane", "layout", "--pane", "w1:p1"]), "remote", { timeoutMs: 5000, retrySafe: true }],
+      [buildHerdrCommand("feature", ["pane", "get", "w1:p1"]), "remote", { timeoutMs: 5000, retrySafe: true, shouldLogFailure: true }],
+      [buildHerdrCommand("feature", ["pane", "layout", "--pane", "w1:p1"]), "remote", { timeoutMs: 5000, retrySafe: true, shouldLogFailure: true }],
     ]);
   });
 
@@ -787,7 +796,41 @@ describe("readHerdrTaskPaneSize", () => {
     execGit.mockResolvedValueOnce(result({}));
     const { runHerdrCommand } = await import("@/lib/herdr");
     await runHerdrCommand("feature", args, "remote");
-    expect(execGit).toHaveBeenCalledWith(buildHerdrCommand("feature", args), "remote", { timeoutMs: 5000, retrySafe: false });
+    expect(execGit).toHaveBeenCalledWith(buildHerdrCommand("feature", args), "remote", { timeoutMs: 5000, retrySafe: false, shouldLogFailure: true });
   });
 
+});
+
+describe("Herdr Space 연결 파일 읽기", () => {
+  const respondAsSharedServer = async (command: string) => {
+    if (command.includes("'session' 'list'")) return JSON.stringify({ sessions: [{ name: "kanvibe", running: true, session_dir: "/shared", socket_path: "/shared/herdr.sock" }] });
+    return result({ tabs: [] });
+  };
+  beforeEach(() => {
+    execGit.mockReset();
+    readTextFile.mockReset();
+    execGit.mockImplementation(respondAsSharedServer);
+    readTextFile.mockResolvedValue(JSON.stringify({ "task-a": "w1" }));
+  });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it("이어지는 명령은 연결 파일을 한 번만 읽고 2초가 지나면 다시 읽는다", async () => {
+    vi.useFakeTimers({ toFake: ["performance"] });
+    await Promise.all([readHerdrTabs("kanvibe:task-a", "mapping-reuse-host"), readHerdrTabs("kanvibe:task-a", "mapping-reuse-host")]);
+    vi.advanceTimersByTime(1_999);
+    await readHerdrTabs("kanvibe:task-a", "mapping-reuse-host");
+    expect(readTextFile).toHaveBeenCalledTimes(1);
+
+    vi.advanceTimersByTime(1);
+    await readHerdrTabs("kanvibe:task-a", "mapping-reuse-host");
+    expect(readTextFile).toHaveBeenCalledTimes(2);
+  });
+
+  it("읽기에 실패한 결과는 다음 명령에 물려주지 않는다", async () => {
+    readTextFile.mockRejectedValueOnce(new Error("Connection reset by peer"));
+    await expect(readHerdrTabs("kanvibe:task-a", "mapping-failure-host")).rejects.toThrow("Connection reset by peer");
+
+    await expect(readHerdrTabs("kanvibe:task-a", "mapping-failure-host")).resolves.toEqual([]);
+    expect(readTextFile).toHaveBeenCalledTimes(2);
+  });
 });

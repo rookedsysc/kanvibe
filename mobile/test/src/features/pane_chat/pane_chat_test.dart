@@ -699,6 +699,50 @@ void main() {
     await tester.pump();
   });
 
+  testWidgets('최신 메시지에서 한 화면 넘게 올라가면 최신 이동 버튼이 나오고 누르면 최신으로 돌아간다', (
+    tester,
+  ) async {
+    final client = DesktopClient(
+      httpClient: MockClient((_) async {
+        final snapshot = snapshotJson();
+        (snapshot['transcript'] as Map<String, dynamic>)['messages'] = [
+          {'role': 'assistant', 'fullText': '가장 최신 답변'},
+          for (var index = 1; index < 40; index++)
+            {'role': 'assistant', 'fullText': '이전 답변 $index'},
+        ];
+        return response({'snapshot': snapshot});
+      }),
+    );
+    final container = setup(client);
+    addTearDown(container.dispose);
+    addTearDown(client.close);
+    await pumpChat(tester, container);
+    expect(find.text('가장 최신 답변'), findsOneWidget);
+    expect(find.byTooltip('최신 메시지로 이동'), findsNothing);
+
+    await tester.drag(find.text('가장 최신 답변'), const Offset(0, 100));
+    await tester.pumpAndSettle();
+    expect(
+      find.byTooltip('최신 메시지로 이동'),
+      findsNothing,
+      reason: '한 화면 안쪽으로만 올라간 동안에는 버튼을 띄우지 않는다',
+    );
+
+    await tester.fling(find.byType(ListView), const Offset(0, 600), 4000);
+    await tester.pumpAndSettle();
+    expect(find.text('가장 최신 답변'), findsNothing);
+    expect(find.byTooltip('최신 메시지로 이동'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('최신 메시지로 이동'));
+    await tester.pumpAndSettle();
+    expect(find.text('가장 최신 답변'), findsOneWidget);
+    expect(find.byTooltip('최신 메시지로 이동'), findsNothing);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+    container.dispose();
+    await tester.pump();
+  });
+
   testWidgets('새 응답이 앞에 추가되어도 펼친 추론은 유지된다', (tester) async {
     var withNewReply = false;
     final client = DesktopClient(
@@ -807,34 +851,6 @@ void main() {
     await container.read(paneChatProvider(target).notifier).refresh();
     await tester.pumpAndSettle();
     expect(find.text('Read auth.ts'), findsOneWidget);
-    await tester.pumpWidget(const SizedBox.shrink());
-    container.dispose();
-    await tester.pump();
-  });
-
-  testWidgets('이전 대화를 읽는 동안에만 최신 대화로 가는 버튼이 보인다', (tester) async {
-    final client = DesktopClient(
-      httpClient: MockClient((_) async {
-        final snapshot = snapshotJson();
-        (snapshot['transcript'] as Map<String, dynamic>)['messages'] = [
-          for (var index = 0; index < 30; index++)
-            {'role': 'assistant', 'fullText': '답변 $index'},
-        ];
-        return response({'snapshot': snapshot});
-      }),
-    );
-    final container = setup(client);
-    addTearDown(container.dispose);
-    addTearDown(client.close);
-    await pumpChat(tester, container);
-    expect(find.byTooltip('최신 대화로 이동'), findsNothing);
-    await tester.drag(find.byType(ListView), const Offset(0, 400));
-    await tester.pumpAndSettle();
-    expect(find.text('답변 0'), findsNothing);
-    await tester.tap(find.byTooltip('최신 대화로 이동'));
-    await tester.pumpAndSettle();
-    expect(find.text('답변 0'), findsOneWidget);
-    expect(find.byTooltip('최신 대화로 이동'), findsNothing);
     await tester.pumpWidget(const SizedBox.shrink());
     container.dispose();
     await tester.pump();

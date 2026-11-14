@@ -1,5 +1,6 @@
 import path from "path";
 import { extractMessageAttachments } from "./messageAttachments";
+import { summarizeClaudeToolUse, withToolCall } from "./messageFiles";
 import {
   createReaderResult,
   createSessionDetail,
@@ -31,6 +32,8 @@ import type {
   AgentCallNode,
   AggregatedAiMessage,
   AggregatedAiSession,
+  AiMessageAttachment,
+  AiMessageFile,
   AiMessageRole,
   AiSessionDetailReaderResult,
   AiSessionReaderContext,
@@ -65,6 +68,45 @@ interface ClaudeSessionAccumulator {
 function getClaudeMessageText(event: ClaudeProjectEvent): string {
   const text = extractPlainText(event.message?.content);
   return event.imagePasteIds?.length ? text.replace(/^(?:\[Image #\d+\]\s*)+/, "") : text;
+}
+
+interface ClaudeEventMessage {
+  role: AiMessageRole;
+  text: string;
+  attachments: AiMessageAttachment[];
+  toolName?: string;
+  files?: AiMessageFile[];
+}
+
+/**
+ * 기록 한 줄을 화면에 보일 메시지들로 나눈다.
+ *
+ * 줄 전체의 글은 지금까지처럼 메시지 하나가 되고, assistant 줄의 `thinking`과 `tool_use` 조각은 각각
+ * 따로 메시지가 된다. 조각이 적힌 순서가 곧 일어난 순서라서, 글 메시지는 첫 `text` 조각 자리에 둔다.
+ */
+function extractClaudeEventMessages(event: ClaudeProjectEvent, sourceRef: string): ClaudeEventMessage[] {
+  const entryMessage: ClaudeEventMessage = {
+    role: resolveClaudeRole(event),
+    text: getClaudeMessageText(event),
+    attachments: extractMessageAttachments(event.message?.content, sourceRef),
+  };
+  const content = event.message?.content;
+  if (event.message?.role !== "assistant" || !Array.isArray(content)) return [entryMessage];
+
+  const messages: ClaudeEventMessage[] = [];
+  for (const part of content as Array<Record<string, unknown> | null>) {
+    if (part?.type === "text" && !messages.includes(entryMessage)) {
+      messages.push(entryMessage);
+    }
+    if (part?.type === "thinking" && typeof part.thinking === "string" && part.thinking.trim()) {
+      messages.push({ role: "reasoning", text: part.thinking, attachments: [] });
+    }
+    const toolCall = summarizeClaudeToolUse(part);
+    if (toolCall) {
+      messages.push({ role: "tool", text: toolCall.summary, attachments: [], toolName: toolCall.toolName, files: toolCall.files });
+    }
+  }
+  return messages.includes(entryMessage) ? messages : [...messages, entryMessage];
 }
 
 function isClaudeImageCompanion(event: ClaudeProjectEvent): boolean {
@@ -126,24 +168,23 @@ export async function readClaudeSessionDetail(
         resolvedSourceRef = filePath;
       }
 
-      const role = resolveClaudeRole(event);
-      if (context.roles && context.roles.length > 0 && !context.roles.includes(role)) {
-        continue;
-      }
+      for (const { role, text, attachments, toolName, files } of extractClaudeEventMessages(event, filePath)) {
+        if (context.roles && context.roles.length > 0 && !context.roles.includes(role)) {
+          continue;
+        }
 
-      const text = getClaudeMessageText(event);
-      const attachments = extractMessageAttachments(event.message?.content, filePath);
-      if (context.query && ![text, ...attachments.map(attachment => attachment.name)].join("\n").toLowerCase().includes(context.query.toLowerCase())) {
-        continue;
-      }
+        if (context.query && ![text, ...attachments.map(attachment => attachment.name)].join("\n").toLowerCase().includes(context.query.toLowerCase())) {
+          continue;
+        }
 
-      if (role === "user" && text && !title) {
-        title = truncateText(text, 80);
-      }
+        if (role === "user" && text && !title) {
+          title = truncateText(text, 80);
+        }
 
-      const previewMessage = makePreviewMessage(role, event.timestamp, text, attachments);
-      if (previewMessage) {
-        messages.push(previewMessage);
+        const previewMessage = makePreviewMessage(role, event.timestamp, text, attachments);
+        if (previewMessage) {
+          messages.push(withToolCall(previewMessage, { toolName, files }));
+        }
       }
     }
   }

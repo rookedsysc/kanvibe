@@ -30,31 +30,32 @@ class PaneChatTranscriptList extends ConsumerStatefulWidget {
 
 class _PaneChatTranscriptListState
     extends ConsumerState<PaneChatTranscriptList> {
-  /// 이 거리 안이면 최신 대화를 보고 있다고 본다
-  static const _latestSlop = 80.0;
-
   /// 떠 있는 채팅 버튼이 가장 오래된 메시지를 가리지 않도록 비워 두는 높이
   static const _floatingToggleInset = AppSizes.minTouchTarget + AppSizes.p24;
 
   final _scroll = ScrollController();
-  final _isAwayFromLatest = ValueNotifier(false);
-
-  @override
-  void initState() {
-    super.initState();
-    _scroll.addListener(_trackLatest);
-  }
 
   @override
   void dispose() {
     _scroll.dispose();
-    _isAwayFromLatest.dispose();
     super.dispose();
   }
 
-  // 스크롤할 때마다 목록 전체를 다시 그리지 않도록 버튼만 이 값을 듣는다
-  void _trackLatest() {
-    _isAwayFromLatest.value = _scroll.offset > _latestSlop;
+  /// 최신 메시지에서 한 화면 넘게 올라가 있는지.
+  ///
+  /// CLI 대상이 바뀌는 프레임에는 이전 목록과 새 목록이 함께 붙어 있고, 새 목록은 아직 배치 전이라
+  /// 그동안에는 판단하지 않는다.
+  bool get _isAwayFromLatest =>
+      _scroll.positions.length == 1 &&
+      _scroll.position.hasViewportDimension &&
+      _scroll.offset > _scroll.position.viewportDimension;
+
+  void _jumpToLatest() {
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _scroll.jumpTo(0);
+    } else {
+      _scroll.animateTo(0, duration: Durations.short4, curve: Curves.easeOut);
+    }
   }
 
   void _keepReadingPosition() {
@@ -161,38 +162,22 @@ class _PaneChatTranscriptListState
           ),
         ),
         Positioned(
-          bottom: AppSizes.p8,
-          left: 0,
-          right: 0,
-          child: Center(
-            child: ValueListenableBuilder(
-              valueListenable: _isAwayFromLatest,
-              builder: (context, isAway, _) => isAway
-                  ? Semantics(
-                      identifier: 'pane-chat-jump-latest',
-                      child: IconButton.outlined(
-                        tooltip: '최신 대화로 이동',
-                        onPressed: () => _scroll.animateTo(
-                          0,
-                          duration: const Duration(milliseconds: 200),
-                          curve: Curves.easeOut,
-                        ),
-                        style: IconButton.styleFrom(
-                          backgroundColor: AppColors.buttonNeutral,
-                          side: const BorderSide(color: AppColors.borderStrong),
-                        ),
-                        icon: const Icon(
-                          Icons.arrow_downward,
-                          size: AppSizes.p16,
-                        ),
-                        constraints: const BoxConstraints(
-                          minWidth: AppSizes.minTouchTarget,
-                          minHeight: AppSizes.minTouchTarget,
-                        ),
-                      ),
-                    )
-                  : const SizedBox.shrink(),
-            ),
+          bottom: AppSizes.p16,
+          right: AppSizes.p16,
+          // 스크롤할 때마다 목록 전체를 다시 그리지 않도록 버튼만 스크롤을 듣는다
+          child: ListenableBuilder(
+            listenable: _scroll,
+            builder: (context, _) => _isAwayFromLatest
+                ? IconButton.filledTonal(
+                    tooltip: '최신 메시지로 이동',
+                    style: IconButton.styleFrom(
+                      backgroundColor: AppColors.bgSurface,
+                      foregroundColor: AppColors.textPrimary,
+                    ),
+                    onPressed: _jumpToLatest,
+                    icon: const Icon(Icons.arrow_downward),
+                  )
+                : const SizedBox.shrink(),
           ),
         ),
       ],

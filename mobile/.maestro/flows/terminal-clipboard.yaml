@@ -1,4 +1,5 @@
-# 격리 desktop fixture의 worktree에 clipboard.vim과 clipboard.txt를 준비한다.
+# `qa/mobile/lib/prepareQaDesktop.cjs`가 worktree에 둔 clipboard.vim과 clipboard.txt를 쓴다.
+# clipboard.vim은 Neovim 내장 OSC 52 공급자를 쓰므로 fixture 셸의 `vim`이 Neovim 0.10 이상이어야 한다.
 appId: ${APP_ID}
 env:
   DESKTOP_API_FROM_HOST: http://127.0.0.1:39736
@@ -13,6 +14,9 @@ env:
 - tapOn: "PC 이름.*"
 - inputText: "BEFOREYANK"
 - longPressOn: "BEFOREYANK"
+- extendedWaitUntil:
+    visible: "(Select all|모두 선택)"
+    timeout: 10000
 - tapOn: "(Select all|모두 선택)"
 - tapOn: "(Copy|복사)"
 - hideKeyboard

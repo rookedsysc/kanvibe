@@ -17,11 +17,12 @@ InboxNotification inboxNotice({
 );
 
 class InboxDesktopClient extends FakeDesktopClient {
-  InboxDesktopClient({super.tasksById, super.board});
+  InboxDesktopClient({super.tasksById, super.board, super.surfaces});
   final notificationsByConnection = <String, List<InboxNotification>>{};
   final inboxFetches = <String>[];
   final readCalls = <({String connectionId, String id})>[];
   final readAllCalls = <String>[];
+  final readTaskCalls = <({String connectionId, String taskId})>[];
   Future<List<InboxNotification>> Function(DesktopConnection)? onFetch;
   Future<void> Function()? onRead;
   Future<void> Function()? onReadAll;
@@ -58,6 +59,18 @@ class InboxDesktopClient extends FakeDesktopClient {
     notificationsByConnection[connection.id] =
         (notificationsByConnection[connection.id] ?? [])
             .map((entry) => entry.asRead())
+            .toList();
+  }
+
+  @override
+  Future<void> markTaskNotificationsRead(
+    DesktopConnection connection,
+    String taskId,
+  ) async {
+    readTaskCalls.add((connectionId: connection.id, taskId: taskId));
+    notificationsByConnection[connection.id] =
+        (notificationsByConnection[connection.id] ?? [])
+            .map((entry) => entry.taskId == taskId ? entry.asRead() : entry)
             .toList();
   }
 }

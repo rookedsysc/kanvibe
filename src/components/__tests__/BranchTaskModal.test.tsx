@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import BranchTaskModal from "../BranchTaskModal";
+import ActionStatusToast from "@/desktop/renderer/components/ActionStatusToast";
 import type { Project } from "@/entities/Project";
 import type { KanbanTask } from "@/entities/KanbanTask";
 
@@ -11,7 +12,15 @@ const { mockBranchFromTask, mockEnsureSessionDependencyWithPrompt, mockGetProjec
 }));
 
 vi.mock("next-intl", () => ({
+  useLocale: () => "ko",
   useTranslations: () => (key: string) => key,
+}));
+
+const { mockRedirect } = vi.hoisted(() => ({ mockRedirect: vi.fn() }));
+
+vi.mock("@/desktop/renderer/navigation", () => ({
+  localizeHref: (href: string, currentLocale = "ko") => href.startsWith("/") ? `/${currentLocale}${href}` : href,
+  redirect: (...args: unknown[]) => mockRedirect(...args),
 }));
 
 vi.mock("@/desktop/renderer/actions/kanban", () => ({
@@ -187,4 +196,115 @@ describe("BranchTaskModal", () => {
     expect(screen.getByTestId("branches").textContent).toBe("B-only");
   });
 
+});
+
+describe("BranchTaskModal - 분기 중 닫기와 중복 제출", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetProjectBranches.mockResolvedValue(["main"]);
+  });
+
+  function renderModal(isOpen: boolean, onClose = vi.fn()) {
+    return (
+      <>
+        {isOpen ? (
+          <BranchTaskModal task={createTask()} projects={[createProject()]} defaultSessionType="tmux" onClose={onClose} />
+        ) : null}
+        <ActionStatusToast />
+      </>
+    );
+  }
+
+  it("분기 응답을 기다리는 동안 다시 제출해도 요청은 한 번만 보낸다", async () => {
+    mockBranchFromTask.mockReturnValue(new Promise(() => {}));
+    render(renderModal(true));
+    await waitFor(() => {
+      expect(mockGetProjectBranches).toHaveBeenCalledWith("project-remote");
+    });
+
+    const branchInput = screen.getByPlaceholderText("branchPlaceholder");
+    fireEvent.change(branchInput, { target: { value: "feat/once" } });
+    const form = branchInput.closest("form")!;
+    fireEvent.submit(form);
+    fireEvent.submit(form);
+    await act(async () => {});
+
+    expect(mockBranchFromTask).toHaveBeenCalledTimes(1);
+  });
+
+  it("분기 중 닫은 뒤 성공하면 열기 토스트를 보이고 누르면 그 task로 이동한다", async () => {
+    let resolveBranch: (task: { id: string }) => void = () => {};
+    mockBranchFromTask.mockReturnValue(new Promise((resolve) => {
+      resolveBranch = resolve;
+    }));
+    const onClose = vi.fn();
+    const view = render(renderModal(true, onClose));
+    await waitFor(() => {
+      expect(mockGetProjectBranches).toHaveBeenCalledWith("project-remote");
+    });
+
+    fireEvent.change(screen.getByPlaceholderText("branchPlaceholder"), { target: { value: "feat/bg" } });
+    fireEvent.click(screen.getByRole("button", { name: "submit" }));
+    await waitFor(() => {
+      expect(mockBranchFromTask).toHaveBeenCalledTimes(1);
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "closeAndContinue" }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+    view.rerender(renderModal(false));
+
+    resolveBranch({ id: "task-1" });
+
+    expect((await screen.findByRole("status")).textContent).toContain("succeeded");
+    fireEvent.click(screen.getByRole("button", { name: "open" }));
+    await waitFor(() => {
+      expect(mockRedirect).toHaveBeenCalledWith("/ko/task/task-1");
+    });
+  });
+
+  it("분기 중 닫은 뒤 실패하면 실패 토스트로 알린다", async () => {
+    let rejectBranch: (error: Error) => void = () => {};
+    mockBranchFromTask.mockReturnValue(new Promise((_resolve, reject) => {
+      rejectBranch = reject;
+    }));
+    const view = render(renderModal(true));
+    await waitFor(() => {
+      expect(mockGetProjectBranches).toHaveBeenCalledWith("project-remote");
+    });
+
+    fireEvent.change(screen.getByPlaceholderText("branchPlaceholder"), { target: { value: "feat/fail" } });
+    fireEvent.click(screen.getByRole("button", { name: "submit" }));
+    await waitFor(() => {
+      expect(mockBranchFromTask).toHaveBeenCalledTimes(1);
+    });
+    view.rerender(renderModal(false));
+
+    rejectBranch(new Error("branch exists"));
+
+    expect((await screen.findByRole("alert")).textContent).toContain("failedWithReason");
+    fireEvent.click(screen.getByRole("button", { name: "close" }));
+  });
+});
+
+describe("BranchTaskModal - 브랜치 목록 조회 상태", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("브랜치 목록 조회가 실패하면 빈 목록 대신 사유와 다시 불러오기를 보인다", async () => {
+    mockGetProjectBranches
+      .mockRejectedValueOnce(new Error("ssh timeout"))
+      .mockResolvedValueOnce(["main", "develop"]);
+    render(
+      <BranchTaskModal task={createTask()} projects={[createProject()]} defaultSessionType="tmux" onClose={vi.fn()} />,
+    );
+
+    expect((await screen.findByRole("alert")).textContent).toContain("loadFailed");
+    fireEvent.click(screen.getByRole("button", { name: "retry" }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("alert")).toBeNull();
+    });
+    expect(mockGetProjectBranches).toHaveBeenCalledTimes(2);
+  });
 });

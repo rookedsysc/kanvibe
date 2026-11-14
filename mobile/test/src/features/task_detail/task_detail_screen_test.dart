@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:kanvibe_mobile/src/common/constants/app_theme.dart';
 import 'package:kanvibe_mobile/src/common/network/desktop_client.dart';
 import 'package:kanvibe_mobile/src/common/network/desktop_command.dart';
+import 'package:kanvibe_mobile/src/common/network/desktop_connection.dart';
 import 'package:kanvibe_mobile/src/common/providers.dart';
 import 'package:kanvibe_mobile/src/features/board/data/board_snapshot.dart';
 import 'package:kanvibe_mobile/src/features/board/domain/board_task.dart';
@@ -20,6 +21,7 @@ import 'package:kanvibe_mobile/src/features/task_detail/presentation/widgets/ter
 import 'package:xterm/xterm.dart' as xterm;
 
 import '../../../support/fake_desktop.dart';
+import '../../../support/fake_notification_inbox.dart';
 
 /// 데스크탑 스크린샷과 같은 모양. window 하나가 좌우 두 pane으로 갈려 있고, 두 번째 window가 하나 더 있다
 const _twoPaneWindow = MirrorTab(
@@ -121,6 +123,14 @@ Future<FakeDesktopClient> pumpDetail(
         statusError: statusError,
       );
 
+  client.onJsonRequest ??= (method, segments, query, body) async {
+    if (method == 'GET' && segments.join('/') == 'settings') {
+      return {
+        'settings': {'doneAlertDismissed': true},
+      };
+    }
+    return {'success': true};
+  };
   await tester.pumpWidget(
     wrapWithApp(
       TaskDetailScreen(task: task),
@@ -136,7 +146,9 @@ Future<FakeDesktopClient> pumpDetail(
 xterm.Terminal terminalIn(WidgetTester tester, String paneId) => tester
     .widget<xterm.TerminalView>(
       find.descendant(
-        of: find.byKey(ValueKey(paneId)),
+        of: find.byWidgetPredicate(
+          (widget) => widget is PaneTerminalView && widget.pane.id == paneId,
+        ),
         matching: find.byType(xterm.TerminalView),
       ),
     )
@@ -229,6 +241,51 @@ Future<void> _submitCreation(WidgetTester tester) async {
 }
 
 void main() {
+  group('알림 읽음', () {
+    testWidgets('상세 화면에 들어오면 데스크톱에 이 태스크의 알림 읽음을 요청한다', (tester) async {
+      final client = InboxDesktopClient(surfaces: _surfaces);
+      await pumpDetail(tester, size: phoneSize, desktopClient: client);
+
+      expect(client.readTaskCalls.map((call) => call.taskId), [_task.id]);
+    });
+
+    testWidgets('다른 화면이 덮인 동안에는 요청하지 않고 다시 보일 때 요청한다', (tester) async {
+      final client = InboxDesktopClient(surfaces: _surfaces);
+      await pumpDetail(tester, size: phoneSize, desktopClient: client);
+      final navigator = tester.state<NavigatorState>(find.byType(Navigator));
+
+      unawaited(
+        navigator.push(
+          MaterialPageRoute<void>(builder: (_) => const Text('덮는 화면')),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(client.readTaskCalls, hasLength(1));
+
+      navigator.pop();
+      await tester.pumpAndSettle();
+      expect(client.readTaskCalls.map((call) => call.taskId), [
+        _task.id,
+        _task.id,
+      ]);
+    });
+
+    testWidgets('앱이 전경을 벗어난 동안에는 요청하지 않고 돌아오면 요청한다', (tester) async {
+      final client = InboxDesktopClient(surfaces: _surfaces);
+      await pumpDetail(tester, size: phoneSize, desktopClient: client);
+
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      await tester.pump();
+      expect(client.readTaskCalls, hasLength(1));
+
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpAndSettle();
+      expect(client.readTaskCalls, hasLength(2));
+    });
+  });
+
   group('태스크 상단 반응형 액션', () {
     const taskWithPr = BoardTask(
       id: 'task-1',
@@ -239,12 +296,12 @@ void main() {
       prUrl: 'https://github.com/example/repo/pull/1',
     );
     for (final width in [320.0, 390.0, 767.0, 768.0, 1024.0]) {
-      testWidgets('$width 폭에서 좁은 화면은 메뉴 하나, 넓은 화면은 기존 여섯 액션을 보인다', (
+      testWidgets('$width 폭에서 좁은 화면은 메뉴 하나, 넓은 화면은 열 개의 작업 액션을 보인다', (
         tester,
       ) async {
         await pumpDetail(tester, size: Size(width, 844), task: taskWithPr);
         final appBar = tester.widget<AppBar>(find.byType(AppBar));
-        expect(appBar.actions!.length, width < 768 ? 1 : 6);
+        expect(appBar.actions!.length, width < 768 ? 1 : 10);
         expect(tester.takeException(), isNull);
         if (width < 768) {
           expect(
@@ -815,21 +872,26 @@ void main() {
     expect(client.closedPanes, contains('%19'), reason: '떠난 pane의 구독은 닫혀야 한다');
   });
 
-  testWidgets('넓은 화면에서도 pane별 탭과 선택한 pane 하나만 보인다', (tester) async {
+  testWidgets('넓은 화면은 같은 window의 두 pane을 함께 보인다', (tester) async {
     await pumpDetail(tester, size: tabletSize);
     expect(find.text('claude'), findsOneWidget);
     expect(find.text('zsh'), findsOneWidget);
-    expect(find.byType(PaneTerminalView), findsOneWidget);
+    expect(find.byType(PaneTerminalView), findsNWidgets(2));
   });
 
   testWidgets('넓은 화면에서 다른 pane 탭을 고르면 입력 대상도 바뀐다', (tester) async {
     final client = await pumpDetail(tester, size: tabletSize);
     await tester.tap(find.text('zsh'));
     await tester.pumpAndSettle();
-    expect(find.byType(PaneTerminalView), findsOneWidget);
+    expect(find.byType(PaneTerminalView), findsNWidgets(2));
     terminalIn(tester, '%20').textInput('ls');
     expect(client.writtenInput['%20'], contains('ls'));
-    expect(client.closedPanes, contains('%19'));
+    expect(client.writtenInput['%19'], isNull);
+    expect(
+      client.closedPanes,
+      isNot(contains('%19')),
+      reason: '같은 window의 다른 pane은 계속 표시된다',
+    );
   });
 
   testWidgets('화면을 떠나면 pane 구독이 닫힌다', (tester) async {
@@ -1023,7 +1085,7 @@ void main() {
   });
 
   group('상태 옮기기', () {
-    testWidgets('지금 상태는 옮길 후보에서 빠지고 Pending도 나오지 않는다', (tester) async {
+    testWidgets('지금 상태는 후보에서 빠지고 Pending을 포함한 나머지는 선택할 수 있다', (tester) async {
       await pumpDetail(tester, size: phoneSize);
 
       await _showTaskActions(tester);
@@ -1031,11 +1093,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Progress(으)로 옮기기'), findsNothing, reason: '지금 상태다');
-      expect(
-        find.text('Pending(으)로 옮기기'),
-        findsNothing,
-        reason: '데스크탑도 내놓지 않는다',
-      );
+      expect(find.text('Pending(으)로 옮기기'), findsOneWidget);
       for (final label in ['Todo', 'Review', 'Done']) {
         expect(find.text('$label(으)로 옮기기'), findsOneWidget);
       }
@@ -1080,6 +1138,64 @@ void main() {
         findsOneWidget,
         reason: '시트가 열린 채여야 다시 고를 수 있다',
       );
+    });
+    testWidgets('옮기는 동안 고른 버튼에 무엇을 하는지 보인다', (tester) async {
+      final pending = Completer<void>();
+      await pumpDetail(
+        tester,
+        size: phoneSize,
+        desktopClient: _HeldMutationClient(
+          surfaces: _surfaces,
+          pendingStatus: pending,
+        ),
+      );
+
+      await _showTaskActions(tester);
+      await tester.tap(find.byTooltip('상태 옮기기'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Review(으)로 옮기기'));
+      await tester.pump();
+
+      expect(find.text('Review(으)로 옮기는 중…'), findsOneWidget);
+      expect(
+        find.text('Todo(으)로 옮기기'),
+        findsOneWidget,
+        reason: '다른 버튼 문구는 그대로다',
+      );
+
+      pending.complete();
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('이동 중 시트를 닫아도 성공하면 상세 상태가 바뀐다', (tester) async {
+      final pending = Completer<void>();
+      await pumpDetail(
+        tester,
+        size: phoneSize,
+        desktopClient: _HeldMutationClient(
+          surfaces: _surfaces,
+          pendingStatus: pending,
+        ),
+      );
+
+      await _showTaskActions(tester);
+      await tester.tap(find.byTooltip('상태 옮기기'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Review(으)로 옮기기'));
+      await tester.pump();
+
+      await tester.tapAt(const Offset(20, 20));
+      await tester.pumpAndSettle();
+      expect(find.text('Todo(으)로 옮기기'), findsNothing, reason: '시트는 닫혔다');
+
+      pending.complete();
+      await tester.pumpAndSettle();
+
+      await _showTaskActions(tester);
+      await tester.tap(find.byTooltip('상태 옮기기'));
+      await tester.pumpAndSettle();
+      expect(find.text('Review(으)로 옮기기'), findsNothing);
+      expect(find.text('Progress(으)로 옮기기'), findsOneWidget);
     });
   });
 
@@ -1138,6 +1254,60 @@ void main() {
 
       expect(client.openedPanes['%19'], isNot(same(previousStream)));
       expect(find.textContaining('연결이 끊겼습니다'), findsNothing);
+    });
+
+    testWidgets('바꾸는 동안 고른 버튼에 세션을 준비하는 중을 보인다', (tester) async {
+      final pending = Completer<void>();
+      final client = _HeldMutationClient(
+        surfaces: tmuxSurfaces,
+        pendingSessionTypeChange: pending,
+      )..isTaskSessionAlive = false;
+      await pumpDetail(tester, size: phoneSize, desktopClient: client);
+
+      await _showTaskActions(tester);
+      await tester.tap(find.byTooltip('세션 종류 바꾸기'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('zellij(으)로 바꾸기'));
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('세션을 준비하는 중…'), findsOneWidget);
+
+      pending.complete();
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('세션 변경 중 시트를 닫아도 반영된다', (tester) async {
+      final pending = Completer<void>();
+      final client = _HeldMutationClient(
+        surfaces: tmuxSurfaces,
+        pendingSessionTypeChange: pending,
+      )..isTaskSessionAlive = false;
+      await pumpDetail(tester, size: phoneSize, desktopClient: client);
+
+      // 변경을 기다리는 동안 진행 표시가 계속 돌아 settle을 기다리지 않는다
+      await _showTaskActions(tester);
+      await tester.tap(find.byTooltip('세션 종류 바꾸기'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('zellij(으)로 바꾸기'));
+      await tester.pump();
+      await tester.pump();
+      await tester.tapAt(const Offset(20, 20));
+      await tester.pumpAndSettle();
+      expect(find.text('zellij(으)로 바꾸기'), findsNothing, reason: '시트는 닫혔다');
+
+      client.surfaces = const TaskSurfaces(
+        tabs: [_twoPaneWindow],
+        canResize: true,
+        sessionType: SessionType.zellij,
+      );
+      pending.complete();
+      await tester.pumpAndSettle();
+
+      await _showTaskActions(tester);
+      await tester.tap(find.byTooltip('세션 종류 바꾸기'));
+      await tester.pumpAndSettle();
+      expect(find.text('지금은 zellij입니다.'), findsOneWidget);
     });
 
     testWidgets('기존 세션이 켜져 있으면 닫을지 묻고 닫기를 고르면 닫으라고 보낸 뒤 시트를 닫는다', (
@@ -1241,13 +1411,16 @@ void main() {
       WidgetTester tester, {
       List<Object?> deleteErrors = const [],
       int failedPeerCount = 0,
+      FakeDesktopClient? heldClient,
     }) async {
       await tester.binding.setSurfaceSize(phoneSize);
-      final client = FakeDesktopClient(
-        surfaces: _surfaces,
-        deleteErrors: deleteErrors,
-        failedPeerCount: failedPeerCount,
-      );
+      final client =
+          heldClient ??
+          FakeDesktopClient(
+            surfaces: _surfaces,
+            deleteErrors: deleteErrors,
+            failedPeerCount: failedPeerCount,
+          );
       await tester.pumpWidget(
         wrapWithApp(
           Builder(
@@ -1397,6 +1570,31 @@ void main() {
 
       expect(find.text('서버 오류'), findsOneWidget);
       expect(find.byType(TaskDetailScreen), findsOneWidget);
+    });
+
+    testWidgets('삭제를 기다리는 동안 시트를 닫아도 끝나면 경고를 띄우고 보드로 돌아간다', (tester) async {
+      final pending = Completer<Map<String, dynamic>>();
+      await pumpDetailFromBoard(
+        tester,
+        heldClient: _HeldDeletionClient(surfaces: _surfaces, pending: pending),
+      );
+      await tester.tap(find.widgetWithText(TextButton, '삭제').last);
+      await tester.pump();
+      expect(find.text('삭제하는 중…'), findsOneWidget);
+
+      await tester.tapAt(const Offset(20, 20));
+      await tester.pumpAndSettle();
+      expect(find.text('삭제하는 중…'), findsNothing);
+      expect(find.byType(TaskDetailScreen), findsOneWidget);
+
+      pending.complete({'ok': true, 'failedPeerCount': 1});
+      await tester.pumpAndSettle();
+
+      expect(find.byType(TaskDetailScreen), findsNothing);
+      expect(
+        find.text('다른 데스크탑 1곳에는 아직 남아 있습니다. 그 데스크탑이 켜지면 직접 삭제해 주세요.'),
+        findsOneWidget,
+      );
     });
 
     testWidgets('이미 지워진 태스크는 삭제된 것으로 보고 보드로 돌아간다', (tester) async {
@@ -1717,6 +1915,56 @@ void main() {
       expect(closeButton('%19'), findsNothing);
     });
 
+    testWidgets('닫는 동안 추가 버튼은 추가 중으로 보이지 않고 대상 탭에 닫는 중을 보인다', (tester) async {
+      final pending = Completer<Map<String, dynamic>>();
+      await pumpClosable(
+        tester,
+        onRunCommand: (command) => command.name == 'get-tab-close-info'
+            ? Future.value({'ok': true, 'processNames': <String>[]})
+            : pending.future,
+      );
+
+      await tester.tap(closeButton('%19'));
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.byTooltip('터미널 추가 중…'), findsNothing);
+      expect(find.text('닫는 중…'), findsOneWidget);
+
+      pending.complete(closedResult(['%20', '%21']));
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('프로세스를 확인하는 동안 다시 눌러도 확인은 한 번만 하고 닫기 확인 중을 보인다', (
+      tester,
+    ) async {
+      final pendingInfo = Completer<Map<String, dynamic>>();
+      final client = await pumpClosable(
+        tester,
+        onRunCommand: (command) => command.name == 'get-tab-close-info'
+            ? pendingInfo.future
+            : Future.value(closedResult(['%20', '%21'])),
+      );
+
+      await tester.tap(closeButton('%19'));
+      await tester.pump();
+      expect(find.text('닫기 확인 중…'), findsOneWidget);
+
+      await tester.tap(closeButton('%19'), warnIfMissed: false);
+      await tester.tap(closeButton('%20'), warnIfMissed: false);
+      await tester.pump();
+
+      expect(
+        client.commandCalls.where(
+          (command) => command.name == 'get-tab-close-info',
+        ),
+        hasLength(1),
+      );
+
+      pendingInfo.complete({'ok': true, 'processNames': <String>[]});
+      await tester.pumpAndSettle();
+    });
+
     testWidgets('닫는 중 반복해 눌러도 닫기 명령은 한 번만 나간다', (tester) async {
       final pending = Completer<Map<String, dynamic>>();
       final client = await pumpClosable(
@@ -1740,4 +1988,57 @@ void main() {
       );
     });
   });
+}
+
+class _HeldDeletionClient extends FakeDesktopClient {
+  _HeldDeletionClient({required super.surfaces, required this.pending});
+
+  final Completer<Map<String, dynamic>> pending;
+
+  @override
+  Future<Map<String, dynamic>> runCommand(
+    DesktopConnection connection,
+    DesktopCommand command, {
+    Duration? timeout,
+  }) => command.name == 'delete-task'
+      ? pending.future
+      : super.runCommand(connection, command, timeout: timeout);
+}
+
+/// 상태 이동과 세션 변경 응답을 붙잡아 두는 client. 응답 전에 시트를 닫는 경로를 재현한다
+class _HeldMutationClient extends FakeDesktopClient {
+  _HeldMutationClient({
+    required super.surfaces,
+    this.pendingStatus,
+    this.pendingSessionTypeChange,
+  });
+
+  final Completer<void>? pendingStatus;
+  final Completer<void>? pendingSessionTypeChange;
+
+  @override
+  Future<void> updateTaskStatus(
+    DesktopConnection connection,
+    String taskId,
+    TaskStatus status,
+  ) async {
+    await super.updateTaskStatus(connection, taskId, status);
+    await pendingStatus?.future;
+  }
+
+  @override
+  Future<void> changeTaskSessionType(
+    DesktopConnection connection,
+    String taskId, {
+    required SessionType sessionType,
+    required bool shouldCloseExistingSession,
+  }) async {
+    await super.changeTaskSessionType(
+      connection,
+      taskId,
+      sessionType: sessionType,
+      shouldCloseExistingSession: shouldCloseExistingSession,
+    );
+    await pendingSessionTypeChange?.future;
+  }
 }

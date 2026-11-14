@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../common/l10n/app_localizations.dart';
 import '../../../common/constants/app_colors.dart';
 import '../../../common/constants/app_sizes.dart';
 import '../application/chat_history_controller.dart';
@@ -49,8 +50,45 @@ class _ChatConversationViewState extends ConsumerState<ChatConversationView> {
       session: widget.session,
     ));
     final messages = ref.watch(provider);
+    final target = (taskId: widget.taskId, session: widget.session);
     return Column(
       children: [
+        Padding(
+          padding: const EdgeInsets.all(AppSizes.p12),
+          child: _ChatMessageSearchField(
+            key: ValueKey((widget.taskId, widget.session.key)),
+            target: target,
+          ),
+        ),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: AppSizes.p12),
+          child: Row(
+            children: [
+              for (final role in [
+                'user',
+                'assistant',
+                'tool',
+                'system',
+                'developer',
+                'reasoning',
+                'unknown',
+              ])
+                Padding(
+                  padding: const EdgeInsets.only(right: AppSizes.p8),
+                  child: FilterChip(
+                    label: Text(role),
+                    selected: ref
+                        .watch(chatMessageRolesProvider(target))
+                        .contains(role),
+                    onSelected: (_) => ref
+                        .read(chatMessageRolesProvider(target).notifier)
+                        .toggle(role),
+                  ),
+                ),
+            ],
+          ),
+        ),
         Expanded(
           child: messages.when(
             loading: () => const Center(child: CircularProgressIndicator()),
@@ -164,6 +202,75 @@ class _ChatConversationViewState extends ConsumerState<ChatConversationView> {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _ChatMessageSearchField extends ConsumerStatefulWidget {
+  const _ChatMessageSearchField({required this.target, super.key});
+
+  final ({String taskId, ChatSession session}) target;
+
+  @override
+  ConsumerState<_ChatMessageSearchField> createState() =>
+      _ChatMessageSearchFieldState();
+}
+
+class _ChatMessageSearchFieldState
+    extends ConsumerState<_ChatMessageSearchField> {
+  late final TextEditingController _search;
+  late String _committedQuery;
+
+  @override
+  void initState() {
+    super.initState();
+    _committedQuery = ref.read(chatMessageQueryProvider(widget.target));
+    _search = TextEditingController(text: _committedQuery);
+  }
+
+  void _syncCommittedQuery(String query) {
+    if (query == _committedQuery) return;
+    _committedQuery = query;
+    if (_search.text != query) {
+      _search.value = TextEditingValue(
+        text: query,
+        selection: TextSelection.collapsed(offset: query.length),
+      );
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _ChatMessageSearchField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _syncCommittedQuery(ref.read(chatMessageQueryProvider(widget.target)));
+  }
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final query = chatMessageQueryProvider(widget.target);
+    ref.listen(query, (_, next) => _syncCommittedQuery(next));
+    return TextFormField(
+      controller: _search,
+      textInputAction: TextInputAction.search,
+      onFieldSubmitted: (value) => ref.read(query.notifier).search(value),
+      decoration: InputDecoration(
+        labelText: context.tr('메시지 본문 검색'),
+        prefixIcon: Icon(Icons.search),
+        suffixIcon: IconButton(
+          tooltip: context.tr('검색 지우기'),
+          icon: Icon(Icons.clear),
+          onPressed: () {
+            _search.clear();
+            ref.read(query.notifier).search('');
+          },
+        ),
+      ),
     );
   }
 }

@@ -109,7 +109,7 @@ vi.mock("@/desktop/renderer/hooks/useBoardSortPreference", () => ({
 }));
 
 vi.mock("../Column", () => ({
-  default: ({ status, tasks, diffStatsByTaskId, projectNameMap, projectColorMap, projectIconMap, projectGroupMap, onLoadMore, hasMore, isLoadingMore }: {
+  default: ({ status, tasks, diffStatsByTaskId, projectNameMap, projectColorMap, projectIconMap, projectGroupMap, onLoadMore, hasMore, isLoadingMore, loadMoreError, taskDeletionStateById, onRetryTaskDelete, taskMoveStateById, onRetryTaskMove }: {
     status: TaskStatus;
     tasks: KanbanTask[];
     projectNameMap: Record<string, string>;
@@ -119,10 +119,19 @@ vi.mock("../Column", () => ({
     onLoadMore?: () => void;
     hasMore?: boolean;
     isLoadingMore?: boolean;
+    loadMoreError?: string | null;
     diffStatsByTaskId?: Record<string, { fileCount: number; additions: number; deletions: number }>;
+    taskDeletionStateById?: Record<string, { status: "deleting" } | { status: "failed"; reason: string }>;
+    onRetryTaskDelete?: (task: KanbanTask) => void;
+    taskMoveStateById?: Record<string, { status: "saving" } | { status: "failed"; reason: string; targetStatus: TaskStatus }>;
+    onRetryTaskMove?: (task: KanbanTask) => void;
   }) => (
     <div data-testid="column">
-      {tasks.map((task, index) => (
+      {tasks.map((task, index) => {
+        const deletionState = taskDeletionStateById?.[task.id];
+        const moveState = taskMoveStateById?.[task.id];
+        return (
+        <span key={task.id}>
         <a
           key={task.id}
           href={`/task/${task.id}`}
@@ -135,11 +144,24 @@ vi.mock("../Column", () => ({
           data-project-icon={projectIconMap[task.projectId ?? ""] ?? projectIconMap[projectNameMap[task.projectId ?? ""]]}
           data-project-group={projectGroupMap?.[task.projectId ?? ""]}
           data-diff-stats={diffStatsByTaskId?.[task.id] ? JSON.stringify(diffStatsByTaskId[task.id]) : undefined}
+          data-deletion-status={deletionState?.status}
+          data-deletion-reason={deletionState?.status === "failed" ? deletionState.reason : undefined}
+          data-move-status={moveState?.status}
+          data-move-reason={moveState?.status === "failed" ? moveState.reason : undefined}
         >
           {task.title}
         </a>
-      ))}
+        {deletionState?.status === "failed" ? (
+          <button onClick={() => onRetryTaskDelete?.(task)}>retry-delete-{task.id}</button>
+        ) : null}
+        {moveState?.status === "failed" ? (
+          <button onClick={() => onRetryTaskMove?.(task)}>retry-move-{task.id}</button>
+        ) : null}
+        </span>
+        );
+      })}
       {hasMore && <button onClick={onLoadMore} disabled={isLoadingMore}>load-more-{status}</button>}
+      {loadMoreError ? <p role="alert">{loadMoreError}</p> : null}
     </div>
   ),
 }));
@@ -1017,6 +1039,94 @@ describe("Board defaultSessionType sync", () => {
     consoleErrorMock.mockRestore();
   });
 
+  it("삭제 응답을 기다리는 동안 카드에 삭제 중 상태를 전달하고 같은 task를 다시 삭제해도 요청을 한 번만 보낸다", async () => {
+    const confirmMock = vi.spyOn(window, "confirm").mockReturnValue(true);
+    let resolveDelete: (value: boolean) => void = () => {};
+    vi.mocked(deleteTask).mockReturnValueOnce(new Promise((resolve) => {
+      resolveDelete = resolve;
+    }));
+
+    render(
+      <Board
+        initialTasks={createTasksWithTodo()}
+        initialDoneTotal={0}
+        initialDoneLimit={20}
+        sshHosts={[]}
+        projects={[createProject()]}
+        sidebarDefaultCollapsed={false}
+        doneAlertDismissed={false}
+        notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
+        defaultSessionType={SessionType.TMUX}
+        taskSearchShortcut="Mod+Shift+O"
+      />,
+    );
+
+    const taskLink = await screen.findByRole("link", { name: "Test Task" });
+    taskLink.focus();
+    fireEvent.keyDown(taskLink, { key: "d" });
+    fireEvent.keyDown(taskLink, { key: "d" });
+
+    await waitFor(() => {
+      expect(screen.getByRole("link", { name: "Test Task" }).getAttribute("data-deletion-status")).toBe("deleting");
+    });
+
+    const sameTaskLink = screen.getByRole("link", { name: "Test Task" });
+    sameTaskLink.focus();
+    fireEvent.keyDown(sameTaskLink, { key: "d" });
+    fireEvent.keyDown(sameTaskLink, { key: "d" });
+
+    expect(deleteTask).toHaveBeenCalledTimes(1);
+
+    resolveDelete(true);
+    await waitFor(() => {
+      expect(screen.queryByRole("link", { name: "Test Task" })).toBeNull();
+    });
+
+    confirmMock.mockRestore();
+  });
+
+  it("삭제가 실패하면 카드에 실패 사유를 남기고 다시 시도로 삭제를 끝낼 수 있다", async () => {
+    const confirmMock = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const consoleErrorMock = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.mocked(deleteTask)
+      .mockRejectedValueOnce(new Error("peer timeout"))
+      .mockResolvedValueOnce(true);
+
+    render(
+      <Board
+        initialTasks={createTasksWithTodo()}
+        initialDoneTotal={0}
+        initialDoneLimit={20}
+        sshHosts={[]}
+        projects={[createProject()]}
+        sidebarDefaultCollapsed={false}
+        doneAlertDismissed={false}
+        notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
+        defaultSessionType={SessionType.TMUX}
+        taskSearchShortcut="Mod+Shift+O"
+      />,
+    );
+
+    const taskLink = await screen.findByRole("link", { name: "Test Task" });
+    taskLink.focus();
+    fireEvent.keyDown(taskLink, { key: "d" });
+    fireEvent.keyDown(taskLink, { key: "d" });
+
+    await waitFor(() => {
+      expect(screen.getByRole("link", { name: "Test Task" }).getAttribute("data-deletion-reason")).toBe("peer timeout");
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "retry-delete-task-1" }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("link", { name: "Test Task" })).toBeNull();
+    });
+    expect(deleteTask).toHaveBeenCalledTimes(2);
+
+    confirmMock.mockRestore();
+    consoleErrorMock.mockRestore();
+  });
+
   it("포커스된 task에서 dd를 누르는 중 보드 task 목록이 refresh되어도 삭제 sequence를 유지한다", async () => {
     const confirmMock = vi.spyOn(window, "confirm").mockReturnValue(true);
     vi.mocked(deleteTask).mockResolvedValueOnce(true);
@@ -1400,6 +1510,86 @@ describe("Board defaultSessionType sync", () => {
     });
   });
 
+  it("옮긴 카드를 저장하는 동안 저장 중 상태를 전달하고 저장이 끝나면 지운다", async () => {
+    let resolveMove: () => void = () => {};
+    vi.mocked(moveTaskToColumn).mockReturnValueOnce(new Promise<void>((resolve) => {
+      resolveMove = resolve;
+    }));
+
+    render(
+      <Board
+        initialTasks={createTasksWithTodo()}
+        initialDoneTotal={0}
+        initialDoneLimit={20}
+        sshHosts={[]}
+        projects={[createProject()]}
+        sidebarDefaultCollapsed={false}
+        doneAlertDismissed={false}
+        notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
+        defaultSessionType={SessionType.TMUX}
+        taskSearchShortcut="Mod+Shift+O"
+      />,
+    );
+
+    const taskLink = await screen.findByRole("link", { name: "Test Task" });
+    taskLink.focus();
+    fireEvent.keyDown(taskLink, { key: "F10", shiftKey: true });
+    fireEvent.click(await screen.findByRole("button", { name: "change-status-review" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("link", { name: "Test Task" }).getAttribute("data-move-status")).toBe("saving");
+    });
+    expect(screen.getByRole("link", { name: "Test Task" }).getAttribute("data-kanban-status")).toBe(TaskStatus.REVIEW);
+
+    resolveMove();
+
+    await waitFor(() => {
+      expect(screen.getByRole("link", { name: "Test Task" }).getAttribute("data-move-status")).toBeNull();
+    });
+  });
+
+  it("이동 저장이 실패하면 카드를 원래 칸으로 되돌리고 사유와 다시 옮기기를 남긴다", async () => {
+    const consoleErrorMock = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.mocked(moveTaskToColumn)
+      .mockRejectedValueOnce(new Error("db locked"))
+      .mockResolvedValueOnce(undefined);
+
+    render(
+      <Board
+        initialTasks={createTasksWithTodo()}
+        initialDoneTotal={0}
+        initialDoneLimit={20}
+        sshHosts={[]}
+        projects={[createProject()]}
+        sidebarDefaultCollapsed={false}
+        doneAlertDismissed={false}
+        notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
+        defaultSessionType={SessionType.TMUX}
+        taskSearchShortcut="Mod+Shift+O"
+      />,
+    );
+
+    const taskLink = await screen.findByRole("link", { name: "Test Task" });
+    taskLink.focus();
+    fireEvent.keyDown(taskLink, { key: "F10", shiftKey: true });
+    fireEvent.click(await screen.findByRole("button", { name: "change-status-review" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("link", { name: "Test Task" }).getAttribute("data-move-reason")).toBe("db locked");
+    });
+    expect(screen.getByRole("link", { name: "Test Task" }).getAttribute("data-kanban-status")).toBe(TaskStatus.TODO);
+
+    fireEvent.click(screen.getByRole("button", { name: "retry-move-task-1" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("link", { name: "Test Task" }).getAttribute("data-kanban-status")).toBe(TaskStatus.REVIEW);
+    });
+    expect(moveTaskToColumn).toHaveBeenCalledTimes(2);
+    expect(moveTaskToColumn).toHaveBeenLastCalledWith("task-1", TaskStatus.REVIEW);
+
+    consoleErrorMock.mockRestore();
+  });
+
   it("보드 검색 바에서 Enter와 Shift+Enter로 순방향/역방향 찾기를 호출한다", async () => {
     const findMock = mockWindowFind();
 
@@ -1776,6 +1966,21 @@ describe("Board pagination and project identity regressions", () => {
     await act(async () => current.resolve({ tasks: donePage(20), doneTotal: 80 }));
     expect((screen.getByText("load-more-done") as HTMLButtonElement).disabled).toBe(false);
     expect(screen.queryByText("Done 40")).toBeNull();
+  });
+
+  it("더 불러오기가 실패하면 사유를 남기고 다시 누르면 같은 페이지를 다시 요청한다", async () => {
+    vi.mocked(getMoreDoneTasks).mockRejectedValueOnce(new Error("db locked"))
+      .mockResolvedValueOnce({ tasks: donePage(20), doneTotal: 80 });
+    render(<Board {...props()} initialTasks={{ ...createEmptyTasks(), done: donePage(0) }} />);
+    fireEvent.click(screen.getByText("load-more-done"));
+
+    expect((await screen.findByRole("alert")).textContent).toBe("db locked");
+
+    fireEvent.click(screen.getByText("load-more-done"));
+
+    await screen.findByText("Done 20");
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(vi.mocked(getMoreDoneTasks).mock.calls.map(([offset]) => offset)).toEqual([20, 20]);
   });
 
   it("deduplicates overlapping Done results while advancing by the fetched page size", async () => {

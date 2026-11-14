@@ -1945,6 +1945,94 @@ describe("projectService local hook installation", () => {
     expect(mocks.installKanvibeHooks).not.toHaveBeenCalled();
   });
 
+  it("등록된 프로젝트 경로가 git 저장소가 아니면 상태 파일을 쓰지 않고 동기화를 건너뛴다", async () => {
+    // Given
+    const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    mocks.execGit.mockImplementation(async (command: string) => (
+      command.includes("rev-parse --is-inside-work-tree") ? "__KANVIBE_NOT_GIT_REPOSITORY__" : ""
+    ));
+    mocks.getProjectRepository.mockResolvedValue({
+      find: vi.fn().mockResolvedValue([
+        {
+          id: "project-removed",
+          name: "removed-workspace",
+          repoPath: "/remote/removed-workspace",
+          defaultBranch: "main",
+          sshHost: "remote-mac",
+        },
+      ]),
+    });
+    const saveTask = vi.fn(async (value) => value);
+    mocks.getTaskRepository.mockResolvedValue({
+      findOneBy: vi.fn(async () => null),
+      create: vi.fn((value) => value),
+      save: saveTask,
+    });
+
+    try {
+      const { syncRegisteredProjectWorktrees } = await import("@/desktop/main/services/projectService");
+
+      // When
+      const result = await syncRegisteredProjectWorktrees();
+
+      // Then
+      expect(result.errors).toEqual([]);
+      expect(result.changed).toBe(false);
+      expect(mocks.listWorktrees).not.toHaveBeenCalled();
+      expect(saveTask).not.toHaveBeenCalled();
+      expect(mocks.writeTextFile).not.toHaveBeenCalled();
+      expect(mocks.writeTextFileIfAbsent).not.toHaveBeenCalled();
+      expect(consoleWarnSpy).toHaveBeenCalledWith(
+        "removed-workspace 경로가 git 저장소가 아니어서 동기화를 건너뜁니다:",
+        { repoPath: "/remote/removed-workspace", sshHost: "remote-mac" },
+      );
+    } finally {
+      consoleWarnSpy.mockRestore();
+    }
+  });
+
+  it("git 저장소 판정이 SSH 연결 실패로 끝나면 저장소가 아니라고 보지 않고 기존 동기화를 진행한다", async () => {
+    // Given
+    mocks.execGit.mockImplementation(async (command: string) => {
+      if (command.includes("rev-parse --is-inside-work-tree")) {
+        throw new Error("remote-mac 원격 명령 실패: Connection reset by 100.99.109.53 port 22");
+      }
+      return "";
+    });
+    mocks.listWorktrees.mockResolvedValue([]);
+    mocks.getProjectRepository.mockResolvedValue({
+      find: vi.fn().mockResolvedValue([
+        {
+          id: "project-1",
+          name: "api",
+          repoPath: "/remote/api",
+          defaultBranch: "main",
+          sshHost: "remote-mac",
+        },
+      ]),
+    });
+    mocks.getTaskRepository.mockResolvedValue({
+      findOneBy: vi.fn(async () => ({
+        id: "task-main",
+        branchName: "main",
+        projectId: "project-1",
+        baseBranch: "main",
+        worktreePath: "/remote/api",
+        sshHost: "remote-mac",
+      })),
+      create: vi.fn((value) => value),
+      save: vi.fn(async (value) => value),
+    });
+
+    const { syncRegisteredProjectWorktrees } = await import("@/desktop/main/services/projectService");
+
+    // When
+    await syncRegisteredProjectWorktrees();
+
+    // Then
+    expect(mocks.listWorktrees).toHaveBeenCalledWith("/remote/api", "remote-mac");
+  });
+
   /**
    * 공유 색상 파일을 읽는 동안 사용자가 색을 바꿀 수 있으므로, sync가 읽어둔 색상이 아직 DB에
    * 남아 있을 때만 덮어써야 방금 고른 색이 되돌아가지 않는다.

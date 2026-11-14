@@ -36,7 +36,7 @@ describe("FolderSearchInput", () => {
     fireEvent.change(textbox, { target: { value: "/manual/path" } });
     await waitFor(() => {
       expect(document.querySelector('input[type="hidden"][name="scanPath"]')).toHaveProperty("value", "/manual/path");
-      expect(screen.queryByRole("button")).toBeNull();
+      expect(screen.getAllByRole("button").map((button) => button.textContent)).toEqual(["retry"]);
     });
   });
 
@@ -149,4 +149,26 @@ describe("FolderSearchInput", () => {
     await waitFor(() => { expect(mockListSubdirectories).toHaveBeenLastCalledWith("/prefix", sshHost); });
   });
 
+});
+
+describe("FolderSearchInput - 조회 실패", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("하위 폴더 조회가 실패하면 폴더 없음 대신 사유와 다시 불러오기를 보이고 다시 불러오면 목록을 보인다", async () => {
+    mockListSubdirectories
+      .mockRejectedValueOnce(new Error("permission denied"))
+      .mockResolvedValueOnce(["api"]);
+    render(<FolderSearchInput name="scanPath" onSelect={vi.fn()} />);
+    fireEvent.focus(screen.getByRole("textbox"));
+
+    expect((await screen.findByRole("alert")).textContent).toContain("loadFailed");
+    expect(screen.queryByText("noFoldersFound")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "retry" }));
+
+    expect(await screen.findByRole("button", { name: "api" })).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
 });

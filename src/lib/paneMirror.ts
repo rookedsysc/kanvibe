@@ -389,8 +389,8 @@ export function buildZellijWritePaneCommand(sessionName: string, paneId: string,
 export function buildTmuxPaneShortcutCommand(paneId: string, action: string): string | null {
   const target = quoteForPosixShell(paneId);
   switch (action) {
-    case "split-right": return `tmux split-window -h -d -t ${target}`;
-    case "split-down": return `tmux split-window -v -d -t ${target}`;
+    case "split-right": return `tmux split-window -h -d -t ${target} -c '#{pane_current_path}'`;
+    case "split-down": return `tmux split-window -v -d -t ${target} -c '#{pane_current_path}'`;
     case "toggle-fullscreen": return `tmux resize-pane -Z -t ${target}`;
     case "copy-mode": return `tmux copy-mode -t ${target}`;
     case "scroll-up": return `tmux copy-mode -t ${target} && tmux send-keys -X -t ${target} page-up`;
@@ -429,6 +429,26 @@ export function buildZellijPaneShortcutCommand(sessionName: string, paneId: stri
 
 export function buildZellijClosePaneCommand(sessionName: string, paneId: string): string {
   return `zellij --session ${quoteForPosixShell(sessionName)} action close-pane --pane-id ${quoteForPosixShell(paneId)}`;
+}
+
+/**
+ * 전체 화면으로 뜨고 마우스 휠을 직접 받는 프로그램. 이름은 Herdr가 보고하는 실행 파일 이름이다.
+ * codex는 시작할 때 `?1049h`, `?1000h`, `?1006h`를 켜는 것을 pty로 확인했다.
+ */
+const HERDR_WHEEL_PROGRAMS = new Set(["codex"]);
+
+/**
+ * Herdr pane에서 도는 프로그램에 맞춰 모바일 터미널의 화면·마우스 모드를 맞추는 출력을 만든다.
+ *
+ * Herdr의 화면 프레임에는 모드 전환이 들어 있지 않고 공개 API도 모드를 알려 주지 않는다. 모드를 모르는 모바일 터미널은
+ * 손가락 스크롤을 자기 스크롤백에만 쓰는데, 전체 화면 프로그램은 스크롤백이 없어 아무 일도 일어나지 않는다.
+ * 반대로 모드를 켜지 않은 프로그램에 휠 보고를 보내면 Herdr가 그대로 넘겨 입력란에 글자로 찍힌다.
+ * 그래서 휠을 받는다고 확인한 프로그램일 때만 모드를 켠다.
+ */
+export function buildHerdrInputModeSequences(foregroundPrograms: string[]): string {
+  const acceptsWheel = foregroundPrograms.some((program) => HERDR_WHEEL_PROGRAMS.has(program));
+  const resetSequences = `\x1b[?1049${acceptsWheel ? "h" : "l"}\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1005l\x1b[?1006l`;
+  return acceptsWheel ? `${resetSequences}\x1b[?1000h\x1b[?1006h` : resetSequences;
 }
 
 /**
