@@ -2,6 +2,7 @@ import { getOrCreateHookClientId } from "@/desktop/main/services/appSettingsServ
 import { ensureHookTunnel } from "@/desktop/main/services/hookTunnelService";
 import { buildTaskCliToken } from "@/desktop/main/services/taskCliTokenService";
 import { ensureAiToolPatternsExcluded } from "@/lib/gitExclude";
+import { getRemoteHostConnection, getRemoteHostNamespace } from "@/lib/remoteHostConnection";
 import {
   hasKanvibeHookTarget,
   parseKanvibeTargets,
@@ -21,7 +22,8 @@ export async function registerKanvibeHookTarget(
   await ensureAiToolPatternsExcluded(repoPath, sshHost);
   const token = await buildTaskCliToken(taskId);
   const clientId = await getOrCreateHookClientId();
-  await upsertKanvibeHookTarget(repoPath, { url: hookServerUrl, taskId, token, clientId, transport: sshHost ? "ssh" : "local" }, sshHost);
+  const namespace = sshHost && await getRemoteHostConnection(sshHost) ? getRemoteHostNamespace() : undefined;
+  await upsertKanvibeHookTarget(repoPath, { url: hookServerUrl, taskId, token, clientId, transport: sshHost ? "ssh" : "local", ...(namespace ? { remoteHostNamespace: namespace } : {}) }, sshHost);
   if (sshHost) {
     ensureHookTunnel(sshHost);
   }

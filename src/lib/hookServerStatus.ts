@@ -3,6 +3,7 @@ import { execGit } from "@/lib/gitOperations";
 import { quoteShellArgument } from "@/lib/hostFileAccess";
 import { getHookServerPort, getHookServerUrl } from "@/lib/hookEndpoint";
 import { buildShellOwnedHookSocketAssignment } from "@/lib/hookSocketPath";
+import { getRemoteHostConnection, getRemoteHostNamespace } from "@/lib/remoteHostConnection";
 
 export interface HookServerValidation {
   hasExpectedHookServerUrl: boolean;
@@ -120,7 +121,7 @@ async function performHookServerReachabilityCheck(healthCheckUrl: string, sshHos
 
   try {
     await execGit(
-      buildRemoteHookHealthCheckCommand(healthCheckUrl, await getOrCreateHookClientId()),
+      buildRemoteHookHealthCheckCommand(healthCheckUrl, await getOrCreateHookClientId(), await getRemoteHostConnection(sshHost) ? getRemoteHostNamespace() : undefined),
       sshHost,
       { strictHostKeyChecking: true },
     );
@@ -130,13 +131,13 @@ async function performHookServerReachabilityCheck(healthCheckUrl: string, sshHos
   }
 }
 
-function buildRemoteHookHealthCheckCommand(healthCheckUrl: string, clientId: string): string {
+function buildRemoteHookHealthCheckCommand(healthCheckUrl: string, clientId: string, namespace?: string): string {
   const quotedHealthCheckUrl = quoteShellArgument(healthCheckUrl);
   return [
     "command -v curl >/dev/null 2>&1",
-    buildShellOwnedHookSocketAssignment("__kanvibe_socket", clientId),
+    buildShellOwnedHookSocketAssignment("__kanvibe_socket", clientId, namespace),
     '[ -n "$__kanvibe_socket" ]',
-    `curl --unix-socket "$__kanvibe_socket" -fsS --max-time 2 ${quotedHealthCheckUrl} >/dev/null`,
+    `curl --unix-socket "$__kanvibe_socket" -fsS --max-time 2${namespace ? ` -H ${quoteShellArgument(`x-kanvibe-client-id: ${clientId}`)}` : ""} ${quotedHealthCheckUrl} >/dev/null`,
   ].join(" && ");
 }
 

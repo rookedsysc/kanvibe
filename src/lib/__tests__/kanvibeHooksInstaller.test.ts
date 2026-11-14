@@ -798,7 +798,7 @@ describe("kanvibeHooksInstaller conditional migration", () => {
     files.set(cliPath, { exists: true, content: "#!/bin/sh\necho legacy" });
     await ensureKanvibeHooksCurrent(repoPath, "task-1", "remote-host");
     expect(mockWriteHookProviderFiles).toHaveBeenCalledTimes(HOOK_WRITE_BATCH_COUNT);
-    expect(files.get(cliPath)?.content).toContain("KANVIBE_HOOK_TRANSPORT_VERSION=2");
+    expect(files.get(cliPath)?.content).toContain("KANVIBE_HOOK_TRANSPORT_VERSION=3");
   });
 
   it("변경 없는 원격 hook은 파일 묶음 한 번만 읽고 provider 재검사를 생략한다", async () => {
@@ -821,7 +821,7 @@ describe("kanvibeHooksInstaller conditional migration", () => {
 
     await expect(ensureKanvibeHooksCurrent(repoPath, "task-1", "remote-host")).resolves.toBe(true);
 
-    expect(files.get(scriptPath)?.content).toContain("KANVIBE_HOOK_TRANSPORT_VERSION=2");
+    expect(files.get(scriptPath)?.content).toContain("KANVIBE_HOOK_TRANSPORT_VERSION=3");
     expect(mockWriteHookProviderFiles).toHaveBeenCalledTimes(HOOK_WRITE_BATCH_COUNT);
   });
 
@@ -862,7 +862,7 @@ describe("kanvibeHooksInstaller conditional migration", () => {
     files.delete(scriptPath);
 
     await expect(ensureKanvibeHooksCurrent(repoPath, "task-1", "remote-host")).resolves.toBe(true);
-    expect(files.get(scriptPath)?.content).toContain("KANVIBE_HOOK_TRANSPORT_VERSION=2");
+    expect(files.get(scriptPath)?.content).toContain("KANVIBE_HOOK_TRANSPORT_VERSION=3");
   });
 
   it("검증 후 현재 client 등록이 사라지면 peer를 보존하며 다시 등록한다", async () => {
@@ -924,12 +924,12 @@ describe("kanvibeHooksInstaller conditional migration", () => {
     ".codex/hooks/kanvibe-permission-hook.sh", ".opencode/plugins/kanvibe-plugin.ts",
   ])("구형 provider %s를 최신 전송으로 갱신한다", async (relativePath) => {
     const filePath = `${repoPath}/${relativePath}`;
-    const content = files.get(filePath)!.content.replaceAll("KANVIBE_HOOK_TRANSPORT_VERSION=2", "KANVIBE_HOOK_TRANSPORT_VERSION=1");
+    const content = files.get(filePath)!.content.replaceAll("KANVIBE_HOOK_TRANSPORT_VERSION=3", "KANVIBE_HOOK_TRANSPORT_VERSION=1");
     files.set(filePath, { exists: true, content });
     const { ensureKanvibeHooksCurrent } = await import("../kanvibeHooksInstaller");
     await ensureKanvibeHooksCurrent(repoPath, "task-1", "remote-host");
     expect(mockWriteHookProviderFiles).toHaveBeenCalledTimes(HOOK_WRITE_BATCH_COUNT);
-    expect(files.get(filePath)?.content).toContain("KANVIBE_HOOK_TRANSPORT_VERSION=2");
+    expect(files.get(filePath)?.content).toContain("KANVIBE_HOOK_TRANSPORT_VERSION=3");
   });
 
   it.each(["missing", "wrong-transport", "other-client"])("현재 client 등록 %s를 복구하면서 peer를 보존한다", async (scenario) => {
@@ -996,6 +996,6 @@ describe("kanvibeHooksInstaller conditional migration", () => {
       writtenFiles.forEach((file) => files.set(file.filePath, { exists: true, content: file.content }));
     });
     await expect(ensureKanvibeHooksCurrent(repoPath, "task-1", "remote-host")).resolves.toBeDefined();
-    expect(files.get(cliPath)?.content).toContain("KANVIBE_HOOK_TRANSPORT_VERSION=2");
+    expect(files.get(cliPath)?.content).toContain("KANVIBE_HOOK_TRANSPORT_VERSION=3");
   });
 });

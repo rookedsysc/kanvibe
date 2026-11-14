@@ -1,4 +1,4 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { spawn } from "node:child_process";
 import { randomBytes, randomUUID, X509Certificate } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
@@ -6,6 +6,7 @@ import { StringDecoder } from "node:string_decoder";
 import selfsigned from "selfsigned";
 import { buildSSHArgs, parseSSHConfig, getKanvibeSSHConnectionHealthOptions, type SSHHostConfig } from "@/lib/sshConfig";
 import { createLocalShellEnvironment } from "@/lib/shellEnvironment";
+import { getRemoteHostConnection, type HostProcess } from "@/lib/remoteHostConnection";
 import { buildHerdrCommand } from "@/lib/herdr";
 import { buildHerdrControlPaneCommand, buildHerdrRecentScreenCommand } from "@/lib/paneMirror";
 import { quoteForPosixShell } from "@/lib/worktree";
@@ -21,7 +22,7 @@ interface Relay {
 }
 interface RelayCallbacks { data: (data: string) => void; close: (code: number, reason: string) => void }
 interface Helper {
-  child: ChildProcessWithoutNullStreams;
+  child: HostProcess;
   port: number;
   fingerprint: string;
   request: (method: string, payload: object) => Promise<void>;
@@ -80,7 +81,10 @@ async function startHelper(config: SSHHostConfig): Promise<Helper | null> {
     ...buildSSHArgs(config, { disableTty: true, strictHostKeyChecking: true, connectionHealth: getKanvibeSSHConnectionHealthOptions() }),
     `sh -lc ${quoteForPosixShell(command)}`,
   ];
-  const child = spawn("ssh", args, { env: createLocalShellEnvironment(), stdio: ["pipe", "pipe", "pipe"] });
+  const connection = await getRemoteHostConnection(config.host);
+  const child: HostProcess = connection
+    ? connection.createProcess(`sh -lc ${quoteForPosixShell(command)}`, { timeoutMs: CERTIFICATE_VALIDITY_MS })
+    : spawn("ssh", args, { env: createLocalShellEnvironment(), stdio: ["pipe", "pipe", "pipe"] });
   const pending = new Map<string, { resolve: () => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }>();
   let resolveReady!: (value: Helper | null) => void;
   let rejectReady!: (error: Error) => void;

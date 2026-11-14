@@ -5,6 +5,7 @@ import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { randomUUID } from "crypto";
 import { createHerdrClientProxy } from "@/lib/herdrClientProxy";
+import { getRemoteHostConnection } from "@/lib/remoteHostConnection";
 import { SessionType } from "@/entities/KanbanTask";
 import { PaneLayoutType } from "@/entities/PaneLayoutConfig";
 import { execSync } from "child_process";
@@ -546,12 +547,15 @@ async function prepareHerdrTaskClient(sessionName: string, workspaceId: string |
   clientSocketPath: string;
   tabBarPosition: "top" | "bottom" | null;
   sshHost?: string;
+  hostTransport?: boolean;
   close(): Promise<void>;
 }> {
   if (!workspaceId) throw new Error("공유 Herdr Space를 찾을 수 없습니다.");
   const serverSocketPath = await getHerdrClientSocketPath(sessionName, sshHost);
-  const forwardingDirectory = sshHost ? await mkdtemp(path.join(tmpdir(), "kvhf-")) : null;
-  const upstream = forwardingDirectory ? path.join(forwardingDirectory, "upstream") : serverSocketPath;
+  const hostConnection = sshHost ? await getRemoteHostConnection(sshHost) : null;
+  const hostForward = hostConnection ? await hostConnection.forwardSocket(serverSocketPath) : null;
+  const forwardingDirectory = sshHost && !hostForward ? await mkdtemp(path.join(tmpdir(), "kvhf-")) : null;
+  const upstream = hostForward?.socketPath ?? (forwardingDirectory ? path.join(forwardingDirectory, "upstream") : serverSocketPath);
   try {
     const proxy = await createHerdrClientProxy(upstream, workspaceId);
     const tabBarPosition = await readHerdrClientTabBarPosition(sshHost);
@@ -561,18 +565,21 @@ async function prepareHerdrTaskClient(sessionName: string, workspaceId: string |
       workspaceId,
       tabBarPosition,
       sshHost,
-      clientSocketPath: sshHost ? remoteProxyPath : proxy.socketPath,
-      forwardingArgs: sshHost ? [
+      hostTransport: Boolean(hostForward),
+      clientSocketPath: sshHost && !hostForward ? remoteProxyPath : proxy.socketPath,
+      forwardingArgs: sshHost && !hostForward ? [
         "-o", "ExitOnForwardFailure=yes", "-o", "StreamLocalBindUnlink=yes",
         "-o", "ControlMaster=no", "-o", "ControlPath=none",
         "-L", `${upstream}:${serverSocketPath}`, "-R", `${remoteProxyPath}:${proxy.socketPath}`,
       ] : [],
       close: async () => {
         await proxy.close();
+        await hostForward?.close();
         if (forwardingDirectory) await rm(forwardingDirectory, { recursive: true, force: true });
       },
     };
   } catch (error) {
+    await hostForward?.close();
     if (forwardingDirectory) await rm(forwardingDirectory, { recursive: true, force: true });
     throw error;
   }
@@ -912,7 +919,8 @@ async function spawnRemoteSession(
   }
   let ptyProcess: import("node-pty").IPty;
   try {
-    ptyProcess = pty.spawn("ssh", args, {
+    const localHerdrClient = herdrClient?.hostTransport;
+    ptyProcess = pty.spawn(localHerdrClient ? resolveLoginShell() : "ssh", localHerdrClient ? ["-c", buildHerdrClientCommand(sessionName, herdrClient.clientSocketPath)] : args, {
       name: "xterm-256color",
       cols: initialCols,
       rows: initialRows,

@@ -72,16 +72,17 @@ printf '%s}\\n' "\${KANVIBE_TASK_STATE_JSON}" > "\${KANVIBE_TASK_STATE_FILE}" 2>
 
 KANVIBE_TARGET_ROWS="$(
   if [ -f "\${KANVIBE_TARGETS_FILE}" ]; then
-    grep -oE '"(url|taskId|clientId)"[[:space:]]*:[[:space:]]*"[^"]*"|"transport"[[:space:]]*:[[:space:]]*("[^"]*"|[^,}[:space:]]+)|[{}]' "\${KANVIBE_TARGETS_FILE}" 2>/dev/null \
+    grep -oE '"(url|taskId|clientId|remoteHostNamespace)"[[:space:]]*:[[:space:]]*"[^"]*"|"transport"[[:space:]]*:[[:space:]]*("[^"]*"|[^,}[:space:]]+)|[{}]' "\${KANVIBE_TARGETS_FILE}" 2>/dev/null \
       | awk '
-          function emit() { if(u!="" && t!="" && !(u in seen)){ seen[u]=1; print u "\\t" t "\\t" (c=="" ? "_" : c) "\\t" transport } }
-          function clear_target() { u=""; t=""; c=""; transport="" }
+          function emit() { if(u!="" && t!="" && !(u in seen)){ seen[u]=1; print u "\\t" t "\\t" (c=="" ? "_" : c) "\\t" transport "\\t" namespace } }
+          function clear_target() { u=""; t=""; c=""; transport=""; namespace="" }
           $0=="{" { clear_target(); next }
           $0=="}" { emit(); clear_target(); next }
           { s=$0; sub(/^"[^"]*"[[:space:]]*:[[:space:]]*"/,"",s); sub(/"$/,"",s) }
           /^"url"/ { u=s; sub(/\\/+$/,"",u); next }
           /^"taskId"/ { t=s; next }
           /^"clientId"/ { c=s; next }
+          /^"remoteHostNamespace"/ { namespace=s; next }
           /^"transport"/ { transport=(s=="" ? "invalid" : s); next }
           END { emit() }
         ' 2>/dev/null || true
@@ -98,12 +99,13 @@ ${buildShellHookTransportResolver()}
 
 kanvibe_post_status() {
   curl -fsS --max-time ${HOOK_NOTIFY_TIMEOUT_SECONDS} -X POST "$@" --url "\${KANVIBE_TARGET_URL%/}/api/hooks/status" \
+    -H "x-kanvibe-client-id: \${KANVIBE_TARGET_CLIENT_ID}" \
     -H "Content-Type: application/json" \
     -d "{\\"taskId\\": \\"\${KANVIBE_TARGET_TASK_ID}\\", \\"status\\": \\"${status}\\"\${KANVIBE_AGENT_SESSION_JSON}}"
 }
 
 printf '%s\n' "\${KANVIBE_TARGET_ROWS}" | {
-  while IFS="$(printf '\\t')" read -r KANVIBE_TARGET_URL KANVIBE_TARGET_TASK_ID KANVIBE_TARGET_CLIENT_ID KANVIBE_TARGET_TRANSPORT; do
+  while IFS="$(printf '\\t')" read -r KANVIBE_TARGET_URL KANVIBE_TARGET_TASK_ID KANVIBE_TARGET_CLIENT_ID KANVIBE_TARGET_TRANSPORT KANVIBE_TARGET_NAMESPACE; do
     if [ -z "\${KANVIBE_TARGET_URL}" ] || [ -z "\${KANVIBE_TARGET_TASK_ID}" ]; then
       continue
     fi
@@ -111,7 +113,7 @@ printf '%s\n' "\${KANVIBE_TARGET_ROWS}" | {
       http://*|https://*) ;;
       *) continue ;;
     esac
-    KANVIBE_TARGET_SOCKET="$(kanvibe_hook_socket "\${KANVIBE_TARGET_CLIENT_ID}")"
+    KANVIBE_TARGET_SOCKET="$(kanvibe_hook_socket "\${KANVIBE_TARGET_CLIENT_ID}" "\${KANVIBE_TARGET_NAMESPACE}")"
     {
       if kanvibe_hook_uses_local_http "\${KANVIBE_TARGET_URL}" "\${KANVIBE_TARGET_TRANSPORT}"; then
         kanvibe_post_status

@@ -6,6 +6,7 @@ import { readTextFiles } from "@/lib/hostFileAccess";
 import { getHookServerPort, getHookServerUrl } from "@/lib/hookEndpoint";
 import { writeHookProviderFiles } from "@/lib/hookFileWriter";
 import { registerKanvibeHookTarget } from "@/lib/hookTargetRegistration";
+import { getRemoteHostConnection, getRemoteHostNamespace } from "@/lib/remoteHostConnection";
 import { assertKanvibeStatePathsAreNotSymlinks, getKanvibeTargetsPath, parseKanvibeTargets } from "@/lib/kanvibeProjectState";
 import { buildTaskCliFile, TASK_CLI_FILE_NAME } from "@/lib/taskCliScript";
 import {
@@ -108,8 +109,9 @@ async function inspectKanvibeHooksState(
     getOrCreateHookClientId(),
   ]);
   const verificationKey = buildHookInstallKey(targetPath, taskId, sshHost, "all");
+  const namespace = sshHost && await getRemoteHostConnection(sshHost) ? getRemoteHostNamespace() : undefined;
   const hookServerPort = getHookServerPort();
-  const fingerprint = getHookFilesFingerprint(files, clientId, hookServerPort);
+  const fingerprint = `${namespace ?? "legacy"}:${getHookFilesFingerprint(files, clientId, hookServerPort)}`;
   if (sshHost && verifiedRemoteHookFiles.get(verificationKey) === fingerprint) return { isCurrent: true, failures: [] };
   verifiedRemoteHookFiles.delete(verificationKey);
   const statuses = await Promise.all(providerModules.map(async (providerModule) => ({
@@ -131,7 +133,8 @@ async function inspectKanvibeHooksState(
   const hasCurrentCli = cliFile?.exists === true && cliFile.content.includes(HOOK_TRANSPORT_VERSION_MARKER);
   const ownTarget = parseKanvibeTargets(files.get(targetsPath)?.content ?? "").targets
     .find((target) => target.clientId === clientId && target.taskId === taskId);
-  const hasCurrentTarget = Boolean(ownTarget?.token) && ownTarget?.transport === (sshHost ? "ssh" : "local");
+  const hasCurrentTarget = Boolean(ownTarget?.token) && ownTarget?.transport === (sshHost ? "ssh" : "local")
+    && ownTarget?.remoteHostNamespace === namespace;
   if (!hasCurrentCli) failures.push("task.sh(최신 전송 파일이 없습니다)");
   if (!hasCurrentTarget) failures.push("targets.json(현재 client 등록이 없습니다)");
   const isCurrent = failures.length === 0;
