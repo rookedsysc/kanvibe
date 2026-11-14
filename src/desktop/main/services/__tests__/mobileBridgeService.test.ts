@@ -19,6 +19,7 @@ const createTaskMock = vi.fn();
 const connectTerminalSessionMock = vi.fn();
 const updateTaskStatusMock = vi.fn();
 const getProjectBranchesMock = vi.fn();
+const getAllProjectsMock = vi.fn();
 const listSubdirectoriesMock = vi.fn();
 const scanAndRegisterProjectsMock = vi.fn();
 const getTaskByIdMock = vi.fn();
@@ -139,7 +140,7 @@ vi.mock("@/desktop/main/services/diffService", () => ({
   readTaskWorkspaceFile: (...args: unknown[]) => readTaskWorkspaceFileMock(...args),
 }));
 vi.mock("@/desktop/main/services/projectService", () => ({
-  getAllProjects: async () => [],
+  getAllProjects: () => getAllProjectsMock(),
   listSubdirectories: (...args: unknown[]) => listSubdirectoriesMock(...args),
   scanAndRegisterProjects: (...args: unknown[]) => scanAndRegisterProjectsMock(...args),
   getTaskAiSessions: (...args: unknown[]) => getTaskAiSessionsMock(...args),
@@ -462,6 +463,7 @@ describe("모바일 화면 크기", () => {
 
 beforeEach(() => {
   appSettingsStore.clear();
+  getAllProjectsMock.mockReset().mockResolvedValue([]);
   execGitMock.mockReset();
   findOneByMock.mockReset();
   spawnMock.mockReset();
@@ -1854,6 +1856,20 @@ describe("terminal 세션 미러", () => {
 });
 
 describe("모바일 보드", () => {
+  it("반복 아이콘은 opt-in 보드에서 한 번만 싣고 기본 응답은 유지한다", async () => {
+    const icon = "data:image/svg+xml;base64," + "a".repeat(2000);
+    const projects = [{ id: "p1", iconDataUrl: icon }, { id: "p2", iconDataUrl: icon }, { id: "p3", iconDataUrl: null }];
+    getAllProjectsMock.mockResolvedValue(projects);
+
+    const compact = await getMobileBoard({ iconFormat: "deduplicated" });
+
+    expect(compact.projects).toEqual([{ id: "p1", iconDataUrl: null, iconKey: "0" }, { id: "p2", iconDataUrl: null, iconKey: "0" }, { id: "p3", iconDataUrl: null, iconKey: null }]);
+    expect(compact).toMatchObject({ projectIcons: { "0": icon } });
+    expect(JSON.stringify(compact).split(icon)).toHaveLength(2);
+    expect((await getMobileBoard()).projects).toEqual(projects);
+    expect(await getMobileBoard()).not.toHaveProperty("projectIcons");
+  });
+
   it("생성 화면이 쓸 데스크탑 기본 세션 타입을 함께 싣는다", async () => {
     defaultSessionTypeSetting = SessionType.ZELLIJ;
 
@@ -2166,6 +2182,59 @@ describe("Herdr 세션 미러", () => {
     spawnMock.mockImplementation(() => createObserver());
   });
 
+  it("최소 surfaces는 실행 명령 조회 없이 첫 pane 좌표를 돌려준다", async () => {
+    const surfaces = await getTaskSurfaces("herdr-task", { metadata: "minimal" });
+
+    expect(surfaces.tabs[0].panes[0]).toMatchObject({ id: "w1:p1", command: "", width: 120, height: 38 });
+    expect(surfaces.geometryTabId).toBe("w1:t1");
+    expect(executed().some((command) => command.includes("'process-info'"))).toBe(false);
+    expect((await getTaskSurfaces("herdr-task")).tabs[0].panes[0].command).toBe("claude");
+  });
+
+  it("최소 surfaces는 지정한 비첫 탭의 전체 pane 배치를 표시 가능하다고 식별한다", async () => {
+    const respond = execGitMock.getMockImplementation()!;
+    execGitMock.mockImplementation((command: string) => {
+      if (command === herdrCommand("pane", "list")) return Promise.resolve(herdrResult({ panes: [
+        { pane_id: "w1:p1", tab_id: "w1:t1", scroll: { viewport_rows: 38 } },
+        { pane_id: "w1:p2", tab_id: "w1:t2", scroll: { viewport_rows: 38 } },
+        { pane_id: "w1:p3", tab_id: "w1:t2", scroll: { viewport_rows: 38 } },
+      ] }));
+      if (command === herdrCommand("tab", "list")) return Promise.resolve(herdrResult({ tabs: [
+        { tab_id: "w1:t1", label: "first" }, { tab_id: "w1:t2", label: "selected" },
+      ] }));
+      if (command === herdrCommand("pane", "layout", "--pane", "w1:p2")) return Promise.resolve(herdrResult({ layout: {
+        area: { width: 120, height: 40 }, zoomed: false,
+        panes: [{ pane_id: "w1:p2", rect: { x: 0, y: 0, width: 60 } }, { pane_id: "w1:p3", rect: { x: 60, y: 0, width: 60 } }],
+      } }));
+      return respond(command);
+    });
+
+    const surfaces = await getTaskSurfaces("herdr-task", { metadata: "minimal", tabId: "w1:t2" });
+
+    expect(surfaces.geometryTabId).toBe("w1:t2");
+    expect(surfaces.tabs[1].panes).toMatchObject([{ id: "w1:p2", left: 0, width: 60 }, { id: "w1:p3", left: 60, width: 60 }]);
+    expect(executed().filter((command) => command.includes("'pane' 'layout'"))).toEqual([herdrCommand("pane", "layout", "--pane", "w1:p2")]);
+  });
+
+  it("첫 화면과 observe 구독은 느린 프로세스 모드를 기다리지 않는다", async () => {
+    let releaseModes!: () => void;
+    const modes = new Promise<string>((resolve) => { releaseModes = () => resolve(herdrResult({ process_info: { foreground_processes: [{ name: "codex" }] } })); });
+    const respond = execGitMock.getMockImplementation()!;
+    execGitMock.mockImplementation((command: string) => command.includes("'process-info'") ? modes : respond(command));
+    const chunks: string[] = [];
+    let unsubscribe: (() => void) | undefined;
+    const subscribing = subscribeToPane("herdr-task", "w1:p1", (chunk) => chunks.push(chunk), () => {}).then((stop) => { unsubscribe = stop; });
+    try {
+      await vi.waitFor(() => expect(chunks[0]).toContain("history-0"), { timeout: 150 });
+      await vi.waitFor(() => expect(unsubscribe).toBeTypeOf("function"), { timeout: 150 });
+      expect(spawnMock).toHaveBeenCalledOnce();
+    } finally {
+      releaseModes();
+      await subscribing;
+      unsubscribe?.();
+    }
+  });
+
   describe("B 지속 연결 권한", () => {
     const descriptor = {
       version: 1 as const, grantId: "scoped-grant", expiresAt: Date.now() + 60_000,
@@ -2406,10 +2475,17 @@ describe("Herdr 세션 미러", () => {
     const original = execGitMock.getMockImplementation()!;
     execGitMock.mockImplementation(async (command, host) => {
       const output = await original(command, host);
-      if (command !== herdrCommand("pane", "list")) return output;
-      const response = JSON.parse(output);
-      response.result.panes.push({ ...response.result.panes[0], pane_id: "w1:p2" });
-      return JSON.stringify(response);
+      if (command === herdrCommand("pane", "list")) {
+        const response = JSON.parse(output);
+        response.result.panes.push({ ...response.result.panes[0], pane_id: "w1:p2" });
+        return JSON.stringify(response);
+      }
+      if (command.includes("'pane' 'layout'")) {
+        const response = JSON.parse(output);
+        response.result.layout.panes.push({ pane_id: "w1:p2", rect: { x: 60, y: 0, width: 60, height: 40 } });
+        return JSON.stringify(response);
+      }
+      return output;
     });
     const first = await claimPaneViewport("herdr-task", "w1:p1");
     const second = await claimPaneViewport("herdr-task", "w1:p2");
@@ -2561,13 +2637,35 @@ describe("Herdr 세션 미러", () => {
     unsubscribe();
   });
 
-  it("휠을 받는 프로그램이 도는 pane의 첫 화면은 전체 화면과 마우스 모드를 켠다", async () => {
+  it("첫 화면을 보낸 뒤 휠을 받는 프로그램의 전체 화면과 마우스 모드를 보강한다", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     foregroundPrograms = ["codex", "mcp-server"];
     const chunks: string[] = [];
     const unsubscribe = await subscribeToPane("herdr-task", "w1:p1", (chunk) => chunks.push(chunk), () => {});
 
-    expect(chunks).toEqual([`${REDRAW_START}${WHEEL_SCREEN_MODES}${buildScreenRedraw("history-0", null)}`]);
+    expect(chunks).toEqual([`${REDRAW_START}${MAIN_SCREEN_MODES}${buildScreenRedraw("history-0", null)}`]);
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(chunks.at(-1)).toBe(`${REDRAW_START}${WHEEL_SCREEN_MODES}${buildScreenRedraw("history-0", null)}`);
     unsubscribe();
+  });
+
+  it("모드 보강 중 구독을 해제하면 늦은 응답이 화면이나 observe를 다시 만들지 않는다", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    let releaseModes!: () => void;
+    const modes = new Promise<string>((resolve) => { releaseModes = () => resolve(herdrResult({ process_info: { foreground_processes: [{ name: "codex" }] } })); });
+    const respond = execGitMock.getMockImplementation()!;
+    execGitMock.mockImplementation((command: string) => command.includes("'process-info'") ? modes : respond(command));
+    const chunks: string[] = [];
+    const unsubscribe = await subscribeToPane("herdr-task", "w1:p1", (chunk) => chunks.push(chunk), () => {});
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(executed().some((command) => command.includes("'process-info'"))).toBe(true);
+
+    unsubscribe();
+    releaseModes();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(chunks).toEqual([`${REDRAW_START}${MAIN_SCREEN_MODES}${buildScreenRedraw("history-0", null)}`]);
+    expect(spawnMock).toHaveBeenCalledOnce();
   });
 
   it("출력이 잠잠해진 뒤 휠을 받는 프로그램이 새로 떴으면 모드를 켠 화면을 다시 보낸다", async () => {

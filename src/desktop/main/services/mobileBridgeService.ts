@@ -177,6 +177,8 @@ export interface TaskSurfaces {
   /** 원격 Herdr처럼 B로 가는 직접 연결 권한을 발급할 수 있는 세션이다. 아니면 모바일이 권한을 물어보는 왕복을 건너뛴다 */
   canPrepareDirectConnection: boolean;
   tabs: MirrorTab[];
+  /** 최소 응답에서만 존재한다. 이 탭 이외의 pane 좌표는 표시 전에 다시 읽어야 한다. */
+  geometryTabId?: string;
 }
 
 /** 세션을 비출 수 없는 이유. 화면이 빈 터미널 대신 이 사유를 보여 준다 */
@@ -236,7 +238,7 @@ function hasZellijPaneIdSupport(sshHost: string | null): Promise<boolean> {
  * 태스크의 pane을 탭 단위로 묶어 돌려준다.
  * 폰은 이 결과의 pane을 전부 펼쳐 탭으로 쓰고, 태블릿은 탭 하나의 pane을 좌표대로 조립한다.
  */
-export async function getTaskSurfaces(taskId: string): Promise<TaskSurfaces> {
+export async function getTaskSurfaces(taskId: string, options?: { metadata?: "minimal"; tabId?: string }): Promise<TaskSurfaces> {
   const task = await findMirrorTask(taskId, true);
   const target = toMirrorSessionTarget(task);
 
@@ -249,7 +251,7 @@ export async function getTaskSurfaces(taskId: string): Promise<TaskSurfaces> {
   }
 
   await startMultiplexerSessionIfMissing(task, target);
-  const panes = await listMirrorPanes(target);
+  const panes = await listMirrorPanes(target, options);
 
   if (panes.length === 0) {
     throw new SurfaceUnavailableError("session-not-running");
@@ -262,6 +264,8 @@ export async function getTaskSurfaces(taskId: string): Promise<TaskSurfaces> {
     canRefreshHistory: target.sessionType === SessionType.HERDR,
     canPrepareDirectConnection: Boolean(target.sshHost) && target.sessionType === SessionType.HERDR,
     tabs: groupPanesIntoTabs(panes),
+    ...(options?.metadata === "minimal" && target.sessionType === SessionType.HERDR
+      ? { geometryTabId: options.tabId ?? panes.find((pane) => pane.width > 0)?.tabId } : {}),
   };
 }
 
@@ -382,9 +386,9 @@ export async function getMobilePaneCloseInfo(taskId: string, paneId: string): Pr
   return { processNames: isRunningProgram ? [currentCommand as string] : [] };
 }
 
-async function listMirrorPanes(target: MirrorSessionTarget): Promise<MirrorPane[]> {
+async function listMirrorPanes(target: MirrorSessionTarget, options?: { metadata?: "minimal"; tabId?: string; selectedPaneId?: string }): Promise<MirrorPane[]> {
   if (target.sessionType === SessionType.HERDR) {
-    return listHerdrMirrorPanes(target.sessionName, target.sshHost);
+    return listHerdrMirrorPanes(target.sessionName, target.sshHost, options);
   }
 
   if (target.sessionType === SessionType.ZELLIJ) {
@@ -499,13 +503,26 @@ function groupPanesIntoTabs(panes: MirrorPane[]): MirrorTab[] {
 }
 
 /** 모바일 보드가 한 번에 받는 것. 데스크탑 보드와 같은 조회를 쓰므로 정렬과 done 페이지 크기가 같다 */
-export async function getMobileBoard() {
+export async function getMobileBoard(options?: { iconFormat?: "deduplicated" }) {
   const [board, projects, defaultSessionType] = await Promise.all([
     getTasksByStatus(),
     getAllProjects(),
     getDefaultSessionType(),
   ]);
-  return { ...board, projects, defaultSessionType };
+  if (options?.iconFormat !== "deduplicated") return { ...board, projects, defaultSessionType };
+  const iconKeys = new Map<string, string>();
+  const projectIcons: Record<string, string> = {};
+  const compactProjects = projects.map((project) => {
+    const icon = project.iconDataUrl;
+    let iconKey: string | null = null;
+    if (typeof icon === "string") {
+      iconKey = iconKeys.get(icon) ?? String(iconKeys.size);
+      iconKeys.set(icon, iconKey);
+      projectIcons[iconKey] = icon;
+    }
+    return { ...project, iconDataUrl: null, iconKey };
+  });
+  return { ...board, projects: compactProjects, projectIcons, defaultSessionType };
 }
 
 async function resolveMobileProjectDirectory(submittedPath: string): Promise<string> {
@@ -1379,7 +1396,7 @@ export async function claimPaneViewport(taskId: string, paneId: string): Promise
   const target = toMirrorSessionTarget(task);
   const panes = target.sessionType === SessionType.TERMINAL
     ? listTerminalMirrorTabs(taskId).flatMap((tab) => tab.panes)
-    : await listMirrorPanes(target);
+    : await listMirrorPanes(target, { metadata: "minimal", selectedPaneId: paneId });
   const pane = panes.find((candidate) => candidate.id === paneId);
   if (paneViewportShutdown) throw new Error("데스크탑이 종료 중입니다.");
   if (!pane) {
@@ -1513,7 +1530,7 @@ async function ensurePaneBelongsToSession(
   target: MirrorSessionTarget,
   paneId: string,
 ): Promise<MirrorPane> {
-  const pane = (await listMirrorPanes(target)).find((candidate) => candidate.id === paneId);
+  const pane = (await listMirrorPanes(target, { metadata: "minimal", selectedPaneId: paneId })).find((candidate) => candidate.id === paneId);
   if (!pane) {
     throw new SurfaceUnavailableError("session-not-running");
   }
@@ -1746,22 +1763,19 @@ export async function stopAllPaneMirrors(shutdown = false): Promise<void> {
 const SCREEN_REDRAW_START = "\x1b[H\x1b[2J\x1b[3J";
 
 /** pane의 지금 화면을 모바일 터미널이 처음부터 다시 그리는 출력으로 떠 온다 */
-async function readPaneSnapshot(target: MirrorSessionTarget, paneId: string): Promise<string> {
+async function readPaneSnapshot(target: MirrorSessionTarget, paneId: string, inputModes?: string): Promise<string> {
   if (target.sessionType === SessionType.ZELLIJ) {
     const dump = await runMirrorCommand(buildZellijDumpPaneCommand(target.sessionName, paneId), target.sshHost);
     return buildScreenRedraw(dump, null);
   }
 
   if (target.sessionType === SessionType.HERDR) {
-    const [recentScreen, inputModes] = await Promise.all([
-      runMirrorCommand(buildHerdrRecentScreenCommand(target.sessionName, paneId), target.sshHost),
-      readHerdrInputModes(target, paneId),
-    ]);
+    const recentScreen = await runMirrorCommand(buildHerdrRecentScreenCommand(target.sessionName, paneId), target.sshHost);
     /**
      * 이 스냅샷은 구독 중에도 이력이 바뀔 때마다 다시 나간다. 모드 전환이 맨 앞에 오면 모바일이 다시 그리기로 알아보지 못해
      * 선택 중인 화면을 지우므로, 지우기를 모드 전환 앞에도 한 번 둔다. 화면을 바꾼 뒤의 지우기는 `buildScreenRedraw`가 맡는다.
      */
-    return `${SCREEN_REDRAW_START}${inputModes}${buildScreenRedraw(recentScreen, null)}`;
+    return `${SCREEN_REDRAW_START}${inputModes ?? buildHerdrInputModeSequences([])}${buildScreenRedraw(recentScreen, null)}`;
   }
 
   /** 화면과 커서를 한 번에 읽는다. 원격이면 왕복이 하나 줄고, 둘 사이에 화면이 바뀌는 틈도 좁아진다 */
@@ -1844,10 +1858,9 @@ async function startHerdrFrameStream(
    */
   const paneSize = { cols: pane.width, rows: pane.height };
   let lastRequestedRefreshAt = Number.NEGATIVE_INFINITY;
-  let [extent, inputModes] = await Promise.all([
-    readHerdrPaneExtent(target.sessionName, paneId, target.sshHost),
-    readHerdrInputModes(target, paneId),
-  ]);
+  let extent = await readHerdrPaneExtent(target.sessionName, paneId, target.sshHost);
+  // Process names only tune wheel handling. The quiet refresh can enrich them after the first usable screen.
+  let inputModes = buildHerdrInputModeSequences([]);
 
   const stopObserver = () => {
     const stoppingObserver = observer;
@@ -1948,10 +1961,12 @@ async function startHerdrFrameStream(
       if (isStopped || (isUnchanged && !isRequested)) {
         return;
       }
+      const snapshot = await readPaneSnapshot(target, paneId, nextInputModes);
+      if (isStopped) return;
       extent = nextExtent;
       inputModes = nextInputModes;
       stopObserver();
-      broadcast(await readPaneSnapshot(target, paneId));
+      broadcast(snapshot);
       if (!isStopped) {
         await startObserver();
       }
@@ -1970,6 +1985,7 @@ async function startHerdrFrameStream(
   }
 
   await startObserver();
+  scheduleQuietCheck();
 
   return {
     stop: stopStream,
@@ -2071,7 +2087,7 @@ function stopMirrorProcess(child: ChildProcess): void {
 export async function readHerdrPaneFrameForChat(taskId: string, paneId: string): Promise<{ output: string; width: number; height: number }> {
   const target = await findMirrorSessionTarget(taskId);
   if (target.sessionType !== SessionType.HERDR) throw new Error("Herdr pane이 아닙니다.");
-  const pane = (await listMirrorPanes(target)).find((entry) => entry.id === paneId);
+  const pane = (await listMirrorPanes(target, { metadata: "minimal", selectedPaneId: paneId })).find((entry) => entry.id === paneId);
   if (!pane) throw new PaneNotFoundError();
   const child = await spawnMirrorProcess(buildHerdrObservePaneCommand(target.sessionName, paneId, pane.width, pane.height), target.sshHost);
   return new Promise((resolve, reject) => {

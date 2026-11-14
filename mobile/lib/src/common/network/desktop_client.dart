@@ -157,7 +157,9 @@ class DesktopClient {
   Future<Map<String, dynamic>> fetchBoard(DesktopConnection connection) async {
     final response = await _clientFor(connection)
         .get(
-          connection.buildHttpUri('/api/mobile/board'),
+          connection.buildHttpUri('/api/mobile/board', {
+            'iconFormat': 'deduplicated',
+          }),
           headers: connection.authorizationHeaders,
         )
         .timeout(_requestTimeout);
@@ -166,8 +168,22 @@ class DesktopClient {
       throw DesktopRequestException(response.statusCode);
     }
 
-    return (jsonDecode(response.body) as Map<String, dynamic>)['board']
-        as Map<String, dynamic>;
+    final board =
+        (jsonDecode(response.body) as Map<String, dynamic>)['board']
+            as Map<String, dynamic>;
+    final icons = board['projectIcons'];
+    final projects = board['projects'];
+    if (icons is Map<String, dynamic> && projects is List) {
+      board['projects'] = [
+        for (final project in projects)
+          if (project is Map<String, dynamic> &&
+              icons[project['iconKey']] is String)
+            {...project, 'iconDataUrl': icons[project['iconKey']]}
+          else
+            project,
+      ];
+    }
+    return board;
   }
 
   Future<ChatHistoryPage> fetchChatHistory(
@@ -732,12 +748,15 @@ class DesktopClient {
   /// 태스크의 탭과 pane 목록
   Future<TaskSurfaces> fetchSurfaces(
     DesktopConnection connection,
-    String taskId,
-  ) async {
+    String taskId, {
+    bool minimal = false,
+    String? tabId,
+  }) async {
     final response = await _clientFor(connection)
         .get(
           connection.buildHttpUri(
             '/api/mobile/tasks/${Uri.encodeComponent(taskId)}/surfaces',
+            minimal ? {'metadata': 'minimal', 'tabId': ?tabId} : null,
           ),
           headers: connection.authorizationHeaders,
         )

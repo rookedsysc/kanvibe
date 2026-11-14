@@ -226,6 +226,7 @@ class TaskSurfacesController extends AsyncNotifier<TaskSurfacesState> {
 
   final String taskId;
   int _generation = 0;
+  int _metadataRequestedGeneration = -1;
 
   @override
   Future<TaskSurfacesState> build() async {
@@ -240,12 +241,80 @@ class TaskSurfacesController extends AsyncNotifier<TaskSurfacesState> {
     try {
       final surfaces = await ref
           .read(desktopClientProvider)
-          .fetchSurfaces(connection, taskId);
+          .fetchSurfaces(connection, taskId, minimal: true);
       return TaskSurfacesState(surfaces);
     } on DesktopRequestException catch (error) {
       await _forgetRejectedConnection(ref, error, connection);
       rethrow;
     }
+  }
+
+  Future<void> enrichMetadata() async {
+    if (state.isLoading ||
+        !state.hasValue ||
+        state.requireValue.isMutating ||
+        _metadataRequestedGeneration == _generation) {
+      return;
+    }
+    final previous = state.requireValue;
+    final generation = _generation;
+    _metadataRequestedGeneration = generation;
+    try {
+      final connection = (await ref.read(connectionControllerProvider.future))
+          .activeConnection;
+      if (connection == null ||
+          !ref.mounted ||
+          generation != _generation ||
+          !identical(state.value, previous)) {
+        return;
+      }
+      final surfaces = await ref
+          .read(desktopClientProvider)
+          .fetchSurfaces(connection, taskId);
+      if (!ref.mounted ||
+          generation != _generation ||
+          !identical(state.value, previous)) {
+        return;
+      }
+      state = AsyncData(TaskSurfacesState(surfaces));
+    } catch (_) {
+      // Labels are optional after the terminal is usable; failure must retain the current surface state.
+    }
+  }
+
+  Future<TaskSurfaces?> loadTabGeometry(String tabId) async {
+    if (state.isLoading || !state.hasValue || state.requireValue.isMutating) {
+      return null;
+    }
+    final previous = state.requireValue;
+    final generation = _generation;
+    final connection = (await ref.read(connectionControllerProvider.future))
+        .activeConnection;
+    if (connection == null) throw const DesktopDisconnectedException();
+    if (!ref.mounted ||
+        generation != _generation ||
+        !identical(state.value, previous)) {
+      return null;
+    }
+    final surfaces = await ref
+        .read(desktopClientProvider)
+        .fetchSurfaces(connection, taskId, minimal: true, tabId: tabId);
+    final tab = surfaces.tabs.where((tab) => tab.id == tabId).firstOrNull;
+    if ((surfaces.geometryTabId != null && surfaces.geometryTabId != tabId) ||
+        tab == null ||
+        tab.panes.isEmpty ||
+        tab.panes.any((pane) => pane.width <= 0 || pane.height <= 0)) {
+      throw const SurfaceUnavailableException(
+        SurfaceUnavailableReason.sessionNotRunning,
+      );
+    }
+    if (!ref.mounted ||
+        generation != _generation ||
+        !identical(state.value, previous)) {
+      return null;
+    }
+    state = AsyncData(TaskSurfacesState(surfaces));
+    return surfaces;
   }
 
   Future<void> startSession() async {

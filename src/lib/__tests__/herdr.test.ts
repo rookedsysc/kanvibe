@@ -498,6 +498,84 @@ describe("listHerdrMirrorPanes", () => {
     expect(execGit.mock.calls.every((call) => call[1] === "remote")).toBe(true);
   });
 
+  it("최소 목록은 느린 실행 명령과 선택하지 않은 탭 배치를 기다리지 않는다", async () => {
+    let releaseOptional!: () => void;
+    const optional = new Promise<string>((resolve) => { releaseOptional = () => resolve(result({ process_info: { foreground_processes: [] }, layout: { area: { width: 120 }, panes: [], focused_pane_id: "w1:p2" } })); });
+    stubSession(false, () => result({ process_info: { foreground_processes: [] } }));
+    const respond = execGit.getMockImplementation()!;
+    execGit.mockImplementation((command: string) => command.includes("'process-info'") || command === commandFor(["pane", "layout", "--pane", "w1:p2"])
+      ? optional : respond(command));
+    let actual: Awaited<ReturnType<typeof listHerdrMirrorPanes>> | undefined;
+    const reading = listHerdrMirrorPanes("feature", "remote", { metadata: "minimal" }).then((value) => { actual = value; });
+    try {
+      await vi.waitFor(() => expect(actual?.[0]).toEqual({ id: "w1:p1", tabId: "w1:t1", tabName: "work", command: "", left: 0, top: 0, width: 60, height: 38 }), { timeout: 150 });
+      expect(actual?.map((pane) => pane.id)).toEqual(["w1:p1", "w1:p3", "w1:p2"]);
+      expect(execGit.mock.calls.some(([command]) => command.includes("'process-info'") || command === commandFor(["pane", "layout", "--pane", "w1:p2"]))).toBe(false);
+    } finally {
+      releaseOptional();
+      await reading;
+    }
+  });
+
+  it("선택한 pane 검증은 해당 탭 좌표만 읽고 실행 명령을 읽지 않는다", async () => {
+    stubSession(false, () => result({ process_info: { foreground_processes: [{ name: "vim" }] } }));
+
+    const mirrorPanes = await listHerdrMirrorPanes("feature", "remote", { metadata: "minimal", selectedPaneId: "w1:p2" });
+
+    expect(mirrorPanes.find((pane) => pane.id === "w1:p2")).toMatchObject({ width: 120, height: 38, command: "" });
+    expect(execGit.mock.calls.filter(([command]) => command.includes("'pane' 'layout'"))).toEqual([
+      [commandFor(["pane", "layout", "--pane", "w1:p2"]), "remote", expect.any(Object)],
+    ]);
+    expect(execGit.mock.calls.some(([command]) => command.includes("'process-info'"))).toBe(false);
+  });
+
+  it("최소 목록은 첫 탭이 아닌 지정 탭의 모든 pane 배치를 읽는다", async () => {
+    stubSession(false, () => result({ process_info: { foreground_processes: [] } }));
+
+    const respond = execGit.getMockImplementation()!;
+    execGit.mockImplementation((command: string) => command === commandFor(["tab", "list"])
+      ? Promise.resolve(result({ tabs: [...tabs].reverse() })) : respond(command));
+
+    const mirrorPanes = await listHerdrMirrorPanes("feature", "remote", { metadata: "minimal", tabId: "w1:t1" });
+
+    expect(mirrorPanes.filter((pane) => pane.tabId === "w1:t1")).toEqual([
+      { id: "w1:p1", tabId: "w1:t1", tabName: "work", command: "", left: 0, top: 0, width: 60, height: 38 },
+      { id: "w1:p3", tabId: "w1:t1", tabName: "work", command: "", left: 60, top: 0, width: 60, height: 38 },
+    ]);
+    expect(execGit.mock.calls.filter(([command]) => command.includes("'pane' 'layout'"))).toEqual([
+      [commandFor(["pane", "layout", "--pane", "w1:p1"]), "remote", expect.any(Object)],
+    ]);
+  });
+
+  it("최소 목록의 필요한 pane 좌표가 사라졌으면 표시 가능한 배치로 추측하지 않는다", async () => {
+    stubSession(false, () => result({ process_info: { foreground_processes: [] } }));
+    const respond = execGit.getMockImplementation()!;
+    execGit.mockImplementation((command: string) => command.includes("'pane' 'layout'")
+      ? Promise.resolve(result({ layout: { area: { width: 120, height: 40 }, panes: [] } })) : respond(command));
+
+    await expect(listHerdrMirrorPanes("feature", "remote", { metadata: "minimal" })).rejects.toThrow("배치를 확인할 수 없습니다");
+  });
+
+  it("최소 목록은 확대된 pane의 실제 너비가 유효하지 않으면 거절한다", async () => {
+    stubSession(true, () => result({ process_info: { foreground_processes: [] } }));
+    const respond = execGit.getMockImplementation()!;
+    execGit.mockImplementation(async (command: string) => {
+      const output = await respond(command);
+      if (!command.includes("'pane' 'layout'")) return output;
+      const parsed = JSON.parse(output);
+      parsed.result.layout.area.width = 0;
+      return JSON.stringify(parsed);
+    });
+    await expect(listHerdrMirrorPanes("feature", "remote", { metadata: "minimal" })).rejects.toThrow("배치를 확인할 수 없습니다");
+  });
+
+  it("목록에 없는 pane은 다른 탭의 좌표를 읽지 않고 거절한다", async () => {
+    stubSession(false, () => result({ process_info: { foreground_processes: [] } }));
+
+    expect(await listHerdrMirrorPanes("feature", "remote", { metadata: "minimal", selectedPaneId: "w9:p9" })).toEqual([]);
+    expect(execGit.mock.calls.some(([command]) => command.includes("'pane' 'layout'") || command.includes("'process-info'"))).toBe(false);
+  });
+
   it("확대된 pane은 탭 전체 너비를 쓰고 다른 pane은 그대로 둔다", async () => {
     stubSession(true, () => result({ process_info: { foreground_processes: [] } }));
     const mirrorPanes = await listHerdrMirrorPanes("feature");

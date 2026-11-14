@@ -148,6 +148,8 @@ class FakeDesktopClient implements DesktopClient {
   /// 테스트가 도중에 바꿔 끼울 수 있다. 데스크탑이 세션을 바꾼 뒤 다시 받은 pane을 흉내낸다
   TaskSurfaces? surfaces;
   final Object? surfacesError;
+  Future<TaskSurfaces> Function()? onFetchSurfaces;
+  final surfaceRequests = <({bool minimal, String? tabId})>[];
   final Future<({TaskSurfaces surfaces, String paneId})> Function()?
   onCreateTerminalTab;
   final createdTabCalls = <({String taskId, String connectionId})>[];
@@ -323,8 +325,12 @@ class FakeDesktopClient implements DesktopClient {
   @override
   Future<TaskSurfaces> fetchSurfaces(
     DesktopConnection connection,
-    String taskId,
-  ) async {
+    String taskId, {
+    bool minimal = false,
+    String? tabId,
+  }) async {
+    surfaceRequests.add((minimal: minimal, tabId: tabId));
+    if (onFetchSurfaces != null) return onFetchSurfaces!();
     if (surfacesError != null) {
       throw surfacesError!;
     }
