@@ -38,8 +38,14 @@ function runtime(app, action) {
       qa.releaseDelete();
       qa.releaseDelete = null;
     }
+    if (action === "review-fixture") return qa.createReviewFixture();
+    if (action === "release-cleanup") {
+      if (!qa.releaseCleanup) throw new Error("No mobile cleanup is waiting for release");
+      qa.releaseCleanup();
+      qa.releaseCleanup = null;
+    }
     if (action === "no-review") qa.withReview = false;
-    return { status: qa.sync.getBackgroundTaskSyncStatus(), counts: { ...qa.counts }, deleteCounts: { ...qa.deleteCounts }, pendingStage: qa.pendingStage };
+    return { status: qa.sync.getBackgroundTaskSyncStatus(), counts: { ...qa.counts }, deleteCounts: { ...qa.deleteCounts }, pendingStage: qa.pendingStage, cleanupPending: qa.cleanupPending, cleanupRequests: qa.cleanupRequests, mobileDeleteCounts: { ...qa.mobileDeleteCounts } };
   }, action);
 }
 
@@ -52,17 +58,22 @@ async function installFixture(app, rootDir, appDataDir, tasks, longPath) {
     const projects = load(`${built}/desktop/main/services/projectService.js`);
     const kanban = load(`${built}/desktop/main/services/kanbanService.js`);
     const sync = load(`${built}/desktop/main/services/backgroundTaskSyncService.js`);
+    const notifications = load(`${built}/desktop/main/notificationStore.js`);
+    const settings = load(`${built}/desktop/main/services/appSettingsService.js`);
+    const { createLocalShellEnvironment } = load(`${built}/lib/shellEnvironment.js`);
     const registry = load(`${built}/desktop/main/serviceRegistry.js`);
     if (registry.desktopServices.backgroundTaskSync.getBackgroundTaskSyncStatus !== sync.getBackgroundTaskSyncStatus) {
       throw new Error("Fixture and IPC must load the same main-process service");
     }
-    for (const [owner, name] of [[projects, "syncRegisteredProjectWorktrees"], [kanban, "syncActiveTaskPullRequests"], [kanban, "syncActiveTaskPulls"], [kanban, "deleteTask"]]) {
+    for (const [owner, name] of [[projects, "syncRegisteredProjectWorktrees"], [kanban, "syncActiveTaskPullRequests"], [kanban, "syncActiveTaskPulls"], [kanban, "deleteTask"], [kanban, "deleteTasks"]]) {
       if (!Object.getOwnPropertyDescriptor(owner, name)?.writable) throw new Error(`Main adapter cannot be controlled: ${name}`);
     }
     const originalDelete = kanban.deleteTask;
+    const originalDeleteTasks = kanban.deleteTasks;
     const qa = {
       sync, counts: { worktrees: 0, pullRequests: 0, pulls: 0 }, deleteCounts: {},
       release: null, releaseDelete: null, pendingStage: null, withReview: true,
+      releaseCleanup: null, cleanupPending: false, cleanupRequests: 0, mobileDeleteCounts: {}, mobileTaskIds: new Set(), fixtureSequence: 0,
     };
     const barrier = (stage, value) => new Promise((resolve) => {
       qa.pendingStage = stage;
@@ -100,6 +111,58 @@ async function installFixture(app, rootDir, appDataDir, tasks, longPath) {
       if (taskId === config.tasks[1].id && qa.deleteCounts[taskId] === 1) throw new Error("QA worktree is busy");
       return originalDelete(taskId);
     };
+    kanban.deleteTasks = async (taskIds) => {
+      if (!taskIds.some((taskId) => qa.mobileTaskIds.has(taskId))) return originalDeleteTasks(taskIds);
+      if (qa.cleanupPending) throw new Error("Duplicate mobile cleanup reached the server");
+      qa.cleanupRequests += 1;
+      for (const taskId of taskIds) qa.mobileDeleteCounts[taskId] = (qa.mobileDeleteCounts[taskId] ?? 0) + 1;
+      qa.cleanupPending = true;
+      try {
+        await new Promise((resolve) => { qa.releaseCleanup = resolve; });
+        return await originalDeleteTasks(taskIds);
+      } finally {
+        qa.cleanupPending = false;
+      }
+    };
+    qa.createReviewFixture = async () => {
+      if (qa.cleanupPending) throw new Error("Finish the active cleanup before creating another review fixture");
+      const fs = process.getBuiltinModule("fs");
+      const { execFileSync } = process.getBuiltinModule("child_process");
+      const repoPath = `${config.appDataDir}/mobile-cleanup-repository`;
+      const git = (...args) => execFileSync("git", args, { cwd: repoPath, env: createLocalShellEnvironment(), encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+      if (!qa.mobileProject) {
+        fs.mkdirSync(`${repoPath}/empty-hooks`, { recursive: true });
+        git("init", "--initial-branch", "main");
+        git("config", "user.name", "KanVibe QA");
+        git("config", "user.email", "qa@kanvibe.local");
+        git("config", "core.hooksPath", `${repoPath}/empty-hooks`);
+        fs.writeFileSync(`${repoPath}/README.md`, "# Isolated mobile background cleanup QA\n");
+        git("add", "README.md");
+        git("commit", "-m", "chore: isolated cleanup fixture");
+        await settings.setDefaultSessionType("terminal");
+        const registered = await projects.registerProject("QA mobile cleanup", repoPath);
+        if (!registered.success || !registered.project) throw new Error(`Cleanup fixture project registration failed: ${registered.error}`);
+        qa.mobileProject = registered.project;
+      }
+      qa.fixtureSequence += 1;
+      const tasks = [];
+      for (const label of ["A", "B"]) {
+        const branchName = `qa/mobile-cleanup-${qa.fixtureSequence}-${label}`;
+        git("branch", branchName, "main");
+        const task = await kanban.createTask({ title: `QA mobile cleanup ${label}`, branchName, projectId: qa.mobileProject.id });
+        qa.mobileTaskIds.add(task.id);
+        tasks.push(task);
+      }
+      const { notification } = await notifications.createNotification({
+        title: "QA mobile cleanup review", body: "Two merged tasks are ready for background cleanup", locale: "ko", relativePath: "/ko",
+        dedupeKey: `qa-mobile-cleanup-${process.pid}-${qa.fixtureSequence}`,
+        action: { type: "background-sync-review", payload: { registeredWorktrees: [], pulledTasks: [], mergedPullRequests: tasks.map((task, index) => ({
+          taskId: task.id, taskTitle: task.title, branchName: task.branchName,
+          prUrl: `https://github.com/kanvibe/qa-fixture/pull/${index + 1}`, mergedAt: "2026-11-14T00:00:00Z",
+        })) } },
+      });
+      return { notificationId: notification.id, taskIds: tasks.map((task) => task.id), detectedCount: 2 };
+    };
     globalThis.__backgroundSyncQa = qa;
     return { pid: process.pid, appDataDir: electronApp.getPath("userData"), mutableAdapters: true, sameIpcService: true };
   }, { rootDir, appDataDir, tasks, longPath });
@@ -115,6 +178,8 @@ async function serveProbe(app, page, fixture) {
       else if (request.method === "POST" && route === "/pairing") result = { ...await invoke(page, "mobileBridge", "startMobilePairing"), mobilePort: fixture.mobilePort };
       else if (request.method === "POST" && route === "/start") result = { status: await invoke(page, "backgroundTaskSync", "startBackgroundTaskSyncNow") };
       else if (request.method === "POST" && route === "/release") result = await runtime(app, "release");
+      else if (request.method === "POST" && route === "/review-fixture") result = await runtime(app, "review-fixture");
+      else if (request.method === "POST" && route === "/release-cleanup") result = await runtime(app, "release-cleanup");
       else { response.writeHead(404).end(); return; }
       response.writeHead(200, { "content-type": "application/json" });
       response.end(JSON.stringify({ runId: fixture.runId, ...result }));
@@ -196,31 +261,54 @@ async function main() {
     await page.getByText(messages.common.backgroundSyncStatus.reviewNeeded, { exact: true }).waitFor();
     assert.deepEqual((await runtime(app)).counts, { worktrees: 1, pullRequests: 1, pulls: 1 });
     check("progress survives panel reopen and each service stage completes once", "worktrees → pull-requests → pulls → completed");
-    const review = page.getByRole("button", { name: new RegExp(messages.common.backgroundSyncReview.title) });
-    await review.click();
-    await page.getByRole("heading", { name: messages.common.backgroundSyncReview.mergedSection, exact: true }).waitFor();
-    const panel = page.getByRole("dialog", { name: messages.common.notifications, exact: true });
-    assert.equal(await panel.locator("[aria-modal='true']").count(), 0);
-    await screenshot("desktop-inline-review");
+    const detectedLabel = (count) => messages.common.backgroundSyncStatus.detected.replace("{count}", String(count));
+    const dialog = () => page.getByRole("dialog", { name: messages.common.backgroundSyncReview.title, exact: true });
+    await syncSection().getByRole("button", { name: detectedLabel(4), exact: true }).click();
+    await dialog().getByRole("heading", { name: messages.common.backgroundSyncReview.mergedSection, exact: true }).waitFor();
+    assert.equal(await dialog().getAttribute("aria-modal"), "true");
+    await dialog().getByText(messages.common.backgroundSyncReview.backgroundProcessing, { exact: true }).waitFor();
+    await screenshot("desktop-detected-review-dialog");
     await page.setViewportSize({ width: 390, height: 844 });
-    const overflow = await panel.evaluate((element) => ({ width: element.clientWidth, scroll: element.scrollWidth, left: element.getBoundingClientRect().left, right: element.getBoundingClientRect().right, viewport: window.innerWidth }));
+    const overflow = await dialog().evaluate((element) => ({ width: element.clientWidth, scroll: element.scrollWidth, left: element.getBoundingClientRect().left, right: element.getBoundingClientRect().right, viewport: window.innerWidth }));
     assert.ok(overflow.scroll <= overflow.width + 1 && overflow.left >= 0 && overflow.right <= overflow.viewport, JSON.stringify(overflow));
-    await screenshot("narrow-inline-review");
+    await screenshot("narrow-review-dialog");
     await page.setViewportSize({ width: 1440, height: 960 });
-    check("review stays inside notification panel and long paths fit at 390px", JSON.stringify(overflow));
-    await panel.getByRole("button", { name: messages.common.delete, exact: true }).click();
-    await panel.getByRole("status").filter({ hasText: "2개 중" }).waitFor();
+    check("detected count opens the explicit review dialog and long paths fit at 390px", JSON.stringify(overflow));
+    await dialog().getByRole("button", { name: messages.common.backgroundSyncReview.deleteInBackground, exact: true }).click();
+    await dialog().waitFor({ state: "hidden" });
     await bell().click();
+    const cleaning = () => syncSection().getByRole("button", { name: messages.common.backgroundSyncStatus.cleaning, exact: true });
+    assert.equal(await cleaning().isEnabled(), true);
+    await syncSection().getByText(messages.common.backgroundSyncStatus.cleanupContinues, { exact: true }).waitFor();
+    await cleaning().click();
+    await dialog().getByRole("status").filter({ hasText: "2개 중" }).waitFor();
+    await dialog().getByText(tasks[0].title, { exact: true }).waitFor();
+    await screenshot("desktop-cleaning-reopened");
+    await dialog().getByRole("button", { name: messages.common.close, exact: true }).click();
+    await page.getByRole("button", { name: messages.common.settings, exact: true }).click();
+    await page.waitForURL(/#\/ko\/settings$/);
+    await page.goBack();
+    await page.waitForURL(/#\/ko$/);
+    await bell().click();
+    await cleaning().click();
+    await dialog().getByRole("status").filter({ hasText: "2개 중" }).waitFor();
+    await dialog().getByRole("button", { name: messages.common.close, exact: true }).click();
+    assert.equal((await runtime(app)).deleteCounts[tasks[0].id], 1);
+    check("cleanup auto-closes and the active cleaning button reopens the same job across route unmount", "explicit background message and pending deletion survived Settings roundtrip");
     await runtime(app, "release-delete");
     await bell().click();
-    await panel.getByRole("alert").filter({ hasText: "2개 중 1개 삭제, 1개 실패" }).waitFor();
-    await screenshot("desktop-partial-delete-retained");
-    await panel.getByRole("button", { name: messages.common.backgroundSyncReview.retryFailedDeletes, exact: true }).click();
-    await page.getByRole("heading", { name: messages.common.notifications, exact: true }).waitFor();
+    await syncSection().getByRole("button", { name: detectedLabel(3), exact: true }).click();
+    await dialog().getByRole("alert").filter({ hasText: "2개 중 1개 삭제, 1개 실패" }).waitFor();
+    await screenshot("desktop-background-delete-partial-failure");
+    await dialog().getByRole("button", { name: messages.common.backgroundSyncReview.retryFailedDeletes, exact: true }).click();
+    await dialog().waitFor({ state: "hidden" });
+    await bell().click();
+    await syncSection().getByRole("button", { name: detectedLabel(2), exact: true }).waitFor();
     const deleted = await runtime(app);
     assert.equal(deleted.deleteCounts[tasks[0].id], 1);
     assert.equal(deleted.deleteCounts[tasks[1].id], 2);
-    check("closing review preserves partial deletion and retries only the failed task", JSON.stringify(deleted.deleteCounts));
+    await screenshot("desktop-detected-count-after-cleanup");
+    check("partial cleanup preserves results and retries only failure in the background", "A deleted once, B attempted twice, detected count 4 → 3 → 2");
     await runtime(app, "no-review");
     await syncSection().getByRole("button", { name: messages.common.backgroundSyncStatus.start, exact: true }).click();
     for (const phase of ["worktrees", "pull-requests", "pulls"]) {

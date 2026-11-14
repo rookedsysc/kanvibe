@@ -4,6 +4,7 @@ import { HashRouter, Navigate, Outlet, Route, Routes, useParams } from "react-ro
 import { BoardCommandProvider } from "@/desktop/renderer/components/BoardCommandProvider";
 import BoardEventAlert from "@/desktop/renderer/components/BoardEventAlert";
 import ActionStatusToast from "@/desktop/renderer/components/ActionStatusToast";
+import BackgroundSyncReviewDialog from "@/desktop/renderer/components/BackgroundSyncReviewDialog";
 import NotificationListener from "@/desktop/renderer/components/NotificationListener";
 import ReleaseUpdateDialog from "@/desktop/renderer/components/ReleaseUpdateDialog";
 import TaskQuickSearchDialog from "@/desktop/renderer/components/TaskQuickSearchDialog";
@@ -107,6 +108,7 @@ function LocaleShell() {
         <ReleaseUpdateDialog />
         <BoardEventAlert />
         <ActionStatusToast />
+        <BackgroundSyncReviewDialog />
         <Outlet />
       </BoardCommandProvider>
     </IntlProvider>

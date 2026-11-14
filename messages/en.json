@@ -48,6 +48,9 @@
       "prLinkLabel": "PR Link"
     },
     "backgroundSyncStatus": {
+      "detected": "{count} detected items",
+      "cleaning": "Cleaning up",
+      "cleanupContinues": "Deletion runs in the background and continues when you close the dialog.",
       "title": "Background sync",
       "loading": "Checking sync status…",
       "starting": "Starting sync…",
@@ -57,7 +60,7 @@
       "pulls": "3/3 · Pulling changes",
       "completed": "Sync complete",
       "failed": "Sync failed. Try again.",
-      "reviewNeeded": "Sync complete · Review the results below.",
+      "reviewNeeded": "Sync complete · Open detected items to review the results.",
       "boardUpdated": "Sync complete · Board updated.",
       "noChanges": "Sync complete · No new changes.",
       "continues": "Sync continues when you close this panel.",
@@ -66,6 +69,8 @@
       "retry": "Retry"
     },
     "backgroundSyncReview": {
+      "backgroundProcessing": "Deletion runs in the background. Close this dialog at any time and reopen it with Cleaning up.",
+      "deleteInBackground": "Delete in background",
       "title": "Background Sync Review",
       "message": "The latest background scan found items to review. Check merged PR tasks you want to delete, and review newly registered worktrees as well.",
       "mergedSection": "Merged PRs",

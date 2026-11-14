@@ -8,6 +8,7 @@ import '../../../common/network/desktop_client.dart';
 import '../../../common/providers.dart';
 import '../application/background_sync_controller.dart';
 import '../domain/background_sync_status.dart';
+import 'sync_review_button.dart';
 
 class BackgroundSyncCard extends ConsumerWidget {
   const BackgroundSyncCard({
@@ -25,8 +26,7 @@ class BackgroundSyncCard extends ConsumerWidget {
     'worktrees' => 'worktree 탐색 중',
     'pull-requests' => 'PR 상태 확인 중',
     'pulls' => '변경 가져오는 중',
-    'completed' when status.reviewNeeded =>
-      '동기화가 끝났습니다. 알림함에서 검토할 결과를 확인해 주세요.',
+    'completed' when status.reviewNeeded => '동기화 완료 · 탐지 항목을 눌러 결과를 확인하세요.',
     'completed' when status.boardUpdated => '동기화가 끝나 보드를 갱신했습니다.',
     'completed' => '동기화가 끝났습니다. 새 변경 사항은 없습니다.',
     'failed' => '동기화 실패',
@@ -131,6 +131,7 @@ class BackgroundSyncCard extends ConsumerWidget {
                 ),
               ],
               const SizedBox(height: AppSizes.p12),
+              const SyncReviewButton(),
               Semantics(
                 identifier: buttonIdentifier,
                 child: OutlinedButton.icon(

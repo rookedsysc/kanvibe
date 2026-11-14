@@ -6,10 +6,38 @@ import '../../../common/l10n/app_localizations.dart';
 import '../../../common/network/desktop_client.dart';
 import '../../../common/providers.dart';
 import '../application/sync_review_controller.dart';
+import '../application/sync_review_cleanup_controller.dart';
+
+const _syncReviewDialogHeightFraction = 0.85;
+
+Future<void> showSyncReviewDialog(
+  BuildContext context,
+  String notificationId,
+) => showDialog<void>(
+  context: context,
+  builder: (dialogContext) => Dialog(
+    clipBehavior: Clip.antiAlias,
+    insetPadding: const EdgeInsets.all(AppSizes.p16),
+    child: ConstrainedBox(
+      constraints: BoxConstraints(
+        maxWidth: 840,
+        maxHeight:
+            MediaQuery.sizeOf(dialogContext).height *
+            _syncReviewDialogHeightFraction,
+      ),
+      child: SyncReviewScreen(notificationId: notificationId, isDialog: true),
+    ),
+  ),
+);
 
 class SyncReviewScreen extends ConsumerWidget {
-  const SyncReviewScreen({required this.notificationId, super.key});
+  const SyncReviewScreen({
+    required this.notificationId,
+    this.isDialog = false,
+    super.key,
+  });
   final String notificationId;
+  final bool isDialog;
   Future<void> _delete(BuildContext context, WidgetRef ref, int count) async {
     final original = ref
         .read(connectionControllerProvider)
@@ -43,18 +71,33 @@ class SyncReviewScreen extends ConsumerWidget {
         .value
         ?.activeConnection;
     if (active?.id != original?.id || active?.token != original?.token) return;
-    await ref
-        .read(syncReviewProvider(notificationId).notifier)
-        .deleteSelected();
+    final provider = syncReviewProvider(notificationId);
+    final deleting = ref.read(provider.notifier).deleteSelected();
+    if (isDialog &&
+        context.mounted &&
+        ref.read(provider).value?.isDeleting == true) {
+      Navigator.of(context).pop();
+    }
+    await deleting;
   }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final provider = syncReviewProvider(notificationId);
     final review = ref.watch(provider);
+    final cleanup = ref.watch(syncReviewCleanupProvider);
+    final isAnotherCleanupRunning =
+        cleanup != null && cleanup.notificationId != notificationId;
     return Scaffold(
       appBar: AppBar(
         title: Text(context.tr('동기화 결과 검토')),
+        leading: isDialog
+            ? IconButton(
+                tooltip: context.tr('닫기'),
+                onPressed: () => Navigator.of(context).pop(),
+                icon: const Icon(Icons.close),
+              )
+            : null,
         actions: [
           IconButton(
             tooltip: context.tr('새로고침'),
@@ -93,6 +136,8 @@ class SyncReviewScreen extends ConsumerWidget {
               data: (value) => ListView(
                 padding: const EdgeInsets.all(AppSizes.p16),
                 children: [
+                  Text(context.tr('백그라운드에서 정리합니다. 검토 창을 닫아도 계속 진행됩니다.')),
+                  const SizedBox(height: AppSizes.p16),
                   if (value.review.isEmpty)
                     Text(context.tr('검토할 변경 사항이 없습니다.')),
                   if (value.review.registeredWorktrees.isNotEmpty) ...[
@@ -191,12 +236,16 @@ class SyncReviewScreen extends ConsumerWidget {
                           'count': value.lastDeletedCount,
                         }),
                       ),
+                    if (isAnotherCleanupRunning)
+                      Text(context.tr('다른 태스크를 정리하고 있습니다. 완료 후 다시 시도해 주세요.')),
                     const SizedBox(height: AppSizes.p16),
                     Semantics(
                       identifier: 'sync-review-delete',
                       child: OutlinedButton(
                         onPressed:
-                            value.isDeleting || value.selectedTaskIds.isEmpty
+                            value.isDeleting ||
+                                value.selectedTaskIds.isEmpty ||
+                                isAnotherCleanupRunning
                             ? null
                             : () => _delete(
                                 context,

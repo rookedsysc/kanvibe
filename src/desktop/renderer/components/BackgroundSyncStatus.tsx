@@ -1,7 +1,12 @@
 import { useTranslations } from "next-intl";
 import type { useBackgroundTaskSync } from "@/desktop/renderer/hooks/useBackgroundTaskSync";
 
-export default function BackgroundSyncStatus({ sync }: { sync: ReturnType<typeof useBackgroundTaskSync> }) {
+export default function BackgroundSyncStatus({ sync, reviewCount = 0, isCleaning = false, onOpenReview }: {
+  sync: ReturnType<typeof useBackgroundTaskSync>;
+  reviewCount?: number;
+  isCleaning?: boolean;
+  onOpenReview?: () => void;
+}) {
   const t = useTranslations("common.backgroundSyncStatus");
   const { status, error, isStarting, start, refresh } = sync;
   const isRunning = isStarting || status?.isRunning;
@@ -30,6 +35,14 @@ export default function BackgroundSyncStatus({ sync }: { sync: ReturnType<typeof
           {t(isRunning ? "running" : isFailed ? "retry" : "start")}
         </button>
       </div>
+      {isCleaning || onOpenReview ? (
+        <div className="mt-3">
+          <button type="button" onClick={onOpenReview} className="rounded-md bg-brand-primary px-3 py-2 text-xs font-medium text-text-inverse hover:bg-brand-hover">
+            {t(isCleaning ? "cleaning" : "detected", { count: reviewCount })}
+          </button>
+          <p className="mt-2 text-xs text-text-muted">{t("cleanupContinues")}</p>
+        </div>
+      ) : null}
       {isRunning ? (
         <>
           <div role="progressbar" aria-label={t("title")} aria-valuemin={0} aria-valuemax={3} aria-valuenow={status?.completedStages ?? 0} aria-valuetext={message} className="mt-3 flex gap-1">

@@ -67,7 +67,9 @@ void main() {
       };
       await _openInbox(tester, client);
       await tester.tap(find.text('동기화 검토 안내'));
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.byType(CircularProgressIndicator), findsNothing);
       expect(find.byType(SyncReviewScreen), findsOneWidget);
       expect(client.fetchedTasks, isEmpty);
       expect(client.readCalls.single.id, 'sync-1');

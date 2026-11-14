@@ -210,7 +210,7 @@ void main() {
     fail = false;
     await tester.tap(find.text('다시 시도'));
     await tester.pumpAndSettle();
-    expect(find.text('동기화가 끝났습니다. 알림함에서 검토할 결과를 확인해 주세요.'), findsOneWidget);
+    expect(find.text('동기화 완료 · 탐지 항목을 눌러 결과를 확인하세요.'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

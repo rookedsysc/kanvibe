@@ -1,7 +1,8 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import BackgroundSyncReviewPanel from "@/desktop/renderer/components/BackgroundSyncReviewPanel";
+import BackgroundSyncReviewDialog from "@/desktop/renderer/components/BackgroundSyncReviewDialog";
 import { deleteTask } from "@/desktop/renderer/actions/kanban";
+import { openBackgroundSyncReview, closeBackgroundSyncReview } from "@/desktop/renderer/hooks/useBackgroundSyncReview";
 import type { AppNotification } from "@/desktop/shared/notifications";
 
 vi.mock("@/desktop/renderer/actions/kanban", () => ({
@@ -47,11 +48,13 @@ function createReviewNotification(taskIds: string[]): AppNotification {
 
 function openReviewPanel(taskIds: string[]) {
   const notification = createReviewNotification(taskIds);
-  const onClose = vi.fn();
-  const view = render(<BackgroundSyncReviewPanel review={notification.action!.payload} onClose={() => { onClose(); view.unmount(); }} />);
+  notification.id = `review-${taskIds.join("-")}`;
+  render(<BackgroundSyncReviewDialog />);
+  act(() => openBackgroundSyncReview(notification));
+  return notification;
 }
 
-describe("BackgroundSyncReviewPanel - PR merge 일괄 삭제", () => {
+describe("BackgroundSyncReviewDialog - PR merge 일괄 삭제", () => {
   beforeEach(() => {
     vi.mocked(deleteTask).mockReset();
   });
@@ -63,12 +66,15 @@ describe("BackgroundSyncReviewPanel - PR merge 일괄 삭제", () => {
         resolveFirstDelete = resolve;
       }))
       .mockResolvedValueOnce(true);
-    openReviewPanel(["task-a", "task-b"]);
+    const notification = openReviewPanel(["task-a", "task-b"]);
 
-    fireEvent.click(screen.getByRole("button", { name: "delete" }));
+    fireEvent.click(screen.getByRole("button", { name: "deleteInBackground" }));
 
+    expect(screen.queryByRole("dialog")).toBeNull();
+    act(() => openBackgroundSyncReview(notification));
     expect(screen.getByRole("status").textContent).toBe('deleteProgress:{"processed":0,"total":2}');
-    expect(screen.getByText("title")).toBeTruthy();
+    expect(screen.getByText("backgroundProcessing")).toBeTruthy();
+    act(() => closeBackgroundSyncReview());
 
     resolveFirstDelete(true);
 
@@ -85,10 +91,12 @@ describe("BackgroundSyncReviewPanel - PR merge 일괄 삭제", () => {
       .mockRejectedValueOnce(new Error("worktree busy"))
       .mockResolvedValueOnce(true)
       .mockResolvedValueOnce(true);
-    openReviewPanel(["task-a", "task-b", "task-c"]);
+    const notification = openReviewPanel(["task-a", "task-b", "task-c"]);
 
-    fireEvent.click(screen.getByRole("button", { name: "delete" }));
+    fireEvent.click(screen.getByRole("button", { name: "deleteInBackground" }));
 
+    await waitFor(() => expect(deleteTask).toHaveBeenCalledTimes(3));
+    act(() => openBackgroundSyncReview(notification));
     await waitFor(() => {
       expect(screen.getByRole("alert").textContent).toBe('deleteSummary:{"total":3,"succeeded":2,"failed":1}');
     });

@@ -128,11 +128,8 @@ class _NotificationCenterScreenState
         return;
       }
       if (notification.hasSyncReview) {
-        await Navigator.of(context).push(
-          MaterialPageRoute<void>(
-            builder: (_) => SyncReviewScreen(notificationId: notification.id),
-          ),
-        );
+        setState(() => _openingId = null);
+        await showSyncReviewDialog(context, notification.id);
         return;
       }
       final taskId = notification.taskId;

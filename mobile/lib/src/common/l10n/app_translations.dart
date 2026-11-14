@@ -765,6 +765,22 @@ const appTranslations = <String, (String, String)>{
   "로그인됨": ("Signed in", "已登录"),
   "마지막으로 확인한 값입니다.": ("Last known value.", "这是上次查询的值。"),
   "백그라운드 동기화": ("Background sync", "后台同步"),
+  "정리 중": ("Cleaning up", "正在清理"),
+  "탐지 항목 {count}개": ("{count} detected items", "发现 {count} 项"),
+  "탐지 항목 확인 중…": ("Checking detected items…", "正在检查发现的项目…"),
+  "탐지 항목 확인 실패": ("Could not check detected items", "无法检查发现的项目"),
+  "백그라운드에서 정리합니다. 검토 창을 닫아도 계속 진행됩니다.": (
+    "Cleanup continues in the background after you close this review dialog.",
+    "清理将在后台进行，关闭审阅对话框后仍会继续。",
+  ),
+  "동기화 완료 · 탐지 항목을 눌러 결과를 확인하세요.": (
+    "Sync complete · Select detected items to review the results.",
+    "同步完成 · 点击发现的项目查看结果。",
+  ),
+  "다른 태스크를 정리하고 있습니다. 완료 후 다시 시도해 주세요.": (
+    "Another cleanup is running. Try again when it finishes.",
+    "正在清理其他任务，请在完成后重试。",
+  ),
   "백그라운드 동기화 진행 중": ("Background sync in progress", "正在后台同步"),
   "worktree 탐색 중": ("Discovering worktrees", "正在查找工作树"),
   "PR 상태 확인 중": ("Checking pull requests", "正在检查拉取请求"),

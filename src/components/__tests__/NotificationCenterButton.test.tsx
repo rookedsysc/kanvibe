@@ -1,10 +1,16 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render as renderView, screen, waitFor } from "@testing-library/react";
 import { useEffect, useRef } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import NotificationCenterButton, { type NotificationCenterButtonHandle } from "@/components/NotificationCenterButton";
 import { BoardCommandProvider, useBoardCommands } from "@/desktop/renderer/components/BoardCommandProvider";
 import type { AppNotification } from "@/desktop/shared/notifications";
+import BackgroundSyncReviewDialog from "@/desktop/renderer/components/BackgroundSyncReviewDialog";
+import { closeBackgroundSyncReview } from "@/desktop/renderer/hooks/useBackgroundSyncReview";
 import type { BoardEventPayload } from "@/lib/boardNotifier";
+
+function render(ui: React.ReactNode) {
+  return renderView(<>{ui}<BackgroundSyncReviewDialog /></>);
+}
 
 const {
   mockListNotifications,
@@ -143,6 +149,7 @@ describe("NotificationCenterButton", () => {
   });
   beforeEach(() => {
     vi.clearAllMocks();
+    closeBackgroundSyncReview();
     mockGetNotificationUnreadOnlyEnabled.mockResolvedValue(false);
     mockSetNotificationUnreadOnlyEnabled.mockResolvedValue(undefined);
     mockDeleteTask.mockResolvedValue(true);
@@ -610,7 +617,7 @@ describe("NotificationCenterButton", () => {
     expect(screen.getByText("First task")).toBeTruthy();
   });
 
-  it("keeps sync review inside the notification panel without activating a modal", async () => {
+  it("opens the existing review dialog from the notification without navigating", async () => {
     mockListNotifications.mockResolvedValue([
       {
         id: "n-review",
@@ -646,7 +653,7 @@ describe("NotificationCenterButton", () => {
     await waitFor(() => {
       expect(screen.getByText("mergedSection")).toBeTruthy();
     });
-    expect(screen.getByRole("dialog", { name: "notifications" })).toBeTruthy();
+    expect(screen.getByRole("dialog", { name: "title" }).getAttribute("aria-modal")).toBe("true");
     expect(mockActivateNotification).not.toHaveBeenCalled();
 
     expect(mockGetTaskById).not.toHaveBeenCalled();
@@ -668,14 +675,17 @@ describe("NotificationCenterButton", () => {
     fireEvent.click(screen.getByRole("button", { name: "notifications" }));
     fireEvent.click(await screen.findByRole("button", { name: /review title/ }));
     await screen.findByText("Merged task");
-    fireEvent.click(screen.getByRole("button", { name: "delete" }));
+    fireEvent.click(screen.getByRole("button", { name: "deleteInBackground" }));
     expect(mockDeleteTask).toHaveBeenCalledOnce();
-    fireEvent.click(screen.getByRole("button", { name: "notifications" }));
     expect(screen.queryByRole("dialog")).toBeNull();
-    expect(document.querySelector('[data-terminal-focus-blocker="true"]')).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "notifications" }));
+    fireEvent.click(screen.getByRole("button", { name: "cleaning" }));
     expect(screen.getByText("deleteProgress")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "close" }));
+    expect(document.querySelector('[data-terminal-focus-blocker="true"]')).toBeNull();
     await act(async () => failDelete(new Error("worktree busy")));
+    fireEvent.click(screen.getByRole("button", { name: "notifications" }));
+    fireEvent.click(screen.getByRole("button", { name: "detected" }));
     expect(await screen.findByText("worktree busy")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "retryFailedDeletes" }));
     await waitFor(() => expect(screen.queryByText("Merged task")).toBeNull());

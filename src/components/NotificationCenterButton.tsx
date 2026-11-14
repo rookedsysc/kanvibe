@@ -20,9 +20,9 @@ import { redirect } from "@/desktop/renderer/navigation";
 import { requestActiveTerminalFocusAfterUiSettles } from "@/desktop/renderer/utils/terminalFocus";
 import { navigateToTaskDetail } from "@/desktop/renderer/utils/taskNavigation";
 import type { AppNotification } from "@/desktop/shared/notifications";
-import BackgroundSyncReviewPanel from "@/desktop/renderer/components/BackgroundSyncReviewPanel";
 import BackgroundSyncStatus from "@/desktop/renderer/components/BackgroundSyncStatus";
 import { useBackgroundTaskSync } from "@/desktop/renderer/hooks/useBackgroundTaskSync";
+import { useBackgroundSyncReview, openBackgroundSyncReview, getBackgroundSyncReviewCount } from "@/desktop/renderer/hooks/useBackgroundSyncReview";
 
 interface NotificationCenterButtonProps {
   buttonClassName?: string;
@@ -96,7 +96,7 @@ const NotificationCenterButton = forwardRef<NotificationCenterButtonHandle, Noti
 ) {
   const t = useTranslations("common");
   const sync = useBackgroundTaskSync();
-  const [reviewNotification, setReviewNotification] = useState<AppNotification | null>(null);
+  const reviewState = useBackgroundSyncReview();
   const hasShortcutBlocker = useHasBoardShortcutBlocker();
   const containerRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -142,12 +142,6 @@ const NotificationCenterButton = forwardRef<NotificationCenterButtonHandle, Noti
 
     openPanel();
   }, [closePanel, openPanel]);
-
-  useEffect(() => window.kanvibeDesktop?.onNotificationActivated?.((notification: AppNotification) => {
-    if (notification.action?.type !== "background-sync-review") return;
-    setReviewNotification(notification);
-    openPanel();
-  }), [openPanel]);
 
   useImperativeHandle(ref, () => ({
     close() {
@@ -254,7 +248,8 @@ const NotificationCenterButton = forwardRef<NotificationCenterButtonHandle, Noti
     await markNotificationAsRead(notification);
 
     if (notification.action?.type === "background-sync-review") {
-      setReviewNotification(notification);
+      closePanel();
+      openBackgroundSyncReview(notification);
       return;
     }
 
@@ -326,7 +321,7 @@ const NotificationCenterButton = forwardRef<NotificationCenterButtonHandle, Noti
     }
 
     function handleWindowKeyDown(event: KeyboardEvent) {
-      if (reviewNotification) return;
+      if (reviewState.isOpen) return;
       if (event.target instanceof Element && event.target.closest("section")) return;
       if (hasShortcutBlocker) {
         return;
@@ -393,12 +388,25 @@ const NotificationCenterButton = forwardRef<NotificationCenterButtonHandle, Noti
     return () => {
       window.removeEventListener("keydown", handleWindowKeyDown);
     };
-  }, [closePanel, handleNotificationClick, hasShortcutBlocker, highlightedNotificationIndex, isOpen, markNotificationAsRead, t, visibleNotifications, reviewNotification]);
+  }, [closePanel, handleNotificationClick, hasShortcutBlocker, highlightedNotificationIndex, isOpen, markNotificationAsRead, t, visibleNotifications, reviewState.isOpen]);
 
   const markAllReadAction = useTrackedAction(async () => {
     await markAllNotificationsRead();
     setNotifications((current) => current.map((notification) => ({ ...notification, isRead: true })));
   });
+
+  const reviewNotification = reviewState.isCleaning
+    ? reviewState.notification
+    : notifications.find((notification) => notification.action?.type === "background-sync-review") ?? null;
+  const openReview = () => {
+    if (!reviewNotification) return;
+    if (reviewState.isCleaning) {
+      closePanel();
+      openBackgroundSyncReview(reviewNotification);
+      return;
+    }
+    void handleNotificationClick(reviewNotification);
+  };
 
   return (
     <div ref={containerRef} className="relative">
@@ -414,8 +422,8 @@ const NotificationCenterButton = forwardRef<NotificationCenterButtonHandle, Noti
           <path d="M15 17h5l-1.4-1.4A2 2 0 0 1 18 14.2V11a6 6 0 1 0-12 0v3.2a2 2 0 0 1-.6 1.4L4 17h5" />
           <path d="M9 17a3 3 0 0 0 6 0" />
         </svg>
-        {sync.isStarting || sync.status?.isRunning ? (
-          <span aria-label={t("backgroundSyncStatus.running")} role="status" className="absolute -right-1 -top-1 h-3 w-3 rounded-full border-2 border-brand-primary border-t-transparent motion-safe:animate-spin" />
+        {reviewState.isCleaning || sync.isStarting || sync.status?.isRunning ? (
+          <span aria-label={t(reviewState.isCleaning ? "backgroundSyncStatus.cleaning" : "backgroundSyncStatus.running")} role="status" className="absolute -right-1 -top-1 h-3 w-3 rounded-full border-2 border-brand-primary border-t-transparent motion-safe:animate-spin" />
         ) : sync.error || sync.status?.phase === "failed" ? (
           <span aria-label={t("backgroundSyncStatus.failed")} role="status" className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-status-error text-[10px] font-semibold text-white">!</span>
         ) : unreadCount > 0 ? (
@@ -425,26 +433,17 @@ const NotificationCenterButton = forwardRef<NotificationCenterButtonHandle, Noti
         ) : null}
       </button>
 
-      {isOpen || reviewNotification ? (
+      {isOpen ? (
         <div
-          hidden={!isOpen}
           ref={panelRef}
           role="dialog"
           aria-label={t("notifications")}
           tabIndex={-1}
-          data-terminal-focus-blocker={isOpen ? "true" : undefined}
+          data-terminal-focus-blocker="true"
           className={`absolute right-0 z-50 mt-2 w-96 max-w-[calc(100vw-5rem)] overflow-hidden rounded-xl border border-border-default bg-bg-surface shadow-xl ${panelClassName}`.trim()}
         >
           <div className="max-h-[calc(100dvh-6rem)] overflow-y-auto">
-          <BackgroundSyncStatus sync={sync} />
-          {reviewNotification?.action?.type === "background-sync-review" ? (
-            <BackgroundSyncReviewPanel
-              key={reviewNotification.id}
-              review={reviewNotification.action.payload}
-              onClose={() => setReviewNotification(null)}
-              isActive={isOpen}
-            />
-          ) : <>
+          <BackgroundSyncStatus sync={sync} reviewCount={getBackgroundSyncReviewCount(reviewNotification)} isCleaning={reviewState.isCleaning} onOpenReview={reviewNotification ? openReview : undefined} />
           <div className="border-b border-border-default px-4 py-3">
             <div className="flex items-center justify-between">
               <div>
@@ -539,7 +538,6 @@ const NotificationCenterButton = forwardRef<NotificationCenterButtonHandle, Noti
               </button>
             ))}
           </div>
-          </>}
           </div>
         </div>
       ) : null}

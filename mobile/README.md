@@ -302,7 +302,7 @@ Herdr 세션은 같은 fixture에서 `mobile/.maestro/flows/herdr-terminal.yaml`
 
 보드 메뉴에서 **기기 설정**, **PC 설정**, **AI 계정**, **AI 사용량**, **Pane 레이아웃**, **프로젝트 등록**을 연다. 기기 설정의 언어(한국어·영어·중국어)와 테마(시스템·라이트·다크)는 이 기기에만 저장한다. PC 설정의 기본 세션·정렬·동기화 설정은 현재 선택한 PC와 공유한다.
 
-**알림함** 상단과 **PC 설정**의 동기화 카드는 같은 PC 실행 상태를 사용한다. worktree 탐색, PR 확인, 변경 가져오기의 실제 단계를 표시하며, 실행 중에는 시작 버튼을 잠근다. 다른 화면을 사용해도 PC에서 처리는 계속되고 재연결하면 최신 상태를 읽는다. 결과와 삭제가 필요한 병합 PR은 알림함에서 직접 확인한다. `notifications/application/background_sync_controller.dart`가 연결별 상태와 중복 시작을 관리하고, `data/background_sync_repository.dart`가 `GET /api/mobile/sync/status`와 즉시 응답하는 `POST /api/mobile/sync/start`를 호출한다. `presentation/background_sync_card.dart`는 알림함과 PC 설정이 함께 사용한다.
+**알림함** 상단과 **PC 설정**의 동기화 카드는 같은 PC 실행 상태를 사용한다. worktree 탐색, PR 확인, 변경 가져오기의 실제 단계를 표시하며, 실행 중에는 시작 버튼을 잠근다. 다른 화면을 사용해도 PC에서 처리는 계속되고 재연결하면 최신 상태를 읽는다. **탐지 항목 N개**를 누르면 검토 대화상자를 연다. 삭제 대상을 확인하면 대화상자를 즉시 닫고 백그라운드에서 순차 정리한다. 같은 버튼은 **정리 중**으로 바뀌며, 다시 눌러 진행과 결과를 확인할 수 있다. 검토 창을 닫아도 정리는 계속되며 성공한 항목은 탐지 수에서 제외한다. `notifications/application/background_sync_controller.dart`가 연결별 상태와 중복 시작을 관리하고, `data/background_sync_repository.dart`가 `GET /api/mobile/sync/status`와 즉시 응답하는 `POST /api/mobile/sync/start`를 호출한다. `presentation/background_sync_card.dart`는 알림함과 PC 설정이 함께 사용한다.
 
 - 보드 전체 검색, 현재 보드 찾기, 프로젝트 본체/일반 태스크 필터, 복수 정렬 기준, 완료 태스크 더보기를 제공한다. 카드에는 설명·우선순위 및 상속·프로젝트 아이콘·세션·AI 실행 수·변경량을 표시한다.
 - 태스크 설명·우선순위·프로젝트 색상을 편집하고, 관련 작업과 기준 브랜치 작업을 연다. 생성 시 세션 종류를 고를 수 있고, 브랜치 없는 기존 태스크를 같은 ID의 브랜치 작업으로 전환한다. Done 안내는 리소스 보존을 설명하며 다시 묻지 않기를 저장한다.
@@ -315,3 +315,5 @@ Herdr 세션은 같은 fixture에서 `mobile/.maestro/flows/herdr-terminal.yaml`
 Mermaid 원문은 페어링된 PC의 `POST /api/mobile/diagrams/render`로 전송해 최고 품질 JPEG로 받는다. 다이어그램의 라이트·다크 배경은 불투명하게 렌더링한다. 모바일은 응답 MIME과 이미지 헤더·크기를 검증하며 기존 PNG 응답도 지원한다. 실제 이미지 프레임이 준비된 뒤 준비 완료를 표시하고, 확대·원문 보기·복사와 실패 시 재시도를 제공한다. PC 렌더링 API를 지원하는 데스크탑 버전이 필요하다.
 
 구현 항목과 워크트리 추적은 [구현 기록](../docs/research/mobile-parity-implementation.md)을 참고한다. 실제 OAuth·SSH·푸시와 iOS 검증 여부는 해당 실행의 QA 보고서에서 확인한다.
+
+정리 상태는 `notifications/application/sync_review_controller.dart`가 알림별 선택·성공·실패를 보존하고, `sync_review_cleanup_controller.dart`가 현재 PC의 정리 작업을 공유한다. 정리를 시작한 검토만 화면이 닫힌 뒤에도 보존하며 PC나 토큰이 바뀌면 이전 작업의 표시 상태를 버린다. `presentation/sync_review_button.dart`와 `sync_review_screen.dart`는 탐지 버튼·검토 대화상자를 구성하고 알림함과 PC 설정에서 같은 작업을 다시 연다.
