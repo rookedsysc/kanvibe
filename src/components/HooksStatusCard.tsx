@@ -9,10 +9,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import { useTranslations } from "next-intl";
 import {
-  getTaskCodexHooksStatus,
-  getTaskGeminiHooksStatus,
-  getTaskHooksStatus,
-  getTaskOpenCodeHooksStatus,
+  getTaskHooksStatuses,
   installTaskCodexHooks,
   installTaskGeminiHooks,
   installTaskHooks,
@@ -31,6 +28,8 @@ interface HooksStatusCardProps {
   initialCodexStatus: CodexHooksStatus | null;
   initialOpenCodeStatus: OpenCodeHooksStatus | null;
   isRemote: boolean;
+  /** 상태를 읽는 중이면 true. 읽기 전의 빈 상태가 미설치로만 보이지 않게 한다 */
+  isLoading?: boolean;
   onStatusesChange?: (updates: {
     claudeStatus?: ClaudeHooksStatus | null;
     geminiStatus?: GeminiHooksStatus | null;
@@ -54,6 +53,7 @@ export default function HooksStatusCard({
   initialGeminiStatus,
   initialCodexStatus,
   initialOpenCodeStatus,
+  isLoading = false,
   onStatusesChange,
 }: HooksStatusCardProps) {
   const t = useTranslations("taskDetail");
@@ -178,19 +178,15 @@ export default function HooksStatusCard({
     }
   }
 
+  /** provider별로 따로 물으면 원격 task에서 SSH 접속이 네 번 차례로 생기므로 한 번에 읽는다 */
   async function refreshAllHookStatuses() {
-    const [latestClaudeStatus, latestGeminiStatus, latestCodexStatus, latestOpenCodeStatus] = await Promise.all([
-      getTaskHooksStatus(taskId),
-      getTaskGeminiHooksStatus(taskId),
-      getTaskCodexHooksStatus(taskId),
-      getTaskOpenCodeHooksStatus(taskId),
-    ]);
+    const latestStatuses = await getTaskHooksStatuses(taskId);
 
     applyRefreshedStatuses({
-      claudeStatus: latestClaudeStatus,
-      geminiStatus: latestGeminiStatus,
-      codexStatus: latestCodexStatus,
-      openCodeStatus: latestOpenCodeStatus,
+      claudeStatus: latestStatuses?.claude,
+      geminiStatus: latestStatuses?.gemini,
+      codexStatus: latestStatuses?.codex,
+      openCodeStatus: latestStatuses?.openCode,
     });
   }
 
@@ -233,6 +229,10 @@ export default function HooksStatusCard({
           {installedCount}/{hookItems.length}
         </span>
       </div>
+
+      {isLoading ? (
+        <p role="status" className="mb-3 text-xs text-text-muted">{tc("loading")}</p>
+      ) : null}
 
       {message ? (
         <div role={message.type === "error" ? "alert" : "status"} className={`mb-3 rounded-md border px-3 py-2 text-xs ${message.type === "success"

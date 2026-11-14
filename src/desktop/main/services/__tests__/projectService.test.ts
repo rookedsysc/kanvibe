@@ -251,6 +251,45 @@ describe("projectService sync deleted paths", () => {
     }
   });
 
+  it("느린 호스트의 경로 확인과 worktree 조회가 끝나지 않아도 다른 호스트와 로컬 프로젝트는 진행하고, 같은 호스트는 차례로 확인한다", async () => {
+    const slowHostProjects = [
+      { ...project, id: "slow-1", name: "slow-1", repoPath: "/slow/one", sshHost: "slow-host" },
+      { ...project, id: "slow-2", name: "slow-2", repoPath: "/slow/two", sshHost: "slow-host" },
+    ];
+    const otherHostProject = { ...project, id: "other-1", name: "other-1", repoPath: "/other/one", sshHost: "other-host" };
+    projects = [...slowHostProjects, otherHostProject, { ...project }] as never;
+    tasks = [];
+    let finishSlowPathCheck!: (isMissing: boolean) => void;
+    const slowPathCheck = new Promise<boolean>((resolve) => { finishSlowPathCheck = resolve; });
+    mocks.isPathMissing.mockImplementation((targetPath: string) => targetPath === "/slow/one"
+      ? slowPathCheck
+      : Promise.resolve(false));
+    // 한 프로젝트의 동기화가 worktree 목록을 여러 번 읽으므로, 느린 호스트의 읽기는 모두 같은 대기에 묶는다.
+    let finishSlowWorktreeList!: (worktrees: []) => void;
+    const slowWorktreeList = new Promise<[]>((resolve) => { finishSlowWorktreeList = resolve; });
+    mocks.listWorktrees.mockImplementation((repoPath: string) => repoPath === "/slow/one"
+      ? slowWorktreeList
+      : Promise.resolve([{ path: repoPath, branch: "main", isBare: false }]));
+    const { syncRegisteredProjectWorktrees } = await import("@/desktop/main/services/projectService");
+
+    const syncing = syncRegisteredProjectWorktrees();
+
+    // 경로 확인: 다른 호스트와 로컬은 slow-host의 첫 확인을 기다리지 않는다. 같은 호스트의 둘째 프로젝트는 기다린다.
+    const checkedPaths = () => mocks.isPathMissing.mock.calls.map(([targetPath]) => targetPath);
+    await vi.waitFor(() => expect(checkedPaths()).toEqual(expect.arrayContaining(["/slow/one", "/other/one", project.repoPath])));
+    expect(checkedPaths()).not.toContain("/slow/two");
+    finishSlowPathCheck(false);
+
+    // worktree 동기화: slow-host의 첫 프로젝트가 걸려 있어도 다른 호스트와 로컬 프로젝트의 조회는 시작한다.
+    const listedRepos = () => mocks.listWorktrees.mock.calls.map(([repoPath]) => repoPath);
+    await vi.waitFor(() => expect(listedRepos()).toEqual(expect.arrayContaining(["/slow/one", "/other/one", project.repoPath])));
+    expect(listedRepos()).not.toContain("/slow/two");
+
+    finishSlowWorktreeList([]);
+    await syncing;
+    expect(listedRepos()).toContain("/slow/two");
+  });
+
   it("삭제된 worktree만 정리하며 Git 목록에 남아 있어도 다시 만들지 않는다", async () => {
     mocks.isPathMissing.mockImplementation(async (targetPath) => targetPath === removedTask.worktreePath);
     mocks.listWorktrees.mockResolvedValue([

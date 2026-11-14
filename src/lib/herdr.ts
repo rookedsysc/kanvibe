@@ -53,12 +53,19 @@ export function buildHerdrClientCommand(sessionName: string, socketPath: string)
   return `env -u HERDR_ENV -u HERDR_SOCKET_PATH -u HERDR_PANE_ID -u HERDR_WORKSPACE_ID -u HERDR_TAB_ID HERDR_SESSION=${quoteShellArgument(serverName)} HERDR_CLIENT_SOCKET_PATH=${quoteShellArgument(socketPath)} ${HERDR_EXECUTABLE} client`;
 }
 
+/**
+ * 설정 경로 계산과 내용 읽기를 한 명령으로 묶는다. 원격에서는 명령 하나가 SSH 왕복 하나라, 나누면 터미널을 열 때마다 왕복이 하나 더 든다.
+ * 상대 경로는 어느 디렉터리 기준인지 알 수 없으므로 읽지 않고 실패시킨다.
+ */
+const HERDR_CLIENT_CONFIG_READ_COMMAND = [
+  '__kanvibe_herdr_config="${HERDR_CONFIG_PATH:-${XDG_CONFIG_HOME:-$HOME/.config}/herdr/config.toml}"',
+  'case "$__kanvibe_herdr_config" in /*) ;; *) exit 64 ;; esac',
+  'if test -e "$__kanvibe_herdr_config"; then cat "$__kanvibe_herdr_config"; fi',
+].join("; ");
+
 export async function readHerdrClientTabBarPosition(sshHost?: string): Promise<"top" | "bottom" | null> {
   try {
-    const configPath = await execGit('printf "%s" "${HERDR_CONFIG_PATH:-${XDG_CONFIG_HOME:-$HOME/.config}/herdr/config.toml}"', sshHost, { timeoutMs: HERDR_COMMAND_TIMEOUT_MS });
-    if (!path.posix.isAbsolute(configPath)) return null;
-    const target = quoteShellArgument(configPath);
-    const content = await execGit(`if test -e ${target}; then cat ${target}; fi`, sshHost, { timeoutMs: HERDR_COMMAND_TIMEOUT_MS });
+    const content = await execGit(HERDR_CLIENT_CONFIG_READ_COMMAND, sshHost, { timeoutMs: HERDR_COMMAND_TIMEOUT_MS });
     let section = "";
     let position: "top" | "bottom" = "top";
     let foundPosition = false;
@@ -178,6 +185,33 @@ interface HerdrTabLayout {
   panes: { pane_id: string; rect: HerdrRect }[];
 }
 
+/** task의 Space에 속하고 복원에 성공한 pane과 탭 목록을 읽는다. 배치와 실행 명령은 읽지 않는다 */
+async function readEligibleHerdrPanes(
+  sessionName: string,
+  sshHost?: string | null,
+): Promise<{ eligiblePanes: HerdrPane[]; tabs: TerminalTab[] }> {
+  const [{ panes }, tabs] = await Promise.all([
+    runHerdrCommand<{ panes: HerdrPane[] }>(sessionName, ["pane", "list"], sshHost),
+    readHerdrTabs(sessionName, sshHost),
+  ]);
+  const workspaceId = await getHerdrWorkspaceId(sessionName, sshHost);
+  const eligiblePanes = panes.filter((pane) => !pane.restore_error && (!workspaceId || pane.pane_id.startsWith(`${workspaceId}:`)) && tabs.some((tab) => tab.id === pane.tab_id));
+  return { eligiblePanes, tabs };
+}
+
+/**
+ * task가 쓸 수 있는 pane과 그 pane이 속한 탭만 읽는다.
+ * pane이 있는지, 어느 탭에 있는지만 필요한 호출자가 [listHerdrMirrorPanes]를 쓰면 탭마다 배치를, pane마다 실행 명령을
+ * 따로 읽어 원격 명령이 탭과 pane 수만큼 늘어난다.
+ */
+export async function listHerdrTaskPaneTabIds(
+  sessionName: string,
+  sshHost?: string | null,
+): Promise<{ paneId: string; tabId: string }[]> {
+  const { eligiblePanes } = await readEligibleHerdrPanes(sessionName, sshHost);
+  return eligiblePanes.map((pane) => ({ paneId: pane.pane_id, tabId: pane.tab_id }));
+}
+
 /**
  * 모바일이 비출 pane을 탭 순서대로 모은다.
  * 최소 목록은 지정한 탭(없으면 첫 탭)의 좌표만 읽고 실행 명령은 비운다. 다른 탭의 너비 0은 아직 좌표를 읽지 않았다는 뜻이다.
@@ -187,12 +221,7 @@ export async function listHerdrMirrorPanes(
   sshHost?: string | null,
   options?: { metadata?: "minimal"; tabId?: string; selectedPaneId?: string },
 ): Promise<MirrorPane[]> {
-  const [{ panes }, tabs] = await Promise.all([
-    runHerdrCommand<{ panes: HerdrPane[] }>(sessionName, ["pane", "list"], sshHost),
-    readHerdrTabs(sessionName, sshHost),
-  ]);
-  const workspaceId = await getHerdrWorkspaceId(sessionName, sshHost);
-  const eligiblePanes = panes.filter((pane) => !pane.restore_error && (!workspaceId || pane.pane_id.startsWith(`${workspaceId}:`)) && tabs.some((tab) => tab.id === pane.tab_id));
+  const { eligiblePanes, tabs } = await readEligibleHerdrPanes(sessionName, sshHost);
   const geometryTabId = options?.selectedPaneId
     ? eligiblePanes.find((pane) => pane.pane_id === options.selectedPaneId)?.tab_id
     : options?.tabId ?? tabs.find((tab) => eligiblePanes.some((pane) => pane.tab_id === tab.id))?.id;
@@ -322,10 +351,13 @@ export async function getHerdrClientSocketPath(sessionName: string, sshHost?: st
 
 export async function isHerdrTaskAlive(sessionName: string, sshHost?: string | null): Promise<boolean> {
   try {
-    const workspaceId = await getHerdrWorkspaceId(sessionName, sshHost);
-    const { workspaces } = await runHerdrCommand<{ workspaces: { workspace_id: string }[] }>(
-      parseHerdrSessionTarget(sessionName).serverName, ["workspace", "list"], sshHost,
-    );
+    // Space 연결 파일 읽기와 Space 목록 조회는 서로의 결과를 쓰지 않으므로 원격 왕복이 겹치게 한다.
+    const [workspaceId, { workspaces }] = await Promise.all([
+      getHerdrWorkspaceId(sessionName, sshHost),
+      runHerdrCommand<{ workspaces: { workspace_id: string }[] }>(
+        parseHerdrSessionTarget(sessionName).serverName, ["workspace", "list"], sshHost,
+      ),
+    ]);
     return workspaceId === null || workspaces.some((workspace) => workspace.workspace_id === workspaceId);
   } catch {
     return false;

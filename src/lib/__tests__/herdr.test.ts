@@ -1,13 +1,13 @@
 /** @vitest-environment node */
 import { createServer } from "net";
-import { mkdtemp, rm, stat } from "fs/promises";
+import { mkdir, mkdtemp, rm, stat, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import path from "path";
 import { once, EventEmitter } from "events";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PaneLayoutType } from "@/entities/PaneLayoutConfig";
 import { buildHerdrCommand, buildHerdrSessionCleanupCommand, sanitizeHerdrSessionName } from "@/lib/worktree";
-import { ensureHerdrRemoteMachine, ensureHerdrSession, listHerdrMirrorPanes, listHerdrRunningAgentPanes, moveHerdrTab, readHerdrTabs, readHerdrClientTabBarPosition, readHerdrTaskPaneSize } from "@/lib/herdr";
+import { ensureHerdrRemoteMachine, ensureHerdrSession, isHerdrTaskAlive, listHerdrMirrorPanes, listHerdrRunningAgentPanes, listHerdrTaskPaneTabIds, moveHerdrTab, readHerdrTabs, readHerdrClientTabBarPosition, readHerdrTaskPaneSize } from "@/lib/herdr";
 
 const { execGit, spawn, readTextFile, updateTextFile } = vi.hoisted(() => ({ execGit: vi.fn(), spawn: vi.fn(), readTextFile: vi.fn(), updateTextFile: vi.fn() }));
 vi.mock("@/lib/hostFileAccess", async (importOriginal) => ({
@@ -461,6 +461,57 @@ describe("Herdr 소켓 시간 제한", () => {
   });
 });
 
+describe("listHerdrTaskPaneTabIds", () => {
+  it("pane 목록과 탭 목록만 읽고 탭별 배치나 pane별 실행 명령은 조회하지 않는다", async () => {
+    const scroll = { max_offset_from_bottom: 0, offset_from_bottom: 0, viewport_rows: 38 };
+    execGit.mockReset();
+    execGit.mockImplementation(async (command: string) => {
+      if (command === commandFor(["pane", "list"])) {
+        return result({ panes: [
+          { pane_id: "w1:p1", tab_id: "w1:t1", scroll },
+          { pane_id: "w1:p2", tab_id: "w1:t2", scroll },
+          { pane_id: "w1:p3", tab_id: "w1:t2", restore_error: "cwd is gone", scroll },
+          { pane_id: "w1:p4", tab_id: "w1:t9", scroll },
+        ] });
+      }
+      if (command === commandFor(["tab", "list"])) {
+        return result({ tabs: [
+          { tab_id: "w1:t1", number: 1, label: "work", focused: true },
+          { tab_id: "w1:t2", number: 2, label: "logs", focused: false },
+        ] });
+      }
+      throw new Error(`예상하지 않은 원격 명령: ${command}`);
+    });
+
+    // 복원에 실패한 pane과 목록에 없는 탭의 pane은 task가 쓸 수 없으므로 제외한다.
+    expect(await listHerdrTaskPaneTabIds("feature", "remote")).toEqual([
+      { paneId: "w1:p1", tabId: "w1:t1" },
+      { paneId: "w1:p2", tabId: "w1:t2" },
+    ]);
+    expect(execGit).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("isHerdrTaskAlive", () => {
+  it("Space 연결 파일 읽기를 기다리지 않고 Space 목록 조회를 함께 시작한다", async () => {
+    execGit.mockReset();
+    let finishMappingRead!: (content: string) => void;
+    readTextFile.mockImplementation(() => new Promise<string>((resolve) => { finishMappingRead = resolve; }));
+    execGit.mockImplementation(async (command: string) => command.includes("'session' 'list'")
+      ? JSON.stringify({ sessions: [{ name: "kanvibe", running: true, socket_path: "/run/kanvibe/herdr.sock", session_dir: "/run/kanvibe" }] })
+      : result({ workspaces: [{ workspace_id: "w7" }] }));
+
+    const alive = isHerdrTaskAlive("kanvibe:task-parallel", "parallel-host");
+
+    await vi.waitFor(() => {
+      expect(readTextFile).toHaveBeenCalled();
+      expect(execGit.mock.calls.some(([command]) => command.includes("'workspace' 'list'"))).toBe(true);
+    });
+    finishMappingRead(JSON.stringify({ "task-parallel": "w7" }));
+    await expect(alive).resolves.toBe(true);
+  });
+});
+
 describe("listHerdrMirrorPanes", () => {
   const scroll = (rows: number) => ({ max_offset_from_bottom: 0, offset_from_bottom: 0, viewport_rows: rows });
   const rect = (x: number, width: number) => ({ x, y: 0, width, height: 40 });
@@ -799,17 +850,33 @@ describe("Herdr client tab bar projection config", () => {
     ['ui = { tab_bar_position = "bottom" }', null],
     ['[ui]\ntab_bar_position = "top"\ntab_bar_position = "bottom"', null],
   ])("config %s resolves to %s", async (content, expected) => {
-    execGit.mockResolvedValueOnce("/isolated/config/herdr.toml").mockResolvedValueOnce(content);
+    execGit.mockResolvedValueOnce(content);
     expect(await readHerdrClientTabBarPosition("remote")).toBe(expected);
+    // 경로 계산과 내용 읽기를 한 원격 명령으로 끝내 터미널을 열 때 SSH 왕복이 하나만 든다.
+    expect(execGit).toHaveBeenCalledTimes(1);
     expect(execGit.mock.calls[0][0]).toContain("HERDR_CONFIG_PATH");
     expect(execGit.mock.calls[0][0]).toContain("XDG_CONFIG_HOME");
-    expect(execGit.mock.calls[1][0]).toContain("/isolated/config/herdr.toml");
-    expect(execGit.mock.calls.every((call) => call[1] === "remote")).toBe(true);
+    expect(execGit.mock.calls[0][1]).toBe("remote");
   });
-  it("fails closed when config cannot be read or its path is relative to an unknown client cwd", async () => {
+  it("fails closed when config cannot be read", async () => {
     execGit.mockRejectedValueOnce(new Error("unreachable"));
     expect(await readHerdrClientTabBarPosition("remote")).toBeNull();
-    execGit.mockResolvedValueOnce("relative/config.toml");
+  });
+  it("실제 셸에서 설정 파일을 읽고, 기준 디렉터리를 알 수 없는 상대 경로는 읽지 않는다", async () => {
+    directory = await mkdtemp(path.join(tmpdir(), "kanvibe-herdr-config-"));
+    await mkdir(path.join(directory, "herdr"));
+    await writeFile(path.join(directory, "herdr", "config.toml"), '[ui]\ntab_bar_position = "bottom"\n');
+    const actual = await vi.importActual<typeof import("@/lib/gitOperations")>("@/lib/gitOperations");
+    execGit.mockImplementation((command: string) => actual.execGit(command, null));
+
+    vi.stubEnv("HERDR_CONFIG_PATH", "");
+    vi.stubEnv("XDG_CONFIG_HOME", directory);
+    expect(await readHerdrClientTabBarPosition()).toBe("bottom");
+
+    vi.stubEnv("HERDR_CONFIG_PATH", path.join(directory, "missing.toml"));
+    expect(await readHerdrClientTabBarPosition()).toBe("top");
+
+    vi.stubEnv("HERDR_CONFIG_PATH", "relative/config.toml");
     expect(await readHerdrClientTabBarPosition()).toBeNull();
   });
 });

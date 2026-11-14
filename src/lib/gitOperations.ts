@@ -52,6 +52,9 @@ const DEFAULT_REMOTE_SSH_COMMAND_TIMEOUT_MS = 45_000;
 const REMOTE_SSH_COMMAND_MAX_ATTEMPTS = 3;
 const REMOTE_COMMAND_EXIT_MARKER = "__KANVIBE_REMOTE_COMMAND_EXIT_7b3f6e5d__";
 const REMOTE_COMMAND_MAX_BUFFER_BYTES = 10 * 1024 * 1024;
+// 이보다 오래 걸린 원격 명령만 단계별 시간을 남긴다. 정상 명령까지 남기면 폴링 로그에 묻힌다.
+const REMOTE_SSH_SLOW_COMMAND_LOG_MS = 3_000;
+const REMOTE_SSH_SLOW_COMMAND_LOG_COMMAND_LENGTH = 120;
 const remoteSSHTransportFailures = new Map<string, { until: number; error: Error }>();
 // Command slots and authenticated master readiness have separate lifetimes.
 const remoteSSHConnectionPools = new Map<string, RemoteSSHConnectionPool>();
@@ -81,6 +84,16 @@ interface RemoteSSHQueueEntry {
 
 interface RemoteSSHConnectionLease {
   release: () => void;
+}
+
+/** 원격 명령 하나가 어디에서 시간을 썼는지 나눠 담는다. 재시도한 명령은 시도별 시간을 더한다 */
+interface RemoteSSHCommandTiming {
+  /** 호스트별 명령 슬롯이 비기를 기다린 시간 */
+  slotWaitMs: number;
+  /** 공용 연결 준비나 호스트별 인증 순서를 기다린 시간 */
+  connectionWaitMs: number;
+  /** ssh 프로세스를 띄운 뒤 명령이 끝날 때까지의 시간 */
+  commandMs: number;
 }
 
 export interface ExecGitOptions {
@@ -228,7 +241,9 @@ async function execRemote(
   options?: ExecGitOptions,
 ): Promise<string> {
   const timeoutMs = getRemoteSSHCommandTimeoutMs(options);
-  const deadline = Date.now() + timeoutMs;
+  const requestedAt = Date.now();
+  const deadline = requestedAt + timeoutMs;
+  const timing: RemoteSSHCommandTiming = { slotWaitMs: 0, connectionWaitMs: 0, commandMs: 0 };
   const execute = async () => {
     remainingSSHTimeout(deadline);
     throwIfSSHTransportCooldownActive(sshHost);
@@ -245,6 +260,8 @@ async function execRemote(
       let sshArgs: string[] = [];
       let waitingForMaster = false;
       const independentGeneration = remoteSSHMasters.get(masterKey);
+      const attemptStartedAt = Date.now();
+      let commandStartedAt: number | undefined;
       const run = async (onAuthenticated?: () => void) => {
         throwIfSSHTransportCooldownActive(sshHost);
         if (!independent) {
@@ -254,6 +271,9 @@ async function execRemote(
           waitingForMaster = false;
           master.readyAt = Date.now();
         }
+        const startedAt = Date.now();
+        commandStartedAt = startedAt;
+        timing.connectionWaitMs += startedAt - attemptStartedAt;
         sshArgs = [
           ...buildExecSSHArgs(hostConfig, master, options),
           buildRemoteShellCommand(command),
@@ -277,13 +297,18 @@ async function execRemote(
               });
             },
           },
-        ).finally(() => { context.active = false; });
+        ).finally(() => {
+          context.active = false;
+          timing.commandMs += Date.now() - startedAt;
+        });
       };
       try {
         return await (independent
           ? runSerializedSSHAuthentication(hostConfig, run, deadline)
           : run());
       } catch (error) {
+        // 연결 준비나 인증 차례를 기다리다 끝난 시도는 명령을 띄우지 못했으므로 그 시간을 연결 대기로 센다.
+        if (commandStartedAt === undefined) timing.connectionWaitMs += Date.now() - attemptStartedAt;
         const timeout = isSSHCommandTimeoutError(error);
         const normalizedError = normalizeSSHExecError(error, sshHost, timeoutMs, timeout);
         const transient = isSSHTransportError(normalizedError);
@@ -305,11 +330,45 @@ async function execRemote(
   };
   const responderContext = remoteSSHResponderContext.getStore();
   if (responderContext?.active && responderContext.sshHost === sshHost) {
-    return execute();
+    return execute().finally(() => logSlowRemoteCommand(sshHost, command, Date.now() - requestedAt, timing));
   }
-  return runLimitedRemoteCommand(sshHost, execute, deadline).catch((error) => {
+  let hasAcquiredSlot = false;
+  const executeInSlot = () => {
+    hasAcquiredSlot = true;
+    timing.slotWaitMs = Date.now() - requestedAt;
+    return execute();
+  };
+  return runLimitedRemoteCommand(sshHost, executeInSlot, deadline).catch((error) => {
     if (isSSHCommandTimeoutError(error)) throw normalizeSSHExecError(error, sshHost, timeoutMs, true);
     throw error;
+  }).finally(() => {
+    const totalMs = Date.now() - requestedAt;
+    // 슬롯을 끝내 얻지 못하고 시간 초과된 명령은 전체 시간이 슬롯 대기다.
+    if (!hasAcquiredSlot) timing.slotWaitMs = totalMs;
+    logSlowRemoteCommand(sshHost, command, totalMs, timing);
+  });
+}
+
+/**
+ * 느린 원격 명령이 슬롯 대기, 연결 대기, 명령 수행 중 어디에서 시간을 썼는지 남긴다.
+ * 전체 시간만으로는 회선이 느린 것인지 앞선 명령 뒤에서 기다린 것인지 구분할 수 없다.
+ */
+function logSlowRemoteCommand(
+  sshHost: string,
+  command: string,
+  totalMs: number,
+  timing: RemoteSSHCommandTiming,
+): void {
+  if (totalMs < REMOTE_SSH_SLOW_COMMAND_LOG_MS) {
+    return;
+  }
+
+  console.warn("[remote-ssh] slow command", {
+    sshHost,
+    priority: remoteSSHCommandPriority.getStore() ?? "foreground",
+    totalMs,
+    ...timing,
+    command: command.slice(0, REMOTE_SSH_SLOW_COMMAND_LOG_COMMAND_LENGTH),
   });
 }
 

@@ -3,6 +3,7 @@ import { getOrCreateHookClientId } from "@/desktop/main/services/appSettingsServ
 import { HOOK_TRANSPORT_VERSION_MARKER } from "@/lib/hookSocketPath";
 import { invalidateOpenCodePluginRegistration } from "@/lib/openCodePluginRegistry";
 import { readTextFiles } from "@/lib/hostFileAccess";
+import { runWithBackgroundSSHCommands } from "@/lib/gitOperations";
 import { getHookServerPort, getHookServerUrl } from "@/lib/hookEndpoint";
 import { writeHookProviderFiles } from "@/lib/hookFileWriter";
 import { registerKanvibeHookTarget } from "@/lib/hookTargetRegistration";
@@ -33,6 +34,14 @@ const activeHookEnsureJobs = new Map<string, Promise<boolean>>();
 const verifiedRemoteHookFiles = new Map<string, string>();
 const activeHookInstallJobs = new Map<string, Promise<void>>();
 const activeHookFileInstallJobs = new Map<string, Promise<void>>();
+const activeHookStatusReads = new Map<string, Promise<KanvibeHookStatuses>>();
+/**
+ * 원격 hook 상태를 다시 읽지 않고 돌려주는 시간. 상태 패널이 열린 창은 보드 갱신마다 상태를 다시 묻는데,
+ * 원격에서는 조회 한 번이 새 SSH 접속이라 에이전트가 일하는 동안 접속이 끊임없이 이어진다.
+ * 이 앱이 설치하거나 복구하면 곧바로 버리므로, 이 시간만큼 늦게 보이는 것은 원격에서 직접 고친 변경뿐이다.
+ */
+const REMOTE_HOOK_STATUS_REUSE_MS = 30_000;
+const recentRemoteHookStatuses = new Map<string, { readAt: number; statuses: KanvibeHookStatuses }>();
 const scheduledHookInstallJobs = new Map<string, ScheduledHookInstallJob>();
 
 export type { KanvibeHookProvider };
@@ -73,16 +82,68 @@ export async function ensureKanvibeHooksCurrent(
   );
 }
 
-export async function getKanvibeHooksStatuses(
+/**
+ * 모든 provider의 hook 상태를 파일 읽기 한 번으로 조회한다.
+ * 여러 창이나 화면이 같은 대상을 동시에 물으면 진행 중인 조회를 함께 쓴다. 원격 조회는 호스트 키를 검증하는
+ * 새 SSH 접속이라, 겹친 요청마다 따로 접속하면 호스트별 인증 순서에 줄을 서서 뒤 요청일수록 오래 걸린다.
+ */
+export function getKanvibeHooksStatuses(
   targetPath: string,
   taskId: string,
   sshHost?: string | null,
 ): Promise<KanvibeHookStatuses> {
+  const statusKey = buildHookInstallKey(targetPath, taskId, sshHost, "status");
+  const recentStatuses = recentRemoteHookStatuses.get(statusKey);
+  if (recentStatuses && Date.now() - recentStatuses.readAt < REMOTE_HOOK_STATUS_REUSE_MS) {
+    return Promise.resolve(recentStatuses.statuses);
+  }
+
+  const activeRead = activeHookStatusReads.get(statusKey);
+  if (activeRead) {
+    return activeRead;
+  }
+
+  const statusRead = readKanvibeHooksStatuses(targetPath, taskId, sshHost).then((statuses) => {
+    // 읽는 사이 설치가 끝나 이 조회가 버려졌으면 설치 전 상태일 수 있으므로 기억하지 않는다.
+    if (sshHost && activeHookStatusReads.get(statusKey) === statusRead) {
+      recentRemoteHookStatuses.set(statusKey, { readAt: Date.now(), statuses });
+    }
+    return statuses;
+  }).finally(() => {
+    if (activeHookStatusReads.get(statusKey) === statusRead) {
+      activeHookStatusReads.delete(statusKey);
+    }
+  });
+  activeHookStatusReads.set(statusKey, statusRead);
+  return statusRead;
+}
+
+/** 설치가 끝난 뒤의 조회가 설치 전에 읽었거나 읽기 시작한 상태를 받지 않게 한다 */
+function forgetHookStatusReads(targetPath: string, taskId: string, sshHost?: string | null): void {
+  const statusKey = buildHookInstallKey(targetPath, taskId, sshHost, "status");
+  activeHookStatusReads.delete(statusKey);
+  recentRemoteHookStatuses.delete(statusKey);
+}
+
+/** provider들이 상태 판정에 쓰는 파일을 한 번에 읽는다 */
+function readHookStatusFiles(
+  targetPath: string,
+  taskId: string,
+  sshHost?: string | null,
+): ReturnType<typeof readTextFiles> {
   const providerPaths = getKanvibeHookProviderModules().flatMap((providerModule) => (
     providerModule.buildFiles(targetPath, taskId, "", new Map(), sshHost).map((file) => file.filePath)
   ));
   const paths = [...new Set([...providerPaths, getKanvibeTargetsPath(targetPath, sshHost)])];
-  const files = await readTextFiles(paths, sshHost, { strictHostKeyChecking: true });
+  return readTextFiles(paths, sshHost, { strictHostKeyChecking: true });
+}
+
+async function readKanvibeHooksStatuses(
+  targetPath: string,
+  taskId: string,
+  sshHost?: string | null,
+): Promise<KanvibeHookStatuses> {
+  const files = await readHookStatusFiles(targetPath, taskId, sshHost);
   const [claude, gemini, codex, openCode] = await Promise.all([
     KANVIBE_HOOK_PROVIDER_MODULES.claude.getStatus(targetPath, taskId, sshHost, files),
     KANVIBE_HOOK_PROVIDER_MODULES.gemini.getStatus(targetPath, taskId, sshHost, files),
@@ -167,7 +228,7 @@ export async function installKanvibeHooks(
         await verifyHookInstallation(targetPath, taskId, sshHost);
       },
     ),
-  );
+  ).finally(() => forgetHookStatusReads(targetPath, taskId, sshHost));
 }
 
 export async function installKanvibeHookFiles(
@@ -183,7 +244,7 @@ export async function installKanvibeHookFiles(
       { targetPath, taskId, sshHost },
       () => installKanvibeHookFilesOnce(targetPath, taskId, sshHost),
     ),
-  );
+  ).finally(() => forgetHookStatusReads(targetPath, taskId, sshHost));
 }
 
 export async function installKanvibeHookProvider(
@@ -202,7 +263,7 @@ export async function installKanvibeHookProvider(
       { targetPath, taskId, sshHost, provider: providerModule.label },
       () => installKanvibeHookProviderOnce(providerModule, targetPath, taskId, sshHost),
     ),
-  );
+  ).finally(() => forgetHookStatusReads(targetPath, taskId, sshHost));
 }
 
 export function scheduleKanvibeHooksInstall(
@@ -228,7 +289,8 @@ export function scheduleKanvibeHooksInstall(
   scheduledHookInstallJobs.set(installKey, nextJob);
 
   setTimeout(() => {
-    void installKanvibeHooks(targetPath, taskId, sshHost)
+    // 예약된 설치는 기다리는 화면이 없으므로, 터미널 준비 같은 화면 요청이 원격 명령 슬롯을 먼저 쓰게 한다.
+    void runWithBackgroundSSHCommands(() => installKanvibeHooks(targetPath, taskId, sshHost))
       .then(() => notifyHookInstallSuccess(nextJob.callbacks))
       .catch((error) => notifyHookInstallFailure(nextJob.callbacks, error))
       .finally(() => {
@@ -246,7 +308,7 @@ export function scheduleKanvibeHooksVerification(
   options: HookInstallScheduleOptions = {},
 ): void {
   setTimeout(() => {
-    void verifyHookInstallation(targetPath, taskId, sshHost)
+    void runWithBackgroundSSHCommands(() => verifyHookInstallation(targetPath, taskId, sshHost))
       .then(() => {
         runHookInstallCallback(() => options.onSuccess?.());
       })
@@ -281,7 +343,7 @@ function buildHookInstallKey(
   targetPath: string,
   taskId: string,
   sshHost: string | null | undefined,
-  provider: KanvibeHookProvider | "all" | "all-files",
+  provider: KanvibeHookProvider | "all" | "all-files" | "status",
 ): string {
   return [provider, sshHost ?? "", targetPath, taskId].join("\0");
 }
@@ -459,8 +521,17 @@ async function logHookVerificationStatuses(
   sshHost?: string | null,
 ): Promise<HookVerificationFailure[]> {
   const providerModules = getKanvibeHookProviderModules();
+  /**
+   * 원격에서는 provider마다 따로 읽으면 검증 접속이 provider 수만큼 차례로 생기므로 한 번 읽어 나눠 쓴다.
+   * 묶어 읽기가 실패하면 어느 provider가 원인인지 가릴 수 없어, 그때만 provider별로 다시 읽는다.
+   */
+  const sharedFiles = sshHost
+    ? await readHookStatusFiles(targetPath, taskId, sshHost).catch(() => null)
+    : null;
   const results = await Promise.allSettled(
-    providerModules.map((providerModule) => providerModule.getStatus(targetPath, taskId, sshHost)),
+    providerModules.map((providerModule) => (
+      providerModule.getStatus(targetPath, taskId, sshHost, ...(sharedFiles ? [sharedFiles] : []))
+    )),
   );
   const failures: HookVerificationFailure[] = [];
 
