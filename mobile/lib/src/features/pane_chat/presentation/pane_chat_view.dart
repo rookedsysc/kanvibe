@@ -51,6 +51,23 @@ class _PaneChatViewState extends ConsumerState<PaneChatView> {
     });
   }
 
+  /// 최신 메시지에서 한 화면 넘게 올라가 있는지.
+  ///
+  /// CLI 대상이 바뀌는 프레임에는 이전 목록과 새 목록이 함께 붙어 있고, 새 목록은 아직 배치 전이라
+  /// 그동안에는 판단하지 않는다.
+  bool get _isAwayFromLatest =>
+      _scroll.positions.length == 1 &&
+      _scroll.position.hasViewportDimension &&
+      _scroll.offset > _scroll.position.viewportDimension;
+
+  void _jumpToLatest() {
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _scroll.jumpTo(0);
+    } else {
+      _scroll.animateTo(0, duration: Durations.short4, curve: Curves.easeOut);
+    }
+  }
+
   @override
   void dispose() {
     _scroll.dispose();
@@ -204,48 +221,75 @@ class _PaneChatViewState extends ConsumerState<PaneChatView> {
                           )
                         : snapshot.transcript.messages.isEmpty
                         ? const Center(child: Text('현재 CLI에 첫 메시지를 보내세요.'))
-                        : Align(
-                            alignment: Alignment.topCenter,
-                            child: ConstrainedBox(
-                              constraints: const BoxConstraints(
-                                maxWidth: AppSizes.tabletBreakpoint,
-                              ),
-                              child: ListView.builder(
-                                key: PageStorageKey(
-                                  'pane-chat-transcript:$draftKey',
+                        : Stack(
+                            children: [
+                              Align(
+                                alignment: Alignment.topCenter,
+                                child: ConstrainedBox(
+                                  constraints: const BoxConstraints(
+                                    maxWidth: AppSizes.tabletBreakpoint,
+                                  ),
+                                  child: ListView.builder(
+                                    key: PageStorageKey(
+                                      'pane-chat-transcript:$draftKey',
+                                    ),
+                                    findChildIndexCallback: (key) =>
+                                        messageIndexes[key],
+                                    controller: _scroll,
+                                    reverse: true,
+                                    padding: const EdgeInsets.all(AppSizes.p16),
+                                    itemCount:
+                                        snapshot.transcript.messages.length +
+                                        (snapshot.transcript.nextCursor != null
+                                            ? 1
+                                            : 0),
+                                    itemBuilder: (context, index) {
+                                      if (index ==
+                                          snapshot.transcript.messages.length) {
+                                        return const Padding(
+                                          padding: EdgeInsets.all(AppSizes.p16),
+                                          child: Text(
+                                            '최근 대화를 표시합니다. 이전 대화는 채팅 History에서 볼 수 있습니다.',
+                                          ),
+                                        );
+                                      }
+                                      final message =
+                                          snapshot.transcript.messages[index];
+                                      return ChatMessageTile(
+                                        key: messageKeys[index],
+                                        message: message,
+                                        provider: snapshot.provider ?? 'AI',
+                                        taskId: widget.target.taskId,
+                                        sessionId:
+                                            snapshot.transcript.sessionId,
+                                      );
+                                    },
+                                  ),
                                 ),
-                                findChildIndexCallback: (key) =>
-                                    messageIndexes[key],
-                                controller: _scroll,
-                                reverse: true,
-                                padding: const EdgeInsets.all(AppSizes.p16),
-                                itemCount:
-                                    snapshot.transcript.messages.length +
-                                    (snapshot.transcript.nextCursor != null
-                                        ? 1
-                                        : 0),
-                                itemBuilder: (context, index) {
-                                  if (index ==
-                                      snapshot.transcript.messages.length) {
-                                    return const Padding(
-                                      padding: EdgeInsets.all(AppSizes.p16),
-                                      child: Text(
-                                        '최근 대화를 표시합니다. 이전 대화는 채팅 History에서 볼 수 있습니다.',
-                                      ),
-                                    );
-                                  }
-                                  final message =
-                                      snapshot.transcript.messages[index];
-                                  return ChatMessageTile(
-                                    key: messageKeys[index],
-                                    message: message,
-                                    provider: snapshot.provider ?? 'AI',
-                                    taskId: widget.target.taskId,
-                                    sessionId: snapshot.transcript.sessionId,
-                                  );
-                                },
                               ),
-                            ),
+                              Positioned(
+                                bottom: AppSizes.p16,
+                                right: AppSizes.p16,
+                                child: ListenableBuilder(
+                                  listenable: _scroll,
+                                  builder: (context, _) => _isAwayFromLatest
+                                      ? IconButton.filledTonal(
+                                          tooltip: '최신 메시지로 이동',
+                                          style: IconButton.styleFrom(
+                                            backgroundColor:
+                                                AppColors.bgSurface,
+                                            foregroundColor:
+                                                AppColors.textPrimary,
+                                          ),
+                                          onPressed: _jumpToLatest,
+                                          icon: const Icon(
+                                            Icons.arrow_downward,
+                                          ),
+                                        )
+                                      : const SizedBox.shrink(),
+                                ),
+                              ),
+                            ],
                           ),
                   ),
                 if (snapshot.provider != null && snapshot.targetToken != null)

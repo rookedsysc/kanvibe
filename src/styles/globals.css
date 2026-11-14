@@ -106,6 +106,14 @@
   --color-status-error: var(--red-500);
   --color-status-info: var(--point-blue);
 
+  /* Semantic: Syntax — 테마마다 바뀌는 토큰을 가리켜 코드 글자색이 테마를 따라간다 */
+  --color-syntax-comment: var(--color-text-muted);
+  --color-syntax-keyword: var(--color-status-pending);
+  --color-syntax-string: var(--color-status-success);
+  --color-syntax-number: var(--color-status-warning);
+  --color-syntax-title: var(--color-text-link);
+  --color-syntax-deletion: var(--color-status-error);
+
   /* Semantic: Tags - Agent */
   --color-tag-claude-bg: var(--red-50);
   --color-tag-claude-text: var(--red-600);
@@ -697,4 +705,83 @@ textarea {
 
 .kv-graph-bar[data-state="done"] {
   background-color: color-mix(in srgb, var(--color-status-success) 30%, transparent);
+}
+
+/**
+ * 대화 본문의 코드 블록과 표.
+ * 머리줄에는 언어 이름과 복사 버튼이 놓이고, 긴 줄과 넓은 표는 틀 안에서만 옆으로 넘긴다.
+ */
+.kv-chat-code {
+  margin: 0.75rem 0;
+  overflow: hidden;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 0.5rem;
+  background-color: var(--color-bg-page);
+}
+
+.kv-chat-code-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 2rem;
+  padding: 0 0.25rem 0 0.75rem;
+  border-bottom: 1px solid var(--color-border-subtle);
+  color: var(--color-text-secondary);
+  font-size: 0.75rem;
+}
+
+.kv-chat-code-header button {
+  min-height: 1.75rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.25rem;
+}
+
+.kv-chat-code-header button:hover {
+  background-color: var(--color-bg-surface);
+  color: var(--color-text-primary);
+}
+
+.kv-chat-code-header button:focus-visible {
+  outline: 2px solid var(--color-brand-primary);
+}
+
+.kv-chat-table {
+  margin: 0.75rem 0;
+  overflow-x: auto;
+}
+
+.kv-chat-code .hljs-comment,
+.kv-chat-code .hljs-quote {
+  color: var(--color-syntax-comment);
+}
+
+.kv-chat-code .hljs-keyword,
+.kv-chat-code .hljs-selector-tag,
+.kv-chat-code .hljs-literal,
+.kv-chat-code .hljs-type {
+  color: var(--color-syntax-keyword);
+}
+
+.kv-chat-code .hljs-string,
+.kv-chat-code .hljs-regexp,
+.kv-chat-code .hljs-addition {
+  color: var(--color-syntax-string);
+}
+
+.kv-chat-code .hljs-number,
+.kv-chat-code .hljs-symbol,
+.kv-chat-code .hljs-attr,
+.kv-chat-code .hljs-attribute {
+  color: var(--color-syntax-number);
+}
+
+.kv-chat-code .hljs-title,
+.kv-chat-code .hljs-section,
+.kv-chat-code .hljs-name,
+.kv-chat-code .hljs-built_in {
+  color: var(--color-syntax-title);
+}
+
+.kv-chat-code .hljs-deletion {
+  color: var(--color-syntax-deletion);
 }

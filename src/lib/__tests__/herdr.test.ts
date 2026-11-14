@@ -800,3 +800,37 @@ describe("readHerdrTaskPaneSize", () => {
   });
 
 });
+
+describe("Herdr Space 연결 파일 읽기", () => {
+  const respondAsSharedServer = async (command: string) => {
+    if (command.includes("'session' 'list'")) return JSON.stringify({ sessions: [{ name: "kanvibe", running: true, session_dir: "/shared", socket_path: "/shared/herdr.sock" }] });
+    return result({ tabs: [] });
+  };
+  beforeEach(() => {
+    execGit.mockReset();
+    readTextFile.mockReset();
+    execGit.mockImplementation(respondAsSharedServer);
+    readTextFile.mockResolvedValue(JSON.stringify({ "task-a": "w1" }));
+  });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it("이어지는 명령은 연결 파일을 한 번만 읽고 2초가 지나면 다시 읽는다", async () => {
+    vi.useFakeTimers({ toFake: ["performance"] });
+    await Promise.all([readHerdrTabs("kanvibe:task-a", "mapping-reuse-host"), readHerdrTabs("kanvibe:task-a", "mapping-reuse-host")]);
+    vi.advanceTimersByTime(1_999);
+    await readHerdrTabs("kanvibe:task-a", "mapping-reuse-host");
+    expect(readTextFile).toHaveBeenCalledTimes(1);
+
+    vi.advanceTimersByTime(1);
+    await readHerdrTabs("kanvibe:task-a", "mapping-reuse-host");
+    expect(readTextFile).toHaveBeenCalledTimes(2);
+  });
+
+  it("읽기에 실패한 결과는 다음 명령에 물려주지 않는다", async () => {
+    readTextFile.mockRejectedValueOnce(new Error("Connection reset by peer"));
+    await expect(readHerdrTabs("kanvibe:task-a", "mapping-failure-host")).rejects.toThrow("Connection reset by peer");
+
+    await expect(readHerdrTabs("kanvibe:task-a", "mapping-failure-host")).resolves.toEqual([]);
+    expect(readTextFile).toHaveBeenCalledTimes(2);
+  });
+});

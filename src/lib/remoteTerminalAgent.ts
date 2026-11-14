@@ -256,6 +256,8 @@ export async function startRemoteTerminalAgent(
     if (!group || group.dead) throw new Error("Terminal unavailable");
     if (binary) {
       const record = JSON.parse(bytes.toString("utf8"));
+      // 이력 갱신은 A의 미러에만 있는 요청이다. 직접 연결한 기기가 보내도 이 연결의 이력은 붙을 때 받은 것 그대로다.
+      if (record.type === "refresh-history") return;
       if (record.type !== "resize" || !isRemoteTerminalSize(record.cols, record.rows)) throw new Error("Invalid terminal size");
       client.size = { cols: record.cols, rows: record.rows };
       group.size = client.size;

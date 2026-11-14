@@ -10,6 +10,7 @@ import 'package:kanvibe_mobile/src/common/network/desktop_connection.dart';
 import 'package:kanvibe_mobile/src/common/providers.dart';
 import 'package:kanvibe_mobile/src/features/board/domain/task_status.dart';
 import 'package:kanvibe_mobile/src/features/chat_history/domain/chat_history.dart';
+import 'package:kanvibe_mobile/src/features/chat_history/domain/task_file.dart';
 import 'package:kanvibe_mobile/src/features/pane_chat/domain/pane_chat.dart';
 import 'package:kanvibe_mobile/src/features/connection/data/connection_store.dart';
 import 'package:kanvibe_mobile/src/features/connection/domain/saved_connections.dart';
@@ -210,6 +211,8 @@ class FakeDesktopClient implements DesktopClient {
 
   final writtenInput = <String, List<String>>{};
   final resizedPanes = <String, List<({int cols, int rows})>>{};
+  final historyRefreshRequests = <String>[];
+  int paneStreamOpenCount = 0;
 
   @override
   Future<void> unpairDevice(DesktopConnection connection) async {
@@ -437,9 +440,11 @@ class FakeDesktopClient implements DesktopClient {
     String taskId,
     String paneId, {
     Future<void>? cancelled,
+    bool canPrepareDirectConnection = true,
   }) async {
     final controller = StreamController<String>.broadcast();
     openedPanes[paneId] = controller;
+    paneStreamOpenCount += 1;
 
     return PaneStream(
       output: controller.stream,
@@ -448,6 +453,7 @@ class FakeDesktopClient implements DesktopClient {
         cols: cols,
         rows: rows,
       )),
+      onRefreshHistory: () => historyRefreshRequests.add(paneId),
       onClose: () async {
         closedPanes.add(paneId);
         await controller.close();
@@ -588,6 +594,22 @@ class FakeDesktopClient implements DesktopClient {
     String sessionId,
     String attachmentId,
   ) async => throw StateError('No media fixture');
+
+  /// 경로별로 돌려줄 파일 본문. 값이 예외면 그대로 던져 실패 화면을 볼 수 있게 한다
+  final taskFilesByPath = <String, Object>{};
+  final requestedTaskFilePaths = <String>[];
+
+  @override
+  Future<TaskFile> fetchTaskFile(
+    DesktopConnection connection,
+    String taskId,
+    String path,
+  ) async {
+    requestedTaskFilePaths.add(path);
+    final fixture = taskFilesByPath[path];
+    if (fixture is String) return TaskFile(path: path, content: fixture);
+    throw fixture ?? StateError('No task file fixture');
+  }
 
   @override
   void close() {}

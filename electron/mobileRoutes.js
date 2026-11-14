@@ -68,6 +68,7 @@ const TASK_SESSION_TYPE_PATH_PATTERN = /^\/api\/mobile\/tasks\/([^/]+)\/session-
 const TASK_SESSION_ALIVE_PATH_PATTERN = /^\/api\/mobile\/tasks\/([^/]+)\/session-alive$/;
 const AI_SESSIONS_PATH_PATTERN = /^\/api\/mobile\/tasks\/([^/]+)\/ai-sessions(?:\/([^/]+)\/([^/]+))?$/;
 const AI_SESSION_ATTACHMENT_PATH_PATTERN = /^\/api\/mobile\/tasks\/([^/]+)\/ai-sessions\/([^/]+)\/([^/]+)\/attachments\/([^/]+)$/;
+const TASK_FILE_PATH_PATTERN = /^\/api\/mobile\/tasks\/([^/]+)\/workspace-file$/;
 const PANE_CHAT_PATH_PATTERN = /^\/api\/mobile\/tasks\/([^/]+)\/pane-chat(?:\/(prompt|interrupt|model-picker|key|attachments|suggestions))?$/;
 // 10MiB 파일의 base64와 JSON 메타데이터를 수용하며, 다른 요청의 64KiB 한도는 유지한다.
 const MAX_PANE_CHAT_ATTACHMENT_BODY_BYTES = 14 * 1024 * 1024;
@@ -218,6 +219,12 @@ async function handleMobileRequest(request, response, { bridge, host, port, isDe
       return true;
     }
 
+    const taskFileMatch = requestUrl.pathname.match(TASK_FILE_PATH_PATTERN);
+    if (request.method === "GET" && taskFileMatch) {
+      await handleTaskFileRequest(response, bridge, decodeURIComponent(taskFileMatch[1]), requestUrl.searchParams.get("path"));
+      return true;
+    }
+
     const historyMatch = requestUrl.pathname.match(AI_SESSIONS_PATH_PATTERN);
     if (request.method === "GET" && historyMatch) {
       await handleAiHistoryRequest(response, bridge, requestUrl.searchParams, historyMatch);
@@ -326,6 +333,30 @@ async function handleMobileRequest(request, response, { bridge, host, port, isDe
     console.error("[kanvibe] Mobile request failed:", error);
     writeJson(response, 500, { success: false, error: "서버 오류" });
     return true;
+  }
+}
+
+/** 파일을 열지 못한 사유별 응답. 화면이 사유에 맞는 안내를 고르도록 `reason`도 함께 싣는다 */
+const TASK_FILE_FAILURE_RESPONSES = {
+  "outside-worktree": { status: 400, error: "작업 폴더 밖의 파일은 열 수 없습니다" },
+  "not-found": { status: 404, error: "파일을 찾을 수 없습니다" },
+  "too-large": { status: 413, error: "파일이 너무 커서 열 수 없습니다" },
+  unreadable: { status: 500, error: "파일을 읽을 수 없습니다" },
+};
+
+async function handleTaskFileRequest(response, bridge, taskId, filePath) {
+  if (!filePath) {
+    writeJson(response, 400, { success: false, error: "파일 경로가 필요합니다" });
+    return;
+  }
+  try {
+    writeJson(response, 200, { success: true, file: await bridge.getMobileTaskFile(taskId, filePath) });
+  } catch (error) {
+    const failure = error?.name === "TaskWorkspaceFileError" && Object.hasOwn(TASK_FILE_FAILURE_RESPONSES, error.reason)
+      ? TASK_FILE_FAILURE_RESPONSES[error.reason]
+      : null;
+    if (!failure) throw error;
+    writeJson(response, failure.status, { success: false, error: failure.error, reason: error.reason });
   }
 }
 
@@ -823,6 +854,16 @@ async function answerMobileCommand(webSocket, bridge, data) {
   }
 }
 
+/** 터미널 스트림의 이진 프레임은 입력이 아니라 제어 요청이다. 읽을 수 없으면 버린다 */
+function parsePaneControlMessage(data) {
+  if (data.length > 256) return null;
+  try {
+    return JSON.parse(data.toString());
+  } catch {
+    return null;
+  }
+}
+
 /** [onClosed]는 닫힌 소켓을 기기 지도에서 지운다. 죽은 소켓이 남아 있으면 나중의 해제가 남의 자리를 뒤진다 */
 async function openPaneStream(webSocket, bridge, taskId, paneId, deviceId, grantId, onClosed) {
   let unsubscribe = null;
@@ -862,19 +903,19 @@ async function openPaneStream(webSocket, bridge, taskId, paneId, deviceId, grant
     let resize = null;
     writeQueue = writeQueue.then(async () => {
       if (isClosed || webSocket.readyState !== webSocket.OPEN) return;
+      const control = isBinary ? parsePaneControlMessage(data) : null;
+      /** 이력 갱신은 이 데스크탑의 미러만 아는 요청이라 B의 중계로 넘기지 않는다. 넘기면 B가 잘못된 크기 요청으로 읽고 연결을 끊는다 */
+      if (control?.type === "refresh-history") {
+        if (!remoteRelay) await bridge.refreshPaneHistory(taskId, paneId);
+        return;
+      }
       if (remoteRelay) {
         remoteRelay.write(data, isBinary);
         return;
       }
       if (isBinary) {
-        try {
-          if (data.length > 256) return;
-          const message = JSON.parse(data.toString());
-          if (message?.type !== "resize" || ![message.cols, message.rows].every((value) => Number.isInteger(value) && value >= 1 && value <= 500)) return;
-          resize = message;
-        } catch {
-          return;
-        }
+        if (control?.type !== "resize" || ![control.cols, control.rows].every((value) => Number.isInteger(value) && value >= 1 && value <= 500)) return;
+        resize = control;
       }
       if (resize) {
         viewport ??= await bridge.claimPaneViewport(taskId, paneId);

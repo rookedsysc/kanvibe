@@ -1039,6 +1039,7 @@ const appTranslations = <String, (String, String)>{
   "프로젝트 {count}개 등록": ("Registered {count} projects", "已注册 {count} 个项目"),
   "Mermaid 다이어그램 준비 완료": ("Mermaid diagram ready", "Mermaid 图表已就绪"),
   "다이어그램을 준비하는 중…": ("Preparing diagram…", "正在准备图表…"),
+  "이미지 불러오기: {name}": ("Load image: {name}", "加载图片：{name}"),
   "다이어그램 원문": ("Diagram source", "图表源代码"),
   "다이어그램 원문을 복사했습니다.": ("Diagram source copied.", "已复制图表源代码。"),
   "다이어그램 확대": ("Enlarge diagram", "放大图表"),

@@ -9,6 +9,7 @@ import type { TerminalTab } from "@/desktop/shared/terminalTabs";
 import type { PaneChatKey } from "@/desktop/shared/paneChat";
 import { PaneChatComposer } from "./PaneChatComposer";
 import { AiChatTranscriptMessage } from "./AiChatTranscriptMessage";
+import { AiChatFilePreview } from "./AiChatFilePreview";
 
 const NEAR_BOTTOM_PX = 96;
 const EMPTY_MESSAGES: AggregatedAiMessage[] = [];
@@ -29,6 +30,7 @@ export function PaneChatView({ taskId, paneId, taskTitle, paneTabs = [], isVisib
   const targetKey = snapshot?.targetToken ?? `${taskId}:unavailable`;
   const [controlsTarget, setControlsTarget] = useState<string | null>(null);
   const [isDetached, setIsDetached] = useState(false);
+  const [previewFilePath, setPreviewFilePath] = useState<string | null>(null);
   const viewport = useRef<HTMLDivElement>(null);
   const followLatest = useRef(true);
   const controlsOpen = controlsTarget === targetKey;
@@ -40,6 +42,7 @@ export function PaneChatView({ taskId, paneId, taskTitle, paneTabs = [], isVisib
   useEffect(() => {
     followLatest.current = true;
     setIsDetached(false);
+    setPreviewFilePath(null);
   }, [targetKey]);
 
   useLayoutEffect(() => {
@@ -82,7 +85,7 @@ export function PaneChatView({ taskId, paneId, taskTitle, paneTabs = [], isVisib
             {snapshot.transcript.nextCursor ? <button type="button" onClick={onHistory} className="text-xs text-text-brand">{t("olderHint")}</button> : null}
             {messages.length === 0 ? <p className="text-sm text-text-secondary">{t("empty")}</p> : null}
             {getChatTranscriptRows(messages, snapshot.transcript.sessionId).map(({ message, key }) => (
-              <AiChatTranscriptMessage key={key} message={message} provider={snapshot.provider!} attachmentContext={snapshot.transcript.sessionId ? { taskId, provider: snapshot.provider!, sessionId: snapshot.transcript.sessionId } : undefined} />
+              <AiChatTranscriptMessage key={key} message={message} provider={snapshot.provider!} attachmentContext={snapshot.transcript.sessionId ? { taskId, provider: snapshot.provider!, sessionId: snapshot.transcript.sessionId } : undefined} onOpenFile={(file) => setPreviewFilePath(file.path)} />
             ))}
           </> : null}
           {snapshot?.canSend && snapshot.transcript.status === "unavailable" ? <p className="text-xs text-text-secondary">{t("transcriptPending")}</p> : null}
@@ -112,6 +115,7 @@ export function PaneChatView({ taskId, paneId, taskTitle, paneTabs = [], isVisib
           <button type="button" disabled={disabled} onClick={() => void navigate("escape")} className={controlClass}>{t("cancel")}</button>
         </div>
       </div> : null}
+      {previewFilePath ? <AiChatFilePreview taskId={taskId} filePath={previewFilePath} onClose={() => setPreviewFilePath(null)} /> : null}
       <PaneChatComposer taskId={taskId} chat={chat} controlsOpen={controlsOpen} isVisible={isVisible} onModel={() => void openModelPicker()} onControls={() => setControlsTarget(controlsOpen ? null : targetKey)} />
     </section>
   );
