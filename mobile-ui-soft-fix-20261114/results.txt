@@ -1,0 +1,11 @@
+검증 기준: 변경된 모바일 UI 소스와 테스트의 동일 내용 지문을 확인했습니다.
+Flutter 3.47.2 / Dart 3.13.2, Node 24.15.0 / pnpm 10.34.5.
+fvm flutter test --machine: exit 0, 843개 통과. 이번 회귀 11개 포함.
+fvm flutter analyze: exit 0.
+pnpm check: exit 0.
+pnpm build: exit 0.
+pnpm test: exit 1, 3575개 통과 / 14개 실패. 실패는 수정하지 않은 desktop remoteTerminalService 및 TaskWorkspaceRoute 테스트입니다.
+Android Pixel 9 Pro Fold: OPENED 2076x2152 / CLOSED 1080x2424. 각 Maestro flow exit 0, 1/1 통과.
+Maestro는 production BoardScreen/TaskDetailScreen과 기존 fake desktop client/store를 사용했습니다. 실제 데스크톱 네트워크 통합 검증은 포함하지 않습니다.
+startRecording으로 영상 캡처. opened.mp4 및 folded.mp4.
+UI QA: PASS. 전체 CI 검증: 데스크톱 테스트 실패로 FAIL.
