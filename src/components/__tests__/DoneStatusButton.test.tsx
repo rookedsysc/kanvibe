@@ -24,10 +24,10 @@ vi.mock("next-intl", () => ({
 import DoneStatusButton from "../DoneStatusButton";
 
 describe("DoneStatusButton", () => {
-  const mockAction = vi.fn().mockResolvedValue(undefined);
+  const mockAction = vi.fn();
 
   const defaultProps = {
-    statusChangeAction: mockAction,
+    onMoveToDone: mockAction,
     label: "Done",
     hasCleanableResources: true,
     doneAlertDismissed: false,
@@ -86,7 +86,7 @@ describe("DoneStatusButton", () => {
     expect(screen.queryByText("Move to Done")).toBeNull();
   });
 
-  it("should close dialog and submit form when confirmed", async () => {
+  it("should close dialog and request the Done move when confirmed", async () => {
     // Given
     const user = userEvent.setup();
     render(<DoneStatusButton {...defaultProps} />);
@@ -98,6 +98,7 @@ describe("DoneStatusButton", () => {
 
     // Then
     expect(screen.queryByText("Move to Done")).toBeNull();
+    expect(mockAction).toHaveBeenCalledTimes(1);
   });
 
   it("should close dialog without submitting when cancelled", async () => {
@@ -112,15 +113,31 @@ describe("DoneStatusButton", () => {
 
     // Then
     expect(screen.queryByText("Move to Done")).toBeNull();
+    expect(mockAction).not.toHaveBeenCalled();
   });
 
-  it("should include hidden status input with value 'done'", () => {
-    // Given & When
-    render(<DoneStatusButton {...defaultProps} />);
+  it("should request the Done move directly when no notice is needed", async () => {
+    // Given
+    const user = userEvent.setup();
+    render(<DoneStatusButton {...defaultProps} hasCleanableResources={false} />);
+
+    // When
+    await user.click(screen.getByText("Done"));
 
     // Then
-    const hiddenInput = document.querySelector("input[type='hidden'][name='status']") as HTMLInputElement;
-    expect(hiddenInput).toBeTruthy();
-    expect(hiddenInput.value).toBe("done");
+    expect(mockAction).toHaveBeenCalledTimes(1);
+  });
+
+  it("should block the button while another status move is pending", async () => {
+    // Given
+    const user = userEvent.setup();
+    render(<DoneStatusButton {...defaultProps} hasCleanableResources={false} isDisabled />);
+
+    // When
+    await user.click(screen.getByText("Done"));
+
+    // Then
+    expect((screen.getByRole("button", { name: "Done" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(mockAction).not.toHaveBeenCalled();
   });
 });

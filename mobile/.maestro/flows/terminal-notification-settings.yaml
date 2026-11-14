@@ -5,6 +5,13 @@ env:
 onFlowComplete:
   - stopRecording
 ---
+- launchApp:
+    clearState: true
+- setOrientation: PORTRAIT
+- extendedWaitUntil:
+    visible: "데스크탑에 연결"
+    timeout: 90000
+- runFlow: ../subflows/pairs-and-opens-board.yaml
 - startRecording: terminal-notification-settings
 - assertVisible: "Todo"
 - tapOn:

@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useParams } from "react-router-dom";
+import InlineLoadError from "@/components/InlineLoadError";
+import RouteRefreshFailureBanner from "@/desktop/renderer/components/RouteRefreshFailureBanner";
 import { Link, usePathname, useRouter } from "@/desktop/renderer/navigation";
 import { getGitDiffFiles } from "@/desktop/renderer/actions/diff";
 import { getTaskById } from "@/desktop/renderer/actions/kanban";
 import DiffPageClient from "@/desktop/renderer/components/DiffPageClient";
-import { INITIAL_DESKTOP_LOAD_TIMEOUT_MS, logDesktopInitialLoadTimeout } from "@/desktop/renderer/utils/loadingTimeout";
+import { useRouteLoadStatus } from "@/desktop/renderer/utils/loadingTimeout";
 import { useRefreshSignal } from "@/desktop/renderer/utils/refresh";
 import {
   navigateToTaskDetail,
@@ -17,21 +19,16 @@ interface DiffRouteState {
   files: Awaited<ReturnType<typeof getGitDiffFiles>>;
 }
 
-function createEmptyDiffState(): DiffRouteState {
-  return {
-    task: null,
-    files: [],
-  };
-}
-
 export default function DiffRoute() {
   const { id = "" } = useParams();
   const t = useTranslations("diffView");
+  const tc = useTranslations("common");
   const router = useRouter();
   const pathname = usePathname();
   const refreshSignal = useRefreshSignal(["all", "diff"]);
   const [state, setState] = useState<DiffRouteState | null>(null);
   const currentLocale = pathname.split("/").filter(Boolean)[0];
+  const { isLoadDelayed, loadFailureReason, retrySignal, beginLoad, retryLoad } = useRouteLoadStatus();
 
   function handleTaskDetailLinkClick(event: React.MouseEvent<HTMLAnchorElement>) {
     if (!shouldHandleTaskNavigationClick(event)) {
@@ -47,50 +44,50 @@ export default function DiffRoute() {
 
   useEffect(() => {
     let cancelled = false;
-    let loadingTimeout: number | null = window.setTimeout(() => {
-      loadingTimeout = null;
-      if (!cancelled) {
-        logDesktopInitialLoadTimeout("diff", { taskId: id });
-        setState((current) => current ?? createEmptyDiffState());
-      }
-    }, INITIAL_DESKTOP_LOAD_TIMEOUT_MS);
-
-    const clearLoadingTimeout = () => {
-      if (loadingTimeout === null) {
-        return;
-      }
-
-      window.clearTimeout(loadingTimeout);
-      loadingTimeout = null;
-    };
+    const loadAttempt = beginLoad("diff", { taskId: id });
 
     void (async () => {
       try {
         const task = await getTaskById(id);
         const files = task?.branchName && task.worktreePath ? await getGitDiffFiles(id) : [];
 
-        clearLoadingTimeout();
         if (!cancelled) {
+          loadAttempt.succeed();
           setState({ task, files });
           document.title = task?.branchName ? `Diff - ${task.branchName}` : "";
         }
       } catch (error) {
-        clearLoadingTimeout();
         console.error("Failed to load diff route data:", error);
         if (!cancelled) {
-          setState((current) => current ?? createEmptyDiffState());
+          loadAttempt.fail(error);
         }
       }
     })();
 
     return () => {
       cancelled = true;
-      clearLoadingTimeout();
+      loadAttempt.cancel();
     };
-  }, [id, refreshSignal]);
+  }, [beginLoad, id, refreshSignal, retrySignal]);
 
+  // 조회 실패는 task가 없다는 뜻이 아니므로 아래의 task 없음 화면으로 넘기지 않는다
   if (!state) {
-    return <div className="min-h-screen flex items-center justify-center bg-bg-page text-text-muted">Loading...</div>;
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-3 bg-bg-page px-4 text-text-muted">
+        {loadFailureReason ? (
+          <InlineLoadError
+            className="w-full max-w-md"
+            message={tc("loadFailed", { reason: loadFailureReason })}
+            onRetry={retryLoad}
+          />
+        ) : (
+          <>
+            <span>Loading...</span>
+            {isLoadDelayed ? <p role="status" className="text-xs">{tc("loadDelayed")}</p> : null}
+          </>
+        )}
+      </div>
+    );
   }
 
   if (!state.task) {
@@ -130,6 +127,9 @@ export default function DiffRoute() {
 
   return (
     <div className="h-screen flex flex-col bg-bg-page">
+      {loadFailureReason ? (
+        <RouteRefreshFailureBanner reason={loadFailureReason} onRetry={retryLoad} />
+      ) : null}
       <header className="shrink-0 flex items-center gap-3 px-4 py-2.5 bg-bg-surface border-b border-border-default">
         <Link href={`/task/${id}`} onClick={handleTaskDetailLinkClick} className="flex items-center gap-1.5 text-sm text-text-secondary hover:text-text-primary transition-colors">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="shrink-0">

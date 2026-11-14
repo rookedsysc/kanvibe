@@ -88,3 +88,45 @@ describe("PriorityEditor", () => {
     expect(mockRefresh).toHaveBeenCalled();
   });
 });
+
+describe("PriorityEditor - 저장 상태", () => {
+  beforeEach(() => {
+    mockRefresh.mockClear();
+    mockUpdateTask.mockReset();
+  });
+
+  it("저장 응답을 기다리는 동안 선택 버튼을 실제로 막아 겹쳐 저장하지 않는다", async () => {
+    let resolveSave: () => void = () => {};
+    mockUpdateTask.mockReturnValueOnce(new Promise<void>((resolve) => {
+      resolveSave = resolve;
+    }));
+    render(<PriorityEditor taskId="task-1" currentPriority={null} />);
+
+    await act(async () => {
+      fireEvent.click(screen.getByText("!!"));
+    });
+
+    expect((screen.getByText("!!!").closest("button") as HTMLButtonElement).matches(":disabled")).toBe(true);
+    await act(async () => {
+      fireEvent.click(screen.getByText("!!!"));
+    });
+    expect(mockUpdateTask).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveSave();
+    });
+    expect((screen.getByText("!!!").closest("button") as HTMLButtonElement).matches(":disabled")).toBe(false);
+  });
+
+  it("저장이 실패하면 사유를 알린다", async () => {
+    mockUpdateTask.mockRejectedValueOnce(new Error("db locked"));
+    render(<PriorityEditor taskId="task-1" currentPriority={null} />);
+
+    await act(async () => {
+      fireEvent.click(screen.getByText("!!"));
+    });
+
+    expect(screen.getByRole("alert").textContent).toBe("saveFailed");
+    expect(mockRefresh).not.toHaveBeenCalled();
+  });
+});

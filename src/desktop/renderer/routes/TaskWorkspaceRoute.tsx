@@ -1,11 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigationType, useSearchParams } from "react-router-dom";
+import { useTranslations } from "next-intl";
+import InlineLoadError from "@/components/InlineLoadError";
+import RouteRefreshFailureBanner from "@/desktop/renderer/components/RouteRefreshFailureBanner";
 import WorkspaceTaskList from "@/desktop/renderer/components/WorkspaceTaskList";
 import WorkspaceTerminalPane from "@/desktop/renderer/components/WorkspaceTerminalPane";
 import { getDefaultSessionType } from "@/desktop/renderer/actions/appSettings";
 import { getMoreDoneTasks, getTaskById, getTasksByStatus } from "@/desktop/renderer/actions/kanban";
 import { getAllProjects } from "@/desktop/renderer/actions/project";
 import { useRefreshSignal } from "@/desktop/renderer/utils/refresh";
+import { useRouteLoadStatus } from "@/desktop/renderer/utils/loadingTimeout";
+import { useTrackedAction } from "@/desktop/renderer/hooks/useTrackedAction";
 import { SessionType, TASK_STATUS_ORDER, TaskStatus, type KanbanTask } from "@/entities/KanbanTask";
 import type { Project } from "@/entities/Project";
 
@@ -38,6 +43,19 @@ function findInitialTaskId(tasks: KanbanTask[]): string | null {
 export default function TaskWorkspaceRoute() {
   const refreshSignal = useRefreshSignal(["all", "board"]);
   const [data, setData] = useState<WorkspaceData | null>(null);
+  const tc = useTranslations("common");
+  const { isLoadDelayed, loadFailureReason, retrySignal, beginLoad, retryLoad } = useRouteLoadStatus();
+  /** 같은 페이지를 겹쳐 요청하지 않고, 실패하면 사유를 남겨 같은 offset으로 다시 요청하게 한다 */
+  const loadMoreDoneAction = useTrackedAction(async (requestedOffset: number) => {
+    const { tasks: moreDoneTasks, doneTotal } = await getMoreDoneTasks(requestedOffset);
+    setData((current) => {
+      if (!current) return current;
+
+      const loadedTaskIds = new Set(current.tasks.map((task) => task.id));
+      const newDoneTasks = moreDoneTasks.filter((task) => !loadedTaskIds.has(task.id));
+      return { ...current, tasks: [...current.tasks, ...newDoneTasks], doneOffset: Math.max(current.doneOffset, requestedOffset + moreDoneTasks.length), doneTotal };
+    });
+  });
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedTaskId = searchParams.get("taskId");
   const location = useLocation();
@@ -62,11 +80,13 @@ export default function TaskWorkspaceRoute() {
 
   useEffect(() => {
     let cancelled = false;
+    const loadAttempt = beginLoad("workspace");
 
     Promise.all([getTasksByStatus(), getAllProjects(), getDefaultSessionType()])
       .then(([tasksByStatus, projects, defaultSessionType]) => {
         if (cancelled) return;
 
+        loadAttempt.succeed();
         const tasks = TASK_STATUS_ORDER.flatMap((status) => tasksByStatus.tasks[status]);
         setData({ tasks, doneTotal: tasksByStatus.doneTotal, doneOffset: tasksByStatus.tasks[TaskStatus.DONE].length, projects, defaultSessionType });
         setDefaultTaskId((current) => (
@@ -76,14 +96,15 @@ export default function TaskWorkspaceRoute() {
       .catch((error) => {
         console.error("Failed to load workspace route data:", error);
         if (!cancelled) {
-          setData((current) => current ?? { tasks: [], doneTotal: 0, doneOffset: 0, projects: [], defaultSessionType: SessionType.HERDR });
+          loadAttempt.fail(error);
         }
       });
 
     return () => {
       cancelled = true;
+      loadAttempt.cancel();
     };
-  }, [refreshSignal]);
+  }, [beginLoad, refreshSignal, retrySignal]);
 
   useEffect(() => {
     if (!data || !requestedTaskId || data.tasks.some((task) => task.id === requestedTaskId)) return;
@@ -103,7 +124,19 @@ export default function TaskWorkspaceRoute() {
   );
 
   if (!data) {
-    return <div className="h-screen bg-bg-page" data-testid="workspace-route-loading" />;
+    return (
+      <div className="flex h-screen items-center justify-center bg-bg-page px-4" data-testid="workspace-route-loading">
+        {loadFailureReason ? (
+          <InlineLoadError
+            className="w-full max-w-md"
+            message={tc("loadFailed", { reason: loadFailureReason })}
+            onRetry={retryLoad}
+          />
+        ) : isLoadDelayed ? (
+          <p role="status" className="text-xs text-text-muted">{tc("loadDelayed")}</p>
+        ) : null}
+      </div>
+    );
   }
 
   const doneOffset = data.doneOffset;
@@ -119,24 +152,14 @@ export default function TaskWorkspaceRoute() {
   }
 
   function loadMoreDoneTasks() {
-    const requestedOffset = doneOffset;
-    void getMoreDoneTasks(requestedOffset)
-      .then(({ tasks: moreDoneTasks, doneTotal }) => {
-        setData((current) => {
-          if (!current) return current;
-
-          const loadedTaskIds = new Set(current.tasks.map((task) => task.id));
-          const newDoneTasks = moreDoneTasks.filter((task) => !loadedTaskIds.has(task.id));
-          return { ...current, tasks: [...current.tasks, ...newDoneTasks], doneOffset: Math.max(current.doneOffset, requestedOffset + moreDoneTasks.length), doneTotal };
-        });
-      })
-      .catch((error) => {
-        console.error("Failed to load more done tasks:", error);
-      });
+    void loadMoreDoneAction.run(doneOffset);
   }
 
   return (
     <div data-workspace-view="true" className="flex h-screen overflow-hidden bg-bg-page">
+      {loadFailureReason ? (
+        <RouteRefreshFailureBanner reason={loadFailureReason} onRetry={retryLoad} />
+      ) : null}
       <WorkspaceTaskList
         tasks={data.tasks}
         projects={data.projects}
@@ -145,6 +168,9 @@ export default function TaskWorkspaceRoute() {
         onSelectTask={selectTask}
         hasMoreDoneTasks={data.doneOffset < data.doneTotal}
         onLoadMoreDoneTasks={loadMoreDoneTasks}
+        isLoadingMoreDoneTasks={loadMoreDoneAction.isPending}
+        loadMoreDoneTasksError={loadMoreDoneAction.error}
+        onRetryLoadMoreDoneTasks={() => void loadMoreDoneAction.retry()}
       />
       <WorkspaceTerminalPane
         task={selectedTask}

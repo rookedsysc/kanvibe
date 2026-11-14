@@ -73,6 +73,9 @@ function seedAgentFiles() {
 async function main() {
   if (fs.existsSync(path.join(runDir, 'app-data'))) throw new Error('Use a fresh --run-dir');
   fs.mkdirSync(repo, { recursive: true });
+  // 격리 HOME에 zsh 시작 파일이 없으면 zsh-newuser-install 화면이 떠서 fixture가 터미널에 친 입력을 먹는다
+  fs.mkdirSync(fakeHome, { recursive: true });
+  fs.writeFileSync(path.join(fakeHome, '.zshrc'), '');
   await freePort(selectedPort);
   await freePort(mobileTlsPort);
   const git = (...args) => execFileSync('git', ['-C', repo, ...args], { env: createLocalShellEnvironment(), stdio: 'pipe' });

@@ -1,7 +1,9 @@
+# `qa/mobile/lib/prepareQaDesktop.cjs`가 띄운 격리 데스크탑(hook 서버 19736, 모바일 포트 19746)의
+# tmux 세션 태스크에서 단축키를 누른다.
 appId: ${APP_ID}
 env:
-  SHORTCUT_DESKTOP_PORT: "39786"
-  DESKTOP_API_FROM_HOST: http://127.0.0.1:39786
+  SHORTCUT_DESKTOP_PORT: "19746"
+  DESKTOP_API_FROM_HOST: http://127.0.0.1:19736
 ---
 - launchApp:
     clearState: true
@@ -32,9 +34,9 @@ env:
 - hideKeyboard
 - tapOn: "연결"
 - extendedWaitUntil:
-    visible: "(?s).*Mobile shortcut terminal.*"
+    visible: "(?s).*Maestro Fixture Session.*"
     timeout: 40000
-- tapOn: "(?s).*Mobile shortcut terminal.*"
+- tapOn: "(?s).*Maestro Fixture Session.*"
 - extendedWaitUntil:
     visible:
       id: pane-terminal

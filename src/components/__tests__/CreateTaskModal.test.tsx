@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import CreateTaskModal from "../CreateTaskModal";
+import ActionStatusToast from "@/desktop/renderer/components/ActionStatusToast";
 import type { Project } from "@/entities/Project";
 
 const { mockCreateTask, mockEnsureSessionDependencyWithPrompt, mockGetProjectBranches, mockPush } = vi.hoisted(() => ({
@@ -424,4 +425,154 @@ describe("CreateTaskModal", () => {
     expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("herdr");
   });
 
+});
+
+describe("CreateTaskModal - 생성 중 닫기와 중복 제출", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetProjectBranches.mockResolvedValue(["main", "develop"]);
+    mockEnsureSessionDependencyWithPrompt.mockResolvedValue(true);
+  });
+
+  async function renderOpenModal(onClose = vi.fn()) {
+    const view = render(
+      <>
+        <CreateTaskModal
+          defaultSessionType="tmux"
+          isOpen
+          onClose={onClose}
+          sshHosts={["remote-box"]}
+          projects={[createProject()]}
+          defaultProjectId="project-remote"
+        />
+        <ActionStatusToast />
+      </>,
+    );
+    await waitFor(() => {
+      expect(mockGetProjectBranches).toHaveBeenCalledWith("project-remote");
+    });
+    return view;
+  }
+
+  function closeModal(view: ReturnType<typeof render>) {
+    view.rerender(
+      <>
+        <CreateTaskModal
+          defaultSessionType="tmux"
+          isOpen={false}
+          onClose={vi.fn()}
+          sshHosts={["remote-box"]}
+          projects={[createProject()]}
+          defaultProjectId="project-remote"
+        />
+        <ActionStatusToast />
+      </>,
+    );
+  }
+
+  it("생성 응답을 기다리는 동안 Enter를 거듭 눌러도 생성 요청은 한 번만 보낸다", async () => {
+    let resolveCreate: (task: { id: string }) => void = () => {};
+    mockCreateTask.mockReturnValue(new Promise((resolve) => {
+      resolveCreate = resolve;
+    }));
+    await renderOpenModal();
+
+    const branchNameInput = getBranchNameInput();
+    fireEvent.change(branchNameInput, { target: { value: "fix/double-enter" } });
+    fireEvent.keyDown(branchNameInput, { key: "Enter" });
+    await waitFor(() => {
+      expect(mockCreateTask).toHaveBeenCalledTimes(1);
+    });
+    fireEvent.keyDown(branchNameInput, { key: "Enter" });
+    fireEvent.keyDown(branchNameInput, { key: "Enter" });
+
+    resolveCreate({ id: "task-once" });
+    await waitFor(() => {
+      expect(mockPush).toHaveBeenCalledWith("/ko/task/task-once");
+    });
+    expect(mockCreateTask).toHaveBeenCalledTimes(1);
+  });
+
+  it("생성 중에는 닫기 버튼이 백그라운드 계속을 알리고, 닫은 뒤 성공하면 이동 대신 열기 토스트를 보인다", async () => {
+    let resolveCreate: (task: { id: string }) => void = () => {};
+    mockCreateTask.mockReturnValue(new Promise((resolve) => {
+      resolveCreate = resolve;
+    }));
+    const onClose = vi.fn();
+    const view = await renderOpenModal(onClose);
+
+    fireEvent.change(getBranchNameInput(), { target: { value: "feat/background" } });
+    fireEvent.click(screen.getByRole("button", { name: "create" }));
+    await waitFor(() => {
+      expect(mockCreateTask).toHaveBeenCalledTimes(1);
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "closeAndContinue" }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+    closeModal(view);
+
+    resolveCreate({ id: "task-background" });
+
+    const toast = await screen.findByRole("status");
+    expect(toast.textContent).toContain("createSucceeded");
+    expect(mockPush).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "open" }));
+    await waitFor(() => {
+      expect(mockPush).toHaveBeenCalledWith("/ko/task/task-background");
+    });
+  });
+
+  it("닫은 뒤 생성이 실패하면 실패 토스트로 알린다", async () => {
+    let rejectCreate: (error: Error) => void = () => {};
+    mockCreateTask.mockReturnValue(new Promise((_resolve, reject) => {
+      rejectCreate = reject;
+    }));
+    const view = await renderOpenModal();
+
+    fireEvent.change(getBranchNameInput(), { target: { value: "feat/broken" } });
+    fireEvent.click(screen.getByRole("button", { name: "create" }));
+    await waitFor(() => {
+      expect(mockCreateTask).toHaveBeenCalledTimes(1);
+    });
+    closeModal(view);
+
+    rejectCreate(new Error("worktree exists"));
+
+    const toast = await screen.findByRole("alert");
+    expect(toast.textContent).toContain("createFailedWithReason");
+    fireEvent.click(screen.getByRole("button", { name: "close" }));
+  });
+});
+
+describe("CreateTaskModal - 브랜치 목록 조회 상태", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("브랜치 목록을 기다리는 동안 조회 중임을 알린다", async () => {
+    mockGetProjectBranches.mockReturnValue(new Promise(() => {}));
+    render(
+      <CreateTaskModal isOpen onClose={vi.fn()} sshHosts={[]} projects={[createProject()]} defaultProjectId="project-remote" />,
+    );
+
+    expect((await screen.findByRole("status")).textContent).toBe("branchesLoading");
+  });
+
+  it("브랜치 목록 조회가 실패하면 사유와 다시 불러오기를 보이고 다시 불러오면 오류를 지운다", async () => {
+    mockGetProjectBranches
+      .mockRejectedValueOnce(new Error("ssh timeout"))
+      .mockResolvedValueOnce(["main", "develop"]);
+    render(
+      <CreateTaskModal isOpen onClose={vi.fn()} sshHosts={[]} projects={[createProject()]} defaultProjectId="project-remote" />,
+    );
+
+    expect((await screen.findByRole("alert")).textContent).toContain("loadFailed");
+    fireEvent.click(screen.getByRole("button", { name: "retry" }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("alert")).toBeNull();
+    });
+    expect(mockGetProjectBranches).toHaveBeenCalledTimes(2);
+  });
 });

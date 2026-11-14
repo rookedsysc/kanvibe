@@ -67,6 +67,7 @@ class BoardProjectFilterController extends Notifier<Set<String>> {
 final filteredBoardProvider = Provider<AsyncValue<BoardSnapshot>>((ref) {
   final initial = ref.watch(boardProvider);
   final pagination = ref.watch(boardPaginationProvider);
+  // 새로고침이 실패해도 이미 받은 카드는 그대로 보인다. 실패는 보드 화면이 카드 위에 따로 알린다
   final board = pagination.hasValue && !pagination.isLoading
       ? AsyncData(pagination.requireValue.snapshot)
       : initial.hasValue

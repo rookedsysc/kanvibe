@@ -6,12 +6,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../common/constants/app_colors.dart';
 import '../../../../common/constants/app_sizes.dart';
-import '../../../../common/network/desktop_client.dart';
 import '../../../../common/providers.dart';
 import '../../../board/application/task_deletion.dart';
 import '../../../board/domain/board_task.dart';
 import '../../../board/domain/task_status.dart';
 import '../../../board/presentation/widgets/task_delete_dialogs.dart';
+import '../../application/task_mutation.dart';
+import 'busy_button_label.dart';
 
 const _movableStatuses = [
   TaskStatus.todo,
@@ -21,30 +22,13 @@ const _movableStatuses = [
   TaskStatus.done,
 ];
 
-/// 시트가 닫히며 남긴 결과. 상태를 옮겼거나 태스크를 지웠다
-sealed class TaskStatusSheetResult {
-  const TaskStatusSheetResult();
-}
-
-final class TaskStatusMoved extends TaskStatusSheetResult {
-  const TaskStatusMoved(this.status);
-
-  final TaskStatus status;
-}
-
-final class TaskDeleted extends TaskStatusSheetResult {
-  const TaskDeleted({this.failedPeerCount = 0});
-
-  /// 꺼져 있어 삭제를 전파받지 못해 아직 태스크가 남은 다른 데스크탑 수
-  final int failedPeerCount;
-}
-
 /// 태스크를 다른 상태로 옮기거나 지우는 시트. 데스크탑 상태 패널처럼 상태 버튼 아래에 삭제를 따로 떼어 둔다.
 ///
 /// hooks 설치 상태는 데스크탑에서만 고칠 수 있는 것이라 여기에는 두지 않는다.
 /// 삭제는 되돌릴 수 없으므로 한 번 더 묻고, 커밋하지 않은 변경이 있어 데스크탑이 멈추면 데스크탑처럼 강제 삭제를 고르게 한다.
 ///
-/// 성공하면 결과를 돌려주며 닫힌다. 실패하면 닫지 않고 사유를 남겨,
+/// 옮기기와 삭제는 시트를 먼저 닫아도 끝나도록 `taskMutationProvider`와 `taskDeletionProvider`가 들고 있다.
+/// 옮기기에 성공하면 시트가 닫히고, 삭제에 성공하면 상세 화면이 시트와 함께 닫는다. 실패하면 닫지 않고 사유를 남겨,
 /// 사용자가 무엇이 안 됐는지 보고 다시 고를 수 있게 한다.
 class TaskStatusSheet extends ConsumerStatefulWidget {
   const TaskStatusSheet({required this.task, super.key});
@@ -56,58 +40,41 @@ class TaskStatusSheet extends ConsumerStatefulWidget {
 }
 
 class _TaskStatusSheetState extends ConsumerState<TaskStatusSheet> {
-  bool _isMoving = false;
-  bool _isDeleting = false;
   String? _failureMessage;
-
-  bool get _isBusy => _isMoving || _isDeleting;
 
   Future<void> _move(TaskStatus status) async {
     final connection = ref
         .read(connectionControllerProvider)
         .value
         ?.activeConnection;
-    if (connection == null) {
-      return;
-    }
-
     if (status == TaskStatus.done &&
         !await confirmDoneTransition(context, ref, widget.task.id)) {
       return;
     }
     if (!mounted) return;
+    // 확인 창을 띄운 사이 다른 PC로 바뀌었으면 그 PC의 태스크를 옮기지 않는다
     final current = ref
         .read(connectionControllerProvider)
         .value
         ?.activeConnection;
-    if (current?.id != connection.id || current?.token != connection.token) {
-      return;
-    }
-    setState(() {
-      _isMoving = true;
-      _failureMessage = null;
-    });
-
-    try {
-      await ref
-          .read(desktopClientProvider)
-          .updateTaskStatus(connection, widget.task.id, status);
-    } catch (error) {
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _isMoving = false;
-        _failureMessage = _moveFailureMessage(error);
-      });
+    if (current?.id != connection?.id || current?.token != connection?.token) {
       return;
     }
 
-    /// 보드에도 같은 변화가 반영돼야 돌아갔을 때 옛 칸에 남아 있지 않다
-    ref.invalidate(boardProvider);
-
-    if (mounted) {
-      Navigator.of(context).pop(TaskStatusMoved(status));
+    setState(() => _failureMessage = null);
+    final outcome = await ref
+        .read(taskMutationProvider.notifier)
+        .moveStatus(widget.task.id, status);
+    if (!mounted) {
+      return;
+    }
+    switch (outcome) {
+      case TaskMutationSucceeded():
+        Navigator.of(context).pop();
+      case TaskMutationFailed(:final message):
+        setState(() => _failureMessage = message);
+      case TaskMutationSkipped():
+        break;
     }
   }
 
@@ -122,47 +89,32 @@ class _TaskStatusSheetState extends ConsumerState<TaskStatusSheet> {
     required bool isForced,
     bool isRegistrationOnly = false,
   }) async {
-    final connection = ref
-        .read(connectionControllerProvider)
-        .value
-        ?.activeConnection;
-    if (connection == null) {
-      return;
-    }
+    setState(() => _failureMessage = null);
 
-    setState(() {
-      _isDeleting = true;
-      _failureMessage = null;
-    });
-
-    final outcome = await requestTaskDeletion(
-      ref.read(desktopClientProvider),
-      connection,
-      widget.task.id,
-      isForced: isForced,
-      isRegistrationOnly: isRegistrationOnly,
-    );
+    final outcome = await ref
+        .read(taskDeletionProvider.notifier)
+        .delete(
+          widget.task.id,
+          isForced: isForced,
+          isRegistrationOnly: isRegistrationOnly,
+        );
     if (!mounted) {
       return;
     }
 
     switch (outcome) {
-      case TaskDeletionSucceeded(:final failedPeerCount):
-        _finishDeletion(failedPeerCount: failedPeerCount);
+      // 성공과 중복 요청은 controller와 상세 화면이 마무리한다
+      case TaskDeletionSucceeded() || null:
+        return;
       case TaskDeletionNeedsForce():
-        setState(() => _isDeleting = false);
         await _confirmForcedDelete();
       case TaskDeletionNeedsRegistrationRemoval():
-        setState(() => _isDeleting = false);
         final isConfirmed = await confirmTaskRegistrationRemoval(context);
         if (isConfirmed && mounted) {
           await _delete(isForced: false, isRegistrationOnly: true);
         }
       case TaskDeletionFailed(:final message):
-        setState(() {
-          _isDeleting = false;
-          _failureMessage = message;
-        });
+        setState(() => _failureMessage = message);
     }
   }
 
@@ -173,29 +125,23 @@ class _TaskStatusSheetState extends ConsumerState<TaskStatusSheet> {
     }
   }
 
-  void _finishDeletion({required int failedPeerCount}) {
-    // 보드에서도 같은 태스크가 사라져야 돌아갔을 때 지운 칸이 남아 있지 않다
-    ref.invalidate(boardProvider);
-    if (mounted) {
-      Navigator.of(context).pop(TaskDeleted(failedPeerCount: failedPeerCount));
-    }
-  }
-
-  String _moveFailureMessage(Object error) {
-    if (error is! DesktopRequestException) {
-      return '데스크탑에 닿지 못했습니다. 잠시 뒤 다시 시도해 주세요.';
-    }
-    if (error.statusCode == 404) {
-      return '데스크탑에서 이미 지워진 태스크입니다.';
-    }
-    return error.message ?? '상태를 옮기지 못했습니다.';
-  }
-
   @override
   Widget build(BuildContext context) {
     final targets = _movableStatuses
         .where((status) => status != widget.task.status)
         .toList();
+    final isDeleting = ref.watch(
+      taskDeletionProvider.select(
+        (progress) => progress[widget.task.id] is TaskDeletionRunning,
+      ),
+    );
+    final movingStatus = ref.watch(
+      taskMutationProvider.select((progress) {
+        final taskProgress = progress[widget.task.id];
+        return taskProgress is TaskStatusMoving ? taskProgress.status : null;
+      }),
+    );
+    final isBusy = movingStatus != null || isDeleting;
 
     return SafeArea(
       child: Padding(
@@ -216,15 +162,19 @@ class _TaskStatusSheetState extends ConsumerState<TaskStatusSheet> {
             SizedBox(height: AppSizes.p16),
             for (final status in targets) ...[
               OutlinedButton(
-                onPressed: _isBusy ? null : () => _move(status),
+                onPressed: isBusy ? null : () => _move(status),
                 style: OutlinedButton.styleFrom(
                   minimumSize: Size.fromHeight(AppSizes.minTouchTarget),
                   foregroundColor: status.color,
                 ),
-                child: Text(
-                  context.tr('{status}(으)로 옮기기', {
+                child: BusyButtonLabel(
+                  label: context.tr('{status}(으)로 옮기기', {
                     'status': context.tr(status.label),
                   }),
+                  busyLabel: context.tr('{status}(으)로 옮기는 중…', {
+                    'status': context.tr(status.label),
+                  }),
+                  isBusy: movingStatus == status,
                 ),
               ),
               SizedBox(height: AppSizes.p8),
@@ -233,13 +183,13 @@ class _TaskStatusSheetState extends ConsumerState<TaskStatusSheet> {
             Divider(color: context.colors.borderDefault, height: 1),
             SizedBox(height: AppSizes.p16),
             TextButton(
-              onPressed: _isBusy ? null : _confirmAndDelete,
+              onPressed: isBusy ? null : _confirmAndDelete,
               style: TextButton.styleFrom(
                 minimumSize: Size.fromHeight(AppSizes.minTouchTarget),
                 foregroundColor: AppColors.statusError,
                 backgroundColor: AppColors.statusError.withValues(alpha: 0.12),
               ),
-              child: Text(context.tr(_isDeleting ? '삭제하는 중…' : '삭제')),
+              child: Text(context.tr(isDeleting ? '삭제하는 중…' : '삭제')),
             ),
             if (_failureMessage != null) ...[
               SizedBox(height: AppSizes.p8),

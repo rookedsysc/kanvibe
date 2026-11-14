@@ -1,14 +1,15 @@
 import { useEffect, useState } from "react";
+import { useTranslations } from "next-intl";
 import Board from "@/components/Board";
+import InlineLoadError from "@/components/InlineLoadError";
+import RouteRefreshFailureBanner from "@/desktop/renderer/components/RouteRefreshFailureBanner";
 import { getDoneAlertDismissed, getDefaultSessionType, getNotificationSettings, getSidebarDefaultCollapsed, getTaskSearchShortcut, getVimModeEnabled } from "@/desktop/renderer/actions/appSettings";
 import { getTasksByStatus } from "@/desktop/renderer/actions/kanban";
 import { getAllProjects, getAvailableHosts } from "@/desktop/renderer/actions/project";
 import { buildRouteCacheKey, readRouteCache, writeRouteCache } from "@/desktop/renderer/utils/routeCache";
 import { useRefreshSignal } from "@/desktop/renderer/utils/refresh";
 import { consumeBoardFocusTask } from "@/desktop/renderer/utils/boardFocusTarget";
-import { DEFAULT_TASK_SEARCH_SHORTCUT } from "@/desktop/renderer/utils/keyboardShortcut";
-import { INITIAL_DESKTOP_LOAD_TIMEOUT_MS, logDesktopInitialLoadTimeout } from "@/desktop/renderer/utils/loadingTimeout";
-import { SessionType, TaskStatus } from "@/entities/KanbanTask";
+import { useRouteLoadStatus } from "@/desktop/renderer/utils/loadingTimeout";
 
 interface BoardData {
   tasks: Awaited<ReturnType<typeof getTasksByStatus>>;
@@ -35,30 +36,6 @@ const BOARD_SKELETON_STATUS_DOT_CLASSES = [
   "bg-status-review",
   "bg-status-done",
 ];
-
-function createEmptyBoardData(): BoardData {
-  return {
-    tasks: {
-      tasks: {
-        [TaskStatus.TODO]: [],
-        [TaskStatus.PROGRESS]: [],
-        [TaskStatus.PENDING]: [],
-        [TaskStatus.REVIEW]: [],
-        [TaskStatus.DONE]: [],
-      },
-      doneTotal: 0,
-      doneLimit: 20,
-    },
-    sshHosts: [],
-    projects: [],
-    sidebarDefaultCollapsed: false,
-    doneAlertDismissed: false,
-    notificationSettings: { isEnabled: true, enabledStatuses: ["progress", "pending", "review"] },
-    defaultSessionType: SessionType.HERDR,
-    taskSearchShortcut: DEFAULT_TASK_SEARCH_SHORTCUT,
-    vimModeEnabled: true,
-  };
-}
 
 function BoardTaskCardSkeleton({ index }: { index: number }) {
   return (
@@ -123,6 +100,8 @@ export default function BoardRoute() {
   const refreshSignal = useRefreshSignal(["all", "board"]);
   const [data, setData] = useState<BoardData | null>(() => readRouteCache<BoardData>(BOARD_ROUTE_CACHE_KEY));
   const [initialFocusTaskId] = useState(() => consumeBoardFocusTask());
+  const tc = useTranslations("common");
+  const { isLoadDelayed, loadFailureReason, retrySignal, beginLoad, retryLoad } = useRouteLoadStatus();
 
   useEffect(() => {
     document.title = "";
@@ -130,12 +109,7 @@ export default function BoardRoute() {
 
   useEffect(() => {
     let cancelled = false;
-    const loadingTimeout = window.setTimeout(() => {
-      if (!cancelled) {
-        logDesktopInitialLoadTimeout("board");
-        setData((currentData) => currentData ?? createEmptyBoardData());
-      }
-    }, INITIAL_DESKTOP_LOAD_TIMEOUT_MS);
+    const loadAttempt = beginLoad("board");
 
     Promise.all([
       getTasksByStatus(),
@@ -148,8 +122,8 @@ export default function BoardRoute() {
       getTaskSearchShortcut(),
       getVimModeEnabled(),
     ]).then(([tasks, sshHosts, projects, sidebarDefaultCollapsed, doneAlertDismissed, notificationSettings, defaultSessionType, taskSearchShortcut, vimModeEnabled]) => {
-      window.clearTimeout(loadingTimeout);
       if (!cancelled) {
+        loadAttempt.succeed();
         const nextData = {
           tasks,
           sshHosts,
@@ -166,37 +140,62 @@ export default function BoardRoute() {
         setData(nextData);
       }
     }).catch((error) => {
-      window.clearTimeout(loadingTimeout);
       console.error("Failed to load board route data:", error);
       if (!cancelled) {
-        setData((currentData) => currentData ?? createEmptyBoardData());
+        loadAttempt.fail(error);
       }
     });
 
     return () => {
       cancelled = true;
-      window.clearTimeout(loadingTimeout);
+      loadAttempt.cancel();
     };
-  }, [refreshSignal]);
+  }, [beginLoad, refreshSignal, retrySignal]);
 
   if (!data) {
-    return <BoardRouteSkeleton />;
+    if (loadFailureReason) {
+      return (
+        <div className="flex min-h-screen items-center justify-center bg-bg-page px-4">
+          <InlineLoadError
+            className="w-full max-w-md"
+            message={tc("loadFailed", { reason: loadFailureReason })}
+            onRetry={retryLoad}
+          />
+        </div>
+      );
+    }
+
+    return (
+      <>
+        <BoardRouteSkeleton />
+        {isLoadDelayed ? (
+          <p role="status" className="fixed bottom-6 left-1/2 -translate-x-1/2 rounded-md border border-border-default bg-bg-surface px-3 py-2 text-xs text-text-secondary shadow-sm">
+            {tc("loadDelayed")}
+          </p>
+        ) : null}
+      </>
+    );
   }
 
   return (
-    <Board
-      initialTasks={data.tasks.tasks}
-      initialDoneTotal={data.tasks.doneTotal}
-      initialDoneLimit={data.tasks.doneLimit}
-      initialFocusTaskId={initialFocusTaskId}
-      sshHosts={data.sshHosts}
-      projects={data.projects}
-      sidebarDefaultCollapsed={data.sidebarDefaultCollapsed}
-      doneAlertDismissed={data.doneAlertDismissed}
-      notificationSettings={data.notificationSettings}
-      defaultSessionType={data.defaultSessionType}
-      taskSearchShortcut={data.taskSearchShortcut}
-      vimModeEnabled={data.vimModeEnabled ?? true}
-    />
+    <>
+      {loadFailureReason ? (
+        <RouteRefreshFailureBanner reason={loadFailureReason} onRetry={retryLoad} />
+      ) : null}
+      <Board
+        initialTasks={data.tasks.tasks}
+        initialDoneTotal={data.tasks.doneTotal}
+        initialDoneLimit={data.tasks.doneLimit}
+        initialFocusTaskId={initialFocusTaskId}
+        sshHosts={data.sshHosts}
+        projects={data.projects}
+        sidebarDefaultCollapsed={data.sidebarDefaultCollapsed}
+        doneAlertDismissed={data.doneAlertDismissed}
+        notificationSettings={data.notificationSettings}
+        defaultSessionType={data.defaultSessionType}
+        taskSearchShortcut={data.taskSearchShortcut}
+        vimModeEnabled={data.vimModeEnabled ?? true}
+      />
+    </>
   );
 }

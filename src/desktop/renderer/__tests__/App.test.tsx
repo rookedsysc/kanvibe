@@ -6,12 +6,12 @@ import type { AppNotification } from "@/desktop/shared/notifications";
 const mocks = vi.hoisted(() => ({
   triggerDesktopRefresh: vi.fn(),
   updateTaskStatus: vi.fn(),
-  deleteTasks: vi.fn().mockResolvedValue([]),
+  deleteTask: vi.fn().mockResolvedValue(true),
 }));
 
 vi.mock("@/desktop/renderer/actions/kanban", () => ({
   updateTaskStatus: mocks.updateTaskStatus,
-  deleteTasks: mocks.deleteTasks,
+  deleteTask: mocks.deleteTask,
 }));
 
 vi.mock("@/desktop/renderer/utils/refresh", () => ({
@@ -369,7 +369,7 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
 
     await waitFor(() => {
-      expect(mocks.deleteTasks).toHaveBeenCalledWith(["task-1"]);
+      expect(mocks.deleteTask).toHaveBeenCalledWith("task-1");
     });
     expect(mocks.updateTaskStatus).not.toHaveBeenCalled();
   });

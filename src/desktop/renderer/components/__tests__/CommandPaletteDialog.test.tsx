@@ -9,6 +9,13 @@ import { TaskStatus } from "@/entities/KanbanTask";
 const mocks = vi.hoisted(() => ({
   runBackgroundTaskSyncNow: vi.fn(),
   setBoardViewMode: vi.fn(),
+  showActionStatus: vi.fn((_input: unknown) => "status-id"),
+  dismissActionStatus: vi.fn((_id: string) => {}),
+}));
+
+vi.mock("@/desktop/renderer/components/ActionStatusToast", () => ({
+  showActionStatus: (input: unknown) => mocks.showActionStatus(input),
+  dismissActionStatus: (id: string) => mocks.dismissActionStatus(id),
 }));
 
 vi.mock("next-intl", () => ({
@@ -123,7 +130,7 @@ describe("CommandPaletteDialog", () => {
   });
 
   it("Sync 행을 클릭하면 백그라운드 동기화를 정확히 1회 호출하고 다이얼로그가 닫힌다", async () => {
-    mocks.runBackgroundTaskSyncNow.mockResolvedValue(undefined);
+    mocks.runBackgroundTaskSyncNow.mockResolvedValue({ reviewNeeded: false, boardUpdated: false });
 
     renderWithRouter(
       <BoardCommandProvider>
@@ -136,6 +143,56 @@ describe("CommandPaletteDialog", () => {
 
     expect(mocks.runBackgroundTaskSyncNow).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("Sync는 진행 중 알림을 띄우고 바뀐 것이 없으면 변경 없음으로 끝낸다", async () => {
+    mocks.runBackgroundTaskSyncNow.mockResolvedValue({ reviewNeeded: false, boardUpdated: false });
+
+    renderWithRouter(
+      <BoardCommandProvider>
+        <CommandPaletteDialog />
+      </BoardCommandProvider>,
+    );
+
+    openPalette();
+    fireEvent.click(screen.getByRole("button", { name: /commandPalette\.syncLabel/ }));
+
+    expect(mocks.showActionStatus).toHaveBeenCalledWith({ kind: "progress", message: "commandPalette.syncRunning" });
+    await waitFor(() => {
+      expect(mocks.showActionStatus).toHaveBeenLastCalledWith({ kind: "success", message: "commandPalette.syncNoChanges" });
+    });
+    expect(mocks.dismissActionStatus).toHaveBeenCalledWith("status-id");
+  });
+
+  it("Sync가 실패하면 실패 알림에 다시 시도를 붙이고 누르면 다시 동기화한다", async () => {
+    mocks.runBackgroundTaskSyncNow
+      .mockRejectedValueOnce(new Error("gh auth failed"))
+      .mockResolvedValueOnce({ reviewNeeded: false, boardUpdated: true });
+
+    renderWithRouter(
+      <BoardCommandProvider>
+        <CommandPaletteDialog />
+      </BoardCommandProvider>,
+    );
+
+    openPalette();
+    fireEvent.click(screen.getByRole("button", { name: /commandPalette\.syncLabel/ }));
+
+    await waitFor(() => {
+      expect(mocks.showActionStatus).toHaveBeenLastCalledWith(expect.objectContaining({
+        kind: "failure",
+        message: "commandPalette.syncFailed",
+        action: expect.objectContaining({ label: "common.retry" }),
+      }));
+    });
+
+    const failureCall = mocks.showActionStatus.mock.calls.at(-1)?.[0] as unknown as { action: { onAction: () => void } };
+    failureCall.action.onAction();
+
+    await waitFor(() => {
+      expect(mocks.showActionStatus).toHaveBeenLastCalledWith({ kind: "success", message: "commandPalette.syncBoardUpdated" });
+    });
+    expect(mocks.runBackgroundTaskSyncNow).toHaveBeenCalledTimes(2);
   });
 
   it("task 상세 컨텍스트가 있으면 'Move to Review' 행 클릭이 그 task를 이동한다", () => {

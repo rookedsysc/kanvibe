@@ -26,7 +26,11 @@ const {
   mockDisposeMacShiftSelectionPatch,
   mockFit,
   translations,
+  mockShowActionStatus,
+  mockDismissActionStatus,
 } = vi.hoisted(() => ({
+  mockShowActionStatus: vi.fn(() => "image-status"),
+  mockDismissActionStatus: vi.fn(),
   mockOpenTerminal: vi.fn(),
   mockFocusTerminal: vi.fn(),
   mockOnTerminalData: vi.fn(),
@@ -112,6 +116,11 @@ function createTextClipboardData() {
 
 vi.mock("next-intl", () => ({
   useTranslations: () => translations.current,
+}));
+
+vi.mock("@/desktop/renderer/components/ActionStatusToast", () => ({
+  showActionStatus: mockShowActionStatus,
+  dismissActionStatus: mockDismissActionStatus,
 }));
 
 vi.mock("@xterm/xterm", () => ({
@@ -496,6 +505,87 @@ describe("Desktop Terminal", () => {
       expect(latestXtermInstance?.writeln).toHaveBeenCalledWith("\r\n\x1b[31m원격 세션이 아닙니다.\x1b[0m");
     });
     expect(mockWriteTerminal).not.toHaveBeenCalled();
+  });
+
+  it("원격으로 이미지를 보내는 동안 진행 알림을 띄우고 끝나면 지운다", async () => {
+    // Given
+    const transfer = createDeferred<{ ok: boolean; remotePath?: string }>();
+    mockPasteImageToRemoteTerminal.mockReturnValueOnce(transfer.promise);
+    render(<Terminal taskId="task-1" isRemote />);
+    await waitFor(() => {
+      expect(mockOpenTerminal).toHaveBeenCalledWith("task-1", null, 80, 24);
+    });
+    const target = latestXtermInstance!.open.mock.calls[0][0] as HTMLElement;
+
+    // When
+    dispatchPasteEvent(target, createImageClipboardData());
+
+    // Then
+    await waitFor(() => {
+      expect(mockShowActionStatus).toHaveBeenCalledWith({ kind: "progress", message: "imagePasteSending" });
+    });
+    transfer.resolve({ ok: true, remotePath: "/tmp/a.png" });
+    await waitFor(() => {
+      expect(mockDismissActionStatus).toHaveBeenCalledWith("image-status");
+    });
+  });
+
+  it("이미지 전송 요청이 던지면 실패 알림의 다시 시도로 같은 이미지를 다시 보낸다", async () => {
+    // Given
+    mockPasteImageToRemoteTerminal
+      .mockRejectedValueOnce(new Error("scp failed"))
+      .mockResolvedValueOnce({ ok: true, remotePath: "/tmp/retry.png" });
+    render(<Terminal taskId="task-1" isRemote />);
+    await waitFor(() => {
+      expect(mockOpenTerminal).toHaveBeenCalledWith("task-1", null, 80, 24);
+    });
+    const target = latestXtermInstance!.open.mock.calls[0][0] as HTMLElement;
+
+    // When
+    dispatchPasteEvent(target, createImageClipboardData());
+
+    // Then
+    await waitFor(() => {
+      expect(mockShowActionStatus).toHaveBeenCalledWith(expect.objectContaining({
+        kind: "failure",
+        message: "imagePasteFailed",
+        action: expect.objectContaining({ label: "imagePasteRetry" }),
+      }));
+    });
+    const failureInput = mockShowActionStatus.mock.calls
+      .map((call) => (call as unknown[])[0] as { kind: string; action?: { onAction: () => void } })
+      .find((input) => input.kind === "failure");
+    failureInput!.action!.onAction();
+
+    await waitFor(() => {
+      expect(mockWriteTerminal).toHaveBeenCalledWith("task-1", null, "/tmp/retry.png");
+    });
+    expect(mockPasteImageToRemoteTerminal).toHaveBeenNthCalledWith(2, "task-1", "data:image/png;base64,ZmFrZQ==");
+  });
+
+  it("이미지 두 장을 연달아 붙여넣으면 먼저 붙인 이미지의 경로를 먼저 쓴다", async () => {
+    // Given
+    const firstTransfer = createDeferred<{ ok: boolean; remotePath?: string }>();
+    mockPasteImageToRemoteTerminal
+      .mockReturnValueOnce(firstTransfer.promise)
+      .mockResolvedValueOnce({ ok: true, remotePath: "/tmp/second.png" });
+    render(<Terminal taskId="task-1" isRemote />);
+    await waitFor(() => {
+      expect(mockOpenTerminal).toHaveBeenCalledWith("task-1", null, 80, 24);
+    });
+    const target = latestXtermInstance!.open.mock.calls[0][0] as HTMLElement;
+
+    // When
+    dispatchPasteEvent(target, createImageClipboardData());
+    dispatchPasteEvent(target, createImageClipboardData());
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    firstTransfer.resolve({ ok: true, remotePath: "/tmp/first.png" });
+
+    // Then
+    await waitFor(() => {
+      expect(mockWriteTerminal).toHaveBeenCalledTimes(2);
+    });
+    expect(mockWriteTerminal.mock.calls.map((call) => call[2])).toEqual(["/tmp/first.png", "/tmp/second.png"]);
   });
 
   it("클립보드에 이미지가 없는 텍스트 붙여넣기는 원격 세션이어도 그대로 흘려보낸다", async () => {

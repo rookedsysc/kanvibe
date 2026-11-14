@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useMemo } from "react";
 import { useTranslations } from "next-intl";
 import { fuzzyMatch, type FuzzyMatch } from "@/utils/fuzzySearch";
 import HighlightedText from "@/components/HighlightedText";
+import InlineLoadError from "@/components/InlineLoadError";
 import { listSubdirectories } from "@/desktop/renderer/actions/project";
 
 interface FolderSearchInputProps {
@@ -21,6 +22,7 @@ export default function FolderSearchInput({
   placeholder,
 }: FolderSearchInputProps) {
   const t = useTranslations("settings");
+  const tc = useTranslations("common");
   const [inputValue, setInputValue] = useState("~/");
   const [selectedPath, setSelectedPath] = useState("");
   const [directoryResult, setDirectoryResult] = useState<{
@@ -28,6 +30,13 @@ export default function FolderSearchInput({
     sshHost: string | undefined;
     directories: string[];
   } | null>(null);
+  /** 조회 실패는 받은 목록과 따로 둔다. 실패를 빈 목록으로 저장하면 하위 폴더가 없는 것처럼 보인다 */
+  const [directoryFailure, setDirectoryFailure] = useState<{
+    parentPath: string;
+    sshHost: string | undefined;
+    reason: string;
+  } | null>(null);
+  const [reloadSignal, setReloadSignal] = useState(0);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [isOpen, setIsOpen] = useState(false);
 
@@ -41,7 +50,10 @@ export default function FolderSearchInput({
   const searchTerm = lastSlash >= 0 ? inputValue.substring(lastSlash + 1) : "";
 
   const isCurrentResult = directoryResult?.parentPath === parentPath && directoryResult.sshHost === sshHost;
-  const isLoading = !isCurrentResult;
+  const currentFailureReason = directoryFailure?.parentPath === parentPath && directoryFailure.sshHost === sshHost
+    ? directoryFailure.reason
+    : null;
+  const isLoading = !isCurrentResult && currentFailureReason === null;
 
   /** 경로와 호스트가 바뀌면 이전 요청은 더 이상 이 입력의 결과를 변경하지 않는다 */
   useEffect(() => {
@@ -49,13 +61,18 @@ export default function FolderSearchInput({
     void (async () => {
       try {
         const directories = await listSubdirectories(parentPath, sshHost);
-        if (active) setDirectoryResult({ parentPath, sshHost, directories });
-      } catch {
-        if (active) setDirectoryResult({ parentPath, sshHost, directories: [] });
+        if (active) {
+          setDirectoryResult({ parentPath, sshHost, directories });
+          setDirectoryFailure(null);
+        }
+      } catch (error) {
+        if (active) {
+          setDirectoryFailure({ parentPath, sshHost, reason: error instanceof Error ? error.message : String(error) });
+        }
       }
     })();
     return () => { active = false; };
-  }, [parentPath, sshHost]);
+  }, [parentPath, sshHost, reloadSignal]);
 
   const filteredDirs = useMemo(() => {
     const directories = isCurrentResult ? directoryResult.directories : [];
@@ -169,9 +186,16 @@ export default function FolderSearchInput({
             {parentPath === "/" ? "/" : `${parentPath}/`}
           </div>
 
+          {currentFailureReason !== null ? (
+            <InlineLoadError
+              className="m-2"
+              message={tc("loadFailed", { reason: currentFailureReason })}
+              onRetry={() => setReloadSignal((count) => count + 1)}
+            />
+          ) : null}
           {isLoading ? (
             <div className="px-3 py-2 text-xs text-text-muted">{t("loadingFolders")}</div>
-          ) : filteredDirs.length === 0 ? (
+          ) : currentFailureReason !== null && filteredDirs.length === 0 ? null : filteredDirs.length === 0 ? (
             <div className="px-3 py-2 text-xs text-text-muted">{t("noFoldersFound")}</div>
           ) : (
             <>

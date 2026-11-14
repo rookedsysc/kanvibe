@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
+import InlineLoadError from "@/components/InlineLoadError";
 import {
   listPairedMobileDevices,
   readMobileConnectionSettings,
@@ -24,6 +25,9 @@ import {
 /** 남은 시간을 1초마다 다시 그린다 */
 const COUNTDOWN_TICK_MS = 1_000;
 
+/** 진행 중인 연결 설정 작업. 기기 해제는 어느 기기인지까지 들고 있어 그 행에만 진행을 보인다 */
+type PairingActionTarget = "issue-code" | "clear-code" | "lan-plaintext" | { deviceId: string };
+
 export default function MobilePairingSettings() {
   const t = useTranslations("settings");
   const [pairingCode, setPairingCode] = useState<string | null>(null);
@@ -32,6 +36,10 @@ export default function MobilePairingSettings() {
   const [pairedDevices, setPairedDevices] = useState<PairedMobileDevice[]>([]);
   const [failureMessage, setFailureMessage] = useState<string | null>(null);
   const [connectionSettings, setConnectionSettings] = useState<MobileConnectionSettings | null>(null);
+  const [pendingAction, setPendingAction] = useState<PairingActionTarget | null>(null);
+  /** state는 다음 렌더에야 바뀌므로 같은 순간에 겹쳐 누른 작업은 ref로 막는다 */
+  const isActionRunning = useRef(false);
+  const [isDeviceListUnreadable, setIsDeviceListUnreadable] = useState(false);
 
   /**
    * 발급해 둔 코드가 있는지. 화면을 떠날 때 거둘 것이 있는지 판단하는 데만 쓴다.
@@ -40,14 +48,15 @@ export default function MobilePairingSettings() {
   const hasOutstandingCode = useRef(false);
 
   /**
-   * 기기 목록을 못 읽어도 설정 화면 전체가 깨지면 안 되므로 빈 목록으로 둔다.
-   * 사용자가 누른 동작의 실패는 [failureMessage]로 드러내지만, 화면을 열자마자 도는 이 조회는 보여 줄 것이 없다.
+   * 기기 목록을 못 읽어도 설정 화면 전체가 깨지면 안 된다. 다만 빈 목록으로 바꾸면 연결한 기기가 없는 것처럼 보이므로,
+   * 이전 목록은 그대로 두고 읽지 못했다는 안내와 다시 읽기를 따로 보인다.
    */
   const refreshPairedDevices = useCallback(async () => {
     try {
       setPairedDevices(await listPairedMobileDevices());
+      setIsDeviceListUnreadable(false);
     } catch {
-      setPairedDevices([]);
+      setIsDeviceListUnreadable(true);
     }
   }, []);
 
@@ -60,22 +69,35 @@ export default function MobilePairingSettings() {
     }
   }, []);
 
-  /** 사용자가 누른 동작. 실패하면 무엇이 안 됐는지 화면에 남긴다 */
-  const runPairingAction = async (action: () => Promise<void>, failureText: string) => {
+  /**
+   * 사용자가 누른 동작. 코드 발급·폐기·기기 해제는 서로 상태를 바꾸므로 한 번에 하나만 보내고,
+   * 실패하면 무엇이 안 됐는지 화면에 남긴다.
+   */
+  const runPairingAction = async (target: PairingActionTarget, action: () => Promise<void>, failureText: string) => {
+    if (isActionRunning.current) {
+      return;
+    }
+
+    isActionRunning.current = true;
+    setPendingAction(target);
     try {
       setFailureMessage(null);
       await action();
     } catch {
       setFailureMessage(failureText);
+    } finally {
+      isActionRunning.current = false;
+      setPendingAction(null);
     }
   };
+  const isActionPending = pendingAction !== null;
 
   useEffect(() => {
     void refreshPairedDevices();
     void refreshConnectionSettings();
   }, [refreshPairedDevices, refreshConnectionSettings]);
 
-  const changeLanPlaintextAllowed = (isAllowed: boolean) => runPairingAction(async () => {
+  const changeLanPlaintextAllowed = (isAllowed: boolean) => runPairingAction("lan-plaintext", async () => {
     await updateLanPlaintextAllowed(isAllowed);
     setConnectionSettings((current) => current && { ...current, isLanPlaintextAllowed: isAllowed });
   }, t("mobileLanPlaintextUpdateFailed"));
@@ -141,7 +163,7 @@ export default function MobilePairingSettings() {
   }, [expiresAt]);
 
   const issueCode = () =>
-    runPairingAction(async () => {
+    runPairingAction("issue-code", async () => {
       const pairing = await startMobilePairing();
       hasOutstandingCode.current = true;
       setPairingCode(pairing.code);
@@ -150,7 +172,7 @@ export default function MobilePairingSettings() {
     }, t("mobilePairingIssueCodeFailed"));
 
   const cancelCode = () =>
-    runPairingAction(async () => {
+    runPairingAction("clear-code", async () => {
       await stopMobilePairing();
       hasOutstandingCode.current = false;
       setPairingCode(null);
@@ -158,7 +180,7 @@ export default function MobilePairingSettings() {
     }, t("mobilePairingClearCodeFailed"));
 
   const disconnectDevice = (deviceId: string) =>
-    runPairingAction(async () => {
+    runPairingAction({ deviceId }, async () => {
       await unpairMobileDevice(deviceId);
       await refreshPairedDevices();
     }, t("mobilePairingDisconnectFailed"));
@@ -184,17 +206,21 @@ export default function MobilePairingSettings() {
           <button
             type="button"
             onClick={() => void issueCode()}
-            className="shrink-0 px-3 py-1.5 text-sm rounded-md bg-brand-primary text-white hover:bg-brand-hover transition-colors"
+            disabled={isActionPending}
+            aria-busy={pendingAction === "issue-code" || undefined}
+            className="shrink-0 px-3 py-1.5 text-sm rounded-md bg-brand-primary text-white hover:bg-brand-hover transition-colors disabled:opacity-50"
           >
-            {t("mobilePairingIssueCode")}
+            {pendingAction === "issue-code" ? t("mobilePairingIssuingCode") : t("mobilePairingIssueCode")}
           </button>
         ) : (
           <button
             type="button"
             onClick={() => void cancelCode()}
-            className="shrink-0 px-3 py-1.5 text-sm rounded-md bg-button-neutral text-white hover:bg-button-neutral-hover transition-colors"
+            disabled={isActionPending}
+            aria-busy={pendingAction === "clear-code" || undefined}
+            className="shrink-0 px-3 py-1.5 text-sm rounded-md bg-button-neutral text-white hover:bg-button-neutral-hover transition-colors disabled:opacity-50"
           >
-            {t("mobilePairingClearCode")}
+            {pendingAction === "clear-code" ? t("mobilePairingClearingCode") : t("mobilePairingClearCode")}
           </button>
         )}
       </div>
@@ -207,31 +233,44 @@ export default function MobilePairingSettings() {
       )}
 
       {failureMessage !== null && (
-        <p className="mt-2 text-xs text-status-error">{failureMessage}</p>
+        <p role="alert" className="mt-2 text-xs text-status-error">{failureMessage}</p>
+      )}
+
+      {isDeviceListUnreadable && (
+        <InlineLoadError
+          className="mt-3"
+          message={t("mobilePairingDevicesLoadFailed")}
+          onRetry={() => void refreshPairedDevices()}
+        />
       )}
 
       {pairedDevices.length > 0 && (
         <ul className="mt-3 space-y-1">
-          {pairedDevices.map((device) => (
-            <li
-              key={device.deviceId}
-              className="flex items-center justify-between px-3 py-2 rounded-md bg-bg-page border border-border-default"
-            >
-              <div>
-                <span className="text-sm text-text-primary">{device.deviceName}</span>
-                <p className="text-xs text-text-muted mt-0.5">
-                  {t("mobilePairingPairedAt", { date: new Date(device.pairedAt).toLocaleString() })}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => void disconnectDevice(device.deviceId)}
-                className="px-2 py-1 text-xs rounded-md text-status-error hover:bg-button-neutral-subtle transition-colors"
+          {pairedDevices.map((device) => {
+            const isDisconnecting = typeof pendingAction === "object" && pendingAction?.deviceId === device.deviceId;
+            return (
+              <li
+                key={device.deviceId}
+                className="flex items-center justify-between px-3 py-2 rounded-md bg-bg-page border border-border-default"
               >
-                {t("mobilePairingDisconnect")}
-              </button>
-            </li>
-          ))}
+                <div>
+                  <span className="text-sm text-text-primary">{device.deviceName}</span>
+                  <p className="text-xs text-text-muted mt-0.5">
+                    {t("mobilePairingPairedAt", { date: new Date(device.pairedAt).toLocaleString() })}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void disconnectDevice(device.deviceId)}
+                  disabled={isActionPending}
+                  aria-busy={isDisconnecting || undefined}
+                  className="px-2 py-1 text-xs rounded-md text-status-error hover:bg-button-neutral-subtle transition-colors disabled:opacity-50"
+                >
+                  {isDisconnecting ? t("mobilePairingDisconnecting") : t("mobilePairingDisconnect")}
+                </button>
+              </li>
+            );
+          })}
         </ul>
       )}
 
@@ -245,6 +284,7 @@ export default function MobilePairingSettings() {
             type="checkbox"
             className="mt-1 shrink-0"
             checked={connectionSettings.isLanPlaintextAllowed}
+            disabled={isActionPending}
             onChange={(event) => void changeLanPlaintextAllowed(event.target.checked)}
           />
         </label>

@@ -14,6 +14,8 @@ import { useParams } from "react-router-dom";
 import AutoConnectTerminalSession from "@/components/AutoConnectTerminalSession";
 import CreateTaskModal from "@/components/CreateTaskModal";
 import DeleteTaskButton from "@/components/DeleteTaskButton";
+import InlineLoadError from "@/components/InlineLoadError";
+import RouteRefreshFailureBanner from "@/desktop/renderer/components/RouteRefreshFailureBanner";
 import DoneStatusButton from "@/components/DoneStatusButton";
 import HooksStatusCard from "@/components/HooksStatusCard";
 import { AiProviderIcon } from "@/components/AiProviderIcon";
@@ -50,6 +52,7 @@ import { useMarkTaskNotificationsReadWhenFocused } from "@/desktop/renderer/hook
 import { useTaskAgentCallGraph, useTaskLiveAiSessions } from "@/desktop/renderer/hooks/useLiveAiSessions";
 import { useTaskDiffFiles } from "@/desktop/renderer/hooks/useTaskDiffStats";
 import { useTerminalTabs } from "@/desktop/renderer/hooks/useTerminalTabs";
+import { useTrackedAction } from "@/desktop/renderer/hooks/useTrackedAction";
 import { getTerminalTabCloseInfo } from "@/desktop/renderer/actions/terminalTabs";
 import type { TerminalTabShortcutCommand } from "@/desktop/shared/terminalTabs";
 import { fetchPrUrlWithPrompt } from "@/desktop/renderer/utils/fetchPrUrlWithPrompt";
@@ -67,7 +70,7 @@ import {
   resolveTerminalTabCommand,
 } from "@/desktop/shared/shortcutBindings";
 import { resolveTaskDetailDockLabel, type TaskDetailDockItemId } from "@/desktop/shared/taskDetailDock";
-import { INITIAL_DESKTOP_LOAD_TIMEOUT_MS, logDesktopInitialLoadTimeout } from "@/desktop/renderer/utils/loadingTimeout";
+import { useRouteLoadStatus } from "@/desktop/renderer/utils/loadingTimeout";
 import { rememberBoardFocusTask } from "@/desktop/renderer/utils/boardFocusTarget";
 import { buildRouteCacheKey, readRouteCache, removeRouteCache, writeRouteCache } from "@/desktop/renderer/utils/routeCache";
 import { useRefreshSignal } from "@/desktop/renderer/utils/refresh";
@@ -109,6 +112,8 @@ type TaskDetailDockItem = {
   renderIcon: () => ReactNode;
   onActivate: () => void;
   href?: string;
+  /** 외부 명령(PR 조회·편집기 실행)을 기다리는 중이면 자리에 진행을 보인다 */
+  isBusy?: boolean;
 };
 
 const PR_DOCK_INSERT_INDEX = 3;
@@ -744,6 +749,7 @@ function TaskDetailContent({ id }: { id: string }) {
   );
   const cachedState = cachedRoute?.state ?? null;
   const [state, setState] = useState<TaskDetailState | null | undefined>(cachedState ?? undefined);
+  const { isLoadDelayed, loadFailureReason, retrySignal, beginLoad, retryLoad } = useRouteLoadStatus();
   const [isCreateTaskModalOpen, setIsCreateTaskModalOpen] = useState(false);
   const [createTaskDefaults, setCreateTaskDefaults] = useState<BranchTodoDefaults | null>(null);
   const currentTaskRef = useRef<TaskDetailState["task"] | null>(cachedState?.task ?? null);
@@ -761,6 +767,21 @@ function TaskDetailContent({ id }: { id: string }) {
   const dockItemsRef = useRef<TaskDetailDockItem[]>([]);
   const commonTranslationsRef = useRef(tc);
   const hasTerminal = !!(state?.task.sessionType && state.task.sessionName);
+  /** 상태 버튼·Done 버튼·커맨드 팔레트 이동이 같은 요청 하나를 나눠 써서, 응답 전에는 다른 상태로 겹쳐 옮기지 않는다 */
+  const statusMove = useTrackedAction(async (newStatus: TaskStatus) => {
+    const updatedTask = await updateTaskStatus(id, newStatus);
+    if (updatedTask) {
+      setState((current) => current
+        ? {
+            ...current,
+            task: {
+              ...current.task,
+              ...updatedTask,
+            },
+          }
+        : current);
+    }
+  });
   const terminalTabs = useTerminalTabs({
     taskId: id ?? "",
     sessionType: (state?.task.sessionType as SessionType | undefined) ?? null,
@@ -858,12 +879,14 @@ function TaskDetailContent({ id }: { id: string }) {
       return;
     }
 
-    /** 조회가 던지면 자동 조회 경로와 같이 로그를 남긴다. 삼키면 눌러도 아무 일이 없어 보인다 */
+    /** 조회 실패와 PR 없음은 사용자가 할 일이 달라 따로 알린다. 실패는 다시 눌러 볼 수 있고, 없음은 PR을 만들어야 한다 */
     let prUrl: string | null = null;
     try {
       prUrl = await fetchPrUrlWithPrompt(task, commonTranslationsRef.current);
     } catch (error) {
       console.error("PR URL 조회 실패:", error);
+      window.alert(t("pullRequestLookupFailed", { reason: error instanceof Error ? error.message : String(error) }));
+      return;
     }
 
     if (!prUrl) {
@@ -895,6 +918,10 @@ function TaskDetailContent({ id }: { id: string }) {
       window.alert(t("openInVsCodeFailed"));
     }
   }, [t]);
+
+  /** 같은 외부 명령을 기다리는 동안 다시 눌러도 겹쳐 보내지 않는다 */
+  const { run: runOpenPullRequest, isPending: isOpeningPullRequest } = useTrackedAction(openPullRequest);
+  const { run: runOpenInVsCode, isPending: isOpeningVsCode } = useTrackedAction(openInVsCode);
 
   const dockItems = useMemo<TaskDetailDockItem[]>(() => {
     if (!state) {
@@ -960,9 +987,10 @@ function TaskDetailContent({ id }: { id: string }) {
       isActive: false,
       renderIcon: () => <PullRequestIcon />,
       onActivate: () => {
-        void openPullRequest();
+        void runOpenPullRequest();
       },
       href: state.task.prUrl ?? undefined,
+      isBusy: isOpeningPullRequest,
     });
 
     items.push({
@@ -978,12 +1006,13 @@ function TaskDetailContent({ id }: { id: string }) {
         />
       ),
       onActivate: () => {
-        void openInVsCode();
+        void runOpenInVsCode();
       },
+      isBusy: isOpeningVsCode,
     });
 
     return items;
-  }, [mainView, openInVsCode, openPullRequest, state, statusPanelLabel, t, toggleHistoryView, toggleDetailPanel, visiblePanel]);
+  }, [isOpeningPullRequest, isOpeningVsCode, mainView, runOpenInVsCode, runOpenPullRequest, state, statusPanelLabel, t, toggleHistoryView, toggleDetailPanel, visiblePanel]);
 
   // dock 항목을 렌더 시점에 ref로 넘겨두면 shortcut 구독을 다시 등록하지 않아도 항상 최신 dock을 실행한다.
   // 구독을 dock 변경마다 재등록하면 커밋과 effect flush 사이에 들어온 shortcut이 이전 dock(빈 배열)을 보고 무시된다.
@@ -1332,22 +1361,7 @@ function TaskDetailContent({ id }: { id: string }) {
 
   useEffect(() => {
     let cancelled = false;
-    let loadingTimeout: number | null = window.setTimeout(() => {
-      loadingTimeout = null;
-      if (!cancelled) {
-        logDesktopInitialLoadTimeout("task-detail", { taskId: id });
-        setState((current) => current === undefined ? null : current);
-      }
-    }, INITIAL_DESKTOP_LOAD_TIMEOUT_MS);
-
-    const clearLoadingTimeout = () => {
-      if (loadingTimeout === null) {
-        return;
-      }
-
-      window.clearTimeout(loadingTimeout);
-      loadingTimeout = null;
-    };
+    const loadAttempt = beginLoad("task-detail", { taskId: id });
 
     (async () => {
       try {
@@ -1355,16 +1369,15 @@ function TaskDetailContent({ id }: { id: string }) {
           getTaskById(id),
           getSidebarDefaultCollapsed().catch(() => DEFAULT_DETAIL_STATE.sidebarDefaultCollapsed),
         ]);
-        clearLoadingTimeout();
 
-        if (!task) {
-          if (!cancelled) {
-            setState(null);
-          }
+        if (cancelled) {
           return;
         }
 
-        if (cancelled) {
+        loadAttempt.succeed();
+        // 조회가 성공했는데 task가 없을 때만 task 없음 화면으로 보낸다
+        if (!task) {
+          setState(null);
           return;
         }
 
@@ -1458,19 +1471,18 @@ function TaskDetailContent({ id }: { id: string }) {
         })();
 
       } catch (error) {
-        clearLoadingTimeout();
         console.error("Failed to load task detail:", error);
         if (!cancelled) {
-          setState((current) => current === undefined ? null : current);
+          loadAttempt.fail(error);
         }
       }
     })();
 
     return () => {
       cancelled = true;
-      clearLoadingTimeout();
+      loadAttempt.cancel();
     };
-  }, [id, refreshSignal]);
+  }, [beginLoad, id, refreshSignal, retrySignal]);
 
   const agentTagStyle = useMemo(
     () => (state?.task.agentType ? AGENT_TAG_STYLES[state.task.agentType] ?? "bg-tag-neutral-bg text-tag-neutral-text" : null),
@@ -1503,7 +1515,22 @@ function TaskDetailContent({ id }: { id: string }) {
   }, { enabled: visiblePanel !== null });
 
   if (state === undefined) {
-    return <div className="min-h-screen flex items-center justify-center bg-bg-page text-text-muted">Loading...</div>;
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-3 bg-bg-page px-4 text-text-muted">
+        {loadFailureReason ? (
+          <InlineLoadError
+            className="w-full max-w-md"
+            message={tc("loadFailed", { reason: loadFailureReason })}
+            onRetry={retryLoad}
+          />
+        ) : (
+          <>
+            <span>Loading...</span>
+            {isLoadDelayed ? <p role="status" className="text-xs">{tc("loadDelayed")}</p> : null}
+          </>
+        )}
+      </div>
+    );
   }
 
   if (state === null) {
@@ -1524,35 +1551,8 @@ function TaskDetailContent({ id }: { id: string }) {
   }
 
   /** 커맨드 팔레트의 Move가 이 task를 대상으로 호출한다. 폼 액션인 handleStatusChange와 호출 형태가 달라 따로 둔다 */
-  async function movePaletteTaskToStatus(newStatus: TaskStatus) {
-    const updatedTask = await updateTaskStatus(id, newStatus);
-    if (updatedTask) {
-      setState((current) => current
-        ? {
-            ...current,
-            task: {
-              ...current.task,
-              ...updatedTask,
-            },
-          }
-        : current);
-    }
-  }
-
-  async function handleStatusChange(formData: FormData) {
-    const newStatus = formData.get("status") as TaskStatus;
-    const updatedTask = await updateTaskStatus(id, newStatus);
-    if (updatedTask) {
-      setState((current) => current
-        ? {
-            ...current,
-            task: {
-              ...current.task,
-              ...updatedTask,
-            },
-          }
-        : current);
-    }
+  function movePaletteTaskToStatus(newStatus: TaskStatus) {
+    return statusMove.run(newStatus);
   }
 
   async function handleDelete() {
@@ -1568,6 +1568,9 @@ function TaskDetailContent({ id }: { id: string }) {
 
   return (
     <div className="relative h-screen overflow-hidden bg-bg-page p-3">
+      {loadFailureReason ? (
+        <RouteRefreshFailureBanner reason={loadFailureReason} onRetry={retryLoad} />
+      ) : null}
       <aside className={`absolute bottom-3 left-3 top-3 z-40 flex w-12 flex-col items-center rounded-lg border border-border-default bg-bg-surface/95 p-1.5 shadow-sm ${needsMacDesktopHeaderOffset ? "pt-10" : ""}`}>
         <Link href="/" className="mb-2 rounded-md p-2 text-text-muted transition-colors hover:bg-bg-page hover:text-text-primary" title={t("backToBoard")}>
           <svg width="17" height="17" viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -1603,15 +1606,18 @@ function TaskDetailContent({ id }: { id: string }) {
               key={item.id}
               type="button"
               onClick={item.onActivate}
+              aria-busy={item.isBusy || undefined}
               className={`mb-1 rounded-md p-2 transition-colors ${
                 item.isActive
                   ? "bg-brand-subtle text-text-brand"
                   : "text-text-muted hover:bg-bg-page hover:text-text-primary"
-              }`}
+              } ${item.isBusy ? "cursor-progress" : ""}`}
               title={title}
               aria-label={item.label}
             >
-              {item.renderIcon()}
+              {item.isBusy ? (
+                <span aria-hidden="true" className="block h-[17px] w-[17px] rounded-full border-2 border-current border-t-transparent motion-safe:animate-spin" />
+              ) : item.renderIcon()}
             </button>
           );
         })}
@@ -1695,25 +1701,41 @@ function TaskDetailContent({ id }: { id: string }) {
             <div className="space-y-3">
               <div className="rounded-lg border border-border-default bg-bg-surface p-4">
                 <div className="flex flex-wrap gap-2">
-                  {STATUS_TRANSITIONS.filter((transition) => transition.status !== state.task.status).map((transition) => (
-                    transition.status === TaskStatus.DONE ? (
+                  {STATUS_TRANSITIONS.filter((transition) => transition.status !== state.task.status).map((transition) => {
+                    const label = statusMove.pendingArgs?.[0] === transition.status
+                      ? t("movingStatus", { status: t(transition.labelKey) })
+                      : t(transition.labelKey);
+
+                    return transition.status === TaskStatus.DONE ? (
                       <DoneStatusButton
                         key={transition.status}
-                        statusChangeAction={handleStatusChange}
-                        label={t(transition.labelKey)}
+                        onMoveToDone={() => { void statusMove.run(TaskStatus.DONE); }}
+                        label={label}
+                        isDisabled={statusMove.isPending}
                         hasCleanableResources={!!(state.task.branchName || state.task.sessionType)}
                         doneAlertDismissed={state.doneAlertDismissed}
                       />
                     ) : (
-                      <form key={transition.status} action={handleStatusChange}>
-                        <input type="hidden" name="status" value={transition.status} />
-                        <button type="submit" className="rounded-md border border-border-default bg-bg-page px-3 py-1.5 text-xs text-text-secondary transition-colors hover:border-brand-primary hover:text-text-brand">
-                          {t(transition.labelKey)}
-                        </button>
-                      </form>
-                    )
-                  ))}
+                      <button
+                        key={transition.status}
+                        type="button"
+                        disabled={statusMove.isPending}
+                        aria-busy={statusMove.pendingArgs?.[0] === transition.status || undefined}
+                        onClick={() => { void statusMove.run(transition.status); }}
+                        className="rounded-md border border-border-default bg-bg-page px-3 py-1.5 text-xs text-text-secondary transition-colors hover:border-brand-primary hover:text-text-brand disabled:cursor-progress disabled:opacity-60"
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
                 </div>
+                {statusMove.error ? (
+                  <InlineLoadError
+                    className="mt-3"
+                    message={t("statusChangeFailed", { reason: statusMove.error })}
+                    onRetry={() => { void statusMove.retry(); }}
+                  />
+                ) : null}
                 <div className="mt-3 border-t border-border-subtle pt-3">
                   <DeleteTaskButton deleteAction={handleDelete} />
                 </div>
@@ -1790,6 +1812,9 @@ function TaskDetailContent({ id }: { id: string }) {
                   onClose={(tabId) => { void closeTerminalTabOrWindow(tabId); }}
                   onRename={(tabId, name) => { void terminalTabs.renameTab(tabId, name); }}
                   onMove={(tabId, targetIndex) => { void terminalTabs.moveTab(tabId, targetIndex); }}
+                  pendingAction={terminalTabs.pendingAction}
+                  actionError={terminalTabs.actionError}
+                  onRetryAction={() => { void terminalTabs.retryAction(); }}
                 />
               ) : (
                 <span className="text-xs text-terminal-text font-mono truncate">{state.task.sessionName ?? t("terminal")}</span>
@@ -1822,6 +1847,10 @@ function TaskDetailContent({ id }: { id: string }) {
                 taskTitle={state.task.title}
                 onHistory={() => setMainView("history")}
                 tabs={state.task.sessionType === SessionType.TERMINAL ? terminalTabs.tabs : undefined}
+                tabsError={terminalTabs.error}
+                isTabListLoaded={terminalTabs.isTabListLoaded}
+                onRetryTabs={() => { void terminalTabs.refresh(); }}
+                onCreateTab={() => { void terminalTabs.createTab(); }}
                 isRemote={Boolean(state.task.sshHost)}
                 isHidden={mainView !== "terminal"}
               />

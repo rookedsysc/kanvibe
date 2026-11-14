@@ -142,7 +142,7 @@ function expectGitHubCliCommand(command: string, repoPath: string, ghArguments: 
   /** 등록된 경로가 저장소를 감싼 상위 폴더면 바로 아래 저장소로 내려가야 조회가 성립한다 */
   expect(command).toContain('if [ ! -e "$repo/.git" ]');
   /** .envrc에 GitHub 인증을 심어 둔 저장소는 direnv를 태우지 않으면 권한 없이 실패한다 */
-  expect(command).toContain(`if [ -f "$repo/.envrc" ] && command -v direnv`);
+  expect(command).toContain(`if [ -n "$envrcDirectory" ] && command -v direnv`);
   expect(command).toContain(`direnv exec "$repo" gh ${ghArguments} || gh ${ghArguments}`);
   expect(command).toContain(`else gh ${ghArguments}`);
 }
@@ -1829,6 +1829,28 @@ describe("kanbanService.createTask", () => {
     expect(consoleErrorSpy).not.toHaveBeenCalled();
   });
 
+  it("gh 조회가 다른 이유로 실패하면 PR 없음(null) 대신 오류를 그대로 던진다", async () => {
+    // Given
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.taskRepo.findOneBy.mockResolvedValue({
+      id: "task-5b",
+      projectId: "project-1",
+      branchName: "feat/auth",
+      prUrl: null,
+    });
+    mocks.projectRepo.findOneBy.mockResolvedValue({
+      id: "project-1",
+      repoPath: "/workspace/repo",
+    });
+    mocks.execGit.mockRejectedValue(new Error("HTTP 401: Bad credentials"));
+
+    const { fetchAndSavePrUrl } = await import("@/desktop/main/services/kanbanService");
+
+    // When / Then
+    await expect(fetchAndSavePrUrl("task-5b")).rejects.toThrow("HTTP 401: Bad credentials");
+    expect(mocks.taskRepo.update).not.toHaveBeenCalled();
+  });
+
   it("원격 프로젝트는 프로젝트 repo 경로와 SSH를 사용해 gh CLI로 PR URL을 조회한다", async () => {
     mocks.taskRepo.findOneBy.mockResolvedValue({
       id: "task-6",
@@ -3020,6 +3042,20 @@ describe("kanbanService gh 실행 셸 명령", () => {
     // Given
     const repositoryPath = createRepository("direnv-repo");
     nodeFs.writeFileSync(nodePath.join(repositoryPath, ".envrc"), "export GH_TOKEN=token\n");
+    const command = await captureGitHubCliCommand(repositoryPath);
+
+    // When
+    const output = runGitHubCliCommand(command, createShellStubs());
+
+    // Then
+    expect(output).toBe(`direnv:${repositoryPath}`);
+  });
+
+  /** 저장소마다가 아니라 상위 폴더에 경로별로 GitHub 인증을 둔 경우도 direnv는 그 설정을 읽는다 */
+  it(".envrc가 상위 경로에만 있어도 direnv를 태워 gh를 부른다", async () => {
+    // Given
+    nodeFs.writeFileSync(nodePath.join(workspaceRoot, ".envrc"), "export GH_TOKEN=token\n");
+    const repositoryPath = createRepository(nodePath.join("work", "direnv-parent-repo"));
     const command = await captureGitHubCliCommand(repositoryPath);
 
     // When

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { runBackgroundTaskSyncNow } from "@/desktop/renderer/actions/backgroundTaskSync";
+import { dismissActionStatus, showActionStatus } from "@/desktop/renderer/components/ActionStatusToast";
 import { setBoardViewMode, type BoardViewMode } from "@/desktop/renderer/actions/appSettings";
 import { useRouter } from "@/desktop/renderer/navigation";
 import { useBoardCommands } from "@/desktop/renderer/components/BoardCommandProvider";
@@ -15,6 +16,45 @@ interface CommandItem {
   command: string;
   description: string;
   run: () => void;
+}
+
+/** 같은 sync를 겹쳐 누르면 서버는 같은 사이클을 기다리므로, 알림도 한 벌만 띄운다 */
+let isManualSyncRunning = false;
+
+/**
+ * 팔레트는 바로 닫히므로 sync의 진행과 결과를 토스트로 이어서 알린다.
+ * 바뀐 것이 없어도 끝났다는 것을 알려야 사용자가 다시 누르지 않는다.
+ */
+async function runManualSyncWithStatus(
+  t: ReturnType<typeof useTranslations>,
+  tc: ReturnType<typeof useTranslations>,
+) {
+  if (isManualSyncRunning) {
+    return;
+  }
+
+  isManualSyncRunning = true;
+  const progressId = showActionStatus({ kind: "progress", message: t("syncRunning") });
+  try {
+    const result = await runBackgroundTaskSyncNow();
+    dismissActionStatus(progressId);
+    const resultMessageKey = result.reviewNeeded
+      ? "syncReviewNeeded"
+      : result.boardUpdated
+        ? "syncBoardUpdated"
+        : "syncNoChanges";
+    showActionStatus({ kind: "success", message: t(resultMessageKey) });
+  } catch (error) {
+    console.error("Failed to run background task sync", error);
+    dismissActionStatus(progressId);
+    showActionStatus({
+      kind: "failure",
+      message: t("syncFailed", { reason: error instanceof Error ? error.message : String(error) }),
+      action: { label: tc("retry"), onAction: () => void runManualSyncWithStatus(t, tc) },
+    });
+  } finally {
+    isManualSyncRunning = false;
+  }
 }
 
 export default function CommandPaletteDialog() {
@@ -52,9 +92,7 @@ export default function CommandPaletteDialog() {
   useEscapeKey(closeDialog, { enabled: isCommandPaletteOpen });
 
   function runSync() {
-    void runBackgroundTaskSyncNow().catch((error) => {
-      console.error("Failed to run background task sync", error);
-    });
+    void runManualSyncWithStatus(t, tc);
     closeDialog();
   }
 

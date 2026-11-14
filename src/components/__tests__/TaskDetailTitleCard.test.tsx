@@ -314,3 +314,50 @@ describe("TaskDetailTitleCard - Description Editing", () => {
     expect(mockRefresh).toHaveBeenCalled();
   });
 });
+
+describe("TaskDetailTitleCard - 설명 저장 상태", () => {
+  beforeEach(() => {
+    mockUpdateTask.mockReset();
+    mockRefresh.mockClear();
+  });
+
+  it("저장 응답을 기다리는 동안 저장 버튼을 막고 Enter를 다시 눌러도 한 번만 저장한다", async () => {
+    let resolveSave: () => void = () => {};
+    mockUpdateTask.mockReturnValueOnce(new Promise<void>((resolve) => {
+      resolveSave = resolve;
+    }));
+    render(<TaskDetailTitleCard task={createTask({ description: "기존 설명" })} taskId="task-1" />);
+    fireEvent.click(screen.getByText("기존 설명"));
+
+    const textarea = screen.getByRole("textbox");
+    fireEvent.change(textarea, { target: { value: "새 설명" } });
+    await act(async () => {
+      fireEvent.keyDown(textarea, { key: "Enter" });
+    });
+    await act(async () => {
+      fireEvent.keyDown(textarea, { key: "Enter" });
+    });
+
+    expect(mockUpdateTask).toHaveBeenCalledTimes(1);
+    expect((screen.getByRole("button", { name: "saving" }) as HTMLButtonElement).disabled).toBe(true);
+
+    await act(async () => {
+      resolveSave();
+    });
+  });
+
+  it("저장이 실패하면 편집을 열어 둔 채 사유를 알린다", async () => {
+    mockUpdateTask.mockRejectedValueOnce(new Error("db locked"));
+    render(<TaskDetailTitleCard task={createTask({ description: "기존 설명" })} taskId="task-1" />);
+    fireEvent.click(screen.getByText("기존 설명"));
+
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "새 설명" } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "저장" }));
+    });
+
+    expect(screen.getByRole("alert").textContent).toBe("saveFailed");
+    expect(screen.getByRole("textbox")).toBeTruthy();
+    expect(mockRefresh).not.toHaveBeenCalled();
+  });
+});
