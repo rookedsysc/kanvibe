@@ -45,6 +45,7 @@ function createHookServer({ host, port, mobileTlsPort, mobileTlsDirectory, isDev
   const mobileBridge = {
     ...mobileBridgeBase,
     ...paneChat,
+    ...require(getRuntimeModulePath("desktop", "main", "services", "paneChatSubscriptionService")),
     ...require(getRuntimeModulePath("desktop", "main", "services", "mobileFeatureService")),
     ...require(getRuntimeModulePath("desktop", "main", "services", "mobileAiService")),
   };

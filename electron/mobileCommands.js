@@ -7,6 +7,8 @@
 
 const MAX_COMMAND_BYTES = 1024;
 const MAX_REQUEST_ID_LENGTH = 64;
+/** 한 화면이 동시에 보는 pane은 채팅 하나와 선택된 터미널 하나 정도다. 명령 크기 제한 안에 들어오는 수로 묶는다 */
+const MAX_SUBSCRIBED_PANES = 4;
 
 /** 응답에 실려 앱 화면의 안내가 되는 실패. 앱은 `code`로 분기하고 `error`는 그대로 보여 줄 수 있는 한국어 문장이다 */
 class CommandFailure extends Error {
@@ -27,7 +29,40 @@ function readNonEmptyString(value) {
   return value;
 }
 
-/** 각 핸들러는 성공 응답에 펼칠 값을 돌려주고, 실패는 던진다 */
+/** 구독자가 대화를 어디까지 받았는지. 처음 구독할 때는 없다 */
+function readPaneChatCursor(value) {
+  if (value === undefined || value === null) {
+    return null;
+  }
+  if (typeof value !== "object" || typeof value.epoch !== "string" || !Number.isSafeInteger(value.seq) || value.seq < 0) {
+    throw invalidCommand();
+  }
+  return { epoch: value.epoch, seq: value.seq };
+}
+
+function readPaneChatSubscriptionTarget(value) {
+  if (value === null || typeof value !== "object") {
+    throw invalidCommand();
+  }
+  if (value.detail !== "chat" && value.detail !== "agent") {
+    throw invalidCommand();
+  }
+  if (value.wantsScreen !== undefined && typeof value.wantsScreen !== "boolean") {
+    throw invalidCommand();
+  }
+  return {
+    taskId: readNonEmptyString(value.taskId),
+    paneId: readNonEmptyString(value.paneId),
+    detail: value.detail,
+    wantsScreen: value.wantsScreen === true,
+    cursor: readPaneChatCursor(value.cursor),
+  };
+}
+
+/**
+ * 각 핸들러는 성공 응답에 펼칠 값을 돌려주고, 실패는 던진다.
+ * 세 번째 인자는 명령을 보낸 소켓이다. 응답 한 번으로 끝나지 않고 그 소켓에 계속 밀어 줘야 하는 명령만 쓴다.
+ */
 const COMMAND_HANDLERS = {
   "delete-task": async (bridge, message) => {
     const taskId = readNonEmptyString(message.taskId);
@@ -66,6 +101,13 @@ const COMMAND_HANDLERS = {
       }
       throw error;
     }
+  },
+  "set-pane-chat-subscription": async (bridge, message, connection) => {
+    if (!Array.isArray(message.panes) || message.panes.length > MAX_SUBSCRIBED_PANES) {
+      throw invalidCommand();
+    }
+    const targets = message.panes.map(readPaneChatSubscriptionTarget);
+    return { panes: bridge.setPaneChatSubscriptions(connection.owner, targets, connection.send) };
   },
 };
 
@@ -116,7 +158,8 @@ function toFailureResult(requestId, error) {
   }
 }
 
-async function runMobileCommand(bridge, rawMessage) {
+/** @param connection 명령을 보낸 소켓. `owner`는 구독의 수명을 쥔 식별자이고 `send`는 그 소켓 하나에만 이벤트를 보낸다 */
+async function runMobileCommand(bridge, rawMessage, connection) {
   const rawBytes = typeof rawMessage === "string" ? Buffer.from(rawMessage) : rawMessage;
   const message = Buffer.isBuffer(rawBytes) ? parseCommandMessage(rawBytes) : null;
   if (!message) {
@@ -132,7 +175,7 @@ async function runMobileCommand(bridge, rawMessage) {
   }
 
   try {
-    const payload = await COMMAND_HANDLERS[command](bridge, message);
+    const payload = await COMMAND_HANDLERS[command](bridge, message, connection);
     return { type: "command-result", requestId, ok: true, ...payload };
   } catch (error) {
     return toFailureResult(requestId, error);
