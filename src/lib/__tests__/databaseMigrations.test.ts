@@ -195,8 +195,38 @@ describe("database migrations", () => {
         { id: "task-1", branch_name: "main" },
         { id: "task-2", branch_name: "main" },
       ]);
-      expect(migrations).toHaveLength(17);
+      expect(migrations).toHaveLength(18);
       expect(migrations[0]).toEqual({ name: "InitialSchema1770854400000" });
+    } finally {
+      await dataSource.destroy();
+    }
+  });
+
+  it.each([false, true])("creates the Herdr operation table when upgrading a legacy DB (already baselined=%s)", async (baselined) => {
+    const databasePath = createDatabasePath();
+    insertLegacyBootstrapData(databasePath);
+    process.env.KANVIBE_DB_PATH = databasePath;
+    vi.resetModules();
+    if (baselined) {
+      const previous = await import("@/lib/database");
+      await (await previous.getDataSource()).destroy();
+      const fixture = new Database(databasePath);
+      try {
+        fixture.exec("DROP TABLE herdr_session_operations");
+        fixture.prepare("DELETE FROM migrations WHERE name = ?").run("AddHerdrSessionOperations1772000000000");
+      } finally {
+        fixture.close();
+      }
+      vi.resetModules();
+    }
+
+    const { getDataSource } = await import("@/lib/database");
+    const dataSource = await getDataSource();
+    try {
+      expect(await dataSource.query("SELECT COUNT(*) AS count FROM herdr_session_operations")).toEqual([{ count: 0 }]);
+      expect(await dataSource.query("SELECT name FROM migrations WHERE name = ?", ["AddHerdrSessionOperations1772000000000"]))
+        .toEqual([{ name: "AddHerdrSessionOperations1772000000000" }]);
+      expect(await dataSource.query("SELECT id FROM kanban_tasks ORDER BY id")).toEqual([{ id: "task-1" }, { id: "task-2" }]);
     } finally {
       await dataSource.destroy();
     }
@@ -260,7 +290,7 @@ describe("database migrations", () => {
           priority: null,
         },
       ]);
-      expect(migrations).toHaveLength(17);
+      expect(migrations).toHaveLength(18);
     } finally {
       await dataSource.destroy();
     }
@@ -290,7 +320,7 @@ describe("database migrations", () => {
       expect(indexes.map((row: { name: string }) => row.name)).not.toContain(
         "UQ_kanban_tasks_branch_name",
       );
-      expect(migrations).toHaveLength(17);
+      expect(migrations).toHaveLength(18);
 
       await dataSource.query(`
         INSERT INTO projects (id, name, repo_path, ssh_host)

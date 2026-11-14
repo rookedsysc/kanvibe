@@ -24,6 +24,11 @@ let remoteMachineRegistration = Promise.resolve();
 const HERDR_EXECUTABLE = `"$(command -v herdr || printf '%s' "$HOME/.local/bin/herdr")"`;
 
 export function parseHerdrSessionTarget(sessionName: string): { serverName: string; workspaceKey: string | null } {
+  if (sessionName.startsWith("herdr:")) {
+    const match = /^herdr:([A-Za-z0-9._-]{1,64}):(w[0-9A-Za-z]+)$/.exec(sessionName);
+    if (!match || match[1] === "." || match[1] === "..") throw new Error("기존 Herdr Space 연결이 올바르지 않습니다.");
+    return { serverName: match[1], workspaceKey: match[2] };
+  }
   if (!sessionName.startsWith("kanvibe:")) return { serverName: sessionName, workspaceKey: null };
   const workspaceKey = sessionName.slice("kanvibe:".length);
   if (!workspaceKey) throw new Error("Herdr Space 식별자가 비어 있습니다.");
@@ -135,6 +140,7 @@ export async function runHerdrCommand<T>(
   });
   // send-text는 전송 성공 시 본문을 출력하지 않는다.
   if (!output && arguments_[0] === "pane" && arguments_[1] === "send-text") return undefined as T;
+  if (!output && arguments_[1] === "report-metadata" && (arguments_[0] === "workspace" || arguments_[0] === "pane")) return undefined as T;
   return readHerdrResult<T>(output);
 }
 
@@ -264,6 +270,7 @@ async function getWorkspaceMappingPath(sshHost?: string | null): Promise<string>
 
 export async function getHerdrWorkspaceId(sessionName: string, sshHost?: string | null): Promise<string | null> {
   const { workspaceKey } = parseHerdrSessionTarget(sessionName);
+  if (sessionName.startsWith("herdr:")) return workspaceKey;
   if (!workspaceKey) return null;
   const mapping = parseWorkspaceMapping(await readTextFile(await getWorkspaceMappingPath(sshHost), sshHost));
   if (!Object.hasOwn(mapping, workspaceKey)) throw new Error("task에 연결된 Herdr Space가 없습니다.");
@@ -290,6 +297,8 @@ export async function isHerdrTaskAlive(sessionName: string, sshHost?: string | n
 }
 
 export async function closeHerdrTaskWorkspace(sessionName: string, sshHost?: string | null): Promise<void> {
+  // 기존 Space에 붙인 태스크는 실행과 Space의 소유권을 가져오지 않는다.
+  if (sessionName.startsWith("herdr:")) { parseHerdrSessionTarget(sessionName); return; }
   const { serverName, workspaceKey } = parseHerdrSessionTarget(sessionName);
   if (!workspaceKey) {
     await execGit(buildHerdrSessionCleanupCommand(sessionName), sshHost, { timeoutMs: HERDR_START_TIMEOUT_MS });
@@ -329,19 +338,31 @@ export function ensureHerdrSession(
   return bootstrap;
 }
 
-export function ensureHerdrRemoteMachine(sessionName: string, sshHost: string): Promise<void> {
+export function ensureHerdrRemoteMachine(sessionName: string, sshHost: string, options?: { requireEnabled: boolean }): Promise<void> {
   const { serverName } = parseHerdrSessionTarget(sessionName);
   remoteMachineRegistration = remoteMachineRegistration.catch(() => {}).then(async () => {
-    const machines: { target: string; session: string }[] = JSON.parse(await execGit(
+    const machines: { target: string; session: string; enabled?: boolean }[] = JSON.parse(await execGit(
       buildHerdrCommand(serverName, ["machine", "list", "--json"]), null, { timeoutMs: HERDR_COMMAND_TIMEOUT_MS },
     ));
-    if (machines.some((machine) => machine.target === sshHost && machine.session === serverName)) return;
+    const existing = machines.find((machine) => machine.target === sshHost && machine.session === serverName);
+    if (existing?.enabled === false && options?.requireEnabled) throw new Error("등록된 Herdr machine이 비활성화되어 있습니다. Herdr에서 먼저 활성화하세요.");
+    if (existing) return;
     await execGit(
       `${buildHerdrCommand(serverName, ["machine", "add", sshHost, "--remote-session", serverName])} </dev/null`,
       null, { timeoutMs: HERDR_START_TIMEOUT_MS },
     );
   });
   return remoteMachineRegistration;
+}
+
+/** 생성이 끝난 Space만 연결 파일에 등록한다. 기존 연결은 덮어쓰지 않는다. */
+export async function bindHerdrWorkspace(taskKey: string, workspaceId: string, sshHost: string | null): Promise<void> {
+  if (!/^[A-Za-z0-9-]+$/.test(taskKey) || !/^w[0-9A-Za-z]+$/.test(workspaceId)) throw new Error("Herdr 연결 식별자가 올바르지 않습니다.");
+  await updateTextFile(await getWorkspaceMappingPath(sshHost), (content) => {
+    const mapping = parseWorkspaceMapping(content);
+    if (Object.hasOwn(mapping, taskKey) && mapping[taskKey] !== workspaceId) throw new Error("task에 이미 다른 Herdr Space가 연결되어 있습니다.");
+    return JSON.stringify({ ...mapping, [taskKey]: workspaceId });
+  }, sshHost, 0o600);
 }
 
 async function startHerdrServer(sessionName: string, sshHost?: string | null): Promise<void> {
@@ -365,25 +386,38 @@ async function startHerdrServer(sessionName: string, sshHost?: string | null): P
   });
 }
 
-async function bootstrapHerdrSession(sessionName: string, cwd: string, layout?: TmuxPaneLayoutConfig | null, sshHost?: string | null): Promise<string | null> {
-  const { serverName, workspaceKey } = parseHerdrSessionTarget(sessionName);
-  let workspaces: { workspace_id: string }[];
+/** 재구성은 빈 서버만 준비하고, 실제 Space 생성과 소유권 기록은 호출자가 맡는다. */
+export async function ensureHerdrServer(sessionName: string, sshHost?: string | null): Promise<void> {
+  if (parseHerdrSessionTarget(sessionName).workspaceKey) throw new Error("서버 이름만 지정할 수 있습니다.");
+  await readOrStartHerdrServer(sessionName, sshHost);
+}
+
+async function readOrStartHerdrServer(serverName: string, sshHost?: string | null): Promise<{ workspace_id: string }[]> {
   try {
-    ({ workspaces } = await runHerdrCommand<{ workspaces: { workspace_id: string }[] }>(serverName, ["workspace", "list"], sshHost));
+    return (await runHerdrCommand<{ workspaces: { workspace_id: string }[] }>(serverName, ["workspace", "list"], sshHost)).workspaces;
   } catch (error) {
     if (isSSHConnectionError(error)) throw error;
     await startHerdrServer(serverName, sshHost);
     const deadline = Date.now() + HERDR_START_TIMEOUT_MS;
     for (;;) {
       try {
-        ({ workspaces } = await runHerdrCommand<{ workspaces: { workspace_id: string }[] }>(serverName, ["workspace", "list"], sshHost));
-        break;
+        return (await runHerdrCommand<{ workspaces: { workspace_id: string }[] }>(serverName, ["workspace", "list"], sshHost)).workspaces;
       } catch (startError) {
         if (isSSHConnectionError(startError) || Date.now() >= deadline) throw startError;
         await delay(100);
       }
     }
   }
+}
+
+async function bootstrapHerdrSession(sessionName: string, cwd: string, layout?: TmuxPaneLayoutConfig | null, sshHost?: string | null): Promise<string | null> {
+  const { serverName, workspaceKey } = parseHerdrSessionTarget(sessionName);
+  if (sessionName.startsWith("herdr:")) {
+    const { workspaces } = await runHerdrCommand<{ workspaces: { workspace_id: string }[] }>(serverName, ["workspace", "list"], sshHost);
+    if (!workspaces.some((space) => space.workspace_id === workspaceKey)) throw new Error("연결한 Herdr Space를 찾을 수 없습니다.");
+    return workspaceKey;
+  }
+  const workspaces = await readOrStartHerdrServer(serverName, sshHost);
   if (!workspaceKey) {
     if (workspaces.length === 0 || !(await closeUnrestorableHerdrPanes(serverName, null, sshHost))) {
       await createHerdrWorkspace(serverName, cwd, layout, null, sshHost);
@@ -485,7 +519,7 @@ async function applyHerdrLayout(sessionName: string, rootPaneId: string, cwd: st
   }
 }
 
-async function listHerdrSessions(sshHost?: string | null): Promise<HerdrSession[]> {
+export async function listHerdrSessions(sshHost?: string | null): Promise<HerdrSession[]> {
   const output = await execGit(buildHerdrCommand("default", ["session", "list", "--json"]), sshHost, { timeoutMs: HERDR_COMMAND_TIMEOUT_MS, retrySafe: true });
   const response = JSON.parse(output);
   if (!Array.isArray(response.sessions)) throw new Error("Herdr 세션 목록이 올바르지 않습니다.");

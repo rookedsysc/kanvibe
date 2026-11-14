@@ -6,6 +6,7 @@ import * as diff from "@/desktop/main/services/diffService";
 import * as editor from "@/desktop/main/services/editorService";
 import * as githubCliDependency from "@/desktop/main/services/githubCliDependencyService";
 import * as hooks from "@/desktop/main/services/hookService";
+import * as herdrSession from "@/desktop/main/services/herdrSessionService";
 import * as kanban from "@/desktop/main/services/kanbanService";
 import * as mobileBridge from "@/desktop/main/services/mobileBridgeService";
 import * as paneChat from "@/desktop/main/services/paneChatService";
@@ -26,6 +27,7 @@ export const desktopServices = {
   editor,
   githubCliDependency,
   hooks,
+  herdrSession,
   kanban,
   mobileBridge,
   paneChat,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition, type ReactNode } from "react";
 import { useTranslations } from "next-intl";
 import {
   setSidebarDefaultCollapsed,
@@ -33,6 +33,7 @@ const STATUS_OPTIONS = [
 ] as const;
 
 interface ProjectSettingsProps {
+  children?: ReactNode;
   isOpen?: boolean;
   onClose?: () => void;
   variant?: "modal" | "page";
@@ -84,6 +85,7 @@ function parseSyncIntervalMinutes(value: string): number | null {
 }
 
 export default function ProjectSettings({
+  children,
   isOpen,
   onClose,
   variant = "modal",
@@ -204,6 +206,7 @@ export default function ProjectSettings({
                 ["notifications", t("notificationSection")],
                 ["background-sync", t("backgroundSyncSection")],
                 ["keyboard", t("keyboardSection")],
+                ...(children ? [["herdr-sessions", t("herdrSessionsSection")]] : []),
               ].map(([id, label]) => (
                 <button
                   key={id}
@@ -560,6 +563,7 @@ export default function ProjectSettings({
           </Link>
         </div>
 
+        {children}
         </div>
       </div>
     </div>

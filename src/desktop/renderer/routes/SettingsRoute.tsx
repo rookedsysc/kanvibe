@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import ProjectSettings from "@/components/ProjectSettings";
+import HerdrSessionManager from "@/desktop/renderer/components/HerdrSessionManager";
 import {
   getBackgroundSyncSettings,
   getDefaultSessionType,
@@ -120,6 +121,8 @@ export default function SettingsRoute() {
       }}
       notificationSettings={data.notificationSettings}
       backgroundSyncSettings={data.backgroundSyncSettings}
-    />
+    >
+      <HerdrSessionManager sshHosts={data.sshHosts} />
+    </ProjectSettings>
   );
 }

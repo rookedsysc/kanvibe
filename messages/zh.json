@@ -320,7 +320,8 @@
         "terminalTabNext": "下一个终端标签",
         "terminalTab": "跳到终端标签 {index}"
       }
-    }
+    },
+    "herdrSessionsSection": "Herdr 会话管理"
   },
   "taskSearch": {
     "title": "快速任务搜索",
@@ -651,5 +652,75 @@
       "manual-logout-required": "该账号无法在应用内登出，因此仅从列表中移除。"
     },
     "usageSection": "用量"
+  },
+  "herdrSessions": {
+    "title": "Herdr 会话管理",
+    "description": "选择主机、会话和 Space，连接现有任务或在 kanvibe 中重建已停止的会话。",
+    "safetyNotice": "不会自动停止或删除源会话，也不会自动执行记录的代理恢复命令。",
+    "host": "主机",
+    "local": "本地",
+    "scan": "检查会话",
+    "scanning": "检查中…",
+    "session": "会话",
+    "space": "Space",
+    "task": "任务",
+    "choose": "选择…",
+    "running": "运行中",
+    "stopped": "已停止",
+    "tabs": "{count} 个标签页",
+    "observedAt": "检查时间 {time}",
+    "emptySessions": "未找到会话",
+    "emptyTasks": "没有现有 Herdr 任务，可选择导入为新任务",
+    "previewAttach": "预览现有连接",
+    "previewRebuild": "预览重建",
+    "planning": "正在准备预览…",
+    "planTitle": "执行预览",
+    "preserved": "保留",
+    "recreated": "重建",
+    "unsupported": "无法保留",
+    "none": "无",
+    "blocked": "执行已阻止",
+    "attachNotice": "源会话将继续运行。仅在执行时注册远程主机。外部 Herdr 客户端需要手动选择主机和 Space。",
+    "rebuildNotice": "在 kanvibe 中创建新的 Space。运行中的进程、原 PID 和终端内存无法迁移。",
+    "execute": "执行此计划",
+    "executing": "执行中…",
+    "operationId": "操作 ID",
+    "targetSpace": "目标 Space",
+    "backup": "备份",
+    "recoveryNotice": "取消不会修改源会话。恢复旧连接仅修改任务连接，已创建的 Space 会保留。如果原服务器已停止或其他窗口已修改连接，则会阻止恢复。",
+    "openTask": "打开任务",
+    "cancel": "请求取消",
+    "revert": "恢复旧连接",
+    "history": "最近操作",
+    "refresh": "刷新记录",
+    "loadingHistory": "正在加载操作记录…",
+    "emptyHistory": "暂无操作记录",
+    "phases": {
+      "applying": "应用中",
+      "verifying": "验证中",
+      "committed": "连接已保存",
+      "completed": "已完成",
+      "failed": "失败",
+      "attention": "需要检查",
+      "cancelled": "已取消",
+      "reverted": "连接已恢复"
+    },
+    "blockers": {
+      "SOURCE_RUNNING": "源会话正在运行，请保留现有连接。",
+      "SOURCE_STOPPED": "源会话已停止，请预览重建。",
+      "SOURCE_NOT_FOUND": "找不到源会话，请重新检查。",
+      "SNAPSHOT_UNSUPPORTED": "此快照格式无法重建。",
+      "SNAPSHOT_MISSING": "没有已保存的快照。",
+      "WORKSPACE_NOT_FOUND": "找不到所选 Space，请重新检查。",
+      "TASK_SOURCE_MISMATCH": "请选择同一主机上的 Herdr 任务。",
+      "TARGET_COLLISION": "目标 Space 已存在，请先检查其状态。",
+      "WORKSPACE_MISSING": "找不到所选 Space，请重新检查。",
+      "CWD_MISMATCH": "任务与源 Space 使用不同的项目目录。",
+      "TARGET_BOUND": "此任务已连接到共享 Space。"
+    },
+    "retryNotice": "执行中断后重试将使用相同的操作 ID：{operationId}",
+    "workingDirectory": "工作目录",
+    "importTask": "导入为新任务",
+    "importTaskPreview": "将创建的任务：{title}"
   }
 }

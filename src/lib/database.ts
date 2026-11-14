@@ -6,6 +6,7 @@ import { Project } from "@/entities/Project";
 import { PaneLayoutConfig } from "@/entities/PaneLayoutConfig";
 import { AppSettings } from "@/entities/AppSettings";
 import { TaskDiffStatsRecord } from "@/entities/TaskDiffStats";
+import { HerdrSessionOperationRecord } from "@/entities/HerdrSessionOperationRecord";
 import { ensureRuntimeDatabaseFile, getRuntimeDatabasePath } from "@/lib/databasePaths";
 import { ensureSqliteDatabaseReady } from "@/lib/sqliteSchema";
 import { InitialSchema1770854400000 } from "@/migrations/1770854400000-InitialSchema";
@@ -25,6 +26,7 @@ import { RescopeProjectNamesPerHost1771600000000 } from "@/migrations/1771600000
 import { AddTerminalSessionType1771700000000 } from "@/migrations/1771700000000-AddTerminalSessionType";
 import { DropDisplayOrderFromKanbanTasks1771800000000 } from "@/migrations/1771800000000-DropDisplayOrderFromKanbanTasks";
 import { AddTaskDiffStats1771900000000 } from "@/migrations/1771900000000-AddTaskDiffStats";
+import { AddHerdrSessionOperations1772000000000 } from "@/migrations/1772000000000-AddHerdrSessionOperations";
 
 /** TypeORM DataSource 싱글턴. Vite HMR 시 재연결을 방지하기 위해 globalThis에 캐싱한다. */
 const globalForDb = globalThis as unknown as {
@@ -49,6 +51,7 @@ const MIGRATIONS = [
   AddTerminalSessionType1771700000000,
   DropDisplayOrderFromKanbanTasks1771800000000,
   AddTaskDiffStats1771900000000,
+  AddHerdrSessionOperations1772000000000,
 ];
 
 interface MigrationRecord {
@@ -119,6 +122,11 @@ async function baselineExistingSqliteDatabase(ds: DataSource): Promise<void> {
     }
 
     for (const migration of getMigrationRecords()) {
+      // 기존 스키마 복구가 만들지 않는 신규 테이블은 migration을 실행해야 한다.
+      if (migration.name === "AddHerdrSessionOperations1772000000000"
+        && !await queryRunner.hasTable("herdr_session_operations")) {
+        continue;
+      }
       await queryRunner.query(
         `INSERT INTO "migrations"("timestamp", "name") VALUES (?, ?)`,
         [migration.timestamp, migration.name],
@@ -143,7 +151,7 @@ function createDataSource(): DataSource {
   return new DataSource({
     type: "better-sqlite3",
     database: databasePath,
-    entities: [KanbanTask, Project, PaneLayoutConfig, AppSettings, TaskDiffStatsRecord],
+    entities: [KanbanTask, Project, PaneLayoutConfig, AppSettings, TaskDiffStatsRecord, HerdrSessionOperationRecord],
     migrations: MIGRATIONS,
     synchronize: false,
     logging: shouldLogSql,

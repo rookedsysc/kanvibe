@@ -800,3 +800,33 @@ describe("readHerdrTaskPaneSize", () => {
   });
 
 });
+
+describe("기존 Herdr Space 연결", () => {
+  beforeEach(() => { execGit.mockReset(); });
+
+  it("실제 서버 이름과 기존 Space ID를 분리한다", async () => {
+    const { parseHerdrSessionTarget, getHerdrWorkspaceId } = await import("@/lib/herdr");
+    expect(parseHerdrSessionTarget("herdr:dotfiles-main:w7")).toEqual({ serverName: "dotfiles-main", workspaceKey: "w7" });
+    await expect(getHerdrWorkspaceId("herdr:dotfiles-main:w7")).resolves.toBe("w7");
+    expect(execGit).not.toHaveBeenCalled();
+  });
+
+  it("연결한 기존 Space는 태스크 연결을 삭제해도 종료하지 않는다", async () => {
+    const { closeHerdrTaskWorkspace } = await import("@/lib/herdr");
+    await closeHerdrTaskWorkspace("herdr:dotfiles-main:w7");
+    expect(execGit).not.toHaveBeenCalled();
+  });
+
+  it("사라진 원본 서버에 다시 붙을 때 원본 서버를 자동 시작하지 않는다", async () => {
+    execGit.mockRejectedValue(new Error("server not running"));
+    await expect(ensureHerdrSession("herdr:dotfiles-main:w7", "/work")).rejects.toThrow("server not running");
+    expect(spawn).not.toHaveBeenCalled();
+    expect(execGit).toHaveBeenCalledOnce();
+  });
+
+  it("다른 Space가 살아 있어도 없는 기존 Space를 새로 만들지 않는다", async () => {
+    execGit.mockResolvedValue(result({ workspaces: [{ workspace_id: "w8" }] }));
+    await expect(ensureHerdrSession("herdr:dotfiles-main:w7", "/work")).rejects.toThrow("연결한 Herdr Space");
+    expect(execGit).toHaveBeenCalledOnce();
+  });
+});

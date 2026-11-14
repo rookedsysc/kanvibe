@@ -321,7 +321,8 @@
         "terminalTabNext": "Next terminal tab",
         "terminalTab": "Go to terminal tab {index}"
       }
-    }
+    },
+    "herdrSessionsSection": "Herdr session management"
   },
   "taskSearch": {
     "title": "Quick Task Search",
@@ -684,5 +685,75 @@
       "manual-logout-required": "This account cannot be signed out from the app, so it was only removed from the list."
     },
     "usageSection": "Usage"
+  },
+  "herdrSessions": {
+    "title": "Herdr session management",
+    "description": "Choose a host, session and Space to connect an existing task or reconstruct a stopped session in kanvibe.",
+    "safetyNotice": "Source sessions are never automatically stopped or deleted. Recorded agent resume commands are not run automatically.",
+    "host": "Host",
+    "local": "Local",
+    "scan": "Scan sessions",
+    "scanning": "Scanning…",
+    "session": "Session",
+    "space": "Space",
+    "task": "Task",
+    "choose": "Choose…",
+    "running": "Running",
+    "stopped": "Stopped",
+    "tabs": "{count} tabs",
+    "observedAt": "Inspected at {time}",
+    "emptySessions": "No sessions found",
+    "emptyTasks": "No existing Herdr tasks; choose Import as a new task",
+    "previewAttach": "Preview existing connection",
+    "previewRebuild": "Preview reconstruction",
+    "planning": "Preparing preview…",
+    "planTitle": "Execution preview",
+    "preserved": "Preserved",
+    "recreated": "Recreated",
+    "unsupported": "Not preserved",
+    "none": "None",
+    "blocked": "Execution blocked",
+    "attachNotice": "The original session keeps running. Remote registration happens only when you execute. Choose its machine and Space manually in external Herdr clients.",
+    "rebuildNotice": "Reconstruction creates a new Space in kanvibe. Running processes, original PIDs and terminal memory cannot move into it.",
+    "execute": "Execute this plan",
+    "executing": "Executing…",
+    "operationId": "Operation ID",
+    "targetSpace": "Target Space",
+    "backup": "Backup",
+    "recoveryNotice": "Cancel preserves the source. Restoring the previous connection changes the task binding only; created Spaces remain. Restoration is blocked if the previous server is stopped or another window changed the binding.",
+    "openTask": "Open task",
+    "cancel": "Request cancellation",
+    "revert": "Restore previous connection",
+    "history": "Recent operations",
+    "refresh": "Refresh history",
+    "loadingHistory": "Loading operation history…",
+    "emptyHistory": "No recorded operations",
+    "phases": {
+      "applying": "Applying",
+      "verifying": "Verifying",
+      "committed": "Connection saved",
+      "completed": "Completed",
+      "failed": "Failed",
+      "attention": "Needs inspection",
+      "cancelled": "Cancelled",
+      "reverted": "Connection restored"
+    },
+    "blockers": {
+      "SOURCE_RUNNING": "The source session is running. Keep its existing connection.",
+      "SOURCE_STOPPED": "The source session is stopped. Preview reconstruction instead.",
+      "SOURCE_NOT_FOUND": "The source session is no longer available. Scan again.",
+      "SNAPSHOT_UNSUPPORTED": "This snapshot format cannot be reconstructed.",
+      "SNAPSHOT_MISSING": "No saved snapshot is available.",
+      "WORKSPACE_NOT_FOUND": "The selected Space is no longer available. Scan again.",
+      "TASK_SOURCE_MISMATCH": "Select a Herdr task on the same host.",
+      "TARGET_COLLISION": "A target Space already exists. Inspect it before continuing.",
+      "WORKSPACE_MISSING": "The selected Space is no longer available. Scan again.",
+      "CWD_MISMATCH": "The task and source Space use different project directories.",
+      "TARGET_BOUND": "The task is already connected to a shared Space."
+    },
+    "retryNotice": "If execution was interrupted, retry uses the same operation ID: {operationId}",
+    "workingDirectory": "Working directory",
+    "importTask": "Import as a new task",
+    "importTaskPreview": "New task: {title}"
   }
 }
