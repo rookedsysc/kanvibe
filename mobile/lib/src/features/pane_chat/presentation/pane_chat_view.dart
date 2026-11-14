@@ -4,21 +4,19 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../common/constants/app_colors.dart';
 import '../../../common/constants/app_sizes.dart';
 import '../../../common/constants/app_theme.dart';
-import '../../chat_history/presentation/chat_message_tile.dart';
 import '../application/pane_chat_controller.dart';
 import '../domain/pane_chat.dart';
 import 'pane_chat_composer.dart';
+import 'pane_chat_transcript_list.dart';
 
 class PaneChatView extends ConsumerStatefulWidget {
   const PaneChatView({
     required this.target,
     required this.onReturnToTerminal,
-    this.paneLabel,
     this.isActive = true,
     super.key,
   });
   final PaneChatTarget target;
-  final String? paneLabel;
   final VoidCallback onReturnToTerminal;
   final bool isActive;
 
@@ -27,7 +25,6 @@ class PaneChatView extends ConsumerStatefulWidget {
 }
 
 class _PaneChatViewState extends ConsumerState<PaneChatView> {
-  final _scroll = ScrollController();
   bool _showCli = false;
 
   @override
@@ -52,33 +49,8 @@ class _PaneChatViewState extends ConsumerState<PaneChatView> {
   }
 
   @override
-  void dispose() {
-    _scroll.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     final provider = paneChatProvider(widget.target);
-    ref.listen(provider, (previous, next) {
-      if (!_scroll.hasClients ||
-          previous?.value?.snapshot == next.value?.snapshot) {
-        return;
-      }
-      final offset = _scroll.offset;
-      final extent = _scroll.position.maxScrollExtent;
-      if (offset <= AppSizes.minTouchTarget) return;
-      // Reverse lists grow beneath the reader when a live response arrives.
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted || !_scroll.hasClients || _scroll.offset != offset) return;
-        _scroll.jumpTo(
-          (offset + _scroll.position.maxScrollExtent - extent).clamp(
-            0.0,
-            _scroll.position.maxScrollExtent,
-          ),
-        );
-      });
-    });
     final chat = ref.watch(provider);
     return chat.when(
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -109,62 +81,12 @@ class _PaneChatViewState extends ConsumerState<PaneChatView> {
             !snapshot.transcript.available ||
             snapshot.inputState != PaneChatInputState.ready;
         final draftKey = '${state.connectionId}:${snapshot.targetToken}';
-        final occurrences = <(String, DateTime?, String), int>{};
-        final messageKeys = <LocalKey>[
-          for (final message in snapshot.transcript.messages)
-            ValueKey((
-              message.role,
-              message.timestamp,
-              message.text,
-              occurrences.update(
-                (message.role, message.timestamp, message.text),
-                (count) => count + 1,
-                ifAbsent: () => 0,
-              ),
-            )),
-        ];
-        final messageIndexes = {
-          for (var index = 0; index < messageKeys.length; index++)
-            messageKeys[index]: index,
-        };
         return LayoutBuilder(
           builder: (context, constraints) {
             final compact = constraints.maxHeight < 360;
             final body = Column(
               mainAxisSize: compact ? MainAxisSize.min : MainAxisSize.max,
               children: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: AppSizes.p16,
-                    vertical: AppSizes.p4,
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Tooltip(
-                          message: widget.target.paneId,
-                          child: Text(
-                            widget.paneLabel == null
-                                ? '${snapshot.provider ?? '현재 pane'} · ${widget.target.paneId.length > 16 ? '${widget.target.paneId.substring(0, 8)}…${widget.target.paneId.substring(widget.target.paneId.length - 4)}' : widget.target.paneId}'
-                                : '${widget.paneLabel} · ${snapshot.provider ?? '현재 pane'}',
-                            semanticsLabel:
-                                '${snapshot.provider ?? '현재 pane'} · ${widget.target.paneId}',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.bodySmall,
-                          ),
-                        ),
-                      ),
-                      IconButton(
-                        tooltip: '현재 CLI 다시 확인',
-                        onPressed: state.isActing || state.isRefreshing
-                            ? null
-                            : notifier.refresh,
-                        icon: const Icon(Icons.refresh, size: AppSizes.p24),
-                      ),
-                    ],
-                  ),
-                ),
                 if (state.readError != null)
                   _PaneChatNotice(
                     text: state.readError!,
@@ -202,50 +124,10 @@ class _PaneChatViewState extends ConsumerState<PaneChatView> {
                               text: '현재 CLI의 대화 기록을 아직 연결하지 못했습니다. 현재 CLI 화면을 표시합니다.',
                             ),
                           )
-                        : snapshot.transcript.messages.isEmpty
-                        ? const Center(child: Text('현재 CLI에 첫 메시지를 보내세요.'))
-                        : Align(
-                            alignment: Alignment.topCenter,
-                            child: ConstrainedBox(
-                              constraints: const BoxConstraints(
-                                maxWidth: AppSizes.tabletBreakpoint,
-                              ),
-                              child: ListView.builder(
-                                key: PageStorageKey(
-                                  'pane-chat-transcript:$draftKey',
-                                ),
-                                findChildIndexCallback: (key) =>
-                                    messageIndexes[key],
-                                controller: _scroll,
-                                reverse: true,
-                                padding: const EdgeInsets.all(AppSizes.p16),
-                                itemCount:
-                                    snapshot.transcript.messages.length +
-                                    (snapshot.transcript.nextCursor != null
-                                        ? 1
-                                        : 0),
-                                itemBuilder: (context, index) {
-                                  if (index ==
-                                      snapshot.transcript.messages.length) {
-                                    return const Padding(
-                                      padding: EdgeInsets.all(AppSizes.p16),
-                                      child: Text(
-                                        '최근 대화를 표시합니다. 이전 대화는 채팅 History에서 볼 수 있습니다.',
-                                      ),
-                                    );
-                                  }
-                                  final message =
-                                      snapshot.transcript.messages[index];
-                                  return ChatMessageTile(
-                                    key: messageKeys[index],
-                                    message: message,
-                                    provider: snapshot.provider ?? 'AI',
-                                    taskId: widget.target.taskId,
-                                    sessionId: snapshot.transcript.sessionId,
-                                  );
-                                },
-                              ),
-                            ),
+                        : PaneChatTranscriptList(
+                            target: widget.target,
+                            snapshot: snapshot,
+                            storageKey: draftKey,
                           ),
                   ),
                 if (snapshot.provider != null && snapshot.targetToken != null)
@@ -264,11 +146,15 @@ class _PaneChatViewState extends ConsumerState<PaneChatView> {
                       children: [
                         Semantics(
                           identifier: 'pane-chat-model',
-                          child: TextButton.icon(
+                          // 파일 참조 버튼과 한 줄에 놓이도록 아이콘 없이 글자만 둔다
+                          child: TextButton(
                             style: TextButton.styleFrom(
                               minimumSize: const Size(
                                 AppSizes.minTouchTarget,
                                 AppSizes.minTouchTarget,
+                              ),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: AppSizes.p8,
                               ),
                             ),
                             onPressed:
@@ -280,15 +166,17 @@ class _PaneChatViewState extends ConsumerState<PaneChatView> {
                                     }
                                   }
                                 : null,
-                            icon: const Icon(Icons.tune, size: AppSizes.p16),
-                            label: const Text('모델'),
+                            child: const Text('모델'),
                           ),
                         ),
-                        TextButton.icon(
+                        TextButton(
                           style: TextButton.styleFrom(
                             minimumSize: const Size(
                               AppSizes.minTouchTarget,
                               AppSizes.minTouchTarget,
+                            ),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: AppSizes.p8,
                             ),
                           ),
                           onPressed:
@@ -297,13 +185,7 @@ class _PaneChatViewState extends ConsumerState<PaneChatView> {
                                       PaneChatInputState.ready
                               ? () => setState(() => _showCli = !_showCli)
                               : null,
-                          icon: Icon(
-                            showScreen
-                                ? Icons.chat_bubble_outline
-                                : Icons.terminal,
-                            size: AppSizes.p16,
-                          ),
-                          label: Text(
+                          child: Text(
                             !snapshot.transcript.available ||
                                     snapshot.inputState !=
                                         PaneChatInputState.ready

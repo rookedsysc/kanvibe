@@ -91,19 +91,51 @@ class _ChatMessageTileState extends State<ChatMessageTile> {
                     ),
                   ),
                 ),
+              if (!isUser && !isDisclosure)
+                Row(
+                  children: [
+                    Expanded(
+                      child: Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              label,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(color: AppColors.textSecondary),
+                            ),
+                          ),
+                          if (timeLabel != null) ...[
+                            const SizedBox(width: AppSizes.p8),
+                            _MessageTime(time: time!, label: timeLabel),
+                          ],
+                        ],
+                      ),
+                    ),
+                    _CopyMessageButton(text: message.text),
+                  ],
+                ),
               if (!isDisclosure || _expanded) ...[
                 Container(
                   width: isUser ? null : double.infinity,
                   padding: isUser
-                      ? const EdgeInsets.all(AppSizes.p16)
+                      ? const EdgeInsets.symmetric(
+                          horizontal: AppSizes.p16,
+                          vertical: AppSizes.p12,
+                        )
                       : isDisclosure
                       ? const EdgeInsets.only(left: AppSizes.p16)
                       : EdgeInsets.zero,
                   decoration: isUser
                       ? BoxDecoration(
                           color: AppColors.bgSurface,
-                          borderRadius: BorderRadius.circular(
-                            AppSizes.radiusCard,
+                          border: Border.all(color: AppColors.borderDefault),
+                          // 꼬리 쪽 모서리만 좁혀 내가 보낸 말풍선임을 드러낸다
+                          borderRadius: const BorderRadius.only(
+                            topLeft: Radius.circular(AppSizes.radiusCard),
+                            topRight: Radius.circular(AppSizes.radiusCard),
+                            bottomLeft: Radius.circular(AppSizes.radiusCard),
+                            bottomRight: Radius.circular(AppSizes.p4),
                           ),
                         )
                       : null,
@@ -125,58 +157,17 @@ class _ChatMessageTileState extends State<ChatMessageTile> {
                     ),
                   ),
                 ),
-                Row(
-                  mainAxisAlignment: isUser
-                      ? MainAxisAlignment.end
-                      : MainAxisAlignment.start,
-                  children: [
-                    if (!isUser && !isDisclosure) ...[
-                      Flexible(
-                        child: Text(
-                          label,
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                      ),
-                      const SizedBox(width: AppSizes.p8),
+                if (isUser || isDisclosure)
+                  Row(
+                    mainAxisAlignment: isUser
+                        ? MainAxisAlignment.end
+                        : MainAxisAlignment.start,
+                    children: [
+                      if (timeLabel != null)
+                        _MessageTime(time: time!, label: timeLabel),
+                      _CopyMessageButton(text: message.text),
                     ],
-                    if (timeLabel != null)
-                      Tooltip(
-                        message:
-                            '${time!.year}. ${time.month}. ${time.day}. $timeLabel',
-                        child: Text(
-                          timeLabel,
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                      ),
-                    IconButton(
-                      tooltip: '메시지 복사',
-                      icon: const Icon(Icons.copy_outlined, size: AppSizes.p16),
-                      color: AppColors.textSecondary,
-                      constraints: const BoxConstraints(
-                        minWidth: AppSizes.minTouchTarget,
-                        minHeight: AppSizes.minTouchTarget,
-                      ),
-                      onPressed: () async {
-                        try {
-                          await Clipboard.setData(
-                            ClipboardData(text: message.text),
-                          );
-                          if (!context.mounted) return;
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('메시지를 복사했습니다.')),
-                          );
-                        } on PlatformException {
-                          if (!context.mounted) return;
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('메시지를 복사하지 못했습니다. 다시 시도해 주세요.'),
-                            ),
-                          );
-                        }
-                      },
-                    ),
-                  ],
-                ),
+                  ),
               ],
             ],
           ),
@@ -184,6 +175,49 @@ class _ChatMessageTileState extends State<ChatMessageTile> {
       ),
     );
   }
+}
+
+class _CopyMessageButton extends StatelessWidget {
+  const _CopyMessageButton({required this.text});
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      tooltip: '메시지 복사',
+      icon: const Icon(Icons.copy_outlined, size: AppSizes.p16),
+      color: AppColors.textSecondary,
+      constraints: const BoxConstraints(
+        minWidth: AppSizes.minTouchTarget,
+        minHeight: AppSizes.minTouchTarget,
+      ),
+      onPressed: () async {
+        try {
+          await Clipboard.setData(ClipboardData(text: text));
+          if (!context.mounted) return;
+          ScaffoldMessenger.of(context)
+              .showSnackBar(const SnackBar(content: Text('메시지를 복사했습니다.')));
+        } on PlatformException {
+          if (!context.mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('메시지를 복사하지 못했습니다. 다시 시도해 주세요.')),
+          );
+        }
+      },
+    );
+  }
+}
+
+class _MessageTime extends StatelessWidget {
+  const _MessageTime({required this.time, required this.label});
+  final DateTime time;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Tooltip(
+    message: '${time.year}. ${time.month}. ${time.day}. $label',
+    child: Text(label, style: Theme.of(context).textTheme.bodySmall),
+  );
 }
 
 class _MessageBody extends StatelessWidget {

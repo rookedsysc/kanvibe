@@ -11,6 +11,8 @@ import '../../board/domain/board_task.dart';
 import '../../board/domain/task_status.dart';
 import '../../chat_history/presentation/chat_history_screen.dart';
 import '../../notifications/application/mobile_notification_controller.dart';
+import '../../pane_chat/application/pane_agent_watcher.dart';
+import '../../pane_chat/domain/pane_chat.dart';
 import '../../pane_chat/presentation/pane_chat_view.dart';
 import '../../task_create/domain/session_type.dart';
 import '../../task_create/presentation/create_task_screen.dart';
@@ -38,7 +40,6 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
   String? _selectedPaneId;
   final _chatModePaneIds = <String>{};
   final _chatPaneIds = <String>{};
-  final _chatPaneNumbers = <String, int>{};
 
   /// 화면이 들고 있는 태스크. 상태를 옮기면 보드를 다시 받기 전에 여기부터 갈아 끼운다
   late BoardTask _task = widget.task;
@@ -314,7 +315,7 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
           (
             id: 'chat-history',
             label: '대화 기록',
-            icon: Icons.chat_bubble_outline,
+            icon: Icons.history,
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute<void>(
                 builder: (_) => ChatHistoryScreen(taskId: _task.id),
@@ -454,19 +455,6 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
 
   Widget _buildSurfaces(TaskSurfaces surfaces, {required bool isCreating}) {
     final tabs = surfaces.allPanes;
-    final chatLabels = <String, String>{};
-    for (final pane in tabs) {
-      final number = _chatPaneNumbers.putIfAbsent(
-        pane.id,
-        () => _chatPaneNumbers.length + 1,
-      );
-      final name = [
-        pane.tabName.trim(),
-        pane.command.trim(),
-        'pane',
-      ].firstWhere((value) => value.isNotEmpty);
-      chatLabels[pane.id] = '$number · $name';
-    }
 
     if (tabs.isEmpty) {
       return _SurfacesUnavailable(
@@ -478,14 +466,11 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
 
     final matchingIndex = tabs.indexWhere((pane) => pane.id == _selectedPaneId);
     final selectedIndex = matchingIndex < 0 ? 0 : matchingIndex;
-    final selectedPaneId = tabs[selectedIndex].id;
-    final chatMode = _chatModePaneIds.contains(selectedPaneId);
 
     return Column(
       children: [
         _SurfaceTabBar(
           tabs: tabs,
-          chatLabels: _chatPaneIds.isNotEmpty ? chatLabels : const {},
           selectedIndex: selectedIndex,
           onSelected: (index) => setState(() {
             _selectedPaneId = tabs[index].id;
@@ -496,62 +481,13 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
               ? null
               : (tab) => _closeTab(tabs, tab),
         ),
-        Row(
-          children: [
-            Expanded(
-              child: Semantics(
-                identifier: 'pane-terminal-mode',
-                selected: !chatMode,
-                child: TextButton.icon(
-                  onPressed: () => _setPaneChatMode(selectedPaneId, false),
-                  icon: const Icon(Icons.terminal, size: AppSizes.p16),
-                  label: const Text('터미널'),
-                  style: TextButton.styleFrom(
-                    foregroundColor: !chatMode
-                        ? AppColors.brandPrimary
-                        : AppColors.textSecondary,
-                  ),
-                ),
-              ),
-            ),
-            Expanded(
-              child: Semantics(
-                identifier: 'pane-chat-mode',
-                selected: chatMode,
-                child: TextButton.icon(
-                  onPressed: () => _setPaneChatMode(selectedPaneId, true),
-                  icon: const Icon(
-                    Icons.chat_bubble_outline,
-                    size: AppSizes.p16,
-                  ),
-                  label: const Text('채팅'),
-                  style: TextButton.styleFrom(
-                    foregroundColor: chatMode
-                        ? AppColors.brandPrimary
-                        : AppColors.textSecondary,
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-        Expanded(
-          child: _buildSelectedSurface(
-            tabs[selectedIndex],
-            surfaces,
-            chatLabels,
-          ),
-        ),
+        Expanded(child: _buildSelectedSurface(tabs[selectedIndex], surfaces)),
       ],
     );
   }
 
   /// 세션 종류가 바뀌면 pane id가 같더라도 다른 세션이므로 pane 화면을 새로 만들어 스트림을 다시 연다
-  Widget _buildSelectedSurface(
-    MirrorPane pane,
-    TaskSurfaces surfaces,
-    Map<String, String> chatLabels,
-  ) {
+  Widget _buildSelectedSurface(MirrorPane pane, TaskSurfaces surfaces) {
     final routeActive = ModalRoute.isCurrentOf(context) ?? true;
     final chatMode = _chatModePaneIds.contains(pane.id);
     return KeyedSubtree(
@@ -587,7 +523,6 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
                   enabled: chatMode && chatPane.id == pane.id && routeActive,
                   child: PaneChatView(
                     target: (taskId: _task.id, paneId: chatPane.id),
-                    paneLabel: chatLabels[chatPane.id],
                     isActive: chatMode && chatPane.id == pane.id && routeActive,
                     onReturnToTerminal: () =>
                         _setPaneChatMode(chatPane.id, false),
@@ -595,7 +530,58 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
                 ),
               ),
             ),
+          Positioned(
+            top: AppSizes.p12,
+            right: AppSizes.p12,
+            child: _PaneChatToggle(
+              target: (taskId: _task.id, paneId: pane.id),
+              isChatMode: chatMode,
+              onPressed: _toggleSelectedPaneChat,
+            ),
+          ),
         ],
+      ),
+    );
+  }
+}
+
+/// 터미널 위에 떠서 선택한 pane을 채팅으로 볼지 정한다. 켜짐과 꺼짐은 테두리 색으로만 구분한다
+class _PaneChatToggle extends ConsumerWidget {
+  const _PaneChatToggle({
+    required this.target,
+    required this.isChatMode,
+    required this.onPressed,
+  });
+
+  final PaneChatTarget target;
+  final bool isChatMode;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    // 채팅을 보는 동안에는 채팅 화면이 같은 조회를 하므로 따로 확인하지 않는다
+    final hasAgent =
+        !isChatMode && ref.watch(paneAgentProvider(target)) != null;
+    if (!isChatMode && !hasAgent) return const SizedBox.shrink();
+    return Semantics(
+      identifier: 'pane-chat-toggle',
+      toggled: isChatMode,
+      child: OutlinedButton.icon(
+        onPressed: onPressed,
+        icon: const Icon(Icons.forum_outlined, size: AppSizes.p16),
+        label: const Text('채팅'),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: AppColors.textPrimary,
+          backgroundColor: AppColors.buttonNeutral,
+          minimumSize: const Size(0, AppSizes.minTouchTarget),
+          padding: const EdgeInsets.symmetric(horizontal: AppSizes.p12),
+          side: BorderSide(
+            color: isChatMode ? AppColors.brandPrimary : AppColors.borderStrong,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppSizes.radiusCard),
+          ),
+        ),
       ),
     );
   }
@@ -604,7 +590,6 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
 class _SurfaceTabBar extends StatelessWidget {
   const _SurfaceTabBar({
     required this.tabs,
-    required this.chatLabels,
     required this.selectedIndex,
     required this.onSelected,
     required this.onCreate,
@@ -612,7 +597,6 @@ class _SurfaceTabBar extends StatelessWidget {
   });
 
   final List<MirrorPane> tabs;
-  final Map<String, String> chatLabels;
   final int selectedIndex;
   final ValueChanged<int> onSelected;
   final VoidCallback? onCreate;
@@ -635,7 +619,6 @@ class _SurfaceTabBar extends StatelessWidget {
               itemCount: tabs.length,
               itemBuilder: (context, index) => _SurfaceTabButton(
                 tab: tabs[index],
-                chatLabel: chatLabels[tabs[index].id],
                 isSelected: index == selectedIndex,
                 onTap: () => onSelected(index),
                 onClose: onClose == null ? null : () => onClose!(tabs[index]),
@@ -664,14 +647,12 @@ class _SurfaceTabBar extends StatelessWidget {
 class _SurfaceTabButton extends StatelessWidget {
   const _SurfaceTabButton({
     required this.tab,
-    this.chatLabel,
     required this.isSelected,
     required this.onTap,
     required this.onClose,
   });
 
   final MirrorPane tab;
-  final String? chatLabel;
   final bool isSelected;
   final VoidCallback onTap;
 
@@ -680,12 +661,16 @@ class _SurfaceTabButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final name = [
+      tab.command.trim(),
+      tab.tabName.trim(),
+      'pane',
+    ].firstWhere((value) => value.isNotEmpty);
     return Semantics(
       identifier: 'terminal-tab-${tab.id}',
       selected: isSelected,
       button: true,
-      label:
-          '${chatLabel ?? (tab.command.isEmpty ? tab.id : tab.command)} ${tab.id} 탭',
+      label: '$name ${tab.id} 탭',
       child: InkWell(
         onTap: onTap,
         child: Container(
@@ -704,45 +689,21 @@ class _SurfaceTabButton extends StatelessWidget {
           child: Row(
             children: [
               Expanded(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Flexible(
-                      child: Tooltip(
-                        message: tab.id,
-                        child: Text(
-                          chatLabel ??
-                              (tab.command.isEmpty ? tab.id : tab.command),
-                          overflow: TextOverflow.ellipsis,
-                          style: monoStyle(
-                            fontSize: 13,
-                            color: isSelected
-                                ? AppColors.textPrimary
-                                : chatLabel == null
-                                ? AppColors.textMuted
-                                : AppColors.textSecondary,
-                            fontWeight: isSelected
-                                ? FontWeight.w700
-                                : FontWeight.w400,
-                          ),
-                        ),
-                      ),
+                child: Tooltip(
+                  message: tab.id,
+                  child: Text(
+                    name,
+                    overflow: TextOverflow.ellipsis,
+                    style: monoStyle(
+                      fontSize: 13,
+                      color: isSelected
+                          ? AppColors.textPrimary
+                          : AppColors.textMuted,
+                      fontWeight: isSelected
+                          ? FontWeight.w700
+                          : FontWeight.w400,
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      chatLabel == null
-                          ? '${tab.tabName} ${tab.id}'
-                          : tab.id.length > 16
-                          ? '…${tab.id.substring(tab.id.length - 6)}'
-                          : tab.id,
-                      overflow: TextOverflow.ellipsis,
-                      style: chatLabel == null
-                          ? Theme.of(context).textTheme.labelSmall
-                          : Theme.of(context).textTheme.labelSmall
-                                ?.copyWith(color: AppColors.textSecondary),
-                    ),
-                  ],
+                  ),
                 ),
               ),
               Semantics(

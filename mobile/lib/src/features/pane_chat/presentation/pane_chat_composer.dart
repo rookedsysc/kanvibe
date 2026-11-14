@@ -214,6 +214,20 @@ class _PaneChatComposerState extends ConsumerState<PaneChatComposer> {
     return KeyEventResult.ignored;
   }
 
+  void _startFileMention() {
+    final selection = _input.selection;
+    final caret = selection.isValid ? selection.baseOffset : _input.text.length;
+    final needsSpace =
+        caret > 0 && !_input.text[caret - 1].contains(RegExp(r'\s'));
+    final mention = needsSpace ? ' @' : '@';
+    // 입력 변화를 듣는 쪽이 방금 넣은 @를 보고 파일 후보를 불러온다
+    _input.value = TextEditingValue(
+      text: _input.text.replaceRange(caret, caret, mention),
+      selection: TextSelection.collapsed(offset: caret + mention.length),
+    );
+    _focus.requestFocus();
+  }
+
   void _showSkills() {
     final selection = _input.selection;
     final caret = selection.isValid ? selection.baseOffset : _input.text.length;
@@ -357,6 +371,18 @@ class _PaneChatComposerState extends ConsumerState<PaneChatComposer> {
                         ? _showAttachments
                         : null,
                     icon: const Icon(Icons.add),
+                  ),
+                ),
+              if (widget.showPrompt &&
+                  pane?.snapshot.composer.fileMentions == true)
+                Semantics(
+                  identifier: 'pane-chat-mention',
+                  child: IconButton(
+                    tooltip: '파일 참조',
+                    onPressed: widget.isActive && pane?.canPrompt == true
+                        ? _startFileMention
+                        : null,
+                    icon: const Icon(Icons.alternate_email),
                   ),
                 ),
               if (widget.showPrompt && pane?.snapshot.composer.skills == true)

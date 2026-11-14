@@ -14,6 +14,58 @@ final paneChatProvider = AsyncNotifierProvider.autoDispose
       retry: (_, _) => null,
     );
 
+/// 보냈지만 아직 CLI 대화 기록에 나타나지 않은 메시지. 화면은 기록을 기다리지 않고 이것부터 그린다
+final paneChatPendingPromptProvider = NotifierProvider.autoDispose
+    .family<PaneChatPendingPrompt, String?, PaneChatTarget>(
+      PaneChatPendingPrompt.new,
+    );
+
+class PaneChatPendingPrompt extends Notifier<String?> {
+  PaneChatPendingPrompt(this.target);
+  final PaneChatTarget target;
+
+  /// `/clear` 같은 명령은 기록에 남지 않으므로, 기록에서 찾지 못해도 이 시간이 지나면 거둔다
+  static const _recordWaitLimit = Duration(seconds: 20);
+  Timer? _expiry;
+  int _recordedCountAtSend = 0;
+
+  @override
+  String? build() {
+    ref.onDispose(() => _expiry?.cancel());
+    return null;
+  }
+
+  void show(String text, PaneChatTranscript transcript) {
+    _expiry?.cancel();
+    _recordedCountAtSend = _countRecorded(text, transcript);
+    _expiry = Timer(_recordWaitLimit, clear);
+    state = text;
+  }
+
+  void clear() {
+    _expiry?.cancel();
+    if (ref.mounted) state = null;
+  }
+
+  /// 같은 문장을 다시 보낸 경우에도 이전 기록과 헷갈리지 않도록, 보낼 때보다 기록이 늘었는지로 판단한다
+  void retireIfRecorded(PaneChatTranscript transcript) {
+    final text = state;
+    if (text != null &&
+        _countRecorded(text, transcript) > _recordedCountAtSend) {
+      clear();
+    }
+  }
+
+  int _countRecorded(String text, PaneChatTranscript transcript) {
+    final sent = text.trim();
+    return transcript.messages
+        .where(
+          (message) => message.role == 'user' && message.text.trim() == sent,
+        )
+        .length;
+  }
+}
+
 class PaneChatState {
   const PaneChatState({
     required this.snapshot,
@@ -53,6 +105,12 @@ class PaneChatController extends AsyncNotifier<PaneChatState> {
   final PaneChatTarget target;
 
   static const _pollInterval = Duration(seconds: 2);
+
+  /// 응답이 오가는 동안에는 더 자주 확인해 새 답변이 늦게 보이지 않게 한다
+  static const _livePollInterval = Duration(milliseconds: 700);
+  static const _livePollsAfterPrompt = 20;
+  static const _livePollsAfterChange = 5;
+  int _livePollsRemaining = 0;
   Timer? _pollTimer;
   DesktopConnection? _connection;
   Object? _request;
@@ -111,7 +169,12 @@ class PaneChatController extends AsyncNotifier<PaneChatState> {
   void _schedulePoll() {
     _pollTimer?.cancel();
     if (!ref.mounted || !_active) return;
-    _pollTimer = Timer(_pollInterval, () => unawaited(refresh()));
+    final isLive = _livePollsRemaining > 0;
+    if (isLive) _livePollsRemaining--;
+    _pollTimer = Timer(
+      isLive ? _livePollInterval : _pollInterval,
+      () => unawaited(refresh()),
+    );
   }
 
   void setActive(bool active) {
@@ -173,6 +236,21 @@ class PaneChatController extends AsyncNotifier<PaneChatState> {
       }
       final sameTarget = snapshot.targetToken == previous.snapshot.targetToken;
       if (!sameTarget) _lastAction = null;
+      final pendingPrompt = ref.read(
+        paneChatPendingPromptProvider(target).notifier,
+      );
+      if (sameTarget) {
+        pendingPrompt.retireIfRecorded(snapshot.transcript);
+      } else {
+        pendingPrompt.clear();
+      }
+      if (_hasNewTranscript(
+            previous.snapshot.transcript,
+            snapshot.transcript,
+          ) &&
+          _livePollsRemaining < _livePollsAfterChange) {
+        _livePollsRemaining = _livePollsAfterChange;
+      }
       state = AsyncData(
         PaneChatState(
           snapshot: snapshot,
@@ -215,6 +293,12 @@ class PaneChatController extends AsyncNotifier<PaneChatState> {
       if (identical(_readCompletion, completion)) _readCompletion = null;
       if (!completion.isCompleted) completion.complete();
     }
+  }
+
+  bool _hasNewTranscript(PaneChatTranscript before, PaneChatTranscript after) {
+    if (before.messages.length != after.messages.length) return true;
+    if (after.messages.isEmpty) return false;
+    return before.messages.first.text != after.messages.first.text;
   }
 
   Future<bool> send(
@@ -377,6 +461,12 @@ class PaneChatController extends AsyncNotifier<PaneChatState> {
         isActing: true,
       ),
     );
+    final pendingPrompt = ref.read(
+      paneChatPendingPromptProvider(target).notifier,
+    );
+    if (action == PaneChatAction.prompt && text != null && text.isNotEmpty) {
+      pendingPrompt.show(text, previous.snapshot.transcript);
+    }
     var accepted = false;
     try {
       await ref
@@ -394,6 +484,9 @@ class PaneChatController extends AsyncNotifier<PaneChatState> {
       if (!ref.mounted || generation != _generation) return false;
       accepted = true;
       _lastAction = null;
+      if (action == PaneChatAction.prompt) {
+        _livePollsRemaining = _livePollsAfterPrompt;
+      }
       state = AsyncData(
         PaneChatState(
           snapshot: previous.snapshot,
@@ -405,6 +498,7 @@ class PaneChatController extends AsyncNotifier<PaneChatState> {
         await _forgetUnauthorized(connection, error);
       }
       if (!ref.mounted || generation != _generation) return false;
+      if (action == PaneChatAction.prompt) pendingPrompt.clear();
       final targetChanged =
           error is DesktopRequestException && error.statusCode == 409;
       state = AsyncData(

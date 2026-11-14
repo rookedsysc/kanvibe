@@ -100,7 +100,7 @@ class PaneChatComposerController extends Notifier<PaneChatComposerState> {
   String get ownerKey =>
       '${target.connectionId}:${target.taskId}:${target.paneId}:${target.targetToken}';
   Timer? _suggestionTimer;
-  int _suggestionEpoch = 0, _localId = 0, _revision = 0;
+  int _suggestionEpoch = 0, _localId = 0;
   bool _active = false;
   late _ComposerLifetime _lifetime;
   String? _requestId, _requestSignature;
@@ -199,7 +199,6 @@ class PaneChatComposerController extends Notifier<PaneChatComposerState> {
 
   void edit(String text) {
     if (text != state.text) {
-      _revision++;
       _update(text: text);
     }
   }
@@ -275,7 +274,6 @@ class PaneChatComposerController extends Notifier<PaneChatComposerState> {
               PaneChatDraftAttachment(localId: '${++_localId}', file: file),
         )
         .toList();
-    _revision++;
     _update(attachments: [...state.attachments, ...added]);
     for (final item in added) {
       unawaited(upload(item.localId));
@@ -348,7 +346,6 @@ class PaneChatComposerController extends Notifier<PaneChatComposerState> {
         .where((a) => a.localId == localId)
         .firstOrNull;
     if (item == null || state.isSending) return;
-    _revision++;
     _update(
       attachments: state.attachments
           .where((a) => a.localId != localId)
@@ -381,7 +378,6 @@ class PaneChatComposerController extends Notifier<PaneChatComposerState> {
     final text = state.text;
     final sent = state.attachments;
     final ids = sent.map((a) => a.id!).toList();
-    final revision = _revision;
     final signature = '$text\u0000${ids.join(',')}';
     if (_requestSignature != signature) {
       _requestSignature = signature;
@@ -392,7 +388,8 @@ class PaneChatComposerController extends Notifier<PaneChatComposerState> {
       ).join();
     }
     lifetime.pendingSendIds.addAll(ids);
-    _update(sending: true);
+    // 보낸 문장은 대화 영역에 바로 나타나므로 응답을 기다리지 않고 입력창을 비운다
+    _update(text: '', sending: true);
     final accepted = await ref
         .read(
           paneChatProvider((taskId: target.taskId, paneId: target.paneId))
@@ -408,7 +405,6 @@ class PaneChatComposerController extends Notifier<PaneChatComposerState> {
       lifetime.stagedIds.removeAll(ids);
       final sentIds = sent.map((a) => a.localId).toSet();
       _update(
-        text: revision == _revision ? '' : state.text,
         attachments: state.attachments
             .where((a) => !sentIds.contains(a.localId))
             .toList(),
@@ -418,7 +414,9 @@ class PaneChatComposerController extends Notifier<PaneChatComposerState> {
       _requestId = null;
       _requestSignature = null;
     } else {
+      // 전송하지 못한 문장은 그 사이 새로 쓴 내용 앞에 되돌려 놓는다
       _update(
+        text: state.text.isEmpty ? text : '$text\n${state.text}',
         sending: false,
         error: _pane?.actionError == null
             ? '전송하지 못했습니다. 내용을 유지했습니다. 다시 시도해 주세요.'
