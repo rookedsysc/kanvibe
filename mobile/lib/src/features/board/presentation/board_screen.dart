@@ -864,6 +864,7 @@ class _TaskCard extends ConsumerWidget {
         (progress) => progress[task.id] is TaskDeletionRunning,
       ),
     );
+    final hasFooter = task.branchName != null || task.prUrl != null;
     return Material(
       color: context.colors.bgSurface,
       borderRadius: BorderRadius.circular(AppSizes.radiusLg),
@@ -874,7 +875,12 @@ class _TaskCard extends ConsumerWidget {
         onLongPress: isDeleting ? null : () => _deleteTask(context, ref),
         child: Container(
           constraints: const BoxConstraints(minHeight: AppSizes.minTouchTarget),
-          padding: const EdgeInsets.all(AppSizes.p12),
+          padding: EdgeInsets.fromLTRB(
+            AppSizes.p12,
+            AppSizes.p12,
+            AppSizes.p12,
+            hasFooter ? AppSizes.p4 : AppSizes.p12,
+          ),
           decoration: BoxDecoration(
             border: Border.all(
               width: isFindMatch || isSelected ? 2 : 1,
@@ -933,28 +939,6 @@ class _TaskCard extends ConsumerWidget {
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                 ),
-              if (task.branchName != null)
-                TaskDiffSummary(taskId: task.id, compact: true),
-              RunningAiBadge(
-                worktreePath: task.worktreePath,
-                onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => LiveAiSessionsScreen(
-                      taskId: task.id,
-                      onSelectWindow: (windowId) {
-                        Navigator.of(context).pushReplacement(
-                          MaterialPageRoute<void>(
-                            builder: (_) => TaskDetailScreen(
-                              task: task,
-                              initialWindowId: windowId,
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ),
-              ),
               const SizedBox(height: AppSizes.p8),
               Wrap(
                 spacing: AppSizes.p4,
@@ -1008,22 +992,57 @@ class _TaskCard extends ConsumerWidget {
                       color: const Color(0xFF9BE6B4),
                       background: const Color(0x2965D08A),
                     ),
-                  if (task.prUrl != null)
-                    Semantics(
-                      identifier: 'task-pr-${task.id}',
-                      child: TextButton(
-                        onPressed: () => _openPr(context),
-                        style: TextButton.styleFrom(
-                          minimumSize: const Size(48, 48),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: AppSizes.p8,
-                          ),
-                        ),
-                        child: const Text('PR'),
-                      ),
-                    ),
                 ],
               ),
+              RunningAiBadge(
+                worktreePath: task.worktreePath,
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => LiveAiSessionsScreen(
+                      taskId: task.id,
+                      onSelectWindow: (windowId) {
+                        Navigator.of(context).pushReplacement(
+                          MaterialPageRoute<void>(
+                            builder: (_) => TaskDetailScreen(
+                              task: task,
+                              initialWindowId: windowId,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              ),
+              if (hasFooter)
+                Row(
+                  children: [
+                    if (task.branchName != null)
+                      Expanded(
+                        child: TaskDiffSummary(taskId: task.id, compact: true),
+                      )
+                    else
+                      const Spacer(),
+                    if (task.prUrl != null)
+                      Semantics(
+                        identifier: 'task-pr-${task.id}',
+                        child: TextButton(
+                          onPressed: () => _openPr(context),
+                          style: TextButton.styleFrom(
+                            minimumSize: const Size(
+                              AppSizes.minTouchTarget,
+                              AppSizes.p32,
+                            ),
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: AppSizes.p8,
+                            ),
+                          ),
+                          child: const Text('PR'),
+                        ),
+                      ),
+                  ],
+                ),
               if (isDeleting) const _TaskDeletingIndicator(),
             ],
           ),

@@ -31,6 +31,68 @@ Map<String, dynamic> boardWith({
 };
 
 void main() {
+  for (final size in [const Size(320, 844), phoneSize, tabletSize]) {
+    testWidgets('변경량이 있는 카드의 배지는 제목 옆에, PR은 오른쪽 아래에 둔다: $size', (tester) async {
+      await tester.binding.setSurfaceSize(size);
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final client = FakeDesktopClient(
+        board: {
+          'projects': [],
+          'tasks': {
+            'todo': [
+              {
+                'id': 'layout-task',
+                'title': '레이아웃 확인',
+                'status': 'todo',
+                'agentType': 'claude',
+                'branchName': 'feat/long-branch-name-for-wrapping',
+                'prUrl': 'https://github.com/example/repo/pull/1',
+              },
+            ],
+            'progress': [],
+            'pending': [],
+            'review': [],
+            'done': [],
+          },
+        },
+      );
+      client.onJsonRequest = (method, segments, query, body) async => {
+        if (segments.join('/') == 'diff-stats')
+          'stats': {
+            'layout-task': {'fileCount': 3, 'additions': 12, 'deletions': 4},
+          },
+      };
+      await tester.pumpWidget(
+        wrapWithApp(const BoardScreen(), client: client, size: size),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('3 파일  +12 −4'), findsOneWidget);
+      final title = tester.getRect(find.text('레이아웃 확인'));
+      final badge = tester.getRect(find.text('claude'));
+      final branch = tester.getRect(
+        find.text('feat/long-branch-name-for-wrapping'),
+      );
+      final pr = tester.getRect(find.text('PR'));
+      final card = tester.getRect(
+        find
+            .ancestor(of: find.text('레이아웃 확인'), matching: find.byType(InkWell))
+            .first,
+      );
+      expect(badge.top - title.bottom, lessThanOrEqualTo(16));
+      expect(pr.top, greaterThanOrEqualTo(branch.bottom));
+      expect(card.right - pr.right, lessThanOrEqualTo(32));
+      final prButton = find.ancestor(
+        of: find.text('PR'),
+        matching: find.byType(TextButton),
+      );
+      expect(tester.getSize(prButton).height, 32);
+      expect(card.bottom - pr.bottom, lessThanOrEqualTo(16));
+      final summary = tester.getRect(find.text('3 파일  +12 −4'));
+      expect(summary.left - card.left, lessThanOrEqualTo(16));
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   for (final size in [phoneSize, tabletSize]) {
     testWidgets('태스크별 미읽음 알림 수를 표시한다: $size', (tester) async {
       await tester.binding.setSurfaceSize(size);
