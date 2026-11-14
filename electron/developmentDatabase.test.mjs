@@ -76,7 +76,7 @@ describe("development application dataset", () => {
     const beforeWal = fs.readFileSync(`${sourcePath}-wal`);
     expect(beforeWal.length).toBeGreaterThan(0);
 
-    await prepare();
+    await prepare(createApp({ switches: { "data-source": "application" } }));
 
     const target = openDatabase(path.join(targetDirectory, "kanvibe.db"));
     const tables = source.prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name").all();
@@ -93,15 +93,15 @@ describe("development application dataset", () => {
     expect(fs.readFileSync(`${sourcePath}-wal`)).toEqual(beforeWal);
   });
 
-  it("refreshes an existing development database on every default launch", async () => {
+  it("refreshes an existing development database when application mode is requested", async () => {
     const source = sourceDatabase();
-    await prepare();
+    await prepare(createApp({ switches: { "data-source": "application" } }));
     const target = openDatabase(path.join(targetDirectory, "kanvibe.db"));
     target.exec("UPDATE kanban_tasks SET title = 'Previous development edit'");
     target.close();
     source.exec("UPDATE kanban_tasks SET title = 'Latest application task'");
 
-    await prepare();
+    await prepare(createApp({ switches: { "data-source": "application" } }));
 
     expect(openDatabase(path.join(targetDirectory, "kanvibe.db"))
       .prepare("SELECT title FROM kanban_tasks WHERE id = 'task'").get().title).toBe("Latest application task");
@@ -111,7 +111,7 @@ describe("development application dataset", () => {
     const source = sourceDatabase();
     source.exec("INSERT INTO app_settings (id, key, value) VALUES ('client', 'hook_client_id', 'application-client')");
 
-    await prepare();
+    await prepare(createApp({ switches: { "data-source": "application" } }));
 
     const target = openDatabase(path.join(targetDirectory, "kanvibe.db"));
     expect(target.prepare("SELECT value FROM app_settings WHERE key = 'hook_client_id'").get()).toBeUndefined();
@@ -122,13 +122,13 @@ describe("development application dataset", () => {
   it("keeps the development hook client ID across database refreshes", async () => {
     const source = sourceDatabase();
     source.exec("INSERT INTO app_settings (id, key, value) VALUES ('client', 'hook_client_id', 'application-client')");
-    await prepare();
+    await prepare(createApp({ switches: { "data-source": "application" } }));
     const targetPath = path.join(targetDirectory, "kanvibe.db");
     const previousTarget = openDatabase(targetPath);
     previousTarget.exec("INSERT INTO app_settings (id, key, value) VALUES ('dev-client', 'hook_client_id', 'development-client')");
     previousTarget.close();
 
-    await prepare();
+    await prepare(createApp({ switches: { "data-source": "application" } }));
 
     expect(openDatabase(targetPath).prepare("SELECT value FROM app_settings WHERE key = 'hook_client_id'").all())
       .toEqual([{ value: "development-client" }]);
@@ -141,20 +141,46 @@ describe("development application dataset", () => {
     // 이 수정 전의 복사본처럼 설치 앱의 ID가 그대로 들어 있는 dev DB를 만든다.
     await source.backup(targetPath);
 
-    await prepare();
+    await prepare(createApp({ switches: { "data-source": "application" } }));
 
     expect(openDatabase(targetPath).prepare("SELECT value FROM app_settings WHERE key = 'hook_client_id'").get())
       .toBeUndefined();
   });
 
-  it("preserves development edits with --data-source=existing", async () => {
+  it.each(["", "existing"])("preserves development edits across restarts in %j mode", async (mode) => {
     sourceDatabase();
     const target = openDatabase(path.join(targetDirectory, "kanvibe.db"));
     target.exec("CREATE TABLE dev_only (value TEXT); INSERT INTO dev_only VALUES ('keep')");
 
-    await prepare(createApp({ switches: { "data-source": "existing" } }));
+    target.close();
+    const switches = mode ? { "data-source": mode } : {};
 
-    expect(target.prepare("SELECT value FROM dev_only").get().value).toBe("keep");
+    await prepare(createApp({ switches }));
+    await prepare(createApp({ switches }));
+
+    expect(openDatabase(path.join(targetDirectory, "kanvibe.db"))
+      .prepare("SELECT value FROM dev_only").all()).toEqual([{ value: "keep" }]);
+  });
+
+  it.each([false, true])("does not import application data into a new development database by default (custom source: %s)", async (hasCustomSource) => {
+    sourceDatabase();
+    const switches = hasCustomSource ? { "application-data-dir": sourceDirectory } : {};
+
+    await prepare(createApp({ switches }));
+
+    expect(fs.existsSync(path.join(targetDirectory, "kanvibe.db"))).toBe(false);
+  });
+
+  it("keeps development data by default even when the application database is corrupt", async () => {
+    fs.writeFileSync(path.join(sourceDirectory, "kanvibe.db"), "corrupt source");
+    const target = openDatabase(path.join(targetDirectory, "kanvibe.db"));
+    target.exec("CREATE TABLE retained (value TEXT); INSERT INTO retained VALUES ('keep')");
+    target.close();
+
+    await prepare();
+
+    expect(openDatabase(path.join(targetDirectory, "kanvibe.db"))
+      .prepare("SELECT value FROM retained").all()).toEqual([{ value: "keep" }]);
   });
 
   it("keeps an explicit app-data fixture by default", async () => {
@@ -189,13 +215,13 @@ describe("development application dataset", () => {
   it("warns and retains development data when no application database is installed", async () => {
     const targetPath = path.join(targetDirectory, "kanvibe.db");
     fs.writeFileSync(targetPath, "existing fixture");
-    await prepare();
+    await prepare(createApp({ switches: { "data-source": "application" } }));
     expect(console.warn).toHaveBeenCalledWith(expect.stringContaining("Application database not found"));
     expect(fs.readFileSync(targetPath, "utf8")).toBe("existing fixture");
   });
 
   it("rejects a missing explicitly requested source", async () => {
-    await expect(prepare(createApp({ switches: { "application-data-dir": path.join(directory, "missing") } })))
+    await expect(prepare(createApp({ switches: { "data-source": "application", "application-data-dir": path.join(directory, "missing") } })))
       .rejects.toThrow("Application database not found");
     expect(fs.existsSync(path.join(targetDirectory, "kanvibe.db"))).toBe(false);
   });
@@ -204,7 +230,7 @@ describe("development application dataset", () => {
     fs.writeFileSync(path.join(sourceDirectory, "kanvibe.db"), "corrupt source");
     const target = openDatabase(path.join(targetDirectory, "kanvibe.db"));
     target.exec("CREATE TABLE retained (value TEXT); INSERT INTO retained VALUES ('keep')");
-    await expect(prepare()).rejects.toThrow();
+    await expect(prepare(createApp({ switches: { "data-source": "application" } }))).rejects.toThrow();
     expect(target.prepare("SELECT value FROM retained").get().value).toBe("keep");
   });
 

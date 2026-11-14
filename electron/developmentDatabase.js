@@ -1,7 +1,6 @@
 const { randomUUID } = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
-const { getRequestedAppDataDirectory } = require("./runtimeEnvironment");
 
 function assertSeparateDatabase(sourceDirectory, targetDirectory) {
   fs.mkdirSync(targetDirectory, { recursive: true });
@@ -27,7 +26,7 @@ async function prepareDevelopmentDatabase(app, { isDevelopment, env = process.en
   }
 
   const requestedMode = app.commandLine.getSwitchValue("data-source");
-  const mode = requestedMode || (getRequestedAppDataDirectory(env) ? "existing" : "application");
+  const mode = requestedMode || "existing";
   if (mode !== "application" && mode !== "existing") {
     throw new Error("--data-source must be application or existing");
   }
