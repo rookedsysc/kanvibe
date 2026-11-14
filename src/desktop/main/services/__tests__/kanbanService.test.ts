@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { exec as execShell } from "node:child_process";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -1860,6 +1860,158 @@ describe("kanbanService.createTask", () => {
     // When / Then
     await expect(fetchAndSavePrUrl("task-5b")).rejects.toThrow("HTTP 401: Bad credentials");
     expect(mocks.taskRepo.update).not.toHaveBeenCalled();
+  });
+
+  describe("PR URL 조회의 중복과 반복 억제", () => {
+    const AUTH_FAILURE = "dev-vm 원격 명령 실패: Try authenticating with:  gh auth login";
+
+    function stubRemoteTaskWithoutPullRequest(taskId = "task-auto") {
+      mocks.taskRepo.findOneBy.mockImplementation(async ({ id }: { id: string }) => ({
+        id,
+        projectId: "project-remote",
+        branchName: `feat/${id}`,
+        prUrl: null,
+        sshHost: null,
+      }));
+      mocks.projectRepo.findOneBy.mockResolvedValue({
+        id: "project-remote",
+        repoPath: "/remote/repo",
+        defaultBranch: "main",
+        sshHost: "dev-vm",
+      });
+      return taskId;
+    }
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("여러 창이 같은 task의 PR을 동시에 물으면 gh 조회 하나를 함께 쓴다", async () => {
+      // Given
+      const taskId = stubRemoteTaskWithoutPullRequest();
+      let finishGitHubCli!: (output: string) => void;
+      mocks.execGit.mockImplementation(() => new Promise<string>((resolve) => { finishGitHubCli = resolve; }));
+      const { fetchAndSavePrUrl } = await import("@/desktop/main/services/kanbanService");
+
+      // When
+      const firstWindow = fetchAndSavePrUrl(taskId);
+      const secondWindow = fetchAndSavePrUrl(taskId);
+      await vi.waitFor(() => expect(mocks.execGit).toHaveBeenCalled());
+      finishGitHubCli("https://github.com/kanvibe/kanvibe/pull/7\n");
+
+      // Then
+      expect(await Promise.all([firstWindow, secondWindow])).toEqual([
+        "https://github.com/kanvibe/kanvibe/pull/7",
+        "https://github.com/kanvibe/kanvibe/pull/7",
+      ]);
+      expect(mocks.execGit).toHaveBeenCalledTimes(1);
+      expect(mocks.taskRepo.update).toHaveBeenCalledTimes(1);
+    });
+
+    it("보드 갱신마다 오는 자동 조회는 task당 30초에 한 번만 gh를 부르고, 직접 요청한 조회는 간격과 무관하게 실행한다", async () => {
+      // Given
+      vi.useFakeTimers();
+      const taskId = stubRemoteTaskWithoutPullRequest();
+      mocks.execGit.mockResolvedValue("");
+      const { fetchAndSavePrUrl } = await import("@/desktop/main/services/kanbanService");
+
+      // When: PR이 없는 task에 보드 갱신이 다섯 번 이어진다
+      for (let boardUpdate = 0; boardUpdate < 5; boardUpdate += 1) {
+        expect(await fetchAndSavePrUrl(taskId, { isAutomatic: true })).toBeNull();
+      }
+
+      // Then
+      expect(mocks.execGit).toHaveBeenCalledTimes(1);
+
+      expect(await fetchAndSavePrUrl(taskId)).toBeNull();
+      expect(mocks.execGit).toHaveBeenCalledTimes(2);
+
+      expect(await fetchAndSavePrUrl("task-other", { isAutomatic: true })).toBeNull();
+      expect(mocks.execGit).toHaveBeenCalledTimes(3);
+
+      vi.advanceTimersByTime(30_000);
+      expect(await fetchAndSavePrUrl(taskId, { isAutomatic: true })).toBeNull();
+      expect(mocks.execGit).toHaveBeenCalledTimes(4);
+    });
+
+    it("gh 인증이 실패한 저장소에는 자동 조회를 되풀이하지 않고, 직접 요청은 다시 시도해 성공하면 기억을 지운다", async () => {
+      // Given
+      vi.useFakeTimers();
+      const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      stubRemoteTaskWithoutPullRequest();
+      mocks.execGit.mockRejectedValue(new Error(AUTH_FAILURE));
+      const { fetchAndSavePrUrl } = await import("@/desktop/main/services/kanbanService");
+
+      // When: 첫 자동 조회가 인증 실패를 만난다
+      await expect(fetchAndSavePrUrl("task-a", { isAutomatic: true })).rejects.toThrow("gh auth login");
+
+      // Then: 같은 저장소의 다른 task와 간격이 지난 같은 task 모두 gh를 다시 부르지 않고 오류도 되풀이하지 않는다
+      expect(await fetchAndSavePrUrl("task-b", { isAutomatic: true })).toBeNull();
+      vi.advanceTimersByTime(30_000);
+      expect(await fetchAndSavePrUrl("task-a", { isAutomatic: true })).toBeNull();
+      expect(mocks.execGit).toHaveBeenCalledTimes(1);
+      expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
+
+      // 사용자가 직접 누른 조회는 기억과 무관하게 실행한다
+      await expect(fetchAndSavePrUrl("task-a")).rejects.toThrow("gh auth login");
+      expect(mocks.execGit).toHaveBeenCalledTimes(2);
+
+      // 인증을 고친 뒤 직접 요청이 성공하면 자동 조회도 바로 다시 돈다
+      mocks.execGit.mockResolvedValue("");
+      expect(await fetchAndSavePrUrl("task-a")).toBeNull();
+      vi.advanceTimersByTime(30_000);
+      expect(await fetchAndSavePrUrl("task-b", { isAutomatic: true })).toBeNull();
+      expect(mocks.execGit).toHaveBeenCalledTimes(4);
+    });
+
+    it("기억한 gh 인증 실패는 5분이 지나면 자동 조회가 한 번 다시 확인한다", async () => {
+      // Given
+      vi.useFakeTimers();
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      stubRemoteTaskWithoutPullRequest();
+      mocks.execGit.mockRejectedValue(new Error(AUTH_FAILURE));
+      const { fetchAndSavePrUrl } = await import("@/desktop/main/services/kanbanService");
+      await expect(fetchAndSavePrUrl("task-a", { isAutomatic: true })).rejects.toThrow("gh auth login");
+
+      // When
+      vi.advanceTimersByTime(5 * 60_000);
+
+      // Then
+      await expect(fetchAndSavePrUrl("task-a", { isAutomatic: true })).rejects.toThrow("gh auth login");
+      expect(mocks.execGit).toHaveBeenCalledTimes(2);
+    });
+
+    it("백그라운드 PR 동기화는 인증이 깨진 저장소에서 첫 task만 gh를 부르고 나머지 task는 같은 실패를 보고한다", async () => {
+      // Given
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      mocks.taskRepo.find.mockResolvedValue(["task-a", "task-b", "task-c"].map((id) => ({
+        id,
+        title: id,
+        projectId: "project-remote",
+        branchName: `feat/${id}`,
+        worktreePath: `/remote/repo__worktrees/${id}`,
+        sshHost: "dev-vm",
+        prUrl: null,
+        status: "progress",
+      })));
+      mocks.projectRepo.findOneBy.mockResolvedValue({
+        id: "project-remote",
+        repoPath: "/remote/repo",
+        defaultBranch: "main",
+        sshHost: "dev-vm",
+      });
+      mocks.execGit.mockRejectedValue(new Error(AUTH_FAILURE));
+      const { syncActiveTaskPullRequests } = await import("@/desktop/main/services/kanbanService");
+
+      // When: 동기화 주기가 두 번 돈다
+      const firstCycle = await syncActiveTaskPullRequests(new Set());
+      const secondCycle = await syncActiveTaskPullRequests(new Set());
+
+      // Then: 실패 보고는 task마다 그대로 남고, 원격 gh 호출은 한 번뿐이다
+      expect(firstCycle.failures?.map((failure) => failure.taskId)).toEqual(["task-a", "task-b", "task-c"]);
+      expect(secondCycle.failures?.map((failure) => failure.reason)).toEqual([AUTH_FAILURE, AUTH_FAILURE, AUTH_FAILURE]);
+      expect(mocks.execGit).toHaveBeenCalledTimes(1);
+    });
   });
 
   it("원격 프로젝트는 프로젝트 repo 경로와 SSH를 사용해 gh CLI로 PR URL을 조회한다", async () => {

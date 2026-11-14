@@ -3,7 +3,7 @@ import { stripVTControlCharacters } from "node:util";
 import { SessionType, type KanbanTask } from "@/entities/KanbanTask";
 import { execGit } from "@/lib/gitOperations";
 import { listLocalTerminalTabs, readLocalTerminalTabSnapshot, readTaskTerminalAttachment, getHerdrTaskActivePaneId, getHerdrTaskSurfaceBounds } from "@/lib/terminal";
-import { listHerdrMirrorPanes, runHerdrCommand } from "@/lib/herdr";
+import { listHerdrTaskPaneTabIds, runHerdrCommand } from "@/lib/herdr";
 import { buildTmuxCapturePaneCommand, buildTmuxListMirrorPanesCommand, buildZellijDumpPaneCommand, buildZellijListMirrorPanesCommand, buildZellijReadViewportCommand, parseTmuxMirrorPaneList, parseZellijMirrorPaneList } from "@/lib/paneMirror";
 import { quoteForPosixShell } from "@/lib/worktree";
 import type { PaneChatBounds, PaneChatLayout, PaneChatLayoutPane } from "@/desktop/shared/paneChat";
@@ -67,10 +67,11 @@ export async function readPaneChatSurface(taskId: string, requestedPaneId?: stri
   }
 
   if (task.sessionType === SessionType.HERDR) {
-    const panes = await listHerdrMirrorPanes(task.sessionName, task.sshHost);
     const paneId = requestedPaneId ?? getHerdrTaskActivePaneId(taskId);
     if (!paneId) return null;
-    if (!panes.some((entry) => entry.id === paneId)) return null;
+    // 채팅 폴링마다 도는 확인이라 pane이 있는지만 읽는다.
+    const taskPanes = await listHerdrTaskPaneTabIds(task.sessionName, task.sshHost);
+    if (!taskPanes.some((entry) => entry.paneId === paneId)) return null;
     const { process_info: info } = await runHerdrCommand<{ process_info: { shell_pid?: number; foreground_processes?: { pid?: number }[] } }>(task.sessionName, ["pane", "process-info", "--pane", paneId], task.sshHost);
     const pid = info.shell_pid ?? info.foreground_processes?.[0]?.pid;
     const surface: PaneChatSurface = { task, paneId, rootPid: Number.isSafeInteger(pid) && pid! > 0 ? pid! : null, inputLine: null, cursorColumn: null, screen: "" };
@@ -154,10 +155,10 @@ export async function readPaneChatLayout(taskId: string, terminalTabId?: string)
       layout: { area: { x: number; y: number; width: number; height: number }; focused_pane_id: string; zoomed: boolean; panes: { pane_id: string; rect: { x: number; y: number; width: number; height: number } }[] };
     }>(task.sessionName!, ["pane", "layout", "--pane", paneId], task.sshHost);
     if (layout.area.width !== surfaceBounds.width || layout.area.height !== surfaceBounds.height) return unavailable;
-    const owned = await listHerdrMirrorPanes(task.sessionName!, task.sshHost);
-    const tabId = owned.find((pane) => pane.id === paneId)?.tabId;
+    const owned = await listHerdrTaskPaneTabIds(task.sessionName!, task.sshHost);
+    const tabId = owned.find((pane) => pane.paneId === paneId)?.tabId;
     if (!tabId) return unavailable;
-    panes = layout.panes.filter((pane) => owned.some((entry) => entry.id === pane.pane_id && entry.tabId === tabId) && (!layout.zoomed || pane.pane_id === paneId)).map((pane) => {
+    panes = layout.panes.filter((pane) => owned.some((entry) => entry.paneId === pane.pane_id && entry.tabId === tabId) && (!layout.zoomed || pane.pane_id === paneId)).map((pane) => {
       const rect = layout.zoomed ? layout.area : pane.rect;
       return { id: pane.pane_id, tabId, bounds: { left: surfaceBounds.left + rect.x, top: surfaceBounds.top + rect.y, width: rect.width, height: rect.height } };
     });

@@ -5,27 +5,56 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({
-  taskRepo: {
-    findOne: vi.fn(),
-  },
-  taskDiffStatsRepo: {
-    find: vi.fn(),
-    save: vi.fn(),
-  },
-  execGit: vi.fn(),
-  readTextFile: vi.fn(),
-  writeTextFile: vi.fn(),
-}));
+const mocks = vi.hoisted(() => {
+  /** 갱신을 예약할 때 조회하는 task의 호스트. 적지 않은 task는 로컬이고, missingTaskIds에 든 task는 DB에 없다 */
+  const taskHosts = {
+    hostByTaskId: {} as Record<string, string>,
+    missingTaskIds: new Set<string>(),
+  };
+
+  return {
+    taskHosts,
+    taskRepo: {
+      findOne: vi.fn(),
+      find: async ({ where }: { where: { id: { value: string[] } } }) => where.id.value
+        .filter((taskId) => !taskHosts.missingTaskIds.has(taskId))
+        .map((taskId) => ({ id: taskId, sshHost: taskHosts.hostByTaskId[taskId] ?? null })),
+    },
+    taskDiffStatsRepo: {
+      find: vi.fn(),
+      save: vi.fn(),
+    },
+    execGit: vi.fn(),
+    /** execGit 호출 순서대로 그 명령이 받은 원격 명령 우선순위 */
+    execGitPriorities: [] as Array<"background" | "foreground">,
+    readTextFile: vi.fn(),
+    writeTextFile: vi.fn(),
+  };
+});
 
 vi.mock("@/lib/database", () => ({
   getTaskRepository: vi.fn(async () => mocks.taskRepo),
   getTaskDiffStatsRepository: vi.fn(async () => mocks.taskDiffStatsRepo),
 }));
 
-vi.mock("@/lib/gitOperations", () => ({
-  execGit: mocks.execGit,
-}));
+vi.mock("@/lib/gitOperations", async () => {
+  const { AsyncLocalStorage } = await import("node:async_hooks");
+  const backgroundPriority = new AsyncLocalStorage<true>();
+
+  return {
+    execGit: (...args: unknown[]) => {
+      mocks.execGitPriorities.push(backgroundPriority.getStore() ? "background" : "foreground");
+      return mocks.execGit(...args);
+    },
+    runWithBackgroundSSHCommands: <T>(operation: () => Promise<T>) => backgroundPriority.run(true, operation),
+  };
+});
+
+beforeEach(() => {
+  mocks.taskHosts.hostByTaskId = {};
+  mocks.taskHosts.missingTaskIds.clear();
+  mocks.execGitPriorities.length = 0;
+});
 
 vi.mock("@/lib/hostFileAccess", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/hostFileAccess")>();
@@ -505,6 +534,53 @@ describe("cached lazy diff refresh", () => {
       await Promise.all([first, duplicate]);
     }
     await vi.waitFor(() => expect(mocks.taskDiffStatsRepo.save).toHaveBeenCalledTimes(3));
+  });
+
+  it("한 호스트의 갱신이 막혀도 다른 호스트와 로컬의 갱신은 바로 시작하고, 호스트마다 두 개까지만 동시에 돈다", async () => {
+    mocks.taskHosts.hostByTaskId = { "slow-1": "slow-host", "slow-2": "slow-host", "slow-3": "slow-host", "other-1": "other-host" };
+    const finish = new Map<string, (value: string) => void>();
+    mocks.execGit.mockImplementation((command: string) => new Promise<string>((resolve) => {
+      finish.set(/\/repo\/([a-z0-9-]+)/.exec(command)![1], resolve);
+    }));
+    const service = await import("@/desktop/main/services/diffService");
+
+    await service.getTaskDiffStats(["slow-1", "slow-2", "slow-3", "other-1", "local-1"]);
+
+    try {
+      // 앱 전체 제한 2였다면 slow-host의 두 갱신이 끝날 때까지 other-1과 local-1은 시작하지 못한다.
+      await vi.waitFor(() => expect([...finish.keys()].sort()).toEqual(["local-1", "other-1", "slow-1", "slow-2"]), { timeout: 200 });
+      finish.get("slow-1")!(output(1));
+      await vi.waitFor(() => expect(finish.has("slow-3")).toBe(true));
+    } finally {
+      for (const resolve of finish.values()) resolve(output(1));
+    }
+    await vi.waitFor(() => expect(mocks.taskDiffStatsRepo.save).toHaveBeenCalledTimes(5));
+    expect(mocks.execGit).toHaveBeenCalledTimes(5);
+  });
+
+  it("보드 배지 갱신은 background 우선순위로, 상세의 직접 조회는 화면 요청 우선순위로 원격 명령을 낸다", async () => {
+    mocks.taskHosts.hostByTaskId = { board: "remote-host", detail: "remote-host" };
+    mocks.execGit.mockResolvedValue(output(1));
+    const service = await import("@/desktop/main/services/diffService");
+
+    await service.getTaskDiffStats(["board"]);
+    await vi.waitFor(() => expect(mocks.taskDiffStatsRepo.save).toHaveBeenCalledTimes(1));
+    await service.getGitDiffFiles("detail");
+
+    expect(mocks.execGitPriorities).toEqual(["background", "foreground"]);
+  });
+
+  it("DB에서 사라진 task는 갱신을 예약하지 않아 폴링마다 실패하는 조회를 내지 않는다", async () => {
+    mocks.taskHosts.missingTaskIds.add("deleted");
+    mocks.execGit.mockResolvedValue(output(4));
+    const service = await import("@/desktop/main/services/diffService");
+
+    await service.getTaskDiffStats(["deleted", "alive"]);
+    await vi.waitFor(() => expect(mocks.taskDiffStatsRepo.save).toHaveBeenCalledTimes(1));
+
+    expect(mocks.execGit).toHaveBeenCalledTimes(1);
+    expect(mocks.taskRepo.findOne).toHaveBeenCalledTimes(1);
+    expect(mocks.taskRepo.findOne).toHaveBeenCalledWith({ where: { id: "alive" } });
   });
 
   it("상세와 board가 같은 task 읽기와 저장을 공유하고 옛 요청의 역전을 막는다", async () => {

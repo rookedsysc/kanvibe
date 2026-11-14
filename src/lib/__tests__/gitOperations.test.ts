@@ -1623,6 +1623,70 @@ describe("SSH connection ownership and execution safety", () => {
     expect(mocks.execFile).not.toHaveBeenCalled();
   });
 
+  it("느린 원격 명령은 슬롯 대기, 연결 대기, 명령 수행 시간을 나눠 남기고 빠른 명령은 남기지 않는다", async () => {
+    vi.stubEnv("KANVIBE_REMOTE_SSH_HOST_MAX_CONCURRENCY", "2");
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const children: MockSSHProcess[] = [];
+    mocks.spawn.mockImplementation(() => { const child = createMockSSHProcess(); children.push(child); return child; });
+    const flush = async () => { for (let tick = 0; tick < 30; tick += 1) await Promise.resolve(); };
+    const findSlowCommandLog = (command: string) => consoleWarn.mock.calls
+      .find(([label, detail]) => label === "[remote-ssh] slow command" && detail.command === command)?.[1];
+
+    try {
+      const { execGit } = await import("@/lib/gitOperations");
+      // 공용 연결을 먼저 만들어 두어, 뒤의 터미널 준비 명령이 연결 준비가 아니라 슬롯만 기다리게 한다.
+      const warmUp = execGit("warm-up", "remote-host");
+      await flush();
+      completeRemoteCommand(children[0], "warm");
+      await expect(warmUp).resolves.toBe("warm");
+
+      // 호스트 키를 검증하는 접속 둘이 슬롯 두 개를 모두 잡는다. 둘째는 인증 차례를 기다리는 동안에도 슬롯을 쥐고 있다.
+      const firstStrictRead = execGit("strict-read-1", "remote-host", { strictHostKeyChecking: true });
+      const secondStrictRead = execGit("strict-read-2", "remote-host", { strictHostKeyChecking: true });
+      const terminalPreparation = execGit("terminal-prepare", "remote-host");
+      await flush();
+      expect(children).toHaveLength(2);
+
+      vi.advanceTimersByTime(2_000);
+      completeRemoteCommand(children[1], "one");
+      await expect(firstStrictRead).resolves.toBe("one");
+      await flush();
+      // 슬롯이 비자 터미널 준비 명령과 둘째 검증 접속이 함께 시작한다.
+      expect(children).toHaveLength(4);
+
+      vi.advanceTimersByTime(1_500);
+      completeRemoteCommand(children.find((_, index) => getSpawnedRemoteCommand(index).includes("terminal-prepare"))!, "prepared");
+      await expect(terminalPreparation).resolves.toBe("prepared");
+      vi.advanceTimersByTime(500);
+      completeRemoteCommand(children.find((_, index) => getSpawnedRemoteCommand(index).includes("strict-read-2"))!, "two");
+      await expect(secondStrictRead).resolves.toBe("two");
+
+      expect(findSlowCommandLog("terminal-prepare")).toEqual({
+        sshHost: "remote-host",
+        priority: "foreground",
+        totalMs: 3_500,
+        slotWaitMs: 2_000,
+        connectionWaitMs: 0,
+        commandMs: 1_500,
+        command: "terminal-prepare",
+      });
+      expect(findSlowCommandLog("strict-read-2")).toMatchObject({
+        totalMs: 4_000,
+        slotWaitMs: 0,
+        connectionWaitMs: 2_000,
+        commandMs: 2_000,
+      });
+      // 2초에 끝난 첫 명령은 기준보다 빨라 남기지 않는다.
+      expect(findSlowCommandLog("strict-read-1")).toBeUndefined();
+    } finally {
+      for (const child of children) completeRemoteCommand(child, "cleanup");
+      consoleWarn.mockRestore();
+      vi.useRealTimers();
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("a completed remote application error is not a transport failure or replay candidate", async () => {
     mocks.spawn.mockImplementation(() => {
       const child = createMockSSHProcess();

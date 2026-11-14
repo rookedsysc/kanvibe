@@ -299,10 +299,15 @@ function registerTerminalEntry(
   activeTerminals.set(terminalKey, entry);
 
   let firstDataLogged = false;
+  const registeredAt = Date.now();
   entry.pty.onData((data) => {
     if (!firstDataLogged) {
       firstDataLogged = true;
       debugLog(`${debugLabel} PTY 첫 데이터 수신`, { terminalKey, sample: data.slice(0, 200) });
+      // 원격은 PTY를 띄운 뒤에도 SSH 인증과 세션 attach가 남아 있어, 준비 시간과 따로 잰다.
+      if (debugLabel === "Remote") {
+        console.log("[터미널] 원격 PTY 첫 출력", { terminalKey, sinceSpawnMs: Date.now() - registeredAt });
+      }
     }
     entry.screen?.terminal.write(data);
     for (const client of entry.clients) {
@@ -549,12 +554,14 @@ async function prepareHerdrTaskClient(sessionName: string, workspaceId: string |
   close(): Promise<void>;
 }> {
   if (!workspaceId) throw new Error("공유 Herdr Space를 찾을 수 없습니다.");
+  // 탭 바 위치는 소켓 경로나 프록시와 무관하고 실패해도 null을 돌려주므로, 원격 왕복이 겹치도록 먼저 시작한다.
+  const tabBarPositionRead = readHerdrClientTabBarPosition(sshHost);
   const serverSocketPath = await getHerdrClientSocketPath(sessionName, sshHost);
   const forwardingDirectory = sshHost ? await mkdtemp(path.join(tmpdir(), "kvhf-")) : null;
   const upstream = forwardingDirectory ? path.join(forwardingDirectory, "upstream") : serverSocketPath;
   try {
     const proxy = await createHerdrClientProxy(upstream, workspaceId);
-    const tabBarPosition = await readHerdrClientTabBarPosition(sshHost);
+    const tabBarPosition = await tabBarPositionRead;
     const remoteProxyPath = `/tmp/kvhc-${randomUUID()}.sock`;
     return {
       proxy,

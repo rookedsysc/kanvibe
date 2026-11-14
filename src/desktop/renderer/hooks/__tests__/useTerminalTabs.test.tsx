@@ -11,7 +11,8 @@ vi.mock("@/desktop/renderer/actions/terminalTabs", () => ({
   selectTerminalTab: select,
   renameTerminalTab: rename,
 }));
-vi.mock("@/desktop/renderer/hooks/useIsWindowActive", () => ({ useIsWindowActive: () => true }));
+const windowState = vi.hoisted(() => ({ isActive: true }));
+vi.mock("@/desktop/renderer/hooks/useIsWindowActive", () => ({ useIsWindowActive: () => windowState.isActive }));
 function deferred<T>() {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((res) => { resolve = res; });
@@ -19,7 +20,7 @@ function deferred<T>() {
 }
 const tab = (id: string): TerminalTab => ({ id, name: id, isActive: true, nativeIndex: 0 });
 const options = { taskId: "task", sessionType: SessionType.TMUX, isRemote: false, isVisible: true };
-afterEach(() => { cleanup(); vi.useRealTimers(); });
+afterEach(() => { cleanup(); vi.useRealTimers(); windowState.isActive = true; });
 beforeEach(() => { vi.clearAllMocks(); create.mockResolvedValue({ ok: true }); });
 
 describe("useTerminalTabs refresh ownership", () => {
@@ -119,5 +120,35 @@ describe("useTerminalTabs mutation feedback", () => {
     expect(result.current.isTabListLoaded).toBe(false);
     await act(async () => { pending.resolve({ ok: true, tabs: [] }); });
     expect(result.current.isTabListLoaded).toBe(true);
+  });
+});
+
+describe("useTerminalTabs 창 활성 전환", () => {
+  const remoteOptions = { ...options, sessionType: SessionType.HERDR, isRemote: true };
+
+  it("원격 task의 창이 가려질 때는 탭 목록을 다시 읽지 않고, 다시 앞으로 나오면 한 번 따라잡는다", async () => {
+    list.mockResolvedValue({ ok: true, tabs: [tab("w1:t1")] });
+    const { result, rerender } = renderHook(() => useTerminalTabs(remoteOptions));
+    await waitFor(() => expect(result.current.isTabListLoaded).toBe(true));
+    expect(list).toHaveBeenCalledTimes(1);
+
+    // 창을 떠날 때마다 읽으면 원격 task는 창 전환마다 SSH 왕복이 하나씩 더 나간다.
+    windowState.isActive = false;
+    rerender();
+    await act(async () => { await Promise.resolve(); });
+    expect(list).toHaveBeenCalledTimes(1);
+
+    windowState.isActive = true;
+    rerender();
+    await waitFor(() => expect(list).toHaveBeenCalledTimes(2));
+  });
+
+  it("가려진 채로 열린 창도 탭 목록을 한 번은 읽는다", async () => {
+    windowState.isActive = false;
+    list.mockResolvedValue({ ok: true, tabs: [tab("w1:t1")] });
+    const { result } = renderHook(() => useTerminalTabs(remoteOptions));
+
+    await waitFor(() => expect(result.current.isTabListLoaded).toBe(true));
+    expect(list).toHaveBeenCalledTimes(1);
   });
 });
