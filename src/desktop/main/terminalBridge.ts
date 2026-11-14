@@ -222,33 +222,10 @@ export async function attachTaskTerminal(
     throw new Error(resolved.error);
   }
 
-  let hookTargetPath = task.worktreePath || task.project?.repoPath;
-  if (!hookTargetPath && task.projectId) {
-    const projectRepo = await getProjectRepository();
-    const project = await projectRepo.findOneBy({ id: task.projectId });
-    hookTargetPath = project?.repoPath;
-  }
-  if (hookTargetPath) {
-    try {
-      await ensureKanvibeHooksCurrent(hookTargetPath, task.id, task.sshHost);
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "hooks 설정 실패";
-      console.error("터미널 연결 전 hooks 확인 실패:", {
-        taskId: task.id,
-        taskTitle: task.title,
-        targetPath: hookTargetPath,
-        sshHost: task.sshHost,
-        error: errorMessage,
-      });
-      if (!getTerminalRetryAfterMs(error)) {
-        broadcastTaskHookInstallFailed({
-          taskId: task.id,
-          taskTitle: task.title,
-          error: errorMessage,
-        });
-      }
-      throw error;
-    }
+  // 초기 pane 명령은 hook을 필요로 할 수 있으므로 자동 실행 순서를 유지한다.
+  const hooksRequiredBeforeAttach = tmuxPaneLayout?.panes.some((pane) => pane.command.trim());
+  if (hooksRequiredBeforeAttach) {
+    await ensureTerminalHooks(task);
     if (client.readyState !== client.OPEN) return;
   }
 
@@ -265,6 +242,37 @@ export async function attachTaskTerminal(
     task.worktreePath,
     tmuxPaneLayout,
   );
+  if (!hooksRequiredBeforeAttach && client.readyState === client.OPEN) {
+    // 실패 알림은 ensureTerminalHooks가 처리한다. 열린 터미널의 수명과 분리한다.
+    void ensureTerminalHooks(task).catch(() => {});
+  }
+}
+
+async function ensureTerminalHooks(task: KanbanTask): Promise<void> {
+  let hookTargetPath = task.worktreePath || task.project?.repoPath;
+  try {
+    if (!hookTargetPath && task.projectId) {
+      const projectRepo = await getProjectRepository();
+      const project = await projectRepo.findOneBy({ id: task.projectId });
+      hookTargetPath = project?.repoPath;
+    }
+    if (hookTargetPath) {
+      await ensureKanvibeHooksCurrent(hookTargetPath, task.id, task.sshHost);
+    }
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "hooks 설정 실패";
+    console.error("터미널 hooks 확인 실패:", {
+      taskId: task.id,
+      taskTitle: task.title,
+      targetPath: hookTargetPath,
+      sshHost: task.sshHost,
+      error: errorMessage,
+    });
+    if (!getTerminalRetryAfterMs(error)) {
+      broadcastTaskHookInstallFailed({ taskId: task.id, taskTitle: task.title, error: errorMessage });
+    }
+    throw error;
+  }
 }
 
 export async function openTerminal(
