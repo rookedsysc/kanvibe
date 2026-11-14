@@ -1,3 +1,5 @@
+import { constants } from "fs";
+import { open } from "fs/promises";
 import path from "path";
 import { getTaskDiffStatsRepository, getTaskRepository } from "@/lib/database";
 import { execGit } from "@/lib/gitOperations";
@@ -269,6 +271,107 @@ export async function getFileContent(
   } catch (error) {
     console.error("파일 내용 읽기 실패:", error);
     return "";
+  }
+}
+
+export type TaskWorkspaceFileFailureReason = "outside-worktree" | "not-found" | "too-large" | "unreadable";
+
+export interface TaskWorkspaceFile {
+  /** worktree 기준 상대 경로 */
+  path: string;
+  content: string;
+}
+
+/**
+ * 미리보기가 파일을 열지 못한 이유.
+ * 받는 쪽은 `name`과 `reason`으로 가려내므로 클래스는 내보내지 않는다 — `serviceRegistry`가 이 모듈을 통째로
+ * IPC에 얹어서, 내보내면 화면이 부를 일이 없는 값이 그 표면에 하나 더 얹힌다.
+ * 메시지를 사유 그대로 두는 것은 IPC를 건너면 메시지 글만 남기 때문이다.
+ */
+class TaskWorkspaceFileError extends Error {
+  constructor(readonly reason: TaskWorkspaceFileFailureReason) {
+    super(reason);
+    this.name = "TaskWorkspaceFileError";
+  }
+}
+
+/** 미리보기 한 번에 싣는 파일 크기의 상한. 넘는 파일은 내용을 읽기 전에 거절한다 */
+const MAX_TASK_WORKSPACE_FILE_BYTES = 1024 * 1024;
+
+async function readLocalWorkspaceFile(resolvedPath: string): Promise<string> {
+  // 이름 붙은 파이프를 열다 멈추지 않도록 막힘 없이 연다.
+  const file = await open(resolvedPath, constants.O_RDONLY | constants.O_NONBLOCK).catch((error: NodeJS.ErrnoException) => {
+    throw new TaskWorkspaceFileError(error.code === "ENOENT" || error.code === "ENOTDIR" ? "not-found" : "unreadable");
+  });
+
+  try {
+    const stats = await file.stat();
+    if (!stats.isFile()) throw new TaskWorkspaceFileError("not-found");
+    if (stats.size > MAX_TASK_WORKSPACE_FILE_BYTES) throw new TaskWorkspaceFileError("too-large");
+
+    const buffer = await file.readFile();
+    // 크기를 잰 뒤에 파일이 커졌을 수 있다.
+    if (buffer.byteLength > MAX_TASK_WORKSPACE_FILE_BYTES) throw new TaskWorkspaceFileError("too-large");
+    return buffer.toString("utf-8");
+  } finally {
+    await file.close();
+  }
+}
+
+const REMOTE_FILE_MISSING_MARKER = "__KANVIBE_FILE_MISSING__";
+const REMOTE_FILE_TOO_LARGE_MARKER = "__KANVIBE_FILE_TOO_LARGE__";
+const REMOTE_FILE_CONTENT_MARKER = "__KANVIBE_FILE_CONTENT__";
+
+/** 원격에서는 크기를 먼저 재고 상한 안일 때만 내용을 보내게 해서, 큰 파일이 SSH를 타고 넘어오지 않게 한다 */
+async function readRemoteWorkspaceFile(resolvedPath: string, sshHost: string): Promise<string> {
+  const quotedPath = quoteShellArgument(resolvedPath);
+  const command = [
+    `if ! test -f ${quotedPath}; then printf '%s' ${REMOTE_FILE_MISSING_MARKER};`,
+    `elif test "$(wc -c < ${quotedPath})" -gt ${MAX_TASK_WORKSPACE_FILE_BYTES}; then printf '%s' ${REMOTE_FILE_TOO_LARGE_MARKER};`,
+    `else printf '%s\\n' ${REMOTE_FILE_CONTENT_MARKER} && cat ${quotedPath}; fi`,
+  ].join(" ");
+  const output = await execGit(command, sshHost, { maxBufferBytes: MAX_TASK_WORKSPACE_FILE_BYTES + 4096 });
+
+  if (output === REMOTE_FILE_MISSING_MARKER) throw new TaskWorkspaceFileError("not-found");
+  if (output === REMOTE_FILE_TOO_LARGE_MARKER) throw new TaskWorkspaceFileError("too-large");
+  if (output === REMOTE_FILE_CONTENT_MARKER) return "";
+  if (!output.startsWith(`${REMOTE_FILE_CONTENT_MARKER}\n`)) throw new TaskWorkspaceFileError("unreadable");
+  return output.slice(REMOTE_FILE_CONTENT_MARKER.length + 1);
+}
+
+/** 절대 경로로 온 요청을 worktree 기준 상대 경로로 바꾼다. AI 기록은 파일을 대개 절대 경로로 남긴다 */
+function toWorktreeRelativePath(worktreePath: string, filePath: string, sshHost: string | null): string {
+  const pathModule = sshHost ? path.posix : path;
+  return pathModule.isAbsolute(filePath) ? pathModule.relative(worktreePath, filePath) : filePath;
+}
+
+/**
+ * 미리보기에 쓸 worktree 안 파일 하나를 읽는다.
+ * `getFileContent`와 달리 실패를 빈 문자열로 삼키지 않고, 화면이 사유별 안내를 낼 수 있게
+ * `TaskWorkspaceFileError`로 알린다. 태스크나 worktree가 없는 경우도 파일을 찾지 못한 것으로 본다.
+ */
+export async function readTaskWorkspaceFile(taskId: string, filePath: string): Promise<TaskWorkspaceFile> {
+  const { worktreePath, sshHost } = await getTaskWorktreeInfo(taskId).catch(() => {
+    throw new TaskWorkspaceFileError("not-found");
+  });
+  const pathModule = sshHost ? path.posix : path;
+
+  let resolvedPath: string;
+  try {
+    resolvedPath = validateFilePath(worktreePath, toWorktreeRelativePath(worktreePath, filePath, sshHost), sshHost);
+  } catch {
+    throw new TaskWorkspaceFileError("outside-worktree");
+  }
+
+  try {
+    const content = sshHost
+      ? await readRemoteWorkspaceFile(resolvedPath, sshHost)
+      : await readLocalWorkspaceFile(resolvedPath);
+    return { path: pathModule.relative(worktreePath, resolvedPath), content };
+  } catch (error) {
+    if (error instanceof TaskWorkspaceFileError) throw error;
+    console.error("미리보기 파일 읽기 실패:", error);
+    throw new TaskWorkspaceFileError("unreadable");
   }
 }
 

@@ -1,7 +1,7 @@
 # 격리 desktop fixture와 페어링한 보드에서 시작한다.
 appId: ${APP_ID}
 env:
-  DESKTOP_API_FROM_HOST: http://127.0.0.1:19736
+  DESKTOP_API_FROM_HOST: http://127.0.0.1:39736
 onFlowComplete:
   - stopRecording
 ---

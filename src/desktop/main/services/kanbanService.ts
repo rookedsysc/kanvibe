@@ -929,6 +929,42 @@ async function propagateDeletionToTaskPeers(task: KanbanTask): Promise<PeerTarge
   return peerResults;
 }
 
+/** 여러 작업을 삭제한다. worktree와 세션이 있으면 함께 정리하고 다른 client로 전파하며, board update는 한 번만 보낸다 */
+export async function deleteTasks(taskIds: string[]): Promise<string[]> {
+  const uniqueTaskIds = [...new Set(taskIds)];
+  if (uniqueTaskIds.length === 0) {
+    return [];
+  }
+
+  const repo = await getTaskRepository();
+  const tasks = await repo.find({
+    where: { id: In(uniqueTaskIds) },
+  });
+  const taskById = new Map(tasks.map((task) => [task.id, task]));
+  const deletedTaskIds: string[] = [];
+
+  try {
+    for (const taskId of uniqueTaskIds) {
+      const task = taskById.get(taskId);
+      if (!task) {
+        continue;
+      }
+
+      await propagateDeletionToTaskPeers(task);
+      await deleteTaskResources(task);
+      await repo.remove(task);
+      broadcastTaskSessionChanged({ taskId });
+      deletedTaskIds.push(task.id);
+    }
+  } finally {
+    if (deletedTaskIds.length > 0) {
+      broadcastBoardUpdate();
+    }
+  }
+
+  return deletedTaskIds;
+}
+
 /**
  * 기존 작업에서 브랜치를 분기한다.
  * worktree + 세션을 생성하고 상태를 progress로 변경한다.

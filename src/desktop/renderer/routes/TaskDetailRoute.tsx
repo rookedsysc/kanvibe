@@ -38,6 +38,7 @@ import {
 } from "@/desktop/renderer/actions/project";
 import AiUsagePanel from "@/desktop/renderer/components/AiUsagePanel";
 import { AiChatTranscriptMessage } from "@/desktop/renderer/components/AiChatTranscriptMessage";
+import { AiChatFilePreview } from "@/desktop/renderer/components/AiChatFilePreview";
 import {
   useBoardCommands,
   useHasBoardShortcutBlocker,
@@ -288,6 +289,7 @@ function InlineAiChatView({ taskId }: { taskId: string }) {
   const messagePaneRef = useRef<HTMLDivElement | null>(null);
   const pendingScrollAnchorRef = useRef<{ top: number; height: number } | null>(null);
   const [showJumpToLatest, setShowJumpToLatest] = useState(false);
+  const [previewFilePath, setPreviewFilePath] = useState<string | null>(null);
   const [detailReloadRevision, setDetailReloadRevision] = useState(0);
   const historyRequestIdRef = useRef(0);
   const olderMessagesRequestIdRef = useRef(0);
@@ -296,6 +298,10 @@ function InlineAiChatView({ taskId }: { taskId: string }) {
     () => history?.sessions.find((session) => getAiSessionKey(session) === selectedSessionKey) ?? null,
     [history?.sessions, selectedSessionKey],
   );
+
+  useEffect(() => {
+    setPreviewFilePath(null);
+  }, [selectedSessionKey]);
 
   const providerCounts = useMemo(() => {
     const counts = Object.fromEntries(AI_SESSION_PROVIDERS.map((provider) => [provider, 0])) as Record<AggregatedAiSession["provider"], number>;
@@ -676,12 +682,13 @@ function InlineAiChatView({ taskId }: { taskId: string }) {
                 </button></div>
               ) : null}
               {selectedSession && !isDetailLoading && displayedMessages.map(({ message, key }) => (
-                <AiChatTranscriptMessage key={key} message={message} provider={selectedSession.provider} attachmentContext={{ taskId, provider: selectedSession.provider, sessionId: selectedSession.id, sourceRef: selectedSession.sourceRef }} />
+                <AiChatTranscriptMessage key={key} message={message} provider={selectedSession.provider} attachmentContext={{ taskId, provider: selectedSession.provider, sessionId: selectedSession.id, sourceRef: selectedSession.sourceRef }} onOpenFile={(file) => setPreviewFilePath(file.path)} />
               ))}
               <div ref={latestMessageAnchorRef} aria-hidden="true" />
             </div>
           </div>
           {selectedSession ? <footer className="shrink-0 border-t border-border-subtle px-4 py-3 text-center text-xs text-text-secondary">{t("aiSessions.readOnlyHistory")}</footer> : null}
+          {selectedSession && previewFilePath ? <AiChatFilePreview taskId={taskId} filePath={previewFilePath} onClose={() => setPreviewFilePath(null)} /> : null}
           {selectedSession && showJumpToLatest ? <button type="button" onClick={() => { latestMessageAnchorRef.current?.scrollIntoView?.({ block: "end" }); setShowJumpToLatest(false); }}
             className="absolute bottom-16 left-1/2 -translate-x-1/2 rounded-full border border-border-default bg-bg-surface px-4 py-2 text-xs text-text-primary shadow-md focus-visible:outline-2 focus-visible:outline-brand-primary">{t("aiSessions.jumpToLatest")} ↓</button> : null}
         </div>

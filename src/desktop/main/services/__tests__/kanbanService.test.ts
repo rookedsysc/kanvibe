@@ -1098,6 +1098,61 @@ describe("kanbanService.createTask", () => {
     );
   });
 
+  it("deleteTasks는 선택 task들을 순서대로 정리하고 삭제한 뒤 board update를 한 번만 브로드캐스트한다", async () => {
+    // Given
+    const taskA = {
+      id: "task-merge-a",
+      projectId: "project-1",
+      branchName: "feature/merge-a",
+      worktreePath: "/workspace/repo__worktrees/feature-merge-a",
+      sshHost: null,
+      sessionType: null,
+      sessionName: null,
+    };
+    const taskB = {
+      id: "task-merge-b",
+      projectId: "project-1",
+      branchName: "feature/merge-b",
+      worktreePath: "/workspace/repo__worktrees/feature-merge-b",
+      sshHost: null,
+      sessionType: null,
+      sessionName: null,
+    };
+    mocks.taskRepo.find.mockResolvedValue([taskB, taskA]);
+    mocks.taskRepo.remove.mockImplementation(async (value) => value);
+    mocks.projectRepo.findOneBy.mockResolvedValue({
+      id: "project-1",
+      repoPath: "/workspace/repo",
+      sshHost: null,
+    });
+
+    const { deleteTasks } = await import("@/desktop/main/services/kanbanService");
+
+    // When
+    const result = await deleteTasks(["task-merge-a", "missing-task", "task-merge-b", "task-merge-a"]);
+
+    // Then
+    expect(result).toEqual(["task-merge-a", "task-merge-b"]);
+    expect(mocks.removeWorktreeAndBranch).toHaveBeenNthCalledWith(
+      1,
+      "/workspace/repo",
+      "feature/merge-a",
+      null,
+      { throwOnError: true, worktreePath: "/workspace/repo__worktrees/feature-merge-a" },
+    );
+    expect(mocks.removeWorktreeAndBranch).toHaveBeenNthCalledWith(
+      2,
+      "/workspace/repo",
+      "feature/merge-b",
+      null,
+      { throwOnError: true, worktreePath: "/workspace/repo__worktrees/feature-merge-b" },
+    );
+    expect(mocks.taskRepo.remove).toHaveBeenNthCalledWith(1, taskA);
+    expect(mocks.taskRepo.remove).toHaveBeenNthCalledWith(2, taskB);
+    expect(mocks.broadcastTaskSessionChanged.mock.calls).toEqual([[{ taskId: taskA.id }], [{ taskId: taskB.id }]]);
+    expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(1);
+  });
+
   describe("다른 client로의 삭제 전파", () => {
     const sharedTask = {
       id: "task-shared",
@@ -1302,6 +1357,22 @@ describe("kanbanService.createTask", () => {
       });
     });
 
+    it("일괄 삭제도 task마다 다른 client로 전파한다", async () => {
+      // Given
+      const otherTask = { ...sharedTask, id: "task-other", branchName: "feat/other", worktreePath: "/remote/repo__worktrees/feat-other" };
+      mocks.taskRepo.find.mockResolvedValue([sharedTask, otherTask]);
+      mocks.taskRepo.remove.mockImplementation(async (value) => value);
+      const { deleteTasks } = await import("@/desktop/main/services/kanbanService");
+
+      // When
+      await deleteTasks(["task-shared", "task-other"]);
+
+      // Then
+      expect(mocks.propagateTaskDeletionToPeers.mock.calls).toEqual([
+        ["/remote/repo__worktrees/feat-shared", "devbox"],
+        ["/remote/repo__worktrees/feat-other", "devbox"],
+      ]);
+    });
   });
 
   it("task 내용 수정 후 board update를 브로드캐스트한다", async () => {

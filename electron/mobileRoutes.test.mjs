@@ -58,6 +58,7 @@ function createBridge(overrides = {}) {
     getMobileNotifications: vi.fn(async () => [INBOX_NOTIFICATION]),
     markMobileNotificationRead: vi.fn(async () => ({ ...INBOX_NOTIFICATION, isRead: true })),
     markAllMobileNotificationsRead: vi.fn(async () => {}),
+    markMobileTaskNotificationsRead: vi.fn(async () => 2),
     onMobileNotificationsChanged: vi.fn((listener) => {
       notificationChangeListeners.add(listener);
       return () => notificationChangeListeners.delete(listener);
@@ -75,6 +76,7 @@ function createBridge(overrides = {}) {
     writeToPane: vi.fn(async () => {}),
     executeMobileTerminalShortcut: vi.fn(async () => ({ surfaces: { tabs: [] }, screen: "screen" })),
     claimPaneViewport: vi.fn(async () => ({ resize: vi.fn(async () => {}), release: vi.fn(async () => {}) })),
+    refreshPaneHistory: vi.fn(async () => {}),
     startMobilePairing: vi.fn(() => ({ code: "654321", expiresAt: 1_700_000_000_000 })),
     createMobileTask: vi.fn(async () => ({ id: "task-1", title: "feat/from-mobile" })),
     updateMobileTaskStatus: vi.fn(async () => ({ id: "task-1", status: "review" })),
@@ -546,10 +548,18 @@ describe("모바일 알림함 경로", () => {
     expect(bridge.markAllMobileNotificationsRead).toHaveBeenCalledTimes(1);
   });
 
+  it("task 알림 읽음 요청은 경로의 task 식별자를 풀어 서비스에 넘기고 읽음 처리한 개수를 돌려준다", async () => {
+    expect(await request("/api/mobile/tasks/task%201/notifications/read", { method: "POST", headers })).toEqual({
+      status: 200, body: { success: true, updatedCount: 2 },
+    });
+    expect(bridge.markMobileTaskNotificationsRead).toHaveBeenCalledWith("task 1");
+  });
+
   it.each([
     ["GET", "/api/mobile/notifications", "getMobileNotifications"],
     ["PATCH", "/api/mobile/notifications/notice-1/read", "markMobileNotificationRead"],
     ["POST", "/api/mobile/notifications/read-all", "markAllMobileNotificationsRead"],
+    ["POST", "/api/mobile/tasks/task-1/notifications/read", "markMobileTaskNotificationsRead"],
   ])("%s %s는 인증 전 서비스를 호출하지 않는다", async (method, path, service) => {
     expect(await request(path, { method })).toEqual({
       status: 401, body: { success: false, error: "연결되지 않은 기기입니다" },
@@ -561,6 +571,7 @@ describe("모바일 알림함 경로", () => {
     ["GET", "/api/mobile/notifications", "getMobileNotifications"],
     ["PATCH", "/api/mobile/notifications/notice-1/read", "markMobileNotificationRead"],
     ["POST", "/api/mobile/notifications/read-all", "markAllMobileNotificationsRead"],
+    ["POST", "/api/mobile/tasks/task-1/notifications/read", "markMobileTaskNotificationsRead"],
   ])("%s %s 서비스 오류는 내부 내용을 감춘 500으로 답한다", async (method, path, service) => {
     bridge[service].mockRejectedValue(new Error("private settings path"));
 
@@ -927,6 +938,17 @@ describe("키 입력 순서", () => {
     expect(release).toHaveBeenCalledTimes(1);
   });
 
+  it("binary 이력 갱신 요청은 미러에 전달하고 터미널 입력이나 크기 변경으로 쓰지 않는다", async () => {
+    const client = await openPaneStreamClient("Bearer good");
+    client.send(Buffer.from(JSON.stringify({ type: "refresh-history" })));
+    client.send("done");
+    await waitFor(() => bridge.writeToPane.mock.calls.length > 0);
+    expect(bridge.refreshPaneHistory).toHaveBeenCalledWith("task-1", "pane-1");
+    expect(bridge.claimPaneViewport).not.toHaveBeenCalled();
+    expect(bridge.writeToPane.mock.calls.map((call) => call[2])).toEqual(["done"]);
+    client.close();
+  });
+
   it("잘못된 binary 크기와 JSON은 터미널 입력으로 보내지 않는다", async () => {
     const client = await openPaneStreamClient("Bearer good");
     for (const message of ["broken-json", ...[0, -1, 1.5, 501, "44"].map((cols) => JSON.stringify({ type: "resize", cols, rows: 70 }))]) {
@@ -1134,10 +1156,10 @@ describe("태스크 생성 경로", () => {
     expect(bridge.createMobileTask.mock.calls[0][0]).toMatchObject(draft);
   });
 
-  it("이전 앱이 세션 타입을 보내도 서비스로 넘기지 않아 데스크탑 기본값을 따르게 한다", async () => {
+  it("선택한 세션 타입을 생성 서비스로 전달한다", async () => {
     await createTask({ ...draft, sessionType: "tmux" });
 
-    expect(bridge.createMobileTask.mock.calls[0][0]).not.toHaveProperty("sessionType");
+    expect(bridge.createMobileTask.mock.calls[0][0]).toHaveProperty("sessionType", "tmux");
   });
 
   it("토큰 없이는 인증 앞단에서 막혀 아무것도 만들지 않는다", async () => {
@@ -1525,7 +1547,7 @@ describe("모바일 프로젝트 폴더 등록", () => {
   });
 
   it("선택한 폴더만 기존 스캔 서비스에 넘기고 등록 결과를 반환한다", async () => {
-    const response = await scan({ rootPath: "~/Projects", sshHost: "unselected-host" });
+    const response = await scan({ rootPath: "~/Projects" });
     expect(response.status).toBe(200);
     expect(response.body.result.registered).toEqual(["kanvibe"]);
     expect(bridge.scanMobileProjects).toHaveBeenCalledWith("~/Projects");
@@ -1629,6 +1651,35 @@ describe("채팅 composer 첨부와 자동완성 HTTP", () => {
     expect(bridge.getMobileAiSessionAttachment).toHaveBeenCalledWith("task-1", "codex", "session-1", "image-id", undefined);
     bridge.getMobileAiSessionAttachment.mockResolvedValue(null);
     expect((await request(url, { headers })).status).toBe(404);
+  });
+  it("연결된 기기만 태스크 작업 폴더의 파일을 읽고 경로는 디코딩해 넘긴다", async () => {
+    bridge.getMobileTaskFile = vi.fn(async () => ({ path: "docs/새 계획.md", content: "# plan" }));
+    const url = `/api/mobile/tasks/task-1/workspace-file?path=${encodeURIComponent("/work/task/docs/새 계획.md")}`;
+    expect((await request(url)).status).toBe(401);
+    expect(bridge.getMobileTaskFile).not.toHaveBeenCalled();
+    expect(await request(url, { headers })).toEqual({ status: 200, body: { success: true, file: { path: "docs/새 계획.md", content: "# plan" } } });
+    expect(bridge.getMobileTaskFile).toHaveBeenCalledWith("task-1", "/work/task/docs/새 계획.md");
+  });
+  it("파일 경로가 없거나 비어 있으면 읽지 않고 400으로 거절한다", async () => {
+    bridge.getMobileTaskFile = vi.fn();
+    expect(await request("/api/mobile/tasks/task-1/workspace-file", { headers })).toEqual({ status: 400, body: { success: false, error: "파일 경로가 필요합니다" } });
+    expect((await request("/api/mobile/tasks/task-1/workspace-file?path=", { headers })).status).toBe(400);
+    expect(bridge.getMobileTaskFile).not.toHaveBeenCalled();
+  });
+  it.each([
+    ["outside-worktree", 400, "작업 폴더 밖의 파일은 열 수 없습니다"],
+    ["not-found", 404, "파일을 찾을 수 없습니다"],
+    ["too-large", 413, "파일이 너무 커서 열 수 없습니다"],
+    ["unreadable", 500, "파일을 읽을 수 없습니다"],
+  ])("파일을 열지 못한 사유 %s는 %i과 사유로 구분해 알린다", async (reason, status, error) => {
+    bridge.getMobileTaskFile = vi.fn(async () => { throw Object.assign(new Error(reason), { name: "TaskWorkspaceFileError", reason }); });
+    expect(await request("/api/mobile/tasks/task-1/workspace-file?path=a.md", { headers })).toEqual({ status, body: { success: false, error, reason } });
+  });
+  it("파일 읽기의 알 수 없는 실패는 내부 메시지를 내보내지 않는다", async () => {
+    bridge.getMobileTaskFile = vi.fn(async () => { throw new Error("private host path"); });
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(await request("/api/mobile/tasks/task-1/workspace-file?path=a.md", { headers })).toEqual({ status: 500, body: { success: false, error: "서버 오류" } });
+    consoleError.mockRestore();
   });
   it("부분 전송 뒤 불확실한 결과는 재전송 유도 없이 명시한다", async () => {
     bridge.sendPaneChatPrompt.mockRejectedValue(Object.assign(new Error("전송 결과 불확실"), { name: "PaneChatDeliveryUncertainError" }));
@@ -1735,11 +1786,13 @@ describe("원격 pane 지속 연결 경로", () => {
     const output = new Promise((resolve) => client.once("message", (data) => resolve(data.toString())));
     emit("B terminal output");
     await expect(output).resolves.toBe("B terminal output");
+    client.send(Buffer.from(JSON.stringify({ type: "refresh-history" })));
     client.send("ls\n");
     const resize = Buffer.from(JSON.stringify({ type: "resize", cols: 100, rows: 30 }));
     client.send(resize);
     await waitFor(() => relay.write.mock.calls.length === 2);
     expect(relay.write.mock.calls.map(([data, binary]) => [data.toString(), binary])).toEqual([["ls\n", false], [resize.toString(), true]]);
+    expect(bridge.refreshPaneHistory).not.toHaveBeenCalled();
     expect(bridge.writeToPane).not.toHaveBeenCalled();
     expect(bridge.claimPaneViewport).not.toHaveBeenCalled();
     expect(bridge.subscribeToPane).not.toHaveBeenCalled();

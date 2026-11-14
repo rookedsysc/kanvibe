@@ -265,8 +265,10 @@ void main() {
       findsNothing,
       reason: '칸반은 구획 목록을 쓰지 않는다',
     );
-    final board = tester.widget<ListView>(find.byType(ListView).first);
-    expect(board.scrollDirection, Axis.horizontal, reason: '칸반은 옆으로 밀어 본다');
+    final todo = tester.getTopLeft(find.text('Todo'));
+    final progress = tester.getTopLeft(find.text('Progress'));
+    expect(progress.dx, greaterThan(todo.dx));
+    expect(progress.dy, todo.dy, reason: '상태 칸 머리글은 같은 행에 있다');
   });
 
   testWidgets('태스크 제목과 프로젝트 이름이 함께 보인다', (tester) async {
@@ -463,7 +465,10 @@ void main() {
       await tester.tap(find.widgetWithText(TextButton, '삭제'));
       await tester.pump();
 
-      final card = find.byKey(const ValueKey('t1'));
+      // 카드는 찾기 스크롤용 GlobalKey로 감싸여 있어, 제목을 품은 카드 탭 영역으로 찾는다
+      final card = find
+          .ancestor(of: find.text('할 일 하나'), matching: find.byType(InkWell))
+          .first;
       expect(
         find.descendant(of: card, matching: find.text('삭제하는 중…')),
         findsOneWidget,

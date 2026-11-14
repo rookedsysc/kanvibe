@@ -9,31 +9,39 @@ import 'app_sizes.dart';
 /// 제목과 설명은 시스템 서체가 읽기 좋다. 전부 고정폭으로 쓰면 목록이 코드 덤프처럼 보인다.
 const monoFontFamily = 'JetBrainsMono';
 
-ThemeData buildAppTheme() {
-  const colorScheme = ColorScheme.dark(
+ThemeData buildAppTheme([Brightness brightness = Brightness.dark]) {
+  final palette = brightness == Brightness.dark
+      ? AppPalette.dark
+      : AppPalette.light;
+  final colorScheme = ColorScheme.fromSeed(
+    seedColor: AppColors.brandPrimary,
+    brightness: brightness,
     primary: AppColors.brandPrimary,
     onPrimary: Colors.white,
-    surface: AppColors.bgSurface,
-    onSurface: AppColors.textPrimary,
-    error: AppColors.statusError,
-    outline: AppColors.borderDefault,
+    surface: palette.bgSurface,
+    onSurface: palette.textPrimary,
+    error: brightness == Brightness.dark
+        ? AppColors.statusError
+        : const Color(0xFFB3261E),
+    outline: palette.borderDefault,
   );
 
   return ThemeData(
     useMaterial3: true,
-    brightness: Brightness.dark,
+    brightness: brightness,
+    extensions: [palette],
     colorScheme: colorScheme,
-    scaffoldBackgroundColor: AppColors.bgPage,
-    dividerColor: AppColors.borderDefault,
-    appBarTheme: const AppBarTheme(
-      backgroundColor: AppColors.bgPage,
+    scaffoldBackgroundColor: palette.bgPage,
+    dividerColor: palette.borderDefault,
+    appBarTheme: AppBarTheme(
+      backgroundColor: palette.bgPage,
       surfaceTintColor: Colors.transparent,
-      foregroundColor: AppColors.textPrimary,
+      foregroundColor: palette.textPrimary,
       elevation: 0,
       centerTitle: false,
     ),
-    textTheme: const TextTheme(
-      titleMedium: TextStyle(
+    textTheme: TextTheme(
+      titleMedium: const TextStyle(
         fontSize: 16,
         height: 1.4,
         fontWeight: FontWeight.w600,
@@ -41,29 +49,29 @@ ThemeData buildAppTheme() {
       bodyMedium: TextStyle(
         fontSize: 14,
         height: 1.5,
-        color: AppColors.textPrimary,
+        color: palette.textPrimary,
       ),
       bodySmall: TextStyle(
         fontSize: 12,
         height: 1.5,
-        color: AppColors.textSecondary,
+        color: palette.textSecondary,
       ),
       labelSmall: TextStyle(
         fontSize: 11,
         height: 1.4,
-        color: AppColors.textMuted,
+        color: palette.textMuted,
       ),
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
-      fillColor: AppColors.bgSurface,
+      fillColor: palette.bgSurface,
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(AppSizes.radiusMd),
-        borderSide: const BorderSide(color: AppColors.borderDefault),
+        borderSide: BorderSide(color: palette.borderDefault),
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(AppSizes.radiusMd),
-        borderSide: const BorderSide(color: AppColors.borderDefault),
+        borderSide: BorderSide(color: palette.borderDefault),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(AppSizes.radiusMd),

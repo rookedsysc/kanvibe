@@ -74,6 +74,8 @@ class TaskCreationService {
     String? baseBranch,
     required String description,
     String? priority,
+    String? sessionType,
+    String? existingTaskId,
     void Function()? onConfirming,
   }) async {
     final connection = _ref
@@ -86,16 +88,36 @@ class TaskCreationService {
 
     final Map<String, dynamic> created;
     try {
-      created = await _ref
-          .read(desktopClientProvider)
-          .createTask(
-            connection,
-            projectId: project.id,
-            branchName: branchName,
-            baseBranch: baseBranch,
-            description: description,
-            priority: priority,
-          );
+      if (existingTaskId != null) {
+        // 기존 태스크를 브랜치 작업으로 바꾼다. 같은 브랜치가 생기므로 늦은 응답도 보드에서 같은 방식으로 확인한다
+        final response = await _ref
+            .read(desktopClientProvider)
+            .requestJson(
+              connection,
+              'POST',
+              ['tasks', existingTaskId, 'branch'],
+              body: {
+                'projectId': project.id,
+                'branchName': branchName,
+                'baseBranch': baseBranch ?? project.defaultBranch,
+                'sessionType': sessionType,
+              },
+              timeout: Duration(seconds: 60),
+            );
+        created = response['task'] as Map<String, dynamic>;
+      } else {
+        created = await _ref
+            .read(desktopClientProvider)
+            .createTask(
+              connection,
+              projectId: project.id,
+              branchName: branchName,
+              baseBranch: baseBranch,
+              description: description,
+              priority: priority,
+              sessionType: sessionType,
+            );
+      }
     } on TimeoutException {
       onConfirming?.call();
       return _confirmByBoard(projectId: project.id, branchName: branchName);

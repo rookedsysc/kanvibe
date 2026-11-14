@@ -123,11 +123,46 @@ function isTransportNoiseLine(trimmedLine: string): boolean {
   ].some((pattern) => pattern.test(trimmedLine));
 }
 
-export function preserveMessageText(value: string): string {
-  return value
+const CODE_FENCE_PATTERN = /^\s*(`{3,}|~{3,})(.*)$/;
+
+/** 닫는 울타리는 여는 울타리와 같은 글자로 그 이상 길어야 하고, 뒤에 언어 이름 같은 글이 붙지 않는다 */
+function isClosingFence(fence: RegExpExecArray, openFence: string): boolean {
+  const [, marker, trailingText] = fence;
+  return marker[0] === openFence[0] && marker.length >= openFence.length && !trailingText.trim();
+}
+
+function removeTransportNoise(line: string): string[] {
+  return line
     .replace(/\[Pasted ~\d+ lines\]/g, "\n")
-    .split(/\r?\n/)
-    .filter((line) => !isTransportNoiseLine(line.trim()))
+    .split("\n")
+    .filter((segment) => !isTransportNoiseLine(segment.trim()));
+}
+
+/**
+ * 터미널 잡음 줄을 지우되 코드 블록 안은 건드리지 않는다.
+ * 코드 블록에는 YAML의 `command:`나 컴파일러의 `error:`처럼 잡음과 같은 모양의 줄이 본문으로 들어 있고,
+ * 닫는 울타리가 없으면 글 끝까지를 코드 블록으로 본다.
+ */
+export function preserveMessageText(value: string): string {
+  let openFence: string | null = null;
+  const keptLines: string[] = [];
+
+  for (const line of value.split(/\r?\n/)) {
+    const fence = CODE_FENCE_PATTERN.exec(line);
+    if (openFence) {
+      keptLines.push(line);
+      if (fence && isClosingFence(fence, openFence)) openFence = null;
+      continue;
+    }
+    if (fence) {
+      openFence = fence[1];
+      keptLines.push(line);
+      continue;
+    }
+    keptLines.push(...removeTransportNoise(line));
+  }
+
+  return keptLines
     .join("\n")
     .replace(/[ \t]+$/gm, "")
     .trim();

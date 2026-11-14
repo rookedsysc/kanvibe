@@ -19,6 +19,13 @@ const HERDR_START_TIMEOUT_MS = 30_000;
 const sessionBootstraps = new Map<string, Promise<string | null>>();
 const sharedBootstraps = new Map<string, Promise<string | null>>();
 const workspaceMappingPaths = new Map<string, string>();
+/**
+ * 공유 세션의 Herdr 명령은 실행할 때마다 Space 연결 파일로 자기 Space를 찾는다. 원격에서는 그 읽기 하나가 SSH 왕복이라,
+ * 터미널 하나를 여는 동안 이어지는 명령들이 같은 파일을 수십 번 읽는다. 짧은 동안은 한 번 읽은 내용을 함께 쓴다.
+ * 이 프로세스가 파일을 고치면 곧바로 버리고, 다른 KanVibe 프로세스가 고친 내용은 이 시간이 지난 뒤에 보인다.
+ */
+const WORKSPACE_MAPPING_REUSE_MS = 2_000;
+const workspaceMappingReads = new Map<string, { readAt: number; mapping: Promise<Record<string, string>> }>();
 let remoteMachineRegistration = Promise.resolve();
 
 const HERDR_EXECUTABLE = `"$(command -v herdr || printf '%s' "$HOME/.local/bin/herdr")"`;
@@ -108,7 +115,12 @@ function readHerdrResult<T>(output: string): T {
   return response.result as T;
 }
 
-export async function runHerdrCommand<T>(sessionName: string, arguments_: string[], sshHost?: string | null): Promise<T> {
+export async function runHerdrCommand<T>(
+  sessionName: string,
+  arguments_: string[],
+  sshHost?: string | null,
+  shouldLogFailure = true,
+): Promise<T> {
   const { workspaceKey } = parseHerdrSessionTarget(sessionName);
   if (workspaceKey) {
     const workspaceId = await getHerdrWorkspaceId(sessionName, sshHost);
@@ -126,6 +138,7 @@ export async function runHerdrCommand<T>(sessionName: string, arguments_: string
   const output = await execGit(buildHerdrCommand(sessionName, arguments_), sshHost, {
     timeoutMs: HERDR_COMMAND_TIMEOUT_MS,
     retrySafe: arguments_[1] === "list" || (arguments_[0] === "pane" && ["get", "layout"].includes(arguments_[1])),
+    shouldLogFailure,
   });
   // send-text는 전송 성공 시 본문을 출력하지 않는다.
   if (!output && arguments_[0] === "pane" && arguments_[1] === "send-text") return undefined as T;
@@ -133,7 +146,8 @@ export async function runHerdrCommand<T>(sessionName: string, arguments_: string
 }
 
 export async function readHerdrTabs(sessionName: string, sshHost?: string | null): Promise<TerminalTab[]> {
-  const result = await runHerdrCommand<{ tabs: HerdrTab[] }>(sessionName, ["tab", "list"], sshHost);
+  // 탭 목록은 주기적으로 조회하므로 herdr 서버가 꺼져 있을 때의 실패를 매번 오류 로그로 남기지 않는다.
+  const result = await runHerdrCommand<{ tabs: HerdrTab[] }>(sessionName, ["tab", "list"], sshHost, false);
   return result.tabs.map((tab, index) => ({
     id: tab.tab_id,
     nativeIndex: index,
@@ -213,13 +227,18 @@ export async function readHerdrTaskPaneSize(
 
 /** 실행 명령은 탭 이름 표시용이라 읽지 못해도 pane 목록을 막지 않는다 */
 async function readHerdrPaneCommand(sessionName: string, paneId: string, sshHost?: string | null): Promise<string> {
+  return (await readHerdrPaneForegroundPrograms(sessionName, paneId, sshHost)).at(-1) ?? "";
+}
+
+/** pane 앞쪽에서 도는 프로그램 이름들. 읽지 못하면 아무것도 돌지 않는 것으로 본다 */
+export async function readHerdrPaneForegroundPrograms(sessionName: string, paneId: string, sshHost?: string | null): Promise<string[]> {
   try {
     const { process_info: processInfo } = await runHerdrCommand<{ process_info: { foreground_processes?: { name?: string }[] } }>(
       sessionName, ["pane", "process-info", "--pane", paneId], sshHost,
     );
-    return processInfo.foreground_processes?.at(-1)?.name ?? "";
+    return (processInfo.foreground_processes ?? []).flatMap((process) => process.name ? [process.name] : []);
   } catch {
-    return "";
+    return [];
   }
 }
 
@@ -255,10 +274,26 @@ async function getWorkspaceMappingPath(sshHost?: string | null): Promise<string>
   return mappingPath;
 }
 
+function readWorkspaceMapping(sshHost?: string | null): Promise<Record<string, string>> {
+  const key = sshHost ?? "";
+  const recent = workspaceMappingReads.get(key);
+  if (recent && performance.now() - recent.readAt < WORKSPACE_MAPPING_REUSE_MS) return recent.mapping;
+  const mapping = getWorkspaceMappingPath(sshHost).then(async (mappingPath) => parseWorkspaceMapping(await readTextFile(mappingPath, sshHost)));
+  workspaceMappingReads.set(key, { readAt: performance.now(), mapping });
+  mapping.catch(() => {
+    if (workspaceMappingReads.get(key)?.mapping === mapping) workspaceMappingReads.delete(key);
+  });
+  return mapping;
+}
+
+function forgetWorkspaceMapping(sshHost?: string | null): void {
+  workspaceMappingReads.delete(sshHost ?? "");
+}
+
 export async function getHerdrWorkspaceId(sessionName: string, sshHost?: string | null): Promise<string | null> {
   const { workspaceKey } = parseHerdrSessionTarget(sessionName);
   if (!workspaceKey) return null;
-  const mapping = parseWorkspaceMapping(await readTextFile(await getWorkspaceMappingPath(sshHost), sshHost));
+  const mapping = await readWorkspaceMapping(sshHost);
   if (!Object.hasOwn(mapping, workspaceKey)) throw new Error("task에 연결된 Herdr Space가 없습니다.");
   return mapping[workspaceKey];
 }
@@ -299,6 +334,7 @@ export async function closeHerdrTaskWorkspace(sessionName: string, sshHost?: str
     delete mapping[workspaceKey];
     return JSON.stringify(mapping);
   }, sshHost, 0o600);
+  forgetWorkspaceMapping(sshHost);
 }
 
 export function ensureHerdrSession(
@@ -378,12 +414,15 @@ async function bootstrapHerdrSession(sessionName: string, cwd: string, layout?: 
     }
   }
   if (!workspaceKey) {
-    if (workspaces.length === 0) await createHerdrWorkspace(serverName, cwd, layout, null, sshHost);
+    if (workspaces.length === 0 || !(await closeUnrestorableHerdrPanes(serverName, null, sshHost))) {
+      await createHerdrWorkspace(serverName, cwd, layout, null, sshHost);
+    }
     return null;
   }
   const mappingPath = await getWorkspaceMappingPath(sshHost);
   const mapping = parseWorkspaceMapping(await readTextFile(mappingPath, sshHost));
-  if (Object.hasOwn(mapping, workspaceKey) && workspaces.some((space) => space.workspace_id === mapping[workspaceKey])) {
+  if (Object.hasOwn(mapping, workspaceKey) && workspaces.some((space) => space.workspace_id === mapping[workspaceKey])
+    && await closeUnrestorableHerdrPanes(serverName, mapping[workspaceKey], sshHost)) {
     return mapping[workspaceKey];
   }
   let workspaceId: string | null = null;
@@ -400,11 +439,28 @@ async function bootstrapHerdrSession(sessionName: string, cwd: string, layout?: 
       workspaceId = createdId;
       return JSON.stringify({ ...mapping, [workspaceKey]: createdId });
     }, sshHost, 0o600);
+    forgetWorkspaceMapping(sshHost);
   } catch (error) {
     if (createdId) await runHerdrCommand(serverName, ["workspace", "close", createdId], sshHost);
     throw error;
   }
   return workspaceId;
+}
+
+/**
+ * 저장된 작업 경로가 사라져 Herdr가 복원하지 못한 pane을 닫는다.
+ * 이런 pane은 프로세스 없이 오류 문구만 보여 주고 Herdr에 다시 띄우는 명령도 없어서, 닫는 것 말고는 되살릴 방법이 없다.
+ * workspaceId가 있으면 공유 서버에서 그 task Space의 pane만 다루고, 없으면 task 전용 서버의 pane 전체를 다룬다.
+ * 반환값은 정상 pane이 하나라도 남았는지다. 모두 닫혔다면 Herdr가 workspace도 함께 닫으므로 호출자가 새로 만들어야 한다.
+ */
+async function closeUnrestorableHerdrPanes(serverName: string, workspaceId: string | null, sshHost?: string | null): Promise<boolean> {
+  const { panes } = await runHerdrCommand<{ panes: HerdrPane[] }>(serverName, ["pane", "list"], sshHost);
+  const workspacePanes = workspaceId ? panes.filter((pane) => pane.pane_id.startsWith(`${workspaceId}:`)) : panes;
+  const unrestorablePanes = workspacePanes.filter((pane) => pane.restore_error);
+  for (const pane of unrestorablePanes) {
+    await runHerdrCommand(serverName, ["pane", "close", pane.pane_id], sshHost);
+  }
+  return unrestorablePanes.length < workspacePanes.length;
 }
 
 async function createHerdrWorkspace(serverName: string, cwd: string, layout: TmuxPaneLayoutConfig | null | undefined, workspaceKey: string | null, sshHost?: string | null): Promise<string> {

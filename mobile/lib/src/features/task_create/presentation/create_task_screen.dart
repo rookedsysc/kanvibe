@@ -1,3 +1,6 @@
+import '../../../common/l10n/app_localizations.dart';
+import '../domain/session_type.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -20,6 +23,7 @@ class CreateTaskScreen extends ConsumerStatefulWidget {
     required this.projects,
     this.defaultProjectId,
     this.defaultBaseBranch,
+    this.existingTaskId,
     super.key,
   });
 
@@ -28,6 +32,7 @@ class CreateTaskScreen extends ConsumerStatefulWidget {
 
   final String? defaultProjectId;
   final String? defaultBaseBranch;
+  final String? existingTaskId;
 
   @override
   ConsumerState<CreateTaskScreen> createState() => _CreateTaskScreenState();
@@ -41,6 +46,7 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
   BoardProject? _selectedProject;
   String? _baseBranch;
   TaskPriority? _priority;
+  SessionType? _sessionType;
 
   bool _isCreating = false;
 
@@ -102,6 +108,8 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
           baseBranch: _baseBranch,
           description: _descriptionController.text.trim(),
           priority: _priority?.wireValue,
+          sessionType: _sessionType?.wireValue,
+          existingTaskId: widget.existingTaskId,
           onConfirming: () {
             if (mounted) setState(() => _isConfirmingCreation = true);
           },
@@ -169,10 +177,16 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('새 태스크')),
+      appBar: AppBar(
+        title: Text(
+          widget.existingTaskId == null
+              ? context.tr('새 태스크')
+              : context.tr('브랜치 작업으로 전환'),
+        ),
+      ),
       body: SafeArea(
         child: widget.projects.isEmpty
-            ? const _NoProjectGuide()
+            ? _NoProjectGuide()
             : _buildForm(context),
       ),
     );
@@ -180,10 +194,10 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
 
   Widget _buildForm(BuildContext context) {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(AppSizes.p24),
+      padding: EdgeInsets.all(AppSizes.p24),
       child: Center(
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 420),
+          constraints: BoxConstraints(maxWidth: 420),
           child: Form(
             key: _formKey,
             child: Column(
@@ -192,7 +206,7 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
                 DropdownButtonFormField<BoardProject>(
                   isExpanded: true,
                   initialValue: _selectedProject,
-                  decoration: const InputDecoration(labelText: '프로젝트 *'),
+                  decoration: InputDecoration(labelText: context.tr('프로젝트 *')),
                   items: [
                     for (final project in widget.projects)
                       DropdownMenuItem(
@@ -206,75 +220,104 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
                   ],
                   onChanged: _isCreating ? null : _selectProject,
                   validator: (project) =>
-                      project == null ? '프로젝트를 골라 주세요.' : null,
+                      project == null ? context.tr('프로젝트를 골라 주세요.') : null,
                 ),
-                const SizedBox(height: AppSizes.p16),
+                SizedBox(height: AppSizes.p16),
                 _BaseBranchField(
                   project: _selectedProject,
                   selectedBranch: _baseBranch,
                   isEnabled: !_isCreating,
                   onChanged: (branch) => setState(() => _baseBranch = branch),
                 ),
-                const SizedBox(height: AppSizes.p16),
+                SizedBox(height: AppSizes.p16),
                 TextFormField(
                   controller: _branchNameController,
                   enabled: !_isCreating,
                   autocorrect: false,
-                  decoration: const InputDecoration(
-                    labelText: '브랜치 이름 *',
-                    helperText: '태스크 제목으로도 쓰입니다.',
+                  decoration: InputDecoration(
+                    labelText: context.tr('브랜치 이름 *'),
+                    helperText: context.tr('태스크 제목으로도 쓰입니다.'),
                   ),
                   validator: (value) => value == null || value.trim().isEmpty
-                      ? '브랜치 이름을 적어 주세요.'
+                      ? context.tr('브랜치 이름을 적어 주세요.')
                       : null,
                 ),
-                const SizedBox(height: AppSizes.p16),
-                TextFormField(
-                  controller: _descriptionController,
-                  enabled: !_isCreating,
-                  maxLines: 3,
-                  decoration: const InputDecoration(labelText: '설명'),
-                ),
-                const SizedBox(height: AppSizes.p16),
-                DropdownButtonFormField<TaskPriority?>(
-                  initialValue: _priority,
-                  decoration: const InputDecoration(labelText: '우선순위'),
+                SizedBox(height: AppSizes.p16),
+                DropdownButtonFormField<SessionType>(
+                  initialValue: _sessionType,
+                  decoration: InputDecoration(labelText: context.tr('세션 종류')),
                   items: [
-                    const DropdownMenuItem(value: null, child: Text('고르지 않음')),
-                    for (final priority in TaskPriority.values)
+                    for (final type in SessionType.values)
                       DropdownMenuItem(
-                        value: priority,
-                        child: Text(priority.label),
+                        value: type,
+                        child: Text(type.wireValue),
                       ),
                   ],
+                  hint: Text(context.tr('PC 기본값')),
                   onChanged: _isCreating
                       ? null
-                      : (priority) => setState(() => _priority = priority),
+                      : (type) => setState(() => _sessionType = type),
+                  validator: (type) =>
+                      widget.existingTaskId != null && type == null
+                      ? context.tr('세션 종류를 골라 주세요.')
+                      : null,
                 ),
+                SizedBox(height: AppSizes.p16),
+                if (widget.existingTaskId == null) ...[
+                  TextFormField(
+                    controller: _descriptionController,
+                    enabled: !_isCreating,
+                    maxLines: 3,
+                    decoration: InputDecoration(labelText: context.tr('설명')),
+                  ),
+                  SizedBox(height: AppSizes.p16),
+                  DropdownButtonFormField<TaskPriority?>(
+                    initialValue: _priority,
+                    decoration: InputDecoration(labelText: context.tr('우선순위')),
+                    items: [
+                      DropdownMenuItem(
+                        value: null,
+                        child: Text(context.tr('고르지 않음')),
+                      ),
+                      for (final priority in TaskPriority.values)
+                        DropdownMenuItem(
+                          value: priority,
+                          child: Text(context.tr(priority.label)),
+                        ),
+                    ],
+                    onChanged: _isCreating
+                        ? null
+                        : (priority) => setState(() => _priority = priority),
+                  ),
+                ],
                 if (_failureMessage != null) ...[
-                  const SizedBox(height: AppSizes.p16),
+                  SizedBox(height: AppSizes.p16),
                   Text(
-                    _failureMessage!,
+                    context.tr(_failureMessage!),
                     style: Theme.of(context).textTheme.bodySmall
                         ?.copyWith(color: Theme.of(context).colorScheme.error),
                   ),
                 ],
-                const SizedBox(height: AppSizes.p24),
+                SizedBox(height: AppSizes.p24),
                 FilledButton(
                   onPressed: _isCreating ? null : _create,
                   child: Text(
-                    _isConfirmingCreation
-                        ? '결과 확인 중…'
-                        : _isCreating
-                        ? '만드는 중…'
-                        : '만들기',
+                    context.tr(
+                      _isConfirmingCreation
+                          ? '결과 확인 중…'
+                          : _isCreating
+                          ? '만드는 중…'
+                          : '만들기',
+                    ),
                   ),
                 ),
-                const SizedBox(height: AppSizes.p8),
+                SizedBox(height: AppSizes.p8),
                 Text(
-                  _isCreating
-                      ? '화면을 나가도 생성은 계속되고, 끝나면 알려 드립니다.'
-                      : '데스크탑에 worktree와 터미널 세션이 함께 만들어져 조금 걸립니다.',
+                  context.tr(
+                    _isCreating
+                        ? '화면을 나가도 생성은 계속되고, 끝나면 알려 드립니다.'
+                        : '데스크탑에 worktree와 터미널 세션이 함께 만들어져 조금 걸립니다.',
+                  ),
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.labelSmall,
                 ),
@@ -312,8 +355,8 @@ class _BaseBranchField extends ConsumerWidget {
       return DropdownButtonFormField<String>(
         isExpanded: true,
         initialValue: null,
-        decoration: const InputDecoration(labelText: '베이스 브랜치'),
-        items: const [],
+        decoration: InputDecoration(labelText: context.tr('베이스 브랜치')),
+        items: [],
         onChanged: null,
       );
     }
@@ -331,10 +374,12 @@ class _BaseBranchField extends ConsumerWidget {
           isExpanded: true,
           initialValue: selectedBranch,
           decoration: InputDecoration(
-            labelText: '베이스 브랜치',
-            helperText: branchList.isLoading ? '브랜치 목록을 불러오는 중…' : null,
+            labelText: context.tr('베이스 브랜치'),
+            helperText: branchList.isLoading
+                ? context.tr('브랜치 목록을 불러오는 중…')
+                : null,
             errorText: hasBranchListFailed
-                ? '브랜치 목록을 불러오지 못해 기본 브랜치만 보입니다.'
+                ? context.tr('브랜치 목록을 불러오지 못해 기본 브랜치만 보입니다.')
                 : null,
           ),
           items: [
@@ -355,7 +400,7 @@ class _BaseBranchField extends ConsumerWidget {
             alignment: Alignment.centerRight,
             child: TextButton(
               onPressed: () => ref.invalidate(branchesProvider),
-              child: const Text('다시 불러오기'),
+              child: Text(context.tr('다시 불러오기')),
             ),
           ),
       ],
@@ -371,9 +416,9 @@ class _NoProjectGuide extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(AppSizes.p24),
+        padding: EdgeInsets.all(AppSizes.p24),
         child: Text(
-          '등록된 프로젝트가 없습니다.\n데스크탑에서 프로젝트를 먼저 등록해 주세요.',
+          context.tr('등록된 프로젝트가 없습니다.\n데스크탑에서 프로젝트를 먼저 등록해 주세요.'),
           textAlign: TextAlign.center,
           style: Theme.of(context).textTheme.bodyMedium,
         ),

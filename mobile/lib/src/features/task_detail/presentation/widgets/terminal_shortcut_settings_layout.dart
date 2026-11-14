@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../common/constants/app_colors.dart';
 import '../../../../common/constants/app_sizes.dart';
+import '../../../../common/l10n/app_localizations.dart';
 
 /// 단축키 설정 페이지와 콤보 편집기가 함께 쓰는 설정 화면 골격.
 ///
@@ -19,7 +20,7 @@ class SettingsPageTitle extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          title,
+          context.tr(title),
           style: const TextStyle(
             fontSize: 26,
             height: 1.3,
@@ -30,7 +31,7 @@ class SettingsPageTitle extends StatelessWidget {
         if (subtitle case final subtitle?) ...[
           const SizedBox(height: AppSizes.p4),
           Text(
-            subtitle,
+            context.tr(subtitle),
             style: const TextStyle(
               fontSize: 15,
               color: AppColors.textSecondary,
@@ -55,7 +56,7 @@ class SettingsSectionLabel extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          label,
+          context.tr(label),
           style: const TextStyle(
             fontSize: 15,
             fontWeight: FontWeight.w600,
@@ -64,7 +65,7 @@ class SettingsSectionLabel extends StatelessWidget {
         ),
         if (caption case final caption?)
           Text(
-            caption,
+            context.tr(caption),
             style: const TextStyle(
               fontSize: 13,
               color: AppColors.textSecondary,
@@ -124,7 +125,7 @@ class SettingsBottomAction extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.only(bottom: AppSizes.p12),
             child: Text(
-              error,
+              context.tr(error),
               style: const TextStyle(color: AppColors.statusError),
             ),
           ),
@@ -140,7 +141,7 @@ class SettingsBottomAction extends StatelessWidget {
             ),
           ),
           onPressed: onPressed,
-          child: Text(label),
+          child: Text(context.tr(label)),
         ),
       ],
     ),

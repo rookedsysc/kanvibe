@@ -294,4 +294,23 @@ void main() {
     );
     expect(current.unreadCount, 1);
   });
+
+  test('태스크 읽음은 현재 PC에 요청한 뒤 데스크톱 상태를 다시 조회해 배지를 지운다', () async {
+    client.notificationsByConnection[pcA.id] = [
+      inboxNotice(),
+      inboxNotice(id: 'n2'),
+      inboxNotice(id: 'other', taskId: 'task-2'),
+    ];
+    container.invalidate(notificationInboxProvider);
+    await container.read(notificationInboxProvider.future);
+
+    await container
+        .read(notificationInboxProvider.notifier)
+        .markTaskRead('task-1');
+
+    expect(client.readTaskCalls, [(connectionId: pcA.id, taskId: 'task-1')]);
+    final state = await container.read(notificationInboxProvider.future);
+    expect(state.unreadCountForTask('task-1'), 0);
+    expect(state.unreadCountForTask('task-2'), 1);
+  });
 }

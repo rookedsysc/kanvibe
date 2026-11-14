@@ -173,7 +173,7 @@ export function PaneChatComposer({ taskId, chat, controlsOpen, isVisible, onMode
           <button type="button" disabled={disabled || !chat.snapshot?.modelPicker.supported || !inputReady || controlsOpen} onClick={onModel} className={controlClass}>{t("model")}</button>
           <button type="button" disabled={disabled} aria-expanded={controlsOpen} onClick={onControls} className={controlClass}>{t("controls")}</button>
           <button type="button" disabled={disabled} onClick={() => void chat.interrupt()} className={controlClass}>{t("stop")}</button>
-          <button type="submit" disabled={disabled || composer.sending || hasPending || (!composer.text.trim() && !composer.attachments.length) || controlsOpen || !inputReady} className="ml-auto min-h-10 shrink-0 rounded-lg bg-brand-primary px-4 text-xs font-medium text-white hover:bg-brand-active focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary disabled:opacity-40">{composer.sending ? t("sending") : t("send")}</button>
+          <button type="submit" disabled={disabled || composer.sending || hasPending || (!composer.text.trim() && !composer.attachments.length) || controlsOpen || !inputReady} aria-label={composer.sending ? t("sending") : t("send")} className="ml-auto flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-primary text-base font-medium text-white hover:bg-brand-active focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary disabled:opacity-40"><span aria-hidden="true">{composer.sending ? "…" : "↑"}</span></button>
         </div>
       </div>
     </form>

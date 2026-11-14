@@ -132,6 +132,22 @@ async function isSubmoduleRepoPath(repoPath: string, sshHost?: string | null): P
   }
 }
 
+const NOT_GIT_REPOSITORY_MARKER = "__KANVIBE_NOT_GIT_REPOSITORY__";
+
+/**
+ * 등록된 프로젝트 경로가 아직 git 저장소인지 확인한다.
+ * 셸 안에서 git 실패를 표식으로 바꿔, 저장소가 아니라는 답과 SSH 연결 실패를 구분한다.
+ * @returns 저장소가 아니면 false. 연결 실패처럼 판정할 수 없으면 던진다
+ */
+async function isProjectGitRepository(project: Pick<Project, "repoPath" | "sshHost">): Promise<boolean> {
+  const probeOutput = await execGit(
+    `git -C ${resolvePathForShell(project.repoPath, project.sshHost)} rev-parse --is-inside-work-tree >/dev/null 2>&1 || printf '%s' '${NOT_GIT_REPOSITORY_MARKER}'`,
+    project.sshHost,
+  );
+
+  return probeOutput.trim() !== NOT_GIT_REPOSITORY_MARKER;
+}
+
 async function resolveProjectDefaultBranchWorktreePath(project: Pick<Project, "repoPath" | "defaultBranch" | "sshHost">): Promise<string | null> {
   try {
     const worktrees = await listWorktrees(project.repoPath, project.sshHost);
@@ -751,6 +767,17 @@ async function syncProjectWorktrees(
   };
 
   try {
+    // 판정할 수 없으면 기존처럼 동기화를 진행하고, 저장소가 아니라고 확인됐을 때만 건너뛴다.
+    const isGitRepository = await isProjectGitRepository(project).catch(() => true);
+    if (!isGitRepository) {
+      // 상태 파일을 쓰면 mkdir -p가 사라진 폴더를 다시 만들기 때문에 이 프로젝트에는 아무것도 쓰지 않는다.
+      console.warn(`${project.name} 경로가 git 저장소가 아니어서 동기화를 건너뜁니다:`, {
+        repoPath: project.repoPath,
+        sshHost: project.sshHost ?? null,
+      });
+      return result;
+    }
+
     const worktrees = await listWorktrees(project.repoPath, project.sshHost);
     const projectTasks = worktrees.length > 0
       ? await taskRepo.find({ where: { projectId: project.id } }) : [];

@@ -19,6 +19,11 @@ class BoardTask {
     this.agentType,
     this.sshHost,
     this.prUrl,
+    this.createdAt,
+    this.updatedAt,
+    this.sessionType,
+    this.worktreePath,
+    this.projectIconDataUrl,
   });
 
   final String id;
@@ -34,6 +39,11 @@ class BoardTask {
   final String? agentType;
   final String? sshHost;
   final String? prUrl;
+  final DateTime? createdAt;
+  final DateTime? updatedAt;
+  final String? sessionType;
+  final String? worktreePath;
+  final String? projectIconDataUrl;
 
   /// 태스크가 원격 호스트에서 도는지. 목록에서 배지로 구분해 준다
   bool get isRemote => sshHost != null && sshHost!.isNotEmpty;
@@ -56,12 +66,18 @@ class BoardTask {
     agentType: agentType,
     sshHost: sshHost,
     prUrl: prUrl,
+    createdAt: createdAt,
+    updatedAt: updatedAt,
+    sessionType: sessionType,
+    worktreePath: worktreePath,
+    projectIconDataUrl: projectIconDataUrl,
   );
 
   static BoardTask? fromJson(
     Map<String, dynamic> json,
     Map<String, String> projectNamesById, {
     Map<String, String> projectColorsById = const {},
+    Map<String, String> projectIconsById = const {},
   }) {
     final id = json['id'];
     final title = json['title'];
@@ -72,6 +88,7 @@ class BoardTask {
     }
 
     final projectId = json['projectId'];
+    final project = json['project'];
     return BoardTask(
       id: id,
       title: title,
@@ -82,12 +99,24 @@ class BoardTask {
       projectName:
           (projectId is String ? projectNamesById[projectId] : null) ??
           _readString(json['projectName']),
-      projectColor: projectId is String ? projectColorsById[projectId] : null,
+      projectColor:
+          (projectId is String ? projectColorsById[projectId] : null) ??
+          _readString(json['projectColor']) ??
+          (projectId is String && project is Map && project['id'] == projectId
+              ? _readString(project['color'])
+              : null),
       description: _readString(json['description']),
       priority: TaskPriority.fromWire(_readString(json['priority'])),
       agentType: _readString(json['agentType']),
       sshHost: _readString(json['sshHost']),
       prUrl: _readString(json['prUrl']),
+      createdAt: DateTime.tryParse(json['createdAt']?.toString() ?? ''),
+      updatedAt: DateTime.tryParse(json['updatedAt']?.toString() ?? ''),
+      sessionType: _readString(json['sessionType']),
+      worktreePath: _readString(json['worktreePath']),
+      projectIconDataUrl:
+          (projectId is String ? projectIconsById[projectId] : null) ??
+          _readString(json['projectIconDataUrl']),
     );
   }
 

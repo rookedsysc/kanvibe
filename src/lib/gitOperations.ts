@@ -81,6 +81,8 @@ export interface ExecGitOptions {
   retrySafe?: boolean;
   /** 원격 명령의 표준 입력으로 보낼 내용. 자격 증명처럼 프로세스 인자에 남으면 안 되는 값을 싣는다. */
   remoteStdin?: string;
+  /** false면 원격 명령 실패를 오류 로그로 남기지 않는다. 세션이 꺼져 있으면 실패하는 탭 목록 조회처럼 실패가 예상된 폴링에 쓴다 */
+  shouldLogFailure?: boolean;
   /** 원격 셸이 marker와 tab으로 시작하는 요청 한 줄을 보내면 한 번 응답한다. callback은 재실행하지 않는다. */
   remoteStdinResponder?: {
     marker: string;
@@ -282,7 +284,9 @@ async function execRemote(
           && !hasRemoteCommandCompleted(error) && (transient || timeout)
           && attempt < REMOTE_SSH_COMMAND_MAX_ATTEMPTS && Date.now() < deadline;
         if (shouldRetry) continue;
-        logRemoteCommandFailure(command, sshHost, sshArgs, error);
+        if (options?.shouldLogFailure !== false) {
+          logRemoteCommandFailure(command, sshHost, sshArgs, error);
+        }
         if (transient && ownsCurrentGeneration) rememberSSHTransportFailure(sshHost, normalizedError);
         throw normalizedError;
       }
@@ -667,6 +671,15 @@ function throwIfSSHTransportCooldownActive(sshHost: string): void {
   throw Object.assign(new Error(
     `${sshHost} 원격 명령 실패: 최근 SSH transport 실패로 원격 명령을 잠시 건너뜁니다. 마지막 오류: ${failure.error.message}`,
   ), { retryAfterMs: Math.max(0, failure.until - Date.now()) });
+}
+
+/**
+ * 사용자가 직접 원격 연결을 요청하면 백그라운드 실패로 걸린 쿨다운을 풀어 바로 다시 시도하게 한다.
+ * 쿨다운은 백그라운드 명령이 끊긴 연결로 몰리는 것을 막으려는 장치라서, 사용자 요청까지 막으면 터미널이 열리지 않는다.
+ * @param sshHost 쿨다운을 풀 원격 PC의 SSH 호스트 이름
+ */
+export function clearRemoteSSHTransportCooldown(sshHost: string): void {
+  remoteSSHTransportFailures.delete(sshHost);
 }
 
 function rememberSSHTransportFailure(sshHost: string, error: Error): void {

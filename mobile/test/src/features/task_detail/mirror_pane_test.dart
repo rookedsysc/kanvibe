@@ -50,6 +50,32 @@ void main() {
       expect(TaskSurfaces.fromJson({'canResize': false}).canResize, isFalse);
       expect(TaskSurfaces.fromJson(const {}).canResize, isFalse);
     });
+    test('데스크탑이 명시한 세션만 지난 출력 갱신을 요청한다', () {
+      expect(
+        TaskSurfaces.fromJson({'canRefreshHistory': true}).canRefreshHistory,
+        isTrue,
+      );
+      expect(TaskSurfaces.fromJson(const {}).canRefreshHistory, isFalse);
+    });
+
+    test('직접 연결 권한은 데스크탑이 없다고 밝힌 세션만 묻지 않는다', () {
+      expect(
+        TaskSurfaces.fromJson({'canPrepareDirectConnection': false})
+            .canPrepareDirectConnection,
+        isFalse,
+      );
+      expect(
+        TaskSurfaces.fromJson({'canPrepareDirectConnection': true})
+            .canPrepareDirectConnection,
+        isTrue,
+      );
+      // 이 값을 모르는 옛 데스크탑은 원격 Herdr일 수 있어 전처럼 물어본다.
+      expect(
+        TaskSurfaces.fromJson(const {}).canPrepareDirectConnection,
+        isTrue,
+      );
+    });
+
     test('모든 window의 pane을 순서대로 펼친다', () {
       final surfaces = TaskSurfaces.fromJson({
         'tabs': [

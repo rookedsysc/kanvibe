@@ -2,7 +2,7 @@
 # `qa/mobile/lib/prepareQaDesktop.cjs --default-session-type herdr`로 띄운 격리 데스크탑과, 데스크탑이 찾을 수 있는 herdr가 필요하다.
 appId: ${APP_ID}
 env:
-  DESKTOP_API_FROM_HOST: http://127.0.0.1:19736
+  DESKTOP_API_FROM_HOST: http://127.0.0.1:39736
   PROBE_API_FROM_HOST: http://127.0.0.1:19737
 ---
 - launchApp:

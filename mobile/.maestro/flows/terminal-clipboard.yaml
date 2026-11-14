@@ -2,7 +2,7 @@
 # clipboard.vim은 Neovim 내장 OSC 52 공급자를 쓰므로 fixture 셸의 `vim`이 Neovim 0.10 이상이어야 한다.
 appId: ${APP_ID}
 env:
-  DESKTOP_API_FROM_HOST: http://127.0.0.1:19736
+  DESKTOP_API_FROM_HOST: http://127.0.0.1:39736
 ---
 - launchApp:
     clearState: true

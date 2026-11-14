@@ -15,7 +15,9 @@ const { execFileSync, spawn } = require("node:child_process");
  * 트리에 내놓지 않아서, 모바일에서 친 키가 실제로 pane에 닿았는지는 기기 화면만 봐서는 단정할 수 없다.
  */
 
-const DESKTOP_API = "http://127.0.0.1:19736";
+/** 모바일 QA 데스크탑은 pnpm dev(19736)와 함께 켜 둘 수 있도록 고정 포트를 따로 쓴다. Maestro 플로우가 이 포트를 그대로 적어 둔다 */
+const DESKTOP_HOOK_PORT = 39736;
+const DESKTOP_API = `http://127.0.0.1:${DESKTOP_HOOK_PORT}`;
 const PROBE_PORT = 19737;
 const FIXTURE_PROJECT_NAME = "kanvibe-qa-fixture";
 const FIXTURE_PROJECT_ID = "00000000-0000-4000-8000-000000000001";
@@ -84,7 +86,7 @@ function startDesktop(runDir, appDataDir) {
   const logPath = path.join(runDir, "desktop.log");
   const logFile = fs.openSync(logPath, "a");
 
-  const desktop = spawn("pnpm", ["dev"], {
+  const desktop = spawn("pnpm", ["dev", `--kanvibe-hook-port=${DESKTOP_HOOK_PORT}`], {
     cwd: path.resolve(__dirname, "../../.."),
     env: { ...process.env, KANVIBE_APP_DATA_DIR: appDataDir },
     stdio: ["ignore", logFile, logFile],
@@ -143,7 +145,7 @@ function insertFixtureTask(appDataDir, task) {
 }
 
 /**
- * 모바일 생성 화면은 세션 종류를 묻지 않고 데스크탑 기본값으로 만든다. 새 설치의 기본값은 herdr라서,
+ * 모바일 생성 화면에서 세션 종류를 고르지 않으면 데스크탑 기본값으로 만든다. 새 설치의 기본값은 herdr라서,
  * 그대로 두면 격리 데스크탑이 사용자의 herdr 서버에 작업 공간을 만든다. 그래서 격리 DB에 기본값을 직접 정해 둔다.
  */
 function insertDefaultSessionType(appDataDir, sessionType) {

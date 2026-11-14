@@ -175,7 +175,7 @@
     "createTitle": "创建新任务",
     "createFailed": "创建任务失败。",
     "createHooksBackgroundFailedTitle": "自动安装 Hooks 失败",
-    "createHooksBackgroundFailedBody": "创建“{taskTitle}”后安装 hooks 失败。你可以在 Hooks 状态区域重新安装。",
+    "createHooksBackgroundFailedBody": "“{taskTitle}”的 hooks 安装失败。你可以在 Hooks 状态区域重新安装。",
     "peerDeletionFailedTitle": "未能在其他桌面删除",
     "peerDeletionFailedBody": "“{taskTitle}”已在此桌面删除，但仍保留在 {peerUrls}。请在该桌面恢复在线后手动删除。",
     "deleteConfirm": "确定要删除此任务吗？",
@@ -576,6 +576,29 @@
         "reasoning": "推理",
         "tool": "工具",
         "unknown": "其他"
+      },
+      "changedFiles": "AI 更改的文件",
+      "fileChange": {
+        "created": "已创建",
+        "modified": "已修改"
+      },
+      "filePreview": {
+        "title": "{name} 预览",
+        "viewMode": "查看方式",
+        "rendered": "预览",
+        "source": "源码",
+        "copy": "复制",
+        "copied": "已复制",
+        "copyFailed": "复制失败",
+        "close": "关闭预览",
+        "loading": "正在加载文件…",
+        "retry": "重试",
+        "failure": {
+          "outside-worktree": "该文件位于任务文件夹之外，无法在此打开。",
+          "not-found": "文件已不存在。",
+          "too-large": "文件超过 1MB，无法预览。",
+          "unreadable": "无法读取文件。"
+        }
       }
     },
     "priority": "优先级",

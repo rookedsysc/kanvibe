@@ -21,6 +21,7 @@ import 'package:kanvibe_mobile/src/features/task_detail/presentation/widgets/ter
 import 'package:xterm/xterm.dart' as xterm;
 
 import '../../../support/fake_desktop.dart';
+import '../../../support/fake_notification_inbox.dart';
 
 /// 데스크탑 스크린샷과 같은 모양. window 하나가 좌우 두 pane으로 갈려 있고, 두 번째 window가 하나 더 있다
 const _twoPaneWindow = MirrorTab(
@@ -122,6 +123,14 @@ Future<FakeDesktopClient> pumpDetail(
         statusError: statusError,
       );
 
+  client.onJsonRequest ??= (method, segments, query, body) async {
+    if (method == 'GET' && segments.join('/') == 'settings') {
+      return {
+        'settings': {'doneAlertDismissed': true},
+      };
+    }
+    return {'success': true};
+  };
   await tester.pumpWidget(
     wrapWithApp(
       TaskDetailScreen(task: task),
@@ -137,7 +146,9 @@ Future<FakeDesktopClient> pumpDetail(
 xterm.Terminal terminalIn(WidgetTester tester, String paneId) => tester
     .widget<xterm.TerminalView>(
       find.descendant(
-        of: find.byKey(ValueKey(paneId)),
+        of: find.byWidgetPredicate(
+          (widget) => widget is PaneTerminalView && widget.pane.id == paneId,
+        ),
         matching: find.byType(xterm.TerminalView),
       ),
     )
@@ -230,6 +241,51 @@ Future<void> _submitCreation(WidgetTester tester) async {
 }
 
 void main() {
+  group('알림 읽음', () {
+    testWidgets('상세 화면에 들어오면 데스크톱에 이 태스크의 알림 읽음을 요청한다', (tester) async {
+      final client = InboxDesktopClient(surfaces: _surfaces);
+      await pumpDetail(tester, size: phoneSize, desktopClient: client);
+
+      expect(client.readTaskCalls.map((call) => call.taskId), [_task.id]);
+    });
+
+    testWidgets('다른 화면이 덮인 동안에는 요청하지 않고 다시 보일 때 요청한다', (tester) async {
+      final client = InboxDesktopClient(surfaces: _surfaces);
+      await pumpDetail(tester, size: phoneSize, desktopClient: client);
+      final navigator = tester.state<NavigatorState>(find.byType(Navigator));
+
+      unawaited(
+        navigator.push(
+          MaterialPageRoute<void>(builder: (_) => const Text('덮는 화면')),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(client.readTaskCalls, hasLength(1));
+
+      navigator.pop();
+      await tester.pumpAndSettle();
+      expect(client.readTaskCalls.map((call) => call.taskId), [
+        _task.id,
+        _task.id,
+      ]);
+    });
+
+    testWidgets('앱이 전경을 벗어난 동안에는 요청하지 않고 돌아오면 요청한다', (tester) async {
+      final client = InboxDesktopClient(surfaces: _surfaces);
+      await pumpDetail(tester, size: phoneSize, desktopClient: client);
+
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      await tester.pump();
+      expect(client.readTaskCalls, hasLength(1));
+
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpAndSettle();
+      expect(client.readTaskCalls, hasLength(2));
+    });
+  });
+
   group('태스크 상단 반응형 액션', () {
     const taskWithPr = BoardTask(
       id: 'task-1',
@@ -240,12 +296,12 @@ void main() {
       prUrl: 'https://github.com/example/repo/pull/1',
     );
     for (final width in [320.0, 390.0, 767.0, 768.0, 1024.0]) {
-      testWidgets('$width 폭에서 좁은 화면은 메뉴 하나, 넓은 화면은 기존 여섯 액션을 보인다', (
+      testWidgets('$width 폭에서 좁은 화면은 메뉴 하나, 넓은 화면은 열 개의 작업 액션을 보인다', (
         tester,
       ) async {
         await pumpDetail(tester, size: Size(width, 844), task: taskWithPr);
         final appBar = tester.widget<AppBar>(find.byType(AppBar));
-        expect(appBar.actions!.length, width < 768 ? 1 : 6);
+        expect(appBar.actions!.length, width < 768 ? 1 : 10);
         expect(tester.takeException(), isNull);
         if (width < 768) {
           expect(
@@ -816,21 +872,26 @@ void main() {
     expect(client.closedPanes, contains('%19'), reason: '떠난 pane의 구독은 닫혀야 한다');
   });
 
-  testWidgets('넓은 화면에서도 pane별 탭과 선택한 pane 하나만 보인다', (tester) async {
+  testWidgets('넓은 화면은 같은 window의 두 pane을 함께 보인다', (tester) async {
     await pumpDetail(tester, size: tabletSize);
     expect(find.text('claude'), findsOneWidget);
     expect(find.text('zsh'), findsOneWidget);
-    expect(find.byType(PaneTerminalView), findsOneWidget);
+    expect(find.byType(PaneTerminalView), findsNWidgets(2));
   });
 
   testWidgets('넓은 화면에서 다른 pane 탭을 고르면 입력 대상도 바뀐다', (tester) async {
     final client = await pumpDetail(tester, size: tabletSize);
     await tester.tap(find.text('zsh'));
     await tester.pumpAndSettle();
-    expect(find.byType(PaneTerminalView), findsOneWidget);
+    expect(find.byType(PaneTerminalView), findsNWidgets(2));
     terminalIn(tester, '%20').textInput('ls');
     expect(client.writtenInput['%20'], contains('ls'));
-    expect(client.closedPanes, contains('%19'));
+    expect(client.writtenInput['%19'], isNull);
+    expect(
+      client.closedPanes,
+      isNot(contains('%19')),
+      reason: '같은 window의 다른 pane은 계속 표시된다',
+    );
   });
 
   testWidgets('화면을 떠나면 pane 구독이 닫힌다', (tester) async {
@@ -1024,7 +1085,7 @@ void main() {
   });
 
   group('상태 옮기기', () {
-    testWidgets('지금 상태는 옮길 후보에서 빠지고 Pending도 나오지 않는다', (tester) async {
+    testWidgets('지금 상태는 후보에서 빠지고 Pending을 포함한 나머지는 선택할 수 있다', (tester) async {
       await pumpDetail(tester, size: phoneSize);
 
       await _showTaskActions(tester);
@@ -1032,11 +1093,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Progress(으)로 옮기기'), findsNothing, reason: '지금 상태다');
-      expect(
-        find.text('Pending(으)로 옮기기'),
-        findsNothing,
-        reason: '데스크탑도 내놓지 않는다',
-      );
+      expect(find.text('Pending(으)로 옮기기'), findsOneWidget);
       for (final label in ['Todo', 'Review', 'Done']) {
         expect(find.text('$label(으)로 옮기기'), findsOneWidget);
       }

@@ -3,7 +3,7 @@ import { execFileSync, execSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   taskRepo: {
@@ -311,6 +311,110 @@ describe("diff 실패와 경로 경계", () => {
   });
 });
 
+
+describe("readTaskWorkspaceFile", () => {
+  const MAX_FILE_BYTES = 1024 * 1024;
+  let directory: string;
+  let outsideDirectory: string;
+
+  async function loadService(sshHost: string | null = null) {
+    vi.resetModules();
+    vi.clearAllMocks();
+    mocks.taskRepo.findOne.mockResolvedValue({ worktreePath: directory, branchName: "main", sshHost });
+    mocks.execGit.mockImplementation(async (command: string) => execSync(command, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 4 * MAX_FILE_BYTES }).trim());
+    return import("@/desktop/main/services/diffService");
+  }
+
+  beforeEach(() => {
+    directory = mkdtempSync(path.join(tmpdir(), "kanvibe-workspace-file-"));
+    outsideDirectory = mkdtempSync(path.join(tmpdir(), "kanvibe-workspace-outside-"));
+    mkdirSync(path.join(directory, "docs"));
+    writeFileSync(path.join(directory, "docs/plan.md"), "# plan\n본문\n");
+    writeFileSync(path.join(outsideDirectory, "secret.txt"), "secret");
+  });
+
+  afterEach(() => {
+    rmSync(directory, { recursive: true, force: true });
+    rmSync(outsideDirectory, { recursive: true, force: true });
+  });
+
+  it("worktree 안의 상대 경로는 내용을 읽어 돌려준다", async () => {
+    const service = await loadService();
+
+    await expect(service.readTaskWorkspaceFile("task-1", "docs/plan.md")).resolves.toEqual({ path: "docs/plan.md", content: "# plan\n본문\n" });
+  });
+
+  it("worktree 안의 절대 경로는 상대 경로로 바꿔 돌려준다", async () => {
+    const service = await loadService();
+
+    await expect(service.readTaskWorkspaceFile("task-1", path.join(directory, "docs/plan.md")))
+      .resolves.toEqual({ path: path.join("docs", "plan.md"), content: "# plan\n본문\n" });
+  });
+
+  it.each([null, "remote-host"])("상위 경로와 worktree 밖 절대 경로는 읽지 않고 outside-worktree로 거절한다 (host=%s)", async (sshHost) => {
+    const service = await loadService(sshHost);
+    const outsideFile = path.join(outsideDirectory, "secret.txt");
+
+    await expect(service.readTaskWorkspaceFile("task-1", `../${path.basename(outsideDirectory)}/secret.txt`))
+      .rejects.toMatchObject({ name: "TaskWorkspaceFileError", reason: "outside-worktree", message: "outside-worktree" });
+    await expect(service.readTaskWorkspaceFile("task-1", outsideFile))
+      .rejects.toMatchObject({ name: "TaskWorkspaceFileError", reason: "outside-worktree" });
+    await expect(service.readTaskWorkspaceFile("task-1", `${directory}-sibling/secret.txt`))
+      .rejects.toMatchObject({ name: "TaskWorkspaceFileError", reason: "outside-worktree" });
+    expect(mocks.execGit).not.toHaveBeenCalled();
+  });
+
+  it.each([null, "remote-host"])("1MiB를 넘으면 too-large로 거절하고 정확히 1MiB는 읽는다 (host=%s)", async (sshHost) => {
+    writeFileSync(path.join(directory, "limit.txt"), "a".repeat(MAX_FILE_BYTES));
+    writeFileSync(path.join(directory, "over.txt"), "a".repeat(MAX_FILE_BYTES + 1));
+    const service = await loadService(sshHost);
+
+    const atLimit = await service.readTaskWorkspaceFile("task-1", "limit.txt");
+    expect(atLimit.path).toBe("limit.txt");
+    expect(Buffer.byteLength(atLimit.content)).toBe(MAX_FILE_BYTES);
+    await expect(service.readTaskWorkspaceFile("task-1", "over.txt"))
+      .rejects.toMatchObject({ name: "TaskWorkspaceFileError", reason: "too-large" });
+  });
+
+  it.each([null, "remote-host"])("없는 파일과 디렉터리는 not-found로 알린다 (host=%s)", async (sshHost) => {
+    const service = await loadService(sshHost);
+
+    await expect(service.readTaskWorkspaceFile("task-1", "docs/missing.md"))
+      .rejects.toMatchObject({ name: "TaskWorkspaceFileError", reason: "not-found" });
+    await expect(service.readTaskWorkspaceFile("task-1", "docs"))
+      .rejects.toMatchObject({ name: "TaskWorkspaceFileError", reason: "not-found" });
+  });
+
+  it("없는 태스크는 not-found로 알린다", async () => {
+    const service = await loadService();
+    mocks.taskRepo.findOne.mockResolvedValue(null);
+
+    await expect(service.readTaskWorkspaceFile("missing-task", "docs/plan.md"))
+      .rejects.toMatchObject({ name: "TaskWorkspaceFileError", reason: "not-found" });
+  });
+
+  it("원격 태스크는 sshHost로 크기를 먼저 재고 내용을 읽는다", async () => {
+    const service = await loadService("remote-host");
+
+    await expect(service.readTaskWorkspaceFile("task-1", path.join(directory, "docs/plan.md")))
+      .resolves.toEqual({ path: "docs/plan.md", content: "# plan\n본문" });
+    expect(mocks.execGit).toHaveBeenCalledWith(
+      expect.stringContaining(`wc -c < '${directory}/docs/plan.md'`),
+      "remote-host",
+      { maxBufferBytes: MAX_FILE_BYTES + 4096 },
+    );
+  });
+
+  it("원격 명령이 실패하면 내부 오류 대신 unreadable로 알린다", async () => {
+    const service = await loadService("remote-host");
+    mocks.execGit.mockRejectedValue(new Error("ssh: connect to host remote-host port 22: Connection refused"));
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await expect(service.readTaskWorkspaceFile("task-1", "docs/plan.md"))
+      .rejects.toMatchObject({ name: "TaskWorkspaceFileError", reason: "unreadable", message: "unreadable" });
+    consoleError.mockRestore();
+  });
+});
 
 describe("rename 원본 내용", () => {
   it.each([

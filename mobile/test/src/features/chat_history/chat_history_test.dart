@@ -322,17 +322,21 @@ void main() {
     expect(find.byType(ChatHistoryScreen), findsOneWidget);
     expect(find.text('옆에 열린 답변'), findsOneWidget);
     expect(find.byKey(const ValueKey('chat-session-list')), findsOneWidget);
-    await tester.enterText(find.byType(TextField), 'fix');
+    final sessionList = find.byKey(const ValueKey('chat-session-list'));
+    final historySearch = find.descendant(
+      of: sessionList,
+      matching: find.byType(TextField),
+    );
+    await tester.enterText(historySearch, 'fix');
     await tester.testTextInput.receiveAction(TextInputAction.search);
     await tester.pumpAndSettle();
     expect(queries.last, 'fix');
-    await tester.tap(find.byTooltip('검색 지우기'));
+    await tester.tap(
+      find.descendant(of: sessionList, matching: find.byTooltip('검색 지우기')),
+    );
     await tester.pumpAndSettle();
     expect(queries.last, isNull);
-    expect(
-      tester.widget<TextField>(find.byType(TextField)).controller!.text,
-      isEmpty,
-    );
+    expect(tester.widget<TextField>(historySearch).controller!.text, isEmpty);
     expect(tester.takeException(), isNull);
   });
   testWidgets('좁은 화면과 큰 글씨에서도 코드 전문을 읽고 목록으로 돌아간다', (tester) async {

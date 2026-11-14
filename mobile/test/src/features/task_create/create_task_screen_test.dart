@@ -396,6 +396,7 @@ class _HeldCreateClient extends FakeDesktopClient {
     String? baseBranch,
     String? description,
     String? priority,
+    String? sessionType,
   }) async {
     await pendingCreate.future;
     return super.createTask(
@@ -405,6 +406,7 @@ class _HeldCreateClient extends FakeDesktopClient {
       baseBranch: baseBranch,
       description: description,
       priority: priority,
+      sessionType: sessionType,
     );
   }
 }

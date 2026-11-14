@@ -1,3 +1,5 @@
+import 'package:kanvibe_mobile/src/features/notifications/domain/inbox_notification.dart';
+import 'package:kanvibe_mobile/src/features/notifications/presentation/sync_review_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -25,6 +27,41 @@ Future<void> _openInbox(WidgetTester tester, InboxDesktopClient client) async {
 }
 
 void main() {
+  testWidgets(
+    'sync review notification opens the authenticated review without a task lookup',
+    (tester) async {
+      final notice = InboxNotification.fromJson({
+        'id': 'sync-1',
+        'title': '동기화 검토 안내',
+        'body': '결과를 확인하세요',
+        'taskId': null,
+        'isRead': false,
+        'createdAt': '2026-11-13T00:00:00Z',
+        'actionType': 'background-sync-review',
+      })!;
+      expect(notice.asRead().hasSyncReview, isTrue);
+      final client = InboxDesktopClient();
+      client.notificationsByConnection[_connectionId] = [notice];
+      client.onJsonRequest = (method, segments, query, body) async {
+        expect(segments, ['notifications', 'sync-1', 'review']);
+        return {
+          'review': {
+            'mergedPullRequests': [],
+            'registeredWorktrees': [],
+            'pulledTasks': [],
+            'failures': [],
+          },
+        };
+      };
+      await _openInbox(tester, client);
+      await tester.tap(find.text('동기화 검토 안내'));
+      await tester.pumpAndSettle();
+      expect(find.byType(SyncReviewScreen), findsOneWidget);
+      expect(client.fetchedTasks, isEmpty);
+      expect(client.readCalls.single.id, 'sync-1');
+    },
+  );
+
   testWidgets('보드의 알림 버튼에서 데스크톱 알림함을 연다', (tester) async {
     await tester.binding.setSurfaceSize(phoneSize);
     addTearDown(() => tester.binding.setSurfaceSize(null));

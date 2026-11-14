@@ -176,7 +176,7 @@
     "createTitle": "새 작업 생성",
     "createFailed": "작업 생성에 실패했습니다.",
     "createHooksBackgroundFailedTitle": "Hooks 자동 설치 실패",
-    "createHooksBackgroundFailedBody": "\"{taskTitle}\" 생성 후 hooks 자동 설치에 실패했습니다. 상세 화면의 Hooks 상태에서 다시 설치할 수 있습니다.",
+    "createHooksBackgroundFailedBody": "\"{taskTitle}\" hooks 자동 설치에 실패했습니다. 상세 화면의 Hooks 상태에서 다시 설치할 수 있습니다.",
     "peerDeletionFailedTitle": "다른 데스크탑에서는 삭제하지 못함",
     "peerDeletionFailedBody": "\"{taskTitle}\"을(를) 이 데스크탑에서는 지웠지만 {peerUrls}에는 남아 있습니다. 그 데스크탑이 켜지면 직접 삭제하세요.",
     "deleteConfirm": "이 작업을 삭제하시겠습니까?",
@@ -609,6 +609,29 @@
         "reasoning": "추론",
         "tool": "도구",
         "unknown": "기타"
+      },
+      "changedFiles": "AI가 바꾼 파일",
+      "fileChange": {
+        "created": "새로 만듦",
+        "modified": "수정함"
+      },
+      "filePreview": {
+        "title": "{name} 미리보기",
+        "viewMode": "보기 방식",
+        "rendered": "미리보기",
+        "source": "원문",
+        "copy": "복사",
+        "copied": "복사됨",
+        "copyFailed": "복사 실패",
+        "close": "미리보기 닫기",
+        "loading": "파일을 불러오는 중…",
+        "retry": "다시 시도",
+        "failure": {
+          "outside-worktree": "작업 폴더 밖의 파일이라 여기서 열 수 없습니다.",
+          "not-found": "파일이 더 이상 없습니다.",
+          "too-large": "1MB보다 큰 파일은 미리 볼 수 없습니다.",
+          "unreadable": "파일을 읽지 못했습니다."
+        }
       }
     },
     "priority": "우선순위",

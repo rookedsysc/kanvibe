@@ -9,11 +9,14 @@ const { launchKanVibeElectron } = require("../../electron/lib/launchElectron.cjs
 const { createLocalShellEnvironment } = require("../../../src/lib/shellEnvironment.ts");
 
 const ROOT_DIR = path.resolve(__dirname, "../../..");
-const DESKTOP_API = "http://127.0.0.1:19736";
+/** 모바일 QA 데스크탑은 pnpm dev(19736)와 함께 켜 둘 수 있도록 고정 포트를 따로 쓴다. Maestro 플로우가 이 포트를 그대로 적어 둔다 */
+const DESKTOP_HOOK_PORT = 39736;
+const DESKTOP_API = `http://127.0.0.1:${DESKTOP_HOOK_PORT}`;
 const PROBE_PORT = 19737;
 const PROBE_URL = `http://127.0.0.1:${PROBE_PORT}`;
 const LATEST_TASK_TITLE = "Maestro Open Task Latest";
 const LIVE_NOTIFICATION_TITLE = "Maestro Live Notice";
+const TASK_DETAIL_NOTIFICATION_TITLE = "Maestro Task Detail Notice";
 let desktopNotificationEventCount = 0;
 
 // 기존 terminal fixture와 달리 실제 renderer IPC로 알림을 읽고 바꾸며, 사용자 DB를 열지 않는다.
@@ -189,6 +192,10 @@ async function startProbe(page, fixture, runDir) {
     "/desktop/read-all": () => page.evaluate(() => window.kanvibeDesktop.markAllNotificationsRead()),
     "/desktop/create": () => createNotification(page, LIVE_NOTIFICATION_TITLE, null),
     "/desktop/update-task": () => invokeDesktop(page, "kanban", "updateTask", fixture.tasks.targetId, { title: LATEST_TASK_TITLE }),
+    // 모바일이 보드에서 태스크 상세를 열 때만 읽혀야 하므로, 알림함 흐름의 개수와 섞이지 않게 요청 시점에 만든다.
+    "/desktop/create-task-notification": async () => {
+      fixture.notifications.taskDetail = await createNotification(page, TASK_DETAIL_NOTIFICATION_TITLE, fixture.tasks.betaRootId);
+    },
   };
   const server = http.createServer(async (request, response) => {
     const requestUrl = new URL(request.url, PROBE_URL);
@@ -228,7 +235,7 @@ async function main() {
   const runDir = path.resolve(process.argv[runDirIndex + 1]);
   const appDataDir = path.join(runDir, "app-data");
   if (fs.existsSync(appDataDir)) throw new Error("Use a fresh --run-dir to preserve earlier QA evidence and reset fixture state");
-  await availablePort(19736);
+  await availablePort(DESKTOP_HOOK_PORT);
   await availablePort(PROBE_PORT);
   fs.mkdirSync(appDataDir, { recursive: true });
   const rendererUrl = `http://127.0.0.1:${await availablePort()}`;
@@ -251,7 +258,7 @@ async function main() {
   process.once("SIGINT", () => { void stop().finally(() => process.exit(0)); });
   try {
     await waitForUrl(rendererUrl, vite);
-    const launched = await launchKanVibeElectron({ rootDir: ROOT_DIR, rendererUrl, outputDir: runDir, appDataDir, timeoutMs: 60_000 });
+    const launched = await launchKanVibeElectron({ rootDir: ROOT_DIR, rendererUrl, outputDir: runDir, appDataDir, hookPort: DESKTOP_HOOK_PORT, timeoutMs: 60_000 });
     app = launched.app;
     const page = launched.page;
     await page.waitForFunction(() => Boolean(window.kanvibeDesktop?.listNotifications));

@@ -17,13 +17,14 @@ import {
   updateTaskStatus,
 } from "@/desktop/main/services/kanbanService";
 import { subscribeToBoardEvents } from "@/lib/boardNotifier";
+import { readTaskWorkspaceFile } from "@/desktop/main/services/diffService";
 import { getAllProjects, getProjectBranches, getTaskAiSessions, getTaskAiSessionDetail, getTaskAiSessionAttachment, listSubdirectories, scanAndRegisterProjects } from "@/desktop/main/services/projectService";
 import { isAiSessionProvider } from "@/lib/aiSessions/providers";
 import type { AiMessageRole, AiSessionProvider } from "@/lib/aiSessions/types";
 import { attachTaskTerminal, CallbackTerminalClient } from "@/desktop/main/terminalBridge";
 import { createTerminalTab } from "@/desktop/main/services/terminalTabService";
 import { propagateTaskRegistrationToPeers } from "@/desktop/main/services/taskTargetPropagationService";
-import { listNotifications, markNotificationRead, markAllNotificationsRead, subscribeToNotificationChanges } from "@/desktop/main/notificationStore";
+import { listNotifications, markNotificationRead, markAllNotificationsRead, markTaskNotificationsRead, subscribeToNotificationChanges } from "@/desktop/main/notificationStore";
 import type { AppNotification } from "@/desktop/shared/notifications";
 import { SessionType, TaskStatus, type KanbanTask } from "@/entities/KanbanTask";
 import { TaskPriority } from "@/entities/TaskPriority";
@@ -50,6 +51,7 @@ import {
   buildHerdrControlPaneCommand,
   buildHerdrObservePaneCommand,
   buildHerdrPaneShortcutCommand,
+  buildHerdrInputModeSequences,
   buildHerdrRecentScreenCommand,
   buildHerdrWritePaneCommand,
   buildScreenRedraw,
@@ -96,7 +98,7 @@ import {
   releaseTaskTerminalViewport,
   writeTerminalTabInput,
 } from "@/lib/terminal";
-import { listHerdrMirrorPanes, readHerdrPaneExtent, readHerdrTaskPaneSize } from "@/lib/herdr";
+import { listHerdrMirrorPanes, readHerdrPaneExtent, readHerdrPaneForegroundPrograms, readHerdrTaskPaneSize } from "@/lib/herdr";
 import { getSessionDependencyStatus } from "@/lib/remoteSessionDependency";
 import { isSessionAlive, quoteForPosixShell } from "@/lib/worktree";
 import {
@@ -137,6 +139,8 @@ const VIEWPORT_SETTLE_POLL_INTERVAL_MS = 50;
  */
 const LOCAL_DUMP_INTERVAL_MS = 1_000;
 const REMOTE_DUMP_INTERVAL_MS = 3_000;
+/** 손가락을 떼었다 다시 올리는 짧은 반복이 이력 전체 재전송을 겹쳐 부르지 않게 하는 간격 */
+const HERDR_HISTORY_REFRESH_MIN_INTERVAL_MS = 1_000;
 
 /**
  * 세션이나 탭을 띄우거나 닫은 뒤 pane이 나타나거나 사라질 때까지 기다리는 상한과 확인 간격.
@@ -168,6 +172,10 @@ export interface TaskSurfaces {
   taskId: string;
   sessionType: SessionType;
   canResize: boolean;
+  /** 화면 프레임만 받아 지난 출력이 스스로 쌓이지 않는 세션이다. 모바일이 올려 보기 시작할 때 갱신을 요청한다 */
+  canRefreshHistory: boolean;
+  /** 원격 Herdr처럼 B로 가는 직접 연결 권한을 발급할 수 있는 세션이다. 아니면 모바일이 권한을 물어보는 왕복을 건너뛴다 */
+  canPrepareDirectConnection: boolean;
   tabs: MirrorTab[];
 }
 
@@ -237,7 +245,7 @@ export async function getTaskSurfaces(taskId: string): Promise<TaskSurfaces> {
   }
 
   if (target.sessionType === SessionType.TERMINAL) {
-    return { taskId, sessionType: target.sessionType, canResize: true, tabs: listTerminalMirrorTabs(taskId) };
+    return { taskId, sessionType: target.sessionType, canResize: true, canRefreshHistory: false, canPrepareDirectConnection: false, tabs: listTerminalMirrorTabs(taskId) };
   }
 
   await startMultiplexerSessionIfMissing(task, target);
@@ -247,7 +255,14 @@ export async function getTaskSurfaces(taskId: string): Promise<TaskSurfaces> {
     throw new SurfaceUnavailableError("session-not-running");
   }
 
-  return { taskId, sessionType: target.sessionType, canResize: true, tabs: groupPanesIntoTabs(panes) };
+  return {
+    taskId,
+    sessionType: target.sessionType,
+    canResize: true,
+    canRefreshHistory: target.sessionType === SessionType.HERDR,
+    canPrepareDirectConnection: Boolean(target.sshHost) && target.sessionType === SessionType.HERDR,
+    tabs: groupPanesIntoTabs(panes),
+  };
 }
 
 export async function createMobileTerminalTab(taskId: string): Promise<{ surfaces: TaskSurfaces; paneId: string }> {
@@ -621,9 +636,14 @@ export async function getMobileAiSessionAttachment(taskId: string, provider: AiS
   }
 }
 
+/** 태스크 확인과 경로 검증은 `readTaskWorkspaceFile`이 맡고, 실패 사유는 그 오류 그대로 라우트까지 올린다 */
+export function getMobileTaskFile(taskId: string, filePath: string) {
+  return readTaskWorkspaceFile(taskId, filePath);
+}
+
 function toMobileNotification(notification: AppNotification) {
   const { id, title, body, taskId, isRead, createdAt } = notification;
-  return { id, title, body, taskId, isRead, createdAt };
+  return { id, title, body, taskId, isRead, createdAt, ...(notification.action ? { actionType: notification.action.type } : {}) };
 }
 
 export async function getMobileNotifications() {
@@ -649,6 +669,11 @@ export async function updateMobileNotificationSettings(input: unknown) {
 export async function markMobileNotificationRead(notificationId: string) {
   const notification = await markNotificationRead(notificationId);
   return notification ? toMobileNotification(notification) : null;
+}
+
+/** 데스크탑 상세 화면이 포커스를 받을 때와 같은 store 경로로 task 알림을 읽음 처리한다. */
+export async function markMobileTaskNotificationsRead(taskId: string): Promise<number> {
+  return markTaskNotificationsRead(taskId);
 }
 
 export async function markAllMobileNotificationsRead(): Promise<void> {
@@ -715,6 +740,7 @@ export interface MobileTaskDraft {
   baseBranch?: string;
   description?: string;
   priority?: string;
+  sessionType?: string;
 }
 
 /**
@@ -724,6 +750,10 @@ export interface MobileTaskDraft {
  * 두 화면이 다른 규칙으로 제목을 정하면 같은 보드에서 어느 쪽에서 만들었는지에 따라 제목 모양이 갈린다.
  */
 export async function createMobileTask(draft: MobileTaskDraft): Promise<KanbanTask> {
+  const sessionType = draft.sessionType === undefined
+    ? await getDefaultSessionType()
+    : readEnumValue(Object.values(SessionType), draft.sessionType, "세션 타입");
+  if (!sessionType) throw new MobileTaskInputError("세션 타입 값이 올바르지 않습니다");
   const createdTask = await createTask({
     title: draft.branchName,
     branchName: readGitRef(draft.branchName, "브랜치 이름"),
@@ -731,8 +761,7 @@ export async function createMobileTask(draft: MobileTaskDraft): Promise<KanbanTa
     baseBranch: draft.baseBranch ? readGitRef(draft.baseBranch, "베이스 브랜치") : undefined,
     description: draft.description,
     priority: readEnumValue(Object.values(TaskPriority), draft.priority, "우선순위"),
-    /** 세션 종류는 데스크탑이 정한다. 이전 앱이 보낸 값이 있어도 따르지 않는다 */
-    sessionType: await getDefaultSessionType(),
+    sessionType,
   });
   await registerMobileTaskOnPeerClients(createdTask);
   return createdTask;
@@ -1064,6 +1093,8 @@ interface PaneSubscription {
   /** 스트림이 첫 화면을 스스로 보내는 경우에만 있다. 뒤늦게 붙은 구독자가 화면을 받도록 다시 보낸다 */
   resendScreen?: () => void;
   setViewport?: (size: { cols: number; rows: number } | null) => Promise<void>;
+  /** 화면 프레임만으로는 쌓이지 않는 지난 출력을 구독자의 요청으로 다시 보낸다 */
+  refreshHistory?: () => Promise<void>;
 }
 
 /**
@@ -1406,6 +1437,15 @@ export async function claimPaneViewport(taskId: string, paneId: string): Promise
   };
 }
 
+/**
+ * 모바일이 지난 출력을 올려 보기 시작했다. 이력을 따로 쌓지 못하는 세션만 최신 화면을 다시 보낸다.
+ * 구독이 없거나 이력을 스스로 쌓는 세션이면 아무 일도 하지 않는다.
+ */
+export async function refreshPaneHistory(taskId: string, paneId: string): Promise<void> {
+  const subscription = await paneSubscriptions.get(buildSubscriptionKey(taskId, paneId))?.subscription;
+  await subscription?.refreshHistory?.();
+}
+
 function buildSubscriptionKey(taskId: string, paneId: string): string {
   return `${taskId}#${paneId}`;
 }
@@ -1472,11 +1512,12 @@ export async function openRemoteMobilePaneStream(
 async function ensurePaneBelongsToSession(
   target: MirrorSessionTarget,
   paneId: string,
-): Promise<void> {
-  const panes = await listMirrorPanes(target);
-  if (!panes.some((pane) => pane.id === paneId)) {
+): Promise<MirrorPane> {
+  const pane = (await listMirrorPanes(target)).find((candidate) => candidate.id === paneId);
+  if (!pane) {
     throw new SurfaceUnavailableError("session-not-running");
   }
+  return pane;
 }
 
 /**
@@ -1575,13 +1616,13 @@ export async function subscribeToPane(
   const target = toMirrorSessionTarget(task);
   const key = buildSubscriptionKey(taskId, paneId);
 
-  await ensurePaneBelongsToSession(target, paneId);
+  const pane = await ensurePaneBelongsToSession(target, paneId);
 
   const snapshot = await readPaneSnapshot(target, paneId);
   onChunk(snapshot);
 
   const { claimed, release } = claimPaneSubscription(key, (forgetSelf) =>
-    startPaneSubscription(target, paneId, forgetSelf),
+    startPaneSubscription(target, pane, forgetSelf),
   );
 
   let subscription: PaneSubscription;
@@ -1698,6 +1739,12 @@ export async function stopAllPaneMirrors(shutdown = false): Promise<void> {
   await Promise.all(restorations);
 }
 
+/**
+ * 모바일 터미널은 이 글자들로 시작하는 청크만 "화면을 다시 그리는 출력"으로 알아보고, 글자를 선택한 동안에는 적용을 미룬다.
+ * `buildScreenRedraw`가 맨 앞에 붙이는 것과 같은 글자들이다.
+ */
+const SCREEN_REDRAW_START = "\x1b[H\x1b[2J\x1b[3J";
+
 /** pane의 지금 화면을 모바일 터미널이 처음부터 다시 그리는 출력으로 떠 온다 */
 async function readPaneSnapshot(target: MirrorSessionTarget, paneId: string): Promise<string> {
   if (target.sessionType === SessionType.ZELLIJ) {
@@ -1706,8 +1753,15 @@ async function readPaneSnapshot(target: MirrorSessionTarget, paneId: string): Pr
   }
 
   if (target.sessionType === SessionType.HERDR) {
-    const recentScreen = await runMirrorCommand(buildHerdrRecentScreenCommand(target.sessionName, paneId), target.sshHost);
-    return buildScreenRedraw(recentScreen, null);
+    const [recentScreen, inputModes] = await Promise.all([
+      runMirrorCommand(buildHerdrRecentScreenCommand(target.sessionName, paneId), target.sshHost),
+      readHerdrInputModes(target, paneId),
+    ]);
+    /**
+     * 이 스냅샷은 구독 중에도 이력이 바뀔 때마다 다시 나간다. 모드 전환이 맨 앞에 오면 모바일이 다시 그리기로 알아보지 못해
+     * 선택 중인 화면을 지우므로, 지우기를 모드 전환 앞에도 한 번 둔다. 화면을 바꾼 뒤의 지우기는 `buildScreenRedraw`가 맡는다.
+     */
+    return `${SCREEN_REDRAW_START}${inputModes}${buildScreenRedraw(recentScreen, null)}`;
   }
 
   /** 화면과 커서를 한 번에 읽는다. 원격이면 왕복이 하나 줄고, 둘 사이에 화면이 바뀌는 틈도 좁아진다 */
@@ -1721,11 +1775,16 @@ async function readPaneSnapshot(target: MirrorSessionTarget, paneId: string): Pr
   return `${state?.restoreSequences ?? ""}${buildScreenRedraw(screen, state?.cursor ?? null)}`;
 }
 
+async function readHerdrInputModes(target: MirrorSessionTarget, paneId: string): Promise<string> {
+  return buildHerdrInputModeSequences(await readHerdrPaneForegroundPrograms(target.sessionName, paneId, target.sshHost));
+}
+
 async function startPaneSubscription(
   target: MirrorSessionTarget,
-  paneId: string,
+  pane: MirrorPane,
   forgetSelf: () => void,
 ): Promise<PaneSubscription> {
+  const paneId = pane.id;
   const listeners = new Set<(chunk: string) => void>();
   const endListeners = new Set<() => void>();
   const broadcast = (chunk: string) => listeners.forEach((listener) => listener(chunk));
@@ -1744,7 +1803,7 @@ async function startPaneSubscription(
   };
 
   if (target.sessionType === SessionType.HERDR) {
-    const stream = await startHerdrFrameStream(target, paneId, broadcast, handleStreamDeath);
+    const stream = await startHerdrFrameStream(target, pane, broadcast, handleStreamDeath);
     return { listeners, endListeners, ...stream };
   }
 
@@ -1761,22 +1820,34 @@ async function startPaneSubscription(
  * 변경 프레임은 화면 좌표에 글자를 덮어쓰기만 해서, 위로 밀려난 줄이 모바일 스크롤에 쌓이지 않는다.
  * 그래서 출력이 잠잠해졌을 때 지난 출력 줄 수가 늘었으면 이력을 다시 보내고 observe를 새로 띄운다.
  * 새 observe의 첫 프레임은 항상 전체 화면이라, 이력을 받은 화면과 커서를 끊김 없이 맞출 수 있다.
- * Herdr의 스크롤백이 상한에 닿으면 줄 수가 더 늘지 않아, 그 뒤의 이력은 화면을 다시 열 때 갱신된다.
+ * Herdr의 스크롤백이 상한에 닿거나 프로그램이 제자리에서 다시 그리면 줄 수가 늘지 않는다.
+ * 그런 이력은 모바일이 위로 올려 보기 시작할 때 요청하는 갱신으로 맞춘다.
+ * 전체 화면 프로그램이 뜨거나 끝나 화면·마우스 모드가 바뀐 경우에도 같은 길로 다시 보낸다.
  */
 async function startHerdrFrameStream(
   target: MirrorSessionTarget,
-  paneId: string,
+  pane: MirrorPane,
   broadcast: (chunk: string) => void,
   onDead: () => void,
-): Promise<Pick<PaneSubscription, "stop" | "resendScreen" | "setViewport">> {
+): Promise<Pick<PaneSubscription, "stop" | "resendScreen" | "setViewport" | "refreshHistory">> {
   const quietPeriodMs = target.sshHost ? REMOTE_DUMP_INTERVAL_MS : LOCAL_DUMP_INTERVAL_MS;
   let observer: ChildProcess | null = null;
   let quietTimer: ReturnType<typeof setTimeout> | null = null;
   let isStopped = false;
   let isRefreshing = false;
   let observerGeneration = 0;
+  const paneId = pane.id;
   let viewportSize: { cols: number; rows: number } | null = null;
-  let extent = await readHerdrPaneExtent(target.sessionName, paneId, target.sshHost);
+  /**
+   * 모바일이 크기를 정하기 전에 비출 pane 본래 크기. 구독할 때 이미 읽은 값을 쓴다.
+   * observe를 띄울 때마다 pane 목록을 다시 읽으면 터미널 하나를 여는 동안 같은 조회가 네 번 반복된다.
+   */
+  const paneSize = { cols: pane.width, rows: pane.height };
+  let lastRequestedRefreshAt = Number.NEGATIVE_INFINITY;
+  let [extent, inputModes] = await Promise.all([
+    readHerdrPaneExtent(target.sessionName, paneId, target.sshHost),
+    readHerdrInputModes(target, paneId),
+  ]);
 
   const stopObserver = () => {
     const stoppingObserver = observer;
@@ -1816,13 +1887,9 @@ async function startHerdrFrameStream(
 
   const startObserver = async () => {
     const generation = ++observerGeneration;
-    const pane = (await listHerdrMirrorPanes(target.sessionName, target.sshHost)).find((candidate) => candidate.id === paneId);
-    if (isStopped || generation !== observerGeneration) return;
-    if (!pane) {
-      throw new SurfaceUnavailableError("session-not-running");
-    }
+    const size = viewportSize ?? paneSize;
     const child = await spawnMirrorProcess(
-      buildHerdrObservePaneCommand(target.sessionName, paneId, viewportSize?.cols ?? pane.width, viewportSize?.rows ?? pane.height),
+      buildHerdrObservePaneCommand(target.sessionName, paneId, size.cols, size.rows),
       target.sshHost,
     );
     if (isStopped || generation !== observerGeneration) {
@@ -1866,17 +1933,23 @@ async function startHerdrFrameStream(
     }
   };
 
-  const refreshHistoryWhenGrown = async () => {
+  const refreshHistory = async (isRequested: boolean) => {
     if (isRefreshing) {
       return;
     }
     isRefreshing = true;
     try {
-      const nextExtent = await readHerdrPaneExtent(target.sessionName, paneId, target.sshHost);
-      if (isStopped || (nextExtent.historyRows === extent.historyRows && nextExtent.viewportRows === extent.viewportRows)) {
+      const [nextExtent, nextInputModes] = await Promise.all([
+        readHerdrPaneExtent(target.sessionName, paneId, target.sshHost),
+        readHerdrInputModes(target, paneId),
+      ]);
+      const isUnchanged = nextExtent.historyRows === extent.historyRows && nextExtent.viewportRows === extent.viewportRows
+        && nextInputModes === inputModes;
+      if (isStopped || (isUnchanged && !isRequested)) {
         return;
       }
       extent = nextExtent;
+      inputModes = nextInputModes;
       stopObserver();
       broadcast(await readPaneSnapshot(target, paneId));
       if (!isStopped) {
@@ -1893,7 +1966,7 @@ async function startHerdrFrameStream(
     if (quietTimer) {
       clearTimeout(quietTimer);
     }
-    quietTimer = setTimeout(() => void refreshHistoryWhenGrown(), quietPeriodMs);
+    quietTimer = setTimeout(() => void refreshHistory(false), quietPeriodMs);
   }
 
   await startObserver();
@@ -1907,6 +1980,12 @@ async function startHerdrFrameStream(
     /** 뒤늦게 붙은 구독자에게 전체 화면을 주려면 observe를 새로 띄우는 수밖에 없다. 이미 보던 기기에는 같은 화면이 한 번 더 그려질 뿐이다 */
     resendScreen: () => {
       restartObserver().catch(failOnRestartError);
+    },
+    refreshHistory: async () => {
+      const now = performance.now();
+      if (now - lastRequestedRefreshAt < HERDR_HISTORY_REFRESH_MIN_INTERVAL_MS) return;
+      lastRequestedRefreshAt = now;
+      await refreshHistory(true);
     },
   };
 }

@@ -1286,6 +1286,7 @@ void defineRemotePaneRouteTests() {
       output: const Stream.empty(),
       onWrite: chunks.add,
       onResize: (_, _) {},
+      onRefreshHistory: () {},
       onClose: () async {},
       readCloseCode: () => null,
     );
@@ -1389,5 +1390,66 @@ void defineRemotePaneRouteTests() {
       'grantId': 'grant-1',
     });
     expect(fixture.directAuthorizations, isEmpty);
+  });
+
+  test('직접 연결 권한을 발급하지 않는 세션은 준비 요청 없이 A stream으로 바로 연결한다', () async {
+    final fixture = await _createPaneRouteFixture();
+    final client = DesktopClient();
+    addTearDown(client.close);
+
+    final stream = await client.openPaneStream(
+      fixture.connection,
+      'task-1',
+      '%19',
+      canPrepareDirectConnection: false,
+    );
+    addTearDown(stream.close);
+
+    expect(await stream.output.first, 'relay-output');
+    expect(fixture.metadataAuthorizations, isEmpty);
+    expect(fixture.relayRequests.single.queryParameters, {
+      'taskId': 'task-1',
+      'paneId': '%19',
+    });
+  });
+
+  test('닿지 않았던 B는 5분 동안 직접 연결을 다시 시도하지 않고 그 뒤에 다시 시도한다', () async {
+    final fixture = await _createPaneRouteFixture();
+    final unreachable = await ServerSocket.bind(
+      InternetAddress.loopbackIPv4,
+      0,
+    );
+    addTearDown(unreachable.close);
+    var directAttempts = 0;
+    unreachable.listen((socket) {
+      directAttempts += 1;
+      socket.destroy();
+    });
+    (fixture.descriptor['direct'] as Map<String, dynamic>)['port'] =
+        unreachable.port;
+    var now = DateTime(2026, 11, 13, 9);
+    final client = DesktopClient(readNow: () => now);
+    addTearDown(client.close);
+    Future<void> openAndClose() async {
+      final stream = await client.openPaneStream(
+        fixture.connection,
+        'task-1',
+        '%19',
+      );
+      expect(await stream.output.first, 'relay-output');
+      await stream.close();
+    }
+
+    await openAndClose();
+    expect(directAttempts, 1);
+
+    now = now.add(const Duration(minutes: 4, seconds: 59));
+    await openAndClose();
+    expect(directAttempts, 1);
+    expect(fixture.relayRequests.last.queryParameters['grantId'], 'grant-1');
+
+    now = now.add(const Duration(seconds: 1));
+    await openAndClose();
+    expect(directAttempts, 2);
   });
 }
