@@ -1,0 +1,1219 @@
+{
+  "anchor": "transition-playbook",
+  "inputs": {
+    "remote-host": "dev-vm",
+    "legacy-session": "prompt-main",
+    "worktree": "/Users/example/projects/prompt"
+  },
+  "input-labels": {
+    "remote-host": "A의 SSH 별칭 (예시)",
+    "legacy-session": "중단된 원본 이름 (예시)",
+    "worktree": "같이 사용할 작업 경로 (예시)"
+  },
+  "scenarios": [
+    {
+      "id": "remote-connect",
+      "title": "A. A의 기존 작업 연결",
+      "steps": [
+        {
+          "title": "B가 A의 세션을 검사한다",
+          "request": {
+            "transport": "IPC 예시 / 미구현",
+            "namespace": "herdrSession",
+            "method": "scanSessions",
+            "args": [
+              {
+                "sshHost": "{{remote-host}}"
+              }
+            ]
+          },
+          "response": {
+            "ok": true,
+            "value": {
+              "scanId": "11111111-1111-4111-8111-111111111111",
+              "fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "sessions": [
+                {
+                  "name": "kanvibe",
+                  "running": true,
+                  "sessionDir": "/example/herdr/sessions/kanvibe",
+                  "snapshotState": "valid",
+                  "workspaceIds": [
+                    "w7"
+                  ],
+                  "taskIds": [
+                    "44444444-4444-4444-8444-444444444444"
+                  ]
+                }
+              ],
+              "observedAt": "2026-11-13T00:00:00Z"
+            }
+          },
+          "screen": "B는 {{remote-host}}의 kanvibe를 발견한다. 읽기 검사만 수행한다.",
+          "storage": {
+            "phase": "inspected",
+            "taskBinding": "원본 연결",
+            "targetWorkspaceId": null,
+            "sourceRetained": true,
+            "sourcePid": "원래 PID 유지"
+          },
+          "detail": "SCR-inventory"
+        },
+        {
+          "title": "기존 실행에 연결할 계획을 만든다",
+          "request": {
+            "transport": "IPC 예시 / 미구현",
+            "namespace": "herdrSession",
+            "method": "createPlan",
+            "args": [
+              {
+                "scanId": "11111111-1111-4111-8111-111111111111",
+                "taskId": "44444444-4444-4444-8444-444444444444",
+                "sourceSession": "kanvibe",
+                "sourceWorkspaceId": "w7",
+                "mode": "attachExisting"
+              }
+            ]
+          },
+          "response": {
+            "ok": true,
+            "value": {
+              "planId": "22222222-2222-4222-8222-222222222222",
+              "eligibility": "ready",
+              "targetSession": "kanvibe",
+              "preserved": [
+                "원본 프로세스"
+              ],
+              "recreated": [],
+              "unsupported": [
+                "실제 세션 병합"
+              ],
+              "blockers": [],
+              "fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            }
+          },
+          "screen": "원본은 A에 남는다. B는 연결과 화면만 바꾼다.",
+          "storage": {
+            "phase": "planned",
+            "taskBinding": "원본 연결",
+            "targetWorkspaceId": null,
+            "sourceRetained": true
+          },
+          "detail": "SCR-connect"
+        },
+        {
+          "title": "B의 프로필을 대조한다",
+          "request": {
+            "transport": "IPC 예시 / 미구현",
+            "namespace": "herdrSession",
+            "method": "executePlan",
+            "args": [
+              {
+                "planId": "22222222-2222-4222-8222-222222222222",
+                "expectedFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "operationId": "33333333-3333-4333-8333-333333333333"
+              }
+            ]
+          },
+          "response": {
+            "ok": true,
+            "value": {
+              "operationId": "33333333-3333-4333-8333-333333333333",
+              "phase": "applying"
+            }
+          },
+          "screen": "기존 label과 disabled 선택을 보존한다. 등록 성공은 아직 입력 가능을 뜻하지 않는다.",
+          "storage": {
+            "phase": "applying",
+            "taskBinding": "원본 연결",
+            "targetWorkspaceId": null,
+            "sourceRetained": true,
+            "machineProfile": "A의 kanvibe를 대상으로 대조"
+          },
+          "detail": "SCR-connect"
+        },
+        {
+          "title": "B의 화면과 A의 원본을 연결한다",
+          "request": {
+            "transport": "IPC 예시 / 미구현",
+            "namespace": "herdrSession",
+            "method": "getOperation",
+            "args": [
+              {
+                "operationId": "33333333-3333-4333-8333-333333333333"
+              }
+            ]
+          },
+          "response": {
+            "ok": true,
+            "value": {
+              "operationId": "33333333-3333-4333-8333-333333333333",
+              "phase": "verifying",
+              "planId": "22222222-2222-4222-8222-222222222222",
+              "taskId": "44444444-4444-4444-8444-444444444444",
+              "mode": "attachExisting",
+              "source": {
+                "sshHost": "{{remote-host}}",
+                "sessionName": "kanvibe",
+                "workspaceId": "w7"
+              },
+              "sourceFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "previousBinding": {
+                "sshHost": "{{remote-host}}",
+                "sessionType": "herdr",
+                "sessionName": "kanvibe:example-task",
+                "worktreePath": "/home/example/project"
+              },
+              "targetWorkspaceId": "w7",
+              "error": null,
+              "createdAt": "2026-11-13T00:00:00Z",
+              "updatedAt": "2026-11-13T00:01:00Z",
+              "backupLocation": null
+            }
+          },
+          "screen": "B의 Herdr에서 원격 machine과 선택한 Space를 확인한다. 실제 자동 선택은 P0 검증 대상이다.",
+          "storage": {
+            "phase": "verifying",
+            "taskBinding": "원본 연결",
+            "targetWorkspaceId": "w7",
+            "sourceRetained": true,
+            "sourcePid": "원래 PID 유지"
+          },
+          "detail": "SCR-connect"
+        },
+        {
+          "title": "원래 작업을 계속 사용한다",
+          "request": {
+            "transport": "IPC 예시 / 미구현",
+            "namespace": "herdrSession",
+            "method": "getOperation",
+            "args": [
+              {
+                "operationId": "33333333-3333-4333-8333-333333333333"
+              }
+            ]
+          },
+          "response": {
+            "ok": true,
+            "value": {
+              "operationId": "33333333-3333-4333-8333-333333333333",
+              "phase": "completed",
+              "planId": "22222222-2222-4222-8222-222222222222",
+              "taskId": "44444444-4444-4444-8444-444444444444",
+              "mode": "attachExisting",
+              "source": {
+                "sshHost": "{{remote-host}}",
+                "sessionName": "kanvibe",
+                "workspaceId": "w7"
+              },
+              "sourceFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "previousBinding": {
+                "sshHost": "{{remote-host}}",
+                "sessionType": "herdr",
+                "sessionName": "kanvibe:example-task",
+                "worktreePath": "/home/example/project"
+              },
+              "targetWorkspaceId": "w7",
+              "error": null,
+              "createdAt": "2026-11-13T00:00:00Z",
+              "updatedAt": "2026-11-13T00:01:00Z",
+              "backupLocation": null
+            }
+          },
+          "screen": "B는 A의 기존 작업에 입력한다. A의 파일과 프로세스는 이동하지 않았다.",
+          "storage": {
+            "phase": "completed",
+            "taskBinding": "원본 연결",
+            "targetWorkspaceId": "w7",
+            "sourceRetained": true,
+            "sourcePid": "원래 PID 유지"
+          },
+          "detail": "SCR-connect"
+        }
+      ]
+    },
+    {
+      "id": "running-blocked",
+      "title": "B. running 원본은 이전 보류",
+      "steps": [
+        {
+          "title": "맥북의 기존 세션을 검사한다",
+          "request": {
+            "transport": "IPC 예시 / 미구현",
+            "namespace": "herdrSession",
+            "method": "scanSessions",
+            "args": [
+              {
+                "sshHost": null
+              }
+            ]
+          },
+          "response": {
+            "ok": true,
+            "value": {
+              "scanId": "11111111-1111-4111-8111-111111111111",
+              "fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "sessions": [
+                {
+                  "name": "dotfiles-main",
+                  "running": true,
+                  "sessionDir": "/example/herdr/sessions/dotfiles-main",
+                  "snapshotState": "valid",
+                  "workspaceIds": [
+                    "w1"
+                  ],
+                  "taskIds": [
+                    "44444444-4444-4444-8444-444444444444"
+                  ]
+                }
+              ],
+              "observedAt": "2026-11-13T00:00:00Z"
+            }
+          },
+          "screen": "사용자가 제공한 예처럼 dotfiles-main이 실행 중인 경우다.",
+          "storage": {
+            "phase": "inspected",
+            "taskBinding": "원본 연결",
+            "targetWorkspaceId": null,
+            "sourceRetained": true,
+            "sourceRunning": true
+          },
+          "detail": "SCR-inventory"
+        },
+        {
+          "title": "재구성을 요청하면 차단한다",
+          "request": {
+            "transport": "IPC 예시 / 미구현",
+            "namespace": "herdrSession",
+            "method": "createPlan",
+            "args": [
+              {
+                "scanId": "11111111-1111-4111-8111-111111111111",
+                "taskId": "44444444-4444-4444-8444-444444444444",
+                "sourceSession": "dotfiles-main",
+                "sourceWorkspaceId": "w1",
+                "mode": "rebuildStopped"
+              }
+            ]
+          },
+          "response": {
+            "ok": false,
+            "error": {
+              "code": "SOURCE_RUNNING",
+              "message": "설명용 오류",
+              "retryable": false,
+              "operationId": "33333333-3333-4333-8333-333333333333"
+            }
+          },
+          "screen": "실행 중인 상태를 옮길 수 없으므로 중지 명령을 보내지 않는다.",
+          "storage": {
+            "phase": "blocked",
+            "taskBinding": "원본 연결",
+            "targetWorkspaceId": null,
+            "sourceRetained": true,
+            "sourceRunning": true,
+            "createdSpaces": 0
+          },
+          "detail": "SCR-rebuild"
+        },
+        {
+          "title": "기존 세션을 계속 쓴다",
+          "request": {
+            "action": "원본 연결 유지 / 문서 시연"
+          },
+          "response": {
+            "ok": true,
+            "value": {
+              "sourceRetained": true
+            }
+          },
+          "screen": "기존 연결을 계속 사용한다. 작업을 별도로 종료한 뒤 새로운 검사를 할 수 있다.",
+          "storage": {
+            "phase": "blocked",
+            "taskBinding": "원본 연결",
+            "targetWorkspaceId": null,
+            "sourceRetained": true,
+            "sourceRunning": true,
+            "createdSpaces": 0
+          },
+          "detail": "SCR-recovery"
+        }
+      ]
+    },
+    {
+      "id": "rebuild-stopped",
+      "title": "C. stopped 작업 재구성",
+      "steps": [
+        {
+          "title": "지원하는 stopped 자료를 고른다",
+          "request": {
+            "transport": "IPC 예시 / 미구현",
+            "namespace": "herdrSession",
+            "method": "scanSessions",
+            "args": [
+              {
+                "sshHost": null
+              }
+            ]
+          },
+          "response": {
+            "ok": true,
+            "value": {
+              "scanId": "11111111-1111-4111-8111-111111111111",
+              "fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "sessions": [
+                {
+                  "name": "{{legacy-session}}",
+                  "running": false,
+                  "snapshotState": "valid",
+                  "sessionDir": "/example/herdr/sessions/{{legacy-session}}",
+                  "workspaceIds": [
+                    "w1"
+                  ],
+                  "taskIds": [
+                    "44444444-4444-4444-8444-444444444444"
+                  ]
+                }
+              ],
+              "observedAt": "2026-11-13T00:00:00Z"
+            }
+          },
+          "screen": "이 예시는 지원하는 decoder가 있다는 조건이다. 실제 지원 형식은 아직 미정이다.",
+          "storage": {
+            "phase": "inspected",
+            "taskBinding": "원본 연결",
+            "targetWorkspaceId": null,
+            "sourceRetained": true,
+            "sourceRunning": false
+          },
+          "detail": "SCR-inventory"
+        },
+        {
+          "title": "보존할 값과 새로 만들 값을 확인한다",
+          "request": {
+            "transport": "IPC 예시 / 미구현",
+            "namespace": "herdrSession",
+            "method": "createPlan",
+            "args": [
+              {
+                "scanId": "11111111-1111-4111-8111-111111111111",
+                "taskId": "44444444-4444-4444-8444-444444444444",
+                "sourceSession": "{{legacy-session}}",
+                "sourceWorkspaceId": "w1",
+                "mode": "rebuildStopped"
+              }
+            ]
+          },
+          "response": {
+            "ok": true,
+            "value": {
+              "planId": "22222222-2222-4222-8222-222222222222",
+              "eligibility": "ready",
+              "targetSession": "kanvibe",
+              "preserved": [
+                "작업 파일"
+              ],
+              "recreated": [
+                "pane과 배치"
+              ],
+              "unsupported": [
+                "원래 PID",
+                "스크롤백"
+              ],
+              "blockers": [],
+              "fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            }
+          },
+          "screen": "같은 {{worktree}} 경로를 사용한다. 프로세스와 스크롤백은 이전하지 않는다.",
+          "storage": {
+            "phase": "planned",
+            "taskBinding": "원본 연결",
+            "targetWorkspaceId": null,
+            "sourceRetained": true
+          },
+          "detail": "SCR-rebuild"
+        },
+        {
+          "title": "원본을 재검사하고 대상을 준비한다",
+          "request": {
+            "transport": "IPC 예시 / 미구현",
+            "namespace": "herdrSession",
+            "method": "executePlan",
+            "args": [
+              {
+                "planId": "22222222-2222-4222-8222-222222222222",
+                "expectedFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "operationId": "33333333-3333-4333-8333-333333333333"
+              }
+            ]
+          },
+          "response": {
+            "ok": true,
+            "value": {
+              "operationId": "33333333-3333-4333-8333-333333333333",
+              "phase": "applying"
+            }
+          },
+          "screen": "원본 백업 뒤에 새 Space를 만든다. 원본이 실행되었으면 여기서 차단한다.",
+          "storage": {
+            "phase": "applying",
+            "taskBinding": "원본 연결",
+            "targetWorkspaceId": "w9",
+            "sourceRetained": true,
+            "backup": "원본 호스트 안에 보관"
+          },
+          "detail": "SCR-rebuild"
+        },
+        {
+          "title": "경로와 배치를 확인한다",
+          "request": {
+            "transport": "IPC 예시 / 미구현",
+            "namespace": "herdrSession",
+            "method": "getOperation",
+            "args": [
+              {
+                "operationId": "33333333-3333-4333-8333-333333333333"
+              }
+            ]
+          },
+          "response": {
+            "ok": true,
+            "value": {
+              "operationId": "33333333-3333-4333-8333-333333333333",
+              "phase": "verifying",
+              "planId": "22222222-2222-4222-8222-222222222222",
+              "taskId": "44444444-4444-4444-8444-444444444444",
+              "mode": "rebuildStopped",
+              "source": {
+                "sshHost": null,
+                "sessionName": "{{legacy-session}}",
+                "workspaceId": "w1"
+              },
+              "sourceFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "previousBinding": {
+                "sshHost": null,
+                "sessionType": "herdr",
+                "sessionName": "{{legacy-session}}",
+                "worktreePath": "{{worktree}}"
+              },
+              "targetWorkspaceId": "w9",
+              "error": null,
+              "createdAt": "2026-11-13T00:00:00Z",
+              "updatedAt": "2026-11-13T00:01:00Z",
+              "backupLocation": "/example/herdr/backups/source-session.json"
+            }
+          },
+          "screen": "새 pane은 새 프로세스다. 아직 태스크 연결은 원본을 가리킨다.",
+          "storage": {
+            "phase": "verifying",
+            "taskBinding": "원본 연결",
+            "targetWorkspaceId": "w9",
+            "sourceRetained": true,
+            "cwd": "{{worktree}}"
+          },
+          "detail": "SCR-rebuild"
+        },
+        {
+          "title": "검증 후 태스크 연결을 교체한다",
+          "request": {
+            "transport": "IPC 예시 / 미구현",
+            "namespace": "herdrSession",
+            "method": "getOperation",
+            "args": [
+              {
+                "operationId": "33333333-3333-4333-8333-333333333333"
+              }
+            ]
+          },
+          "response": {
+            "ok": true,
+            "value": {
+              "operationId": "33333333-3333-4333-8333-333333333333",
+              "phase": "committed",
+              "planId": "22222222-2222-4222-8222-222222222222",
+              "taskId": "44444444-4444-4444-8444-444444444444",
+              "mode": "rebuildStopped",
+              "source": {
+                "sshHost": null,
+                "sessionName": "{{legacy-session}}",
+                "workspaceId": "w1"
+              },
+              "sourceFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "previousBinding": {
+                "sshHost": null,
+                "sessionType": "herdr",
+                "sessionName": "{{legacy-session}}",
+                "worktreePath": "{{worktree}}"
+              },
+              "targetWorkspaceId": "w9",
+              "error": null,
+              "createdAt": "2026-11-13T00:00:00Z",
+              "updatedAt": "2026-11-13T00:01:00Z",
+              "backupLocation": "/example/herdr/backups/source-session.json"
+            }
+          },
+          "screen": "다른 창이 바꾸지 않았을 때만 sessionName을 새 연결로 저장한다.",
+          "storage": {
+            "phase": "committed",
+            "taskBinding": "kanvibe:{{legacy-session}}",
+            "targetWorkspaceId": "w9",
+            "sourceRetained": true
+          },
+          "detail": "SCR-rebuild"
+        },
+        {
+          "title": "새 Space에서 작업을 연다",
+          "request": {
+            "transport": "IPC 예시 / 미구현",
+            "namespace": "herdrSession",
+            "method": "getOperation",
+            "args": [
+              {
+                "operationId": "33333333-3333-4333-8333-333333333333"
+              }
+            ]
+          },
+          "response": {
+            "ok": true,
+            "value": {
+              "operationId": "33333333-3333-4333-8333-333333333333",
+              "phase": "completed",
+              "planId": "22222222-2222-4222-8222-222222222222",
+              "taskId": "44444444-4444-4444-8444-444444444444",
+              "mode": "rebuildStopped",
+              "source": {
+                "sshHost": null,
+                "sessionName": "{{legacy-session}}",
+                "workspaceId": "w1"
+              },
+              "sourceFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "previousBinding": {
+                "sshHost": null,
+                "sessionType": "herdr",
+                "sessionName": "{{legacy-session}}",
+                "worktreePath": "{{worktree}}"
+              },
+              "targetWorkspaceId": "w9",
+              "error": null,
+              "createdAt": "2026-11-13T00:00:00Z",
+              "updatedAt": "2026-11-13T00:01:00Z",
+              "backupLocation": "/example/herdr/backups/source-session.json"
+            }
+          },
+          "screen": "원본 세션은 남는다. 대화 재개는 별도 사용자 동작이며 자동 명령 실행은 없다.",
+          "storage": {
+            "phase": "completed",
+            "taskBinding": "kanvibe:{{legacy-session}}",
+            "targetWorkspaceId": "w9",
+            "sourceRetained": true,
+            "agentResumed": false
+          },
+          "detail": "SCR-rebuild"
+        }
+      ]
+    },
+    {
+      "id": "auth-failed",
+      "title": "D. SSH 인증 실패",
+      "steps": [
+        {
+          "title": "원격 검사를 요청한다",
+          "request": {
+            "transport": "IPC 예시 / 미구현",
+            "namespace": "herdrSession",
+            "method": "scanSessions",
+            "args": [
+              {
+                "sshHost": "{{remote-host}}"
+              }
+            ]
+          },
+          "response": {
+            "ok": false,
+            "error": {
+              "code": "SSH_AUTH_REQUIRED",
+              "message": "설명용 오류",
+              "retryable": false,
+              "operationId": "33333333-3333-4333-8333-333333333333"
+            }
+          },
+          "screen": "{{remote-host}} 인증이 필요하다. 화면은 기존 연결을 유지한다.",
+          "storage": {
+            "phase": "failed",
+            "taskBinding": "원본 연결",
+            "targetWorkspaceId": null,
+            "sourceRetained": true,
+            "createdSpaces": 0
+          },
+          "detail": "SCR-recovery"
+        },
+        {
+          "title": "사용자가 인증을 해결한다",
+          "request": {
+            "action": "사용자 터미널의 인증 절차 / 자동 수행 안 함"
+          },
+          "response": {
+            "result": "인증 해결 여부는 실제 재검사로 확인"
+          },
+          "screen": "개인키와 비밀번호를 페이지나 작업 기록에 저장하지 않는다.",
+          "storage": {
+            "phase": "failed",
+            "taskBinding": "원본 연결",
+            "targetWorkspaceId": null,
+            "sourceRetained": true,
+            "createdSpaces": 0
+          },
+          "detail": "SCR-recovery"
+        },
+        {
+          "title": "새 읽기 검사를 한다",
+          "request": {
+            "transport": "IPC 예시 / 미구현",
+            "namespace": "herdrSession",
+            "method": "scanSessions",
+            "args": [
+              {
+                "sshHost": "{{remote-host}}"
+              }
+            ]
+          },
+          "response": {
+            "ok": true,
+            "value": {
+              "scanId": "11111111-1111-4111-8111-111111111111",
+              "fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "sessions": [],
+              "observedAt": "2026-11-13T00:00:00Z"
+            }
+          },
+          "screen": "재검사 결과로 계획을 다시 만든다. 실패한 쓰기를 무조건 재실행하지 않는다.",
+          "storage": {
+            "phase": "inspected",
+            "taskBinding": "원본 연결",
+            "targetWorkspaceId": null,
+            "sourceRetained": true,
+            "createdSpaces": 0
+          },
+          "detail": "SCR-inventory"
+        }
+      ]
+    },
+    {
+      "id": "crash-recovery",
+      "title": "E. 생성 뒤 앱 종료",
+      "steps": [
+        {
+          "title": "원격 대상 생성 직후다",
+          "request": {
+            "transport": "IPC 예시 / 미구현",
+            "namespace": "herdrSession",
+            "method": "getOperation",
+            "args": [
+              {
+                "operationId": "33333333-3333-4333-8333-333333333333"
+              }
+            ]
+          },
+          "response": {
+            "ok": true,
+            "value": {
+              "operationId": "33333333-3333-4333-8333-333333333333",
+              "phase": "applying",
+              "planId": "22222222-2222-4222-8222-222222222222",
+              "taskId": "44444444-4444-4444-8444-444444444444",
+              "mode": "rebuildStopped",
+              "source": {
+                "sshHost": null,
+                "sessionName": "{{legacy-session}}",
+                "workspaceId": "w1"
+              },
+              "sourceFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "previousBinding": {
+                "sshHost": null,
+                "sessionType": "herdr",
+                "sessionName": "{{legacy-session}}",
+                "worktreePath": "{{worktree}}"
+              },
+              "targetWorkspaceId": "w9",
+              "error": null,
+              "createdAt": "2026-11-13T00:00:00Z",
+              "updatedAt": "2026-11-13T00:01:00Z",
+              "backupLocation": "/example/herdr/backups/source-session.json"
+            }
+          },
+          "screen": "예시 w9는 존재한다. 태스크 연결은 아직 원본이다.",
+          "storage": {
+            "phase": "applying",
+            "taskBinding": "원본 연결",
+            "targetWorkspaceId": "w9",
+            "sourceRetained": true,
+            "targetMetadata": "operationId 기록 완료"
+          },
+          "detail": "SCR-recovery"
+        },
+        {
+          "title": "앱이 종료되어 화면이 끊긴다",
+          "request": {
+            "action": "앱 종료 주입 / 문서 시연"
+          },
+          "response": {
+            "result": "원본과 원격 Herdr 서버는 계속 유지"
+          },
+          "screen": "원격 작업과 로컬 기록을 한 트랜잭션으로 취소할 수 없다.",
+          "storage": {
+            "phase": "applying",
+            "taskBinding": "원본 연결",
+            "targetWorkspaceId": "w9",
+            "sourceRetained": true,
+            "app": "종료"
+          },
+          "detail": "SCR-recovery"
+        },
+        {
+          "title": "앱을 다시 열어 실제 상태를 대조한다",
+          "request": {
+            "transport": "IPC 예시 / 미구현",
+            "namespace": "herdrSession",
+            "method": "getOperation",
+            "args": [
+              {
+                "operationId": "33333333-3333-4333-8333-333333333333"
+              }
+            ]
+          },
+          "response": {
+            "ok": true,
+            "value": {
+              "operationId": "33333333-3333-4333-8333-333333333333",
+              "phase": "attention",
+              "planId": "22222222-2222-4222-8222-222222222222",
+              "taskId": "44444444-4444-4444-8444-444444444444",
+              "mode": "rebuildStopped",
+              "source": {
+                "sshHost": null,
+                "sessionName": "{{legacy-session}}",
+                "workspaceId": "w1"
+              },
+              "sourceFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "previousBinding": {
+                "sshHost": null,
+                "sessionType": "herdr",
+                "sessionName": "{{legacy-session}}",
+                "worktreePath": "{{worktree}}"
+              },
+              "targetWorkspaceId": "w9",
+              "error": {
+                "code": "VERIFY_FAILED",
+                "message": "설명용 상태 확인 필요",
+                "retryable": false,
+                "operationId": "33333333-3333-4333-8333-333333333333"
+              },
+              "createdAt": "2026-11-13T00:00:00Z",
+              "updatedAt": "2026-11-13T00:01:00Z",
+              "backupLocation": "/example/herdr/backups/source-session.json"
+            }
+          },
+          "screen": "기록과 대상 메타데이터를 확인한다. 무조건 두 번째 Space를 만들지 않는다.",
+          "storage": {
+            "phase": "attention",
+            "taskBinding": "원본 연결",
+            "targetWorkspaceId": "w9",
+            "sourceRetained": true,
+            "createdSpaces": 1
+          },
+          "detail": "SCR-recovery"
+        },
+        {
+          "title": "식별 가능한 기존 대상의 검증을 재개한다",
+          "request": {
+            "transport": "IPC 예시 / 미구현",
+            "namespace": "herdrSession",
+            "method": "executePlan",
+            "args": [
+              {
+                "planId": "22222222-2222-4222-8222-222222222222",
+                "expectedFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "operationId": "33333333-3333-4333-8333-333333333333"
+              }
+            ]
+          },
+          "response": {
+            "ok": true,
+            "value": {
+              "operationId": "33333333-3333-4333-8333-333333333333",
+              "phase": "verifying"
+            }
+          },
+          "screen": "같은 operationId와 같은 입력이다. 기존 w9를 재사용한다.",
+          "storage": {
+            "phase": "verifying",
+            "taskBinding": "원본 연결",
+            "targetWorkspaceId": "w9",
+            "sourceRetained": true,
+            "createdSpaces": 1
+          },
+          "detail": "SCR-recovery"
+        },
+        {
+          "title": "확인할 수 없는 구간은 자동 재개하지 않는다",
+          "request": {
+            "condition": "생성 뒤 메타데이터 기록 전에 종료된 별도 분기"
+          },
+          "response": {
+            "ok": false,
+            "error": {
+              "code": "VERIFY_FAILED",
+              "message": "설명용 오류",
+              "retryable": false,
+              "operationId": "33333333-3333-4333-8333-333333333333"
+            }
+          },
+          "screen": "대상 소유권이 불명확하면 attention에 남는다. 수동 확인 전에는 새 생성도 정리도 하지 않는다.",
+          "storage": {
+            "phase": "attention",
+            "taskBinding": "원본 연결",
+            "targetWorkspaceId": null,
+            "sourceRetained": true,
+            "createdSpaces": "자동 단정하지 않음"
+          },
+          "detail": "SCR-recovery"
+        }
+      ]
+    },
+    {
+      "id": "resume-missing",
+      "title": "F. 대화 참조 없음",
+      "steps": [
+        {
+          "title": "새 Space 재구성은 완료되었다",
+          "request": {
+            "transport": "IPC 예시 / 미구현",
+            "namespace": "herdrSession",
+            "method": "getOperation",
+            "args": [
+              {
+                "operationId": "33333333-3333-4333-8333-333333333333"
+              }
+            ]
+          },
+          "response": {
+            "ok": true,
+            "value": {
+              "operationId": "33333333-3333-4333-8333-333333333333",
+              "phase": "completed",
+              "planId": "22222222-2222-4222-8222-222222222222",
+              "taskId": "44444444-4444-4444-8444-444444444444",
+              "mode": "rebuildStopped",
+              "source": {
+                "sshHost": null,
+                "sessionName": "{{legacy-session}}",
+                "workspaceId": "w1"
+              },
+              "sourceFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "previousBinding": {
+                "sshHost": null,
+                "sessionType": "herdr",
+                "sessionName": "{{legacy-session}}",
+                "worktreePath": "{{worktree}}"
+              },
+              "targetWorkspaceId": "w9",
+              "error": null,
+              "createdAt": "2026-11-13T00:00:00Z",
+              "updatedAt": "2026-11-13T00:01:00Z",
+              "backupLocation": "/example/herdr/backups/source-session.json"
+            }
+          },
+          "screen": "파일 경로와 배치는 확인되었다. 이는 대화 재개 성공과 다르다.",
+          "storage": {
+            "phase": "completed",
+            "taskBinding": "kanvibe:{{legacy-session}}",
+            "targetWorkspaceId": "w9",
+            "sourceRetained": true
+          },
+          "detail": "SCR-rebuild"
+        },
+        {
+          "title": "대화 재개 자격을 확인한다",
+          "request": {
+            "action": "제공자 세션 참조 검사 / resume API는 후속 설계"
+          },
+          "response": {
+            "eligible": false,
+            "reason": "유효한 에이전트 세션 참조 없음"
+          },
+          "screen": "참조가 없으므로 과거 대화를 임의로 추정하지 않는다.",
+          "storage": {
+            "phase": "completed",
+            "taskBinding": "원본 연결",
+            "targetWorkspaceId": "w9",
+            "sourceRetained": true,
+            "agentSessionRef": null
+          },
+          "detail": "SCR-rebuild"
+        },
+        {
+          "title": "새 셸에서 사용자가 다음 행동을 고른다",
+          "request": {
+            "action": "정상 셸 유지"
+          },
+          "response": {
+            "ok": true,
+            "value": {
+              "agentStarted": false
+            }
+          },
+          "screen": "실행 중이던 명령과 셸 변수는 돌아오지 않는다. 원본 자료는 남아 있다.",
+          "storage": {
+            "phase": "completed",
+            "taskBinding": "원본 연결",
+            "targetWorkspaceId": "w9",
+            "sourceRetained": true,
+            "agentStarted": false
+          },
+          "detail": "SCR-rebuild"
+        }
+      ]
+    },
+    {
+      "id": "cancel-before-write",
+      "title": "G. 쓰기 전 취소",
+      "steps": [
+        {
+          "title": "이전 계획을 검토한다",
+          "request": {
+            "transport": "IPC 예시 / 미구현",
+            "namespace": "herdrSession",
+            "method": "createPlan",
+            "args": [
+              {
+                "scanId": "11111111-1111-4111-8111-111111111111",
+                "taskId": "44444444-4444-4444-8444-444444444444",
+                "sourceSession": "{{legacy-session}}",
+                "sourceWorkspaceId": "w1",
+                "mode": "rebuildStopped"
+              }
+            ]
+          },
+          "response": {
+            "ok": true,
+            "value": {
+              "planId": "22222222-2222-4222-8222-222222222222",
+              "eligibility": "ready",
+              "fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "preserved": [
+                "원본 파일"
+              ],
+              "recreated": [],
+              "unsupported": [],
+              "blockers": []
+            }
+          },
+          "screen": "사용자는 아직 원본과 대상의 구조를 바꾸지 않았다.",
+          "storage": {
+            "phase": "planned",
+            "taskBinding": "원본 연결",
+            "targetWorkspaceId": null,
+            "sourceRetained": true
+          },
+          "detail": "SCR-rebuild"
+        },
+        {
+          "title": "사용자가 실행 전에 나간다",
+          "request": {
+            "action": "계획 화면 닫기 / 실행 요청 없음"
+          },
+          "response": {
+            "ok": true,
+            "value": {
+              "cancelled": true
+            }
+          },
+          "screen": "읽기 계획만 만들었으므로 대상 생성과 태스크 변경은 없다.",
+          "storage": {
+            "phase": "cancelled",
+            "taskBinding": "원본 연결",
+            "targetWorkspaceId": null,
+            "sourceRetained": true,
+            "createdSpaces": 0
+          },
+          "detail": "SCR-recovery"
+        },
+        {
+          "title": "실행을 시작한 별도 분기를 확인한다",
+          "request": {
+            "transport": "IPC 예시 / 미구현",
+            "namespace": "herdrSession",
+            "method": "executePlan",
+            "args": [
+              {
+                "planId": "22222222-2222-4222-8222-222222222222",
+                "expectedFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "operationId": "33333333-3333-4333-8333-333333333333"
+              }
+            ]
+          },
+          "response": {
+            "ok": true,
+            "value": {
+              "operationId": "33333333-3333-4333-8333-333333333333",
+              "phase": "applying"
+            }
+          },
+          "screen": "계획만 닫은 앞 단계와는 별도 분기다. 작업 기록은 생성되었지만 원격 대상 생성 전인 경우다.",
+          "storage": {
+            "phase": "applying",
+            "taskBinding": "원본 연결",
+            "targetWorkspaceId": null,
+            "sourceRetained": true,
+            "createdSpaces": 0
+          },
+          "detail": "SCR-recovery"
+        },
+        {
+          "title": "작업 시작 직후에도 안전 구간이면 취소한다",
+          "request": {
+            "transport": "IPC 예시 / 미구현",
+            "namespace": "herdrSession",
+            "method": "controlOperation",
+            "args": [
+              {
+                "operationId": "33333333-3333-4333-8333-333333333333",
+                "action": "cancel"
+              }
+            ]
+          },
+          "response": {
+            "ok": true,
+            "value": {
+              "operationId": "33333333-3333-4333-8333-333333333333",
+              "phase": "cancelled",
+              "nextActions": [
+                "원본 연결 확인"
+              ]
+            }
+          },
+          "screen": "활성 실행의 취소는 안전 경계에서 처리한다. 이미 생성된 대상을 무조건 종료하지 않는다.",
+          "storage": {
+            "phase": "cancelled",
+            "taskBinding": "원본 연결",
+            "targetWorkspaceId": null,
+            "sourceRetained": true,
+            "createdSpaces": 0
+          },
+          "detail": "SCR-recovery"
+        }
+      ]
+    },
+    {
+      "id": "revert-binding",
+      "title": "H. 완료 후 연결 복구",
+      "steps": [
+        {
+          "title": "새 연결이 반영된 상태다",
+          "request": {
+            "transport": "IPC 예시 / 미구현",
+            "namespace": "herdrSession",
+            "method": "getOperation",
+            "args": [
+              {
+                "operationId": "33333333-3333-4333-8333-333333333333"
+              }
+            ]
+          },
+          "response": {
+            "ok": true,
+            "value": {
+              "operationId": "33333333-3333-4333-8333-333333333333",
+              "phase": "completed",
+              "planId": "22222222-2222-4222-8222-222222222222",
+              "taskId": "44444444-4444-4444-8444-444444444444",
+              "mode": "rebuildStopped",
+              "source": {
+                "sshHost": null,
+                "sessionName": "{{legacy-session}}",
+                "workspaceId": "w1"
+              },
+              "sourceFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "previousBinding": {
+                "sshHost": null,
+                "sessionType": "herdr",
+                "sessionName": "{{legacy-session}}",
+                "worktreePath": "{{worktree}}"
+              },
+              "targetWorkspaceId": "w9",
+              "error": null,
+              "createdAt": "2026-11-13T00:00:00Z",
+              "updatedAt": "2026-11-13T00:01:00Z",
+              "backupLocation": "/example/herdr/backups/source-session.json"
+            }
+          },
+          "screen": "새 Space가 있고 원본은 보존되어 있다.",
+          "storage": {
+            "phase": "completed",
+            "taskBinding": "kanvibe:{{legacy-session}}",
+            "targetWorkspaceId": "w9",
+            "sourceRetained": true
+          },
+          "detail": "SCR-recovery"
+        },
+        {
+          "title": "소유권과 새 실행 여부를 검사한다",
+          "request": {
+            "transport": "IPC 예시 / 미구현",
+            "namespace": "herdrSession",
+            "method": "controlOperation",
+            "args": [
+              {
+                "operationId": "33333333-3333-4333-8333-333333333333",
+                "action": "revertBinding"
+              }
+            ]
+          },
+          "response": {
+            "ok": true,
+            "value": {
+              "operationId": "33333333-3333-4333-8333-333333333333",
+              "phase": "reverted",
+              "nextActions": [
+                "원본 연결 확인"
+              ]
+            }
+          },
+          "screen": "새 에이전트가 없고 연결 소유권이 유지된 예시다. 이전 연결만 복구한다.",
+          "storage": {
+            "phase": "reverted",
+            "taskBinding": "원본 연결",
+            "targetWorkspaceId": "w9",
+            "sourceRetained": true,
+            "filesReverted": false
+          },
+          "detail": "SCR-recovery"
+        },
+        {
+          "title": "새 작업이 있으면 자동 복구를 차단한다",
+          "request": {
+            "condition": "대상에 새 에이전트가 생긴 별도 분기"
+          },
+          "response": {
+            "ok": false,
+            "error": {
+              "code": "REVERT_BLOCKED",
+              "message": "설명용 오류",
+              "retryable": false,
+              "operationId": "33333333-3333-4333-8333-333333333333"
+            }
+          },
+          "screen": "새 프로세스를 죽여서 되돌리지 않는다. 중복 실행 위험을 먼저 확인한다.",
+          "storage": {
+            "phase": "attention",
+            "taskBinding": "새 연결 유지",
+            "targetWorkspaceId": "w9",
+            "sourceRetained": true,
+            "newAgentRunning": true
+          },
+          "detail": "SCR-recovery"
+        }
+      ]
+    }
+  ]
+}

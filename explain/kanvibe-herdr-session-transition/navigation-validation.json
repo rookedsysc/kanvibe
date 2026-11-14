@@ -1,0 +1,12 @@
+{
+  "finalSection": true,
+  "hiddenBranchesSkipTab": true,
+  "readingPositionPreserved": true,
+  "dragAndReset": true,
+  "mobileFocusTrap": true,
+  "mobileSelectionFocus": true,
+  "widthTransition": true,
+  "scenarioKeyboard": true,
+  "longInputContained": true,
+  "passed": true
+}

@@ -1,0 +1,287 @@
+{
+  "productImplementation": "Preview-only checks in this report; actual Electron product QA is recorded separately.",
+  "browser": "Chromium",
+  "scenarios": [
+    {
+      "id": "remote-connect",
+      "steps": [
+        {
+          "step": 1,
+          "title": "B가 A의 세션을 검사한다",
+          "pass": true
+        },
+        {
+          "step": 2,
+          "title": "기존 실행에 연결할 계획을 만든다",
+          "pass": true
+        },
+        {
+          "step": 3,
+          "title": "B의 프로필을 대조한다",
+          "pass": true
+        },
+        {
+          "step": 4,
+          "title": "B의 화면과 A의 원본을 연결한다",
+          "pass": true
+        },
+        {
+          "step": 5,
+          "title": "원래 작업을 계속 사용한다",
+          "pass": true
+        }
+      ]
+    },
+    {
+      "id": "running-blocked",
+      "steps": [
+        {
+          "step": 1,
+          "title": "맥북의 기존 세션을 검사한다",
+          "pass": true
+        },
+        {
+          "step": 2,
+          "title": "재구성을 요청하면 차단한다",
+          "pass": true
+        },
+        {
+          "step": 3,
+          "title": "기존 세션을 계속 쓴다",
+          "pass": true
+        }
+      ]
+    },
+    {
+      "id": "rebuild-stopped",
+      "steps": [
+        {
+          "step": 1,
+          "title": "지원하는 stopped 자료를 고른다",
+          "pass": true
+        },
+        {
+          "step": 2,
+          "title": "보존할 값과 새로 만들 값을 확인한다",
+          "pass": true
+        },
+        {
+          "step": 3,
+          "title": "원본을 재검사하고 대상을 준비한다",
+          "pass": true
+        },
+        {
+          "step": 4,
+          "title": "경로와 배치를 확인한다",
+          "pass": true
+        },
+        {
+          "step": 5,
+          "title": "검증 후 태스크 연결을 교체한다",
+          "pass": true
+        },
+        {
+          "step": 6,
+          "title": "새 Space에서 작업을 연다",
+          "pass": true
+        }
+      ]
+    },
+    {
+      "id": "auth-failed",
+      "steps": [
+        {
+          "step": 1,
+          "title": "원격 검사를 요청한다",
+          "pass": true
+        },
+        {
+          "step": 2,
+          "title": "사용자가 인증을 해결한다",
+          "pass": true
+        },
+        {
+          "step": 3,
+          "title": "새 읽기 검사를 한다",
+          "pass": true
+        }
+      ]
+    },
+    {
+      "id": "crash-recovery",
+      "steps": [
+        {
+          "step": 1,
+          "title": "원격 대상 생성 직후다",
+          "pass": true
+        },
+        {
+          "step": 2,
+          "title": "앱이 종료되어 화면이 끊긴다",
+          "pass": true
+        },
+        {
+          "step": 3,
+          "title": "앱을 다시 열어 실제 상태를 대조한다",
+          "pass": true
+        },
+        {
+          "step": 4,
+          "title": "식별 가능한 기존 대상의 검증을 재개한다",
+          "pass": true
+        },
+        {
+          "step": 5,
+          "title": "확인할 수 없는 구간은 자동 재개하지 않는다",
+          "pass": true
+        }
+      ]
+    },
+    {
+      "id": "resume-missing",
+      "steps": [
+        {
+          "step": 1,
+          "title": "새 Space 재구성은 완료되었다",
+          "pass": true
+        },
+        {
+          "step": 2,
+          "title": "대화 재개 자격을 확인한다",
+          "pass": true
+        },
+        {
+          "step": 3,
+          "title": "새 셸에서 사용자가 다음 행동을 고른다",
+          "pass": true
+        }
+      ]
+    },
+    {
+      "id": "cancel-before-write",
+      "steps": [
+        {
+          "step": 1,
+          "title": "이전 계획을 검토한다",
+          "pass": true
+        },
+        {
+          "step": 2,
+          "title": "사용자가 실행 전에 나간다",
+          "pass": true
+        },
+        {
+          "step": 3,
+          "title": "실행을 시작한 별도 분기를 확인한다",
+          "pass": true
+        },
+        {
+          "step": 4,
+          "title": "작업 시작 직후에도 안전 구간이면 취소한다",
+          "pass": true
+        }
+      ]
+    },
+    {
+      "id": "revert-binding",
+      "steps": [
+        {
+          "step": 1,
+          "title": "새 연결이 반영된 상태다",
+          "pass": true
+        },
+        {
+          "step": 2,
+          "title": "소유권과 새 실행 여부를 검사한다",
+          "pass": true
+        },
+        {
+          "step": 3,
+          "title": "새 작업이 있으면 자동 복구를 차단한다",
+          "pass": true
+        }
+      ]
+    }
+  ],
+  "viewports": [
+    {
+      "width": 320,
+      "scrollWidth": 320,
+      "bodyWidth": 320,
+      "tocCurrent": 1
+    },
+    {
+      "width": 390,
+      "scrollWidth": 390,
+      "bodyWidth": 390,
+      "tocCurrent": 1
+    },
+    {
+      "width": 768,
+      "scrollWidth": 768,
+      "bodyWidth": 768,
+      "tocCurrent": 1
+    },
+    {
+      "width": 1099,
+      "scrollWidth": 1099,
+      "bodyWidth": 1099,
+      "tocCurrent": 1
+    },
+    {
+      "width": 1100,
+      "scrollWidth": 1100,
+      "bodyWidth": 1100,
+      "tocCurrent": 1
+    },
+    {
+      "width": 1440,
+      "scrollWidth": 1440,
+      "bodyWidth": 1440,
+      "tocCurrent": 1
+    },
+    {
+      "width": 1920,
+      "scrollWidth": 1920,
+      "bodyWidth": 1920,
+      "tocCurrent": 1
+    }
+  ],
+  "svgGeometry": [
+    {
+      "figure": 1,
+      "outside": [],
+      "overlaps": []
+    },
+    {
+      "figure": 2,
+      "outside": [],
+      "overlaps": []
+    },
+    {
+      "figure": 3,
+      "outside": [],
+      "overlaps": []
+    },
+    {
+      "figure": 4,
+      "outside": [],
+      "overlaps": []
+    }
+  ],
+  "errors": [],
+  "externalRequests": [],
+  "detailRoundtrip": true,
+  "directLinkAndHistory": true,
+  "mobileDialog": true,
+  "desktopToc": true,
+  "darkMode": true,
+  "printPreview": true,
+  "offlineFile": true,
+  "tailnet": {
+    "url": "http://crookedbot-standard-pc-q35-ich9-2009.tail373827.ts.net:58995/kanvibe-herdr-session-transition.html",
+    "status": 200,
+    "verification": "same host HTTP; other tailnet device not tested"
+  },
+  "passed": true
+}

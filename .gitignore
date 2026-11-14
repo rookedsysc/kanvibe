@@ -29,6 +29,10 @@
 /playwright-report
 /test-results
 
+# regenerated explanation preview captures
+/explain/kanvibe-herdr-session-transition/*.png
+/explain/kanvibe-herdr-session-transition/print-preview.pdf
+
 # misc
 .DS_Store
 *.pem
