@@ -1431,6 +1431,129 @@ describe("SSH connection ownership and execution safety", () => {
     expect(mocks.spawnMaster.mock.calls.some((call) => call[1].includes("exit"))).toBe(false);
   });
 
+  it("background saturation reserves capacity for interactive detail reads", async () => {
+    vi.stubEnv("KANVIBE_REMOTE_SSH_HOST_MAX_CONCURRENCY", "3");
+    const children: MockSSHProcess[] = [];
+    mocks.spawn.mockImplementation(() => {
+      const child = createMockSSHProcess();
+      children.push(child);
+      return child;
+    });
+    const { execGit, runWithBackgroundSSHCommands } = await import("@/lib/gitOperations");
+    const background = Array.from({ length: 4 }, (_, i) => runWithBackgroundSSHCommands(() => execGit(`repair-${i}`, "remote-host")));
+    try {
+      await vi.waitFor(() => expect(children).toHaveLength(2));
+      const detail = execGit("interactive-detail", "remote-host");
+      await vi.waitFor(() => expect(children).toHaveLength(3));
+      expect(getSpawnedRemoteCommand(2)).toContain("interactive-detail");
+      completeRemoteCommand(children[2], "usable");
+      await expect(detail).resolves.toBe("usable");
+      expect(children).toHaveLength(3);
+      completeRemoteCommand(children[0], "repaired");
+      await background[0];
+      await vi.waitFor(() => expect(children).toHaveLength(4));
+      completeRemoteCommand(children[1], "repaired");
+      await background[1];
+      await vi.waitFor(() => expect(children).toHaveLength(5));
+      completeRemoteCommand(children[3], "repaired");
+      completeRemoteCommand(children[4], "repaired");
+      await Promise.all(background);
+    } finally {
+      for (const child of children) completeRemoteCommand(child, "cleanup");
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("interactive queued commands precede background work without raising the host ceiling", async () => {
+    vi.stubEnv("KANVIBE_REMOTE_SSH_HOST_MAX_CONCURRENCY", "1");
+    const children: MockSSHProcess[] = [];
+    mocks.spawn.mockImplementation(() => {
+      const child = createMockSSHProcess();
+      children.push(child);
+      return child;
+    });
+    const { execGit, runWithBackgroundSSHCommands } = await import("@/lib/gitOperations");
+    try {
+      const active = execGit("active", "remote-host");
+      await vi.waitFor(() => expect(children).toHaveLength(1));
+      const background = runWithBackgroundSSHCommands(() => execGit("repair", "remote-host"));
+      const detail = execGit("interactive-detail", "remote-host");
+      completeRemoteCommand(children[0], "done");
+      await active;
+      await vi.waitFor(() => expect(children).toHaveLength(2));
+      expect(getSpawnedRemoteCommand(1)).toContain("interactive-detail");
+      completeRemoteCommand(children[1], "usable");
+      await detail;
+      await vi.waitFor(() => expect(children).toHaveLength(3));
+      completeRemoteCommand(children[2], "repaired");
+      await background;
+    } finally {
+      for (const child of children) completeRemoteCommand(child, "cleanup");
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("queued expiry never dispatches after capacity is released", async () => {
+    vi.stubEnv("KANVIBE_REMOTE_SSH_HOST_MAX_CONCURRENCY", "1");
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    const activeChild = createMockSSHProcess();
+    mocks.spawn.mockImplementation(() => {
+      if (mocks.spawn.mock.calls.length === 1) return activeChild;
+      const next = createMockSSHProcess();
+      queueMicrotask(() => completeRemoteCommand(next, "next"));
+      return next;
+    });
+    const { execGit } = await import("@/lib/gitOperations");
+    const active = execGit("active", "remote-host", { timeoutMs: 500 });
+    const activeResult = active.catch((error: unknown) => error);
+    const expired = execGit("expired", "remote-host", { timeoutMs: 20 });
+    const failure = vi.fn();
+    const expiredResult = expired.catch(failure);
+    try {
+      await vi.advanceTimersByTimeAsync(1);
+      await vi.advanceTimersByTimeAsync(25);
+      expect(failure).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ message: expect.stringMatching(/SSH 명령이 .*완료되지 않았/) }));
+      expect(mocks.spawn).toHaveBeenCalledTimes(1);
+      completeRemoteCommand(activeChild, "done");
+      await expect(activeResult).resolves.toBe("done");
+      await expiredResult;
+      await expect(execGit("next", "remote-host", { timeoutMs: 100 })).resolves.toBe("next");
+      expect(mocks.spawn).toHaveBeenCalledTimes(2);
+      expect(getSpawnedRemoteCommand(1)).toContain("next");
+    } finally {
+      completeRemoteCommand(activeChild, "cleanup");
+      await Promise.all([activeResult, expiredResult]);
+      vi.useRealTimers();
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("a saturated repair host does not block another host", async () => {
+    vi.stubEnv("KANVIBE_REMOTE_SSH_HOST_MAX_CONCURRENCY", "1");
+    vi.doMock("@/lib/sshConfig", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("@/lib/sshConfig")>()),
+      parseSSHConfig: vi.fn(async () => [config, { ...config, host: "other-host", hostname: "other.example.com" }]),
+    }));
+    const active = createMockSSHProcess();
+    mocks.spawn.mockImplementation((_file: string, args: string[]) => {
+      if (args.includes("remote-host")) return active;
+      const child = createMockSSHProcess();
+      queueMicrotask(() => completeRemoteCommand(child, "other-host-ready"));
+      return child;
+    });
+    const { execGit, runWithBackgroundSSHCommands } = await import("@/lib/gitOperations");
+    const repair = runWithBackgroundSSHCommands(() => execGit("repair", "remote-host"));
+    try {
+      await vi.waitFor(() => expect(mocks.spawn).toHaveBeenCalledOnce());
+      await expect(execGit("detail", "other-host")).resolves.toBe("other-host-ready");
+      completeRemoteCommand(active, "repaired");
+      await expect(repair).resolves.toBe("repaired");
+    } finally {
+      completeRemoteCommand(active, "cleanup");
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("a command timeout preserves a concurrent command and allows the next command", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
     const timedOut = createMockSSHProcess();

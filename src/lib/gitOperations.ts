@@ -43,6 +43,8 @@ const DEFAULT_REMOTE_SSH_TRANSPORT_FAILURE_COOLDOWN_MS = 5_000;
 const MAX_REMOTE_SSH_TRANSPORT_FAILURE_COOLDOWN_MS = 60_000;
 // Leave two channels below OpenSSH's default MaxSessions=10 for nested lock callbacks.
 const REMOTE_SSH_HOST_MAX_CHANNELS = 8;
+// Repair leaves channels available for detail opens without increasing the shared host ceiling.
+const REMOTE_SSH_HOST_MAX_BACKGROUND_CHANNELS = 2;
 // Revalidate before the 10m ControlPersist idle window can expire.
 const REMOTE_SSH_MASTER_READY_TTL_MS = 9 * 60_000;
 const DEFAULT_REMOTE_SSH_COMMAND_TIMEOUT_MS = 45_000;
@@ -52,6 +54,7 @@ const REMOTE_COMMAND_MAX_BUFFER_BYTES = 10 * 1024 * 1024;
 const remoteSSHTransportFailures = new Map<string, { until: number; error: Error }>();
 // Command slots and authenticated master readiness have separate lifetimes.
 const remoteSSHConnectionPools = new Map<string, RemoteSSHConnectionPool>();
+const remoteSSHCommandPriority = new AsyncLocalStorage<"background">();
 const remoteSSHResponderContext = new AsyncLocalStorage<{ sshHost: string; active: boolean }>();
 const remoteSSHMasters = new Map<string, RemoteSSHMaster>();
 const remoteSSHAuthenticationQueues = new Map<string, Promise<void>>();
@@ -66,7 +69,13 @@ interface RemoteSSHMaster {
 
 interface RemoteSSHConnectionPool {
   activeConnections: number;
-  queue: Array<() => void>;
+  activeBackgroundConnections: number;
+  queue: RemoteSSHQueueEntry[];
+}
+
+interface RemoteSSHQueueEntry {
+  background: boolean;
+  start: () => void;
 }
 
 interface RemoteSSHConnectionLease {
@@ -217,10 +226,11 @@ async function execRemote(
   command: string,
   options?: ExecGitOptions,
 ): Promise<string> {
+  const timeoutMs = getRemoteSSHCommandTimeoutMs(options);
+  const deadline = Date.now() + timeoutMs;
   const execute = async () => {
+    remainingSSHTimeout(deadline);
     throwIfSSHTransportCooldownActive(sshHost);
-    const timeoutMs = getRemoteSSHCommandTimeoutMs(options);
-    const deadline = Date.now() + timeoutMs;
     const configs = await parseSSHConfig();
     const hostConfig = configs.find((c) => c.host === sshHost);
 
@@ -296,7 +306,10 @@ async function execRemote(
   if (responderContext?.active && responderContext.sshHost === sshHost) {
     return execute();
   }
-  return runLimitedRemoteCommand(sshHost, execute);
+  return runLimitedRemoteCommand(sshHost, execute, deadline).catch((error) => {
+    if (isSSHCommandTimeoutError(error)) throw normalizeSSHExecError(error, sshHost, timeoutMs, true);
+    throw error;
+  });
 }
 
 function logRemoteCommandFailure(
@@ -594,12 +607,16 @@ function attachCommandOutput<T extends Error>(error: T, stdout: string, stderr: 
   return Object.assign(error, { stdout, stderr });
 }
 
+export function runWithBackgroundSSHCommands<T>(operation: () => Promise<T>): Promise<T> {
+  return remoteSSHCommandPriority.run("background", operation);
+}
+
 async function runLimitedRemoteCommand<T>(
   sshHost: string,
   operation: () => Promise<T>,
+  deadline: number,
 ): Promise<T> {
-  const lease = await acquireRemoteSSHConnection(sshHost);
-
+  const lease = await acquireRemoteSSHConnection(sshHost, deadline);
   try {
     return await operation();
   } finally {
@@ -607,54 +624,63 @@ async function runLimitedRemoteCommand<T>(
   }
 }
 
-function acquireRemoteSSHConnection(sshHost: string): Promise<RemoteSSHConnectionLease> {
-  const connectionPool = getOrCreateRemoteSSHConnectionPool(sshHost);
-
-  return new Promise((resolve) => {
-    const start = () => {
-      connectionPool.activeConnections += 1;
-      resolve({
-        release: () => releaseRemoteSSHConnection(sshHost, connectionPool),
-      });
+function acquireRemoteSSHConnection(
+  sshHost: string,
+  deadline: number,
+): Promise<RemoteSSHConnectionLease> {
+  const timeoutMs = remainingSSHTimeout(deadline);
+  const pool = getOrCreateRemoteSSHConnectionPool(sshHost);
+  const background = remoteSSHCommandPriority.getStore() === "background";
+  return new Promise((resolve, reject) => {
+    const remove = (error: unknown) => {
+      const index = pool.queue.indexOf(entry);
+      if (index < 0) return;
+      pool.queue.splice(index, 1);
+      clearTimeout(timer);
+      reject(error);
+      dispatchRemoteSSHConnections(sshHost, pool);
     };
-
-    if (connectionPool.activeConnections < getRemoteSSHHostMaxConcurrency()) {
-      start();
-      return;
-    }
-
-    connectionPool.queue.push(start);
+    const timer = setTimeout(() => remove(createSSHTimeoutError(timeoutMs, "", "")), timeoutMs);
+    const entry: RemoteSSHQueueEntry = {
+      background,
+      start: () => {
+        clearTimeout(timer);
+        pool.activeConnections += 1;
+        if (background) pool.activeBackgroundConnections += 1;
+        let released = false;
+        resolve({ release: () => {
+          if (released) return;
+          released = true;
+          pool.activeConnections -= 1;
+          if (background) pool.activeBackgroundConnections -= 1;
+          dispatchRemoteSSHConnections(sshHost, pool);
+        } });
+      },
+    };
+    pool.queue.push(entry);
+    dispatchRemoteSSHConnections(sshHost, pool);
   });
 }
 
 function getOrCreateRemoteSSHConnectionPool(sshHost: string): RemoteSSHConnectionPool {
-  let connectionPool = remoteSSHConnectionPools.get(sshHost);
-  if (!connectionPool) {
-    connectionPool = {
-      activeConnections: 0,
-      queue: [],
-    };
-    remoteSSHConnectionPools.set(sshHost, connectionPool);
+  let pool = remoteSSHConnectionPools.get(sshHost);
+  if (!pool) {
+    pool = { activeConnections: 0, activeBackgroundConnections: 0, queue: [] };
+    remoteSSHConnectionPools.set(sshHost, pool);
   }
-
-  return connectionPool;
+  return pool;
 }
 
-function releaseRemoteSSHConnection(
-  sshHost: string,
-  connectionPool: RemoteSSHConnectionPool,
-): void {
-  connectionPool.activeConnections -= 1;
-
-  const next = connectionPool.queue.shift();
-  if (next) {
-    next();
-    return;
+function dispatchRemoteSSHConnections(sshHost: string, pool: RemoteSSHConnectionPool): void {
+  const ceiling = getRemoteSSHHostMaxConcurrency();
+  const backgroundCeiling = Math.min(REMOTE_SSH_HOST_MAX_BACKGROUND_CHANNELS, Math.max(1, ceiling - 1));
+  while (pool.activeConnections < ceiling) {
+    let index = pool.queue.findIndex((entry) => !entry.background);
+    if (index < 0 && pool.activeBackgroundConnections < backgroundCeiling) index = 0;
+    if (index < 0 || !pool.queue[index]) break;
+    pool.queue.splice(index, 1)[0].start();
   }
-
-  if (connectionPool.activeConnections === 0) {
-    remoteSSHConnectionPools.delete(sshHost);
-  }
+  if (pool.activeConnections === 0 && pool.queue.length === 0) remoteSSHConnectionPools.delete(sshHost);
 }
 
 function throwIfSSHTransportCooldownActive(sshHost: string): void {
