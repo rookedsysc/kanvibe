@@ -1,0 +1,72 @@
+{
+  "runId": "2026-11-14T04-14-50-615Z",
+  "sandbox": "/tmp/kvhe-9D0D7A",
+  "out": "/home/crookedbot/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/perf-herdr-session-machine/.tooling/artifacts/herdr-electron-2026-11-14T04-14-50-615Z",
+  "checks": [
+    {
+      "name": "isolated live Herdr server and pane process",
+      "ok": true,
+      "detail": {
+        "workspaceId": "w1",
+        "paneId": "w1:p1",
+        "pid": 2814023
+      }
+    },
+    {
+      "name": "Electron uses isolated database and Herdr settings",
+      "ok": true,
+      "detail": {
+        "sandbox": "/tmp/kvhe-9D0D7A",
+        "config": "/tmp/kvhe-9D0D7A/c",
+        "appData": "/tmp/kvhe-9D0D7A/app"
+      }
+    },
+    {
+      "name": "live Space imports without an existing task and preserves pane PID",
+      "ok": true,
+      "detail": {
+        "operationId": "ef0c23c4-64d8-44b6-8713-0bee1b26f09a",
+        "taskId": "41d2c49e-2d52-4898-8495-d77fa8939a76",
+        "sourcePid": 2814023,
+        "pidStillAlive": true
+      }
+    },
+    {
+      "name": "stopped snapshot reconstructs through Settings IPC",
+      "ok": true,
+      "detail": {
+        "operationId": "1b7f54eb-2e1c-446d-899c-70d6d679b2e7",
+        "taskId": "6278f4f7-91be-44bd-bea4-712ae7b2a724",
+        "targetWorkspaceId": "w1",
+        "tabCount": 2,
+        "paneCount": 3,
+        "backup": "/tmp/kvhe-9D0D7A/c/herdr/sessions/legacy-qa/kanvibe-backups/1b7f54eb-2e1c-446d-899c-70d6d679b2e7.json",
+        "sourcePreserved": true
+      }
+    },
+    {
+      "name": "restoration stays blocked while the previous server is stopped",
+      "ok": true,
+      "detail": {
+        "restorationBlocked": true,
+        "bindingUnchanged": true,
+        "sourcePreserved": true,
+        "createdSpacePreserved": true
+      }
+    }
+  ],
+  "errors": [],
+  "cleanup": [
+    {
+      "session": "kanvibe",
+      "stopped": true,
+      "deleted": true
+    },
+    {
+      "session": "live-qa",
+      "stopped": true,
+      "deleted": true
+    }
+  ],
+  "ok": true
+}
