@@ -85,7 +85,10 @@ void main() {
         of: find.text('PR'),
         matching: find.byType(TextButton),
       );
-      expect(tester.getSize(prButton).height, greaterThanOrEqualTo(48));
+      expect(tester.getSize(prButton).height, 32);
+      expect(card.bottom - pr.bottom, lessThanOrEqualTo(16));
+      final summary = tester.getRect(find.text('3 파일  +12 −4'));
+      expect(summary.left - card.left, lessThanOrEqualTo(16));
       expect(tester.takeException(), isNull);
     });
   }
