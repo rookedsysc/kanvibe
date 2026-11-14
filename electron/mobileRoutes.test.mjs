@@ -746,6 +746,31 @@ describe("모바일 터미널 탭 생성", () => {
   });
 });
 
+describe("모바일 지연 최소화 계약", () => {
+  it("최소 surfaces 요청만 새 옵션을 전달하고 기본/알 수 없는 값은 기존 계약을 쓴다", async () => {
+    const headers = { authorization: "Bearer good" };
+    expect((await request("/api/mobile/tasks/task-1/surfaces?metadata=minimal", { headers })).status).toBe(200);
+    expect(bridge.getTaskSurfaces).toHaveBeenLastCalledWith("task-1", { metadata: "minimal" });
+    await request("/api/mobile/tasks/task-1/surfaces?metadata=minimal&tabId=w1%3At2", { headers });
+    expect(bridge.getTaskSurfaces).toHaveBeenLastCalledWith("task-1", { metadata: "minimal", tabId: "w1:t2" });
+    await request("/api/mobile/tasks/task-1/surfaces?metadata=unknown", { headers });
+    expect(bridge.getTaskSurfaces).toHaveBeenLastCalledWith("task-1");
+    await request("/api/mobile/tasks/task-1/surfaces", { headers });
+    expect(bridge.getTaskSurfaces).toHaveBeenLastCalledWith("task-1");
+  });
+
+  it("아이콘 중복 제거는 명시 요청에만 적용하고 인증을 유지한다", async () => {
+    const headers = { authorization: "Bearer good" };
+    expect((await request("/api/mobile/board?iconFormat=deduplicated", { headers })).status).toBe(200);
+    expect(bridge.getMobileBoard).toHaveBeenLastCalledWith({ iconFormat: "deduplicated" });
+    await request("/api/mobile/board", { headers });
+    expect(bridge.getMobileBoard).toHaveBeenLastCalledWith();
+    bridge.getMobileBoard.mockClear();
+    expect((await request("/api/mobile/board?iconFormat=deduplicated")).status).toBe(401);
+    expect(bridge.getMobileBoard).not.toHaveBeenCalled();
+  });
+});
+
 describe("모바일 라우트 오류 응답", () => {
   it("세션이 없는 pane은 409와 이유를 준다", async () => {
     const unavailable = Object.assign(new Error("세션 없음"), {

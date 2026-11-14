@@ -27,6 +27,79 @@ void main() {
   defineTlsPinningTests();
   defineRemotePaneRouteTests();
 
+  test(
+    'compact board restores shared icons and retains legacy inline icons',
+    () async {
+      final client = DesktopClient(
+        httpClient: MockClient((request) async {
+          expect(request.url.queryParameters['iconFormat'], 'deduplicated');
+          expect(request.headers['authorization'], 'Bearer test-token');
+          return http.Response(
+            jsonEncode({
+              'board': {
+                'projects': [
+                  {'id': 'a', 'iconDataUrl': null, 'iconKey': '0'},
+                  {'id': 'b', 'iconDataUrl': null, 'iconKey': '0'},
+                  {'id': 'c', 'iconDataUrl': null, 'iconKey': null},
+                  {'id': 'legacy', 'iconDataUrl': 'data:legacy'},
+                ],
+                'projectIcons': {'0': 'data:shared'},
+              },
+            }),
+            200,
+          );
+        }),
+      );
+      addTearDown(client.close);
+      final board = await client.fetchBoard(_connection);
+      expect(
+        (board['projects'] as List).map((project) => project['iconDataUrl']),
+        ['data:shared', 'data:shared', null, 'data:legacy'],
+      );
+    },
+  );
+
+  test('board response from an old desktop remains readable', () async {
+    final client = clientReplying(
+      200,
+      '{"board":{"projects":[{"id":"a","iconDataUrl":"data:old"}]}}',
+    );
+    addTearDown(client.close);
+    final board = await client.fetchBoard(_connection);
+    expect((board['projects'] as List).single['iconDataUrl'], 'data:old');
+  });
+
+  test('targeted minimal surfaces request includes tabId and retains geometry marker', () async {
+    final client = DesktopClient(
+      httpClient: MockClient((request) async {
+        expect(request.url.queryParameters, {
+          'metadata': 'minimal',
+          'tabId': 'w1:t2',
+        });
+        expect(request.headers['authorization'], 'Bearer test-token');
+        return http.Response(
+          jsonEncode({
+            'surfaces': {
+              'geometryTabId': 'w1:t2',
+              'tabs': [
+                {'id': 'w1:t2', 'panes': []},
+              ],
+            },
+          }),
+          200,
+        );
+      }),
+    );
+    addTearDown(client.close);
+    final surfaces = await client.fetchSurfaces(
+      _connection,
+      'task-1',
+      minimal: true,
+      tabId: 'w1:t2',
+    );
+    expect(surfaces.geometryTabId, 'w1:t2');
+  });
+
   test('프로젝트 폴더 조회와 등록은 선택한 PC에 인증된 요청을 보낸다', () async {
     final client = DesktopClient(
       httpClient: MockClient((request) async {

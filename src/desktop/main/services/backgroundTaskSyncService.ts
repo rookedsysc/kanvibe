@@ -19,6 +19,8 @@ import {
 } from "@/desktop/main/services/appSettingsService";
 import type { BackgroundTaskSyncStatus } from "@/desktop/shared/backgroundTaskSync";
 
+import { runWithBackgroundSSHCommands } from "@/lib/gitOperations";
+
 const INITIAL_SYNC_DELAY_MS = 20_000;
 const FALLBACK_SYNC_INTERVAL_MS = 10 * 60_000;
 
@@ -182,7 +184,7 @@ function runSharedBackgroundTaskSyncCycle(): Promise<BackgroundTaskSyncRunResult
     return activeBackgroundTaskSyncCycle;
   }
 
-  activeBackgroundTaskSyncCycle = Promise.resolve().then(executeBackgroundTaskSyncCycle).then(
+  activeBackgroundTaskSyncCycle = Promise.resolve().then(() => runWithBackgroundSSHCommands(executeBackgroundTaskSyncCycle)).then(
     (result) => {
       updateBackgroundTaskSyncStatus({ ...result, phase: "completed", isRunning: false, completedStages: 3 });
       return result;

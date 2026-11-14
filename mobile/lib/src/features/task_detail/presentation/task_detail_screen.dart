@@ -64,6 +64,8 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
   final _chatModePaneIds = <String>{};
   final _chatPaneIds = <String>{};
   bool _didSelectInitialWindow = false;
+  ({String tabId, TaskSurfaces surfaces, Future<TaskSurfaces?> future})?
+  _pendingTabGeometry;
 
   /// 화면이 들고 있는 태스크. 상태를 옮기면 보드를 다시 받기 전에 여기부터 갈아 끼운다
   late BoardTask _task = widget.task;
@@ -773,13 +775,49 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
               ? null
               : (tab) => _closeTab(tabs, tab),
         ),
-        Expanded(child: _buildSelectedSurface(tabs[selectedIndex], surfaces)),
+        Expanded(
+          child: _buildSelectedSurface(
+            tabs[selectedIndex],
+            surfaces,
+            isMutating: isMutating,
+          ),
+        ),
       ],
     );
   }
 
   /// 세션 종류가 바뀌면 pane id가 같더라도 다른 세션이므로 pane 화면을 새로 만들어 스트림을 다시 연다
-  Widget _buildSelectedSurface(MirrorPane pane, TaskSurfaces surfaces) {
+  Widget _buildSelectedSurface(
+    MirrorPane pane,
+    TaskSurfaces surfaces, {
+    required bool isMutating,
+  }) {
+    if (surfaces.geometryTabId != null &&
+        surfaces.geometryTabId != pane.tabId) {
+      if (isMutating) {
+        _pendingTabGeometry = null;
+        return const Center(child: CircularProgressIndicator());
+      }
+      if (_pendingTabGeometry?.tabId != pane.tabId ||
+          !identical(_pendingTabGeometry?.surfaces, surfaces)) {
+        _pendingTabGeometry = (
+          tabId: pane.tabId,
+          surfaces: surfaces,
+          future: ref
+              .read(surfacesProvider(_task.id).notifier)
+              .loadTabGeometry(pane.tabId),
+        );
+      }
+      return FutureBuilder<TaskSurfaces?>(
+        future: _pendingTabGeometry!.future,
+        builder: (context, snapshot) => snapshot.hasError
+            ? _SurfacesUnavailable(
+                reason: SurfaceUnavailableReason.unknown,
+                onRetry: () => setState(() => _pendingTabGeometry = null),
+              )
+            : const Center(child: CircularProgressIndicator()),
+      );
+    }
     final routeActive = ModalRoute.isCurrentOf(context) ?? true;
     final chatMode = _chatModePaneIds.contains(pane.id);
     return KeyedSubtree(

@@ -1,4 +1,8 @@
 import 'dart:async';
+import 'dart:convert';
+
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -18,7 +22,7 @@ import '../../support/fake_desktop.dart';
 const _beforeFirstRetry = Duration(milliseconds: 50);
 
 ProviderContainer containerWith(
-  FakeDesktopClient client, {
+  DesktopClient client, {
   FakeConnectionStore? store,
 }) {
   final container = ProviderContainer(
@@ -32,6 +36,185 @@ ProviderContainer containerWith(
 }
 
 void main() {
+  test('initial surfaces request omits optional metadata', () async {
+    final client = DesktopClient(
+      httpClient: MockClient((request) async {
+        expect(request.url.queryParameters['metadata'], 'minimal');
+        return http.Response(
+          jsonEncode({
+            'surfaces': {'tabs': []},
+          }),
+          200,
+        );
+      }),
+    );
+    addTearDown(client.close);
+    final container = containerWith(client);
+    container.listen(surfacesProvider('task-1'), (_, _) {});
+    await container.read(surfacesProvider('task-1').future);
+  });
+
+  test(
+    'optional metadata is deduplicated and never blocks usable surfaces',
+    () async {
+      const initial = TaskSurfaces(tabs: [], canResize: true);
+      final pending = Completer<TaskSurfaces>();
+      var calls = 0;
+      final client = FakeDesktopClient()
+        ..onFetchSurfaces = () async {
+          calls += 1;
+          return calls == 1 ? initial : pending.future;
+        };
+      final container = containerWith(client);
+      container.listen(surfacesProvider('task-1'), (_, _) {});
+      await container.read(surfacesProvider('task-1').future);
+      final controller = container.read(surfacesProvider('task-1').notifier);
+      final first = controller.enrichMetadata();
+      final second = controller.enrichMetadata();
+      await Future<void>.delayed(Duration.zero);
+      expect(calls, 2);
+      expect(
+        container.read(surfacesProvider('task-1')).requireValue.surfaces,
+        same(initial),
+      );
+      pending.completeError(Exception('optional process-info failed'));
+      await Future.wait([first, second]);
+      expect(
+        container.read(surfacesProvider('task-1')).requireValue.surfaces,
+        same(initial),
+      );
+    },
+  );
+
+  test('successful optional enrichment updates terminal labels', () async {
+    final initial = TaskSurfaces.fromJson({
+      'tabs': [
+        {
+          'id': 'tab',
+          'panes': [
+            {'id': 'pane', 'command': ''},
+          ],
+        },
+      ],
+    });
+    final enriched = TaskSurfaces.fromJson({
+      'tabs': [
+        {
+          'id': 'tab',
+          'panes': [
+            {'id': 'pane', 'command': 'codex'},
+          ],
+        },
+      ],
+    });
+    var calls = 0;
+    final client = FakeDesktopClient()
+      ..onFetchSurfaces = () async => ++calls == 1 ? initial : enriched;
+    final container = containerWith(client);
+    container.listen(surfacesProvider('task-1'), (_, _) {});
+    await container.read(surfacesProvider('task-1').future);
+    await container.read(surfacesProvider('task-1').notifier).enrichMetadata();
+    expect(
+      container
+          .read(surfacesProvider('task-1'))
+          .requireValue
+          .surfaces
+          .allPanes
+          .single
+          .command,
+      'codex',
+    );
+    expect(client.surfaceRequests, [
+      (minimal: true, tabId: null),
+      (minimal: false, tabId: null),
+    ]);
+  });
+
+  test('required geometry rejects placeholder rectangles without replacing usable state', () async {
+    const initial = TaskSurfaces(tabs: [], geometryTabId: 'first');
+    final invalid = TaskSurfaces.fromJson({
+      'geometryTabId': 'second',
+      'tabs': [
+        {
+          'id': 'second',
+          'panes': [
+            {'id': 'pane', 'width': 0, 'height': 0},
+          ],
+        },
+      ],
+    });
+    var calls = 0;
+    final client = FakeDesktopClient()
+      ..onFetchSurfaces = () async => ++calls == 1 ? initial : invalid;
+    final container = containerWith(client);
+    container.listen(surfacesProvider('task-1'), (_, _) {});
+    await container.read(surfacesProvider('task-1').future);
+    await expectLater(
+      container
+          .read(surfacesProvider('task-1').notifier)
+          .loadTabGeometry('second'),
+      throwsA(isA<SurfaceUnavailableException>()),
+    );
+    expect(
+      container.read(surfacesProvider('task-1')).requireValue.surfaces,
+      same(initial),
+    );
+    expect(client.surfaceRequests.last, (minimal: true, tabId: 'second'));
+  });
+
+  test('late optional metadata cannot replace a tab mutation result', () async {
+    const initial = TaskSurfaces(tabs: []);
+    const changed = TaskSurfaces(tabs: [], canResize: true);
+    final pending = Completer<TaskSurfaces>();
+    var calls = 0;
+    final client = FakeDesktopClient(
+      onCreateTerminalTab: () async => (surfaces: changed, paneId: 'new'),
+    )..onFetchSurfaces = () async => ++calls == 1 ? initial : pending.future;
+    final container = containerWith(client);
+    container.listen(surfacesProvider('task-1'), (_, _) {});
+    await container.read(surfacesProvider('task-1').future);
+    final controller = container.read(surfacesProvider('task-1').notifier);
+    final enriching = controller.enrichMetadata();
+    await Future<void>.delayed(Duration.zero);
+    await controller.createTab();
+    pending.complete(const TaskSurfaces(tabs: [], canRefreshHistory: true));
+    await enriching;
+    expect(
+      container.read(surfacesProvider('task-1')).requireValue.surfaces,
+      same(changed),
+    );
+  });
+
+  test('late optional metadata cannot replace a rebuilt task state', () async {
+    const initial = TaskSurfaces(tabs: []);
+    const rebuilt = TaskSurfaces(tabs: [], canResize: true);
+    final pending = Completer<TaskSurfaces>();
+    var calls = 0;
+    final client = FakeDesktopClient()
+      ..onFetchSurfaces = () async {
+        calls += 1;
+        return calls == 1
+            ? initial
+            : calls == 2
+            ? pending.future
+            : rebuilt;
+      };
+    final container = containerWith(client);
+    container.listen(surfacesProvider('task-1'), (_, _) {});
+    await container.read(surfacesProvider('task-1').future);
+    final controller = container.read(surfacesProvider('task-1').notifier);
+    final enriching = controller.enrichMetadata();
+    await Future<void>.delayed(Duration.zero);
+    container.invalidate(surfacesProvider('task-1'));
+    await container.read(surfacesProvider('task-1').future);
+    pending.complete(const TaskSurfaces(tabs: [], canRefreshHistory: true));
+    await enriching;
+    expect(
+      container.read(surfacesProvider('task-1')).requireValue.surfaces,
+      same(rebuilt),
+    );
+  });
+
   test('pending tab creation rejects shortcut dispatch', () async {
     final pending = Completer<({TaskSurfaces surfaces, String paneId})>();
     final client = FakeDesktopClient(onCreateTerminalTab: () => pending.future);

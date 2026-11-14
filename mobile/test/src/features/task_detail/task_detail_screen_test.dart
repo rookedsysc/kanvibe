@@ -17,6 +17,7 @@ import 'package:kanvibe_mobile/src/features/task_create/presentation/create_task
 import 'package:kanvibe_mobile/src/features/task_detail/domain/mirror_pane.dart';
 import 'package:kanvibe_mobile/src/features/task_detail/presentation/task_detail_screen.dart';
 import 'package:kanvibe_mobile/src/features/task_detail/presentation/widgets/pane_terminal_view.dart';
+import 'package:kanvibe_mobile/src/features/task_detail/presentation/widgets/multi_pane_terminal.dart';
 import 'package:kanvibe_mobile/src/features/task_detail/presentation/widgets/terminal_chrome_header.dart';
 import 'package:xterm/xterm.dart' as xterm;
 
@@ -871,6 +872,272 @@ void main() {
     expect(client.openedPanes.keys, contains('%21'));
     expect(client.closedPanes, contains('%19'), reason: '떠난 pane의 구독은 닫혀야 한다');
   });
+
+  testWidgets(
+    'selected tab geometry retries after a concurrent mutation fails',
+    (tester) async {
+      final minimal = TaskSurfaces.fromJson({
+        'sessionType': 'herdr',
+        'geometryTabId': '@10',
+        'tabs': [
+          {
+            'id': '@10',
+            'name': 'first',
+            'panes': [
+              {
+                'id': '%19',
+                'tabId': '@10',
+                'tabName': 'first',
+                'width': 80,
+                'height': 24,
+              },
+            ],
+          },
+          {
+            'id': '@11',
+            'name': 'selected',
+            'panes': [
+              {
+                'id': '%21',
+                'tabId': '@11',
+                'tabName': 'selected',
+                'width': 0,
+                'height': 0,
+              },
+            ],
+          },
+        ],
+      });
+      final geometry = TaskSurfaces.fromJson({
+        'sessionType': 'herdr',
+        'geometryTabId': '@11',
+        'tabs': [
+          {
+            'id': '@11',
+            'name': 'selected',
+            'panes': [
+              {
+                'id': '%21',
+                'tabId': '@11',
+                'tabName': 'selected',
+                'width': 80,
+                'height': 24,
+              },
+            ],
+          },
+        ],
+      });
+      final pending = Completer<({TaskSurfaces surfaces, String paneId})>();
+      var calls = 0;
+      final client = FakeDesktopClient(
+        onCreateTerminalTab: () => pending.future,
+      )..onFetchSurfaces = () async => ++calls == 1 ? minimal : geometry;
+      await pumpDetail(tester, size: tabletSize, desktopClient: client);
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(PaneTerminalView)),
+      );
+      final creating = container
+          .read(surfacesProvider(_task.id).notifier)
+          .createTab();
+      final failed = expectLater(
+        creating,
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.message,
+            'message',
+            'creation failed',
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.tap(find.text('selected').first);
+      await tester.pump();
+      expect(find.byType(MultiPaneTerminal), findsNothing);
+      pending.completeError(StateError('creation failed'));
+      await failed;
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+      expect(client.surfaceRequests.last, (minimal: true, tabId: '@11'));
+      final view = tester.widget<PaneTerminalView>(
+        find.byType(PaneTerminalView),
+      );
+      expect(view.pane.id, '%21');
+      expect(view.pane.width, 80);
+      expect(view.pane.height, 24);
+    },
+  );
+
+  testWidgets(
+    'first terminal output starts optional enrichment once and failure keeps the terminal',
+    (tester) async {
+      final pending = Completer<TaskSurfaces>();
+      var calls = 0;
+      final client = FakeDesktopClient()
+        ..onFetchSurfaces = () async =>
+            ++calls == 1 ? _surfaces : pending.future;
+      await pumpDetail(tester, size: phoneSize, desktopClient: client);
+      expect(calls, 1);
+      client.openedPanes['%19']!.add('first terminal frame');
+      await tester.pump();
+      await tester.pump();
+      expect(calls, 2);
+      client.openedPanes['%19']!.add('second frame');
+      await tester.pump();
+      expect(calls, 2);
+      pending.completeError(Exception('optional metadata unavailable'));
+      await tester.pumpAndSettle();
+      expect(find.byType(PaneTerminalView), findsOneWidget);
+      expect(
+        terminalIn(tester, '%19').buffer.lines[0].getText(),
+        contains('first terminal frame'),
+      );
+    },
+  );
+
+  testWidgets('refreshed minimal surfaces enrich on the next live frame', (
+    tester,
+  ) async {
+    var calls = 0;
+    final client = FakeDesktopClient()
+      ..onFetchSurfaces = () async {
+        calls += 1;
+        return _surfaces;
+      };
+    await pumpDetail(tester, size: phoneSize, desktopClient: client);
+    client.openedPanes['%19']!.add('first frame');
+    await tester.pumpAndSettle();
+    expect(calls, 2);
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(PaneTerminalView)),
+    );
+    container.invalidate(surfacesProvider(_task.id));
+    await tester.pumpAndSettle();
+    expect(calls, 3);
+    client.openedPanes['%19']!.add('after board refresh');
+    await tester.pumpAndSettle();
+    expect(calls, 4);
+    expect(find.byType(PaneTerminalView), findsOneWidget);
+  });
+
+  for (final initialWindow in [null, '@11']) {
+    testWidgets(
+      'Fold ${initialWindow == null ? 'selected' : 'initial'} nonfirst window waits for every selected-tab pane rectangle',
+      (tester) async {
+        final minimal = TaskSurfaces.fromJson({
+          'sessionType': 'herdr',
+          'geometryTabId': '@10',
+          'canResize': true,
+          'tabs': [
+            {
+              'id': '@10',
+              'name': 'first',
+              'panes': [
+                {
+                  'id': '%19',
+                  'tabId': '@10',
+                  'tabName': 'first',
+                  'left': 0,
+                  'top': 0,
+                  'width': 100,
+                  'height': 30,
+                },
+              ],
+            },
+            {
+              'id': '@11',
+              'name': 'selected',
+              'panes': [
+                {
+                  'id': '%21',
+                  'tabId': '@11',
+                  'tabName': 'selected',
+                  'left': 0,
+                  'top': 0,
+                  'width': 0,
+                  'height': 0,
+                },
+                {
+                  'id': '%22',
+                  'tabId': '@11',
+                  'tabName': 'selected',
+                  'left': 0,
+                  'top': 0,
+                  'width': 0,
+                  'height': 0,
+                },
+              ],
+            },
+          ],
+        });
+        final requiredGeometry = Completer<TaskSurfaces>();
+        var calls = 0;
+        final client = FakeDesktopClient()
+          ..onFetchSurfaces = () async =>
+              ++calls == 1 ? minimal : requiredGeometry.future;
+        await tester.binding.setSurfaceSize(tabletSize);
+        await tester.pumpWidget(
+          wrapWithApp(
+            TaskDetailScreen(task: _task, initialWindowId: initialWindow),
+            client: client,
+            size: tabletSize,
+          ),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
+        if (initialWindow == null) {
+          expect(find.byType(MultiPaneTerminal), findsOneWidget);
+          await tester.tap(find.text('selected').first);
+          await tester.pump();
+          await tester.pump();
+        }
+        expect(client.surfaceRequests.last, (minimal: true, tabId: '@11'));
+        expect(find.byType(MultiPaneTerminal), findsNothing);
+        expect(client.openedPanes.keys, isNot(contains('%21')));
+        expect(client.openedPanes.keys, isNot(contains('%22')));
+        requiredGeometry.complete(
+          TaskSurfaces.fromJson({
+            'sessionType': 'herdr',
+            'geometryTabId': '@11',
+            'canResize': true,
+            'tabs': [
+              {
+                'id': '@11',
+                'name': 'selected',
+                'panes': [
+                  {
+                    'id': '%21',
+                    'tabId': '@11',
+                    'tabName': 'selected',
+                    'left': 0,
+                    'top': 0,
+                    'width': 60,
+                    'height': 30,
+                  },
+                  {
+                    'id': '%22',
+                    'tabId': '@11',
+                    'tabName': 'selected',
+                    'left': 60,
+                    'top': 0,
+                    'width': 40,
+                    'height': 30,
+                  },
+                ],
+              },
+            ],
+          }),
+        );
+        await tester.pumpAndSettle();
+        final views = tester
+            .widgetList<PaneTerminalView>(find.byType(PaneTerminalView))
+            .toList();
+        expect(views.map((view) => view.pane.id), ['%21', '%22']);
+        expect(views.map((view) => view.pane.width), [60, 40]);
+        expect(views.map((view) => view.pane.left), [0, 60]);
+      },
+    );
+  }
 
   testWidgets('넓은 화면은 같은 window의 두 pane을 함께 보인다', (tester) async {
     await pumpDetail(tester, size: tabletSize);

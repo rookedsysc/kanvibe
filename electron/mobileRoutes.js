@@ -122,7 +122,9 @@ async function handleMobileRequest(request, response, { bridge, host, port, isDe
     }
 
     if (request.method === "GET" && requestUrl.pathname === "/api/mobile/board") {
-      writeJson(response, 200, { success: true, board: await bridge.getMobileBoard() });
+      const board = requestUrl.searchParams.get("iconFormat") === "deduplicated"
+        ? await bridge.getMobileBoard({ iconFormat: "deduplicated" }) : await bridge.getMobileBoard();
+      writeJson(response, 200, { success: true, board });
       return true;
     }
 
@@ -272,7 +274,9 @@ async function handleMobileRequest(request, response, { bridge, host, port, isDe
 
     const surfacesMatch = requestUrl.pathname.match(SURFACES_PATH_PATTERN);
     if (request.method === "GET" && surfacesMatch) {
-      await handleSurfacesRequest(response, bridge, decodeURIComponent(surfacesMatch[1]));
+      const options = requestUrl.searchParams.get("metadata") === "minimal"
+        ? { metadata: "minimal", ...(requestUrl.searchParams.get("tabId") ? { tabId: requestUrl.searchParams.get("tabId") } : {}) } : undefined;
+      await handleSurfacesRequest(response, bridge, decodeURIComponent(surfacesMatch[1]), options);
       return true;
     }
 
@@ -615,9 +619,10 @@ async function handleTaskSessionTypeRequest(request, response, bridge, taskId) {
   }
 }
 
-async function handleSurfacesRequest(response, bridge, taskId) {
+async function handleSurfacesRequest(response, bridge, taskId, options) {
   try {
-    writeJson(response, 200, { success: true, surfaces: await bridge.getTaskSurfaces(taskId) });
+    const surfaces = options ? await bridge.getTaskSurfaces(taskId, options) : await bridge.getTaskSurfaces(taskId);
+    writeJson(response, 200, { success: true, surfaces });
   } catch (error) {
     /** 세션이 없거나 꺼져 있는 것은 서버 오류가 아니라 화면이 안내해야 하는 상태다 */
     if (error && error.name === "SurfaceUnavailableError") {

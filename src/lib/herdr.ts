@@ -180,30 +180,45 @@ interface HerdrTabLayout {
 
 /**
  * 모바일이 비출 pane을 탭 순서대로 모은다.
- * `pane list`에는 좌표와 실행 명령이 없어 탭마다 `pane layout`, pane마다 `process-info`를 함께 읽는다.
+ * 최소 목록은 지정한 탭(없으면 첫 탭)의 좌표만 읽고 실행 명령은 비운다. 다른 탭의 너비 0은 아직 좌표를 읽지 않았다는 뜻이다.
  */
-export async function listHerdrMirrorPanes(sessionName: string, sshHost?: string | null): Promise<MirrorPane[]> {
+export async function listHerdrMirrorPanes(
+  sessionName: string,
+  sshHost?: string | null,
+  options?: { metadata?: "minimal"; tabId?: string; selectedPaneId?: string },
+): Promise<MirrorPane[]> {
   const [{ panes }, tabs] = await Promise.all([
     runHerdrCommand<{ panes: HerdrPane[] }>(sessionName, ["pane", "list"], sshHost),
     readHerdrTabs(sessionName, sshHost),
   ]);
   const workspaceId = await getHerdrWorkspaceId(sessionName, sshHost);
+  const eligiblePanes = panes.filter((pane) => !pane.restore_error && (!workspaceId || pane.pane_id.startsWith(`${workspaceId}:`)) && tabs.some((tab) => tab.id === pane.tab_id));
+  const geometryTabId = options?.selectedPaneId
+    ? eligiblePanes.find((pane) => pane.pane_id === options.selectedPaneId)?.tab_id
+    : options?.tabId ?? tabs.find((tab) => eligiblePanes.some((pane) => pane.tab_id === tab.id))?.id;
+  if ((options?.selectedPaneId || options?.tabId) && !eligiblePanes.some((pane) => pane.tab_id === geometryTabId)) return [];
   const panesByTab = await Promise.all(tabs.map(async (tab) => {
-    const tabPanes = panes.filter((pane) => pane.tab_id === tab.id && !pane.restore_error && (!workspaceId || pane.pane_id.startsWith(`${workspaceId}:`)));
+    const tabPanes = eligiblePanes.filter((pane) => pane.tab_id === tab.id);
     if (tabPanes.length === 0) return [];
-    const { layout } = await runHerdrCommand<{ layout: HerdrTabLayout }>(sessionName, ["pane", "layout", "--pane", tabPanes[0].pane_id], sshHost);
+    const layout = options?.metadata === "minimal" && tab.id !== geometryTabId ? null
+      : (await runHerdrCommand<{ layout: HerdrTabLayout }>(sessionName, ["pane", "layout", "--pane", tabPanes[0].pane_id], sshHost)).layout;
     return Promise.all(tabPanes.map(async (pane): Promise<MirrorPane> => {
-      const rect = layout.panes.find((entry) => entry.pane_id === pane.pane_id)?.rect;
+      const rect = layout?.panes.find((entry) => entry.pane_id === pane.pane_id)?.rect;
       /** 확대해도 layout의 pane 좌표는 그대로라, 확대된 pane의 너비는 탭 전체 영역에서 읽는다 */
-      const isZoomedPane = layout.zoomed && layout.focused_pane_id === pane.pane_id;
+      const isZoomedPane = layout?.zoomed && layout.focused_pane_id === pane.pane_id;
+      const width = isZoomedPane ? layout.area.width : rect?.width ?? layout?.area.width ?? 0;
+      if (options?.metadata === "minimal" && layout
+        && (!rect || ![width, pane.scroll.viewport_rows].every((size) => Number.isInteger(size) && size > 0))) {
+        throw new Error("Herdr pane의 배치를 확인할 수 없습니다.");
+      }
       return {
         id: pane.pane_id,
         tabId: tab.id,
         tabName: tab.name,
-        command: await readHerdrPaneCommand(sessionName, pane.pane_id, sshHost),
+        command: options?.metadata === "minimal" ? "" : await readHerdrPaneCommand(sessionName, pane.pane_id, sshHost),
         left: rect?.x ?? 0,
         top: rect?.y ?? 0,
-        width: isZoomedPane ? layout.area.width : rect?.width ?? layout.area.width,
+        width,
         height: pane.scroll.viewport_rows,
       };
     }));
