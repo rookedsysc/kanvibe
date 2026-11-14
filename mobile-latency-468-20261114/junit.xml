@@ -1,0 +1,6 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<testsuites>
+  <testsuite name="Test Suite" device="Pixel_9_Pro_Fold" tests="1" failures="0" time="96.0">
+    <testcase id="recording-wrapper" name="recording-wrapper" classname="recording-wrapper" file="qa-results/roky-harness/mobile-latency-device-20261114/native-02/recording-wrapper.yaml" time="96.0" status="SUCCESS"/>
+  </testsuite>
+</testsuites>

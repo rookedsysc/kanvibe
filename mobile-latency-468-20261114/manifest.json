@@ -1,0 +1,306 @@
+{
+  "pr": 468,
+  "head": "5953a86c2c5fa02dddff770106e92e4eabd9fc46",
+  "gateBase": "c4fe09d1c07c4ea1c3b1fdc9d339d29c1cc957cc",
+  "gateFingerprint": "01dad900ce52c4be95fab1302c7bf6bd2c8eec9c",
+  "gates": [
+    {
+      "label": "final-apk-build",
+      "command": [
+        "/Users/rookedsysc/fvm/versions/3.47.2/bin/flutter",
+        "build",
+        "apk",
+        "--debug",
+        "--no-pub"
+      ],
+      "cwd": "/Users/rookedsysc/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/fix-mobile-board-detail-latency/mobile",
+      "before": {
+        "head": "c4fe09d1c07c4ea1c3b1fdc9d339d29c1cc957cc",
+        "fingerprint": "01dad900ce52c4be95fab1302c7bf6bd2c8eec9c"
+      },
+      "after": {
+        "head": "c4fe09d1c07c4ea1c3b1fdc9d339d29c1cc957cc",
+        "fingerprint": "01dad900ce52c4be95fab1302c7bf6bd2c8eec9c"
+      },
+      "tree_unchanged": true,
+      "exit": 0,
+      "seconds": 25.258,
+      "log": "/Users/rookedsysc/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/fix-mobile-board-detail-latency/qa-results/roky-harness/mobile-latency/final-apk-build.log"
+    },
+    {
+      "label": "final-build",
+      "command": [
+        "corepack",
+        "pnpm@10.34.5",
+        "build"
+      ],
+      "cwd": "/Users/rookedsysc/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/fix-mobile-board-detail-latency",
+      "before": {
+        "head": "c4fe09d1c07c4ea1c3b1fdc9d339d29c1cc957cc",
+        "fingerprint": "01dad900ce52c4be95fab1302c7bf6bd2c8eec9c"
+      },
+      "after": {
+        "head": "c4fe09d1c07c4ea1c3b1fdc9d339d29c1cc957cc",
+        "fingerprint": "01dad900ce52c4be95fab1302c7bf6bd2c8eec9c"
+      },
+      "tree_unchanged": true,
+      "exit": 0,
+      "seconds": 10.155,
+      "log": "/Users/rookedsysc/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/fix-mobile-board-detail-latency/qa-results/roky-harness/mobile-latency/final-build.log"
+    },
+    {
+      "label": "final-check",
+      "command": [
+        "corepack",
+        "pnpm@10.34.5",
+        "check"
+      ],
+      "cwd": "/Users/rookedsysc/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/fix-mobile-board-detail-latency",
+      "before": {
+        "head": "c4fe09d1c07c4ea1c3b1fdc9d339d29c1cc957cc",
+        "fingerprint": "01dad900ce52c4be95fab1302c7bf6bd2c8eec9c"
+      },
+      "after": {
+        "head": "c4fe09d1c07c4ea1c3b1fdc9d339d29c1cc957cc",
+        "fingerprint": "01dad900ce52c4be95fab1302c7bf6bd2c8eec9c"
+      },
+      "tree_unchanged": true,
+      "exit": 0,
+      "seconds": 5.162,
+      "log": "/Users/rookedsysc/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/fix-mobile-board-detail-latency/qa-results/roky-harness/mobile-latency/final-check.log"
+    },
+    {
+      "label": "final-flutter-analyze",
+      "command": [
+        "/Users/rookedsysc/fvm/versions/3.47.2/bin/flutter",
+        "analyze",
+        "--no-pub"
+      ],
+      "cwd": "/Users/rookedsysc/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/fix-mobile-board-detail-latency/mobile",
+      "before": {
+        "head": "c4fe09d1c07c4ea1c3b1fdc9d339d29c1cc957cc",
+        "fingerprint": "01dad900ce52c4be95fab1302c7bf6bd2c8eec9c"
+      },
+      "after": {
+        "head": "c4fe09d1c07c4ea1c3b1fdc9d339d29c1cc957cc",
+        "fingerprint": "01dad900ce52c4be95fab1302c7bf6bd2c8eec9c"
+      },
+      "tree_unchanged": true,
+      "exit": 0,
+      "seconds": 5.148,
+      "log": "/Users/rookedsysc/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/fix-mobile-board-detail-latency/qa-results/roky-harness/mobile-latency/final-flutter-analyze.log"
+    },
+    {
+      "label": "final-flutter-lifecycle",
+      "command": [
+        "/Users/rookedsysc/fvm/versions/3.47.2/bin/flutter",
+        "test",
+        "--no-pub",
+        "test/src/features/task_detail/task_detail_screen_test.dart",
+        "--name",
+        "selected tab geometry retries|refreshed minimal surfaces"
+      ],
+      "cwd": "/Users/rookedsysc/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/fix-mobile-board-detail-latency/mobile",
+      "before": {
+        "head": "c4fe09d1c07c4ea1c3b1fdc9d339d29c1cc957cc",
+        "fingerprint": "01dad900ce52c4be95fab1302c7bf6bd2c8eec9c"
+      },
+      "after": {
+        "head": "c4fe09d1c07c4ea1c3b1fdc9d339d29c1cc957cc",
+        "fingerprint": "01dad900ce52c4be95fab1302c7bf6bd2c8eec9c"
+      },
+      "tree_unchanged": true,
+      "exit": 0,
+      "seconds": 5.164,
+      "log": "/Users/rookedsysc/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/fix-mobile-board-detail-latency/qa-results/roky-harness/mobile-latency/final-flutter-lifecycle.log"
+    },
+    {
+      "label": "final-flutter-test",
+      "command": [
+        "/Users/rookedsysc/fvm/versions/3.47.2/bin/flutter",
+        "test",
+        "--no-pub"
+      ],
+      "cwd": "/Users/rookedsysc/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/fix-mobile-board-detail-latency/mobile",
+      "before": {
+        "head": "c4fe09d1c07c4ea1c3b1fdc9d339d29c1cc957cc",
+        "fingerprint": "01dad900ce52c4be95fab1302c7bf6bd2c8eec9c"
+      },
+      "after": {
+        "head": "c4fe09d1c07c4ea1c3b1fdc9d339d29c1cc957cc",
+        "fingerprint": "01dad900ce52c4be95fab1302c7bf6bd2c8eec9c"
+      },
+      "tree_unchanged": true,
+      "exit": 0,
+      "seconds": 60.28,
+      "log": "/Users/rookedsysc/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/fix-mobile-board-detail-latency/qa-results/roky-harness/mobile-latency/final-flutter-test.log"
+    },
+    {
+      "label": "final-install",
+      "command": [
+        "corepack",
+        "pnpm@10.34.5",
+        "install",
+        "--frozen-lockfile"
+      ],
+      "cwd": "/Users/rookedsysc/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/fix-mobile-board-detail-latency",
+      "before": {
+        "head": "c4fe09d1c07c4ea1c3b1fdc9d339d29c1cc957cc",
+        "fingerprint": "01dad900ce52c4be95fab1302c7bf6bd2c8eec9c"
+      },
+      "after": {
+        "head": "c4fe09d1c07c4ea1c3b1fdc9d339d29c1cc957cc",
+        "fingerprint": "01dad900ce52c4be95fab1302c7bf6bd2c8eec9c"
+      },
+      "tree_unchanged": true,
+      "exit": 0,
+      "seconds": 5.166,
+      "log": "/Users/rookedsysc/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/fix-mobile-board-detail-latency/qa-results/roky-harness/mobile-latency/final-install.log"
+    },
+    {
+      "label": "final-regression-green",
+      "command": [
+        "/Users/rookedsysc/fvm/versions/3.47.2/bin/flutter",
+        "test",
+        "--no-pub",
+        "test/src/common/network/desktop_client_test.dart",
+        "test/src/common/provider_retry_test.dart",
+        "test/src/features/task_detail/task_detail_screen_test.dart"
+      ],
+      "cwd": "/Users/rookedsysc/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/fix-mobile-board-detail-latency/mobile",
+      "before": {
+        "head": "c4fe09d1c07c4ea1c3b1fdc9d339d29c1cc957cc",
+        "fingerprint": "01dad900ce52c4be95fab1302c7bf6bd2c8eec9c"
+      },
+      "after": {
+        "head": "c4fe09d1c07c4ea1c3b1fdc9d339d29c1cc957cc",
+        "fingerprint": "01dad900ce52c4be95fab1302c7bf6bd2c8eec9c"
+      },
+      "tree_unchanged": true,
+      "exit": 0,
+      "seconds": 10.19,
+      "log": "/Users/rookedsysc/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/fix-mobile-board-detail-latency/qa-results/roky-harness/mobile-latency/final-regression-green.log"
+    },
+    {
+      "label": "final-test",
+      "command": [
+        "corepack",
+        "pnpm@10.34.5",
+        "test"
+      ],
+      "cwd": "/Users/rookedsysc/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/fix-mobile-board-detail-latency",
+      "before": {
+        "head": "c4fe09d1c07c4ea1c3b1fdc9d339d29c1cc957cc",
+        "fingerprint": "01dad900ce52c4be95fab1302c7bf6bd2c8eec9c"
+      },
+      "after": {
+        "head": "c4fe09d1c07c4ea1c3b1fdc9d339d29c1cc957cc",
+        "fingerprint": "01dad900ce52c4be95fab1302c7bf6bd2c8eec9c"
+      },
+      "tree_unchanged": true,
+      "exit": 0,
+      "seconds": 75.255,
+      "log": "/Users/rookedsysc/Documents/github/crookedbot/rookedsysc/kanvibe__worktrees/fix-mobile-board-detail-latency/qa-results/roky-harness/mobile-latency/final-test.log"
+    }
+  ],
+  "native": {
+    "ok": true,
+    "scope": "mobile-latency",
+    "platform": "android",
+    "appId": "com.kanvibe.kanvibe_mobile",
+    "flowPath": "/Users/rookedsysc/Documents/kanvibe/kanvibe/qa-results/roky-harness/mobile-latency-device-20261114/fixture-01/native-flow.yaml",
+    "executionFlowPath": "/Users/rookedsysc/Documents/kanvibe/kanvibe/qa-results/roky-harness/mobile-latency-device-20261114/native-02/recording-wrapper.yaml",
+    "outputDir": "/Users/rookedsysc/Documents/kanvibe/kanvibe/qa-results/roky-harness/mobile-latency-device-20261114/native-02",
+    "testOutputDir": "/Users/rookedsysc/Documents/kanvibe/kanvibe/qa-results/roky-harness/mobile-latency-device-20261114/native-02/test-output",
+    "recordVideo": true,
+    "recordingRequirement": "required",
+    "recordingStatus": "recorded",
+    "recordingSkipReason": null,
+    "recordingWrapper": "/Users/rookedsysc/Documents/kanvibe/kanvibe/qa-results/roky-harness/mobile-latency-device-20261114/native-02/recording-wrapper.yaml",
+    "junit": "/Users/rookedsysc/Documents/kanvibe/kanvibe/qa-results/roky-harness/mobile-latency-device-20261114/native-02/junit.xml",
+    "log": "/Users/rookedsysc/Documents/kanvibe/kanvibe/qa-results/roky-harness/mobile-latency-device-20261114/native-02/run.log",
+    "video": "/Users/rookedsysc/Documents/kanvibe/kanvibe/qa-results/roky-harness/mobile-latency-device-20261114/native-02/videos/mobile-latency-20261114-02-mobile-latency.mp4",
+    "artifacts": {
+      "junit": "/Users/rookedsysc/Documents/kanvibe/kanvibe/qa-results/roky-harness/mobile-latency-device-20261114/native-02/junit.xml",
+      "log": "/Users/rookedsysc/Documents/kanvibe/kanvibe/qa-results/roky-harness/mobile-latency-device-20261114/native-02/run.log",
+      "recordingWrapper": "/Users/rookedsysc/Documents/kanvibe/kanvibe/qa-results/roky-harness/mobile-latency-device-20261114/native-02/recording-wrapper.yaml",
+      "video": "/Users/rookedsysc/Documents/kanvibe/kanvibe/qa-results/roky-harness/mobile-latency-device-20261114/native-02/videos/mobile-latency-20261114-02-mobile-latency.mp4",
+      "testOutputDir": "/Users/rookedsysc/Documents/kanvibe/kanvibe/qa-results/roky-harness/mobile-latency-device-20261114/native-02/test-output"
+    }
+  },
+  "nativeLimit": "Android isolated local fixture. No real WAN latency reduction measurement; iOS not executed.",
+  "redGuards": {
+    "results": [
+      {
+        "variant": "metadata-dedup",
+        "command": [
+          "/Users/rookedsysc/fvm/versions/3.47.2/bin/flutter",
+          "test",
+          "--no-pub",
+          "test/src/common/provider_retry_test.dart",
+          "--plain-name",
+          "optional metadata is deduplicated"
+        ],
+        "exit": 1,
+        "seconds": 2.457
+      },
+      {
+        "variant": "metadata-stale",
+        "command": [
+          "/Users/rookedsysc/fvm/versions/3.47.2/bin/flutter",
+          "test",
+          "--no-pub",
+          "test/src/common/provider_retry_test.dart",
+          "--plain-name",
+          "late optional metadata"
+        ],
+        "exit": 1,
+        "seconds": 1.654
+      },
+      {
+        "variant": "metadata-failure",
+        "command": [
+          "/Users/rookedsysc/fvm/versions/3.47.2/bin/flutter",
+          "test",
+          "--no-pub",
+          "test/src/common/provider_retry_test.dart",
+          "--plain-name",
+          "optional metadata is deduplicated"
+        ],
+        "exit": 1,
+        "seconds": 1.723
+      },
+      {
+        "variant": "selected-geometry",
+        "command": [
+          "/Users/rookedsysc/fvm/versions/3.47.2/bin/flutter",
+          "test",
+          "--no-pub",
+          "test/src/features/task_detail/task_detail_screen_test.dart",
+          "--plain-name",
+          "nonfirst window waits"
+        ],
+        "exit": 1,
+        "seconds": 3.769
+      },
+      {
+        "variant": "compact-decode",
+        "command": [
+          "/Users/rookedsysc/fvm/versions/3.47.2/bin/flutter",
+          "test",
+          "--no-pub",
+          "test/src/common/network/desktop_client_test.dart",
+          "--plain-name",
+          "compact board restores"
+        ],
+        "exit": 1,
+        "seconds": 1.916
+      }
+    ],
+    "restored": {
+      "mobile/lib/src/common/providers.dart": true,
+      "mobile/lib/src/features/task_detail/presentation/task_detail_screen.dart": true,
+      "mobile/lib/src/common/network/desktop_client.dart": true
+    }
+  }
+}
