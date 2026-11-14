@@ -1,0 +1,8 @@
+모바일 카드 하단 후속 수정 검증
+파일 수: 보조색 / 추가: 초록 / 삭제: 빨강. 카드 하단 행48->32dp, 아래 패딩12->4dp.
+fvm flutter test --machine: exit0, 844개 통과. 관련 focused33개 통과 및 이번 회귀5개 포함.
+fvm flutter analyze: exit0. Dart format: exit0. git diff --check: exit0.
+pnpm check: exit0. pnpm build: exit0.
+pnpm test: exit1, 3576개 통과/13개 실패. 변경하지 않은 remoteTerminalService/TaskWorkspaceRoute 테스트 실패.
+Pixel9ProFold 펼침/접힘 Maestro 각1/1 통과, runner startRecording 영상 포함.
+Production 화면에 fake desktop client/store 사용. 실제 데스크톱 연결 통합 검증 제외.
