@@ -34,12 +34,3 @@ class BulkSessionChangeResult extends PcOperationResult {
   final int changedCount;
   final int failedCount;
 }
-
-class PcSyncRunResult extends PcOperationResult {
-  const PcSyncRunResult({
-    required this.reviewNeeded,
-    required this.boardUpdated,
-  });
-  final bool reviewNeeded;
-  final bool boardUpdated;
-}

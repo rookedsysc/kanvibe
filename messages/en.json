@@ -47,6 +47,24 @@
       "batchMessage": "These PRs were detected as merged during the latest scan. Check the tasks you want to delete and handle them together.",
       "prLinkLabel": "PR Link"
     },
+    "backgroundSyncStatus": {
+      "title": "Background sync",
+      "loading": "Checking sync status…",
+      "starting": "Starting sync…",
+      "idle": "Check worktrees and pull request status.",
+      "worktrees": "1/3 · Discovering worktrees",
+      "pull-requests": "2/3 · Checking pull requests",
+      "pulls": "3/3 · Pulling changes",
+      "completed": "Sync complete",
+      "failed": "Sync failed. Try again.",
+      "reviewNeeded": "Sync complete · Review the results below.",
+      "boardUpdated": "Sync complete · Board updated.",
+      "noChanges": "Sync complete · No new changes.",
+      "continues": "Sync continues when you close this panel.",
+      "running": "Syncing…",
+      "start": "Sync now",
+      "retry": "Retry"
+    },
     "backgroundSyncReview": {
       "title": "Background Sync Review",
       "message": "The latest background scan found items to review. Check merged PR tasks you want to delete, and review newly registered worktrees as well.",

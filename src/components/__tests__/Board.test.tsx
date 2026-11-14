@@ -5,7 +5,7 @@ import { MemoryRouter } from "react-router-dom";
 import Board from "../Board";
 import CommandPaletteDialog from "@/desktop/renderer/components/CommandPaletteDialog";
 import { deleteTask, getMoreDoneTasks, moveTaskToColumn } from "@/desktop/renderer/actions/kanban";
-import { runBackgroundTaskSyncNow } from "@/desktop/renderer/actions/backgroundTaskSync";
+import { startBackgroundTaskSyncNow } from "@/desktop/renderer/actions/backgroundTaskSync";
 import { useTaskKindFilterParams } from "@/desktop/renderer/hooks/useTaskKindFilterParams";
 import { useBoardSortPreference } from "@/desktop/renderer/hooks/useBoardSortPreference";
 import { TaskPriority } from "@/entities/TaskPriority";
@@ -81,7 +81,8 @@ vi.mock("@/desktop/renderer/actions/kanban", () => ({
 }));
 
 vi.mock("@/desktop/renderer/actions/backgroundTaskSync", () => ({
-  runBackgroundTaskSyncNow: vi.fn().mockResolvedValue({ reviewNeeded: false, boardUpdated: false }),
+  getBackgroundTaskSyncStatus: vi.fn().mockResolvedValue({ phase: "idle", isRunning: false, completedStages: 0, reviewNeeded: false, boardUpdated: false, error: null }),
+  startBackgroundTaskSyncNow: vi.fn().mockResolvedValue({ reviewNeeded: false, boardUpdated: false }),
 }));
 
 const diffStatsMock = vi.hoisted(() => vi.fn().mockResolvedValue({}));
@@ -1382,7 +1383,7 @@ describe("Board defaultSessionType sync", () => {
     fireEvent.change(commandInput, { target: { value: "sync" } });
     fireEvent.keyDown(commandInput, { key: "Enter" });
 
-    expect(runBackgroundTaskSyncNow).toHaveBeenCalledTimes(1);
+    expect(startBackgroundTaskSyncNow).toHaveBeenCalledTimes(1);
     expect(moveTaskToColumn).not.toHaveBeenCalled();
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).toBeNull();

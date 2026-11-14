@@ -1,6 +1,6 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import BackgroundSyncReviewDialog from "@/desktop/renderer/components/BackgroundSyncReviewDialog";
+import BackgroundSyncReviewPanel from "@/desktop/renderer/components/BackgroundSyncReviewPanel";
 import { deleteTask } from "@/desktop/renderer/actions/kanban";
 import type { AppNotification } from "@/desktop/shared/notifications";
 
@@ -45,35 +45,25 @@ function createReviewNotification(taskIds: string[]): AppNotification {
   };
 }
 
-function openReviewDialog(taskIds: string[]) {
-  let activateNotification: ((notification: AppNotification) => void) | undefined;
-  window.kanvibeDesktop = {
-    isDesktop: true,
-    onNotificationActivated: vi.fn((listener) => {
-      activateNotification = listener;
-      return vi.fn();
-    }),
-  } as unknown as NonNullable<typeof window.kanvibeDesktop>;
-
-  render(<BackgroundSyncReviewDialog />);
-  act(() => {
-    activateNotification?.(createReviewNotification(taskIds));
-  });
+function openReviewPanel(taskIds: string[]) {
+  const notification = createReviewNotification(taskIds);
+  const onClose = vi.fn();
+  const view = render(<BackgroundSyncReviewPanel review={notification.action!.payload} onClose={() => { onClose(); view.unmount(); }} />);
 }
 
-describe("BackgroundSyncReviewDialog - PR merge 일괄 삭제", () => {
+describe("BackgroundSyncReviewPanel - PR merge 일괄 삭제", () => {
   beforeEach(() => {
     vi.mocked(deleteTask).mockReset();
   });
 
-  it("삭제하는 동안 대화상자를 유지하고 처리 수를 알린다", async () => {
+  it("삭제하는 동안 상세를 유지하고 처리 수를 알린다", async () => {
     let resolveFirstDelete: (value: boolean) => void = () => {};
     vi.mocked(deleteTask)
       .mockReturnValueOnce(new Promise((resolve) => {
         resolveFirstDelete = resolve;
       }))
       .mockResolvedValueOnce(true);
-    openReviewDialog(["task-a", "task-b"]);
+    openReviewPanel(["task-a", "task-b"]);
 
     fireEvent.click(screen.getByRole("button", { name: "delete" }));
 
@@ -95,7 +85,7 @@ describe("BackgroundSyncReviewDialog - PR merge 일괄 삭제", () => {
       .mockRejectedValueOnce(new Error("worktree busy"))
       .mockResolvedValueOnce(true)
       .mockResolvedValueOnce(true);
-    openReviewDialog(["task-a", "task-b", "task-c"]);
+    openReviewPanel(["task-a", "task-b", "task-c"]);
 
     fireEvent.click(screen.getByRole("button", { name: "delete" }));
 

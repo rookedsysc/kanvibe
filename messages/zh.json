@@ -46,6 +46,24 @@
       "message": "已确认 worktree PR {branchName} 已被合并。要删除任务“{taskTitle}”及其资源吗？",
       "prLinkLabel": "PR 链接"
     },
+    "backgroundSyncStatus": {
+      "title": "后台同步",
+      "loading": "正在检查同步状态…",
+      "starting": "正在启动同步…",
+      "idle": "检查 worktree 和 PR 状态。",
+      "worktrees": "1/3 · 正在查找 worktree",
+      "pull-requests": "2/3 · 正在检查 PR",
+      "pulls": "3/3 · 正在拉取更改",
+      "completed": "同步完成",
+      "failed": "同步失败，请重试。",
+      "reviewNeeded": "同步完成 · 请查看下方通知中的结果。",
+      "boardUpdated": "同步完成 · 看板已更新。",
+      "noChanges": "同步完成 · 没有新的更改。",
+      "continues": "关闭此面板后同步仍会继续。",
+      "running": "同步中…",
+      "start": "立即同步",
+      "retry": "重试"
+    },
     "backgroundSyncReview": {
       "title": "后台同步检查",
       "message": "最近一次后台扫描发现了需要检查的项目。请勾选要删除的已合并 PR 任务，并同时确认新注册的 worktree。",

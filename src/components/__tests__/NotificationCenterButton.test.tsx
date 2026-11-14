@@ -1,9 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useEffect, useRef } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import NotificationCenterButton, { type NotificationCenterButtonHandle } from "@/components/NotificationCenterButton";
 import { BoardCommandProvider, useBoardCommands } from "@/desktop/renderer/components/BoardCommandProvider";
 import type { AppNotification } from "@/desktop/shared/notifications";
+import type { BoardEventPayload } from "@/lib/boardNotifier";
 
 const {
   mockListNotifications,
@@ -11,6 +12,7 @@ const {
   mockMarkAllNotificationsRead,
   mockActivateNotification,
   mockGetTaskById,
+  mockDeleteTask,
   mockRedirect,
   mockGetNotificationUnreadOnlyEnabled,
   mockSetNotificationUnreadOnlyEnabled,
@@ -22,6 +24,7 @@ const {
   mockMarkAllNotificationsRead: vi.fn(),
   mockActivateNotification: vi.fn(),
   mockGetTaskById: vi.fn(),
+  mockDeleteTask: vi.fn(),
   mockRedirect: vi.fn(),
   mockGetNotificationUnreadOnlyEnabled: vi.fn(),
   mockSetNotificationUnreadOnlyEnabled: vi.fn(),
@@ -34,6 +37,11 @@ vi.mock("next-intl", async () => {
     useTranslations: () => (key: string) => key,
   };
 });
+
+vi.mock("@/desktop/renderer/actions/backgroundTaskSync", () => ({
+  getBackgroundTaskSyncStatus: vi.fn().mockResolvedValue({ phase: "idle", isRunning: false, completedStages: 0, reviewNeeded: false, boardUpdated: false, error: null }),
+  startBackgroundTaskSyncNow: vi.fn(),
+}));
 
 vi.mock("@/desktop/renderer/actions/notifications", () => ({
   listNotifications: mockListNotifications,
@@ -48,6 +56,7 @@ vi.mock("@/desktop/renderer/components/ActionStatusToast", () => ({
 
 vi.mock("@/desktop/renderer/actions/kanban", () => ({
   getTaskById: mockGetTaskById,
+  deleteTask: mockDeleteTask,
 }));
 
 vi.mock("@/desktop/renderer/actions/appSettings", () => ({
@@ -115,10 +124,28 @@ function BlockedNotificationShortcutHarness() {
 }
 
 describe("NotificationCenterButton", () => {
+  it("shows background progress without opening the panel and unlocks sync after completion", async () => {
+    let receive!: (event: BoardEventPayload) => void;
+    window.kanvibeDesktop!.onBoardEvent = (listener: typeof receive) => { receive = listener; return vi.fn(); };
+    mockListNotifications.mockResolvedValue([]);
+    render(<NotificationCenterButton />);
+    await act(async () => {
+      receive({ type: "background-sync-status-changed", status: { phase: "pull-requests", isRunning: true, completedStages: 1, reviewNeeded: false, boardUpdated: false, error: null } });
+    });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "notifications" }));
+    expect(screen.getByRole("progressbar").getAttribute("aria-valuenow")).toBe("1");
+    expect(screen.getByRole("button", { name: "running" }).hasAttribute("disabled")).toBe(true);
+    act(() => receive({ type: "background-sync-status-changed", status: { phase: "completed", isRunning: false, completedStages: 3, reviewNeeded: false, boardUpdated: false, error: null } }));
+    expect(screen.queryByRole("progressbar")).toBeNull();
+    expect(screen.getByText("noChanges")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "start" }).hasAttribute("disabled")).toBe(false);
+  });
   beforeEach(() => {
     vi.clearAllMocks();
     mockGetNotificationUnreadOnlyEnabled.mockResolvedValue(false);
     mockSetNotificationUnreadOnlyEnabled.mockResolvedValue(undefined);
+    mockDeleteTask.mockResolvedValue(true);
     window.history.replaceState({}, "", "/#/en");
     window.kanvibeDesktop = {
       onNotificationsChanged: vi.fn(() => undefined),
@@ -583,7 +610,7 @@ describe("NotificationCenterButton", () => {
     expect(screen.getByText("First task")).toBeTruthy();
   });
 
-  it("uses activation bridge for background sync review notifications", async () => {
+  it("keeps sync review inside the notification panel without activating a modal", async () => {
     mockListNotifications.mockResolvedValue([
       {
         id: "n-review",
@@ -617,11 +644,42 @@ describe("NotificationCenterButton", () => {
     fireEvent.click(screen.getByRole("button", { name: /Background sync review/i }));
 
     await waitFor(() => {
-      expect(mockActivateNotification).toHaveBeenCalledWith("n-review");
+      expect(screen.getByText("mergedSection")).toBeTruthy();
     });
+    expect(screen.getByRole("dialog", { name: "notifications" })).toBeTruthy();
+    expect(mockActivateNotification).not.toHaveBeenCalled();
 
     expect(mockGetTaskById).not.toHaveBeenCalled();
     expect(mockRedirect).not.toHaveBeenCalled();
+  });
+
+  it("keeps delete progress when the panel closes without blocking terminal focus", async () => {
+    let failDelete!: (reason: Error) => void;
+    mockDeleteTask.mockReturnValueOnce(new Promise((_, reject) => { failDelete = reject; }));
+    mockListNotifications.mockResolvedValue([{
+      ...createNotification("review", { isRead: false, createdAt: new Date().toISOString() }),
+      taskId: null,
+      action: { type: "background-sync-review", payload: {
+        mergedPullRequests: [{ taskId: "task-review", taskTitle: "Merged task", branchName: "feature/merged", prUrl: "https://github.com/test/repo/pull/1", mergedAt: "2026-11-14T00:00:00Z" }],
+        registeredWorktrees: [],
+      } },
+    }]);
+    render(<NotificationCenterButton />);
+    fireEvent.click(screen.getByRole("button", { name: "notifications" }));
+    fireEvent.click(await screen.findByRole("button", { name: /review title/ }));
+    await screen.findByText("Merged task");
+    fireEvent.click(screen.getByRole("button", { name: "delete" }));
+    expect(mockDeleteTask).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole("button", { name: "notifications" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(document.querySelector('[data-terminal-focus-blocker="true"]')).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "notifications" }));
+    expect(screen.getByText("deleteProgress")).toBeTruthy();
+    await act(async () => failDelete(new Error("worktree busy")));
+    expect(await screen.findByText("worktree busy")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "retryFailedDeletes" }));
+    await waitFor(() => expect(screen.queryByText("Merged task")).toBeNull());
+    expect(mockDeleteTask).toHaveBeenCalledTimes(2);
   });
 
   it("closes the dropdown when Escape is pressed", async () => {

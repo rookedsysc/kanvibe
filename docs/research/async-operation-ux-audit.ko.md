@@ -46,7 +46,7 @@ task ID로 관리하는 삭제 상태를 보드와 상세에서 공유해야 한
 
 `handlePrMergeConfirm`은 선택된 작업을 지우기 전에 `backgroundSyncReview`를 null로 만든다. 컴포넌트가 즉시 null을 렌더링하므로 pending 상태가 있어도 화면에 표시되지 않는다. 삭제 예외를 안내하는 처리도 없다. 서비스는 작업을 순차 삭제하므로 중간 실패 시 일부만 삭제된 상태가 생길 수 있지만 UI는 성공·실패 대상을 요약하지 않는다.
 
-선택한 N개 중 처리한 수와 대상별 결과를 유지하고, 실패한 항목만 다시 시도할 수 있어야 한다. [확인창 닫기와 삭제 호출](../../src/desktop/renderer/components/BackgroundSyncReviewDialog.tsx#L101), [순차 삭제](../../src/desktop/main/services/kanbanService.ts#L931)
+선택한 N개 중 처리한 수와 대상별 결과를 유지하고, 실패한 항목만 다시 시도할 수 있어야 한다. [확인창 닫기와 삭제 호출](../../src/desktop/renderer/components/BackgroundSyncReviewPanel.tsx#L70), [순차 삭제](../../src/desktop/main/services/kanbanService.ts#L931)
 
 **06 · P2 · 데스크톱 task 생성·분기 중 취소나 Escape가 작업 추적을 끊는다**
 

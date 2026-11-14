@@ -43,6 +43,18 @@ void main() {
       final client = InboxDesktopClient();
       client.notificationsByConnection[_connectionId] = [notice];
       client.onJsonRequest = (method, segments, query, body) async {
+        if (segments.join('/') == 'sync/status') {
+          return {
+            'status': {
+              'phase': 'idle',
+              'isRunning': false,
+              'completedStages': 0,
+              'reviewNeeded': false,
+              'boardUpdated': false,
+              'error': null,
+            },
+          };
+        }
         expect(segments, ['notifications', 'sync-1', 'review']);
         return {
           'review': {

@@ -124,28 +124,4 @@ void main() {
       10,
     );
   });
-  test('동기화 실패와 재시도를 상태로 보존한다', () async {
-    var fail = true;
-    final client = AiStreamClient(
-      (request) async => request.method == 'POST'
-          ? fail
-                ? aiResponse({
-                    'success': false,
-                    'error': 'sync failed',
-                  }, status: 500)
-                : aiResponse({
-                    'success': true,
-                    'result': {'reviewNeeded': true, 'boardUpdated': true},
-                  })
-          : aiResponse(pcSettings()),
-    );
-    final container = settingsContainer(client);
-    await container.read(pcOperationsProvider.future);
-    final controller = container.read(pcOperationsProvider.notifier);
-    expect(await controller.runSync(), isFalse);
-    expect(container.read(pcOperationsProvider).hasError, isTrue);
-    fail = false;
-    expect(await controller.runSync(), isTrue);
-    expect(container.read(pcOperationsProvider).hasValue, isTrue);
-  });
 }

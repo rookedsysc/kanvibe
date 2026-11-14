@@ -1,9 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
+import { useCallback, useMemo, useState, useTransition } from "react";
 import { useTranslations } from "next-intl";
 import { deleteTask } from "@/desktop/renderer/actions/kanban";
-import type { AppNotification } from "@/desktop/shared/notifications";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 import type {
   BackgroundSyncFailurePayload,
@@ -19,14 +18,6 @@ function buildMergedPrEventKey(taskId: string, prUrl: string, mergedAt: string) 
 
 function getMergedPrEventKey(payload: TaskPrMergedDetectedPayload) {
   return buildMergedPrEventKey(payload.taskId, payload.prUrl, payload.mergedAt);
-}
-
-function getBackgroundSyncReviewPayload(notification: AppNotification | null | undefined): BackgroundSyncReviewPayload | null {
-  if (notification?.action?.type !== "background-sync-review") {
-    return null;
-  }
-
-  return notification.action.payload;
 }
 
 function getBackgroundSyncFailureLabelKey(operation: BackgroundSyncFailurePayload["operation"]) {
@@ -47,42 +38,18 @@ type PrMergeDeleteResult =
   | { status: "succeeded" }
   | { status: "failed"; reason: string };
 
-export default function BackgroundSyncReviewDialog() {
+export default function BackgroundSyncReviewPanel({ review, onClose, isActive = true }: {
+  review: BackgroundSyncReviewPayload;
+  onClose: () => void;
+  isActive?: boolean;
+}) {
   const tc = useTranslations("common");
   const tr = useTranslations("common.backgroundSyncReview");
   const tm = useTranslations("common.prMergeAlert");
   const [isPrMergeDeletePending, startPrMergeDeleteTransition] = useTransition();
-  const [backgroundSyncReview, setBackgroundSyncReview] = useState<BackgroundSyncReviewPayload | null>(null);
-  const [selectedPrMergeEventKeys, setSelectedPrMergeEventKeys] = useState<string[]>([]);
+  const backgroundSyncReview = review;
+  const [selectedPrMergeEventKeys, setSelectedPrMergeEventKeys] = useState<string[]>(() => review.mergedPullRequests.map(getMergedPrEventKey));
   const [prMergeDeleteResultByTaskId, setPrMergeDeleteResultByTaskId] = useState<Record<string, PrMergeDeleteResult>>({});
-
-  useEffect(() => {
-    let isActive = true;
-
-    const applyNotification = (notification: AppNotification | null | undefined) => {
-      if (!isActive) {
-        return;
-      }
-
-      const payload = getBackgroundSyncReviewPayload(notification);
-      if (!payload) {
-        return;
-      }
-
-      setBackgroundSyncReview(payload);
-      setSelectedPrMergeEventKeys(payload.mergedPullRequests.map(getMergedPrEventKey));
-      setPrMergeDeleteResultByTaskId({});
-    };
-
-    const dispose = window.kanvibeDesktop?.onNotificationActivated?.((notification: AppNotification) => {
-      applyNotification(notification);
-    });
-
-    return () => {
-      isActive = false;
-      dispose?.();
-    };
-  }, []);
 
   const selectedPrMergeEventKeySet = useMemo(
     () => new Set(selectedPrMergeEventKeys),
@@ -98,14 +65,14 @@ export default function BackgroundSyncReviewDialog() {
   }, []);
 
   const handlePrMergeCancel = useCallback(() => {
-    setBackgroundSyncReview(null);
+    onClose();
     setSelectedPrMergeEventKeys([]);
     setPrMergeDeleteResultByTaskId({});
-  }, []);
+  }, [onClose]);
 
   /**
    * 대상마다 따로 지워 처리 수와 대상별 결과를 화면에 남긴다.
-   * 모두 지워지면 예전처럼 대화상자를 닫고, 하나라도 실패하면 열어 둔 채 실패한 대상만 다시 시도하게 한다.
+   * 모두 지워지면 목록으로 돌아가고, 하나라도 실패하면 상세에서 실패한 대상만 다시 시도하게 한다.
    */
   const deletePrMergeTasks = useCallback((taskIds: string[]) => {
     setPrMergeDeleteResultByTaskId((current) => {
@@ -137,14 +104,10 @@ export default function BackgroundSyncReviewDialog() {
   }, [handlePrMergeCancel, startPrMergeDeleteTransition]);
 
   useEscapeKey(handlePrMergeCancel, {
-    enabled: Boolean(backgroundSyncReview) && !isPrMergeDeletePending,
+    enabled: isActive && !isPrMergeDeletePending,
   });
 
   const handlePrMergeConfirm = useCallback(() => {
-    if (!backgroundSyncReview) {
-      return;
-    }
-
     const selectedEventKeys = new Set(selectedPrMergeEventKeys);
     const selectedTaskIds = backgroundSyncReview.mergedPullRequests
       .filter((alert) => selectedEventKeys.has(getMergedPrEventKey(alert)))
@@ -165,10 +128,6 @@ export default function BackgroundSyncReviewDialog() {
     deletePrMergeTasks(failedTaskIds);
   }, [deletePrMergeTasks, prMergeDeleteResultByTaskId]);
 
-  if (!backgroundSyncReview) {
-    return null;
-  }
-
   const pulledTasks = backgroundSyncReview.pulledTasks ?? [];
   const backgroundSyncFailures = backgroundSyncReview.failures ?? [];
   const hasSelectedPrMergeTasks = selectedPrMergeEventKeys.length > 0;
@@ -179,15 +138,15 @@ export default function BackgroundSyncReviewDialog() {
   const hasPrMergeDeleteFailures = !isPrMergeDeletePending && prMergeDeleteFailedCount > 0;
 
   return (
-    <div className="fixed inset-0 z-[520] flex items-center justify-center bg-bg-overlay">
-      <div className="w-full max-w-2xl rounded-xl border border-border-default bg-bg-surface p-6 shadow-lg">
+    <div className="min-w-0 p-4">
+      <div className="min-w-0 break-words [overflow-wrap:anywhere]">
         <h2 className="mb-2 text-lg font-semibold text-text-primary">
           {tr("title")}
         </h2>
         <p className="text-sm text-text-secondary">
           {tr("message")}
         </p>
-        <div className="mt-4 max-h-[360px] space-y-5 overflow-y-auto pr-1">
+        <div className="mt-4 space-y-5">
           <section>
             <h3 className="text-sm font-semibold text-text-primary">{tr("mergedSection")}</h3>
             {backgroundSyncReview.mergedPullRequests.length === 0 ? (
@@ -375,7 +334,7 @@ export default function BackgroundSyncReviewDialog() {
               })}
           </p>
         ) : null}
-        <div className="mt-5 flex justify-end gap-2">
+        <div className="mt-5 flex flex-wrap justify-end gap-2">
           <button
             type="button"
             onClick={handlePrMergeCancel}

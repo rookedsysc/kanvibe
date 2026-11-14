@@ -765,6 +765,18 @@ const appTranslations = <String, (String, String)>{
   "로그인됨": ("Signed in", "已登录"),
   "마지막으로 확인한 값입니다.": ("Last known value.", "这是上次查询的值。"),
   "백그라운드 동기화": ("Background sync", "后台同步"),
+  "백그라운드 동기화 진행 중": ("Background sync in progress", "正在后台同步"),
+  "worktree 탐색 중": ("Discovering worktrees", "正在查找工作树"),
+  "PR 상태 확인 중": ("Checking pull requests", "正在检查拉取请求"),
+  "변경 가져오는 중": ("Pulling changes", "正在拉取更改"),
+  "동기화 상태를 불러오지 못했습니다.": ("Could not load sync status.", "无法加载同步状态。"),
+  "동기화 상태 확인 중…": ("Checking sync status…", "正在检查同步状态…"),
+  "동기화 시작 중…": ("Starting sync…", "正在启动同步…"),
+  "{count} / 3 단계 완료": ("{count} / 3 stages complete", "已完成 {count} / 3 个阶段"),
+  "다른 화면에서도 계속 진행됩니다.": (
+    "Continues while you use other screens.",
+    "使用其他页面时仍会继续。",
+  ),
   "변경 대상 {count}개 · 실행 중 이전 세션 {live}개": (
     "{count} targets · {live} previous sessions running",
     "{count} 个目标 · {live} 个旧会话正在运行",
