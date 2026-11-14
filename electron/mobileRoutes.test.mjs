@@ -549,7 +549,7 @@ describe("모바일 알림함 경로", () => {
 
   it("task 알림 읽음 요청은 경로의 task 식별자를 풀어 서비스에 넘기고 읽음 처리한 개수를 돌려준다", async () => {
     expect(await request("/api/mobile/tasks/task%201/notifications/read", { method: "POST", headers })).toEqual({
-      status: 200, body: { success: true, count: 2 },
+      status: 200, body: { success: true, updatedCount: 2 },
     });
     expect(bridge.markMobileTaskNotificationsRead).toHaveBeenCalledWith("task 1");
   });
@@ -1144,10 +1144,10 @@ describe("태스크 생성 경로", () => {
     expect(bridge.createMobileTask.mock.calls[0][0]).toMatchObject(draft);
   });
 
-  it("이전 앱이 세션 타입을 보내도 서비스로 넘기지 않아 데스크탑 기본값을 따르게 한다", async () => {
+  it("선택한 세션 타입을 생성 서비스로 전달한다", async () => {
     await createTask({ ...draft, sessionType: "tmux" });
 
-    expect(bridge.createMobileTask.mock.calls[0][0]).not.toHaveProperty("sessionType");
+    expect(bridge.createMobileTask.mock.calls[0][0]).toHaveProperty("sessionType", "tmux");
   });
 
   it("토큰 없이는 인증 앞단에서 막혀 아무것도 만들지 않는다", async () => {
@@ -1535,7 +1535,7 @@ describe("모바일 프로젝트 폴더 등록", () => {
   });
 
   it("선택한 폴더만 기존 스캔 서비스에 넘기고 등록 결과를 반환한다", async () => {
-    const response = await scan({ rootPath: "~/Projects", sshHost: "unselected-host" });
+    const response = await scan({ rootPath: "~/Projects" });
     expect(response.status).toBe(200);
     expect(response.body.result.registered).toEqual(["kanvibe"]);
     expect(bridge.scanMobileProjects).toHaveBeenCalledWith("~/Projects");

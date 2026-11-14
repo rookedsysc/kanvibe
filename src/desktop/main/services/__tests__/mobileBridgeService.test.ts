@@ -656,9 +656,10 @@ describe("모바일 알림함", () => {
   const mobileNotification = {
     id: "inbox-1", title: "리뷰 요청", body: "변경을 확인해 주세요", taskId: "task-1", isRead: false,
     createdAt: "2026-11-01T00:00:00.000Z",
+    actionType: "background-sync-review",
   };
 
-  it("같은 데스크탑 저장소를 최신순으로 읽고 경로와 action을 모바일에 노출하지 않는다", async () => {
+  it("저장소를 최신순으로 읽고 검토 액션 종류만 공개하며 경로와 payload는 숨긴다", async () => {
     appSettingsStore.set("app_notifications", JSON.stringify([
       { ...notification, id: "older", taskId: null, createdAt: "2026-10-01T00:00:00.000Z" },
       notification,
@@ -1532,17 +1533,19 @@ describe("모바일 태스크 생성", () => {
     expect(createTaskMock).not.toHaveBeenCalled();
   });
 
-  it("세션 타입은 기기가 보낸 값과 관계없이 데스크탑 기본 세션 타입을 따른다", async () => {
+  it("세션 타입을 생략하면 PC 기본값을 쓰고 선택한 값은 검증해서 따른다", async () => {
     defaultSessionTypeSetting = SessionType.ZELLIJ;
     try {
-      await createMobileTask({ ...draft, sessionType: "tmux" } as never);
-      await createMobileTask({ ...draft, sessionType: "screen" } as never);
+      await createMobileTask(draft);
+      await createMobileTask({ ...draft, sessionType: "tmux" });
+      await expect(createMobileTask({ ...draft, sessionType: "screen" })).rejects.toThrow(/세션 타입/);
+      await expect(createMobileTask({ ...draft, sessionType: "" })).rejects.toThrow(/세션 타입/);
     } finally {
       defaultSessionTypeSetting = SessionType.TMUX;
     }
-
     expect(createTaskMock).toHaveBeenNthCalledWith(1, expect.objectContaining({ sessionType: "zellij" }));
-    expect(createTaskMock).toHaveBeenNthCalledWith(2, expect.objectContaining({ sessionType: "zellij" }));
+    expect(createTaskMock).toHaveBeenNthCalledWith(2, expect.objectContaining({ sessionType: "tmux" }));
+    expect(createTaskMock).toHaveBeenCalledTimes(2);
   });
 
   it("모바일 화면에 없는 칸은 데스크탑 요청에 실리지 않는다", async () => {
@@ -1946,7 +1949,7 @@ describe("모바일 pane 단축키", () => {
       return "snapshot";
     });
     const result = await executeMobileTerminalShortcut("shortcut-task", "%19", "split-right");
-    expect(executedCommands()).toContain("tmux split-window -h -d -t '%19'");
+    expect(executedCommands()).toContain("tmux split-window -h -d -t '%19' -c '#{pane_current_path}'");
     expect(result.surfaces.sessionType).toBe(SessionType.TMUX);
     expect(result.surfaces.tabs[0].panes[0].id).toBe("%19");
     expect(result.screen).toBeUndefined();

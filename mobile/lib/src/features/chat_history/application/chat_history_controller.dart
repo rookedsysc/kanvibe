@@ -99,6 +99,44 @@ class ChatHistoryController extends AsyncNotifier<ChatHistoryState> {
   }
 }
 
+final chatMessageRolesProvider = NotifierProvider.autoDispose
+    .family<
+      ChatMessageRolesController,
+      Set<String>,
+      ({String taskId, ChatSession session})
+    >(ChatMessageRolesController.new);
+
+class ChatMessageRolesController extends Notifier<Set<String>> {
+  ChatMessageRolesController(this.target);
+  final ({String taskId, ChatSession session}) target;
+
+  @override
+  Set<String> build() => const {};
+
+  void toggle(String role) {
+    final selected = {...state};
+    if (!selected.remove(role)) selected.add(role);
+    state = Set.unmodifiable(selected);
+  }
+}
+
+final chatMessageQueryProvider = NotifierProvider.autoDispose
+    .family<
+      ChatMessageQueryController,
+      String,
+      ({String taskId, ChatSession session})
+    >(ChatMessageQueryController.new);
+
+class ChatMessageQueryController extends Notifier<String> {
+  ChatMessageQueryController(this.target);
+  final ({String taskId, ChatSession session}) target;
+
+  @override
+  String build() => '';
+
+  void search(String query) => state = query.trim();
+}
+
 final chatMessagesProvider = AsyncNotifierProvider.autoDispose
     .family<
       ChatMessagesController,
@@ -125,6 +163,8 @@ class ChatMessagesController extends AsyncNotifier<ChatMessagesState> {
 
   @override
   Future<ChatMessagesState> build() async {
+    ref.watch(chatMessageRolesProvider(target));
+    ref.watch(chatMessageQueryProvider(target));
     _generation++;
     final connection = (await ref.watch(connectionControllerProvider.future))
         .activeConnection;
@@ -145,6 +185,8 @@ class ChatMessagesController extends AsyncNotifier<ChatMessagesState> {
             target.taskId,
             target.session,
             cursor: cursor,
+            roles: ref.read(chatMessageRolesProvider(target)),
+            query: ref.read(chatMessageQueryProvider(target)),
           );
     } on DesktopRequestException catch (error) {
       if (error.isUnauthorized && ref.mounted) {

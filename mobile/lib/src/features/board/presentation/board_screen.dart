@@ -1,3 +1,14 @@
+import '../../settings/presentation/pc_settings_screen.dart';
+import '../../ai_sessions/presentation/widgets/running_ai_badge.dart';
+import '../../ai_sessions/presentation/live_ai_sessions_screen.dart';
+import '../../ai_accounts/presentation/ai_accounts_screen.dart';
+import '../../ai_accounts/presentation/ai_usage_screen.dart';
+import '../../diff/presentation/widgets/task_diff_summary.dart';
+import '../../pane_layouts/presentation/pane_layouts_screen.dart';
+
+import 'dart:async';
+
+import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -6,6 +17,16 @@ import '../../../common/constants/project_colors.dart';
 import '../../../common/constants/app_sizes.dart';
 import '../../../common/constants/app_theme.dart';
 import '../../../common/providers.dart';
+import '../../../common/l10n/app_localizations.dart';
+import '../../settings/presentation/device_preferences_screen.dart';
+import '../application/board_sort_controller.dart';
+import '../application/board_pagination_controller.dart';
+import '../domain/board_view_options.dart';
+import '../domain/task_priority.dart';
+import 'task_quick_search_screen.dart';
+import 'widgets/board_sort_sheet.dart';
+import 'widgets/done_pagination_control.dart';
+import 'widgets/task_project_icon.dart';
 import '../../task_create/presentation/create_task_screen.dart';
 import '../../project_registry/presentation/project_registry_screen.dart';
 import '../../task_detail/presentation/task_detail_screen.dart';
@@ -26,18 +47,186 @@ import 'widgets/task_delete_dialogs.dart';
 /// 폰과 태블릿은 같은 데이터를 다르게 놓는다. 좁은 화면에서 칸반을 옆으로 밀어 보게 하면
 /// 한 번에 한 칸밖에 못 보므로, 폰은 상태를 세로 구획으로 쌓고 태블릿만 칸반으로 편다.
 /// 갈림길은 [isTabletLayout] 하나뿐이고 데이터는 한 번만 불러온다.
-class BoardScreen extends ConsumerWidget {
+class BoardScreen extends ConsumerStatefulWidget {
   const BoardScreen({super.key});
+  @override
+  ConsumerState<BoardScreen> createState() => _BoardScreenState();
+}
+
+class _BoardScreenState extends ConsumerState<BoardScreen> {
+  final _findController = TextEditingController();
+  final _cardKeys = <String, GlobalKey>{};
+  bool _isFinding = false;
+  bool _isWorkspace = false;
+  String _findQuery = '';
+  int _matchIndex = 0;
+  String? _selectedTaskId;
+  BoardTask? _selectedTask;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  void dispose() {
+    _findController.dispose();
+    super.dispose();
+  }
+
+  List<BoardTask> _matches(BoardSnapshot snapshot) => _findQuery.trim().isEmpty
+      ? []
+      : snapshot.allTasks
+            .where(
+              (task) =>
+                  [
+                        task.title,
+                        task.projectName ?? '',
+                        task.branchName ?? '',
+                        task.description ?? '',
+                        task.agentType ?? '',
+                        task.sessionType ?? '',
+                        task.sshHost ?? '',
+                        task.status.label,
+                      ]
+                      .join(' ')
+                      .toLowerCase()
+                      .contains(_findQuery.trim().toLowerCase()),
+            )
+            .toList();
+
+  void _findNext(BoardSnapshot snapshot, int delta) {
+    final matches = _matches(snapshot);
+    if (matches.isEmpty) return;
+    setState(() => _matchIndex = (_matchIndex + delta) % matches.length);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final target =
+          _cardKeys[matches[_matchIndex % matches.length].id]?.currentContext;
+      if (mounted && target != null) {
+        Scrollable.ensureVisible(
+          target,
+          duration: const Duration(milliseconds: 250),
+          alignment: 0.25,
+        );
+      }
+    });
+  }
+
+  void _openTask(BoardTask task) {
+    if (_isWorkspace &&
+        MediaQuery.sizeOf(context).width >= AppSizes.tabletBreakpoint) {
+      setState(() {
+        _selectedTaskId = task.id;
+        _selectedTask = task;
+      });
+      return;
+    }
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => TaskDetailScreen(task: task)),
+    );
+  }
+
+  Future<void> _searchTasks() async {
+    final task = await Navigator.of(context).push<BoardTask>(
+      MaterialPageRoute(builder: (_) => const TaskQuickSearchScreen()),
+    );
+    if (mounted && task != null) _openTask(task);
+  }
+
+  Widget _card(BoardTask task, BoardSnapshot snapshot) {
+    final matches = _matches(snapshot);
+    final found =
+        matches.isNotEmpty &&
+        matches[_matchIndex % matches.length].id == task.id;
+    final complete =
+        ref.read(boardPaginationProvider).value?.snapshot ?? snapshot;
+    final priority = effectivePriority(
+      task,
+      complete.allTasks,
+      complete.projects,
+    );
+    return KeyedSubtree(
+      key: _cardKeys.putIfAbsent(task.id, GlobalKey.new),
+      child: _TaskCard(
+        task: task,
+        onOpen: () => _openTask(task),
+        isFindMatch: found,
+        isSelected: _isWorkspace && _selectedTaskId == task.id,
+        displayPriority: priority,
+        isPriorityInherited: task.priority == null && priority != null,
+        isBaseProject: isProjectRoot(task, snapshot.projects),
+      ),
+    );
+  }
+
+  Widget _workspace(BoardSnapshot snapshot, String connectionId) {
+    final selected =
+        snapshot.allTasks
+            .where((task) => task.id == _selectedTaskId)
+            .firstOrNull ??
+        _selectedTask;
+    return Row(
+      children: [
+        SizedBox(
+          width: 300,
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(
+              AppSizes.p12,
+              AppSizes.p12,
+              AppSizes.p12,
+              AppSizes.minTouchTarget + AppSizes.p32,
+            ),
+            child: Column(
+              children: [
+                for (final task in snapshot.allTasks)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: AppSizes.p8),
+                    child: _card(task, snapshot),
+                  ),
+                const DonePaginationControl(),
+              ],
+            ),
+          ),
+        ),
+        VerticalDivider(width: 1, color: context.colors.borderDefault),
+        Expanded(
+          child: selected == null
+              ? Center(child: Text(context.tr('태스크를 선택해 주세요.')))
+              : TaskDetailScreen(
+                  key: ValueKey('$connectionId/${selected.id}'),
+                  task: selected,
+                  embedded: true,
+                  onTaskDeleted: () => setState(() {
+                    _selectedTaskId = null;
+                    _selectedTask = null;
+                  }),
+                ),
+        ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final board = ref.watch(boardProvider);
     final filteredBoard = ref.watch(filteredBoardProvider);
-    final activeConnection = ref
+    final connection = ref
         .watch(connectionControllerProvider)
         .value
         ?.activeConnection;
-
+    final workspaceWidth =
+        MediaQuery.sizeOf(context).width -
+        MediaQuery.paddingOf(context).horizontal;
+    final workspaceVisible =
+        _isWorkspace && workspaceWidth >= AppSizes.tabletBreakpoint;
+    ref.listen(
+      connectionControllerProvider.select((value) => value.value?.activeId),
+      (previous, next) {
+        if (previous != next) {
+          _selectedTaskId = null;
+          _selectedTask = null;
+          _findQuery = '';
+          _findController.clear();
+          _matchIndex = 0;
+          _cardKeys.clear();
+        }
+      },
+    );
     return Scaffold(
       appBar: AppBar(
         title: TextButton(
@@ -47,7 +236,7 @@ class BoardScreen extends ConsumerWidget {
             ),
           ),
           style: TextButton.styleFrom(
-            foregroundColor: AppColors.textPrimary,
+            foregroundColor: context.colors.textPrimary,
             alignment: Alignment.centerLeft,
             padding: const EdgeInsets.symmetric(horizontal: AppSizes.p8),
             minimumSize: const Size(48, 48),
@@ -61,14 +250,14 @@ class BoardScreen extends ConsumerWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      activeConnection?.displayName ?? 'KanVibe',
+                      connection?.displayName ?? 'KanVibe',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
-                    if (activeConnection != null)
+                    if (connection != null)
                       Text(
-                        activeConnection.address,
+                        connection.address,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: Theme.of(context).textTheme.labelSmall,
@@ -87,65 +276,231 @@ class BoardScreen extends ConsumerWidget {
             identifier: 'board-more',
             child: PopupMenuButton<String>(
               key: const ValueKey('board-more'),
-              tooltip: '보드 메뉴',
+              tooltip: context.tr('보드 메뉴'),
               onSelected: (action) {
-                if (action == 'refresh') {
-                  ref.invalidate(boardProvider);
-                } else if (activeConnection != null) {
+                if (action == 'refresh') ref.invalidate(boardProvider);
+                final page = switch (action) {
+                  'pc-settings' => const PcSettingsScreen(),
+                  'ai-accounts' => const AiAccountsScreen(),
+                  'ai-usage' => const AiUsageScreen(),
+                  'pane-layouts' => const PaneLayoutsScreen(),
+                  _ => null,
+                };
+                if (page != null) {
+                  Navigator.of(context)
+                      .push(MaterialPageRoute<void>(builder: (_) => page));
+                }
+                if (action == 'preferences') {
+                  Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const DevicePreferencesScreen(),
+                    ),
+                  );
+                }
+                if (action == 'register' && connection != null) {
                   Navigator.of(context).push(
                     MaterialPageRoute<void>(
                       builder: (_) =>
-                          ProjectRegistryScreen(connection: activeConnection),
+                          ProjectRegistryScreen(connection: connection),
                     ),
                   );
                 }
               },
               itemBuilder: (_) => [
                 PopupMenuItem(
-                  value: 'register',
-                  enabled: activeConnection != null,
-                  child: const Text('프로젝트 등록'),
+                  value: 'pc-settings',
+                  child: Text(context.tr('PC 설정')),
                 ),
-                const PopupMenuItem(value: 'refresh', child: Text('새로고침')),
+                PopupMenuItem(
+                  value: 'ai-accounts',
+                  child: Text(context.tr('AI 계정')),
+                ),
+                PopupMenuItem(
+                  value: 'ai-usage',
+                  child: Text(context.tr('AI 사용량')),
+                ),
+                PopupMenuItem(
+                  value: 'pane-layouts',
+                  child: Text(context.tr('Pane 레이아웃')),
+                ),
+                PopupMenuItem(
+                  value: 'register',
+                  enabled: connection != null,
+                  child: Text(context.tr('프로젝트 등록')),
+                ),
+                PopupMenuItem(
+                  value: 'refresh',
+                  child: Text(context.tr('새로고침')),
+                ),
+                PopupMenuItem(
+                  value: 'preferences',
+                  child: Text(context.tr('기기 설정')),
+                ),
               ],
             ),
           ),
         ],
       ),
+      floatingActionButtonLocation: workspaceVisible
+          ? FloatingActionButtonLocation.startFloat
+          : FloatingActionButtonLocation.endFloat,
       floatingActionButton: board.value == null
           ? null
           : FloatingActionButton(
               onPressed: () => _createTask(context, board.requireValue),
-              tooltip: '새 태스크',
+              tooltip: context.tr('새 태스크'),
               child: const Icon(Icons.add),
             ),
       body: SafeArea(
         child: Column(
           children: [
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: AppSizes.p16),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: AppSizes.p12),
               child: Row(
                 children: [
-                  Text('프로젝트'),
-                  Spacer(),
-                  DesktopFilterButton(),
-                  ProjectFilterButton(),
+                  Semantics(
+                    identifier: 'board-global-search',
+                    child: IconButton(
+                      tooltip: context.tr('전체 태스크 검색'),
+                      onPressed: connection == null ? null : _searchTasks,
+                      icon: const Icon(Icons.search),
+                    ),
+                  ),
+                  Semantics(
+                    identifier: 'board-find',
+                    child: IconButton(
+                      tooltip: context.tr('현재 보드에서 찾기'),
+                      onPressed: () => setState(() => _isFinding = !_isFinding),
+                      isSelected: _isFinding,
+                      icon: const Icon(Icons.find_in_page_outlined),
+                    ),
+                  ),
+                  Semantics(
+                    identifier: 'board-sort',
+                    child: IconButton(
+                      tooltip: context.tr('보드 정렬'),
+                      onPressed: connection == null
+                          ? null
+                          : () => showModalBottomSheet<void>(
+                              context: context,
+                              isScrollControlled: true,
+                              useSafeArea: true,
+                              builder: (_) => const BoardSortSheet(),
+                            ),
+                      icon: const Icon(Icons.sort),
+                    ),
+                  ),
+                  Expanded(
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<BoardTaskKind>(
+                        isExpanded: true,
+                        value: ref.watch(boardTaskKindProvider),
+                        items: [
+                          for (final kind in BoardTaskKind.values)
+                            DropdownMenuItem(
+                              value: kind,
+                              child: Text(
+                                context.tr(switch (kind) {
+                                  BoardTaskKind.all => '전체',
+                                  BoardTaskKind.project => '프로젝트 본체',
+                                  BoardTaskKind.task => '일반 태스크',
+                                }),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                        ],
+                        onChanged: (kind) {
+                          if (kind != null) {
+                            ref
+                                .read(boardTaskKindProvider.notifier)
+                                .select(kind);
+                          }
+                        },
+                      ),
+                    ),
+                  ),
+                  const DesktopFilterButton(),
+                  const ProjectFilterButton(),
+                  if (MediaQuery.sizeOf(context).width >=
+                      AppSizes.tabletBreakpoint)
+                    IconButton(
+                      tooltip: context.tr(
+                        _isWorkspace ? '칸반 보기' : 'Workspace 보기',
+                      ),
+                      isSelected: _isWorkspace,
+                      onPressed: () =>
+                          setState(() => _isWorkspace = !_isWorkspace),
+                      icon: const Icon(Icons.view_sidebar_outlined),
+                    ),
                 ],
               ),
             ),
+            if (_isFinding)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: AppSizes.p12),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _findController,
+                        decoration: InputDecoration(
+                          labelText: context.tr('현재 보드에서 찾기'),
+                        ),
+                        onChanged: (query) {
+                          setState(() {
+                            _findQuery = query;
+                            _matchIndex = 0;
+                          });
+                          if (filteredBoard.value != null) {
+                            _findNext(filteredBoard.requireValue, 0);
+                          }
+                        },
+                      ),
+                    ),
+                    Text(
+                      '${_matches(filteredBoard.value ?? const BoardSnapshot(tasksByStatus: {})).isEmpty ? 0 : _matchIndex + 1}/${_matches(filteredBoard.value ?? const BoardSnapshot(tasksByStatus: {})).length}',
+                    ),
+                    IconButton(
+                      tooltip: context.tr('이전 결과'),
+                      onPressed: filteredBoard.value == null
+                          ? null
+                          : () => _findNext(filteredBoard.requireValue, -1),
+                      icon: const Icon(Icons.keyboard_arrow_up),
+                    ),
+                    IconButton(
+                      tooltip: context.tr('다음 결과'),
+                      onPressed: filteredBoard.value == null
+                          ? null
+                          : () => _findNext(filteredBoard.requireValue, 1),
+                      icon: const Icon(Icons.keyboard_arrow_down),
+                    ),
+                  ],
+                ),
+              ),
             Expanded(
               child: filteredBoard.when(
                 loading: () => const Center(child: CircularProgressIndicator()),
-                error: (error, _) => _BoardLoadFailure(
+                error: (_, _) => _BoardLoadFailure(
                   onRetry: () => ref.invalidate(boardProvider),
                 ),
                 data: (snapshot) => RefreshIndicator(
-                  onRefresh: () async => ref.invalidate(boardProvider),
+                  onRefresh: () async {
+                    ref.invalidate(boardProvider);
+                    await ref.read(boardProvider.future);
+                  },
                   child: LayoutBuilder(
                     builder: (context, constraints) =>
-                        isTabletLayout(constraints)
-                        ? _KanbanBoard(snapshot: snapshot)
-                        : _StatusListView(snapshot: snapshot),
+                        _isWorkspace && isTabletLayout(constraints)
+                        ? _workspace(snapshot, connection?.id ?? '')
+                        : isTabletLayout(constraints)
+                        ? _KanbanBoard(
+                            snapshot: snapshot,
+                            cardBuilder: (task) => _card(task, snapshot),
+                          )
+                        : _StatusListView(
+                            snapshot: snapshot,
+                            cardBuilder: (task) => _card(task, snapshot),
+                          ),
                   ),
                 ),
               ),
@@ -180,102 +535,109 @@ Future<void> _createTask(BuildContext context, BoardSnapshot board) async {
 
 /// 태블릿 배치. 상태별 칸을 옆으로 늘어놓는다
 class _KanbanBoard extends StatelessWidget {
-  const _KanbanBoard({required this.snapshot});
-
+  const _KanbanBoard({required this.snapshot, required this.cardBuilder});
   final BoardSnapshot snapshot;
-
-  /// 칸 하나의 너비. 좁으면 제목이 잘리고 넓으면 한 화면에 세 칸도 안 들어간다
+  final Widget Function(BoardTask) cardBuilder;
   static const _columnWidth = 320.0;
 
   @override
   Widget build(BuildContext context) {
-    return ListView.separated(
+    return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       padding: const EdgeInsets.all(AppSizes.p16),
-      itemCount: TaskStatus.values.length,
-      separatorBuilder: (_, _) => const SizedBox(width: AppSizes.p12),
-      itemBuilder: (context, index) {
-        final status = TaskStatus.values[index];
-        final tasks = snapshot.tasksIn(status);
-
-        return SizedBox(
-          width: _columnWidth,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _StatusHeading(status: status, count: tasks.length),
-              const SizedBox(height: AppSizes.p8),
-              Expanded(
-                child: tasks.isEmpty
-                    ? const _EmptyStatus()
-                    : ListView.separated(
-                        itemCount: tasks.length,
-                        separatorBuilder: (_, _) =>
-                            const SizedBox(height: AppSizes.p8),
-                        itemBuilder: (context, taskIndex) => _TaskCard(
-                          task: tasks[taskIndex],
-                          key: ValueKey(tasks[taskIndex].id),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final status in TaskStatus.values)
+            Padding(
+              padding: const EdgeInsets.only(right: AppSizes.p12),
+              child: SizedBox(
+                width: _columnWidth,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _StatusHeading(
+                      status: status,
+                      count: snapshot.tasksIn(status).length,
+                    ),
+                    const SizedBox(height: AppSizes.p8),
+                    Expanded(
+                      child: SingleChildScrollView(
+                        child: Column(
+                          children: [
+                            if (snapshot.tasksIn(status).isEmpty)
+                              const _EmptyStatus(),
+                            for (final task in snapshot.tasksIn(status))
+                              Padding(
+                                padding: const EdgeInsets.only(
+                                  bottom: AppSizes.p8,
+                                ),
+                                child: cardBuilder(task),
+                              ),
+                            if (status == TaskStatus.done)
+                              const DonePaginationControl(),
+                          ],
                         ),
                       ),
+                    ),
+                  ],
+                ),
               ),
-            ],
-          ),
-        );
-      },
+            ),
+        ],
+      ),
     );
   }
 }
 
 /// 폰 배치. 상태를 세로로 쌓고 머리글을 화면 위에 붙여 둔다
 class _StatusListView extends StatelessWidget {
-  const _StatusListView({required this.snapshot});
-
+  const _StatusListView({required this.snapshot, required this.cardBuilder});
   final BoardSnapshot snapshot;
-
+  final Widget Function(BoardTask) cardBuilder;
   @override
-  Widget build(BuildContext context) {
-    if (snapshot.isEmpty) {
-      return ListView(
-        children: const [
-          SizedBox(height: AppSizes.p32),
-          _EmptyStatus(message: '아직 태스크가 없습니다.'),
-        ],
-      );
-    }
-
-    return CustomScrollView(
-      slivers: [
-        for (final status in TaskStatus.values) ...[
-          SliverPersistentHeader(
-            pinned: true,
-            delegate: _StatusHeaderDelegate(
-              status: status,
-              count: snapshot.tasksIn(status).length,
-            ),
+  Widget build(BuildContext context) => CustomScrollView(
+    slivers: [
+      if (snapshot.isEmpty)
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.all(AppSizes.p16),
+            child: Text(context.tr('아직 태스크가 없습니다.')),
           ),
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(
-              AppSizes.p16,
-              AppSizes.p8,
-              AppSizes.p16,
-              AppSizes.p16,
-            ),
-            sliver: snapshot.tasksIn(status).isEmpty
-                ? const SliverToBoxAdapter(child: _EmptyStatus())
-                : SliverList.separated(
-                    itemCount: snapshot.tasksIn(status).length,
-                    separatorBuilder: (_, _) =>
-                        const SizedBox(height: AppSizes.p8),
-                    itemBuilder: (context, index) {
-                      final task = snapshot.tasksIn(status)[index];
-                      return _TaskCard(task: task, key: ValueKey(task.id));
-                    },
+        ),
+      for (final status in TaskStatus.values) ...[
+        SliverPersistentHeader(
+          pinned: true,
+          delegate: _StatusHeaderDelegate(
+            status: status,
+            count: snapshot.tasksIn(status).length,
+          ),
+        ),
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(
+            AppSizes.p16,
+            AppSizes.p8,
+            AppSizes.p16,
+            AppSizes.p16,
+          ),
+          sliver: SliverToBoxAdapter(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (snapshot.tasksIn(status).isEmpty) const _EmptyStatus(),
+                for (final task in snapshot.tasksIn(status))
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: AppSizes.p8),
+                    child: cardBuilder(task),
                   ),
+                if (status == TaskStatus.done) const DonePaginationControl(),
+              ],
+            ),
           ),
-        ],
+        ),
       ],
-    );
-  }
+    ],
+  );
 }
 
 /// 폰에서 스크롤해도 지금 보고 있는 구획이 무엇인지 남게 한다
@@ -301,7 +663,7 @@ class _StatusHeaderDelegate extends SliverPersistentHeaderDelegate {
   ) {
     return Container(
       height: _height,
-      color: AppColors.bgPage,
+      color: context.colors.bgPage,
       padding: const EdgeInsets.symmetric(horizontal: AppSizes.p16),
       alignment: Alignment.centerLeft,
       child: _StatusHeading(status: status, count: count),
@@ -342,7 +704,40 @@ class _StatusHeading extends StatelessWidget {
 }
 
 class _TaskCard extends ConsumerWidget {
-  const _TaskCard({required this.task, super.key});
+  const _TaskCard({
+    required this.task,
+    required this.onOpen,
+    this.isFindMatch = false,
+    this.isSelected = false,
+    this.displayPriority,
+    this.isPriorityInherited = false,
+    this.isBaseProject = false,
+  });
+  final VoidCallback onOpen;
+  final bool isFindMatch;
+  final bool isSelected;
+  final TaskPriority? displayPriority;
+  final bool isPriorityInherited;
+  final bool isBaseProject;
+
+  Future<void> _openPr(BuildContext context) async {
+    final url = task.prUrl;
+    if (url == null) return;
+    var opened = false;
+    try {
+      opened = await launchUrl(
+        Uri.parse(url),
+        mode: LaunchMode.externalApplication,
+      );
+    } catch (_) {
+      opened = false;
+    }
+    if (!opened && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.tr('PR을 열 수 있는 앱이 없습니다.'))),
+      );
+    }
+  }
 
   final BoardTask task;
 
@@ -429,21 +824,22 @@ class _TaskCard extends ConsumerWidget {
       ),
     );
     return Material(
-      color: AppColors.bgSurface,
+      color: context.colors.bgSurface,
       borderRadius: BorderRadius.circular(AppSizes.radiusLg),
       child: InkWell(
         borderRadius: BorderRadius.circular(AppSizes.radiusLg),
-        onTap: () => Navigator.of(context).push(
-          MaterialPageRoute<void>(builder: (_) => TaskDetailScreen(task: task)),
-        ),
+        onTap: onOpen,
         onLongPress: () => _deleteTask(context, ref),
         child: Container(
           constraints: const BoxConstraints(minHeight: AppSizes.minTouchTarget),
           padding: const EdgeInsets.all(AppSizes.p12),
           decoration: BoxDecoration(
             border: Border.all(
-              color: task.projectName == null
-                  ? AppColors.borderDefault
+              width: isFindMatch || isSelected ? 2 : 1,
+              color: isFindMatch || isSelected
+                  ? AppColors.brandPrimary
+                  : task.projectName == null
+                  ? context.colors.borderDefault
                   : projectColor(task.projectName!, task.projectColor),
             ),
             borderRadius: BorderRadius.circular(AppSizes.radiusLg),
@@ -453,6 +849,11 @@ class _TaskCard extends ConsumerWidget {
             children: [
               Row(
                 children: [
+                  if (task.projectIconDataUrl != null)
+                    Padding(
+                      padding: const EdgeInsets.only(right: AppSizes.p8),
+                      child: TaskProjectIcon(dataUrl: task.projectIconDataUrl),
+                    ),
                   Expanded(
                     child: Text(
                       task.title,
@@ -480,11 +881,68 @@ class _TaskCard extends ConsumerWidget {
                   ],
                 ],
               ),
+              if (task.description?.isNotEmpty ?? false)
+                Padding(
+                  padding: const EdgeInsets.only(top: AppSizes.p4),
+                  child: Text(
+                    task.description!,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ),
+              if (task.branchName != null)
+                TaskDiffSummary(taskId: task.id, compact: true),
+              RunningAiBadge(
+                worktreePath: task.worktreePath,
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => LiveAiSessionsScreen(
+                      taskId: task.id,
+                      onSelectWindow: (windowId) {
+                        Navigator.of(context).pushReplacement(
+                          MaterialPageRoute<void>(
+                            builder: (_) => TaskDetailScreen(
+                              task: task,
+                              initialWindowId: windowId,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              ),
               const SizedBox(height: AppSizes.p8),
               Wrap(
                 spacing: AppSizes.p4,
                 runSpacing: AppSizes.p4,
                 children: [
+                  if (displayPriority != null)
+                    _TaskBadge(
+                      label:
+                          '${switch (displayPriority!) {
+                            TaskPriority.high => 'P1',
+                            TaskPriority.medium => 'P2',
+                            TaskPriority.low => 'P3',
+                          }}${isPriorityInherited ? ' ↓' : ''}',
+                      color: AppColors.brandPrimary,
+                    ),
+                  if (isBaseProject)
+                    const _TaskBadge(
+                      label: 'Base',
+                      color: AppColors.brandPrimary,
+                    ),
+                  if (task.agentType != null)
+                    _TaskBadge(
+                      label: task.agentType!,
+                      color: context.colors.textSecondary,
+                    ),
+                  if (task.sessionType != null)
+                    _TaskBadge(
+                      label: task.sessionType!,
+                      color: context.colors.textSecondary,
+                    ),
                   if (task.projectName != null)
                     _TaskBadge(
                       label: task.projectName!,
@@ -509,9 +967,18 @@ class _TaskCard extends ConsumerWidget {
                       background: const Color(0x2965D08A),
                     ),
                   if (task.prUrl != null)
-                    const _TaskBadge(
-                      label: 'PR',
-                      color: AppColors.brandPrimary,
+                    Semantics(
+                      identifier: 'task-pr-${task.id}',
+                      child: TextButton(
+                        onPressed: () => _openPr(context),
+                        style: TextButton.styleFrom(
+                          minimumSize: const Size(48, 48),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: AppSizes.p8,
+                          ),
+                        ),
+                        child: const Text('PR'),
+                      ),
                     ),
                 ],
               ),
@@ -538,37 +1005,43 @@ class _TaskBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final foreground = Theme.of(context).brightness == Brightness.light
+        ? context.colors.textPrimary
+        : color ?? context.colors.textSecondary;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: AppSizes.p8, vertical: 2),
       decoration: BoxDecoration(
         color:
             background ??
-            (color == null ? AppColors.buttonNeutral : AppColors.brandSubtle),
+            (color == null
+                ? context.colors.buttonNeutral
+                : AppColors.brandSubtle),
         borderRadius: BorderRadius.circular(AppSizes.radiusSm),
       ),
       child: Text(
         label,
         overflow: TextOverflow.ellipsis,
         style: isMono
-            ? monoStyle(fontSize: 11, color: color ?? AppColors.textSecondary)
+            ? monoStyle(fontSize: 11, color: foreground)
             : Theme.of(context).textTheme.labelSmall
-                  ?.copyWith(color: color ?? AppColors.textSecondary),
+                  ?.copyWith(color: foreground),
       ),
     );
   }
 }
 
 class _EmptyStatus extends StatelessWidget {
-  const _EmptyStatus({this.message = '이 상태에는 태스크가 없습니다.'});
-
-  final String message;
+  const _EmptyStatus();
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: AppSizes.p16),
       child: Center(
-        child: Text(message, style: Theme.of(context).textTheme.bodySmall),
+        child: Text(
+          context.tr('이 상태에는 태스크가 없습니다.'),
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
       ),
     );
   }
@@ -588,12 +1061,14 @@ class _BoardLoadFailure extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              '데스크탑에 연결하지 못했습니다.\n같은 네트워크에 있는지, KanVibe가 켜져 있는지 확인해 주세요.',
+              context.tr(
+                '데스크탑에 연결하지 못했습니다.\n같은 네트워크에 있는지, KanVibe가 켜져 있는지 확인해 주세요.',
+              ),
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodyMedium,
             ),
             const SizedBox(height: AppSizes.p16),
-            FilledButton(onPressed: onRetry, child: const Text('다시 시도')),
+            FilledButton(onPressed: onRetry, child: Text(context.tr('다시 시도'))),
           ],
         ),
       ),

@@ -1,3 +1,5 @@
+import '../../../common/l10n/app_localizations.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -92,13 +94,13 @@ class _ConnectionScreenState extends ConsumerState<ConnectionScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: widget.isAdding ? AppBar(title: const Text('PC 추가')) : null,
+      appBar: widget.isAdding ? AppBar(title: Text(context.tr('PC 추가'))) : null,
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(AppSizes.p24),
+            padding: EdgeInsets.all(AppSizes.p24),
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 420),
+              constraints: BoxConstraints(maxWidth: 420),
               child: Form(
                 key: _formKey,
                 child: Column(
@@ -109,68 +111,71 @@ class _ConnectionScreenState extends ConsumerState<ConnectionScreen> {
                       child: Image.asset(
                         'assets/branding/kanvibe-logo.png',
                         width: 180,
-                        color: AppColors.textPrimary,
+                        color: context.colors.textPrimary,
                         semanticLabel: 'KanVibe',
                       ),
                     ),
-                    const SizedBox(height: AppSizes.p32),
+                    SizedBox(height: AppSizes.p32),
                     Text(
-                      widget.isAdding ? '새 PC 연결' : '데스크탑에 연결',
+                      context.tr(widget.isAdding ? '새 PC 연결' : '데스크탑에 연결'),
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
-                    const SizedBox(height: AppSizes.p8),
+                    SizedBox(height: AppSizes.p8),
                     Text(
-                      'PC의 KanVibe 설정에서 연결 코드를 만든 다음 입력해 주세요. 등록한 PC는 목록에서 다시 선택할 수 있습니다.',
+                      context.tr(
+                        'PC의 KanVibe 설정에서 연결 코드를 만든 다음 입력해 주세요. 등록한 PC는 목록에서 다시 선택할 수 있습니다.',
+                      ),
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
-                    const SizedBox(height: AppSizes.p24),
+                    SizedBox(height: AppSizes.p24),
                     TextFormField(
                       controller: _nameController,
-                      decoration: const InputDecoration(
-                        labelText: 'PC 이름 (선택)',
-                        helperText: '비워 두면 주소가 표시됩니다',
+                      decoration: InputDecoration(
+                        labelText: context.tr('PC 이름 (선택)'),
+                        helperText: context.tr('비워 두면 주소가 표시됩니다'),
                       ),
                       textInputAction: TextInputAction.next,
                     ),
-                    const SizedBox(height: AppSizes.p16),
+                    SizedBox(height: AppSizes.p16),
                     TextFormField(
                       controller: _hostController,
-                      decoration: const InputDecoration(
-                        labelText: '데스크탑 주소',
-                        helperText: '같은 네트워크에서 보이는 IP 주소',
+                      decoration: InputDecoration(
+                        labelText: context.tr('데스크탑 주소'),
+                        helperText: context.tr('같은 네트워크에서 보이는 IP 주소'),
                       ),
                       keyboardType: TextInputType.url,
                       autocorrect: false,
                       style: monoStyle(
                         fontSize: 14,
-                        color: AppColors.textPrimary,
+                        color: context.colors.textPrimary,
                       ),
-                      validator: (value) =>
-                          (value ?? '').trim().isEmpty ? '주소를 입력해 주세요' : null,
+                      validator: (value) => (value ?? '').trim().isEmpty
+                          ? context.tr('주소를 입력해 주세요')
+                          : null,
                     ),
-                    const SizedBox(height: AppSizes.p16),
+                    SizedBox(height: AppSizes.p16),
                     TextFormField(
                       controller: _portController,
-                      decoration: const InputDecoration(labelText: '포트'),
+                      decoration: InputDecoration(labelText: context.tr('포트')),
                       keyboardType: TextInputType.number,
                       inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                       style: monoStyle(
                         fontSize: 14,
-                        color: AppColors.textPrimary,
+                        color: context.colors.textPrimary,
                       ),
                       validator: (value) {
                         final port = int.tryParse((value ?? '').trim());
                         return port == null || port < 1 || port > 65535
-                            ? '1~65535 사이의 포트를 입력해 주세요'
+                            ? context.tr('1~65535 사이의 포트를 입력해 주세요')
                             : null;
                       },
                     ),
-                    const SizedBox(height: AppSizes.p16),
+                    SizedBox(height: AppSizes.p16),
                     TextFormField(
                       controller: _codeController,
-                      decoration: const InputDecoration(
-                        labelText: '연결 코드',
-                        helperText: '데스크탑 화면에 뜬 6자리 숫자',
+                      decoration: InputDecoration(
+                        labelText: context.tr('연결 코드'),
+                        helperText: context.tr('데스크탑 화면에 뜬 6자리 숫자'),
                       ),
                       keyboardType: TextInputType.number,
                       inputFormatters: [
@@ -179,30 +184,30 @@ class _ConnectionScreenState extends ConsumerState<ConnectionScreen> {
                       ],
                       style: monoStyle(
                         fontSize: 20,
-                        color: AppColors.textPrimary,
+                        color: context.colors.textPrimary,
                       ),
                       validator: (value) => (value ?? '').trim().length != 6
-                          ? '6자리를 입력해 주세요'
+                          ? context.tr('6자리를 입력해 주세요')
                           : null,
                     ),
                     if (_failureMessage != null) ...[
-                      const SizedBox(height: AppSizes.p16),
+                      SizedBox(height: AppSizes.p16),
                       Text(
-                        _failureMessage!,
+                        context.tr(_failureMessage!),
                         style: Theme.of(context).textTheme.bodySmall
                             ?.copyWith(color: AppColors.statusError),
                       ),
                     ],
-                    const SizedBox(height: AppSizes.p24),
+                    SizedBox(height: AppSizes.p24),
                     FilledButton(
                       onPressed: _isConnecting ? null : _connect,
                       child: _isConnecting
-                          ? const SizedBox(
+                          ? SizedBox(
                               width: 20,
                               height: 20,
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
-                          : const Text('연결'),
+                          : Text(context.tr('연결')),
                     ),
                   ],
                 ),

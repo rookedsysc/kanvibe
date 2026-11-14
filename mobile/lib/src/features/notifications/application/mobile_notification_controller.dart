@@ -1,3 +1,5 @@
+import '../domain/operational_warning.dart';
+
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
@@ -81,6 +83,10 @@ class MobileNotificationController {
       _receivePush,
     );
     _openedSubscription = notifications.openedNotifications.listen((json) {
+      if (json['type'] == 'operational-warning') {
+        _receiveOperationalWarning(json, isOpened: true);
+        return;
+      }
       final notification = TaskNotification.fromJson(json);
       if (!_isDisposed && notification != null) _openRequests.add(notification);
     });
@@ -98,6 +104,7 @@ class MobileNotificationController {
   final _openRequests = StreamController<TaskNotification>.broadcast();
   final _taskUpdates = StreamController<TaskNotification>.broadcast();
   final _inboxUpdates = StreamController<String>.broadcast();
+  final _warningUpdates = StreamController<OperationalWarning>.broadcast();
   final _connections = <String, DesktopConnection>{};
   final _sessions = <String, _EventSession>{};
   final _registrationQueues = <String, Future<void>>{};
@@ -114,9 +121,16 @@ class MobileNotificationController {
   Stream<TaskNotification> get openRequests => _openRequests.stream;
   Stream<TaskNotification> get taskUpdates => _taskUpdates.stream;
   Stream<String> get inboxUpdates => _inboxUpdates.stream;
+  Stream<OperationalWarning> get warningUpdates => _warningUpdates.stream;
 
   TaskNotification? takeInitialNotification() {
     final json = notifications.takeInitialNotification();
+    if (json?['type'] == 'operational-warning') {
+      scheduleMicrotask(
+        () => _receiveOperationalWarning(json!, isOpened: true),
+      );
+      return null;
+    }
     return json == null ? null : TaskNotification.fromJson(json);
   }
 
@@ -218,6 +232,13 @@ class MobileNotificationController {
       _inboxUpdates.add(session.connection.id);
       return;
     }
+    if (json['type'] == 'operational-warning') {
+      _receiveOperationalWarning({
+        ...json,
+        'connectionId': session.connection.id,
+      });
+      return;
+    }
     final notification = TaskNotification.fromJson({
       ...json,
       'connectionId': session.connection.id,
@@ -226,8 +247,41 @@ class MobileNotificationController {
   }
 
   void _receivePush(Map<String, dynamic> json) {
+    if (json['type'] == 'operational-warning') {
+      _receiveOperationalWarning(json);
+      return;
+    }
     final notification = TaskNotification.fromJson(json);
     if (notification != null) _receiveTaskNotification(notification);
+  }
+
+  void _receiveOperationalWarning(
+    Map<String, dynamic> json, {
+    bool isOpened = false,
+  }) {
+    if (_isDisposed || (!_isActive && !isOpened)) return;
+    final warning = OperationalWarning.fromJson(json);
+    if (warning == null ||
+        (!isOpened && !_connections.containsKey(warning.connectionId))) {
+      return;
+    }
+    if (!isOpened &&
+        warning.kind == 'hook-status-target-missing' &&
+        !warning.shouldNotify) {
+      return;
+    }
+    if (!_seenEvents.add(warning.dedupeKey) && !isOpened) return;
+    if (_seenEvents.length > _retainedEventCount) {
+      _seenEvents.remove(_seenEvents.first);
+    }
+    _warningUpdates.add(warning);
+    if (warning.shouldNotify && !isOpened) {
+      unawaited(
+        notifications.show(warning.toJson()).catchError((Object error) {
+          debugPrint('운영 알림 표시 실패: $error');
+        }),
+      );
+    }
   }
 
   void _receiveTaskNotification(TaskNotification notification) {
@@ -356,6 +410,7 @@ class MobileNotificationController {
     await _openRequests.close();
     await _taskUpdates.close();
     await _inboxUpdates.close();
+    await _warningUpdates.close();
   }
 }
 

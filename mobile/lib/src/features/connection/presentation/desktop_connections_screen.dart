@@ -1,3 +1,5 @@
+import '../../../common/l10n/app_localizations.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -47,13 +49,13 @@ class _DesktopConnectionsScreenState
       final newName = await showDialog<String>(
         context: context,
         builder: (context) => AlertDialog(
-          title: const Text('PC 이름 수정'),
+          title: Text(context.tr('PC 이름 수정')),
           content: TextFormField(
             initialValue: name,
             autofocus: true,
-            decoration: const InputDecoration(
-              labelText: 'PC 이름 (선택)',
-              helperText: '비워 두면 주소를 표시합니다.',
+            decoration: InputDecoration(
+              labelText: context.tr('PC 이름 (선택)'),
+              helperText: context.tr('비워 두면 주소를 표시합니다.'),
             ),
             onChanged: (value) => name = value,
             onFieldSubmitted: (value) => Navigator.of(context).pop(value),
@@ -61,11 +63,11 @@ class _DesktopConnectionsScreenState
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
-              child: const Text('취소'),
+              child: Text(context.tr('취소')),
             ),
             TextButton(
               onPressed: () => Navigator.of(context).pop(name),
-              child: const Text('저장'),
+              child: Text(context.tr('저장')),
             ),
           ],
         ),
@@ -86,16 +88,18 @@ class _DesktopConnectionsScreenState
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('${connection.displayName} 삭제'),
-        content: const Text('이 PC의 연결 정보를 삭제합니다. 다시 연결하려면 PC에서 새 코드를 받아야 합니다.'),
+        title: Text(context.tr('{name} 삭제', {'name': connection.displayName})),
+        content: Text(
+          context.tr('이 PC의 연결 정보를 삭제합니다. 다시 연결하려면 PC에서 새 코드를 받아야 합니다.'),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('취소'),
+            child: Text(context.tr('취소')),
           ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('삭제'),
+            child: Text(context.tr('삭제')),
           ),
         ],
       ),
@@ -125,35 +129,32 @@ class _DesktopConnectionsScreenState
 
   void _showMessage(String message) {
     ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(message)));
+        .showSnackBar(SnackBar(content: Text(context.tr(message))));
   }
 
   void _add() {
     if (_busyId != null) return;
     Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => const ConnectionScreen(isAdding: true),
-      ),
+      MaterialPageRoute<void>(builder: (_) => ConnectionScreen(isAdding: true)),
     );
   }
 
   @override
   Widget build(BuildContext context) {
     final registry =
-        ref.watch(connectionControllerProvider).value ??
-        const SavedConnections();
+        ref.watch(connectionControllerProvider).value ?? SavedConnections();
 
     return Scaffold(
-      appBar: AppBar(title: const Text('연결된 PC')),
+      appBar: AppBar(title: Text(context.tr('연결된 PC'))),
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 640),
+            constraints: BoxConstraints(maxWidth: 640),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(
+                  padding: EdgeInsets.fromLTRB(
                     AppSizes.p16,
                     AppSizes.p16,
                     AppSizes.p16,
@@ -163,14 +164,18 @@ class _DesktopConnectionsScreenState
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        '${registry.connections.length}대의 PC',
+                        context.tr('{count}대의 PC', {
+                          'count': registry.connections.length,
+                        }),
                         style: Theme.of(context).textTheme.titleMedium,
                       ),
-                      const SizedBox(height: AppSizes.p4),
+                      SizedBox(height: AppSizes.p4),
                       Text(
-                        registry.activeId == null
-                            ? '작업할 PC를 선택해 주세요.'
-                            : 'PC를 선택하면 해당 PC의 보드로 이동합니다.',
+                        context.tr(
+                          registry.activeId == null
+                              ? '작업할 PC를 선택해 주세요.'
+                              : 'PC를 선택하면 해당 PC의 보드로 이동합니다.',
+                        ),
                         style: Theme.of(context).textTheme.bodySmall,
                       ),
                     ],
@@ -179,13 +184,13 @@ class _DesktopConnectionsScreenState
                 Expanded(
                   child: ListView.separated(
                     itemCount: registry.connections.length,
-                    separatorBuilder: (_, _) => const Divider(height: 1),
+                    separatorBuilder: (_, _) => Divider(height: 1),
                     itemBuilder: (context, index) {
                       final connection = registry.connections[index];
                       final selected = connection.id == registry.activeId;
                       return ListTile(
                         key: ValueKey('pc-${connection.id}'),
-                        contentPadding: const EdgeInsets.symmetric(
+                        contentPadding: EdgeInsets.symmetric(
                           horizontal: AppSizes.p16,
                           vertical: AppSizes.p4,
                         ),
@@ -194,7 +199,7 @@ class _DesktopConnectionsScreenState
                           Icons.computer,
                           color: selected
                               ? AppColors.brandPrimary
-                              : AppColors.textSecondary,
+                              : context.colors.textSecondary,
                         ),
                         title: Text(
                           connection.displayName,
@@ -212,7 +217,9 @@ class _DesktopConnectionsScreenState
                             ),
                             if (!connection.isEncrypted)
                               Text(
-                                '암호화되지 않은 연결입니다. PC에서 새 코드를 받아 다시 연결해 주세요.',
+                                context.tr(
+                                  '암호화되지 않은 연결입니다. PC에서 새 코드를 받아 다시 연결해 주세요.',
+                                ),
                                 style: Theme.of(context).textTheme.bodySmall
                                     ?.copyWith(color: AppColors.statusError),
                               ),
@@ -224,7 +231,7 @@ class _DesktopConnectionsScreenState
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             if (selected)
-                              const Icon(
+                              Icon(
                                 Icons.check_circle,
                                 color: AppColors.brandPrimary,
                                 semanticLabel: '현재 PC',
@@ -233,15 +240,19 @@ class _DesktopConnectionsScreenState
                               onPressed: _busyId == null
                                   ? () => _rename(connection)
                                   : null,
-                              tooltip: '${connection.displayName} 이름 수정',
-                              icon: const Icon(Icons.edit_outlined),
+                              tooltip: context.tr('{name} 이름 수정', {
+                                'name': connection.displayName,
+                              }),
+                              icon: Icon(Icons.edit_outlined),
                             ),
                             IconButton(
                               onPressed: _busyId == null
                                   ? () => _remove(connection)
                                   : null,
-                              tooltip: '${connection.displayName} 삭제',
-                              icon: const Icon(Icons.delete_outline),
+                              tooltip: context.tr('{name} 삭제', {
+                                'name': connection.displayName,
+                              }),
+                              icon: Icon(Icons.delete_outline),
                             ),
                           ],
                         ),
@@ -253,11 +264,11 @@ class _DesktopConnectionsScreenState
                   ),
                 ),
                 Padding(
-                  padding: const EdgeInsets.all(AppSizes.p16),
+                  padding: EdgeInsets.all(AppSizes.p16),
                   child: FilledButton.icon(
                     onPressed: _busyId == null ? _add : null,
-                    icon: const Icon(Icons.add),
-                    label: const Text('PC 추가'),
+                    icon: Icon(Icons.add),
+                    label: Text(context.tr('PC 추가')),
                   ),
                 ),
               ],

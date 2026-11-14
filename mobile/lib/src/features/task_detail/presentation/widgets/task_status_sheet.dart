@@ -1,3 +1,6 @@
+import '../../../../common/l10n/app_localizations.dart';
+import 'done_transition_dialog.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -10,13 +13,10 @@ import '../../../board/domain/board_task.dart';
 import '../../../board/domain/task_status.dart';
 import '../../../board/presentation/widgets/task_delete_dialogs.dart';
 
-/// 옮겨 갈 수 있는 상태. 데스크탑 상태 패널이 내놓는 네 가지와 같다.
-///
-/// Pending이 빠진 것은 데스크탑도 그렇기 때문이다. 그 상태는 사람이 고르는 것이 아니라
-/// 에이전트가 답을 기다릴 때 데스크탑이 스스로 옮겨 놓는 자리다.
 const _movableStatuses = [
   TaskStatus.todo,
   TaskStatus.progress,
+  TaskStatus.pending,
   TaskStatus.review,
   TaskStatus.done,
 ];
@@ -71,6 +71,18 @@ class _TaskStatusSheetState extends ConsumerState<TaskStatusSheet> {
       return;
     }
 
+    if (status == TaskStatus.done &&
+        !await confirmDoneTransition(context, ref, widget.task.id)) {
+      return;
+    }
+    if (!mounted) return;
+    final current = ref
+        .read(connectionControllerProvider)
+        .value
+        ?.activeConnection;
+    if (current?.id != connection.id || current?.token != connection.token) {
+      return;
+    }
     setState(() {
       _isMoving = true;
       _failureMessage = null;
@@ -187,7 +199,7 @@ class _TaskStatusSheetState extends ConsumerState<TaskStatusSheet> {
 
     return SafeArea(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(
+        padding: EdgeInsets.fromLTRB(
           AppSizes.p24,
           AppSizes.p16,
           AppSizes.p24,
@@ -197,35 +209,42 @@ class _TaskStatusSheetState extends ConsumerState<TaskStatusSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('상태 옮기기', style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: AppSizes.p16),
+            Text(
+              context.tr('상태 옮기기'),
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            SizedBox(height: AppSizes.p16),
             for (final status in targets) ...[
               OutlinedButton(
                 onPressed: _isBusy ? null : () => _move(status),
                 style: OutlinedButton.styleFrom(
-                  minimumSize: const Size.fromHeight(AppSizes.minTouchTarget),
+                  minimumSize: Size.fromHeight(AppSizes.minTouchTarget),
                   foregroundColor: status.color,
                 ),
-                child: Text('${status.label}(으)로 옮기기'),
+                child: Text(
+                  context.tr('{status}(으)로 옮기기', {
+                    'status': context.tr(status.label),
+                  }),
+                ),
               ),
-              const SizedBox(height: AppSizes.p8),
+              SizedBox(height: AppSizes.p8),
             ],
-            const SizedBox(height: AppSizes.p8),
-            const Divider(color: AppColors.borderDefault, height: 1),
-            const SizedBox(height: AppSizes.p16),
+            SizedBox(height: AppSizes.p8),
+            Divider(color: context.colors.borderDefault, height: 1),
+            SizedBox(height: AppSizes.p16),
             TextButton(
               onPressed: _isBusy ? null : _confirmAndDelete,
               style: TextButton.styleFrom(
-                minimumSize: const Size.fromHeight(AppSizes.minTouchTarget),
+                minimumSize: Size.fromHeight(AppSizes.minTouchTarget),
                 foregroundColor: AppColors.statusError,
                 backgroundColor: AppColors.statusError.withValues(alpha: 0.12),
               ),
-              child: Text(_isDeleting ? '삭제하는 중…' : '삭제'),
+              child: Text(context.tr(_isDeleting ? '삭제하는 중…' : '삭제')),
             ),
             if (_failureMessage != null) ...[
-              const SizedBox(height: AppSizes.p8),
+              SizedBox(height: AppSizes.p8),
               Text(
-                _failureMessage!,
+                context.tr(_failureMessage!),
                 style: Theme.of(context).textTheme.bodySmall
                     ?.copyWith(color: Theme.of(context).colorScheme.error),
               ),

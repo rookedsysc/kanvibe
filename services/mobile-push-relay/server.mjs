@@ -36,14 +36,17 @@ function isBoundedString(value, maxBytes) {
 }
 
 function createMessage(payload) {
+  const isOperationalWarning = payload?.data?.type === "operational-warning";
+  const dataKeys = [...Object.keys(fieldLimits), ...(isOperationalWarning ? ["kind"] : [])];
   if (!hasExactKeys(payload, ["token", "notification", "data"]) ||
       !isBoundedString(payload.token, 4096) || !/^[\x21-\x7e]+$/.test(payload.token) ||
       !hasExactKeys(payload.notification, ["title", "body"]) ||
-      !hasExactKeys(payload.data, Object.keys(fieldLimits)) ||
+      !hasExactKeys(payload.data, dataKeys) ||
       !Object.entries(fieldLimits).every(([key, limit]) => isBoundedString(payload.data[key], limit)) ||
       !isBoundedString(payload.notification.title, fieldLimits.title) ||
       !isBoundedString(payload.notification.body, fieldLimits.body) ||
-      payload.data.type !== "task-status-changed" ||
+      (!isOperationalWarning && payload.data.type !== "task-status-changed") ||
+      (isOperationalWarning && payload.data.kind !== "hook-status-target-missing") ||
       !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/.test(payload.data.createdAt) ||
       !Number.isFinite(Date.parse(payload.data.createdAt))) {
     throw new RequestError(400, "invalid_notification");

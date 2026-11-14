@@ -1,9 +1,15 @@
+import 'features/notifications/domain/operational_warning.dart';
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'common/constants/app_theme.dart';
+import 'common/l10n/app_localizations.dart';
+import 'features/settings/application/device_preferences_controller.dart';
+import 'features/settings/domain/device_preferences.dart';
 import 'common/providers.dart';
 import 'features/board/presentation/board_screen.dart';
 import 'features/connection/presentation/connection_screen.dart';
@@ -29,6 +35,7 @@ class _KanvibeMobileAppState extends ConsumerState<KanvibeMobileApp>
   late final NotificationNavigationController _navigation;
   late final StreamSubscription<TaskNotification> _openSubscription;
   int _openGeneration = 0;
+  late final StreamSubscription<OperationalWarning> _warningSubscription;
 
   @override
   void initState() {
@@ -37,6 +44,9 @@ class _KanvibeMobileAppState extends ConsumerState<KanvibeMobileApp>
     _notifications = ref.read(mobileNotificationControllerProvider);
     _navigation = ref.read(notificationNavigationControllerProvider);
     _openSubscription = _notifications.openRequests.listen(_openNotification);
+    _warningSubscription = _notifications.warningUpdates.listen(
+      _showOperationalWarning,
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final initial = _notifications.takeInitialNotification();
@@ -53,6 +63,28 @@ class _KanvibeMobileAppState extends ConsumerState<KanvibeMobileApp>
         state == AppLifecycleState.detached) {
       _notifications.setActive(false);
     }
+  }
+
+  Future<void> _showOperationalWarning(OperationalWarning warning) async {
+    final result = await AsyncValue.guard(
+      () => ref.read(connectionControllerProvider.future),
+    );
+    if (!mounted || !result.hasValue) return;
+    final source = result.requireValue.find(warning.connectionId);
+    if (source == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final context = _navigatorKey.currentContext;
+      _messengerKey.currentState?.showSnackBar(
+        SnackBar(
+          content: Text(
+            '${source.displayName}: ${context?.tr(warning.title) ?? warning.title}\n${context?.tr(warning.body) ?? warning.body}',
+          ),
+          duration: const Duration(seconds: 8),
+        ),
+      );
+    });
+    WidgetsBinding.instance.ensureVisualUpdate();
   }
 
   Future<void> _openNotification(TaskNotification notification) async {
@@ -90,9 +122,11 @@ class _KanvibeMobileAppState extends ConsumerState<KanvibeMobileApp>
       if (!mounted || generation != _openGeneration) return;
       _messengerKey.currentState?.showSnackBar(
         SnackBar(
-          content: Text(error.message),
+          content: Text(
+            _navigatorKey.currentContext?.tr(error.message) ?? error.message,
+          ),
           action: SnackBarAction(
-            label: '다시 시도',
+            label: _navigatorKey.currentContext?.tr('다시 시도') ?? '다시 시도',
             onPressed: () => _openNotification(notification),
           ),
         ),
@@ -106,19 +140,37 @@ class _KanvibeMobileAppState extends ConsumerState<KanvibeMobileApp>
     _navigation.cancel();
     WidgetsBinding.instance.removeObserver(this);
     unawaited(_openSubscription.cancel());
+    unawaited(_warningSubscription.cancel());
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final connections = ref.watch(connectionControllerProvider);
+    final preferences =
+        ref.watch(devicePreferencesProvider).value?.preferences ??
+        const DevicePreferences();
 
     return MaterialApp(
       navigatorKey: _navigatorKey,
       scaffoldMessengerKey: _messengerKey,
       title: 'kanvibe',
       debugShowCheckedModeBanner: false,
-      theme: buildAppTheme(),
+      theme: buildAppTheme(Brightness.light),
+      darkTheme: buildAppTheme(),
+      themeMode: switch (preferences.theme) {
+        AppThemePreference.system => ThemeMode.system,
+        AppThemePreference.light => ThemeMode.light,
+        AppThemePreference.dark => ThemeMode.dark,
+      },
+      locale: Locale(preferences.language.name),
+      supportedLocales: AppLocalizations.supportedLocales,
+      localizationsDelegates: const [
+        AppLocalizations.delegate,
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
       home: connections.when(
         loading: () =>
             const Scaffold(body: Center(child: CircularProgressIndicator())),

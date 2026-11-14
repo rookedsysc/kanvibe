@@ -112,7 +112,7 @@ describe("desktop shortcut routing", () => {
     const broadcastBody = source.slice(
       source.indexOf("function broadcastShortcutBindingsChanged()"),
     );
-    expect(broadcastBody).toContain("BrowserWindow.getAllWindows()");
+    expect(broadcastBody).toContain("getUserWindows(BrowserWindow)");
     expect(broadcastBody).toContain('window.webContents.send("kanvibe:shortcut-bindings-changed")');
   });
 

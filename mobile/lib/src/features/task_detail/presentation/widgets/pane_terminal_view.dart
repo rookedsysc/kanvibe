@@ -1,3 +1,5 @@
+import '../../../../common/l10n/app_localizations.dart';
+
 import 'dart:async';
 import 'dart:convert';
 
@@ -375,8 +377,8 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('단축키를 실행하지 못했습니다. 연결과 데스크탑 버전을 확인해 주세요.'),
+          SnackBar(
+            content: Text(context.tr('단축키를 실행하지 못했습니다. 연결과 데스크탑 버전을 확인해 주세요.')),
           ),
         );
       }
@@ -487,7 +489,7 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
                       minimumSize: const Size(48, 48),
                     ),
                     icon: const Icon(Icons.copy),
-                    label: const Text('복사'),
+                    label: Text(context.tr('복사')),
                   ),
                 );
               },
@@ -542,12 +544,19 @@ class _PaneStreamFailure extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                message,
+                context.tr(message),
                 textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodyMedium,
+                style: Theme.of(context).textTheme.bodyMedium
+                    ?.copyWith(color: AppColors.textPrimary),
               ),
               const SizedBox(height: 16),
-              TextButton(onPressed: onRetry, child: const Text('다시 연결')),
+              TextButton(
+                onPressed: onRetry,
+                style: TextButton.styleFrom(
+                  foregroundColor: AppColors.textPrimary,
+                ),
+                child: Text(context.tr('다시 연결')),
+              ),
             ],
           ),
         ),

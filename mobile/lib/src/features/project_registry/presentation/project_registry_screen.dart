@@ -4,6 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../common/constants/app_sizes.dart';
 import '../../../common/network/desktop_connection.dart';
 import '../application/project_registry_controller.dart';
+import '../application/registered_projects_controller.dart';
+import '../../../common/l10n/app_localizations.dart';
+import 'registered_projects_screen.dart';
 import '../data/project_scan_result.dart';
 
 class ProjectRegistryScreen extends ConsumerStatefulWidget {
@@ -49,6 +52,7 @@ class _ProjectRegistryScreenState extends ConsumerState<ProjectRegistryScreen> {
     final provider = projectRegistryProvider(widget.connection);
     final state = ref.watch(provider);
     final controller = ref.read(provider.notifier);
+    final hosts = ref.watch(projectHostsProvider(widget.connection));
     ref.listen(provider.select((value) => (value.path, value.isLoading)), (
       _,
       selection,
@@ -59,7 +63,24 @@ class _ProjectRegistryScreenState extends ConsumerState<ProjectRegistryScreen> {
     return PopScope(
       canPop: !state.isScanning,
       child: Scaffold(
-        appBar: AppBar(title: const Text('프로젝트 등록')),
+        appBar: AppBar(
+          title: Text(context.tr('프로젝트 등록')),
+          actions: [
+            IconButton(
+              tooltip: context.tr('등록된 프로젝트'),
+              onPressed: state.isScanning
+                  ? null
+                  : () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => RegisteredProjectsScreen(
+                          connection: widget.connection,
+                        ),
+                      ),
+                    ),
+              icon: const Icon(Icons.list_alt),
+            ),
+          ],
+        ),
         bottomNavigationBar: SafeArea(
           child: Padding(
             padding: const EdgeInsets.all(AppSizes.p16),
@@ -95,11 +116,46 @@ class _ProjectRegistryScreenState extends ConsumerState<ProjectRegistryScreen> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       Text(
-                        '${widget.connection.displayName}의 폴더',
+                        context.tr('{host}의 폴더', {
+                          'host':
+                              state.sshHost ?? widget.connection.displayName,
+                        }),
                         style: Theme.of(context).textTheme.titleMedium,
                       ),
                       const SizedBox(height: AppSizes.p8),
-                      const Text('선택한 폴더와 하위 폴더의 Git 저장소를 찾아 등록합니다.'),
+                      Text(context.tr('선택한 폴더와 하위 폴더의 Git 저장소를 찾아 등록합니다.')),
+                      const SizedBox(height: AppSizes.p16),
+                      Semantics(
+                        identifier: 'project-ssh-host',
+                        child: DropdownButtonFormField<String>(
+                          key: ValueKey(state.sshHost),
+                          initialValue: state.sshHost ?? '',
+                          isExpanded: true,
+                          decoration: InputDecoration(
+                            labelText: context.tr('저장소 위치'),
+                          ),
+                          items: [
+                            DropdownMenuItem(
+                              value: '',
+                              child: Text(context.tr('이 PC의 로컬 폴더')),
+                            ),
+                            for (final host in hosts.value ?? <String>[])
+                              DropdownMenuItem(value: host, child: Text(host)),
+                          ],
+                          onChanged: state.isScanning
+                              ? null
+                              : (value) => controller.selectHost(
+                                  value == '' ? null : value,
+                                ),
+                        ),
+                      ),
+                      if (hosts.hasError)
+                        TextButton(
+                          onPressed: () => ref.invalidate(
+                            projectHostsProvider(widget.connection),
+                          ),
+                          child: Text(context.tr('SSH 호스트 목록 다시 불러오기')),
+                        ),
                       const SizedBox(height: AppSizes.p16),
                       Semantics(
                         identifier: 'project-path',
@@ -109,8 +165,8 @@ class _ProjectRegistryScreenState extends ConsumerState<ProjectRegistryScreen> {
                           enabled: !state.isBusy,
                           autocorrect: false,
                           textInputAction: TextInputAction.go,
-                          decoration: const InputDecoration(
-                            labelText: '폴더 경로',
+                          decoration: InputDecoration(
+                            labelText: context.tr('폴더 경로'),
                             hintText: '~/Documents',
                           ),
                           onSubmitted: _openPath,
@@ -125,14 +181,14 @@ class _ProjectRegistryScreenState extends ConsumerState<ProjectRegistryScreen> {
                                 ? null
                                 : controller.goUp,
                             icon: const Icon(Icons.arrow_upward),
-                            label: const Text('상위 폴더'),
+                            label: Text(context.tr('상위 폴더')),
                           ),
                           const Spacer(),
                           TextButton(
                             onPressed: state.isBusy
                                 ? null
                                 : () => _openPath(_pathController.text),
-                            child: const Text('경로 열기'),
+                            child: Text(context.tr('경로 열기')),
                           ),
                         ],
                       ),
@@ -147,7 +203,7 @@ class _ProjectRegistryScreenState extends ConsumerState<ProjectRegistryScreen> {
                           onPressed: state.isBusy
                               ? null
                               : () => controller.browse(state.path),
-                          child: const Text('다시 시도'),
+                          child: Text(context.tr('다시 시도')),
                         ),
                       ],
                     ],
@@ -170,10 +226,12 @@ class _ProjectRegistryScreenState extends ConsumerState<ProjectRegistryScreen> {
                     ),
                   ),
                 if (state.hasDirectory && state.directories.isEmpty)
-                  const SliverToBoxAdapter(
+                  SliverToBoxAdapter(
                     child: Padding(
                       padding: EdgeInsets.all(AppSizes.p16),
-                      child: Text('하위 폴더가 없습니다. 이 폴더에서 등록할 수 있습니다.'),
+                      child: Text(
+                        context.tr('하위 폴더가 없습니다. 이 폴더에서 등록할 수 있습니다.'),
+                      ),
                     ),
                   ),
                 SliverPadding(
@@ -217,17 +275,29 @@ class _ScanResult extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(
-          '프로젝트 ${result.registered.length}개 등록',
+          context.tr('프로젝트 {count}개 등록', {'count': result.registered.length}),
           style: Theme.of(context).textTheme.titleMedium,
         ),
         for (final name in result.registered) Text(name),
         if (result.skipped.isNotEmpty)
-          Text('이미 등록된 프로젝트 ${result.skipped.length}개'),
+          Text(
+            context.tr('이미 등록된 프로젝트 {count}개', {
+              'count': result.skipped.length,
+            }),
+          ),
         if (result.worktreeTasks.isNotEmpty)
-          Text('Worktree 태스크 ${result.worktreeTasks.length}개 등록'),
+          Text(
+            context.tr('Worktree 태스크 {count}개 등록', {
+              'count': result.worktreeTasks.length,
+            }),
+          ),
         if (result.registeredWorktrees.isNotEmpty)
-          Text('Worktree ${result.registeredWorktrees.length}개 등록'),
-        if (result.isEmpty) const Text('이 폴더에서 Git 저장소를 찾지 못했습니다.'),
+          Text(
+            context.tr('Worktree {count}개 등록', {
+              'count': result.registeredWorktrees.length,
+            }),
+          ),
+        if (result.isEmpty) Text(context.tr('이 폴더에서 Git 저장소를 찾지 못했습니다.')),
         for (final error in result.errors)
           Text(
             error,

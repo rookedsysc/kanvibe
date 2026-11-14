@@ -623,7 +623,7 @@ export async function getMobileAiSessionAttachment(taskId: string, provider: AiS
 
 function toMobileNotification(notification: AppNotification) {
   const { id, title, body, taskId, isRead, createdAt } = notification;
-  return { id, title, body, taskId, isRead, createdAt };
+  return { id, title, body, taskId, isRead, createdAt, ...(notification.action ? { actionType: notification.action.type } : {}) };
 }
 
 export async function getMobileNotifications() {
@@ -720,6 +720,7 @@ export interface MobileTaskDraft {
   baseBranch?: string;
   description?: string;
   priority?: string;
+  sessionType?: string;
 }
 
 /**
@@ -729,6 +730,10 @@ export interface MobileTaskDraft {
  * 두 화면이 다른 규칙으로 제목을 정하면 같은 보드에서 어느 쪽에서 만들었는지에 따라 제목 모양이 갈린다.
  */
 export async function createMobileTask(draft: MobileTaskDraft): Promise<KanbanTask> {
+  const sessionType = draft.sessionType === undefined
+    ? await getDefaultSessionType()
+    : readEnumValue(Object.values(SessionType), draft.sessionType, "세션 타입");
+  if (!sessionType) throw new MobileTaskInputError("세션 타입 값이 올바르지 않습니다");
   const createdTask = await createTask({
     title: draft.branchName,
     branchName: readGitRef(draft.branchName, "브랜치 이름"),
@@ -736,8 +741,7 @@ export async function createMobileTask(draft: MobileTaskDraft): Promise<KanbanTa
     baseBranch: draft.baseBranch ? readGitRef(draft.baseBranch, "베이스 브랜치") : undefined,
     description: draft.description,
     priority: readEnumValue(Object.values(TaskPriority), draft.priority, "우선순위"),
-    /** 세션 종류는 데스크탑이 정한다. 이전 앱이 보낸 값이 있어도 따르지 않는다 */
-    sessionType: await getDefaultSessionType(),
+    sessionType,
   });
   await registerMobileTaskOnPeerClients(createdTask);
   return createdTask;
