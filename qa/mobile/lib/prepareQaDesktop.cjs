@@ -26,6 +26,12 @@ const FIXTURE_SESSION_TASK_ID = "00000000-0000-4000-8000-000000000003";
 /** 플로우가 셀렉터로 그대로 쓰는 값이라 사람이 읽고 옮겨 적을 수 있게 상수로 둔다 */
 const NO_SESSION_TASK_TITLE = "Maestro Fixture NoSession";
 const SESSION_TASK_TITLE = "Maestro Fixture Session";
+/** terminal-clipboard 흐름이 붙여넣은 값에서 찾는 글자 */
+const CLIPBOARD_FIXTURE_TEXT = "VIM_OSC52_NATIVE_OK";
+/** 모바일에서 만든 태스크가 쓸 세션 종류. herdr 흐름만 `--default-session-type herdr`로 바꾼다 */
+const DEFAULT_SESSION_TYPE = "tmux";
+/** `src/entities/KanbanTask.ts`의 SessionType 값 */
+const KNOWN_SESSION_TYPES = ["tmux", "zellij", "herdr", "terminal"];
 
 /** 데스크탑이 비추는 pane에 미리 찍어 두는 표식. 기기 화면에 이 글자가 보이면 미러링이 살아 있는 것이다 */
 const PANE_READY_MARKER = "MAESTRO_PANE_READY";
@@ -134,6 +140,33 @@ function insertFixtureTask(appDataDir, task) {
   const values = Object.values(task).map(quoteSqlValue).join(", ");
 
   run("sqlite3", [path.join(appDataDir, "kanvibe.db"), `INSERT INTO kanban_tasks (${columns}) VALUES (${values});`]);
+}
+
+/**
+ * 모바일 생성 화면은 세션 종류를 묻지 않고 데스크탑 기본값으로 만든다. 새 설치의 기본값은 herdr라서,
+ * 그대로 두면 격리 데스크탑이 사용자의 herdr 서버에 작업 공간을 만든다. 그래서 격리 DB에 기본값을 직접 정해 둔다.
+ */
+function insertDefaultSessionType(appDataDir, sessionType) {
+  run("sqlite3", [
+    path.join(appDataDir, "kanvibe.db"),
+    `INSERT INTO app_settings (id, key, value) VALUES ('qa-default-session-type', 'default_session_type', '${sessionType}');`,
+  ]);
+}
+
+/**
+ * terminal-clipboard 흐름이 여는 파일과 Vim 설정을 worktree에 둔다. 사용자 Vim 설정을 읽지 않고
+ * Neovim 내장 OSC 52 공급자로만 복사하므로, 기기 클립보드에 값이 오면 터미널의 OSC 52 전달이 동작한 것이다.
+ */
+function writeClipboardFixture(worktreePath) {
+  fs.writeFileSync(path.join(worktreePath, "clipboard.txt"), `${CLIPBOARD_FIXTURE_TEXT}\n`);
+  fs.writeFileSync(path.join(worktreePath, "clipboard.vim"), [
+    "lua << EOF",
+    "local osc52 = require('vim.ui.clipboard.osc52')",
+    "vim.g.clipboard = { name = 'OSC 52', copy = { ['+'] = osc52.copy('+'), ['*'] = osc52.copy('*') }, paste = { ['+'] = function() return {} end, ['*'] = function() return {} end } }",
+    "EOF",
+    "set clipboard=unnamedplus",
+    "",
+  ].join("\n"));
 }
 
 /** 세션 있는 태스크는 데스크탑이 만드는 것과 같은 규칙의 worktree와 세션 이름을 직접 갖춘다 */
@@ -347,6 +380,12 @@ async function main() {
     throw new Error("--run-dir <경로>가 필요합니다");
   }
   const runDir = path.resolve(process.argv[runDirIndex + 1]);
+  const sessionTypeIndex = process.argv.indexOf("--default-session-type");
+  const defaultSessionType = sessionTypeIndex === -1 ? DEFAULT_SESSION_TYPE : process.argv[sessionTypeIndex + 1];
+  // 데스크탑은 모르는 값을 herdr로 읽으므로, 잘못 친 값이 사용자의 herdr 서버로 새지 않게 여기서 막는다
+  if (!KNOWN_SESSION_TYPES.includes(defaultSessionType)) {
+    throw new Error(`--default-session-type은 ${KNOWN_SESSION_TYPES.join(", ")} 중 하나여야 합니다: ${defaultSessionType}`);
+  }
   const appDataDir = path.join(runDir, "app-data");
   fs.mkdirSync(appDataDir, { recursive: true });
 
@@ -360,10 +399,12 @@ async function main() {
     insertFixtureTask(appDataDir, { id: FIXTURE_NO_SESSION_TASK_ID, title: NO_SESSION_TASK_TITLE });
 
     const projectId = insertFixtureProject(appDataDir, repoPath);
+    insertDefaultSessionType(appDataDir, defaultSessionType);
     const sessionTask = insertFixtureSessionTask(appDataDir, repoPath, projectId);
 
     const worktreePath = buildFixtureWorktreePath(repoPath, FIXTURE_BRANCH);
     commitSourceBranchFixture(worktreePath);
+    writeClipboardFixture(worktreePath);
     startFixtureSession(sessionTask.sessionName, worktreePath);
     const probe = startCommandProbe(sessionTask.sessionName, repoPath, runDir);
 

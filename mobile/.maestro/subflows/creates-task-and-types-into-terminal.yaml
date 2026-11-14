@@ -3,24 +3,22 @@
 # 데스크탑은 세션을 터미널을 여는 시점에 만든다. 그래서 기기에서 만든 태스크에는 처음에 비출 세션이 없고,
 # 기기가 태스크를 열 때 데스크탑과 같은 길로 세션을 띄워야 한다. 픽스처처럼 세션을 미리 띄워 두지 않는 것이 이 흐름의 요점이다.
 #
-# 세션 종류는 SESSION_TYPE으로 받는다. 데스크탑 기본값(새 설치는 herdr)에 기대지 않도록 항상 고른다.
+# 생성 화면은 세션 종류를 묻지 않고 데스크탑 기본값으로 만든다. 그래서 세션 종류는 격리 데스크탑을 띄울 때
+# `--default-session-type`으로 정하고, SESSION_TYPE에는 그 값을 넘겨 스크린샷 이름에 남긴다.
 # 명령이 실행됐는지는 BRANCH_NAME의 worktree에 MARKER 파일이 생겼는지를 probe로 확인한다.
 appId: ${APP_ID}
 ---
 - runFlow: opens-task-menu.yaml
 - tapOn: "새 태스크"
 - extendedWaitUntil:
-    visible: "프로젝트 \\*"
+    visible: "(?s)프로젝트 \\*.*"
     timeout: 10000
-- tapOn: "프로젝트 \\*"
+- tapOn: "(?s)프로젝트 \\*.*"
 - tapOn: "kanvibe-qa-fixture"
 - tapOn: "브랜치 이름 \\*"
 - inputText: ${BRANCH_NAME}
 # 키보드는 Enter로 내린다. iOS의 hideKeyboard는 화면을 눌러 내리다 우선순위 드롭다운을 열어 버린다.
-# 드롭다운은 라벨과 고른 값이 시맨틱스 하나(`세션 타입\nherdr`)로 합쳐져 있어 전체 일치로는 잡히지 않는다
 - pressKey: Enter
-- tapOn: "(?s).*세션 타입.*"
-- tapOn: ${SESSION_TYPE}
 - scrollUntilVisible:
     element: "만들기"
     direction: DOWN

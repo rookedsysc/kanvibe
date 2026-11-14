@@ -40,7 +40,6 @@ env:
 - inputText: "From Android"
 - tapOn:
     id: pane-chat-send
-- hideKeyboard
 - extendedWaitUntil:
     visible: "(?s).*live-pane-a received on fixture-deep: From Android.*"
     timeout: 30000
@@ -71,7 +70,6 @@ env:
 - inputText: "Android changed model"
 - tapOn:
     id: pane-chat-send
-- hideKeyboard
 - extendedWaitUntil:
     visible: "(?s).*live-pane-a received on fixture-fast: Android changed model.*"
     timeout: 30000

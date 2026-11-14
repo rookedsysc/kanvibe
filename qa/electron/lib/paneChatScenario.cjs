@@ -41,6 +41,10 @@ async function runPaneChatScenario({ page, invoke, taskId, repo, fakeHome, runDi
   await write(first.id, `/usr/bin/python3 ${quote(path.join(executableDir, "codex"))} codex live-pane-a\r`);
   const initial = await until(read, (snapshot) => snapshot.provider === "codex" && snapshot.inputState === "ready", "Codex foreground");
   assert.equal(initial.paneId, first.id);
+  // 출시 확인이 늦게 끝나면 업데이트 대화상자가 이 시점에 떠서 토글을 가린다. 뜰 시간을 준 뒤 한 번 더 닫는다
+  await page.waitForTimeout(3000);
+  await page.keyboard.press("Escape");
+  if (await closeUpdate.isVisible().catch(() => false)) await closeUpdate.click({ position: { x: 5, y: 5 } });
   await page.getByTestId("pane-chat-toggle").click();
   const input = page.getByRole("textbox", { name: "현재 CLI에 메시지 보내기…" });
   await input.waitFor({ state: "visible" });
