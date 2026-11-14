@@ -5,6 +5,7 @@ import '../../../common/constants/app_colors.dart';
 import '../../../common/constants/app_sizes.dart';
 import '../domain/chat_history.dart';
 import 'chat_attachment_tile.dart';
+import 'chat_file_card.dart';
 import 'widgets/chat_message_content.dart';
 
 class ChatMessageTile extends StatefulWidget {
@@ -45,6 +46,20 @@ class _ChatMessageTileState extends State<ChatMessageTile> {
     final timeLabel = time == null
         ? null
         : '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+    final taskId = widget.taskId;
+    final fileCards = taskId == null || message.files.isEmpty
+        ? null
+        : Padding(
+            padding: const EdgeInsets.only(top: AppSizes.p8),
+            child: Wrap(
+              spacing: AppSizes.p8,
+              runSpacing: AppSizes.p8,
+              children: [
+                for (final file in message.files)
+                  ChatFileCard(taskId: taskId, file: file),
+              ],
+            ),
+          );
 
     return Padding(
       padding: const EdgeInsets.only(bottom: AppSizes.p16),
@@ -68,7 +83,7 @@ class _ChatMessageTileState extends State<ChatMessageTile> {
                     ),
                     label: Row(
                       children: [
-                        Text(label),
+                        Text(message.toolName ?? label),
                         const SizedBox(width: AppSizes.p8),
                         Expanded(
                           child: Text(
@@ -126,6 +141,7 @@ class _ChatMessageTileState extends State<ChatMessageTile> {
                     ),
                   ),
                 ),
+                ?fileCards,
                 Row(
                   mainAxisAlignment: isUser
                       ? MainAxisAlignment.end
@@ -178,7 +194,9 @@ class _ChatMessageTileState extends State<ChatMessageTile> {
                     ),
                   ],
                 ),
-              ],
+              ] else
+                // 접힌 도구 실행에서도 어떤 파일이 바뀌었는지는 바로 보여야 한다
+                ?fileCards,
             ],
           ),
         ),

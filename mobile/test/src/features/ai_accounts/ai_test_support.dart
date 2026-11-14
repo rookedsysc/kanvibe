@@ -52,6 +52,7 @@ class AiStreamClient extends DesktopClient {
       output: frames.stream,
       onWrite: writes.add,
       onResize: (cols, rows) => sizes.add((cols: cols, rows: rows)),
+      onRefreshHistory: () {},
       onClose: () async {
         closes++;
       },

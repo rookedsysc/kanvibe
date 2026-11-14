@@ -118,6 +118,24 @@ describe("B terminal real TLS/stdio contract", () => {
     expect(counter).toEqual(["start", `input:${Buffer.from("DIRECT_INPUT").toString("base64")}`, `input:${Buffer.from("RELAY_INPUT").toString("base64")}`]);
   });
 
+  it("직접 붙은 기기가 이력 갱신을 요청해도 연결을 유지하고 이어지는 입력을 controller에 전달한다", async () => {
+    const grant = makeGrant("direct-refresh");
+    expect(await request("grant", { grant })).toMatchObject({ ok: true });
+    const direct = connect(grant);
+    const frames: string[] = [];
+    const closeCodes: number[] = [];
+    direct.on("message", (data) => frames.push(data.toString()));
+    direct.on("close", (code) => closeCodes.push(code));
+    await once(direct, "open");
+    await poll(() => frames.some((frame) => frame.includes("controller-ready")));
+    direct.send(Buffer.from(JSON.stringify({ type: "refresh-history" })));
+    direct.send("AFTER_REFRESH");
+    await poll(() => closeCodes.length > 0 || frames.some((frame) => frame.includes("AFTER_REFRESH")));
+    expect(closeCodes).toEqual([]);
+    const counter = (await readFile(path.join(directory, "counter"), "utf8")).trim().split("\n");
+    expect(counter).toEqual(["start", `input:${Buffer.from("AFTER_REFRESH").toString("base64")}`]);
+  });
+
   it("잘못된 capability와 다른 pane relay를 거절하고 기기 해제는 직접 연결도 닫는다", async () => {
     const grant = makeGrant("device-one");
     await request("grant", { grant });

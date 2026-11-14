@@ -29,6 +29,8 @@ class MultiPaneTerminal extends StatelessWidget {
     taskId: taskId,
     pane: pane,
     canResize: surfaces.canResize,
+    canRefreshHistory: surfaces.canRefreshHistory,
+    canPrepareDirectConnection: surfaces.canPrepareDirectConnection,
     sessionType: surfaces.sessionType,
     canRespondToDeviceQueries: surfaces.canRespondToDeviceQueries,
     isActive: isActive,

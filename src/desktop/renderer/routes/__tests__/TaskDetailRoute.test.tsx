@@ -2549,7 +2549,8 @@ describe("TaskDetailRoute", () => {
 
     expect(await screen.findByRole("heading", { level: 2, name: "작업 요약" })).toBeTruthy();
     expect(screen.getByText("첫 번째 항목").tagName).toBe("LI");
-    expect(screen.getByText("const value = 1;").closest("pre")).toBeTruthy();
+    /** 코드는 색을 입히느라 여러 조각으로 나뉘므로 블록 전체의 글자로 확인한다 */
+    expect([...document.querySelectorAll("pre")].map((block) => block.textContent)).toContain("const value = 1;\n");
     expect(await screen.findByTestId("rendered-mermaid-svg")).toBeTruthy();
     expect(screen.getByText(/graph TD/)).toBeTruthy();
     expect(screen.queryByText(/alert\("xss"\)/)).toBeNull();

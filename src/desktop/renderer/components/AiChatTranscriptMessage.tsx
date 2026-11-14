@@ -2,11 +2,17 @@ import { useState } from "react";
 import { useTranslations } from "next-intl";
 import { AiProviderIcon } from "@/components/AiProviderIcon";
 import { AI_SESSION_PROVIDER_LABELS } from "@/lib/aiSessions/providers";
-import type { AggregatedAiMessage, AiSessionProvider } from "@/lib/aiSessions/types";
+import type { AggregatedAiMessage, AiMessageFile, AiSessionProvider } from "@/lib/aiSessions/types";
 import { AiSessionMessageContent } from "./AiSessionMessageContent";
 import { AiChatAttachment, type AiChatAttachmentContext } from "./AiChatAttachment";
 
-export function AiChatTranscriptMessage({ message, provider, attachmentContext }: { message: AggregatedAiMessage; provider: AiSessionProvider; attachmentContext?: AiChatAttachmentContext }) {
+export function AiChatTranscriptMessage({ message, provider, attachmentContext, onOpenFile }: {
+  message: AggregatedAiMessage;
+  provider: AiSessionProvider;
+  attachmentContext?: AiChatAttachmentContext;
+  /** AI가 만들거나 고친 파일의 카드를 눌렀을 때 미리보기를 연다. 없으면 카드를 그리지 않는다 */
+  onOpenFile?: (file: AiMessageFile) => void;
+}) {
   const t = useTranslations("taskDetail");
   const [copyState, setCopyState] = useState<"idle" | "copied" | "error">("idle");
   const text = message.fullText || message.text;
@@ -43,26 +49,50 @@ export function AiChatTranscriptMessage({ message, provider, attachmentContext }
       </button> : null}
     </div>
   );
-  const body = <>{text ? <AiSessionMessageContent text={text} isUserMessage={false} /> : null}{message.attachments?.map((attachment, index) => <AiChatAttachment key={`${attachment.id}:${index}`} attachment={attachment} context={attachmentContext} />)}</>;
+  const fileCards = onOpenFile && message.files?.length ? (
+    <ul className="mt-2 flex flex-wrap gap-2" aria-label={t("aiSessions.changedFiles")}>
+      {message.files.map((file, index) => (
+        <li key={`${file.path}:${index}`} className="min-w-0 max-w-full">
+          <button
+            type="button"
+            onClick={() => onOpenFile(file)}
+            title={file.path}
+            className="flex min-h-11 max-w-full items-center gap-3 rounded-lg border border-border-default bg-bg-surface px-3 py-2 text-left hover:bg-bg-page focus-visible:outline-2 focus-visible:outline-brand-primary"
+          >
+            <span className="min-w-0">
+              <span className="block truncate text-sm font-medium text-text-primary">{file.path.split("/").at(-1)}</span>
+              <span className="block text-xs text-text-secondary">{t(`aiSessions.fileChange.${file.change}`)}</span>
+            </span>
+          </button>
+        </li>
+      ))}
+    </ul>
+  ) : null;
+  const content = !text ? null : isUser ? <p className="whitespace-pre-wrap break-words">{text}</p> : <AiSessionMessageContent text={text} />;
+  const body = <>{content}{message.attachments?.map((attachment, index) => <AiChatAttachment key={`${attachment.id}:${index}`} attachment={attachment} context={attachmentContext} />)}</>;
 
   if (isDisclosure) {
     return (
-      <details className="group rounded-lg border border-border-subtle bg-bg-surface px-4 py-2" data-message-role={message.role}>
-        <summary className="cursor-pointer py-1 text-xs font-medium text-text-secondary focus-visible:outline-2 focus-visible:outline-brand-primary">
-          {t(`aiSessions.roles.${message.role}`)}
-          <span className="ml-2 inline-block max-w-[65%] truncate align-bottom font-normal text-text-secondary">{text.split("\n")[0]}</span>
-        </summary>
-        <div className="mt-2 min-w-0 pb-2 text-sm leading-6 text-text-primary">{body}{meta}</div>
-      </details>
+      <div data-message-role={message.role}>
+        <details className="group rounded-lg border border-border-subtle bg-bg-surface px-4 py-2">
+          <summary className="cursor-pointer py-1 text-xs font-medium text-text-secondary focus-visible:outline-2 focus-visible:outline-brand-primary">
+            {message.toolName ?? t(`aiSessions.roles.${message.role}`)}
+            <span className="ml-2 inline-block max-w-[65%] truncate align-bottom font-normal text-text-secondary">{text.split("\n")[0]}</span>
+          </summary>
+          <div className="mt-2 min-w-0 pb-2 text-sm leading-6 text-text-primary">{body}{meta}</div>
+        </details>
+        {fileCards}
+      </div>
     );
   }
 
   return (
     <article className={`flex min-w-0 ${isUser ? "justify-end" : "justify-start"}`} data-message-role={message.role} aria-label={isUser ? t("aiSessions.roles.user") : undefined}>
       <div className={isUser
-        ? "min-w-0 max-w-[88%] rounded-2xl rounded-br-md bg-bg-surface px-4 py-2 text-sm leading-6 text-text-primary"
+        ? "min-w-0 max-w-[80%] rounded-2xl rounded-br-md bg-bg-surface px-4 py-2 text-sm leading-6 text-text-primary"
         : "min-w-0 w-full py-1 text-sm leading-7 text-text-primary"}>
         {body}
+        {fileCards}
         {meta}
       </div>
     </article>

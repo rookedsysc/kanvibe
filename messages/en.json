@@ -561,6 +561,29 @@
         "reasoning": "Reasoning",
         "tool": "Tool",
         "unknown": "Other"
+      },
+      "changedFiles": "Files the AI changed",
+      "fileChange": {
+        "created": "Created",
+        "modified": "Edited"
+      },
+      "filePreview": {
+        "title": "Preview of {name}",
+        "viewMode": "View mode",
+        "rendered": "Preview",
+        "source": "Source",
+        "copy": "Copy",
+        "copied": "Copied",
+        "copyFailed": "Copy failed",
+        "close": "Close preview",
+        "loading": "Loading file…",
+        "retry": "Try again",
+        "failure": {
+          "outside-worktree": "This file is outside the task folder, so it cannot be opened here.",
+          "not-found": "The file no longer exists.",
+          "too-large": "The file is larger than 1 MB, so it cannot be previewed.",
+          "unreadable": "Could not read the file."
+        }
       }
     },
     "priority": "Priority",

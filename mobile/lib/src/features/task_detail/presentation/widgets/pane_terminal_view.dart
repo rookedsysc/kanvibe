@@ -3,6 +3,7 @@ import '../../../../common/l10n/app_localizations.dart';
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -24,6 +25,8 @@ class PaneTerminalView extends ConsumerStatefulWidget {
     required this.taskId,
     required this.pane,
     this.canResize = false,
+    this.canRefreshHistory = false,
+    this.canPrepareDirectConnection = true,
     this.sessionType = SessionType.terminal,
     this.canRespondToDeviceQueries = false,
     this.isActive = true,
@@ -35,6 +38,8 @@ class PaneTerminalView extends ConsumerStatefulWidget {
   final String taskId;
   final MirrorPane pane;
   final bool canResize;
+  final bool canRefreshHistory;
+  final bool canPrepareDirectConnection;
   final bool canRespondToDeviceQueries;
   final bool isActive;
   final VoidCallback? onToggleChat;
@@ -62,6 +67,9 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
   bool _isShortcutBusy = false;
   int _streamGeneration = 0;
   Completer<void>? _streamCancellation;
+  Size? _cellSize;
+  Offset? _touchedPosition;
+  bool _hasRequestedHistoryForTouch = false;
 
   static const _screenRedrawPrefix = '\x1b[H\x1b[2J\x1b[3J';
   static const _firstFrameTimeout = Duration(seconds: 15);
@@ -82,7 +90,7 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
     WidgetsBinding.instance.addObserver(this);
     _terminal = xterm.Terminal(
       maxLines: _scrollbackLines,
-      mouseHandler: const _TerminalWheelMouseHandler(),
+      mouseHandler: _TerminalWheelMouseHandler(_readTouchedCell),
     );
     _terminal.resize(widget.pane.width, widget.pane.height);
     _terminalController.addListener(_applyDeferredRedraw);
@@ -127,6 +135,42 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
 
   /// 데스크탑 터미널이 보관하는 양과 비슷하게 잡는다. 더 늘리면 폰 메모리만 먹는다
   static const _scrollbackLines = 2000;
+
+  /// 손가락이 닿은 칸. 휠 보고에 실어야 프로그램이 그 자리의 영역을 스크롤한다
+  xterm.CellOffset? _readTouchedCell() {
+    final position = _touchedPosition;
+    final cellSize = _cellSize;
+    if (position == null || cellSize == null) return null;
+    return xterm.CellOffset(
+      (position.dx ~/ cellSize.width).clamp(0, _terminal.viewWidth - 1),
+      (position.dy ~/ cellSize.height).clamp(0, _terminal.viewHeight - 1),
+    );
+  }
+
+  void _startTouch(PointerDownEvent event) {
+    _touchedPosition = event.localPosition;
+    _hasRequestedHistoryForTouch = false;
+  }
+
+  /// 맨 아래에서 지난 출력을 올려 보기 시작하면 데스크탑에 최신 이력을 한 번 요청한다.
+  ///
+  /// 화면 프레임은 보이는 칸만 덮어써서 위로 밀려난 줄이 폰에 쌓이지 않는다.
+  /// 요청하지 않으면 올려 본 내용이 처음 연결했을 때의 출력에 머문다.
+  void _requestHistoryWhenScrollingBack(PointerMoveEvent event) {
+    final touchStart = _touchedPosition;
+    if (!widget.canRefreshHistory ||
+        _hasRequestedHistoryForTouch ||
+        touchStart == null ||
+        _terminal.isUsingAltBuffer ||
+        event.localPosition.dy - touchStart.dy <= kTouchSlop) {
+      return;
+    }
+    _hasRequestedHistoryForTouch = true;
+    final isShowingLatest =
+        !_verticalScroll.hasClients ||
+        _verticalScroll.offset >= _verticalScroll.position.maxScrollExtent - 1;
+    if (isShowingLatest) _stream?.refreshHistory();
+  }
 
   void _sendViewport(int cols, int rows) {
     final size = (cols: cols, rows: rows);
@@ -192,6 +236,7 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
             widget.taskId,
             widget.pane.id,
             cancelled: cancellation.future,
+            canPrepareDirectConnection: widget.canPrepareDirectConnection,
           );
       if (!mounted ||
           _isSuspended ||
@@ -235,12 +280,29 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
       _deferredOutput.add(data);
       return;
     }
+    final lineCountBeforeWrite = _terminal.buffer.height;
     _isParsingRemoteOutput = true;
     try {
       _terminal.write(_normalizeLegacyTitles(data));
     } finally {
       _isParsingRemoteOutput = false;
     }
+    if (widget.canRefreshHistory && data.startsWith(_screenRedrawPrefix)) {
+      _keepDistanceFromLatest(lineCountBeforeWrite);
+    }
+  }
+
+  /// 다시 받은 이력이 더 길면 늘어난 만큼 화면을 내려, 맨 아래에서 올려 본 거리를 지킨다.
+  ///
+  /// 그대로 두면 새로 받은 줄이 보던 자리와 최신 화면 사이에 끼어, 방금 지나간 줄 대신 처음 연결했을 때의 출력이 보인다.
+  void _keepDistanceFromLatest(int lineCountBeforeWrite) {
+    final cellSize = _cellSize;
+    if (cellSize == null || !_verticalScroll.hasClients) return;
+    final position = _verticalScroll.position;
+    // 맨 아래를 보는 중이면 터미널이 스스로 최신 줄을 따라간다
+    if (position.pixels >= position.maxScrollExtent - 1) return;
+    final addedLineCount = _terminal.buffer.height - lineCountBeforeWrite;
+    position.correctBy(addedLineCount * cellSize.height);
   }
 
   void _applyDeferredRedraw() {
@@ -401,6 +463,7 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
     )..layout();
     final terminalWidth = (metrics.width / 10 * widget.pane.width)
         .ceilToDouble();
+    _cellSize = Size(metrics.width / 10, metrics.height);
     metrics.dispose();
 
     final terminalView = ColoredBox(
@@ -429,25 +492,29 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
                   child: Semantics(
                     identifier: 'pane-terminal',
                     label: '터미널 입력',
-                    child: xterm.TerminalView(
-                      _terminal,
-                      controller: _terminalController,
-                      autoResize: widget.canResize,
-                      hardwareKeyboardOnly: true,
-                      onKeyEvent: (_, event) {
-                        if (widget.isActive &&
-                            widget.onToggleChat != null &&
-                            paneChatShortcut(Theme.of(context).platform)
-                                .accepts(event, HardwareKeyboard.instance)) {
-                          widget.onToggleChat!();
-                          return KeyEventResult.handled;
-                        }
-                        return KeyEventResult.ignored;
-                      },
-                      scrollController: _verticalScroll,
-                      backgroundOpacity: 0,
-                      theme: _terminalTheme,
-                      textStyle: _textStyle,
+                    child: Listener(
+                      onPointerDown: _startTouch,
+                      onPointerMove: _requestHistoryWhenScrollingBack,
+                      child: xterm.TerminalView(
+                        _terminal,
+                        controller: _terminalController,
+                        autoResize: widget.canResize,
+                        hardwareKeyboardOnly: true,
+                        onKeyEvent: (_, event) {
+                          if (widget.isActive &&
+                              widget.onToggleChat != null &&
+                              paneChatShortcut(Theme.of(context).platform)
+                                  .accepts(event, HardwareKeyboard.instance)) {
+                            widget.onToggleChat!();
+                            return KeyEventResult.handled;
+                          }
+                          return KeyEventResult.ignored;
+                        },
+                        scrollController: _verticalScroll,
+                        backgroundOpacity: 0,
+                        theme: _terminalTheme,
+                        textStyle: _textStyle,
+                      ),
                     ),
                   ),
                 ),
@@ -565,14 +632,27 @@ class _PaneStreamFailure extends StatelessWidget {
   }
 }
 
-// xterm 4.0.0의 휠 ID에는 Shift 비트가 잘못 포함되어 원격 프로그램이 스크롤을 무시한다.
+// xterm 4.0.0의 휠 보고에는 결함이 둘 있다. 휠 ID에 Shift 비트가 잘못 포함되어 원격 프로그램이 스크롤을 무시하고,
+// 화면 전체 기준 위치를 터미널 안 위치로 읽어 휠이 실제로 닿은 칸보다 아래쪽 칸을 가리킨다.
 // https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Wheel-mice
 class _TerminalWheelMouseHandler extends xterm.TerminalMouseHandler {
-  const _TerminalWheelMouseHandler();
+  const _TerminalWheelMouseHandler(this._readTouchedCell);
+
+  final xterm.CellOffset? Function() _readTouchedCell;
 
   @override
   String? call(xterm.TerminalMouseEvent event) {
-    final output = xterm.defaultMouseHandler(event);
+    final touchedCell = event.button.isWheel ? _readTouchedCell() : null;
+    final locatedEvent = touchedCell == null
+        ? event
+        : xterm.TerminalMouseEvent(
+            button: event.button,
+            buttonState: event.buttonState,
+            position: touchedCell,
+            state: event.state,
+            platform: event.platform,
+          );
+    final output = xterm.defaultMouseHandler(locatedEvent);
     if (output == null || !event.button.isWheel) return output;
     final button = event.button.id - 4;
     return switch (event.state.mouseReportMode) {

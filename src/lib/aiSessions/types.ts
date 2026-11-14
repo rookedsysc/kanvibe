@@ -20,6 +20,12 @@ export interface AiSessionAttachmentContent {
   dataUrl: string;
 }
 
+/** AI가 만들거나 고친 파일 하나. `path`는 에이전트가 기록한 그대로라 대개 절대 경로다 */
+export interface AiMessageFile {
+  path: string;
+  change: "created" | "modified";
+}
+
 export interface AggregatedAiMessage {
   role: AiMessageRole;
   timestamp: string | null;
@@ -27,6 +33,10 @@ export interface AggregatedAiMessage {
   fullText: string;
   isTruncated: boolean;
   attachments?: AiMessageAttachment[];
+  /** 도구 호출 메시지일 때 그 도구의 이름 */
+  toolName?: string;
+  /** 이 도구 호출이 만들거나 고친 파일 */
+  files?: AiMessageFile[];
 }
 
 export interface AggregatedAiSession {

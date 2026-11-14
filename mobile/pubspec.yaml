@@ -25,6 +25,11 @@ dependencies:
   firebase_messaging: ^17.0.0
   flutter_local_notifications: ^22.3.2
   file_picker: 13.3.3
+  flutter_highlight: ^0.7.0
+  webview_flutter: ^4.14.1
+  highlight: ^0.7.0
+  markdown: ^7.3.1
+  webview_flutter_android: ^4.14.1
 
 dev_dependencies:
   flutter_test:

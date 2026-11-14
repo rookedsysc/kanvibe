@@ -76,6 +76,7 @@ function createBridge(overrides = {}) {
     writeToPane: vi.fn(async () => {}),
     executeMobileTerminalShortcut: vi.fn(async () => ({ surfaces: { tabs: [] }, screen: "screen" })),
     claimPaneViewport: vi.fn(async () => ({ resize: vi.fn(async () => {}), release: vi.fn(async () => {}) })),
+    refreshPaneHistory: vi.fn(async () => {}),
     startMobilePairing: vi.fn(() => ({ code: "654321", expiresAt: 1_700_000_000_000 })),
     createMobileTask: vi.fn(async () => ({ id: "task-1", title: "feat/from-mobile" })),
     updateMobileTaskStatus: vi.fn(async () => ({ id: "task-1", status: "review" })),
@@ -937,6 +938,17 @@ describe("키 입력 순서", () => {
     expect(release).toHaveBeenCalledTimes(1);
   });
 
+  it("binary 이력 갱신 요청은 미러에 전달하고 터미널 입력이나 크기 변경으로 쓰지 않는다", async () => {
+    const client = await openPaneStreamClient("Bearer good");
+    client.send(Buffer.from(JSON.stringify({ type: "refresh-history" })));
+    client.send("done");
+    await waitFor(() => bridge.writeToPane.mock.calls.length > 0);
+    expect(bridge.refreshPaneHistory).toHaveBeenCalledWith("task-1", "pane-1");
+    expect(bridge.claimPaneViewport).not.toHaveBeenCalled();
+    expect(bridge.writeToPane.mock.calls.map((call) => call[2])).toEqual(["done"]);
+    client.close();
+  });
+
   it("잘못된 binary 크기와 JSON은 터미널 입력으로 보내지 않는다", async () => {
     const client = await openPaneStreamClient("Bearer good");
     for (const message of ["broken-json", ...[0, -1, 1.5, 501, "44"].map((cols) => JSON.stringify({ type: "resize", cols, rows: 70 }))]) {
@@ -1640,6 +1652,35 @@ describe("채팅 composer 첨부와 자동완성 HTTP", () => {
     bridge.getMobileAiSessionAttachment.mockResolvedValue(null);
     expect((await request(url, { headers })).status).toBe(404);
   });
+  it("연결된 기기만 태스크 작업 폴더의 파일을 읽고 경로는 디코딩해 넘긴다", async () => {
+    bridge.getMobileTaskFile = vi.fn(async () => ({ path: "docs/새 계획.md", content: "# plan" }));
+    const url = `/api/mobile/tasks/task-1/workspace-file?path=${encodeURIComponent("/work/task/docs/새 계획.md")}`;
+    expect((await request(url)).status).toBe(401);
+    expect(bridge.getMobileTaskFile).not.toHaveBeenCalled();
+    expect(await request(url, { headers })).toEqual({ status: 200, body: { success: true, file: { path: "docs/새 계획.md", content: "# plan" } } });
+    expect(bridge.getMobileTaskFile).toHaveBeenCalledWith("task-1", "/work/task/docs/새 계획.md");
+  });
+  it("파일 경로가 없거나 비어 있으면 읽지 않고 400으로 거절한다", async () => {
+    bridge.getMobileTaskFile = vi.fn();
+    expect(await request("/api/mobile/tasks/task-1/workspace-file", { headers })).toEqual({ status: 400, body: { success: false, error: "파일 경로가 필요합니다" } });
+    expect((await request("/api/mobile/tasks/task-1/workspace-file?path=", { headers })).status).toBe(400);
+    expect(bridge.getMobileTaskFile).not.toHaveBeenCalled();
+  });
+  it.each([
+    ["outside-worktree", 400, "작업 폴더 밖의 파일은 열 수 없습니다"],
+    ["not-found", 404, "파일을 찾을 수 없습니다"],
+    ["too-large", 413, "파일이 너무 커서 열 수 없습니다"],
+    ["unreadable", 500, "파일을 읽을 수 없습니다"],
+  ])("파일을 열지 못한 사유 %s는 %i과 사유로 구분해 알린다", async (reason, status, error) => {
+    bridge.getMobileTaskFile = vi.fn(async () => { throw Object.assign(new Error(reason), { name: "TaskWorkspaceFileError", reason }); });
+    expect(await request("/api/mobile/tasks/task-1/workspace-file?path=a.md", { headers })).toEqual({ status, body: { success: false, error, reason } });
+  });
+  it("파일 읽기의 알 수 없는 실패는 내부 메시지를 내보내지 않는다", async () => {
+    bridge.getMobileTaskFile = vi.fn(async () => { throw new Error("private host path"); });
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(await request("/api/mobile/tasks/task-1/workspace-file?path=a.md", { headers })).toEqual({ status: 500, body: { success: false, error: "서버 오류" } });
+    consoleError.mockRestore();
+  });
   it("부분 전송 뒤 불확실한 결과는 재전송 유도 없이 명시한다", async () => {
     bridge.sendPaneChatPrompt.mockRejectedValue(Object.assign(new Error("전송 결과 불확실"), { name: "PaneChatDeliveryUncertainError" }));
     expect(await request("/api/mobile/tasks/task-1/pane-chat/prompt", { method: "POST", headers, body: JSON.stringify({ targetToken: "token", text: "caption", requestId: "once" }) })).toEqual({ status: 409, body: { success: false, error: "전송 결과 불확실", reason: "delivery-uncertain" } });
@@ -1745,11 +1786,13 @@ describe("원격 pane 지속 연결 경로", () => {
     const output = new Promise((resolve) => client.once("message", (data) => resolve(data.toString())));
     emit("B terminal output");
     await expect(output).resolves.toBe("B terminal output");
+    client.send(Buffer.from(JSON.stringify({ type: "refresh-history" })));
     client.send("ls\n");
     const resize = Buffer.from(JSON.stringify({ type: "resize", cols: 100, rows: 30 }));
     client.send(resize);
     await waitFor(() => relay.write.mock.calls.length === 2);
     expect(relay.write.mock.calls.map(([data, binary]) => [data.toString(), binary])).toEqual([["ls\n", false], [resize.toString(), true]]);
+    expect(bridge.refreshPaneHistory).not.toHaveBeenCalled();
     expect(bridge.writeToPane).not.toHaveBeenCalled();
     expect(bridge.claimPaneViewport).not.toHaveBeenCalled();
     expect(bridge.subscribeToPane).not.toHaveBeenCalled();

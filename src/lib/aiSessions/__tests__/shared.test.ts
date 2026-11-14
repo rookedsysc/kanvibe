@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extractPlainText, makePreviewMessage, mapWithConcurrency, normalizeText, sortMessagesDescending } from "@/lib/aiSessions/shared";
+import { extractPlainText, makePreviewMessage, mapWithConcurrency, normalizeText, preserveMessageText, sortMessagesDescending } from "@/lib/aiSessions/shared";
 
 describe("sortMessagesDescending", () => {
   it("should sort session detail messages from newest to oldest", () => {
@@ -39,6 +39,52 @@ describe("normalizeText", () => {
     const result = normalizeText(`Fix hook state\n[Pasted ~33 lines]\n[remote-ssh] command failed {\nsshHost: 'roky-home'\nerror: 'server exited unexpectedly'\n    at createSessionWithoutWorktree (/tmp/worktree.js:1:1)\nmain branch tmux session failed`);
 
     expect(result).toBe("Fix hook state main branch tmux session failed");
+  });
+});
+
+describe("preserveMessageText", () => {
+  const noiseLines = ["error: build failed", "command: pnpm test", "    at foo (file.ts:1:2)"];
+
+  it("코드 블록 안의 error:·command:·스택 프레임 줄은 그대로 남긴다", () => {
+    const source = ["빌드 결과입니다", "```yaml", ...noiseLines, "```", "끝"].join("\n");
+
+    expect(preserveMessageText(source)).toBe(source);
+  });
+
+  it("코드 블록 밖의 같은 줄은 지금처럼 지운다", () => {
+    const source = ["빌드 결과입니다", ...noiseLines, "끝"].join("\n");
+
+    expect(preserveMessageText(source)).toBe("빌드 결과입니다\n끝");
+  });
+
+  it("닫히지 않은 코드 블록은 글 끝까지 안쪽으로 본다", () => {
+    const source = ["error: 블록 밖", "```", ...noiseLines].join("\n");
+
+    expect(preserveMessageText(source)).toBe(["```", ...noiseLines].join("\n"));
+  });
+
+  it("~~~ 울타리도 ``` 울타리와 같게 다룬다", () => {
+    const source = ["~~~", ...noiseLines, "~~~", "error: 블록 밖"].join("\n");
+
+    expect(preserveMessageText(source)).toBe(["~~~", ...noiseLines, "~~~"].join("\n"));
+  });
+
+  it("여는 울타리보다 짧은 울타리는 블록을 닫지 않는다", () => {
+    const outerBlock = ["````md", "```yaml", "command: a", "```", "error: 바깥 블록 안", "````"];
+
+    expect(preserveMessageText([...outerBlock, "error: 블록 밖"].join("\n"))).toBe(outerBlock.join("\n"));
+  });
+
+  it("언어 이름이 붙은 울타리 줄은 블록을 닫지 않는다", () => {
+    const block = ["```", "code", "```js", "error: 아직 블록 안", "```"];
+
+    expect(preserveMessageText([...block, "error: 블록 밖"].join("\n"))).toBe(block.join("\n"));
+  });
+
+  it("여는 울타리보다 긴 같은 글자 울타리는 블록을 닫고, 다른 글자 울타리는 닫지 않는다", () => {
+    const block = ["```", "~~~~", "error: 블록 안", "`````"];
+
+    expect(preserveMessageText([...block, "error: 블록 밖"].join("\n"))).toBe(block.join("\n"));
   });
 });
 

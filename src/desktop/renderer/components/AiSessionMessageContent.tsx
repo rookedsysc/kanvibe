@@ -1,6 +1,8 @@
 import DOMPurify from "dompurify";
+import hljs from "highlight.js/lib/common";
 import { marked } from "marked";
-import { useEffect, useId, useMemo, useState } from "react";
+import { useTranslations } from "next-intl";
+import { type MouseEvent, useEffect, useId, useMemo, useState } from "react";
 
 const MERMAID_BLOCK_PATTERN = /```[ \t]*mermaid[^\r\n]*(?:\r?\n)([\s\S]*?)```/gi;
 const MARKDOWN_SANITIZE_CONFIG = {
@@ -12,11 +14,11 @@ const MARKDOWN_SANITIZE_CONFIG = {
 const MERMAID_SANITIZE_CONFIG = {
   ADD_ATTR: ["data-testid"],
 };
-const MERMAID_THEME = "dark";
+const CODE_LANGUAGE_CLASS_PREFIX = "language-";
+const COPY_FEEDBACK_DURATION_MS = 1_500;
 
 interface AiSessionMessageContentProps {
   text: string;
-  isUserMessage: boolean;
 }
 
 interface MarkdownSegment {
@@ -58,9 +60,50 @@ function splitMarkdownAndMermaidBlocks(markdown: string): MessageSegment[] {
   return segments.length > 0 ? segments : [{ type: "markdown", value: markdown }];
 }
 
-function addMarkdownElementAttributes(html: string) {
+/** 코드 블록마다 언어 이름과 복사 버튼이 놓인 머리줄을 붙이고, 아는 언어면 글자에 색을 입힌다 */
+function decorateCodeBlocks(content: DocumentFragment, copyLabel: string) {
+  for (const block of content.querySelectorAll("pre")) {
+    const code = block.firstElementChild;
+    if (code?.tagName !== "CODE") continue;
+
+    const languageClass = [...code.classList].find((name) => name.startsWith(CODE_LANGUAGE_CLASS_PREFIX));
+    const language = languageClass?.slice(CODE_LANGUAGE_CLASS_PREFIX.length) ?? "";
+    if (language && hljs.getLanguage(language)) {
+      code.innerHTML = hljs.highlight(code.textContent ?? "", { language }).value;
+    }
+
+    const languageLabel = document.createElement("span");
+    languageLabel.textContent = language || "text";
+    const copyButton = document.createElement("button");
+    copyButton.type = "button";
+    copyButton.dataset.copyCode = "";
+    copyButton.textContent = copyLabel;
+    const header = document.createElement("div");
+    header.className = "kv-chat-code-header";
+    header.append(languageLabel, copyButton);
+
+    const frame = document.createElement("div");
+    frame.className = "kv-chat-code";
+    block.replaceWith(frame);
+    frame.append(header, block);
+  }
+}
+
+/** 열이 많은 표가 대화 폭을 밀어내지 않고 표 안에서만 옆으로 넘어가게 한다 */
+function wrapTablesForHorizontalScroll(content: DocumentFragment) {
+  for (const table of content.querySelectorAll("table")) {
+    const frame = document.createElement("div");
+    frame.className = "kv-chat-table";
+    table.replaceWith(frame);
+    frame.append(table);
+  }
+}
+
+function decorateMarkdownElements(html: string, copyLabel: string) {
   const template = document.createElement("template");
   template.innerHTML = html;
+  decorateCodeBlocks(template.content, copyLabel);
+  wrapTablesForHorizontalScroll(template.content);
 
   for (const link of template.content.querySelectorAll("a")) {
     link.setAttribute("target", "_blank");
@@ -75,14 +118,14 @@ function addMarkdownElementAttributes(html: string) {
   return template.innerHTML;
 }
 
-function renderMarkdownHtml(markdown: string) {
+function renderMarkdownHtml(markdown: string, copyLabel: string) {
   const rawHtml = marked.parse(markdown, {
     async: false,
     breaks: true,
     gfm: true,
   }) as string;
   const sanitizedHtml = DOMPurify.sanitize(rawHtml, MARKDOWN_SANITIZE_CONFIG);
-  return addMarkdownElementAttributes(sanitizedHtml);
+  return decorateMarkdownElements(sanitizedHtml, copyLabel);
 }
 
 function createMermaidElementId(definition: string, index: number, componentId: string) {
@@ -95,26 +138,41 @@ function createMermaidElementId(definition: string, index: number, componentId: 
   return `ai-session-mermaid-${stableComponentId}-${index}-${Math.abs(hash)}`;
 }
 
-function MarkdownContent({ markdown, isUserMessage }: { markdown: string; isUserMessage: boolean }) {
-  const html = useMemo(() => renderMarkdownHtml(markdown), [markdown]);
+function MarkdownContent({ markdown }: { markdown: string }) {
+  const t = useTranslations("taskDetail");
+  const copyLabel = t("aiSessions.copyMessage");
+  const html = useMemo(() => renderMarkdownHtml(markdown, copyLabel), [markdown, copyLabel]);
 
   if (!html.trim()) {
     return null;
   }
 
+  /** 본문은 HTML 문자열로 그려서 버튼마다 핸들러를 달 수 없다. 본문 전체에서 복사 버튼 클릭만 골라 받는다 */
+  async function copyCodeBlock(event: MouseEvent<HTMLDivElement>) {
+    const copyButton = (event.target as HTMLElement).closest<HTMLButtonElement>("[data-copy-code]");
+    if (!copyButton) return;
+    const code = copyButton.closest(".kv-chat-code")?.querySelector("pre")?.textContent ?? "";
+    try {
+      await navigator.clipboard.writeText(code);
+      copyButton.textContent = t("aiSessions.copiedMessage");
+    } catch {
+      copyButton.textContent = t("aiSessions.copyFailed");
+    }
+    window.setTimeout(() => {
+      copyButton.textContent = copyLabel;
+    }, COPY_FEEDBACK_DURATION_MS);
+  }
+
   return (
     <div
-      className={`ai-session-markdown text-sm leading-6 [&_*:first-child]:mt-0 [&_*:last-child]:mb-0 [&_a]:underline-offset-2 [&_a:hover]:underline [&_blockquote]:my-3 [&_blockquote]:border-l-2 [&_blockquote]:pl-3 [&_code]:rounded [&_code]:px-1 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-[0.86em] [&_h1]:mb-3 [&_h1]:mt-5 [&_h1]:text-lg [&_h1]:font-semibold [&_h2]:mb-2 [&_h2]:mt-4 [&_h2]:text-base [&_h2]:font-semibold [&_h3]:mb-2 [&_h3]:mt-4 [&_h3]:text-sm [&_h3]:font-semibold [&_hr]:my-4 [&_li]:my-1 [&_ol]:my-3 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-3 [&_pre]:my-3 [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:border [&_pre]:p-3 [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_strong]:font-semibold [&_table]:my-3 [&_table]:w-full [&_table]:border-separate [&_table]:border-spacing-2 [&_td]:align-top [&_th]:align-top [&_ul]:my-3 [&_ul]:list-disc [&_ul]:pl-5 ${
-        isUserMessage
-          ? "[&_a]:text-white [&_blockquote]:border-white/35 [&_blockquote]:text-white/75 [&_code]:bg-white/15 [&_h1]:text-white [&_h2]:text-white [&_h3]:text-white [&_hr]:border-white/20 [&_pre]:border-white/20 [&_pre]:bg-black/20 [&_strong]:text-white"
-          : "[&_a]:text-brand-primary [&_blockquote]:border-border-default [&_blockquote]:text-text-muted [&_code]:bg-bg-page [&_h1]:text-text-primary [&_h2]:text-text-primary [&_h3]:text-text-primary [&_hr]:border-border-subtle [&_pre]:border-border-subtle [&_pre]:bg-bg-page [&_strong]:text-text-primary"
-      }`}
+      className="ai-session-markdown text-sm leading-6 [&_*:first-child]:mt-0 [&_*:last-child]:mb-0 [&_a]:text-brand-primary [&_a]:underline-offset-2 [&_a:hover]:underline [&_blockquote]:my-3 [&_blockquote]:border-l-2 [&_blockquote]:border-border-default [&_blockquote]:pl-3 [&_blockquote]:text-text-muted [&_code]:rounded [&_code]:bg-bg-page [&_code]:px-1 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-[0.86em] [&_h1]:mb-3 [&_h1]:mt-5 [&_h1]:text-lg [&_h1]:font-semibold [&_h1]:text-text-primary [&_h2]:mb-2 [&_h2]:mt-4 [&_h2]:text-base [&_h2]:font-semibold [&_h2]:text-text-primary [&_h3]:mb-2 [&_h3]:mt-4 [&_h3]:text-sm [&_h3]:font-semibold [&_h3]:text-text-primary [&_hr]:my-4 [&_hr]:border-border-subtle [&_li]:my-1 [&_ol]:my-3 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-3 [&_pre]:overflow-x-auto [&_pre]:p-3 [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_strong]:font-semibold [&_strong]:text-text-primary [&_table]:w-max [&_table]:min-w-full [&_table]:border-collapse [&_td]:max-w-xs [&_td]:border [&_td]:border-border-default [&_td]:px-3 [&_td]:py-1.5 [&_td]:align-top [&_th]:max-w-xs [&_th]:border [&_th]:border-border-default [&_th]:bg-bg-page [&_th]:px-3 [&_th]:py-1.5 [&_th]:text-left [&_th]:align-top [&_ul]:my-3 [&_ul]:list-disc [&_ul]:pl-5"
+      onClick={(event) => void copyCodeBlock(event)}
       dangerouslySetInnerHTML={{ __html: html }}
     />
   );
 }
 
-function MermaidDiagram({ definition, index, isUserMessage }: { definition: string; index: number; isUserMessage: boolean }) {
+function MermaidDiagram({ definition, index }: { definition: string; index: number }) {
   const [svg, setSvg] = useState<string | null>(null);
   const [hasError, setHasError] = useState(false);
   const componentId = useId();
@@ -134,7 +192,7 @@ function MermaidDiagram({ definition, index, isUserMessage }: { definition: stri
           startOnLoad: false,
           // SVG text survives sanitization, while HTML foreignObject labels are removed.
           htmlLabels: false,
-          theme: MERMAID_THEME,
+          theme: document.documentElement.dataset.theme === "light" ? "default" : "dark",
         });
         const result = await mermaidApi.render(elementId, definition);
         const sanitizedSvg = DOMPurify.sanitize(result.svg, MERMAID_SANITIZE_CONFIG);
@@ -159,9 +217,7 @@ function MermaidDiagram({ definition, index, isUserMessage }: { definition: stri
     return (
       <pre
         data-testid="ai-session-mermaid-fallback"
-        className={`my-3 overflow-x-auto rounded-lg border p-3 font-mono text-xs ${
-          isUserMessage ? "border-white/20 bg-black/20 text-white" : "border-border-subtle bg-bg-page text-text-primary"
-        }`}
+        className="my-3 overflow-x-auto rounded-lg border border-border-subtle bg-bg-page p-3 font-mono text-xs text-text-primary"
       >
         <code>{definition}</code>
       </pre>
@@ -171,9 +227,7 @@ function MermaidDiagram({ definition, index, isUserMessage }: { definition: stri
   return (
     <div
       data-testid="ai-session-mermaid-diagram"
-      className={`my-3 overflow-x-auto rounded-lg border p-3 ${
-        isUserMessage ? "border-white/20 bg-white/10" : "border-border-subtle bg-bg-page"
-      }`}
+      className="my-3 overflow-x-auto rounded-lg border border-border-subtle bg-bg-page p-3"
     >
       {svg ? (
         <div
@@ -181,13 +235,13 @@ function MermaidDiagram({ definition, index, isUserMessage }: { definition: stri
           dangerouslySetInnerHTML={{ __html: svg }}
         />
       ) : (
-        <p className={isUserMessage ? "text-xs text-white/70" : "text-xs text-text-muted"}>Rendering diagram…</p>
+        <p className="text-xs text-text-muted">Rendering diagram…</p>
       )}
     </div>
   );
 }
 
-export function AiSessionMessageContent({ text, isUserMessage }: AiSessionMessageContentProps) {
+export function AiSessionMessageContent({ text }: AiSessionMessageContentProps) {
   const segments = useMemo(() => splitMarkdownAndMermaidBlocks(text), [text]);
 
   return (
@@ -198,13 +252,11 @@ export function AiSessionMessageContent({ text, isUserMessage }: AiSessionMessag
             key={`mermaid-${index}`}
             definition={segment.value}
             index={index}
-            isUserMessage={isUserMessage}
           />
         ) : (
           <MarkdownContent
             key={`markdown-${index}`}
             markdown={segment.value}
-            isUserMessage={isUserMessage}
           />
         )
       ))}

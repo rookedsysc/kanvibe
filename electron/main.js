@@ -712,6 +712,14 @@ function attachWindowHandlers(browserWindow) {
     registerAppWindow(childWindow);
   });
 
+  /**
+   * 창 안에 넣은 문서는 스스로 다른 주소로 옮겨 가지 못한다.
+   * 채팅 파일 미리보기가 AI가 만든 HTML을 실행하므로, 그 문서가 주소를 바꿔 파일 내용을 밖으로 실어 보내는 길을 막는다.
+   */
+  browserWindow.webContents.on("will-frame-navigate", (event) => {
+    if (!event.isMainFrame) event.preventDefault();
+  });
+
   browserWindow.webContents.on("before-input-event", (event, input) => {
     const {
       getShortcutPlatformFromProcessPlatform,

@@ -29,6 +29,7 @@ import {
   buildZellijResizeFloatingPaneCommand,
   buildZellijWritePaneCommand,
   parseTmuxPaneState,
+  buildHerdrInputModeSequences,
   parseTmuxMirrorPaneList,
   parseZellijMirrorPaneList,
   parseZellijViewportState,
@@ -417,5 +418,18 @@ describe("Herdr observe 레코드", () => {
     expect(parseHerdrObserveRecord('{"type":"terminal.closed","reason":"gone"}')).toEqual({ type: "closed" });
     expect(parseHerdrObserveRecord("{broken")).toBeNull();
     expect(parseHerdrObserveRecord('{"type":"terminal.other"}')).toBeNull();
+  });
+});
+
+describe("buildHerdrInputModeSequences", () => {
+  const RESET_MOUSE = "\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1005l\x1b[?1006l";
+
+  it("휠을 받는 프로그램이 앞쪽 프로세스 어디에 있든 전체 화면과 SGR 마우스 모드를 켠다", () => {
+    expect(buildHerdrInputModeSequences(["codex", "node"])).toBe(`\x1b[?1049h${RESET_MOUSE}\x1b[?1000h\x1b[?1006h`);
+  });
+
+  it("휠을 받는다고 확인하지 않은 프로그램과 빈 pane은 일반 화면으로 두고 마우스 모드를 끈다", () => {
+    expect(buildHerdrInputModeSequences(["claude", "serena"])).toBe(`\x1b[?1049l${RESET_MOUSE}`);
+    expect(buildHerdrInputModeSequences([])).toBe(`\x1b[?1049l${RESET_MOUSE}`);
   });
 });

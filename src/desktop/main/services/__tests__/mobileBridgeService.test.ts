@@ -29,6 +29,7 @@ const propagateTaskRegistrationToPeersMock = vi.fn();
 const getTaskAiSessionsMock = vi.fn();
 const getTaskAiSessionDetailMock = vi.fn();
 const getTaskAiSessionAttachmentMock = vi.fn();
+const readTaskWorkspaceFileMock = vi.fn();
 const attachTaskTerminalMock = vi.fn();
 const changeTaskSessionTypeMock = vi.fn();
 const isTaskSessionAliveMock = vi.fn();
@@ -134,6 +135,9 @@ vi.mock("@/lib/remoteSessionDependency", async (importOriginal) => {
     ),
   };
 });
+vi.mock("@/desktop/main/services/diffService", () => ({
+  readTaskWorkspaceFile: (...args: unknown[]) => readTaskWorkspaceFileMock(...args),
+}));
 vi.mock("@/desktop/main/services/projectService", () => ({
   getAllProjects: async () => [],
   listSubdirectories: (...args: unknown[]) => listSubdirectoriesMock(...args),
@@ -157,6 +161,7 @@ const {
   authorizeMobileRequest,
   changeMobileTaskSessionType,
   claimPaneViewport,
+  refreshPaneHistory,
   closeMobilePane,
   createMobileTask,
   createMobileTerminalTab,
@@ -168,6 +173,7 @@ const {
   getMobileAiSessionDetail,
   getMobileAiSessionAttachment,
   getMobileTask,
+  getMobileTaskFile,
   getMobileNotifications,
   markMobileNotificationRead,
   markMobileTaskNotificationsRead,
@@ -2040,6 +2046,15 @@ describe("모바일 History 신뢰 경로 캐시", () => {
     expect(getTaskAiSessionAttachmentMock).toHaveBeenCalledTimes(before);
   });
 
+  it("태스크 작업 폴더의 파일을 읽어 돌려주고 실패 사유는 그대로 올린다", async () => {
+    readTaskWorkspaceFileMock.mockResolvedValueOnce({ path: "docs/plan.md", content: "# plan" });
+    expect(await getMobileTaskFile("file-task", "/work/task/docs/plan.md")).toEqual({ path: "docs/plan.md", content: "# plan" });
+    expect(readTaskWorkspaceFileMock).toHaveBeenLastCalledWith("file-task", "/work/task/docs/plan.md");
+
+    readTaskWorkspaceFileMock.mockRejectedValueOnce(Object.assign(new Error("too-large"), { name: "TaskWorkspaceFileError", reason: "too-large" }));
+    await expect(getMobileTaskFile("file-task", "big.log")).rejects.toMatchObject({ name: "TaskWorkspaceFileError", reason: "too-large" });
+  });
+
   it("기록 첨부의 내부 파일 오류를 모바일 응답에 노출하지 않는다", async () => {
     getTaskAiSessionAttachmentMock.mockRejectedValueOnce(new Error("private host path"));
     await expect(getMobileAiSessionAttachment("history-image-explicit", "codex", "image-session", "image-id", "/trusted/source")).rejects.toMatchObject({ name: "MobileTaskInputError", message: "첨부 파일을 불러올 수 없습니다. 파일 형식·크기와 원본 파일을 확인해 주세요." });
@@ -2106,6 +2121,11 @@ describe("Herdr 세션 미러", () => {
   const herdrCommand = (...args: string[]) => buildHerdrCommand("herdr-session", args);
   const herdrResult = (value: unknown) => JSON.stringify({ id: "test", result: value });
   let historyRows = 0;
+  let foregroundPrograms = ["claude"];
+  const MAIN_SCREEN_MODES = "\x1b[?1049l\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1005l\x1b[?1006l";
+  const WHEEL_SCREEN_MODES = "\x1b[?1049h\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1005l\x1b[?1006l\x1b[?1000h\x1b[?1006h";
+  /** 모바일은 이 글자들로 시작하는 청크만 "다시 그리기"로 알아보고, 글자를 선택한 동안 적용을 미룬다 */
+  const REDRAW_START = "\x1b[H\x1b[2J\x1b[3J";
 
   const stubHerdrSession = () => execGitMock.mockImplementation(async (command: string) => {
     if (command === herdrCommand("workspace", "list")) return herdrResult({ workspaces: [{ workspace_id: "w1" }] });
@@ -2116,7 +2136,7 @@ describe("Herdr 세션 미러", () => {
     if (command.includes("'pane' 'layout'")) {
       return herdrResult({ layout: { area: { x: 0, y: 0, width: 120, height: 40 }, focused_pane_id: "w1:p1", zoomed: false, panes: [{ pane_id: "w1:p1", rect: { x: 0, y: 0, width: 120, height: 40 } }] } });
     }
-    if (command.includes("'process-info'")) return herdrResult({ process_info: { foreground_processes: [{ name: "claude" }] } });
+    if (command.includes("'process-info'")) return herdrResult({ process_info: { foreground_processes: foregroundPrograms.map((name) => ({ name })) } });
     if (command === herdrCommand("pane", "get", "w1:p1")) {
       return herdrResult({ pane: { pane_id: "w1:p1", tab_id: "w1:t1", scroll: { max_offset_from_bottom: historyRows, viewport_rows: 38 } } });
     }
@@ -2140,6 +2160,7 @@ describe("Herdr 세션 미러", () => {
 
   beforeEach(() => {
     historyRows = 0;
+    foregroundPrograms = ["claude"];
     findOneByMock.mockResolvedValue(HERDR_TASK);
     stubHerdrSession();
     spawnMock.mockImplementation(() => createObserver());
@@ -2261,7 +2282,7 @@ describe("Herdr 세션 미러", () => {
   it("Herdr 태스크의 표면을 Herdr 조회로 만들고 tmux 명령은 실행하지 않는다", async () => {
     const surfaces = await getTaskSurfaces("herdr-task");
 
-    expect(surfaces).toMatchObject({ sessionType: SessionType.HERDR, canResize: true });
+    expect(surfaces).toMatchObject({ sessionType: SessionType.HERDR, canResize: true, canRefreshHistory: true });
     expect(surfaces.tabs).toEqual([{ id: "w1:t1", name: "work", panes: [expect.objectContaining({ id: "w1:p1", command: "claude", width: 120, height: 38 })] }]);
     expect(executed().filter((command) => command.includes("tmux"))).toEqual([]);
   });
@@ -2339,6 +2360,17 @@ describe("Herdr 세션 미러", () => {
     });
     return { controllers, observers };
   };
+
+  it("터미널을 열고 크기를 정하는 동안 pane 목록은 구독과 크기 소유에서 한 번씩만 읽는다", async () => {
+    installControllers();
+    const unsubscribe = await subscribeToPane("herdr-task", "w1:p1", () => {}, () => {});
+    const viewport = await claimPaneViewport("herdr-task", "w1:p1");
+    await viewport.resize(44, 70);
+
+    expect(executed().filter((command) => command === herdrCommand("pane", "list"))).toHaveLength(2);
+    await viewport.release();
+    unsubscribe();
+  });
 
   it("모바일 마지막 요청을 한 controller에 적용하고 마지막 해제 때 제어를 반납한다", async () => {
     const { controllers, observers } = installControllers();
@@ -2485,7 +2517,7 @@ describe("Herdr 세션 미러", () => {
     const chunks: string[] = [];
 
     const unsubscribe = await subscribeToPane("herdr-task", "w1:p1", (chunk) => chunks.push(chunk), () => {});
-    expect(chunks).toEqual([buildScreenRedraw("history-0", null)]);
+    expect(chunks).toEqual([`${REDRAW_START}${MAIN_SCREEN_MODES}${buildScreenRedraw("history-0", null)}`]);
     expect(spawnMock.mock.calls[0][1][1]).toBe(buildHerdrObservePaneCommand("herdr-session", "w1:p1", 120, 38));
 
     const line = frame("screen", true);
@@ -2513,7 +2545,7 @@ describe("Herdr 세션 미러", () => {
     await vi.advanceTimersByTimeAsync(1);
 
     expect(spawnMock).toHaveBeenCalledTimes(2);
-    expect(chunks).toContain(buildScreenRedraw("history-5", null));
+    expect(chunks).toContain(`${REDRAW_START}${MAIN_SCREEN_MODES}${buildScreenRedraw("history-5", null)}`);
 
     /** 멈춘 observe의 뒤늦은 프레임과 종료는 새 스트림을 흔들지 않는다 */
     observers[0].stdout.emit("data", frame("stale"));
@@ -2527,6 +2559,53 @@ describe("Herdr 세션 미러", () => {
     expect(chunks.at(-1)).toBe("repaint");
     expect(spawnMock).toHaveBeenCalledTimes(2);
     unsubscribe();
+  });
+
+  it("휠을 받는 프로그램이 도는 pane의 첫 화면은 전체 화면과 마우스 모드를 켠다", async () => {
+    foregroundPrograms = ["codex", "mcp-server"];
+    const chunks: string[] = [];
+    const unsubscribe = await subscribeToPane("herdr-task", "w1:p1", (chunk) => chunks.push(chunk), () => {});
+
+    expect(chunks).toEqual([`${REDRAW_START}${WHEEL_SCREEN_MODES}${buildScreenRedraw("history-0", null)}`]);
+    unsubscribe();
+  });
+
+  it("출력이 잠잠해진 뒤 휠을 받는 프로그램이 새로 떴으면 모드를 켠 화면을 다시 보낸다", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const observers = [createObserver(), createObserver()];
+    spawnMock.mockImplementationOnce(() => observers[0]).mockImplementationOnce(() => observers[1]);
+    const chunks: string[] = [];
+    const unsubscribe = await subscribeToPane("herdr-task", "w1:p1", (chunk) => chunks.push(chunk), () => {});
+
+    foregroundPrograms = ["codex"];
+    observers[0].stdout.emit("data", frame("codex started"));
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    expect(chunks.at(-1)).toBe(`${REDRAW_START}${WHEEL_SCREEN_MODES}${buildScreenRedraw("history-0", null)}`);
+    expect(spawnMock).toHaveBeenCalledTimes(2);
+    unsubscribe();
+  });
+
+  it("모바일이 이력 갱신을 요청하면 줄 수가 그대로여도 다시 보내고 연달은 요청은 한 번만 처리한다", async () => {
+    const observers = [createObserver(), createObserver(), createObserver()];
+    observers.forEach((observer) => spawnMock.mockImplementationOnce(() => observer));
+    const chunks: string[] = [];
+    const unsubscribe = await subscribeToPane("herdr-task", "w1:p1", (chunk) => chunks.push(chunk), () => {});
+    chunks.length = 0;
+
+    await refreshPaneHistory("herdr-task", "w1:p1");
+    await refreshPaneHistory("herdr-task", "w1:p1");
+
+    expect(chunks).toEqual([`${REDRAW_START}${MAIN_SCREEN_MODES}${buildScreenRedraw("history-0", null)}`]);
+    expect(spawnMock).toHaveBeenCalledTimes(2);
+    unsubscribe();
+  });
+
+  it("구독이 없는 pane의 이력 갱신 요청은 아무 명령도 실행하지 않는다", async () => {
+    await refreshPaneHistory("herdr-task", "w1:p1");
+
+    expect(executed()).toEqual([]);
+    expect(spawnMock).not.toHaveBeenCalled();
   });
 
   it("이력이 그대로면 observe를 재시작하지 않는다", async () => {

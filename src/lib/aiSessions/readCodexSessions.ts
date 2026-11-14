@@ -1,5 +1,6 @@
 import path from "path";
 import { extractMessageAttachments } from "./messageAttachments";
+import { summarizeCodexCustomToolCall, withToolCall } from "./messageFiles";
 import {
   createReaderResult,
   createSessionDetail,
@@ -29,6 +30,7 @@ import type {
   AgentCallNode,
   AggregatedAiMessage,
   AiMessageAttachment,
+  AiMessageFile,
   AggregatedAiSession,
   AiMessageRole,
   AiSessionDetailReaderResult,
@@ -215,7 +217,7 @@ async function parseCodexSessionDetail(
       }
 
       const previewMessage = makePreviewMessage(message.role, event.timestamp, message.text, message.attachments);
-      if (previewMessage) messages.push(previewMessage);
+      if (previewMessage) messages.push(withToolCall(previewMessage, message));
     }
   }
 
@@ -232,7 +234,15 @@ async function parseCodexSessionDetail(
   });
 }
 
-function extractCodexEventMessages(event: CodexRolloutEvent, sourceRef = ""): Array<{ role: AiMessageRole; text: string; attachments?: AiMessageAttachment[] }> {
+interface CodexEventMessage {
+  role: AiMessageRole;
+  text: string;
+  attachments?: AiMessageAttachment[];
+  toolName?: string;
+  files?: AiMessageFile[];
+}
+
+function extractCodexEventMessages(event: CodexRolloutEvent, sourceRef = ""): CodexEventMessage[] {
   if (event.type === "response_item") {
     return extractCodexPayloadMessages(event.payload ?? {}, sourceRef);
   }
@@ -277,7 +287,7 @@ function shouldSkipCodexMessage(role: AiMessageRole, text: string): boolean {
   return false;
 }
 
-function extractCodexPayloadMessages(payload: Record<string, unknown>, sourceRef: string): Array<{ role: AiMessageRole; text: string; attachments?: AiMessageAttachment[] }> {
+function extractCodexPayloadMessages(payload: Record<string, unknown>, sourceRef: string): CodexEventMessage[] {
   if (payload.type === "message") {
     const role = resolveCodexMessageRole(payload.role);
     const attachments = extractMessageAttachments(payload.content, sourceRef);
@@ -302,10 +312,15 @@ function extractCodexPayloadMessages(payload: Record<string, unknown>, sourceRef
         : "tool";
     const argumentText = extractPlainText(payload.arguments ?? payload.args ?? payload.input);
     const text = argumentText ? `${name}: ${argumentText}` : `${name} called`;
-    return [{ role: "tool", text }];
+    return [{ role: "tool", text, toolName: name }];
   }
 
-  if (payload.type === "function_call_output" || payload.type === "tool_result") {
+  if (payload.type === "custom_tool_call") {
+    const toolCall = summarizeCodexCustomToolCall(payload);
+    return [{ role: "tool", text: toolCall.summary, toolName: toolCall.toolName, files: toolCall.files }];
+  }
+
+  if (payload.type === "function_call_output" || payload.type === "custom_tool_call_output" || payload.type === "tool_result") {
     const text = extractPlainText(payload.output ?? payload.result ?? payload.content ?? payload);
     return text ? [{ role: "tool", text }] : [];
   }
