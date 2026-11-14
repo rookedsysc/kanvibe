@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   SHORTCUTS,
+  TERMINAL_IMAGE_PASTE_SHORTCUTS,
   createWorkspaceListFocusTracker,
   TASK_DETAIL_DOCK_SHORTCUT_INDEXES,
   TERMINAL_TAB_SHORTCUT_INDEXES,
@@ -16,6 +17,22 @@ import {
 } from "@/desktop/renderer/utils/keyboardShortcut";
 
 describe("keyboardShortcut", () => {
+  it.each([
+    ["mac", { metaKey: true }, true],
+    ["mac", { ctrlKey: true }, true],
+    ["mac", { ctrlKey: true, shiftKey: true }, true],
+    ["linux", { ctrlKey: true }, true],
+    ["linux", { ctrlKey: true, shiftKey: true }, true],
+    ["linux", { metaKey: true }, false],
+    ["linux", { ctrlKey: true, altKey: true }, false],
+  ] as const)("이미지 붙여넣기 조합은 renderer와 Electron에서 일치한다: %s %j", (platform, modifiers, expected) => {
+    const event = new KeyboardEvent("keydown", { key: "v", ...modifiers });
+    const input = { type: "keyDown", key: "v", control: event.ctrlKey, meta: event.metaKey, shift: event.shiftKey, alt: event.altKey };
+
+    expect(TERMINAL_IMAGE_PASTE_SHORTCUTS.some((shortcut) => matchShortcutEvent(event, shortcut, platform))).toBe(expected);
+    expect(TERMINAL_IMAGE_PASTE_SHORTCUTS.some((shortcut) => matchElectronShortcutInput(input, shortcut, platform))).toBe(expected);
+  });
+
   it("Mod 단축키는 macOS에서 Cmd로 표시한다", () => {
     expect(formatShortcutForDisplay("Mod+Shift+o", true)).toBe("Cmd+Shift+O");
   });

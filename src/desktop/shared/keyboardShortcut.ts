@@ -47,6 +47,9 @@ export const SHORTCUTS = {
   taskDetailUsage: "Mod+0",
 } as const;
 
+/** CLI에 전달하기 전에 앱 클립보드 이미지를 확인하는 터미널 붙여넣기 조합 */
+export const TERMINAL_IMAGE_PASTE_SHORTCUTS = ["Mod+V", "Ctrl+V", "Ctrl+Shift+V", "Shift+Insert"] as const;
+
 export const BLOCKED_DESKTOP_SHORTCUTS = {
   reload: "Mod+R",
 } as const;

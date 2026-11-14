@@ -2,6 +2,8 @@
  * @vitest-environment node
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { readFile, rm, stat } from "node:fs/promises";
+import path from "node:path";
 
 const mockEnsureKanvibeHooksCurrent = vi.fn<(...args: unknown[]) => Promise<boolean>>(async () => false);
 const mockBroadcastTaskHookInstallFailed = vi.fn();
@@ -61,33 +63,56 @@ async function importBridge() {
   return import("@/desktop/main/terminalBridge");
 }
 
-describe("terminalBridge.pasteImageToRemoteTerminal", () => {
+describe("terminalBridge.pasteImageToTerminal", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
   });
 
-  it("returns an error without attempting a transfer when the task has no sshHost (local session)", async () => {
-    // Given
+  it("로컬 세션은 X11 연결 없이 이미지 파일을 저장하고 CLI가 읽을 수 있도록 유지한다", async () => {
     mockFindOneBy.mockResolvedValue({ id: "task-1", sshHost: null });
-    const { pasteImageToRemoteTerminal } = await importBridge();
+    mockDecodeDataUrlToBuffer.mockReturnValue(Buffer.from("image-bytes"));
+    const { pasteImageToTerminal } = await importBridge();
 
-    // When
-    const result = await pasteImageToRemoteTerminal("task-1", "data:image/png;base64,aGVsbG8=");
+    const result = await pasteImageToTerminal("task-1", "data:image/png;base64,aGVsbG8=");
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(result.error);
+    try {
+      expect(await readFile(result.imagePath, "utf8")).toBe("image-bytes");
+      expect((await stat(result.imagePath)).mode & 0o777).toBe(0o600);
+      expect(mockTransferImageToRemoteHost).not.toHaveBeenCalled();
+      expect(mockParseSSHConfig).not.toHaveBeenCalled();
+    } finally {
+      await rm(path.dirname(result.imagePath), { recursive: true, force: true });
+    }
+  });
 
-    // Then
-    expect(result).toEqual({ ok: false, error: "원격 세션이 아닙니다." });
+  it("없는 태스크에는 파일을 만들거나 전송하지 않는다", async () => {
+    mockFindOneBy.mockResolvedValue(null);
+    const { pasteImageToTerminal } = await importBridge();
+    await expect(pasteImageToTerminal("missing", "data:image/png;base64,aGVsbG8=")).resolves.toEqual({
+      ok: false, error: "태스크를 찾을 수 없습니다.",
+    });
+    expect(mockDecodeDataUrlToBuffer).not.toHaveBeenCalled();
     expect(mockTransferImageToRemoteHost).not.toHaveBeenCalled();
+  });
+
+  it("태스크 조회 실패도 IPC에서 처리할 수 있는 오류로 반환한다", async () => {
+    mockFindOneBy.mockRejectedValueOnce(new Error("database unavailable"));
+    const { pasteImageToTerminal } = await importBridge();
+    await expect(pasteImageToTerminal("task", "data:image/png;base64,aGVsbG8=")).resolves.toEqual({
+      ok: false, error: "database unavailable",
+    });
   });
 
   it("returns an error when the task's sshHost has no matching parsed SSH config", async () => {
     // Given
     mockFindOneBy.mockResolvedValue({ id: "task-1", sshHost: "unknown-host" });
     mockParseSSHConfig.mockResolvedValue([]);
-    const { pasteImageToRemoteTerminal } = await importBridge();
+    const { pasteImageToTerminal } = await importBridge();
 
     // When
-    const result = await pasteImageToRemoteTerminal("task-1", "data:image/png;base64,aGVsbG8=");
+    const result = await pasteImageToTerminal("task-1", "data:image/png;base64,aGVsbG8=");
 
     // Then
     expect(result).toEqual({ ok: false, error: "SSH 호스트를 찾을 수 없습니다: unknown-host" });
@@ -100,13 +125,13 @@ describe("terminalBridge.pasteImageToRemoteTerminal", () => {
     const decodedBuffer = Buffer.from("hello");
     mockDecodeDataUrlToBuffer.mockReturnValue(decodedBuffer);
     mockTransferImageToRemoteHost.mockResolvedValue("/tmp/kanvibe-paste-fixed-uuid.png");
-    const { pasteImageToRemoteTerminal } = await importBridge();
+    const { pasteImageToTerminal } = await importBridge();
 
     // When
-    const result = await pasteImageToRemoteTerminal("task-1", "data:image/png;base64,aGVsbG8=");
+    const result = await pasteImageToTerminal("task-1", "data:image/png;base64,aGVsbG8=");
 
     // Then
-    expect(result).toEqual({ ok: true, remotePath: "/tmp/kanvibe-paste-fixed-uuid.png" });
+    expect(result).toEqual({ ok: true, imagePath: "/tmp/kanvibe-paste-fixed-uuid.png" });
     expect(mockTransferImageToRemoteHost).toHaveBeenCalledWith(SSH_CONFIG, decodedBuffer);
   });
 
@@ -116,10 +141,10 @@ describe("terminalBridge.pasteImageToRemoteTerminal", () => {
     mockParseSSHConfig.mockResolvedValue([SSH_CONFIG]);
     mockDecodeDataUrlToBuffer.mockReturnValue(Buffer.from("hello"));
     mockTransferImageToRemoteHost.mockRejectedValue(new Error("scp 전송 실패 (exit 1): Permission denied"));
-    const { pasteImageToRemoteTerminal } = await importBridge();
+    const { pasteImageToTerminal } = await importBridge();
 
     // When
-    const result = await pasteImageToRemoteTerminal("task-1", "data:image/png;base64,aGVsbG8=");
+    const result = await pasteImageToTerminal("task-1", "data:image/png;base64,aGVsbG8=");
 
     // Then
     expect(result).toEqual({ ok: false, error: "scp 전송 실패 (exit 1): Permission denied" });

@@ -860,7 +860,7 @@ function registerDesktopHandlers() {
     focusTerminal,
     closeTerminal,
     closeWindowTerminals,
-    pasteImageToRemoteTerminal,
+    pasteImageToTerminal,
   } = require(getRuntimeModulePath(path.join("src", "desktop", "main", "terminalBridge.ts")));
   const {
     openAiAccountLogin,
@@ -960,7 +960,7 @@ function registerDesktopHandlers() {
   });
 
   ipcMain.handle("kanvibe:terminal-paste-image", async (_event, taskId, imageDataUrl) => {
-    return pasteImageToRemoteTerminal(taskId, imageDataUrl);
+    return pasteImageToTerminal(taskId, imageDataUrl);
   });
 
   /**

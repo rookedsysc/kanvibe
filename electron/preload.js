@@ -75,7 +75,7 @@ contextBridge.exposeInMainWorld("kanvibeDesktop", {
   closeTerminal(taskId, tabId) {
     ipcRenderer.send("kanvibe:terminal-close", taskId, tabId);
   },
-  pasteImageToRemoteTerminal(taskId, imageDataUrl) {
+  pasteImageToTerminal(taskId, imageDataUrl) {
     return ipcRenderer.invoke("kanvibe:terminal-paste-image", taskId, imageDataUrl);
   },
   writeSystemClipboard(text) {

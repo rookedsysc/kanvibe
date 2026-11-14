@@ -1,6 +1,9 @@
 import { ensureKanvibeHooksCurrent } from "@/lib/kanvibeHooksInstaller";
 import { broadcastTaskHookInstallFailed } from "@/lib/boardNotifier";
 import { EventEmitter } from "node:events";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import type { WebContents } from "electron";
 import { getProjectRepository, getTaskRepository } from "@/lib/database";
 import { SessionType, type KanbanTask } from "@/entities/KanbanTask";
@@ -159,20 +162,38 @@ async function resolveRemoteSshConfig(
   return { ok: true, sshConfig };
 }
 
-/** 클립보드 이미지를 원격 세션에 scp로 전달하고, 성공하면 원격 경로를 반환한다 */
-export async function pasteImageToRemoteTerminal(
+/** CLI가 X11 클립보드를 읽지 않아도 되도록 세션 호스트에 이미지 파일을 준비한다 */
+export async function pasteImageToTerminal(
   taskId: string,
   imageDataUrl: string,
-): Promise<{ ok: true; remotePath: string } | { ok: false; error: string }> {
-  const resolved = await resolveRemoteSshConfig(taskId);
-  if (!resolved.ok) {
-    return resolved;
-  }
-
+): Promise<{ ok: true; imagePath: string } | { ok: false; error: string }> {
   try {
+    const taskRepo = await getTaskRepository();
+    const task = await taskRepo.findOneBy({ id: taskId });
+    if (!task) {
+      return { ok: false, error: "태스크를 찾을 수 없습니다." };
+    }
+
     const imageBuffer = decodeDataUrlToBuffer(imageDataUrl);
-    const remotePath = await transferImageToRemoteHost(resolved.sshConfig, imageBuffer);
-    return { ok: true, remotePath };
+    if (!task.sshHost) {
+      const directory = await mkdtemp(path.join(tmpdir(), "kanvibe-paste-"));
+      const imagePath = path.join(directory, "image.png");
+      try {
+        await writeFile(imagePath, imageBuffer, { mode: 0o600 });
+      } catch (error) {
+        await rm(directory, { recursive: true, force: true });
+        throw error;
+      }
+      // CLI가 프롬프트를 제출한 뒤에도 읽을 수 있어야 하므로 성공한 파일은 유지한다.
+      return { ok: true, imagePath };
+    }
+
+    const resolved = await resolveRemoteSshConfig(taskId);
+    if (!resolved.ok) {
+      return resolved;
+    }
+    const imagePath = await transferImageToRemoteHost(resolved.sshConfig, imageBuffer);
+    return { ok: true, imagePath };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "이미지 전송 실패" };
   }

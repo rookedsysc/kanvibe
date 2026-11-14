@@ -1,7 +1,7 @@
 import { PaneLayoutType } from "@/entities/PaneLayoutConfig";
 import { listTerminalTabs, renameTerminalTab, moveTerminalTab } from "./terminalTabService";
 import { getAllPaneLayouts, savePaneLayout, deletePaneLayout } from "./paneLayoutService";
-import { pasteImageToRemoteTerminal } from "@/desktop/main/terminalBridge";
+import { pasteImageToTerminal } from "@/desktop/main/terminalBridge";
 import { getTaskSurfaces, writeToPane } from "./mobileBridgeService";
 import { quoteShellArgument } from "@/lib/hostFileAccess";
 import { MobileFeatureError, readMobileBoolean, readMobileEnum, readMobileObject, readMobileText, requireMobileProject, requireMobileTask } from "./mobileFeatureValidation";
@@ -75,8 +75,8 @@ export async function pasteMobileRemoteImage(taskId: string, paneId: string, inp
   if (!task.sshHost) throw new MobileFeatureError(409, "원격 터미널에서만 이미지를 붙여넣을 수 있습니다");
   const surfaces = await getTaskSurfaces(taskId);
   if (!surfaces.tabs.some((tab) => tab.panes.some((pane) => pane.id === paneId))) throw new MobileFeatureError(404, "없는 터미널 pane입니다");
-  const result = await pasteImageToRemoteTerminal(taskId, `data:${mimeType};base64,${body.base64}`);
+  const result = await pasteImageToTerminal(taskId, `data:${mimeType};base64,${body.base64}`);
   if (!result.ok) throw new MobileFeatureError(409, "이미지를 전송하지 못했습니다");
-  await writeToPane(taskId, paneId, quoteShellArgument(result.remotePath));
-  return result.remotePath;
+  await writeToPane(taskId, paneId, quoteShellArgument(result.imagePath));
+  return result.imagePath;
 }

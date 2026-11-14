@@ -3,6 +3,7 @@ import { useTranslations } from "next-intl";
 import "@xterm/xterm/css/xterm.css";
 import { createTerminalOptions, installMacShiftSelectionPatch } from "@/lib/terminalMouseSelection";
 import { installOsc52ClipboardHandler } from "@/lib/terminalClipboard";
+import { getCurrentShortcutPlatform, matchShortcutEvent, TERMINAL_IMAGE_PASTE_SHORTCUTS } from "@/desktop/renderer/utils/keyboardShortcut";
 import { REQUEST_ACTIVE_TERMINAL_FOCUS_EVENT, hasTerminalFocusBlocker } from "@/desktop/renderer/utils/terminalFocus";
 import { TerminalPaneChatLayer, type TerminalChatGrid } from "./TerminalPaneChatLayer";
 
@@ -15,8 +16,6 @@ interface TerminalProps {
    * 숨겨진 컨테이너는 높이·너비가 0이라 fit이 터미널을 2×1로 줄여 버리므로 크기 동기화를 멈춘다.
    */
   isHidden?: boolean;
-  /** 원격(SSH) 세션에서만 클립보드 이미지 붙여넣기를 가로챈다. 로컬 세션은 기존 텍스트 붙여넣기만 유지한다 */
-  isRemote?: boolean;
   taskTitle?: string;
   onHistory?: () => void;
 }
@@ -80,7 +79,7 @@ function loadNerdFontFamily(): Promise<string | null> {
   return nerdFontLoadPromise;
 }
 
-export default function Terminal({ taskId, tabId = null, isHidden = false, isRemote = false, taskTitle, onHistory }: TerminalProps) {
+export default function Terminal({ taskId, tabId = null, isHidden = false, taskTitle, onHistory }: TerminalProps) {
   const t = useTranslations("taskDetail");
   const translationsRef = useRef(t);
   translationsRef.current = t;
@@ -92,12 +91,10 @@ export default function Terminal({ taskId, tabId = null, isHidden = false, isRem
   const [connectionStatus, setConnectionStatus] = useState<"connecting" | "reconnecting" | "ready" | "error">("connecting");
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [connectionAttempt, setConnectionAttempt] = useState(0);
-  /** connect는 taskId·tabId에만 묶여 있어야 하므로, 표시 여부·원격 여부는 ref로 읽는다 */
+  /** connect는 taskId·tabId에만 묶여 있어야 하므로, 표시 여부는 ref로 읽는다 */
   const isHiddenRef = useRef(isHidden);
-  const isRemoteRef = useRef(isRemote);
 
   isHiddenRef.current = isHidden;
-  isRemoteRef.current = isRemote;
 
   const connect = useCallback(async (signal: AbortSignal, registerCleanup: (cleanup: () => void) => void) => {
     if (!containerRef.current) {
@@ -139,18 +136,25 @@ export default function Terminal({ taskId, tabId = null, isHidden = false, isRem
       cleanups.push(() => osc52ClipboardHandler.dispose());
       terminal.options.fontFamily = FALLBACK_FONT_FAMILY;
 
-      /**
-       * 원격 세션의 CLI(예: Claude Code)는 헤드리스 서버라 로컬 클립보드 이미지를 직접 읽을 수 없다.
-       * 그래서 로컬 클립보드 이미지를 감지하면 scp로 원격에 옮기고, 그 경로만 텍스트로 붙여넣는다.
-       */
-      const sendImageToRemoteTerminal = (imageDataUrl: string) => {
-        void window.kanvibeDesktop!.pasteImageToRemoteTerminal(taskId, imageDataUrl).then((result: { ok: boolean; remotePath?: string; error?: string }) => {
-          if (result.ok && result.remotePath) {
-            window.kanvibeDesktop!.writeTerminal(taskId, tabId, result.remotePath);
+      /** 앱의 클립보드 이미지를 파일로 전달해 CLI가 X11에 직접 접속하지 않게 한다 */
+      const sendImageToTerminal = async (imageDataUrl: string) => {
+        try {
+          const result = await window.kanvibeDesktop!.pasteImageToTerminal(taskId, imageDataUrl);
+          if (isTerminalDisposed || signal.aborted) return;
+          if (result.ok && result.imagePath) {
+            const imagePath = result.imagePath;
+            const pasteText = !/^[\w./-]+$/.test(imagePath)
+              ? "'" + imagePath.replace(/'/g, "'\\''") + "'"
+              : imagePath;
+            terminal.paste(pasteText);
           } else {
             terminal.writeln(`\r\n\x1b[31m${result.error || "이미지 전송 실패"}\x1b[0m`);
           }
-        });
+        } catch (error) {
+          if (!isTerminalDisposed && !signal.aborted) {
+            terminal.writeln(`\r\n\x1b[31m${error instanceof Error ? error.message : "이미지 전송 실패"}\x1b[0m`);
+          }
+        }
       };
 
       const handleImagePaste = (file: File) => {
@@ -158,7 +162,7 @@ export default function Terminal({ taskId, tabId = null, isHidden = false, isRem
         reader.onload = () => {
           const imageDataUrl = reader.result;
           if (typeof imageDataUrl === "string") {
-            sendImageToRemoteTerminal(imageDataUrl);
+            void sendImageToTerminal(imageDataUrl);
           }
         };
         reader.readAsDataURL(file);
@@ -169,9 +173,6 @@ export default function Terminal({ taskId, tabId = null, isHidden = false, isRem
         if (chatFocusedRef.current) {
           event.preventDefault();
           event.stopImmediatePropagation();
-          return;
-        }
-        if (!isRemoteRef.current) {
           return;
         }
 
@@ -187,35 +188,25 @@ export default function Terminal({ taskId, tabId = null, isHidden = false, isRem
           return;
         }
 
+        const file = imageItem.getAsFile();
+        if (!file) return;
+
         event.preventDefault();
         event.stopImmediatePropagation();
-
-        const file = imageItem.getAsFile();
-        if (file) {
-          handleImagePaste(file);
-        }
+        handleImagePaste(file);
       };
 
       pasteEventTarget.addEventListener("paste", handlePaste, true);
       cleanups.push(() => pasteEventTarget.removeEventListener("paste", handlePaste, true));
 
-      /**
-       * macOS의 Chromium 편집 동작은 Cmd+V만 붙여넣기로 매핑하므로, Ctrl+V·Ctrl+Shift+V·Shift+Insert는
-       * 네이티브 paste 이벤트를 만들지 않고 xterm이 제어 문자를 그대로 pty에 흘려보낸다.
-       * Claude Code·Codex 같은 CLI는 이 조합도 붙여넣기 시도로 해석하는 경우가 많아 같은 기능을 태운다.
-       * 클립보드에 이미지가 없으면 xterm 기본 처리를 그대로 둬야 vim 비주얼 블록 모드 같은 기존 용법이 깨지지 않는다.
-       */
+      /** 이미지가 있을 때만 가로채서 vim의 Ctrl+V와 텍스트 붙여넣기를 유지한다 */
       const tryHandleImagePasteShortcut = (): boolean => {
-        if (!isRemoteRef.current) {
-          return false;
-        }
-
         const imageDataUrl = window.kanvibeDesktop!.readClipboardImage();
         if (!imageDataUrl) {
           return false;
         }
 
-        sendImageToRemoteTerminal(imageDataUrl);
+        void sendImageToTerminal(imageDataUrl);
         return true;
       };
 
@@ -225,15 +216,18 @@ export default function Terminal({ taskId, tabId = null, isHidden = false, isRem
           return true;
         }
 
-        const isCtrlV = event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "v";
-        const isCtrlShiftV = event.ctrlKey && !event.metaKey && event.shiftKey && !event.altKey && event.key.toLowerCase() === "v";
-        const isShiftInsert = event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey && event.key === "Insert";
-
-        if (!isCtrlV && !isCtrlShiftV && !isShiftInsert) {
+        const platform = getCurrentShortcutPlatform();
+        const isImagePasteShortcut = TERMINAL_IMAGE_PASTE_SHORTCUTS.some(
+          (shortcut) => matchShortcutEvent(event, shortcut, platform),
+        );
+        if (!isImagePasteShortcut || !tryHandleImagePasteShortcut()) {
           return true;
         }
 
-        return !tryHandleImagePasteShortcut();
+        // xterm 입력과 브라우저 기본 paste를 함께 막아 같은 이미지를 두 번 보내지 않는다.
+        event.preventDefault();
+        event.stopPropagation();
+        return false;
       });
 
       /** X11 중간 클릭 붙여넣기 관례를 macOS에서도 받아 주기 위한 트리거. 이 저장소에 기존 중간 클릭 처리는 없다 */

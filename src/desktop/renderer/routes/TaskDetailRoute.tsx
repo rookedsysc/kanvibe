@@ -1815,7 +1815,6 @@ function TaskDetailContent({ id }: { id: string }) {
                 taskTitle={state.task.title}
                 onHistory={() => setMainView("history")}
                 tabs={state.task.sessionType === SessionType.TERMINAL ? terminalTabs.tabs : undefined}
-                isRemote={Boolean(state.task.sshHost)}
                 isHidden={mainView !== "terminal"}
               />
             </div>

@@ -27,10 +27,10 @@ declare global {
       resizeTerminal: (taskId: string, tabId: string | null, cols: number, rows: number) => void;
       focusTerminal: (taskId: string) => void;
       closeTerminal: (taskId: string, tabId: string | null) => void;
-      pasteImageToRemoteTerminal: (
+      pasteImageToTerminal: (
         taskId: string,
         imageDataUrl: string,
-      ) => Promise<{ ok: boolean; remotePath?: string; error?: string }>;
+      ) => Promise<{ ok: boolean; imagePath?: string; error?: string }>;
       /** Ctrl+V 등 네이티브 paste 이벤트를 만들지 않는 트리거를 위한 동기 클립보드 이미지 조회 */
       readClipboardImage: () => string | null;
       onTerminalData: (listener: (event: { taskId: string; tabId: string | null; data: string }) => void) => () => void;

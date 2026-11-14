@@ -3,7 +3,7 @@ const mocks = vi.hoisted(() => ({
   task: { id: "task-1", projectId: "project-1", branchName: null, worktreePath: null, sessionName: null, sshHost: null, prUrl: null } as Record<string, any>,
   getTaskById: vi.fn(), getProjectById: vi.fn(), updateTask: vi.fn(), updateProjectColor: vi.fn(), getSearchableTasks: vi.fn(), getMoreDoneTasks: vi.fn(), getTaskIdByProjectAndBranch: vi.fn(), branchFromTask: vi.fn(), fetchAndSavePrUrl: vi.fn(), deleteProject: vi.fn(), getAvailableHosts: vi.fn(), listSubdirectories: vi.fn(), scanAndRegisterProjects: vi.fn(), getSessionDependencyStatus: vi.fn(),
   getGitDiffFiles: vi.fn(), getOriginalFileContent: vi.fn(), getFileContent: vi.fn(), saveFileContent: vi.fn(), getTaskDiffStats: vi.fn(), findSymbolicLinkPath: vi.fn(), getTasksByStatus: vi.fn(),
-  listTerminalTabs: vi.fn(), renameTerminalTab: vi.fn(), moveTerminalTab: vi.fn(), getAllPaneLayouts: vi.fn(), savePaneLayout: vi.fn(), deletePaneLayout: vi.fn(), pasteImageToRemoteTerminal: vi.fn(), getTaskSurfaces: vi.fn(), writeToPane: vi.fn(),
+  listTerminalTabs: vi.fn(), renameTerminalTab: vi.fn(), moveTerminalTab: vi.fn(), getAllPaneLayouts: vi.fn(), savePaneLayout: vi.fn(), deletePaneLayout: vi.fn(), pasteImageToTerminal: vi.fn(), getTaskSurfaces: vi.fn(), writeToPane: vi.fn(),
   getDefaultSessionType: vi.fn(), setDefaultSessionType: vi.fn(), getDoneAlertDismissed: vi.fn(), dismissDoneAlert: vi.fn(), getBoardSortPreference: vi.fn(), setBoardSortPreference: vi.fn(), getBackgroundSyncEnabled: vi.fn(), setBackgroundSyncEnabled: vi.fn(), getBackgroundSyncIntervalMs: vi.fn(), setBackgroundSyncIntervalMs: vi.fn(), getSessionTypeChangeTargets: vi.fn(), changeAllTaskSessionTypes: vi.fn(), deleteTasks: vi.fn(), runBackgroundTaskSyncNow: vi.fn(), getNotificationById: vi.fn(), markTaskNotificationsRead: vi.fn(),
 }));
 vi.mock("../kanbanService", () => ({ ...mocks }));
@@ -161,12 +161,12 @@ describe("workspace and settings boundaries", () => {
   it("rejects malformed images and local targets before uploads", async () => {
     await expect(feature.pasteMobileRemoteImage("task-1", "%1", { mimeType: "image/png", base64: "not-base64" })).rejects.toMatchObject({ statusCode: 400 });
     await expect(feature.pasteMobileRemoteImage("task-1", "%1", { mimeType: "image/png", base64: "iVBORw0KGgo=" })).rejects.toMatchObject({ statusCode: 409 });
-    expect(mocks.pasteImageToRemoteTerminal).not.toHaveBeenCalled();
+    expect(mocks.pasteImageToTerminal).not.toHaveBeenCalled();
   });
   it("uploads images only to an owned remote pane and inserts a quoted path", async () => {
     mocks.task.sshHost = "known-host";
     mocks.getTaskSurfaces.mockResolvedValue({ tabs: [{ panes: [{ id: "%1" }] }] });
-    mocks.pasteImageToRemoteTerminal.mockResolvedValue({ ok: true, remotePath: "/tmp/kanvibe-paste.png" });
+    mocks.pasteImageToTerminal.mockResolvedValue({ ok: true, imagePath: "/tmp/kanvibe-paste.png" });
     expect(await feature.pasteMobileRemoteImage("task-1", "%1", { mimeType: "image/png", base64: "iVBORw0KGgo=" })).toBe("/tmp/kanvibe-paste.png");
     expect(mocks.writeToPane).toHaveBeenCalledWith("task-1", "%1", "'/tmp/kanvibe-paste.png'");
   });

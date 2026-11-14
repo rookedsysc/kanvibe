@@ -65,7 +65,6 @@ export default function WorkspaceTerminalPane({
             key={task.id}
             taskId={task.id}
             tabs={isTerminalSession ? terminalTabs.tabs : undefined}
-            isRemote={Boolean(task.sshHost)}
           />
         ) : (
           <div className="flex h-full items-center justify-center bg-bg-page">
