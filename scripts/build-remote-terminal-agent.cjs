@@ -17,6 +17,16 @@ async function buildRemoteTerminalAgent() {
       minify: false,
     },
   });
+  await build({
+    configFile: false,
+    logLevel: "warn",
+    build: {
+      target: "node18", outDir: path.join(__dirname, "..", "build", "remote"), emptyOutDir: false,
+      lib: { entry: path.join(__dirname, "..", "src", "lib", "remoteHostServer.ts"), formats: ["cjs"], fileName: () => "host-server.cjs" },
+      rollupOptions: { external: [...builtinModules, ...builtinModules.map((name) => `node:${name}`)] },
+      minify: false,
+    },
+  });
 }
 if (require.main === module) buildRemoteTerminalAgent().catch((error) => { console.error(error); process.exitCode = 1; });
 module.exports = { buildRemoteTerminalAgent };
