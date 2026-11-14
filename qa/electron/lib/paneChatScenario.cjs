@@ -20,6 +20,12 @@ async function runPaneChatScenario({ page, invoke, taskId, repo, fakeHome, runDi
   for (const provider of ["codex", "claude"]) {
     fs.copyFileSync(path.join(__dirname, "pane-chat-cli.py"), path.join(executableDir, provider));
   }
+  // 모델 설정 선택창이 읽는 Codex 모델 목록. 한 모델에는 고를 옵션을 주고 다른 모델에는 주지 않아 두 경우를 모두 볼 수 있게 한다
+  fs.mkdirSync(path.join(fakeHome, ".codex"), { recursive: true });
+  fs.writeFileSync(path.join(fakeHome, ".codex", "models_cache.json"), JSON.stringify({ models: [
+    { slug: "fixture-fast", display_name: "Fixture Fast", visibility: "list", priority: 1, supported_reasoning_levels: [{ effort: "low" }, { effort: "medium" }, { effort: "high" }], service_tiers: [{ id: "priority", name: "Fast" }] },
+    { slug: "fixture-deep", display_name: "Fixture Deep", visibility: "list", priority: 2, supported_reasoning_levels: [], service_tiers: [] },
+  ] }));
   const quote = (text) => "'" + text.replace(/'/g, "'\"'\"'") + "'";
   const write = (tabId, input) => page.evaluate(({ taskId, tabId, input }) => {
     window.kanvibeDesktop.writeTerminal(taskId, tabId, input);
