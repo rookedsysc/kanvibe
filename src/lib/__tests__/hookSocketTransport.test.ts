@@ -111,6 +111,34 @@ describe("hook 터널 소켓 전송", () => {
     expect(result.stdout).toBe(socketPath);
   });
 
+  it.each(["dev", "prod", "qa-fixture"])("namespaced shell hook and CLI reach the stable %s endpoint with client identity", async (namespace) => {
+    const directory = path.join(socketDirectory, namespace);
+    mkdirSync(directory, { mode: 0o700 });
+    const received: Array<{ path: string; client: string | string[] | undefined }> = [];
+    await listen(http.createServer((request, response) => {
+      request.resume();
+      request.on("end", () => { received.push({ path: request.url!, client: request.headers["x-kanvibe-client-id"] }); response.end("{}"); });
+    }), path.join(directory, "hooks-v1.sock"));
+    mkdirSync(path.join(workspace, ".kanvibe"), { recursive: true });
+    writeFileSync(path.join(workspace, ".kanvibe", "targets.json"), JSON.stringify({ targets: [{ url: "http://stale.invalid:9736", taskId: "task-1", token: "token-1", clientId: CLIENT_ID, transport: "ssh", remoteHostNamespace: namespace }] }));
+    const assignment = withTestSocketDirectory(buildShellOwnedHookSocketAssignment("found", CLIENT_ID, namespace));
+    expect((await runShell(`${assignment}; printf '%s' "$found"`, workspace)).stdout).toBe(path.join(directory, "hooks-v1.sock"));
+    const hook = `TASK_ID=task-1\nKANVIBE_URL=http://stale.invalid:9736\nset --\ngit init -q\n${withTestSocketDirectory(buildShellKanvibeStatusUpdater("review"))}`;
+    expect((await runShell(hook, workspace)).code).toBe(0);
+    expect((await runShell(withTestSocketDirectory(buildTaskCliCommand(workspace, ["delete", "--yes"])), workspace)).code).toBe(0);
+    expect(received).toEqual([
+      { path: "/api/hooks/status", client: CLIENT_ID },
+      { path: "/api/cli/tasks/delete", client: CLIENT_ID },
+    ]);
+  });
+
+  it.each(["qa-", "../prod", "qa-TOO", "qa-1234567890123456789012345"])("rejects invalid namespace %s even if a legacy socket is live", async (namespace) => {
+    await listen(http.createServer(), path.join(socketDirectory, socketFileName));
+    const result = await runShell(`${withTestSocketDirectory(buildShellHookSocketResolver())}\nkanvibe_hook_socket '${CLIENT_ID}' '${namespace}'`, workspace);
+    expect(result.stdout).toBe("");
+    expect(() => buildShellOwnedHookSocketAssignment("found", CLIENT_ID, namespace)).toThrow();
+  });
+
   it.each([
     ["http://localhost:9736", "local", 0],
     ["http://127.0.0.1:9736", "", 0],

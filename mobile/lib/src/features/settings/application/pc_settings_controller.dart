@@ -169,6 +169,4 @@ class PcOperationsController extends AsyncNotifier<PcOperationResult?> {
     (repository, connection) =>
         repository.changeSessions(connection, type, closeExisting),
   );
-  Future<bool> runSync() =>
-      _run((repository, connection) => repository.runSync(connection));
 }

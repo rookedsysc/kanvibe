@@ -1,4 +1,5 @@
 import { EventEmitter } from "node:events";
+import type { BackgroundTaskSyncStatus } from "@/desktop/shared/backgroundTaskSync";
 
 export interface BoardUpdatedPayload {
   type: "board-updated";
@@ -84,6 +85,7 @@ export interface BackgroundSyncReviewPayload {
 
 export type BoardEventPayload =
   | BoardUpdatedPayload
+  | { type: "background-sync-status-changed"; status: BackgroundTaskSyncStatus }
   | ({ type: "task-status-changed" } & TaskStatusChangedPayload)
   | ({ type: "hook-status-target-missing" } & HookStatusTargetMissingPayload)
   | ({ type: "task-hook-install-failed" } & TaskHookInstallFailedPayload)
@@ -94,6 +96,10 @@ export type BoardEventPayload =
   | ({ type: "background-sync-review-needed" } & BackgroundSyncReviewPayload);
 
 const boardEventEmitter = new EventEmitter();
+
+export function broadcastBackgroundSyncStatus(status: BackgroundTaskSyncStatus) {
+  emitBoardEvent({ type: "background-sync-status-changed", status });
+}
 
 export function subscribeToBoardEvents(
   listener: (payload: BoardEventPayload) => void,

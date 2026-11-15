@@ -286,6 +286,37 @@ void main() {
     });
   });
 
+  for (final width in [390.0, 768.0, 1024.0]) {
+    testWidgets('$width 폭에서 선택한 pane만 열고 탭으로 전환한다', (tester) async {
+      final client = await pumpDetail(tester, size: Size(width, 844));
+      expect(find.byType(PaneTerminalView), findsOneWidget);
+      expect(client.openedPanes.keys, ['%19']);
+      client.openedPanes['%19']!.add('ready');
+      await tester.pump();
+      terminalIn(tester, '%19').textInput('left input');
+      expect(client.writtenInput['%19'], contains('left input'));
+      expect(client.writtenInput['%20'], isNull);
+
+      await tester.tap(find.text('zsh').first);
+      await tester.pumpAndSettle();
+      expect(find.byType(PaneTerminalView), findsOneWidget);
+      expect(
+        tester.widget<PaneTerminalView>(find.byType(PaneTerminalView)).pane.id,
+        '%20',
+      );
+      expect(client.closedPanes, contains('%19'));
+      client.openedPanes['%20']!.add('ready');
+      await tester.pump();
+      terminalIn(tester, '%20').textInput('right input');
+      expect(client.writtenInput['%20'], contains('right input'));
+      expect(client.writtenInput['%19'], isNot(contains('right input')));
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+      expect(client.closedPanes, contains('%20'));
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   group('태스크 상단 반응형 액션', () {
     const taskWithPr = BoardTask(
       id: 'task-1',
@@ -296,38 +327,26 @@ void main() {
       prUrl: 'https://github.com/example/repo/pull/1',
     );
     for (final width in [320.0, 390.0, 767.0, 768.0, 1024.0]) {
-      testWidgets('$width 폭에서 좁은 화면은 메뉴 하나, 넓은 화면은 열 개의 작업 액션을 보인다', (
-        tester,
-      ) async {
+      testWidgets('$width 폭에서 태스크 액션은 메뉴 하나로 표시한다', (tester) async {
         await pumpDetail(tester, size: Size(width, 844), task: taskWithPr);
         final appBar = tester.widget<AppBar>(find.byType(AppBar));
-        expect(appBar.actions!.length, width < 768 ? 1 : 10);
+        expect(appBar.actions!.length, 1);
         expect(tester.takeException(), isNull);
-        if (width < 768) {
-          expect(
-            find.bySemanticsIdentifier('create-task-from-current'),
-            findsNothing,
-          );
-          await tester.tap(find.byTooltip('태스크 메뉴'));
-          await tester.pumpAndSettle();
-          for (final label in [
-            '새 태스크',
-            '대화 기록',
-            '정보',
-            '상태 옮기기',
-            '세션 종류 바꾸기',
-            'PR 열기',
-          ]) {
-            expect(find.text(label), findsOneWidget);
-          }
-        } else {
-          expect(find.byTooltip('태스크 메뉴'), findsNothing);
-          await _showTaskActions(tester);
-          expect(find.byTooltip('PR 열기'), findsOneWidget);
-          expect(
-            find.bySemanticsIdentifier('create-task-from-current'),
-            findsOneWidget,
-          );
+        expect(
+          find.bySemanticsIdentifier('create-task-from-current'),
+          findsNothing,
+        );
+        await tester.tap(find.byTooltip('태스크 메뉴'));
+        await tester.pumpAndSettle();
+        for (final label in [
+          '새 태스크',
+          '대화 기록',
+          '정보',
+          '상태 옮기기',
+          '세션 종류 바꾸기',
+          'PR 열기',
+        ]) {
+          expect(find.text(label), findsOneWidget);
         }
       });
     }
@@ -378,13 +397,13 @@ void main() {
       expect(find.text('세션 종류 바꾸기'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
-    testWidgets('폴더블 펼침과 접힘에 따라 메뉴와 아이콘이 전환된다', (tester) async {
+    testWidgets('폴더블을 펼치거나 접어도 메뉴를 유지한다', (tester) async {
       await _pumpCreationDetail(tester, size: const Size(390, 844));
       expect(find.byTooltip('태스크 메뉴'), findsOneWidget);
       await tester.binding.setSurfaceSize(const Size(1024, 844));
       await tester.pumpAndSettle();
-      expect(find.byTooltip('태스크 메뉴'), findsNothing);
-      expect(find.byTooltip('정보'), findsOneWidget);
+      expect(find.byTooltip('태스크 메뉴'), findsOneWidget);
+      expect(find.byTooltip('정보'), findsNothing);
       await tester.binding.setSurfaceSize(const Size(390, 844));
       await tester.pumpAndSettle();
       expect(find.byTooltip('태스크 메뉴'), findsOneWidget);
@@ -872,27 +891,271 @@ void main() {
     expect(client.closedPanes, contains('%19'), reason: '떠난 pane의 구독은 닫혀야 한다');
   });
 
-  testWidgets('넓은 화면은 같은 window의 두 pane을 함께 보인다', (tester) async {
-    await pumpDetail(tester, size: tabletSize);
-    expect(find.text('claude'), findsOneWidget);
-    expect(find.text('zsh'), findsOneWidget);
-    expect(find.byType(PaneTerminalView), findsNWidgets(2));
+  testWidgets(
+    'selected tab geometry retries after a concurrent mutation fails',
+    (tester) async {
+      final minimal = TaskSurfaces.fromJson({
+        'sessionType': 'herdr',
+        'geometryTabId': '@10',
+        'tabs': [
+          {
+            'id': '@10',
+            'name': 'first',
+            'panes': [
+              {
+                'id': '%19',
+                'tabId': '@10',
+                'tabName': 'first',
+                'width': 80,
+                'height': 24,
+              },
+            ],
+          },
+          {
+            'id': '@11',
+            'name': 'selected',
+            'panes': [
+              {
+                'id': '%21',
+                'tabId': '@11',
+                'tabName': 'selected',
+                'width': 0,
+                'height': 0,
+              },
+            ],
+          },
+        ],
+      });
+      final geometry = TaskSurfaces.fromJson({
+        'sessionType': 'herdr',
+        'geometryTabId': '@11',
+        'tabs': [
+          {
+            'id': '@11',
+            'name': 'selected',
+            'panes': [
+              {
+                'id': '%21',
+                'tabId': '@11',
+                'tabName': 'selected',
+                'width': 80,
+                'height': 24,
+              },
+            ],
+          },
+        ],
+      });
+      final pending = Completer<({TaskSurfaces surfaces, String paneId})>();
+      var calls = 0;
+      final client = FakeDesktopClient(
+        onCreateTerminalTab: () => pending.future,
+      )..onFetchSurfaces = () async => ++calls == 1 ? minimal : geometry;
+      await pumpDetail(tester, size: tabletSize, desktopClient: client);
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(PaneTerminalView)),
+      );
+      final creating = container
+          .read(surfacesProvider(_task.id).notifier)
+          .createTab();
+      final failed = expectLater(
+        creating,
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.message,
+            'message',
+            'creation failed',
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.tap(find.text('selected').first);
+      await tester.pump();
+      expect(find.byType(PaneTerminalView), findsNothing);
+      pending.completeError(StateError('creation failed'));
+      await failed;
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+      expect(client.surfaceRequests.last, (minimal: true, tabId: '@11'));
+      final view = tester.widget<PaneTerminalView>(
+        find.byType(PaneTerminalView),
+      );
+      expect(view.pane.id, '%21');
+      expect(view.pane.width, 80);
+      expect(view.pane.height, 24);
+    },
+  );
+
+  testWidgets(
+    'first terminal output starts optional enrichment once and failure keeps the terminal',
+    (tester) async {
+      final pending = Completer<TaskSurfaces>();
+      var calls = 0;
+      final client = FakeDesktopClient()
+        ..onFetchSurfaces = () async =>
+            ++calls == 1 ? _surfaces : pending.future;
+      await pumpDetail(tester, size: phoneSize, desktopClient: client);
+      expect(calls, 1);
+      client.openedPanes['%19']!.add('first terminal frame');
+      await tester.pump();
+      await tester.pump();
+      expect(calls, 2);
+      client.openedPanes['%19']!.add('second frame');
+      await tester.pump();
+      expect(calls, 2);
+      pending.completeError(Exception('optional metadata unavailable'));
+      await tester.pumpAndSettle();
+      expect(find.byType(PaneTerminalView), findsOneWidget);
+      expect(
+        terminalIn(tester, '%19').buffer.lines[0].getText(),
+        contains('first terminal frame'),
+      );
+    },
+  );
+
+  testWidgets('refreshed minimal surfaces enrich on the next live frame', (
+    tester,
+  ) async {
+    var calls = 0;
+    final client = FakeDesktopClient()
+      ..onFetchSurfaces = () async {
+        calls += 1;
+        return _surfaces;
+      };
+    await pumpDetail(tester, size: phoneSize, desktopClient: client);
+    client.openedPanes['%19']!.add('first frame');
+    await tester.pumpAndSettle();
+    expect(calls, 2);
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(PaneTerminalView)),
+    );
+    container.invalidate(surfacesProvider(_task.id));
+    await tester.pumpAndSettle();
+    expect(calls, 3);
+    client.openedPanes['%19']!.add('after board refresh');
+    await tester.pumpAndSettle();
+    expect(calls, 4);
+    expect(find.byType(PaneTerminalView), findsOneWidget);
   });
 
-  testWidgets('넓은 화면에서 다른 pane 탭을 고르면 입력 대상도 바뀐다', (tester) async {
-    final client = await pumpDetail(tester, size: tabletSize);
-    await tester.tap(find.text('zsh'));
-    await tester.pumpAndSettle();
-    expect(find.byType(PaneTerminalView), findsNWidgets(2));
-    terminalIn(tester, '%20').textInput('ls');
-    expect(client.writtenInput['%20'], contains('ls'));
-    expect(client.writtenInput['%19'], isNull);
-    expect(
-      client.closedPanes,
-      isNot(contains('%19')),
-      reason: '같은 window의 다른 pane은 계속 표시된다',
+  for (final initialWindow in [null, '@11']) {
+    testWidgets(
+      'Fold ${initialWindow == null ? 'selected' : 'initial'} nonfirst window waits for every selected-tab pane rectangle',
+      (tester) async {
+        final minimal = TaskSurfaces.fromJson({
+          'sessionType': 'herdr',
+          'geometryTabId': '@10',
+          'canResize': true,
+          'tabs': [
+            {
+              'id': '@10',
+              'name': 'first',
+              'panes': [
+                {
+                  'id': '%19',
+                  'tabId': '@10',
+                  'tabName': 'first',
+                  'left': 0,
+                  'top': 0,
+                  'width': 100,
+                  'height': 30,
+                },
+              ],
+            },
+            {
+              'id': '@11',
+              'name': 'selected',
+              'panes': [
+                {
+                  'id': '%21',
+                  'tabId': '@11',
+                  'tabName': 'selected',
+                  'left': 0,
+                  'top': 0,
+                  'width': 0,
+                  'height': 0,
+                },
+                {
+                  'id': '%22',
+                  'tabId': '@11',
+                  'tabName': 'selected',
+                  'left': 0,
+                  'top': 0,
+                  'width': 0,
+                  'height': 0,
+                },
+              ],
+            },
+          ],
+        });
+        final requiredGeometry = Completer<TaskSurfaces>();
+        var calls = 0;
+        final client = FakeDesktopClient()
+          ..onFetchSurfaces = () async =>
+              ++calls == 1 ? minimal : requiredGeometry.future;
+        await tester.binding.setSurfaceSize(tabletSize);
+        await tester.pumpWidget(
+          wrapWithApp(
+            TaskDetailScreen(task: _task, initialWindowId: initialWindow),
+            client: client,
+            size: tabletSize,
+          ),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
+        if (initialWindow == null) {
+          expect(find.byType(PaneTerminalView), findsOneWidget);
+          await tester.tap(find.text('selected').first);
+          await tester.pump();
+          await tester.pump();
+        }
+        expect(client.surfaceRequests.last, (minimal: true, tabId: '@11'));
+        expect(find.byType(PaneTerminalView), findsNothing);
+        expect(client.openedPanes.keys, isNot(contains('%21')));
+        expect(client.openedPanes.keys, isNot(contains('%22')));
+        requiredGeometry.complete(
+          TaskSurfaces.fromJson({
+            'sessionType': 'herdr',
+            'geometryTabId': '@11',
+            'canResize': true,
+            'tabs': [
+              {
+                'id': '@11',
+                'name': 'selected',
+                'panes': [
+                  {
+                    'id': '%21',
+                    'tabId': '@11',
+                    'tabName': 'selected',
+                    'left': 0,
+                    'top': 0,
+                    'width': 60,
+                    'height': 30,
+                  },
+                  {
+                    'id': '%22',
+                    'tabId': '@11',
+                    'tabName': 'selected',
+                    'left': 60,
+                    'top': 0,
+                    'width': 40,
+                    'height': 30,
+                  },
+                ],
+              },
+            ],
+          }),
+        );
+        await tester.pumpAndSettle();
+        final views = tester
+            .widgetList<PaneTerminalView>(find.byType(PaneTerminalView))
+            .toList();
+        expect(views.map((view) => view.pane.id), ['%21']);
+        expect(views.map((view) => view.pane.width), [60]);
+        expect(views.map((view) => view.pane.left), [0]);
+      },
     );
-  });
+  }
 
   testWidgets('화면을 떠나면 pane 구독이 닫힌다', (tester) async {
     final client = await pumpDetail(tester, size: phoneSize);
@@ -1030,20 +1293,23 @@ void main() {
   });
 
   group('데스크탑 태스크 화면에서 옮겨 온 것', () {
-    testWidgets('넓은 화면에서 프로젝트 배지와 브랜치 및 새 태스크는 정보 버튼과 같은 AppBar에 있다', (
-      tester,
-    ) async {
+    testWidgets('넓은 화면에서 프로젝트와 브랜치를 표시하고 작업은 메뉴에서 고른다', (tester) async {
       await pumpDetail(tester, size: tabletSize);
 
       final appBar = find.byType(AppBar);
       for (final target in [
         find.text('kanvibe-repo'),
         find.text('feat/kanvibe-mobile'),
-        find.bySemanticsIdentifier('create-task-from-current'),
-        find.byTooltip('정보'),
+        find.byTooltip('태스크 메뉴'),
       ]) {
         expect(find.descendant(of: appBar, matching: target), findsOneWidget);
       }
+      await _showTaskActions(tester);
+      expect(
+        find.bySemanticsIdentifier('create-task-from-current'),
+        findsOneWidget,
+      );
+      expect(find.byTooltip('정보'), findsOneWidget);
       expect(find.text('출력 수신 중'), findsNothing);
       expect(find.byTooltip('붙여넣기'), findsNothing);
     });

@@ -98,7 +98,7 @@ export const KanvibePlugin: Plugin = async ({ client }) => {
     }
   }
 
-  type KanvibeTarget = { url: string; taskId: string; clientId?: string; transport?: string };
+  type KanvibeTarget = { url: string; taskId: string; clientId?: string; transport?: string; remoteHostNamespace?: string };
 
   function normalizeKanvibeUrl(url: string): string {
     return url.trim().replace(/\\/+$/, "");
@@ -129,7 +129,9 @@ export const KanvibePlugin: Plugin = async ({ client }) => {
           : undefined;
         seenUrls.add(url);
         const transport = target.transport === undefined ? undefined : String(target.transport);
-        normalizedTargets.push({ url, taskId, clientId, transport });
+        const remoteHostNamespace = target.remoteHostNamespace;
+        if (remoteHostNamespace !== undefined && (typeof remoteHostNamespace !== "string" || !/^(dev|prod|qa-[a-z0-9-]{1,24})$/.test(remoteHostNamespace))) continue;
+        normalizedTargets.push({ url, taskId, clientId, transport, remoteHostNamespace });
       }
 
       return normalizedTargets.length > 0 ? normalizedTargets : getFallbackKanvibeTarget();
@@ -141,14 +143,19 @@ export const KanvibePlugin: Plugin = async ({ client }) => {
   /**
    * 이 소켓으로 task 정보가 나가므로, 본인 소유이고 0700인 디렉터리 안의 본인 소유 소켓만 쓴다
    */
-  function findKanvibeHookSocket(clientId: string | undefined): string | undefined {
+  function findKanvibeHookSocket(clientId: string | undefined, namespace?: string): string | undefined {
     if (!clientId) return undefined;
     try {
       const uid = process.getuid?.();
-      const directory = "/tmp/kv-" + uid;
+      let directory = "/tmp/kv-" + uid;
       const directoryStat = lstatSync(directory);
       if (!directoryStat.isDirectory() || directoryStat.uid !== uid || (directoryStat.mode & 0o777) !== 0o700) return undefined;
-      const socketPath = directory + "/" + clientId + ".sock";
+      if (namespace) {
+        directory += "/" + namespace;
+        const namespaceStat = lstatSync(directory);
+        if (!namespaceStat.isDirectory() || namespaceStat.uid !== uid || (namespaceStat.mode & 0o777) !== 0o700) return undefined;
+      }
+      const socketPath = directory + "/" + (namespace ? "hooks-v1.sock" : clientId + ".sock");
       const socketStat = lstatSync(socketPath);
       return socketStat.isSocket() && socketStat.uid === uid ? socketPath : undefined;
     } catch {
@@ -160,7 +167,7 @@ export const KanvibePlugin: Plugin = async ({ client }) => {
     const response = await fetch(target.url + "/api/hooks/status", {
       method: "POST",
       redirect: "error",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...(unix ? { "x-kanvibe-client-id": target.clientId ?? "" } : {}) },
       body: JSON.stringify({ taskId: target.taskId, status }),
       signal: AbortSignal.timeout(KANVIBE_NOTIFY_TIMEOUT_MS),
       ...(unix ? { unix } : {}),
@@ -175,7 +182,7 @@ export const KanvibePlugin: Plugin = async ({ client }) => {
         await sendKanvibeStatus(target, status);
         return;
       }
-      const socketPath = findKanvibeHookSocket(target.clientId);
+      const socketPath = findKanvibeHookSocket(target.clientId, target.remoteHostNamespace);
       if (!socketPath) throw new Error("KanVibe SSH tunnel socket unavailable");
       await sendKanvibeStatus(target, status, socketPath);
     } catch {
@@ -508,7 +515,7 @@ function hasOpenCodeTargetFanout(pluginContent: string): boolean {
     && pluginContent.includes("readKanvibeTargets")
     && pluginContent.includes("fanoutKanvibeStatus")
     && pluginContent.includes("postKanvibeStatus")
-    && pluginContent.includes("findKanvibeHookSocket(target.clientId)")
+    && pluginContent.includes("findKanvibeHookSocket(target.clientId, target.remoteHostNamespace)")
     && pluginContent.includes("taskId: target.taskId")
     && pluginContent.includes("/api/hooks/status");
 }

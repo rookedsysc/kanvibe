@@ -6,9 +6,11 @@ import {
   focusHerdrTaskTab,
   getHerdrTaskActiveTabId,
   closeLocalTerminalTab,
+  closeRemoteTerminalTab,
   createLocalTerminalTab,
   getLocalTerminalTabProcess,
   listLocalTerminalTabs,
+  listRemoteTerminalTabs,
   moveLocalTerminalTab,
   renameLocalTerminalTab,
   selectLocalTerminalTab,
@@ -139,7 +141,9 @@ export async function listTerminalTabs(taskId: string): Promise<TerminalTabListR
   }
 
   if (target.sessionType === SessionType.TERMINAL) {
-    return { ok: true, tabs: listLocalTerminalTabs(taskId) };
+    try {
+      return { ok: true, tabs: target.sshHost ? await listRemoteTerminalTabs(taskId, target.sshHost, target.sessionName) : listLocalTerminalTabs(taskId) };
+    } catch (error) { return { ...toFailure(error), tabs: [] }; }
   }
 
   try {
@@ -162,6 +166,7 @@ export async function createTerminalTab(taskId: string): Promise<TerminalTabMuta
   }
 
   if (target.sessionType === SessionType.TERMINAL) {
+    if (target.sshHost) await listRemoteTerminalTabs(taskId, target.sshHost, target.sessionName);
     createLocalTerminalTab(taskId);
     return { ok: true };
   }
@@ -196,7 +201,7 @@ export async function getTerminalTabCloseInfo(taskId: string, tabId: string): Pr
     }
 
     const tabs = target.sessionType === SessionType.TERMINAL
-      ? listLocalTerminalTabs(taskId)
+      ? target.sshHost ? await listRemoteTerminalTabs(taskId, target.sshHost, target.sessionName) : listLocalTerminalTabs(taskId)
       : await readTabs(target);
     if (!tabs.some((tab) => tab.id === tabId)) {
       return { ok: false, shouldCloseWindow: false, processNames: null, error: "탭을 찾을 수 없습니다." };
@@ -246,6 +251,7 @@ export async function selectTerminalTab(
   }
 
   if (target.sessionType === SessionType.TERMINAL) {
+    if (target.sshHost) await listRemoteTerminalTabs(taskId, target.sshHost, target.sessionName);
     selectLocalTerminalTab(taskId, tabId);
     return { ok: true };
   }
@@ -304,7 +310,10 @@ export async function closeTerminalTab(
   }
 
   if (target.sessionType === SessionType.TERMINAL) {
-    return { ok: true, shouldCloseWindow: closeLocalTerminalTab(taskId, tabId) === 0 };
+    try {
+      const remaining = target.sshHost ? await closeRemoteTerminalTab(taskId, tabId, target.sshHost, target.sessionName) : closeLocalTerminalTab(taskId, tabId);
+      return { ok: true, shouldCloseWindow: remaining === 0 };
+    } catch (error) { return toFailure(error); }
   }
 
   const sessionKey = JSON.stringify([target.sshHost, target.sessionType, target.sessionName]);
@@ -365,6 +374,7 @@ export async function renameTerminalTab(
   }
 
   if (target.sessionType === SessionType.TERMINAL) {
+    if (target.sshHost) await listRemoteTerminalTabs(taskId, target.sshHost, target.sessionName);
     renameLocalTerminalTab(taskId, tabId, trimmedName);
     return { ok: true };
   }
@@ -418,6 +428,7 @@ export async function moveTerminalTab(
   }
 
   if (target.sessionType === SessionType.TERMINAL) {
+    if (target.sshHost) await listRemoteTerminalTabs(taskId, target.sshHost, target.sessionName);
     moveLocalTerminalTab(taskId, tabId, targetIndex);
     return { ok: true };
   }

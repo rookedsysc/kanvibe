@@ -35,7 +35,7 @@ function logListenerLifecycle(server, label, host, port, onListening) {
   });
 }
 
-function createHookServer({ host, port, mobileTlsPort, mobileTlsDirectory, isDevPairingRouteEnabled }) {
+function createHookServer({ host, port, mobileTlsPort, mobileTlsDirectory, isDevPairingRouteEnabled, remoteHostNamespace }) {
   const hookService = require(getRuntimeModulePath("desktop", "main", "services", "hookService"));
   const hookInstallBundle = require(getRuntimeModulePath("lib", "hookInstallBundle"));
   const hookTunnels = require(getRuntimeModulePath("desktop", "main", "services", "hookTunnelService"));
@@ -159,7 +159,7 @@ function createHookServer({ host, port, mobileTlsPort, mobileTlsDirectory, isDev
   };
 
   /** 포트를 얻지 못한 인스턴스가 터널을 열면 먼저 뜬 인스턴스의 원격 소켓을 지우게 되므로, 포트를 잡은 뒤에만 연다 */
-  logListenerLifecycle(server, "Hook server", host, port, () => hookTunnels.startHookTunnels(createTunnelRequestListener));
+  logListenerLifecycle(server, "Hook server", host, port, () => hookTunnels.startHookTunnels(createTunnelRequestListener, remoteHostNamespace));
 
   /** 인증서를 만들지 못해도 hook 경로는 계속 동작해야 하므로 평문 서버의 시작을 막지 않는다 */
   loadOrCreateMobileTlsCertificate(mobileTlsDirectory)

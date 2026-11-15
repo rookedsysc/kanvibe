@@ -1,5 +1,7 @@
 import type { KanbanTask, TaskStatus } from "@/entities/KanbanTask";
-import { getProjectRepository } from "@/lib/database";
+import { Raw } from "typeorm";
+import { getProjectRepository, getTaskRepository } from "@/lib/database";
+import { broadcastBoardUpdate } from "@/lib/boardNotifier";
 import { addAiToolPatternsToGitExclude } from "@/lib/gitExclude";
 import { persistProjectPriorityToKanvibeState } from "@/desktop/main/services/kanvibeProjectColorService";
 import type { KanvibeTaskSyncState } from "@/lib/kanvibeProjectState";
@@ -45,6 +47,28 @@ export async function readPersistedTaskStatusAtPath(
   return (await readKanvibeTaskState(repoPath, sshHost))?.status ?? null;
 }
 
+export async function refreshHostTaskStatuses(sshHosts: ReadonlySet<string>, isCurrent: () => boolean): Promise<void> {
+  const repository = await getTaskRepository();
+  const tasks = await repository.find({ relations: ["project"] });
+  let changed = false;
+  for (const task of tasks) {
+    const sshHost = task.sshHost ?? task.project?.sshHost;
+    if (!sshHost || !sshHosts.has(sshHost) || !isCurrent()) continue;
+    const repoPath = task.worktreePath || (task.branchName === task.project?.defaultBranch ? task.project?.repoPath : null);
+    if (!repoPath) continue;
+    try {
+      const status = await readPersistedTaskStatusAtPath(repoPath, sshHost);
+      if (!status || status === task.status || !isCurrent()) continue;
+      const updatedAt = Raw((column) => `julianday(${column}) = julianday(:snapshotUpdatedAt)`, { snapshotUpdatedAt: task.updatedAt.toISOString() });
+      const result = await repository.update({ id: task.id, status: task.status, updatedAt }, { status });
+      changed = changed || Boolean(result.affected);
+    } catch (error) {
+      console.warn("[kanvibe] Host status snapshot failed:", { taskId: task.id, sshHost, error: getErrorMessage(error) });
+    }
+  }
+  if (changed && isCurrent()) broadcastBoardUpdate();
+}
+
 /** 다른 기기가 남긴 상태와 설명을 함께 읽는다. 기록이 없으면 null이라 DB 값을 그대로 둔다 */
 export async function readPersistedTaskSyncStateAtPath(
   repoPath: string | null | undefined,
@@ -82,19 +106,42 @@ export async function persistTaskStateAtPath(
   }
 }
 
-async function ensureKanvibeStateDirectoryExcluded(
+/**
+ * git exclude 확인은 원격에서 호스트 키를 검증하는 새 SSH 접속을 두세 번 쓴다. 에이전트 hook 이벤트마다
+ * 되풀이하면 그 접속들이 호스트별 인증 순서를 채워, 터미널 준비와 화면 조회가 그 뒤에서 기다린다.
+ * 확인에 성공한 저장소는 이 시간 동안 다시 확인하지 않는다. 누군가 exclude를 지워도 이 시간 뒤에는 복구된다.
+ */
+const STATE_DIRECTORY_EXCLUDE_RECHECK_MS = 10 * 60_000;
+const stateDirectoryExcludeChecks = new Map<string, { startedAt: number; check: Promise<void> }>();
+
+function ensureKanvibeStateDirectoryExcluded(
   repoPath: string,
   sshHost?: string | null,
 ): Promise<void> {
-  try {
-    await addAiToolPatternsToGitExclude(repoPath, sshHost);
-  } catch (error) {
-    console.warn(".kanvibe 상태 디렉터리 git exclude 갱신 실패:", {
-      repoPath,
-      sshHost: sshHost ?? null,
-      error: getErrorMessage(error),
-    });
+  const checkKey = JSON.stringify([sshHost ?? null, repoPath]);
+  const recentCheck = stateDirectoryExcludeChecks.get(checkKey);
+  if (recentCheck && Date.now() - recentCheck.startedAt < STATE_DIRECTORY_EXCLUDE_RECHECK_MS) {
+    return recentCheck.check;
   }
+
+  const startedCheck = { startedAt: Date.now(), check: Promise.resolve() };
+  stateDirectoryExcludeChecks.set(checkKey, startedCheck);
+  startedCheck.check = (async () => {
+    try {
+      await addAiToolPatternsToGitExclude(repoPath, sshHost);
+    } catch (error) {
+      // 실패한 확인은 기억하지 않아 다음 기록이 다시 시도한다.
+      if (stateDirectoryExcludeChecks.get(checkKey) === startedCheck) {
+        stateDirectoryExcludeChecks.delete(checkKey);
+      }
+      console.warn(".kanvibe 상태 디렉터리 git exclude 갱신 실패:", {
+        repoPath,
+        sshHost: sshHost ?? null,
+        error: getErrorMessage(error),
+      });
+    }
+  })();
+  return startedCheck.check;
 }
 
 export async function persistTaskStateForTask(task: TaskWithOptionalLocation): Promise<void> {

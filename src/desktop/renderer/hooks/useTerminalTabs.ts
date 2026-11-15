@@ -85,6 +85,7 @@ export function useTerminalTabs({
     active: true,
     pending: null as Promise<void> | null,
     queued: false,
+    hasStartedRefresh: false,
   }), [taskId, sessionType]);
   const currentRefreshState = useRef(refreshState);
   currentRefreshState.current = refreshState;
@@ -109,6 +110,7 @@ export function useTerminalTabs({
       return refreshState.pending;
     }
 
+    refreshState.hasStartedRefresh = true;
     refreshState.pending = (async () => {
       do {
         refreshState.queued = false;
@@ -141,8 +143,13 @@ export function useTerminalTabs({
       return;
     }
 
-    /** 창이 돌아왔을 때 이 효과가 다시 돌면서 밀린 변화를 한 번에 따라잡는다 */
-    void refresh(false);
+    /**
+     * 창이 돌아왔을 때 이 효과가 다시 돌면서 밀린 변화를 한 번에 따라잡는다.
+     * 창이 가려질 때도 이 효과가 다시 돌지만, 이미 읽은 목록을 그때 또 읽으면 원격 task는 창을 떠날 때마다 SSH 왕복이 나간다.
+     */
+    if (isWindowActive || !refreshState.hasStartedRefresh) {
+      void refresh(false);
+    }
 
     /** terminal 세션의 탭은 KanVibe만 바꾸므로 주기 조회가 필요 없다 */
     if (sessionType === SessionType.TERMINAL || !isWindowActive) {
@@ -156,7 +163,7 @@ export function useTerminalTabs({
     return () => {
       window.clearInterval(pollIntervalId);
     };
-  }, [isRemote, isVisible, isWindowActive, refresh, sessionType]);
+  }, [isRemote, isVisible, isWindowActive, refresh, refreshState, sessionType]);
 
   /**
    * terminal 세션은 폴링하지 않으므로, 셸이 스스로 끝나 main이 탭을 지운 사실을 알 방법이 없다.

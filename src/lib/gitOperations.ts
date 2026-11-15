@@ -2,6 +2,7 @@ import { exec, spawn } from "child_process";
 import { promisify } from "util";
 import { homedir } from "os";
 import { AsyncLocalStorage } from "node:async_hooks";
+import { getRemoteHostConnection } from "@/lib/remoteHostConnection";
 import {
   buildSSHArgs,
   ensureKanvibeSSHControlDirectory,
@@ -43,15 +44,21 @@ const DEFAULT_REMOTE_SSH_TRANSPORT_FAILURE_COOLDOWN_MS = 5_000;
 const MAX_REMOTE_SSH_TRANSPORT_FAILURE_COOLDOWN_MS = 60_000;
 // Leave two channels below OpenSSH's default MaxSessions=10 for nested lock callbacks.
 const REMOTE_SSH_HOST_MAX_CHANNELS = 8;
+// Repair leaves channels available for detail opens without increasing the shared host ceiling.
+const REMOTE_SSH_HOST_MAX_BACKGROUND_CHANNELS = 2;
 // Revalidate before the 10m ControlPersist idle window can expire.
 const REMOTE_SSH_MASTER_READY_TTL_MS = 9 * 60_000;
 const DEFAULT_REMOTE_SSH_COMMAND_TIMEOUT_MS = 45_000;
 const REMOTE_SSH_COMMAND_MAX_ATTEMPTS = 3;
 const REMOTE_COMMAND_EXIT_MARKER = "__KANVIBE_REMOTE_COMMAND_EXIT_7b3f6e5d__";
 const REMOTE_COMMAND_MAX_BUFFER_BYTES = 10 * 1024 * 1024;
+// 이보다 오래 걸린 원격 명령만 단계별 시간을 남긴다. 정상 명령까지 남기면 폴링 로그에 묻힌다.
+const REMOTE_SSH_SLOW_COMMAND_LOG_MS = 3_000;
+const REMOTE_SSH_SLOW_COMMAND_LOG_COMMAND_LENGTH = 120;
 const remoteSSHTransportFailures = new Map<string, { until: number; error: Error }>();
 // Command slots and authenticated master readiness have separate lifetimes.
 const remoteSSHConnectionPools = new Map<string, RemoteSSHConnectionPool>();
+const remoteSSHCommandPriority = new AsyncLocalStorage<"background">();
 const remoteSSHResponderContext = new AsyncLocalStorage<{ sshHost: string; active: boolean }>();
 const remoteSSHMasters = new Map<string, RemoteSSHMaster>();
 const remoteSSHAuthenticationQueues = new Map<string, Promise<void>>();
@@ -66,11 +73,27 @@ interface RemoteSSHMaster {
 
 interface RemoteSSHConnectionPool {
   activeConnections: number;
-  queue: Array<() => void>;
+  activeBackgroundConnections: number;
+  queue: RemoteSSHQueueEntry[];
+}
+
+interface RemoteSSHQueueEntry {
+  background: boolean;
+  start: () => void;
 }
 
 interface RemoteSSHConnectionLease {
   release: () => void;
+}
+
+/** 원격 명령 하나가 어디에서 시간을 썼는지 나눠 담는다. 재시도한 명령은 시도별 시간을 더한다 */
+interface RemoteSSHCommandTiming {
+  /** 호스트별 명령 슬롯이 비기를 기다린 시간 */
+  slotWaitMs: number;
+  /** 공용 연결 준비나 호스트별 인증 순서를 기다린 시간 */
+  connectionWaitMs: number;
+  /** ssh 프로세스를 띄운 뒤 명령이 끝날 때까지의 시간 */
+  commandMs: number;
 }
 
 export interface ExecGitOptions {
@@ -217,10 +240,13 @@ async function execRemote(
   command: string,
   options?: ExecGitOptions,
 ): Promise<string> {
+  const timeoutMs = getRemoteSSHCommandTimeoutMs(options);
+  const requestedAt = Date.now();
+  const deadline = requestedAt + timeoutMs;
+  const timing: RemoteSSHCommandTiming = { slotWaitMs: 0, connectionWaitMs: 0, commandMs: 0 };
   const execute = async () => {
+    remainingSSHTimeout(deadline);
     throwIfSSHTransportCooldownActive(sshHost);
-    const timeoutMs = getRemoteSSHCommandTimeoutMs(options);
-    const deadline = Date.now() + timeoutMs;
     const configs = await parseSSHConfig();
     const hostConfig = configs.find((c) => c.host === sshHost);
 
@@ -234,6 +260,8 @@ async function execRemote(
       let sshArgs: string[] = [];
       let waitingForMaster = false;
       const independentGeneration = remoteSSHMasters.get(masterKey);
+      const attemptStartedAt = Date.now();
+      let commandStartedAt: number | undefined;
       const run = async (onAuthenticated?: () => void) => {
         throwIfSSHTransportCooldownActive(sshHost);
         if (!independent) {
@@ -243,6 +271,9 @@ async function execRemote(
           waitingForMaster = false;
           master.readyAt = Date.now();
         }
+        const startedAt = Date.now();
+        commandStartedAt = startedAt;
+        timing.connectionWaitMs += startedAt - attemptStartedAt;
         sshArgs = [
           ...buildExecSSHArgs(hostConfig, master, options),
           buildRemoteShellCommand(command),
@@ -266,13 +297,18 @@ async function execRemote(
               });
             },
           },
-        ).finally(() => { context.active = false; });
+        ).finally(() => {
+          context.active = false;
+          timing.commandMs += Date.now() - startedAt;
+        });
       };
       try {
         return await (independent
           ? runSerializedSSHAuthentication(hostConfig, run, deadline)
           : run());
       } catch (error) {
+        // 연결 준비나 인증 차례를 기다리다 끝난 시도는 명령을 띄우지 못했으므로 그 시간을 연결 대기로 센다.
+        if (commandStartedAt === undefined) timing.connectionWaitMs += Date.now() - attemptStartedAt;
         const timeout = isSSHCommandTimeoutError(error);
         const normalizedError = normalizeSSHExecError(error, sshHost, timeoutMs, timeout);
         const transient = isSSHTransportError(normalizedError);
@@ -294,9 +330,46 @@ async function execRemote(
   };
   const responderContext = remoteSSHResponderContext.getStore();
   if (responderContext?.active && responderContext.sshHost === sshHost) {
-    return execute();
+    return execute().finally(() => logSlowRemoteCommand(sshHost, command, Date.now() - requestedAt, timing));
   }
-  return runLimitedRemoteCommand(sshHost, execute);
+  let hasAcquiredSlot = false;
+  const executeInSlot = () => {
+    hasAcquiredSlot = true;
+    timing.slotWaitMs = Date.now() - requestedAt;
+    return execute();
+  };
+  return runLimitedRemoteCommand(sshHost, executeInSlot, deadline).catch((error) => {
+    if (isSSHCommandTimeoutError(error)) throw normalizeSSHExecError(error, sshHost, timeoutMs, true);
+    throw error;
+  }).finally(() => {
+    const totalMs = Date.now() - requestedAt;
+    // 슬롯을 끝내 얻지 못하고 시간 초과된 명령은 전체 시간이 슬롯 대기다.
+    if (!hasAcquiredSlot) timing.slotWaitMs = totalMs;
+    logSlowRemoteCommand(sshHost, command, totalMs, timing);
+  });
+}
+
+/**
+ * 느린 원격 명령이 슬롯 대기, 연결 대기, 명령 수행 중 어디에서 시간을 썼는지 남긴다.
+ * 전체 시간만으로는 회선이 느린 것인지 앞선 명령 뒤에서 기다린 것인지 구분할 수 없다.
+ */
+function logSlowRemoteCommand(
+  sshHost: string,
+  command: string,
+  totalMs: number,
+  timing: RemoteSSHCommandTiming,
+): void {
+  if (totalMs < REMOTE_SSH_SLOW_COMMAND_LOG_MS) {
+    return;
+  }
+
+  console.warn("[remote-ssh] slow command", {
+    sshHost,
+    priority: remoteSSHCommandPriority.getStore() ?? "foreground",
+    totalMs,
+    ...timing,
+    command: command.slice(0, REMOTE_SSH_SLOW_COMMAND_LOG_COMMAND_LENGTH),
+  });
 }
 
 function logRemoteCommandFailure(
@@ -594,12 +667,16 @@ function attachCommandOutput<T extends Error>(error: T, stdout: string, stderr: 
   return Object.assign(error, { stdout, stderr });
 }
 
+export function runWithBackgroundSSHCommands<T>(operation: () => Promise<T>): Promise<T> {
+  return remoteSSHCommandPriority.run("background", operation);
+}
+
 async function runLimitedRemoteCommand<T>(
   sshHost: string,
   operation: () => Promise<T>,
+  deadline: number,
 ): Promise<T> {
-  const lease = await acquireRemoteSSHConnection(sshHost);
-
+  const lease = await acquireRemoteSSHConnection(sshHost, deadline);
   try {
     return await operation();
   } finally {
@@ -607,54 +684,63 @@ async function runLimitedRemoteCommand<T>(
   }
 }
 
-function acquireRemoteSSHConnection(sshHost: string): Promise<RemoteSSHConnectionLease> {
-  const connectionPool = getOrCreateRemoteSSHConnectionPool(sshHost);
-
-  return new Promise((resolve) => {
-    const start = () => {
-      connectionPool.activeConnections += 1;
-      resolve({
-        release: () => releaseRemoteSSHConnection(sshHost, connectionPool),
-      });
+function acquireRemoteSSHConnection(
+  sshHost: string,
+  deadline: number,
+): Promise<RemoteSSHConnectionLease> {
+  const timeoutMs = remainingSSHTimeout(deadline);
+  const pool = getOrCreateRemoteSSHConnectionPool(sshHost);
+  const background = remoteSSHCommandPriority.getStore() === "background";
+  return new Promise((resolve, reject) => {
+    const remove = (error: unknown) => {
+      const index = pool.queue.indexOf(entry);
+      if (index < 0) return;
+      pool.queue.splice(index, 1);
+      clearTimeout(timer);
+      reject(error);
+      dispatchRemoteSSHConnections(sshHost, pool);
     };
-
-    if (connectionPool.activeConnections < getRemoteSSHHostMaxConcurrency()) {
-      start();
-      return;
-    }
-
-    connectionPool.queue.push(start);
+    const timer = setTimeout(() => remove(createSSHTimeoutError(timeoutMs, "", "")), timeoutMs);
+    const entry: RemoteSSHQueueEntry = {
+      background,
+      start: () => {
+        clearTimeout(timer);
+        pool.activeConnections += 1;
+        if (background) pool.activeBackgroundConnections += 1;
+        let released = false;
+        resolve({ release: () => {
+          if (released) return;
+          released = true;
+          pool.activeConnections -= 1;
+          if (background) pool.activeBackgroundConnections -= 1;
+          dispatchRemoteSSHConnections(sshHost, pool);
+        } });
+      },
+    };
+    pool.queue.push(entry);
+    dispatchRemoteSSHConnections(sshHost, pool);
   });
 }
 
 function getOrCreateRemoteSSHConnectionPool(sshHost: string): RemoteSSHConnectionPool {
-  let connectionPool = remoteSSHConnectionPools.get(sshHost);
-  if (!connectionPool) {
-    connectionPool = {
-      activeConnections: 0,
-      queue: [],
-    };
-    remoteSSHConnectionPools.set(sshHost, connectionPool);
+  let pool = remoteSSHConnectionPools.get(sshHost);
+  if (!pool) {
+    pool = { activeConnections: 0, activeBackgroundConnections: 0, queue: [] };
+    remoteSSHConnectionPools.set(sshHost, pool);
   }
-
-  return connectionPool;
+  return pool;
 }
 
-function releaseRemoteSSHConnection(
-  sshHost: string,
-  connectionPool: RemoteSSHConnectionPool,
-): void {
-  connectionPool.activeConnections -= 1;
-
-  const next = connectionPool.queue.shift();
-  if (next) {
-    next();
-    return;
+function dispatchRemoteSSHConnections(sshHost: string, pool: RemoteSSHConnectionPool): void {
+  const ceiling = getRemoteSSHHostMaxConcurrency();
+  const backgroundCeiling = Math.min(REMOTE_SSH_HOST_MAX_BACKGROUND_CHANNELS, Math.max(1, ceiling - 1));
+  while (pool.activeConnections < ceiling) {
+    let index = pool.queue.findIndex((entry) => !entry.background);
+    if (index < 0 && pool.activeBackgroundConnections < backgroundCeiling) index = 0;
+    if (index < 0 || !pool.queue[index]) break;
+    pool.queue.splice(index, 1)[0].start();
   }
-
-  if (connectionPool.activeConnections === 0) {
-    remoteSSHConnectionPools.delete(sshHost);
-  }
+  if (pool.activeConnections === 0 && pool.queue.length === 0) remoteSSHConnectionPools.delete(sshHost);
 }
 
 function throwIfSSHTransportCooldownActive(sshHost: string): void {
@@ -865,6 +951,31 @@ export async function execGit(
   options?: ExecGitOptions,
 ): Promise<string> {
   if (sshHost) {
+    const timeoutMs = getRemoteSSHCommandTimeoutMs(options);
+    const deadline = Date.now() + timeoutMs;
+    const connection = await getRemoteHostConnection(sshHost);
+    if (connection) {
+      const context = { sshHost, active: true };
+      const responder = options?.remoteStdinResponder;
+      const execute = async () => connection.execute(command, {
+        ...options,
+        timeoutMs: remainingSSHTimeout(deadline),
+        ...(responder ? { remoteStdinResponder: {
+          ...responder,
+          respond: (payload) => remoteSSHResponderContext.run(context, () => responder.respond(payload)),
+        } } : {}),
+      });
+      const responderContext = remoteSSHResponderContext.getStore();
+      const isNestedResponder = responderContext?.active && responderContext.sshHost === sshHost;
+      const shouldQueueBackground = remoteSSHCommandPriority.getStore() === "background" && !isNestedResponder;
+      const result = shouldQueueBackground
+        ? runLimitedRemoteCommand(sshHost, execute, deadline)
+        : execute();
+      return result.catch((error) => {
+        if (isSSHCommandTimeoutError(error)) throw normalizeSSHExecError(error, sshHost, timeoutMs, true);
+        throw error;
+      }).finally(() => { context.active = false; });
+    }
     return execRemote(sshHost, command, options);
   }
   return execLocal(command, options);

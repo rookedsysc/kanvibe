@@ -25,7 +25,7 @@ import TaskDetailInfoCard from "@/components/TaskDetailInfoCard";
 import TaskDetailTitleCard from "@/components/TaskDetailTitleCard";
 import { Link, useRouter } from "@/desktop/renderer/navigation";
 import { getDefaultSessionType, getDoneAlertDismissed, getSidebarDefaultCollapsed } from "@/desktop/renderer/actions/appSettings";
-import { deleteTask, getTaskById, getTaskIdByProjectAndBranch, updateTaskStatus } from "@/desktop/renderer/actions/kanban";
+import { deleteTask, fetchAndSavePrUrl, getTaskById, getTaskIdByProjectAndBranch, updateTaskStatus } from "@/desktop/renderer/actions/kanban";
 import {
   getTaskAiSessions,
   getTaskAiSessionDetail,
@@ -766,6 +766,9 @@ function TaskDetailContent({ id }: { id: string }) {
   const isTerminalTabClosingRef = useRef(false);
   const dockItemsRef = useRef<TaskDetailDockItem[]>([]);
   const commonTranslationsRef = useRef(tc);
+  const automaticPrLookupTaskIdRef = useRef<string | null>(null);
+  const loadedHookStatusTaskIdRef = useRef<string | null>(null);
+  const [isHookStatusLoading, setIsHookStatusLoading] = useState(false);
   const hasTerminal = !!(state?.task.sessionType && state.task.sessionName);
   /** 상태 버튼·Done 버튼·커맨드 팔레트 이동이 같은 요청 하나를 나눠 써서, 응답 전에는 다른 상태로 겹쳐 옮기지 않는다 */
   const statusMove = useTrackedAction(async (newStatus: TaskStatus) => {
@@ -1400,7 +1403,12 @@ function TaskDetailContent({ id }: { id: string }) {
         if (task.branchName && !task.prUrl) {
           void (async () => {
             try {
-              const prUrl = await fetchPrUrlWithPrompt(task, commonTranslationsRef.current);
+              // gh 설치 확인과 설치 질문은 task를 처음 열 때만 한다. 보드 갱신으로 다시 도는 조회가 되풀이하면 원격 확인과 질문이 매번 뜬다.
+              const isFirstLookupForTask = automaticPrLookupTaskIdRef.current !== task.id;
+              automaticPrLookupTaskIdRef.current = task.id;
+              const prUrl = isFirstLookupForTask
+                ? await fetchPrUrlWithPrompt(task, commonTranslationsRef.current, { isAutomatic: true })
+                : await fetchAndSavePrUrl(task.id, { isAutomatic: true });
               if (!prUrl || cancelled) {
                 return;
               }
@@ -1455,21 +1463,6 @@ function TaskDetailContent({ id }: { id: string }) {
           }
         })();
 
-        void (async () => {
-          try {
-            const hookStatuses = task.projectId ? await getTaskHooksStatuses(id) : null;
-
-            applySupplementalState({
-              claudeHooksStatus: hookStatuses?.claude ?? null,
-              geminiHooksStatus: hookStatuses?.gemini ?? null,
-              codexHooksStatus: hookStatuses?.codex ?? null,
-              openCodeHooksStatus: hookStatuses?.openCode ?? null,
-            });
-          } catch (error) {
-            console.error("Failed to load task hook statuses:", error);
-          }
-        })();
-
       } catch (error) {
         console.error("Failed to load task detail:", error);
         if (!cancelled) {
@@ -1483,6 +1476,56 @@ function TaskDetailContent({ id }: { id: string }) {
       loadAttempt.cancel();
     };
   }, [beginLoad, id, refreshSignal, retrySignal]);
+
+  /**
+   * hook 상태는 상태 패널에서만 보이고, 원격 task에서는 조회 한 번이 새 SSH 접속이다.
+   * 보드 갱신마다 따라 읽으면 패널을 열지 않은 창까지 접속을 쌓으므로, 패널이 열려 있는 동안에만 읽는다.
+   * 열려 있는 동안의 보드 갱신은 백그라운드 설치·복구 결과를 반영하려고 다시 묻고, 되풀이 접속은 main이 막는다.
+   */
+  const isStatusPanelVisible = visiblePanel === "status";
+  const hookStatusTaskId = state?.task.projectId ? state.task.id : null;
+  useEffect(() => {
+    if (!isStatusPanelVisible || !hookStatusTaskId) {
+      return;
+    }
+
+    let cancelled = false;
+    // 이미 읽은 상태가 있으면 그 상태를 보여 준 채로 다시 읽어, 보드 갱신마다 읽는 중 표시가 깜빡이지 않게 한다.
+    if (loadedHookStatusTaskIdRef.current !== hookStatusTaskId) {
+      setIsHookStatusLoading(true);
+    }
+
+    void (async () => {
+      try {
+        const hookStatuses = await getTaskHooksStatuses(hookStatusTaskId);
+        if (cancelled) {
+          return;
+        }
+
+        loadedHookStatusTaskIdRef.current = hookStatusTaskId;
+        setState((current) => current && current.task.id === hookStatusTaskId
+          ? {
+              ...current,
+              claudeHooksStatus: hookStatuses?.claude ?? null,
+              geminiHooksStatus: hookStatuses?.gemini ?? null,
+              codexHooksStatus: hookStatuses?.codex ?? null,
+              openCodeHooksStatus: hookStatuses?.openCode ?? null,
+            }
+          : current);
+      } catch (error) {
+        console.error("Failed to load task hook statuses:", error);
+      } finally {
+        if (!cancelled) {
+          setIsHookStatusLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      setIsHookStatusLoading(false);
+    };
+  }, [hookStatusTaskId, isStatusPanelVisible, refreshSignal]);
 
   const agentTagStyle = useMemo(
     () => (state?.task.agentType ? AGENT_TAG_STYLES[state.task.agentType] ?? "bg-tag-neutral-bg text-tag-neutral-text" : null),
@@ -1747,6 +1790,7 @@ function TaskDetailContent({ id }: { id: string }) {
                 initialCodexStatus={state.codexHooksStatus}
                 initialOpenCodeStatus={state.openCodeHooksStatus}
                 isRemote={!!state.task.sshHost}
+                isLoading={isHookStatusLoading}
                 onStatusesChange={(updates) => {
                   setState((current) => current
                     ? {

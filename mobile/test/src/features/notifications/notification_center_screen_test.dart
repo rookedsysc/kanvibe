@@ -43,6 +43,18 @@ void main() {
       final client = InboxDesktopClient();
       client.notificationsByConnection[_connectionId] = [notice];
       client.onJsonRequest = (method, segments, query, body) async {
+        if (segments.join('/') == 'sync/status') {
+          return {
+            'status': {
+              'phase': 'idle',
+              'isRunning': false,
+              'completedStages': 0,
+              'reviewNeeded': false,
+              'boardUpdated': false,
+              'error': null,
+            },
+          };
+        }
         expect(segments, ['notifications', 'sync-1', 'review']);
         return {
           'review': {
@@ -55,7 +67,9 @@ void main() {
       };
       await _openInbox(tester, client);
       await tester.tap(find.text('동기화 검토 안내'));
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.byType(CircularProgressIndicator), findsNothing);
       expect(find.byType(SyncReviewScreen), findsOneWidget);
       expect(client.fetchedTasks, isEmpty);
       expect(client.readCalls.single.id, 'sync-1');

@@ -75,19 +75,6 @@ class PcSettingsRepository {
       failedCount: raw['failedCount'] as int,
     );
   }
-
-  Future<PcSyncRunResult> runSync(DesktopConnection connection) async {
-    final raw =
-        (await client.requestJson(connection, 'POST', [
-              'sync',
-              'run',
-            ], timeout: _operationTimeout))['result']
-            as Map;
-    return PcSyncRunResult(
-      reviewNeeded: raw['reviewNeeded'] == true,
-      boardUpdated: raw['boardUpdated'] == true,
-    );
-  }
 }
 
 PcSettings _parseSettings(Object? value) {

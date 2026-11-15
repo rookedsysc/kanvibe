@@ -287,6 +287,18 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
     } finally {
       _isParsingRemoteOutput = false;
     }
+    if (ref.exists(surfacesProvider(widget.taskId))) {
+      final surfaces = ref
+          .read(surfacesProvider(widget.taskId))
+          .value
+          ?.surfaces;
+      if (surfaces != null &&
+          surfaces.allPanes.any((pane) => pane.id == widget.pane.id)) {
+        unawaited(
+          ref.read(surfacesProvider(widget.taskId).notifier).enrichMetadata(),
+        );
+      }
+    }
     if (widget.canRefreshHistory && data.startsWith(_screenRedrawPrefix)) {
       _keepDistanceFromLatest(lineCountBeforeWrite);
     }

@@ -111,6 +111,7 @@ class MobileNotificationController {
   final _openRequests = StreamController<TaskNotification>.broadcast();
   final _taskUpdates = StreamController<TaskNotification>.broadcast();
   final _inboxUpdates = StreamController<String>.broadcast();
+  final _syncUpdates = StreamController<String>.broadcast();
   final _warningUpdates = StreamController<OperationalWarning>.broadcast();
   final _connections = <String, DesktopConnection>{};
   final _sessions = <String, _EventSession>{};
@@ -128,6 +129,7 @@ class MobileNotificationController {
   Stream<TaskNotification> get openRequests => _openRequests.stream;
   Stream<TaskNotification> get taskUpdates => _taskUpdates.stream;
   Stream<String> get inboxUpdates => _inboxUpdates.stream;
+  Stream<String> get syncUpdates => _syncUpdates.stream;
   Stream<OperationalWarning> get warningUpdates => _warningUpdates.stream;
 
   TaskNotification? takeInitialNotification() {
@@ -179,6 +181,7 @@ class MobileNotificationController {
       _startSession(connection);
       onBoardChanged(connection.id);
       _inboxUpdates.add(connection.id);
+      _syncUpdates.add(connection.id);
     }
     unawaited(_refreshPushToken());
   }
@@ -237,12 +240,17 @@ class MobileNotificationController {
       onBoardChanged(session.connection.id);
       if (json['type'] == 'connected') {
         _inboxUpdates.add(session.connection.id);
+        _syncUpdates.add(session.connection.id);
         unawaited(_registerNotifications(session.connection));
       }
       return;
     }
     if (json['type'] == 'notifications-changed') {
       _inboxUpdates.add(session.connection.id);
+      return;
+    }
+    if (json['type'] == 'background-sync-status-changed') {
+      _syncUpdates.add(session.connection.id);
       return;
     }
     if (json['type'] == 'operational-warning') {
@@ -426,6 +434,7 @@ class MobileNotificationController {
     await _openRequests.close();
     await _taskUpdates.close();
     await _inboxUpdates.close();
+    await _syncUpdates.close();
     await _warningUpdates.close();
   }
 }

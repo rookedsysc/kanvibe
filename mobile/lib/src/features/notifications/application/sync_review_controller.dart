@@ -5,6 +5,8 @@ import '../../../common/network/desktop_connection.dart';
 import '../../../common/providers.dart';
 import '../data/sync_review_repository.dart';
 import '../domain/sync_review.dart';
+import 'notification_inbox_controller.dart';
+import 'sync_review_cleanup_controller.dart';
 
 final syncReviewRepositoryProvider = Provider<SyncReviewRepository>(
   (ref) => SyncReviewRepository(ref.watch(desktopClientProvider)),
@@ -14,6 +16,22 @@ final syncReviewProvider = AsyncNotifierProvider.autoDispose
       SyncReviewController.new,
       retry: (_, _) => null,
     );
+
+final syncReviewNotificationIdProvider = Provider<String?>((ref) {
+  final cleanup = ref.watch(syncReviewCleanupProvider);
+  if (cleanup != null) return cleanup.notificationId;
+  final inbox = ref.watch(notificationInboxProvider);
+  if (inbox.isLoading || inbox.hasError) return null;
+  final notifications =
+      inbox.value?.notifications
+          .where((entry) => entry.hasSyncReview)
+          .toList() ??
+      [];
+  notifications.sort(
+    (first, second) => second.createdAt.compareTo(first.createdAt),
+  );
+  return notifications.firstOrNull?.id;
+});
 
 class SyncReviewState {
   const SyncReviewState(
@@ -29,6 +47,14 @@ class SyncReviewState {
   final bool isDeleting;
   final Object? error;
   final int lastDeletedCount;
+
+  int get detectedCount =>
+      review.mergedPullRequests
+          .where((task) => !deletedTaskIds.contains(task.taskId))
+          .length +
+      review.registeredWorktrees.length +
+      review.pulledTasks.length +
+      review.failures.length;
 }
 
 class SyncReviewController extends AsyncNotifier<SyncReviewState> {
@@ -40,7 +66,15 @@ class SyncReviewController extends AsyncNotifier<SyncReviewState> {
   @override
   Future<SyncReviewState> build() async {
     _generation++;
-    final connection = (await ref.watch(connectionControllerProvider.future))
+    ref.watch(
+      connectionControllerProvider.select(
+        (value) => (
+          value.value?.activeConnection?.id,
+          value.value?.activeConnection?.token,
+        ),
+      ),
+    );
+    final connection = (await ref.read(connectionControllerProvider.future))
         .activeConnection;
     if (connection == null) throw StateError('연결된 PC가 없습니다.');
     if (_connection?.id != connection.id ||
@@ -110,10 +144,17 @@ class SyncReviewController extends AsyncNotifier<SyncReviewState> {
         previous == null ||
         previous.isDeleting ||
         previous.selectedTaskIds.isEmpty ||
-        connection == null) {
+        connection == null ||
+        !_current(connection, _generation)) {
       return false;
     }
     final generation = _generation;
+    final cleanup = ref.read(syncReviewCleanupProvider.notifier);
+    final job = cleanup.start(notificationId, connection);
+    if (job == null) return false;
+    ref.keepAlive();
+    var deletedCount = 0;
+    Object? deletionError;
     state = AsyncData(
       SyncReviewState(
         previous.review,
@@ -123,35 +164,50 @@ class SyncReviewController extends AsyncNotifier<SyncReviewState> {
       ),
     );
     try {
-      final deleted = await ref
-          .read(syncReviewRepositoryProvider)
-          .deleteTasks(connection, notificationId, previous.selectedTaskIds);
+      for (final taskId in previous.selectedTaskIds) {
+        if (!_current(connection, generation)) return false;
+        try {
+          final deleted = await ref
+              .read(syncReviewRepositoryProvider)
+              .deleteTasks(connection, notificationId, {taskId});
+          if (!_current(connection, generation)) return false;
+          _deletedTaskIds = {..._deletedTaskIds, ...deleted};
+          deletedCount += deleted.length;
+        } catch (error) {
+          if (!_current(connection, generation)) return false;
+          deletionError ??= error;
+          await _forget(error, connection);
+          if (!_current(connection, generation)) return false;
+        }
+        state = AsyncData(
+          SyncReviewState(
+            previous.review,
+            selectedTaskIds: Set.unmodifiable(
+              previous.selectedTaskIds.difference(_deletedTaskIds),
+            ),
+            deletedTaskIds: Set.unmodifiable(_deletedTaskIds),
+            isDeleting: true,
+            error: deletionError,
+            lastDeletedCount: deletedCount,
+          ),
+        );
+      }
       if (!_current(connection, generation)) return false;
-      _deletedTaskIds = {..._deletedTaskIds, ...deleted};
       state = AsyncData(
         SyncReviewState(
           previous.review,
           selectedTaskIds: Set.unmodifiable(
-            previous.selectedTaskIds.difference(deleted.toSet()),
+            previous.selectedTaskIds.difference(_deletedTaskIds),
           ),
           deletedTaskIds: Set.unmodifiable(_deletedTaskIds),
-          lastDeletedCount: deleted.length,
+          error: deletionError,
+          lastDeletedCount: deletedCount,
         ),
       );
-      ref.invalidate(boardProvider);
-      return true;
-    } catch (error) {
-      if (!_current(connection, generation)) return false;
-      state = AsyncData(
-        SyncReviewState(
-          previous.review,
-          selectedTaskIds: previous.selectedTaskIds,
-          deletedTaskIds: previous.deletedTaskIds,
-          error: error,
-        ),
-      );
-      await _forget(error, connection);
-      return false;
+      if (deletedCount > 0) ref.invalidate(boardProvider);
+      return deletionError == null;
+    } finally {
+      if (ref.mounted) cleanup.finish(job);
     }
   }
 }

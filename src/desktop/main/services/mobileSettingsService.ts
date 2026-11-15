@@ -4,6 +4,7 @@ import { getDefaultSessionType, setDefaultSessionType, getDoneAlertDismissed, di
 import { getSessionTypeChangeTargets, changeAllTaskSessionTypes, deleteTasks } from "./kanbanService";
 import { getSessionDependencyStatus } from "@/lib/remoteSessionDependency";
 import { runBackgroundTaskSyncNow } from "./backgroundTaskSyncService";
+export { getBackgroundTaskSyncStatus as getMobileSyncStatus, startBackgroundTaskSyncNow as startMobileSync } from "./backgroundTaskSyncService";
 import { getNotificationById, markTaskNotificationsRead } from "@/desktop/main/notificationStore";
 import { MobileFeatureError, readMobileBoolean, readMobileEnum, readMobileObject, readMobileText, requireMobileTask } from "./mobileFeatureValidation";
 

@@ -1,6 +1,10 @@
 import { invokeDesktop } from "@/desktop/renderer/ipc";
-import type { BackgroundTaskSyncRunResult } from "@/desktop/main/services/backgroundTaskSyncService";
+import type { BackgroundTaskSyncStatus } from "@/desktop/shared/backgroundTaskSync";
 
-export function runBackgroundTaskSyncNow(): Promise<BackgroundTaskSyncRunResult> {
-  return invokeDesktop("backgroundTaskSync", "runBackgroundTaskSyncNow");
+export function getBackgroundTaskSyncStatus(): Promise<BackgroundTaskSyncStatus> {
+  return invokeDesktop("backgroundTaskSync", "getBackgroundTaskSyncStatus");
+}
+
+export function startBackgroundTaskSyncNow(): Promise<BackgroundTaskSyncStatus> {
+  return invokeDesktop("backgroundTaskSync", "startBackgroundTaskSyncNow");
 }

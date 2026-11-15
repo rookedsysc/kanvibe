@@ -57,8 +57,8 @@ Each runtime uses a separate SQLite database and a separate hook server port, so
 | Run | Data directory | Lifetime | Hook / mobile TLS port |
 | --- | --- | --- | --- |
 | Installed KanVibe | Existing Electron `userData` directory | Persistent; production data stays in place | `9736` / `9746` |
-| `pnpm dev` / `pnpm desktop:dev` | `<appData>/kanvibe-dev` | Refreshed from the installed application's DB on every launch by default | `19736` / `19746` |
-| `pnpm dev --data-source=existing` | `<appData>/kanvibe-dev` | Keeps development data across restarts and worktrees | `19736` / `19746` |
+| `pnpm dev` / `pnpm desktop:dev` | `<appData>/kanvibe-dev` | Keeps development data across restarts and worktrees by default | `19736` / `19746` |
+| `pnpm dev --data-source=application` | `<appData>/kanvibe-dev` | Replaces development data with the installed application's DB on this launch | `19736` / `19746` |
 | `pnpm start` | `<appData>/kanvibe-qa` | Persistent across restarts, builds, and worktrees | `29736` / `29746` |
 | Installed KanVibe with `--qa` | `<appData>/kanvibe-qa` | Same persistent manual QA database | `29736` / `29746` |
 | Automated Electron QA | Run's explicit fixture directory, or a fresh temporary directory | Isolated per run | A free port chosen per run |
@@ -67,9 +67,9 @@ Each runtime uses a separate SQLite database and a separate hook server port, so
 
 A launcher that must pick the port itself passes `--kanvibe-hook-port=<port>` to Electron. Automated Electron QA does this for every run.
 
-`<appData>` is `~/Library/Application Support` on macOS. The database filename is `kanvibe.db` in each directory. Development defaults to `--data-source=application`: before opening the app, it copies every table from `<appData>/KanVibe/kanvibe.db` into the separate development database, including projects, tasks, app settings, and committed WAL data from a running application. Development changes affect the copy. Each default launch replaces previous development DB contents; use `pnpm dev --data-source=existing` to keep them. Close an existing development instance before restarting.
+`<appData>` is `~/Library/Application Support` on macOS. The database filename is `kanvibe.db` in each directory. Development defaults to `--data-source=existing`: `pnpm install && pnpm dev` keeps the existing development database without importing application data. A new development database uses the bundled seed or starts empty. To import application data explicitly, run `pnpm dev --data-source=application`. This replaces the development database with every table from `<appData>/KanVibe/kanvibe.db`, including projects, tasks, app settings, and committed WAL data from a running application. Development changes affect the copy. Subsequent launches without the option keep those changes. Close an existing development instance before restarting.
 
-For a different installation data directory, use `pnpm dev --data-source=application --application-data-dir="/path/to/application-data"`. If the default application DB is absent, development warns and uses its existing DB or bundled seed. An invalid explicit source, corrupt source DB, or shared source/target path or DB link stops startup. Copying uses SQLite's [Online Backup API](https://www.sqlite.org/backup.html). Repository/worktree paths still point to the same files on disk; this option copies the SQLite data, not repositories, running terminals, OS credentials, or Chromium caches.
+For a different installation data directory, use `pnpm dev --data-source=application --application-data-dir="/path/to/application-data"`. In application mode, an absent default application DB produces a warning and keeps the existing development DB or bundled seed; an invalid explicit source or corrupt source DB stops startup. Shared source/target paths or DB links stop startup in both modes. Copying uses SQLite's [Online Backup API](https://www.sqlite.org/backup.html). Repository/worktree paths still point to the same files on disk; this option copies the SQLite data, not repositories, running terminals, OS credentials, or Chromium caches.
 
 Manual QA reuses its own database and applies the existing schema migrations. A new bundled seed does not replace an existing manual QA database, so QA can test upgrades against previously created data. Rebuild with `pnpm build` before `pnpm start` when testing a new source version.
 
@@ -402,9 +402,14 @@ Task status changes via AI Agent Hooks trigger **browser notifications** with pr
 - **Real-time alerts** — Instant notifications for task status changes
 - **Background mode** — Notifications work even when KanVibe is not focused
 - **Smart navigation** — Click notification → task detail page (with correct language)
+
 - **Configurable** — Enable/disable per project and filter by status (PROGRESS, PENDING, REVIEW, DONE)
 
 Setup: Browser will prompt for permission on first visit. Configure filters in **Project Settings** → **Notifications**.
+
+Background sync runs once per desktop, even when automatic, desktop, and mobile requests overlap. The notification center shows worktree discovery, PR checks, pull progress, and completion; a detected-item button opens the review dialog. Deletion starts in the background and closes the dialog; the Cleaning up button reopens the same progress and results. Closing the dialog or changing screens does not stop cleanup. Sync results stay in the inbox even when OS notifications are disabled.
+
+The main service owns sync status (`backgroundTaskSyncService`); `useBackgroundTaskSync`, `BackgroundSyncStatus`, `useBackgroundSyncReview`, and `BackgroundSyncReviewDialog` render the desktop notification flow. Mobile uses the notifications feature's shared `backgroundSyncProvider` and `BackgroundSyncCard`. Mobile status/start requests use `GET /api/mobile/sync/status` and `POST /api/mobile/sync/start`; both return a status snapshot immediately, and subsequent stages arrive over the existing event socket.
 
 #### Hook API Endpoints
 

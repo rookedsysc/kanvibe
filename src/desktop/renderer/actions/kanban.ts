@@ -105,6 +105,9 @@ export function moveTaskToColumn(taskId: string, newStatus: TaskStatus): Promise
   return invokeDesktop("kanban", "moveTaskToColumn", taskId, newStatus);
 }
 
-export function fetchAndSavePrUrl(taskId: string): Promise<string | null> {
-  return invokeDesktop("kanban", "fetchAndSavePrUrl", taskId);
+/** isAutomatic은 사용자가 누르지 않고 화면이 스스로 건 조회다. main이 task당 간격을 두고, 이미 알린 인증 실패는 되풀이하지 않는다 */
+export function fetchAndSavePrUrl(taskId: string, options?: { isAutomatic?: boolean }): Promise<string | null> {
+  return options
+    ? invokeDesktop("kanban", "fetchAndSavePrUrl", taskId, options)
+    : invokeDesktop("kanban", "fetchAndSavePrUrl", taskId);
 }

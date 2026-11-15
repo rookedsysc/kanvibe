@@ -305,6 +305,36 @@ describe("terminalBridge existing remote session migration", () => {
     expect(terminal.attachRemoteSession).toHaveBeenCalledTimes(1);
   });
 
+  it("원격 연결이 끝나면 의존성 확인, hook 선행 확인, 세션 준비에 걸린 시간을 나눠 남긴다", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const consoleLog = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    try {
+      const layout = await import("@/desktop/main/services/paneLayoutService");
+      vi.mocked(layout.getEffectivePaneLayout).mockResolvedValueOnce({ panes: [{ position: 0, command: "codex" }] } as never);
+      const remoteSessionDependency = await import("@/lib/remoteSessionDependency");
+      vi.mocked(remoteSessionDependency.ensureRemoteSessionDependency).mockImplementationOnce(async () => { vi.advanceTimersByTime(300); });
+      mockEnsureKanvibeHooksCurrent.mockImplementationOnce(async () => { vi.advanceTimersByTime(4_000); return false; });
+      const bridge = await importBridge();
+      const terminal = await import("@/lib/terminal");
+      vi.mocked(terminal.attachRemoteSession).mockImplementationOnce(async () => { vi.advanceTimersByTime(1_200); });
+
+      await bridge.attachTaskTerminal(remoteTask(), null, new bridge.CallbackTerminalClient(() => {}));
+
+      expect(consoleLog).toHaveBeenCalledWith("[터미널] 원격 연결 단계", {
+        taskId: "task-1",
+        sshHost: "app-prod",
+        sessionType: "tmux",
+        totalMs: 5_500,
+        dependencyCheckMs: 300,
+        hooksBeforeAttachMs: 4_000,
+        sessionAttachMs: 1_200,
+      });
+    } finally {
+      consoleLog.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
   it("hook 준비 실패 시 초기 pane 명령의 자동 실행은 시작하지 않는다", async () => {
     const layout = await import("@/desktop/main/services/paneLayoutService");
     vi.mocked(layout.getEffectivePaneLayout).mockResolvedValueOnce({ panes: [{ position: 0, command: "codex" }] } as never);

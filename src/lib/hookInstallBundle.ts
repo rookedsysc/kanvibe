@@ -141,17 +141,19 @@ export function buildHookInstallBootstrapCommand(
   hookServerUrl: string,
   ticket: HookInstallTicket,
   clientId: string,
+  namespace?: string,
 ): string {
   const scriptUrl = quoteShellArgument(`${hookServerUrl.replace(/\/+$/, "")}${HOOK_INSTALL_SCRIPT_PATH}`);
   const tokenHeader = quoteShellArgument(`${HOOK_INSTALL_TOKEN_HEADER}: ${ticket.token}`);
   const curlOptions = `--connect-timeout ${HOOK_INSTALL_DOWNLOAD_CONNECT_TIMEOUT_SECONDS}`
     + ` --max-time ${HOOK_INSTALL_DOWNLOAD_MAX_TIMEOUT_SECONDS} -fsSL -H ${tokenHeader}`;
-  const downloadCommand = `curl --unix-socket "$__kanvibe_socket" ${curlOptions} "$__kanvibe_url" 2>/dev/null`;
+  const clientHeader = namespace ? ` -H ${quoteShellArgument(`x-kanvibe-client-id: ${clientId}`)}` : "";
+  const downloadCommand = `curl --unix-socket "$__kanvibe_socket" ${curlOptions}${clientHeader} "$__kanvibe_url" 2>/dev/null`;
   const restoredScript = `printf '%s\\n' "$__kanvibe_install_script"`;
 
   /** 내려받기가 중간에 끊긴 스크립트를 실행하지 않도록, 전부 받은 뒤에 sh로 넘긴다 */
   return [
-    buildShellOwnedHookSocketAssignment("__kanvibe_socket", clientId),
+    buildShellOwnedHookSocketAssignment("__kanvibe_socket", clientId, namespace),
     `__kanvibe_url=${scriptUrl}`,
     '[ -n "$__kanvibe_socket" ]',
     `__kanvibe_install_script=$(${downloadCommand})`,

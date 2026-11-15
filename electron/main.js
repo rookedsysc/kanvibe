@@ -1073,6 +1073,9 @@ async function startHookServer() {
     mobileTlsPort: getMobileTlsPort(),
     mobileTlsDirectory: path.join(app.getPath("userData"), "mobile-tls"),
     isDevPairingRouteEnabled: IS_DEV_PAIRING_ROUTE_ENABLED,
+    remoteHostNamespace: app.isPackaged && !app.commandLine.hasSwitch("qa") ? "prod"
+      : SHOULD_USE_SOURCE_MODULES && !app.commandLine.hasSwitch("qa") ? "dev"
+        : `qa-${require("node:crypto").createHash("sha256").update(app.getPath("userData")).digest("hex").slice(0, 16)}`,
   });
 
   const { reconnectHookTunnels } = require(getRuntimeModulePath(path.join("src", "desktop", "main", "services", "hookTunnelService.ts")));

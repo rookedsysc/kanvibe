@@ -2,6 +2,7 @@ import { chmod, mkdir, writeFile } from "fs/promises";
 import path from "path";
 import { getOrCreateHookClientId } from "@/desktop/main/services/appSettingsService";
 import { execGit } from "@/lib/gitOperations";
+import { getRemoteHostConnection, getRemoteHostNamespace } from "@/lib/remoteHostConnection";
 import { getHookServerUrl } from "@/lib/hookEndpoint";
 import {
   buildHookInstallBootstrapCommand,
@@ -78,10 +79,11 @@ async function installRemoteHookProviderFilesOverHttp(
   const hookServerUrl = await getHookServerUrl(sshHost);
   const installTicket = issueHookInstallScript(files);
   const clientId = await getOrCreateHookClientId();
+  const namespace = await getRemoteHostConnection(sshHost) ? getRemoteHostNamespace() : undefined;
 
   try {
     const output = await execGit(
-      buildHookInstallBootstrapCommand(hookServerUrl, installTicket, clientId),
+      buildHookInstallBootstrapCommand(hookServerUrl, installTicket, clientId, namespace),
       sshHost,
       { timeoutMs: REMOTE_HOOK_INSTALL_TIMEOUT_MS, strictHostKeyChecking: true },
     );

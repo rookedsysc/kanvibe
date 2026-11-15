@@ -1,0 +1,168 @@
+appId: ${APP_ID}
+env:
+  SYNC_ACTION: assert
+  SYNC_PHASE: completed
+  SYNC_WORKTREES: "0"
+  SYNC_PULL_REQUESTS: "0"
+  SYNC_PULLS: "0"
+tags:
+  - journey
+---
+- runScript:
+    file: ../scripts/background-sync-fixture.js
+    env:
+      SYNC_ACTION: pairing
+- launchApp:
+    clearState: true
+- setOrientation: PORTRAIT
+- extendedWaitUntil:
+    visible: "데스크탑에 연결"
+    timeout: 90000
+- tapOn: "데스크탑 주소"
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - inputText: "10.0.2.2"
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - inputText: "127.0.0.1"
+- tapOn: "포트"
+- eraseText: 4
+- inputText: ${output.syncMobilePort}
+- tapOn: "연결 코드"
+- inputText: ${output.syncPairingCode}
+- scrollUntilVisible:
+    element: "연결"
+    direction: DOWN
+    timeout: 10000
+- tapOn: "연결"
+- extendedWaitUntil:
+    visible:
+      id: notification-center
+    timeout: 40000
+- tapOn:
+    id: notification-center
+- extendedWaitUntil:
+    visible:
+      text: "지금 동기화"
+      enabled: true
+    timeout: 20000
+- runScript:
+    file: ../scripts/background-sync-fixture.js
+    env:
+      SYNC_ACTION: baseline
+- tapOn:
+    id: background-sync-start
+- extendedWaitUntil:
+    visible: '(?s).*worktree 탐색 중.*'
+    timeout: 20000
+- assertVisible:
+    text: "동기화 처리 중…"
+    enabled: false
+- runScript:
+    file: ../scripts/background-sync-fixture.js
+    env:
+      SYNC_ACTION: start
+      SYNC_PHASE: worktrees
+      SYNC_WORKTREES: "1"
+- tapOn:
+    id: notifications-unread
+- assertVisible: '(?s).*worktree 탐색 중.*'
+- tapOn:
+    id: notifications-all
+- takeScreenshot: background-sync-worktrees
+- runScript:
+    file: ../scripts/background-sync-fixture.js
+    env:
+      SYNC_ACTION: release
+- extendedWaitUntil:
+    visible: '(?s).*PR 상태 확인 중.*'
+    timeout: 20000
+- assertVisible: '(?s).*1 / 3 단계 완료.*'
+- assertVisible:
+    text: "동기화 처리 중…"
+    enabled: false
+- runScript:
+    file: ../scripts/background-sync-fixture.js
+    env:
+      SYNC_PHASE: pull-requests
+      SYNC_WORKTREES: "1"
+      SYNC_PULL_REQUESTS: "1"
+- takeScreenshot: background-sync-pull-requests
+- runScript:
+    file: ../scripts/background-sync-fixture.js
+    env:
+      SYNC_ACTION: release
+- extendedWaitUntil:
+    visible: '(?s).*변경 가져오는 중.*'
+    timeout: 20000
+- assertVisible: '(?s).*2 / 3 단계 완료.*'
+- runScript:
+    file: ../scripts/background-sync-fixture.js
+    env:
+      SYNC_ACTION: start
+      SYNC_PHASE: pulls
+      SYNC_WORKTREES: "1"
+      SYNC_PULL_REQUESTS: "1"
+      SYNC_PULLS: "1"
+- takeScreenshot: background-sync-pulls
+- runScript:
+    file: ../scripts/background-sync-fixture.js
+    env:
+      SYNC_ACTION: release
+- extendedWaitUntil:
+    visible: '(?s).*동기화가 끝났습니다\. 새 변경 사항은 없습니다\..*'
+    timeout: 20000
+- assertVisible:
+    text: "지금 동기화"
+    enabled: true
+- runScript:
+    file: ../scripts/background-sync-fixture.js
+    env:
+      SYNC_WORKTREES: "1"
+      SYNC_PULL_REQUESTS: "1"
+      SYNC_PULLS: "1"
+- takeScreenshot: background-sync-completed
+- tapOn:
+    id: background-sync-start
+- extendedWaitUntil:
+    visible: '(?s).*worktree 탐색 중.*'
+    timeout: 20000
+- runScript:
+    file: ../scripts/background-sync-fixture.js
+    env:
+      SYNC_PHASE: worktrees
+      SYNC_WORKTREES: "2"
+      SYNC_PULL_REQUESTS: "1"
+      SYNC_PULLS: "1"
+- takeScreenshot: background-sync-restarted
+- runScript:
+    file: ../scripts/background-sync-fixture.js
+    env:
+      SYNC_ACTION: release
+- extendedWaitUntil:
+    visible: '(?s).*PR 상태 확인 중.*'
+    timeout: 20000
+- runScript:
+    file: ../scripts/background-sync-fixture.js
+    env:
+      SYNC_ACTION: release
+- extendedWaitUntil:
+    visible: '(?s).*변경 가져오는 중.*'
+    timeout: 20000
+- runScript:
+    file: ../scripts/background-sync-fixture.js
+    env:
+      SYNC_ACTION: release
+- extendedWaitUntil:
+    visible: '(?s).*동기화가 끝났습니다\. 새 변경 사항은 없습니다\..*'
+    timeout: 20000
+- runScript:
+    file: ../scripts/background-sync-fixture.js
+    env:
+      SYNC_WORKTREES: "2"
+      SYNC_PULL_REQUESTS: "2"
+      SYNC_PULLS: "2"

@@ -9,19 +9,13 @@ const {
   mockInstallTaskGeminiHooks,
   mockInstallTaskCodexHooks,
   mockInstallTaskOpenCodeHooks,
-  mockGetTaskHooksStatus,
-  mockGetTaskGeminiHooksStatus,
-  mockGetTaskCodexHooksStatus,
-  mockGetTaskOpenCodeHooksStatus,
+  mockGetTaskHooksStatuses,
 } = vi.hoisted(() => ({
   mockInstallTaskHooks: vi.fn(),
   mockInstallTaskGeminiHooks: vi.fn(),
   mockInstallTaskCodexHooks: vi.fn(),
   mockInstallTaskOpenCodeHooks: vi.fn(),
-  mockGetTaskHooksStatus: vi.fn(),
-  mockGetTaskGeminiHooksStatus: vi.fn(),
-  mockGetTaskCodexHooksStatus: vi.fn(),
-  mockGetTaskOpenCodeHooksStatus: vi.fn(),
+  mockGetTaskHooksStatuses: vi.fn(),
 }));
 
 vi.mock("@/desktop/renderer/actions/project", () => ({
@@ -29,10 +23,7 @@ vi.mock("@/desktop/renderer/actions/project", () => ({
   installTaskGeminiHooks: mockInstallTaskGeminiHooks,
   installTaskCodexHooks: mockInstallTaskCodexHooks,
   installTaskOpenCodeHooks: mockInstallTaskOpenCodeHooks,
-  getTaskHooksStatus: mockGetTaskHooksStatus,
-  getTaskGeminiHooksStatus: mockGetTaskGeminiHooksStatus,
-  getTaskCodexHooksStatus: mockGetTaskCodexHooksStatus,
-  getTaskOpenCodeHooksStatus: mockGetTaskOpenCodeHooksStatus,
+  getTaskHooksStatuses: mockGetTaskHooksStatuses,
 }));
 
 vi.mock("@hugeicons/react", () => ({
@@ -80,16 +71,14 @@ const messages = {
   },
   common: {
     retry: "Retry",
+    loading: "Loading...",
   },
 };
 
 describe("HooksStatusCard", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockGetTaskHooksStatus.mockResolvedValue(null);
-    mockGetTaskGeminiHooksStatus.mockResolvedValue(null);
-    mockGetTaskCodexHooksStatus.mockResolvedValue(null);
-    mockGetTaskOpenCodeHooksStatus.mockResolvedValue(null);
+    mockGetTaskHooksStatuses.mockResolvedValue(null);
   });
 
   afterEach(() => {
@@ -186,7 +175,7 @@ describe("HooksStatusCard", () => {
       isRemote: false,
     });
     await waitFor(() => expect(screen.getByRole("button", { name: "Reinstall OpenCode" })).toBeTruthy());
-    expect(mockGetTaskOpenCodeHooksStatus).not.toHaveBeenCalled();
+    expect(mockGetTaskHooksStatuses).not.toHaveBeenCalled();
   });
 
   it("distinguishes failed OpenCode verification from missing hooks", () => {
@@ -199,7 +188,7 @@ describe("HooksStatusCard", () => {
       isRemote: false,
     });
     expect(screen.getByText("Verification failed")).toBeTruthy();
-    expect(mockGetTaskOpenCodeHooksStatus).not.toHaveBeenCalled();
+    expect(mockGetTaskHooksStatuses).not.toHaveBeenCalled();
   });
 
   it("installs Claude hooks from the inline action and updates local status", async () => {
@@ -211,10 +200,12 @@ describe("HooksStatusCard", () => {
       success: true,
       status: installedClaudeStatus,
     });
-    mockGetTaskHooksStatus.mockResolvedValue(installedClaudeStatus);
-    mockGetTaskGeminiHooksStatus.mockResolvedValue(installedGeminiStatus);
-    mockGetTaskCodexHooksStatus.mockResolvedValue(installedCodexStatus);
-    mockGetTaskOpenCodeHooksStatus.mockResolvedValue(installedOpenCodeStatus);
+    mockGetTaskHooksStatuses.mockResolvedValue({
+      claude: installedClaudeStatus,
+      gemini: installedGeminiStatus,
+      codex: installedCodexStatus,
+      openCode: installedOpenCodeStatus,
+    });
     const onStatusesChange = vi.fn();
 
     renderCard({
@@ -240,6 +231,31 @@ describe("HooksStatusCard", () => {
     });
     expect(screen.getByText("Hooks installed successfully")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Reinstall Claude" })).toBeTruthy();
+    // 원격 task에서 provider마다 SSH 접속이 생기지 않도록 설치 뒤 새로고침은 한 번의 조회로 끝낸다.
+    expect(mockGetTaskHooksStatuses).toHaveBeenCalledTimes(1);
+    expect(mockGetTaskHooksStatuses).toHaveBeenCalledWith("task-1");
+  });
+
+  it("상태를 읽는 동안에는 읽는 중임을 알리고, 다 읽으면 지운다", () => {
+    const pendingProps = {
+      taskId: "task-1",
+      initialClaudeStatus: null,
+      initialGeminiStatus: null,
+      initialCodexStatus: null,
+      initialOpenCodeStatus: null,
+      isRemote: true,
+    };
+    const { rerender } = renderCard({ ...pendingProps, isLoading: true });
+
+    expect(screen.getByRole("status").textContent).toBe("Loading...");
+
+    rerender(
+      <IntlProvider messages={messages} locale="en">
+        <HooksStatusCard {...pendingProps} isLoading={false} />
+      </IntlProvider>
+    );
+
+    expect(screen.queryByRole("status")).toBeNull();
   });
   it("설치 요청이 결과 없이 실패해도 사유와 다시 시도를 보이고 다시 시도하면 같은 도구를 설치한다", async () => {
     mockInstallTaskHooks

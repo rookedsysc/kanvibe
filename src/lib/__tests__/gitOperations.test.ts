@@ -1431,6 +1431,129 @@ describe("SSH connection ownership and execution safety", () => {
     expect(mocks.spawnMaster.mock.calls.some((call) => call[1].includes("exit"))).toBe(false);
   });
 
+  it("background saturation reserves capacity for interactive detail reads", async () => {
+    vi.stubEnv("KANVIBE_REMOTE_SSH_HOST_MAX_CONCURRENCY", "3");
+    const children: MockSSHProcess[] = [];
+    mocks.spawn.mockImplementation(() => {
+      const child = createMockSSHProcess();
+      children.push(child);
+      return child;
+    });
+    const { execGit, runWithBackgroundSSHCommands } = await import("@/lib/gitOperations");
+    const background = Array.from({ length: 4 }, (_, i) => runWithBackgroundSSHCommands(() => execGit(`repair-${i}`, "remote-host")));
+    try {
+      await vi.waitFor(() => expect(children).toHaveLength(2));
+      const detail = execGit("interactive-detail", "remote-host");
+      await vi.waitFor(() => expect(children).toHaveLength(3));
+      expect(getSpawnedRemoteCommand(2)).toContain("interactive-detail");
+      completeRemoteCommand(children[2], "usable");
+      await expect(detail).resolves.toBe("usable");
+      expect(children).toHaveLength(3);
+      completeRemoteCommand(children[0], "repaired");
+      await background[0];
+      await vi.waitFor(() => expect(children).toHaveLength(4));
+      completeRemoteCommand(children[1], "repaired");
+      await background[1];
+      await vi.waitFor(() => expect(children).toHaveLength(5));
+      completeRemoteCommand(children[3], "repaired");
+      completeRemoteCommand(children[4], "repaired");
+      await Promise.all(background);
+    } finally {
+      for (const child of children) completeRemoteCommand(child, "cleanup");
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("interactive queued commands precede background work without raising the host ceiling", async () => {
+    vi.stubEnv("KANVIBE_REMOTE_SSH_HOST_MAX_CONCURRENCY", "1");
+    const children: MockSSHProcess[] = [];
+    mocks.spawn.mockImplementation(() => {
+      const child = createMockSSHProcess();
+      children.push(child);
+      return child;
+    });
+    const { execGit, runWithBackgroundSSHCommands } = await import("@/lib/gitOperations");
+    try {
+      const active = execGit("active", "remote-host");
+      await vi.waitFor(() => expect(children).toHaveLength(1));
+      const background = runWithBackgroundSSHCommands(() => execGit("repair", "remote-host"));
+      const detail = execGit("interactive-detail", "remote-host");
+      completeRemoteCommand(children[0], "done");
+      await active;
+      await vi.waitFor(() => expect(children).toHaveLength(2));
+      expect(getSpawnedRemoteCommand(1)).toContain("interactive-detail");
+      completeRemoteCommand(children[1], "usable");
+      await detail;
+      await vi.waitFor(() => expect(children).toHaveLength(3));
+      completeRemoteCommand(children[2], "repaired");
+      await background;
+    } finally {
+      for (const child of children) completeRemoteCommand(child, "cleanup");
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("queued expiry never dispatches after capacity is released", async () => {
+    vi.stubEnv("KANVIBE_REMOTE_SSH_HOST_MAX_CONCURRENCY", "1");
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    const activeChild = createMockSSHProcess();
+    mocks.spawn.mockImplementation(() => {
+      if (mocks.spawn.mock.calls.length === 1) return activeChild;
+      const next = createMockSSHProcess();
+      queueMicrotask(() => completeRemoteCommand(next, "next"));
+      return next;
+    });
+    const { execGit } = await import("@/lib/gitOperations");
+    const active = execGit("active", "remote-host", { timeoutMs: 500 });
+    const activeResult = active.catch((error: unknown) => error);
+    const expired = execGit("expired", "remote-host", { timeoutMs: 20 });
+    const failure = vi.fn();
+    const expiredResult = expired.catch(failure);
+    try {
+      await vi.advanceTimersByTimeAsync(1);
+      await vi.advanceTimersByTimeAsync(25);
+      expect(failure).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ message: expect.stringMatching(/SSH 명령이 .*완료되지 않았/) }));
+      expect(mocks.spawn).toHaveBeenCalledTimes(1);
+      completeRemoteCommand(activeChild, "done");
+      await expect(activeResult).resolves.toBe("done");
+      await expiredResult;
+      await expect(execGit("next", "remote-host", { timeoutMs: 100 })).resolves.toBe("next");
+      expect(mocks.spawn).toHaveBeenCalledTimes(2);
+      expect(getSpawnedRemoteCommand(1)).toContain("next");
+    } finally {
+      completeRemoteCommand(activeChild, "cleanup");
+      await Promise.all([activeResult, expiredResult]);
+      vi.useRealTimers();
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("a saturated repair host does not block another host", async () => {
+    vi.stubEnv("KANVIBE_REMOTE_SSH_HOST_MAX_CONCURRENCY", "1");
+    vi.doMock("@/lib/sshConfig", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("@/lib/sshConfig")>()),
+      parseSSHConfig: vi.fn(async () => [config, { ...config, host: "other-host", hostname: "other.example.com" }]),
+    }));
+    const active = createMockSSHProcess();
+    mocks.spawn.mockImplementation((_file: string, args: string[]) => {
+      if (args.includes("remote-host")) return active;
+      const child = createMockSSHProcess();
+      queueMicrotask(() => completeRemoteCommand(child, "other-host-ready"));
+      return child;
+    });
+    const { execGit, runWithBackgroundSSHCommands } = await import("@/lib/gitOperations");
+    const repair = runWithBackgroundSSHCommands(() => execGit("repair", "remote-host"));
+    try {
+      await vi.waitFor(() => expect(mocks.spawn).toHaveBeenCalledOnce());
+      await expect(execGit("detail", "other-host")).resolves.toBe("other-host-ready");
+      completeRemoteCommand(active, "repaired");
+      await expect(repair).resolves.toBe("repaired");
+    } finally {
+      completeRemoteCommand(active, "cleanup");
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("a command timeout preserves a concurrent command and allows the next command", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
     const timedOut = createMockSSHProcess();
@@ -1498,6 +1621,70 @@ describe("SSH connection ownership and execution safety", () => {
     completeRemoteCommand(children[1], "two");
     await expect(two).resolves.toBe("two");
     expect(mocks.execFile).not.toHaveBeenCalled();
+  });
+
+  it("느린 원격 명령은 슬롯 대기, 연결 대기, 명령 수행 시간을 나눠 남기고 빠른 명령은 남기지 않는다", async () => {
+    vi.stubEnv("KANVIBE_REMOTE_SSH_HOST_MAX_CONCURRENCY", "2");
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const children: MockSSHProcess[] = [];
+    mocks.spawn.mockImplementation(() => { const child = createMockSSHProcess(); children.push(child); return child; });
+    const flush = async () => { for (let tick = 0; tick < 30; tick += 1) await Promise.resolve(); };
+    const findSlowCommandLog = (command: string) => consoleWarn.mock.calls
+      .find(([label, detail]) => label === "[remote-ssh] slow command" && detail.command === command)?.[1];
+
+    try {
+      const { execGit } = await import("@/lib/gitOperations");
+      // 공용 연결을 먼저 만들어 두어, 뒤의 터미널 준비 명령이 연결 준비가 아니라 슬롯만 기다리게 한다.
+      const warmUp = execGit("warm-up", "remote-host");
+      await flush();
+      completeRemoteCommand(children[0], "warm");
+      await expect(warmUp).resolves.toBe("warm");
+
+      // 호스트 키를 검증하는 접속 둘이 슬롯 두 개를 모두 잡는다. 둘째는 인증 차례를 기다리는 동안에도 슬롯을 쥐고 있다.
+      const firstStrictRead = execGit("strict-read-1", "remote-host", { strictHostKeyChecking: true });
+      const secondStrictRead = execGit("strict-read-2", "remote-host", { strictHostKeyChecking: true });
+      const terminalPreparation = execGit("terminal-prepare", "remote-host");
+      await flush();
+      expect(children).toHaveLength(2);
+
+      vi.advanceTimersByTime(2_000);
+      completeRemoteCommand(children[1], "one");
+      await expect(firstStrictRead).resolves.toBe("one");
+      await flush();
+      // 슬롯이 비자 터미널 준비 명령과 둘째 검증 접속이 함께 시작한다.
+      expect(children).toHaveLength(4);
+
+      vi.advanceTimersByTime(1_500);
+      completeRemoteCommand(children.find((_, index) => getSpawnedRemoteCommand(index).includes("terminal-prepare"))!, "prepared");
+      await expect(terminalPreparation).resolves.toBe("prepared");
+      vi.advanceTimersByTime(500);
+      completeRemoteCommand(children.find((_, index) => getSpawnedRemoteCommand(index).includes("strict-read-2"))!, "two");
+      await expect(secondStrictRead).resolves.toBe("two");
+
+      expect(findSlowCommandLog("terminal-prepare")).toEqual({
+        sshHost: "remote-host",
+        priority: "foreground",
+        totalMs: 3_500,
+        slotWaitMs: 2_000,
+        connectionWaitMs: 0,
+        commandMs: 1_500,
+        command: "terminal-prepare",
+      });
+      expect(findSlowCommandLog("strict-read-2")).toMatchObject({
+        totalMs: 4_000,
+        slotWaitMs: 0,
+        connectionWaitMs: 2_000,
+        commandMs: 2_000,
+      });
+      // 2초에 끝난 첫 명령은 기준보다 빨라 남기지 않는다.
+      expect(findSlowCommandLog("strict-read-1")).toBeUndefined();
+    } finally {
+      for (const child of children) completeRemoteCommand(child, "cleanup");
+      consoleWarn.mockRestore();
+      vi.useRealTimers();
+      vi.unstubAllEnvs();
+    }
   });
 
   it("a completed remote application error is not a transport failure or replay candidate", async () => {

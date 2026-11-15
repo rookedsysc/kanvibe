@@ -67,20 +67,4 @@ void main() {
     expect(result.changedCount, 3);
     expect(result.failedCount, 1);
   });
-  test('즉시 동기화의 보드 변경과 검토 필요 상태를 구분한다', () async {
-    final client = DesktopClient(
-      httpClient: MockClient((request) async {
-        expect(request.method, 'POST');
-        expect(request.url.path, '/api/mobile/sync/run');
-        return http.Response(
-          '{"success":true,"result":{"boardUpdated":true,"reviewNeeded":true}}',
-          200,
-        );
-      }),
-    );
-    addTearDown(client.close);
-    final result = await PcSettingsRepository(client).runSync(pc);
-    expect(result.reviewNeeded, isTrue);
-    expect(result.boardUpdated, isTrue);
-  });
 }

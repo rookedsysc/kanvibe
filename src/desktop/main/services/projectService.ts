@@ -168,8 +168,8 @@ function isRemoteConnectionError(error: unknown): boolean {
   return /원격 명령 실패:.*(Connection (?:reset|closed)|kex_exchange_identification|operation timed out|no route to host|connection refused|could not resolve hostname|broken pipe)/i.test(message);
 }
 
-const projectRootTaskRepairJobs = new Map<string, Promise<void>>();
-const projectRootTaskRepairScheduled = new Set<string>();
+const projectWorktreeSyncJobs = new Map<string, Promise<RegisteredProjectWorktreeSyncResult>>();
+const projectWorktreeSyncHosts = new Map<string, Promise<void>>();
 const projectRootRepairDeletingProjectIds = new Set<string>();
 const projectRootRepairDeletedProjectIds = new Set<string>();
 
@@ -205,44 +205,6 @@ async function installSyncedWorktreeHooks(
       `${project.name}/${branchName} hooks 설정 실패: ${hookError instanceof Error ? hookError.message : "알 수 없는 오류"}`,
     );
   }
-}
-
-function scheduleProjectRootTaskRepair(project: Project) {
-  if (isProjectRootRepairBlocked(project.id)) {
-    return;
-  }
-
-  const projectPathKey = buildProjectPathKey(project.repoPath, project.sshHost);
-  if (projectRootTaskRepairScheduled.has(projectPathKey)) {
-    return;
-  }
-
-  projectRootTaskRepairScheduled.add(projectPathKey);
-
-  setTimeout(() => {
-    const repairJob = (async () => {
-      try {
-        if (isProjectRootRepairBlocked(project.id)) {
-          return;
-        }
-
-        const { repaired } = await ensureProjectRootTask(project);
-
-        if (repaired) {
-          broadcastBoardUpdate();
-        }
-      } catch (error) {
-        if (!isRemoteConnectionError(error)) {
-          console.error(`${project.name} 기본 브랜치 task 백그라운드 복구 실패:`, error);
-        }
-      } finally {
-        projectRootTaskRepairJobs.delete(projectPathKey);
-        projectRootTaskRepairScheduled.delete(projectPathKey);
-      }
-    })();
-
-    projectRootTaskRepairJobs.set(projectPathKey, repairJob);
-  }, 0);
 }
 
 /** 프로젝트 이름 중복은 같은 PC 안에서만 따지므로 대상 PC에 등록된 이름만 모은다 */
@@ -404,7 +366,9 @@ async function ensureProjectRootTask(
     reconnectTaskToFollowedSession(task.id);
   }
 
-  await persistTaskState(expectedDefaultBranchWorktreePath || project.repoPath, task, project.sshHost);
+  if (persistedStatus !== task.status) {
+    await persistTaskState(expectedDefaultBranchWorktreePath || project.repoPath, task, project.sshHost);
+  }
 
   if (!repairHooks) {
     return { task, repaired };
@@ -471,10 +435,6 @@ function isDefaultBranchTask(
 export async function getAllProjects(): Promise<Project[]> {
   const repo = await getProjectRepository();
   const projects = await repo.find({ order: { createdAt: "ASC" } });
-
-  for (const project of projects) {
-    scheduleProjectRootTaskRepair(project);
-  }
 
   return serialize(projects);
 }
@@ -847,7 +807,9 @@ async function syncProjectWorktrees(
           }
           await installSyncedWorktreeHooks(project, wt.path, savedTask.id, wt.branch, result);
         }
-        await persistTaskState(wt.path, taskToPersist, project.sshHost);
+        if (persistedStatus !== taskToPersist.status) {
+          await persistTaskState(wt.path, taskToPersist, project.sshHost);
+        }
         continue;
       }
 
@@ -954,6 +916,60 @@ async function syncProjectWorktrees(
   return result;
 }
 
+function scheduleProjectWorktreeSync(
+  project: Project,
+  taskRepo: Awaited<ReturnType<typeof getTaskRepository>>,
+): Promise<RegisteredProjectWorktreeSyncResult> {
+  const projectKey = buildProjectPathKey(project.repoPath, project.sshHost);
+  const existingJob = projectWorktreeSyncJobs.get(projectKey);
+  if (existingJob) return existingJob;
+
+  const hostKey = project.sshHost ?? "";
+  const previousJob = projectWorktreeSyncHosts.get(hostKey) ?? Promise.resolve();
+  const job = previousJob.then(() => {
+    if (isProjectRootRepairBlocked(project.id)) {
+      return { worktreeTasks: [], registeredWorktrees: [], hooksSetup: [], errors: [], changed: false };
+    }
+    return syncProjectWorktrees(project, taskRepo);
+  }).finally(() => {
+    if (projectWorktreeSyncJobs.get(projectKey) === job) projectWorktreeSyncJobs.delete(projectKey);
+  });
+  projectWorktreeSyncJobs.set(projectKey, job);
+  // A failed sync must release the host queue so the next explicit recovery can retry.
+  const hostJob = job.then(() => undefined, () => undefined);
+  projectWorktreeSyncHosts.set(hostKey, hostJob);
+  void hostJob.then(() => {
+    if (projectWorktreeSyncHosts.get(hostKey) === hostJob) projectWorktreeSyncHosts.delete(hostKey);
+  });
+  return job;
+}
+
+type ProjectPathCheck = { isMissing: boolean } | { error: unknown };
+
+/**
+ * 프로젝트 경로가 남아 있는지 확인한다. 같은 호스트는 차례로, 다른 호스트끼리는 동시에 확인한다.
+ * 모두 한 줄로 세우면 느리거나 끊긴 호스트 하나가 다른 호스트와 로컬 프로젝트의 동기화까지 미룬다.
+ */
+async function checkProjectPathsByHost(projects: Project[]): Promise<Map<string, ProjectPathCheck>> {
+  const projectsByHost = new Map<string, Project[]>();
+  for (const project of projects) {
+    const hostKey = project.sshHost ?? "";
+    projectsByHost.set(hostKey, [...(projectsByHost.get(hostKey) ?? []), project]);
+  }
+
+  const pathChecks = new Map<string, ProjectPathCheck>();
+  await Promise.all([...projectsByHost.values()].map(async (hostProjects) => {
+    for (const project of hostProjects) {
+      try {
+        pathChecks.set(project.id, { isMissing: await isPathMissing(project.repoPath, project.sshHost) });
+      } catch (error) {
+        pathChecks.set(project.id, { error });
+      }
+    }
+  }));
+  return pathChecks;
+}
+
 export async function syncRegisteredProjectWorktrees(
   projectsInput?: Project[],
 ): Promise<RegisteredProjectWorktreeSyncResult> {
@@ -968,10 +984,18 @@ export async function syncRegisteredProjectWorktrees(
     changed: false,
   };
 
+  const pathChecks = await checkProjectPathsByHost(projects);
   const existingProjects: Project[] = [];
   for (const project of projects) {
+    const pathCheck = pathChecks.get(project.id);
+    if (!pathCheck || "error" in pathCheck) {
+      const reason = pathCheck?.error instanceof Error ? pathCheck.error.message : String(pathCheck?.error);
+      mergedResult.errors.push(`${project.name} 경로 확인 실패: ${reason}`);
+      continue;
+    }
+
     try {
-      if (await isPathMissing(project.repoPath, project.sshHost)) {
+      if (pathCheck.isMissing) {
         mergedResult.changed = await deleteProject(project.id) || mergedResult.changed;
       } else {
         existingProjects.push(project);
@@ -983,10 +1007,10 @@ export async function syncRegisteredProjectWorktrees(
 
   mergedResult.changed = await backfillMissingProjectIcons(existingProjects) || mergedResult.changed;
 
-  const projectResults: RegisteredProjectWorktreeSyncResult[] = [];
-  for (const project of existingProjects) {
-    projectResults.push(await syncProjectWorktrees(project, taskRepo));
-  }
+  // 같은 호스트의 프로젝트는 scheduleProjectWorktreeSync가 차례로 세우므로, 한꺼번에 예약해 호스트끼리만 겹치게 한다.
+  const projectResults = await Promise.all(
+    existingProjects.map((project) => scheduleProjectWorktreeSync(project, taskRepo)),
+  );
 
   for (const projectResult of projectResults) {
     mergeRegisteredProjectWorktreeSyncResult(

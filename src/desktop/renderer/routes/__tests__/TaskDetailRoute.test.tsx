@@ -45,6 +45,7 @@ const mocks = vi.hoisted(() => ({
   markAllNotificationsRead: vi.fn(),
   activateNotification: vi.fn(),
   fetchPrUrlWithPrompt: vi.fn(),
+  fetchAndSavePrUrl: vi.fn(),
   openTaskInVsCode: vi.fn(),
   renderHooksStatusCard: vi.fn(),
   useRefreshSignal: vi.fn(() => 0),
@@ -168,6 +169,7 @@ vi.mock("@/desktop/renderer/actions/kanban", () => ({
   getTaskIdByProjectAndBranch: (...args: unknown[]) => mocks.getTaskIdByProjectAndBranch(...args),
   updateTaskStatus: (...args: unknown[]) => mocks.updateTaskStatus(...args),
   deleteTask: (...args: unknown[]) => mocks.deleteTask(...args),
+  fetchAndSavePrUrl: (...args: unknown[]) => mocks.fetchAndSavePrUrl(...args),
 }));
 
 vi.mock("@/desktop/renderer/actions/diff", () => ({
@@ -376,6 +378,7 @@ describe("TaskDetailRoute", () => {
     mocks.updateTaskStatus.mockResolvedValue(null);
     mocks.deleteTask.mockResolvedValue(true);
     mocks.fetchPrUrlWithPrompt.mockResolvedValue(null);
+    mocks.fetchAndSavePrUrl.mockResolvedValue(null);
     mocks.clipboardWriteText.mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
@@ -2216,6 +2219,110 @@ describe("TaskDetailRoute", () => {
     }));
     expect(mocks.getTaskHooksStatuses).toHaveBeenCalledWith("task-1");
     expect(mocks.getTaskCodexHooksStatus).not.toHaveBeenCalled();
+  });
+
+  describe("원격 조회를 부르는 보조 데이터", () => {
+    const remoteTaskWithoutPullRequest = {
+      id: "task-1",
+      title: "task title",
+      description: null,
+      branchName: "feat/remote-loading",
+      baseBranch: "main",
+      prUrl: null,
+      sessionType: "herdr",
+      sessionName: "kanvibe:remote-loading",
+      sshHost: "remote-host",
+      projectId: "project-1",
+      project: { id: "project-1", name: "kanvibe", sshHost: "remote-host" },
+      status: "progress",
+      agentType: null,
+      worktreePath: "/remote/repo__worktrees/remote-loading",
+    };
+
+    afterEach(() => {
+      mocks.useRefreshSignal.mockImplementation(() => 0);
+    });
+
+    it("hook 상태는 상태 패널이 열려 있는 동안에만 조회하고, 닫힌 창은 보드 갱신이 이어져도 조회하지 않는다", async () => {
+      let refreshSignal = 0;
+      mocks.useRefreshSignal.mockImplementation(() => refreshSignal);
+      mocks.getTaskById.mockResolvedValue(remoteTaskWithoutPullRequest);
+      mocks.getTaskHooksStatuses.mockResolvedValue({ claude: { installed: true }, gemini: null, codex: null, openCode: null });
+
+      const { rerender } = render(<TaskDetailRoute />);
+      await screen.findByTestId("task-title");
+
+      // 에이전트가 일하는 동안 보드 갱신이 세 번 이어진다
+      for (const boardUpdate of [1, 2, 3]) {
+        refreshSignal = boardUpdate;
+        rerender(<TaskDetailRoute />);
+        await waitFor(() => expect(mocks.getTaskById).toHaveBeenCalledTimes(boardUpdate + 1));
+      }
+      // 패널을 열지 않은 창은 hook 상태를 읽는 SSH 접속을 만들지 않는다.
+      expect(mocks.getTaskHooksStatuses).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByRole("button", { name: "actions · hooksStatus" }));
+      await waitFor(() => {
+        expect(screen.getByTestId("hooks-status-card").getAttribute("data-claude-installed")).toBe("true");
+      });
+      expect(mocks.getTaskHooksStatuses).toHaveBeenCalledTimes(1);
+
+      // 패널이 열려 있으면 백그라운드 설치·복구 결과를 반영하려고 다시 묻는다. 읽는 중 표시는 다시 띄우지 않는다.
+      refreshSignal = 4;
+      rerender(<TaskDetailRoute />);
+      await waitFor(() => expect(mocks.getTaskHooksStatuses).toHaveBeenCalledTimes(2));
+      expect(mocks.renderHooksStatusCard.mock.calls.filter(([props]) => props.isLoading === true)).toHaveLength(1);
+
+      // 패널을 닫으면 이후 보드 갱신은 다시 조회하지 않는다.
+      fireEvent.click(screen.getByRole("button", { name: "actions · hooksStatus" }));
+      refreshSignal = 5;
+      rerender(<TaskDetailRoute />);
+      await waitFor(() => expect(mocks.getTaskById).toHaveBeenCalledTimes(6));
+      expect(mocks.getTaskHooksStatuses).toHaveBeenCalledTimes(2);
+    });
+
+    it("hook 상태를 읽는 동안 상태 카드에 읽는 중임을 알린다", async () => {
+      let finishStatusRead!: (statuses: null) => void;
+      mocks.getTaskById.mockResolvedValue(remoteTaskWithoutPullRequest);
+      mocks.getTaskHooksStatuses.mockReturnValue(new Promise((resolve) => { finishStatusRead = resolve; }));
+
+      render(<TaskDetailRoute />);
+      fireEvent.click(await screen.findByRole("button", { name: "actions · hooksStatus" }));
+
+      await waitFor(() => {
+        expect(mocks.renderHooksStatusCard).toHaveBeenLastCalledWith(expect.objectContaining({ isLoading: true }));
+      });
+      await act(async () => { finishStatusRead(null); });
+      await waitFor(() => {
+        expect(mocks.renderHooksStatusCard).toHaveBeenLastCalledWith(expect.objectContaining({ isLoading: false }));
+      });
+    });
+
+    it("PR 자동 조회는 처음에만 gh 설치 확인을 거치고, 보드 갱신에서는 간격 제한이 걸리는 자동 조회로만 묻는다", async () => {
+      let refreshSignal = 0;
+      mocks.useRefreshSignal.mockImplementation(() => refreshSignal);
+      mocks.getTaskById.mockResolvedValue(remoteTaskWithoutPullRequest);
+
+      const { rerender } = render(<TaskDetailRoute />);
+      await screen.findByTestId("task-title");
+
+      await waitFor(() => expect(mocks.fetchPrUrlWithPrompt).toHaveBeenCalledTimes(1));
+      expect(mocks.fetchPrUrlWithPrompt).toHaveBeenCalledWith(
+        expect.objectContaining({ id: "task-1" }),
+        expect.anything(),
+        { isAutomatic: true },
+      );
+      expect(mocks.fetchAndSavePrUrl).not.toHaveBeenCalled();
+
+      for (const boardUpdate of [1, 2]) {
+        refreshSignal = boardUpdate;
+        rerender(<TaskDetailRoute />);
+        await waitFor(() => expect(mocks.fetchAndSavePrUrl).toHaveBeenCalledTimes(boardUpdate));
+      }
+      // 갱신마다 gh 설치 확인(원격 명령)과 설치 질문을 되풀이하지 않는다.
+      expect(mocks.fetchPrUrlWithPrompt).toHaveBeenCalledTimes(1);
+      expect(mocks.fetchAndSavePrUrl).toHaveBeenLastCalledWith("task-1", { isAutomatic: true });
+    });
   });
 
   it("상세 화면 좌측 하단 rail에는 알림 버튼을 렌더링하지 않는다", async () => {

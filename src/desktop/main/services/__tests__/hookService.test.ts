@@ -312,7 +312,7 @@ describe("hook 상태 저장 위치 소유권", () => {
 
   it("원격 task의 메타데이터는 해당 호스트 터널로 들어왔을 때만 바인딩한다", async () => {
     const project = { id: "project", name: "repo", repoPath: "/fixture/root", defaultBranch: "main", sshHost: "remote" };
-    mocks.taskRepo.findOne.mockResolvedValue({ id: "task", title: "task", projectId: "project", project, worktreePath: "/fixture/feature", sshHost: "remote" });
+    mocks.taskRepo.findOne.mockResolvedValue({ id: "task", title: "task", status: "progress", projectId: "project", project, worktreePath: "/fixture/feature", sshHost: "remote" });
     const metadata = { provider: "codex", hookPid: 123, payloadBase64: "e30=" };
     const { updateHookTaskStatus } = await import("@/desktop/main/services/hookService");
     await updateHookTaskStatus({ taskId: "task", status: "progress", agentSession: metadata });

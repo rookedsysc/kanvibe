@@ -3,6 +3,7 @@ import { buildTaskStatusNotification } from "@/desktop/shared/taskNotifications"
 import { subscribeToBoardEvents, type BoardEventPayload } from "@/lib/boardNotifier";
 import type { MobilePushSubscription } from "@/lib/mobilePairing";
 import { getNotificationSettings } from "@/desktop/main/services/appSettingsService";
+import type { BackgroundTaskSyncStatus } from "@/desktop/shared/backgroundTaskSync";
 
 interface MobileOperationalWarning {
   type: "operational-warning";
@@ -16,7 +17,7 @@ interface MobileOperationalWarning {
   shouldNotify: boolean;
 }
 
-export type MobileEvent = { type: "board-updated" } | MobileOperationalWarning | {
+export type MobileEvent = { type: "board-updated" } | { type: "background-sync-status-changed"; status: BackgroundTaskSyncStatus } | MobileOperationalWarning | {
   type: "task-status-changed";
   eventId: string;
   taskId: string;
@@ -80,6 +81,10 @@ export function startMobileNotifications(options: MobileNotificationOptions): vo
   const delivery: NotificationDelivery = { isStopped: false, unsubscribe: () => {}, requests: new Set() };
   currentDelivery = delivery;
   delivery.unsubscribe = subscribeToBoardEvents((event) => {
+    if (event.type === "background-sync-status-changed") {
+      broadcastMobileEvent(event);
+      return;
+    }
     if (event.type === "board-updated") {
       broadcastMobileEvent({ type: "board-updated" });
       return;
