@@ -751,6 +751,7 @@
     "accountNamePlaceholder": "账号名称（例如 work）",
     "loginInProgress": "正在登录",
     "loginHint": "在下方窗口完成登录后，列表会自动刷新。若打开了浏览器，请在浏览器中完成认证。",
+    "loginFailed": "登录命令已退出，退出代码为 {code}。请查看下方输出，关闭此终端后重新登录。",
     "closeLogin": "关闭",
     "errors": {
       "invalid-name": "账号名称只能使用字母、数字、-、_ 和 . 。",

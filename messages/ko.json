@@ -784,6 +784,7 @@
     "accountNamePlaceholder": "계정 이름 (예: work)",
     "loginInProgress": "로그인 진행 중",
     "loginHint": "아래 창에서 로그인을 마치면 목록이 자동으로 갱신됩니다. 브라우저가 열리면 그쪽에서 인증을 끝내 주세요.",
+    "loginFailed": "로그인 명령이 종료 코드 {code}로 끝났습니다. 아래 출력을 확인한 뒤 창을 닫고 다시 로그인해 주세요.",
     "closeLogin": "닫기",
     "errors": {
       "invalid-name": "계정 이름에는 영문, 숫자, -, _, . 만 쓸 수 있습니다.",

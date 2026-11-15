@@ -9,6 +9,7 @@ import {
 } from "@/lib/aiUsage/accountRegistry";
 import { discoverProviderAccounts, hasStoredCredentials } from "@/lib/aiUsage/accountDiscovery";
 import { logoutThroughCli, readProviderAuthStatus } from "@/lib/aiUsage/providerCli";
+import { toCachedAccountId } from "@/lib/aiUsage/usageSnapshotCache";
 import {
   AI_PROVIDER_CONFIG_DIR_SPECS,
   isValidAccountName,
@@ -34,6 +35,8 @@ function serializeAccountMutation<Result>(mutation: () => Promise<Result>): Prom
 
 export interface AiAccountSummary {
   provider: AiUsageProvider;
+  accountId: string;
+  cachedAccountId: string;
   /** CLI에 계정 위치를 알릴 때 넘기는 루트이자 이 목록에서 계정을 가리키는 식별자 */
   accountRoot: string;
   /** 사용자가 붙인 계정 이름. 홈의 기본 계정은 이름이 없다 */
@@ -76,6 +79,8 @@ async function toAccountSummary(
 
   return {
     provider: account.provider,
+    accountId: account.accountId,
+    cachedAccountId: toCachedAccountId(account.accountId),
     accountRoot: account.accountRoot,
     accountName: toAccountNameFromRoot(spec, account.accountRoot),
     label: authStatus?.label ?? account.label,

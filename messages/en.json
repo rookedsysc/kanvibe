@@ -784,6 +784,7 @@
     "accountNamePlaceholder": "Account name (e.g. work)",
     "loginInProgress": "Signing in",
     "loginHint": "Finish signing in below and the list refreshes on its own. If a browser opens, complete the sign-in there.",
+    "loginFailed": "The sign-in command exited with code {code}. Check the output below, then close this terminal and try signing in again.",
     "closeLogin": "Close",
     "errors": {
       "invalid-name": "Account names may only use letters, numbers, -, _ and .",
