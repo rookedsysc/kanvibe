@@ -26,6 +26,7 @@ class PaneAgentWatcher extends Notifier<String?> {
 
   /// 데스크탑이 변화를 밀어 주고 있는지. 그동안에는 주기적으로 확인하지 않는다
   bool _isLive = false;
+  int _stateRevision = 0;
 
   @override
   String? build() {
@@ -38,6 +39,7 @@ class PaneAgentWatcher extends Notifier<String?> {
         if (event['type'] == 'pane-chat-state' &&
             pushed is Map<String, dynamic> &&
             pushed.containsKey('provider')) {
+          _stateRevision++;
           state = pushed['provider'] as String?;
         }
       },
@@ -59,6 +61,7 @@ class PaneAgentWatcher extends Notifier<String?> {
   }
 
   Future<void> _probe() async {
+    final revision = _stateRevision;
     try {
       final connections = await ref.read(connectionControllerProvider.future);
       final connection = connections.activeConnection;
@@ -67,7 +70,16 @@ class PaneAgentWatcher extends Notifier<String?> {
         final snapshot = await ref
             .read(desktopClientProvider)
             .fetchPaneChat(connection, target);
-        if (!ref.mounted) return;
+        if (!ref.mounted ||
+            revision != _stateRevision ||
+            ref
+                    .read(connectionControllerProvider)
+                    .value
+                    ?.activeConnection
+                    ?.id !=
+                connection.id) {
+          return;
+        }
         state = snapshot.provider;
       }
     } catch (_) {

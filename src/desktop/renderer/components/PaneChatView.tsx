@@ -83,7 +83,7 @@ export function PaneChatView({ taskId, paneId, taskTitle, paneTabs = [], isVisib
             <p>{t(snapshot.transcript.reason === "transcript-read-failed" ? "transcriptReadFailed" : "transcriptIdentityMissing")}</p>
             <div className="flex flex-wrap gap-2"><button type="button" onClick={() => void chat.refresh()} className={controlClass}>{t("retry")}</button><button type="button" onClick={onTerminal} className={controlClass}>{t("terminal")}</button></div>
           </div> : null}
-          {snapshot?.screen ? <details className="rounded-lg border border-border-subtle bg-bg-surface">
+          {snapshot?.screen && snapshot.transcript.status !== "available" ? <details className="rounded-lg border border-border-subtle bg-bg-surface">
             <summary className="cursor-pointer px-4 py-3 text-xs text-text-secondary">{t("screen")}</summary>
             <pre className="max-h-80 overflow-auto whitespace-pre px-4 pb-4 font-mono text-xs leading-5 text-text-primary">{snapshot.screen}</pre>
           </details> : null}

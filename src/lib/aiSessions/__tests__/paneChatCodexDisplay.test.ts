@@ -27,6 +27,16 @@ describe("native empty composer appearance", () => {
 const HINT_ROW = "  ← for agents · ? for shortcuts";
 
 describe("Codex displayed-thread footer reading", () => {
+  it.each(["  ← for agents", "  ← for agents        ⚠ 2 warnings · f2 to view"])("accepts the verified narrow main footer %s without relaxing its position", (hint) => {
+    const rows = ["› Ask Codex to do anything", "", `  ${DISPLAYED_THREAD}`, hint];
+    expect(readCodexDisplay(rows, 0, true)?.threadId).toBe(DISPLAYED_THREAD);
+    expect(isCodexMainComposerReady(rows, 0)).toBe(true);
+    expect(readCodexDisplay([...rows, "  more"], 0, true)?.threadId).toBeNull();
+    rows[3] = "  Side from main thread · ⌃/ to switch · ⌃c to close";
+    expect(readCodexDisplay(rows, 0, true)?.threadId).toBeNull();
+    expect(isCodexMainComposerReady(rows, 0)).toBe(false);
+  });
+
   it("keeps the native warning badge separate from the exact thread id", () => {
     const rows = ["› Ask Codex to do anything", "", `  ${DISPLAYED_THREAD}`, `${HINT_ROW}                       ⚠ 1 warning · f2 to view`];
     expect(readCodexDisplay(rows, 0, true)).toEqual({ composerText: "", threadId: DISPLAYED_THREAD });

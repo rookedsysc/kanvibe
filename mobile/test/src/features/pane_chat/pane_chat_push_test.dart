@@ -1,5 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:kanvibe_mobile/src/common/network/desktop_client.dart';
+import 'package:kanvibe_mobile/src/common/network/desktop_command.dart';
 import 'package:kanvibe_mobile/src/common/network/desktop_connection.dart';
 import 'package:kanvibe_mobile/src/common/network/desktop_socket_events.dart';
 import 'package:kanvibe_mobile/src/common/providers.dart';
@@ -21,6 +25,40 @@ class _PushDesktop extends FakeDesktopClient {
   String? provider = 'codex';
   String inputState = 'ready';
   final fetchedPanes = <String>[];
+  final actionTokens = <String>[];
+  Completer<void>? actionResponse;
+  Completer<PaneChatSnapshot>? heldSnapshot;
+  Completer<Map<String, dynamic>>? subscriptionResponse;
+
+  @override
+  Future<Map<String, dynamic>> runCommand(
+    DesktopConnection connection,
+    DesktopCommand command, {
+    Duration? timeout,
+  }) async {
+    if (command.name == 'set-pane-chat-subscription' &&
+        subscriptionResponse != null) {
+      paneChatSubscriptionCalls.add(command);
+      return subscriptionResponse!.future;
+    }
+    return super.runCommand(connection, command, timeout: timeout);
+  }
+
+  @override
+  Future<void> sendPaneChatAction(
+    DesktopConnection connection,
+    String taskId,
+    String targetToken,
+    PaneChatAction action, {
+    String? text,
+    PaneChatKey? key,
+    List<String>? attachmentIds,
+    String? requestId,
+    Map<String, Object?>? modelSettingChange,
+  }) async {
+    actionTokens.add(targetToken);
+    await actionResponse!.future;
+  }
 
   @override
   Future<PaneChatSnapshot> fetchPaneChat(
@@ -28,6 +66,7 @@ class _PushDesktop extends FakeDesktopClient {
     PaneChatTarget target,
   ) async {
     fetchedPanes.add(target.paneId);
+    if (heldSnapshot != null) return heldSnapshot!.future;
     return PaneChatSnapshot.fromJson({
       'taskId': target.taskId,
       'paneId': target.paneId,
@@ -60,12 +99,15 @@ void testPush(
   String description,
   Future<void> Function(WidgetTester tester) body,
 ) => testWidgets(description, (tester) async {
-  await body(tester);
-  for (final container in _containers) {
-    container.dispose();
+  try {
+    await body(tester);
+  } finally {
+    for (final container in _containers) {
+      container.dispose();
+    }
+    _containers.clear();
+    await tester.pump();
   }
-  _containers.clear();
-  await tester.pump();
 });
 
 final _containers = <ProviderContainer>[];
@@ -286,6 +328,73 @@ void main() {
       expect(textsOf(snapshot().transcript), ['첫 답변']);
     });
 
+    testPush('늦은 X 전송 ACK는 push로 선택한 Y 상태를 되돌리지 않는다', (tester) async {
+      await startChat(tester);
+      client.actionResponse = Completer<void>();
+      final sending = container
+          .read(paneChatProvider(target).notifier)
+          .send('X에 보낸 문장', requestId: 'captured-x-send');
+      await tester.pump();
+      expect(client.actionTokens, ['target-a']);
+
+      await push(tester, {
+        'type': 'pane-chat-state',
+        'taskId': target.taskId,
+        'paneId': target.paneId,
+        'state': {'targetToken': 'target-b', 'screen': '현재 Y 화면'},
+      });
+      final selectedY = snapshot();
+      expect(selectedY.targetToken, 'target-b');
+      client.heldSnapshot = Completer<PaneChatSnapshot>();
+      client.actionResponse!.complete();
+      await tester.pump();
+      // 뒤따른 GET이 과거 상태를 가리지 못하게, 응답 전에 화면에 남은 상태를 잡는다.
+      final afterAck = container.read(paneChatProvider(target)).requireValue;
+      client.heldSnapshot!.complete(selectedY);
+      await tester.pump();
+      final accepted = await sending;
+
+      expect(accepted, isTrue);
+      expect(afterAck.snapshot.targetToken, 'target-b');
+      expect(afterAck.snapshot.screen, '현재 Y 화면');
+      expect(afterAck.actionError, isNull);
+      expect(client.actionTokens, ['target-a']);
+    });
+
+    testPush('늦은 X 전송 오류는 push로 선택한 Y 상태와 오류를 덮지 않는다', (tester) async {
+      await startChat(tester);
+      client.actionResponse = Completer<void>();
+      final sending = container
+          .read(paneChatProvider(target).notifier)
+          .send('X의 결과가 불명확한 문장', requestId: 'uncertain-x-send');
+      await tester.pump();
+      expect(client.actionTokens, ['target-a']);
+
+      await push(tester, {
+        'type': 'pane-chat-state',
+        'taskId': target.taskId,
+        'paneId': target.paneId,
+        'state': {'targetToken': 'target-b', 'screen': '현재 Y 화면'},
+      });
+      final selectedY = snapshot();
+      expect(selectedY.targetToken, 'target-b');
+      client.heldSnapshot = Completer<PaneChatSnapshot>();
+      client.actionResponse!.completeError(
+        const DesktopRequestException(503, message: 'X 전송 결과를 확인하지 못했습니다.'),
+      );
+      await tester.pump();
+      final afterError = container.read(paneChatProvider(target)).requireValue;
+      client.heldSnapshot!.complete(selectedY);
+      await tester.pump();
+      final accepted = await sending;
+
+      expect(accepted, isFalse);
+      expect(afterError.snapshot.targetToken, 'target-b');
+      expect(afterError.snapshot.screen, '현재 Y 화면');
+      expect(afterError.actionError, isNull);
+      expect(client.actionTokens, ['target-a']);
+    });
+
     testPush('소켓이 끊기면 주기 조회로 돌아가고, 다시 붙으면 위치를 실어 구독을 다시 보낸다', (tester) async {
       await startChat(tester);
       await push(tester, const {'type': 'disconnected'});
@@ -352,6 +461,46 @@ void main() {
       expect(container.read(paneAgentProvider(target)), isNull);
       await tester.pump(const Duration(seconds: 20));
       expect(client.fetchedPanes.length, fetchedBefore);
+    });
+
+    testPush('초기 agent push는 구독 ACK 전에도 반영되고 늦은 HTTP null에 덮이지 않는다', (
+      tester,
+    ) async {
+      client.provider = null;
+      final initialNoAgent = await client.fetchPaneChat(pc, target);
+      client.heldSnapshot = Completer<PaneChatSnapshot>();
+      client.subscriptionResponse = Completer<Map<String, dynamic>>();
+      container.listen(paneAgentProvider(target), (_, _) {});
+      await tester.pump();
+      await tester.pump();
+      expect(client.paneChatSubscriptionCalls, hasLength(1));
+
+      await push(tester, {
+        'type': 'pane-chat-state',
+        'taskId': target.taskId,
+        'paneId': target.paneId,
+        'state': {'provider': 'codex'},
+      });
+      final beforeAck = container.read(paneAgentProvider(target));
+      client.subscriptionResponse!.complete({
+        'panes': [
+          {
+            'taskId': target.taskId,
+            'paneId': target.paneId,
+            'freshness': 'current',
+          },
+        ],
+      });
+      await tester.pump();
+      client.heldSnapshot!.complete(initialNoAgent);
+      await tester.pump();
+
+      expect(beforeAck, 'codex');
+      expect(container.read(paneAgentProvider(target)), 'codex');
+      final fetchedAfterInitialProbe = client.fetchedPanes.length;
+      await tester.pump(const Duration(seconds: 10));
+      expect(container.read(paneAgentProvider(target)), 'codex');
+      expect(client.fetchedPanes.length, fetchedAfterInitialProbe);
     });
   });
 

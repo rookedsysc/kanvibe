@@ -16,7 +16,7 @@ const EMPTY_COMPOSER_HINT = "Ask Codex to do anything";
 /** 줄 전체가 대화 ID 하나이거나, 그 뒤에 메인 대화임을 알리는 Codex의 표시만 붙은 footer */
 const THREAD_FOOTER_ROW = /^ {2}([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?: · Main \[default\])?$/;
 /** 메인 대화의 빈 입력란 아래에서 실제로 확인한 단축키 안내 줄. side 대화나 연결이 끊긴 화면의 안내 줄은 이와 다르다 */
-const MAIN_SHORTCUT_HINT_ROW = /^ {2}← for agents · \? for shortcuts(?: · ⌃\/ for side)?(?: +⚠ \d+ warnings? · f2 to view)?$/;
+const MAIN_SHORTCUT_HINT_ROW = /^ {2}← for agents(?: · \? for shortcuts(?: · ⌃\/ for side)?)?(?: +⚠ \d+ warnings? · f2 to view)?$/;
 /** 실제 Codex에서 확인한 ASCII 한 칸과 완성형 한글 두 칸만 접힘 계산에 쓴다. 결합 문자와 폭이 모호한 기호는 추정하지 않는다 */
 const KNOWN_COLUMN_TEXT = /^[\x20-\x7e\uac00-\ud7a3]*$/;
 /** 줄바꿈 규칙에 따라 낱말 안에서도 그 뒤로 줄이 나뉠 수 있는 글자까지를, 다음 줄로 넘어갈 수 있는 가장 짧은 조각으로 센다 */

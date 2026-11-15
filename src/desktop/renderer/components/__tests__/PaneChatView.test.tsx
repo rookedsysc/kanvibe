@@ -44,6 +44,14 @@ function open() {
 }
 
 describe("current pane chat", () => {
+  it.each(["ready", "occupied"] as const)("hides the CLI capture once the transcript renders while %s", async (inputState) => {
+    actions.getPaneChatSnapshot.mockResolvedValue({ ...snapshot(), inputState });
+    open();
+    await screen.findByText("Exact pane response");
+    expect(screen.queryByText("screen")).toBeNull();
+    expect(screen.queryByText("Codex ready")).toBeNull();
+  });
+
   it("queries the explicit pane instead of following another terminal's focus", async () => {
     render(<PaneChatView taskId="task-1" paneId="%3" onHistory={vi.fn()} onTerminal={vi.fn()} />);
     await screen.findByText("Exact pane response");

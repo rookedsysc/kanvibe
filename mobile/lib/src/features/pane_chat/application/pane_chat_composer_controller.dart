@@ -16,7 +16,7 @@ typedef PaneChatComposerTarget = ({
   String connectionId,
   String taskId,
   String paneId,
-  String targetToken,
+  String conversationKey,
 });
 
 final paneChatComposerProvider = NotifierProvider.autoDispose
@@ -98,7 +98,7 @@ class PaneChatComposerController extends Notifier<PaneChatComposerState> {
   PaneChatComposerController(this.target);
   final PaneChatComposerTarget target;
   String get ownerKey =>
-      '${target.connectionId}:${target.taskId}:${target.paneId}:${target.targetToken}';
+      '${target.connectionId}:${target.taskId}:${target.paneId}:${target.conversationKey}';
   Timer? _suggestionTimer;
   int _suggestionEpoch = 0, _localId = 0;
   bool _active = false;
@@ -111,15 +111,21 @@ class PaneChatComposerController extends Notifier<PaneChatComposerState> {
       ref.read(desktopClientProvider),
       _connection,
       target.taskId,
-      target.targetToken,
+      _pane?.snapshot.targetToken ?? target.conversationKey,
     );
     _lifetime = lifetime;
     _active = false;
+    final intake = ref.read(paneChatAttachmentIntakeProvider);
+    ref.keepAlive();
+    ref.onCancel(() {
+      _active = false;
+      _suggestionTimer?.cancel();
+      unawaited(intake.setActive(ownerKey, false).catchError((Object _) {}));
+    });
     _requestId = null;
     _requestSignature = null;
-    final intake = ref.read(paneChatAttachmentIntakeProvider);
     final subscription = intake.drops.listen((event) {
-      if (lifetime.disposed ||
+      if (_lifetime.disposed ||
           !_active ||
           event.ownerKey != ownerKey ||
           !ref.mounted) {
@@ -132,6 +138,7 @@ class PaneChatComposerController extends Notifier<PaneChatComposerState> {
       addAttachments(event.attachments);
     });
     ref.onDispose(() {
+      final lifetime = _lifetime;
       lifetime.disposed = true;
       unawaited(
         lifetime.cleanup(
@@ -160,7 +167,9 @@ class PaneChatComposerController extends Notifier<PaneChatComposerState> {
   bool get _ownsTarget =>
       _active &&
       _connection != null &&
-      _pane?.snapshot.targetToken == target.targetToken;
+      (_pane?.snapshot.conversationKey ?? _pane?.snapshot.targetToken) ==
+          target.conversationKey &&
+      _pane?.snapshot.targetToken == _lifetime.targetToken;
 
   void _update({
     String? text,
@@ -185,6 +194,7 @@ class PaneChatComposerController extends Notifier<PaneChatComposerState> {
   Future<void> setActive(bool active, {bool attachmentsEnabled = true}) async {
     final lifetime = _lifetime;
     _active = active;
+    if (active) _bindTarget();
     if (!active) dismissSuggestions();
     try {
       await ref
@@ -193,6 +203,43 @@ class PaneChatComposerController extends Notifier<PaneChatComposerState> {
     } catch (_) {
       if (!lifetime.disposed && active) {
         _update(error: '첨부 입력을 활성화하지 못했습니다. 다시 시도해 주세요.');
+      }
+    }
+  }
+
+  void _bindTarget() {
+    final snapshot = _pane?.snapshot;
+    final token = snapshot?.targetToken;
+    if (token == null ||
+        (snapshot?.conversationKey ?? token) != target.conversationKey ||
+        token == _lifetime.targetToken ||
+        state.isSending) {
+      return;
+    }
+    final previous = _lifetime;
+    previous.disposed = true;
+    unawaited(
+      previous.cleanup(previous.stagedIds.difference(previous.pendingSendIds)),
+    );
+    _lifetime = _ComposerLifetime(
+      previous.client,
+      _connection,
+      target.taskId,
+      token,
+    );
+    dismissSuggestions();
+    _update(
+      attachments: [
+        for (final attachment in state.attachments)
+          PaneChatDraftAttachment(
+            localId: attachment.localId,
+            file: attachment.file,
+          ),
+      ],
+    );
+    if (_active) {
+      for (final attachment in state.attachments) {
+        unawaited(upload(attachment.localId));
       }
     }
   }
@@ -309,7 +356,7 @@ class PaneChatComposerController extends Notifier<PaneChatComposerState> {
       final id = await lifetime.client.stagePaneChatAttachment(
         connection,
         target.taskId,
-        target.targetToken,
+        lifetime.targetToken,
         name: item.file.name,
         mimeType: item.file.mimeType,
         bytes: item.file.bytes,
@@ -359,7 +406,7 @@ class PaneChatComposerController extends Notifier<PaneChatComposerState> {
           .removePaneChatAttachment(
             connection,
             target.taskId,
-            target.targetToken,
+            lifetime.targetToken,
             item.id!,
           );
       lifetime.stagedIds.remove(item.id);
@@ -378,7 +425,7 @@ class PaneChatComposerController extends Notifier<PaneChatComposerState> {
     final text = state.text;
     final sent = state.attachments;
     final ids = sent.map((a) => a.id!).toList();
-    final signature = '$text\u0000${ids.join(',')}';
+    final signature = '$text\u0000${sent.map((a) => a.localId).join(',')}';
     if (_requestSignature != signature) {
       _requestSignature = signature;
       final random = Random.secure();
@@ -423,6 +470,7 @@ class PaneChatComposerController extends Notifier<PaneChatComposerState> {
             : null,
       );
     }
+    _bindTarget();
     return accepted;
   }
 
@@ -445,7 +493,7 @@ class PaneChatComposerController extends Notifier<PaneChatComposerState> {
             .getPaneChatSuggestions(
               connection,
               target.taskId,
-              target.targetToken,
+              _lifetime.targetToken,
               kind,
               query,
             );
