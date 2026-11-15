@@ -12,11 +12,12 @@ import { readClaudeSessionDetail } from "@/lib/aiSessions/readClaudeSessions";
 import { findCodexMainThreadRollout, readCodexSessionDetail } from "@/lib/aiSessions/readCodexSessions";
 import { CODEX_THREAD_FOOTER_COMMAND, expectCodexComposerTexts, isCodexMainComposerReady, isCodexThreadFooterSupported, isSameComposerText, readCodexDisplay } from "@/lib/aiSessions/paneChatCodexDisplay";
 import { readCodexEmptyThread } from "@/lib/aiSessions/codexThreadMetadata";
+import { sendCodexThreadInput } from "@/lib/aiSessions/codexThreadInput";
 import { findPaneChatProcess, type PaneChatProcess } from "@/lib/aiSessions/paneChatProcess";
 import { findPaneChatSessionBinding } from "@/lib/aiSessions/paneChatSessionBindings";
 import { MAX_PANE_CHAT_ATTACHMENTS, type PaneChatActionResult, type PaneChatAttachment, type PaneChatAttachmentInput, type PaneChatKey, type PaneChatLayout, type PaneChatSnapshot, type PaneChatSuggestionKind, type PaneChatSuggestions } from "@/desktop/shared/paneChat";
 import { readPaneChatLayout, readPaneChatSurface, type PaneChatSurface } from "./paneChatSurface";
-import { discardPaneChatAttachment, resolvePaneChatAttachments, retainPaneChatAttachments, storePaneChatAttachment, type PaneChatAttachmentOwner } from "./paneChatAttachmentService";
+import { discardPaneChatAttachment, fingerprintPaneChatAttachments, resolvePaneChatAttachments, retainPaneChatAttachments, storePaneChatAttachment, type PaneChatAttachmentOwner } from "./paneChatAttachmentService";
 import { readPaneChatSuggestions } from "./paneChatComposerCatalog";
 import { writeToPane } from "./mobileBridgeService";
 
@@ -43,6 +44,7 @@ interface TargetLease {
   identity: string;
   process: PaneChatProcess;
   conversation: string | null;
+  conversationKey: string | null;
   expiresAt: number;
 }
 const leases = new Map<string, TargetLease>();
@@ -141,6 +143,11 @@ function changedTargetError(): Error {
 function identityFor(surface: PaneChatSurface, process: PaneChatProcess): string {
   return JSON.stringify([surface.task.id, surface.task.sshHost, surface.task.sessionType, surface.task.sessionName, surface.task.worktreePath, surface.task.project?.repoPath, surface.paneId, surface.rootPid, process.provider, process.pid, process.processStartTime, process.codexServerSocket]);
 }
+function conversationKeyFor(surface: PaneChatSurface, process: PaneChatProcess, conversation: string | null): string | null {
+  if (!conversation) return null;
+  const [sessionId, sourceRef] = JSON.parse(conversation) as [string, string, number];
+  return createHash("sha256").update(JSON.stringify([surface.task.id, surface.task.sshHost, surface.task.sessionType, surface.task.sessionName, surface.task.worktreePath, surface.task.project?.repoPath, surface.paneId, process.provider, sessionId, sourceRef])).digest("hex");
+}
 async function inspectProcess(surface: PaneChatSurface): Promise<PaneChatProcess | null> {
   if (!surface.rootPid) return null;
   return findPaneChatProcess(await execGit(PROCESS_TABLE_COMMAND, surface.task.sshHost, { timeoutMs: PROCESS_PROBE_TIMEOUT_MS }), surface.rootPid);
@@ -169,7 +176,7 @@ function leaseTarget(surface: PaneChatSurface, process: PaneChatProcess, request
     receipts.delete(oldest);
   }
   const token = randomUUID();
-  leases.set(token, { taskId: surface.task.id, requestedPaneId, paneId: surface.paneId, identity, process, conversation, expiresAt: now + TARGET_LEASE_TTL_MS });
+  leases.set(token, { taskId: surface.task.id, requestedPaneId, paneId: surface.paneId, identity, process, conversation, conversationKey: conversationKeyFor(surface, process, conversation), expiresAt: now + TARGET_LEASE_TTL_MS });
   return token;
 }
 function readInputState(surface: PaneChatSurface, process: PaneChatProcess, verifyCodexEmpty = false): PaneChatSnapshot["inputState"] {
@@ -375,7 +382,7 @@ export async function readPaneChat(taskId: string, paneId?: string): Promise<Pan
   retireChangedLeases(taskId, surface.paneId, executionIdentity, conversation);
   const canSend = !supportsComposer || transcript.status === "available";
   const targetToken = canSend ? leaseTarget(surface, process, paneId, conversation) : null;
-  const conversationKey = binding && canSend ? createHash("sha256").update(JSON.stringify([taskId, surface.task.sshHost, surface.task.sessionType, surface.task.sessionName, surface.task.worktreePath, surface.task.project?.repoPath, surface.paneId, process.provider, binding.sessionId, binding.sourceRef])).digest("hex") : undefined;
+  const conversationKey = binding && canSend ? conversationKeyFor(surface, process, conversation)! : undefined;
   return reading({ ...snapshot, provider: process.provider, targetToken, canSend, ...(conversationKey ? { conversationKey } : {}), inputState: readInputState(surface, process, !!displayState), reason: canSend ? null : transcript.reason, transcript, modelPicker: { supported: supportsComposer, mode: "native-cli" }, ...(modelSettings ? { modelSettings } : {}), composer: { attachments: supportsComposer, skills: supportsComposer, fileMentions: supportsComposer, maxAttachmentBytes: MAX_ATTACHMENT_BYTES, maxAttachments: MAX_PANE_CHAT_ATTACHMENTS } }, surface.task.sshHost ? null : sourceRef);
 }
 
@@ -512,8 +519,16 @@ function formatFileMention(filePath: string): string {
 
 export function sendPaneChatPrompt(taskId: string, targetToken: string, text: string, attachmentIds: string[] = [], requestId?: string): Promise<PaneChatActionResult> {
   if (typeof text !== "string" || (!text.trim() && attachmentIds?.length === 0) || Buffer.byteLength(text, "utf8") > MAX_PROMPT_BYTES || /[\x00-\x08\x0b-\x1f\x7f]/.test(text) || !Array.isArray(attachmentIds) || attachmentIds.length > MAX_PANE_CHAT_ATTACHMENTS || attachmentIds.some((id) => typeof id !== "string") || (requestId !== undefined && (typeof requestId !== "string" || !requestId || Buffer.byteLength(requestId) > 128))) return Promise.reject(inputError("메시지·첨부 파일·요청 식별자가 올바르지 않습니다."));
-  const fingerprint = createHash("sha256").update(JSON.stringify([taskId, text, attachmentIds])).digest("hex");
-  const previous = requestId ? receipts.get(targetToken)?.get(requestId) : null;
+  const initialLease = leases.get(targetToken);
+  const codexConversation = initialLease?.taskId === taskId && initialLease.process.provider === "codex" ? initialLease.conversationKey : null;
+  // Codex operation은 대화에 속한다. lease 갱신·X→Y→X가 이미 수락되거나 불명확한 요청을 새 전송으로 바꾸면 안 된다.
+  const receiptOwner = codexConversation ? `conversation:${codexConversation}` : targetToken;
+  let fingerprint: string;
+  try {
+    const attachments = codexConversation && initialLease ? fingerprintPaneChatAttachments({ taskId, targetToken, identity: initialLease.identity, sshHost: (JSON.parse(initialLease.identity) as (string | null)[])[1] ?? null }, attachmentIds) : attachmentIds;
+    fingerprint = createHash("sha256").update(JSON.stringify([taskId, text, attachments])).digest("hex");
+  } catch (error) { return Promise.reject(error); }
+  const previous = requestId ? receipts.get(receiptOwner)?.get(requestId) : null;
   if (previous) return previous.fingerprint === fingerprint ? previous.result : Promise.reject(inputError("동일한 요청 식별자로 다른 메시지를 보낼 수 없습니다."));
   let writeAttempted = false;
   const write = (bytes: string, expectedComposer?: string[]) => writeFenced(taskId, targetToken, bytes, () => { writeAttempted = true; }, expectedComposer);
@@ -524,11 +539,28 @@ export function sendPaneChatPrompt(taskId: string, targetToken: string, text: st
     const attachments = owner ? resolvePaneChatAttachments(owner, attachmentIds) : [];
     const files = attachments.filter((entry) => entry.kind === "file").map((entry) => formatFileMention(entry.path));
     let body = [text, ...files].filter(Boolean).join("\n\n");
+    const display = await codexDisplays.get(lease.identity);
+    const nativeCommand = !attachments.length && /^\/[a-z][a-z0-9-]*(?:\s|$)/i.test(body);
     // Claude 파일 참조 팝업이 전송 Enter를 소비하지 않도록 마지막 토큰을 공백으로 닫는다.
     if (lease.process.provider === "claude" && (files.length || /(?:^|\s)@(?:"(?:[^"\\]|\\.)+"|[^\s"]+)$/.test(body)) && !/\s$/.test(body)) body += " ";
-    if (lease.process.provider === "codex" && /(?:^|\s)\$[\w.-]+$/.test(body) && !/\s$/.test(body)) body += " ";
+    if (lease.process.provider === "codex" && (!display || nativeCommand) && /(?:^|\s)\$[\w.-]+$/.test(body) && !/\s$/.test(body)) body += " ";
     if (owner) retainPaneChatAttachments(owner, attachmentIds);
     const images = attachments.filter((entry) => entry.kind === "image");
+    if (display && lease.conversation && !nativeCommand) {
+      const [threadId, sourceRef] = JSON.parse(lease.conversation) as [string, string, number];
+      const surface = await readPaneChatSurface(taskId, lease.requestedPaneId, false);
+      if (!surface) throw changedTargetError();
+      const task = surface.task;
+      await sendCodexThreadInput({
+        context: { worktreePath: task.worktreePath ?? task.project?.repoPath ?? null, repoPath: task.project?.repoPath ?? null, sshHost: task.sshHost },
+        socket: lease.process.codexServerSocket, threadId, sourceRef,
+        input: [...images.map((image) => ({ type: "localImage" as const, path: image.path })), ...(body ? [{ type: "text" as const, text: body }] : [])],
+        clientUserMessageId: createHash("sha256").update(JSON.stringify([targetToken, requestId ?? randomUUID()])).digest("hex"),
+        beforeSend: async () => { await assertTarget(taskId, targetToken); await requireReadyInput(taskId, targetToken); },
+        onWrite: () => { writeAttempted = true; },
+      });
+      return;
+    }
     let expectedComposer = ["", "Ask Codex to do anything"];
     for (const image of images) {
       const escaped = image.path.replace(/[^a-zA-Z0-9_./@:\-\u0080-\uffff]/g, "\\$&");
@@ -540,14 +572,14 @@ export function sendPaneChatPrompt(taskId: string, targetToken: string, text: st
     await delay(PROMPT_SUBMIT_DELAY_MS);
     await write("\r", expectCodexComposerTexts(body, images.length));
   }).catch((error) => {
-    if (!writeAttempted && requestId) receipts.get(targetToken)?.delete(requestId);
+    if (!writeAttempted && requestId) receipts.get(receiptOwner)?.delete(requestId);
     if (!writeAttempted || error?.name === "PaneChatTargetChangedError") throw error;
     throw Object.assign(new Error("CLI 전송 결과를 확인할 수 없습니다. 터미널에서 확인해 주세요. 같은 요청은 다시 전송하지 않습니다."), { name: "PaneChatDeliveryUncertainError", cause: error });
   });
   if (requestId) {
-    const targetReceipts = receipts.get(targetToken) ?? new Map();
+    const targetReceipts = receipts.get(receiptOwner) ?? new Map();
     targetReceipts.set(requestId, { fingerprint, result });
-    receipts.set(targetToken, targetReceipts);
+    receipts.set(receiptOwner, targetReceipts);
   }
   return result;
 }

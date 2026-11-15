@@ -257,6 +257,25 @@ it("preserves a conversation draft after lease renewal and requires attachments 
   await waitFor(() => expect(actions.stagePaneChatAttachment).toHaveBeenLastCalledWith("task", "execution-b", expect.objectContaining({ name: "notes.txt" })));
 });
 
+it("preserves an unresolved operation ID when the same conversation renews its token and restages files", async () => {
+  const first = chat("old-token");
+  Object.assign(first.snapshot!, { conversationKey: "uncertain-conversation" });
+  vi.mocked(first.send).mockResolvedValue(false);
+  actions.stagePaneChatAttachment.mockResolvedValueOnce({ ...attachment, id: "original-file", name: "notes.txt", kind: "file" });
+  const view = open(first); edit("Unknown result"); select([file()]);
+  await waitFor(() => expect((screen.getByRole("button", { name: "send" }) as HTMLButtonElement).disabled).toBe(false));
+  fireEvent.click(screen.getByRole("button", { name: "send" })); await screen.findByText("sendError");
+  const requestId = vi.mocked(first.send).mock.calls[0][2];
+  const renewed = chat("new-token"); Object.assign(renewed.snapshot!, { conversationKey: "uncertain-conversation" });
+  vi.mocked(renewed.send).mockResolvedValue(false);
+  actions.stagePaneChatAttachment.mockResolvedValueOnce({ ...attachment, id: "restaged-file", name: "notes.txt", kind: "file" });
+  view.switchTo(renewed);
+  fireEvent.click(await screen.findByRole("button", { name: "retryAttachment notes.txt" }));
+  await waitFor(() => expect((screen.getByRole("button", { name: "send" }) as HTMLButtonElement).disabled).toBe(false));
+  fireEvent.click(screen.getByRole("button", { name: "send" }));
+  await waitFor(() => expect(renewed.send).toHaveBeenCalledWith("Unknown result", ["restaged-file"], requestId));
+});
+
 
 it("ignores an old upload failure arriving after the renewed target restaged the file", async () => {
   let rejectOld!: (error: Error) => void;

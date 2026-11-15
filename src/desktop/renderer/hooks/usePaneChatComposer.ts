@@ -66,7 +66,7 @@ export function usePaneChatComposer(taskId: string, snapshot: PaneChatSnapshot |
     const previous = drafts.current[key];
     if (!targetToken || !previous?.owner || previous.owner.targetToken === targetToken || previous.sending) return;
     void discardDraftAttachments(previous);
-    drafts.current[key] = { ...previous, owner: { taskId, targetToken }, request: undefined,
+    drafts.current[key] = { ...previous, owner: { taskId, targetToken },
       attachments: previous.attachments.map((item) => ({ ...item, staged: undefined, status: "failed", error: "attachmentTargetChanged" })),
     };
     render((value) => value + 1);
@@ -140,7 +140,7 @@ export function usePaneChatComposer(taskId: string, snapshot: PaneChatSnapshot |
     const captured = read();
     if (captured.sending || (!captured.text.trim() && !captured.attachments.length) || captured.attachments.some((entry) => entry.status !== "ready" || entry.error)) return;
     const ids = captured.attachments.map((entry) => entry.staged!.id);
-    const fingerprint = JSON.stringify([captured.text, ids]);
+    const fingerprint = JSON.stringify([captured.text, captured.attachments.map((entry) => entry.localId)]);
     const request = captured.request?.fingerprint === fingerprint ? captured.request : { fingerprint, id: crypto.randomUUID() };
     update(key, (value) => ({ ...value, sending: true, error: null, request }));
     const accepted = await send(captured.text, ids, request.id);

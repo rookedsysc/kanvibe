@@ -69,7 +69,7 @@ export function usePaneChat(taskId: string, isVisible = true, paneId?: string) {
     };
   }, [taskId, paneId, isActive, isVisible]);
 
-  const run = useCallback(async (action: (token: string) => Promise<PaneChatActionResult>): Promise<boolean> => {
+  const run = useCallback(async (action: (token: string) => Promise<PaneChatActionResult>, preserveSendReceipt = false): Promise<boolean> => {
     const target = current.current;
     if (!isVisible || busy.current || !target?.canSend || !target.targetToken || target.taskId !== taskId || (paneId !== undefined && target.paneId !== paneId)) return false;
     const epoch = generation.current;
@@ -78,7 +78,7 @@ export function usePaneChat(taskId: string, isVisible = true, paneId?: string) {
     setActionError(null);
     try {
       const accepted = await action(target.targetToken);
-      return generation.current === epoch && current.current?.targetToken === target.targetToken && accepted.success;
+      return accepted.success && (preserveSendReceipt || (generation.current === epoch && current.current?.targetToken === target.targetToken));
     } catch (error) {
       if (generation.current === epoch && current.current?.targetToken === target.targetToken) {
         setActionError(error instanceof Error ? error.message : "CLI action failed");
@@ -96,7 +96,7 @@ export function usePaneChat(taskId: string, isVisible = true, paneId?: string) {
     readError, actionError, isBusy,
     isReady: isReady && result?.taskId === taskId && result.paneId === paneId,
     refresh: () => refreshRef.current(),
-    send: (text: string, attachmentIds?: string[], requestId?: string) => run((token) => actions.sendPaneChatPrompt(taskId, token, text, attachmentIds, requestId)),
+    send: (text: string, attachmentIds?: string[], requestId?: string) => run((token) => actions.sendPaneChatPrompt(taskId, token, text, attachmentIds, requestId), true),
     interrupt: () => run((token) => actions.interruptPaneChat(taskId, token)),
     openModelPicker: () => run((token) => actions.openPaneChatModelPicker(taskId, token)),
     sendKey: (key: PaneChatKey) => run((token) => actions.sendPaneChatKey(taskId, token, key)),

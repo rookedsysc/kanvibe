@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SessionType } from "@/entities/KanbanTask";
+import type { CodexThreadInput } from "@/lib/aiSessions/codexThreadInput";
 
-const mocks = vi.hoisted(() => ({ surface: vi.fn(), layout: vi.fn(), exec: vi.fn(), write: vi.fn(), binding: vi.fn(), claude: vi.fn(), codex: vi.fn(), rollout: vi.fn(), emptyThread: vi.fn(), focusHerdr: vi.fn(), tabs: vi.fn(), catalog: vi.fn() }));
+const mocks = vi.hoisted(() => ({ surface: vi.fn(), layout: vi.fn(), exec: vi.fn(), write: vi.fn(), apiInput: vi.fn(), binding: vi.fn(), claude: vi.fn(), codex: vi.fn(), rollout: vi.fn(), emptyThread: vi.fn(), focusHerdr: vi.fn(), tabs: vi.fn(), catalog: vi.fn() }));
 const modelMocks = vi.hoisted(() => ({ tail: vi.fn(), readTextFile: vi.fn() }));
 vi.mock("../paneChatSurface", () => ({ readPaneChatSurface: mocks.surface, readPaneChatLayout: mocks.layout }));
 vi.mock("@/lib/gitOperations", () => ({ execGit: mocks.exec }));
@@ -12,6 +13,7 @@ vi.mock("@/lib/aiSessions/paneChatSessionBindings", () => ({ findPaneChatSession
 vi.mock("@/lib/aiSessions/readClaudeSessions", () => ({ readClaudeSessionDetail: mocks.claude }));
 vi.mock("@/lib/aiSessions/readCodexSessions", () => ({ readCodexSessionDetail: mocks.codex, findCodexMainThreadRollout: mocks.rollout }));
 vi.mock("@/lib/aiSessions/codexThreadMetadata", () => ({ readCodexEmptyThread: mocks.emptyThread }));
+vi.mock("@/lib/aiSessions/codexThreadInput", () => ({ sendCodexThreadInput: mocks.apiInput }));
 vi.mock("@/lib/aiSessions/shared", async (importOriginal) => ({ ...await importOriginal<typeof import("@/lib/aiSessions/shared")>(), readJsonLinesTail: modelMocks.tail }));
 vi.mock("@/lib/hostFileAccess", async (importOriginal) => ({ ...await importOriginal<typeof import("@/lib/hostFileAccess")>(), readTextFile: modelMocks.readTextFile }));
 import { focusPaneChatTerminal, getPaneChatLayout, getPaneChatSnapshot, getPaneChatSuggestions, stagePaneChatAttachment, removePaneChatAttachment, sendPaneChatPrompt, interruptPaneChat, openPaneChatModelPicker, changePaneChatModelSetting, sendPaneChatKey } from "../paneChatService";
@@ -413,8 +415,6 @@ class FakeCodexPane {
   ignoresFooterCommand = false;
   /** 사용자가 여러 줄 입력의 첫 줄로 커서를 올려 둔 상태 */
   isCursorOnFirstComposerRow = false;
-  private stalledInput: string[] | null = null;
-  private stallsOnNextWrite = false;
 
   constructor(readonly paneId: string, readonly rootPid: number, public threadId: string) {}
 
@@ -424,25 +424,8 @@ class FakeCodexPane {
     this.composer = "";
   }
 
-  /** 대화 전환이 늦어져 화면은 그대로이고 그 뒤에 쓴 입력은 전환이 끝나야 처리되는 상태 */
-  stallInputFromNextWrite() {
-    this.stallsOnNextWrite = true;
-  }
-
-  completeTransition(threadId: string) {
-    const queuedInput = this.stalledInput ?? [];
-    this.stalledInput = null;
-    this.switchThread(threadId);
-    queuedInput.forEach((bytes) => this.apply(bytes));
-  }
-
   write(bytes: string) {
-    if (this.stallsOnNextWrite) {
-      this.stallsOnNextWrite = false;
-      this.stalledInput = [];
-    }
-    if (this.stalledInput) this.stalledInput.push(bytes);
-    else this.apply(bytes);
+    this.apply(bytes);
   }
 
   private apply(bytes: string) {
@@ -495,6 +478,13 @@ function createCodexTask(version = "codex-cli 0.169.0") {
   mocks.binding.mockResolvedValue(null);
   mocks.rollout.mockImplementation(async (_context: unknown, threadId: string) => rolloutFile(threadId));
   mocks.codex.mockImplementation(async (_context: unknown, sessionId: string) => ({ sessionId, provider: "codex", messages: [], nextCursor: null }));
+  mocks.apiInput.mockImplementation(async (options: CodexThreadInput) => {
+    await options.beforeSend(); options.onWrite();
+    const text = options.input.filter((entry) => entry.type === "text").map((entry) => entry.text).join("");
+    const imageCount = options.input.filter((entry) => entry.type === "localImage").length;
+    const pane = Object.values(panes).find((entry) => entry.threadId === options.threadId) ?? a;
+    pane.submissions.push({ threadId: options.threadId, text: Array.from({ length: imageCount }, (_, index) => `[Image #${index + 1}] `).join("") + text });
+  });
   return { taskId, a, b };
 }
 
@@ -551,15 +541,16 @@ describe("Codex displayed-thread footer binding", () => {
     expect(a.submissions).toEqual([{ threadId: THREAD_Y, text: "Current Y" }]);
   });
 
-  it("checks a fresh frame after an asynchronous lookup before writing any input", async () => {
+  it("checks a fresh frame after API metadata lookup before admitting input", async () => {
     const { taskId, a } = createCodexTask();
     const target = await settle(getPaneChatSnapshot(taskId, "%A"));
-    let release!: (value: string) => void;
+    let release!: () => void;
     let started!: () => void;
     const lookupStarted = new Promise<void>((resolve) => { started = resolve; });
-    mocks.rollout.mockImplementation(async (_context: unknown, threadId: string) => {
-      if (a.composer === "Must not reach Y") { started(); return new Promise<string>((resolve) => { release = resolve; }); }
-      return rolloutFile(threadId);
+    const send = mocks.apiInput.getMockImplementation()!;
+    mocks.apiInput.mockImplementationOnce(async (options: CodexThreadInput) => {
+      started(); await new Promise<void>((resolve) => { release = resolve; });
+      return send(options);
     });
     mocks.write.mockClear();
     const sending = sendPaneChatPrompt(taskId, target.targetToken!, "Must not reach Y");
@@ -567,9 +558,9 @@ describe("Codex displayed-thread footer binding", () => {
     await lookupStarted;
     a.switchThread(THREAD_Y);
     a.threadsShowingId.add(THREAD_Y);
-    release(rolloutFile(THREAD_X));
+    release();
     await rejected;
-    expect(mocks.write.mock.calls.map(([, , bytes]) => bytes)).toEqual(["\x1b[200~Must not reach Y\x1b[201~"]);
+    expect(mocks.write).not.toHaveBeenCalled();
     expect(a.submissions).toEqual([]);
   });
 
@@ -645,24 +636,74 @@ describe("Codex displayed-thread footer binding", () => {
     expect(b.submissions).toEqual([]);
   });
 
-  it("submits a multi-line prompt only after the same capture shows it in the bound thread's composer", async () => {
+  it("submits multi-line API text to the exact bound thread without changing whitespace", async () => {
     const { taskId, a } = createCodexTask();
     const target = await settle(getPaneChatSnapshot(taskId, "%A"));
     await settle(sendPaneChatPrompt(taskId, target.targetToken!, "First line\n\nThird line"));
     expect(a.submissions).toEqual([{ threadId: THREAD_X, text: "First line\n\nThird line" }]);
   });
 
-  it("withholds Enter when a delayed switch keeps the old footer on screen and the pasted prompt never appears", async () => {
+  it("submits a modern Codex message without touching the PTY composer", async () => {
     const { taskId, a } = createCodexTask();
-    // hook 연결이 남아 있어도 화면의 입력란이 보낸 글을 보여 주지 않으면 제출하지 않아야 한다.
+    const target = await settle(getPaneChatSnapshot(taskId, "%A"));
+    mocks.write.mockClear();
+    await settle(sendPaneChatPrompt(taskId, target.targetToken!, "Addressed message", [], "thread-api-once"));
+    expect(a.submissions).toEqual([{ threadId: THREAD_X, text: "Addressed message" }]);
+    expect(mocks.write).not.toHaveBeenCalled();
+  });
+
+  it("admits a repeated API operation once and keeps an uncertain result from both API and PTY retries", async () => {
+    const { taskId, a } = createCodexTask();
+    const target = await settle(getPaneChatSnapshot(taskId, "%A"));
+    mocks.write.mockClear();
+    await settle(Promise.all([sendPaneChatPrompt(taskId, target.targetToken!, "Once", [], "api-once"), sendPaneChatPrompt(taskId, target.targetToken!, "Once", [], "api-once")]));
+    expect(mocks.apiInput).toHaveBeenCalledOnce();
+    expect(a.submissions).toEqual([{ threadId: THREAD_X, text: "Once" }]);
+    mocks.apiInput.mockImplementationOnce(async (options: CodexThreadInput) => { await options.beforeSend(); options.onWrite(); throw new Error("response lost"); });
+    await expect(settle(sendPaneChatPrompt(taskId, target.targetToken!, "Unknown", [], "api-unknown"))).rejects.toMatchObject({ name: "PaneChatDeliveryUncertainError" });
+    await expect(settle(sendPaneChatPrompt(taskId, target.targetToken!, "Unknown", [], "api-unknown"))).rejects.toMatchObject({ name: "PaneChatDeliveryUncertainError" });
+    expect(mocks.apiInput).toHaveBeenCalledTimes(2);
+    expect(mocks.write).not.toHaveBeenCalled();
+  });
+
+  it("retains an uncertain operation across X-Y-X token renewal and attachment restaging", async () => {
+    const { taskId, a } = createCodexTask();
+    const original = await settle(getPaneChatSnapshot(taskId, "%A"));
+    const upload = { name: "same-note.txt", mimeType: "text/plain", dataUrl: "data:text/plain;base64,aGVsbG8=" };
+    const attachment = await settle(stagePaneChatAttachment(taskId, original.targetToken!, upload));
+    const send = mocks.apiInput.getMockImplementation()!;
+    mocks.apiInput.mockImplementationOnce(async (options: CodexThreadInput) => { await send(options); throw new Error("accepted response lost"); });
+    await expect(settle(sendPaneChatPrompt(taskId, original.targetToken!, "Once with file", [attachment.id], "across-renewal"))).rejects.toMatchObject({ name: "PaneChatDeliveryUncertainError" });
+    a.switchThread(THREAD_Y); await settle(getPaneChatSnapshot(taskId, "%A"));
+    a.switchThread(THREAD_X); const renewed = await settle(getPaneChatSnapshot(taskId, "%A"));
+    const restaged = await settle(stagePaneChatAttachment(taskId, renewed.targetToken!, upload));
+    expect(restaged.id).not.toBe(attachment.id);
+    await expect(settle(sendPaneChatPrompt(taskId, renewed.targetToken!, "Once with file", [restaged.id], "across-renewal"))).rejects.toMatchObject({ name: "PaneChatDeliveryUncertainError" });
+    expect(mocks.apiInput).toHaveBeenCalledOnce();
+    expect(a.submissions).toHaveLength(1);
+  });
+
+  it("keeps native slash commands on the CLI and never also submits an AI API message", async () => {
+    const { taskId, a } = createCodexTask();
+    const target = await settle(getPaneChatSnapshot(taskId, "%A"));
+    await settle(sendPaneChatPrompt(taskId, target.targetToken!, "/help"));
+    expect(a.commands).toEqual([FOOTER_COMMAND, "/help"]);
+    expect(mocks.apiInput).not.toHaveBeenCalled();
+  });
+
+  it("pins admitted API input to X even when the terminal switches at the final write boundary", async () => {
+    const { taskId, a } = createCodexTask();
     mocks.binding.mockResolvedValue({ sessionId: THREAD_X, sourceRef: rolloutFile(THREAD_X) });
     a.threadsShowingId.add(THREAD_X);
     const target = await settle(getPaneChatSnapshot(taskId, "%A"));
-    a.stallInputFromNextWrite();
-    await expect(settle(sendPaneChatPrompt(taskId, target.targetToken!, "Must stay unsubmitted"))).rejects.toMatchObject({ name: "PaneChatDeliveryUncertainError" });
-    a.completeTransition(THREAD_Y);
-    expect(a.submissions).toEqual([]);
-    expect(mocks.write.mock.calls.map(([, , bytes]) => bytes)).toEqual(["\x1b[200~Must stay unsubmitted\x1b[201~"]);
+    mocks.apiInput.mockImplementationOnce(async (options: CodexThreadInput) => {
+      await options.beforeSend(); a.switchThread(THREAD_Y); options.onWrite();
+      a.submissions.push({ threadId: options.threadId, text: "Pinned to X" });
+    });
+    await settle(sendPaneChatPrompt(taskId, target.targetToken!, "Pinned to X"));
+    expect(a.submissions).toEqual([{ threadId: THREAD_X, text: "Pinned to X" }]);
+    expect(a.composer).toBe("");
+    expect(mocks.write).not.toHaveBeenCalled();
   });
 
   it("types a model command one echoed character at a time below the command popup", async () => {
@@ -741,21 +782,22 @@ describe("Codex displayed-thread footer binding", () => {
     expect(mocks.codex).not.toHaveBeenCalled();
   });
 
-  it.each(["caption after image", ""])("submits a staged image once its numbered placeholder is echoed (caption=%s)", async (caption) => {
+  it.each(["caption after image", ""])("submits a staged image as addressed input (caption=%s)", async (caption) => {
     const { taskId, a } = createCodexTask();
     const target = await settle(getPaneChatSnapshot(taskId, "%A"));
     const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aOK0AAAAASUVORK5CYII=";
     const attachment = await settle(stagePaneChatAttachment(taskId, target.targetToken!, { name: "image.png", mimeType: "image/png", dataUrl: `data:image/png;base64,${png}` }));
     await settle(sendPaneChatPrompt(taskId, target.targetToken!, caption, [attachment.id]));
+    expect(mocks.apiInput.mock.calls[0][0].input[0]).toEqual({ type: "localImage", path: expect.stringMatching(/\.png$/) });
     expect(a.submissions).toEqual([{ threadId: THREAD_X, text: `[Image #1] ${caption}` }]);
     await removePaneChatAttachment(taskId, target.targetToken!, attachment.id);
   });
 
-  it("submits a long prompt that the composer folds into a character-count placeholder", async () => {
+  it("sends a long prompt as exact API text without composer placeholders", async () => {
     const { taskId, a } = createCodexTask();
     const target = await settle(getPaneChatSnapshot(taskId, "%A"));
     await settle(sendPaneChatPrompt(taskId, target.targetToken!, "L".repeat(1500)));
-    expect(a.submissions).toEqual([{ threadId: THREAD_X, text: "[Pasted Content 1500 chars]" }]);
+    expect(a.submissions).toEqual([{ threadId: THREAD_X, text: "L".repeat(1500) }]);
   });
 
   it.each(["codex-cli 0.168.0", "codex-cli 0.170.0"])("keeps the hook path and types nothing for %s, whose footer command was not verified", async (version) => {
