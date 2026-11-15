@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ execGit: vi.fn(), claude: vi.fn(), codex: vi.fn(), home: vi.fn(), readFile: vi.fn(), exists: vi.fn() }));
+const mocks = vi.hoisted(() => ({ execGit: vi.fn(), claude: vi.fn(), codex: vi.fn(), home: vi.fn(), readFile: vi.fn(), exists: vi.fn(), codexRollout: vi.fn() }));
 vi.mock("@/lib/gitOperations", () => ({ execGit: mocks.execGit }));
 vi.mock("@/lib/aiSessions/readClaudeSessions", () => ({ readClaudeSessions: mocks.claude }));
-vi.mock("@/lib/aiSessions/readCodexSessions", () => ({ readCodexSessions: mocks.codex }));
+vi.mock("@/lib/aiSessions/readCodexSessions", () => ({ readCodexSessions: mocks.codex, findCodexMainThreadRollout: mocks.codexRollout }));
 
 vi.mock("@/lib/hostFileAccess", () => ({ getHomeDirectory: mocks.home, readTextFile: mocks.readFile, pathExists: mocks.exists }));
 
@@ -44,7 +44,7 @@ describe("pane chat hook session bindings", () => {
     const registry = await import("../paneChatSessionBindings");
     await registry.recordPaneChatSessionBinding(context, metadata("session-missing", { transcript_path: "/private/secret.jsonl" }));
     expect(await registry.findPaneChatSessionBinding(query)).toBeNull();
-    expect(mocks.claude).toHaveBeenCalledWith(expect.objectContaining({ worktreePath: "/repo/a", query: "session-missing" }));
+    expect(mocks.claude).toHaveBeenCalledWith(expect.objectContaining({ worktreePath: "/repo/a", query: undefined }));
     expect(JSON.stringify(mocks.claude.mock.calls)).not.toContain("/private/secret.jsonl");
   });
 
@@ -121,19 +121,20 @@ describe("passive process and reported session bindings", () => {
     mocks.readFile.mockResolvedValue(JSON.stringify(descriptor));
     mocks.execGit.mockResolvedValue(`${linuxStat}\nlinux:machine:pid:[1]\n`);
     mocks.claude.mockResolvedValue({ sessions: [{ id: "session-a", sourceRef: "/safe/session-a.jsonl" }] });
-    mocks.codex.mockResolvedValue({ sessions: [{ id: "codex-a", sourceRef: "/safe/codex-a.jsonl" }] });
+    mocks.codexRollout.mockResolvedValue("/safe/codex-a.jsonl");
   });
   it("binds an idle Claude's exact live PID record without hooks, lsof or CLI input", async () => {
     const registry = await import("../paneChatSessionBindings");
-    expect(await registry.findPaneChatProcessSessionBinding(context, process)).toEqual({ sessionId: "session-a", sourceRef: "/safe/session-a.jsonl" });
+    expect(await registry.findPaneChatProcessSessionBinding(context, process)).toEqual({ sessionId: "session-a", sourceRef: "/home/user/.claude/projects/-repo-a/session-a.jsonl" });
     expect(mocks.readFile).toHaveBeenCalledWith("/home/user/.claude/sessions/100.json", null);
     expect(mocks.execGit.mock.calls.every(([command]) => !/lsof|send-|statusline/.test(command))).toBe(true);
   });
   it("allows the exact newly started empty session before its first JSONL flush", async () => {
     mocks.exists.mockResolvedValue(false);
+    mocks.claude.mockResolvedValue({ sessions: [] });
     const registry = await import("../paneChatSessionBindings");
     expect(await registry.findPaneChatProcessSessionBinding(context, process)).toEqual({ sessionId: "session-a", sourceRef: "/home/user/.claude/projects/-repo-a/session-a.jsonl", pending: true });
-    expect(mocks.claude).not.toHaveBeenCalled();
+    expect(mocks.claude).toHaveBeenCalledWith(expect.objectContaining({ query: undefined }));
   });
   it.each([
     { pid: 101 }, { procStart: "old-start" }, { pidDomain: "linux:other:pid:[1]" },
@@ -171,6 +172,7 @@ describe("passive process and reported session bindings", () => {
     expect(await registry.findPaneChatReportedSessionBinding(context, "codex", "codex-a")).toEqual({ sessionId: "codex-a", sourceRef: "/safe/codex-a.jsonl" });
     expect(await registry.findPaneChatReportedSessionBinding(context, "claude", "missing")).toBeNull();
     expect(await registry.findPaneChatReportedSessionBinding(context, "claude", "../unsafe")).toBeNull();
-    expect(mocks.codex).toHaveBeenCalledWith(expect.objectContaining({ query: "codex-a" }));
+    expect(mocks.codexRollout).toHaveBeenCalledWith(context, "codex-a");
+    expect(mocks.codex).not.toHaveBeenCalled();
   });
 });
