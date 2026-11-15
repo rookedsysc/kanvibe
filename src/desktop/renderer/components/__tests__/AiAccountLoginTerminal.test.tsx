@@ -65,6 +65,23 @@ describe("AiAccountLoginTerminal", () => {
     } as unknown as Window["kanvibeDesktop"];
   });
 
+  it("does not register input or resize after the process exits while opening", async () => {
+    const onExit = vi.fn();
+    let exitHandler!: (event: { accountRoot: string; exitCode: number }) => void;
+    vi.mocked(window.kanvibeDesktop!.onAiAccountLoginExit!).mockImplementation((handler: (event: { accountRoot: string; exitCode: number }) => void) => {
+      exitHandler = handler;
+      return vi.fn();
+    });
+    vi.mocked(window.kanvibeDesktop!.openAiAccountLogin!).mockImplementation(async () => {
+      exitHandler({ accountRoot: "/tmp/account", exitCode: 1 });
+      return { ok: true };
+    });
+    render(<AiAccountLoginTerminal provider="claude" accountRoot="/tmp/account" onExit={onExit} />);
+    await waitFor(() => expect(onExit).toHaveBeenCalledWith(1));
+    expect(latestTerminal.onData).not.toHaveBeenCalled();
+    expect(latestTerminal.focus).not.toHaveBeenCalled();
+  });
+
   it("should handle OSC 52 so a login code copied inside the terminal reaches the system clipboard", async () => {
     // Given
     const OSC_CLIPBOARD_IDENTIFIER = 52;

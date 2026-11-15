@@ -120,6 +120,17 @@ describe("listAiAccounts", () => {
     expect(workAccount?.accountName).toBe("work");
   });
 
+  it("목록이 제공하는 조회 식별자는 실제 발견 계정과 저장 캐시를 모두 연결한다", async () => {
+    await addAiAccount("claude", "work");
+    const { discoverProviderAccounts } = await import("@/lib/aiUsage/accountDiscovery");
+    const { toCachedAccountId } = await import("@/lib/aiUsage/usageSnapshotCache");
+    const discovered = await discoverProviderAccounts("claude", await getAiAccountRegistrations());
+    const summary = (await listAiAccounts()).find((account) => account.accountName === "work")!;
+    const source = discovered.find((account) => account.accountRoot === summary.accountRoot)!;
+    expect(summary.accountId).toBe(source.accountId);
+    expect(summary.cachedAccountId).toBe(toCachedAccountId(source.accountId));
+  });
+
   it("CLI가 알려준 계정 이름과 구독 등급을 그대로 쓴다", async () => {
     await addAiAccount("claude", "work");
     mockReadProviderAuthStatus.mockResolvedValue({
