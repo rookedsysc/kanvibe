@@ -18,6 +18,7 @@ export interface PaneChatSurface {
   task: KanbanTask;
   paneId: string;
   rootPid: number | null;
+  agentSession?: { provider: "claude" | "codex"; sessionId: string };
   screen: string;
   inputLine: string | null;
   cursorColumn: number | null;
@@ -92,10 +93,11 @@ export async function readPaneChatSurface(taskId: string, requestedPaneId?: stri
     if (!paneId) return null;
     // 채팅 폴링마다 도는 확인이라 pane이 있는지만 읽는다.
     const taskPanes = await listHerdrTaskPaneTabIds(task.sessionName, task.sshHost);
-    if (!taskPanes.some((entry) => entry.paneId === paneId)) return null;
+    const pane = taskPanes.find((entry) => entry.paneId === paneId);
+    if (!pane) return null;
     const { process_info: info } = await runHerdrCommand<{ process_info: { shell_pid?: number; foreground_processes?: { pid?: number }[] } }>(task.sessionName, ["pane", "process-info", "--pane", paneId], task.sshHost);
     const pid = info.shell_pid ?? info.foreground_processes?.[0]?.pid;
-    const surface: PaneChatSurface = { task, paneId, rootPid: Number.isSafeInteger(pid) && pid! > 0 ? pid! : null, inputLine: null, cursorColumn: null, screen: "" };
+    const surface: PaneChatSurface = { task, paneId, ...(pane.agentSession ? { agentSession: pane.agentSession } : {}), rootPid: Number.isSafeInteger(pid) && pid! > 0 ? pid! : null, inputLine: null, cursorColumn: null, screen: "" };
     if (!capture) return surface;
     const frame = await readHerdrPaneFrameForChat(taskId, paneId);
     const terminal = new HeadlessTerminal({ cols: frame.width, rows: frame.height, allowProposedApi: true });

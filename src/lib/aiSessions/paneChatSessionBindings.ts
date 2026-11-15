@@ -1,7 +1,10 @@
+import path from "node:path";
+import { getHomeDirectory, pathExists, readTextFile } from "@/lib/hostFileAccess";
+import type { PaneChatProcess } from "./paneChatProcess";
 import { execGit } from "@/lib/gitOperations";
 import { isPaneChatProviderProcess } from "./paneChatProcess";
 import { readClaudeSessions } from "./readClaudeSessions";
-import { readCodexSessions } from "./readCodexSessions";
+import { findCodexMainThreadRollout, readCodexSessions } from "./readCodexSessions";
 import { determineMatchScope } from "./shared";
 import type { AiSessionReaderContext } from "./types";
 
@@ -100,7 +103,7 @@ export async function findPaneChatSessionBinding(query: BindingQuery): Promise<{
   if (!entry || Date.now() - entry.recordedAt > BINDING_TTL_MS) return null;
   if (!entry.sourceRef) {
     // HTTP hook이 보낸 경로는 열지 않고, 기존 공급자 탐색이 허용한 파일만 사용한다.
-    const context = { ...entry.context, query: entry.sessionId };
+    const context = { ...entry.context, query: undefined };
     const page = await (entry.provider === "claude" ? readClaudeSessions(context) : readCodexSessions(context));
     if (bindings.get(key) !== entry) return null;
     const exact = page.sessions.find((session) => session.id === entry.sessionId && session.sourceRef);
@@ -108,4 +111,49 @@ export async function findPaneChatSessionBinding(query: BindingQuery): Promise<{
     entry.sourceRef = exact.sourceRef;
   }
   return { sessionId: entry.sessionId, sourceRef: entry.sourceRef, revision: entry.revision };
+}
+
+export async function findPaneChatReportedSessionBinding(context: AiSessionReaderContext, provider: ChatProvider, sessionId: string): Promise<{ sessionId: string; sourceRef: string } | null> {
+  if (!/^[A-Za-z0-9._:-]{1,200}$/.test(sessionId)) return null;
+  if (provider === "codex") {
+    const sourceRef = await findCodexMainThreadRollout(context, sessionId);
+    return sourceRef ? { sessionId, sourceRef } : null;
+  }
+  const page = await readClaudeSessions({ ...context, query: undefined });
+  const exact = page.sessions.find((session) => session.id === sessionId && session.sourceRef);
+  return exact?.sourceRef ? { sessionId, sourceRef: exact.sourceRef } : null;
+}
+
+export async function findPaneChatProcessSessionBinding(context: AiSessionReaderContext, process: PaneChatProcess): Promise<{ sessionId: string; sourceRef: string; pending?: boolean } | null> {
+  if (process.provider !== "claude" || !Number.isSafeInteger(process.pid) || process.pid <= 1) return null;
+  try {
+    const home = await getHomeDirectory(context.sshHost);
+    const record = JSON.parse(await readTextFile(path.posix.join(home, ".claude", "sessions", `${process.pid}.json`), context.sshHost)) as Record<string, unknown>;
+    if (!record || record.pid !== process.pid || record.kind !== "interactive"
+      || typeof record.sessionId !== "string" || !/^[A-Za-z0-9._:-]{1,200}$/.test(record.sessionId)
+      || typeof record.cwd !== "string" || !path.posix.isAbsolute(record.cwd) || !determineMatchScope(record.cwd, context)
+      || typeof record.procStart !== "string" || !record.procStart
+      || typeof record.pidDomain !== "string" || !record.pidDomain) return null;
+    const probe = await execGit([
+      `if test -r /proc/${process.pid}/stat; then`,
+      `  cat /proc/${process.pid}/stat`,
+      "  printf 'linux:%s:%s\\n' \"$(cat /etc/machine-id)\" \"$(readlink /proc/self/ns/pid)\"",
+      "else",
+      `  LC_ALL=C TZ=UTC ps -o lstart= -p ${process.pid}`,
+      "  printf 'linux\\n'",
+      "fi",
+    ].join("\n"), context.sshHost, { timeoutMs: PROCESS_PROBE_TIMEOUT_MS });
+    const [processRecord, domain] = probe.trimEnd().split("\n");
+    const marker = processRecord?.includes(") ") ? processRecord.slice(processRecord.lastIndexOf(") ") + 2).split(/\s+/)[19] : processRecord?.trim();
+    if (marker !== record.procStart || domain !== record.pidDomain) return null;
+    const projectDirectory = path.posix.normalize(record.cwd).replaceAll("/", "-").replaceAll("_", "-");
+    const sourceRef = path.posix.join(home, ".claude", "projects", projectDirectory, `${record.sessionId}.jsonl`);
+    if (!await pathExists(sourceRef, context.sshHost)) {
+      const existing = await findPaneChatReportedSessionBinding(context, "claude", record.sessionId);
+      return existing ?? { sessionId: record.sessionId, sourceRef, pending: true };
+    }
+    return { sessionId: record.sessionId, sourceRef };
+  } catch {
+    return null;
+  }
 }
