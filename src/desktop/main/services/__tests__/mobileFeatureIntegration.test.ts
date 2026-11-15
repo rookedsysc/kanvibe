@@ -117,14 +117,22 @@ describe("mobile feature providers through real authenticated HTTP and isolated 
     git("add", "src/file.ts");
     git("-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "-c", "core.hooksPath=/dev/null", "commit", "-m", "fixture base");
     git("switch", "-c", "feat/provider");
+    await writeFile(path.join(fixtureDirectory, "src/file.ts"), "committed\n");
+    await writeFile(path.join(fixtureDirectory, "src/committed.ts"), "already committed\n");
+    git("add", "src");
+    git("-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "-c", "core.hooksPath=/dev/null", "commit", "-m", "fixture feature");
     await writeFile(path.join(fixtureDirectory, "src/file.ts"), "changed\n");
+    await writeFile(path.join(fixtureDirectory, "src/new.ts"), "new\nfile\n");
     const taskRepo = await getTaskRepository();
     const diffTask = await taskRepo.save(taskRepo.create({ title: "diff fixture", projectId, worktreePath: fixtureDirectory, branchName: "feat/provider", baseBranch: "main", status: TaskStatus.TODO }));
     const files = await call("GET", `/tasks/${diffTask.id}/diff`);
     expect(files.status).toBe(200);
-    expect(files.body.files).toEqual(expect.arrayContaining([expect.objectContaining({ path: "src/file.ts", status: "modified" })]));
+    expect(files.body.files).toEqual([
+      { path: "src/file.ts", status: "modified", additions: 1, deletions: 1 },
+      { path: "src/new.ts", status: "added", additions: 2, deletions: 0 },
+    ]);
     const read = await call("GET", `/tasks/${diffTask.id}/files?path=src%2Ffile.ts`);
-    expect(read.body).toMatchObject({ success: true, original: "base", content: "changed\n" });
+    expect(read.body).toMatchObject({ success: true, original: "committed", content: "changed\n" });
     expect((await call("PUT", `/tasks/${diffTask.id}/files?path=src%2Ffile.ts`, { content: "한글 저장\n" })).status).toBe(200);
     expect(await readFile(path.join(fixtureDirectory, "src/file.ts"), "utf8")).toBe("한글 저장\n");
     expect((await call("PUT", `/tasks/${diffTask.id}/files?path=..%2Foutside`, { content: "bad" })).status).toBe(400);

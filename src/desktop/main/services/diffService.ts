@@ -38,13 +38,21 @@ const DIFF_NAME_STATUS_MARKER = "__KANVIBE_DIFF_NAME_STATUS__";
 const DIFF_NUMSTAT_MARKER = "__KANVIBE_DIFF_NUMSTAT__";
 const DIFF_WORKING_TREE_MARKER = "__KANVIBE_DIFF_WORKING_TREE__";
 
-function buildGitDiffFilesCommand(worktreePath: string, baseBranch: string, branchName: string): string {
-  const range = quoteShellArgument(`${baseBranch}...${branchName}`);
+function buildGitDiffFilesCommand(worktreePath: string): string {
+  const untrackedNumstat = [
+    'worktreePath=$1; shift',
+    'for filePath do',
+    'git -C "$worktreePath" diff --no-index --numstat -z -- /dev/null "$filePath"',
+    'result=$?',
+    'if [ "$result" -gt 1 ]; then exit "$result"; fi',
+    'done',
+  ].join("\n");
   return [
     `printf '%s\\0' ${quoteShellArgument(DIFF_NAME_STATUS_MARKER)}`,
-    `${buildGitCommand(worktreePath, ["diff", range, "--name-status", "-z"])}`,
+    buildGitCommand(worktreePath, ["diff", "HEAD", "--name-status", "-z"]),
     `printf '%s\\0' ${quoteShellArgument(DIFF_NUMSTAT_MARKER)}`,
-    `${buildGitCommand(worktreePath, ["diff", range, "--numstat", "-z"])}`,
+    buildGitCommand(worktreePath, ["diff", "HEAD", "--numstat", "-z"]),
+    `${buildGitCommand(worktreePath, ["ls-files", "--others", "--exclude-standard", "-z"])} | xargs -0 sh -c ${quoteShellArgument(untrackedNumstat)} sh ${quoteShellArgument(worktreePath)}`,
     `printf '%s\\0' ${quoteShellArgument(DIFF_WORKING_TREE_MARKER)}`,
     buildGitCommand(worktreePath, ["status", "--porcelain", "--untracked-files=all", "-z"]),
   ].join(" && ");
@@ -124,32 +132,17 @@ async function getTaskWorktreeInfo(taskId: string) {
   };
 }
 
-/** git status의 porcelain 포맷 문자를 DiffFile 상태로 변환한다 */
-function parseWorkingTreeStatus(
-  xy: string
-): DiffFile["status"] | null {
-  const index = xy[0];
-  const worktree = xy[1];
-
-  if (xy === "??") return "added";
-  if (index === "A" || worktree === "A") return "added";
-  if (index === "D" || worktree === "D") return "deleted";
-  if (index === "M" || worktree === "M") return "modified";
-  if (index === "R" || worktree === "R") return "renamed";
-  return null;
-}
-
 /**
  * 변경 파일 목록을 조회하되 실패를 `null`로 구분해 돌려준다.
  * 조회에 실패한 것과 정말 아무것도 바뀌지 않은 것을 같은 빈 배열로 뭉치면 캐시를 0으로 덮어쓰게 된다.
  */
 async function readGitDiffFiles(taskId: string): Promise<DiffFile[] | null> {
   try {
-    const { worktreePath, branchName, baseBranch, sshHost } =
+    const { worktreePath, sshHost } =
       await getTaskWorktreeInfo(taskId);
 
     const commandOutput = await execGit(
-      buildGitDiffFilesCommand(worktreePath, baseBranch, branchName),
+      buildGitDiffFilesCommand(worktreePath),
       sshHost,
     );
     const diffSections = parseGitDiffFilesCommandOutput(commandOutput);
@@ -172,7 +165,7 @@ async function readGitDiffFiles(taskId: string): Promise<DiffFile[] | null> {
       });
     }
 
-    /** 커밋된 브랜치 diff에서 파일 목록을 구성한다 */
+    /** HEAD와 작업 트리의 차이로 staged·unstaged 변경을 함께 구성한다 */
     const fileMap = new Map<string, DiffFile>();
     for (let index = 0; index < diffSections.nameStatus.length;) {
       const statusLetter = diffSections.nameStatus[index++];
@@ -188,23 +181,19 @@ async function readGitDiffFiles(taskId: string): Promise<DiffFile[] | null> {
       });
     }
 
-    /** -z 상태 출력은 rename 목적지를 먼저 주고 이전 경로를 별도 필드로 준다 */
+    /** 추적되지 않은 파일은 HEAD diff에 없으므로 별도로 포함한다 */
     for (let index = 0; index < diffSections.workingTree.length; index += 1) {
       const record = diffSections.workingTree[index];
       const xy = record.slice(0, 2);
       const filePath = record.slice(3);
-      const originalPath = /[RC]/.test(xy) ? diffSections.workingTree[++index] : undefined;
-      if (fileMap.has(filePath)) continue;
-      const status = parseWorkingTreeStatus(xy);
-      if (!status) continue;
-      const previousFile = originalPath ? fileMap.get(originalPath) : undefined;
-      if (originalPath) fileMap.delete(originalPath);
+      if (/[RC]/.test(xy)) index += 1;
+      if (xy !== "??") continue;
+      const stats = statsByPath.get(filePath) ?? { additions: 0, deletions: 0 };
       fileMap.set(filePath, {
         path: filePath,
-        ...(originalPath ? { originalPath: previousFile?.originalPath ?? originalPath } : {}),
-        status,
-        additions: previousFile?.additions ?? 0,
-        deletions: previousFile?.deletions ?? 0,
+        status: "added",
+        additions: stats.additions,
+        deletions: stats.deletions,
       });
     }
 
@@ -216,9 +205,8 @@ async function readGitDiffFiles(taskId: string): Promise<DiffFile[] | null> {
 }
 
 /**
- * baseBranch와 현재 브랜치 사이에서 변경된 파일 목록을 조회한다.
- * 커밋된 브랜치 차이뿐 아니라 working directory의
- * untracked/unstaged/staged 파일도 포함한다.
+ * HEAD 이후의 미커밋 변경 파일만 조회한다.
+ * working directory의 untracked/unstaged/staged 파일을 포함한다.
  *
  * 조회한 김에 집계 캐시도 갱신한다. 보드는 진행 중이 아닌 태스크의 배지를 이 캐시로 그리므로,
  * 사용자가 상세를 열어 본 태스크는 그 시점 값으로 최신화된다.
@@ -229,13 +217,13 @@ export async function getGitDiffFiles(
   return (await refreshTaskDiffFiles(taskId)) ?? [];
 }
 
-/** baseBranch 기준의 원본 파일 내용을 조회한다. 파일이 존재하지 않으면 빈 문자열을 반환한다 */
+/** HEAD 기준의 원본 파일 내용을 조회한다. 파일이 존재하지 않으면 빈 문자열을 반환한다 */
 export async function getOriginalFileContent(
   taskId: string,
   filePath: string
 ): Promise<string> {
   try {
-    const { worktreePath, baseBranch, sshHost } =
+    const { worktreePath, sshHost } =
       await getTaskWorktreeInfo(taskId);
 
     validateFilePath(worktreePath, filePath, sshHost);
@@ -243,12 +231,12 @@ export async function getOriginalFileContent(
     return await execGit(
       buildGitCommand(worktreePath, [
         "show",
-        quoteShellArgument(`${baseBranch}:${filePath}`),
+        quoteShellArgument(`HEAD:${filePath}`),
       ]),
       sshHost,
     );
   } catch (error) {
-    /** 파일이 baseBranch에 존재하지 않는 경우(신규 파일) 빈 문자열을 반환한다 */
+    /** 파일이 HEAD에 존재하지 않는 경우(신규 파일) 빈 문자열을 반환한다 */
     return "";
   }
 }
