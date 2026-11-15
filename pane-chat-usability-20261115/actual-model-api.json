@@ -1,0 +1,11 @@
+[
+  {
+    "name": "existing daemon model/list + same-thread read",
+    "models": 8,
+    "currentModel": "gpt-6.1-sol"
+  },
+  {
+    "name": "thread/settings/update + readback (same model, no inference)",
+    "status": "passed"
+  }
+]

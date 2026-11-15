@@ -1,0 +1,18 @@
+[
+  {
+    "name": "browser API under real app permission policy",
+    "result": "NotAllowedError: Failed to execute 'writeText' on 'Clipboard': Write permission denied."
+  },
+  {
+    "name": "message button → preload → IPC → OS clipboard",
+    "status": "passed"
+  },
+  {
+    "name": "code block button copies only code",
+    "status": "passed"
+  },
+  {
+    "name": "file preview button copies original file",
+    "status": "passed"
+  }
+]

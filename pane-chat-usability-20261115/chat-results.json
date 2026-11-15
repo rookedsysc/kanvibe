@@ -1,0 +1,30 @@
+[
+  {
+    "name": "History 옆 지침 표시 선택",
+    "status": "passed"
+  },
+  {
+    "name": "현재 채팅에서 이전 메시지 로딩",
+    "status": "passed"
+  },
+  {
+    "name": "입력창 확대·작업 중 전송·ACK 전 말풍선",
+    "status": "passed"
+  },
+  {
+    "name": "채팅 유지·모델 API 선택",
+    "status": "passed"
+  },
+  {
+    "name": "설정 저장·기본 채팅·새로고침 후 모드 복원",
+    "status": "passed"
+  },
+  {
+    "name": "명시적 터미널 모드가 기본 설정보다 우선",
+    "status": "passed"
+  },
+  {
+    "name": "도구 exec 머리줄 고정·스크롤 후 접기",
+    "status": "passed"
+  }
+]
