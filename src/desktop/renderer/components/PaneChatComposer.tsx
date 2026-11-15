@@ -6,14 +6,18 @@ import type { usePaneChat } from "@/desktop/renderer/hooks/usePaneChat";
 import type { PaneChatSuggestion, PaneChatSuggestionKind } from "@/desktop/shared/paneChat";
 
 const SUGGESTION_DEBOUNCE_MS = 180;
+const COMPOSER_MIN_HEIGHT = 64;
+const COMPOSER_RESIZE_STEP = 24;
+const COMPOSER_MAX_HEIGHT_RATIO = 0.6;
 const controlClass = "min-h-10 shrink-0 rounded-md px-2 text-xs text-text-secondary hover:bg-bg-page focus-visible:outline-2 focus-visible:outline-brand-primary disabled:opacity-40";
 interface Completion { kind: PaneChatSuggestionKind; query: string; start: number; end: number }
 
-export function PaneChatComposer({ taskId, chat, isVisible, onModel }: {
+export function PaneChatComposer({ taskId, chat, isVisible, onModel, isModelPickerOpen = false }: {
   taskId: string;
   chat: ReturnType<typeof usePaneChat>;
   isVisible: boolean;
   onModel: () => void;
+  isModelPickerOpen?: boolean;
 }) {
   const t = useTranslations("taskDetail.paneChat");
   const composer = usePaneChatComposer(taskId, chat.snapshot, chat.send);
@@ -28,7 +32,8 @@ export function PaneChatComposer({ taskId, chat, isVisible, onModel }: {
   const [suggestions, setSuggestions] = useState<{ key: string; items: PaneChatSuggestion[]; loading: boolean; error: boolean; truncated: boolean } | null>(null);
   const [active, setActive] = useState(0);
   const [retry, setRetry] = useState(0);
-  const [expanded, setExpanded] = useState(false);
+  const [inputHeight, setInputHeight] = useState(COMPOSER_MIN_HEIGHT);
+  const resizeStart = useRef<{ pointerId: number; y: number; height: number } | null>(null);
   const listId = useId();
   const target = chat.snapshot?.targetToken;
   const capabilities = chat.snapshot?.composer;
@@ -111,16 +116,39 @@ export function PaneChatComposer({ taskId, chat, isVisible, onModel }: {
     }
     return false;
   }
+  function maximumInputHeight() {
+    const paneHeight = textarea.current?.closest("section")?.clientHeight || window.innerHeight;
+    return Math.max(COMPOSER_MIN_HEIGHT, Math.floor(paneHeight * COMPOSER_MAX_HEIGHT_RATIO));
+  }
+  function resizeInput(height: number) {
+    setInputHeight(Math.max(COMPOSER_MIN_HEIGHT, Math.min(maximumInputHeight(), height)));
+  }
   const hasPending = composer.attachments.some((item) => item.status !== "ready" || item.error);
   return (
-    <form onSubmit={(event) => { event.preventDefault(); submit(); }} className="max-h-[70%] shrink-0 overflow-y-auto [scrollbar-gutter:stable] px-4 py-3 sm:px-8">
-      <div data-testid="pane-chat-composer" className="mx-auto max-w-3xl rounded-xl border border-border-default bg-bg-surface p-2 focus-within:border-brand-primary" onDragOver={(event) => {
+    <form onSubmit={(event) => { event.preventDefault(); submit(); }} className="min-h-0 shrink overflow-y-auto [scrollbar-gutter:stable] px-4 py-3 sm:px-8">
+      <div data-testid="pane-chat-composer" className="relative mx-auto max-w-3xl rounded-xl border border-border-default bg-bg-surface p-2 focus-within:border-brand-primary" onDragOver={(event) => {
         if (capabilities?.attachments && canEdit && event.dataTransfer.types.includes("Files")) event.preventDefault();
       }} onDrop={(event) => {
         if (!capabilities?.attachments || !canEdit || !event.dataTransfer.files.length) return;
         event.preventDefault();
         composer.addFiles(Array.from(event.dataTransfer.files));
       }}>
+        <div role="separator" aria-label={t("resizeComposer")} aria-orientation="horizontal" aria-valuemin={COMPOSER_MIN_HEIGHT} aria-valuemax={maximumInputHeight()} aria-valuenow={inputHeight} tabIndex={0} title={t("resizeComposerHint")} className="absolute -top-1.5 left-0 flex h-3 w-full touch-none cursor-row-resize items-center justify-center rounded-t-xl focus-visible:outline-2 focus-visible:outline-brand-primary" onPointerDown={(event) => {
+          if (event.button !== 0) return;
+          event.preventDefault();
+          resizeStart.current = { pointerId: event.pointerId, y: event.clientY, height: textarea.current?.getBoundingClientRect().height || inputHeight };
+          event.currentTarget.setPointerCapture(event.pointerId);
+        }} onPointerMove={(event) => {
+          const start = resizeStart.current;
+          if (start?.pointerId === event.pointerId) resizeInput(start.height + start.y - event.clientY);
+        }} onPointerUp={(event) => {
+          resizeStart.current = null;
+          if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+        }} onPointerCancel={() => { resizeStart.current = null; }} onLostPointerCapture={() => { resizeStart.current = null; }} onKeyDown={(event) => {
+          if (!["ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) return;
+          event.preventDefault();
+          resizeInput(event.key === "Home" ? COMPOSER_MIN_HEIGHT : event.key === "End" ? maximumInputHeight() : inputHeight + (event.key === "ArrowUp" ? COMPOSER_RESIZE_STEP : -COMPOSER_RESIZE_STEP));
+        }}><span aria-hidden="true" className="h-1 w-8 rounded-full bg-border-default" /></div>
         {composer.attachments.length ? <ul aria-label={t("attachments")} className="flex flex-wrap gap-2 px-2 py-1">
           {composer.attachments.map((item) => <li key={item.localId} className="flex max-w-full items-center gap-2 rounded-lg bg-bg-page px-2 py-1">
             {item.preview ? <img src={item.preview} alt={item.file.name} className="h-14 w-14 rounded object-cover" /> : <span aria-hidden="true" className="text-xs text-text-secondary">↗</span>}
@@ -147,7 +175,7 @@ export function PaneChatComposer({ taskId, chat, isVisible, onModel }: {
           </ul>
           {currentSuggestions?.truncated ? <p className="px-3 py-1 text-xs text-text-secondary">{t("moreSuggestions")}</p> : null}
         </div> : null}
-        <textarea ref={textarea} aria-label={t("placeholder")} aria-autocomplete="list" aria-controls={showSuggestions ? listId : undefined} aria-activedescendant={showSuggestions && currentSuggestions?.items[active] ? `${listId}-${active}` : undefined} title={t("draftHint")} placeholder={t("placeholder")} rows={expanded ? 12 : 2} value={composer.text} disabled={!canEdit} onChange={(event) => {
+        <textarea ref={textarea} aria-label={t("placeholder")} aria-autocomplete="list" aria-controls={showSuggestions ? listId : undefined} aria-activedescendant={showSuggestions && currentSuggestions?.items[active] ? `${listId}-${active}` : undefined} title={t("draftHint")} placeholder={t("placeholder")} rows={2} style={{ height: inputHeight }} value={composer.text} disabled={!canEdit} onChange={(event) => {
           composer.setText(event.target.value);
           setCaret(event.target.selectionStart);
           setSkillPicker(false);
@@ -160,17 +188,16 @@ export function PaneChatComposer({ taskId, chat, isVisible, onModel }: {
           if (event.nativeEvent.isComposing) return;
           if (handleCompletionKey(event)) return;
           if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); submit(); }
-        }} className="block max-h-[60vh] min-h-16 w-full min-w-0 resize-y bg-transparent px-2 py-1 text-sm leading-6 text-text-primary outline-none placeholder:text-text-secondary" />
+        }} className="block max-h-[60vh] min-h-16 w-full min-w-0 resize-none bg-transparent px-2 py-1 text-sm leading-6 text-text-primary outline-none placeholder:text-text-secondary" />
         {(composer.error || chat.actionError) ? <p role="alert" className="px-2 py-1 text-xs text-status-error">{chat.actionError || t(composer.error ?? "sendError")}</p> : null}
         {chat.snapshot?.canSend && !inputReady ? <p role="status" className="px-2 py-1 text-xs text-text-secondary">{t(chat.snapshot.inputState === "occupied" ? "inputOccupied" : "inputWaiting")}</p> : null}
         <input ref={fileInput} type="file" multiple hidden aria-label={t("attachFiles")} onChange={(event) => { composer.addFiles(Array.from(event.target.files ?? [])); event.target.value = ""; }} />
         <input ref={photoInput} type="file" accept="image/*" multiple hidden aria-label={t("attachPhotos")} onChange={(event) => { composer.addFiles(Array.from(event.target.files ?? [])); event.target.value = ""; }} />
         <div data-testid="pane-chat-composer-tools" className="mt-1 flex flex-wrap items-center gap-1">
-          <button type="button" aria-expanded={expanded} onClick={() => setExpanded((value) => !value)} className={controlClass}>{t(expanded ? "collapseComposer" : "expandComposer")}</button>
           <button type="button" disabled={!canEdit || !capabilities?.attachments} onClick={() => fileInput.current?.click()} className={controlClass}>{t("attachFiles")}</button>
           <button type="button" disabled={!canEdit || !capabilities?.attachments} onClick={() => photoInput.current?.click()} className={controlClass}>{t("attachPhotos")}</button>
           <button type="button" aria-expanded={showSuggestions && completion?.kind === "skill"} disabled={!canEdit || !capabilities?.skills} onClick={() => { setSkillPicker((value) => !value); setSkillQuery(""); setDismissed(null); }} className={controlClass}>{t("skills")}</button>
-          <button type="button" disabled={disabled || !chat.snapshot?.modelPicker.supported || (!inputReady && !chat.snapshot.modelPicker.supportsApi)} onClick={onModel} className={controlClass}>{t("model")}</button>
+          <button data-pane-chat-model-trigger type="button" aria-haspopup="dialog" aria-expanded={isModelPickerOpen} disabled={disabled || !chat.snapshot?.modelPicker.supported || (!inputReady && !chat.snapshot.modelPicker.supportsApi)} onClick={onModel} className={`${controlClass} flex max-w-full items-center gap-1.5`}><span className="truncate">{chat.snapshot?.modelSettings?.models.find((item) => item.id === chat.snapshot?.modelSettings?.model)?.label ?? chat.snapshot?.modelSettings?.model ?? t("model")}</span>{chat.snapshot?.modelSettings?.effort ? <span className="text-text-secondary">· {chat.snapshot.modelSettings.effort}</span> : null}<span aria-hidden="true">⌄</span></button>
           <button type="button" disabled={disabled} onClick={() => void chat.interrupt()} className={controlClass}>{t("stop")}</button>
           <button type="submit" disabled={disabled || composer.sending || hasPending || (!composer.text.trim() && !composer.attachments.length) || !inputReady} aria-label={composer.sending ? t("sending") : t("send")} className="ml-auto flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-primary text-base font-medium text-white hover:bg-brand-active focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary disabled:opacity-40"><span aria-hidden="true">{composer.sending ? "…" : "↑"}</span></button>
         </div>

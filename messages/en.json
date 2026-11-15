@@ -529,8 +529,10 @@
       "closeModel": "Close",
       "modelAppliesNext": "Model and reasoning changes apply to subsequent work.",
       "modelError": "Could not load or update model settings.",
-      "expandComposer": "Expand input",
-      "collapseComposer": "Collapse input",
+      "resizeComposer": "Resize input",
+      "resizeComposerHint": "Drag the top border to resize. Use arrow keys when focused.",
+      "fastMode": "Fast mode",
+      "savingModel": "Applying settings…",
       "messageSent": "Sent",
       "inputOccupied": "There is an unfinished draft in the terminal. Submit or clear it there before sending a chat message.",
       "inputWaiting": "Send when the CLI is ready for a prompt. Handle confirmation requests in CLI controls."

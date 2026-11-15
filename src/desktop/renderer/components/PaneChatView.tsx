@@ -70,14 +70,13 @@ export function PaneChatView({ taskId, paneId, taskTitle, paneTabs = [], isVisib
           <p title={snapshot?.paneId ?? undefined} aria-label={snapshot?.paneId ?? undefined} className="truncate text-xs text-text-secondary">{[paneName, snapshot?.provider ? AI_SESSION_PROVIDER_LABELS[snapshot.provider] : null, snapshot?.paneId?.slice(-8)].filter(Boolean).join(" · ") || t("loading")}</p>
         </div>
         <div className="ml-auto flex shrink-0 gap-2">
-          <button type="button" onClick={onHistory} className={controlClass}>{t("history")}</button>
           <label className={`${controlClass} flex cursor-pointer items-center gap-2`}>
             <input type="checkbox" checked={preferences.showInstructions} disabled={!preferences.loaded || preferences.saving} onChange={(event) => void preferences.setShowInstructions(event.target.checked)} className="accent-brand-primary" />{t("showInstructions")}
           </label>
+          <button type="button" onClick={onHistory} className={controlClass}>{t("history")}</button>
           <button type="button" onClick={onTerminal} className={controlClass}>{t("terminal")}</button>
         </div>
       </header>
-      {modelPickerOpen && snapshot?.targetToken ? <PaneChatModelPicker key={snapshot.targetToken} taskId={taskId} targetToken={snapshot.targetToken} onClose={() => setModelPickerOpen(false)} onChanged={() => void chat.refresh()} /> : null}
       {chat.readError ? <div role="alert" className="flex items-center justify-between gap-3 px-4 py-2 text-xs text-status-error">{t("readError")}<button type="button" onClick={() => void chat.refresh()} className={controlClass}>{t("retry")}</button></div> : null}
       {preferences.error ? <p role="alert" className="px-4 py-2 text-xs text-status-error">{t("preferencesError")}</p> : null}
       <div ref={viewport} data-testid="pane-chat-transcript" className="min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable] px-4 py-6 sm:px-8" onScroll={() => {
@@ -121,7 +120,13 @@ export function PaneChatView({ taskId, paneId, taskTitle, paneTabs = [], isVisib
         setIsDetached(false);
       }} className="absolute bottom-44 left-1/2 -translate-x-1/2 rounded-full border border-border-default bg-bg-surface px-4 py-2 text-xs text-text-primary">{t("jumpToLatest")} ↓</button> : null}
       {previewFilePath ? <AiChatFilePreview taskId={taskId} filePath={previewFilePath} onClose={() => setPreviewFilePath(null)} /> : null}
-      <PaneChatComposer taskId={taskId} chat={chat} isVisible={isVisible} onModel={() => void openModelPicker()} />
+      <div className="relative flex max-h-[70%] min-h-0 shrink-0 flex-col">
+        {modelPickerOpen && snapshot?.targetToken ? <div className="absolute bottom-full left-4 z-20 mb-2 w-80 max-w-[calc(100%-2rem)] sm:left-8"><PaneChatModelPicker key={snapshot.targetToken} taskId={taskId} targetToken={snapshot.targetToken} initialSettings={snapshot.modelSettings} onClose={(restoreFocus = true) => {
+          setModelPickerOpen(false);
+          if (restoreFocus) requestAnimationFrame(() => viewport.current?.closest("section")?.querySelector<HTMLButtonElement>("[data-pane-chat-model-trigger]")?.focus());
+        }} onChanged={() => void chat.refresh()} /></div> : null}
+        <PaneChatComposer taskId={taskId} chat={chat} isVisible={isVisible} isModelPickerOpen={modelPickerOpen} onModel={() => void openModelPicker()} />
+      </div>
     </section>
   );
 }

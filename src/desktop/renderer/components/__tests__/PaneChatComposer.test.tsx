@@ -36,17 +36,44 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("pane chat composer", () => {
-  it("입력창을 확대하고 작업 중인 API 대화에도 전송할 수 있다", async () => {
+  it("입력창 테두리를 조절하고 작업 중인 API 대화에도 전송할 수 있다", async () => {
     const current = chat();
     current.snapshot!.inputState = "occupied";
     current.snapshot!.composer!.canSendWhileBusy = true;
     const view = open(current);
-    fireEvent.click(screen.getByRole("button", { name: "expandComposer" }));
-    expect((screen.getByRole("textbox") as HTMLTextAreaElement).rows).toBe(12);
+    expect(screen.queryByRole("button", { name: "expandComposer" })).toBeNull();
+    const edge = screen.getByRole("separator", { name: "resizeComposer" });
+    fireEvent.keyDown(edge, { key: "ArrowUp" });
+    expect((screen.getByRole("textbox") as HTMLTextAreaElement).style.height).toBe("88px");
+    fireEvent.keyDown(edge, { key: "Home" });
+    expect((screen.getByRole("textbox") as HTMLTextAreaElement).style.height).toBe("64px");
     edit("Continue while working");
     expect((screen.getByRole("button", { name: "send" }) as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(screen.getByRole("button", { name: "send" }));
     await waitFor(() => expect(view.chat.send).toHaveBeenCalledWith("Continue while working", [], expect.any(String)));
+  });
+  it("resizes by dragging the border, clamps bounds and stops after release", () => {
+    open();
+    const edge = screen.getByRole("separator", { name: "resizeComposer" });
+    edge.setPointerCapture = vi.fn();
+    edge.hasPointerCapture = vi.fn().mockReturnValue(true);
+    edge.releasePointerCapture = vi.fn();
+    const pointer = (type: string, clientY: number) => {
+      const event = new MouseEvent(type, { bubbles: true, button: 0, clientY });
+      Object.defineProperty(event, "pointerId", { value: 7 });
+      fireEvent(edge, event);
+    };
+    pointer("pointerdown", 400);
+    pointer("pointermove", 250);
+    expect((screen.getByRole("textbox") as HTMLTextAreaElement).style.height).toBe("214px");
+    pointer("pointermove", 600);
+    expect((screen.getByRole("textbox") as HTMLTextAreaElement).style.height).toBe("64px");
+    pointer("pointermove", -10000);
+    expect(Number.parseInt((screen.getByRole("textbox") as HTMLTextAreaElement).style.height)).toBe(Math.floor(window.innerHeight * 0.6));
+    pointer("pointerup", 100);
+    pointer("pointermove", 300);
+    expect(edge.releasePointerCapture).toHaveBeenCalledWith(7);
+    expect(Number.parseInt((screen.getByRole("textbox") as HTMLTextAreaElement).style.height)).toBe(Math.floor(window.innerHeight * 0.6));
   });
   it("stages selected bytes and sends an image without text using the opaque ID", async () => {
     const view = open();
