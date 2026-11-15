@@ -107,6 +107,17 @@ describe("current pane chat", () => {
     expect(view.onTerminal).not.toHaveBeenCalled();
     expect(actions.openPaneChatModelPicker).not.toHaveBeenCalled();
   });
+  it("Claude metadata opens the model popover without native API support or terminal switching", async () => {
+    const modelSettings = { model: "sonnet", effort: "high", isFast: false, models: [{ id: "sonnet", label: "Sonnet", supportsFast: false, effortLevels: [] }] };
+    actions.getPaneChatSnapshot.mockResolvedValue({ ...snapshot(), provider: "claude", modelSettings, modelPicker: { supported: true, mode: "native-cli", supportsApi: false } });
+    actions.getPaneChatModelSettings.mockResolvedValue(modelSettings);
+    const view = open();
+    await screen.findByText("Exact pane response");
+    fireEvent.click(screen.getByRole("button", { name: /Sonnet/ }));
+    await screen.findByRole("menuitemradio", { name: "Sonnet" });
+    expect(view.onTerminal).not.toHaveBeenCalled();
+    expect(actions.openPaneChatModelPicker).not.toHaveBeenCalled();
+  });
   it.each(["ready", "occupied"] as const)("hides the CLI capture once the transcript renders while %s", async (inputState) => {
     actions.getPaneChatSnapshot.mockResolvedValue({ ...snapshot(), inputState });
     open();

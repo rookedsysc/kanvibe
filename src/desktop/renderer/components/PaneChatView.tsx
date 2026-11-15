@@ -57,7 +57,7 @@ export function PaneChatView({ taskId, paneId, taskTitle, paneTabs = [], isVisib
   }, [messages, chat.pendingMessages.length, targetKey, isVisible]);
 
   async function openModelPicker() {
-    if (snapshot?.modelPicker.supportsApi) { setModelPickerOpen((value) => !value); return; }
+    if (snapshot?.modelSettings || snapshot?.modelPicker.supportsApi) { setModelPickerOpen((value) => !value); return; }
     if (await chat.openModelPicker()) onTerminal();
   }
 
