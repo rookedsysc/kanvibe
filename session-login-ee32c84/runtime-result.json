@@ -1,0 +1,17 @@
+{
+  "passed": true,
+  "checks": [
+    "provider cards contain usage and actions",
+    "1440/768/390 no overflow",
+    "real PTY failed login output retained",
+    "200 IPC resize requests around exit",
+    "retry and successful login refresh",
+    "add auto-opens login",
+    "remove clears row"
+  ],
+  "counts": {
+    "accountCalls": 3,
+    "usageCalls": 3
+  },
+  "errors": []
+}
