@@ -4,7 +4,7 @@ import { tmpdir } from "os";
 import path from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readClaudeSessionDetail, readClaudeSessions } from "@/lib/aiSessions/readClaudeSessions";
-import { readCodexSessionDetail, readCodexSessions } from "@/lib/aiSessions/readCodexSessions";
+import { findCodexMainThreadRollout, readCodexSessionDetail, readCodexSessions } from "@/lib/aiSessions/readCodexSessions";
 import { readGeminiSessionDetail, readGeminiSessions } from "@/lib/aiSessions/readGeminiSessions";
 
 let tempHome: string;
@@ -114,6 +114,31 @@ describe("AI session history readers", () => {
     vi.resetModules();
     vi.unstubAllEnvs();
     await rm(tempHome, { recursive: true, force: true });
+  });
+
+  it("resolves the exact main Codex thread among same-cwd rollouts and refuses duplicate identities", async () => {
+    const worktreePath = path.join(tempHome, "task");
+    const id = "0190aaaa-0000-7000-8000-00000000000a";
+    const otherId = "0190bbbb-0000-7000-8000-00000000000b";
+    const file = path.join(tempHome, ".codex/sessions/2026/11/14", `rollout-first-${id}.jsonl`);
+    const context = { worktreePath, repoPath: worktreePath };
+    await writeJsonLines(file, [{ type: "session_meta", payload: { id, cwd: worktreePath, source: "cli" } }]);
+    await writeJsonLines(path.join(path.dirname(file), `rollout-other-${otherId}.jsonl`), [{ type: "session_meta", payload: { id: otherId, cwd: worktreePath } }]);
+    expect(await findCodexMainThreadRollout(context, id)).toBe(file);
+    await writeJsonLines(path.join(path.dirname(file), `rollout-copy-${id}.jsonl`), [{ type: "session_meta", payload: { id, cwd: worktreePath } }]);
+    expect(await findCodexMainThreadRollout(context, id)).toBeNull();
+  });
+
+  it.each([
+    { source: { subagent: { spawn: { parent_thread_id: "parent" } } } },
+    { parent_thread_id: "parent" },
+    { id: "0190bbbb-0000-7000-8000-00000000000b" },
+    { cwd: "/different-task" },
+  ])("refuses child, mismatched and out-of-scope Codex display records: %j", async (extra) => {
+    const worktreePath = path.join(tempHome, "task");
+    const id = "0190aaaa-0000-7000-8000-00000000000a";
+    await writeJsonLines(path.join(tempHome, ".codex/sessions", `rollout-test-${id}.jsonl`), [{ type: "session_meta", payload: { id, cwd: worktreePath, ...extra } }]);
+    expect(await findCodexMainThreadRollout({ worktreePath, repoPath: worktreePath }, id)).toBeNull();
   });
 
   it("classifies Claude JSONL user text, system input, assistant answers, and tool results separately", async () => {

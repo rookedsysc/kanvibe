@@ -3,7 +3,9 @@ import { useTranslations } from "next-intl";
 import { focusPaneChatTerminal, getPaneChatLayout } from "@/desktop/renderer/actions/paneChat";
 import { useIsWindowActive } from "@/desktop/renderer/hooks/useIsWindowActive";
 import { REQUEST_TOGGLE_PANE_CHAT_EVENT, requestActiveTerminalFocusAfterUiSettles } from "@/desktop/renderer/utils/terminalFocus";
-import type { PaneChatLayout } from "@/desktop/shared/paneChat";
+import type { PaneChatLayout, PaneChatLayoutPane } from "@/desktop/shared/paneChat";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { Chatting01Icon } from "@hugeicons/core-free-icons";
 import { PaneChatView } from "./PaneChatView";
 
 const LAYOUT_POLL_INTERVAL_MS = 1_000;
@@ -15,6 +17,14 @@ export interface TerminalChatGrid {
   top: number;
   width: number;
   height: number;
+}
+
+function panePosition(pane: PaneChatLayoutPane | undefined, metrics: TerminalChatGrid | null): CSSProperties | null {
+  if (pane?.bounds === null) return { inset: 0 };
+  if (!pane?.bounds || !metrics || metrics.cols <= 0 || metrics.rows <= 0) return null;
+  const { left, top, width, height } = pane.bounds;
+  if (left < 0 || top < 0 || width <= 0 || height <= 0 || left + width > metrics.cols || top + height > metrics.rows) return null;
+  return { left: metrics.left + left * metrics.width / metrics.cols, top: metrics.top + top * metrics.height / metrics.rows, width: width * metrics.width / metrics.cols, height: height * metrics.height / metrics.rows };
 }
 
 export function TerminalPaneChatLayer({ taskId, terminalTabId, taskTitle, terminalRef, metrics, isVisible, onHistory, onChatFocusChange }: {
@@ -43,8 +53,8 @@ export function TerminalPaneChatLayer({ taskId, terminalTabId, taskTitle, termin
   const generation = useRef(0);
   const pendingToggle = useRef(false);
   const loadRef = useRef<(fresh?: boolean) => Promise<PaneChatLayout | null>>(async () => null);
-  const toggleRef = useRef<() => Promise<void>>(async () => {});
-  const hasOpenedPanes = openedPanes.length > 0;
+  const toggleRef = useRef<(paneId?: string) => Promise<void>>(async () => {});
+
 
   const focusPane = useCallback((paneId: string) => {
     focusedPane.current = paneId;
@@ -115,7 +125,7 @@ export function TerminalPaneChatLayer({ taskId, terminalTabId, taskTitle, termin
         return null;
       }).finally(() => {
         reading = null;
-        if (!disposed && isVisible && isWindowActive && hasOpenedPanes) {
+        if (!disposed && isVisible && isWindowActive) {
           timer = setTimeout(() => void load(), LAYOUT_POLL_INTERVAL_MS);
         }
       });
@@ -123,7 +133,7 @@ export function TerminalPaneChatLayer({ taskId, terminalTabId, taskTitle, termin
     };
     loadRef.current = load;
     if (isVisible && focusedPane.current && chatPanesRef.current.has(focusedPane.current)) onChatFocusChange(true);
-    if (isVisible && hasOpenedPanes) void load();
+    if (isVisible) void load();
     if (!isVisible) {
       setLayout(null);
       onChatFocusChange(false);
@@ -132,12 +142,12 @@ export function TerminalPaneChatLayer({ taskId, terminalTabId, taskTitle, termin
       disposed = true;
       if (timer) clearTimeout(timer);
     };
-  }, [taskId, terminalTabId, isVisible, isWindowActive, hasOpenedPanes, onChatFocusChange, focusPane]);
+  }, [taskId, terminalTabId, isVisible, isWindowActive, onChatFocusChange, focusPane]);
 
-  toggleRef.current = async () => {
+  toggleRef.current = async (requestedPaneId) => {
     if (!visibleRef.current || pendingToggle.current) return;
     const focused = focusedPane.current;
-    if (focused && chatPanes.has(focused) && layout?.panes.some((pane) => pane.id === focused)) {
+    if (!requestedPaneId && focused && chatPanes.has(focused) && layout?.panes.some((pane) => pane.id === focused)) {
       await closePane(focused);
       return;
     }
@@ -145,8 +155,8 @@ export function TerminalPaneChatLayer({ taskId, terminalTabId, taskTitle, termin
     pendingToggle.current = true;
     try {
       const next = await loadRef.current(true);
-      if (!next?.activePaneId || !visibleRef.current || epoch !== generation.current) return;
-      const paneId = next.activePaneId;
+      const paneId = requestedPaneId ?? next?.activePaneId;
+      if (!paneId || !next?.panes.some((pane) => pane.id === paneId) || !visibleRef.current || epoch !== generation.current) return;
       setOpenedPanes((current) => current.includes(paneId) ? current : [...current, paneId]);
       setChatPanes((current) => new Set(current).add(paneId));
       focusPane(paneId);
@@ -161,7 +171,7 @@ export function TerminalPaneChatLayer({ taskId, terminalTabId, taskTitle, termin
       focusedPane.current = null;
       onChatFocusChange(false);
       setLayout(null);
-      if (hasOpenedPanes) void loadRef.current();
+      void loadRef.current();
     };
     const terminal = terminalRef.current;
     window.addEventListener(REQUEST_TOGGLE_PANE_CHAT_EVENT, toggle);
@@ -170,18 +180,19 @@ export function TerminalPaneChatLayer({ taskId, terminalTabId, taskTitle, termin
       window.removeEventListener(REQUEST_TOGGLE_PANE_CHAT_EVENT, toggle);
       terminal?.removeEventListener("pointerdown", focusTerminal);
     };
-  }, [terminalRef, onChatFocusChange, hasOpenedPanes]);
+  }, [terminalRef, onChatFocusChange]);
 
+  const activePane = layout?.panes.find((pane) => pane.id === layout.activePaneId);
+  const activePosition = panePosition(activePane, metrics);
   return <div ref={layerRef} className="pointer-events-none absolute inset-0 overflow-hidden">
+    {isVisible && activePane && activePosition && !chatPanes.has(activePane.id) ? <div style={activePosition} className="pointer-events-none absolute">
+      <button type="button" data-testid="pane-chat-toggle" aria-label={`${t("toggle")} · ${activePane.id}`} title={`${t("toggle")} · ${activePane.id}`} onClick={() => { void toggleRef.current(activePane.id); }} className="pointer-events-auto absolute right-2 top-1 z-10 flex h-9 items-center gap-1 rounded-md bg-bg-surface px-2 text-xs text-text-primary hover:bg-bg-page focus-visible:outline-2 focus-visible:outline-brand-primary">
+        <HugeiconsIcon icon={Chatting01Icon} size={16} aria-hidden="true" />{t("toggle")}
+      </button>
+    </div> : null}
     {openedPanes.map((paneId) => {
       const pane = layout?.panes.find((entry) => entry.id === paneId);
-      let position: CSSProperties | null = pane?.bounds === null ? { inset: 0 } : null;
-      if (pane?.bounds && metrics && metrics.cols > 0 && metrics.rows > 0) {
-        const { left, top, width, height } = pane.bounds;
-        if (left >= 0 && top >= 0 && width > 0 && height > 0 && left + width <= metrics.cols && top + height <= metrics.rows) {
-          position = { left: metrics.left + left * metrics.width / metrics.cols, top: metrics.top + top * metrics.height / metrics.rows, width: width * metrics.width / metrics.cols, height: height * metrics.height / metrics.rows };
-        }
-      }
+      const position = panePosition(pane, metrics);
       const visible = isVisible && chatPanes.has(paneId) && position !== null;
       return <div key={paneId} data-pane-chat-id={paneId} tabIndex={-1} style={{ ...position, display: visible ? "flex" : "none" }} className="pointer-events-auto absolute min-h-0 min-w-0 flex-col overflow-hidden bg-bg-page outline-none" onFocusCapture={() => {
         focusedPane.current = paneId;

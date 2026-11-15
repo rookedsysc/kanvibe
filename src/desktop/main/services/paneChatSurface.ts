@@ -2,6 +2,7 @@ import { Terminal as HeadlessTerminal } from "@xterm/headless";
 import { stripVTControlCharacters } from "node:util";
 import { SessionType, type KanbanTask } from "@/entities/KanbanTask";
 import { execGit } from "@/lib/gitOperations";
+import { isCodexEmptyComposer } from "@/lib/aiSessions/paneChatCodexDisplay";
 import { listLocalTerminalTabs, readLocalTerminalTabSnapshot, readTaskTerminalAttachment, getHerdrTaskActivePaneId, getHerdrTaskSurfaceBounds } from "@/lib/terminal";
 import { listHerdrMirrorPanes, runHerdrCommand } from "@/lib/herdr";
 import { buildTmuxCapturePaneCommand, buildTmuxListMirrorPanesCommand, buildZellijDumpPaneCommand, buildZellijListMirrorPanesCommand, buildZellijReadViewportCommand, parseTmuxMirrorPaneList, parseZellijMirrorPaneList } from "@/lib/paneMirror";
@@ -11,6 +12,7 @@ import { getTaskById } from "./kanbanService";
 import { readHerdrPaneFrameForChat } from "./mobileBridgeService";
 
 const PANE_CHAT_PROBE_TIMEOUT_MS = 5_000;
+let nextObservation = 0;
 
 export interface PaneChatSurface {
   task: KanbanTask;
@@ -19,9 +21,15 @@ export interface PaneChatSurface {
   screen: string;
   inputLine: string | null;
   cursorColumn: number | null;
+  cursorRow?: number | null;
+  viewportLines?: string[];
+  viewportColumns?: number | null;
+  inputIsPlaceholder?: boolean;
+  observation?: number;
 }
 
 export async function readPaneChatSurface(taskId: string, requestedPaneId?: string, capture = true): Promise<PaneChatSurface | null> {
+  const observation = capture ? ++nextObservation : undefined;
   const task = await getTaskById(taskId);
   if (!task?.sessionType || !task.sessionName) return null;
   const run = (command: string) => execGit(command, task.sshHost, { timeoutMs: PANE_CHAT_PROBE_TIMEOUT_MS });
@@ -33,7 +41,7 @@ export async function readPaneChatSurface(taskId: string, requestedPaneId?: stri
     const tab = requestedPaneId ? tabs.find((entry) => entry.id === requestedPaneId) : tabs.find((entry) => entry.isActive);
     if (!tab) return null;
     const snapshot = readLocalTerminalTabSnapshot(taskId, tab.id);
-    return snapshot ? { task, paneId: tab.id, rootPid: snapshot.pid, screen: capture ? stripVTControlCharacters(snapshot.screen) : "", inputLine: snapshot.inputLine, cursorColumn: snapshot.cursorColumn } : null;
+    return snapshot ? { task, paneId: tab.id, rootPid: snapshot.pid, screen: capture ? stripVTControlCharacters(snapshot.screen) : "", inputLine: snapshot.inputLine, cursorColumn: snapshot.cursorColumn, ...(capture ? { cursorRow: snapshot.cursorRow, viewportLines: snapshot.viewportLines, viewportColumns: snapshot.viewportColumns, inputIsPlaceholder: snapshot.inputIsPlaceholder, observation } : {}) } : null;
   }
 
   if (task.sessionType === SessionType.TMUX) {
@@ -57,13 +65,26 @@ export async function readPaneChatSurface(taskId: string, requestedPaneId?: stri
     if (!pane || !Number.isSafeInteger(Number(pane[1])) || Number(pane[1]) < 1) return null;
     let inputLine: string | null = null;
     let cursorColumn: number | null = null;
+    let cursorRow: number | null = null;
+    let viewportLines: string[] | undefined;
+    let viewportColumns: number | null = null;
+    let inputIsPlaceholder = false;
     if (capture) {
-      const cursorAndScreen = await run(`tmux display-message -p -t ${quoteForPosixShell(pane[0])} '#{cursor_x}\t#{cursor_y}' && tmux capture-pane -p -t ${quoteForPosixShell(pane[0])}`);
+      const cursorAndScreen = await run(`tmux display-message -p -t ${quoteForPosixShell(pane[0])} '#{cursor_x}\t#{cursor_y}\t#{pane_width}\t#{pane_height}' \\; capture-pane -ep -t ${quoteForPosixShell(pane[0])}`);
       const [cursor, ...lines] = cursorAndScreen.split("\n");
-      const [column, row] = cursor.split("\t").map(Number);
-      if (Number.isInteger(column) && Number.isInteger(row)) { cursorColumn = column; inputLine = lines[row] ?? null; }
+      const [column, row, width, height] = cursor.split("\t").map(Number);
+      viewportLines = lines.slice(0, Number.isInteger(height) && height > 0 ? height : undefined).map(stripVTControlCharacters);
+      if (Number.isInteger(column) && Number.isInteger(row) && row >= 0 && row < lines.length) { cursorColumn = column; cursorRow = row; inputLine = viewportLines[row] ?? null; }
+      if (Number.isInteger(width) && width > 0 && Number.isInteger(height) && height > 0 && Number.isInteger(row) && row >= 0 && row < height && Number.isInteger(column) && column >= 0 && column < width) {
+        viewportColumns = width;
+        const terminal = new HeadlessTerminal({ cols: width, rows: height, allowProposedApi: true });
+        try {
+          await new Promise<void>((resolve) => terminal.write(lines.slice(0, height).join("\r\n"), resolve));
+          inputIsPlaceholder = isCodexEmptyComposer(terminal.buffer.active.getLine(terminal.buffer.active.baseY + row), column);
+        } finally { terminal.dispose(); }
+      }
     }
-    return { task, paneId: pane[0], rootPid: Number(pane[1]), screen: capture ? stripVTControlCharacters(await run(buildTmuxCapturePaneCommand(pane[0]))) : "", inputLine, cursorColumn };
+    return { task, paneId: pane[0], rootPid: Number(pane[1]), screen: capture ? stripVTControlCharacters(await run(buildTmuxCapturePaneCommand(pane[0]))) : "", inputLine, cursorColumn, ...(capture ? { cursorRow, viewportLines, viewportColumns, inputIsPlaceholder, observation } : {}) };
   }
 
   if (task.sessionType === SessionType.HERDR) {
@@ -80,8 +101,9 @@ export async function readPaneChatSurface(taskId: string, requestedPaneId?: stri
     try {
       await new Promise<void>((resolve) => terminal.write(frame.output, resolve));
       const buffer = terminal.buffer.active;
+      const viewportLines = Array.from({ length: terminal.rows }, (_, row) => buffer.getLine(buffer.baseY + row)?.translateToString(true) ?? "");
       return { ...surface, inputLine: buffer.getLine(buffer.baseY + buffer.cursorY)?.translateToString(true) ?? null, cursorColumn: buffer.cursorX,
-        screen: Array.from({ length: terminal.rows }, (_, row) => buffer.getLine(buffer.baseY + row)?.translateToString(true) ?? "").join("\n").trimEnd() };
+        cursorRow: buffer.cursorY, viewportLines, viewportColumns: terminal.cols, inputIsPlaceholder: isCodexEmptyComposer(buffer.getLine(buffer.baseY + buffer.cursorY), buffer.cursorX), observation, screen: viewportLines.join("\n").trimEnd() };
     } finally { terminal.dispose(); }
   }
 

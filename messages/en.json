@@ -439,6 +439,7 @@
   },
   "taskDetail": {
     "paneChat": {
+      "attachmentTargetChanged": "The connection target was renewed. Retry to attach this file again.",
       "searchSkills": "Search skills…",
       "attachFiles": "Files",
       "attachPhotos": "Photos",
@@ -477,6 +478,9 @@
       "right": "Right",
       "screen": "Current CLI screen",
       "noAgent": "No supported CLI is running in this pane. Start Claude, Codex, or another supported CLI in the terminal, then return to chat.",
+      "transcriptUnavailable": "This CLI conversation is unavailable.",
+      "transcriptIdentityMissing": "The conversation displayed by this CLI could not be verified. Continue in the same terminal or retry.",
+      "transcriptReadFailed": "The transcript could not be read. Retry or continue in the same terminal.",
       "transcriptPending": "Showing the current CLI screen while connecting the conversation.",
       "connected": "Connected to the same pane",
       "modelHelp": "This is your CLI's selection menu. Use the arrows and confirm your selection. Continue confirming or cancel if the CLI asks another question.",

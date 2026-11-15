@@ -238,3 +238,41 @@ describe("pane chat composer", () => {
     expect(actions.stagePaneChatAttachment).not.toHaveBeenCalled();
   });
 });
+
+it("preserves a conversation draft after lease renewal and requires attachments to be restaged", async () => {
+  const first = chat("execution-a");
+  Object.assign(first.snapshot!, { conversationKey: "scoped-conversation-a" });
+  const view = open(first);
+  edit("Keep my draft after reconnect");
+  select([file()]);
+  await waitFor(() => expect(actions.stagePaneChatAttachment).toHaveBeenCalledTimes(1));
+  await screen.findByText("notes.txt");
+  const renewed = chat("execution-b");
+  Object.assign(renewed.snapshot!, { conversationKey: "scoped-conversation-a" });
+  view.switchTo(renewed);
+  expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe("Keep my draft after reconnect");
+  await screen.findByRole("button", { name: "retryAttachment notes.txt" });
+  expect((screen.getByRole("button", { name: "send" }) as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(screen.getByRole("button", { name: "retryAttachment notes.txt" }));
+  await waitFor(() => expect(actions.stagePaneChatAttachment).toHaveBeenLastCalledWith("task", "execution-b", expect.objectContaining({ name: "notes.txt" })));
+});
+
+
+it("ignores an old upload failure arriving after the renewed target restaged the file", async () => {
+  let rejectOld!: (error: Error) => void;
+  actions.stagePaneChatAttachment.mockReturnValueOnce(new Promise((_resolve, reject) => { rejectOld = reject; }));
+  const first = chat("old-execution");
+  Object.assign(first.snapshot!, { conversationKey: "same-scoped-conversation" });
+  const view = open(first);
+  edit("Retain this draft");
+  select([file()]);
+  await waitFor(() => expect(actions.stagePaneChatAttachment).toHaveBeenCalledTimes(1));
+  const renewed = chat("renewed-execution");
+  Object.assign(renewed.snapshot!, { conversationKey: "same-scoped-conversation" });
+  view.switchTo(renewed);
+  fireEvent.click(await screen.findByRole("button", { name: "retryAttachment notes.txt" }));
+  await waitFor(() => expect((screen.getByRole("button", { name: "send" }) as HTMLButtonElement).disabled).toBe(false));
+  await act(async () => rejectOld(new Error("Old execution upload failed")));
+  expect(screen.queryByText("Old execution upload failed")).toBeNull();
+  expect((screen.getByRole("button", { name: "send" }) as HTMLButtonElement).disabled).toBe(false);
+});

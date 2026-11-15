@@ -3655,7 +3655,7 @@ describe("TaskDetailRoute", () => {
     expect(disclosures[0].open).toBe(false);
   });
 
-  it("pane 전환 버튼과 양쪽 단축키는 터미널에 전달하고 dock은 기록을 연다", async () => {
+  it("양쪽 pane 단축키는 터미널에 전달하고 dock은 기록을 연다", async () => {
     let shortcut: (() => void) | undefined;
     window.kanvibeDesktop = { isDesktop: true, onTerminalToggleChatShortcut: (listener: () => void) => { shortcut = listener; return () => { shortcut = undefined; }; } };
     mocks.getSidebarDefaultCollapsed.mockResolvedValue(true);
@@ -3664,17 +3664,17 @@ describe("TaskDetailRoute", () => {
     window.addEventListener("kanvibe:toggle-pane-chat", toggle);
     try {
       render(<BoardCommandProvider><TaskDetailRoute /></BoardCommandProvider>);
-      fireEvent.click(await screen.findByTestId("pane-chat-toggle"));
-      expect(toggle).toHaveBeenCalledTimes(1);
+      await screen.findByLabelText("terminal input");
+      expect(screen.queryByTestId("pane-chat-toggle")).toBeNull();
       fireEvent.keyDown(window, { key: "J", ctrlKey: true, shiftKey: true });
-      expect(toggle).toHaveBeenCalledTimes(2);
+      expect(toggle).toHaveBeenCalledTimes(1);
       act(() => shortcut?.());
-      expect(toggle).toHaveBeenCalledTimes(3);
+      expect(toggle).toHaveBeenCalledTimes(2);
       expect(screen.getByLabelText("terminal input")).toBeTruthy();
       fireEvent.click(screen.getByRole("button", { name: "aiSessions.inlineChat" }));
       expect(await screen.findByTestId("inline-ai-chat")).toBeTruthy();
       act(() => shortcut?.());
-      expect(toggle).toHaveBeenCalledTimes(3);
+      expect(toggle).toHaveBeenCalledTimes(2);
     } finally {
       window.removeEventListener("kanvibe:toggle-pane-chat", toggle);
     }

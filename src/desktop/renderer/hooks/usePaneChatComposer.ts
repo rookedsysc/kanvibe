@@ -42,7 +42,7 @@ function readAttachment(file: File): Promise<string> {
 }
 
 export function usePaneChatComposer(taskId: string, snapshot: PaneChatSnapshot | null, send: (text: string, ids?: string[], requestId?: string) => Promise<boolean>) {
-  const key = `${taskId}:${snapshot?.targetToken ?? "unavailable"}`;
+  const key = JSON.stringify([taskId, snapshot?.conversationKey ?? snapshot?.targetToken ?? "unavailable"]);
   const drafts = useRef<Record<string, Draft>>({});
   const [, render] = useState(0);
   const mounted = useRef(true);
@@ -61,6 +61,17 @@ export function usePaneChatComposer(taskId: string, snapshot: PaneChatSnapshot |
   }
   const draft = read();
 
+  const targetToken = snapshot?.targetToken;
+  useEffect(() => {
+    const previous = drafts.current[key];
+    if (!targetToken || !previous?.owner || previous.owner.targetToken === targetToken || previous.sending) return;
+    void discardDraftAttachments(previous);
+    drafts.current[key] = { ...previous, owner: { taskId, targetToken }, request: undefined,
+      attachments: previous.attachments.map((item) => ({ ...item, staged: undefined, status: "failed", error: "attachmentTargetChanged" })),
+    };
+    render((value) => value + 1);
+  }, [key, taskId, targetToken, draft.sending]);
+
   async function upload(target: string, token: string, item: PendingAttachment) {
     update(target, (value) => ({ ...value, attachments: value.attachments.map((entry) => entry.localId === item.localId ? { ...entry, status: "uploading", error: undefined } : entry) }));
     try {
@@ -71,7 +82,7 @@ export function usePaneChatComposer(taskId: string, snapshot: PaneChatSnapshot |
         return;
       }
       const staged = await actions.stagePaneChatAttachment(taskId, token, { name: item.file.name, mimeType: item.file.type || "application/octet-stream", dataUrl });
-      if (!mounted.current) {
+      if (!mounted.current || read(target).owner?.targetToken !== token) {
         await discardAttachment({ taskId, targetToken: token }, staged.id);
         return;
       }
@@ -82,6 +93,7 @@ export function usePaneChatComposer(taskId: string, snapshot: PaneChatSnapshot |
         update(target, (value) => ({ ...value, attachments: value.attachments.filter((entry) => entry.localId !== item.localId) }));
       }
     } catch (error) {
+      if (!mounted.current || read(target).owner?.targetToken !== token) return;
       update(target, (value) => ({ ...value, attachments: value.attachments.map((entry) => entry.localId === item.localId ? { ...entry, status: entry.staged ? "ready" : "failed", error: error instanceof Error ? error.message : "Upload failed" } : entry) }));
     }
   }

@@ -127,3 +127,12 @@ describe("AiChatFilePreview", () => {
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
   });
 });
+
+
+it("previews a TeX equation as a formula and retains its exact source", async () => {
+  respondWith(String.raw`\documentclass{article}\begin{document}\begin{equation}E=mc^2\end{equation}\end{document}`);
+  const { container } = render(<AiChatFilePreview taskId="task-1" filePath="formula.tex" onClose={() => {}} />);
+  await waitFor(() => expect(container.querySelector("math")).not.toBeNull());
+  fireEvent.click(screen.getByRole("button", { name: "source" }));
+  expect(screen.getByTestId("ai-chat-file-source").textContent).toContain("\\begin{equation}E=mc^2");
+});

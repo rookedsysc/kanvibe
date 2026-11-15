@@ -4,6 +4,8 @@ export interface PaneChatProcess {
   pid: number;
   processStartTime: string;
   provider: PaneChatProvider;
+  /** 명시된 Unix app-server 주소. 다른 종류의 --remote 주소이면 null이며 기본 소켓으로 대체하지 않는다 */
+  codexServerSocket?: string | null;
 }
 
 interface ProcessRow {
@@ -75,5 +77,8 @@ export function findPaneChatProcess(output: string, rootPid: number): PaneChatPr
     if (candidates.length !== 2 || !wrapper || !native || (!knownWrapper && !knownNative)) return null;
     row = native;
   }
-  return { pid: row.pid, processStartTime: row.processStartTime, provider: detectProvider(row)! };
+  const provider = detectProvider(row)!;
+  const remote = provider === "codex" ? row.args.match(/(?:^|\s)--remote(?:=|\s+)(\S+)/)?.[1] : undefined;
+  const codexServerSocket = remote?.startsWith("unix:///") ? remote.slice("unix://".length) : null;
+  return { pid: row.pid, processStartTime: row.processStartTime, provider, ...(remote ? { codexServerSocket } : {}) };
 }

@@ -111,6 +111,18 @@ describe("pane chat visible layout", () => {
 });
 
 describe("pane chat surface ownership", () => {
+  it("captures the tmux cursor, viewport width and native placeholder style together", async () => {
+    let dim = true;
+    mocks.exec.mockImplementation(async (command: string) => {
+      if (command.startsWith("tmux list-panes")) return "%3\t300\t1\t1";
+      if (command.includes("#{cursor_x}")) return `2\t0\t80\t4\n› ${dim ? "\x1b[2m" : ""}Ask Codex to do anything\x1b[0m\n\n  footer\n\n`;
+      return "visible screen";
+    });
+    expect(await readPaneChatSurface("task", "%3")).toMatchObject({ cursorRow: 0, cursorColumn: 2, viewportColumns: 80, inputIsPlaceholder: true, inputLine: "› Ask Codex to do anything", viewportLines: ["› Ask Codex to do anything", "", "  footer", ""] });
+    dim = false;
+    expect(await readPaneChatSurface("task", "%3")).toMatchObject({ inputIsPlaceholder: false, inputLine: "› Ask Codex to do anything" });
+  });
+
   it("selects the focused pane in the active tmux window instead of the first pane", async () => {
     mocks.exec.mockImplementation(withAttachedClient((command) => command.startsWith("tmux list-panes") ? "%1\t100\t0\t1\n%2\t200\t1\t0\n%3\t300\t1\t1" : "exact pane screen"));
     expect(await readPaneChatSurface("task")).toMatchObject({ paneId: "%3", rootPid: 300, screen: "exact pane screen" });

@@ -106,20 +106,13 @@ describe("current pane chat", () => {
     expect(actions.sendPaneChatPrompt).toHaveBeenCalledTimes(1);
   });
 
-  it("drives the actual model picker and keeps the composer disabled while it is open", async () => {
-    open();
+  it("opens the same terminal for an unsupported native model dialog", async () => {
+    const view = open();
     await screen.findByText("Exact pane response");
     fireEvent.click(screen.getByRole("button", { name: "model" }));
-    await screen.findByTestId("pane-chat-controls");
+    await waitFor(() => expect(view.onTerminal).toHaveBeenCalledTimes(1));
     expect(actions.openPaneChatModelPicker).toHaveBeenCalledWith("task-1", "process-a");
-    fireEvent.change(screen.getByRole("textbox"), { target: { value: "Must not become a model choice" } });
-    expect((screen.getByRole("button", { name: "send" }) as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.click(screen.getByRole("button", { name: "down" }));
-    await waitFor(() => expect(actions.sendPaneChatKey).toHaveBeenCalledWith("task-1", "process-a", "down"));
-    await waitFor(() => expect((screen.getByRole("button", { name: "confirm" }) as HTMLButtonElement).disabled).toBe(false));
-    fireEvent.click(screen.getByRole("button", { name: "confirm" }));
-    await waitFor(() => expect(actions.sendPaneChatKey).toHaveBeenCalledWith("task-1", "process-a", "enter"));
-    expect(actions.sendPaneChatPrompt).not.toHaveBeenCalled();
+    expect(actions.sendPaneChatKey).not.toHaveBeenCalled();
   });
 
   it("isolates drafts when the focused process changes and restores the original draft on return", async () => {
@@ -137,15 +130,14 @@ describe("current pane chat", () => {
     expect(actions.sendPaneChatPrompt).not.toHaveBeenCalled();
   });
 
-  it("preserves a terminal draft and offers controls while the CLI is occupied", async () => {
+  it("preserves a terminal draft without generic controls while the CLI is occupied", async () => {
     actions.getPaneChatSnapshot.mockResolvedValue({ ...snapshot(), inputState: "occupied" });
     open();
     await screen.findByText("inputOccupied");
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "Do not append this" } });
     expect((screen.getByRole("button", { name: "send" }) as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByRole("button", { name: "model" }) as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.click(screen.getByRole("button", { name: "controls" }));
-    await screen.findByTestId("pane-chat-controls");
+    expect(screen.queryByRole("button", { name: "controls" })).toBeNull();
     expect(actions.sendPaneChatPrompt).not.toHaveBeenCalled();
   });
 
@@ -181,10 +173,34 @@ describe("current pane chat", () => {
   it("shows the same CLI screen when no exact transcript exists and keeps history separate", async () => {
     actions.getPaneChatSnapshot.mockResolvedValue({ ...snapshot(), transcript: { status: "unavailable", reason: "exact-session-unavailable", sessionId: null, messages: [], nextCursor: null } });
     const view = open();
-    await screen.findByText("transcriptPending");
+    await screen.findByText("transcriptUnavailable");
     expect(screen.getByText("Codex ready")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "history" }));
     expect(view.onHistory).toHaveBeenCalledTimes(1);
     expect(actions.sendPaneChatPrompt).not.toHaveBeenCalled();
   });
+});
+
+
+it("shows recoverable unavailable without a permanent CLI controller", async () => {
+  actions.getPaneChatSnapshot.mockResolvedValue({ ...snapshot(), canSend: false, targetToken: null, reason: "exact-session-unavailable", transcript: { status: "unavailable", reason: "exact-session-unavailable", sessionId: null, messages: [], nextCursor: null } });
+  const view = open();
+  await screen.findByText("transcriptUnavailable");
+  expect(screen.queryByRole("button", { name: "controls" })).toBeNull();
+  expect(screen.queryByText("transcriptPending")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "retry" }));
+  await waitFor(() => expect(actions.getPaneChatSnapshot).toHaveBeenCalledTimes(2));
+  fireEvent.click(screen.getAllByRole("button", { name: "terminal" })[0]);
+  expect(view.onTerminal).toHaveBeenCalled();
+});
+
+
+it("bounds unavailable polling and allows an explicit retry", async () => {
+  vi.useFakeTimers();
+  actions.getPaneChatSnapshot.mockResolvedValue({ ...snapshot(), canSend: false, targetToken: null, transcript: { status: "unavailable", reason: "exact-session-unavailable", sessionId: null, messages: [], nextCursor: null } });
+  await act(async () => { open(); });
+  await act(async () => { await vi.advanceTimersByTimeAsync(10000); });
+  expect(actions.getPaneChatSnapshot).toHaveBeenCalledTimes(3);
+  await act(async () => fireEvent.click(screen.getByRole("button", { name: "retry" })));
+  expect(actions.getPaneChatSnapshot).toHaveBeenCalledTimes(4);
 });

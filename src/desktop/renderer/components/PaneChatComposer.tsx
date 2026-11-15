@@ -9,13 +9,11 @@ const SUGGESTION_DEBOUNCE_MS = 180;
 const controlClass = "min-h-10 shrink-0 rounded-md px-2 text-xs text-text-secondary hover:bg-bg-page focus-visible:outline-2 focus-visible:outline-brand-primary disabled:opacity-40";
 interface Completion { kind: PaneChatSuggestionKind; query: string; start: number; end: number }
 
-export function PaneChatComposer({ taskId, chat, controlsOpen, isVisible, onModel, onControls }: {
+export function PaneChatComposer({ taskId, chat, isVisible, onModel }: {
   taskId: string;
   chat: ReturnType<typeof usePaneChat>;
-  controlsOpen: boolean;
   isVisible: boolean;
   onModel: () => void;
-  onControls: () => void;
 }) {
   const t = useTranslations("taskDetail.paneChat");
   const composer = usePaneChatComposer(taskId, chat.snapshot, chat.send);
@@ -39,7 +37,7 @@ export function PaneChatComposer({ taskId, chat, controlsOpen, isVisible, onMode
   const token = /(?:^|\s)([$/@])([^\s]*)$/.exec(composer.text.slice(0, caret));
   const completion: Completion | null = skillPicker ? { kind: "skill", query: skillQuery, start: caret, end: caret } : token ? { kind: token[1] === "$" ? "skill" : token[1] === "/" ? "command" : "file", query: token[2], start: caret - token[2].length - 1, end: caret } : null;
   const supported = completion?.kind === "file" ? capabilities?.fileMentions : capabilities?.skills;
-  const completionKey = completion && supported && isVisible && canEdit && !controlsOpen ? JSON.stringify([taskId, target, composer.text, caret, skillPicker, completion.kind, completion.query]) : null;
+  const completionKey = completion && supported && isVisible && canEdit ? JSON.stringify([taskId, target, composer.text, caret, skillPicker, completion.kind, completion.query]) : null;
   const showSuggestions = !!completionKey && completionKey !== dismissed;
   const currentSuggestions = suggestions?.key === completionKey ? suggestions : null;
 
@@ -53,8 +51,8 @@ export function PaneChatComposer({ taskId, chat, controlsOpen, isVisible, onMode
 
   useEffect(() => {
     const pane = textarea.current?.closest("[data-pane-chat-id]");
-    if (isVisible && canEdit && !controlsOpen && pane?.contains(document.activeElement)) textarea.current?.focus();
-  }, [isVisible, canEdit, controlsOpen, target]);
+    if (isVisible && canEdit && pane?.contains(document.activeElement)) textarea.current?.focus();
+  }, [isVisible, canEdit, target]);
 
   const kind = completion?.kind;
   const query = completion?.query;
@@ -91,7 +89,7 @@ export function PaneChatComposer({ taskId, chat, controlsOpen, isVisible, onMode
     requestAnimationFrame(() => { textarea.current?.focus(); textarea.current?.setSelectionRange(position, position); });
   }
   function submit() {
-    if (disabled || controlsOpen || !inputReady) return;
+    if (disabled || !inputReady) return;
     setSkillPicker(false);
     setDismissed(completionKey);
     void composer.submit();
@@ -128,7 +126,7 @@ export function PaneChatComposer({ taskId, chat, controlsOpen, isVisible, onMode
             <div className="min-w-0"><p className="max-w-44 truncate text-xs text-text-primary" title={item.file.name}>{item.file.name}</p>
               <p className="text-xs text-text-secondary">{Math.ceil(item.file.size / 1024)} KB</p>
               {item.status === "uploading" || item.status === "removing" ? <p role="status" className="text-xs text-text-secondary">{t(item.status === "uploading" ? "uploading" : "removingAttachment")}</p> : null}
-              {item.error ? <p role="alert" className="max-w-56 text-xs text-status-error">{item.error === "attachmentTooLarge" ? t("attachmentTooLarge") : item.error}</p> : null}
+              {item.error ? <p role="alert" className="max-w-56 text-xs text-status-error">{item.error === "attachmentTooLarge" || item.error === "attachmentTargetChanged" ? t(item.error) : item.error}</p> : null}
             </div>
             {item.status === "failed" && item.error !== "attachmentTooLarge" ? <button type="button" aria-label={`${t("retryAttachment")} ${item.file.name}`} disabled={!canEdit} onClick={() => composer.retry(item.localId)} className={controlClass}>{t("retryAttachment")}</button> : null}
             <button type="button" aria-label={`${t("removeAttachment")} ${item.file.name}`} disabled={!canEdit || item.status === "removing" || composer.sending} onClick={() => void composer.remove(item.localId)} className={controlClass}>×</button>
@@ -169,11 +167,10 @@ export function PaneChatComposer({ taskId, chat, controlsOpen, isVisible, onMode
         <div data-testid="pane-chat-composer-tools" className="mt-1 flex flex-wrap items-center gap-1">
           <button type="button" disabled={!canEdit || !capabilities?.attachments} onClick={() => fileInput.current?.click()} className={controlClass}>{t("attachFiles")}</button>
           <button type="button" disabled={!canEdit || !capabilities?.attachments} onClick={() => photoInput.current?.click()} className={controlClass}>{t("attachPhotos")}</button>
-          <button type="button" aria-expanded={showSuggestions && completion?.kind === "skill"} disabled={!canEdit || !capabilities?.skills || controlsOpen} onClick={() => { setSkillPicker((value) => !value); setSkillQuery(""); setDismissed(null); }} className={controlClass}>{t("skills")}</button>
-          <button type="button" disabled={disabled || !chat.snapshot?.modelPicker.supported || !inputReady || controlsOpen} onClick={onModel} className={controlClass}>{t("model")}</button>
-          <button type="button" disabled={disabled} aria-expanded={controlsOpen} onClick={onControls} className={controlClass}>{t("controls")}</button>
+          <button type="button" aria-expanded={showSuggestions && completion?.kind === "skill"} disabled={!canEdit || !capabilities?.skills} onClick={() => { setSkillPicker((value) => !value); setSkillQuery(""); setDismissed(null); }} className={controlClass}>{t("skills")}</button>
+          <button type="button" disabled={disabled || !chat.snapshot?.modelPicker.supported || !inputReady} onClick={onModel} className={controlClass}>{t("model")}</button>
           <button type="button" disabled={disabled} onClick={() => void chat.interrupt()} className={controlClass}>{t("stop")}</button>
-          <button type="submit" disabled={disabled || composer.sending || hasPending || (!composer.text.trim() && !composer.attachments.length) || controlsOpen || !inputReady} aria-label={composer.sending ? t("sending") : t("send")} className="ml-auto flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-primary text-base font-medium text-white hover:bg-brand-active focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary disabled:opacity-40"><span aria-hidden="true">{composer.sending ? "…" : "↑"}</span></button>
+          <button type="submit" disabled={disabled || composer.sending || hasPending || (!composer.text.trim() && !composer.attachments.length) || !inputReady} aria-label={composer.sending ? t("sending") : t("send")} className="ml-auto flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-primary text-base font-medium text-white hover:bg-brand-active focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary disabled:opacity-40"><span aria-hidden="true">{composer.sending ? "…" : "↑"}</span></button>
         </div>
       </div>
     </form>

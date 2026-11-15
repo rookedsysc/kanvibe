@@ -4,12 +4,14 @@ import { SessionType } from "@/entities/KanbanTask";
 import { execGit } from "@/lib/gitOperations";
 import { focusHerdrTaskPane, listLocalTerminalTabs } from "@/lib/terminal";
 import { quoteForPosixShell } from "@/lib/worktree";
-import { getHomeDirectory, readTextFile } from "@/lib/hostFileAccess";
+import { getHomeDirectory, pathExists, readTextFile } from "@/lib/hostFileAccess";
 import { MAX_ATTACHMENT_BYTES } from "@/lib/attachmentContent";
 import { readJsonLinesHead, readJsonLinesTail } from "@/lib/aiSessions/shared";
 import { buildPaneChatModelCommand, buildPaneChatModelSettings, parseCodexModelCatalog, parsePaneChatModelSettingChange, readClaudeModelState, readCodexModelState, type PaneChatModelOption, type PaneChatModelSettings } from "@/lib/aiSessions/paneChatModelSettings";
 import { readClaudeSessionDetail } from "@/lib/aiSessions/readClaudeSessions";
-import { readCodexSessionDetail } from "@/lib/aiSessions/readCodexSessions";
+import { findCodexMainThreadRollout, readCodexSessionDetail } from "@/lib/aiSessions/readCodexSessions";
+import { CODEX_THREAD_FOOTER_COMMAND, expectCodexComposerTexts, isCodexMainComposerReady, isCodexThreadFooterSupported, isSameComposerText, readCodexDisplay } from "@/lib/aiSessions/paneChatCodexDisplay";
+import { readCodexEmptyThread } from "@/lib/aiSessions/codexThreadMetadata";
 import { findPaneChatProcess, type PaneChatProcess } from "@/lib/aiSessions/paneChatProcess";
 import { findPaneChatSessionBinding } from "@/lib/aiSessions/paneChatSessionBindings";
 import { MAX_PANE_CHAT_ATTACHMENTS, type PaneChatActionResult, type PaneChatAttachment, type PaneChatAttachmentInput, type PaneChatKey, type PaneChatLayout, type PaneChatSnapshot, type PaneChatSuggestionKind, type PaneChatSuggestions } from "@/desktop/shared/paneChat";
@@ -40,11 +42,95 @@ interface TargetLease {
   paneId: string;
   identity: string;
   process: PaneChatProcess;
+  conversation: string | null;
   expiresAt: number;
 }
 const leases = new Map<string, TargetLease>();
 const mutations = new Map<string, Promise<unknown>>();
 const receipts = new Map<string, Map<string, { fingerprint: string; result: Promise<PaneChatActionResult> }>>();
+interface CodexDisplayExecution {
+  observedThread: string | null;
+  revision: number;
+  attempts: number;
+  reason: string;
+  observation: number;
+}
+const codexDisplays = new Map<string, Promise<CodexDisplayExecution | null>>();
+
+async function codexDisplayExecution(surface: PaneChatSurface, process: PaneChatProcess): Promise<CodexDisplayExecution | null> {
+  if (process.provider !== "codex" || surface.task.sessionType === SessionType.ZELLIJ) return null;
+  const identity = identityFor(surface, process);
+  let state = codexDisplays.get(identity);
+  if (!state) {
+    state = (async () => {
+      try {
+        const output = await execGit(`lsof -a -p ${process.pid} -d txt -Fn`, surface.task.sshHost, { timeoutMs: PROCESS_PROBE_TIMEOUT_MS });
+        const binaries = [...new Set(output.split("\n").filter((line) => line.startsWith("n/") && line.endsWith("/codex")).map((line) => line.slice(1)))];
+        if (binaries.length !== 1) return null;
+        const version = await execGit(`${quoteForPosixShell(binaries[0])} --version`, surface.task.sshHost, { timeoutMs: PROCESS_PROBE_TIMEOUT_MS });
+        return isCodexThreadFooterSupported(version) ? { observedThread: null, revision: 0, attempts: 0, reason: "codex-thread-unconfirmed", observation: 0 } : null;
+      } catch { return null; }
+    })();
+    if (codexDisplays.size >= MAX_TARGET_LEASES) codexDisplays.delete(codexDisplays.keys().next().value!);
+    codexDisplays.set(identity, state);
+  }
+  return state;
+}
+function codexDisplay(surface: PaneChatSurface) {
+  return surface.viewportLines && Number.isInteger(surface.cursorRow) ? readCodexDisplay(surface.viewportLines, surface.cursorRow!, surface.inputIsPlaceholder === true) : null;
+}
+function observeCodexThread(state: CodexDisplayExecution, id: string | null, observation?: number): void {
+  if (observation !== undefined && observation < state.observation && id !== state.observedThread) throw changedTargetError();
+  state.observation = Math.max(state.observation, observation ?? state.observation);
+  if (state.observedThread === id) return;
+  state.observedThread = id;
+  state.revision++;
+  if (id) state.attempts = 0;
+}
+
+async function sameExecutionSurface(taskId: string, paneId: string, identity: string): Promise<PaneChatSurface> {
+  const surface = await readPaneChatSurface(taskId, paneId);
+  const process = surface ? await inspectProcess(surface) : null;
+  if (!surface || !process || identityFor(surface, process) !== identity) throw changedTargetError();
+  return surface;
+}
+
+async function ensureCodexFooter(surface: PaneChatSurface, process: PaneChatProcess): Promise<PaneChatSurface> {
+  const state = await codexDisplayExecution(surface, process);
+  if (!state || codexDisplay(surface)?.threadId || mutations.has(surface.task.id)) return surface;
+  const { task, paneId } = surface;
+  const identity = identityFor(surface, process);
+  await queueMutation(task.id, async () => {
+    let current = await sameExecutionSurface(task.id, paneId, identity);
+    if (codexDisplay(current)?.threadId) return;
+    observeCodexThread(state, null, current.observation);
+    if (readInputState(current, process, true) !== "ready" || !codexDisplay(current)) {
+      state.reason = "codex-thread-input-busy";
+      return;
+    }
+    if (state.attempts >= 2) { state.reason = "codex-thread-unconfirmed"; return; }
+    state.attempts++;
+    let echoed = "";
+    for (const character of CODEX_THREAD_FOOTER_COMMAND) {
+      current = await sameExecutionSurface(task.id, paneId, identity);
+      const text = codexDisplay(current)?.composerText;
+      if (text === undefined || (echoed ? !isSameComposerText(text, echoed, current.viewportColumns ?? undefined) : readInputState(current, process, true) !== "ready")) throw inputError("Codex 입력란이 변경되어 대화 표시 명령을 중단했습니다. 터미널에서 확인해 주세요.");
+      await writeToPane(task.id, paneId, character);
+      echoed += character;
+      await delay(PICKER_CHARACTER_DELAY_MS);
+    }
+    current = await sameExecutionSurface(task.id, paneId, identity);
+    if (!isSameComposerText(codexDisplay(current)?.composerText ?? "", echoed, current.viewportColumns ?? undefined)) throw inputError("Codex 표시 명령의 입력을 확인하지 못했습니다.");
+    await writeToPane(task.id, paneId, "\r");
+    for (let read = 0; read < 20; read++) {
+      current = await sameExecutionSurface(task.id, paneId, identity);
+      if (codexDisplay(current)?.threadId) return;
+      await delay(50);
+    }
+    state.reason = "codex-thread-unconfirmed";
+  });
+  return sameExecutionSurface(task.id, paneId, identity);
+}
 
 function inputError(message: string): Error {
   return Object.assign(new Error(message), { name: "PaneChatInputError" });
@@ -53,18 +139,26 @@ function changedTargetError(): Error {
   return Object.assign(new Error("CLI 대상이 변경되었습니다. 현재 pane을 다시 확인해 주세요."), { name: "PaneChatTargetChangedError" });
 }
 function identityFor(surface: PaneChatSurface, process: PaneChatProcess): string {
-  return JSON.stringify([surface.task.id, surface.task.sshHost, surface.task.sessionType, surface.task.sessionName, surface.paneId, surface.rootPid, process.provider, process.pid, process.processStartTime]);
+  return JSON.stringify([surface.task.id, surface.task.sshHost, surface.task.sessionType, surface.task.sessionName, surface.task.worktreePath, surface.task.project?.repoPath, surface.paneId, surface.rootPid, process.provider, process.pid, process.processStartTime, process.codexServerSocket]);
 }
 async function inspectProcess(surface: PaneChatSurface): Promise<PaneChatProcess | null> {
   if (!surface.rootPid) return null;
   return findPaneChatProcess(await execGit(PROCESS_TABLE_COMMAND, surface.task.sshHost, { timeoutMs: PROCESS_PROBE_TIMEOUT_MS }), surface.rootPid);
 }
-function leaseTarget(surface: PaneChatSurface, process: PaneChatProcess, requestedPaneId?: string): string {
+function retireChangedLeases(taskId: string, paneId: string, identity: string, conversation: string | null): void {
+  for (const [token, lease] of leases) {
+    if (lease.taskId === taskId && lease.paneId === paneId && (lease.identity !== identity || lease.conversation !== conversation)) {
+      leases.delete(token);
+      receipts.delete(token);
+    }
+  }
+}
+function leaseTarget(surface: PaneChatSurface, process: PaneChatProcess, requestedPaneId: string | undefined, conversation: string | null): string {
   const now = Date.now();
   const identity = identityFor(surface, process);
   for (const [token, lease] of leases) {
     if (lease.expiresAt < now) { leases.delete(token); receipts.delete(token); }
-    else if (lease.identity === identity && lease.requestedPaneId === requestedPaneId) {
+    else if (lease.identity === identity && lease.requestedPaneId === requestedPaneId && lease.conversation === conversation) {
       lease.expiresAt = now + TARGET_LEASE_TTL_MS;
       return token;
     }
@@ -75,11 +169,17 @@ function leaseTarget(surface: PaneChatSurface, process: PaneChatProcess, request
     receipts.delete(oldest);
   }
   const token = randomUUID();
-  leases.set(token, { taskId: surface.task.id, requestedPaneId, paneId: surface.paneId, identity, process, expiresAt: now + TARGET_LEASE_TTL_MS });
+  leases.set(token, { taskId: surface.task.id, requestedPaneId, paneId: surface.paneId, identity, process, conversation, expiresAt: now + TARGET_LEASE_TTL_MS });
   return token;
 }
-function readInputState(surface: PaneChatSurface, process: PaneChatProcess): PaneChatSnapshot["inputState"] {
+function readInputState(surface: PaneChatSurface, process: PaneChatProcess, verifyCodexEmpty = false): PaneChatSnapshot["inputState"] {
   if (surface.inputLine === null || surface.cursorColumn === null) return "unknown";
+  if (process.provider === "codex") {
+    const text = codexDisplay(surface)?.composerText;
+    if (verifyCodexEmpty && surface.inputIsPlaceholder === true && surface.cursorColumn === 2 && surface.inputLine.startsWith("› ") && surface.viewportLines && isCodexMainComposerReady(surface.viewportLines, surface.cursorRow ?? -1)) return "ready";
+    if (text !== undefined && text !== "" && text !== "Ask Codex to do anything") return "occupied";
+    if (verifyCodexEmpty && (text === "" || text === "Ask Codex to do anything")) return "occupied";
+  }
   const marker = process.provider === "claude" ? "❯" : process.provider === "codex" ? "›" : null;
   if (!marker) return "unknown";
   const line = surface.inputLine;
@@ -92,7 +192,7 @@ function readInputState(surface: PaneChatSurface, process: PaneChatProcess): Pan
 async function requireReadyInput(taskId: string, token: string): Promise<void> {
   const lease = await assertTarget(taskId, token);
   const surface = await readPaneChatSurface(taskId, lease.requestedPaneId);
-  if (!surface || readInputState(surface, lease.process) !== "ready") throw inputError("CLI 입력란이 비어 있지 않거나 선택 화면이 열려 있습니다. 터미널에서 현재 상태를 확인해 주세요.");
+  if (!surface || readInputState(surface, lease.process, !!await codexDisplayExecution(surface, lease.process)) !== "ready") throw inputError("CLI 입력란이 비어 있지 않거나 선택 화면이 열려 있습니다. 터미널에서 현재 상태를 확인해 주세요.");
 }
 
 function emptyTranscript(reason: string): PaneChatSnapshot["transcript"] {
@@ -103,11 +203,26 @@ interface ReadTranscript {
   /** 대화를 읽어 온 JSONL 파일. 연결하지 못했으면 null이다 */
   sourceRef: string | null;
 }
-async function readTranscript(surface: PaneChatSurface, process: PaneChatProcess): Promise<ReadTranscript> {
-  const unavailable = (reason: string): ReadTranscript => ({ transcript: emptyTranscript(reason), sourceRef: null });
-  if (process.provider !== "claude" && process.provider !== "codex") return unavailable("provider-transcript-unavailable");
+async function resolveConversation(surface: PaneChatSurface, process: PaneChatProcess): Promise<{ sessionId: string; sourceRef: string; revision?: number; pending?: boolean } | null> {
+  if (process.provider !== "claude" && process.provider !== "codex") return null;
   const { task } = surface;
-  let binding = await findPaneChatSessionBinding({ taskId: task.id, sshHost: task.sshHost, provider: process.provider, providerPid: process.pid, processStartTime: process.processStartTime });
+  const displayed = await codexDisplayExecution(surface, process);
+  if (displayed) {
+    const id = codexDisplay(surface)?.threadId;
+    if (!id || (displayed.observedThread !== id && readInputState(surface, process, true) !== "ready")) {
+      observeCodexThread(displayed, null, surface.observation);
+      if (readInputState(surface, process, true) !== "ready") displayed.reason = "codex-thread-input-busy";
+      return null;
+    }
+    const context = { worktreePath: task.worktreePath ?? task.project?.repoPath ?? null, repoPath: task.project?.repoPath ?? null, sshHost: task.sshHost };
+    let sourceRef = await findCodexMainThreadRollout(context, id);
+    const pending = !sourceRef;
+    sourceRef ??= await readCodexEmptyThread(context, id, process.codexServerSocket);
+    if (!sourceRef) { observeCodexThread(displayed, null, surface.observation); displayed.reason = "codex-thread-record-missing"; return null; }
+    observeCodexThread(displayed, id, surface.observation);
+    return { sessionId: id, sourceRef, revision: displayed.revision, ...(pending ? { pending: true } : {}) };
+  }
+  let binding: { sessionId: string; sourceRef: string; revision?: number } | null = await findPaneChatSessionBinding({ taskId: task.id, sshHost: task.sshHost, provider: process.provider, providerPid: process.pid, processStartTime: process.processStartTime });
   if (!binding) {
     try {
       const output = await execGit(`lsof -a -p ${process.pid} -Fn`, task.sshHost, { timeoutMs: PROCESS_PROBE_TIMEOUT_MS });
@@ -118,6 +233,8 @@ async function readTranscript(surface: PaneChatSurface, process: PaneChatProcess
       for (const sourceRef of candidates) {
         const records = await readJsonLinesHead(sourceRef, TRANSCRIPT_PAGE_LIMIT, task.sshHost) as { sessionId?: string; type?: string; payload?: { id?: string } }[];
         const sessionId = process.provider === "claude" ? records.find((record) => typeof record.sessionId === "string")?.sessionId : records.find((record) => record.type === "session_meta")?.payload?.id;
+        const meta = records.find((record) => record.type === "session_meta")?.payload as Record<string, unknown> | undefined;
+        if (process.provider === "codex" && meta?.source && typeof meta.source === "object" && "subagent" in meta.source) continue;
         if (sessionId) exactBindings.push({ sessionId, sourceRef });
       }
       if (exactBindings.length === 1) binding = exactBindings[0];
@@ -125,7 +242,16 @@ async function readTranscript(surface: PaneChatSurface, process: PaneChatProcess
       // CLI가 쓰기 사이에 JSONL을 닫을 수 있다. 열린 파일이 없으면 다른 기록을 연결하지 않는다.
     }
   }
+  return binding;
+}
+function conversationIdentity(binding: { sessionId: string; sourceRef: string; revision?: number } | null): string | null {
+  return binding ? JSON.stringify([binding.sessionId, binding.sourceRef, binding.revision ?? null]) : null;
+}
+async function readTranscript(surface: PaneChatSurface, process: PaneChatProcess, binding: { sessionId: string; sourceRef: string; revision?: number; pending?: boolean } | null): Promise<ReadTranscript> {
+  const unavailable = (reason: string): ReadTranscript => ({ transcript: emptyTranscript(reason), sourceRef: null });
+  const { task } = surface;
   if (!binding) return unavailable("exact-session-unavailable");
+  if (binding.pending && !await pathExists(binding.sourceRef, task.sshHost)) return { transcript: { status: "available", reason: null, sessionId: binding.sessionId, messages: [], nextCursor: null }, sourceRef: null };
   const context = { worktreePath: task.worktreePath ?? task.project?.repoPath ?? null, repoPath: task.project?.repoPath ?? null, sshHost: task.sshHost };
   const reader = process.provider === "claude" ? readClaudeSessionDetail : readCodexSessionDetail;
   const detail = await reader(context, binding.sessionId, binding.sourceRef, null, TRANSCRIPT_PAGE_LIMIT);
@@ -212,41 +338,119 @@ export async function readPaneChat(taskId: string, paneId?: string): Promise<Pan
   let process: PaneChatProcess | null;
   try { process = await inspectProcess(surface); } catch { return reading({ ...snapshot, reason: "process-inspection-unavailable" }); }
   if (!process) return reading({ ...snapshot, reason: "no-foreground-ai-cli" });
-  const targetToken = leaseTarget(surface, process, paneId);
+  const displayState = await codexDisplayExecution(surface, process);
+  if (displayState) {
+    try { surface = await ensureCodexFooter(surface, process); }
+    catch (error) { return reading(error instanceof Error && error.name === "PaneChatTargetChangedError" ? { ...disabled, reason: "target-changed" } : { ...snapshot, provider: process.provider, reason: "codex-thread-unconfirmed", transcript: emptyTranscript("codex-thread-unconfirmed") }); }
+    snapshot.screen = surface.screen;
+  }
+  const executionIdentity = identityFor(surface, process);
+  let binding: Awaited<ReturnType<typeof resolveConversation>>;
+  try { binding = await resolveConversation(surface, process); }
+  catch (error) { return reading(error instanceof Error && error.name === "PaneChatTargetChangedError" ? { ...disabled, reason: "target-changed" } : { ...snapshot, provider: process.provider, reason: "transcript-read-failed", transcript: emptyTranscript("transcript-read-failed") }); }
+  const conversation = conversationIdentity(binding);
   let transcript = emptyTranscript("exact-session-unavailable");
   let sourceRef: string | null = null;
-  try { ({ transcript, sourceRef } = await readTranscript(surface, process)); } catch { /* 기록 조회 실패가 별도로 검증한 CLI 입력까지 막지는 않는다. */ }
+  try { ({ transcript, sourceRef } = await readTranscript(surface, process, binding)); } catch { transcript = emptyTranscript("transcript-read-failed"); }
+  if (displayState && !binding) transcript = emptyTranscript(displayState.reason);
   const supportsComposer = process.provider === "claude" || process.provider === "codex";
   let modelSettings: PaneChatModelSettings | undefined;
   if (sourceRef && (process.provider === "claude" || process.provider === "codex")) {
     try { modelSettings = await readModelSettings(process.provider, sourceRef, surface.task.sshHost); } catch { /* 모델 설정을 못 읽어도 대화와 입력은 그대로 쓸 수 있다. */ }
   }
-  return reading({ ...snapshot, provider: process.provider, targetToken, canSend: true, inputState: readInputState(surface, process), reason: null, transcript, modelPicker: { supported: supportsComposer, mode: "native-cli" }, ...(modelSettings ? { modelSettings } : {}), composer: { attachments: supportsComposer, skills: supportsComposer, fileMentions: supportsComposer, maxAttachmentBytes: MAX_ATTACHMENT_BYTES, maxAttachments: MAX_PANE_CHAT_ATTACHMENTS } }, surface.task.sshHost ? null : sourceRef);
+  try {
+    const latest = await readPaneChatSurface(taskId, paneId, !!displayState);
+    const latestProcess = latest ? await inspectProcess(latest) : null;
+    if (!latest || !latestProcess || identityFor(latest, latestProcess) !== executionIdentity
+      || conversationIdentity(await resolveConversation(latest, latestProcess)) !== conversation) return reading({ ...disabled, reason: "target-changed" });
+    if (displayState && binding) {
+      const current = await sameExecutionSurface(taskId, surface.paneId, executionIdentity);
+      const id = codexDisplay(current)?.threadId ?? null;
+      observeCodexThread(displayState, id, current.observation);
+      if (id !== binding?.sessionId || displayState.revision !== binding?.revision) return reading({ ...disabled, reason: "target-changed" });
+      surface = current;
+      snapshot.screen = current.screen;
+    }
+  } catch { return reading({ ...disabled, reason: "target-changed" }); }
+  retireChangedLeases(taskId, surface.paneId, executionIdentity, conversation);
+  const canSend = !supportsComposer || transcript.status === "available";
+  const targetToken = canSend ? leaseTarget(surface, process, paneId, conversation) : null;
+  const conversationKey = binding && canSend ? createHash("sha256").update(JSON.stringify([taskId, surface.task.sshHost, surface.task.sessionType, surface.task.sessionName, surface.task.worktreePath, surface.task.project?.repoPath, surface.paneId, process.provider, binding.sessionId, binding.sourceRef])).digest("hex") : undefined;
+  return reading({ ...snapshot, provider: process.provider, targetToken, canSend, ...(conversationKey ? { conversationKey } : {}), inputState: readInputState(surface, process, !!displayState), reason: canSend ? null : transcript.reason, transcript, modelPicker: { supported: supportsComposer, mode: "native-cli" }, ...(modelSettings ? { modelSettings } : {}), composer: { attachments: supportsComposer, skills: supportsComposer, fileMentions: supportsComposer, maxAttachmentBytes: MAX_ATTACHMENT_BYTES, maxAttachments: MAX_PANE_CHAT_ATTACHMENTS } }, surface.task.sshHost ? null : sourceRef);
 }
 
-async function assertTarget(taskId: string, token: string): Promise<TargetLease> {
+async function assertTarget(taskId: string, token: string, expectedComposer?: string[]): Promise<TargetLease> {
   const lease = leases.get(token);
   if (!lease || lease.taskId !== taskId || lease.expiresAt < Date.now()) throw changedTargetError();
   let surface: PaneChatSurface | null;
   let process: PaneChatProcess | null;
   try {
-    surface = await readPaneChatSurface(taskId, lease.requestedPaneId, false);
+    const display = await codexDisplays.get(lease.identity);
+    surface = await readPaneChatSurface(taskId, lease.requestedPaneId, !!display);
     process = surface ? await inspectProcess(surface) : null;
   } catch { throw changedTargetError(); }
-  if (!surface || !process || identityFor(surface, process) !== lease.identity) throw changedTargetError();
+  if (!surface || !process || identityFor(surface, process) !== lease.identity) {
+    leases.delete(token);
+    throw changedTargetError();
+  }
+  try {
+    const conversation = conversationIdentity(await resolveConversation(surface, process));
+    retireChangedLeases(taskId, surface.paneId, lease.identity, conversation);
+    if (conversation !== lease.conversation) throw changedTargetError();
+  } catch { throw changedTargetError(); }
+  const display = await codexDisplayExecution(surface, process);
+  let composerColumns = surface.viewportColumns ?? undefined;
+  if (display && expectedComposer && surface.task.sessionType === SessionType.HERDR) {
+    // Herdr의 관찰 프레임은 실제 PTY보다 넓게 패딩될 수 있어, 접힌 글을 비교할 때만 원래 PTY 너비를 읽는다.
+    composerColumns = undefined;
+    const echoed = codexDisplay(surface)?.composerText;
+    if (echoed !== undefined && !expectedComposer.some((expected) => isSameComposerText(echoed, expected))) {
+      try {
+        const tty = (await execGit(`ps -p ${process.pid} -o tty=`, surface.task.sshHost, { timeoutMs: PROCESS_PROBE_TIMEOUT_MS })).trim();
+        if (/^(?:pts\/\d+|tty[a-zA-Z0-9]+)$/.test(tty)) {
+          const device = quoteForPosixShell(`/dev/${tty}`);
+          const size = (await execGit(`stty -F ${device} size 2>/dev/null || stty -f ${device} size 2>/dev/null`, surface.task.sshHost, { timeoutMs: PROCESS_PROBE_TIMEOUT_MS })).trim().match(/^\d+\s+(\d+)$/);
+          const columns = Number(size?.[1]);
+          if (Number.isInteger(columns) && columns > 2 && columns <= 500) composerColumns = columns;
+        }
+      } catch { /* 너비가 없으면 줄바꿈을 추정하지 않는다. */ }
+    }
+  }
+  if (display) {
+    surface = await sameExecutionSurface(taskId, lease.paneId, lease.identity);
+    const id = codexDisplay(surface)?.threadId ?? null;
+    observeCodexThread(display, id, surface.observation);
+    const bound = lease.conversation ? JSON.parse(lease.conversation) as [string, string, number] : null;
+    if (!bound || id !== bound[0] || display.revision !== bound[2]) {
+      leases.delete(token);
+      throw changedTargetError();
+    }
+    if (surface.task.sessionType !== SessionType.HERDR) composerColumns = surface.viewportColumns ?? undefined;
+  }
+  if (leases.get(token) !== lease) throw changedTargetError();
+  if (expectedComposer && display) {
+    const echoed = codexDisplay(surface)?.composerText;
+    const expectsEmpty = expectedComposer.includes("") && expectedComposer.includes("Ask Codex to do anything");
+    if ((expectsEmpty && readInputState(surface, process, true) !== "ready") || echoed === undefined || !expectedComposer.some((expected) => isSameComposerText(echoed, expected, composerColumns))) throw inputError("CLI 입력란에서 보낸 내용을 확인하지 못해 제출하지 않았습니다. 터미널에서 확인해 주세요.");
+  }
   return lease;
 }
-async function writeFenced(taskId: string, token: string, bytes: string, onWrite?: () => void): Promise<void> {
-  const lease = await assertTarget(taskId, token);
+async function writeFenced(taskId: string, token: string, bytes: string, onWrite?: () => void, expectedComposer?: string[]): Promise<void> {
+  const lease = await assertTarget(taskId, token, expectedComposer);
+  if (leases.get(token) !== lease) throw changedTargetError();
   onWrite?.();
   await writeToPane(taskId, lease.paneId, bytes);
 }
-async function serializeAction(taskId: string, token: string, action: () => Promise<void>): Promise<PaneChatActionResult> {
+async function queueMutation(taskId: string, action: () => Promise<void>): Promise<void> {
   const previous = mutations.get(taskId) ?? Promise.resolve();
-  const current = previous.catch(() => undefined).then(async () => { await assertTarget(taskId, token); await action(); });
+  const current = previous.catch(() => undefined).then(action);
   mutations.set(taskId, current);
-  try { await current; return { success: true }; }
+  try { await current; }
   finally { if (mutations.get(taskId) === current) mutations.delete(taskId); }
+}
+async function serializeAction(taskId: string, token: string, action: () => Promise<void>): Promise<PaneChatActionResult> {
+  await queueMutation(taskId, async () => { await assertTarget(taskId, token); await action(); });
+  return { success: true };
 }
 /** 이 태스크의 pane에 프롬프트나 명령을 치고 있는 중인지. 그동안의 입력란은 사용자가 아니라 KanVibe가 채운 것이다 */
 export function isPaneChatActionInProgress(taskId: string): boolean {
@@ -312,7 +516,7 @@ export function sendPaneChatPrompt(taskId: string, targetToken: string, text: st
   const previous = requestId ? receipts.get(targetToken)?.get(requestId) : null;
   if (previous) return previous.fingerprint === fingerprint ? previous.result : Promise.reject(inputError("동일한 요청 식별자로 다른 메시지를 보낼 수 없습니다."));
   let writeAttempted = false;
-  const write = (bytes: string) => writeFenced(taskId, targetToken, bytes, () => { writeAttempted = true; });
+  const write = (bytes: string, expectedComposer?: string[]) => writeFenced(taskId, targetToken, bytes, () => { writeAttempted = true; }, expectedComposer);
   const result = serializeAction(taskId, targetToken, async () => {
     await requireReadyInput(taskId, targetToken);
     const lease = await assertTarget(taskId, targetToken);
@@ -325,14 +529,16 @@ export function sendPaneChatPrompt(taskId: string, targetToken: string, text: st
     if (lease.process.provider === "codex" && /(?:^|\s)\$[\w.-]+$/.test(body) && !/\s$/.test(body)) body += " ";
     if (owner) retainPaneChatAttachments(owner, attachmentIds);
     const images = attachments.filter((entry) => entry.kind === "image");
+    let expectedComposer = ["", "Ask Codex to do anything"];
     for (const image of images) {
       const escaped = image.path.replace(/[^a-zA-Z0-9_./@:\-\u0080-\uffff]/g, "\\$&");
-      await write(`\x1b[200~${escaped}\x1b[201~`);
+      await write(`\x1b[200~${escaped}\x1b[201~`, expectedComposer);
+      expectedComposer = expectCodexComposerTexts("", images.indexOf(image) + 1);
+      await delay(IMAGE_ATTACHMENT_SETTLE_MS);
     }
-    if (images.length) await delay(IMAGE_ATTACHMENT_SETTLE_MS);
-    if (body) await write(`\x1b[200~${body}\x1b[201~`);
+    if (body) await write(`\x1b[200~${body}\x1b[201~`, expectedComposer);
     await delay(PROMPT_SUBMIT_DELAY_MS);
-    await write("\r");
+    await write("\r", expectCodexComposerTexts(body, images.length));
   }).catch((error) => {
     if (!writeAttempted && requestId) receipts.get(targetToken)?.delete(requestId);
     if (!writeAttempted || error?.name === "PaneChatTargetChangedError") throw error;
@@ -348,14 +554,22 @@ export function sendPaneChatPrompt(taskId: string, targetToken: string, text: st
 export function interruptPaneChat(taskId: string, targetToken: string): Promise<PaneChatActionResult> {
   return serializeAction(taskId, targetToken, () => writeFenced(taskId, targetToken, "\x03"));
 }
+async function typePaneChatCommand(taskId: string, targetToken: string, command: string): Promise<void> {
+  let echoed = "";
+  for (const character of command) {
+    await writeFenced(taskId, targetToken, character, undefined, echoed ? [echoed] : ["", "Ask Codex to do anything"]);
+    echoed += character;
+    await delay(PICKER_CHARACTER_DELAY_MS);
+  }
+  await delay(PROMPT_SUBMIT_DELAY_MS);
+  await writeFenced(taskId, targetToken, "\r", undefined, [command]);
+}
 export function openPaneChatModelPicker(taskId: string, targetToken: string): Promise<PaneChatActionResult> {
   return serializeAction(taskId, targetToken, async () => {
     const lease = await assertTarget(taskId, targetToken);
     if (lease.process.provider !== "claude" && lease.process.provider !== "codex") throw inputError("이 CLI의 모델 선택기는 지원되지 않습니다.");
     await requireReadyInput(taskId, targetToken);
-    for (const character of "/model") { await writeFenced(taskId, targetToken, character); await delay(PICKER_CHARACTER_DELAY_MS); }
-    await delay(PROMPT_SUBMIT_DELAY_MS);
-    await writeFenced(taskId, targetToken, "\r");
+    await typePaneChatCommand(taskId, targetToken, "/model");
   });
 }
 /**
@@ -374,10 +588,7 @@ export function changePaneChatModelSetting(taskId: string, targetToken: string, 
     const { modelSettings } = (await readPaneChat(taskId, lease.requestedPaneId)).snapshot;
     const command = modelSettings ? buildPaneChatModelCommand(provider, modelSettings, change) : null;
     if (!command) throw inputError("지금은 이 설정을 바꿀 수 없습니다. 터미널에서 현재 상태를 확인해 주세요.");
-    // 여러 글자를 한꺼번에 쓰면 CLI가 붙여넣기로 받아 명령으로 해석하지 않으므로 한 글자씩 친다
-    for (const character of command) { await writeToPane(taskId, lease.paneId, character); await delay(PICKER_CHARACTER_DELAY_MS); }
-    await delay(PROMPT_SUBMIT_DELAY_MS);
-    await writeFenced(taskId, targetToken, "\r");
+    await typePaneChatCommand(taskId, targetToken, command);
   });
 }
 export function sendPaneChatKey(taskId: string, targetToken: string, key: PaneChatKey): Promise<PaneChatActionResult> {

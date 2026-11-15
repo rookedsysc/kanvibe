@@ -10,6 +10,7 @@ import { PaneLayoutType } from "@/entities/PaneLayoutConfig";
 import { execSync } from "child_process";
 import type { WebSocket } from "ws";
 import { Terminal as HeadlessTerminal } from "@xterm/headless";
+import { isCodexEmptyComposer } from "@/lib/aiSessions/paneChatCodexDisplay";
 import { SerializeAddon } from "@xterm/addon-serialize";
 import { buildSSHArgs, getKanvibeSSHConnectionHealthOptions, hasLocalX11Display } from "@/lib/sshConfig";
 import {
@@ -1163,12 +1164,12 @@ export function readTaskTerminalAttachment(taskId: string): { pid: number; sessi
   return entry ? { pid: entry.pty.pid, sessionType: entry.sessionType, sessionName: entry.sessionName } : null;
 }
 
-export function readLocalTerminalTabSnapshot(taskId: string, tabId: string): { pid: number; screen: string; inputLine: string | null; cursorColumn: number | null } | null {
+export function readLocalTerminalTabSnapshot(taskId: string, tabId: string): { pid: number; screen: string; inputLine: string | null; cursorColumn: number | null; cursorRow: number | null; viewportLines: string[]; viewportColumns: number | null; inputIsPlaceholder: boolean } | null {
   const entry = activeTerminals.get(buildTerminalKey(taskId, tabId));
   if (!entry || entry.sessionType !== SessionType.TERMINAL) return null;
   const buffer = entry.screen?.terminal.buffer.active;
-  const screen = buffer ? Array.from({ length: entry.screen!.terminal.rows }, (_, row) => buffer.getLine(buffer.baseY + row)?.translateToString(true) ?? "").join("\n").trimEnd() : "";
-  return { pid: entry.pty.pid, screen, inputLine: buffer?.getLine(buffer.baseY + buffer.cursorY)?.translateToString(true) ?? null, cursorColumn: buffer?.cursorX ?? null };
+  const viewportLines = buffer ? Array.from({ length: entry.screen!.terminal.rows }, (_, row) => buffer.getLine(buffer.baseY + row)?.translateToString(true) ?? "") : [];
+  return { pid: entry.pty.pid, screen: viewportLines.join("\n").trimEnd(), inputLine: buffer?.getLine(buffer.baseY + buffer.cursorY)?.translateToString(true) ?? null, cursorColumn: buffer?.cursorX ?? null, cursorRow: buffer?.cursorY ?? null, viewportLines, viewportColumns: entry.screen?.terminal.cols ?? null, inputIsPlaceholder: !!buffer && isCodexEmptyComposer(buffer.getLine(buffer.baseY + buffer.cursorY), buffer.cursorX) };
 }
 
 /**

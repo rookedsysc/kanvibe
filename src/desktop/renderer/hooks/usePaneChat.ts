@@ -4,6 +4,7 @@ import type { PaneChatActionResult, PaneChatKey, PaneChatSnapshot } from "@/desk
 import { useIsWindowActive } from "./useIsWindowActive";
 
 const POLL_INTERVAL_MS = 1_500;
+const MAX_UNAVAILABLE_READS = 3;
 
 export function usePaneChat(taskId: string, isVisible = true, paneId?: string) {
   const isActive = useIsWindowActive();
@@ -26,6 +27,7 @@ export function usePaneChat(taskId: string, isVisible = true, paneId?: string) {
       return;
     }
     let disposed = false;
+    let unavailableReads = 0;
     let reading: Promise<void> | null = null;
     let timer: ReturnType<typeof setTimeout> | undefined;
     if (current.current?.taskId !== taskId || (paneId !== undefined && current.current?.paneId !== paneId)) {
@@ -40,19 +42,21 @@ export function usePaneChat(taskId: string, isVisible = true, paneId?: string) {
         try {
           const snapshot = await actions.getPaneChatSnapshot(taskId, paneId);
           if (disposed) return;
+          unavailableReads = snapshot.transcript.status === "unavailable" ? unavailableReads + 1 : 0;
           current.current = snapshot;
           setIsReady(paneId === undefined || snapshot.paneId === paneId);
           setResult({ taskId, paneId, snapshot });
           setReadError(false);
         } catch {
           if (!disposed) {
+            unavailableReads++;
             current.current = null;
             setIsReady(false);
             setReadError(true);
           }
         } finally {
           reading = null;
-          if (!disposed && isActive) timer = setTimeout(() => void refresh(), POLL_INTERVAL_MS);
+          if (!disposed && isActive && unavailableReads < MAX_UNAVAILABLE_READS) timer = setTimeout(() => void refresh(), POLL_INTERVAL_MS);
         }
       })();
       return reading;
@@ -74,7 +78,7 @@ export function usePaneChat(taskId: string, isVisible = true, paneId?: string) {
     setActionError(null);
     try {
       const accepted = await action(target.targetToken);
-      return accepted.success;
+      return generation.current === epoch && current.current?.targetToken === target.targetToken && accepted.success;
     } catch (error) {
       if (generation.current === epoch && current.current?.targetToken === target.targetToken) {
         setActionError(error instanceof Error ? error.message : "CLI action failed");
