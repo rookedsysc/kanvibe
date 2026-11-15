@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  syncTaskStatusesFromFiles: vi.fn(),
   syncRegisteredProjectWorktrees: vi.fn(),
   syncActiveTaskPullRequests: vi.fn(),
   syncActiveTaskPulls: vi.fn(),
@@ -11,6 +12,10 @@ const mocks = vi.hoisted(() => ({
   getBackgroundSyncIntervalMs: vi.fn().mockResolvedValue(10 * 60_000),
   registerBackgroundSyncIntervalChangedCallback: vi.fn(),
   registerBackgroundSyncEnabledChangedCallback: vi.fn(),
+}));
+
+vi.mock("@/desktop/main/services/kanvibeTaskStateService", () => ({
+  syncTaskStatusesFromFiles: mocks.syncTaskStatusesFromFiles,
 }));
 
 vi.mock("@/desktop/main/services/projectService", () => ({
@@ -51,13 +56,14 @@ describe("backgroundTaskSyncService", () => {
     const second = service.runBackgroundTaskSyncNow();
     expect(first).toBe(second);
     expect(service.startBackgroundTaskSyncNow()).toMatchObject({ isRunning: true, phase: "worktrees", completedStages: 0 });
-    await Promise.resolve();
+    await flushBackgroundSyncCycle();
     expect(mocks.syncRegisteredProjectWorktrees).toHaveBeenCalledTimes(1);
     finishWorktrees({ worktreeTasks: [], registeredWorktrees: [], hooksSetup: [], errors: [], changed: false });
     await first;
     expect(service.getBackgroundTaskSyncStatus()).toMatchObject({ isRunning: false, phase: "completed", completedStages: 3, reviewNeeded: false });
     expect(mocks.syncActiveTaskPullRequests).toHaveBeenCalledTimes(1);
     expect(mocks.syncActiveTaskPulls).toHaveBeenCalledTimes(1);
+    expect(mocks.syncTaskStatusesFromFiles).toHaveBeenCalledTimes(1);
     await service.runBackgroundTaskSyncNow();
     expect(mocks.syncRegisteredProjectWorktrees).toHaveBeenCalledTimes(2);
   });
@@ -65,6 +71,7 @@ describe("backgroundTaskSyncService", () => {
     vi.resetModules();
     vi.clearAllMocks();
     vi.useFakeTimers();
+    mocks.syncTaskStatusesFromFiles.mockResolvedValue({ changed: false, errors: [] });
     mocks.getBackgroundSyncEnabled.mockResolvedValue(true);
     mocks.getBackgroundSyncIntervalMs.mockResolvedValue(10 * 60_000);
     mocks.syncRegisteredProjectWorktrees.mockResolvedValue({
@@ -82,6 +89,44 @@ describe("backgroundTaskSyncService", () => {
     mocks.syncActiveTaskPulls.mockResolvedValue({
       pulledTasks: [],
     });
+  });
+
+  it("sync로 파일 상태만 교정해도 보드를 갱신하고 일반 상태 조회는 파일을 읽지 않는다", async () => {
+    mocks.syncTaskStatusesFromFiles.mockResolvedValue({ changed: true, errors: [] });
+    const service = await import("@/desktop/main/services/backgroundTaskSyncService");
+
+    service.getBackgroundTaskSyncStatus();
+    expect(mocks.syncTaskStatusesFromFiles).not.toHaveBeenCalled();
+    const result = await service.runBackgroundTaskSyncNow();
+
+    expect(result).toEqual({ boardUpdated: true, reviewNeeded: false });
+    expect(mocks.syncTaskStatusesFromFiles).toHaveBeenCalledTimes(1);
+    expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  it("상태 파일 읽기 실패를 알리고 나머지 sync를 계속한다", async () => {
+    mocks.syncTaskStatusesFromFiles.mockResolvedValue({ changed: false, errors: ["host-a 상태 읽기 실패"] });
+    const { runBackgroundTaskSyncNow } = await import("@/desktop/main/services/backgroundTaskSyncService");
+
+    const result = await runBackgroundTaskSyncNow();
+
+    expect(result.reviewNeeded).toBe(true);
+    expect(mocks.syncActiveTaskPullRequests).toHaveBeenCalledTimes(1);
+    expect(mocks.syncActiveTaskPulls).toHaveBeenCalledTimes(1);
+    expect(mocks.broadcastBackgroundSyncReviewNeeded).toHaveBeenCalledWith(expect.objectContaining({
+      failures: [expect.objectContaining({ reason: "host-a 상태 읽기 실패" })],
+    }));
+  });
+
+  it("상태 동기화 자체가 실패해도 기존 sync 단계는 계속한다", async () => {
+    mocks.syncTaskStatusesFromFiles.mockRejectedValue(new Error("snapshot unavailable"));
+    const { runBackgroundTaskSyncNow } = await import("@/desktop/main/services/backgroundTaskSyncService");
+
+    expect((await runBackgroundTaskSyncNow()).reviewNeeded).toBe(true);
+    expect(mocks.syncRegisteredProjectWorktrees).toHaveBeenCalledTimes(1);
+    expect(mocks.broadcastBackgroundSyncReviewNeeded).toHaveBeenCalledWith(expect.objectContaining({
+      failures: [expect.objectContaining({ reason: "snapshot unavailable" })],
+    }));
   });
 
   it("background sync review 대상이 있으면 통합 review event를 브로드캐스트한다", async () => {
