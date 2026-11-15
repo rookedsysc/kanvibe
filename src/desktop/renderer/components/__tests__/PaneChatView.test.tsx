@@ -277,14 +277,16 @@ it("shows recoverable unavailable without a permanent CLI controller", async () 
 });
 
 
-it("bounds unavailable polling and allows an explicit retry", async () => {
+it("backs off unavailable polling and allows an immediate explicit retry", async () => {
   vi.useFakeTimers();
   actions.getPaneChatSnapshot.mockResolvedValue({ ...snapshot(), canSend: false, targetToken: null, transcript: { status: "unavailable", reason: "exact-session-unavailable", sessionId: null, messages: [], nextCursor: null } });
   await act(async () => { open(); });
-  await act(async () => { await vi.advanceTimersByTimeAsync(10000); });
+  await act(async () => { await vi.advanceTimersByTimeAsync(7000); });
   expect(actions.getPaneChatSnapshot).toHaveBeenCalledTimes(3);
-  await act(async () => fireEvent.click(screen.getByRole("button", { name: "retry" })));
+  await act(async () => { await vi.advanceTimersByTimeAsync(3000); });
   expect(actions.getPaneChatSnapshot).toHaveBeenCalledTimes(4);
+  await act(async () => fireEvent.click(screen.getByRole("button", { name: "retry" })));
+  expect(actions.getPaneChatSnapshot).toHaveBeenCalledTimes(5);
 });
 
 it("터미널 입력 대기는 정확히 안내하고 세 번 이후에도 확인해 입력이 끝나면 자동으로 연결한다", async () => {
