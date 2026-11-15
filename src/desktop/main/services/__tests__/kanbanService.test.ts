@@ -362,6 +362,85 @@ describe("kanbanService.createTask", () => {
     expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(1);
   });
 
+  it.each([null, "remote-host"])("%s 태스크의 hooks와 상태·메타데이터 저장은 함께 진행하고 모두 끝나야 반환한다", async (sshHost) => {
+    mocks.projectRepo.findOneBy.mockResolvedValue({
+      id: "project-1",
+      repoPath: "/workspace/repo",
+      defaultBranch: "main",
+      sshHost,
+    });
+    mocks.createWorktreeWithSession.mockResolvedValue({
+      worktreePath: "/workspace/repo-worktrees/task-1",
+      sessionName: "task-1",
+    });
+    mocks.taskRepo.save.mockImplementation(async (value) => ({ id: "task-1", ...value }));
+    const hooks = Promise.withResolvers<void>();
+    const status = Promise.withResolvers<void>();
+    const metadata = Promise.withResolvers<void>();
+    mocks.installKanvibeHookFiles.mockReturnValue(hooks.promise);
+    mocks.writeTextFile.mockImplementation(async (filePath: string) => {
+      if (filePath.endsWith("/status.json")) await status.promise;
+      if (filePath.endsWith("/task.json")) await metadata.promise;
+    });
+
+    const { createTask } = await import("@/desktop/main/services/kanbanService");
+    let resolved = false;
+    const resultPromise = createTask({
+      title: "생성 대기 개선",
+      branchName: "perf/create",
+      projectId: "project-1",
+      sessionType: "tmux" as never,
+      description: "상태와 함께 저장할 설명",
+      priority: "high" as never,
+    }).then((result) => {
+      resolved = true;
+      return result;
+    });
+
+    try {
+      await vi.waitFor(() => {
+        expect(mocks.installKanvibeHookFiles).toHaveBeenCalled();
+        expect(mocks.writeTextFile).toHaveBeenCalledWith(
+          "/workspace/repo-worktrees/task-1/.kanvibe/status.json",
+          expect.stringContaining('"status": "todo"'),
+          sshHost,
+        );
+        expect(mocks.writeTextFile).toHaveBeenCalledWith(
+          "/workspace/repo-worktrees/task-1/.kanvibe/task.json",
+          expect.stringContaining('"description": "상태와 함께 저장할 설명"'),
+          sshHost,
+        );
+      });
+      expect(resolved).toBe(false);
+      expect(mocks.broadcastBoardUpdate).not.toHaveBeenCalled();
+
+      hooks.resolve();
+      await vi.waitFor(() => expect(mocks.scheduleKanvibeHooksVerification).toHaveBeenCalled());
+      expect(resolved).toBe(false);
+      expect(mocks.broadcastBoardUpdate).not.toHaveBeenCalled();
+
+      status.resolve();
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(resolved).toBe(false);
+      expect(mocks.broadcastBoardUpdate).not.toHaveBeenCalled();
+
+      metadata.resolve();
+      await expect(resultPromise).resolves.toMatchObject({
+        id: "task-1",
+        description: "상태와 함께 저장할 설명",
+        priority: "high",
+        sshHost,
+      });
+      expect(mocks.broadcastBoardUpdate).toHaveBeenCalledTimes(1);
+    } finally {
+      hooks.resolve();
+      status.resolve();
+      metadata.resolve();
+      await resultPromise;
+      mocks.writeTextFile.mockResolvedValue(undefined);
+    }
+  });
+
   it("동기 hooks 설치 실패는 실패 이벤트로 브로드캐스트하고 태스크는 반환한다", async () => {
     // Given
     const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
