@@ -159,7 +159,15 @@ function toCarriedUsageTime(result: AiUsageAccountResult): string | null {
   return result.reason && result.windows.length > 0 ? formatResetTime(result.fetchedAt) : null;
 }
 
-function AccountUsageBlock({ result }: { result: AiUsageAccountResult }) {
+export function AccountUsageBlock({
+  result,
+  showIdentity = true,
+  showManageLink = true,
+}: {
+  result: AiUsageAccountResult;
+  showIdentity?: boolean;
+  showManageLink?: boolean;
+}) {
   const t = useTranslations("taskDetail.aiUsage");
   const showLabel = hasDistinctAccountLabel(result);
   const carriedUsageTime = toCarriedUsageTime(result);
@@ -167,7 +175,7 @@ function AccountUsageBlock({ result }: { result: AiUsageAccountResult }) {
   return (
     <div data-testid="ai-usage-account">
       {/* 어느 계정의 사용량인지와 그 계정의 등급은 한 줄에 붙어야 계정마다 갈라 읽힌다 */}
-      {showLabel || result.planName ? (
+      {showIdentity && (showLabel || result.planName) ? (
         <div className="mb-1 flex items-baseline gap-2">
           {showLabel ? (
             <p
@@ -204,7 +212,7 @@ function AccountUsageBlock({ result }: { result: AiUsageAccountResult }) {
           ) : null}
           <span>{t(`reasons.${result.reason}`)}</span>
           {/* 로그인으로 풀리는 사유는 문구로 끝내지 않는다. 여기서 계정 화면으로 바로 갈 수 있어야 한다 */}
-          {SIGN_IN_FAILURE_REASONS.has(result.reason) ? (
+          {showManageLink && SIGN_IN_FAILURE_REASONS.has(result.reason) ? (
             <Link
               href="/ai-accounts"
               className="ml-1 text-brand-primary hover:underline"
@@ -244,7 +252,7 @@ function ProviderUsageCard({ group }: { group: ProviderAccountGroup }) {
  * 조회 상태 한 줄.
  * 보여줄 값이 있으면 화면을 비우지 않고 위에 갱신 중이라고만 알린다.
  */
-function UsageStatusLine({
+export function UsageStatusLine({
   snapshot,
   isLoading,
   isRefreshing,

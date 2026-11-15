@@ -123,6 +123,19 @@ describe("useAiUsage", () => {
     expect(mockGetAiUsageSnapshot).not.toHaveBeenCalled();
   });
 
+  it("조회 중 들어온 계정 변경 갱신은 현재 조회 뒤 한 번 더 읽는다", async () => {
+    mockGetCachedAiUsageSnapshot.mockResolvedValue(null);
+    const pending = createPendingSnapshot();
+    mockGetAiUsageSnapshot.mockReturnValueOnce(pending.promise).mockResolvedValue(createSnapshot(10));
+    const { result } = renderHook(() => useAiUsage(true));
+    await waitFor(() => expect(result.current.isRefreshing).toBe(true));
+    act(() => { result.current.refresh(); result.current.refresh(); });
+    await act(async () => { pending.resolve(); });
+    await waitFor(() => expect(result.current.snapshot?.accounts[0].windows[0].usedPercent).toBe(10));
+    expect(mockGetAiUsageSnapshot).toHaveBeenCalledTimes(2);
+    expect(result.current.isRefreshing).toBe(false);
+  });
+
   it("새로고침은 캐시 주기와 무관하게 다시 조회한다", async () => {
     mockGetCachedAiUsageSnapshot.mockResolvedValue(null);
     mockGetAiUsageSnapshot.mockResolvedValue(createSnapshot(22));

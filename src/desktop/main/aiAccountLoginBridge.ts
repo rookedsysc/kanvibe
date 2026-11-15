@@ -85,7 +85,11 @@ export async function openAiAccountLogin(
       if (loginSessions.get(sessionKey) === session) {
         loginSessions.delete(sessionKey);
       }
-      session.pty?.kill();
+      try {
+        session.pty?.kill();
+      } catch (cleanupError) {
+        console.warn("[ai-login] PTY cleanup failed:", cleanupError);
+      }
       return {
         ok: false,
         error: error instanceof Error ? error.message : String(error),
@@ -100,7 +104,11 @@ export function writeAiAccountLogin(
   accountRoot: string,
   data: string,
 ): void {
-  loginSessions.get(buildSessionKey(webContentsId, accountRoot))?.pty?.write(data);
+  try {
+    loginSessions.get(buildSessionKey(webContentsId, accountRoot))?.pty?.write(data);
+  } catch (error) {
+    console.warn("[ai-login] PTY write failed:", error);
+  }
 }
 
 export function resizeAiAccountLogin(
@@ -109,7 +117,12 @@ export function resizeAiAccountLogin(
   cols: number,
   rows: number,
 ): void {
-  loginSessions.get(buildSessionKey(webContentsId, accountRoot))?.pty?.resize(cols, rows);
+  // The native fd can close before node-pty delivers onExit; queued IPC must not terminate main.
+  try {
+    loginSessions.get(buildSessionKey(webContentsId, accountRoot))?.pty?.resize(cols, rows);
+  } catch (error) {
+    console.warn("[ai-login] PTY resize failed:", error);
+  }
 }
 
 export function closeAiAccountLogin(webContentsId: number, accountRoot: string): void {
@@ -120,16 +133,18 @@ export function closeAiAccountLogin(webContentsId: number, accountRoot: string):
   }
 
   loginSessions.delete(sessionKey);
-  session.pty?.kill();
+  try {
+    session.pty?.kill();
+  } catch (error) {
+    console.warn("[ai-login] PTY close failed:", error);
+  }
 }
 
 /** 창이 사라지면 그 창이 띄운 로그인 프로세스도 남겨 두지 않는다 */
 export function closeWindowAiAccountLogins(webContentsId: number): void {
   for (const sessionKey of [...loginSessions.keys()]) {
     if (sessionKey.startsWith(`${webContentsId}:`)) {
-      const session = loginSessions.get(sessionKey);
-      loginSessions.delete(sessionKey);
-      session?.pty?.kill();
+      closeAiAccountLogin(webContentsId, sessionKey.slice(`${webContentsId}:`.length));
     }
   }
 }

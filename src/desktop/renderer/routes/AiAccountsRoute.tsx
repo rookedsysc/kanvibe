@@ -2,7 +2,9 @@ import { useCallback, useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import { AiProviderIcon } from "@/components/AiProviderIcon";
 import AiAccountLoginTerminal from "@/desktop/renderer/components/AiAccountLoginTerminal";
-import AiUsagePanel from "@/desktop/renderer/components/AiUsagePanel";
+import { AccountUsageBlock, UsageStatusLine } from "@/desktop/renderer/components/AiUsagePanel";
+import { useAiUsage } from "@/desktop/renderer/hooks/useAiUsage";
+import { SIGN_IN_FAILURE_REASONS } from "@/lib/aiUsage/shared";
 import InlineLoadError from "@/components/InlineLoadError";
 import { Link } from "@/desktop/renderer/navigation";
 import { useTrackedAction } from "@/desktop/renderer/hooks/useTrackedAction";
@@ -12,7 +14,7 @@ import {
   removeAiAccount,
 } from "@/desktop/renderer/actions/aiAccounts";
 import type { AiAccountSummary } from "@/desktop/main/services/aiAccountService";
-import type { AiUsageProvider } from "@/lib/aiUsage/types";
+import type { AiUsageAccountResult, AiUsageProvider } from "@/lib/aiUsage/types";
 
 const AI_USAGE_PROVIDERS: AiUsageProvider[] = ["claude", "codex", "gemini"];
 
@@ -36,6 +38,7 @@ function groupAccountsByProvider(accounts: AiAccountSummary[]): ProviderAccountG
 
 function AccountRow({
   account,
+  usage,
   isLoginOpen,
   isRemoving,
   isRemoveDisabled,
@@ -45,6 +48,7 @@ function AccountRow({
   onRetryRemove,
 }: {
   account: AiAccountSummary;
+  usage?: AiUsageAccountResult;
   isLoginOpen: boolean;
   isRemoving: boolean;
   /** 다른 계정을 지우는 중이면 겹쳐 지우지 않도록 막는다 */
@@ -55,6 +59,8 @@ function AccountRow({
   onRetryRemove: () => void;
 }) {
   const t = useTranslations("aiAccounts");
+  const requiresLogin = !account.isLoggedIn || Boolean(usage?.reason && SIGN_IN_FAILURE_REASONS.has(usage.reason));
+  const planName = usage?.planName ?? account.planName;
 
   return (
     <div
@@ -71,13 +77,13 @@ function AccountRow({
           {account.label}
         </p>
         <p className="mt-0.5 text-[11px] text-text-muted">
-          {account.isLoggedIn ? t("loggedIn") : t("loggedOut")}
+          {requiresLogin ? t("loggedOut") : t("loggedIn")}
         </p>
       </div>
 
-      {account.planName ? (
+      {planName ? (
         <span className="shrink-0 rounded bg-bg-surface px-1.5 py-0.5 text-[10px] uppercase text-text-muted">
-          {account.planName}
+          {planName}
         </span>
       ) : null}
 
@@ -88,7 +94,7 @@ function AccountRow({
         className="shrink-0 rounded-md bg-brand-primary px-2 py-1 text-[11px] text-white transition-colors hover:bg-brand-hover disabled:opacity-50"
         data-testid="ai-account-login"
       >
-        {account.isLoggedIn ? t("relogin") : t("login")}
+        {requiresLogin ? t("login") : t("relogin")}
       </button>
 
       {account.isRemovable ? (
@@ -101,6 +107,12 @@ function AccountRow({
         >
           {isRemoving ? t("removing") : t("remove")}
         </button>
+      ) : null}
+
+      {usage ? (
+        <div className="basis-full">
+          <AccountUsageBlock result={usage} showIdentity={false} showManageLink={false} />
+        </div>
       ) : null}
 
       {removeFailureReason ? (
@@ -149,6 +161,7 @@ function AddAccountForm({
           type="text"
           value={accountName}
           onChange={(event) => setAccountName(event.target.value)}
+          aria-label={t("accountNamePlaceholder")}
           placeholder={t("accountNamePlaceholder")}
           className="min-w-0 flex-1 rounded-md border border-border-default bg-bg-page px-2 py-1 text-xs text-text-primary"
           data-testid="ai-account-name-input"
@@ -181,8 +194,11 @@ function AddAccountForm({
 export default function AiAccountsRoute() {
   const t = useTranslations("aiAccounts");
   const tc = useTranslations("common");
+  const tu = useTranslations("taskDetail.aiUsage");
+  const { refresh: refreshUsage, ...usage } = useAiUsage(true);
   const [accounts, setAccounts] = useState<AiAccountSummary[] | null>(null);
   const [activeLogin, setActiveLogin] = useState<ActiveLoginSession | null>(null);
+  const [loginExitCode, setLoginExitCode] = useState<number | null>(null);
   /** 목록 조회 실패. 계정이 없는 것과 구분해, 빈 목록 대신 사유와 재시도를 보인다 */
   const [loadFailureReason, setLoadFailureReason] = useState<string | null>(null);
   const [removalTargetRoot, setRemovalTargetRoot] = useState<string | null>(null);
@@ -207,14 +223,17 @@ export default function AiAccountsRoute() {
 
   const finishLogin = useCallback(() => {
     setActiveLogin(null);
+    setLoginExitCode(null);
     void loadAccounts();
-  }, [loadAccounts]);
+    refreshUsage();
+  }, [loadAccounts, refreshUsage]);
 
   /** 한 번에 한 계정만 지운다. 실패하면 그 계정 행에 사유와 재시도를 남긴다 */
   const accountRemoval = useTrackedAction(async (account: AiAccountSummary) => {
     setRemovalTargetRoot(account.accountRoot);
     await removeAiAccount(account.provider, account.accountRoot);
     await loadAccounts();
+    refreshUsage();
   });
 
   function removeAccount(account: AiAccountSummary) {
@@ -275,67 +294,92 @@ export default function AiAccountsRoute() {
               </button>
             </div>
             <p className="mb-3 text-xs text-text-muted">{t("loginHint")}</p>
+            {loginExitCode !== null ? (
+              <p role="alert" className="mb-3 text-xs text-status-error">{t("loginFailed", { code: loginExitCode })}</p>
+            ) : null}
             <AiAccountLoginTerminal
               provider={activeLogin.provider}
               accountRoot={activeLogin.accountRoot}
-              onExit={finishLogin}
+              onExit={(exitCode) => {
+                if (exitCode === 0) finishLogin();
+                else setLoginExitCode(exitCode);
+              }}
             />
           </section>
         ) : null}
 
-        <section className="rounded-xl border border-border-default bg-bg-surface p-5">
-          <h2 className="mb-3 text-sm font-semibold text-text-primary">{t("usageSection")}</h2>
-          {/* 구독과 남은 사용량을 한 화면에서 보려면 사용량 패널을 그대로 세우는 편이 낫다 */}
-          <AiUsagePanel isOpen />
+        <section className="space-y-3" data-testid="ai-usage-panel">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold text-text-primary">{t("usageSection")}</h2>
+            <div className="flex items-center gap-3">
+              <UsageStatusLine snapshot={usage.snapshot} isLoading={usage.isLoading} isRefreshing={usage.isRefreshing} />
+              <button
+                type="button"
+                onClick={refreshUsage}
+                disabled={usage.isRefreshing}
+                className="rounded-md border border-border-default px-2 py-1 text-xs text-text-secondary hover:text-text-primary disabled:opacity-50"
+                data-testid="ai-usage-refresh"
+              >
+                {tu("refresh")}
+              </button>
+            </div>
+          </div>
+          {usage.hasFailed ? <p role="alert" className="text-xs text-status-error">{tu("snapshotFailed")}</p> : null}
+
+          {groupAccountsByProvider(accounts).map((group) => (
+            <section
+              key={group.provider}
+              className="rounded-xl border border-border-default bg-bg-surface p-5"
+              data-testid={`ai-accounts-provider-${group.provider}`}
+            >
+              <header className="mb-3 flex items-center gap-2">
+                <AiProviderIcon provider={group.provider} size={16} />
+                <h2 className="text-sm font-semibold capitalize text-text-primary">
+                  {group.provider}
+                </h2>
+              </header>
+
+              {group.accounts.length === 0 ? (
+                <p className="text-xs text-text-muted">{t("noAccounts")}</p>
+              ) : (
+                <div className="space-y-2">
+                  {group.accounts.map((account) => (
+                    <AccountRow
+                      key={account.accountRoot}
+                      account={account}
+                      usage={usage.snapshot?.accounts.find((result) => (
+                        result.provider === account.provider
+                        && (result.accountId === account.accountId || result.accountId === account.cachedAccountId)
+                      ))}
+                      isLoginOpen={activeLogin?.accountRoot === account.accountRoot}
+                      isRemoving={accountRemoval.pendingArgs?.[0].accountRoot === account.accountRoot}
+                      isRemoveDisabled={accountRemoval.isPending}
+                      removeFailureReason={
+                        removalTargetRoot === account.accountRoot ? accountRemoval.error : null
+                      }
+                      onLogin={() => {
+                        setLoginExitCode(null);
+                        setActiveLogin({ provider: account.provider, accountRoot: account.accountRoot });
+                      }}
+                      onRemove={() => removeAccount(account)}
+                      onRetryRemove={() => void accountRemoval.retry()}
+                    />
+                  ))}
+                </div>
+              )}
+
+              <AddAccountForm
+                provider={group.provider}
+                onAdded={(accountRoot) => {
+                  void loadAccounts();
+                  refreshUsage();
+                  setLoginExitCode(null);
+                  setActiveLogin({ provider: group.provider, accountRoot });
+                }}
+              />
+            </section>
+          ))}
         </section>
-
-        {groupAccountsByProvider(accounts).map((group) => (
-          <section
-            key={group.provider}
-            className="rounded-xl border border-border-default bg-bg-surface p-5"
-            data-testid={`ai-accounts-provider-${group.provider}`}
-          >
-            <header className="mb-3 flex items-center gap-2">
-              <AiProviderIcon provider={group.provider} size={16} />
-              <h2 className="text-sm font-semibold capitalize text-text-primary">
-                {group.provider}
-              </h2>
-            </header>
-
-            {group.accounts.length === 0 ? (
-              <p className="text-xs text-text-muted">{t("noAccounts")}</p>
-            ) : (
-              <div className="space-y-2">
-                {group.accounts.map((account) => (
-                  <AccountRow
-                    key={account.accountRoot}
-                    account={account}
-                    isLoginOpen={activeLogin?.accountRoot === account.accountRoot}
-                    isRemoving={accountRemoval.pendingArgs?.[0].accountRoot === account.accountRoot}
-                    isRemoveDisabled={accountRemoval.isPending}
-                    removeFailureReason={
-                      removalTargetRoot === account.accountRoot ? accountRemoval.error : null
-                    }
-                    onLogin={() => setActiveLogin({
-                      provider: account.provider,
-                      accountRoot: account.accountRoot,
-                    })}
-                    onRemove={() => removeAccount(account)}
-                    onRetryRemove={() => void accountRemoval.retry()}
-                  />
-                ))}
-              </div>
-            )}
-
-            <AddAccountForm
-              provider={group.provider}
-              onAdded={(accountRoot) => {
-                void loadAccounts();
-                setActiveLogin({ provider: group.provider, accountRoot });
-              }}
-            />
-          </section>
-        ))}
     </div>
   </div>
 );

@@ -46,6 +46,7 @@ export default function AiAccountLoginTerminal({
 
     const terminal = new XTerm(createTerminalOptions(LOGIN_TERMINAL_FONT_FAMILY));
     let disposed = false;
+    let hasExited = false;
     const cleanups: (() => void)[] = [() => terminal.dispose()];
     const dispose = () => {
       if (disposed) {
@@ -83,6 +84,7 @@ export default function AiAccountLoginTerminal({
         exitCode: number;
       }) => {
         if (isThisSession(event)) {
+          hasExited = true;
           onExitRef.current(event.exitCode);
         }
       });
@@ -113,7 +115,7 @@ export default function AiAccountLoginTerminal({
         terminal.rows,
       );
 
-      if (signal.aborted) {
+      if (signal.aborted || hasExited) {
         return;
       }
       if (!loginReady?.ok) {
@@ -122,12 +124,14 @@ export default function AiAccountLoginTerminal({
       }
 
       terminal.onData((data) => {
+        if (hasExited || disposed) return;
         window.kanvibeDesktop?.writeAiAccountLogin?.(accountRoot, data);
       });
 
       terminal.focus();
 
       const resizeObserver = new ResizeObserver(() => {
+        if (hasExited || disposed) return;
         fitAddon.fit();
         window.kanvibeDesktop?.resizeAiAccountLogin?.(accountRoot, terminal.cols, terminal.rows);
       });

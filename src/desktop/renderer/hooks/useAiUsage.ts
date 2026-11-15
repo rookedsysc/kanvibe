@@ -25,6 +25,7 @@ export function useAiUsage(isOpen: boolean): AiUsageState {
   const lastFetchedAtRef = useRef(0);
   const isFetchingRef = useRef(false);
   const hasRequestedCacheRef = useRef(false);
+  const refreshQueuedRef = useRef(false);
 
   const loadSnapshot = useCallback(async () => {
     if (isFetchingRef.current) {
@@ -34,18 +35,21 @@ export function useAiUsage(isOpen: boolean): AiUsageState {
     isFetchingRef.current = true;
     setIsRefreshing(true);
 
-    try {
-      const nextSnapshot = await getAiUsageSnapshot();
-      setSnapshot(nextSnapshot);
-      setHasFailed(false);
-      lastFetchedAtRef.current = Date.now();
-    } catch {
-      // 조회가 실패해도 보여주던 값은 남긴다. 빈 화면보다 오래된 값이 낫다
-      setHasFailed(true);
-    } finally {
-      isFetchingRef.current = false;
-      setIsRefreshing(false);
-    }
+    do {
+      refreshQueuedRef.current = false;
+      try {
+        const nextSnapshot = await getAiUsageSnapshot();
+        setSnapshot(nextSnapshot);
+        setHasFailed(false);
+        lastFetchedAtRef.current = Date.now();
+      } catch {
+        // 조회가 실패해도 보여주던 값은 남긴다. 빈 화면보다 오래된 값이 낫다
+        setHasFailed(true);
+      }
+    } while (refreshQueuedRef.current);
+
+    isFetchingRef.current = false;
+    setIsRefreshing(false);
   }, []);
 
   const showCachedSnapshot = useCallback(async () => {
@@ -80,6 +84,10 @@ export function useAiUsage(isOpen: boolean): AiUsageState {
   }, [isOpen, loadSnapshot, showCachedSnapshot]);
 
   const refresh = useCallback(() => {
+    if (isFetchingRef.current) {
+      refreshQueuedRef.current = true;
+      return;
+    }
     void loadSnapshot();
   }, [loadSnapshot]);
 

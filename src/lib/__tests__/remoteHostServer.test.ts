@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { chmod, lstat, mkdtemp, readFile, rm, symlink } from "node:fs/promises";
 import { spawn } from "node:child_process";
+import { once } from "node:events";
 import { createHash, randomUUID } from "node:crypto";
 import { builtinModules } from "node:module";
 import { createServer, connect, type Socket } from "node:net";
@@ -197,8 +198,11 @@ describe("standalone host bootstrap", () => {
     const hash = createHash("sha256").update(source).digest("hex");
     // 느린 파일시스템의 부분 쓰기를 실제 loader 프로세스에서 재현한다.
     const slowWrite = `const slowFs=require('node:fs'),write=slowFs.writeFileSync;slowFs.writeFileSync=(fd,text,...args)=>{if(typeof fd==='number'&&typeof text==='string'){const n=Math.floor(text.length/2);write(fd,text.slice(0,n),...args);Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,300);write(fd,text.slice(n),...args);}else write(fd,text,...args);};`;
+    // ready의 PID는 당선된 데몬뿐이다. 아직 기동 중인 후보도 디렉터리 삭제 전에 종료해야 한다.
+    const daemonPids = new Set<number>();
+    const trackDaemonSpawns = `const cp=require('node:child_process'),spawn=cp.spawn;cp.spawn=(...args)=>{const child=spawn(...args);process.stdout.write(JSON.stringify({type:'fixture-daemon',pid:child.pid})+'\\n');return child;};`;
     const peers = Array.from({ length: 8 }, () => {
-      const child = spawn(process.execPath, ["-e", slowWrite + HOST_BOOTSTRAP_LOADER], { stdio: ["pipe", "pipe", "pipe"] });
+      const child = spawn(process.execPath, ["-e", trackDaemonSpawns + slowWrite + HOST_BOOTSTRAP_LOADER], { stdio: ["pipe", "pipe", "pipe"] });
       let stderr = "", lines = Buffer.alloc(0), bridged = false;
       let bootstrapReady!: () => void, resolveReady!: (record: HostRecord) => void, rejectReady!: (error: Error) => void;
       const bootstrapped = new Promise<void>((resolve) => { bootstrapReady = resolve; });
@@ -213,6 +217,7 @@ describe("standalone host bootstrap", () => {
         while ((index = lines.indexOf(10)) >= 0) {
           const record = JSON.parse(lines.subarray(0, index).toString()); lines = lines.subarray(index + 1);
           if (record.type === "bootstrap-ready") bootstrapReady();
+          if (record.type === "fixture-daemon") daemonPids.add(record.pid);
           if (record.type === "bridge-ready") {
             bridged = true; child.stdin.write(encodeHostRecord({ type: "hello", version: 1, namespace, clientId: randomUUID(), role: "desktop", buildHash: hash }));
             if (lines.length) decode(lines); break;
@@ -221,20 +226,24 @@ describe("standalone host bootstrap", () => {
       });
       return { child, bootstrapped, ready };
     });
-    let daemonPid: number | undefined;
     try {
       await Promise.all(peers.map((peer) => peer.bootstrapped));
       peers.forEach((peer) => peer.child.stdin.write(JSON.stringify({ source, hash, namespace }) + "\n"));
       const results = await Promise.allSettled(peers.map((peer) => peer.ready));
       const successes = results.filter((result): result is PromiseFulfilledResult<HostRecord> => result.status === "fulfilled");
-      daemonPid = successes[0]?.value.pid as number | undefined;
       expect(results.map((result) => result.status)).toEqual(Array(8).fill("fulfilled"));
       expect(new Set(successes.map((result) => result.value.instanceId)).size).toBe(1);
       expect(new Set(successes.map((result) => result.value.pid)).size).toBe(1);
+      expect(daemonPids.has(Number(successes[0].value.pid))).toBe(true);
     } finally {
+      const exits = peers.map(({ child }) => child.exitCode !== null || child.signalCode !== null ? Promise.resolve() : once(child, "close"));
       peers.forEach((peer) => { peer.child.stdin.end(); peer.child.kill(); });
-      if (daemonPid) process.kill(daemonPid, "SIGTERM");
-      await waitForHostFixtureExit(daemonPid);
+      await Promise.all(exits);
+      for (const pid of daemonPids) {
+        try { process.kill(pid, "SIGTERM"); }
+        catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error; }
+      }
+      await Promise.all([...daemonPids].map(waitForHostFixtureExit));
       await rm(path.join(homedir(), ".local", "state", "kanvibe", "host", namespace), { recursive: true, force: true });
       await rm(`/tmp/kv-${process.getuid!()}/${namespace}`, { recursive: true, force: true });
       await rm(bundleDirectory, { recursive: true, force: true });
