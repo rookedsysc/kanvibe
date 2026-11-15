@@ -1,0 +1,18 @@
+{
+  "productHead": "3d411caef73cc0113ad8653977e08150b0e23767",
+  "runtimeFingerprint": "b5141b5ef95473862934d0358f7483964de6770c2510606e3d758a61cc1f4e2c",
+  "integratedFingerprint": "575aabb695da449f05d70b975c34830995b2da92d25941bfd6dab1f8f1787f1c",
+  "scopeProof": "Only upstream createTask and its test changed after runtime; chat/provider/mobile source unchanged. Screenshots are original runtime captures, not narrow/wide comparison.",
+  "originals": {
+    "desktop-current-no-cli.png": {
+      "path": "qa-results/roky-harness/desktop-pane-chat-20261114/ui-mobile-20261115/desktop-current-no-cli.png",
+      "sha256": "9c6b790a81a44a9adb951291ba36cdcb27e57369e41ee1be22ed9b32ea098b6d",
+      "bytes": 364355
+    },
+    "android-file-image-reply-no-cli.png": {
+      "path": "qa-results/roky-harness/desktop-pane-chat-20261114/ui-mobile-20261115/attachments-final/test-output/2026-11-15_172909/attachments-final-recording/takeScreenshot/actual-mobile-attachments-no-cli.png",
+      "sha256": "0802870a2aceb6e641ff91837e19b58373605bd9676499a526ea32458634710c",
+      "bytes": 255225
+    }
+  }
+}
