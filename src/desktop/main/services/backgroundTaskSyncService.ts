@@ -1,4 +1,5 @@
 import { syncRegisteredProjectWorktrees, type RegisteredProjectWorktreeSyncResult } from "@/desktop/main/services/projectService";
+import { syncTaskStatusesFromFiles } from "@/desktop/main/services/kanvibeTaskStateService";
 import {
   syncActiveTaskPullRequests,
   syncActiveTaskPulls,
@@ -109,6 +110,12 @@ async function runBackgroundSyncStage<T>(
 }
 
 async function executeBackgroundTaskSyncCycle(): Promise<BackgroundTaskSyncRunResult> {
+  const taskStatusSync = await runBackgroundSyncStage(
+    "task status sync",
+    syncTaskStatusesFromFiles,
+    () => ({ changed: false, errors: [] as string[] }),
+    (reason) => ({ operation: "worktree-sync", target: "task 상태 sync", reason }),
+  );
   const worktreeSync = await runBackgroundSyncStage(
     "worktree sync",
     syncRegisteredProjectWorktrees,
@@ -145,6 +152,12 @@ async function executeBackgroundTaskSyncCycle(): Promise<BackgroundTaskSyncRunRe
   const prSyncResult = prSync.result;
   const pullSyncResult = pullSync.result;
   const failures: BackgroundSyncFailurePayload[] = [
+    ...(taskStatusSync.failure ? [taskStatusSync.failure] : []),
+    ...taskStatusSync.result.errors.map((reason) => ({
+      operation: "worktree-sync" as const,
+      target: "task 상태 sync",
+      reason,
+    })),
     ...(worktreeSync.failure ? [worktreeSync.failure] : []),
     ...worktreeSyncResult.errors.map((reason) => ({
       operation: "worktree-sync" as const,
@@ -171,7 +184,7 @@ async function executeBackgroundTaskSyncCycle(): Promise<BackgroundTaskSyncRunRe
   }
 
   const hasUpdatedPulledTasks = pullSyncResult.pulledTasks.some((task) => task.status === "updated");
-  const boardUpdated = worktreeSyncResult.changed || prSyncResult.updatedTaskIds.length > 0 || hasUpdatedPulledTasks;
+  const boardUpdated = taskStatusSync.result.changed || worktreeSyncResult.changed || prSyncResult.updatedTaskIds.length > 0 || hasUpdatedPulledTasks;
   if (boardUpdated) {
     broadcastBoardUpdate();
   }

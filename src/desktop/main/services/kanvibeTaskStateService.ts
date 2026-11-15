@@ -6,12 +6,15 @@ import { addAiToolPatternsToGitExclude } from "@/lib/gitExclude";
 import { persistProjectPriorityToKanvibeState } from "@/desktop/main/services/kanvibeProjectColorService";
 import type { KanvibeTaskSyncState } from "@/lib/kanvibeProjectState";
 import {
+  getKanvibeTaskStatePath,
+  parseKanvibeTaskState,
   readKanvibeTaskState,
   readKanvibeTaskSyncState,
   writeKanvibeTaskMetadata,
   writeKanvibeTaskSession,
   writeKanvibeTaskStatus,
 } from "@/lib/kanvibeProjectState";
+import { readTextFiles } from "@/lib/hostFileAccess";
 
 type TaskStateTask = Pick<KanbanTask, "id" | "status">;
 
@@ -45,6 +48,45 @@ export async function readPersistedTaskStatusAtPath(
   }
 
   return (await readKanvibeTaskState(repoPath, sshHost))?.status ?? null;
+}
+
+export async function syncTaskStatusesFromFiles(): Promise<{ changed: boolean; errors: string[] }> {
+  const repository = await getTaskRepository();
+  const tasks = await repository.find({
+    relations: ["project"],
+    select: {
+      id: true, status: true, worktreePath: true, sshHost: true, branchName: true, updatedAt: true,
+      project: { repoPath: true, defaultBranch: true, sshHost: true },
+    },
+  });
+  const tasksByHost = new Map<string | null, Array<{ task: KanbanTask; statePath: string }>>();
+  for (const task of tasks) {
+    const repoPath = task.worktreePath || (task.branchName === task.project?.defaultBranch ? task.project?.repoPath : null);
+    if (!repoPath) continue;
+    const sshHost = task.sshHost ?? task.project?.sshHost ?? null;
+    const hostTasks = tasksByHost.get(sshHost) ?? [];
+    hostTasks.push({ task, statePath: getKanvibeTaskStatePath(repoPath, sshHost) });
+    tasksByHost.set(sshHost, hostTasks);
+  }
+
+  const result = { changed: false, errors: [] as string[] };
+  await Promise.all([...tasksByHost].map(async ([sshHost, hostTasks]) => {
+    try {
+      // SSH 인증 큐를 task 수만큼 점유하지 않도록 호스트마다 한 번의 배치 읽기로 가져온다.
+      const paths = [...new Set(hostTasks.map(({ statePath }) => statePath))];
+      const files = await readTextFiles(paths, sshHost);
+      for (const { task, statePath } of hostTasks) {
+        const status = parseKanvibeTaskState(files.get(statePath)?.content ?? "")?.status;
+        if (!status || status === task.status) continue;
+        const updatedAt = Raw((column) => `julianday(${column}) = julianday(:snapshotUpdatedAt)`, { snapshotUpdatedAt: task.updatedAt.toISOString() });
+        const updated = await repository.update({ id: task.id, status: task.status, updatedAt }, { status });
+        result.changed = Boolean(updated.affected) || result.changed;
+      }
+    } catch (error) {
+      result.errors.push(`${sshHost ?? "local"} task 상태 sync 실패: ${getErrorMessage(error)}`);
+    }
+  }));
+  return result;
 }
 
 export async function refreshHostTaskStatuses(sshHosts: ReadonlySet<string>, isCurrent: () => boolean): Promise<void> {
