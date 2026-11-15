@@ -5,7 +5,8 @@ import { useIsWindowActive } from "./useIsWindowActive";
 import type { AggregatedAiMessage } from "@/lib/aiSessions/types";
 
 const POLL_INTERVAL_MS = 1_500;
-const MAX_UNAVAILABLE_READS = 3;
+const UNAVAILABLE_BACKOFF_THRESHOLD = 3;
+const UNAVAILABLE_POLL_INTERVAL_MS = 5_000;
 
 interface PendingMessage {
   id: string;
@@ -70,7 +71,7 @@ export function usePaneChat(taskId: string, isVisible = true, paneId?: string) {
           }
         } finally {
           reading = null;
-          if (!disposed && isActive && unavailableReads < MAX_UNAVAILABLE_READS) timer = setTimeout(() => void refresh(), POLL_INTERVAL_MS);
+          if (!disposed && isActive) timer = setTimeout(() => void refresh(), unavailableReads >= UNAVAILABLE_BACKOFF_THRESHOLD ? UNAVAILABLE_POLL_INTERVAL_MS : POLL_INTERVAL_MS);
         }
       })();
       return reading;
