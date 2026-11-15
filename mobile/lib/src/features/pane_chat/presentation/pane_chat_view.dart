@@ -82,11 +82,10 @@ class _PaneChatViewState extends ConsumerState<PaneChatView> {
       data: (state) {
         final snapshot = state.snapshot;
         final notifier = ref.read(provider.notifier);
-        final showScreen =
-            _showCli ||
-            !snapshot.transcript.available ||
-            snapshot.inputState != PaneChatInputState.ready;
-        final draftKey = '${state.connectionId}:${snapshot.targetToken}';
+        final showScreen = _showCli || !snapshot.transcript.available;
+        final conversationKey =
+            snapshot.conversationKey ?? snapshot.targetToken;
+        final draftKey = '${state.connectionId}:$conversationKey';
         // 현재 모델을 알아야 고를 수 있는 옵션이 정해진다. 모르면 CLI의 선택기를 여는 예전 방식으로 둔다
         final modelSettings = snapshot.modelSettings?.currentModel == null
             ? null
@@ -130,8 +129,8 @@ class _PaneChatViewState extends ConsumerState<PaneChatView> {
                 else if (snapshot.inputState != PaneChatInputState.ready)
                   _PaneChatNotice(
                     text: snapshot.inputState == PaneChatInputState.occupied
-                        ? 'CLI 입력 중 · 아래 방향키와 확인 버튼으로 응답하세요.'
-                        : 'CLI 입력 대기 상태를 확인하고 있습니다. 현재 화면에서 상태를 확인하세요.',
+                        ? 'CLI에서 응답을 기다리고 있습니다. CLI 버튼으로 현재 화면을 확인하세요.'
+                        : 'CLI 입력 상태를 확인하고 있습니다. CLI 버튼으로 현재 화면을 확인하세요.',
                   ),
                 if (!compact)
                   Expanded(
@@ -154,7 +153,7 @@ class _PaneChatViewState extends ConsumerState<PaneChatView> {
                       connectionId: state.connectionId,
                       taskId: widget.target.taskId,
                       paneId: widget.target.paneId,
-                      targetToken: snapshot.targetToken!,
+                      conversationKey: conversationKey!,
                     ),
                     isActive: widget.isActive,
                     showPrompt: snapshot.inputState == PaneChatInputState.ready,
@@ -201,16 +200,11 @@ class _PaneChatViewState extends ConsumerState<PaneChatView> {
                               horizontal: AppSizes.p8,
                             ),
                           ),
-                          onPressed:
-                              snapshot.transcript.available &&
-                                  snapshot.inputState ==
-                                      PaneChatInputState.ready
+                          onPressed: snapshot.transcript.available
                               ? () => setState(() => _showCli = !_showCli)
                               : null,
                           child: Text(
-                            !snapshot.transcript.available ||
-                                    snapshot.inputState !=
-                                        PaneChatInputState.ready
+                            !snapshot.transcript.available
                                 ? '현재 CLI 화면'
                                 : showScreen
                                 ? '대화 보기'

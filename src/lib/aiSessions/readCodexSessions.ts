@@ -90,6 +90,19 @@ export async function readCodexSessionDetail(
   return null;
 }
 
+/** 화면의 전체 ID와 작업 범위가 모두 일치하는 메인 대화만 찾는다. 같은 ID의 복제 기록도 임의로 고르지 않는다 */
+export async function findCodexMainThreadRollout(context: AiSessionReaderContext, threadId: string): Promise<string | null> {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(threadId)) return null;
+  const root = await getCodexSessionsDirectory(context);
+  const files = (await listFilesRecursivelyBySuffix(root, ".jsonl", context.sshHost)).filter((file) => path.basename(file).endsWith(`-${threadId}.jsonl`));
+  const matches: string[] = [];
+  for (const file of files) {
+    const meta = await readCodexSessionMeta(file, context.sshHost);
+    if (meta?.threadId === threadId && !meta.parentThreadId && !meta.isSubagent && determineMatchScope(meta.cwd, context)) matches.push(file);
+  }
+  return matches.length === 1 ? matches[0] : null;
+}
+
 async function parseCodexSessionSummary(filePath: string, context: AiSessionReaderContext): Promise<AggregatedAiSession | null> {
   const meta = await readCodexSessionMeta(filePath, context.sshHost);
   if (!meta || !determineMatchScope(meta.cwd, context)) return null;
@@ -416,6 +429,7 @@ const CODEX_CURRENT_TASK_LENGTH = 80;
 interface CodexThreadMeta {
   threadId: string;
   parentThreadId: string | null;
+  isSubagent: boolean;
   agentNickname: string | null;
   cwd: string | null;
   startedAt: string | null;
@@ -445,6 +459,7 @@ async function readCodexSessionMeta(
     return {
       threadId,
       parentThreadId: typeof meta.parent_thread_id === "string" ? meta.parent_thread_id : null,
+      isSubagent: !!meta.source && typeof meta.source === "object" && "subagent" in meta.source,
       agentNickname: typeof meta.agent_nickname === "string" ? meta.agent_nickname : null,
       cwd: typeof meta.cwd === "string" ? meta.cwd : null,
       startedAt: toIsoString(meta.timestamp),

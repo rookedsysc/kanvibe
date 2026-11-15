@@ -1863,16 +1863,6 @@ function TaskDetailContent({ id }: { id: string }) {
               ) : (
                 <span className="text-xs text-terminal-text font-mono truncate">{state.task.sessionName ?? t("terminal")}</span>
               )}
-              <button
-                type="button"
-                data-testid="pane-chat-toggle"
-                onClick={togglePaneChat}
-                title={`${t("paneChat.toggle")} (${formatShortcutForDisplay(shortcutBindings.terminalToggleChat, shortcutPlatform)})`}
-                aria-label={t("paneChat.toggle")}
-                className="ml-auto flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-terminal-text hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-brand-primary"
-              >
-                <HugeiconsIcon icon={Chatting01Icon} size={18} strokeWidth={1.6} aria-hidden="true" />
-              </button>
               <div>
                 <NotificationCenterButton ref={notificationCenterRef} buttonClassName="text-terminal-text hover:text-white hover:bg-white/10" panelClassName="mt-3" />
               </div>

@@ -1,6 +1,7 @@
 import DOMPurify from "dompurify";
 import hljs from "highlight.js/lib/common";
-import { marked } from "marked";
+import { Marked } from "marked";
+import katex from "katex";
 import { useTranslations } from "next-intl";
 import { type MouseEvent, useEffect, useId, useMemo, useState } from "react";
 
@@ -9,11 +10,29 @@ const MARKDOWN_SANITIZE_CONFIG = {
   ADD_ATTR: ["target", "rel", "loading", "referrerpolicy"],
   FORBID_ATTR: ["style"],
   FORBID_TAGS: ["style"],
-  USE_PROFILES: { html: true },
+  USE_PROFILES: { html: true, mathMl: true },
 };
 const MERMAID_SANITIZE_CONFIG = {
   ADD_ATTR: ["data-testid"],
 };
+const markdownParser = new Marked({
+  extensions: [{
+    name: "latex", level: "inline",
+    start: (source: string) => source.search(/\$|\\[([]/),
+    tokenizer(source: string) {
+      const match = /^(?:\$\$([\s\S]+?)\$\$|\\\[([\s\S]+?)\\\]|\\\(([\s\S]+?)\\\)|\$(?![\s$])([^$\n]+?)\$(?!\d))/.exec(source);
+      if (!match) return;
+      return { type: "latex", raw: match[0], formula: match[1] ?? match[2] ?? match[3] ?? match[4], display: !!(match[1] ?? match[2]) };
+    },
+    renderer(token) {
+      try {
+        return katex.renderToString(token.formula, { output: "mathml", displayMode: token.display, trust: false, strict: "error", throwOnError: true, maxExpand: 100, maxSize: 20 });
+      } catch {
+        return `<code>${String(token.raw).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")}</code>`;
+      }
+    },
+  }],
+});
 const CODE_LANGUAGE_CLASS_PREFIX = "language-";
 const COPY_FEEDBACK_DURATION_MS = 1_500;
 
@@ -119,7 +138,7 @@ function decorateMarkdownElements(html: string, copyLabel: string) {
 }
 
 function renderMarkdownHtml(markdown: string, copyLabel: string) {
-  const rawHtml = marked.parse(markdown, {
+  const rawHtml = markdownParser.parse(markdown, {
     async: false,
     breaks: true,
     gfm: true,

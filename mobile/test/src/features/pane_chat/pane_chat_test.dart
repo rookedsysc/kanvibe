@@ -104,6 +104,76 @@ Future<void> pumpChat(
 }
 
 void main() {
+  testWidgets('같은 대화의 token 갱신과 X-Y-X 뒤에도 원래 초안을 보존한다', (tester) async {
+    var token = 'target-a';
+    var conversation = 'conversation-X';
+    final client = DesktopClient(
+      httpClient: MockClient(
+        (request) async => response({
+          'snapshot': snapshotJson(token: token)
+            ..['conversationKey'] = conversation,
+        }),
+      ),
+    );
+    final container = setup(client);
+    addTearDown(client.close);
+    await pumpChat(tester, container);
+    await tester.enterText(find.byType(TextField), 'captured X draft');
+    token = 'renewed-X';
+    await container.read(paneChatProvider(target).notifier).refresh();
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).controller!.text,
+      'captured X draft',
+    );
+    token = 'target-Y';
+    conversation = 'conversation-Y';
+    await container.read(paneChatProvider(target).notifier).refresh();
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).controller!.text,
+      isEmpty,
+    );
+    await tester.enterText(find.byType(TextField), 'separate Y draft');
+    token = 'returned-X';
+    conversation = 'conversation-X';
+    await container.read(paneChatProvider(target).notifier).refresh();
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).controller!.text,
+      'captured X draft',
+    );
+    await tester.pumpWidget(const SizedBox.shrink());
+    container.dispose();
+    await tester.pump();
+  });
+
+  for (final inputState in ['ready', 'occupied']) {
+    testWidgets('대화 연결 뒤 $inputState 상태에서도 CLI 화면은 명시적으로만 연다', (tester) async {
+      final client = DesktopClient(
+        httpClient: MockClient(
+          (request) async =>
+              response({'snapshot': snapshotJson(inputState: inputState)}),
+        ),
+      );
+      final container = setup(client);
+      addTearDown(client.close);
+      await pumpChat(tester, container);
+      expect(find.text('현재 %19 답변'), findsOneWidget);
+      expect(find.bySemanticsIdentifier('pane-chat-screen'), findsNothing);
+      expect(find.text('› 현재 CLI 화면'), findsNothing);
+      await tester.tap(find.text('CLI'));
+      await tester.pumpAndSettle();
+      expect(find.bySemanticsIdentifier('pane-chat-screen'), findsOneWidget);
+      await tester.tap(find.text('대화 보기'));
+      await tester.pumpAndSettle();
+      expect(find.bySemanticsIdentifier('pane-chat-screen'), findsNothing);
+      await tester.pumpWidget(const SizedBox.shrink());
+      container.dispose();
+      await tester.pump();
+    });
+  }
+
   test('정확한 pane 조회와 prompt·모델·키·중단은 인증과 대상 토큰을 실제 계약대로 보낸다', () async {
     final requests = <http.Request>[];
     final client = DesktopClient(
@@ -551,6 +621,10 @@ void main() {
     ]) {
       tester.view.physicalSize = size;
       await pumpChat(tester, container);
+      if (find.text('CLI').evaluate().isNotEmpty) {
+        await tester.tap(find.text('CLI'));
+        await tester.pumpAndSettle();
+      }
       if (size.height >= 360) expect(find.text('현재 %19 답변'), findsOneWidget);
       final rawScroll = find
           .ancestor(

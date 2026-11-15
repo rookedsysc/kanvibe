@@ -28,7 +28,7 @@ const owner = (
   connectionId: 'a:19746',
   taskId: 'task/1',
   paneId: '%19',
-  targetToken: 'target-a',
+  conversationKey: 'target-a',
 );
 final image = PickedPaneChatAttachment(
   name: '사진.png',
@@ -85,6 +85,41 @@ Future<void> flush() async {
 }
 
 void main() {
+  test('uncertain send keeps operation ID across lease renewal and attachment restaging', () async {
+    var token = 'target-a', serial = 0;
+    final sends = <Map<String, dynamic>>[];
+    final env = await ready((request) async {
+      if (request.method == 'GET') {
+        return fixtures.response({
+          'snapshot': snapshot(token: token)..['conversationKey'] = 'target-a',
+        });
+      }
+      if (request.method == 'DELETE') return ok();
+      if (request.url.pathSegments.last == 'attachments') {
+        return staged('staged-${++serial}');
+      }
+      sends.add(jsonDecode(request.body) as Map<String, dynamic>);
+      return fixtures.response({'error': 'delivery unknown'}, 503);
+    });
+    env.controller.edit('same operation');
+    env.controller.addAttachments([image]);
+    await flush();
+    expect(await env.controller.send(), isFalse);
+    token = 'renewed-X';
+    await env.container
+        .read(paneChatProvider(fixtures.target).notifier)
+        .refresh();
+    await env.controller.setActive(true);
+    await flush();
+    expect(await env.controller.send(), isFalse);
+    expect(sends.length, 2);
+    expect(sends[0]['requestId'], isNotNull);
+    expect(sends[1]['requestId'], sends[0]['requestId']);
+    expect(sends[1]['targetToken'], 'renewed-X');
+    expect(sends[0]['attachmentIds'], ['staged-1']);
+    expect(sends[1]['attachmentIds'], ['staged-2']);
+  });
+
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
@@ -339,7 +374,7 @@ void main() {
       connectionId: 'a:19746',
       taskId: 'task/1',
       paneId: '%19',
-      targetToken: 'target-b',
+      conversationKey: 'target-b',
     );
     final sub = env.container.listen(paneChatComposerProvider(next), (_, _) {});
     addTearDown(sub.close);

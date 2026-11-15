@@ -97,7 +97,7 @@ class PaneChatSubscriptions {
           taskId: event['taskId']?.toString() ?? '',
           paneId: event['paneId']?.toString() ?? '',
         );
-        if (_livePanes.contains(target)) _subscribers[target]?.onEvent(event);
+        _subscribers[target]?.onEvent(event);
     }
   }
 

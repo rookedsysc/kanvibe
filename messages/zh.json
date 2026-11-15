@@ -461,6 +461,10 @@
   },
   "taskDetail": {
     "paneChat": {
+      "attachmentTargetChanged": "连接目标已更新。请重试以上传此附件。",
+      "transcriptUnavailable": "无法确认当前 CLI 的对话。",
+      "transcriptIdentityMissing": "无法验证此 CLI 正在显示的对话 ID。请在同一终端中继续或重试。",
+      "transcriptReadFailed": "无法读取对话记录。请重试或在同一终端中继续。",
       "searchSkills": "搜索技能…",
       "attachFiles": "文件",
       "attachPhotos": "照片",

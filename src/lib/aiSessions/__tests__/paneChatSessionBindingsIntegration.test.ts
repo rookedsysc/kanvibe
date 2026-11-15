@@ -46,7 +46,7 @@ describe("실제 hook 프로세스의 채팅 세션 바인딩", () => {
         await Promise.race([posted, new Promise<never>((_, reject) => setTimeout(() => reject(new Error("hook metadata timeout")), 10_000).unref())]);
         const start = (await execFileAsync("ps", ["-ww", "-p", String(child.pid), "-o", "lstart="])).stdout.trim().replace(/\s+/g, " ");
         mocks.readSessions.mockResolvedValue({ sessions: [{ id: `session-${provider}`, sourceRef: path.join(directory, "admitted.jsonl") }] });
-        expect(await findPaneChatSessionBinding({ taskId: context.taskId, provider, providerPid: child.pid!, processStartTime: start })).toEqual({ sessionId: `session-${provider}`, sourceRef: path.join(directory, "admitted.jsonl") });
+        expect(await findPaneChatSessionBinding({ taskId: context.taskId, provider, providerPid: child.pid!, processStartTime: start })).toMatchObject({ sessionId: `session-${provider}`, sourceRef: path.join(directory, "admitted.jsonl") });
         expect(JSON.parse(await readFile(path.join(directory, ".kanvibe", "status.json"), "utf8"))).toMatchObject({ status: "progress" });
       } finally {
         if (child && child.exitCode === null) {

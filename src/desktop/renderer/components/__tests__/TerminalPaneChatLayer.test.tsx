@@ -122,3 +122,24 @@ describe("pane-local chat layer", () => {
   });
 
 });
+
+
+it("places the toggle at the owning pane and preserves sibling geometry", async () => {
+  open();
+  const button = await screen.findByTestId("pane-chat-toggle");
+  expect(button.getAttribute("aria-label")).toContain("%1");
+  expect(button.parentElement?.style.width).toBe("390px");
+  await act(async () => fireEvent.click(button));
+  expect(screen.getByTestId("chat-%1").parentElement?.style.width).toBe("390px");
+  expect(screen.queryByTestId("chat-%2")).toBeNull();
+});
+
+
+it("pins a clicked toggle to its owner when runtime focus moves before the fresh read", async () => {
+  open();
+  const button = await screen.findByTestId("pane-chat-toggle");
+  actions.getPaneChatLayout.mockResolvedValue({ ...split, activePaneId: "%2" });
+  await act(async () => fireEvent.click(button));
+  expect(screen.getByTestId("chat-%1").getAttribute("data-visible")).toBe("true");
+  expect(screen.queryByTestId("chat-%2")).toBeNull();
+});

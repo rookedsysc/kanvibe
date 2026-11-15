@@ -4,7 +4,7 @@ import { useTranslations } from "next-intl";
 import { readTaskWorkspaceFile } from "@/desktop/renderer/actions/diff";
 import { AiSessionMessageContent } from "./AiSessionMessageContent";
 
-type PreviewKind = "markdown" | "document" | "source";
+type PreviewKind = "markdown" | "latex" | "document" | "source";
 type PreviewMode = "rendered" | "source";
 type FailureReason = "outside-worktree" | "not-found" | "too-large" | "unreadable";
 
@@ -27,6 +27,7 @@ function readFileExtension(filePath: string) {
 
 function resolvePreviewKind(filePath: string): PreviewKind {
   const extension = readFileExtension(filePath);
+  if (extension === "tex" || extension === "latex") return "latex";
   if (MARKDOWN_EXTENSIONS.has(extension)) return "markdown";
   if (DOCUMENT_EXTENSIONS.has(extension)) return "document";
   return "source";
@@ -117,7 +118,7 @@ function FilePreviewPanel({ taskId, filePath, onClose }: AiChatFilePreviewProps)
   const showsRendered = kind !== "source" && mode === "rendered";
 
   return (
-    <aside data-testid="ai-chat-file-preview" aria-label={t("title", { name: fileName })} className="absolute inset-y-0 right-0 z-10 flex w-full max-w-2xl flex-col border-l border-border-default bg-bg-surface shadow-lg">
+    <aside data-testid="ai-chat-file-preview" aria-label={t("title", { name: fileName })} className="absolute inset-y-0 right-0 z-10 flex w-full flex-col border-l border-border-default bg-bg-surface shadow-lg">
       <header className="flex min-h-12 items-center gap-2 border-b border-border-subtle px-3">
         <div className="min-w-0 flex-1">
           <h3 className="truncate text-sm font-medium text-text-primary">{fileName}</h3>
@@ -146,6 +147,11 @@ function FilePreviewPanel({ taskId, filePath, onClose }: AiChatFilePreviewProps)
           </div>
         ) : null}
         {content !== null && showsRendered && kind === "markdown" ? <div className="p-4"><AiSessionMessageContent text={content} /></div> : null}
+        {content !== null && showsRendered && kind === "latex" ? <div className="p-4"><AiSessionMessageContent text={content
+          .replace(/^\s*%.*$/gm, "")
+          .replace(/\\(?:documentclass|usepackage)(?:\[[^\]]*\])?\{[^}]*\}/g, "")
+          .replace(/\\(?:begin|end)\{document\}/g, "")
+          .replace(/\\begin\{(equation\*?|align\*?|gather\*?)\}([\s\S]*?)\\end\{\1\}/g, (_match, environment: string, body: string) => environment.startsWith("align") ? `$$\\begin{aligned}${body}\\end{aligned}$$` : `$$${body}$$`)} /></div> : null}
         {content !== null && showsRendered && kind === "document" ? (
           <iframe
             data-testid="ai-chat-file-document"

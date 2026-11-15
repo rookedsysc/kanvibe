@@ -274,6 +274,15 @@ class _PaneChatComposerState extends ConsumerState<PaneChatComposer> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(
+      paneChatProvider((
+        taskId: widget.target.taskId,
+        paneId: widget.target.paneId,
+      )).select((value) => value.value?.snapshot.targetToken),
+      (previous, next) {
+        if (previous != next) _synchronizeActivity();
+      },
+    );
     final provider = paneChatComposerProvider(widget.target);
     ref.listen(provider.select((value) => value.text), (_, text) {
       if (_input.text == text) return;

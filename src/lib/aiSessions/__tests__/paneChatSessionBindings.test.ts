@@ -31,7 +31,7 @@ describe("pane chat hook session bindings", () => {
   it("binds the exact provider ancestor and refuses another pane, host, task or process incarnation", async () => {
     const registry = await import("../paneChatSessionBindings");
     await registry.recordPaneChatSessionBinding(context, metadata("session-a"));
-    expect(await registry.findPaneChatSessionBinding(query)).toEqual({ sessionId: "session-a", sourceRef: "/home/.claude/projects/a/session-a.jsonl" });
+    expect(await registry.findPaneChatSessionBinding(query)).toMatchObject({ sessionId: "session-a", sourceRef: "/home/.claude/projects/a/session-a.jsonl" });
     expect(await registry.findPaneChatSessionBinding({ ...query, providerPid: 101 })).toBeNull();
     expect(await registry.findPaneChatSessionBinding({ ...query, sshHost: "remote" })).toBeNull();
     expect(await registry.findPaneChatSessionBinding({ ...query, taskId: "task-b" })).toBeNull();
@@ -78,4 +78,31 @@ describe("pane chat hook session bindings", () => {
     await registry.recordPaneChatSessionBinding(context, metadata("session-a", { cwd: "/another/project" }));
     expect(await registry.findPaneChatSessionBinding(query)).toBeNull();
   });
+});
+
+
+it("never records a shared Codex daemon as the owning TUI", async () => {
+  vi.resetModules();
+  mocks.execGit.mockResolvedValue(`100 1 ${started} /usr/local/bin/codex codex app-server --managed-daemon\n300 100 ${started} /bin/bash bash hook.sh`);
+  mocks.codex.mockResolvedValue({ sessions: [{ id: "session-a", sourceRef: "/safe/a.jsonl" }] });
+  const registry = await import("../paneChatSessionBindings");
+  await registry.recordPaneChatSessionBinding(context, { ...metadata("session-a"), provider: "codex" });
+  expect(await registry.findPaneChatSessionBinding({ ...query, provider: "codex" })).toBeNull();
+});
+
+
+it("fences A to B to A even when no consumer queried B", async () => {
+  vi.resetModules();
+  mocks.execGit.mockResolvedValue(processTable);
+  mocks.claude.mockResolvedValue({ sessions: [{ id: "session-a", sourceRef: "/safe/a.jsonl" }, { id: "session-b", sourceRef: "/safe/b.jsonl" }] });
+  const registry = await import("../paneChatSessionBindings");
+  await registry.recordPaneChatSessionBinding(context, metadata("session-a"));
+  const first = await registry.findPaneChatSessionBinding(query);
+  await registry.recordPaneChatSessionBinding(context, metadata("session-a"));
+  expect((await registry.findPaneChatSessionBinding(query))?.revision).toBe(first?.revision);
+  await registry.recordPaneChatSessionBinding(context, metadata("session-b"));
+  await registry.recordPaneChatSessionBinding(context, metadata("session-a"));
+  const returned = await registry.findPaneChatSessionBinding(query);
+  expect(returned?.sessionId).toBe(first?.sessionId);
+  expect(returned?.revision).not.toBe(first?.revision);
 });

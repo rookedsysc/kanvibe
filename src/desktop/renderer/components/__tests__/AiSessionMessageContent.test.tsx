@@ -71,3 +71,10 @@ describe("AiSessionMessageContent", () => {
     expect(screen.getByText("안전한 문단").getAttribute("style")).toBeNull();
   });
 });
+
+
+it("renders LaTeX as MathML while keeping code literal", () => {
+  const { container } = render(<AiSessionMessageContent text={'Formula $E=mc^2$ and \\[\\frac{a}{b}\\] plus `$literal$`'} />);
+  expect(container.querySelectorAll("math").length).toBe(2);
+  expect(container.querySelector("code")?.textContent).toContain("$literal$");
+});

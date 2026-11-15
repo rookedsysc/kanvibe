@@ -19,6 +19,8 @@ interface SessionBinding {
   provider: ChatProvider;
   sessionId: string;
   recordedAt: number;
+  observation: number;
+  revision: number;
   sourceRef?: string;
 }
 interface ProcessRow { pid: number; parentPid: number; startTime: string; command: string; args: string }
@@ -29,6 +31,7 @@ const MAX_HOOK_BASE64_LENGTH = 96 * 1_024;
 const MAX_ANCESTRY_DEPTH = 32;
 const PROCESS_PROBE_TIMEOUT_MS = 3_000;
 const bindings = new Map<string, SessionBinding>();
+let observationSequence = 0;
 
 function bindingKey(query: BindingQuery): string {
   return JSON.stringify([query.taskId, query.sshHost ?? "", query.provider, query.providerPid, query.processStartTime.trim().replace(/\s+/g, " ")]);
@@ -47,7 +50,11 @@ function findProviderAncestor(output: string, hookPid: number, provider: ChatPro
     visited.add(pid);
     const row = processes.get(pid);
     if (!row) return null;
-    if (isPaneChatProviderProcess(row.command, row.args, provider)) return row;
+    if (isPaneChatProviderProcess(row.command, row.args, provider)) {
+      // 공유 서버의 hook은 최초 클라이언트 환경을 물려받으므로 pane 소유권을 증명하지 못한다.
+      if (provider === "codex" && /(?:^|\s)(?:app-server|--managed-daemon)(?:\s|$)/.test(row.args)) return null;
+      return row;
+    }
     pid = row.parentPid;
   }
   return null;
@@ -55,6 +62,7 @@ function findProviderAncestor(output: string, hookPid: number, provider: ChatPro
 
 /** 대화 ID는 hook에서 받고, 실행 ID는 실제 에이전트 조상 프로세스에서만 얻는다. */
 export async function recordPaneChatSessionBinding(context: BindingContext, metadata: unknown): Promise<void> {
+  const observation = ++observationSequence;
   if (!metadata || typeof metadata !== "object") return;
   const input = metadata as Record<string, unknown>;
   if ((input.provider !== "claude" && input.provider !== "codex")
@@ -75,8 +83,9 @@ export async function recordPaneChatSessionBinding(context: BindingContext, meta
     }
     const key = bindingKey({ taskId: context.taskId, sshHost: context.sshHost, provider: input.provider, providerPid: process.pid, processStartTime: process.startTime });
     const previous = bindings.get(key);
+    if (previous && previous.observation > observation) return;
     bindings.delete(key);
-    bindings.set(key, { context: { ...context }, provider: input.provider, sessionId: payload.session_id, recordedAt: now,
+    bindings.set(key, { context: { ...context }, provider: input.provider, sessionId: payload.session_id, recordedAt: now, observation, revision: previous?.sessionId === payload.session_id ? previous.revision : observation,
       ...(previous?.sessionId === payload.session_id && previous.sourceRef ? { sourceRef: previous.sourceRef } : {}) });
     while (bindings.size > MAX_BINDINGS) bindings.delete(bindings.keys().next().value!);
   } catch {
@@ -85,7 +94,7 @@ export async function recordPaneChatSessionBinding(context: BindingContext, meta
 }
 
 /** 호출자가 현재 pane의 PID와 시작 시각을 검증한 뒤 조회한다. */
-export async function findPaneChatSessionBinding(query: BindingQuery): Promise<{ sessionId: string; sourceRef: string } | null> {
+export async function findPaneChatSessionBinding(query: BindingQuery): Promise<{ sessionId: string; sourceRef: string; revision: number } | null> {
   const key = bindingKey(query);
   const entry = bindings.get(key);
   if (!entry || Date.now() - entry.recordedAt > BINDING_TTL_MS) return null;
@@ -98,5 +107,5 @@ export async function findPaneChatSessionBinding(query: BindingQuery): Promise<{
     if (!exact?.sourceRef) return null;
     entry.sourceRef = exact.sourceRef;
   }
-  return { sessionId: entry.sessionId, sourceRef: entry.sourceRef };
+  return { sessionId: entry.sessionId, sourceRef: entry.sourceRef, revision: entry.revision };
 }

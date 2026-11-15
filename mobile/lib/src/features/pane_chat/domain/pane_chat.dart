@@ -115,6 +115,7 @@ class PaneChatSnapshot {
     this.sessionType,
     this.composer = const PaneChatCapabilities(),
     this.modelSettings,
+    this.conversationKey,
   });
 
   /// 현재 모델·effort와 선택지. 오래된 데스크탑이거나 기록에서 읽지 못했으면 null이다
@@ -125,6 +126,7 @@ class PaneChatSnapshot {
   final String? sessionType;
   final String? provider;
   final String? targetToken;
+  final String? conversationKey;
   final bool canSend;
   final PaneChatInputState inputState;
   final String screen;
@@ -151,6 +153,11 @@ class PaneChatSnapshot {
       targetToken: pick(
         'targetToken',
         targetToken,
+        (value) => value as String?,
+      ),
+      conversationKey: pick(
+        'conversationKey',
+        conversationKey,
         (value) => value as String?,
       ),
       canSend: pick('canSend', canSend, (value) => value == true),
@@ -192,6 +199,7 @@ class PaneChatSnapshot {
     sessionType: sessionType,
     provider: provider,
     targetToken: targetToken,
+    conversationKey: conversationKey,
     canSend: canSend,
     inputState: inputState,
     screen: screen,
@@ -214,6 +222,7 @@ class PaneChatSnapshot {
       sessionType: value['sessionType'] as String?,
       provider: value['provider'] as String?,
       targetToken: value['targetToken'] as String?,
+      conversationKey: value['conversationKey'] as String?,
       canSend: value['canSend'] == true,
       inputState:
           PaneChatInputState.values

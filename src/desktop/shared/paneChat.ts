@@ -60,6 +60,8 @@ export interface PaneChatSnapshot {
   sessionType: SessionType | null;
   provider: AiSessionProvider | null;
   targetToken: string | null;
+  /** host·작업·pane·대화 범위의 draft 키. 전송 권한인 targetToken과 수명이 다르다 */
+  conversationKey?: string;
   canSend: boolean;
   inputState: "ready" | "occupied" | "unknown";
   screen: string;

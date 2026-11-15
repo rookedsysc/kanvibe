@@ -1,7 +1,8 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SessionType } from "@/entities/KanbanTask";
+import type { CodexThreadInput } from "@/lib/aiSessions/codexThreadInput";
 
-const mocks = vi.hoisted(() => ({ surface: vi.fn(), layout: vi.fn(), exec: vi.fn(), write: vi.fn(), binding: vi.fn(), claude: vi.fn(), codex: vi.fn(), focusHerdr: vi.fn(), tabs: vi.fn(), catalog: vi.fn() }));
+const mocks = vi.hoisted(() => ({ surface: vi.fn(), layout: vi.fn(), exec: vi.fn(), write: vi.fn(), apiInput: vi.fn(), binding: vi.fn(), claude: vi.fn(), codex: vi.fn(), rollout: vi.fn(), emptyThread: vi.fn(), focusHerdr: vi.fn(), tabs: vi.fn(), catalog: vi.fn() }));
 const modelMocks = vi.hoisted(() => ({ tail: vi.fn(), readTextFile: vi.fn() }));
 vi.mock("../paneChatSurface", () => ({ readPaneChatSurface: mocks.surface, readPaneChatLayout: mocks.layout }));
 vi.mock("@/lib/gitOperations", () => ({ execGit: mocks.exec }));
@@ -10,7 +11,9 @@ vi.mock("../mobileBridgeService", () => ({ writeToPane: mocks.write }));
 vi.mock("../paneChatComposerCatalog", () => ({ readPaneChatSuggestions: mocks.catalog }));
 vi.mock("@/lib/aiSessions/paneChatSessionBindings", () => ({ findPaneChatSessionBinding: mocks.binding }));
 vi.mock("@/lib/aiSessions/readClaudeSessions", () => ({ readClaudeSessionDetail: mocks.claude }));
-vi.mock("@/lib/aiSessions/readCodexSessions", () => ({ readCodexSessionDetail: mocks.codex }));
+vi.mock("@/lib/aiSessions/readCodexSessions", () => ({ readCodexSessionDetail: mocks.codex, findCodexMainThreadRollout: mocks.rollout }));
+vi.mock("@/lib/aiSessions/codexThreadMetadata", () => ({ readCodexEmptyThread: mocks.emptyThread }));
+vi.mock("@/lib/aiSessions/codexThreadInput", () => ({ sendCodexThreadInput: mocks.apiInput }));
 vi.mock("@/lib/aiSessions/shared", async (importOriginal) => ({ ...await importOriginal<typeof import("@/lib/aiSessions/shared")>(), readJsonLinesTail: modelMocks.tail }));
 vi.mock("@/lib/hostFileAccess", async (importOriginal) => ({ ...await importOriginal<typeof import("@/lib/hostFileAccess")>(), readTextFile: modelMocks.readTextFile }));
 import { focusPaneChatTerminal, getPaneChatLayout, getPaneChatSnapshot, getPaneChatSuggestions, stagePaneChatAttachment, removePaneChatAttachment, sendPaneChatPrompt, interruptPaneChat, openPaneChatModelPicker, changePaneChatModelSetting, sendPaneChatKey } from "../paneChatService";
@@ -20,9 +23,12 @@ const surface = { task: { id: "task-chat", sessionType: SessionType.TMUX, sessio
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.emptyThread.mockResolvedValue(null);
   mocks.surface.mockResolvedValue(surface);
   mocks.exec.mockImplementation(async (command: string) => { if (command.startsWith("ps ")) return processTable(); throw new Error("No open transcript"); });
-  mocks.binding.mockResolvedValue(null);
+  mocks.binding.mockResolvedValue({ sessionId: "exact-session", sourceRef: "/allowed/exact.jsonl" });
+  mocks.codex.mockResolvedValue({ sessionId: "exact-session", provider: "codex", messages: [], nextCursor: null });
+  mocks.claude.mockResolvedValue({ sessionId: "exact-session", provider: "claude", messages: [], nextCursor: null });
   mocks.write.mockResolvedValue(undefined);
   modelMocks.tail.mockRejectedValue(new Error("No transcript tail"));
   modelMocks.readTextFile.mockResolvedValue(JSON.stringify({ models: [
@@ -193,10 +199,11 @@ describe("pane chat exact CLI control", () => {
     expect(mocks.write.mock.calls).toEqual([["task-chat", "%3", "\x03"]]);
   });
 
-  it("keeps a stable token for the foreground CLI while transcript mapping is unavailable", async () => {
+  it("keeps the exact CLI visible but refuses input while conversation mapping is unavailable", async () => {
+    mocks.binding.mockResolvedValue(null);
     const first = await getPaneChatSnapshot("task-chat");
     const next = await getPaneChatSnapshot("task-chat");
-    expect(first).toMatchObject({ canSend: true, paneId: "%3", provider: "codex", screen: "CLI screen", transcript: { status: "unavailable", messages: [] } });
+    expect(first).toMatchObject({ canSend: false, paneId: "%3", provider: "codex", screen: "CLI screen", transcript: { status: "unavailable", messages: [] } });
     expect(first.targetToken).toBe(next.targetToken);
   });
 
@@ -318,4 +325,486 @@ describe("pane chat exact CLI control", () => {
     expect(await getPaneChatSnapshot("task-chat")).toMatchObject({ canSend: false, targetToken: null });
   });
 
+});
+
+
+describe("conversation lifetime fences", () => {
+  it("retires a token when the same CLI changes conversation", async () => {
+    bindCodexSession();
+    const first = await getPaneChatSnapshot("task-chat", "%3");
+    mocks.binding.mockResolvedValue({ sessionId: "session-b", sourceRef: "/allowed/b.jsonl" });
+    mocks.codex.mockResolvedValue({ sessionId: "session-b", provider: "codex", messages: [], nextCursor: null });
+    await expect(sendPaneChatPrompt("task-chat", first.targetToken!, "Must not cross sessions")).rejects.toMatchObject({ name: "PaneChatTargetChangedError" });
+    expect(mocks.write).not.toHaveBeenCalled();
+    const next = await getPaneChatSnapshot("task-chat", "%3");
+    expect(next.targetToken).not.toBe(first.targetToken);
+    expect(next.transcript.sessionId).toBe("session-b");
+  });
+  it("refuses sending when exact conversation identity is unavailable", async () => {
+    mocks.binding.mockResolvedValue(null);
+    const target = await getPaneChatSnapshot("task-chat", "%3");
+    expect(target.canSend).toBe(false);
+    expect(target.targetToken).toBeNull();
+    expect(target.transcript.status).toBe("unavailable");
+  });
+  it("discards transcript that completed after a same-process session change", async () => {
+    bindCodexSession();
+    mocks.codex.mockImplementationOnce(async () => {
+      mocks.binding.mockResolvedValue({ sessionId: "session-b", sourceRef: "/allowed/b.jsonl" });
+      return { sessionId: "exact-session", messages: [{ text: "Must not leak A" }], nextCursor: null };
+    });
+    const target = await getPaneChatSnapshot("task-chat", "%3");
+    expect(target.transcript.messages).toEqual([]);
+    expect(target.canSend).toBe(false);
+  });
+});
+
+
+it("does not resurrect a retired token after A to B to A in the same process", async () => {
+  bindCodexSession();
+  const a = await getPaneChatSnapshot("task-chat", "%3");
+  mocks.binding.mockResolvedValue({ sessionId: "session-b", sourceRef: "/allowed/b.jsonl" });
+  mocks.codex.mockResolvedValue({ sessionId: "session-b", provider: "codex", messages: [], nextCursor: null });
+  const b = await getPaneChatSnapshot("task-chat", "%3");
+  bindCodexSession();
+  const returned = await getPaneChatSnapshot("task-chat", "%3");
+  expect(returned.targetToken).not.toBe(a.targetToken);
+  expect(returned.targetToken).not.toBe(b.targetToken);
+  expect(returned.conversationKey).toBe(a.conversationKey);
+  expect(b.conversationKey).not.toBe(a.conversationKey);
+  await expect(sendPaneChatPrompt("task-chat", a.targetToken!, "Stale A")).rejects.toMatchObject({ name: "PaneChatTargetChangedError" });
+  expect(mocks.write).not.toHaveBeenCalled();
+});
+
+it.each(["host", "close"])("rejects old input after %s changes", async (change) => {
+  const a = await getPaneChatSnapshot("task-chat", "%3");
+  mocks.surface.mockResolvedValue(change === "close" ? null : { ...surface, task: { ...surface.task, sshHost: "another-host" } });
+  await expect(sendPaneChatPrompt("task-chat", a.targetToken!, "Do not deliver")).rejects.toMatchObject({ name: "PaneChatTargetChangedError" });
+  expect(mocks.write).not.toHaveBeenCalled();
+});
+
+
+it("does not share a conversation draft key across hosts with the same session id", async () => {
+  const local = await getPaneChatSnapshot("task-chat", "%3");
+  mocks.surface.mockResolvedValue({ ...surface, task: { ...surface.task, sshHost: "another-host" } });
+  const remote = await getPaneChatSnapshot("task-chat", "%3");
+  expect(local.conversationKey).toBeTruthy();
+  expect(remote.conversationKey).toBeTruthy();
+  expect(remote.conversationKey).not.toBe(local.conversationKey);
+});
+
+
+const FOOTER_COMMAND = "/statusline thread-id";
+const THREAD_X = "0190aaaa-0000-7000-8000-00000000000a";
+const THREAD_Y = "0190bbbb-0000-7000-8000-00000000000b";
+const THREAD_Z = "0190cccc-0000-7000-8000-00000000000c";
+const rolloutFile = (threadId: string) => `/home/.codex/sessions/2026/11/14/rollout-2026-11-14T10-00-00-${threadId}.jsonl`;
+const codexProcessTable = [
+  "100 1 100 200 ttys010 Thu Nov 12 18:00:00 2026 /bin/zsh /bin/zsh",
+  `200 100 200 200 ttys010 Thu Nov 12 19:00:00 2026 codex codex resume ${THREAD_X} --yolo`,
+  "110 1 110 210 ttys011 Thu Nov 12 18:00:00 2026 /bin/zsh /bin/zsh",
+  "210 110 210 210 ttys011 Thu Nov 12 19:00:00 2026 codex codex --yolo",
+].join("\n");
+
+/** 실제 Codex TUI가 입력란과 footer를 그리고 입력을 받는 방식만 흉내 내는 터미널 경계 대역 */
+class FakeCodexPane {
+  composer = "";
+  readonly threadsShowingId = new Set<string>();
+  readonly submissions: { threadId: string; text: string }[] = [];
+  readonly commands: string[] = [];
+  ignoresFooterCommand = false;
+  /** 사용자가 여러 줄 입력의 첫 줄로 커서를 올려 둔 상태 */
+  isCursorOnFirstComposerRow = false;
+
+  constructor(readonly paneId: string, readonly rootPid: number, public threadId: string) {}
+
+  /** `/new`나 `/resume`처럼 같은 process 안에서 입력을 받는 대화가 바뀐다. footer 설정은 새 대화로 따라가지 않는다 */
+  switchThread(threadId: string) {
+    this.threadId = threadId;
+    this.composer = "";
+  }
+
+  write(bytes: string) {
+    this.apply(bytes);
+  }
+
+  private apply(bytes: string) {
+    const pasted = bytes.match(/^\x1b\[200~([\s\S]*)\x1b\[201~$/)?.[1];
+    if (pasted !== undefined) {
+      // 실제 TUI는 이미지 경로를 순번 자리표시로 바꾸고, 긴 글은 글자 수만 적힌 자리표시로 접는다.
+      if (/\.png$/.test(pasted)) this.composer += `[Image #${(this.composer.match(/\[Image #\d+\]/g)?.length ?? 0) + 1}] `;
+      else this.composer += pasted.length > 1000 ? `[Pasted Content ${pasted.length} chars]` : pasted;
+      return;
+    }
+    if (bytes !== "\r") { this.composer += bytes; return; }
+    const text = this.composer;
+    this.composer = "";
+    if (!text.startsWith("/")) { this.submissions.push({ threadId: this.threadId, text }); return; }
+    this.commands.push(text);
+    if (text.startsWith("/statusline ") && text.split(" ").includes("thread-id") && !this.ignoresFooterCommand) this.threadsShowingId.add(this.threadId);
+  }
+
+  surface(task: object) {
+    const [firstLine, ...moreLines] = (this.composer || "Ask Codex to do anything").split("\n");
+    // 명령 이름을 치는 동안에는 선택 표시가 붙은 자동완성 줄이 입력란 위에 뜬다.
+    const commandPopup = /^\/\S*$/.test(this.composer) ? ["› /model  choose what model and reasoning effort to use", ""] : [];
+    const rows = ["  >_ OpenAI Codex (v0.169.0)", "", ...commandPopup, `› ${firstLine}`, ...moreLines.map((line) => line ? `  ${line}` : "")];
+    const cursorRow = this.isCursorOnFirstComposerRow ? rows.length - 1 - moreLines.length : rows.length - 1;
+    const footer = this.threadsShowingId.has(this.threadId) ? `  ${this.threadId}` : "  gpt-sol high · ~/repo";
+    rows.push("", footer, ...(this.composer ? [] : ["  ← for agents · ? for shortcuts"]));
+    return { observation: ++codexObservationSequence, task, paneId: this.paneId, rootPid: this.rootPid, screen: rows.join("\n"), inputLine: rows[cursorRow], cursorColumn: this.composer ? rows[cursorRow].length : 2, viewportLines: rows, cursorRow, viewportColumns: 160, inputIsPlaceholder: !this.composer };
+  }
+}
+
+let codexTaskSequence = 0;
+let codexObservationSequence = 0;
+
+/** 같은 cwd에서 공유 서버에 붙은 Codex TUI 두 개를 띄운 태스크. 실행 상태가 테스트끼리 섞이지 않게 태스크마다 새 ID를 쓴다 */
+function createCodexTask(version = "codex-cli 0.169.0") {
+  const taskId = `task-codex-footer-${++codexTaskSequence}`;
+  const task = { ...surface.task, id: taskId };
+  const a = new FakeCodexPane("%A", 100, THREAD_X);
+  const b = new FakeCodexPane("%B", 110, THREAD_Z);
+  const panes: Record<string, FakeCodexPane> = { "%A": a, "%B": b };
+  mocks.surface.mockImplementation(async (_taskId: string, paneId?: string) => panes[paneId ?? "%A"]?.surface(task) ?? null);
+  mocks.write.mockImplementation(async (_taskId: string, paneId: string, bytes: string) => panes[paneId].write(bytes));
+  mocks.exec.mockImplementation(async (command: string) => {
+    if (command.startsWith("ps ")) return codexProcessTable;
+    if (/^lsof -a -p \d+ -d txt -Fn$/.test(command)) return "p200\nftxt\nn/opt/codex/bin/codex\nftxt\nn/usr/lib/dyld";
+    if (command === "'/opt/codex/bin/codex' --version") return version;
+    throw new Error("No open transcript");
+  });
+  // 공유 app-server의 hook은 pane을 증명하지 못해 연결을 남기지 않는다.
+  mocks.binding.mockResolvedValue(null);
+  mocks.rollout.mockImplementation(async (_context: unknown, threadId: string) => rolloutFile(threadId));
+  mocks.codex.mockImplementation(async (_context: unknown, sessionId: string) => ({ sessionId, provider: "codex", messages: [], nextCursor: null }));
+  mocks.apiInput.mockImplementation(async (options: CodexThreadInput) => {
+    await options.beforeSend(); options.onWrite();
+    const text = options.input.filter((entry) => entry.type === "text").map((entry) => entry.text).join("");
+    const imageCount = options.input.filter((entry) => entry.type === "localImage").length;
+    const pane = Object.values(panes).find((entry) => entry.threadId === options.threadId) ?? a;
+    pane.submissions.push({ threadId: options.threadId, text: Array.from({ length: imageCount }, (_, index) => `[Image #${index + 1}] `).join("") + text });
+  });
+  return { taskId, a, b };
+}
+
+/** 가짜 타이머를 흘려 보내 서비스의 글자 간격과 화면 확인 대기를 끝까지 진행시킨다 */
+async function settle<T>(action: Promise<T>): Promise<T> {
+  let isSettled = false;
+  const observed = action.finally(() => { isSettled = true; });
+  observed.catch(() => undefined);
+  for (let step = 0; !isSettled; step++) {
+    if (step > 2_000) throw new Error("pane chat action did not settle");
+    await vi.advanceTimersByTimeAsync(50);
+  }
+  return observed;
+}
+
+describe("Codex displayed-thread footer binding", () => {
+  beforeEach(() => { vi.useFakeTimers(); });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it("types the session-only thread-id footer command into an empty composer and binds the displayed thread", async () => {
+    const { taskId, a } = createCodexTask();
+    const snapshot = await settle(getPaneChatSnapshot(taskId, "%A"));
+    expect(mocks.write.mock.calls.map(([, paneId, bytes]) => [paneId, bytes])).toEqual([...FOOTER_COMMAND, "\r"].map((character) => ["%A", character]));
+    expect(a.commands).toEqual([FOOTER_COMMAND]);
+    expect(snapshot).toMatchObject({ canSend: true, provider: "codex", inputState: "ready", reason: null, transcript: { status: "available", sessionId: THREAD_X } });
+    expect(snapshot.targetToken).toBeTruthy();
+    expect(mocks.rollout).toHaveBeenCalledWith(expect.objectContaining({ worktreePath: "/repo", sshHost: null }), THREAD_X);
+  });
+
+  it("types the footer command once when two snapshot reads race", async () => {
+    const { taskId, a } = createCodexTask();
+    await settle(Promise.all([getPaneChatSnapshot(taskId, "%A"), getPaneChatSnapshot(taskId, "%A")]));
+    expect(a.commands).toEqual([FOOTER_COMMAND]);
+    expect((await settle(getPaneChatSnapshot(taskId, "%A"))).transcript).toMatchObject({ status: "available", sessionId: THREAD_X });
+    expect(a.commands).toEqual([FOOTER_COMMAND]);
+  });
+
+  it("discards an old snapshot whose scoped lookup finishes after a newer thread was bound", async () => {
+    const { taskId, a } = createCodexTask();
+    const original = await settle(getPaneChatSnapshot(taskId, "%A"));
+    let release!: (value: string) => void;
+    let started!: () => void;
+    const lookupStarted = new Promise<void>((resolve) => { started = resolve; });
+    mocks.rollout.mockImplementationOnce(() => { started(); return new Promise<string>((resolve) => { release = resolve; }); });
+    const olderRead = getPaneChatSnapshot(taskId, "%A");
+    await lookupStarted;
+    a.switchThread(THREAD_Y);
+    const current = await settle(getPaneChatSnapshot(taskId, "%A"));
+    expect(current.transcript.sessionId).toBe(THREAD_Y);
+    release(rolloutFile(THREAD_X));
+    expect(await settle(olderRead)).toMatchObject({ canSend: false, reason: "target-changed", transcript: { sessionId: null } });
+    await expect(settle(sendPaneChatPrompt(taskId, original.targetToken!, "Old"))).rejects.toMatchObject({ name: "PaneChatTargetChangedError" });
+    await settle(sendPaneChatPrompt(taskId, current.targetToken!, "Current Y"));
+    expect(a.submissions).toEqual([{ threadId: THREAD_Y, text: "Current Y" }]);
+  });
+
+  it("checks a fresh frame after API metadata lookup before admitting input", async () => {
+    const { taskId, a } = createCodexTask();
+    const target = await settle(getPaneChatSnapshot(taskId, "%A"));
+    let release!: () => void;
+    let started!: () => void;
+    const lookupStarted = new Promise<void>((resolve) => { started = resolve; });
+    const send = mocks.apiInput.getMockImplementation()!;
+    mocks.apiInput.mockImplementationOnce(async (options: CodexThreadInput) => {
+      started(); await new Promise<void>((resolve) => { release = resolve; });
+      return send(options);
+    });
+    mocks.write.mockClear();
+    const sending = sendPaneChatPrompt(taskId, target.targetToken!, "Must not reach Y");
+    const rejected = expect(settle(sending)).rejects.toMatchObject({ name: "PaneChatTargetChangedError" });
+    await lookupStarted;
+    a.switchThread(THREAD_Y);
+    a.threadsShowingId.add(THREAD_Y);
+    release();
+    await rejected;
+    expect(mocks.write).not.toHaveBeenCalled();
+    expect(a.submissions).toEqual([]);
+  });
+
+  it("keeps an already-bound transcript while the native composer queues messages and refuses a new prompt", async () => {
+    const { taskId, a } = createCodexTask();
+    const bound = await settle(getPaneChatSnapshot(taskId, "%A"));
+    mocks.surface.mockImplementation(async () => {
+      const frame = a.surface({ ...surface.task, id: taskId });
+      frame.viewportLines[frame.viewportLines.length - 1] = "  tab to queue message";
+      return frame;
+    });
+    const busy = await settle(getPaneChatSnapshot(taskId, "%A"));
+    expect(busy).toMatchObject({ canSend: true, inputState: "occupied", targetToken: bound.targetToken, transcript: { sessionId: THREAD_X } });
+    mocks.write.mockClear();
+    await expect(settle(sendPaneChatPrompt(taskId, busy.targetToken!, "Busy"))).rejects.toMatchObject({ name: "PaneChatInputError" });
+    expect(mocks.write).not.toHaveBeenCalled();
+  });
+
+  it("never bootstraps the real side-view hint even when the composer is natively dim and empty", async () => {
+    const { taskId, a } = createCodexTask();
+    mocks.surface.mockImplementation(async () => {
+      const frame = a.surface({ ...surface.task, id: taskId });
+      frame.inputLine = "› Ask a follow-up question";
+      frame.viewportLines[frame.cursorRow] = frame.inputLine;
+      frame.viewportLines[frame.viewportLines.length - 1] = "  Side from main thread · ⌃/ to switch · ⌃c to close";
+      return frame;
+    });
+    const side = await settle(getPaneChatSnapshot(taskId, "%A"));
+    expect(side).toMatchObject({ canSend: false, targetToken: null, inputState: "occupied" });
+    expect(mocks.write).not.toHaveBeenCalled();
+    expect(mocks.rollout).not.toHaveBeenCalled();
+  });
+
+  it("bootstraps an unarmed main footer that wraps its default fields onto two rows", async () => {
+    const { taskId, a } = createCodexTask();
+    mocks.surface.mockImplementation(async () => {
+      const frame = a.surface({ ...surface.task, id: taskId });
+      if (!a.composer && !a.threadsShowingId.has(a.threadId)) frame.viewportLines.splice(frame.cursorRow + 3, 0, "  long-worktree-path-wrapped-from-default-footer");
+      return frame;
+    });
+    const bound = await settle(getPaneChatSnapshot(taskId, "%A"));
+    expect(bound).toMatchObject({ canSend: true, transcript: { sessionId: THREAD_X } });
+    expect(a.commands).toEqual([FOOTER_COMMAND]);
+  });
+
+  it("re-arms after a same-process conversation change, never revives the earlier token, and leaves the sibling pane bound", async () => {
+    const { taskId, a, b } = createCodexTask();
+    const first = await settle(getPaneChatSnapshot(taskId, "%A"));
+    const sibling = await settle(getPaneChatSnapshot(taskId, "%B"));
+    expect(sibling.transcript.sessionId).toBe(THREAD_Z);
+
+    a.switchThread(THREAD_Y);
+    await expect(settle(sendPaneChatPrompt(taskId, first.targetToken!, "Stale X"))).rejects.toMatchObject({ name: "PaneChatTargetChangedError" });
+    const second = await settle(getPaneChatSnapshot(taskId, "%A"));
+    expect(second.transcript).toMatchObject({ status: "available", sessionId: THREAD_Y });
+    expect(second.targetToken).not.toBe(first.targetToken);
+    expect(a.commands).toEqual([FOOTER_COMMAND, FOOTER_COMMAND]);
+
+    a.switchThread(THREAD_X);
+    const returned = await settle(getPaneChatSnapshot(taskId, "%A"));
+    expect(returned.transcript.sessionId).toBe(THREAD_X);
+    expect(returned.targetToken).not.toBe(first.targetToken);
+    expect(returned.targetToken).not.toBe(second.targetToken);
+    expect(returned.conversationKey).toBe(first.conversationKey);
+    // X로 돌아오면 이전에 설정한 footer가 복원되므로 명령을 다시 치지 않는다.
+    expect(a.commands).toEqual([FOOTER_COMMAND, FOOTER_COMMAND]);
+    await expect(settle(sendPaneChatPrompt(taskId, first.targetToken!, "Stale X after return"))).rejects.toMatchObject({ name: "PaneChatTargetChangedError" });
+
+    await settle(sendPaneChatPrompt(taskId, returned.targetToken!, "For X"));
+    expect(a.submissions).toEqual([{ threadId: THREAD_X, text: "For X" }]);
+    expect((await settle(getPaneChatSnapshot(taskId, "%B"))).targetToken).toBe(sibling.targetToken);
+    expect(b.commands).toEqual([FOOTER_COMMAND]);
+    expect(b.submissions).toEqual([]);
+  });
+
+  it("submits multi-line API text to the exact bound thread without changing whitespace", async () => {
+    const { taskId, a } = createCodexTask();
+    const target = await settle(getPaneChatSnapshot(taskId, "%A"));
+    await settle(sendPaneChatPrompt(taskId, target.targetToken!, "First line\n\nThird line"));
+    expect(a.submissions).toEqual([{ threadId: THREAD_X, text: "First line\n\nThird line" }]);
+  });
+
+  it("submits a modern Codex message without touching the PTY composer", async () => {
+    const { taskId, a } = createCodexTask();
+    const target = await settle(getPaneChatSnapshot(taskId, "%A"));
+    mocks.write.mockClear();
+    await settle(sendPaneChatPrompt(taskId, target.targetToken!, "Addressed message", [], "thread-api-once"));
+    expect(a.submissions).toEqual([{ threadId: THREAD_X, text: "Addressed message" }]);
+    expect(mocks.write).not.toHaveBeenCalled();
+  });
+
+  it("admits a repeated API operation once and keeps an uncertain result from both API and PTY retries", async () => {
+    const { taskId, a } = createCodexTask();
+    const target = await settle(getPaneChatSnapshot(taskId, "%A"));
+    mocks.write.mockClear();
+    await settle(Promise.all([sendPaneChatPrompt(taskId, target.targetToken!, "Once", [], "api-once"), sendPaneChatPrompt(taskId, target.targetToken!, "Once", [], "api-once")]));
+    expect(mocks.apiInput).toHaveBeenCalledOnce();
+    expect(a.submissions).toEqual([{ threadId: THREAD_X, text: "Once" }]);
+    mocks.apiInput.mockImplementationOnce(async (options: CodexThreadInput) => { await options.beforeSend(); options.onWrite(); throw new Error("response lost"); });
+    await expect(settle(sendPaneChatPrompt(taskId, target.targetToken!, "Unknown", [], "api-unknown"))).rejects.toMatchObject({ name: "PaneChatDeliveryUncertainError" });
+    await expect(settle(sendPaneChatPrompt(taskId, target.targetToken!, "Unknown", [], "api-unknown"))).rejects.toMatchObject({ name: "PaneChatDeliveryUncertainError" });
+    expect(mocks.apiInput).toHaveBeenCalledTimes(2);
+    expect(mocks.write).not.toHaveBeenCalled();
+  });
+
+  it("retains an uncertain operation across X-Y-X token renewal and attachment restaging", async () => {
+    const { taskId, a } = createCodexTask();
+    const original = await settle(getPaneChatSnapshot(taskId, "%A"));
+    const upload = { name: "same-note.txt", mimeType: "text/plain", dataUrl: "data:text/plain;base64,aGVsbG8=" };
+    const attachment = await settle(stagePaneChatAttachment(taskId, original.targetToken!, upload));
+    const send = mocks.apiInput.getMockImplementation()!;
+    mocks.apiInput.mockImplementationOnce(async (options: CodexThreadInput) => { await send(options); throw new Error("accepted response lost"); });
+    await expect(settle(sendPaneChatPrompt(taskId, original.targetToken!, "Once with file", [attachment.id], "across-renewal"))).rejects.toMatchObject({ name: "PaneChatDeliveryUncertainError" });
+    a.switchThread(THREAD_Y); await settle(getPaneChatSnapshot(taskId, "%A"));
+    a.switchThread(THREAD_X); const renewed = await settle(getPaneChatSnapshot(taskId, "%A"));
+    const restaged = await settle(stagePaneChatAttachment(taskId, renewed.targetToken!, upload));
+    expect(restaged.id).not.toBe(attachment.id);
+    await expect(settle(sendPaneChatPrompt(taskId, renewed.targetToken!, "Once with file", [restaged.id], "across-renewal"))).rejects.toMatchObject({ name: "PaneChatDeliveryUncertainError" });
+    expect(mocks.apiInput).toHaveBeenCalledOnce();
+    expect(a.submissions).toHaveLength(1);
+  });
+
+  it("keeps native slash commands on the CLI and never also submits an AI API message", async () => {
+    const { taskId, a } = createCodexTask();
+    const target = await settle(getPaneChatSnapshot(taskId, "%A"));
+    await settle(sendPaneChatPrompt(taskId, target.targetToken!, "/help"));
+    expect(a.commands).toEqual([FOOTER_COMMAND, "/help"]);
+    expect(mocks.apiInput).not.toHaveBeenCalled();
+  });
+
+  it("pins admitted API input to X even when the terminal switches at the final write boundary", async () => {
+    const { taskId, a } = createCodexTask();
+    mocks.binding.mockResolvedValue({ sessionId: THREAD_X, sourceRef: rolloutFile(THREAD_X) });
+    a.threadsShowingId.add(THREAD_X);
+    const target = await settle(getPaneChatSnapshot(taskId, "%A"));
+    mocks.apiInput.mockImplementationOnce(async (options: CodexThreadInput) => {
+      await options.beforeSend(); a.switchThread(THREAD_Y); options.onWrite();
+      a.submissions.push({ threadId: options.threadId, text: "Pinned to X" });
+    });
+    await settle(sendPaneChatPrompt(taskId, target.targetToken!, "Pinned to X"));
+    expect(a.submissions).toEqual([{ threadId: THREAD_X, text: "Pinned to X" }]);
+    expect(a.composer).toBe("");
+    expect(mocks.write).not.toHaveBeenCalled();
+  });
+
+  it("types a model command one echoed character at a time below the command popup", async () => {
+    const { taskId, a } = createCodexTask();
+    const target = await settle(getPaneChatSnapshot(taskId, "%A"));
+    mocks.write.mockClear();
+    await settle(openPaneChatModelPicker(taskId, target.targetToken!));
+    expect(mocks.write.mock.calls.map(([, , bytes]) => bytes)).toEqual([..."/model", "\r"]);
+    expect(a.commands).toEqual([FOOTER_COMMAND, "/model"]);
+  });
+
+  it("leaves a terminal draft untouched and reports that the composer is busy", async () => {
+    const { taskId, a } = createCodexTask();
+    a.composer = "unfinished terminal draft";
+    const snapshot = await settle(getPaneChatSnapshot(taskId, "%A"));
+    expect(mocks.write).not.toHaveBeenCalled();
+    expect(a.composer).toBe("unfinished terminal draft");
+    expect(snapshot).toMatchObject({ canSend: false, targetToken: null, reason: "codex-thread-input-busy", transcript: { status: "unavailable", reason: "codex-thread-input-busy" } });
+  });
+
+  it("never treats a literal placeholder or a forged footer in a terminal draft as native empty input", async () => {
+    const { taskId, a } = createCodexTask();
+    a.composer = "Ask Codex to do anything";
+    const viewportLines = ["› Ask Codex to do anything", "", `  ${THREAD_Z}`, "  ← for agents · ? for shortcuts"];
+    mocks.surface.mockImplementation(async () => ({ ...a.surface({ ...surface.task, id: taskId }), viewportLines, inputLine: viewportLines[0], cursorRow: 0, cursorColumn: 2 }));
+    const snapshot = await settle(getPaneChatSnapshot(taskId, "%A"));
+    expect(snapshot).toMatchObject({ canSend: false, targetToken: null, reason: "codex-thread-input-busy", transcript: { sessionId: null } });
+    expect(mocks.rollout).not.toHaveBeenCalled();
+    expect(mocks.write).not.toHaveBeenCalled();
+    expect(a.composer).toBe("Ask Codex to do anything");
+  });
+
+  it("keeps the bound thread and its token while the terminal holds a draft under the same footer", async () => {
+    const { taskId, a } = createCodexTask();
+    const bound = await settle(getPaneChatSnapshot(taskId, "%A"));
+    a.composer = "terminal draft\nsecond line";
+    const drafting = await settle(getPaneChatSnapshot(taskId, "%A"));
+    expect(drafting).toMatchObject({ canSend: true, inputState: "occupied", transcript: { status: "available", sessionId: THREAD_X } });
+    expect(drafting.targetToken).toBe(bound.targetToken);
+    expect(a.commands).toEqual([FOOTER_COMMAND]);
+  });
+
+  it("does not adopt a UUID from a multi-line terminal draft as the displayed thread", async () => {
+    const { taskId, a } = createCodexTask();
+    // 표시 줄을 꺼 둔 CLI에서 입력 본문의 마지막 줄이 footer와 같은 모양으로 화면 맨 아래에 놓인다.
+    a.composer = `draft\n\n${THREAD_Z}`;
+    a.isCursorOnFirstComposerRow = true;
+    mocks.surface.mockImplementation(async () => {
+      const shown = a.surface({ ...surface.task, id: taskId });
+      const viewportLines = shown.viewportLines.slice(0, -2);
+      return { ...shown, viewportLines, screen: viewportLines.join("\n"), inputLine: viewportLines[shown.cursorRow] };
+    });
+    const snapshot = await settle(getPaneChatSnapshot(taskId, "%A"));
+    expect(snapshot).toMatchObject({ canSend: false, targetToken: null, reason: "codex-thread-input-busy", transcript: { status: "unavailable", sessionId: null } });
+    expect(mocks.rollout).not.toHaveBeenCalled();
+    expect(mocks.write).not.toHaveBeenCalled();
+  });
+
+  it("stops typing the footer command after two attempts fail to show a thread id", async () => {
+    const { taskId, a } = createCodexTask();
+    a.ignoresFooterCommand = true;
+    const reads = [];
+    for (let read = 0; read < 5; read++) reads.push(await settle(getPaneChatSnapshot(taskId, "%A")));
+    expect(a.commands).toEqual([FOOTER_COMMAND, FOOTER_COMMAND]);
+    expect(reads.at(-1)).toMatchObject({ canSend: false, targetToken: null, reason: "codex-thread-unconfirmed" });
+  });
+
+  it("refuses a displayed thread without a main-thread record in this task and types nothing", async () => {
+    const { taskId, a } = createCodexTask();
+    a.threadsShowingId.add(THREAD_X);
+    // 하위 에이전트 화면이거나 다른 작업에서 시작한 대화다.
+    mocks.rollout.mockResolvedValue(null);
+    const snapshot = await settle(getPaneChatSnapshot(taskId, "%A"));
+    expect(mocks.write).not.toHaveBeenCalled();
+    expect(snapshot).toMatchObject({ canSend: false, targetToken: null, reason: "codex-thread-record-missing", transcript: { status: "unavailable", messages: [] } });
+    expect(mocks.codex).not.toHaveBeenCalled();
+  });
+
+  it.each(["caption after image", ""])("submits a staged image as addressed input (caption=%s)", async (caption) => {
+    const { taskId, a } = createCodexTask();
+    const target = await settle(getPaneChatSnapshot(taskId, "%A"));
+    const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aOK0AAAAASUVORK5CYII=";
+    const attachment = await settle(stagePaneChatAttachment(taskId, target.targetToken!, { name: "image.png", mimeType: "image/png", dataUrl: `data:image/png;base64,${png}` }));
+    await settle(sendPaneChatPrompt(taskId, target.targetToken!, caption, [attachment.id]));
+    expect(mocks.apiInput.mock.calls[0][0].input[0]).toEqual({ type: "localImage", path: expect.stringMatching(/\.png$/) });
+    expect(a.submissions).toEqual([{ threadId: THREAD_X, text: `[Image #1] ${caption}` }]);
+    await removePaneChatAttachment(taskId, target.targetToken!, attachment.id);
+  });
+
+  it("sends a long prompt as exact API text without composer placeholders", async () => {
+    const { taskId, a } = createCodexTask();
+    const target = await settle(getPaneChatSnapshot(taskId, "%A"));
+    await settle(sendPaneChatPrompt(taskId, target.targetToken!, "L".repeat(1500)));
+    expect(a.submissions).toEqual([{ threadId: THREAD_X, text: "L".repeat(1500) }]);
+  });
+
+  it.each(["codex-cli 0.168.0", "codex-cli 0.170.0"])("keeps the hook path and types nothing for %s, whose footer command was not verified", async (version) => {
+    const { taskId } = createCodexTask(version);
+    mocks.binding.mockResolvedValue({ sessionId: "hook-session", sourceRef: "/allowed/hook.jsonl" });
+    const snapshot = await settle(getPaneChatSnapshot(taskId, "%A"));
+    expect(mocks.write).not.toHaveBeenCalled();
+    expect(snapshot.transcript).toMatchObject({ status: "available", sessionId: "hook-session" });
+  });
 });

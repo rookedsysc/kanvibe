@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { ensureKanvibeDataDirectory } from "@/lib/databasePaths";
@@ -22,6 +22,7 @@ interface StoredAttachment {
   path: string;
   directory: string | null;
   retained: boolean;
+  contentHash: string;
 }
 
 const staged = new Map<string, StoredAttachment>();
@@ -64,7 +65,7 @@ export async function storePaneChatAttachment(owner: PaneChatAttachmentOwner, in
       await writeFile(hostPath, content.buffer, { mode: 0o600 });
     }
     const attachment: PaneChatAttachment = { id, name, mimeType: content.mimeType, kind: imageExtension ? "image" : "file", sizeBytes: content.buffer.length };
-    staged.set(id, { owner: { ...owner }, attachment, path: hostPath, directory, retained: false });
+    staged.set(id, { owner: { ...owner }, attachment, path: hostPath, directory, retained: false, contentHash: createHash("sha256").update(content.buffer).digest("hex") });
     return attachment;
   } catch (error) {
     if (directory) await rm(directory, { recursive: true, force: true });
@@ -86,6 +87,14 @@ export function resolvePaneChatAttachments(owner: PaneChatAttachmentOwner, ids: 
 
 export function retainPaneChatAttachments(owner: PaneChatAttachmentOwner, ids: string[]): void {
   for (const entry of resolvePaneChatAttachments(owner, ids)) staged.get(entry.id)!.retained = true;
+}
+
+/** 재등록으로 경로·ID가 바뀌어도 같은 전송의 첨부인지 확인한다. 바이트나 다른 owner의 파일을 외부에 노출하지 않는다 */
+export function fingerprintPaneChatAttachments(owner: PaneChatAttachmentOwner, ids: string[]): string {
+  return JSON.stringify(resolvePaneChatAttachments(owner, ids).map(({ id }) => {
+    const { attachment, contentHash } = staged.get(id)!;
+    return [attachment.name, attachment.mimeType, attachment.sizeBytes, contentHash];
+  }));
 }
 
 export async function discardPaneChatAttachment(taskId: string, targetToken: string, id: string): Promise<void> {

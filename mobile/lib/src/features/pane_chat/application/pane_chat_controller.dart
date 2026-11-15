@@ -648,16 +648,24 @@ class PaneChatController extends AsyncNotifier<PaneChatState> {
             requestId: requestId,
             modelSettingChange: modelSettingChange,
           );
-      if (!ref.mounted || generation != _generation) return false;
       accepted = true;
+      if (!ref.mounted || generation != _generation) {
+        return action == PaneChatAction.prompt;
+      }
+      final current = state.value;
+      if (current == null ||
+          current.connectionId != connection.id ||
+          current.snapshot.targetToken != token) {
+        return action == PaneChatAction.prompt;
+      }
       _lastAction = null;
       if (action == PaneChatAction.prompt) {
         _livePollsRemaining = _livePollsAfterPrompt;
       }
       state = AsyncData(
         PaneChatState(
-          snapshot: previous.snapshot,
-          connectionId: previous.connectionId,
+          snapshot: current.snapshot,
+          connectionId: current.connectionId,
         ),
       );
     } catch (error) {
@@ -665,13 +673,19 @@ class PaneChatController extends AsyncNotifier<PaneChatState> {
         await _forgetUnauthorized(connection, error);
       }
       if (!ref.mounted || generation != _generation) return false;
+      final current = state.value;
+      if (current == null ||
+          current.connectionId != connection.id ||
+          current.snapshot.targetToken != token) {
+        return false;
+      }
       if (action == PaneChatAction.prompt) pendingPrompt.clear();
       final targetChanged =
           error is DesktopRequestException && error.statusCode == 409;
       state = AsyncData(
         PaneChatState(
-          snapshot: previous.snapshot,
-          connectionId: previous.connectionId,
+          snapshot: current.snapshot,
+          connectionId: current.connectionId,
           isStale: targetChanged,
           actionError: error is DesktopRequestException && error.message != null
               ? error.message
@@ -689,7 +703,7 @@ class PaneChatController extends AsyncNotifier<PaneChatState> {
         _request = null;
         _schedulePoll();
         // 전송이 받아들여졌으면 바로 아래에서 다시 조회하므로 따로 따라잡지 않는다
-        if (accepted) {
+        if (accepted && state.value?.snapshot.targetToken == token) {
           _isCatchUpPending = false;
         } else {
           _runPendingCatchUp();
