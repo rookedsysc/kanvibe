@@ -27,3 +27,18 @@ it("returns a successful send to its captured draft after the displayed conversa
   expect(view.result.current.actionError).toBeNull();
   expect(api.sendPaneChatPrompt).toHaveBeenCalledOnce();
 });
+
+it("keeps discovering a CLI that starts after several unavailable snapshots", async () => {
+  vi.useFakeTimers();
+  const unavailable = { ...snapshot(""), canSend: false, transcript: { status: "unavailable", reason: "exact-session-unavailable", messages: [] } };
+  api.getPaneChatSnapshot.mockResolvedValue(unavailable);
+  const view = renderHook(() => usePaneChat("task", true, "%A"));
+  try {
+    await act(async () => {});
+    await act(async () => { await vi.advanceTimersByTimeAsync(3_000); });
+    expect(api.getPaneChatSnapshot).toHaveBeenCalledTimes(3);
+    api.getPaneChatSnapshot.mockResolvedValue(snapshot("new-cli"));
+    await act(async () => { await vi.advanceTimersByTimeAsync(5_000); });
+    expect(view.result.current.snapshot?.targetToken).toBe("new-cli");
+  } finally { view.unmount(); vi.useRealTimers(); }
+});

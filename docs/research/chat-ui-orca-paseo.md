@@ -154,3 +154,41 @@ Orca의 terminal bridge처럼 입력 대상과 대화 파일의 소유권을 구
 모델 변경은 CLI의 실제 `/model` 선택기를 연다. 특히 [Orca의 Claude/Codex 옵션 계약](https://github.com/stablyai/orca/blob/c8a8288a5fd022a93d6360c5350579d890b8be18/src/shared/agent-session/options/agent-session-option-catalog-claude-codex.ts)은 Claude의 모델 명령과 Codex의 대화형 선택기를 구분한다. KanVibe는 화면에 나온 목록을 방향·확인·취소 버튼으로 조작하며, 명령을 썼다는 이유만으로 변경 성공을 표시하지 않는다. 터미널에 기존 초안이 있거나 입력 위치를 확인할 수 없으면 프롬프트와 모델 명령을 막고 CLI 조작 및 터미널 전환을 제공한다.
 
 현재 새 프롬프트·모델 선택은 일반 터미널·tmux·Herdr의 Claude/Codex를 대상으로 한다. Herdr는 해당 task의 실제 클라이언트가 포커스한 pane을 읽고, native 화면 스트림을 headless 터미널로 복원해 입력 위치를 확인한다. Zellij는 설치된 CLI가 정확한 OS 프로세스 식별자를 제공하지 않아 전송을 차단한다. 원격 일반 터미널의 SSH 뒤 프로세스나 원격 데스크톱 tmux 클라이언트도 로컬 PID로 추정하지 않는다. 해당 원격 경로까지 지원 완료했다는 의미는 아니다. 실제 모델 API 응답 품질과 연결 비용은 별도 검증 대상이다.
+
+## 2026-11-16 추가 조사: 채팅 진입과 메타데이터 지연
+
+현재 실행 중인 CLI를 채팅으로 표시하는 문제와, 앱이 SDK로 새 에이전트를 소유하는 문제는 다르다. Paseo와 Orca는 후자의 구조화 경로를 제공한다. KanVibe의 기존 터미널 세션에는 우선 수동 입력 없는 식별·조회와 채팅 화면의 선행 표시를 적용한다. 아래 조사는 소스 분석이며 두 참조 앱의 체감 성능 벤치마크는 아니다.
+
+### Paseo: daemon 소유 세션과 별도 메타데이터
+
+Paseo는 daemon이 에이전트 프로세스를 관리하고 클라이언트에 상태와 timeline을 WebSocket으로 전달한다. Claude는 Agent SDK, Codex는 agent server에 연결한다. 클라이언트가 터미널에 명령을 입력해서 상태를 추출하는 구조가 아니다.
+
+> [Paseo architecture](https://github.com/getpaseo/paseo/blob/0273b6b614bac623168d03e7f89f9e161274b468/docs/architecture.md)에 "manages agent processes, and streams their output in real time over WebSocket"라고 설명한다.
+
+특히 Claude provider의 query 생성은 모델 목록 조회를 함께 시작하지 않는다. 같은 SDK control plane의 `supportedModels()`가 명령 목록이나 권한 변경 앞을 막을 수 있기 때문이다. 따라서 모든 메타데이터를 무조건 병렬 실행하는 것도 해법은 아니다. 서로 독립적인 파일 조회는 병렬화하되, 공유 control plane의 부가 조회를 필수 초기화 경로에서 분리해야 한다.
+
+> [Paseo Claude provider](https://github.com/getpaseo/paseo/blob/0273b6b614bac623168d03e7f89f9e161274b468/packages/server/src/server/agent/providers/claude/agent.ts#L3629-L3634)에 "Do not kick off background control-plane queries here."라는 지침과 `supportedModels()` 대기 문제가 함께 기록되어 있다.
+
+### Orca: 구조화 세션과 terminal bridge를 구분
+
+Orca의 `NativeChatView`는 structured 모드와 bridge 모드를 분리한다. 현재 Claude 구조화 연결은 Agent SDK를 지연 로드하며, 앱이 만든 세션과 자식 프로세스를 관리한다. SDK 도입 자체가 외부에서 이미 실행 중인 TUI의 현재 대화를 자동으로 식별한다는 근거는 없다.
+
+> [Orca Claude transport](https://github.com/stablyai/orca/blob/0b839cedad04cac3cecfd68a57e845c9c2b5b688/src/main/claude/claude-stream-json-connection.ts#L30-L36)에 "Lazy import confines SDK executable-search env mutation and missing-package failures to structured Claude."라고 명시되어 있다.
+
+bridge 경로의 session gate는 대화 I/O 전에 pane의 세션 식별을 별도로 해결한다. 세션이 아직 없으면 채팅 canvas 안에 빈 상태를 표시한다. 구조화 화면도 history 상태에 맞춰 로딩을 표시하며 composer와 transcript의 상태를 각각 다룬다. KanVibe에도 초기 레이아웃 조회 중 불투명한 채팅 canvas를 먼저 표시하는 방식을 적용한다.
+
+> [Orca session gate](https://github.com/stablyai/orca/blob/0b839cedad04cac3cecfd68a57e845c9c2b5b688/src/renderer/src/components/native-chat/host-access/NativeChatSessionGate.tsx#L11-L12)에 "unsupported panes fail before transcript IO starts"라고 역할을 정하고 있다.
+
+### KanVibe 적용과 검증 범위
+
+| 경로 | 기존 비용·동작 | 변경 |
+| --- | --- | --- |
+| Codex 최초 조회 | `/statusline thread-id` 각 글자마다 화면·프로세스를 다시 확인하고 지연 후 전송 | 수동 조회에서 CLI 입력 제거. 이미 있는 footer, 검증된 process descriptor, hook, Herdr report, 열린 파일의 정확한 식별만 사용 |
+| transcript·모델 조회 | transcript를 모두 읽은 뒤 모델 상태·catalog 조회 | 독립적인 파일 조회를 병렬 실행하고 마지막 대상 재검증 유지 |
+| 초기 레이아웃 | 응답 전 실제 터미널이 잠시 드러남 | 설정이나 저장된 모드가 채팅이면 canvas와 로딩 상태를 먼저 표시 |
+| 뒤늦은 CLI 시작 | unavailable 결과가 세 번이면 폴링 종료 | 세 번 뒤 5초 간격으로 재탐색하여 새 CLI 연결 복구 |
+| Claude 모델 선택 | 메타데이터 getter가 Codex API만 지원 | 정확한 대화 파일에서 조회. 첫 입력 전에는 현재 모델을 추정하지 않고 선택지와 미확인 상태만 제공 |
+
+Codex 공유 daemon에서는 TUI PID와 현재 thread를 연결하는 조회 계약을 확인하지 못했다. 설치된 `codex-cli 0.169.0`의 protocol 생성물과 Linux `/proc` 파일 서술자를 조사했으며 daemon은 여러 rollout을 동시에 소유했다. `tui-thread-reference-capabilities`의 빈 marker 파일에도 PID가 없다. 따라서 현재 디렉터리의 최신 대화나 단 하나의 loaded thread라는 이유로 대상을 채택하지 않는다. 기존 footer·hook·Herdr report가 없는 새 TUI는 정확한 식별이 제공될 때까지 전송을 허용하지 않는다. 향후 앱 소유 SDK 세션을 도입한다면 생성·재연결·승인·취소·종료 계약을 함께 설계해야 한다.
+
+검증은 service의 CLI 무입력, 동일 process의 대화 전환, stale token, draft 보존, 동시 transcript·모델 조회와 renderer의 선행 canvas·늦은 CLI 재탐색을 대상으로 한다. source 분석상의 호출 감소를 실행 시간 개선 수치로 바꿔 주장하지 않는다.
