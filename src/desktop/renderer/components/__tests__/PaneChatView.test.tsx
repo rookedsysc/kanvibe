@@ -86,6 +86,7 @@ describe("current pane chat", () => {
     await screen.findByText("Exact pane response");
     expect(screen.queryByText("Project instructions")).toBeNull();
     await waitFor(() => expect((screen.getByRole("checkbox", { name: "showInstructions" }) as HTMLInputElement).disabled).toBe(false));
+    expect(screen.getByRole("checkbox", { name: "showInstructions" }).compareDocumentPosition(screen.getByRole("button", { name: "history" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     fireEvent.click(screen.getByRole("checkbox", { name: "showInstructions" }));
     await screen.findByText("Project instructions");
     expect(setAppSetting).toHaveBeenCalledWith("pane_chat_show_instructions", "true");
@@ -99,10 +100,21 @@ describe("current pane chat", () => {
     const view = open();
     await screen.findByText("Exact pane response");
     fireEvent.click(screen.getByRole("button", { name: "model" }));
-    const select = await screen.findByRole("combobox", { name: "model" });
-    await waitFor(() => expect((select as HTMLSelectElement).disabled).toBe(false));
-    fireEvent.change(select, { target: { value: "b" } });
+    const option = await screen.findByRole("menuitemradio", { name: "B" });
+    await waitFor(() => expect((option as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(option);
     await waitFor(() => expect(actions.changePaneChatModelSetting).toHaveBeenCalledWith("task-1", "process-a", { kind: "model", model: "b" }));
+    expect(view.onTerminal).not.toHaveBeenCalled();
+    expect(actions.openPaneChatModelPicker).not.toHaveBeenCalled();
+  });
+  it("Claude metadata opens the model popover without native API support or terminal switching", async () => {
+    const modelSettings = { model: "sonnet", effort: "high", isFast: false, models: [{ id: "sonnet", label: "Sonnet", supportsFast: false, effortLevels: [] }] };
+    actions.getPaneChatSnapshot.mockResolvedValue({ ...snapshot(), provider: "claude", modelSettings, modelPicker: { supported: true, mode: "native-cli", supportsApi: false } });
+    actions.getPaneChatModelSettings.mockResolvedValue(modelSettings);
+    const view = open();
+    await screen.findByText("Exact pane response");
+    fireEvent.click(screen.getByRole("button", { name: /Sonnet/ }));
+    await screen.findByRole("menuitemradio", { name: "Sonnet" });
     expect(view.onTerminal).not.toHaveBeenCalled();
     expect(actions.openPaneChatModelPicker).not.toHaveBeenCalled();
   });
