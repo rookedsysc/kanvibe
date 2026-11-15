@@ -634,20 +634,23 @@ export async function createTask(input: CreateTaskInput): Promise<KanbanTask> {
   }
 
   const saved = await repo.save(task);
+  const preparationJobs: Promise<void>[] = [];
 
   if (shouldInstallHooks && hookTargetPath) {
-    await installTaskHookFilesImmediately(
+    preparationJobs.push(installTaskHookFilesImmediately(
       hookTargetPath,
       saved,
       "새 태스크 hooks 동기 설치 실패",
-    );
+    ));
   }
 
-  await persistTaskState(saved);
+  preparationJobs.push(persistTaskState(saved));
 
   if (saved.description || saved.priority) {
-    await persistTaskMetadata(saved);
+    preparationJobs.push(persistTaskMetadata(saved));
   }
+
+  await Promise.all(preparationJobs);
 
   broadcastBoardUpdate();
 
