@@ -1,6 +1,7 @@
 import hljs from "highlight.js/lib/common";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
+import { writeSystemClipboard } from "@/lib/systemClipboard";
 import { readTaskWorkspaceFile } from "@/desktop/renderer/actions/diff";
 import { AiSessionMessageContent } from "./AiSessionMessageContent";
 
@@ -107,7 +108,7 @@ function FilePreviewPanel({ taskId, filePath, onClose }: AiChatFilePreviewProps)
   async function copyContent() {
     if (content === null) return;
     try {
-      await navigator.clipboard.writeText(content);
+      await writeSystemClipboard(content);
       setCopyState("copied");
     } catch {
       setCopyState("error");

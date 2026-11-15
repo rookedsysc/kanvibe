@@ -4,6 +4,7 @@ import { Marked } from "marked";
 import katex from "katex";
 import { useTranslations } from "next-intl";
 import { type MouseEvent, useEffect, useId, useMemo, useState } from "react";
+import { writeSystemClipboard } from "@/lib/systemClipboard";
 
 const MERMAID_BLOCK_PATTERN = /```[ \t]*mermaid[^\r\n]*(?:\r?\n)([\s\S]*?)```/gi;
 const MARKDOWN_SANITIZE_CONFIG = {
@@ -172,7 +173,7 @@ function MarkdownContent({ markdown }: { markdown: string }) {
     if (!copyButton) return;
     const code = copyButton.closest(".kv-chat-code")?.querySelector("pre")?.textContent ?? "";
     try {
-      await navigator.clipboard.writeText(code);
+      await writeSystemClipboard(code);
       copyButton.textContent = t("aiSessions.copiedMessage");
     } catch {
       copyButton.textContent = t("aiSessions.copyFailed");

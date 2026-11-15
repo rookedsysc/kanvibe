@@ -118,6 +118,7 @@ async function parseCodexSessionSummary(filePath: string, context: AiSessionRead
   let messageCount = 0;
   let hasQueryMatch = false;
   const seenMessages = new Set<string>();
+  const toolNames = new Map<string, string>();
 
   for (const rawEvent of events) {
     const event = rawEvent as CodexRolloutEvent;
@@ -138,7 +139,7 @@ async function parseCodexSessionSummary(filePath: string, context: AiSessionRead
       continue;
     }
 
-    const parsedMessages = extractCodexEventMessages(event, filePath);
+    const parsedMessages = extractCodexEventMessages(event, filePath, toolNames);
     for (const message of parsedMessages) {
       if (shouldSkipCodexMessage(message.role, message.text)) {
         continue;
@@ -193,6 +194,7 @@ async function parseCodexSessionDetail(
   let title: string | null = null;
   const messages: AggregatedAiMessage[] = [];
   const seenMessages = new Set<string>();
+  const toolNames = new Map<string, string>();
 
   for (const rawEvent of events) {
     const event = rawEvent as CodexRolloutEvent;
@@ -207,8 +209,8 @@ async function parseCodexSessionDetail(
       continue;
     }
 
-    for (const message of extractCodexEventMessages(event, filePath)) {
-      if (shouldSkipCodexMessage(message.role, message.text)) {
+    for (const message of extractCodexEventMessages(event, filePath, toolNames)) {
+      if (!context.includeInstructions && shouldSkipCodexMessage(message.role, message.text)) {
         continue;
       }
       const messageKey = createCodexMessageKey(message.role, event.timestamp, message.text, message.attachments);
@@ -255,9 +257,12 @@ interface CodexEventMessage {
   files?: AiMessageFile[];
 }
 
-function extractCodexEventMessages(event: CodexRolloutEvent, sourceRef = ""): CodexEventMessage[] {
+function extractCodexEventMessages(event: CodexRolloutEvent, sourceRef = "", toolNames = new Map<string, string>()): CodexEventMessage[] {
   if (event.type === "response_item") {
-    return extractCodexPayloadMessages(event.payload ?? {}, sourceRef);
+    const payload = event.payload ?? {};
+    if (typeof payload.call_id === "string" && typeof payload.name === "string" && ["function_call", "tool_call", "custom_tool_call"].includes(String(payload.type))) toolNames.set(payload.call_id, payload.name);
+    return extractCodexPayloadMessages(payload, sourceRef).map((message) => message.role === "tool" && !message.toolName && typeof payload.call_id === "string" && toolNames.has(payload.call_id)
+      ? { ...message, toolName: toolNames.get(payload.call_id) } : message);
   }
 
   if (event.type === "event_msg") {

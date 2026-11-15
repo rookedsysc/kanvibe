@@ -12,6 +12,7 @@ const respondWith = (content: string) => readTaskWorkspaceFile.mockResolvedValue
 
 beforeEach(() => { readTaskWorkspaceFile.mockReset(); });
 afterEach(() => {
+  vi.unstubAllGlobals();
   if (clipboardDescriptor) Object.defineProperty(navigator, "clipboard", clipboardDescriptor);
   else Reflect.deleteProperty(navigator, "clipboard");
 });
@@ -50,6 +51,18 @@ describe("AiChatFilePreview", () => {
 
     expect(await screen.findByRole("button", { name: "copied" })).toBeTruthy();
     expect(writeText).toHaveBeenCalledWith("# 계획\n\n- 첫째");
+  });
+
+  it("데스크톱 미리보기는 브라우저 클립보드가 없어도 파일 원문을 복사한다", async () => {
+    const writeSystemClipboard = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal("kanvibeDesktop", { writeSystemClipboard });
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: undefined });
+    respondWith("# 원문\n\n- 복사");
+    render(<AiChatFilePreview taskId="task-1" filePath="docs/plan.md" onClose={() => {}} />);
+    await screen.findByRole("heading", { name: "원문" });
+    fireEvent.click(screen.getByRole("button", { name: "copy" }));
+    await screen.findByRole("button", { name: "copied" });
+    expect(writeSystemClipboard).toHaveBeenCalledWith("# 원문\n\n- 복사");
   });
 
   it("HTML 파일은 스크립트만 허용하고 같은 출처와 바깥 요청을 막은 틀 안에 그린다", async () => {

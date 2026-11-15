@@ -1,5 +1,12 @@
 import { invokeDesktop } from "@/desktop/renderer/ipc";
 import type { PaneChatActionResult, PaneChatAttachment, PaneChatAttachmentInput, PaneChatKey, PaneChatLayout, PaneChatSnapshot, PaneChatSuggestionKind, PaneChatSuggestions } from "@/desktop/shared/paneChat";
+import type { PaneChatModelSettings, PaneChatModelSettingChange } from "@/lib/aiSessions/paneChatModelSettings";
+
+export const getPaneChatModelSettings = (taskId: string, targetToken: string): Promise<PaneChatModelSettings> =>
+  invokeDesktop("paneChat", "getPaneChatModelSettings", taskId, targetToken);
+
+export const changePaneChatModelSetting = (taskId: string, targetToken: string, change: PaneChatModelSettingChange): Promise<PaneChatActionResult> =>
+  invokeDesktop("paneChat", "changePaneChatModelSetting", taskId, targetToken, change);
 
 export const getPaneChatLayout = (taskId: string, terminalTabId?: string): Promise<PaneChatLayout> =>
   invokeDesktop("paneChat", "getPaneChatLayout", taskId, terminalTabId);
@@ -9,6 +16,9 @@ export const focusPaneChatTerminal = (taskId: string, paneId: string): Promise<P
 
 export const getPaneChatSnapshot = (taskId: string, paneId?: string): Promise<PaneChatSnapshot> =>
   invokeDesktop("paneChat", "getPaneChatSnapshot", taskId, paneId);
+
+export const getPaneChatTranscriptPage = (taskId: string, targetToken: string, cursor: string): Promise<PaneChatSnapshot["transcript"]> =>
+  invokeDesktop("paneChat", "getPaneChatTranscriptPage", taskId, targetToken, cursor);
 
 export const sendPaneChatPrompt = (taskId: string, targetToken: string, text: string, attachmentIds?: string[], requestId?: string): Promise<PaneChatActionResult> =>
   invokeDesktop("paneChat", "sendPaneChatPrompt", taskId, targetToken, text, attachmentIds, requestId);

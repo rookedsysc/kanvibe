@@ -180,6 +180,8 @@ export interface AiSessionReaderContext {
   repoPath: string | null;
   query?: string;
   roles?: AiMessageRole[];
+  /** 채팅 화면에서 사용자가 지침 표시를 선택할 수 있도록 자동 주입 문맥도 함께 읽는다. */
+  includeInstructions?: boolean;
   cursor?: string | null;
   limit?: number;
   sshHost?: string | null;

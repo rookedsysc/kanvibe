@@ -82,7 +82,8 @@ function readFooterThreadId(line: string | undefined): string | null {
 /** 실제 빈 입력란의 idle 안내만 허용한다. 실행 중인 메시지 대기 안내는 자동 명령/새 입력을 허용하지 않는다 */
 export function isCodexMainComposerReady(viewportLines: string[], cursorRow: number): boolean {
   const lastRow = viewportLines.findLastIndex((line) => !isBlankRow(line));
-  return (lastRow === cursorRow + 3 || lastRow === cursorRow + 4) && isBlankRow(viewportLines[cursorRow + 1])
+  // 초기 상태줄은 설정 항목과 pane 너비에 따라 여러 줄로 접힌다. 빈 입력란과 마지막 안내 줄 사이의 연속된 상태줄을 확인한다.
+  return lastRow >= cursorRow + 3 && isBlankRow(viewportLines[cursorRow + 1])
     && viewportLines.slice(cursorRow + 2, lastRow).every((line) => line.startsWith("  ") && !isBlankRow(line))
     && MAIN_SHORTCUT_HINT_ROW.test(viewportLines[lastRow]?.trimEnd() ?? "");
 }

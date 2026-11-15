@@ -77,10 +77,10 @@ export interface PaneChatSnapshot {
     /** 가장 최근 메시지의 순번. messages는 최신순이라 index 0이 이 순번이다 */
     seq?: number;
   };
-  modelPicker: { supported: boolean; mode: "native-cli" };
+  modelPicker: { supported: boolean; mode: "native-cli"; supportsApi?: boolean };
   /** 현재 모델·effort와 고를 수 있는 선택지. 기록에서 읽지 못했거나 지원하지 않는 CLI면 없다 */
   modelSettings?: PaneChatModelSettings;
-  composer?: { attachments: boolean; skills: boolean; fileMentions: boolean; maxAttachmentBytes: number; maxAttachments: number };
+  composer?: { attachments: boolean; skills: boolean; fileMentions: boolean; canSendWhileBusy?: boolean; maxAttachmentBytes: number; maxAttachments: number };
 }
 
 /** 구독자가 대화를 어디까지 받았는지 */

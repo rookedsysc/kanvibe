@@ -2,12 +2,15 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PaneChatSnapshot } from "@/desktop/shared/paneChat";
 import { PaneChatView } from "../PaneChatView";
+import { getAppSetting, setAppSetting } from "@/desktop/renderer/actions/appSettings";
 
 const actions = vi.hoisted(() => ({
   getPaneChatSnapshot: vi.fn(), sendPaneChatPrompt: vi.fn(), interruptPaneChat: vi.fn(),
   openPaneChatModelPicker: vi.fn(), sendPaneChatKey: vi.fn(),
+  getPaneChatTranscriptPage: vi.fn(), getPaneChatModelSettings: vi.fn(), changePaneChatModelSetting: vi.fn(),
 }));
 vi.mock("@/desktop/renderer/actions/paneChat", () => actions);
+vi.mock("@/desktop/renderer/actions/appSettings", () => ({ getAppSetting: vi.fn().mockResolvedValue(null), setAppSetting: vi.fn().mockResolvedValue(undefined) }));
 vi.mock("next-intl", () => ({ useTranslations: () => (key: string) => key }));
 vi.mock("@/components/AiProviderIcon", () => ({ AiProviderIcon: () => null }));
 vi.mock("../AiChatTranscriptMessage", () => ({
@@ -44,6 +47,65 @@ function open() {
 }
 
 describe("current pane chat", () => {
+  it("전송 응답이 오기 전 말풍선을 표시하고 원본 기록이 도착하면 중복을 제거한다", async () => {
+    let accept!: (value: { success: true }) => void;
+    actions.sendPaneChatPrompt.mockReturnValue(new Promise((resolve) => { accept = resolve; }));
+    open();
+    await screen.findByText("Exact pane response");
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "Immediate request" } });
+    fireEvent.click(screen.getByRole("button", { name: "send" }));
+    expect(screen.getByText("Immediate request", { selector: "article" })).toBeTruthy();
+    const message = { role: "user" as const, timestamp: "2026-11-15T12:00:00Z", text: "Immediate request", fullText: "Immediate request", isTruncated: false };
+    actions.getPaneChatSnapshot.mockResolvedValue({ ...snapshot(), transcript: { ...snapshot().transcript, messages: [message, ...snapshot().transcript.messages] } });
+    await act(async () => accept({ success: true }));
+    await waitFor(() => expect(screen.queryByTestId("pane-chat-pending-message")).toBeNull());
+    expect(screen.getAllByText("Immediate request")).toHaveLength(1);
+  });
+
+  it("현재 채팅에서 이전 페이지를 이어 읽고 최신 폴링 뒤에도 펼친 기록을 유지한다", async () => {
+    vi.useFakeTimers();
+    actions.getPaneChatSnapshot.mockResolvedValue({ ...snapshot(), transcript: { ...snapshot().transcript, nextCursor: "100" } });
+    actions.getPaneChatTranscriptPage.mockResolvedValue({ ...snapshot().transcript, nextCursor: null, messages: [{ role: "user", timestamp: null, text: "Older request", fullText: "Older request", isTruncated: false }] });
+    await act(async () => { open(); });
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "loadOlder" })); });
+    expect(screen.getByText("Older request")).toBeTruthy();
+    expect(actions.getPaneChatTranscriptPage).toHaveBeenCalledWith("task-1", "process-a", "100");
+    await act(async () => { await vi.advanceTimersByTimeAsync(1500); });
+    expect(screen.getByText("Older request")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "loadOlder" })).toBeNull();
+  });
+
+  it("History 옆 지침 표시를 켜면 시스템과 자동 AGENTS 문맥을 볼 수 있다", async () => {
+    const messages = [
+      { role: "developer" as const, timestamp: null, text: "Project instructions", fullText: "Project instructions", isTruncated: false },
+      { role: "user" as const, timestamp: null, text: "# AGENTS.md instructions for /repo\n<INSTRUCTIONS>rules</INSTRUCTIONS>\n<environment_context>cwd</environment_context>", fullText: "", isTruncated: false },
+      ...snapshot().transcript.messages,
+    ];
+    actions.getPaneChatSnapshot.mockResolvedValue({ ...snapshot(), transcript: { ...snapshot().transcript, messages } });
+    open();
+    await screen.findByText("Exact pane response");
+    expect(screen.queryByText("Project instructions")).toBeNull();
+    await waitFor(() => expect((screen.getByRole("checkbox", { name: "showInstructions" }) as HTMLInputElement).disabled).toBe(false));
+    fireEvent.click(screen.getByRole("checkbox", { name: "showInstructions" }));
+    await screen.findByText("Project instructions");
+    expect(setAppSetting).toHaveBeenCalledWith("pane_chat_show_instructions", "true");
+    vi.mocked(getAppSetting).mockResolvedValue(null);
+  });
+
+  it("Codex 모델 API 선택기는 채팅 안에 열리고 터미널로 전환하지 않는다", async () => {
+    actions.getPaneChatSnapshot.mockResolvedValue({ ...snapshot(), modelPicker: { supported: true, mode: "native-cli", supportsApi: true } });
+    actions.getPaneChatModelSettings.mockResolvedValue({ model: "a", effort: "high", models: [{ id: "a", label: "A", effortLevels: [{ id: "high", label: "High" }] }, { id: "b", label: "B", effortLevels: [] }] });
+    actions.changePaneChatModelSetting.mockResolvedValue({ success: true });
+    const view = open();
+    await screen.findByText("Exact pane response");
+    fireEvent.click(screen.getByRole("button", { name: "model" }));
+    const select = await screen.findByRole("combobox", { name: "model" });
+    await waitFor(() => expect((select as HTMLSelectElement).disabled).toBe(false));
+    fireEvent.change(select, { target: { value: "b" } });
+    await waitFor(() => expect(actions.changePaneChatModelSetting).toHaveBeenCalledWith("task-1", "process-a", { kind: "model", model: "b" }));
+    expect(view.onTerminal).not.toHaveBeenCalled();
+    expect(actions.openPaneChatModelPicker).not.toHaveBeenCalled();
+  });
   it.each(["ready", "occupied"] as const)("hides the CLI capture once the transcript renders while %s", async (inputState) => {
     actions.getPaneChatSnapshot.mockResolvedValue({ ...snapshot(), inputState });
     open();
@@ -211,4 +273,19 @@ it("bounds unavailable polling and allows an explicit retry", async () => {
   expect(actions.getPaneChatSnapshot).toHaveBeenCalledTimes(3);
   await act(async () => fireEvent.click(screen.getByRole("button", { name: "retry" })));
   expect(actions.getPaneChatSnapshot).toHaveBeenCalledTimes(4);
+});
+
+it("터미널 입력 대기는 정확히 안내하고 세 번 이후에도 확인해 입력이 끝나면 자동으로 연결한다", async () => {
+  vi.useFakeTimers();
+  actions.getPaneChatSnapshot.mockResolvedValue({ ...snapshot(), canSend: false, targetToken: null, inputState: "occupied", transcript: { status: "unavailable", reason: "codex-thread-input-busy", sessionId: null, messages: [], nextCursor: null } });
+  await act(async () => { open(); });
+  expect(screen.getByText("transcriptInputBusy")).toBeTruthy();
+  expect(screen.queryByText("transcriptIdentityMissing")).toBeNull();
+  await act(async () => { await vi.advanceTimersByTimeAsync(6000); });
+  expect(actions.getPaneChatSnapshot.mock.calls.length).toBeGreaterThan(3);
+  actions.getPaneChatSnapshot.mockResolvedValue(snapshot());
+  await act(async () => { await vi.advanceTimersByTimeAsync(1500); });
+  expect(screen.getByText("Exact pane response")).toBeTruthy();
+  expect(screen.queryByText("transcriptInputBusy")).toBeNull();
+  expect(actions.sendPaneChatPrompt).not.toHaveBeenCalled();
 });
