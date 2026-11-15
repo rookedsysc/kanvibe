@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useTranslations } from "next-intl";
+import { writeSystemClipboard } from "@/lib/systemClipboard";
 import { AiProviderIcon } from "@/components/AiProviderIcon";
 import { AI_SESSION_PROVIDER_LABELS } from "@/lib/aiSessions/providers";
 import type { AggregatedAiMessage, AiMessageFile, AiSessionProvider } from "@/lib/aiSessions/types";
@@ -23,7 +24,7 @@ export function AiChatTranscriptMessage({ message, provider, attachmentContext, 
 
   async function copyMessage() {
     try {
-      await navigator.clipboard.writeText(text);
+      await writeSystemClipboard(text);
       setCopyState("copied");
     } catch {
       setCopyState("error");
@@ -75,9 +76,11 @@ export function AiChatTranscriptMessage({ message, provider, attachmentContext, 
     return (
       <div data-message-role={message.role}>
         <details className="group rounded-lg border border-border-subtle bg-bg-surface px-4 py-2">
-          <summary className="cursor-pointer py-1 text-xs font-medium text-text-secondary focus-visible:outline-2 focus-visible:outline-brand-primary">
-            {message.toolName ?? t(`aiSessions.roles.${message.role}`)}
-            <span className="ml-2 inline-block max-w-[65%] truncate align-bottom font-normal text-text-secondary">{text.split("\n")[0]}</span>
+          <summary className="sticky top-0 z-10 -mx-4 cursor-pointer rounded-t-lg border-b border-transparent bg-bg-surface px-4 py-3 text-xs font-medium text-text-secondary group-open:border-border-subtle focus-visible:outline-2 focus-visible:outline-brand-primary">
+            <span>{message.toolName ?? t(`aiSessions.roles.${message.role}`)}</span>
+            <span className="ml-2 inline-block max-w-[55%] truncate align-bottom font-normal text-text-secondary">{text.split("\n")[0]}</span>
+            <span className="float-right ml-2 text-text-secondary group-open:hidden" aria-hidden="true">{t("aiSessions.expandTool")}</span>
+            <span className="float-right ml-2 hidden text-text-secondary group-open:inline" aria-hidden="true">{t("aiSessions.collapseTool")}</span>
           </summary>
           <div className="mt-2 min-w-0 pb-2 text-sm leading-6 text-text-primary">{body}{meta}</div>
         </details>

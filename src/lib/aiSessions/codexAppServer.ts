@@ -86,7 +86,7 @@ async function withHostSocket<T>(socketPath: string, codexHome: string, sshHost:
   }
 }
 
-/** 기존 계정의 서버에 연결만 한다. 서버·대화 생성, resume, 로그인, 설정 변경은 호출하지 않는다 */
+/** 기존 계정의 서버에 연결해 전달된 작업을 수행한다. 연결을 위해 서버나 대화를 새로 만들지 않는다. */
 export async function withCodexAppServer<T>(context: AiSessionReaderContext, explicitSocket: string | null | undefined, operation: (connection: CodexAppServerConnection) => Promise<T>): Promise<T> {
   if (explicitSocket === null) throw new Error("이 Codex 연결 방식에서는 대화 지정 입력을 지원하지 않습니다.");
   const codexHome = path.posix.normalize(path.posix.join(await getHomeDirectory(context.sshHost), ".codex"));

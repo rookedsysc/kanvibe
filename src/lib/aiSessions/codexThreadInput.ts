@@ -22,7 +22,7 @@ export async function sendCodexThreadInput(options: CodexThreadInput): Promise<v
   await withCodexAppServer(context, options.socket, async (connection) => {
     const { thread } = await connection.request<{ thread: Record<string, unknown> }>("thread/read", { threadId, includeTurns: false });
     if (codexMainThreadSource(thread, context, connection.codexHome, threadId) !== sourceRef) throw new Error("CLI와 같은 작업의 Codex 대화를 확인하지 못했습니다.");
-    if ((thread.status as { type?: string } | undefined)?.type !== "idle") throw new Error("Codex가 작업 중입니다. 현재 터미널에서 상태를 확인해 주세요.");
+    if (!["idle", "active"].includes(String((thread.status as { type?: string } | undefined)?.type))) throw new Error("Codex가 입력을 받을 수 없는 상태입니다.");
     await options.beforeSend();
     const result = await connection.request<{ turn?: { id?: string } }>("turn/start", { threadId, input, clientUserMessageId }, options.onWrite);
     if (!result.turn?.id) throw new Error("Codex 입력 수락 결과를 확인하지 못했습니다.");

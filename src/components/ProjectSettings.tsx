@@ -22,6 +22,7 @@ import { applyThemePreference, notifyThemePreferenceChanged } from "@/desktop/re
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 import SessionTypeOptions from "./SessionTypeOptions";
 import BulkSessionTypeChangeSettings from "./BulkSessionTypeChangeSettings";
+import { PaneChatSettings } from "@/desktop/renderer/components/PaneChatSettings";
 
 const MIN_SYNC_INTERVAL_MINUTES = 1;
 const MAX_SYNC_INTERVAL_MINUTES = 1440;
@@ -429,6 +430,7 @@ export default function ProjectSettings({
             </button>
           </label>
           {renderSettingSaveFailure("sidebar")}
+          <PaneChatSettings />
         </div>
 
         {/* 작업 생성 설정 */}

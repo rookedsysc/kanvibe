@@ -16,7 +16,7 @@ vi.mock("@/lib/aiSessions/codexThreadMetadata", () => ({ readCodexEmptyThread: m
 vi.mock("@/lib/aiSessions/codexThreadInput", () => ({ sendCodexThreadInput: mocks.apiInput }));
 vi.mock("@/lib/aiSessions/shared", async (importOriginal) => ({ ...await importOriginal<typeof import("@/lib/aiSessions/shared")>(), readJsonLinesTail: modelMocks.tail }));
 vi.mock("@/lib/hostFileAccess", async (importOriginal) => ({ ...await importOriginal<typeof import("@/lib/hostFileAccess")>(), readTextFile: modelMocks.readTextFile }));
-import { focusPaneChatTerminal, getPaneChatLayout, getPaneChatSnapshot, getPaneChatSuggestions, stagePaneChatAttachment, removePaneChatAttachment, sendPaneChatPrompt, interruptPaneChat, openPaneChatModelPicker, changePaneChatModelSetting, sendPaneChatKey } from "../paneChatService";
+import { focusPaneChatTerminal, getPaneChatLayout, getPaneChatSnapshot, getPaneChatTranscriptPage, getPaneChatSuggestions, stagePaneChatAttachment, removePaneChatAttachment, sendPaneChatPrompt, interruptPaneChat, openPaneChatModelPicker, changePaneChatModelSetting, sendPaneChatKey } from "../paneChatService";
 
 const processTable = (start = "Thu Nov 12 19:00:00 2026") => `100 1 100 200 ttys010 Thu Nov 12 18:00:00 2026 /bin/zsh /bin/zsh\n200 100 200 200 ttys010 ${start} /usr/bin/python3 python3 /tmp/codex\n300 100 300 200 ttys010 Thu Nov 12 18:00:00 2026 /tmp/claude /tmp/claude`;
 const surface = { task: { id: "task-chat", sessionType: SessionType.TMUX, sessionName: "kv-task", sshHost: null, worktreePath: "/repo", project: { repoPath: "/repo" } }, paneId: "%3", rootPid: 100, screen: "CLI screen", inputLine: "› ", cursorColumn: 2 };
@@ -413,6 +413,7 @@ class FakeCodexPane {
   readonly submissions: { threadId: string; text: string }[] = [];
   readonly commands: string[] = [];
   ignoresFooterCommand = false;
+  initialFooter = "  gpt-sol high · ~/repo";
   /** 사용자가 여러 줄 입력의 첫 줄로 커서를 올려 둔 상태 */
   isCursorOnFirstComposerRow = false;
 
@@ -450,8 +451,8 @@ class FakeCodexPane {
     const commandPopup = /^\/\S*$/.test(this.composer) ? ["› /model  choose what model and reasoning effort to use", ""] : [];
     const rows = ["  >_ OpenAI Codex (v0.169.0)", "", ...commandPopup, `› ${firstLine}`, ...moreLines.map((line) => line ? `  ${line}` : "")];
     const cursorRow = this.isCursorOnFirstComposerRow ? rows.length - 1 - moreLines.length : rows.length - 1;
-    const footer = this.threadsShowingId.has(this.threadId) ? `  ${this.threadId}` : "  gpt-sol high · ~/repo";
-    rows.push("", footer, ...(this.composer ? [] : ["  ← for agents · ? for shortcuts"]));
+    const footer = this.threadsShowingId.has(this.threadId) ? `  ${this.threadId}` : this.initialFooter;
+    rows.push("", ...footer.split("\n"), ...(this.composer ? [] : ["  ← for agents · ? for shortcuts"]));
     return { observation: ++codexObservationSequence, task, paneId: this.paneId, rootPid: this.rootPid, screen: rows.join("\n"), inputLine: rows[cursorRow], cursorColumn: this.composer ? rows[cursorRow].length : 2, viewportLines: rows, cursorRow, viewportColumns: 160, inputIsPlaceholder: !this.composer };
   }
 }
@@ -504,6 +505,16 @@ describe("Codex displayed-thread footer binding", () => {
   beforeEach(() => { vi.useFakeTimers(); });
   afterEach(() => { vi.useRealTimers(); });
 
+  it("이전 페이지도 현재 검증된 대화 파일에서만 읽고 바뀐 CLI 토큰은 거부한다", async () => {
+    const { taskId, a } = createCodexTask();
+    const bound = await settle(getPaneChatSnapshot(taskId, "%A"));
+    mocks.codex.mockResolvedValueOnce({ sessionId: THREAD_X, messages: [{ role: "user", text: "Older X" }], nextCursor: "200" });
+    expect(await settle(getPaneChatTranscriptPage(taskId, bound.targetToken!, "100"))).toMatchObject({ sessionId: THREAD_X, nextCursor: "200", messages: [{ text: "Older X" }] });
+    expect(mocks.codex).toHaveBeenLastCalledWith(expect.anything(), THREAD_X, rolloutFile(THREAD_X), "100", 100);
+    a.switchThread(THREAD_Y);
+    await expect(settle(getPaneChatTranscriptPage(taskId, bound.targetToken!, "200"))).rejects.toMatchObject({ name: "PaneChatTargetChangedError" });
+  });
+
   it("types the session-only thread-id footer command into an empty composer and binds the displayed thread", async () => {
     const { taskId, a } = createCodexTask();
     const snapshot = await settle(getPaneChatSnapshot(taskId, "%A"));
@@ -520,6 +531,20 @@ describe("Codex displayed-thread footer binding", () => {
     expect(a.commands).toEqual([FOOTER_COMMAND]);
     expect((await settle(getPaneChatSnapshot(taskId, "%A"))).transcript).toMatchObject({ status: "available", sessionId: THREAD_X });
     expect(a.commands).toEqual([FOOTER_COMMAND]);
+  });
+
+  it("connects an idle Codex whose configured footer wraps to three rows in a narrow pane", async () => {
+    const { taskId, a } = createCodexTask();
+    // feat/k3s-settings의 실제 69칸 pane에서 관측한 초기 상태줄이다.
+    a.initialFooter = [
+      "  GPT-6.1-Sol high · ~/Documents/github/rookedsysc/naive-first/more-",
+      "  naive__worktrees/feat-k3s-settings · 열린 이슈를 워크트리별로 해결",
+      "  · Main [default]",
+    ].join("\n");
+    const snapshot = await settle(getPaneChatSnapshot(taskId, "%A"));
+    expect(a.commands).toEqual([FOOTER_COMMAND]);
+    expect(snapshot).toMatchObject({ canSend: true, inputState: "ready", transcript: { status: "available", sessionId: THREAD_X } });
+    expect(a.submissions).toEqual([]);
   });
 
   it("discards an old snapshot whose scoped lookup finishes after a newer thread was bound", async () => {
@@ -564,7 +589,7 @@ describe("Codex displayed-thread footer binding", () => {
     expect(a.submissions).toEqual([]);
   });
 
-  it("keeps an already-bound transcript while the native composer queues messages and refuses a new prompt", async () => {
+  it("이미 연결한 Codex가 작업 중이어도 API로 입력을 추가하고 PTY 입력은 유지한다", async () => {
     const { taskId, a } = createCodexTask();
     const bound = await settle(getPaneChatSnapshot(taskId, "%A"));
     mocks.surface.mockImplementation(async () => {
@@ -575,7 +600,9 @@ describe("Codex displayed-thread footer binding", () => {
     const busy = await settle(getPaneChatSnapshot(taskId, "%A"));
     expect(busy).toMatchObject({ canSend: true, inputState: "occupied", targetToken: bound.targetToken, transcript: { sessionId: THREAD_X } });
     mocks.write.mockClear();
-    await expect(settle(sendPaneChatPrompt(taskId, busy.targetToken!, "Busy"))).rejects.toMatchObject({ name: "PaneChatInputError" });
+    await settle(sendPaneChatPrompt(taskId, busy.targetToken!, "Busy"));
+    expect(mocks.apiInput).toHaveBeenCalledOnce();
+    expect(a.submissions).toEqual([{ threadId: THREAD_X, text: "Busy" }]);
     expect(mocks.write).not.toHaveBeenCalled();
   });
 

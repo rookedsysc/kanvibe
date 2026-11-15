@@ -28,10 +28,11 @@ export function PaneChatComposer({ taskId, chat, isVisible, onModel }: {
   const [suggestions, setSuggestions] = useState<{ key: string; items: PaneChatSuggestion[]; loading: boolean; error: boolean; truncated: boolean } | null>(null);
   const [active, setActive] = useState(0);
   const [retry, setRetry] = useState(0);
+  const [expanded, setExpanded] = useState(false);
   const listId = useId();
   const target = chat.snapshot?.targetToken;
   const capabilities = chat.snapshot?.composer;
-  const inputReady = chat.snapshot?.inputState === "ready";
+  const inputReady = chat.snapshot?.inputState === "ready" || (chat.snapshot?.composer?.canSendWhileBusy === true && !/^\s*\//.test(composer.text));
   const disabled = !chat.isReady || !chat.snapshot?.canSend || chat.readError || chat.isBusy;
   const canEdit = chat.isReady && !!target;
   const token = /(?:^|\s)([$/@])([^\s]*)$/.exec(composer.text.slice(0, caret));
@@ -112,7 +113,7 @@ export function PaneChatComposer({ taskId, chat, isVisible, onModel }: {
   }
   const hasPending = composer.attachments.some((item) => item.status !== "ready" || item.error);
   return (
-    <form onSubmit={(event) => { event.preventDefault(); submit(); }} className="shrink-0 overflow-y-auto [scrollbar-gutter:stable] px-4 py-3 sm:px-8">
+    <form onSubmit={(event) => { event.preventDefault(); submit(); }} className="max-h-[70%] shrink-0 overflow-y-auto [scrollbar-gutter:stable] px-4 py-3 sm:px-8">
       <div data-testid="pane-chat-composer" className="mx-auto max-w-3xl rounded-xl border border-border-default bg-bg-surface p-2 focus-within:border-brand-primary" onDragOver={(event) => {
         if (capabilities?.attachments && canEdit && event.dataTransfer.types.includes("Files")) event.preventDefault();
       }} onDrop={(event) => {
@@ -146,7 +147,7 @@ export function PaneChatComposer({ taskId, chat, isVisible, onModel }: {
           </ul>
           {currentSuggestions?.truncated ? <p className="px-3 py-1 text-xs text-text-secondary">{t("moreSuggestions")}</p> : null}
         </div> : null}
-        <textarea ref={textarea} aria-label={t("placeholder")} aria-autocomplete="list" aria-controls={showSuggestions ? listId : undefined} aria-activedescendant={showSuggestions && currentSuggestions?.items[active] ? `${listId}-${active}` : undefined} title={t("draftHint")} placeholder={t("placeholder")} rows={2} value={composer.text} disabled={!canEdit} onChange={(event) => {
+        <textarea ref={textarea} aria-label={t("placeholder")} aria-autocomplete="list" aria-controls={showSuggestions ? listId : undefined} aria-activedescendant={showSuggestions && currentSuggestions?.items[active] ? `${listId}-${active}` : undefined} title={t("draftHint")} placeholder={t("placeholder")} rows={expanded ? 12 : 2} value={composer.text} disabled={!canEdit} onChange={(event) => {
           composer.setText(event.target.value);
           setCaret(event.target.selectionStart);
           setSkillPicker(false);
@@ -159,16 +160,17 @@ export function PaneChatComposer({ taskId, chat, isVisible, onModel }: {
           if (event.nativeEvent.isComposing) return;
           if (handleCompletionKey(event)) return;
           if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); submit(); }
-        }} className="block max-h-48 min-h-16 w-full min-w-0 resize-y bg-transparent px-2 py-1 text-sm leading-6 text-text-primary outline-none placeholder:text-text-secondary" />
+        }} className="block max-h-[60vh] min-h-16 w-full min-w-0 resize-y bg-transparent px-2 py-1 text-sm leading-6 text-text-primary outline-none placeholder:text-text-secondary" />
         {(composer.error || chat.actionError) ? <p role="alert" className="px-2 py-1 text-xs text-status-error">{chat.actionError || t(composer.error ?? "sendError")}</p> : null}
         {chat.snapshot?.canSend && !inputReady ? <p role="status" className="px-2 py-1 text-xs text-text-secondary">{t(chat.snapshot.inputState === "occupied" ? "inputOccupied" : "inputWaiting")}</p> : null}
         <input ref={fileInput} type="file" multiple hidden aria-label={t("attachFiles")} onChange={(event) => { composer.addFiles(Array.from(event.target.files ?? [])); event.target.value = ""; }} />
         <input ref={photoInput} type="file" accept="image/*" multiple hidden aria-label={t("attachPhotos")} onChange={(event) => { composer.addFiles(Array.from(event.target.files ?? [])); event.target.value = ""; }} />
         <div data-testid="pane-chat-composer-tools" className="mt-1 flex flex-wrap items-center gap-1">
+          <button type="button" aria-expanded={expanded} onClick={() => setExpanded((value) => !value)} className={controlClass}>{t(expanded ? "collapseComposer" : "expandComposer")}</button>
           <button type="button" disabled={!canEdit || !capabilities?.attachments} onClick={() => fileInput.current?.click()} className={controlClass}>{t("attachFiles")}</button>
           <button type="button" disabled={!canEdit || !capabilities?.attachments} onClick={() => photoInput.current?.click()} className={controlClass}>{t("attachPhotos")}</button>
           <button type="button" aria-expanded={showSuggestions && completion?.kind === "skill"} disabled={!canEdit || !capabilities?.skills} onClick={() => { setSkillPicker((value) => !value); setSkillQuery(""); setDismissed(null); }} className={controlClass}>{t("skills")}</button>
-          <button type="button" disabled={disabled || !chat.snapshot?.modelPicker.supported || !inputReady} onClick={onModel} className={controlClass}>{t("model")}</button>
+          <button type="button" disabled={disabled || !chat.snapshot?.modelPicker.supported || (!inputReady && !chat.snapshot.modelPicker.supportsApi)} onClick={onModel} className={controlClass}>{t("model")}</button>
           <button type="button" disabled={disabled} onClick={() => void chat.interrupt()} className={controlClass}>{t("stop")}</button>
           <button type="submit" disabled={disabled || composer.sending || hasPending || (!composer.text.trim() && !composer.attachments.length) || !inputReady} aria-label={composer.sending ? t("sending") : t("send")} className="ml-auto flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-primary text-base font-medium text-white hover:bg-brand-active focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary disabled:opacity-40"><span aria-hidden="true">{composer.sending ? "…" : "↑"}</span></button>
         </div>

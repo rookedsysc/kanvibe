@@ -2,9 +2,20 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import * as actions from "@/desktop/renderer/actions/paneChat";
 import type { PaneChatActionResult, PaneChatKey, PaneChatSnapshot } from "@/desktop/shared/paneChat";
 import { useIsWindowActive } from "./useIsWindowActive";
+import type { AggregatedAiMessage } from "@/lib/aiSessions/types";
 
 const POLL_INTERVAL_MS = 1_500;
 const MAX_UNAVAILABLE_READS = 3;
+
+interface PendingMessage {
+  id: string;
+  conversation: string;
+  message: AggregatedAiMessage;
+  baseline: string[];
+  state: "sending" | "sent" | "error";
+}
+const messageKey = (message: AggregatedAiMessage) => JSON.stringify([message.timestamp, message.fullText || message.text, message.attachments?.map((item) => item.id)]);
+const conversationKey = (snapshot: PaneChatSnapshot) => JSON.stringify([snapshot.taskId, snapshot.paneId, snapshot.conversationKey ?? snapshot.targetToken]);
 
 export function usePaneChat(taskId: string, isVisible = true, paneId?: string) {
   const isActive = useIsWindowActive();
@@ -13,6 +24,8 @@ export function usePaneChat(taskId: string, isVisible = true, paneId?: string) {
   const [actionError, setActionError] = useState<string | null>(null);
   const [isBusy, setIsBusy] = useState(false);
   const [isReady, setIsReady] = useState(false);
+  const [pending, setPending] = useState<PendingMessage[]>([]);
+  const confirmedOperations = useRef(new Set<string>());
   const current = useRef<PaneChatSnapshot | null>(null);
   const generation = useRef(0);
   const busy = useRef(false);
@@ -42,7 +55,8 @@ export function usePaneChat(taskId: string, isVisible = true, paneId?: string) {
         try {
           const snapshot = await actions.getPaneChatSnapshot(taskId, paneId);
           if (disposed) return;
-          unavailableReads = snapshot.transcript.status === "unavailable" ? unavailableReads + 1 : 0;
+          const isWaitingForInput = snapshot.transcript.reason === "codex-thread-input-busy";
+          unavailableReads = snapshot.transcript.status === "unavailable" && !isWaitingForInput ? unavailableReads + 1 : 0;
           current.current = snapshot;
           setIsReady(paneId === undefined || snapshot.paneId === paneId);
           setResult({ taskId, paneId, snapshot });
@@ -87,16 +101,55 @@ export function usePaneChat(taskId: string, isVisible = true, paneId?: string) {
     } finally {
       busy.current = false;
       setIsBusy(false);
-      if (generation.current === epoch) await refreshRef.current();
+      if (generation.current === epoch) void refreshRef.current();
     }
   }, [taskId, paneId, isVisible]);
 
+  async function send(text: string, attachmentIds?: string[], requestId?: string) {
+    const target = current.current;
+    if (!target?.canSend || !target.targetToken || busy.current || !isVisible) return false;
+    const id = requestId ?? crypto.randomUUID();
+    const conversation = conversationKey(target);
+    const isCommand = /^\s*\//.test(text);
+    if (!isCommand && !confirmedOperations.current.has(id)) setPending((rows) => [...rows.filter((row) => row.id !== id), {
+      id, conversation, state: "sending", baseline: target.transcript.messages.map(messageKey),
+      message: { role: "user", timestamp: new Date().toISOString(), text, fullText: text, isTruncated: false },
+    }]);
+    const accepted = await run((token) => actions.sendPaneChatPrompt(taskId, token, text, attachmentIds, id), true);
+    if (!isCommand) setPending((rows) => rows.map((row) => row.id === id ? { ...row, state: accepted ? "sent" : "error" } : row));
+    return accepted;
+  }
+
+  const snapshot = result?.taskId === taskId && result.paneId === paneId ? result.snapshot : null;
+  const usedRows = new Set<string>();
+  const acknowledged: string[] = [];
+  const pendingMessages = snapshot ? pending.filter((row) => {
+    if (row.conversation !== conversationKey(snapshot)) return false;
+    const recorded = snapshot.transcript.messages.find((message) => {
+      const key = messageKey(message);
+      const text = message.fullText || message.text;
+      return message.role === "user" && !usedRows.has(key) && !row.baseline.includes(key)
+        && (row.message.text ? text === row.message.text || text.startsWith(`${row.message.text}\n\n`) : !!message.attachments?.length);
+    });
+    if (!recorded) return true;
+    acknowledged.push(row.id);
+    usedRows.add(messageKey(recorded));
+    return false;
+  }) : [];
+  const acknowledgedKey = JSON.stringify(acknowledged);
+  useEffect(() => {
+    const ids = new Set<string>(JSON.parse(acknowledgedKey));
+    if (!ids.size) return;
+    for (const id of ids) confirmedOperations.current.add(id);
+    setPending((rows) => rows.filter((row) => !ids.has(row.id)));
+  }, [acknowledgedKey]);
+
   return {
-    snapshot: result?.taskId === taskId && result.paneId === paneId ? result.snapshot : null,
+    snapshot, pendingMessages,
     readError, actionError, isBusy,
     isReady: isReady && result?.taskId === taskId && result.paneId === paneId,
     refresh: () => refreshRef.current(),
-    send: (text: string, attachmentIds?: string[], requestId?: string) => run((token) => actions.sendPaneChatPrompt(taskId, token, text, attachmentIds, requestId), true),
+    send,
     interrupt: () => run((token) => actions.interruptPaneChat(taskId, token)),
     openModelPicker: () => run((token) => actions.openPaneChatModelPicker(taskId, token)),
     sendKey: (key: PaneChatKey) => run((token) => actions.sendPaneChatKey(taskId, token, key)),

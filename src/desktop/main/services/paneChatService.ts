@@ -13,6 +13,7 @@ import { findCodexMainThreadRollout, readCodexSessionDetail } from "@/lib/aiSess
 import { CODEX_THREAD_FOOTER_COMMAND, expectCodexComposerTexts, isCodexMainComposerReady, isCodexThreadFooterSupported, isSameComposerText, readCodexDisplay } from "@/lib/aiSessions/paneChatCodexDisplay";
 import { readCodexEmptyThread } from "@/lib/aiSessions/codexThreadMetadata";
 import { sendCodexThreadInput } from "@/lib/aiSessions/codexThreadInput";
+import { readCodexThreadSettings, updateCodexThreadSettings } from "@/lib/aiSessions/codexThreadSettings";
 import { findPaneChatProcess, type PaneChatProcess } from "@/lib/aiSessions/paneChatProcess";
 import { findPaneChatSessionBinding } from "@/lib/aiSessions/paneChatSessionBindings";
 import { MAX_PANE_CHAT_ATTACHMENTS, type PaneChatActionResult, type PaneChatAttachment, type PaneChatAttachmentInput, type PaneChatKey, type PaneChatLayout, type PaneChatSnapshot, type PaneChatSuggestionKind, type PaneChatSuggestions } from "@/desktop/shared/paneChat";
@@ -261,7 +262,7 @@ async function readTranscript(surface: PaneChatSurface, process: PaneChatProcess
   if (binding.pending && !await pathExists(binding.sourceRef, task.sshHost)) return { transcript: { status: "available", reason: null, sessionId: binding.sessionId, messages: [], nextCursor: null }, sourceRef: null };
   const context = { worktreePath: task.worktreePath ?? task.project?.repoPath ?? null, repoPath: task.project?.repoPath ?? null, sshHost: task.sshHost };
   const reader = process.provider === "claude" ? readClaudeSessionDetail : readCodexSessionDetail;
-  const detail = await reader(context, binding.sessionId, binding.sourceRef, null, TRANSCRIPT_PAGE_LIMIT);
+  const detail = await reader({ ...context, includeInstructions: true }, binding.sessionId, binding.sourceRef, null, TRANSCRIPT_PAGE_LIMIT);
   if (!detail) return unavailable("exact-session-unavailable");
   return { transcript: { status: "available", reason: null, sessionId: detail.sessionId, messages: detail.messages, nextCursor: detail.nextCursor }, sourceRef: binding.sourceRef ?? null };
 }
@@ -324,6 +325,21 @@ export async function getPaneChatSnapshot(taskId: string, paneId?: string): Prom
   return (await readPaneChat(taskId, paneId)).snapshot;
 }
 
+/** 현재 검증된 pane 대화의 이전 기록만 읽고, 조회 도중 대상이 바뀌면 결과를 버린다. */
+export async function getPaneChatTranscriptPage(taskId: string, targetToken: string, cursor: string): Promise<PaneChatSnapshot["transcript"]> {
+  if (typeof cursor !== "string" || !/^\d{1,9}$/.test(cursor)) throw inputError("이전 대화 위치가 올바르지 않습니다.");
+  const lease = await assertTarget(taskId, targetToken);
+  if (!lease.conversation || (lease.process.provider !== "codex" && lease.process.provider !== "claude")) throw changedTargetError();
+  const surface = await readPaneChatSurface(taskId, lease.requestedPaneId, false);
+  if (!surface) throw changedTargetError();
+  const [sessionId, sourceRef] = JSON.parse(lease.conversation) as [string, string];
+  const reader = lease.process.provider === "codex" ? readCodexSessionDetail : readClaudeSessionDetail;
+  const detail = await reader({ worktreePath: surface.task.worktreePath ?? surface.task.project?.repoPath ?? null, repoPath: surface.task.project?.repoPath ?? null, sshHost: surface.task.sshHost, includeInstructions: true }, sessionId, sourceRef, cursor, TRANSCRIPT_PAGE_LIMIT);
+  await assertTarget(taskId, targetToken);
+  if (!detail || detail.sessionId !== sessionId) throw changedTargetError();
+  return { status: "available", reason: null, sessionId, messages: detail.messages, nextCursor: detail.nextCursor };
+}
+
 /** pane에서 돌고 있는 에이전트 CLI의 이름만 확인한다. 화면과 대화 기록은 읽지 않는다 */
 export async function getPaneChatAgentProvider(taskId: string, paneId: string): Promise<PaneChatSnapshot["provider"]> {
   try {
@@ -383,7 +399,7 @@ export async function readPaneChat(taskId: string, paneId?: string): Promise<Pan
   const canSend = !supportsComposer || transcript.status === "available";
   const targetToken = canSend ? leaseTarget(surface, process, paneId, conversation) : null;
   const conversationKey = binding && canSend ? conversationKeyFor(surface, process, conversation)! : undefined;
-  return reading({ ...snapshot, provider: process.provider, targetToken, canSend, ...(conversationKey ? { conversationKey } : {}), inputState: readInputState(surface, process, !!displayState), reason: canSend ? null : transcript.reason, transcript, modelPicker: { supported: supportsComposer, mode: "native-cli" }, ...(modelSettings ? { modelSettings } : {}), composer: { attachments: supportsComposer, skills: supportsComposer, fileMentions: supportsComposer, maxAttachmentBytes: MAX_ATTACHMENT_BYTES, maxAttachments: MAX_PANE_CHAT_ATTACHMENTS } }, surface.task.sshHost ? null : sourceRef);
+  return reading({ ...snapshot, provider: process.provider, targetToken, canSend, ...(conversationKey ? { conversationKey } : {}), inputState: readInputState(surface, process, !!displayState), reason: canSend ? null : transcript.reason, transcript, modelPicker: { supported: supportsComposer, mode: "native-cli", supportsApi: !!displayState }, ...(modelSettings ? { modelSettings } : {}), composer: { attachments: supportsComposer, skills: supportsComposer, fileMentions: supportsComposer, canSendWhileBusy: !!displayState, maxAttachmentBytes: MAX_ATTACHMENT_BYTES, maxAttachments: MAX_PANE_CHAT_ATTACHMENTS } }, surface.task.sshHost ? null : sourceRef);
 }
 
 async function assertTarget(taskId: string, token: string, expectedComposer?: string[]): Promise<TargetLease> {
@@ -533,7 +549,6 @@ export function sendPaneChatPrompt(taskId: string, targetToken: string, text: st
   let writeAttempted = false;
   const write = (bytes: string, expectedComposer?: string[]) => writeFenced(taskId, targetToken, bytes, () => { writeAttempted = true; }, expectedComposer);
   const result = serializeAction(taskId, targetToken, async () => {
-    await requireReadyInput(taskId, targetToken);
     const lease = await assertTarget(taskId, targetToken);
     const owner = attachmentIds.length ? await attachmentOwner(taskId, targetToken) : null;
     const attachments = owner ? resolvePaneChatAttachments(owner, attachmentIds) : [];
@@ -556,11 +571,12 @@ export function sendPaneChatPrompt(taskId: string, targetToken: string, text: st
         socket: lease.process.codexServerSocket, threadId, sourceRef,
         input: [...images.map((image) => ({ type: "localImage" as const, path: image.path })), ...(body ? [{ type: "text" as const, text: body }] : [])],
         clientUserMessageId: createHash("sha256").update(JSON.stringify([targetToken, requestId ?? randomUUID()])).digest("hex"),
-        beforeSend: async () => { await assertTarget(taskId, targetToken); await requireReadyInput(taskId, targetToken); },
+        beforeSend: async () => { await assertTarget(taskId, targetToken); },
         onWrite: () => { writeAttempted = true; },
       });
       return;
     }
+    await requireReadyInput(taskId, targetToken);
     let expectedComposer = ["", "Ask Codex to do anything"];
     for (const image of images) {
       const escaped = image.path.replace(/[^a-zA-Z0-9_./@:\-\u0080-\uffff]/g, "\\$&");
@@ -604,6 +620,20 @@ export function openPaneChatModelPicker(taskId: string, targetToken: string): Pr
     await typePaneChatCommand(taskId, targetToken, "/model");
   });
 }
+
+async function codexSettingsTarget(taskId: string, targetToken: string) {
+  const lease = await assertTarget(taskId, targetToken);
+  const surface = await readPaneChatSurface(taskId, lease.requestedPaneId, false);
+  if (!surface || lease.process.provider !== "codex" || !lease.conversation || !await codexDisplayExecution(surface, lease.process)) throw inputError("이 CLI는 모델 설정 API를 지원하지 않습니다.");
+  const [threadId, sourceRef] = JSON.parse(lease.conversation) as [string, string];
+  return { context: { worktreePath: surface.task.worktreePath ?? surface.task.project?.repoPath ?? null, repoPath: surface.task.project?.repoPath ?? null, sshHost: surface.task.sshHost }, socket: lease.process.codexServerSocket, threadId, sourceRef, beforeWrite: async () => { await assertTarget(taskId, targetToken); } };
+}
+
+export async function getPaneChatModelSettings(taskId: string, targetToken: string): Promise<PaneChatModelSettings> {
+  const settings = await readCodexThreadSettings(await codexSettingsTarget(taskId, targetToken));
+  await assertTarget(taskId, targetToken);
+  return settings;
+}
 /**
  * 모델·effort·빠른 모드를 CLI의 슬래시 명령으로 바꾼다.
  *
@@ -616,6 +646,10 @@ export function changePaneChatModelSetting(taskId: string, targetToken: string, 
     const lease = await assertTarget(taskId, targetToken);
     const { provider } = lease.process;
     if (provider !== "claude" && provider !== "codex") throw inputError("이 CLI의 모델 설정은 지원되지 않습니다.");
+    if (provider === "codex" && await codexDisplays.get(lease.identity)) {
+      await updateCodexThreadSettings(await codexSettingsTarget(taskId, targetToken), change);
+      return;
+    }
     await requireReadyInput(taskId, targetToken);
     const { modelSettings } = (await readPaneChat(taskId, lease.requestedPaneId)).snapshot;
     const command = modelSettings ? buildPaneChatModelCommand(provider, modelSettings, change) : null;

@@ -59,6 +59,8 @@ vi.mock("@/desktop/renderer/actions/project", () => ({
 }));
 
 vi.mock("@/desktop/renderer/actions/appSettings", () => ({
+  getAppSetting: vi.fn().mockResolvedValue(null),
+  setAppSetting: vi.fn().mockResolvedValue(undefined),
   setSidebarDefaultCollapsed: vi.fn().mockResolvedValue(undefined),
   setNotificationEnabled: (...args: unknown[]) => mockSetNotificationEnabled(...args),
   setNotificationStatuses: (...args: unknown[]) => mockSetNotificationStatuses(...args),
@@ -274,13 +276,13 @@ describe("ProjectSettings", () => {
       />,
     );
 
-    const switches = screen.getAllByRole("switch");
+    const notificationSwitch = within(document.getElementById("notifications")!).getByRole("switch");
 
     // When
-    fireEvent.click(switches[1]);
+    fireEvent.click(notificationSwitch);
 
     // Then
-    expect(switches[1].getAttribute("aria-checked")).toBe("false");
+    expect(notificationSwitch.getAttribute("aria-checked")).toBe("false");
     await waitFor(() => {
       expect(mockSetNotificationEnabled).toHaveBeenCalledWith(false);
     });
@@ -515,7 +517,7 @@ describe("ProjectSettings", () => {
       />,
     );
 
-    const notificationSwitch = screen.getAllByRole("switch")[1];
+    const notificationSwitch = within(document.getElementById("notifications")!).getByRole("switch");
     fireEvent.click(notificationSwitch);
 
     await findSettingSaveFailure('settingSaveFailed:{"reason":"ipc closed"}');

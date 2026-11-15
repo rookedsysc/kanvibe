@@ -2,7 +2,9 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties, type RefO
 import { useTranslations } from "next-intl";
 import { focusPaneChatTerminal, getPaneChatLayout } from "@/desktop/renderer/actions/paneChat";
 import { useIsWindowActive } from "@/desktop/renderer/hooks/useIsWindowActive";
+import { usePaneChatPreferences } from "@/desktop/renderer/hooks/usePaneChatPreferences";
 import { REQUEST_TOGGLE_PANE_CHAT_EVENT, requestActiveTerminalFocusAfterUiSettles } from "@/desktop/renderer/utils/terminalFocus";
+import { buildRouteCacheKey, readRouteCache, writeRouteCache } from "@/desktop/renderer/utils/routeCache";
 import type { PaneChatLayout, PaneChatLayoutPane } from "@/desktop/shared/paneChat";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Chatting01Icon } from "@hugeicons/core-free-icons";
@@ -39,9 +41,15 @@ export function TerminalPaneChatLayer({ taskId, terminalTabId, taskTitle, termin
 }) {
   const t = useTranslations("taskDetail.paneChat");
   const isWindowActive = useIsWindowActive();
+  const preferences = usePaneChatPreferences();
+  const modeCacheKey = buildRouteCacheKey("pane-chat-mode", JSON.stringify([taskId, terminalTabId ?? null]));
+  const visitedCacheKey = buildRouteCacheKey("pane-chat-mode-visited", JSON.stringify([taskId, terminalTabId ?? null]));
   const [layout, setLayout] = useState<PaneChatLayout | null>(null);
-  const [openedPanes, setOpenedPanes] = useState<string[]>([]);
-  const [chatPanes, setChatPanes] = useState<Set<string>>(() => new Set());
+  const [chatPanes, setChatPanes] = useState<Set<string>>(() => {
+    const saved = readRouteCache<unknown>(modeCacheKey);
+    return new Set(Array.isArray(saved) ? saved.filter((id): id is string => typeof id === "string") : []);
+  });
+  const [openedPanes, setOpenedPanes] = useState<string[]>(() => [...chatPanes]);
   const [layoutFailed, setLayoutFailed] = useState(false);
   const [returnFailed, setReturnFailed] = useState(false);
   const layerRef = useRef<HTMLDivElement>(null);
@@ -55,6 +63,28 @@ export function TerminalPaneChatLayer({ taskId, terminalTabId, taskTitle, termin
   const loadRef = useRef<(fresh?: boolean) => Promise<PaneChatLayout | null>>(async () => null);
   const toggleRef = useRef<(paneId?: string) => Promise<void>>(async () => {});
 
+  const hasModeChoice = useRef(readRouteCache(modeCacheKey) !== null);
+  const storedVisited = readRouteCache<unknown>(visitedCacheKey);
+  const visitedPanes = useRef(new Set<string>(Array.isArray(storedVisited) ? storedVisited.filter((id): id is string => typeof id === "string") : [...chatPanes]));
+  const legacyClosedMode = useRef(hasModeChoice.current && storedVisited === null && chatPanes.size === 0);
+  const rememberMode = useCallback((paneId: string) => {
+    hasModeChoice.current = true;
+    visitedPanes.current.add(paneId);
+    writeRouteCache(visitedCacheKey, [...visitedPanes.current]);
+  }, [visitedCacheKey]);
+  useEffect(() => {
+    if (hasModeChoice.current) writeRouteCache(modeCacheKey, [...chatPanes]);
+  }, [modeCacheKey, chatPanes]);
+  useEffect(() => {
+    if (!preferences.loaded || !layout?.activePaneId || visitedPanes.current.has(layout.activePaneId)) return;
+    const paneId = layout.activePaneId;
+    rememberMode(paneId);
+    if (legacyClosedMode.current) { legacyClosedMode.current = false; return; }
+    if (preferences.defaultEnabled) {
+      setChatPanes((current) => new Set(current).add(paneId));
+      setOpenedPanes((current) => current.includes(paneId) ? current : [...current, paneId]);
+    } else writeRouteCache(modeCacheKey, [...chatPanesRef.current]);
+  }, [preferences.loaded, preferences.defaultEnabled, layout, modeCacheKey, rememberMode]);
 
   const focusPane = useCallback((paneId: string) => {
     focusedPane.current = paneId;
@@ -74,6 +104,7 @@ export function TerminalPaneChatLayer({ taskId, terminalTabId, taskTitle, termin
       const result = await focusPaneChatTerminal(taskId, paneId);
       if (!result.success) throw new Error("Pane focus failed");
       if (!visibleRef.current || generation.current !== epoch) return;
+      rememberMode(paneId);
       setChatPanes((current) => {
         const next = new Set(current);
         next.delete(paneId);
@@ -90,7 +121,7 @@ export function TerminalPaneChatLayer({ taskId, terminalTabId, taskTitle, termin
     } finally {
       pendingToggle.current = false;
     }
-  }, [taskId, onChatFocusChange, focusPane]);
+  }, [taskId, onChatFocusChange, focusPane, rememberMode]);
 
   useEffect(() => {
     const epoch = ++generation.current;
@@ -158,6 +189,7 @@ export function TerminalPaneChatLayer({ taskId, terminalTabId, taskTitle, termin
       const paneId = requestedPaneId ?? next?.activePaneId;
       if (!paneId || !next?.panes.some((pane) => pane.id === paneId) || !visibleRef.current || epoch !== generation.current) return;
       setOpenedPanes((current) => current.includes(paneId) ? current : [...current, paneId]);
+      rememberMode(paneId);
       setChatPanes((current) => new Set(current).add(paneId));
       focusPane(paneId);
     } finally {

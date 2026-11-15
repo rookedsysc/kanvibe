@@ -1,4 +1,5 @@
 import type { IDisposable, Terminal } from "@xterm/xterm";
+import { writeSystemClipboard } from "./systemClipboard";
 
 /** 터미널이 시스템 클립보드에 값을 넣을 때 쓰는 OSC 시퀀스 번호 */
 const OSC_CLIPBOARD_IDENTIFIER = 52;
@@ -20,7 +21,7 @@ export function installOsc52ClipboardHandler(terminal: Terminal): IDisposable {
   return terminal.parser.registerOscHandler(OSC_CLIPBOARD_IDENTIFIER, (data) => {
     const clipboardText = readOsc52ClipboardText(data);
     if (clipboardText !== null) {
-      void writeSystemClipboard(clipboardText);
+      void writeSystemClipboard(clipboardText).catch((error) => console.warn("터미널 클립보드 복사 실패:", error));
     }
 
     /** 읽기 요청이나 잘못된 페이로드도 소비해, 처리되지 않은 시퀀스가 화면에 출력되지 않게 한다 */
@@ -59,35 +60,5 @@ function decodeBase64Utf8(encodedText: string): string | null {
     return new TextDecoder().decode(bytes);
   } catch {
     return null;
-  }
-}
-
-/**
- * 데스크톱 렌더러에만 주입되는 클립보드 브리지.
- * 이 모듈은 `src/lib` 아래라 Electron 메인 프로세스 빌드에도 함께 컴파일되는데, 그 빌드는 렌더러 전역 선언을
- * 포함하지 않는다. 그래서 렌더러의 `Window` 타입에 기대지 않고 실제로 쓰는 기능만 좁게 선언한다.
- */
-interface DesktopClipboardBridge {
-  writeSystemClipboard?: (clipboardText: string) => Promise<void>;
-}
-
-/**
- * 복사 요청을 시스템 클립보드에 반영한다.
- * 데스크톱에서는 Electron 메인 프로세스를 거친다. 렌더러의 `navigator.clipboard`는 문서 포커스를 요구하고,
- * 포커스가 있어도 성공을 반환한 채 클립보드를 그대로 두는 경우가 있어 터미널 출력이 촉발하는 복사를 놓친다.
- * 데스크톱 브리지가 없는 웹 터미널에서는 렌더러 클립보드 API가 유일한 경로다.
- */
-async function writeSystemClipboard(clipboardText: string): Promise<void> {
-  try {
-    const { kanvibeDesktop } = globalThis as { kanvibeDesktop?: DesktopClipboardBridge };
-    const writeDesktopClipboard = kanvibeDesktop?.writeSystemClipboard;
-    if (writeDesktopClipboard) {
-      await writeDesktopClipboard(clipboardText);
-      return;
-    }
-
-    await navigator.clipboard.writeText(clipboardText);
-  } catch (error) {
-    console.warn("터미널 클립보드 복사 실패:", error);
   }
 }

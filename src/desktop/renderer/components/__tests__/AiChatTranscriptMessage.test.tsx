@@ -8,6 +8,7 @@ vi.mock("../AiSessionMessageContent", () => ({ AiSessionMessageContent: ({ text 
 
 const clipboardDescriptor = Object.getOwnPropertyDescriptor(navigator, "clipboard");
 afterEach(() => {
+  vi.unstubAllGlobals();
   if (clipboardDescriptor) Object.defineProperty(navigator, "clipboard", clipboardDescriptor);
   else Reflect.deleteProperty(navigator, "clipboard");
 });
@@ -41,6 +42,18 @@ describe("AiChatTranscriptMessage", () => {
     expect(document.querySelector("time")).toBeNull();
   });
 
+  it.each([true, false])("데스크톱 메시지 복사는 브라우저 권한과 무관하게 메인 프로세스 결과를 표시한다 (성공=%s)", async (succeeds) => {
+    const writeSystemClipboard = succeeds ? vi.fn().mockResolvedValue(undefined) : vi.fn().mockRejectedValue(new Error("native clipboard failed"));
+    const writeText = vi.fn().mockRejectedValue(new Error("Document is not focused"));
+    vi.stubGlobal("kanvibeDesktop", { writeSystemClipboard });
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+    render(<AiChatTranscriptMessage provider="codex" message={{ role: "assistant", timestamp: null, text: "preview", fullText: "전체 원문\n둘째 줄", isTruncated: true }} />);
+    fireEvent.click(screen.getByRole("button", { name: "aiSessions.copyMessage" }));
+    expect(await screen.findByRole("button", { name: succeeds ? "aiSessions.copiedMessage" : "aiSessions.copyFailed" })).toBeTruthy();
+    expect(writeSystemClipboard).toHaveBeenCalledWith("전체 원문\n둘째 줄");
+    expect(writeText).not.toHaveBeenCalled();
+  });
+
   it("사용자 요청은 마크다운으로 해석하지 않고 줄바꿈까지 입력한 그대로 보인다", () => {
     render(<AiChatTranscriptMessage provider="claude" message={{ role: "user", timestamp: null, text: "# 제목 아님\n둘째 줄", fullText: "# 제목 아님\n둘째 줄", isTruncated: false }} />);
 
@@ -51,10 +64,10 @@ describe("AiChatTranscriptMessage", () => {
 
   it("도구 줄은 도구 이름을 보이고 이름이 없으면 역할 이름을 보인다", () => {
     const { container, rerender } = render(<AiChatTranscriptMessage provider="claude" message={{ role: "tool", toolName: "Bash", timestamp: null, text: "pnpm test", fullText: "pnpm test", isTruncated: false }} />);
-    expect(container.querySelector("summary")?.textContent).toBe("Bashpnpm test");
+    expect(container.querySelector("summary > span")?.textContent).toBe("Bash");
 
     rerender(<AiChatTranscriptMessage provider="claude" message={{ role: "tool", timestamp: null, text: "output", fullText: "output", isTruncated: false }} />);
-    expect(container.querySelector("summary")?.textContent).toBe("aiSessions.roles.tooloutput");
+    expect(container.querySelector("summary > span")?.textContent).toBe("aiSessions.roles.tool");
   });
 
   it("AI가 바꾼 파일마다 카드를 보이고 누르면 그 파일의 미리보기를 요청한다", () => {

@@ -6,6 +6,7 @@ vi.mock("next-intl", () => ({ useTranslations: () => (key: string) => key }));
 
 const clipboardDescriptor = Object.getOwnPropertyDescriptor(navigator, "clipboard");
 afterEach(() => {
+  vi.unstubAllGlobals();
   if (clipboardDescriptor) Object.defineProperty(navigator, "clipboard", clipboardDescriptor);
   else Reflect.deleteProperty(navigator, "clipboard");
 });
@@ -48,6 +49,16 @@ describe("AiSessionMessageContent", () => {
 
     await waitFor(() => expect(screen.getByRole("button", { name: "aiSessions.copyFailed" })).toBeTruthy());
     expect(container.querySelector("pre")?.textContent).toBe("echo kept\n");
+  });
+
+  it("데스크톱 코드 블록은 브라우저 클립보드가 없어도 메인 프로세스로 복사한다", async () => {
+    const writeSystemClipboard = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal("kanvibeDesktop", { writeSystemClipboard });
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: undefined });
+    render(<AiSessionMessageContent text={"```sh\necho native\n```"} />);
+    fireEvent.click(screen.getByRole("button", { name: "aiSessions.copyMessage" }));
+    await screen.findByRole("button", { name: "aiSessions.copiedMessage" });
+    expect(writeSystemClipboard).toHaveBeenCalledWith("echo native\n");
   });
 
   it("닫히지 않은 코드 블록도 끝까지 코드로 그린다", () => {

@@ -3,9 +3,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createRef } from "react";
 import { TerminalPaneChatLayer } from "../TerminalPaneChatLayer";
 import { REQUEST_TOGGLE_PANE_CHAT_EVENT } from "@/desktop/renderer/utils/terminalFocus";
+import { getAppSetting } from "@/desktop/renderer/actions/appSettings";
 
 const actions = vi.hoisted(() => ({ getPaneChatLayout: vi.fn(), focusPaneChatTerminal: vi.fn() }));
 vi.mock("@/desktop/renderer/actions/paneChat", () => actions);
+vi.mock("@/desktop/renderer/actions/appSettings", () => ({ getAppSetting: vi.fn().mockResolvedValue(null), setAppSetting: vi.fn().mockResolvedValue(undefined) }));
 vi.mock("next-intl", () => ({ useTranslations: () => (key: string) => key }));
 vi.mock("@/desktop/renderer/hooks/useIsWindowActive", () => ({ useIsWindowActive: () => true }));
 vi.mock("../PaneChatView", () => ({
@@ -26,7 +28,7 @@ const split = {
 };
 const metrics = { cols: 80, rows: 24, left: 0, top: 0, width: 800, height: 480 };
 
-beforeEach(() => { vi.clearAllMocks(); actions.getPaneChatLayout.mockResolvedValue(split); actions.focusPaneChatTerminal.mockResolvedValue({ success: true }); });
+beforeEach(() => { sessionStorage.clear(); vi.clearAllMocks(); actions.getPaneChatLayout.mockResolvedValue(split); actions.focusPaneChatTerminal.mockResolvedValue({ success: true }); });
 afterEach(() => { cleanup(); vi.useRealTimers(); });
 
 async function toggle() {
@@ -41,6 +43,51 @@ function open(isVisible = true) {
 }
 
 describe("pane-local chat layer", () => {
+  it("같은 터미널에 새로 추가한 pane에도 기본 채팅 모드를 적용한다", async () => {
+    vi.useFakeTimers();
+    vi.mocked(getAppSetting).mockImplementation(async (key) => key === "pane_chat_default_enabled" ? "true" : null);
+    await act(async () => { open(); });
+    expect(screen.getByTestId("chat-%1").getAttribute("data-visible")).toBe("true");
+    actions.getPaneChatLayout.mockResolvedValue({ ...split, activePaneId: "%2" });
+    await act(async () => { await vi.advanceTimersByTimeAsync(1100); });
+    expect(screen.getByTestId("chat-%2").getAttribute("data-visible")).toBe("true");
+    vi.mocked(getAppSetting).mockResolvedValue(null);
+  });
+  it("기본 채팅 모드 설정을 새 pane에 적용하고 직접 닫은 선택은 설정보다 우선한다", async () => {
+    vi.mocked(getAppSetting).mockImplementation(async (key) => key === "pane_chat_default_enabled" ? "true" : null);
+    const first = open();
+    await act(async () => {});
+    expect(screen.getByTestId("chat-%1").getAttribute("data-visible")).toBe("true");
+    await act(async () => { fireEvent.click(screen.getByText("terminal-%1")); });
+    first.unmount();
+    open();
+    await act(async () => {});
+    expect(screen.queryByTestId("chat-%1")).toBeNull();
+    vi.mocked(getAppSetting).mockResolvedValue(null);
+  });
+  it("화면을 다시 불러와도 열린 채팅 모드를 복원하고 명시적으로 닫은 모드는 복원하지 않는다", async () => {
+    const first = open();
+    await toggle();
+    first.unmount();
+    const restored = open();
+    await act(async () => {});
+    expect(screen.getByTestId("chat-%1").getAttribute("data-visible")).toBe("true");
+    await act(async () => { fireEvent.click(screen.getByText("terminal-%1")); });
+    restored.unmount();
+    open();
+    await act(async () => {});
+    expect(screen.queryByTestId("chat-%1")).toBeNull();
+  });
+
+  it("다른 태스크에는 같은 pane ID가 있어도 채팅 모드를 복원하지 않는다", async () => {
+    const first = open();
+    await toggle();
+    first.unmount();
+    render(<TerminalPaneChatLayer taskId="task-2" terminalTabId="@1" terminalRef={createRef()} metrics={metrics} isVisible onChatFocusChange={vi.fn()} />);
+    await act(async () => {});
+    expect(screen.queryByTestId("chat-%1")).toBeNull();
+  });
+
   it("covers only the focused split while preserving the terminal and sibling pane", async () => {
     open();
     await toggle();

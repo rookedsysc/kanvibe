@@ -336,7 +336,7 @@ describe("AI session history readers", () => {
         toolName: "apply_patch",
         files: [{ path: "docs/plan.md", change: "created" }, { path: "src/app.ts", change: "modified" }],
       },
-      { role: "tool", fullText: "Success. Updated the following files", toolName: undefined, files: undefined },
+      { role: "tool", fullText: "Success. Updated the following files", toolName: "apply_patch", files: undefined },
     ]);
   });
 
@@ -395,6 +395,9 @@ describe("AI session history readers", () => {
       ["assistant", "KANVIBE_CODEX_HEADLESS_OK"],
       ["user", "Run the headless smoke check."],
     ]);
+    const withInstructions = await readCodexSessionDetail({ worktreePath, repoPath: worktreePath, includeInstructions: true }, "codex-exec-session", sessionFile, null, 20);
+    expect(withInstructions?.messages.map((message) => message.role)).toEqual(["assistant", "user", "user", "developer"]);
+    expect(withInstructions?.messages.at(-1)?.fullText).toContain("<permissions instructions>");
   });
 
   it("uses the latest Codex user or assistant message as the session activity time", async () => {
