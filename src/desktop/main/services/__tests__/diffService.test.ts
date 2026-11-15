@@ -81,8 +81,8 @@ describe("diffService remote task support", () => {
     });
     mocks.execGit.mockImplementation(async (command: string, sshHost?: string | null) => {
       expect(sshHost).toBe("remote-host");
-      expect(command).toContain("git -C '/remote/worktrees/fix-qa' diff 'main...fix/qa' --name-status");
-      expect(command).toContain("git -C '/remote/worktrees/fix-qa' diff 'main...fix/qa' --numstat");
+      expect(command).toContain("git -C '/remote/worktrees/fix-qa' diff HEAD --name-status");
+      expect(command).toContain("git -C '/remote/worktrees/fix-qa' diff HEAD --numstat");
       expect(command).toContain("git -C '/remote/worktrees/fix-qa' status --porcelain --untracked-files=all");
       return [
         "__KANVIBE_DIFF_NAME_STATUS__",
@@ -101,7 +101,7 @@ describe("diffService remote task support", () => {
       { path: "docs/new.md", status: "added", additions: 0, deletions: 0 },
     ]);
     expect(mocks.execGit).toHaveBeenCalledWith(
-      expect.stringContaining("git -C '/remote/worktrees/fix-qa' diff 'main...fix/qa' --name-status"),
+      expect.stringContaining("git -C '/remote/worktrees/fix-qa' diff HEAD --name-status"),
       "remote-host",
     );
     expect(mocks.execGit).toHaveBeenCalledTimes(1);
@@ -126,7 +126,7 @@ describe("diffService remote task support", () => {
     await expect(saveFileContent("task-1", "src/app.ts", "updated")).resolves.toEqual({ success: true });
 
     expect(mocks.execGit).toHaveBeenCalledWith(
-      expect.stringContaining("git -C '/remote/worktrees/fix-qa' show 'main:src/app.ts'"),
+      expect.stringContaining("git -C '/remote/worktrees/fix-qa' show 'HEAD:src/app.ts'"),
       "remote-host",
     );
     expect(mocks.readTextFile).toHaveBeenCalledWith("/remote/worktrees/fix-qa/src/app.ts", "remote-host");
@@ -239,7 +239,72 @@ describe("getTaskDiffStats", () => {
 
 
 describe("실제 Git 파일명", () => {
-  it("공백·한글·탭·개행과 커밋/작업 트리 rename의 목적지 경로를 읽고 저장한다", async () => {
+  it.each([null, "remote-host"])("HEAD 이후의 미커밋 파일·줄 수·원본만 반환하고 커밋 후 집계를 비운다 (host=%s)", async (sshHost) => {
+    const directory = mkdtempSync(path.join(tmpdir(), "kanvibe-uncommitted-"));
+    const git = (...args: string[]) => execFileSync("git", ["-C", directory, ...args], { encoding: "utf8" });
+    const write = (name: string, content: string | Buffer) => writeFileSync(path.join(directory, name), content);
+    try {
+      git("init", "-b", "main");
+      git("config", "user.email", "fixture@example.invalid");
+      git("config", "user.name", "fixture");
+      write("tracked.txt", "base\n");
+      write("deleted.txt", "remove\nthis\n");
+      write("reverted.txt", "original\n");
+      write("old.txt", "rename\n");
+      write(".gitignore", "ignored.txt\n");
+      git("add", ".");
+      git("commit", "-m", "base");
+      git("switch", "-c", "feature");
+      write("tracked.txt", "committed\n");
+      write("committed-only.txt", "already committed\n");
+      git("add", ".");
+      git("commit", "-m", "feature changes");
+      write("tracked.txt", "staged\n");
+      write("staged.txt", "new staged\n");
+      write("reverted.txt", "staged change\n");
+      write("removed-add.txt", "temporary\n");
+      git("add", ".");
+      write("tracked.txt", "working\nextra\n");
+      write("reverted.txt", "original\n");
+      rmSync(path.join(directory, "removed-add.txt"));
+      rmSync(path.join(directory, "deleted.txt"));
+      git("mv", "old.txt", "new.txt");
+      write("untracked ' 한글.txt", "one\ntwo");
+      write("binary.dat", Buffer.from([0, 1, 2]));
+      write("empty.txt", "");
+      write("ignored.txt", "ignored\n");
+      vi.resetModules();
+      vi.clearAllMocks();
+      mocks.taskRepo.findOne.mockResolvedValue({ worktreePath: directory, branchName: "feature", baseBranch: "main", sshHost });
+      mocks.taskDiffStatsRepo.save.mockResolvedValue(undefined);
+      mocks.execGit.mockImplementation(async (command: string, host: string | null) => {
+        expect(host).toBe(sshHost);
+        return execSync(command, { encoding: "utf8" });
+      });
+      const service = await import("@/desktop/main/services/diffService");
+      const files = await service.getGitDiffFiles("fixture");
+      expect(files.sort((a, b) => a.path.localeCompare(b.path))).toEqual([
+        { path: "binary.dat", status: "added", additions: 0, deletions: 0 },
+        { path: "deleted.txt", status: "deleted", additions: 0, deletions: 2 },
+        { path: "empty.txt", status: "added", additions: 0, deletions: 0 },
+        { path: "new.txt", originalPath: "old.txt", status: "renamed", additions: 0, deletions: 0 },
+        { path: "staged.txt", status: "added", additions: 1, deletions: 0 },
+        { path: "tracked.txt", status: "modified", additions: 2, deletions: 1 },
+        { path: "untracked ' 한글.txt", status: "added", additions: 2, deletions: 0 },
+      ]);
+      expect(mocks.taskDiffStatsRepo.save).toHaveBeenLastCalledWith({ taskId: "fixture", fileCount: 7, additions: 5, deletions: 3 });
+      expect(await service.getOriginalFileContent("fixture", "tracked.txt")).toBe("committed\n");
+      expect(await service.getOriginalFileContent("fixture", "old.txt")).toBe("rename\n");
+      git("add", "-A");
+      git("commit", "-m", "finish changes");
+      expect(await service.getGitDiffFiles("fixture")).toEqual([]);
+      expect(mocks.taskDiffStatsRepo.save).toHaveBeenLastCalledWith({ taskId: "fixture", fileCount: 0, additions: 0, deletions: 0 });
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("공백·한글·탭·개행과 미커밋 rename의 목적지 경로를 읽고 저장한다", async () => {
     const directory = mkdtempSync(path.join(tmpdir(), "kanvibe-diff-path-"));
     const git = (...args: string[]) => execFileSync("git", ["-C", directory, ...args], { encoding: "utf8" });
     try {
@@ -255,6 +320,7 @@ describe("실제 Git 파일명", () => {
       writeFileSync(path.join(directory, "stats\n\t한글.txt"), "first\nsecond\n");
       git("add", ".");
       git("commit", "-m", "rename");
+      writeFileSync(path.join(directory, "stats\n\t한글.txt"), "first\nsecond\nthird\n");
       git("mv", "working old.txt", "working 새 파일.txt");
       const untracked = ["hello world.txt", "한글.txt", "tab\tfile.txt", "line\nfile.txt"];
       for (const name of untracked) writeFileSync(path.join(directory, name), "original\n");
@@ -267,10 +333,11 @@ describe("실제 Git 파일명", () => {
       mocks.writeTextFile.mockImplementation(async (filePath: string, contents: string) => writeFileSync(filePath, contents));
       const service = await import("@/desktop/main/services/diffService");
       const files = await service.getGitDiffFiles("fixture");
-      const expected = [...untracked, "committed 한글\tnew.txt", "working 새 파일.txt", "stats\n\t한글.txt"];
-      expect(files.find((file) => file.path === "stats\n\t한글.txt")).toEqual({ path: "stats\n\t한글.txt", status: "added", additions: 2, deletions: 0 });
+      const expected = [...untracked, "working 새 파일.txt", "stats\n\t한글.txt"];
+      expect(files.find((file) => file.path === "stats\n\t한글.txt")).toEqual({ path: "stats\n\t한글.txt", status: "modified", additions: 1, deletions: 0 });
       expect(files.map((file) => file.path).sort()).toEqual(expected.sort());
-      expect(files.filter((file) => file.status === "renamed").map((file) => file.path).sort()).toEqual(["committed 한글\tnew.txt", "working 새 파일.txt"].sort());
+      expect(files.filter((file) => file.status === "renamed").map((file) => file.path)).toEqual(["working 새 파일.txt"]);
+      expect(untracked.map((name) => files.find((file) => file.path === name)?.additions)).toEqual([1, 1, 1, 1]);
       for (const name of expected) {
         expect(await service.getFileContent("fixture", name)).not.toBe("");
         expect(await service.saveFileContent("fixture", name, "updated\n")).toEqual({ success: true });
@@ -284,7 +351,7 @@ describe("실제 Git 파일명", () => {
 
 
 describe("diff 실패와 경로 경계", () => {
-  it("잘못된 revision은 캐시를 보존하고 정상 빈 diff만 0으로 저장한다", async () => {
+  it("기준 브랜치가 없어도 미커밋 변경을 조회하고 Git 실패 시 캐시를 보존한다", async () => {
     const directory = mkdtempSync(path.join(tmpdir(), "kanvibe-diff-failure-"));
     const git = (...args: string[]) => execFileSync("git", ["-C", directory, ...args], { encoding: "utf8" });
     try {
@@ -304,10 +371,12 @@ describe("diff 실패와 경로 경계", () => {
 
       expect(await service.getTaskDiffStats(["fixture"])).toEqual({ fixture: { fileCount: 8, additions: 21, deletions: 5 } });
       await service.getGitDiffFiles("fixture");
-      expect(mocks.taskDiffStatsRepo.save).not.toHaveBeenCalled();
-      task.baseBranch = "main";
       expect(await service.getGitDiffFiles("fixture")).toEqual([]);
       expect(mocks.taskDiffStatsRepo.save).toHaveBeenCalledWith({ taskId: "fixture", fileCount: 0, additions: 0, deletions: 0 });
+      mocks.taskDiffStatsRepo.save.mockClear();
+      task.worktreePath = path.join(directory, "missing-worktree");
+      expect(await service.getGitDiffFiles("fixture")).toEqual([]);
+      expect(mocks.taskDiffStatsRepo.save).not.toHaveBeenCalled();
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
@@ -454,7 +523,7 @@ describe("rename 원본 내용", () => {
     ["staged", true],
     ["chained", false],
     ["chained", true],
-  ] as const)("%s rename에서 수정 여부=%s와 무관하게 이전 경로의 원본을 읽는다", async (kind, edited) => {
+  ] as const)("%s rename에서 수정 여부=%s일 때 HEAD 이후 변경과 원본을 읽는다", async (kind, edited) => {
     const directory = mkdtempSync(path.join(tmpdir(), "kanvibe-rename-original-"));
     const git = (...args: string[]) => execFileSync("git", ["-C", directory, ...args], { encoding: "utf8" });
     const oldPath = "old 한글\tfile.txt";
@@ -483,9 +552,14 @@ describe("rename 원본 내용", () => {
       mocks.readTextFile.mockImplementation(async (filePath: string) => readFileSync(filePath, "utf8"));
       const service = await import("@/desktop/main/services/diffService");
       const files = await service.getGitDiffFiles("fixture");
+      if (kind === "committed") {
+        expect(files).toEqual([]);
+        expect(await service.getOriginalFileContent("fixture", newPath)).toBe(current);
+        return;
+      }
       expect(files).toHaveLength(1);
-      expect(files[0]).toMatchObject({ path: finalPath, originalPath: oldPath, status: "renamed" });
-      expect(await service.getOriginalFileContent("fixture", files[0].originalPath ?? files[0].path)).toBe(original);
+      expect(files[0]).toMatchObject({ path: finalPath, originalPath: kind === "chained" ? newPath : oldPath, status: "renamed" });
+      expect(await service.getOriginalFileContent("fixture", files[0].originalPath ?? files[0].path)).toBe(kind === "chained" ? current : original);
       expect(await service.getFileContent("fixture", files[0].path)).toBe(current);
     } finally {
       rmSync(directory, { recursive: true, force: true });
