@@ -201,6 +201,8 @@
     "createHooksBackgroundFailedBody": "“{taskTitle}”的 hooks 安装失败。你可以在 Hooks 状态区域重新安装。",
     "peerDeletionFailedTitle": "未能在其他桌面删除",
     "peerDeletionFailedBody": "“{taskTitle}”已在此桌面删除，但仍保留在 {peerUrls}。请在该桌面恢复在线后手动删除。",
+    "herdrMachineRegistrationFailedTitle": "无法将 {sshHost} 添加为 Herdr machine",
+    "herdrMachineRegistrationFailedBody": "Herdr 拒绝的原因：{reason}。请在终端运行 herdr --remote {sshHost} --session {herdrSession} 检查远程服务器。",
     "deleteConfirm": "确定要删除此任务吗？",
     "deleting": "正在删除…",
     "deleteFailed": "删除失败：{reason}",

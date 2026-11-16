@@ -514,6 +514,40 @@ describe("Herdr 원격 machine 연결", () => {
     }
   });
 
+  it("machine 등록이 거부되면 Herdr가 stderr에 남긴 거부 이유를 보드 알림으로 보낸다", async () => {
+    // Given: Herdr CLI는 안내 문구 뒤 마지막 줄에 거부 이유를 쓰고 실패한다
+    const git = await import("@/lib/gitOperations");
+    const { subscribeToBoardEvents } = await import("@/lib/boardNotifier");
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const boardEvents: unknown[] = [];
+    const unsubscribe = subscribeToBoardEvents((event) => boardEvents.push(event));
+    vi.mocked(git.execGit).mockImplementation(async (command) => {
+      if (command.includes("'machine' 'list'")) return "[]";
+      if (command.includes("'machine' 'add'")) {
+        throw Object.assign(new Error("Command failed: herdr machine add"), {
+          stderr: "remote herdr server on host (session project-task) is still running v0.9.5.\nerror: remote server is not ready for saved machines; machine was not saved\n",
+        });
+      }
+      return HEALTHY_HERDR_SERVER_OUTPUT;
+    });
+    const terminal = await importTerminalModule();
+    try {
+      // When
+      await terminal.attachRemoteSession("machine-task", null, "host", SessionType.HERDR, "project-task", createMockWs() as never, config, 120, 30, "/work");
+
+      // Then
+      await vi.waitFor(() => expect(boardEvents).toContainEqual({
+        type: "herdr-machine-registration-failed",
+        sshHost: "host",
+        herdrSession: "project-task",
+        reason: "error: remote server is not ready for saved machines; machine was not saved",
+      }));
+    } finally {
+      unsubscribe();
+      warning.mockRestore();
+    }
+  });
+
   it("로컬 Herdr 접속에서는 원격 machine을 조회하지 않는다", async () => {
     const git = await import("@/lib/gitOperations");
     vi.mocked(git.execGit).mockResolvedValue(HEALTHY_HERDR_SERVER_OUTPUT);

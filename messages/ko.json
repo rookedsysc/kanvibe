@@ -202,6 +202,8 @@
     "createHooksBackgroundFailedBody": "\"{taskTitle}\" hooks 자동 설치에 실패했습니다. 상세 화면의 Hooks 상태에서 다시 설치할 수 있습니다.",
     "peerDeletionFailedTitle": "다른 데스크탑에서는 삭제하지 못함",
     "peerDeletionFailedBody": "\"{taskTitle}\"을(를) 이 데스크탑에서는 지웠지만 {peerUrls}에는 남아 있습니다. 그 데스크탑이 켜지면 직접 삭제하세요.",
+    "herdrMachineRegistrationFailedTitle": "{sshHost} Herdr machine 등록 실패",
+    "herdrMachineRegistrationFailedBody": "Herdr가 거부한 이유: {reason}. 터미널에서 herdr --remote {sshHost} --session {herdrSession}을 실행해 원격 서버를 확인하세요.",
     "deleteConfirm": "이 작업을 삭제하시겠습니까?",
     "deleting": "삭제 중…",
     "deleteFailed": "삭제하지 못했습니다: {reason}",

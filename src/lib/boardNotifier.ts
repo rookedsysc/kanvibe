@@ -31,6 +31,13 @@ export interface TaskHookInstallFailedPayload {
   error: string;
 }
 
+/** 원격 Herdr 서버를 로컬 Herdr의 SSH machine으로 저장하지 못했다. herdrSession은 원격에서 확인 명령에 넘길 세션 이름이다 */
+export interface HerdrMachineRegistrationFailedPayload {
+  sshHost: string;
+  herdrSession: string;
+  reason: string;
+}
+
 export interface TaskPeerDeletionFailedPayload {
   taskId: string;
   taskTitle: string;
@@ -91,6 +98,7 @@ export type BoardEventPayload =
   | ({ type: "task-hook-install-failed" } & TaskHookInstallFailedPayload)
   | ({ type: "task-session-changed" } & TaskSessionChangedPayload)
   | ({ type: "task-peer-deletion-failed" } & TaskPeerDeletionFailedPayload)
+  | ({ type: "herdr-machine-registration-failed" } & HerdrMachineRegistrationFailedPayload)
   | ({ type: "task-pr-merged-detected" } & TaskPrMergedDetectedPayload)
   | ({ type: "task-pr-merged-detected-batch" } & TaskPrMergedDetectedBatchPayload)
   | ({ type: "background-sync-review-needed" } & BackgroundSyncReviewPayload);
@@ -136,6 +144,11 @@ export function broadcastHookStatusTargetMissing(payload: HookStatusTargetMissin
 /** 새 태스크 생성 후 hooks 자동 설치가 실패하면 렌더러에 안내를 브로드캐스트한다 */
 export function broadcastTaskHookInstallFailed(payload: TaskHookInstallFailedPayload) {
   emitBoardEvent({ type: "task-hook-install-failed", ...payload });
+}
+
+/** 원격 Herdr 서버의 machine 등록이 실패하면 렌더러에 원인과 확인 방법을 알린다 */
+export function broadcastHerdrMachineRegistrationFailed(payload: HerdrMachineRegistrationFailedPayload) {
+  emitBoardEvent({ type: "herdr-machine-registration-failed", ...payload });
 }
 
 /** 이 데스크탑에서는 지웠지만 꺼져 있던 다른 데스크탑에는 task가 남았음을 렌더러에 알린다 */

@@ -5,6 +5,7 @@ import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { randomUUID } from "crypto";
 import { createHerdrClientProxy } from "@/lib/herdrClientProxy";
+import { broadcastHerdrMachineRegistrationFailed } from "@/lib/boardNotifier";
 import { getRemoteHostConnection } from "@/lib/remoteHostConnection";
 import type { RemoteHostPty } from "@/lib/remoteHostPtyConnection";
 import { SessionType } from "@/entities/KanbanTask";
@@ -908,6 +909,13 @@ export async function attachRemoteSession(
   );
 }
 
+/** Herdr CLI는 거부 사유를 stderr 마지막 줄에 쓰므로 그 줄을 사용자에게 보여 주고, stderr가 없으면 오류 메시지로 대신한다 */
+function readHerdrMachineFailureReason(error: unknown): string {
+  const stderr = String((error as { stderr?: unknown } | null)?.stderr ?? "");
+  const lastStderrLine = stderr.split("\n").map((line) => line.trim()).filter(Boolean).at(-1);
+  return lastStderrLine ?? (error instanceof Error ? error.message : String(error));
+}
+
 /** 원격 세션의 ssh PTY를 새로 띄우고 첫 클라이언트를 붙인다 */
 async function spawnRemoteSession(
   taskId: string,
@@ -944,7 +952,9 @@ async function spawnRemoteSession(
     herdrWorkspaceId = await ensureHerdrSession(sessionName, worktreePath || "~", tmuxPaneLayout, sshHost);
     if (ws.readyState !== ws.OPEN) return;
     void ensureHerdrRemoteMachine(sessionName, sshHost).catch((error: unknown) => {
-      console.warn(`[kanvibe] Herdr machine 등록 실패 (${sshHost}/${parseHerdrSessionTarget(sessionName).serverName}):`, error);
+      const herdrSession = parseHerdrSessionTarget(sessionName).serverName;
+      console.warn(`[kanvibe] Herdr machine 등록 실패 (${sshHost}/${herdrSession}):`, error);
+      broadcastHerdrMachineRegistrationFailed({ sshHost, herdrSession, reason: readHerdrMachineFailureReason(error) });
     });
   }
 

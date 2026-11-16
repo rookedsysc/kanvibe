@@ -95,7 +95,7 @@ export async function deliverBoardEventNotification(
     }).desktopPayload, options);
   }
 
-  if (payload.type === "task-hook-install-failed" || payload.type === "task-peer-deletion-failed") {
+  if (payload.type === "task-hook-install-failed" || payload.type === "task-peer-deletion-failed" || payload.type === "herdr-machine-registration-failed") {
     return false;
   }
 
