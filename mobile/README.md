@@ -266,7 +266,7 @@ Zellij는 모바일에서 선택한 pane의 탭을 PC에서도 활성화한 뒤,
 
 보드 카드를 길게 누르면 태스크를 삭제하고, 터미널 탭의 닫기(×) 버튼은 누른 탭 하나만 닫는다. 두 동작은 HTTP가 아니라 상태 WebSocket(`/api/mobile/events`)으로 데스크탑에 명령을 보낸다. 상태 시트의 삭제도 같은 경로를 쓴다.
 
-- 앱 → 데스크탑: `{type:"command", requestId, command, ...}`. `command`는 `delete-task`(`taskId`, `isForced`), `get-tab-close-info`(`taskId`, `paneId`), `close-tab`(`taskId`, `paneId`)다.
+- 앱 → 데스크탑: `{type:"command", requestId, command, ...}`. `command`는 `delete-task`(`taskId`, `isForced`), `get-tab-close-info`(`taskId`, `paneId`), `close-tab`(`taskId`, `paneId`), `get-pane-chat-modes`(`taskId`), `set-pane-chat-mode`(`taskId`, `paneId`, `isEnabled`)다. 마지막 두 명령은 pane별 채팅 모드를 데스크탑 앱 설정에 읽고 쓴다.
 - 데스크탑 → 앱: 요청한 소켓에만 `{type:"command-result", requestId, ok, ...}`를 보낸다. 실패는 `code`(`dirty-worktree`, `task-not-found`, `pane-not-found`, `last-tab`, `session-unavailable`, `invalid-command`, `unsupported-command`, `server-error`)와 한국어 `error`를 싣는다.
 - 데스크탑은 `connected` 이벤트의 `commands`로 지원하는 명령을 알린다. 이 목록이 없거나 명령이 빠져 있으면 앱은 아무것도 보내지 않고 "데스크탑 앱을 업데이트해 주세요"를 보여 준다. 이벤트 소켓이 열려 있지 않으면 즉시 연결 끊김 안내를 보여 준다.
 - 탭이 하나뿐이면 닫기 버튼이 비활성이고 데스크탑도 `last-tab`으로 거절한다. 실행 중인 프로세스가 있으면(`bash`·`zsh` 같은 유휴 셸 제외) 이름을 보여 주며 한 번 더 묻고, 조회가 실패해도 묻는다.

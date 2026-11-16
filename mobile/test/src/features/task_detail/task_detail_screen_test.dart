@@ -12,6 +12,8 @@ import 'package:kanvibe_mobile/src/features/board/data/board_snapshot.dart';
 import 'package:kanvibe_mobile/src/features/board/domain/board_task.dart';
 import 'package:kanvibe_mobile/src/features/board/domain/task_status.dart';
 import 'package:kanvibe_mobile/src/features/chat_history/presentation/chat_history_screen.dart';
+import 'package:kanvibe_mobile/src/features/pane_chat/domain/pane_chat.dart';
+import 'package:kanvibe_mobile/src/features/pane_chat/presentation/pane_chat_view.dart';
 import 'package:kanvibe_mobile/src/features/task_create/domain/session_type.dart';
 import 'package:kanvibe_mobile/src/features/task_create/presentation/create_task_screen.dart';
 import 'package:kanvibe_mobile/src/features/task_detail/domain/mirror_pane.dart';
@@ -408,6 +410,59 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byTooltip('태스크 메뉴'), findsOneWidget);
       expect(find.byTooltip('정보'), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('pane 채팅 모드 저장', () {
+    Iterable<DesktopCommand> savedModeCommands(FakeDesktopClient client) =>
+        client.paneChatModeCalls.where(
+          (command) => command.name == 'set-pane-chat-mode',
+        );
+
+    testWidgets('데스크탑에 채팅으로 저장된 pane은 화면에 들어가면 채팅 UI로 보인다', (tester) async {
+      final client = _AgentPaneClient(surfaces: _surfaces)
+        ..paneChatModesByTask['task-1'] = {'%19': true};
+
+      await pumpDetail(tester, size: phoneSize, desktopClient: client);
+
+      expect(find.byType(PaneChatView), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('채팅 전환 버튼을 누르면 선택한 pane의 채팅 모드를 한 번 저장한다', (tester) async {
+      final client = _AgentPaneClient(surfaces: _surfaces);
+      await pumpDetail(tester, size: phoneSize, desktopClient: client);
+      expect(find.byType(PaneChatView), findsNothing);
+
+      await tester.tap(find.bySemanticsIdentifier('pane-chat-toggle'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(PaneChatView), findsOneWidget);
+      final saved = savedModeCommands(client).toList();
+      expect(saved, hasLength(1));
+      expect(saved.single.fields, {
+        'taskId': 'task-1',
+        'paneId': '%19',
+        'isEnabled': true,
+      });
+    });
+
+    testWidgets('pane 채팅 모드 명령을 모르는 구버전 데스크탑은 오류 없이 터미널로 열고 전환은 화면 안에서만 동작한다', (
+      tester,
+    ) async {
+      final client = _AgentPaneClient(surfaces: _surfaces)
+        ..supportsPaneChatModes = false;
+      await pumpDetail(tester, size: phoneSize, desktopClient: client);
+      expect(find.byType(PaneChatView), findsNothing);
+      expect(find.text(desktopUpdateRequiredMessage), findsNothing);
+
+      await tester.tap(find.bySemanticsIdentifier('pane-chat-toggle'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(PaneChatView), findsOneWidget);
+      expect(find.text(desktopUpdateRequiredMessage), findsNothing);
+      expect(client.paneChatModesByTask, isEmpty);
       expect(tester.takeException(), isNull);
     });
   });
@@ -2307,4 +2362,26 @@ class _HeldMutationClient extends FakeDesktopClient {
     );
     await pendingSessionTypeChange?.future;
   }
+}
+
+/// 모든 pane에서 에이전트 CLI가 돌고 있다고 답한다. 그래야 터미널 위에 채팅 전환 버튼이 보인다
+class _AgentPaneClient extends FakeDesktopClient {
+  _AgentPaneClient({required super.surfaces});
+
+  @override
+  Future<PaneChatSnapshot> fetchPaneChat(
+    DesktopConnection connection,
+    PaneChatTarget target,
+  ) async => PaneChatSnapshot(
+    taskId: target.taskId,
+    paneId: target.paneId,
+    provider: 'claude',
+    targetToken: null,
+    canSend: false,
+    inputState: PaneChatInputState.unknown,
+    screen: '',
+    reason: null,
+    transcript: const PaneChatTranscript(available: false, messages: []),
+    modelPickerSupported: false,
+  );
 }

@@ -185,6 +185,15 @@ class FakeDesktopClient implements DesktopClient {
   /// 지정하면 구독을 아는 데스크탑처럼 답한다
   Map<String, dynamic> Function(DesktopCommand command)? onPaneChatSubscription;
 
+  /// 데스크탑 앱 설정에 저장된 작업별 pane 채팅 모드. 저장 명령이 여기에 쌓인다
+  final paneChatModesByTask = <String, Map<String, bool>>{};
+
+  /// pane 채팅 모드를 읽고 쓰려고 보낸 명령
+  final paneChatModeCalls = <DesktopCommand>[];
+
+  /// false이면 pane 채팅 모드 명령을 모르는 구버전 데스크탑처럼 답한다
+  bool supportsPaneChatModes = true;
+
   /// 지워 달라고 보낸 요청. 강제 여부까지 봐야 거절 뒤 강제 삭제로 다시 보냈는지 안다
   final deleteCalls = <({String taskId, bool isForced})>[];
   final removedRegistrationIds = <String>[];
@@ -439,6 +448,23 @@ class FakeDesktopClient implements DesktopClient {
       // 기본은 구독을 모르는 데스크탑이다. 그러면 앱은 주기 조회로 동작한다
       if (answer == null) throw const DesktopUpdateRequiredException();
       return answer(command);
+    }
+    if (command.name == 'get-pane-chat-modes' ||
+        command.name == 'set-pane-chat-mode') {
+      paneChatModeCalls.add(command);
+      if (!supportsPaneChatModes) throw const DesktopUpdateRequiredException();
+      final taskId = command.fields['taskId']! as String;
+      if (command.name == 'get-pane-chat-modes') {
+        return {
+          'modes': {...?paneChatModesByTask[taskId]},
+        };
+      }
+      paneChatModesByTask[taskId] = {
+        ...?paneChatModesByTask[taskId],
+        command.fields['paneId']! as String:
+            command.fields['isEnabled']! as bool,
+      };
+      return {};
     }
     commandCalls.add(command);
     if (command.name == 'remove-task-registration') {
