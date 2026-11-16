@@ -1,5 +1,5 @@
 import { createReadStream } from "fs";
-import { open, readdir, readFile } from "fs/promises";
+import { open, readdir, readFile, type FileHandle } from "fs/promises";
 import { createInterface } from "readline";
 import path from "path";
 import { execGit } from "@/lib/gitOperations";
@@ -286,6 +286,87 @@ export async function readJsonLines(filePath: string, sshHost?: string | null): 
     .filter(Boolean)
     .map((line) => safeJsonParse(line))
     .filter((value) => value !== null);
+}
+
+interface AppendedJsonLines {
+  inode: number;
+  /** 여기까지는 줄 단위로 해석해 lines에 실었다 */
+  consumedBytes: number;
+  /** consumedBytes 바로 앞의 바이트. 다음에 읽을 때 같은 내용이 그 자리에 있어야 뒤에 붙은 것으로 본다 */
+  consumedTail: Buffer;
+  lines: unknown[];
+}
+
+/** 채팅으로 보고 있는 대화 기록만 들어오므로 적게 둔다. 줄 배열은 큰 세션에서 수십 MB가 된다 */
+const APPENDED_JSON_LINES_MAX = 8;
+const CONSUMED_TAIL_BYTES = 64;
+const LINE_FEED = 0x0a;
+const appendedJsonLines = new Map<string, AppendedJsonLines>();
+const appendedJsonLineReads = new Map<string, Promise<unknown[]>>();
+
+/**
+ * 줄이 뒤에만 붙는 로컬 JSONL을 읽는다. 지난번에 읽은 곳 뒤로 늘어난 부분만 읽어 같은 배열에 이어 붙이므로,
+ * 호출자는 돌려받은 배열이 그대로인 동안 앞쪽 줄을 다시 처리하지 않아도 된다.
+ * 파일이 짧아졌거나, 다른 파일로 바뀌었거나, 읽었던 자리의 내용이 달라졌으면 처음부터 다시 읽어 새 배열을 돌려준다.
+ */
+export function readAppendedJsonLines(filePath: string): Promise<unknown[]> {
+  // 같은 파일을 겹쳐 읽으면 두 읽기가 같은 위치에서 시작해 붙은 줄을 두 번 싣는다.
+  const previousRead = appendedJsonLineReads.get(filePath) ?? Promise.resolve([]);
+  const read = previousRead.catch(() => []).then(() => readAppendedJsonLinesInTurn(filePath));
+  appendedJsonLineReads.set(filePath, read);
+  void read.catch(() => undefined).then(() => {
+    if (appendedJsonLineReads.get(filePath) === read) appendedJsonLineReads.delete(filePath);
+  });
+  return read;
+}
+
+async function readAppendedJsonLinesInTurn(filePath: string): Promise<unknown[]> {
+  const handle = await open(filePath, "r");
+  try {
+    const stats = await handle.stat();
+    const known = appendedJsonLines.get(filePath);
+    const appendedBytes = known && known.inode === stats.ino && stats.size >= known.consumedBytes
+      ? await readBytesAfterConsumed(handle, known, stats.size)
+      : null;
+    const state = appendedBytes ? known! : { inode: stats.ino, consumedBytes: 0, consumedTail: Buffer.alloc(0), lines: [] };
+    consumeCompleteJsonLines(state, appendedBytes ?? await readFileBytes(handle, 0, stats.size));
+    appendedJsonLines.delete(filePath);
+    appendedJsonLines.set(filePath, state);
+    if (appendedJsonLines.size > APPENDED_JSON_LINES_MAX) appendedJsonLines.delete(appendedJsonLines.keys().next().value!);
+    return state.lines;
+  } finally {
+    await handle.close();
+  }
+}
+
+/** 읽었던 자리의 끝부분이 그대로면 그 뒤에 붙은 바이트를, 달라졌으면 null을 돌려준다 */
+async function readBytesAfterConsumed(handle: FileHandle, known: AppendedJsonLines, fileSize: number): Promise<Buffer | null> {
+  const tailLength = known.consumedTail.length;
+  const bytes = await readFileBytes(handle, known.consumedBytes - tailLength, fileSize);
+  return bytes.subarray(0, tailLength).equals(known.consumedTail) ? bytes.subarray(tailLength) : null;
+}
+
+async function readFileBytes(handle: FileHandle, start: number, end: number): Promise<Buffer> {
+  const bytes = Buffer.alloc(end - start);
+  const { bytesRead } = await handle.read(bytes, 0, bytes.length, start);
+  return bytes.subarray(0, bytesRead);
+}
+
+/** 줄바꿈으로 끝난 줄과, 줄바꿈은 없어도 온전한 JSON인 마지막 줄까지만 싣는다. 쓰는 중인 마지막 줄은 다음 읽기로 미룬다 */
+function consumeCompleteJsonLines(state: AppendedJsonLines, unread: Buffer): void {
+  const lastLineEnd = unread.lastIndexOf(LINE_FEED) + 1;
+  const completeLines = unread.subarray(0, lastLineEnd).toString("utf-8").split("\n");
+  const lastLine = safeJsonParse(unread.subarray(lastLineEnd).toString("utf-8").trim());
+  const consumed = lastLine === null ? unread.subarray(0, lastLineEnd) : unread;
+  for (const line of completeLines) {
+    const value = safeJsonParse(line.trim());
+    if (value !== null) state.lines.push(value);
+  }
+  if (lastLine !== null) state.lines.push(lastLine);
+  state.consumedBytes += consumed.length;
+  const tailSource = consumed.length >= CONSUMED_TAIL_BYTES ? consumed : Buffer.concat([state.consumedTail, consumed]);
+  // 방금 읽은 큰 버퍼를 붙잡지 않도록 끝부분만 복사해 둔다.
+  state.consumedTail = Buffer.from(tailSource.subarray(-CONSUMED_TAIL_BYTES));
 }
 
 export function safeJsonParse<T>(value: string): T | null {

@@ -13,6 +13,7 @@ import {
   makePreviewMessage,
   paginateItems,
   pickLiveSessionFiles,
+  readAppendedJsonLines,
   readJsonLines,
   readJsonLinesHead,
   readJsonLinesTail,
@@ -139,6 +140,66 @@ export async function readClaudeSessions(context: AiSessionReaderContext): Promi
   });
 }
 
+/** 한 기록 파일에서 한 대화가 남긴 메시지와, 그 파일의 이벤트를 어디까지 읽어 만들었는지 */
+interface ClaudeSessionTranscript {
+  readEventCount: number;
+  isSessionInScope: boolean;
+  title: string | null;
+  matchedPath: string | null;
+  /** 파일에 적힌 순서 */
+  messages: AggregatedAiMessage[];
+  /** messages를 최신순으로 정렬해 둔 것. 메시지가 늘면 버리고 다음에 다시 만든다 */
+  newestFirstMessages: AggregatedAiMessage[] | null;
+}
+
+/** 검색어처럼 조건이 계속 바뀌는 조회가 한 파일에 결과를 끝없이 쌓지 않도록 조건 수를 제한한다 */
+const MAX_TRANSCRIPTS_PER_EVENT_LIST = 8;
+/** 이벤트 배열이 살아 있는 동안만 그 배열로 만든 메시지를 기억한다. 파일을 처음부터 다시 읽으면 배열이 바뀌어 함께 버려진다 */
+const claudeSessionTranscripts = new WeakMap<unknown[], Map<string, ClaudeSessionTranscript>>();
+
+/**
+ * 이벤트 배열에서 한 대화의 메시지를 만든다. 같은 배열을 같은 조건으로 다시 받으면 지난번에 읽은 곳 뒤로 붙은 이벤트만 읽어,
+ * 긴 대화를 보는 동안 매번 전체를 다시 만들지 않는다.
+ */
+function readClaudeSessionTranscript(events: unknown[], filePath: string, sessionId: string, context: AiSessionReaderContext): ClaudeSessionTranscript {
+  const transcripts = claudeSessionTranscripts.get(events) ?? new Map<string, ClaudeSessionTranscript>();
+  claudeSessionTranscripts.set(events, transcripts);
+  const conditions = JSON.stringify([filePath, sessionId, context]);
+  const transcript = transcripts.get(conditions) ?? { readEventCount: 0, isSessionInScope: false, title: null, matchedPath: null, messages: [], newestFirstMessages: null };
+  if (!transcripts.has(conditions) && transcripts.size >= MAX_TRANSCRIPTS_PER_EVENT_LIST) transcripts.delete(transcripts.keys().next().value!);
+  transcripts.set(conditions, transcript);
+
+  for (; transcript.readEventCount < events.length; transcript.readEventCount += 1) {
+    const event = events[transcript.readEventCount] as ClaudeProjectEvent;
+    if (event.sessionId !== sessionId) continue;
+    if (typeof event.cwd === "string") transcript.isSessionInScope = determineMatchScope(event.cwd, context) !== null;
+    if (!transcript.isSessionInScope) continue;
+    if (isClaudeImageCompanion(event)) continue;
+    if (!transcript.matchedPath && typeof event.cwd === "string") transcript.matchedPath = event.cwd;
+
+    for (const { role, text, attachments, toolName, files } of extractClaudeEventMessages(event, filePath)) {
+      if (context.roles && context.roles.length > 0 && !context.roles.includes(role)) {
+        continue;
+      }
+
+      if (context.query && ![text, ...attachments.map(attachment => attachment.name)].join("\n").toLowerCase().includes(context.query.toLowerCase())) {
+        continue;
+      }
+
+      if (role === "user" && text && !transcript.title) {
+        transcript.title = truncateText(text, 80);
+      }
+
+      const previewMessage = makePreviewMessage(role, event.timestamp, text, attachments);
+      if (previewMessage) {
+        transcript.messages.push(withToolCall(previewMessage, { toolName, files }));
+        transcript.newestFirstMessages = null;
+      }
+    }
+  }
+  return transcript;
+}
+
 export async function readClaudeSessionDetail(
   context: AiSessionReaderContext,
   sessionId: string,
@@ -152,46 +213,27 @@ export async function readClaudeSessionDetail(
   let title: string | null = null;
   let matchedPath: string | null = null;
   let resolvedSourceRef = sourceRef ?? null;
-  const messages: AggregatedAiMessage[] = [];
+  const transcripts: ClaudeSessionTranscript[] = [];
 
   for (const filePath of projectFiles) {
-    const events = await getCachedOrParse(filePath, () => readJsonLines(filePath, context.sshHost), context.sshHost);
-    let sessionInScope = false;
-    for (const rawEvent of events) {
-      const event = rawEvent as ClaudeProjectEvent;
-      if (event.sessionId !== sessionId) continue;
-      if (typeof event.cwd === "string") sessionInScope = determineMatchScope(event.cwd, context) !== null;
-      if (!sessionInScope) continue;
-      if (isClaudeImageCompanion(event)) continue;
-      if (!matchedPath && typeof event.cwd === "string") {
-        matchedPath = event.cwd;
-        resolvedSourceRef = filePath;
-      }
-
-      for (const { role, text, attachments, toolName, files } of extractClaudeEventMessages(event, filePath)) {
-        if (context.roles && context.roles.length > 0 && !context.roles.includes(role)) {
-          continue;
-        }
-
-        if (context.query && ![text, ...attachments.map(attachment => attachment.name)].join("\n").toLowerCase().includes(context.query.toLowerCase())) {
-          continue;
-        }
-
-        if (role === "user" && text && !title) {
-          title = truncateText(text, 80);
-        }
-
-        const previewMessage = makePreviewMessage(role, event.timestamp, text, attachments);
-        if (previewMessage) {
-          messages.push(withToolCall(previewMessage, { toolName, files }));
-        }
-      }
+    // 호출자가 짚어 준 대화 파일은 되풀이해 읽히므로 붙은 줄만 이어 읽는다. 여러 파일을 훑는 조회는 한 번씩만 읽고 지나간다.
+    const readEvents = () => sourceRef && !context.sshHost ? readAppendedJsonLines(filePath) : readJsonLines(filePath, context.sshHost);
+    const events = await getCachedOrParse(filePath, readEvents, context.sshHost);
+    const transcript = readClaudeSessionTranscript(events, filePath, sessionId, context);
+    transcripts.push(transcript);
+    title ??= transcript.title;
+    if (!matchedPath && transcript.matchedPath) {
+      matchedPath = transcript.matchedPath;
+      resolvedSourceRef = filePath;
     }
   }
 
-  if (!matchedPath && messages.length === 0) return null;
+  if (!matchedPath && transcripts.every((transcript) => transcript.messages.length === 0)) return null;
 
-  const paginated = paginateItems(sortMessagesDescending(messages), cursor, limit);
+  const newestFirstMessages = transcripts.length === 1
+    ? transcripts[0].newestFirstMessages ??= sortMessagesDescending(transcripts[0].messages)
+    : sortMessagesDescending(transcripts.flatMap((transcript) => transcript.messages));
+  const paginated = paginateItems(newestFirstMessages, cursor, limit);
   return createSessionDetail({
     sessionId,
     provider: "claude",
