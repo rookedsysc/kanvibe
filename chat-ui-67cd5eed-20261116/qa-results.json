@@ -1,0 +1,73 @@
+{
+  "head": "67cd5eedbcd1a357da0feebef560341cb12a5939",
+  "gates": [
+    {
+      "command": "pnpm check",
+      "exit": 0,
+      "fingerprint": {
+        "head": "67cd5eedbcd1a357da0feebef560341cb12a5939",
+        "tracked_sha256": "8473831ff19a157a634ac040c7f63fd6edbd63ff2d7190187ab76fde1bf6dd18"
+      },
+      "tree_unchanged": true
+    },
+    {
+      "command": "pnpm test",
+      "exit": 0,
+      "fingerprint": {
+        "head": "67cd5eedbcd1a357da0feebef560341cb12a5939",
+        "tracked_sha256": "8473831ff19a157a634ac040c7f63fd6edbd63ff2d7190187ab76fde1bf6dd18"
+      },
+      "tree_unchanged": true
+    },
+    {
+      "command": "pnpm build",
+      "exit": 0,
+      "fingerprint": {
+        "head": "67cd5eedbcd1a357da0feebef560341cb12a5939",
+        "tracked_sha256": "8473831ff19a157a634ac040c7f63fd6edbd63ff2d7190187ab76fde1bf6dd18"
+      },
+      "tree_unchanged": true
+    }
+  ],
+  "electron": {
+    "status": "passed",
+    "provider": "deterministic CLI fixtures in real PTYs; no live inference",
+    "checks": [
+      {
+        "name": "passive reads preserve exact pane identity without statusline",
+        "latencyMs": 538,
+        "panes": [
+          "%0",
+          "%1"
+        ]
+      },
+      {
+        "name": "dragging composer border grows input",
+        "beforeHeight": 64,
+        "afterHeight": 190
+      },
+      {
+        "name": "real PTY send remains confined to Claude pane"
+      },
+      {
+        "name": "model popover selects Sonnet without terminal switching"
+      },
+      {
+        "name": "narrow viewport chat and expanded-input model picker remain visible",
+        "menuBox": {
+          "x": 100,
+          "y": 173,
+          "width": 320,
+          "height": 153
+        },
+        "chatBox": {
+          "x": 68,
+          "y": 64,
+          "width": 428.296875,
+          "height": 630
+        }
+      }
+    ]
+  },
+  "provider_scope": "deterministic Python Claude/Codex fixtures in isolated real PTYs; no live paid inference"
+}
