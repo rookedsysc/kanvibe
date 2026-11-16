@@ -1217,6 +1217,20 @@ class DesktopClient {
           );
         }
       },
+      onScroll: (isUp, column, row) {
+        if (!closed) {
+          channel.sink.add(
+            utf8.encode(
+              jsonEncode({
+                'type': 'scroll',
+                'direction': isUp ? 'up' : 'down',
+                'column': column,
+                'row': row,
+              }),
+            ),
+          );
+        }
+      },
       onClose: () async {
         close();
       },
@@ -1509,6 +1523,7 @@ class PaneStream {
     required this.onWrite,
     required this.onResize,
     required this.onRefreshHistory,
+    this.onScroll = _ignoreScroll,
     required this.onClose,
     required this.readCloseCode,
   });
@@ -1523,6 +1538,12 @@ class PaneStream {
 
   /// 화면 프레임만 받는 세션의 지난 출력을 최신으로 다시 보내 달라고 요청한다
   final void Function() onRefreshHistory;
+
+  /// 휠 한 칸을 멀티플렉서에 넘긴다. 멀티플렉서가 pane 모드를 보고 휠 보고·화살표 키·자체 스크롤백 중 하나로 처리한다
+  final void Function(bool isUp, int column, int row) onScroll;
+
+  /// 멀티플렉서를 거치지 않는 로그인 터미널처럼 휠을 넘길 곳이 없는 스트림의 기본값
+  static void _ignoreScroll(bool isUp, int column, int row) {}
 
   final Future<void> Function() onClose;
 
@@ -1556,6 +1577,9 @@ class PaneStream {
   }
 
   void resize(int cols, int rows) => onResize(cols, rows);
+
+  void scroll({required bool isUp, required int column, required int row}) =>
+      onScroll(isUp, column, row);
 
   Future<void> close() => onClose();
 }

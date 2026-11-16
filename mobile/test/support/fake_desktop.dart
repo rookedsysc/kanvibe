@@ -236,6 +236,7 @@ class FakeDesktopClient implements DesktopClient {
   final writtenInput = <String, List<String>>{};
   final resizedPanes = <String, List<({int cols, int rows})>>{};
   final historyRefreshRequests = <String>[];
+  final scrolledPanes = <String, List<({bool isUp, int column, int row})>>{};
   int paneStreamOpenCount = 0;
 
   @override
@@ -510,6 +511,9 @@ class FakeDesktopClient implements DesktopClient {
         rows: rows,
       )),
       onRefreshHistory: () => historyRefreshRequests.add(paneId),
+      onScroll: (isUp, column, row) => scrolledPanes
+          .putIfAbsent(paneId, () => [])
+          .add((isUp: isUp, column: column, row: row)),
       onClose: () async {
         closedPanes.add(paneId);
         await controller.close();
