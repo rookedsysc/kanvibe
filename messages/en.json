@@ -32,7 +32,8 @@
       "localTarget": "this machine",
       "remoteTarget": "{host}",
       "installPrompt": "{tool} is not installed on {target}. Install it now?",
-      "installFailed": "Failed to install {tool}: {error}"
+      "installFailed": "Failed to install {tool}: {error}",
+      "herdrServerHandoffPrompt": "The herdr server on {host} was started the old KanVibe way, so it cannot be added to your local herdr as a machine. Replace the server with herdr live handoff (experimental)? Running panes and work stay alive, and open terminals for this host reconnect automatically after a brief disconnect."
     },
     "doneAlert": {
       "title": "Move to Done",
@@ -202,6 +203,8 @@
     "createHooksBackgroundFailedBody": "Hooks installation failed for \"{taskTitle}\". You can reinstall it from the Hooks Status section.",
     "peerDeletionFailedTitle": "Not deleted on other desktops",
     "peerDeletionFailedBody": "\"{taskTitle}\" was deleted here but remains on {peerUrls}. Delete it there once that desktop is back online.",
+    "herdrMachineRegistrationFailedTitle": "Could not add {sshHost} as a Herdr machine",
+    "herdrMachineRegistrationFailedBody": "Herdr refused it: {reason}. Run herdr --remote {sshHost} --session {herdrSession} in a terminal to check the remote server.",
     "deleteConfirm": "Are you sure you want to delete this task?",
     "deleting": "Deleting…",
     "deleteFailed": "Could not delete: {reason}",

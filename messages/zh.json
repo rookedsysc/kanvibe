@@ -32,7 +32,8 @@
       "localTarget": "当前本机环境",
       "remoteTarget": "{host}",
       "installPrompt": "{target} 上未安装 {tool}。现在安装吗？",
-      "installFailed": "安装 {tool} 失败：{error}"
+      "installFailed": "安装 {tool} 失败：{error}",
+      "herdrServerHandoffPrompt": "{host} 上的 herdr 服务器以旧的 KanVibe 方式运行，无法作为 machine 添加到本地 herdr。要使用 herdr live handoff（实验功能）替换服务器吗？正在运行的 pane 和任务会保留，此主机上打开的终端会短暂断开后自动重新连接。"
     },
     "doneAlert": {
       "title": "移动到完成",
@@ -201,6 +202,8 @@
     "createHooksBackgroundFailedBody": "“{taskTitle}”的 hooks 安装失败。你可以在 Hooks 状态区域重新安装。",
     "peerDeletionFailedTitle": "未能在其他桌面删除",
     "peerDeletionFailedBody": "“{taskTitle}”已在此桌面删除，但仍保留在 {peerUrls}。请在该桌面恢复在线后手动删除。",
+    "herdrMachineRegistrationFailedTitle": "无法将 {sshHost} 添加为 Herdr machine",
+    "herdrMachineRegistrationFailedBody": "Herdr 拒绝的原因：{reason}。请在终端运行 herdr --remote {sshHost} --session {herdrSession} 检查远程服务器。",
     "deleteConfirm": "确定要删除此任务吗？",
     "deleting": "正在删除…",
     "deleteFailed": "删除失败：{reason}",

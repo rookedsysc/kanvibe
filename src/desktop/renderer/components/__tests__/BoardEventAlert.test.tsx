@@ -9,6 +9,9 @@ vi.mock("next-intl", () => ({
     if (values?.taskTitle) {
       return `${namespace}.${key}:${values.taskTitle}`;
     }
+    if (values?.sshHost) {
+      return `${namespace}.${key}:${Object.values(values).join("|")}`;
+    }
     return `${namespace}.${key}`;
   },
 }));
@@ -84,6 +87,26 @@ describe("BoardEventAlert", () => {
 
     // Then
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("원격 Herdr machine 등록이 실패하면 호스트와 Herdr의 거부 이유, 확인할 세션을 상단 알럿으로 알린다", async () => {
+    // Given
+    render(<BoardEventAlert />);
+
+    // When
+    await act(async () => {
+      boardEventListener?.({
+        type: "herdr-machine-registration-failed",
+        sshHost: "dev",
+        herdrSession: "kanvibe",
+        reason: "error: remote server is not ready for saved machines; machine was not saved",
+      });
+    });
+
+    // Then
+    expect(screen.getByRole("alert")).toBeTruthy();
+    expect(screen.getByText("task.herdrMachineRegistrationFailedTitle:dev")).toBeTruthy();
+    expect(screen.getByText("task.herdrMachineRegistrationFailedBody:error: remote server is not ready for saved machines; machine was not saved|dev|kanvibe")).toBeTruthy();
   });
 
   it("다른 데스크탑으로 삭제를 전파하지 못하면 task가 남은 곳을 상단 알럿으로 알린다", async () => {

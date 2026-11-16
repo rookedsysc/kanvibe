@@ -2,6 +2,7 @@
  * @vitest-environment node
  */
 import { spawnSync } from "child_process";
+import { HERDR_SERVER_REPLACED_CLOSE_REASON } from "@/desktop/shared/terminalConnection";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { SessionType } from "@/entities/KanbanTask";
 
@@ -461,6 +462,9 @@ describe("terminal 세션 탭 레지스트리", () => {
 
 /** 명령과 상관없이 같은 응답을 돌려주는 mock용. workspace w1과 그 안의 정상 pane 하나가 있는 Herdr 서버다 */
 const HEALTHY_HERDR_SERVER_OUTPUT = JSON.stringify({ result: { workspaces: [{ workspace_id: "w1" }], panes: [{ pane_id: "w1:p1" }] } });
+/** 이전 KanVibe가 nohup으로 띄운 서버. 세션 리더가 아니라 machine으로 등록되지 않는다 */
+const NOHUP_HERDR_SERVER_STATUS = JSON.stringify({ running: true, capabilities: { detached_server_daemon: false, live_handoff: true } });
+const DETACHED_HERDR_SERVER_STATUS = JSON.stringify({ running: true, capabilities: { detached_server_daemon: true, live_handoff: true } });
 
 describe("Herdr 원격 machine 연결", () => {
   const config = { host: "host", hostname: "host", port: 22, username: "user", privateKeyPath: "/key" };
@@ -510,6 +514,128 @@ describe("Herdr 원격 machine 연결", () => {
       expect(terminal.getActiveTerminalCount()).toBe(1);
       expect(ws.close).not.toHaveBeenCalled();
     } finally {
+      warning.mockRestore();
+    }
+  });
+
+  it("machine 등록이 거부되면 Herdr가 stderr에 남긴 거부 이유를 보드 알림으로 보낸다", async () => {
+    // Given: Herdr CLI는 안내 문구 뒤 마지막 줄에 거부 이유를 쓰고 실패한다
+    const git = await import("@/lib/gitOperations");
+    const { subscribeToBoardEvents } = await import("@/lib/boardNotifier");
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const boardEvents: unknown[] = [];
+    const unsubscribe = subscribeToBoardEvents((event) => boardEvents.push(event));
+    vi.mocked(git.execGit).mockImplementation(async (command) => {
+      if (command.includes("'machine' 'list'")) return "[]";
+      if (command.includes("'machine' 'add'")) {
+        throw Object.assign(new Error("Command failed: herdr machine add"), {
+          stderr: "remote herdr server on host (session project-task) is still running v0.9.5.\nerror: remote server is not ready for saved machines; machine was not saved\n",
+        });
+      }
+      return HEALTHY_HERDR_SERVER_OUTPUT;
+    });
+    const terminal = await importTerminalModule();
+    try {
+      // When
+      await terminal.attachRemoteSession("machine-task", null, "host", SessionType.HERDR, "project-task", createMockWs() as never, config, 120, 30, "/work");
+
+      // Then
+      await vi.waitFor(() => expect(boardEvents).toContainEqual({
+        type: "herdr-machine-registration-failed",
+        sshHost: "host",
+        herdrSession: "project-task",
+        reason: "error: remote server is not ready for saved machines; machine was not saved",
+      }));
+    } finally {
+      unsubscribe();
+      warning.mockRestore();
+    }
+  });
+
+  it("이전 방식으로 떠 있는 원격 서버는 machine 등록 대신 교체 확인을 화면에 요청한다", async () => {
+    // Given: 세션 리더가 아니지만 live handoff를 지원하는 원격 서버
+    const git = await import("@/lib/gitOperations");
+    const { subscribeToBoardEvents } = await import("@/lib/boardNotifier");
+    const boardEvents: unknown[] = [];
+    const unsubscribe = subscribeToBoardEvents((event) => boardEvents.push(event));
+    vi.mocked(git.execGit).mockImplementation(async (command) => {
+      if (command.includes("'machine' 'list'")) return "[]";
+      if (command.includes("'status' 'server'")) return NOHUP_HERDR_SERVER_STATUS;
+      return HEALTHY_HERDR_SERVER_OUTPUT;
+    });
+    const terminal = await importTerminalModule();
+    try {
+      // When
+      await terminal.attachRemoteSession("machine-task", null, "host", SessionType.HERDR, "project-task", createMockWs() as never, config, 120, 30, "/work");
+
+      // Then
+      await vi.waitFor(() => expect(boardEvents).toContainEqual({ type: "herdr-server-handoff-required", sshHost: "host", herdrSession: "project-task" }));
+      expect(vi.mocked(git.execGit).mock.calls.some(([command]) => command.includes("'machine' 'add'"))).toBe(false);
+    } finally {
+      unsubscribe();
+    }
+  });
+
+  it("승인된 서버 교체는 붙어 있던 화면을 다시 연결하라는 사유로 닫고, 교체 중 새 연결은 교체가 끝난 뒤 붙인 다음 machine을 등록한다", async () => {
+    // Given: 이전 방식 서버에 붙은 원격 Herdr 화면
+    const git = await import("@/lib/gitOperations");
+    let isHandedOff = false;
+    let finishHandoff!: () => void;
+    vi.mocked(git.execGit).mockImplementation(async (command) => {
+      if (command.includes("'machine' 'list'")) return "[]";
+      if (command.includes("'status' 'server'")) return isHandedOff ? DETACHED_HERDR_SERVER_STATUS : NOHUP_HERDR_SERVER_STATUS;
+      if (command.includes("'live-handoff'")) {
+        return new Promise<string>((resolve) => {
+          finishHandoff = () => { isHandedOff = true; resolve("live handoff complete"); };
+        });
+      }
+      return HEALTHY_HERDR_SERVER_OUTPUT;
+    });
+    const terminal = await importTerminalModule();
+    const attachedWs = createMockWs();
+    await terminal.attachRemoteSession("machine-task", null, "host", SessionType.HERDR, "project-task", attachedWs as never, config, 120, 30, "/work");
+
+    // When: 교체를 시작하고, 끝나기 전에 같은 서버로 새 화면을 연다
+    const replacing = terminal.replaceHerdrRemoteServer("host", "project-task");
+    await vi.waitFor(() => expect(finishHandoff).toBeTypeOf("function"));
+    const reconnectingWs = createMockWs();
+    const reconnecting = terminal.attachRemoteSession("other-task", null, "host", SessionType.HERDR, "project-task", reconnectingWs as never, config, 120, 30, "/work");
+    await Promise.resolve();
+    const spawnCountDuringHandoff = spawnCalls.length;
+    finishHandoff();
+    await replacing;
+    await reconnecting;
+
+    // Then: 이전 화면은 재연결 사유로 닫히고, 새 화면은 교체가 끝난 뒤에야 PTY를 얻고, machine 등록이 이어진다
+    expect(attachedWs.close).toHaveBeenCalledWith(1012, HERDR_SERVER_REPLACED_CLOSE_REASON);
+    expect(spawnedPtys[0].kill).toHaveBeenCalled();
+    expect(spawnCountDuringHandoff).toBe(1);
+    expect(spawnCalls).toHaveLength(2);
+    expect(vi.mocked(git.execGit).mock.calls.find(([command]) => command.includes("'live-handoff'"))?.[1]).toBe("host");
+    await vi.waitFor(() => expect(vi.mocked(git.execGit).mock.calls.some(([command]) => command.includes("'machine' 'add' 'host'"))).toBe(true));
+  });
+
+  it("서버 교체가 실패하면 서버를 강제로 내리지 않고 Herdr의 실패 이유를 보드 알림으로 보낸다", async () => {
+    // Given
+    const git = await import("@/lib/gitOperations");
+    const { subscribeToBoardEvents } = await import("@/lib/boardNotifier");
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const boardEvents: unknown[] = [];
+    const unsubscribe = subscribeToBoardEvents((event) => boardEvents.push(event));
+    vi.mocked(git.execGit).mockImplementation(async (command) => {
+      if (command.includes("'live-handoff'")) throw Object.assign(new Error("Command failed"), { stderr: "error: live handoff failed\n" });
+      return HEALTHY_HERDR_SERVER_OUTPUT;
+    });
+    const terminal = await importTerminalModule();
+    try {
+      // When
+      await terminal.replaceHerdrRemoteServer("host", "project-task");
+
+      // Then
+      expect(boardEvents).toContainEqual({ type: "herdr-machine-registration-failed", sshHost: "host", herdrSession: "project-task", reason: "error: live handoff failed" });
+      expect(vi.mocked(git.execGit).mock.calls.some(([command]) => command.includes("'stop'") || command.includes("'machine' 'add'"))).toBe(false);
+    } finally {
+      unsubscribe();
       warning.mockRestore();
     }
   });
