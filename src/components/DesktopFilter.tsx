@@ -7,6 +7,22 @@ interface DesktopFilterProps {
   onChange: (desktops: string[]) => void;
 }
 
+/** 프로젝트·태스크가 속한 데스크톱을 필터 선택값과 같은 형식으로 나타낸다 */
+function getDesktopKey(sshHost: string | null | undefined): string {
+  return sshHost ? `ssh:${sshHost}` : "local";
+}
+
+/** 지금 보드에 없는 호스트를 고른 값은 빼서, 사라진 호스트 때문에 보드가 비지 않게 한다 */
+export function pickAvailableDesktops(selectedDesktops: string[], hosts: string[]): string[] {
+  const availableDesktops = new Set(["local", ...hosts.map(getDesktopKey)]);
+  return selectedDesktops.filter((desktop) => availableDesktops.has(desktop));
+}
+
+/** 데스크톱 선택이 비어 있으면 전체를 뜻하므로 모든 대상이 통과한다 */
+export function isOnDesktops(sshHost: string | null | undefined, activeDesktops: string[]): boolean {
+  return activeDesktops.length === 0 || activeDesktops.includes(getDesktopKey(sshHost));
+}
+
 export default function DesktopFilter({ hosts, selectedDesktops, onChange }: DesktopFilterProps) {
   const t = useTranslations("board");
   const tc = useTranslations("common");
@@ -14,7 +30,7 @@ export default function DesktopFilter({ hosts, selectedDesktops, onChange }: Des
   const containerRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const menuId = useId();
-  const options = [{ value: "local", label: tc("local") }, ...hosts.map((host) => ({ value: `ssh:${host}`, label: host }))];
+  const options = [{ value: "local", label: tc("local") }, ...hosts.map((host) => ({ value: getDesktopKey(host), label: host }))];
   const selected = options.filter((option) => selectedDesktops.includes(option.value));
   const label = selected.length === 0 ? t("allDesktops")
     : selected.length === 1 ? selected[0].label : t("selectedDesktops", { count: selected.length });

@@ -5,7 +5,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { DragDropContext, type DropResult } from "@hello-pangea/dnd";
 import BoardPageFindBar from "./BoardPageFindBar";
 import BoardSortPicker from "./BoardSortPicker";
-import DesktopFilter from "./DesktopFilter";
+import DesktopFilter, { isOnDesktops, pickAvailableDesktops } from "./DesktopFilter";
 import Column from "./Column";
 import type { TaskDeletionState, TaskMoveState } from "./TaskCard";
 import CreateTaskModal from "./CreateTaskModal";
@@ -441,15 +441,25 @@ export default function Board({
     ...projects.map((project) => project.sshHost),
     ...Object.values(tasks).flat().map((task) => task.sshHost),
   ].filter((host): host is string => Boolean(host)))).sort(), [projects, sshHosts, tasks]);
-  const activeDesktopFilters = useMemo(() => selectedDesktops.filter((desktop) => (
-    desktop === "local" || desktopHosts.some((host) => desktop === `ssh:${host}`)
-  )), [desktopHosts, selectedDesktops]);
-
-  /** 필터 드롭다운에 표시할 메인 프로젝트 목록 (worktree 제외) */
-  const filterableProjects = useMemo(
-    () => projects.filter((p) => !p.isWorktree),
-    [projects]
+  const activeDesktopFilters = useMemo(
+    () => pickAvailableDesktops(selectedDesktops, desktopHosts),
+    [desktopHosts, selectedDesktops],
   );
+
+  /** 필터 드롭다운에 표시할 메인 프로젝트 목록 (worktree 제외). 데스크톱 필터가 있으면 그 데스크톱 프로젝트만 남긴다 */
+  const filterableProjects = useMemo(
+    () => projects.filter((p) => !p.isWorktree && isOnDesktops(p.sshHost, activeDesktopFilters)),
+    [projects, activeDesktopFilters]
+  );
+
+  /** 데스크톱 필터를 바꾸면 다른 데스크톱 프로젝트의 선택을 지워, 숨은 선택이 보드를 비우지 않게 한다 */
+  const changeDesktopFilter = useCallback((desktops: string[]) => {
+    setSelectedDesktops(desktops);
+    const nextActiveDesktops = pickAvailableDesktops(desktops, desktopHosts);
+    setSelectedProjectIds((previousIds) => previousIds.filter((projectId) => (
+      isOnDesktops(projectLookup.get(projectId)?.sshHost, nextActiveDesktops)
+    )));
+  }, [desktopHosts, projectLookup, setSelectedProjectIds]);
 
   /** 선택된 프로젝트 + worktree 프로젝트 ID 집합. null이면 전체 표시 */
   const projectFilterSet = useMemo(
@@ -461,10 +471,9 @@ export default function Board({
   const hasActiveBoardTaskFilter = projectFilterSet !== null || taskKindFilter !== "all" || activeDesktopFilters.length > 0;
   const boardTaskFilter = useCallback<BoardTaskFilter>((task) => {
     const host = task.sshHost || projectLookup.get(task.projectId ?? "")?.sshHost;
-    const taskDesktop = host ? `ssh:${host}` : "local";
     return matchesProjectFilter(task, projectFilterSet)
       && matchesTaskKindFilter(task, taskKindFilter, projectLookup)
-      && (activeDesktopFilters.length === 0 || activeDesktopFilters.includes(taskDesktop));
+      && isOnDesktops(host, activeDesktopFilters);
   }, [activeDesktopFilters, projectFilterSet, projectLookup, taskKindFilter]);
 
   const filteredTasks = useMemo(() => {
@@ -1110,7 +1119,7 @@ export default function Board({
               compact
             />
           </div>
-          <DesktopFilter hosts={desktopHosts} selectedDesktops={activeDesktopFilters} onChange={setSelectedDesktops} />
+          <DesktopFilter hosts={desktopHosts} selectedDesktops={activeDesktopFilters} onChange={changeDesktopFilter} />
           <BoardSortPicker preference={sortPreference} onChange={setSortPreference} />
           <button
             type="button"

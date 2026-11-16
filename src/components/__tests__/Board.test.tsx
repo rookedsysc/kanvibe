@@ -1,4 +1,4 @@
-import { act, forwardRef, useEffect, useImperativeHandle } from "react";
+import { act, forwardRef, useEffect, useImperativeHandle, useState } from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createEvent, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
@@ -6,6 +6,7 @@ import Board from "../Board";
 import CommandPaletteDialog from "@/desktop/renderer/components/CommandPaletteDialog";
 import { deleteTask, getMoreDoneTasks, moveTaskToColumn } from "@/desktop/renderer/actions/kanban";
 import { startBackgroundTaskSyncNow } from "@/desktop/renderer/actions/backgroundTaskSync";
+import { useProjectFilterParams } from "@/desktop/renderer/hooks/useProjectFilterParams";
 import { useTaskKindFilterParams } from "@/desktop/renderer/hooks/useTaskKindFilterParams";
 import { useBoardSortPreference } from "@/desktop/renderer/hooks/useBoardSortPreference";
 import { TaskPriority } from "@/entities/TaskPriority";
@@ -168,14 +169,23 @@ vi.mock("../Column", () => ({
 }));
 
 vi.mock("../ProjectSelector", () => ({
-  default: forwardRef(function MockProjectSelector(_props, ref) {
+  default: forwardRef(function MockProjectSelector(
+    props: { projects: Project[]; selectedProjectIds?: string[] },
+    ref,
+  ) {
     useImperativeHandle(ref, () => ({
       open() {},
       close() {},
       focus() {},
     }), []);
 
-    return <div data-testid="project-selector" />;
+    return (
+      <div
+        data-testid="project-selector"
+        data-project-ids={props.projects.map((project) => project.id).join(",")}
+        data-selected-project-ids={(props.selectedProjectIds ?? []).join(",")}
+      />
+    );
   }),
 }));
 
@@ -457,6 +467,7 @@ describe("Board defaultSessionType sync", () => {
     vi.clearAllMocks();
     vi.mocked(useTaskKindFilterParams).mockReturnValue(["all", vi.fn()] as const);
     vi.mocked(useBoardSortPreference).mockReturnValue([{ keys: [] }, vi.fn()] as const);
+    vi.mocked(useProjectFilterParams).mockReturnValue([[], vi.fn()]);
     delete window.kanvibeDesktop;
     mockNavigatorPlatform("Linux x86_64");
     mockWindowFind();
@@ -485,6 +496,55 @@ describe("Board defaultSessionType sync", () => {
     expectTaskKindFilterVisibleTasks(["Root Project Task", "Branch Worktree Task", "Plain Task"]);
     fireEvent.keyDown(screen.getByRole("button", { name: "desktopFilter" }), { key: "Escape" });
     expect(screen.queryByRole("checkbox", { name: "devbox" })).toBeNull();
+  });
+
+  function renderBoardWithLocalAndRemoteProjects() {
+    const projects = [
+      createProject({ id: "local-project", name: "local-app" }),
+      createProject({ id: "remote-project", name: "remote-app", sshHost: "devbox" }),
+      createProject({ id: "remote-worktree", name: "remote-app-wt", sshHost: "devbox", isWorktree: true }),
+    ];
+    render(
+      <MemoryRouter initialEntries={["/ko"]}>
+        <BoardCommandProvider>
+          <Board initialTasks={createEmptyTasks()} initialDoneTotal={0} initialDoneLimit={20}
+            sshHosts={["devbox"]} projects={projects} sidebarDefaultCollapsed={false}
+            doneAlertDismissed={false} notificationSettings={{ isEnabled: true, enabledStatuses: [] }}
+            defaultSessionType={SessionType.TMUX} taskSearchShortcut="Mod+Shift+O" />
+        </BoardCommandProvider>
+      </MemoryRouter>,
+    );
+  }
+
+  it("데스크톱 필터를 고르면 프로젝트 필터 후보를 그 데스크톱의 메인 프로젝트로 좁힌다", () => {
+    renderBoardWithLocalAndRemoteProjects();
+    const projectSelector = screen.getByTestId("project-selector");
+    expect(projectSelector.dataset.projectIds).toBe("local-project,remote-project");
+
+    fireEvent.click(screen.getByRole("button", { name: "desktopFilter" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "devbox" }));
+    expect(projectSelector.dataset.projectIds).toBe("remote-project");
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "local" }));
+    expect(projectSelector.dataset.projectIds).toBe("local-project,remote-project");
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "devbox" }));
+    expect(projectSelector.dataset.projectIds).toBe("local-project");
+  });
+
+  it("데스크톱 필터를 바꾸면 다른 데스크톱 프로젝트의 선택을 지우고 전체로 돌아가도 되살리지 않는다", () => {
+    vi.mocked(useProjectFilterParams).mockImplementation(
+      () => useState<string[]>(["local-project", "remote-project"]),
+    );
+    renderBoardWithLocalAndRemoteProjects();
+    const projectSelector = screen.getByTestId("project-selector");
+
+    fireEvent.click(screen.getByRole("button", { name: "desktopFilter" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "devbox" }));
+    expect(projectSelector.dataset.selectedProjectIds).toBe("remote-project");
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "allDesktops" }));
+    expect(projectSelector.dataset.selectedProjectIds).toBe("remote-project");
   });
 
   it("defaultSessionType prop이 변경되면 내부 상태와 하위 컴포넌트가 동기화된다", async () => {

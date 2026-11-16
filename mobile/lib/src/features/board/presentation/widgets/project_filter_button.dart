@@ -9,6 +9,7 @@ import '../../../../common/constants/app_colors.dart';
 import '../../../../common/constants/app_sizes.dart';
 import '../../../../common/constants/project_colors.dart';
 import '../../../../common/providers.dart';
+import '../../application/board_desktop_filter_controller.dart';
 import '../../application/board_project_filter_controller.dart';
 
 class ProjectFilterButton extends ConsumerWidget {
@@ -105,7 +106,10 @@ class _ProjectFilterSheetState extends ConsumerState<_ProjectFilterSheet> {
     final selected = connectionId == null
         ? const <String>{}
         : ref.watch(boardProjectFilterProvider(connectionId));
-    final projects = board.value?.creatableProjects ?? const [];
+    final desktops = connectionId == null
+        ? const <String>{}
+        : ref.watch(boardDesktopFilterProvider(connectionId));
+    final projects = board.value?.projectsOnDesktops(desktops) ?? const [];
     final hasSelection = projects.any(
       (project) => selected.contains(project.id),
     );

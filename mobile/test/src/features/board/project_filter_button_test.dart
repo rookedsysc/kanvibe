@@ -149,18 +149,59 @@ void main() {
     await tester.tap(_control('desktop-filter-close'));
     await tester.pumpAndSettle();
     await _openFilter(tester);
-    await tester.tap(_control('project-filter-option-local'));
+    await tester.tap(_control('project-filter-option-remote'));
     await _closeFilter(tester);
-    expect(find.text('remote 태스크'), findsNothing);
+    expect(find.text('remote 태스크'), findsOneWidget);
     await tester.tap(_control('desktop-filter'));
     await tester.pumpAndSettle();
     await tester.tap(_control('desktop-filter-all'));
     await tester.pumpAndSettle();
     await tester.tap(_control('desktop-filter-close'));
     await tester.pumpAndSettle();
-    expect(find.text('local 태스크'), findsOneWidget);
-    expect(find.text('remote 태스크'), findsNothing);
+    expect(find.text('local 태스크'), findsNothing);
+    expect(find.text('remote 태스크'), findsOneWidget);
     expect(tester.widget<Badge>(desktopBadge).isLabelVisible, isFalse);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('데스크톱을 고르면 프로젝트 후보를 그 데스크톱으로 좁히고 다른 데스크톱 선택은 지운다', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _app(client: FakeDesktopClient(board: _filterBoard())),
+    );
+    await tester.pumpAndSettle();
+    await _openFilter(tester);
+    await tester.tap(_control('project-filter-option-local'));
+    await tester.tap(_control('project-filter-option-remote'));
+    await _closeFilter(tester);
+
+    await tester.tap(_control('desktop-filter'));
+    await tester.pumpAndSettle();
+    await tester.tap(_control('desktop-filter-ssh-devbox'));
+    await tester.pumpAndSettle();
+    await tester.tap(_control('desktop-filter-close'));
+    await tester.pumpAndSettle();
+    await _openFilter(tester);
+    expect(_control('project-filter-option-remote'), findsOneWidget);
+    expect(_control('project-filter-option-local'), findsNothing);
+    expect(_control('project-filter-option-other'), findsNothing);
+    expect(_control('project-filter-option-remote-worktree'), findsNothing);
+    await _closeFilter(tester);
+    expect(find.text('remote 태스크'), findsOneWidget);
+    expect(find.text('local 태스크'), findsNothing);
+
+    await tester.tap(_control('desktop-filter'));
+    await tester.pumpAndSettle();
+    await tester.tap(_control('desktop-filter-all'));
+    await tester.pumpAndSettle();
+    await tester.tap(_control('desktop-filter-close'));
+    await tester.pumpAndSettle();
+    await _openFilter(tester);
+    expect(_control('project-filter-option-local'), findsOneWidget);
+    await _closeFilter(tester);
+    expect(find.text('remote 태스크'), findsOneWidget);
+    expect(find.text('local 태스크'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
