@@ -2,7 +2,7 @@ import { Terminal as HeadlessTerminal } from "@xterm/headless";
 import { stripVTControlCharacters } from "node:util";
 import { SessionType, type KanbanTask } from "@/entities/KanbanTask";
 import { execGit } from "@/lib/gitOperations";
-import { isCodexEmptyComposer } from "@/lib/aiSessions/paneChatCodexDisplay";
+import { isDimHintEmptyComposer } from "@/lib/aiSessions/paneChatCodexDisplay";
 import { listLocalTerminalTabs, readLocalTerminalTabSnapshot, readTaskTerminalAttachment, getHerdrTaskActivePaneId, getHerdrTaskSurfaceBounds } from "@/lib/terminal";
 import { listHerdrTaskPaneTabIds, runHerdrCommand } from "@/lib/herdr";
 import { buildTmuxCapturePaneCommand, buildTmuxListMirrorPanesCommand, buildZellijDumpPaneCommand, buildZellijListMirrorPanesCommand, buildZellijReadViewportCommand, parseTmuxMirrorPaneList, parseZellijMirrorPaneList } from "@/lib/paneMirror";
@@ -81,7 +81,7 @@ export async function readPaneChatSurface(taskId: string, requestedPaneId?: stri
         const terminal = new HeadlessTerminal({ cols: width, rows: height, allowProposedApi: true });
         try {
           await new Promise<void>((resolve) => terminal.write(lines.slice(0, height).join("\r\n"), resolve));
-          inputIsPlaceholder = isCodexEmptyComposer(terminal.buffer.active.getLine(terminal.buffer.active.baseY + row), column);
+          inputIsPlaceholder = isDimHintEmptyComposer(terminal.buffer.active.getLine(terminal.buffer.active.baseY + row), column);
         } finally { terminal.dispose(); }
       }
     }
@@ -106,7 +106,7 @@ export async function readPaneChatSurface(taskId: string, requestedPaneId?: stri
       const buffer = terminal.buffer.active;
       const viewportLines = Array.from({ length: terminal.rows }, (_, row) => buffer.getLine(buffer.baseY + row)?.translateToString(true) ?? "");
       return { ...surface, inputLine: buffer.getLine(buffer.baseY + buffer.cursorY)?.translateToString(true) ?? null, cursorColumn: buffer.cursorX,
-        cursorRow: buffer.cursorY, viewportLines, viewportColumns: terminal.cols, inputIsPlaceholder: isCodexEmptyComposer(buffer.getLine(buffer.baseY + buffer.cursorY), buffer.cursorX), observation, screen: viewportLines.join("\n").trimEnd() };
+        cursorRow: buffer.cursorY, viewportLines, viewportColumns: terminal.cols, inputIsPlaceholder: isDimHintEmptyComposer(buffer.getLine(buffer.baseY + buffer.cursorY), buffer.cursorX), observation, screen: viewportLines.join("\n").trimEnd() };
     } finally { terminal.dispose(); }
   }
 

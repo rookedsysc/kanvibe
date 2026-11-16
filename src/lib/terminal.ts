@@ -13,7 +13,7 @@ import { PaneLayoutType } from "@/entities/PaneLayoutConfig";
 import { execSync } from "child_process";
 import type { WebSocket } from "ws";
 import { Terminal as HeadlessTerminal } from "@xterm/headless";
-import { isCodexEmptyComposer } from "@/lib/aiSessions/paneChatCodexDisplay";
+import { isDimHintEmptyComposer } from "@/lib/aiSessions/paneChatCodexDisplay";
 import { SerializeAddon } from "@xterm/addon-serialize";
 import { buildSSHArgs, getKanvibeSSHConnectionHealthOptions, hasLocalX11Display } from "@/lib/sshConfig";
 import {
@@ -1313,7 +1313,7 @@ export function readLocalTerminalTabSnapshot(taskId: string, tabId: string): { p
   if (!entry || entry.sessionType !== SessionType.TERMINAL) return null;
   const buffer = entry.screen?.terminal.buffer.active;
   const viewportLines = buffer ? Array.from({ length: entry.screen!.terminal.rows }, (_, row) => buffer.getLine(buffer.baseY + row)?.translateToString(true) ?? "") : [];
-  return { pid: entry.pty.pid, screen: viewportLines.join("\n").trimEnd(), inputLine: buffer?.getLine(buffer.baseY + buffer.cursorY)?.translateToString(true) ?? null, cursorColumn: buffer?.cursorX ?? null, cursorRow: buffer?.cursorY ?? null, viewportLines, viewportColumns: entry.screen?.terminal.cols ?? null, inputIsPlaceholder: !!buffer && isCodexEmptyComposer(buffer.getLine(buffer.baseY + buffer.cursorY), buffer.cursorX) };
+  return { pid: entry.pty.pid, screen: viewportLines.join("\n").trimEnd(), inputLine: buffer?.getLine(buffer.baseY + buffer.cursorY)?.translateToString(true) ?? null, cursorColumn: buffer?.cursorX ?? null, cursorRow: buffer?.cursorY ?? null, viewportLines, viewportColumns: entry.screen?.terminal.cols ?? null, inputIsPlaceholder: !!buffer && isDimHintEmptyComposer(buffer.getLine(buffer.baseY + buffer.cursorY), buffer.cursorX) };
 }
 
 /**

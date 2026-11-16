@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { Terminal } from "@xterm/headless";
-import { expectCodexComposerTexts, isCodexEmptyComposer, isCodexMainComposerReady, isCodexThreadFooterSupported, isSameComposerText, readCodexDisplay } from "@/lib/aiSessions/paneChatCodexDisplay";
+import { expectCodexComposerTexts, isDimHintEmptyComposer, isCodexMainComposerReady, isCodexThreadFooterSupported, isSameComposerText, readCodexDisplay } from "@/lib/aiSessions/paneChatCodexDisplay";
 
 const DISPLAYED_THREAD = "0190aaaa-0000-7000-8000-00000000000a";
 const OTHER_THREAD = "0190bbbb-0000-7000-8000-00000000000b";
@@ -10,7 +10,7 @@ describe("native empty composer appearance", () => {
     const terminal = new Terminal({ cols: 80, rows: 4, allowProposedApi: true });
     try {
       await new Promise<void>((resolve) => terminal.write(`› \x1b[2m${hint}\x1b[0m${" ".repeat(40)}\x1b[1;3H`, resolve));
-      expect(isCodexEmptyComposer(terminal.buffer.active.getLine(0), 2)).toBe(true);
+      expect(isDimHintEmptyComposer(terminal.buffer.active.getLine(0), 2)).toBe(true);
       const viewport = [`› ${hint}`, "", `  ${DISPLAYED_THREAD}`, "  ← for agents · ? for shortcuts"];
       expect(readCodexDisplay(viewport, 0, true)).toEqual({ composerText: "", threadId: DISPLAYED_THREAD });
     } finally { terminal.dispose(); }
@@ -20,7 +20,7 @@ describe("native empty composer appearance", () => {
     const terminal = new Terminal({ cols: 80, rows: 4, allowProposedApi: true });
     try {
       await new Promise<void>((resolve) => terminal.write("› Ask Codex to do anything\x1b[1;3H", resolve));
-      expect(isCodexEmptyComposer(terminal.buffer.active.getLine(0), 2)).toBe(false);
+      expect(isDimHintEmptyComposer(terminal.buffer.active.getLine(0), 2)).toBe(false);
     } finally { terminal.dispose(); }
   });
 });

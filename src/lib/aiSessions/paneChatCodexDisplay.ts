@@ -31,9 +31,14 @@ export interface CodexDisplay {
   threadId: string | null;
 }
 
-/** Codex의 기본 안내문과 동적 제안은 모두 빈 입력란에서 dim으로 그려진다. 같은 글을 직접 쓴 입력은 이 조건을 충족하지 않는다 */
-export function isCodexEmptyComposer(line: IBufferLine | undefined, cursorColumn: number): boolean {
-  if (cursorColumn !== COMPOSER_TEXT_COLUMN || !line?.translateToString(true).trimEnd().startsWith("› ")) return false;
+/** 빈 입력란에 안내문이나 추천 문구를 dim으로 그리는 CLI의 입력란 시작. Codex는 `› `, Claude Code 2.1.325는 `❯` 뒤에 no-break space를 그린다 */
+const DIM_HINT_COMPOSER_PROMPT = /^[›❯][ \u00a0]/;
+
+/** Codex와 Claude Code는 기본 안내문과 응답 뒤 추천 문구를 모두 빈 입력란에 dim으로 그린다. 같은 글을 직접 쓴 입력은 이 조건을 충족하지 않는다 */
+export function isDimHintEmptyComposer(line: IBufferLine | undefined, cursorColumn: number): boolean {
+  if (cursorColumn !== COMPOSER_TEXT_COLUMN || !line) return false;
+  const lineText = line.translateToString(true).trimEnd();
+  if (!DIM_HINT_COMPOSER_PROMPT.test(lineText)) return false;
   let lastTextColumn = line.length - 1;
   while (lastTextColumn >= COMPOSER_TEXT_COLUMN && !line.getCell(lastTextColumn)?.getChars().trim()) lastTextColumn--;
   let hasText = false;
