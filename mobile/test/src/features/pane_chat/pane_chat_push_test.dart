@@ -319,6 +319,71 @@ void main() {
       expect(client.fetchedPanes, ['%19']);
     });
 
+    Map<String, dynamic> stateEvent(Map<String, dynamic> state) => {
+      'type': 'pane-chat-state',
+      'taskId': 'task-1',
+      'paneId': '%19',
+      'state': state,
+    };
+
+    testPush('조회 중에 밀려온 입력 상태를 늦게 도착한 조회 응답으로 되돌리지 않는다', (tester) async {
+      client.inputState = 'occupied';
+      await startChat(tester);
+      final held = Completer<PaneChatSnapshot>();
+      client.heldSnapshot = held;
+      unawaited(container.read(paneChatProvider(target).notifier).refresh());
+      await tester.pump();
+      await push(tester, stateEvent({'inputState': 'ready'}));
+      expect(snapshot().inputState, PaneChatInputState.ready);
+      client.heldSnapshot = null;
+      held.complete(await client.fetchPaneChat(pc, target));
+      await tester.pump();
+      expect(snapshot().inputState, PaneChatInputState.ready);
+      expect(
+        container.read(paneChatProvider(target)).requireValue.canPrompt,
+        isTrue,
+      );
+    });
+
+    testPush('조회 실패로 막힌 채팅은 데스크톱이 밀어 준 상태를 받으면 다시 쓸 수 있다', (tester) async {
+      await startChat(tester);
+      final held = Completer<PaneChatSnapshot>();
+      client.heldSnapshot = held;
+      unawaited(container.read(paneChatProvider(target).notifier).refresh());
+      await tester.pump();
+      held.completeError(StateError('offline'));
+      await tester.pump();
+      expect(
+        container.read(paneChatProvider(target)).requireValue.isStale,
+        isTrue,
+      );
+      expect(
+        container.read(paneChatProvider(target)).requireValue.canControl,
+        isFalse,
+      );
+      client.heldSnapshot = null;
+      await push(tester, stateEvent({'inputState': 'ready'}));
+      final recovered = container.read(paneChatProvider(target)).requireValue;
+      expect(recovered.isStale, isFalse);
+      expect(recovered.readError, isNull);
+      expect(recovered.canControl, isTrue);
+    });
+
+    testPush('push를 받던 채팅이 다시 만들어지면 구독이 붙기 전까지 주기 조회를 다시 한다', (tester) async {
+      await startChat(tester);
+      await tester.pump(const Duration(seconds: 3));
+      expect(client.fetchedPanes, ['%19']);
+      client.subscriptionResponse = Completer<Map<String, dynamic>>();
+      container.invalidate(paneChatProvider(target));
+      await container.read(paneChatProvider(target).future);
+      await tester.pump();
+      expect(client.fetchedPanes, ['%19', '%19']);
+      await tester.pump(const Duration(seconds: 3));
+      expect(client.fetchedPanes.length, greaterThan(2));
+      client.subscriptionResponse!.complete({'ok': true, 'panes': []});
+      await tester.pump();
+    });
+
     testPush('다른 pane의 이벤트는 이 채팅에 반영하지 않는다', (tester) async {
       await startChat(tester);
       await push(tester, {

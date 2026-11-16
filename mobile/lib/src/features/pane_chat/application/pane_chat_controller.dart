@@ -93,6 +93,8 @@ class PaneChatState {
       !isActing && !isStale && snapshot.canSend && snapshot.targetToken != null;
   bool get canPrompt =>
       canControl && snapshot.inputState == PaneChatInputState.ready;
+  bool canSendPrompt(String text) =>
+      canControl && snapshot.acceptsPromptText(text);
 }
 
 typedef _PendingAction = ({
@@ -129,6 +131,9 @@ class PaneChatController extends AsyncNotifier<PaneChatState> {
 
   /// 조회 중에 push가 다시 받으라고 알렸는지. 진행 중인 조회가 끝나면 한 번 더 조회한다
   bool _isCatchUpPending = false;
+
+  /// 조회가 오가는 동안 밀려온 상태. push가 더 최신이므로 조회 응답 위에 다시 얹는다
+  Map<String, dynamic>? _stateReceivedDuringRead;
   PaneChatSubscriber? _subscriber;
 
   @override
@@ -136,6 +141,9 @@ class PaneChatController extends AsyncNotifier<PaneChatState> {
     final generation = ++_generation;
     _pollTimer?.cancel();
     _request = null;
+    _stateReceivedDuringRead = null;
+    // 이전 구독은 정리됐으므로 새 구독이 다시 붙기 전까지는 주기 조회로 상태를 받는다
+    _isLive = false;
     _pendingAction = null;
     _readCompletion = null;
     _lastAction = null;
@@ -248,6 +256,14 @@ class PaneChatController extends AsyncNotifier<PaneChatState> {
         }
       case 'pane-chat-state':
         final pushed = event['state'] as Map<String, dynamic>? ?? const {};
+        if (_request != null) {
+          final pushedState = Map<String, dynamic>.of(pushed)
+            ..remove('transcript');
+          _stateReceivedDuringRead = {
+            ...?_stateReceivedDuringRead,
+            ...pushedState,
+          };
+        }
         final snapshot = previous.snapshot.applyPushedState(pushed);
         final before = previous.snapshot.transcript;
         final after = snapshot.transcript;
@@ -255,11 +271,17 @@ class PaneChatController extends AsyncNotifier<PaneChatState> {
           // 다른 CLI로 바뀌었으면 가진 대화도 그 CLI의 것이 아니다
           _lastAction = null;
           ref.read(paneChatPendingPromptProvider(target).notifier).clear();
-          _replaceSnapshot(previous, snapshot, keepsActionError: false);
+          _replaceSnapshot(
+            previous,
+            snapshot,
+            keepsActionError: false,
+            keepsReadFailure: false,
+          );
           _catchUp();
           return;
         }
-        _replaceSnapshot(previous, snapshot);
+        // 데스크톱이 밀어 준 상태는 지금 대상의 최신 상태이므로 조회 실패로 막아 둔 입력을 푼다
+        _replaceSnapshot(previous, snapshot, keepsReadFailure: false);
         if (after.available &&
             (!before.available || after.sessionId != before.sessionId)) {
           _catchUp();
@@ -271,6 +293,7 @@ class PaneChatController extends AsyncNotifier<PaneChatState> {
     PaneChatState previous,
     PaneChatSnapshot snapshot, {
     bool keepsActionError = true,
+    bool keepsReadFailure = true,
   }) {
     state = AsyncData(
       PaneChatState(
@@ -278,8 +301,8 @@ class PaneChatController extends AsyncNotifier<PaneChatState> {
         connectionId: previous.connectionId,
         isRefreshing: previous.isRefreshing,
         isActing: previous.isActing,
-        isStale: previous.isStale,
-        readError: previous.readError,
+        isStale: keepsReadFailure && previous.isStale,
+        readError: keepsReadFailure ? previous.readError : null,
         actionError: keepsActionError ? previous.actionError : null,
         canRetryAction: keepsActionError && previous.canRetryAction,
       ),
@@ -360,6 +383,7 @@ class PaneChatController extends AsyncNotifier<PaneChatState> {
     final completion = Completer<void>();
     _readCompletion = completion;
     _request = request;
+    _stateReceivedDuringRead = null;
     _pollTimer?.cancel();
     state = AsyncData(
       PaneChatState(
@@ -387,6 +411,10 @@ class PaneChatController extends AsyncNotifier<PaneChatState> {
           pushedTranscript.epoch == snapshot.transcript.epoch &&
           pushedTranscript.seq > snapshot.transcript.seq) {
         snapshot = snapshot.withTranscript(pushedTranscript);
+      }
+      final pushedState = _stateReceivedDuringRead;
+      if (pushedState != null) {
+        snapshot = snapshot.applyPushedState(pushedState);
       }
       final sameTarget = snapshot.targetToken == previous.snapshot.targetToken;
       if (!sameTarget) _lastAction = null;
@@ -596,8 +624,11 @@ class PaneChatController extends AsyncNotifier<PaneChatState> {
         _request != null) {
       return false;
     }
-    if ((action == PaneChatAction.prompt ||
-            action == PaneChatAction.modelPicker ||
+    if (action == PaneChatAction.prompt &&
+        !previous.snapshot.acceptsPromptText(text ?? '')) {
+      return false;
+    }
+    if ((action == PaneChatAction.modelPicker ||
             action == PaneChatAction.modelSetting) &&
         previous.snapshot.inputState != PaneChatInputState.ready) {
       return false;

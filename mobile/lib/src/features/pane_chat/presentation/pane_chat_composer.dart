@@ -16,7 +16,6 @@ class PaneChatComposer extends ConsumerStatefulWidget {
   const PaneChatComposer({
     required this.target,
     required this.toolbar,
-    required this.showPrompt,
     required this.isActive,
     this.cliScreen,
     super.key,
@@ -24,7 +23,7 @@ class PaneChatComposer extends ConsumerStatefulWidget {
   final PaneChatComposerTarget target;
   final Widget toolbar;
   final Widget? cliScreen;
-  final bool showPrompt, isActive;
+  final bool isActive;
   @override
   ConsumerState<PaneChatComposer> createState() => _PaneChatComposerState();
 }
@@ -48,10 +47,7 @@ class _PaneChatComposerState extends ConsumerState<PaneChatComposer> {
   @override
   void didUpdateWidget(PaneChatComposer oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.isActive != oldWidget.isActive ||
-        widget.showPrompt != oldWidget.showPrompt) {
-      _synchronizeActivity();
-    }
+    if (widget.isActive != oldWidget.isActive) _synchronizeActivity();
   }
 
   void _synchronizeActivity() {
@@ -69,7 +65,7 @@ class _PaneChatComposerState extends ConsumerState<PaneChatComposer> {
         ref
             .read(paneChatComposerProvider(widget.target).notifier)
             .setActive(
-              widget.isActive && widget.showPrompt,
+              widget.isActive,
               attachmentsEnabled: pane?.snapshot.composer.attachments == true,
             ),
       );
@@ -263,7 +259,7 @@ class _PaneChatComposerState extends ConsumerState<PaneChatComposer> {
     if (!mounted || action == null) return;
     // The sheet temporarily makes the pane route inactive; wait for its owner to resume.
     await WidgetsBinding.instance.endOfFrame;
-    if (!mounted || !widget.isActive || !widget.showPrompt) return;
+    if (!mounted || !widget.isActive) return;
     final notifier = ref.read(paneChatComposerProvider(widget.target).notifier);
     if (action == 'paste') {
       await notifier.pasteImage();
@@ -304,6 +300,8 @@ class _PaneChatComposerState extends ConsumerState<PaneChatComposer> {
         )
         .value;
     final attachmentsEnabled = pane?.snapshot.composer.attachments == true;
+    // 데스크톱처럼 입력과 첨부는 대상 CLI만 정해지면 열어 두고, 전송만 CLI 입력 상태에 따라 막는다
+    final canEdit = widget.isActive && pane?.snapshot.targetToken != null;
     return Container(
       margin: const EdgeInsets.fromLTRB(
         AppSizes.p12,
@@ -341,99 +339,86 @@ class _PaneChatComposerState extends ConsumerState<PaneChatComposer> {
               selectedIndex: _selectedIndex,
               onSelect: _choose,
             ),
-          // CLI가 잠깐 입력을 받지 못하는 동안에도 입력창을 없애지 않고 가려만 둔다.
-          // 없앴다가 다시 만들면 방금 메시지를 보낸 사람의 포커스와 키보드가 풀린다
-          Offstage(
-            offstage: !widget.showPrompt,
-            child: Focus(
-              onKeyEvent: _onKey,
-              child: Semantics(
-                identifier: 'pane-chat-input',
-                child: TextField(
-                  controller: _input,
-                  focusNode: _focus,
-                  minLines: 1,
-                  maxLines: 4,
-                  keyboardType: TextInputType.multiline,
-                  textInputAction: TextInputAction.newline,
-                  contentInsertionConfiguration: attachmentsEnabled
-                      ? ContentInsertionConfiguration(
-                          allowedMimeTypes: const ['image/*'],
-                          onContentInserted: notifier.insertContent,
-                        )
-                      : null,
-                  decoration: const InputDecoration(
-                    labelText: '현재 CLI에 메시지',
-                    hintText: r'메시지, $스킬, /명령, @파일',
-                    border: InputBorder.none,
-                    enabledBorder: InputBorder.none,
-                    focusedBorder: InputBorder.none,
-                  ),
+          Focus(
+            onKeyEvent: _onKey,
+            child: Semantics(
+              identifier: 'pane-chat-input',
+              child: TextField(
+                controller: _input,
+                focusNode: _focus,
+                minLines: 1,
+                maxLines: 4,
+                keyboardType: TextInputType.multiline,
+                textInputAction: TextInputAction.newline,
+                contentInsertionConfiguration: attachmentsEnabled
+                    ? ContentInsertionConfiguration(
+                        allowedMimeTypes: const ['image/*'],
+                        onContentInserted: notifier.insertContent,
+                      )
+                    : null,
+                decoration: const InputDecoration(
+                  labelText: '현재 CLI에 메시지',
+                  hintText: r'메시지, $스킬, /명령, @파일',
+                  border: InputBorder.none,
+                  enabledBorder: InputBorder.none,
+                  focusedBorder: InputBorder.none,
                 ),
               ),
             ),
           ),
           Row(
             children: [
-              if (widget.showPrompt && attachmentsEnabled)
+              if (attachmentsEnabled)
                 Semantics(
                   identifier: 'pane-chat-attach',
                   child: IconButton(
                     tooltip: '첨부 추가',
-                    onPressed: widget.isActive && pane?.canPrompt == true
-                        ? _showAttachments
-                        : null,
+                    onPressed: canEdit ? _showAttachments : null,
                     icon: const Icon(Icons.add),
                   ),
                 ),
-              if (widget.showPrompt &&
-                  pane?.snapshot.composer.fileMentions == true)
+              if (pane?.snapshot.composer.fileMentions == true)
                 Semantics(
                   identifier: 'pane-chat-mention',
                   child: IconButton(
                     tooltip: '파일 참조',
-                    onPressed: widget.isActive && pane?.canPrompt == true
-                        ? _startFileMention
-                        : null,
+                    onPressed: canEdit ? _startFileMention : null,
                     icon: const Icon(Icons.alternate_email),
                   ),
                 ),
-              if (widget.showPrompt && pane?.snapshot.composer.skills == true)
+              if (pane?.snapshot.composer.skills == true)
                 Semantics(
                   identifier: 'pane-chat-skills',
                   child: IconButton(
                     tooltip: '스킬 선택',
-                    onPressed: widget.isActive && pane?.canPrompt == true
-                        ? _showSkills
-                        : null,
+                    onPressed: canEdit ? _showSkills : null,
                     icon: const Icon(Icons.auto_awesome_outlined),
                   ),
                 ),
               Expanded(child: widget.toolbar),
-              if (widget.showPrompt)
-                Semantics(
-                  identifier: 'pane-chat-send',
-                  child: IconButton.filled(
-                    tooltip: '메시지 전송',
-                    onPressed:
-                        widget.isActive &&
-                            pane?.canPrompt == true &&
-                            draft.canSend
-                        ? notifier.send
-                        : null,
-                    icon: draft.isSending
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.arrow_upward),
-                    constraints: const BoxConstraints(
-                      minWidth: AppSizes.minTouchTarget,
-                      minHeight: AppSizes.minTouchTarget,
-                    ),
+              Semantics(
+                identifier: 'pane-chat-send',
+                child: IconButton.filled(
+                  tooltip: '메시지 전송',
+                  onPressed:
+                      widget.isActive &&
+                          pane?.canSendPrompt(draft.text) == true &&
+                          draft.canSend
+                      ? notifier.send
+                      : null,
+                  icon: draft.isSending
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.arrow_upward),
+                  constraints: const BoxConstraints(
+                    minWidth: AppSizes.minTouchTarget,
+                    minHeight: AppSizes.minTouchTarget,
                   ),
                 ),
+              ),
             ],
           ),
         ],
