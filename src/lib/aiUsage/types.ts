@@ -13,10 +13,12 @@ export type AiUsageStatus = "ok" | "unavailable" | "error";
  * 조회 실패 사유. 렌더러가 그대로 i18n 키로 쓰므로 사람이 읽는 문장이 아니라 안정적인 식별자를 담는다.
  * unavailable은 사용자가 아직 로그인하지 않았거나 CLI가 없는 정상적인 부재이고,
  * error는 호출이 실패했거나 응답을 해석할 수 없는 비정상 상태다.
+ * awaiting-cli-refresh는 로그인은 살아 있지만 Claude Code가 토큰을 갱신할 때까지 새 값을 받을 수 없는 부재다.
  */
 export type AiUsageFailureReason =
   | "missing-credentials"
   | "expired-credentials"
+  | "awaiting-cli-refresh"
   | "keychain-unreadable"
   | "gemini-cli-not-found"
   | "rate-limited"
@@ -58,4 +60,9 @@ export interface AiUsageAccountResult {
 export interface AiUsageSnapshot {
   accounts: AiUsageAccountResult[];
   fetchedAt: string;
+}
+
+export interface AiUsageSnapshotOptions {
+  /** 사람이 요청하지 않은 조회가 켠다. 주기 안에 받아 둔 결과나 진행 중인 조회가 있으면 새로 조회하지 않는다 */
+  canReuseRecentSnapshot?: boolean;
 }

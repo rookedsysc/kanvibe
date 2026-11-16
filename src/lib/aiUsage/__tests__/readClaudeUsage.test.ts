@@ -3,20 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readClaudeUsage } from "@/lib/aiUsage/readClaudeUsage";
 import type { AiUsageAccount } from "@/lib/aiUsage/types";
 
-const {
-  mockReadTextFile,
-  mockIsClaudeTokenExpiring,
-  mockRefreshClaudeCredentials,
-  mockWriteCredentialsAtomically,
-  mockReadClaudeKeychainCredentials,
-  mockRefreshCredentialsThroughCli,
-} = vi.hoisted(() => ({
+const { mockReadTextFile, mockReadClaudeKeychainCredentials } = vi.hoisted(() => ({
   mockReadTextFile: vi.fn(),
-  mockIsClaudeTokenExpiring: vi.fn(),
-  mockRefreshClaudeCredentials: vi.fn(),
-  mockWriteCredentialsAtomically: vi.fn(),
   mockReadClaudeKeychainCredentials: vi.fn(),
-  mockRefreshCredentialsThroughCli: vi.fn(),
 }));
 
 vi.mock("@/lib/hostFileAccess", () => ({ readTextFile: mockReadTextFile }));
@@ -26,19 +15,6 @@ vi.mock("@/lib/aiUsage/claudeCredentials", async (importOriginal) => ({
   readClaudeKeychainCredentials: mockReadClaudeKeychainCredentials,
 }));
 
-vi.mock("@/lib/aiUsage/claudeOAuthRefresh", () => ({
-  isClaudeTokenExpiring: mockIsClaudeTokenExpiring,
-  refreshClaudeCredentials: mockRefreshClaudeCredentials,
-}));
-
-vi.mock("@/lib/aiUsage/atomicCredentialsWrite", () => ({
-  writeCredentialsAtomically: mockWriteCredentialsAtomically,
-}));
-
-vi.mock("@/lib/aiUsage/providerCli", () => ({
-  refreshCredentialsThroughCli: mockRefreshCredentialsThroughCli,
-}));
-
 const ACCOUNT: AiUsageAccount = {
   provider: "claude",
   accountId: "account-uuid",
@@ -46,6 +22,12 @@ const ACCOUNT: AiUsageAccount = {
   configDir: "/home/tester/.claude",
   accountRoot: "/home/tester/.claude",
 };
+
+const CLAUDE_USAGE_URL = "https://api.anthropic.com/api/oauth/usage";
+
+/** 테스트가 도는 동안 지나지 않는 만료 시각과 이미 지난 만료 시각 */
+const UNEXPIRED_AT_MS = Date.parse("2999-01-01T00:00:00.000Z");
+const EXPIRED_AT_MS = 1_000;
 
 function createCredentialsJson(accessToken: string, expiresAt?: number): string {
   return JSON.stringify({
@@ -66,7 +48,6 @@ function stubUsageResponse(): void {
 describe("readClaudeUsage", () => {
   beforeEach(() => {
     vi.stubGlobal("fetch", fetchMock);
-    mockIsClaudeTokenExpiring.mockReturnValue(false);
     mockReadClaudeKeychainCredentials.mockResolvedValue({ outcome: "absent" });
   });
 
@@ -122,64 +103,64 @@ describe("readClaudeUsage", () => {
     ]);
   });
 
-  it("만료가 임박하면 갱신한 자격증명을 먼저 되쓰고 새 액세스 토큰으로 조회한다", async () => {
-    mockReadTextFile.mockResolvedValue(createCredentialsJson("stale-token"));
-    mockIsClaudeTokenExpiring.mockReturnValue(true);
-    mockRefreshClaudeCredentials.mockResolvedValue(createCredentialsJson("fresh-token"));
-    stubUsageResponse();
+  it("액세스 토큰이 만료됐고 refresh 토큰이 살아 있으면 조회하지 않고 Claude 실행을 기다린다", async () => {
+    mockReadTextFile.mockResolvedValue(createCredentialsJson("expired-token", EXPIRED_AT_MS));
 
-    await readClaudeUsage(ACCOUNT);
+    const result = await readClaudeUsage(ACCOUNT);
 
-    expect(mockWriteCredentialsAtomically).toHaveBeenCalledWith(
-      path.join(ACCOUNT.configDir, ".credentials.json"),
-      createCredentialsJson("fresh-token"),
+    expect(result.reason).toBe("awaiting-cli-refresh");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("액세스 토큰이 만료됐는데 refresh 토큰이 없으면 재로그인이 필요하다", async () => {
+    mockReadTextFile.mockResolvedValue(
+      JSON.stringify({ claudeAiOauth: { accessToken: "expired-token", expiresAt: EXPIRED_AT_MS } }),
     );
-    const [, requestInit] = fetchMock.mock.calls[0];
-    expect(requestInit.headers.Authorization).toBe("Bearer fresh-token");
+
+    const result = await readClaudeUsage(ACCOUNT);
+
+    expect(result.reason).toBe("expired-credentials");
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("직접 갱신이 실패하면 CLI에 맡기고 CLI가 되쓴 토큰으로 조회한다", async () => {
-    mockReadTextFile
-      .mockResolvedValueOnce(createCredentialsJson("stale-token"))
-      .mockResolvedValueOnce(createCredentialsJson("cli-token"));
-    mockIsClaudeTokenExpiring.mockReturnValue(true);
-    mockRefreshClaudeCredentials.mockResolvedValue(null);
-    stubUsageResponse();
+  it("액세스 토큰과 refresh 토큰이 모두 만료됐으면 재로그인이 필요하다", async () => {
+    mockReadTextFile.mockResolvedValue(
+      JSON.stringify({
+        claudeAiOauth: {
+          accessToken: "expired-token",
+          refreshToken: "expired-refresh-token",
+          expiresAt: EXPIRED_AT_MS,
+          refreshTokenExpiresAt: EXPIRED_AT_MS,
+        },
+      }),
+    );
 
-    await readClaudeUsage(ACCOUNT);
+    const result = await readClaudeUsage(ACCOUNT);
 
-    expect(mockRefreshCredentialsThroughCli).toHaveBeenCalledWith("claude", ACCOUNT.configDir);
-    expect(mockWriteCredentialsAtomically).not.toHaveBeenCalled();
-    const [, requestInit] = fetchMock.mock.calls[0];
-    expect(requestInit.headers.Authorization).toBe("Bearer cli-token");
+    expect(result.reason).toBe("expired-credentials");
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("CLI에 맡겨도 파일이 그대로면 저장된 토큰으로 조회를 이어간다", async () => {
-    mockReadTextFile.mockResolvedValue(createCredentialsJson("stale-token"));
-    mockIsClaudeTokenExpiring.mockReturnValue(true);
-    mockRefreshClaudeCredentials.mockResolvedValue(null);
-    stubUsageResponse();
-
-    await readClaudeUsage(ACCOUNT);
-
-    expect(mockWriteCredentialsAtomically).not.toHaveBeenCalled();
-    const [, requestInit] = fetchMock.mock.calls[0];
-    expect(requestInit.headers.Authorization).toBe("Bearer stale-token");
-  });
-
-  it("되쓰기가 실패해도 갱신한 토큰으로 조회는 계속한다", async () => {
-    mockReadTextFile.mockResolvedValue(createCredentialsJson("stale-token"));
-    mockIsClaudeTokenExpiring.mockReturnValue(true);
-    mockRefreshClaudeCredentials.mockResolvedValue(createCredentialsJson("fresh-token"));
-    mockWriteCredentialsAtomically.mockRejectedValue(new Error("read-only file system"));
-    vi.spyOn(console, "error").mockImplementation(() => {});
+  it("만료 시각을 모르는 토큰은 만료됐다고 단정하지 않고 조회한다", async () => {
+    mockReadTextFile.mockResolvedValue(createCredentialsJson("token-without-expiry"));
     stubUsageResponse();
 
     const result = await readClaudeUsage(ACCOUNT);
 
     expect(result.status).toBe("ok");
-    const [, requestInit] = fetchMock.mock.calls[0];
-    expect(requestInit.headers.Authorization).toBe("Bearer fresh-token");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("만료가 임박한 토큰도 갱신하지 않고 저장된 값 그대로 사용량만 조회한다", async () => {
+    mockReadTextFile.mockResolvedValue(createCredentialsJson("soon-expiring-token", Date.now() + 60_000));
+    stubUsageResponse();
+
+    await readClaudeUsage(ACCOUNT);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [requestUrl, requestInit] = fetchMock.mock.calls[0];
+    expect(requestUrl).toBe(CLAUDE_USAGE_URL);
+    expect(requestInit.headers.Authorization).toBe("Bearer soon-expiring-token");
   });
 
   it("자격증명 파일도 Keychain도 비어 있으면 네트워크를 호출하지 않고 unavailable을 돌려준다", async () => {
@@ -208,10 +189,10 @@ describe("readClaudeUsage", () => {
   });
 
   it("자격증명 파일이 Keychain보다 오래됐으면 Keychain 토큰으로 조회한다", async () => {
-    mockReadTextFile.mockResolvedValue(createCredentialsJson("stale-file-token", 1_000));
+    mockReadTextFile.mockResolvedValue(createCredentialsJson("stale-file-token", UNEXPIRED_AT_MS));
     mockReadClaudeKeychainCredentials.mockResolvedValue({
       outcome: "found",
-      credentials: createCredentialsJson("fresh-keychain-token", 2_000),
+      credentials: createCredentialsJson("fresh-keychain-token", UNEXPIRED_AT_MS + 1_000),
     });
     stubUsageResponse();
 
@@ -222,10 +203,10 @@ describe("readClaudeUsage", () => {
   });
 
   it("자격증명 파일이 Keychain보다 새로우면 파일 토큰으로 조회한다", async () => {
-    mockReadTextFile.mockResolvedValue(createCredentialsJson("fresh-file-token", 2_000));
+    mockReadTextFile.mockResolvedValue(createCredentialsJson("fresh-file-token", UNEXPIRED_AT_MS + 1_000));
     mockReadClaudeKeychainCredentials.mockResolvedValue({
       outcome: "found",
-      credentials: createCredentialsJson("stale-keychain-token", 1_000),
+      credentials: createCredentialsJson("stale-keychain-token", UNEXPIRED_AT_MS),
     });
     stubUsageResponse();
 
@@ -239,7 +220,7 @@ describe("readClaudeUsage", () => {
     mockReadTextFile.mockResolvedValue(createCredentialsJson("file-token-without-expiry"));
     mockReadClaudeKeychainCredentials.mockResolvedValue({
       outcome: "found",
-      credentials: createCredentialsJson("keychain-token", 1_000),
+      credentials: createCredentialsJson("keychain-token", UNEXPIRED_AT_MS),
     });
     stubUsageResponse();
 
@@ -247,62 +228,6 @@ describe("readClaudeUsage", () => {
 
     const [, requestInit] = fetchMock.mock.calls[0];
     expect(requestInit.headers.Authorization).toBe("Bearer keychain-token");
-  });
-
-  it("Keychain 토큰이 만료 임박이면 CLI에 갱신을 맡기고 갱신된 값으로 조회한다", async () => {
-    mockReadTextFile.mockResolvedValue("");
-    mockReadClaudeKeychainCredentials
-      .mockResolvedValueOnce({
-        outcome: "found",
-        credentials: createCredentialsJson("stale-keychain-token"),
-      })
-      .mockResolvedValueOnce({
-        outcome: "found",
-        credentials: createCredentialsJson("fresh-keychain-token"),
-      });
-    mockIsClaudeTokenExpiring.mockReturnValue(true);
-    stubUsageResponse();
-
-    await readClaudeUsage(ACCOUNT);
-
-    expect(mockRefreshCredentialsThroughCli).toHaveBeenCalledWith("claude", ACCOUNT.configDir);
-    // Keychain 항목은 Claude Code의 소유라 KanVibe가 직접 쓰지 않는다
-    expect(mockRefreshClaudeCredentials).not.toHaveBeenCalled();
-    expect(mockWriteCredentialsAtomically).not.toHaveBeenCalled();
-    const [, requestInit] = fetchMock.mock.calls[0];
-    expect(requestInit.headers.Authorization).toBe("Bearer fresh-keychain-token");
-  });
-
-  it("CLI 갱신이 Keychain을 바꾸지 못하면 원래 토큰으로 조회를 시도한다", async () => {
-    mockReadTextFile.mockResolvedValue("");
-    mockReadClaudeKeychainCredentials
-      .mockResolvedValueOnce({
-        outcome: "found",
-        credentials: createCredentialsJson("stale-keychain-token"),
-      })
-      .mockResolvedValueOnce({ outcome: "absent" });
-    mockIsClaudeTokenExpiring.mockReturnValue(true);
-    fetchMock.mockResolvedValue({ ok: false, status: 401, json: async () => ({}) });
-
-    const result = await readClaudeUsage(ACCOUNT);
-
-    const [, requestInit] = fetchMock.mock.calls[0];
-    expect(requestInit.headers.Authorization).toBe("Bearer stale-keychain-token");
-    expect(result.reason).toBe("expired-credentials");
-  });
-
-  it("Keychain 토큰이 아직 유효하면 CLI를 부르지 않는다", async () => {
-    mockReadTextFile.mockResolvedValue("");
-    mockReadClaudeKeychainCredentials.mockResolvedValue({
-      outcome: "found",
-      credentials: createCredentialsJson("keychain-token"),
-    });
-    mockIsClaudeTokenExpiring.mockReturnValue(false);
-    stubUsageResponse();
-
-    await readClaudeUsage(ACCOUNT);
-
-    expect(mockRefreshCredentialsThroughCli).not.toHaveBeenCalled();
   });
 
   it("Keychain을 읽지 못하면 로그인하지 않은 상태로 오해시키지 않는다", async () => {
@@ -316,8 +241,20 @@ describe("readClaudeUsage", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("401 응답은 재로그인이 필요한 부재로 분류한다", async () => {
-    mockReadTextFile.mockResolvedValue(createCredentialsJson("expired-token"));
+  it("서버가 토큰을 거절해도 refresh 토큰이 살아 있으면 Claude 실행을 기다린다", async () => {
+    mockReadTextFile.mockResolvedValue(createCredentialsJson("rejected-token", UNEXPIRED_AT_MS));
+    fetchMock.mockResolvedValue({ ok: false, status: 401, json: async () => ({}) });
+
+    const result = await readClaudeUsage(ACCOUNT);
+
+    expect(result.status).toBe("unavailable");
+    expect(result.reason).toBe("awaiting-cli-refresh");
+  });
+
+  it("서버가 토큰을 거절했고 refresh 토큰도 없으면 재로그인이 필요한 부재로 분류한다", async () => {
+    mockReadTextFile.mockResolvedValue(
+      JSON.stringify({ claudeAiOauth: { accessToken: "rejected-token", expiresAt: UNEXPIRED_AT_MS } }),
+    );
     fetchMock.mockResolvedValue({ ok: false, status: 401, json: async () => ({}) });
 
     const result = await readClaudeUsage(ACCOUNT);

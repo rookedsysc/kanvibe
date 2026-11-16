@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  hasUsableClaudeRefreshToken,
+  isClaudeAccessTokenExpired,
   readClaudeAccessToken,
   readClaudeKeychainCredentials,
   readClaudeTokenExpiresAt,
@@ -104,6 +106,47 @@ describe("readClaudeTokenExpiresAt", () => {
     expect(readClaudeTokenExpiresAt(createCredentialsJson("access-token"))).toBeNull();
     expect(readClaudeTokenExpiresAt("{not json")).toBeNull();
     expect(readClaudeTokenExpiresAt(JSON.stringify({ claudeAiOauth: { expiresAt: "곧" } }))).toBeNull();
+  });
+});
+
+describe("isClaudeAccessTokenExpired", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("만료 시각에 닿은 순간부터 만료로 본다", () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-08-15T10:00:00.000Z"));
+    const nowMs = Date.now();
+
+    expect(isClaudeAccessTokenExpired(JSON.stringify({ claudeAiOauth: { expiresAt: nowMs } }))).toBe(true);
+    expect(isClaudeAccessTokenExpired(JSON.stringify({ claudeAiOauth: { expiresAt: nowMs + 1 } }))).toBe(false);
+  });
+
+  it("만료 시각을 모르면 만료됐다고 단정하지 않는다", () => {
+    expect(isClaudeAccessTokenExpired(createCredentialsJson("access-token"))).toBe(false);
+    expect(isClaudeAccessTokenExpired("{not json")).toBe(false);
+  });
+});
+
+describe("hasUsableClaudeRefreshToken", () => {
+  it("refresh 토큰이 있고 그 만료 시각을 모르거나 아직 남았으면 쓸 수 있다", () => {
+    const unexpiredRefreshToken = JSON.stringify({
+      claudeAiOauth: { refreshToken: "refresh-token", refreshTokenExpiresAt: Date.now() + 60_000 },
+    });
+
+    expect(hasUsableClaudeRefreshToken(createCredentialsJson("access-token"))).toBe(true);
+    expect(hasUsableClaudeRefreshToken(unexpiredRefreshToken)).toBe(true);
+  });
+
+  it("refresh 토큰이 없거나 그 만료 시각이 지났으면 쓸 수 없다", () => {
+    const expiredRefreshToken = JSON.stringify({
+      claudeAiOauth: { refreshToken: "refresh-token", refreshTokenExpiresAt: Date.now() - 1 },
+    });
+
+    expect(hasUsableClaudeRefreshToken(JSON.stringify({ claudeAiOauth: { accessToken: "access-token" } }))).toBe(false);
+    expect(hasUsableClaudeRefreshToken(expiredRefreshToken)).toBe(false);
+    expect(hasUsableClaudeRefreshToken("")).toBe(false);
   });
 });
 

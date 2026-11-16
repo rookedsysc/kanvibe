@@ -762,6 +762,7 @@
       "reasons": {
         "missing-credentials": "Not signed in.",
         "expired-credentials": "Sign-in expired. Sign in again on the accounts screen and the app refreshes it.",
+        "awaiting-cli-refresh": "Usage updates the next time you run Claude Code.",
         "keychain-unreadable": "Could not read the Keychain. Unlock your Mac, then refresh.",
         "gemini-cli-not-found": "The token expired and the Gemini CLI could not be found to refresh it.",
         "rate-limited": "Too many requests. Try again shortly.",

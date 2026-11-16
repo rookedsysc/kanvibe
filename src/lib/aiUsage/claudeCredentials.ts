@@ -50,6 +50,26 @@ export function readClaudeTokenExpiresAt(credentialsJson: string): number | null
   return typeof expiresAt === "number" && Number.isFinite(expiresAt) ? expiresAt : null;
 }
 
+/** 만료 시각을 모르는 토큰은 만료됐다고 단정하지 않는다. 보내 보면 서버가 답해 준다 */
+export function isClaudeAccessTokenExpired(credentialsJson: string): boolean {
+  const expiresAt = readClaudeTokenExpiresAt(credentialsJson);
+  return expiresAt !== null && expiresAt <= Date.now();
+}
+
+/**
+ * Claude Code가 다음에 실행될 때 액세스 토큰을 스스로 갱신할 수 있는지.
+ * false면 갱신할 수단이 남지 않아 사용자가 다시 로그인해야만 풀린다.
+ */
+export function hasUsableClaudeRefreshToken(credentialsJson: string): boolean {
+  const oauthSection = readClaudeOauthSection(credentialsJson);
+  if (!readNonEmptyString(oauthSection?.refreshToken)) {
+    return false;
+  }
+
+  const refreshTokenExpiresAt = oauthSection?.refreshTokenExpiresAt;
+  return typeof refreshTokenExpiresAt !== "number" || refreshTokenExpiresAt > Date.now();
+}
+
 /** 구독 등급 표시값. 사용량 응답에는 계정 정보가 없어 자격증명이 유일한 출처다 */
 export function readClaudeSubscriptionType(credentialsJson: string): string | null {
   return readNonEmptyString(readClaudeOauthSection(credentialsJson)?.subscriptionType);
