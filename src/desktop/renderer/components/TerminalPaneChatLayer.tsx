@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type RefObject } from "react";
 import { useTranslations } from "next-intl";
-import { focusPaneChatTerminal, getPaneChatLayout } from "@/desktop/renderer/actions/paneChat";
+import { focusPaneChatTerminal, getPaneChatLayout, getPaneChatModes, setPaneChatMode } from "@/desktop/renderer/actions/paneChat";
 import { useIsWindowActive } from "@/desktop/renderer/hooks/useIsWindowActive";
 import { usePaneChatPreferences } from "@/desktop/renderer/hooks/usePaneChatPreferences";
 import { REQUEST_TOGGLE_PANE_CHAT_EVENT, requestActiveTerminalFocusAfterUiSettles } from "@/desktop/renderer/utils/terminalFocus";
-import { buildRouteCacheKey, readRouteCache, writeRouteCache } from "@/desktop/renderer/utils/routeCache";
 import type { PaneChatLayout, PaneChatLayoutPane } from "@/desktop/shared/paneChat";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Chatting01Icon } from "@hugeicons/core-free-icons";
@@ -42,20 +41,18 @@ export function TerminalPaneChatLayer({ taskId, terminalTabId, taskTitle, termin
   const t = useTranslations("taskDetail.paneChat");
   const isWindowActive = useIsWindowActive();
   const preferences = usePaneChatPreferences();
-  const modeCacheKey = buildRouteCacheKey("pane-chat-mode", JSON.stringify([taskId, terminalTabId ?? null]));
-  const visitedCacheKey = buildRouteCacheKey("pane-chat-mode-visited", JSON.stringify([taskId, terminalTabId ?? null]));
   const [layout, setLayout] = useState<PaneChatLayout | null>(null);
-  const [chatPanes, setChatPanes] = useState<Set<string>>(() => {
-    const saved = readRouteCache<unknown>(modeCacheKey);
-    return new Set(Array.isArray(saved) ? saved.filter((id): id is string => typeof id === "string") : []);
-  });
-  const [openedPanes, setOpenedPanes] = useState<string[]>(() => [...chatPanes]);
+  const [chatPanes, setChatPanes] = useState<Set<string>>(() => new Set());
+  const [openedPanes, setOpenedPanes] = useState<string[]>([]);
+  const [modesStatus, setModesStatus] = useState<"loading" | "loaded" | "failed">("loading");
   const [layoutFailed, setLayoutFailed] = useState(false);
   const [returnFailed, setReturnFailed] = useState(false);
   const layerRef = useRef<HTMLDivElement>(null);
   const focusedPane = useRef<string | null>(null);
   const chatPanesRef = useRef(chatPanes);
   chatPanesRef.current = chatPanes;
+  const modesStatusRef = useRef(modesStatus);
+  modesStatusRef.current = modesStatus;
   const visibleRef = useRef(isVisible);
   visibleRef.current = isVisible;
   const generation = useRef(0);
@@ -63,28 +60,44 @@ export function TerminalPaneChatLayer({ taskId, terminalTabId, taskTitle, termin
   const loadRef = useRef<(fresh?: boolean) => Promise<PaneChatLayout | null>>(async () => null);
   const toggleRef = useRef<(paneId?: string) => Promise<void>>(async () => {});
 
-  const hasModeChoice = useRef(readRouteCache(modeCacheKey) !== null);
-  const storedVisited = readRouteCache<unknown>(visitedCacheKey);
-  const visitedPanes = useRef(new Set<string>(Array.isArray(storedVisited) ? storedVisited.filter((id): id is string => typeof id === "string") : [...chatPanes]));
-  const legacyClosedMode = useRef(hasModeChoice.current && storedVisited === null && chatPanes.size === 0);
-  const rememberMode = useCallback((paneId: string) => {
-    hasModeChoice.current = true;
-    visitedPanes.current.add(paneId);
-    writeRouteCache(visitedCacheKey, [...visitedPanes.current]);
-  }, [visitedCacheKey]);
+  /** 모드가 정해진 pane. 저장소에서 복원했거나, 이 화면에서 사용자나 기본 채팅 모드가 정한 pane만 들어 있다 */
+  const decidedModes = useRef(new Map<string, boolean>());
+  const saveMode = useCallback((paneId: string, isChat: boolean) => {
+    decidedModes.current.set(paneId, isChat);
+    // 저장 실패는 화면 동작을 막지 않는다. 지금 화면에는 반영되고 다음에 열 때만 복원되지 않는다.
+    void setPaneChatMode(taskId, paneId, isChat).catch(() => {});
+  }, [taskId]);
   useEffect(() => {
-    if (hasModeChoice.current) writeRouteCache(modeCacheKey, [...chatPanes]);
-  }, [modeCacheKey, chatPanes]);
+    let disposed = false;
+    getPaneChatModes(taskId).then((savedModes) => {
+      if (disposed) return;
+      // 조회가 끝나기 전에 사용자가 먼저 바꾼 pane은 저장된 값으로 덮지 않는다.
+      const restoredModes = Object.entries(savedModes).filter(([paneId]) => !decidedModes.current.has(paneId));
+      for (const [paneId, isChat] of restoredModes) decidedModes.current.set(paneId, isChat);
+      const restoredChatPaneIds = restoredModes.filter(([, isChat]) => isChat).map(([paneId]) => paneId);
+      setChatPanes((current) => new Set([...current, ...restoredChatPaneIds]));
+      setOpenedPanes((current) => [...current, ...restoredChatPaneIds.filter((paneId) => !current.includes(paneId))]);
+      setModesStatus("loaded");
+    }).catch(() => {
+      if (!disposed) setModesStatus("failed");
+    });
+    return () => { disposed = true; };
+  }, [taskId]);
   useEffect(() => {
-    if (!preferences.loaded || !layout?.activePaneId || visitedPanes.current.has(layout.activePaneId)) return;
+    if (modesStatus === "loaded" && chatPanesRef.current.size > 0 && visibleRef.current) void loadRef.current();
+  }, [modesStatus]);
+  // 저장된 기록을 읽은 뒤에만 적용해야 직접 터미널로 둔 pane을 기본 채팅 모드가 다시 열지 않는다. 조회에 실패하면 그 기록을 알 수 없으므로 적용하지 않는다.
+  useEffect(() => {
+    if (!preferences.loaded || modesStatus !== "loaded" || !layout?.activePaneId || decidedModes.current.has(layout.activePaneId)) return;
     const paneId = layout.activePaneId;
-    rememberMode(paneId);
-    if (legacyClosedMode.current) { legacyClosedMode.current = false; return; }
-    if (preferences.defaultEnabled) {
-      setChatPanes((current) => new Set(current).add(paneId));
-      setOpenedPanes((current) => current.includes(paneId) ? current : [...current, paneId]);
-    } else writeRouteCache(modeCacheKey, [...chatPanesRef.current]);
-  }, [preferences.loaded, preferences.defaultEnabled, layout, modeCacheKey, rememberMode]);
+    if (!preferences.defaultEnabled) {
+      decidedModes.current.set(paneId, false);
+      return;
+    }
+    saveMode(paneId, true);
+    setChatPanes((current) => new Set(current).add(paneId));
+    setOpenedPanes((current) => current.includes(paneId) ? current : [...current, paneId]);
+  }, [preferences.loaded, preferences.defaultEnabled, modesStatus, layout, saveMode]);
 
   const focusPane = useCallback((paneId: string) => {
     focusedPane.current = paneId;
@@ -104,7 +117,7 @@ export function TerminalPaneChatLayer({ taskId, terminalTabId, taskTitle, termin
       const result = await focusPaneChatTerminal(taskId, paneId);
       if (!result.success) throw new Error("Pane focus failed");
       if (!visibleRef.current || generation.current !== epoch) return;
-      rememberMode(paneId);
+      saveMode(paneId, false);
       setChatPanes((current) => {
         const next = new Set(current);
         next.delete(paneId);
@@ -121,7 +134,7 @@ export function TerminalPaneChatLayer({ taskId, terminalTabId, taskTitle, termin
     } finally {
       pendingToggle.current = false;
     }
-  }, [taskId, onChatFocusChange, focusPane, rememberMode]);
+  }, [taskId, onChatFocusChange, focusPane, saveMode]);
 
   useEffect(() => {
     const epoch = ++generation.current;
@@ -140,7 +153,8 @@ export function TerminalPaneChatLayer({ taskId, terminalTabId, taskTitle, termin
           focusedPane.current = null;
           onChatFocusChange(false);
         }
-        if (restoreFocus) {
+        // 저장된 모드를 읽기 전에는 복원할 채팅 pane을 알 수 없으므로 포커스 복원을 소비하지 않고 모드 조회가 끝난 뒤의 읽기로 미룬다.
+        if (restoreFocus && modesStatusRef.current !== "loading") {
           restoreFocus = false;
           const paneId = focusedPane.current ?? next.activePaneId;
           if (paneId && chatPanesRef.current.has(paneId) && next.panes.some((pane) => pane.id === paneId)) focusPane(paneId);
@@ -189,7 +203,7 @@ export function TerminalPaneChatLayer({ taskId, terminalTabId, taskTitle, termin
       const paneId = requestedPaneId ?? next?.activePaneId;
       if (!paneId || !next?.panes.some((pane) => pane.id === paneId) || !visibleRef.current || epoch !== generation.current) return;
       setOpenedPanes((current) => current.includes(paneId) ? current : [...current, paneId]);
-      rememberMode(paneId);
+      saveMode(paneId, true);
       setChatPanes((current) => new Set(current).add(paneId));
       focusPane(paneId);
     } finally {
@@ -217,7 +231,7 @@ export function TerminalPaneChatLayer({ taskId, terminalTabId, taskTitle, termin
   const activePane = layout?.panes.find((pane) => pane.id === layout.activePaneId);
   const activePosition = panePosition(activePane, metrics);
   return <div ref={layerRef} className="pointer-events-none absolute inset-0 overflow-hidden">
-    {isVisible && !layout && !layoutFailed && (!preferences.loaded || preferences.defaultEnabled || chatPanes.size > 0) ? <section data-testid="pane-chat-loading" aria-busy="true" className="pointer-events-auto absolute inset-0 flex flex-col bg-bg-page">
+    {isVisible && !layout && !layoutFailed && (!preferences.loaded || modesStatus === "loading" || preferences.defaultEnabled || chatPanes.size > 0) ? <section data-testid="pane-chat-loading" aria-busy="true" className="pointer-events-auto absolute inset-0 flex flex-col bg-bg-page">
       <header className="flex min-h-14 items-center gap-2 border-b border-border-default px-4 text-sm text-text-primary"><HugeiconsIcon icon={Chatting01Icon} size={18} aria-hidden="true" />{taskTitle ?? t("toggle")}</header>
       <div role="status" className="flex flex-1 items-center justify-center text-sm text-text-secondary">{t("loading")}</div>
     </section> : null}

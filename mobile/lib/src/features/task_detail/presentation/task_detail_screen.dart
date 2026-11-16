@@ -63,6 +63,9 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
   String? _selectedPaneId;
   final _chatModePaneIds = <String>{};
   final _chatPaneIds = <String>{};
+
+  /// 이 화면에서 사용자가 이미 모드를 바꾼 pane. 저장된 모드를 읽는 동안 바꾼 선택을 조회 결과로 덮지 않는다
+  final _userChosenPaneIds = <String>{};
   bool _didSelectInitialWindow = false;
   ({String tabId, TaskSurfaces surfaces, Future<TaskSurfaces?> future})?
   _pendingTabGeometry;
@@ -85,6 +88,7 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    unawaited(_restorePaneChatModes());
   }
 
   @override
@@ -124,7 +128,30 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
     _wasViewingTask = isViewingTask;
   }
 
+  /// 데스크탑 앱 설정에 저장된 pane별 채팅 모드로 화면을 연다
+  Future<void> _restorePaneChatModes() async {
+    final Map<String, bool> savedModes;
+    try {
+      savedModes = await ref
+          .read(surfacesProvider(_task.id).notifier)
+          .fetchPaneChatModes();
+    } catch (_) {
+      // 명령을 모르는 구버전 데스크탑이거나 조회에 실패하면 기록이 없는 것처럼 터미널로 열고, 전환은 이 화면 안에서만 동작한다.
+      return;
+    }
+    if (!mounted) return;
+    setState(() {
+      for (final entry in savedModes.entries) {
+        if (entry.value && !_userChosenPaneIds.contains(entry.key)) {
+          _chatModePaneIds.add(entry.key);
+          _chatPaneIds.add(entry.key);
+        }
+      }
+    });
+  }
+
   void _setPaneChatMode(String paneId, bool enabled) {
+    _userChosenPaneIds.add(paneId);
     setState(() {
       if (enabled) {
         _chatModePaneIds.add(paneId);
@@ -133,6 +160,13 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
         _chatModePaneIds.remove(paneId);
       }
     });
+    // 저장하지 못해도 화면 전환은 이미 반영됐으므로 막지 않는다. 다음에 들어올 때만 복원되지 않는다.
+    unawaited(
+      ref
+          .read(surfacesProvider(_task.id).notifier)
+          .updatePaneChatMode(paneId, enabled)
+          .catchError((Object _) {}),
+    );
   }
 
   void _toggleSelectedPaneChat() {

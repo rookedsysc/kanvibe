@@ -357,7 +357,7 @@ describe("모바일 상태 알림 경로", () => {
     const event = { type: "task-status-changed", eventId: "event-1", taskId: "task-1", title: "kanvibe", body: "review", status: "review", createdAt: "2026-10-23T00:00:00Z" };
     mobileEventListeners.forEach((listener) => { listener({ type: "board-updated" }); listener(event); });
     await waitFor(() => messages.length === 3);
-    expect(messages).toEqual([{ type: "connected", commands: ["delete-task", "remove-task-registration", "get-tab-close-info", "close-tab", "start-session", "set-pane-chat-subscription"] }, { type: "board-updated" }, event]);
+    expect(messages).toEqual([{ type: "connected", commands: ["delete-task", "remove-task-registration", "get-tab-close-info", "close-tab", "start-session", "set-pane-chat-subscription", "get-pane-chat-modes", "set-pane-chat-mode"] }, { type: "board-updated" }, event]);
     expect(bridge.subscribeToPane).not.toHaveBeenCalled();
     notifyUnpaired("device-second");
     expect(client.readyState).toBe(WebSocket.OPEN);
@@ -435,7 +435,7 @@ describe("상태 WebSocket 명령", () => {
   it("연결 확인에 지원하는 명령 목록을 싣는다", async () => {
     const { messages } = await connectEvents();
 
-    expect(messages[0]).toEqual({ type: "connected", commands: ["delete-task", "remove-task-registration", "get-tab-close-info", "close-tab", "start-session", "set-pane-chat-subscription"] });
+    expect(messages[0]).toEqual({ type: "connected", commands: ["delete-task", "remove-task-registration", "get-tab-close-info", "close-tab", "start-session", "set-pane-chat-subscription", "get-pane-chat-modes", "set-pane-chat-mode"] });
   });
 
   it("삭제 결과는 요청한 소켓에만 돌려주고 다른 기기의 소켓에는 보내지 않는다", async () => {
@@ -625,7 +625,7 @@ describe("모바일 알림함 경로", () => {
     notificationChangeListeners.forEach((listener) => listener());
 
     await waitFor(() => firstMessages.length === 2 && secondMessages.length === 2);
-    expect(firstMessages).toEqual([{ type: "connected", commands: ["delete-task", "remove-task-registration", "get-tab-close-info", "close-tab", "start-session", "set-pane-chat-subscription"] }, { type: "notifications-changed" }]);
+    expect(firstMessages).toEqual([{ type: "connected", commands: ["delete-task", "remove-task-registration", "get-tab-close-info", "close-tab", "start-session", "set-pane-chat-subscription", "get-pane-chat-modes", "set-pane-chat-mode"] }, { type: "notifications-changed" }]);
     expect(secondMessages).toEqual(firstMessages);
     first.close();
     second.close();

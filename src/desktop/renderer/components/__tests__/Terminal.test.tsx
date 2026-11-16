@@ -213,7 +213,7 @@ describe("Desktop Terminal", () => {
   });
 
   it("채팅 pane 복귀는 키보드만 차단하고 터미널 프로토콜 응답을 유지한다", async () => {
-    const invoke = vi.fn(async (_namespace: string, method: string) => method === "focusPaneChatTerminal" ? { success: true } : method === "getPaneChatLayout"
+    const invoke = vi.fn(async (_namespace: string, method: string) => method === "focusPaneChatTerminal" ? { success: true } : method === "getPaneChatModes" ? {} : method === "getPaneChatLayout"
       ? { activePaneId: "tab-chat", panes: [{ id: "tab-chat", tabId: "tab-chat", bounds: null }] }
       : { taskId: "chat-task", paneId: "tab-chat", provider: null, targetToken: null, canSend: false, inputState: "unknown", screen: "", transcript: { status: "unavailable", messages: [], nextCursor: null }, modelPicker: { supported: false } });
     window.kanvibeDesktop!.invoke = invoke;

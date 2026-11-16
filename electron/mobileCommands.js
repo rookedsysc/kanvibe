@@ -109,6 +109,18 @@ const COMMAND_HANDLERS = {
     const targets = message.panes.map(readPaneChatSubscriptionTarget);
     return { panes: bridge.setPaneChatSubscriptions(connection.owner, targets, connection.send) };
   },
+  "get-pane-chat-modes": async (bridge, message) => {
+    return { modes: await bridge.getPaneChatModes(readNonEmptyString(message.taskId)) };
+  },
+  "set-pane-chat-mode": async (bridge, message) => {
+    const taskId = readNonEmptyString(message.taskId);
+    const paneId = readNonEmptyString(message.paneId);
+    if (typeof message.isEnabled !== "boolean") {
+      throw invalidCommand();
+    }
+    await bridge.setPaneChatMode(taskId, paneId, message.isEnabled);
+    return {};
+  },
 };
 
 /** 핸들러 표에서 이름을 뽑아 `connected` 이벤트의 기능 목록과 디스패치가 같은 출처를 쓰게 한다 */

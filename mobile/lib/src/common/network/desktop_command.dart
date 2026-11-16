@@ -50,6 +50,24 @@ class DesktopCommand {
     'panes': panes,
   }, _lookupTimeout);
 
+  /// 데스크탑 앱 설정에 저장된 이 태스크의 pane별 채팅 모드를 읽는다. 응답의 `modes`는 pane ID마다 채팅이면 true, 직접 터미널로 되돌렸으면 false다
+  factory DesktopCommand.getPaneChatModes(String taskId) => DesktopCommand._(
+    'get-pane-chat-modes',
+    {'taskId': taskId},
+    _lookupTimeout,
+  );
+
+  /// pane 하나의 채팅 모드를 데스크탑 앱 설정에 저장한다. 데스크탑 화면도 같은 값을 읽는다
+  factory DesktopCommand.setPaneChatMode(
+    String taskId,
+    String paneId,
+    bool isEnabled,
+  ) => DesktopCommand._('set-pane-chat-mode', {
+    'taskId': taskId,
+    'paneId': paneId,
+    'isEnabled': isEnabled,
+  }, _lookupTimeout);
+
   final String name;
   final Map<String, Object?> fields;
 
