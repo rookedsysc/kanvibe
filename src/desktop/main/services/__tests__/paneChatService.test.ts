@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SessionType } from "@/entities/KanbanTask";
 import type { CodexThreadInput } from "@/lib/aiSessions/codexThreadInput";
 
-const mocks = vi.hoisted(() => ({ surface: vi.fn(), layout: vi.fn(), exec: vi.fn(), write: vi.fn(), apiInput: vi.fn(), binding: vi.fn(), processBinding: vi.fn().mockResolvedValue(null), reportedBinding: vi.fn().mockResolvedValue(null), claude: vi.fn(), codex: vi.fn(), rollout: vi.fn(), emptyThread: vi.fn(), focusHerdr: vi.fn(), tabs: vi.fn(), catalog: vi.fn() }));
+const mocks = vi.hoisted(() => ({ surface: vi.fn(), layout: vi.fn(), exec: vi.fn(), write: vi.fn(), apiInput: vi.fn(), binding: vi.fn(), processBinding: vi.fn().mockResolvedValue(null), reportedBinding: vi.fn().mockResolvedValue(null), claude: vi.fn(), codex: vi.fn(), gemini: vi.fn(), opencode: vi.fn(), rollout: vi.fn(), emptyThread: vi.fn(), focusHerdr: vi.fn(), tabs: vi.fn(), catalog: vi.fn() }));
 const modelMocks = vi.hoisted(() => ({ tail: vi.fn(), readTextFile: vi.fn() }));
 vi.mock("../paneChatSurface", () => ({ readPaneChatSurface: mocks.surface, readPaneChatLayout: mocks.layout }));
 vi.mock("@/lib/gitOperations", () => ({ execGit: mocks.exec }));
@@ -12,6 +12,8 @@ vi.mock("../paneChatComposerCatalog", () => ({ readPaneChatSuggestions: mocks.ca
 vi.mock("@/lib/aiSessions/paneChatSessionBindings", () => ({ findPaneChatSessionBinding: mocks.binding, findPaneChatProcessSessionBinding: mocks.processBinding, findPaneChatReportedSessionBinding: mocks.reportedBinding }));
 vi.mock("@/lib/aiSessions/readClaudeSessions", () => ({ readClaudeSessionDetail: mocks.claude }));
 vi.mock("@/lib/aiSessions/readCodexSessions", () => ({ readCodexSessionDetail: mocks.codex, findCodexMainThreadRollout: mocks.rollout }));
+vi.mock("@/lib/aiSessions/readGeminiSessions", () => ({ readGeminiSessionDetail: mocks.gemini }));
+vi.mock("@/lib/aiSessions/readOpenCodeSessions", () => ({ readOpenCodeSessionDetail: mocks.opencode }));
 vi.mock("@/lib/aiSessions/codexThreadMetadata", () => ({ readCodexEmptyThread: mocks.emptyThread }));
 vi.mock("@/lib/aiSessions/codexThreadInput", () => ({ sendCodexThreadInput: mocks.apiInput }));
 vi.mock("@/lib/aiSessions/shared", async (importOriginal) => ({ ...await importOriginal<typeof import("@/lib/aiSessions/shared")>(), readJsonLinesTail: modelMocks.tail }));
@@ -47,6 +49,80 @@ function bindCodexSession(model = "gpt-sol") {
 }
 
 describe("pane chat exact CLI control", () => {
+  it.each([
+    ["gemini", "node", "node --no-warnings /opt/node_modules/@google/gemini-cli/bundle/gemini.js", " >   Type your message or @path/to/file", 3],
+    ["opencode", "opencode.exe", "opencode", ' ┃  Ask anything… "Fix a TODO"', 4],
+  ] as const)("%s의 현재 대화 조회·이전 기록·텍스트 전송과 대화 전환 fencing을 지원한다", async (provider, command, args, inputLine, cursorColumn) => {
+    mocks.exec.mockResolvedValue(`100 1 100 200 ttys010 Thu Nov 12 18:00:00 2026 zsh /bin/zsh\n200 100 200 200 ttys010 Thu Nov 12 19:00:00 2026 ${command} ${args}`);
+    const viewport = provider === "opencode" ? { viewportLines: [inputLine, " ┃  Build · QA model", " ╹▀▀▀"], cursorRow: 0 } : { viewportLines: ["──────", inputLine, "──────"], cursorRow: 1 };
+    mocks.surface.mockResolvedValue({ ...surface, ...viewport, inputLine, cursorColumn });
+    const binding = provider === "opencode" ? mocks.processBinding : mocks.binding;
+    binding.mockResolvedValue({ sessionId: "additional-exact", sourceRef: "/allowed/additional", revision: 1 });
+    const reader = mocks[provider];
+    reader.mockResolvedValue({ sessionId: "additional-exact", provider, messages: [{ role: "assistant", text: "exact reply", fullText: "exact reply" }], nextCursor: "1" });
+    const snapshot = await getPaneChatSnapshot("task-chat", "%3");
+    expect(snapshot).toMatchObject({ provider, canSend: true, inputState: "ready", transcript: { sessionId: "additional-exact", messages: [{ text: "exact reply" }] }, composer: { attachments: false } });
+    expect(snapshot.conversationKey).toBeTruthy();
+    await getPaneChatTranscriptPage("task-chat", snapshot.targetToken!, "1");
+    expect(reader).toHaveBeenLastCalledWith(expect.objectContaining({ worktreePath: "/repo" }), "additional-exact", "/allowed/additional", "1", 100);
+    await sendPaneChatPrompt("task-chat", snapshot.targetToken!, "hello", [], `send-${provider}`);
+    expect(mocks.write.mock.calls).toEqual([["task-chat", "%3", "\x1b[200~hello\x1b[201~"], ["task-chat", "%3", "\r"]]);
+    mocks.write.mockClear();
+    mocks.surface.mockResolvedValue({ ...surface, inputLine: inputLine.replace(/Type your message or @path\/to\/file|Ask anything….*/, "native draft"), cursorColumn: cursorColumn + 6 });
+    await expect(sendPaneChatPrompt("task-chat", snapshot.targetToken!, "blocked")).rejects.toMatchObject({ name: "PaneChatInputError" });
+    expect(mocks.write).not.toHaveBeenCalled();
+    binding.mockResolvedValue({ sessionId: "other", sourceRef: "/allowed/other", revision: 2 });
+    await expect(getPaneChatTranscriptPage("task-chat", snapshot.targetToken!, "1")).rejects.toMatchObject({ name: "PaneChatTargetChangedError" });
+    await expect(sendPaneChatPrompt("task-chat", snapshot.targetToken!, "stale")).rejects.toMatchObject({ name: "PaneChatTargetChangedError" });
+    expect(mocks.write).not.toHaveBeenCalled();
+  });
+  it("Gemini의 빈 첫 줄 아래에 남은 native draft를 덮어쓰지 않는다", async () => {
+    mocks.exec.mockResolvedValue(`100 1 100 200 ttys010 Thu Nov 12 18:00:00 2026 zsh /bin/zsh\n200 100 200 200 ttys010 Thu Nov 12 19:00:00 2026 gemini gemini`);
+    const viewportLines = ["──────", " >  ", "", "   ───", "   native draft", "──────"];
+    mocks.surface.mockResolvedValue({ ...surface, inputLine: viewportLines[1], cursorColumn: 3, cursorRow: 1, viewportLines });
+    mocks.binding.mockResolvedValue({ sessionId: "gemini-exact", sourceRef: "/allowed/gemini.jsonl" });
+    mocks.gemini.mockResolvedValue({ sessionId: "gemini-exact", provider: "gemini", messages: [], nextCursor: null });
+    const snapshot = await getPaneChatSnapshot("task-chat", "%3");
+    expect(snapshot.inputState).toBe("occupied");
+    await expect(sendPaneChatPrompt("task-chat", snapshot.targetToken!, "new prompt")).rejects.toMatchObject({ name: "PaneChatInputError" });
+    expect(mocks.write).not.toHaveBeenCalled();
+    viewportLines[3] = "";
+    viewportLines[4] = "";
+    expect((await getPaneChatSnapshot("task-chat", "%3")).inputState).toBe("ready");
+  });
+
+  it("OpenCode의 빈 커서 행 위에 남은 여러 줄 draft를 덮어쓰지 않는다", async () => {
+    mocks.exec.mockResolvedValue(`100 1 100 200 ttys010 Thu Nov 12 18:00:00 2026 zsh /bin/zsh\n200 100 200 200 ttys010 Thu Nov 12 19:00:00 2026 opencode.exe opencode`);
+    const viewportLines = ["  ┃  previous transcript", "", "  ┃", "  ┃  native draft", "  ┃   ", "  ┃  Build · QA model", "  ╹▀▀▀"];
+    mocks.surface.mockResolvedValue({ ...surface, inputLine: viewportLines[4], cursorColumn: 5, cursorRow: 4, viewportLines });
+    mocks.processBinding.mockResolvedValue({ sessionId: "opencode-home:200", sourceRef: "/repo/state.json", revision: 1, empty: true });
+    const snapshot = await getPaneChatSnapshot("task-chat", "%3");
+    expect(snapshot.inputState).toBe("occupied");
+    await expect(sendPaneChatPrompt("task-chat", snapshot.targetToken!, "new prompt")).rejects.toMatchObject({ name: "PaneChatInputError" });
+    expect(mocks.write).not.toHaveBeenCalled();
+    viewportLines[3] = "  ┃";
+    const empty = await getPaneChatSnapshot("task-chat", "%3");
+    expect(empty.inputState).toBe("ready");
+  });
+
+  it("OpenCode home의 빈 대화에서 첫 prompt를 보낼 수 있다", async () => {
+    mocks.exec.mockResolvedValue(`100 1 100 200 ttys010 Thu Nov 12 18:00:00 2026 zsh /bin/zsh\n200 100 200 200 ttys010 Thu Nov 12 19:00:00 2026 opencode.exe opencode`);
+    mocks.surface.mockResolvedValue({ ...surface, inputLine: "                  ┃  Ask anything…", cursorColumn: 21, cursorRow: 0, viewportLines: ["                  ┃  Ask anything…", "                  ┃  Build · QA model", "                  ╹▀▀▀"] });
+    mocks.processBinding.mockResolvedValue({ sessionId: "opencode-home:200", sourceRef: "/repo/.kanvibe/pane-chat/opencode-200.json", revision: 1, empty: true });
+    const snapshot = await getPaneChatSnapshot("task-chat", "%3");
+    expect(snapshot).toMatchObject({ provider: "opencode", canSend: true, inputState: "ready", transcript: { messages: [], nextCursor: null } });
+    await sendPaneChatPrompt("task-chat", snapshot.targetToken!, "first prompt");
+    expect(mocks.write).toHaveBeenLastCalledWith("task-chat", "%3", "\r");
+  });
+
+  it.each(["gemini", "opencode"] as const)("%s의 세션을 확인하지 못하면 다른 기록을 추정하거나 입력을 허용하지 않는다", async (provider) => {
+    mocks.exec.mockResolvedValue(`100 1 100 200 ttys010 Thu Nov 12 18:00:00 2026 zsh /bin/zsh\n200 100 200 200 ttys010 Thu Nov 12 19:00:00 2026 ${provider} ${provider}`);
+    mocks.binding.mockResolvedValue(null);
+    const snapshot = await getPaneChatSnapshot("task-chat", "%3");
+    expect(snapshot).toMatchObject({ provider, targetToken: null, canSend: false, reason: "exact-session-unavailable" });
+    expect(mocks.write).not.toHaveBeenCalled();
+  });
+
   it("pins catalog results and rejects a CLI change while suggestions are loading", async () => {
     const target = await getPaneChatSnapshot("task-chat", "%3");
     mocks.catalog.mockResolvedValue({ items: [{ id: "skill:review", label: "review", description: "Review", insertText: "$review" }], truncated: false });

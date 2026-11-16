@@ -9,7 +9,7 @@ import { buildShellKanvibeStatusUpdater } from "../shellHookScript";
 const execFileAsync = promisify(execFile);
 
 describe("hook chat metadata transport", () => {
-  for (const { provider, oversized } of [{ provider: "claude", oversized: false }, { provider: "codex", oversized: false }, { provider: "claude", oversized: true }] as const) {
+  for (const { provider, oversized } of [{ provider: "claude", oversized: false }, { provider: "codex", oversized: false }, { provider: "gemini", oversized: false }, { provider: "claude", oversized: true }] as const) {
     it(`${provider} hook의 ${oversized ? "큰 stdin도 끝까지 비우면서 상태를 유지한다" : "실제 stdin과 sender PID를 기존 상태 본문에 함께 전송한다"}`, async () => {
       const directory = await mkdtemp(path.join(tmpdir(), "kanvibe-chat-hook-"));
       try {

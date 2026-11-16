@@ -25,6 +25,7 @@ import { HOOK_LOOPBACK_URL_PATTERN, HOOK_TRANSPORT_VERSION_MARKER } from "@/lib/
 export const PLUGIN_FILE_NAME = "kanvibe-plugin.ts";
 export const PLUGIN_DIR_NAME = "plugins";
 const CONFIG_DIR_NAME = ".opencode";
+const TUI_PLUGIN_FILE_NAME = "kanvibe-tui.mjs";
 
 /** OpenCode plugin TypeScript 파일 내용을 생성한다 */
 export function generatePluginScript(kanvibeUrl: string, taskId: string): string {
@@ -335,9 +336,48 @@ export const KanvibePlugin: Plugin = async ({ client }) => {
 `;
 }
 
-/** OpenCode plugin은 기존 설정 파일을 병합하지 않으므로 미리 읽어야 할 파일이 없다 */
-export function getOpenCodeHookInstallInputPaths(): string[] {
-  return [];
+function generateOpenCodeTuiPlugin(repoPath: string): string {
+  return `import { mkdirSync, writeFileSync, renameSync, unlinkSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { join } from "node:path";
+export default {
+  id: "kanvibe-pane-chat",
+  tui: async (api) => {
+    const directory = join(${JSON.stringify(repoPath)}, ".kanvibe", "pane-chat");
+    const file = join(directory, "opencode-" + process.pid + ".json");
+    const temporary = file + ".tmp";
+    const processStartTime = execFileSync("ps", ["-p", String(process.pid), "-o", "lstart="], { encoding: "utf8" }).trim().replace(/\\s+/g, " ");
+    const POLL_INTERVAL_MS = 100;
+    const HEARTBEAT_INTERVAL_MS = 1000;
+    let previous;
+    let revision = 0;
+    let lastWriteAt = 0;
+    const observe = () => {
+      try {
+        const route = api.route.current;
+        const sessionId = route.name === "session" ? route.params.sessionID : null;
+        const now = Date.now();
+        if (previous === sessionId && now - lastWriteAt < HEARTBEAT_INTERVAL_MS) return;
+        if (previous !== sessionId) { previous = sessionId; revision++; }
+        mkdirSync(directory, { recursive: true });
+        writeFileSync(temporary, JSON.stringify({ pid: process.pid, processStartTime, cwd: process.cwd(), sessionId, revision, updatedAt: now }), { mode: 0o600 });
+        renameSync(temporary, file);
+        lastWriteAt = now;
+      } catch { /* CLI navigation must continue when the observer cannot write. */ }
+    };
+    observe();
+    const timer = setInterval(observe, POLL_INTERVAL_MS);
+    api.lifecycle.onDispose(() => {
+      clearInterval(timer);
+      for (const path of [file, temporary]) { try { unlinkSync(path); } catch {} }
+    });
+  },
+};
+`;
+}
+
+export function getOpenCodeHookInstallInputPaths(repoPath: string, sshHost?: string | null): string[] {
+  return [resolvePathModule(sshHost).join(repoPath, CONFIG_DIR_NAME, "tui.json")];
 }
 
 /** OpenCode plugin 설치 산출물을 만든다 */
@@ -346,8 +386,17 @@ export function buildOpenCodeHookFiles(
   taskId: string,
   kanvibeUrl: string,
   sshHost?: string | null,
+  tuiContent = "",
 ): ShellHookProviderFile[] {
+  const pathModule = resolvePathModule(sshHost);
+  const tuiPath = getOpenCodeHookInstallInputPaths(repoPath, sshHost)[0];
+  const tuiPluginPath = pathModule.join(repoPath, CONFIG_DIR_NAME, TUI_PLUGIN_FILE_NAME);
+  const config = tuiContent.trim() ? JSON.parse(tuiContent) : {};
+  if (!config || typeof config !== "object" || Array.isArray(config) || (config.plugin !== undefined && !Array.isArray(config.plugin))) throw new Error("Invalid OpenCode tui.json");
+  config.plugin = [...(config.plugin ?? []).filter((entry: unknown) => entry !== tuiPluginPath), tuiPluginPath];
   return [
+    { filePath: tuiPluginPath, content: generateOpenCodeTuiPlugin(repoPath) },
+    { filePath: tuiPath, content: JSON.stringify(config, null, 2) + "\n" },
     {
       filePath: getOpenCodePluginPath(repoPath, sshHost),
       content: generatePluginScript(kanvibeUrl, taskId),
@@ -366,7 +415,9 @@ export async function setupOpenCodeHooks(
   sshHost?: string | null,
 ): Promise<void> {
   try {
-    await writeHookProviderFiles(buildOpenCodeHookFiles(repoPath, taskId, kanvibeUrl, sshHost), sshHost);
+    const [tuiPath] = getOpenCodeHookInstallInputPaths(repoPath, sshHost);
+    const existingFiles = await readTextFiles([tuiPath], sshHost, { strictHostKeyChecking: true });
+    await writeHookProviderFiles(buildOpenCodeHookFiles(repoPath, taskId, kanvibeUrl, sshHost, existingFiles.get(tuiPath)?.content), sshHost);
     await registerKanvibeHookTarget(repoPath, taskId, kanvibeUrl, sshHost);
   } finally {
     if (!sshHost) invalidateOpenCodePluginRegistration(repoPath);
@@ -407,7 +458,14 @@ export async function getOpenCodeHooksStatus(
 ): Promise<OpenCodeHooksStatus> {
   const pluginPath = getOpenCodePluginPath(repoPath, sshHost);
   const targetsPath = getKanvibeTargetsPath(repoPath, sshHost);
-  const files = existingFiles ?? await readTextFiles([pluginPath, targetsPath], sshHost, { strictHostKeyChecking: true });
+  const tuiPath = getOpenCodeHookInstallInputPaths(repoPath, sshHost)[0];
+  const tuiPluginPath = resolvePathModule(sshHost).join(repoPath, CONFIG_DIR_NAME, TUI_PLUGIN_FILE_NAME);
+  const paths = [pluginPath, targetsPath, tuiPath, tuiPluginPath];
+  const files = existingFiles ? new Map(existingFiles) : new Map<string, TextFileReadResult>();
+  const missingPaths = paths.filter((filePath) => !files.has(filePath));
+  if (missingPaths.length) {
+    for (const [filePath, file] of await readTextFiles(missingPaths, sshHost, { strictHostKeyChecking: true })) files.set(filePath, file);
+  }
   const pluginFile = files.get(pluginPath) ?? { exists: false, content: "" };
   const pluginContent = pluginFile.content;
 
@@ -438,6 +496,13 @@ export async function getOpenCodeHooksStatus(
   const hasDuplicateProgressGuard = pluginContent.includes("lastUserMessageBySession")
     && pluginContent.includes("buildMessageSignature")
     && pluginContent.includes("dedupeMessage: true");
+  let hasPaneChatBinding = false;
+  try {
+    const config = JSON.parse(files.get(tuiPath)?.content ?? "{}");
+    const observer = files.get(tuiPluginPath);
+    hasPaneChatBinding = observer?.exists === true && observer.content.includes("kanvibe-pane-chat")
+      && Array.isArray(config.plugin) && config.plugin.includes(tuiPluginPath);
+  } catch { /* Invalid user configuration needs reinstall rather than a false installed status. */ }
 
   const installed = pluginFile.exists
     && hasPlugin
@@ -450,7 +515,8 @@ export async function getOpenCodeHooksStatus(
     && hasTargetFanout
     && hasParallelTargetFanout
     && hasMainSessionGuard
-    && hasDuplicateProgressGuard;
+    && hasDuplicateProgressGuard
+    && hasPaneChatBinding;
 
   return {
     installed,

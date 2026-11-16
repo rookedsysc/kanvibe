@@ -262,6 +262,7 @@ describe("kanvibeHooksInstaller", () => {
       "/remote/repo/.gemini/settings.json",
       "/remote/repo/.codex/config.toml",
       "/remote/repo/.codex/hooks.json",
+      "/remote/repo/.opencode/tui.json",
     ], "remote-host", { strictHostKeyChecking: true });
   });
 

@@ -18,7 +18,7 @@ export interface PaneChatSurface {
   task: KanbanTask;
   paneId: string;
   rootPid: number | null;
-  agentSession?: { provider: "claude" | "codex"; sessionId: string };
+  agentSession?: { provider: "claude" | "codex" | "gemini" | "opencode"; sessionId: string };
   screen: string;
   inputLine: string | null;
   cursorColumn: number | null;

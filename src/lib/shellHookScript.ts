@@ -44,7 +44,7 @@ export interface ShellTaskIdBindingStatus {
  * hook이 상태를 status.json에 기록하고 targets.json의 모든 client에 병렬로 통보하는 shell 조각을 만든다.
  * 프로젝트 색상은 project.json에 따로 있으므로 이 경로에서는 건드리지 않는다.
  */
-export function buildShellKanvibeStatusUpdater(status: ShellHookStatus, provider?: "claude" | "codex") {
+export function buildShellKanvibeStatusUpdater(status: ShellHookStatus, provider?: "claude" | "codex" | "gemini") {
   const agentMetadata = provider ? [
     'KANVIBE_AGENT_SESSION_JSON=',
     // 남은 stdin도 비워야 큰 hook 본문을 쓰는 CLI에 broken pipe가 발생하지 않는다.

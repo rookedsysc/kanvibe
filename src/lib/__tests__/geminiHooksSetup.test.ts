@@ -30,6 +30,8 @@ describe("geminiHooksSetup", () => {
 
       expect(promptScript).toContain("#!/bin/bash");
       expect(promptScript).toContain("BeforeAgent");
+      expect(settings.hooks.SessionStart[0].hooks[0].command).toContain("kanvibe-prompt-hook.sh");
+      expect(promptScript).toContain("payloadBase64");
       expect(promptScript).toContain(kanvibeUrl);
       expect(promptScript).toContain(taskId);
       expect(promptScript).toContain("taskId");
