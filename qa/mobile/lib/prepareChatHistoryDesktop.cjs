@@ -60,6 +60,14 @@ function seedAgentFiles() {
     });
     fs.writeFileSync(path.join(sessions, `${id}.jsonl`), events.map((entry) => JSON.stringify(entry)).join('\n') + '\n');
   }
+  // 채팅 입력창의 skill 메뉴가 보여 줄 목록. 어느 CLI가 떠 있는 pane이든 같은 이름이 나오도록 두 CLI의 설정 폴더에 똑같이 둔다
+  for (const provider of ['.codex', '.claude']) {
+    for (const [name, description] of [['qa-plan', 'Outline the work'], ['qa-release', 'Ship a build'], ['qa-review', 'Check a diff']]) {
+      const skillDirectory = path.join(fakeHome, provider, 'skills', name);
+      fs.mkdirSync(skillDirectory, { recursive: true });
+      fs.writeFileSync(path.join(skillDirectory, 'SKILL.md'), `---\nname: ${name}\ndescription: ${description}\n---\n`);
+    }
+  }
   const hermesDirectory = path.join(fakeHome, '.hermes', 'sessions');
   fs.mkdirSync(hermesDirectory, { recursive: true });
   fs.writeFileSync(path.join(hermesDirectory, 'session_qa-hermes.json'), JSON.stringify({
