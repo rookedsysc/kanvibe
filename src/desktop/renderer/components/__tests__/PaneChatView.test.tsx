@@ -8,6 +8,7 @@ const actions = vi.hoisted(() => ({
   getPaneChatSnapshot: vi.fn(), sendPaneChatPrompt: vi.fn(), interruptPaneChat: vi.fn(),
   openPaneChatModelPicker: vi.fn(), sendPaneChatKey: vi.fn(),
   getPaneChatTranscriptPage: vi.fn(), getPaneChatModelSettings: vi.fn(), changePaneChatModelSetting: vi.fn(),
+  revealPaneChatCodexThread: vi.fn(),
 }));
 vi.mock("@/desktop/renderer/actions/paneChat", () => actions);
 vi.mock("@/desktop/renderer/actions/appSettings", () => ({ getAppSetting: vi.fn().mockResolvedValue(null), setAppSetting: vi.fn().mockResolvedValue(undefined) }));
@@ -302,4 +303,57 @@ it("터미널 입력 대기는 정확히 안내하고 세 번 이후에도 확�
   expect(screen.getByText("Exact pane response")).toBeTruthy();
   expect(screen.queryByText("transcriptInputBusy")).toBeNull();
   expect(actions.sendPaneChatPrompt).not.toHaveBeenCalled();
+});
+
+describe("연결하지 못한 대화의 원인별 안내", () => {
+  const unavailable = (reason: string, provider: PaneChatSnapshot["provider"] = "codex", inputState: PaneChatSnapshot["inputState"] = "ready"): PaneChatSnapshot => ({ ...snapshot(), provider, canSend: false, targetToken: null, inputState, reason, transcript: { status: "unavailable", reason, sessionId: null, messages: [], nextCursor: null } });
+
+  it("Codex 데몬 제약과 두 해결 방법을 보여 주고, 대화 ID 표시를 누르면 그 pane에 실행해 결과를 알린다", async () => {
+    actions.getPaneChatSnapshot.mockResolvedValue(unavailable("codex-thread-unconfirmed"));
+    actions.revealPaneChatCodexThread.mockResolvedValue({ outcome: "thread-not-found" });
+    open();
+    await screen.findByText("codexDaemonLimit");
+    expect(screen.getByText("codexRevealHint")).toBeTruthy();
+    expect(screen.getByText("codexNoDaemonHint")).toBeTruthy();
+    expect(screen.queryByText("transcriptIdentityMissing")).toBeNull();
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "revealThread" })));
+    expect(actions.revealPaneChatCodexThread).toHaveBeenCalledWith("task-1", undefined);
+    expect((await screen.findByRole("alert")).textContent).toBe("revealThreadNotFound");
+  });
+
+  it.each([
+    ["revealed", "revealRevealed"],
+    ["input-not-empty", "revealInputNotEmpty"],
+    ["unsupported-version", "revealUnsupportedVersion"],
+  ] as const)("대화 ID 표시 결과 %s를 구분해 보여 준다", async (outcome, message) => {
+    actions.getPaneChatSnapshot.mockResolvedValue(unavailable("codex-thread-unconfirmed"));
+    actions.revealPaneChatCodexThread.mockResolvedValue({ outcome });
+    open();
+    const button = await screen.findByRole("button", { name: "revealThread" });
+    await act(async () => fireEvent.click(button));
+    expect(await screen.findByText(message)).toBeTruthy();
+  });
+
+  it("Codex가 작업 중이거나 입력란이 차 있으면 대화 ID 표시를 막고 이유를 보여 준다", async () => {
+    actions.getPaneChatSnapshot.mockResolvedValue(unavailable("codex-thread-input-busy", "codex", "occupied"));
+    open();
+    const button = await screen.findByRole("button", { name: "revealThread" });
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText("codexRevealBusy")).toBeTruthy();
+    fireEvent.click(button);
+    expect(actions.revealPaneChatCodexThread).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["claude", "exact-session-unavailable", "claudeIdentityMissing"],
+    ["codex", "exact-session-unavailable", "codexIdentityMissing"],
+    ["codex", "codex-thread-record-missing", "codexRecordMissing"],
+    ["gemini", "exact-session-unavailable", "transcriptIdentityMissing"],
+    ["claude", "transcript-read-failed", "transcriptReadFailed"],
+  ] as const)("%s의 %s에는 %s 안내만 보이고 대화 ID 표시 버튼은 없다", async (provider, reason, message) => {
+    actions.getPaneChatSnapshot.mockResolvedValue(unavailable(reason, provider));
+    open();
+    expect(await screen.findByText(message)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "revealThread" })).toBeNull();
+  });
 });

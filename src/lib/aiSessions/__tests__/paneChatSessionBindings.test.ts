@@ -205,11 +205,12 @@ describe("passive process and reported session bindings", () => {
     expect(mocks.claude).not.toHaveBeenCalled();
   });
   it("validates the UTC process start marker on macOS", async () => {
-    mocks.execGit.mockResolvedValue(`${started}\nlinux\n`);
-    mocks.readFile.mockResolvedValue(JSON.stringify({ ...descriptor, procStart: started, pidDomain: "linux" }));
+    mocks.execGit.mockResolvedValue(`${started}\ndarwin\n`);
+    mocks.readFile.mockResolvedValue(JSON.stringify({ ...descriptor, procStart: started, pidDomain: "darwin" }));
     const registry = await import("../paneChatSessionBindings");
     expect(await registry.findPaneChatProcessSessionBinding(context, process)).toMatchObject({ sessionId: "session-a" });
     expect(mocks.execGit).toHaveBeenCalledWith(expect.stringContaining("LC_ALL=C TZ=UTC ps -o lstart="), null, expect.anything());
+    expect(mocks.execGit).toHaveBeenCalledWith(expect.stringContaining("uname -s"), null, expect.anything());
   });
   it("rereads the process session after clear or resume instead of caching the old ID", async () => {
     const registry = await import("../paneChatSessionBindings");

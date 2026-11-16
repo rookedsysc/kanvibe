@@ -120,3 +120,12 @@ export type PaneChatPushEvent =
 export interface PaneChatActionResult {
   success: true;
 }
+
+/**
+ * "대화 ID 표시" 버튼의 결과.
+ * revealed는 footer에 대화 ID가 보이는 상태이고, input-not-empty는 입력란이 비어 있지 않거나 작업 중이라 입력하지 않은 경우다.
+ * unsupported-version은 footer 배치를 확인하지 않은 Codex 버전, thread-not-found는 명령을 실행했지만 ID가 화면에 나타나지 않은 경우다.
+ */
+export interface PaneChatCodexThreadReveal {
+  outcome: "revealed" | "input-not-empty" | "unsupported-version" | "thread-not-found";
+}

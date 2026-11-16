@@ -121,6 +121,10 @@ class _PaneChatViewState extends ConsumerState<PaneChatView> {
                       'no-foreground-ai-cli' => '이 pane에서 실행 중인 AI CLI가 없습니다. 터미널에서 Claude 또는 Codex를 실행하세요.',
                       'process-inspection-unavailable' =>
                         '실행 중인 CLI를 확인할 수 없습니다. 다시 확인해 주세요.',
+                      'codex-thread-unconfirmed' => 'Codex가 공유 백그라운드 서버(데몬)로 실행되어 이 터미널의 대화를 확인할 수 없습니다. 데스크톱 채팅 화면에서 \'대화 ID 표시\'를 누르거나, 터미널에서 codex --no-daemon으로 다시 실행한 뒤 첫 메시지를 보내 주세요.',
+                      'codex-thread-input-busy' => 'Codex가 작업 중이거나 입력란이 비어 있지 않아 아직 연결하지 못했습니다. 작업이나 입력을 마치면 다시 확인합니다.',
+                      'transcript-read-failed' =>
+                        '대화 기록을 읽지 못했습니다. 다시 시도하거나 같은 터미널에서 계속해 주세요.',
                       _ => '현재 pane에 연결할 수 없습니다. 터미널 상태를 확인해 주세요.',
                     },
                     action: '터미널로 돌아가기',

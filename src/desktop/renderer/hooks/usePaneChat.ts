@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as actions from "@/desktop/renderer/actions/paneChat";
-import type { PaneChatActionResult, PaneChatKey, PaneChatSnapshot } from "@/desktop/shared/paneChat";
+import type { PaneChatActionResult, PaneChatCodexThreadReveal, PaneChatKey, PaneChatSnapshot } from "@/desktop/shared/paneChat";
 import { useIsWindowActive } from "./useIsWindowActive";
 import type { AggregatedAiMessage } from "@/lib/aiSessions/types";
 
@@ -121,6 +121,25 @@ export function usePaneChat(taskId: string, isVisible = true, paneId?: string) {
     return accepted;
   }
 
+  /** 대화를 연결하지 못한 Codex에서 사용자가 누른 "대화 ID 표시"를 실행한다. 아직 대상 토큰이 없으므로 pane 기준으로 서비스가 다시 확인한다 */
+  async function revealCodexThread(): Promise<PaneChatCodexThreadReveal["outcome"] | null> {
+    if (!isVisible || busy.current) return null;
+    const epoch = generation.current;
+    busy.current = true;
+    setIsBusy(true);
+    setActionError(null);
+    try {
+      return (await actions.revealPaneChatCodexThread(taskId, paneId)).outcome;
+    } catch (error) {
+      if (generation.current === epoch) setActionError(error instanceof Error ? error.message : "CLI action failed");
+      return null;
+    } finally {
+      busy.current = false;
+      setIsBusy(false);
+      if (generation.current === epoch) void refreshRef.current();
+    }
+  }
+
   const snapshot = result?.taskId === taskId && result.paneId === paneId ? result.snapshot : null;
   const usedRows = new Set<string>();
   const acknowledged: string[] = [];
@@ -151,6 +170,7 @@ export function usePaneChat(taskId: string, isVisible = true, paneId?: string) {
     isReady: isReady && result?.taskId === taskId && result.paneId === paneId,
     refresh: () => refreshRef.current(),
     send,
+    revealCodexThread,
     interrupt: () => run((token) => actions.interruptPaneChat(taskId, token)),
     openModelPicker: () => run((token) => actions.openPaneChatModelPicker(taskId, token)),
     sendKey: (key: PaneChatKey) => run((token) => actions.sendPaneChatKey(taskId, token, key)),
