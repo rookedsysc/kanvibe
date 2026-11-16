@@ -168,7 +168,8 @@ export async function findPaneChatProcessSessionBinding(context: AiSessionReader
       "  printf 'linux:%s:%s\\n' \"$(cat /etc/machine-id)\" \"$(readlink /proc/self/ns/pid)\"",
       "else",
       `  LC_ALL=C TZ=UTC ps -o lstart= -p ${process.pid}`,
-      "  printf 'linux\\n'",
+      // Claude는 /proc가 없는 macOS에서 pidDomain을 플랫폼 이름("darwin")으로 기록한다.
+      "  uname -s | tr '[:upper:]' '[:lower:]'",
       "fi",
     ].join("\n"), context.sshHost, { timeoutMs: PROCESS_PROBE_TIMEOUT_MS });
     const [processRecord, domain] = probe.trimEnd().split("\n");
