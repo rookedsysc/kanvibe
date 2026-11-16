@@ -183,12 +183,19 @@ bridge 경로의 session gate는 대화 I/O 전에 pane의 세션 식별을 별�
 
 | 경로 | 기존 비용·동작 | 변경 |
 | --- | --- | --- |
-| Codex 최초 조회 | `/statusline thread-id` 각 글자마다 화면·프로세스를 다시 확인하고 지연 후 전송 | 수동 조회에서 CLI 입력 제거. 이미 있는 footer, 검증된 process descriptor, hook, Herdr report, 열린 파일의 정확한 식별만 사용 |
+| Codex 최초 조회 | `/statusline thread-id` 각 글자마다 화면·프로세스를 다시 확인하고 지연 후 전송 | 수동 조회에서 CLI 입력 제거. 이미 있는 footer, 검증된 process descriptor, hook, Herdr report, 열린 파일의 정확한 식별만 사용. 식별이 없으면 사용자가 누르는 "대화 ID 표시" 버튼으로 명령을 붙여넣기 1회로 입력 |
+| 프로세스 조회 | 검증마다 전체 프로세스 표(`ps -wwaxo …args=`)를 읽음. 이 머신 1회 약 0.32초 | pane root의 tty에 붙은 프로세스만 조회(`ps -wwo … -t <tty>`). 같은 머신 1회 약 0.01초. tty가 없으면 아무것도 출력하지 않아 CLI 없음으로 판정 |
 | transcript·모델 조회 | transcript를 모두 읽은 뒤 모델 상태·catalog 조회 | 독립적인 파일 조회를 병렬 실행하고 마지막 대상 재검증 유지 |
 | 초기 레이아웃 | 응답 전 실제 터미널이 잠시 드러남 | 설정이나 저장된 모드가 채팅이면 canvas와 로딩 상태를 먼저 표시 |
 | 뒤늦은 CLI 시작 | unavailable 결과가 세 번이면 폴링 종료 | 세 번 뒤 5초 간격으로 재탐색하여 새 CLI 연결 복구 |
 | Claude 모델 선택 | 메타데이터 getter가 Codex API만 지원 | 정확한 대화 파일에서 조회. 첫 입력 전에는 현재 모델을 추정하지 않고 선택지와 미확인 상태만 제공 |
 
-Codex 공유 daemon에서는 TUI PID와 현재 thread를 연결하는 조회 계약을 확인하지 못했다. 설치된 `codex-cli 0.169.0`의 protocol 생성물과 Linux `/proc` 파일 서술자를 조사했으며 daemon은 여러 rollout을 동시에 소유했다. `tui-thread-reference-capabilities`의 빈 marker 파일에도 PID가 없다. 따라서 현재 디렉터리의 최신 대화나 단 하나의 loaded thread라는 이유로 대상을 채택하지 않는다. 기존 footer·hook·Herdr report가 없는 새 TUI는 정확한 식별이 제공될 때까지 전송을 허용하지 않는다. 향후 앱 소유 SDK 세션을 도입한다면 생성·재연결·승인·취소·종료 계약을 함께 설계해야 한다.
+Codex 공유 daemon에서는 TUI PID와 현재 thread를 연결하는 조회 계약을 확인하지 못했다. 설치된 `codex-cli 0.169.0`의 protocol 생성물과 Linux `/proc` 파일 서술자를 조사했으며 daemon은 여러 rollout을 동시에 소유했다. `tui-thread-reference-capabilities`의 빈 marker 파일에도 PID가 없다. 따라서 현재 디렉터리의 최신 대화나 단 하나의 loaded thread라는 이유로 대상을 채택하지 않는다. 대화를 추측해 전송하지 않는다는 원칙은 유지하고, 연결 순서를 다음처럼 정했다. 데몬 사용 여부를 감지하는 코드는 두지 않는다.
+
+1. 화면 footer에 대화 ID가 보이면 그 ID를 쓴다.
+2. footer가 없으면 hook·프로세스 바인딩을 쓴다. `codex --no-daemon`으로 실행해 첫 프롬프트를 보낸 뒤라면 hook이 TUI 아래에서 돌아 여기서 연결된다(앱 실행 상태의 종단 확인은 하지 않았다).
+3. 둘 다 없으면 채팅 화면에 "대화 ID 표시" 버튼을 둔다. 사용자가 누를 때만 `/statusline thread-id`를 붙여넣기 1회와 Enter로 입력해 footer에 ID를 띄운다. 폴링 중 자동 입력은 하지 않는다.
+
+버튼은 footer 배치를 확인한 버전(0.169.0), Codex 고유의 빈 입력란(dim 안내문), 태스크 입력 큐, 붙여넣기 전후와 Enter 직전의 대상 재확인을 모두 통과할 때만 입력한다. 붙여넣은 명령이 입력란에 그대로 보이지 않으면 Enter를 보내지 않는다. 0.169.0의 실제 tmux pane에서 붙여넣은 `/statusline thread-id`가 명령으로 실행되어 footer가 대화 ID로 바뀌고, `~/.codex/config.toml`은 바뀌지 않는 것을 확인했다. 이 입력은 그 Codex 세션의 상태줄 표시를 바꾸므로 `CLAUDE.md`의 Runtime Environment Safety에 예외로 기록했다. 향후 앱 소유 SDK 세션을 도입한다면 생성·재연결·승인·취소·종료 계약을 함께 설계해야 한다.
 
 검증은 service의 CLI 무입력, 동일 process의 대화 전환, stale token, draft 보존, 동시 transcript·모델 조회와 renderer의 선행 canvas·늦은 CLI 재탐색을 대상으로 한다. source 분석상의 호출 감소를 실행 시간 개선 수치로 바꿔 주장하지 않는다.
