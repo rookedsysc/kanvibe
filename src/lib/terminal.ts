@@ -1,11 +1,11 @@
 import path from "path";
-import { ensureHerdrRemoteMachine, ensureHerdrSession, getHerdrClientSocketPath, readHerdrClientTabBarPosition } from "@/lib/herdr";
+import { ensureHerdrRemoteMachine, ensureHerdrSession, getHerdrClientSocketPath, handoffHerdrRemoteServer, HerdrServerHandoffRequiredError, readHerdrClientTabBarPosition } from "@/lib/herdr";
 import { existsSync } from "fs";
 import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { randomUUID } from "crypto";
 import { createHerdrClientProxy } from "@/lib/herdrClientProxy";
-import { broadcastHerdrMachineRegistrationFailed } from "@/lib/boardNotifier";
+import { broadcastHerdrMachineRegistrationFailed, broadcastHerdrServerHandoffRequired } from "@/lib/boardNotifier";
 import { getRemoteHostConnection } from "@/lib/remoteHostConnection";
 import type { RemoteHostPty } from "@/lib/remoteHostPtyConnection";
 import { SessionType } from "@/entities/KanbanTask";
@@ -33,6 +33,7 @@ import {
 } from "@/lib/worktree";
 import { createLocalShellEnvironment } from "@/lib/shellEnvironment";
 import type { TerminalTab } from "@/desktop/shared/terminalTabs";
+import { HERDR_SERVER_REPLACED_CLOSE_REASON } from "@/desktop/shared/terminalConnection";
 
 /**
  * 활성 터미널 세션을 관리하는 레지스트리.
@@ -51,6 +52,10 @@ interface TerminalEntry {
   /** terminal 세션에만 있다. 멀티플렉서 세션은 멀티플렉서가 화면을 들고 있다 */
   screen?: TerminalScreen;
   herdrClient?: Awaited<ReturnType<typeof prepareHerdrTaskClient>>;
+  /** 원격 Herdr 세션에만 있다. 서버를 교체할 때 그 서버에 붙은 화면을 찾는 데 쓴다 */
+  sshHost?: string;
+  /** 서버 교체로 닫는 화면에 보낼 사유. 있으면 화면은 오류 대신 다시 연결한다 */
+  closeReason?: string;
 }
 
 /**
@@ -64,6 +69,10 @@ interface TerminalScreen {
 }
 
 const activeTerminals = new Map<string, TerminalEntry>();
+/** WebSocket 규격의 "서버 재시작" 닫힘 코드. 서버 교체로 닫는 화면에 사유와 함께 보낸다 */
+const SERVICE_RESTART_CLOSE_CODE = 1012;
+/** 원격 Herdr 서버 교체가 끝나기를 기다리는 약속. 그 사이 다시 여는 화면은 교체가 끝난 뒤 새 서버에 붙는다 */
+const herdrServerHandoffs = new Map<string, Promise<void>>();
 
 /** 크기를 받지 못한 PTY가 쓰는 기본 크기. 미러가 아직 없는 PTY의 크기를 미리 알릴 때도 같은 값을 쓴다 */
 const DEFAULT_TERMINAL_COLS = 120;
@@ -316,7 +325,8 @@ function destroyTerminal(terminalKey: string, triggerLabel?: string, closeOwnedS
 
   for (const client of entry.clients) {
     if (client.readyState === client.OPEN) {
-      client.close();
+      if (entry.closeReason) client.close(SERVICE_RESTART_CLOSE_CODE, entry.closeReason);
+      else client.close();
     }
   }
   entry.clients.clear();
@@ -374,8 +384,8 @@ function registerTerminalEntry(
     if (activeTerminals.get(terminalKey) !== entry) return;
     debugLog(`${debugLabel} PTY onExit`, { terminalKey, exitCode, signal });
     destroyTerminal(terminalKey, `${debugLabel}-pty-exit`);
-    /** 셸이 스스로 끝난 탭은 목록에서도 사라져야 사용자가 죽은 탭을 클릭하지 않는다 */
-    if (entry.tabId && !("detached" in status && status.detached)) {
+    /** 셸이 스스로 끝난 탭은 목록에서도 사라져야 사용자가 죽은 탭을 클릭하지 않는다. 서버 교체로 끊긴 탭은 다시 연결되므로 남긴다 */
+    if (entry.tabId && !entry.closeReason && !("detached" in status && status.detached)) {
       removeClosedTab(entry.taskId, entry.tabId);
     }
   });
@@ -909,6 +919,52 @@ export async function attachRemoteSession(
   );
 }
 
+function buildHerdrServerKey(sshHost: string, herdrSession: string): string {
+  return JSON.stringify([sshHost, herdrSession]);
+}
+
+/**
+ * 원격 Herdr 서버를 로컬 Herdr의 machine으로 등록한다. 터미널 연결을 막지 않도록 백그라운드에서 돈다.
+ * 서버가 이전 방식으로 떠 있으면 교체 여부를 사용자에게 묻도록 화면에 알리고, 그 밖의 실패는 원인과 함께 알린다.
+ */
+async function registerHerdrRemoteMachine(herdrSession: string, sshHost: string): Promise<void> {
+  try {
+    await ensureHerdrRemoteMachine(herdrSession, sshHost);
+  } catch (error) {
+    if (error instanceof HerdrServerHandoffRequiredError) {
+      broadcastHerdrServerHandoffRequired({ sshHost, herdrSession });
+      return;
+    }
+    console.warn(`[kanvibe] Herdr machine 등록 실패 (${sshHost}/${herdrSession}):`, error);
+    broadcastHerdrMachineRegistrationFailed({ sshHost, herdrSession, reason: readHerdrMachineFailureReason(error) });
+  }
+}
+
+/**
+ * 사용자가 승인한 원격 Herdr 서버 교체를 실행한다. pane 프로세스는 Herdr live handoff로 유지된다.
+ * 교체 중에는 그 서버에 붙은 Herdr client가 끊기므로, 붙어 있던 화면은 다시 연결하라는 사유로 닫고 새 연결은 교체가 끝날 때까지 기다리게 한다.
+ * 교체가 끝나면 machine 등록을 이어서 진행한다.
+ */
+export function replaceHerdrRemoteServer(sshHost: string, herdrSession: string): Promise<void> {
+  const serverKey = buildHerdrServerKey(sshHost, herdrSession);
+  const running = herdrServerHandoffs.get(serverKey);
+  if (running) return running.catch(() => {});
+  const connectedTerminalKeys = [...activeTerminals].filter(([, entry]) => entry.sshHost === sshHost
+    && parseHerdrSessionTarget(entry.sessionName).serverName === herdrSession).map(([terminalKey]) => terminalKey);
+  for (const terminalKey of connectedTerminalKeys) {
+    activeTerminals.get(terminalKey)!.closeReason = HERDR_SERVER_REPLACED_CLOSE_REASON;
+  }
+  const handoff = handoffHerdrRemoteServer(herdrSession, sshHost).finally(() => {
+    for (const terminalKey of connectedTerminalKeys) destroyTerminal(terminalKey, "herdr-server-replaced");
+    herdrServerHandoffs.delete(serverKey);
+  });
+  herdrServerHandoffs.set(serverKey, handoff);
+  return handoff.then(() => registerHerdrRemoteMachine(herdrSession, sshHost), (error: unknown) => {
+    console.warn(`[kanvibe] Herdr 서버 교체 실패 (${sshHost}/${herdrSession}):`, error);
+    broadcastHerdrMachineRegistrationFailed({ sshHost, herdrSession, reason: readHerdrMachineFailureReason(error) });
+  });
+}
+
 /** Herdr CLI는 거부 사유를 stderr 마지막 줄에 쓰므로 그 줄을 사용자에게 보여 주고, stderr가 없으면 오류 메시지로 대신한다 */
 function readHerdrMachineFailureReason(error: unknown): string {
   const stderr = String((error as { stderr?: unknown } | null)?.stderr ?? "");
@@ -949,13 +1005,11 @@ async function spawnRemoteSession(
     }
   }
   if (sessionType === SessionType.HERDR) {
+    const pendingServerHandoff = herdrServerHandoffs.get(buildHerdrServerKey(sshHost, parseHerdrSessionTarget(sessionName).serverName));
+    if (pendingServerHandoff) await pendingServerHandoff.catch(() => {});
     herdrWorkspaceId = await ensureHerdrSession(sessionName, worktreePath || "~", tmuxPaneLayout, sshHost);
     if (ws.readyState !== ws.OPEN) return;
-    void ensureHerdrRemoteMachine(sessionName, sshHost).catch((error: unknown) => {
-      const herdrSession = parseHerdrSessionTarget(sessionName).serverName;
-      console.warn(`[kanvibe] Herdr machine 등록 실패 (${sshHost}/${herdrSession}):`, error);
-      broadcastHerdrMachineRegistrationFailed({ sshHost, herdrSession, reason: readHerdrMachineFailureReason(error) });
-    });
+    void registerHerdrRemoteMachine(parseHerdrSessionTarget(sessionName).serverName, sshHost);
   }
 
 
@@ -1020,7 +1074,10 @@ async function spawnRemoteSession(
 
   registerTerminalEntry(
     terminalKey,
-    { pty: ptyProcess, clients: new Set([ws]), sessionType, sessionName, taskId, tabId, herdrClient },
+    {
+      pty: ptyProcess, clients: new Set([ws]), sessionType, sessionName, taskId, tabId, herdrClient,
+      ...(sessionType === SessionType.HERDR ? { sshHost } : {}),
+    },
     ws,
     "Remote",
   );

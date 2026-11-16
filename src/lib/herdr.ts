@@ -419,12 +419,38 @@ export function ensureHerdrRemoteMachine(sessionName: string, sshHost: string): 
       buildHerdrCommand(serverName, ["machine", "list", "--json"]), null, { timeoutMs: HERDR_COMMAND_TIMEOUT_MS },
     ));
     if (machines.some((machine) => machine.target === sshHost && machine.session === serverName)) return;
+    if (await isHerdrRemoteServerHandoffRequired(serverName, sshHost)) throw new HerdrServerHandoffRequiredError(sshHost, serverName);
     await execGit(
       `${buildHerdrCommand(serverName, ["machine", "add", sshHost, "--remote-session", serverName])} </dev/null`,
       null, { timeoutMs: HERDR_START_TIMEOUT_MS },
     );
   });
   return remoteMachineRegistration;
+}
+
+/** 원격 서버가 이전 KanVibe 방식으로 떠 있어 machine 등록 전에 서버를 교체해야 한다 */
+export class HerdrServerHandoffRequiredError extends Error {
+  constructor(readonly sshHost: string, readonly herdrSession: string) {
+    super(`${sshHost}의 Herdr 서버(${herdrSession})를 교체해야 machine으로 등록할 수 있습니다.`);
+    this.name = "HerdrServerHandoffRequiredError";
+  }
+}
+
+/**
+ * 이전 KanVibe가 nohup으로 띄운 서버는 세션 리더가 아니어서 Herdr가 machine 등록을 거부한다.
+ * 그런 서버라도 live handoff를 지원하면 pane 프로세스를 살린 채 Herdr가 직접 세션 리더로 다시 띄울 수 있으므로 교체 대상으로 본다.
+ * live handoff를 지원하지 않는 서버는 교체할 수 없으니 등록 실패로 남긴다.
+ */
+async function isHerdrRemoteServerHandoffRequired(serverName: string, sshHost: string): Promise<boolean> {
+  const status: { running?: boolean; capabilities?: { detached_server_daemon?: boolean; live_handoff?: boolean } | null } = JSON.parse(
+    await execGit(buildHerdrCommand(serverName, ["status", "server", "--json"]), sshHost, { timeoutMs: HERDR_COMMAND_TIMEOUT_MS }),
+  );
+  return status.running === true && status.capabilities?.detached_server_daemon === false && status.capabilities.live_handoff === true;
+}
+
+/** 원격 서버의 pane 프로세스를 새 서버로 넘긴다. 연결된 Herdr client는 이때 끊기므로 호출자가 다시 연결해야 한다 */
+export async function handoffHerdrRemoteServer(herdrSession: string, sshHost: string): Promise<void> {
+  await execGit(buildHerdrCommand(herdrSession, ["server", "live-handoff"]), sshHost, { timeoutMs: HERDR_START_TIMEOUT_MS });
 }
 
 /**

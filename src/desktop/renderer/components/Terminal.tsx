@@ -6,6 +6,7 @@ import { createTerminalOptions, installMacShiftSelectionPatch } from "@/lib/term
 import { installOsc52ClipboardHandler } from "@/lib/terminalClipboard";
 import { REQUEST_ACTIVE_TERMINAL_FOCUS_EVENT, hasTerminalFocusBlocker } from "@/desktop/renderer/utils/terminalFocus";
 import { TerminalPaneChatLayer, type TerminalChatGrid } from "./TerminalPaneChatLayer";
+import { HERDR_SERVER_REPLACED_CLOSE_REASON } from "@/desktop/shared/terminalConnection";
 
 interface TerminalProps {
   taskId: string;
@@ -283,6 +284,11 @@ export default function Terminal({ taskId, tabId = null, isHidden = false, isRem
       cleanups.push(unsubscribeData);
 
       const unsubscribeClose = window.kanvibeDesktop!.onTerminalClose((event: { taskId: string; tabId: string | null; reason: string | null }) => {
+        // 원격 Herdr 서버 교체로 닫힌 화면은 작업이 살아 있으므로 오류 대신 새 서버에 다시 연결한다.
+        if (isThisTerminal(event) && event.reason === HERDR_SERVER_REPLACED_CLOSE_REASON) {
+          setConnectionAttempt((attempt) => attempt + 1);
+          return;
+        }
         // 실패한 open도 close를 보낼 수 있으므로 연결이 끝나기 전에는 최종 오류를 그리지 않는다.
         if (isThisTerminal(event) && isTerminalOpen) {
           terminal.writeln(`\r\n\x1b[31m${event.reason || "연결이 종료되었습니다."}\x1b[0m`);

@@ -32,7 +32,8 @@
       "localTarget": "当前本机环境",
       "remoteTarget": "{host}",
       "installPrompt": "{target} 上未安装 {tool}。现在安装吗？",
-      "installFailed": "安装 {tool} 失败：{error}"
+      "installFailed": "安装 {tool} 失败：{error}",
+      "herdrServerHandoffPrompt": "{host} 上的 herdr 服务器以旧的 KanVibe 方式运行，无法作为 machine 添加到本地 herdr。要使用 herdr live handoff（实验功能）替换服务器吗？正在运行的 pane 和任务会保留，此主机上打开的终端会短暂断开后自动重新连接。"
     },
     "doneAlert": {
       "title": "移动到完成",

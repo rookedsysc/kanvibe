@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Terminal from "../Terminal";
+import { HERDR_SERVER_REPLACED_CLOSE_REASON } from "@/desktop/shared/terminalConnection";
 
 function createDeferred<T>() {
   let resolve!: (value: T) => void;
@@ -755,6 +756,23 @@ describe("Desktop Terminal", () => {
     expect(event.defaultPrevented).toBe(false);
     expect(mockReadClipboardImage).not.toHaveBeenCalled();
   });
+  it("원격 Herdr 서버 교체로 닫히면 오류를 그리지 않고 새 서버에 다시 연결한다", async () => {
+    // Given: 연결된 터미널
+    let closeListener!: (event: { taskId: string; tabId: string | null; reason: string | null }) => void;
+    mockOnTerminalClose.mockImplementation((listener) => { closeListener = listener; return vi.fn(); });
+    render(<Terminal taskId="handoff" />);
+    await waitFor(() => expect(mockOpenTerminal).toHaveBeenCalledTimes(1));
+    const replacedTerminal = latestXtermInstance!;
+
+    // When: main이 서버 교체 사유로 연결을 닫는다
+    await act(async () => { closeListener({ taskId: "handoff", tabId: null, reason: HERDR_SERVER_REPLACED_CLOSE_REASON }); });
+
+    // Then
+    await waitFor(() => expect(mockOpenTerminal).toHaveBeenCalledTimes(2));
+    expect(replacedTerminal.writeln).not.toHaveBeenCalled();
+    expect(replacedTerminal.dispose).toHaveBeenCalledTimes(1);
+  });
+
   it("disposes all resources when unmounted while openTerminal is pending", async () => {
     const pending = createDeferred<{ ok: boolean }>();
     mockOpenTerminal.mockReturnValue(pending.promise);

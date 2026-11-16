@@ -32,7 +32,8 @@
       "localTarget": "현재 로컬 환경",
       "remoteTarget": "{host}",
       "installPrompt": "{target}에 {tool}이(가) 설치되어 있지 않습니다. 지금 설치하시겠습니까?",
-      "installFailed": "{tool} 설치에 실패했습니다: {error}"
+      "installFailed": "{tool} 설치에 실패했습니다: {error}",
+      "herdrServerHandoffPrompt": "{host}의 herdr 서버가 이전 KanVibe 방식으로 실행 중이라 로컬 herdr에 machine으로 등록할 수 없습니다. herdr live handoff(실험 기능)로 서버를 교체할까요? 실행 중인 pane과 작업은 그대로 유지되고, 이 호스트에 열린 터미널은 잠시 끊겼다가 자동으로 다시 연결됩니다."
     },
     "doneAlert": {
       "title": "Done 이동 경고",
