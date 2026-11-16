@@ -86,6 +86,7 @@ describe("current pane chat", () => {
     await screen.findByText("Exact pane response");
     expect(screen.queryByText("Project instructions")).toBeNull();
     await waitFor(() => expect((screen.getByRole("checkbox", { name: "showInstructions" }) as HTMLInputElement).disabled).toBe(false));
+    expect(screen.getByRole("checkbox", { name: "showInstructions" }).compareDocumentPosition(screen.getByRole("button", { name: "history" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     fireEvent.click(screen.getByRole("checkbox", { name: "showInstructions" }));
     await screen.findByText("Project instructions");
     expect(setAppSetting).toHaveBeenCalledWith("pane_chat_show_instructions", "true");
@@ -99,10 +100,21 @@ describe("current pane chat", () => {
     const view = open();
     await screen.findByText("Exact pane response");
     fireEvent.click(screen.getByRole("button", { name: "model" }));
-    const select = await screen.findByRole("combobox", { name: "model" });
-    await waitFor(() => expect((select as HTMLSelectElement).disabled).toBe(false));
-    fireEvent.change(select, { target: { value: "b" } });
+    const option = await screen.findByRole("menuitemradio", { name: "B" });
+    await waitFor(() => expect((option as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(option);
     await waitFor(() => expect(actions.changePaneChatModelSetting).toHaveBeenCalledWith("task-1", "process-a", { kind: "model", model: "b" }));
+    expect(view.onTerminal).not.toHaveBeenCalled();
+    expect(actions.openPaneChatModelPicker).not.toHaveBeenCalled();
+  });
+  it("Claude metadata opens the model popover without native API support or terminal switching", async () => {
+    const modelSettings = { model: "sonnet", effort: "high", isFast: false, models: [{ id: "sonnet", label: "Sonnet", supportsFast: false, effortLevels: [] }] };
+    actions.getPaneChatSnapshot.mockResolvedValue({ ...snapshot(), provider: "claude", modelSettings, modelPicker: { supported: true, mode: "native-cli", supportsApi: false } });
+    actions.getPaneChatModelSettings.mockResolvedValue(modelSettings);
+    const view = open();
+    await screen.findByText("Exact pane response");
+    fireEvent.click(screen.getByRole("button", { name: /Sonnet/ }));
+    await screen.findByRole("menuitemradio", { name: "Sonnet" });
     expect(view.onTerminal).not.toHaveBeenCalled();
     expect(actions.openPaneChatModelPicker).not.toHaveBeenCalled();
   });
@@ -265,14 +277,16 @@ it("shows recoverable unavailable without a permanent CLI controller", async () 
 });
 
 
-it("bounds unavailable polling and allows an explicit retry", async () => {
+it("backs off unavailable polling and allows an immediate explicit retry", async () => {
   vi.useFakeTimers();
   actions.getPaneChatSnapshot.mockResolvedValue({ ...snapshot(), canSend: false, targetToken: null, transcript: { status: "unavailable", reason: "exact-session-unavailable", sessionId: null, messages: [], nextCursor: null } });
   await act(async () => { open(); });
-  await act(async () => { await vi.advanceTimersByTimeAsync(10000); });
+  await act(async () => { await vi.advanceTimersByTimeAsync(7000); });
   expect(actions.getPaneChatSnapshot).toHaveBeenCalledTimes(3);
-  await act(async () => fireEvent.click(screen.getByRole("button", { name: "retry" })));
+  await act(async () => { await vi.advanceTimersByTimeAsync(3000); });
   expect(actions.getPaneChatSnapshot).toHaveBeenCalledTimes(4);
+  await act(async () => fireEvent.click(screen.getByRole("button", { name: "retry" })));
+  expect(actions.getPaneChatSnapshot).toHaveBeenCalledTimes(5);
 });
 
 it("터미널 입력 대기는 정확히 안내하고 세 번 이후에도 확인해 입력이 끝나면 자동으로 연결한다", async () => {

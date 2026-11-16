@@ -468,8 +468,8 @@ describe("listHerdrTaskPaneTabIds", () => {
     execGit.mockImplementation(async (command: string) => {
       if (command === commandFor(["pane", "list"])) {
         return result({ panes: [
-          { pane_id: "w1:p1", tab_id: "w1:t1", scroll },
-          { pane_id: "w1:p2", tab_id: "w1:t2", scroll },
+          { pane_id: "w1:p1", tab_id: "w1:t1", agent: "claude", agent_session_id: "exact-session", agent_session_path: "/untrusted/never-read.jsonl", scroll },
+          { pane_id: "w1:p2", tab_id: "w1:t2", agent: "codex", agent_session_id: "../unsafe", scroll },
           { pane_id: "w1:p3", tab_id: "w1:t2", restore_error: "cwd is gone", scroll },
           { pane_id: "w1:p4", tab_id: "w1:t9", scroll },
         ] });
@@ -485,7 +485,7 @@ describe("listHerdrTaskPaneTabIds", () => {
 
     // 복원에 실패한 pane과 목록에 없는 탭의 pane은 task가 쓸 수 없으므로 제외한다.
     expect(await listHerdrTaskPaneTabIds("feature", "remote")).toEqual([
-      { paneId: "w1:p1", tabId: "w1:t1" },
+      { paneId: "w1:p1", tabId: "w1:t1", agentSession: { provider: "claude", sessionId: "exact-session" } },
       { paneId: "w1:p2", tabId: "w1:t2" },
     ]);
     expect(execGit).toHaveBeenCalledTimes(2);

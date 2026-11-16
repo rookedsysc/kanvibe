@@ -2,21 +2,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SessionType } from "@/entities/KanbanTask";
 import type { CodexThreadInput } from "@/lib/aiSessions/codexThreadInput";
 
-const mocks = vi.hoisted(() => ({ surface: vi.fn(), layout: vi.fn(), exec: vi.fn(), write: vi.fn(), apiInput: vi.fn(), binding: vi.fn(), claude: vi.fn(), codex: vi.fn(), rollout: vi.fn(), emptyThread: vi.fn(), focusHerdr: vi.fn(), tabs: vi.fn(), catalog: vi.fn() }));
+const mocks = vi.hoisted(() => ({ surface: vi.fn(), layout: vi.fn(), exec: vi.fn(), write: vi.fn(), apiInput: vi.fn(), binding: vi.fn(), processBinding: vi.fn().mockResolvedValue(null), reportedBinding: vi.fn().mockResolvedValue(null), claude: vi.fn(), codex: vi.fn(), rollout: vi.fn(), emptyThread: vi.fn(), focusHerdr: vi.fn(), tabs: vi.fn(), catalog: vi.fn() }));
 const modelMocks = vi.hoisted(() => ({ tail: vi.fn(), readTextFile: vi.fn() }));
 vi.mock("../paneChatSurface", () => ({ readPaneChatSurface: mocks.surface, readPaneChatLayout: mocks.layout }));
 vi.mock("@/lib/gitOperations", () => ({ execGit: mocks.exec }));
 vi.mock("@/lib/terminal", () => ({ focusHerdrTaskPane: mocks.focusHerdr, listLocalTerminalTabs: mocks.tabs }));
 vi.mock("../mobileBridgeService", () => ({ writeToPane: mocks.write }));
 vi.mock("../paneChatComposerCatalog", () => ({ readPaneChatSuggestions: mocks.catalog }));
-vi.mock("@/lib/aiSessions/paneChatSessionBindings", () => ({ findPaneChatSessionBinding: mocks.binding }));
+vi.mock("@/lib/aiSessions/paneChatSessionBindings", () => ({ findPaneChatSessionBinding: mocks.binding, findPaneChatProcessSessionBinding: mocks.processBinding, findPaneChatReportedSessionBinding: mocks.reportedBinding }));
 vi.mock("@/lib/aiSessions/readClaudeSessions", () => ({ readClaudeSessionDetail: mocks.claude }));
 vi.mock("@/lib/aiSessions/readCodexSessions", () => ({ readCodexSessionDetail: mocks.codex, findCodexMainThreadRollout: mocks.rollout }));
 vi.mock("@/lib/aiSessions/codexThreadMetadata", () => ({ readCodexEmptyThread: mocks.emptyThread }));
 vi.mock("@/lib/aiSessions/codexThreadInput", () => ({ sendCodexThreadInput: mocks.apiInput }));
 vi.mock("@/lib/aiSessions/shared", async (importOriginal) => ({ ...await importOriginal<typeof import("@/lib/aiSessions/shared")>(), readJsonLinesTail: modelMocks.tail }));
 vi.mock("@/lib/hostFileAccess", async (importOriginal) => ({ ...await importOriginal<typeof import("@/lib/hostFileAccess")>(), readTextFile: modelMocks.readTextFile }));
-import { focusPaneChatTerminal, getPaneChatLayout, getPaneChatSnapshot, getPaneChatTranscriptPage, getPaneChatSuggestions, stagePaneChatAttachment, removePaneChatAttachment, sendPaneChatPrompt, interruptPaneChat, openPaneChatModelPicker, changePaneChatModelSetting, sendPaneChatKey } from "../paneChatService";
+import { focusPaneChatTerminal, getPaneChatLayout, getPaneChatSnapshot, getPaneChatModelSettings, getPaneChatTranscriptPage, getPaneChatSuggestions, stagePaneChatAttachment, removePaneChatAttachment, sendPaneChatPrompt, interruptPaneChat, openPaneChatModelPicker, changePaneChatModelSetting, sendPaneChatKey } from "../paneChatService";
 
 const processTable = (start = "Thu Nov 12 19:00:00 2026") => `100 1 100 200 ttys010 Thu Nov 12 18:00:00 2026 /bin/zsh /bin/zsh\n200 100 200 200 ttys010 ${start} /usr/bin/python3 python3 /tmp/codex\n300 100 300 200 ttys010 Thu Nov 12 18:00:00 2026 /tmp/claude /tmp/claude`;
 const surface = { task: { id: "task-chat", sessionType: SessionType.TMUX, sessionName: "kv-task", sshHost: null, worktreePath: "/repo", project: { repoPath: "/repo" } }, paneId: "%3", rootPid: 100, screen: "CLI screen", inputLine: "› ", cursorColumn: 2 };
@@ -24,6 +24,8 @@ const surface = { task: { id: "task-chat", sessionType: SessionType.TMUX, sessio
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.emptyThread.mockResolvedValue(null);
+  mocks.processBinding.mockResolvedValue(null);
+  mocks.reportedBinding.mockResolvedValue(null);
   mocks.surface.mockResolvedValue(surface);
   mocks.exec.mockImplementation(async (command: string) => { if (command.startsWith("ps ")) return processTable(); throw new Error("No open transcript"); });
   mocks.binding.mockResolvedValue({ sessionId: "exact-session", sourceRef: "/allowed/exact.jsonl" });
@@ -261,6 +263,61 @@ describe("pane chat exact CLI control", () => {
     expect(modelMocks.tail).toHaveBeenCalledWith("/allowed/exact.jsonl", 200, null);
   });
 
+  it("reads the Claude picker metadata without opening a CLI picker", async () => {
+    mocks.exec.mockResolvedValue(processTable().replace("/usr/bin/python3 python3 /tmp/codex", "/tmp/claude /tmp/claude"));
+    modelMocks.tail.mockResolvedValue([{ type: "assistant", message: { model: "claude-sonnet-4-6" } }]);
+    const target = await getPaneChatSnapshot("task-chat", "%3");
+    expect(target.modelPicker.supportsApi).toBe(false);
+    expect(target.composer?.canSendWhileBusy).toBe(false);
+    expect(await getPaneChatModelSettings("task-chat", target.targetToken!)).toMatchObject({ model: "sonnet", models: expect.arrayContaining([expect.objectContaining({ id: "sonnet" })]) });
+    expect(mocks.write).not.toHaveBeenCalled();
+  });
+
+  it("reads transcript and model metadata concurrently", async () => {
+    let release!: () => void;
+    let started!: () => void;
+    const transcriptStarted = new Promise<void>((resolve) => { started = resolve; });
+    const original = mocks.codex.getMockImplementation()!;
+    mocks.codex.mockImplementationOnce(async (...args: unknown[]) => {
+      started();
+      await new Promise<void>((resolve) => { release = resolve; });
+      return original(...args);
+    });
+    const reading = getPaneChatSnapshot("task-chat", "%3");
+    await transcriptStarted;
+    expect(modelMocks.tail).toHaveBeenCalled();
+    release();
+    expect((await reading).transcript.status).toBe("available");
+  });
+
+  it("loads an empty Claude descriptor session before its first transcript exists", async () => {
+    mocks.exec.mockResolvedValue(processTable().replace("/usr/bin/python3 python3 /tmp/codex", "/tmp/claude /tmp/claude"));
+    mocks.processBinding.mockResolvedValue({ sessionId: "empty-claude", sourceRef: "/allowed/not-created-yet.jsonl", pending: true });
+    const target = await getPaneChatSnapshot("task-chat", "%3");
+    expect(target).toMatchObject({ canSend: true, transcript: { status: "available", sessionId: "empty-claude", messages: [] }, modelSettings: { model: null, models: expect.arrayContaining([expect.objectContaining({ id: "sonnet" })]) } });
+    expect(await getPaneChatModelSettings("task-chat", target.targetToken!)).toMatchObject({ model: null });
+    expect(mocks.claude).not.toHaveBeenCalled();
+    expect(mocks.write).not.toHaveBeenCalled();
+  });
+
+  it("uses exact Herdr session reports without a footer or CLI commands", async () => {
+    mocks.surface.mockResolvedValue({ ...surface, agentSession: { provider: "codex", sessionId: "reported" } });
+    mocks.binding.mockResolvedValue(null);
+    mocks.reportedBinding.mockResolvedValue({ sessionId: "reported", sourceRef: "/allowed/reported.jsonl" });
+    mocks.codex.mockResolvedValue({ sessionId: "reported", provider: "codex", messages: [], nextCursor: null });
+    expect((await getPaneChatSnapshot("task-chat", "%3")).transcript.sessionId).toBe("reported");
+    expect(mocks.reportedBinding).toHaveBeenCalledWith(expect.objectContaining({ worktreePath: "/repo" }), "codex", "reported");
+    expect(mocks.write).not.toHaveBeenCalled();
+  });
+
+  it("uses the current process descriptor ahead of an older hook session", async () => {
+    mocks.processBinding.mockResolvedValue({ sessionId: "process-session", sourceRef: "/allowed/process.jsonl" });
+    mocks.codex.mockResolvedValue({ sessionId: "process-session", provider: "codex", messages: [], nextCursor: null });
+    expect((await getPaneChatSnapshot("task-chat", "%3")).transcript.sessionId).toBe("process-session");
+    expect(mocks.binding).not.toHaveBeenCalled();
+    expect(mocks.write).not.toHaveBeenCalled();
+  });
+
   it("omits model settings when the transcript tail cannot be read", async () => {
     mocks.binding.mockResolvedValue({ sessionId: "exact-session", sourceRef: "/allowed/exact.jsonl" });
     mocks.codex.mockResolvedValue({ sessionId: "exact-session", provider: "codex", messages: [], nextCursor: null });
@@ -394,7 +451,6 @@ it("does not share a conversation draft key across hosts with the same session i
 });
 
 
-const FOOTER_COMMAND = "/statusline thread-id";
 const THREAD_X = "0190aaaa-0000-7000-8000-00000000000a";
 const THREAD_Y = "0190bbbb-0000-7000-8000-00000000000b";
 const THREAD_Z = "0190cccc-0000-7000-8000-00000000000c";
@@ -412,7 +468,7 @@ class FakeCodexPane {
   readonly threadsShowingId = new Set<string>();
   readonly submissions: { threadId: string; text: string }[] = [];
   readonly commands: string[] = [];
-  ignoresFooterCommand = false;
+  showFooter = true;
   initialFooter = "  gpt-sol high · ~/repo";
   /** 사용자가 여러 줄 입력의 첫 줄로 커서를 올려 둔 상태 */
   isCursorOnFirstComposerRow = false;
@@ -442,7 +498,6 @@ class FakeCodexPane {
     this.composer = "";
     if (!text.startsWith("/")) { this.submissions.push({ threadId: this.threadId, text }); return; }
     this.commands.push(text);
-    if (text.startsWith("/statusline ") && text.split(" ").includes("thread-id") && !this.ignoresFooterCommand) this.threadsShowingId.add(this.threadId);
   }
 
   surface(task: object) {
@@ -451,7 +506,7 @@ class FakeCodexPane {
     const commandPopup = /^\/\S*$/.test(this.composer) ? ["› /model  choose what model and reasoning effort to use", ""] : [];
     const rows = ["  >_ OpenAI Codex (v0.169.0)", "", ...commandPopup, `› ${firstLine}`, ...moreLines.map((line) => line ? `  ${line}` : "")];
     const cursorRow = this.isCursorOnFirstComposerRow ? rows.length - 1 - moreLines.length : rows.length - 1;
-    const footer = this.threadsShowingId.has(this.threadId) ? `  ${this.threadId}` : this.initialFooter;
+    const footer = (this.showFooter || this.threadsShowingId.has(this.threadId)) ? `  ${this.threadId}` : this.initialFooter;
     rows.push("", ...footer.split("\n"), ...(this.composer ? [] : ["  ← for agents · ? for shortcuts"]));
     return { observation: ++codexObservationSequence, task, paneId: this.paneId, rootPid: this.rootPid, screen: rows.join("\n"), inputLine: rows[cursorRow], cursorColumn: this.composer ? rows[cursorRow].length : 2, viewportLines: rows, cursorRow, viewportColumns: 160, inputIsPlaceholder: !this.composer };
   }
@@ -515,26 +570,35 @@ describe("Codex displayed-thread footer binding", () => {
     await expect(settle(getPaneChatTranscriptPage(taskId, bound.targetToken!, "200"))).rejects.toMatchObject({ name: "PaneChatTargetChangedError" });
   });
 
-  it("types the session-only thread-id footer command into an empty composer and binds the displayed thread", async () => {
+  it("never writes statusline while passively reading an unconfigured Codex pane", async () => {
+    const { taskId, a } = createCodexTask();
+    a.showFooter = false;
+    await settle(getPaneChatSnapshot(taskId, "%A"));
+    expect(mocks.write).not.toHaveBeenCalled();
+  });
+
+  it("reads an already configured thread footer without writing into the composer", async () => {
     const { taskId, a } = createCodexTask();
     const snapshot = await settle(getPaneChatSnapshot(taskId, "%A"));
-    expect(mocks.write.mock.calls.map(([, paneId, bytes]) => [paneId, bytes])).toEqual([...FOOTER_COMMAND, "\r"].map((character) => ["%A", character]));
-    expect(a.commands).toEqual([FOOTER_COMMAND]);
+    expect(mocks.write).not.toHaveBeenCalled();
+    expect(a.commands).toEqual([]);
     expect(snapshot).toMatchObject({ canSend: true, provider: "codex", inputState: "ready", reason: null, transcript: { status: "available", sessionId: THREAD_X } });
     expect(snapshot.targetToken).toBeTruthy();
     expect(mocks.rollout).toHaveBeenCalledWith(expect.objectContaining({ worktreePath: "/repo", sshHost: null }), THREAD_X);
   });
 
-  it("types the footer command once when two snapshot reads race", async () => {
+  it("does not write to the CLI when two snapshot reads race", async () => {
     const { taskId, a } = createCodexTask();
     await settle(Promise.all([getPaneChatSnapshot(taskId, "%A"), getPaneChatSnapshot(taskId, "%A")]));
-    expect(a.commands).toEqual([FOOTER_COMMAND]);
+    expect(a.commands).toEqual([]);
     expect((await settle(getPaneChatSnapshot(taskId, "%A"))).transcript).toMatchObject({ status: "available", sessionId: THREAD_X });
-    expect(a.commands).toEqual([FOOTER_COMMAND]);
+    expect(a.commands).toEqual([]);
   });
 
   it("connects an idle Codex whose configured footer wraps to three rows in a narrow pane", async () => {
     const { taskId, a } = createCodexTask();
+    a.showFooter = false;
+    mocks.binding.mockResolvedValue({ sessionId: THREAD_X, sourceRef: rolloutFile(THREAD_X) });
     // feat/k3s-settings의 실제 69칸 pane에서 관측한 초기 상태줄이다.
     a.initialFooter = [
       "  GPT-6.1-Sol high · ~/Documents/github/rookedsysc/naive-first/more-",
@@ -542,7 +606,7 @@ describe("Codex displayed-thread footer binding", () => {
       "  · Main [default]",
     ].join("\n");
     const snapshot = await settle(getPaneChatSnapshot(taskId, "%A"));
-    expect(a.commands).toEqual([FOOTER_COMMAND]);
+    expect(a.commands).toEqual([]);
     expect(snapshot).toMatchObject({ canSend: true, inputState: "ready", transcript: { status: "available", sessionId: THREAD_X } });
     expect(a.submissions).toEqual([]);
   });
@@ -621,19 +685,20 @@ describe("Codex displayed-thread footer binding", () => {
     expect(mocks.rollout).not.toHaveBeenCalled();
   });
 
-  it("bootstraps an unarmed main footer that wraps its default fields onto two rows", async () => {
+  it("leaves an unconfigured wrapped footer untouched without exact session evidence", async () => {
     const { taskId, a } = createCodexTask();
+    a.showFooter = false;
     mocks.surface.mockImplementation(async () => {
       const frame = a.surface({ ...surface.task, id: taskId });
       if (!a.composer && !a.threadsShowingId.has(a.threadId)) frame.viewportLines.splice(frame.cursorRow + 3, 0, "  long-worktree-path-wrapped-from-default-footer");
       return frame;
     });
     const bound = await settle(getPaneChatSnapshot(taskId, "%A"));
-    expect(bound).toMatchObject({ canSend: true, transcript: { sessionId: THREAD_X } });
-    expect(a.commands).toEqual([FOOTER_COMMAND]);
+    expect(bound).toMatchObject({ canSend: false, transcript: { sessionId: null } });
+    expect(a.commands).toEqual([]);
   });
 
-  it("re-arms after a same-process conversation change, never revives the earlier token, and leaves the sibling pane bound", async () => {
+  it("rebinds after a same-process conversation change, never revives the earlier token, and leaves the sibling pane bound", async () => {
     const { taskId, a, b } = createCodexTask();
     const first = await settle(getPaneChatSnapshot(taskId, "%A"));
     const sibling = await settle(getPaneChatSnapshot(taskId, "%B"));
@@ -644,7 +709,7 @@ describe("Codex displayed-thread footer binding", () => {
     const second = await settle(getPaneChatSnapshot(taskId, "%A"));
     expect(second.transcript).toMatchObject({ status: "available", sessionId: THREAD_Y });
     expect(second.targetToken).not.toBe(first.targetToken);
-    expect(a.commands).toEqual([FOOTER_COMMAND, FOOTER_COMMAND]);
+    expect(a.commands).toEqual([]);
 
     a.switchThread(THREAD_X);
     const returned = await settle(getPaneChatSnapshot(taskId, "%A"));
@@ -653,13 +718,13 @@ describe("Codex displayed-thread footer binding", () => {
     expect(returned.targetToken).not.toBe(second.targetToken);
     expect(returned.conversationKey).toBe(first.conversationKey);
     // X로 돌아오면 이전에 설정한 footer가 복원되므로 명령을 다시 치지 않는다.
-    expect(a.commands).toEqual([FOOTER_COMMAND, FOOTER_COMMAND]);
+    expect(a.commands).toEqual([]);
     await expect(settle(sendPaneChatPrompt(taskId, first.targetToken!, "Stale X after return"))).rejects.toMatchObject({ name: "PaneChatTargetChangedError" });
 
     await settle(sendPaneChatPrompt(taskId, returned.targetToken!, "For X"));
     expect(a.submissions).toEqual([{ threadId: THREAD_X, text: "For X" }]);
     expect((await settle(getPaneChatSnapshot(taskId, "%B"))).targetToken).toBe(sibling.targetToken);
-    expect(b.commands).toEqual([FOOTER_COMMAND]);
+    expect(b.commands).toEqual([]);
     expect(b.submissions).toEqual([]);
   });
 
@@ -714,7 +779,7 @@ describe("Codex displayed-thread footer binding", () => {
     const { taskId, a } = createCodexTask();
     const target = await settle(getPaneChatSnapshot(taskId, "%A"));
     await settle(sendPaneChatPrompt(taskId, target.targetToken!, "/help"));
-    expect(a.commands).toEqual([FOOTER_COMMAND, "/help"]);
+    expect(a.commands).toEqual(["/help"]);
     expect(mocks.apiInput).not.toHaveBeenCalled();
   });
 
@@ -739,7 +804,7 @@ describe("Codex displayed-thread footer binding", () => {
     mocks.write.mockClear();
     await settle(openPaneChatModelPicker(taskId, target.targetToken!));
     expect(mocks.write.mock.calls.map(([, , bytes]) => bytes)).toEqual([..."/model", "\r"]);
-    expect(a.commands).toEqual([FOOTER_COMMAND, "/model"]);
+    expect(a.commands).toEqual(["/model"]);
   });
 
   it("leaves a terminal draft untouched and reports that the composer is busy", async () => {
@@ -770,7 +835,7 @@ describe("Codex displayed-thread footer binding", () => {
     const drafting = await settle(getPaneChatSnapshot(taskId, "%A"));
     expect(drafting).toMatchObject({ canSend: true, inputState: "occupied", transcript: { status: "available", sessionId: THREAD_X } });
     expect(drafting.targetToken).toBe(bound.targetToken);
-    expect(a.commands).toEqual([FOOTER_COMMAND]);
+    expect(a.commands).toEqual([]);
   });
 
   it("does not adopt a UUID from a multi-line terminal draft as the displayed thread", async () => {
@@ -789,12 +854,12 @@ describe("Codex displayed-thread footer binding", () => {
     expect(mocks.write).not.toHaveBeenCalled();
   });
 
-  it("stops typing the footer command after two attempts fail to show a thread id", async () => {
+  it("never attempts a footer command across repeated unconfirmed reads", async () => {
     const { taskId, a } = createCodexTask();
-    a.ignoresFooterCommand = true;
+    a.showFooter = false;
     const reads = [];
     for (let read = 0; read < 5; read++) reads.push(await settle(getPaneChatSnapshot(taskId, "%A")));
-    expect(a.commands).toEqual([FOOTER_COMMAND, FOOTER_COMMAND]);
+    expect(a.commands).toEqual([]);
     expect(reads.at(-1)).toMatchObject({ canSend: false, targetToken: null, reason: "codex-thread-unconfirmed" });
   });
 

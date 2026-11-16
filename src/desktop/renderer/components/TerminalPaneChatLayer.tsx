@@ -217,6 +217,10 @@ export function TerminalPaneChatLayer({ taskId, terminalTabId, taskTitle, termin
   const activePane = layout?.panes.find((pane) => pane.id === layout.activePaneId);
   const activePosition = panePosition(activePane, metrics);
   return <div ref={layerRef} className="pointer-events-none absolute inset-0 overflow-hidden">
+    {isVisible && !layout && !layoutFailed && (!preferences.loaded || preferences.defaultEnabled || chatPanes.size > 0) ? <section data-testid="pane-chat-loading" aria-busy="true" className="pointer-events-auto absolute inset-0 flex flex-col bg-bg-page">
+      <header className="flex min-h-14 items-center gap-2 border-b border-border-default px-4 text-sm text-text-primary"><HugeiconsIcon icon={Chatting01Icon} size={18} aria-hidden="true" />{taskTitle ?? t("toggle")}</header>
+      <div role="status" className="flex flex-1 items-center justify-center text-sm text-text-secondary">{t("loading")}</div>
+    </section> : null}
     {isVisible && activePane && activePosition && !chatPanes.has(activePane.id) ? <div style={activePosition} className="pointer-events-none absolute">
       <button type="button" data-testid="pane-chat-toggle" aria-label={`${t("toggle")} · ${activePane.id}`} title={`${t("toggle")} · ${activePane.id}`} onClick={() => { void toggleRef.current(activePane.id); }} className="pointer-events-auto absolute right-2 top-1 z-10 flex h-9 items-center gap-1 rounded-md bg-bg-surface px-2 text-xs text-text-primary hover:bg-bg-page focus-visible:outline-2 focus-visible:outline-brand-primary">
         <HugeiconsIcon icon={Chatting01Icon} size={16} aria-hidden="true" />{t("toggle")}

@@ -164,6 +164,8 @@ export async function readHerdrTabs(sessionName: string, sshHost?: string | null
 }
 
 interface HerdrPane {
+  agent?: string;
+  agent_session_id?: string;
   pane_id: string;
   tab_id: string;
   /** 작업 경로가 사라져 복원하지 못한 pane에만 있다. 이런 pane에는 터미널도 scroll도 없다 */
@@ -207,9 +209,14 @@ async function readEligibleHerdrPanes(
 export async function listHerdrTaskPaneTabIds(
   sessionName: string,
   sshHost?: string | null,
-): Promise<{ paneId: string; tabId: string }[]> {
+): Promise<{ paneId: string; tabId: string; agentSession?: { provider: "claude" | "codex"; sessionId: string } }[]> {
   const { eligiblePanes } = await readEligibleHerdrPanes(sessionName, sshHost);
-  return eligiblePanes.map((pane) => ({ paneId: pane.pane_id, tabId: pane.tab_id }));
+  return eligiblePanes.map((pane) => ({
+    paneId: pane.pane_id,
+    tabId: pane.tab_id,
+    ...((pane.agent === "claude" || pane.agent === "codex") && typeof pane.agent_session_id === "string" && /^[A-Za-z0-9._:-]{1,200}$/.test(pane.agent_session_id)
+      ? { agentSession: { provider: pane.agent, sessionId: pane.agent_session_id } } : {}),
+  }));
 }
 
 /**

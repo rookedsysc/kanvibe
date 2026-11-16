@@ -529,8 +529,10 @@
       "closeModel": "닫기",
       "modelAppliesNext": "변경한 모델과 추론 강도는 다음 작업부터 적용됩니다.",
       "modelError": "모델 설정을 불러오거나 변경하지 못했습니다.",
-      "expandComposer": "입력창 확대",
-      "collapseComposer": "입력창 축소",
+      "resizeComposer": "입력창 크기 조절",
+      "resizeComposerHint": "위쪽 테두리를 끌어 크기를 조절하세요. 포커스 후 방향키도 사용할 수 있습니다.",
+      "fastMode": "빠른 모드",
+      "savingModel": "설정 적용 중…",
       "messageSent": "전송됨",
       "inputOccupied": "터미널에 입력 중인 내용이 있습니다. 터미널에서 전송하거나 지운 뒤 채팅을 보내세요.",
       "inputWaiting": "CLI가 입력을 받을 때 전송할 수 있습니다. 확인 요청은 CLI 조작에서 처리하세요."

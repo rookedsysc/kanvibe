@@ -10,12 +10,12 @@ import { readJsonLinesHead, readJsonLinesTail } from "@/lib/aiSessions/shared";
 import { buildPaneChatModelCommand, buildPaneChatModelSettings, parseCodexModelCatalog, parsePaneChatModelSettingChange, readClaudeModelState, readCodexModelState, type PaneChatModelOption, type PaneChatModelSettings } from "@/lib/aiSessions/paneChatModelSettings";
 import { readClaudeSessionDetail } from "@/lib/aiSessions/readClaudeSessions";
 import { findCodexMainThreadRollout, readCodexSessionDetail } from "@/lib/aiSessions/readCodexSessions";
-import { CODEX_THREAD_FOOTER_COMMAND, expectCodexComposerTexts, isCodexMainComposerReady, isCodexThreadFooterSupported, isSameComposerText, readCodexDisplay } from "@/lib/aiSessions/paneChatCodexDisplay";
+import { expectCodexComposerTexts, isCodexMainComposerReady, isCodexThreadFooterSupported, isSameComposerText, readCodexDisplay } from "@/lib/aiSessions/paneChatCodexDisplay";
 import { readCodexEmptyThread } from "@/lib/aiSessions/codexThreadMetadata";
 import { sendCodexThreadInput } from "@/lib/aiSessions/codexThreadInput";
 import { readCodexThreadSettings, updateCodexThreadSettings } from "@/lib/aiSessions/codexThreadSettings";
 import { findPaneChatProcess, type PaneChatProcess } from "@/lib/aiSessions/paneChatProcess";
-import { findPaneChatSessionBinding } from "@/lib/aiSessions/paneChatSessionBindings";
+import { findPaneChatSessionBinding, findPaneChatProcessSessionBinding, findPaneChatReportedSessionBinding } from "@/lib/aiSessions/paneChatSessionBindings";
 import { MAX_PANE_CHAT_ATTACHMENTS, type PaneChatActionResult, type PaneChatAttachment, type PaneChatAttachmentInput, type PaneChatKey, type PaneChatLayout, type PaneChatSnapshot, type PaneChatSuggestionKind, type PaneChatSuggestions } from "@/desktop/shared/paneChat";
 import { readPaneChatLayout, readPaneChatSurface, type PaneChatSurface } from "./paneChatSurface";
 import { discardPaneChatAttachment, fingerprintPaneChatAttachments, resolvePaneChatAttachments, retainPaneChatAttachments, storePaneChatAttachment, type PaneChatAttachmentOwner } from "./paneChatAttachmentService";
@@ -54,7 +54,6 @@ const receipts = new Map<string, Map<string, { fingerprint: string; result: Prom
 interface CodexDisplayExecution {
   observedThread: string | null;
   revision: number;
-  attempts: number;
   reason: string;
   observation: number;
 }
@@ -71,7 +70,7 @@ async function codexDisplayExecution(surface: PaneChatSurface, process: PaneChat
         const binaries = [...new Set(output.split("\n").filter((line) => line.startsWith("n/") && line.endsWith("/codex")).map((line) => line.slice(1)))];
         if (binaries.length !== 1) return null;
         const version = await execGit(`${quoteForPosixShell(binaries[0])} --version`, surface.task.sshHost, { timeoutMs: PROCESS_PROBE_TIMEOUT_MS });
-        return isCodexThreadFooterSupported(version) ? { observedThread: null, revision: 0, attempts: 0, reason: "codex-thread-unconfirmed", observation: 0 } : null;
+        return isCodexThreadFooterSupported(version) ? { observedThread: null, revision: 0, reason: "codex-thread-unconfirmed", observation: 0 } : null;
       } catch { return null; }
     })();
     if (codexDisplays.size >= MAX_TARGET_LEASES) codexDisplays.delete(codexDisplays.keys().next().value!);
@@ -88,7 +87,6 @@ function observeCodexThread(state: CodexDisplayExecution, id: string | null, obs
   if (state.observedThread === id) return;
   state.observedThread = id;
   state.revision++;
-  if (id) state.attempts = 0;
 }
 
 async function sameExecutionSurface(taskId: string, paneId: string, identity: string): Promise<PaneChatSurface> {
@@ -98,42 +96,6 @@ async function sameExecutionSurface(taskId: string, paneId: string, identity: st
   return surface;
 }
 
-async function ensureCodexFooter(surface: PaneChatSurface, process: PaneChatProcess): Promise<PaneChatSurface> {
-  const state = await codexDisplayExecution(surface, process);
-  if (!state || codexDisplay(surface)?.threadId || mutations.has(surface.task.id)) return surface;
-  const { task, paneId } = surface;
-  const identity = identityFor(surface, process);
-  await queueMutation(task.id, async () => {
-    let current = await sameExecutionSurface(task.id, paneId, identity);
-    if (codexDisplay(current)?.threadId) return;
-    observeCodexThread(state, null, current.observation);
-    if (readInputState(current, process, true) !== "ready" || !codexDisplay(current)) {
-      state.reason = "codex-thread-input-busy";
-      return;
-    }
-    if (state.attempts >= 2) { state.reason = "codex-thread-unconfirmed"; return; }
-    state.attempts++;
-    let echoed = "";
-    for (const character of CODEX_THREAD_FOOTER_COMMAND) {
-      current = await sameExecutionSurface(task.id, paneId, identity);
-      const text = codexDisplay(current)?.composerText;
-      if (text === undefined || (echoed ? !isSameComposerText(text, echoed, current.viewportColumns ?? undefined) : readInputState(current, process, true) !== "ready")) throw inputError("Codex 입력란이 변경되어 대화 표시 명령을 중단했습니다. 터미널에서 확인해 주세요.");
-      await writeToPane(task.id, paneId, character);
-      echoed += character;
-      await delay(PICKER_CHARACTER_DELAY_MS);
-    }
-    current = await sameExecutionSurface(task.id, paneId, identity);
-    if (!isSameComposerText(codexDisplay(current)?.composerText ?? "", echoed, current.viewportColumns ?? undefined)) throw inputError("Codex 표시 명령의 입력을 확인하지 못했습니다.");
-    await writeToPane(task.id, paneId, "\r");
-    for (let read = 0; read < 20; read++) {
-      current = await sameExecutionSurface(task.id, paneId, identity);
-      if (codexDisplay(current)?.threadId) return;
-      await delay(50);
-    }
-    state.reason = "codex-thread-unconfirmed";
-  });
-  return sameExecutionSurface(task.id, paneId, identity);
-}
 
 function inputError(message: string): Error {
   return Object.assign(new Error(message), { name: "PaneChatInputError" });
@@ -214,15 +176,15 @@ interface ReadTranscript {
 async function resolveConversation(surface: PaneChatSurface, process: PaneChatProcess): Promise<{ sessionId: string; sourceRef: string; revision?: number; pending?: boolean } | null> {
   if (process.provider !== "claude" && process.provider !== "codex") return null;
   const { task } = surface;
+  const context = { worktreePath: task.worktreePath ?? task.project?.repoPath ?? null, repoPath: task.project?.repoPath ?? null, sshHost: task.sshHost };
   const displayed = await codexDisplayExecution(surface, process);
-  if (displayed) {
-    const id = codexDisplay(surface)?.threadId;
-    if (!id || (displayed.observedThread !== id && readInputState(surface, process, true) !== "ready")) {
+  const id = displayed ? codexDisplay(surface)?.threadId : null;
+  if (displayed && id) {
+    if (displayed.observedThread !== id && readInputState(surface, process, true) !== "ready") {
       observeCodexThread(displayed, null, surface.observation);
-      if (readInputState(surface, process, true) !== "ready") displayed.reason = "codex-thread-input-busy";
+      displayed.reason = "codex-thread-input-busy";
       return null;
     }
-    const context = { worktreePath: task.worktreePath ?? task.project?.repoPath ?? null, repoPath: task.project?.repoPath ?? null, sshHost: task.sshHost };
     let sourceRef = await findCodexMainThreadRollout(context, id);
     const pending = !sourceRef;
     sourceRef ??= await readCodexEmptyThread(context, id, process.codexServerSocket);
@@ -230,7 +192,19 @@ async function resolveConversation(surface: PaneChatSurface, process: PaneChatPr
     observeCodexThread(displayed, id, surface.observation);
     return { sessionId: id, sourceRef, revision: displayed.revision, ...(pending ? { pending: true } : {}) };
   }
-  let binding: { sessionId: string; sourceRef: string; revision?: number } | null = await findPaneChatSessionBinding({ taskId: task.id, sshHost: task.sshHost, provider: process.provider, providerPid: process.pid, processStartTime: process.processStartTime });
+  if (displayed) {
+    observeCodexThread(displayed, null, surface.observation);
+    displayed.reason = readInputState(surface, process, true) === "ready" ? "codex-thread-unconfirmed" : "codex-thread-input-busy";
+  }
+  let binding: { sessionId: string; sourceRef: string; revision?: number; pending?: boolean } | null = await findPaneChatProcessSessionBinding(context, process);
+  binding ??= await findPaneChatSessionBinding({ taskId: task.id, sshHost: task.sshHost, provider: process.provider, providerPid: process.pid, processStartTime: process.processStartTime });
+  if (!binding && surface.agentSession?.provider === process.provider) {
+    binding = await findPaneChatReportedSessionBinding(context, process.provider, surface.agentSession.sessionId);
+    if (!binding && process.provider === "codex") {
+      const sourceRef = await readCodexEmptyThread(context, surface.agentSession.sessionId, process.codexServerSocket);
+      if (sourceRef) binding = { sessionId: surface.agentSession.sessionId, sourceRef, pending: true };
+    }
+  }
   if (!binding) {
     try {
       const output = await execGit(`lsof -a -p ${process.pid} -Fn`, task.sshHost, { timeoutMs: PROCESS_PROBE_TIMEOUT_MS });
@@ -309,10 +283,12 @@ async function readCodexModelCatalog(sshHost: string | null | undefined): Promis
   return models;
 }
 
-async function readModelSettings(provider: "claude" | "codex", sourceRef: string, sshHost: string | null | undefined): Promise<PaneChatModelSettings> {
-  const records = await readJsonLinesTail(sourceRef, MODEL_STATE_TAIL_LINES, sshHost);
-  if (provider === "claude") return buildPaneChatModelSettings(provider, readClaudeModelState(records), []);
-  return buildPaneChatModelSettings(provider, readCodexModelState(records), await readCodexModelCatalog(sshHost));
+async function readModelSettings(provider: "claude" | "codex", sourceRef: string, sshHost: string | null | undefined, pending = false): Promise<PaneChatModelSettings> {
+  const [records, models] = await Promise.all([
+    pending && !await pathExists(sourceRef, sshHost) ? Promise.resolve([]) : readJsonLinesTail(sourceRef, MODEL_STATE_TAIL_LINES, sshHost),
+    provider === "codex" ? readCodexModelCatalog(sshHost) : Promise.resolve([]),
+  ]);
+  return buildPaneChatModelSettings(provider, provider === "claude" ? readClaudeModelState(records) : readCodexModelState(records), models);
 }
 
 export interface PaneChatReading {
@@ -362,38 +338,26 @@ export async function readPaneChat(taskId: string, paneId?: string): Promise<Pan
   try { process = await inspectProcess(surface); } catch { return reading({ ...snapshot, reason: "process-inspection-unavailable" }); }
   if (!process) return reading({ ...snapshot, reason: "no-foreground-ai-cli" });
   const displayState = await codexDisplayExecution(surface, process);
-  if (displayState) {
-    try { surface = await ensureCodexFooter(surface, process); }
-    catch (error) { return reading(error instanceof Error && error.name === "PaneChatTargetChangedError" ? { ...disabled, reason: "target-changed" } : { ...snapshot, provider: process.provider, reason: "codex-thread-unconfirmed", transcript: emptyTranscript("codex-thread-unconfirmed") }); }
-    snapshot.screen = surface.screen;
-  }
   const executionIdentity = identityFor(surface, process);
   let binding: Awaited<ReturnType<typeof resolveConversation>>;
   try { binding = await resolveConversation(surface, process); }
   catch (error) { return reading(error instanceof Error && error.name === "PaneChatTargetChangedError" ? { ...disabled, reason: "target-changed" } : { ...snapshot, provider: process.provider, reason: "transcript-read-failed", transcript: emptyTranscript("transcript-read-failed") }); }
   const conversation = conversationIdentity(binding);
-  let transcript = emptyTranscript("exact-session-unavailable");
-  let sourceRef: string | null = null;
-  try { ({ transcript, sourceRef } = await readTranscript(surface, process, binding)); } catch { transcript = emptyTranscript("transcript-read-failed"); }
-  if (displayState && !binding) transcript = emptyTranscript(displayState.reason);
   const supportsComposer = process.provider === "claude" || process.provider === "codex";
-  let modelSettings: PaneChatModelSettings | undefined;
-  if (sourceRef && (process.provider === "claude" || process.provider === "codex")) {
-    try { modelSettings = await readModelSettings(process.provider, sourceRef, surface.task.sshHost); } catch { /* 모델 설정을 못 읽어도 대화와 입력은 그대로 쓸 수 있다. */ }
-  }
+  const [transcriptRead, modelSettings] = await Promise.all([
+    readTranscript(surface, process, binding).catch(() => ({ transcript: emptyTranscript("transcript-read-failed"), sourceRef: null })),
+    binding && supportsComposer
+      ? readModelSettings(process.provider as "claude" | "codex", binding.sourceRef, surface.task.sshHost, binding.pending).catch(() => undefined)
+      : Promise.resolve(undefined),
+  ]);
+  let { transcript } = transcriptRead;
+  const { sourceRef } = transcriptRead;
+  if (displayState && !binding) transcript = emptyTranscript(displayState.reason);
   try {
     const latest = await readPaneChatSurface(taskId, paneId, !!displayState);
     const latestProcess = latest ? await inspectProcess(latest) : null;
     if (!latest || !latestProcess || identityFor(latest, latestProcess) !== executionIdentity
       || conversationIdentity(await resolveConversation(latest, latestProcess)) !== conversation) return reading({ ...disabled, reason: "target-changed" });
-    if (displayState && binding) {
-      const current = await sameExecutionSurface(taskId, surface.paneId, executionIdentity);
-      const id = codexDisplay(current)?.threadId ?? null;
-      observeCodexThread(displayState, id, current.observation);
-      if (id !== binding?.sessionId || displayState.revision !== binding?.revision) return reading({ ...disabled, reason: "target-changed" });
-      surface = current;
-      snapshot.screen = current.screen;
-    }
   } catch { return reading({ ...disabled, reason: "target-changed" }); }
   retireChangedLeases(taskId, surface.paneId, executionIdentity, conversation);
   const canSend = !supportsComposer || transcript.status === "available";
@@ -441,10 +405,7 @@ async function assertTarget(taskId: string, token: string, expectedComposer?: st
   }
   if (display) {
     surface = await sameExecutionSurface(taskId, lease.paneId, lease.identity);
-    const id = codexDisplay(surface)?.threadId ?? null;
-    observeCodexThread(display, id, surface.observation);
-    const bound = lease.conversation ? JSON.parse(lease.conversation) as [string, string, number] : null;
-    if (!bound || id !== bound[0] || display.revision !== bound[2]) {
+    if (conversationIdentity(await resolveConversation(surface, process)) !== lease.conversation) {
       leases.delete(token);
       throw changedTargetError();
     }
@@ -630,7 +591,17 @@ async function codexSettingsTarget(taskId: string, targetToken: string) {
 }
 
 export async function getPaneChatModelSettings(taskId: string, targetToken: string): Promise<PaneChatModelSettings> {
-  const settings = await readCodexThreadSettings(await codexSettingsTarget(taskId, targetToken));
+  const lease = await assertTarget(taskId, targetToken);
+  const { provider } = lease.process;
+  if (!lease.conversation || (provider !== "claude" && provider !== "codex")) throw inputError("이 CLI의 모델 설정은 지원되지 않습니다.");
+  const [, sourceRef] = JSON.parse(lease.conversation) as [string, string];
+  const surface = await readPaneChatSurface(taskId, lease.requestedPaneId, false);
+  if (!surface) throw changedTargetError();
+  const binding = await resolveConversation(surface, lease.process);
+  if (conversationIdentity(binding) !== lease.conversation) throw changedTargetError();
+  const settings = provider === "codex" && await codexDisplays.get(lease.identity)
+    ? await readCodexThreadSettings(await codexSettingsTarget(taskId, targetToken))
+    : await readModelSettings(provider, sourceRef, surface.task.sshHost, binding?.pending);
   await assertTarget(taskId, targetToken);
   return settings;
 }

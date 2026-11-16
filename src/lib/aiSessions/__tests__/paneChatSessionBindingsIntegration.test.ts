@@ -10,7 +10,7 @@ import { createLocalShellEnvironment } from "@/lib/shellEnvironment";
 
 const mocks = vi.hoisted(() => ({ readSessions: vi.fn() }));
 vi.mock("@/lib/aiSessions/readClaudeSessions", () => ({ readClaudeSessions: mocks.readSessions }));
-vi.mock("@/lib/aiSessions/readCodexSessions", () => ({ readCodexSessions: mocks.readSessions }));
+vi.mock("@/lib/aiSessions/readCodexSessions", () => ({ readCodexSessions: mocks.readSessions, findCodexMainThreadRollout: vi.fn() }));
 const execFileAsync = promisify(execFile);
 
 describe("실제 hook 프로세스의 채팅 세션 바인딩", () => {

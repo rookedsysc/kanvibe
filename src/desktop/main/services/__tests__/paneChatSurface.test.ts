@@ -199,10 +199,10 @@ describe("pane chat surface ownership", () => {
   it("Herdr task client가 보고한 pane의 native frame에서 입력 줄과 커서를 읽는다", async () => {
     mocks.task.mockResolvedValue({ ...task, sessionType: SessionType.HERDR });
     mocks.herdrFocus.mockReturnValue("w1:p2");
-    mocks.herdrPanes.mockResolvedValue([{ paneId: "w1:p1", tabId: "w1:t1" }, { paneId: "w1:p2", tabId: "w1:t2" }]);
+    mocks.herdrPanes.mockResolvedValue([{ paneId: "w1:p1", tabId: "w1:t1" }, { paneId: "w1:p2", tabId: "w1:t2", agentSession: { provider: "codex", sessionId: "exact-thread" } }]);
     mocks.herdr.mockResolvedValue({ process_info: { pane_id: "w1:p2", shell_pid: 300, foreground_processes: [{ pid: 300 }] } });
     mocks.herdrFrame.mockResolvedValue({ output: "\x1b[2J\x1b[HOpenAI Codex\r\nModel: native\r\n› \x1b[3;3H\x1b[?25h", width: 80, height: 24 });
-    expect(await readPaneChatSurface("task")).toMatchObject({ paneId: "w1:p2", rootPid: 300, inputLine: "› ", cursorColumn: 2, screen: "OpenAI Codex\nModel: native\n›" });
+    expect(await readPaneChatSurface("task")).toMatchObject({ paneId: "w1:p2", rootPid: 300, agentSession: { provider: "codex", sessionId: "exact-thread" }, inputLine: "› ", cursorColumn: 2, screen: "OpenAI Codex\nModel: native\n›" });
     expect(mocks.herdrFrame).toHaveBeenCalledWith("task", "w1:p2");
     // 폴링마다 도는 경로라 pane 식별자 목록 한 번과 선택한 pane의 프로세스 조회 한 번만 쓴다.
     expect(mocks.herdrPanes).toHaveBeenCalledTimes(1);

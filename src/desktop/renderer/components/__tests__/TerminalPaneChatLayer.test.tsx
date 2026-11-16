@@ -43,6 +43,20 @@ function open(isVisible = true) {
 }
 
 describe("pane-local chat layer", () => {
+  it("shows the chat canvas before the initial layout request finishes", async () => {
+    vi.mocked(getAppSetting).mockImplementation(async (key) => key === "pane_chat_default_enabled" ? "true" : null);
+    let resolve!: (value: typeof split) => void;
+    actions.getPaneChatLayout.mockReturnValue(new Promise((accept) => { resolve = accept; }));
+    open();
+    await act(async () => {});
+    expect(screen.getByTestId("pane-chat-loading").getAttribute("aria-busy")).toBe("true");
+    expect(screen.queryByTestId("chat-%1")).toBeNull();
+    await act(async () => resolve(split));
+    expect(screen.queryByTestId("pane-chat-loading")).toBeNull();
+    expect(screen.getByTestId("chat-%1").getAttribute("data-visible")).toBe("true");
+    vi.mocked(getAppSetting).mockResolvedValue(null);
+  });
+
   it("같은 터미널에 새로 추가한 pane에도 기본 채팅 모드를 적용한다", async () => {
     vi.useFakeTimers();
     vi.mocked(getAppSetting).mockImplementation(async (key) => key === "pane_chat_default_enabled" ? "true" : null);
