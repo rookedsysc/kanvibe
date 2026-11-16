@@ -8,6 +8,7 @@ const actions = vi.hoisted(() => ({
   getPaneChatSnapshot: vi.fn(), sendPaneChatPrompt: vi.fn(), interruptPaneChat: vi.fn(),
   openPaneChatModelPicker: vi.fn(), sendPaneChatKey: vi.fn(),
   getPaneChatTranscriptPage: vi.fn(), getPaneChatModelSettings: vi.fn(), changePaneChatModelSetting: vi.fn(),
+  revealPaneChatCodexThread: vi.fn(),
 }));
 vi.mock("@/desktop/renderer/actions/paneChat", () => actions);
 vi.mock("@/desktop/renderer/actions/appSettings", () => ({ getAppSetting: vi.fn().mockResolvedValue(null), setAppSetting: vi.fn().mockResolvedValue(undefined) }));
@@ -86,6 +87,7 @@ describe("current pane chat", () => {
     await screen.findByText("Exact pane response");
     expect(screen.queryByText("Project instructions")).toBeNull();
     await waitFor(() => expect((screen.getByRole("checkbox", { name: "showInstructions" }) as HTMLInputElement).disabled).toBe(false));
+    expect(screen.getByRole("checkbox", { name: "showInstructions" }).compareDocumentPosition(screen.getByRole("button", { name: "history" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     fireEvent.click(screen.getByRole("checkbox", { name: "showInstructions" }));
     await screen.findByText("Project instructions");
     expect(setAppSetting).toHaveBeenCalledWith("pane_chat_show_instructions", "true");
@@ -99,10 +101,21 @@ describe("current pane chat", () => {
     const view = open();
     await screen.findByText("Exact pane response");
     fireEvent.click(screen.getByRole("button", { name: "model" }));
-    const select = await screen.findByRole("combobox", { name: "model" });
-    await waitFor(() => expect((select as HTMLSelectElement).disabled).toBe(false));
-    fireEvent.change(select, { target: { value: "b" } });
+    const option = await screen.findByRole("menuitemradio", { name: "B" });
+    await waitFor(() => expect((option as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(option);
     await waitFor(() => expect(actions.changePaneChatModelSetting).toHaveBeenCalledWith("task-1", "process-a", { kind: "model", model: "b" }));
+    expect(view.onTerminal).not.toHaveBeenCalled();
+    expect(actions.openPaneChatModelPicker).not.toHaveBeenCalled();
+  });
+  it("Claude metadata opens the model popover without native API support or terminal switching", async () => {
+    const modelSettings = { model: "sonnet", effort: "high", isFast: false, models: [{ id: "sonnet", label: "Sonnet", supportsFast: false, effortLevels: [] }] };
+    actions.getPaneChatSnapshot.mockResolvedValue({ ...snapshot(), provider: "claude", modelSettings, modelPicker: { supported: true, mode: "native-cli", supportsApi: false } });
+    actions.getPaneChatModelSettings.mockResolvedValue(modelSettings);
+    const view = open();
+    await screen.findByText("Exact pane response");
+    fireEvent.click(screen.getByRole("button", { name: /Sonnet/ }));
+    await screen.findByRole("menuitemradio", { name: "Sonnet" });
     expect(view.onTerminal).not.toHaveBeenCalled();
     expect(actions.openPaneChatModelPicker).not.toHaveBeenCalled();
   });
@@ -265,14 +278,16 @@ it("shows recoverable unavailable without a permanent CLI controller", async () 
 });
 
 
-it("bounds unavailable polling and allows an explicit retry", async () => {
+it("backs off unavailable polling and allows an immediate explicit retry", async () => {
   vi.useFakeTimers();
   actions.getPaneChatSnapshot.mockResolvedValue({ ...snapshot(), canSend: false, targetToken: null, transcript: { status: "unavailable", reason: "exact-session-unavailable", sessionId: null, messages: [], nextCursor: null } });
   await act(async () => { open(); });
-  await act(async () => { await vi.advanceTimersByTimeAsync(10000); });
+  await act(async () => { await vi.advanceTimersByTimeAsync(7000); });
   expect(actions.getPaneChatSnapshot).toHaveBeenCalledTimes(3);
-  await act(async () => fireEvent.click(screen.getByRole("button", { name: "retry" })));
+  await act(async () => { await vi.advanceTimersByTimeAsync(3000); });
   expect(actions.getPaneChatSnapshot).toHaveBeenCalledTimes(4);
+  await act(async () => fireEvent.click(screen.getByRole("button", { name: "retry" })));
+  expect(actions.getPaneChatSnapshot).toHaveBeenCalledTimes(5);
 });
 
 it("터미널 입력 대기는 정확히 안내하고 세 번 이후에도 확인해 입력이 끝나면 자동으로 연결한다", async () => {
@@ -288,4 +303,57 @@ it("터미널 입력 대기는 정확히 안내하고 세 번 이후에도 확�
   expect(screen.getByText("Exact pane response")).toBeTruthy();
   expect(screen.queryByText("transcriptInputBusy")).toBeNull();
   expect(actions.sendPaneChatPrompt).not.toHaveBeenCalled();
+});
+
+describe("연결하지 못한 대화의 원인별 안내", () => {
+  const unavailable = (reason: string, provider: PaneChatSnapshot["provider"] = "codex", inputState: PaneChatSnapshot["inputState"] = "ready"): PaneChatSnapshot => ({ ...snapshot(), provider, canSend: false, targetToken: null, inputState, reason, transcript: { status: "unavailable", reason, sessionId: null, messages: [], nextCursor: null } });
+
+  it("Codex 데몬 제약과 두 해결 방법을 보여 주고, 대화 ID 표시를 누르면 그 pane에 실행해 결과를 알린다", async () => {
+    actions.getPaneChatSnapshot.mockResolvedValue(unavailable("codex-thread-unconfirmed"));
+    actions.revealPaneChatCodexThread.mockResolvedValue({ outcome: "thread-not-found" });
+    open();
+    await screen.findByText("codexDaemonLimit");
+    expect(screen.getByText("codexRevealHint")).toBeTruthy();
+    expect(screen.getByText("codexNoDaemonHint")).toBeTruthy();
+    expect(screen.queryByText("transcriptIdentityMissing")).toBeNull();
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "revealThread" })));
+    expect(actions.revealPaneChatCodexThread).toHaveBeenCalledWith("task-1", undefined);
+    expect((await screen.findByRole("alert")).textContent).toBe("revealThreadNotFound");
+  });
+
+  it.each([
+    ["revealed", "revealRevealed"],
+    ["input-not-empty", "revealInputNotEmpty"],
+    ["unsupported-version", "revealUnsupportedVersion"],
+  ] as const)("대화 ID 표시 결과 %s를 구분해 보여 준다", async (outcome, message) => {
+    actions.getPaneChatSnapshot.mockResolvedValue(unavailable("codex-thread-unconfirmed"));
+    actions.revealPaneChatCodexThread.mockResolvedValue({ outcome });
+    open();
+    const button = await screen.findByRole("button", { name: "revealThread" });
+    await act(async () => fireEvent.click(button));
+    expect(await screen.findByText(message)).toBeTruthy();
+  });
+
+  it("Codex가 작업 중이거나 입력란이 차 있으면 대화 ID 표시를 막고 이유를 보여 준다", async () => {
+    actions.getPaneChatSnapshot.mockResolvedValue(unavailable("codex-thread-input-busy", "codex", "occupied"));
+    open();
+    const button = await screen.findByRole("button", { name: "revealThread" });
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText("codexRevealBusy")).toBeTruthy();
+    fireEvent.click(button);
+    expect(actions.revealPaneChatCodexThread).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["claude", "exact-session-unavailable", "claudeIdentityMissing"],
+    ["codex", "exact-session-unavailable", "codexIdentityMissing"],
+    ["codex", "codex-thread-record-missing", "codexRecordMissing"],
+    ["gemini", "exact-session-unavailable", "transcriptIdentityMissing"],
+    ["claude", "transcript-read-failed", "transcriptReadFailed"],
+  ] as const)("%s의 %s에는 %s 안내만 보이고 대화 ID 표시 버튼은 없다", async (provider, reason, message) => {
+    actions.getPaneChatSnapshot.mockResolvedValue(unavailable(reason, provider));
+    open();
+    expect(await screen.findByText(message)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "revealThread" })).toBeNull();
+  });
 });

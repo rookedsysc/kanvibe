@@ -16,6 +16,8 @@ beforeEach(() => {
     removeMobileTaskRegistration: vi.fn(async () => true),
     closeMobilePane: vi.fn(async () => ({ surfaces: { tabs: [] } })),
     getMobilePaneCloseInfo: vi.fn(async () => ({ processNames: [] })),
+    getPaneChatModes: vi.fn(async () => ({ "%1": true })),
+    setPaneChatMode: vi.fn(async () => {}),
   };
 });
 
@@ -44,7 +46,7 @@ describe("소켓 명령 검증", () => {
     expect(bridge.deleteMobileTask).not.toHaveBeenCalled();
   });
   it("지원하는 명령 이름을 connected 이벤트와 같은 목록으로 노출한다", () => {
-    expect(SUPPORTED_COMMANDS).toEqual(["delete-task", "remove-task-registration", "get-tab-close-info", "close-tab", "start-session", "set-pane-chat-subscription"]);
+    expect(SUPPORTED_COMMANDS).toEqual(["delete-task", "remove-task-registration", "get-tab-close-info", "close-tab", "start-session", "set-pane-chat-subscription", "get-pane-chat-modes", "set-pane-chat-mode"]);
   });
 
   it.each(["rename-task", "toString", "constructor", "__proto__", ""])("알 수 없는 명령 %j은 지원하지 않는다는 응답을 requestId와 함께 돌려준다", async (name) => {
@@ -135,6 +137,35 @@ describe("소켓 명령 검증", () => {
 
     expect(result).toMatchObject({ ok: false, code: "invalid-command" });
     expect(bridge.setPaneChatSubscriptions).not.toHaveBeenCalled();
+  });
+
+  it("pane 채팅 모드 조회는 그 작업의 pane별 모드를 modes로 돌려준다", async () => {
+    const result = await runMobileCommand(bridge, command({ command: "get-pane-chat-modes", taskId: "task-1" }));
+
+    expect(result).toEqual({ type: "command-result", requestId: "r1", ok: true, modes: { "%1": true } });
+    expect(bridge.getPaneChatModes).toHaveBeenCalledWith("task-1");
+  });
+
+  it("pane 채팅 모드 저장은 작업·pane·값을 브리지에 그대로 넘기고 빈 성공 응답을 돌려준다", async () => {
+    const result = await runMobileCommand(bridge, command({ command: "set-pane-chat-mode", taskId: "task-1", paneId: "%1", isEnabled: false }));
+
+    expect(result).toEqual({ type: "command-result", requestId: "r1", ok: true });
+    expect(bridge.setPaneChatMode).toHaveBeenCalledWith("task-1", "%1", false);
+  });
+
+  it.each([
+    ["조회의 taskId 누락", { command: "get-pane-chat-modes" }],
+    ["조회의 taskId가 빈 문자열", { command: "get-pane-chat-modes", taskId: "" }],
+    ["저장의 taskId 누락", { command: "set-pane-chat-mode", paneId: "%1", isEnabled: true }],
+    ["저장의 paneId 누락", { command: "set-pane-chat-mode", taskId: "task-1", isEnabled: true }],
+    ["저장의 isEnabled 누락", { command: "set-pane-chat-mode", taskId: "task-1", paneId: "%1" }],
+    ["저장의 isEnabled가 boolean이 아님", { command: "set-pane-chat-mode", taskId: "task-1", paneId: "%1", isEnabled: "true" }],
+  ])("%s이면 잘못된 명령 응답을 돌려주고 브리지를 부르지 않는다", async (_label, fields) => {
+    const result = await runMobileCommand(bridge, command(fields));
+
+    expect(result).toMatchObject({ type: "command-result", requestId: "r1", ok: false, code: "invalid-command" });
+    expect(bridge.getPaneChatModes).not.toHaveBeenCalled();
+    expect(bridge.setPaneChatMode).not.toHaveBeenCalled();
   });
 
   it("64자 requestId와 Buffer 입력은 그대로 처리한다", async () => {

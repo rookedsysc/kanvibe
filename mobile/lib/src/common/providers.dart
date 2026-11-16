@@ -445,6 +445,47 @@ class TaskSurfacesController extends AsyncNotifier<TaskSurfacesState> {
         : [];
   }
 
+  /// 데스크탑 앱 설정에 저장된 이 태스크의 pane별 채팅 모드를 읽는다. true가 채팅 UI, false가 직접 터미널로 되돌린 pane이다.
+  ///
+  /// 명령을 모르는 데스크탑이거나 조회가 실패하면 그대로 던져, 호출한 화면이 기록이 없는 것처럼 처리하도록 한다.
+  Future<Map<String, bool>> fetchPaneChatModes() async {
+    final connection = (await ref.read(connectionControllerProvider.future))
+        .activeConnection;
+    if (connection == null) {
+      throw const SurfaceUnavailableException(
+        SurfaceUnavailableReason.noSession,
+      );
+    }
+    final result = await ref
+        .read(desktopClientProvider)
+        .runCommand(connection, DesktopCommand.getPaneChatModes(taskId));
+    final modes = result['modes'];
+    return modes is Map
+        ? {
+            for (final entry in modes.entries)
+              if (entry.key is String && entry.value is bool)
+                entry.key as String: entry.value as bool,
+          }
+        : {};
+  }
+
+  /// pane 하나의 채팅 모드를 데스크탑 앱 설정에 저장한다. 실패는 호출한 화면이 처리한다.
+  Future<void> updatePaneChatMode(String paneId, bool isEnabled) async {
+    final connection = (await ref.read(connectionControllerProvider.future))
+        .activeConnection;
+    if (connection == null) {
+      throw const SurfaceUnavailableException(
+        SurfaceUnavailableReason.noSession,
+      );
+    }
+    await ref
+        .read(desktopClientProvider)
+        .runCommand(
+          connection,
+          DesktopCommand.setPaneChatMode(taskId, paneId, isEnabled),
+        );
+  }
+
   /// pane 하나를 닫고 갱신된 탭 목록을 상태에 싣는다. 건너뛰었거나 화면이 바뀌었으면 null이다.
   ///
   /// 그 사이 이미 닫힌 pane(`pane-not-found`)은 닫으려던 결과와 같으므로 목록만 다시 받아 성공으로 센다.

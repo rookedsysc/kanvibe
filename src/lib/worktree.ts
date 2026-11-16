@@ -598,10 +598,9 @@ async function removeStaleManagedWorktreeDirectories(
         ),
         sshHost,
       );
-    } catch {
-      if (options.throwOnError) {
-        throw new Error(`managed worktree 디렉토리 정리 실패: ${cleanupPath}`);
-      }
+    } catch (error) {
+      /** 폴더를 지우지 못해도 남은 후보 폴더와 브랜치 정리는 이어간다 */
+      console.warn(`managed worktree 디렉토리 정리 실패, 다음 정리 단계로 넘어갑니다: ${cleanupPath}`, error);
     }
   }
 }
@@ -643,6 +642,35 @@ async function resolveBranchWorktreePath(
   };
 }
 
+/**
+ * 등록된 worktree를 제거한다. 폴더의 .git 파일이 사라진 worktree는 remove가 거부되므로 prune으로 깨진 등록을 정리하고,
+ * prune마저 실패해도 폴더·브랜치 정리를 이어가도록 예외를 던지지 않는다.
+ */
+async function removeRegisteredWorktree(
+  projectPath: string,
+  worktreePath: string,
+  sshHost: string | null | undefined,
+  options: ResourceCleanupOptions,
+): Promise<void> {
+  const projectPathForShell = resolvePathForShell(projectPath, sshHost);
+  const worktreeCommand = options.throwOnError
+    ? `if git -C ${projectPathForShell} worktree list --porcelain | grep -Fxq ${quoteForPosixShell(`worktree ${worktreePath}`)}; then git -C ${projectPathForShell} worktree remove ${resolvePathForShell(worktreePath, sshHost)} --force; fi`
+    : `git -C ${projectPathForShell} worktree remove ${resolvePathForShell(worktreePath, sshHost)} --force`;
+
+  try {
+    await execGit(worktreeCommand, sshHost);
+    return;
+  } catch (error) {
+    console.warn(`worktree 제거 실패, prune으로 등록 정리를 시도합니다: ${worktreePath}`, error);
+  }
+
+  try {
+    await execGit(`git -C ${projectPathForShell} worktree prune`, sshHost);
+  } catch (error) {
+    console.warn(`worktree prune 실패, 다음 정리 단계로 넘어갑니다: ${worktreePath}`, error);
+  }
+}
+
 /** worktree와 브랜치를 삭제한다. 세션은 건드리지 않는다 */
 export async function removeWorktreeAndBranch(
   projectPath: string,
@@ -662,18 +690,7 @@ export async function removeWorktreeAndBranch(
     : `git -C ${resolvePathForShell(projectPath, sshHost)} branch -D ${quoteForPosixShell(branchName)}`;
 
   if (worktreePath) {
-    const worktreeCommand = options.throwOnError
-      ? `if git -C ${resolvePathForShell(projectPath, sshHost)} worktree list --porcelain | grep -Fxq ${quoteForPosixShell(`worktree ${worktreePath}`)}; then git -C ${resolvePathForShell(projectPath, sshHost)} worktree remove ${resolvePathForShell(worktreePath, sshHost)} --force; fi`
-      : `git -C ${resolvePathForShell(projectPath, sshHost)} worktree remove ${resolvePathForShell(worktreePath, sshHost)} --force`;
-
-    try {
-      await execGit(worktreeCommand, sshHost);
-    } catch {
-      if (options.throwOnError) {
-        throw new Error(`worktree 정리 실패: ${worktreePath}`);
-      }
-      // worktree가 이미 삭제된 경우 무시
-    }
+    await removeRegisteredWorktree(projectPath, worktreePath, sshHost, options);
   }
 
   await removeStaleManagedWorktreeDirectories(

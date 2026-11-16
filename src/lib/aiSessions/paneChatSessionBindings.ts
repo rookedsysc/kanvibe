@@ -1,11 +1,17 @@
+import path from "node:path";
+import { getHomeDirectory, pathExists, readTextFile } from "@/lib/hostFileAccess";
+import type { PaneChatProcess, PaneChatProvider } from "./paneChatProcess";
 import { execGit } from "@/lib/gitOperations";
 import { isPaneChatProviderProcess } from "./paneChatProcess";
 import { readClaudeSessions } from "./readClaudeSessions";
-import { readCodexSessions } from "./readCodexSessions";
+import { findCodexMainThreadRollout, readCodexSessions } from "./readCodexSessions";
+import { readGeminiSessions } from "./readGeminiSessions";
+import { readOpenCodeSessions } from "./readOpenCodeSessions";
 import { determineMatchScope } from "./shared";
 import type { AiSessionReaderContext } from "./types";
 
-type ChatProvider = "claude" | "codex";
+type ChatProvider = PaneChatProvider;
+const sessionReaders = { claude: readClaudeSessions, codex: readCodexSessions, gemini: readGeminiSessions, opencode: readOpenCodeSessions };
 interface BindingContext extends AiSessionReaderContext { taskId: string }
 interface BindingQuery {
   taskId: string;
@@ -22,6 +28,7 @@ interface SessionBinding {
   observation: number;
   revision: number;
   sourceRef?: string;
+  pending?: boolean;
 }
 interface ProcessRow { pid: number; parentPid: number; startTime: string; command: string; args: string }
 
@@ -30,6 +37,7 @@ const BINDING_TTL_MS = 24 * 60 * 60 * 1_000;
 const MAX_HOOK_BASE64_LENGTH = 96 * 1_024;
 const MAX_ANCESTRY_DEPTH = 32;
 const PROCESS_PROBE_TIMEOUT_MS = 3_000;
+const OPENCODE_ROUTE_MAX_AGE_MS = 5_000;
 const bindings = new Map<string, SessionBinding>();
 let observationSequence = 0;
 
@@ -65,7 +73,7 @@ export async function recordPaneChatSessionBinding(context: BindingContext, meta
   const observation = ++observationSequence;
   if (!metadata || typeof metadata !== "object") return;
   const input = metadata as Record<string, unknown>;
-  if ((input.provider !== "claude" && input.provider !== "codex")
+  if ((input.provider !== "claude" && input.provider !== "codex" && input.provider !== "gemini")
     || !Number.isSafeInteger(input.hookPid) || Number(input.hookPid) <= 1
     || typeof input.payloadBase64 !== "string" || input.payloadBase64.length > MAX_HOOK_BASE64_LENGTH) return;
   try {
@@ -77,6 +85,14 @@ export async function recordPaneChatSessionBinding(context: BindingContext, meta
     const output = await execGit("ps -wwaxo pid=,ppid=,lstart=,ucomm=,args=", context.sshHost, { timeoutMs: PROCESS_PROBE_TIMEOUT_MS });
     const process = findProviderAncestor(output, Number(input.hookPid), input.provider);
     if (!process) return;
+    let pendingSource: string | undefined;
+    if (input.provider === "gemini" && typeof payload.transcript_path === "string") {
+      const home = await getHomeDirectory(context.sshHost);
+      const root = path.posix.join(home, ".gemini", "tmp");
+      const normalized = path.posix.normalize(payload.transcript_path);
+      if (normalized.startsWith(`${root}/`) && /^session-[A-Za-z0-9._-]+\.(?:json|jsonl)$/.test(path.posix.basename(normalized))
+        && path.posix.basename(path.posix.dirname(normalized)) === "chats") pendingSource = normalized;
+    }
     const now = Date.now();
     for (const [key, entry] of bindings) {
       if (now - entry.recordedAt > BINDING_TTL_MS) bindings.delete(key);
@@ -86,7 +102,7 @@ export async function recordPaneChatSessionBinding(context: BindingContext, meta
     if (previous && previous.observation > observation) return;
     bindings.delete(key);
     bindings.set(key, { context: { ...context }, provider: input.provider, sessionId: payload.session_id, recordedAt: now, observation, revision: previous?.sessionId === payload.session_id ? previous.revision : observation,
-      ...(previous?.sessionId === payload.session_id && previous.sourceRef ? { sourceRef: previous.sourceRef } : {}) });
+      ...(pendingSource ? { sourceRef: pendingSource, pending: true } : previous?.sessionId === payload.session_id && previous.sourceRef ? { sourceRef: previous.sourceRef } : {}) });
     while (bindings.size > MAX_BINDINGS) bindings.delete(bindings.keys().next().value!);
   } catch {
     // 채팅 메타데이터를 얻지 못해도 기존 태스크 상태 hook은 성공해야 한다.
@@ -94,18 +110,79 @@ export async function recordPaneChatSessionBinding(context: BindingContext, meta
 }
 
 /** 호출자가 현재 pane의 PID와 시작 시각을 검증한 뒤 조회한다. */
-export async function findPaneChatSessionBinding(query: BindingQuery): Promise<{ sessionId: string; sourceRef: string; revision: number } | null> {
+export async function findPaneChatSessionBinding(query: BindingQuery): Promise<{ sessionId: string; sourceRef: string; revision: number; pending?: boolean } | null> {
   const key = bindingKey(query);
   const entry = bindings.get(key);
   if (!entry || Date.now() - entry.recordedAt > BINDING_TTL_MS) return null;
   if (!entry.sourceRef) {
     // HTTP hook이 보낸 경로는 열지 않고, 기존 공급자 탐색이 허용한 파일만 사용한다.
-    const context = { ...entry.context, query: entry.sessionId };
-    const page = await (entry.provider === "claude" ? readClaudeSessions(context) : readCodexSessions(context));
+    const context = { ...entry.context, query: undefined };
+    const page = await sessionReaders[entry.provider](context);
     if (bindings.get(key) !== entry) return null;
     const exact = page.sessions.find((session) => session.id === entry.sessionId && session.sourceRef);
     if (!exact?.sourceRef) return null;
     entry.sourceRef = exact.sourceRef;
   }
-  return { sessionId: entry.sessionId, sourceRef: entry.sourceRef, revision: entry.revision };
+  return { sessionId: entry.sessionId, sourceRef: entry.sourceRef, revision: entry.revision, ...(entry.pending ? { pending: true } : {}) };
+}
+
+export async function findPaneChatReportedSessionBinding(context: AiSessionReaderContext, provider: ChatProvider, sessionId: string): Promise<{ sessionId: string; sourceRef: string } | null> {
+  if (!/^[A-Za-z0-9._:-]{1,200}$/.test(sessionId)) return null;
+  if (provider === "codex") {
+    const sourceRef = await findCodexMainThreadRollout(context, sessionId);
+    return sourceRef ? { sessionId, sourceRef } : null;
+  }
+  const page = await sessionReaders[provider]({ ...context, query: undefined });
+  const exact = page.sessions.find((session) => session.id === sessionId && session.sourceRef);
+  return exact?.sourceRef ? { sessionId, sourceRef: exact.sourceRef } : null;
+}
+
+export async function findPaneChatProcessSessionBinding(context: AiSessionReaderContext, process: PaneChatProcess): Promise<{ sessionId: string; sourceRef: string; revision?: number; pending?: boolean; empty?: boolean } | null> {
+  if (process.provider === "opencode") {
+    const workspace = context.worktreePath ?? context.repoPath;
+    if (!workspace) return null;
+    try {
+      const sourceRef = path.posix.join(workspace, ".kanvibe", "pane-chat", `opencode-${process.pid}.json`);
+      const record = JSON.parse(await readTextFile(sourceRef, context.sshHost));
+      if (record.pid !== process.pid || record.processStartTime !== process.processStartTime.trim().replace(/\s+/g, " ")
+        || typeof record.cwd !== "string" || !determineMatchScope(record.cwd, context)
+        || !Number.isSafeInteger(record.revision) || record.revision < 1
+        || typeof record.updatedAt !== "number" || Math.abs(Date.now() - record.updatedAt) > OPENCODE_ROUTE_MAX_AGE_MS) return null;
+      if (record.sessionId === null) return { sessionId: `opencode-home:${process.pid}`, sourceRef, revision: record.revision, empty: true };
+      if (typeof record.sessionId !== "string" || !/^ses_[A-Za-z0-9]+$/.test(record.sessionId)) return null;
+      return { sessionId: record.sessionId, sourceRef: record.sessionId, revision: record.revision };
+    } catch { return null; }
+  }
+  if (process.provider !== "claude" || !Number.isSafeInteger(process.pid) || process.pid <= 1) return null;
+  try {
+    const home = await getHomeDirectory(context.sshHost);
+    const record = JSON.parse(await readTextFile(path.posix.join(home, ".claude", "sessions", `${process.pid}.json`), context.sshHost)) as Record<string, unknown>;
+    if (!record || record.pid !== process.pid || record.kind !== "interactive"
+      || typeof record.sessionId !== "string" || !/^[A-Za-z0-9._:-]{1,200}$/.test(record.sessionId)
+      || typeof record.cwd !== "string" || !path.posix.isAbsolute(record.cwd) || !determineMatchScope(record.cwd, context)
+      || typeof record.procStart !== "string" || !record.procStart
+      || typeof record.pidDomain !== "string" || !record.pidDomain) return null;
+    const probe = await execGit([
+      `if test -r /proc/${process.pid}/stat; then`,
+      `  cat /proc/${process.pid}/stat`,
+      "  printf 'linux:%s:%s\\n' \"$(cat /etc/machine-id)\" \"$(readlink /proc/self/ns/pid)\"",
+      "else",
+      `  LC_ALL=C TZ=UTC ps -o lstart= -p ${process.pid}`,
+      // Claude는 /proc가 없는 macOS에서 pidDomain을 플랫폼 이름("darwin")으로 기록한다.
+      "  uname -s | tr '[:upper:]' '[:lower:]'",
+      "fi",
+    ].join("\n"), context.sshHost, { timeoutMs: PROCESS_PROBE_TIMEOUT_MS });
+    const [processRecord, domain] = probe.trimEnd().split("\n");
+    const marker = processRecord?.includes(") ") ? processRecord.slice(processRecord.lastIndexOf(") ") + 2).split(/\s+/)[19] : processRecord?.trim();
+    if (marker !== record.procStart || domain !== record.pidDomain) return null;
+    const projectDirectory = path.posix.normalize(record.cwd).replaceAll("/", "-").replaceAll("_", "-");
+    const sourceRef = path.posix.join(home, ".claude", "projects", projectDirectory, `${record.sessionId}.jsonl`);
+    if (!await pathExists(sourceRef, context.sshHost)) {
+      const existing = await findPaneChatReportedSessionBinding(context, "claude", record.sessionId);
+      return existing ?? { sessionId: record.sessionId, sourceRef, pending: true };
+    }
+    return { sessionId: record.sessionId, sourceRef };
+  } catch {
+    return null;
+  }
 }

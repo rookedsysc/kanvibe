@@ -1,5 +1,5 @@
 import { invokeDesktop } from "@/desktop/renderer/ipc";
-import type { PaneChatActionResult, PaneChatAttachment, PaneChatAttachmentInput, PaneChatKey, PaneChatLayout, PaneChatSnapshot, PaneChatSuggestionKind, PaneChatSuggestions } from "@/desktop/shared/paneChat";
+import type { PaneChatActionResult, PaneChatAttachment, PaneChatCodexThreadReveal, PaneChatAttachmentInput, PaneChatKey, PaneChatLayout, PaneChatSnapshot, PaneChatSuggestionKind, PaneChatSuggestions } from "@/desktop/shared/paneChat";
 import type { PaneChatModelSettings, PaneChatModelSettingChange } from "@/lib/aiSessions/paneChatModelSettings";
 
 export const getPaneChatModelSettings = (taskId: string, targetToken: string): Promise<PaneChatModelSettings> =>
@@ -13,6 +13,12 @@ export const getPaneChatLayout = (taskId: string, terminalTabId?: string): Promi
 
 export const focusPaneChatTerminal = (taskId: string, paneId: string): Promise<PaneChatActionResult> =>
   invokeDesktop("paneChat", "focusPaneChatTerminal", taskId, paneId);
+
+export const getPaneChatModes = (taskId: string): Promise<Record<string, boolean>> =>
+  invokeDesktop("paneChat", "getPaneChatModes", taskId);
+
+export const setPaneChatMode = (taskId: string, paneId: string, isEnabled: boolean): Promise<void> =>
+  invokeDesktop("paneChat", "setPaneChatMode", taskId, paneId, isEnabled);
 
 export const getPaneChatSnapshot = (taskId: string, paneId?: string): Promise<PaneChatSnapshot> =>
   invokeDesktop("paneChat", "getPaneChatSnapshot", taskId, paneId);
@@ -28,6 +34,9 @@ export const interruptPaneChat = (taskId: string, targetToken: string): Promise<
 
 export const openPaneChatModelPicker = (taskId: string, targetToken: string): Promise<PaneChatActionResult> =>
   invokeDesktop("paneChat", "openPaneChatModelPicker", taskId, targetToken);
+
+export const revealPaneChatCodexThread = (taskId: string, paneId?: string): Promise<PaneChatCodexThreadReveal> =>
+  invokeDesktop("paneChat", "revealPaneChatCodexThread", taskId, paneId);
 
 export const sendPaneChatKey = (taskId: string, targetToken: string, key: PaneChatKey): Promise<PaneChatActionResult> =>
   invokeDesktop("paneChat", "sendPaneChatKey", taskId, targetToken, key);

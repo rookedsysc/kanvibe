@@ -22,6 +22,14 @@ The rule above forbids tmux-wide side effects. tmux `set-clipboard` is an approv
 - When detection cannot run, treat the result as unknown and leave the option alone. Never treat a failed check as permission to write.
 - Keep this exception narrow. Any other server-wide, user-wide, shell-wide, tmux-wide, or zellij-wide side effect needs its own entry here, with the same three parts: why no narrower scope exists, what guard respects an explicit user choice, and what the failure default is. Do not add one silently.
 
+### Approved Exception: Codex `/statusline thread-id` on User Request
+
+The rule above forbids agent-wide side effects. Typing `/statusline thread-id` into a running Codex TUI is an approved exception, because a Codex 0.169 TUI attached to the shared app-server daemon exposes no other signal that ties a pane to its conversation.
+
+- Why no narrower scope exists: the daemon's protocol has no method that maps a TUI connection or PID to the thread it shows, and hooks run under the daemon, which cannot prove pane ownership. The footer drawn by the TUI itself is the only exact signal. The command changes only that TUI session's status line and is not written to `~/.codex/config.toml`, but KanVibe cannot restore the previous status line items for the user.
+- Guard that respects the user's choice: KanVibe types the command only when the user presses "대화 ID 표시" in the pane chat view, never while polling. It pastes the command once, only on the verified version allowlist, only when Codex's own dim empty-composer hint proves the input box is empty, inside the task mutation queue, and only after re-checking the same pane and CLI process before the paste and before Enter.
+- Failure default: when any check fails or the pasted command does not echo back in the composer, KanVibe does not send Enter and leaves the conversation unconnected. It never falls back to typing characters one by one, guessing the newest conversation, or changing Codex configuration.
+
 ## App-Wide UI Settings
 
 - Store app-wide UI preferences in the app settings layer (`appSettingsService` / `AppSettings`), not in route-specific state or route cache.

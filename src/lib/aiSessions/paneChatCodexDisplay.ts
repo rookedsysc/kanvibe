@@ -1,13 +1,6 @@
 import type { IBufferLine } from "@xterm/headless";
 
-/**
- * Codex가 표시 중인 대화의 ID를 footer에 띄우는 세션 한정 명령.
- *
- * 인자 없이 치면 설정 화면이 열리므로 항목을 항상 붙인다. 다른 항목을 함께 넘기면 footer가 여러 줄로 접혀 ID 줄을 엄격하게 가려낼 수 없어 대화 ID만 띄운다. 설정 파일에는 저장되지 않는다.
- */
-export const CODEX_THREAD_FOOTER_COMMAND = "/statusline thread-id";
-
-/** 인자를 받는 `/statusline`과 아래 화면 배치를 실제 TUI에서 확인한 버전. 확인하지 않은 버전에는 명령을 치지 않는다 */
+/** 화면의 footer 배치를 실제 TUI에서 확인한 버전. 상태 조회는 표시 설정을 바꾸지 않는다. */
 const THREAD_FOOTER_VERIFIED_VERSIONS = new Set(["0.169.0"]);
 const COMPOSER_MARKER = "›";
 const COMPOSER_TEXT_COLUMN = 2;
