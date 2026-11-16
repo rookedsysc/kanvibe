@@ -62,6 +62,18 @@ class BoardProjectFilterController extends Notifier<Set<String>> {
   }
 
   Future<void> showAllProjects() => _save(const {});
+
+  /// 데스크톱 필터를 바꾸면 다른 데스크톱 프로젝트의 선택을 지워, 숨은 선택이 보드를 비우지 않게 한다
+  Future<void> retainProjectsOnDesktops(
+    BoardSnapshot snapshot,
+    Set<String> desktops,
+  ) async {
+    final visibleIds = {
+      for (final project in snapshot.projectsOnDesktops(desktops)) project.id,
+    };
+    if (state.every(visibleIds.contains)) return;
+    await _save(Set.unmodifiable(state.intersection(visibleIds)));
+  }
 }
 
 final filteredBoardProvider = Provider<AsyncValue<BoardSnapshot>>((ref) {

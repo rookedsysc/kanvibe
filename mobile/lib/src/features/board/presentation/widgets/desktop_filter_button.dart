@@ -5,6 +5,7 @@ import '../../../../common/constants/app_colors.dart';
 import '../../../../common/constants/app_sizes.dart';
 import '../../../../common/providers.dart';
 import '../../application/board_desktop_filter_controller.dart';
+import '../../application/board_project_filter_controller.dart';
 
 class DesktopFilterButton extends ConsumerWidget {
   const DesktopFilterButton({super.key});
@@ -145,6 +146,19 @@ class _DesktopFilterSheet extends ConsumerWidget {
                                 } else {
                                   controller.toggleDesktop(entry.key);
                                 }
+                                final snapshot = ref.read(boardProvider).value;
+                                if (snapshot == null) return;
+                                final selectedDesktops = ref.read(
+                                  boardDesktopFilterProvider(connectionId),
+                                );
+                                final projectFilter = ref.read(
+                                  boardProjectFilterProvider(connectionId)
+                                      .notifier,
+                                );
+                                projectFilter.retainProjectsOnDesktops(
+                                  snapshot,
+                                  selectedDesktops,
+                                );
                               },
                         title: Text(entry.value),
                         controlAffinity: ListTileControlAffinity.leading,

@@ -15,3 +15,11 @@ export function installSessionDependency(
 ): Promise<SessionDependencyStatus> {
   return invokeDesktop("sessionDependency", "installSessionDependency", sessionType, sshHost ?? null);
 }
+
+export function claimHerdrServerHandoffPrompt(sshHost: string, herdrSession: string): Promise<boolean> {
+  return invokeDesktop("sessionDependency", "claimHerdrServerHandoffPrompt", sshHost, herdrSession);
+}
+
+export function replaceHerdrServer(sshHost: string, herdrSession: string): Promise<void> {
+  return invokeDesktop("sessionDependency", "replaceHerdrServer", sshHost, herdrSession);
+}

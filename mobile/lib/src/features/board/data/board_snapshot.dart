@@ -50,9 +50,26 @@ class BoardSnapshot {
         if (task.sshHost != null) task.sshHost!,
   }.toList()..sort();
 
+  static String _desktopKey(String? sshHost) =>
+      sshHost == null ? 'local' : 'ssh:$sshHost';
+
+  /// 보드에 없는 호스트를 고른 값은 빼서, 사라진 호스트 때문에 보드가 비지 않게 한다
+  Set<String> _activeDesktops(Set<String> selected) => selected.intersection({
+    'local',
+    for (final host in desktopHosts) _desktopKey(host),
+  });
+
+  /// 고른 데스크톱의 메인 프로젝트. 데스크톱을 고르지 않았으면 전체다
+  List<BoardProject> projectsOnDesktops(Set<String> selected) {
+    final active = _activeDesktops(selected);
+    if (active.isEmpty) return creatableProjects;
+    return creatableProjects
+        .where((project) => active.contains(_desktopKey(project.sshHost)))
+        .toList();
+  }
+
   BoardSnapshot filterByDesktops(Set<String> selected) {
-    final available = {'local', for (final host in desktopHosts) 'ssh:$host'};
-    final active = selected.intersection(available);
+    final active = _activeDesktops(selected);
     if (active.isEmpty) return this;
     final projectHosts = {
       for (final project in projects) project.id: project.sshHost,
@@ -62,7 +79,7 @@ class BoardSnapshot {
         for (final entry in tasksByStatus.entries)
           entry.key: entry.value.where((task) {
             final host = task.sshHost ?? projectHosts[task.projectId];
-            return active.contains(host == null ? 'local' : 'ssh:$host');
+            return active.contains(_desktopKey(host));
           }).toList(),
       },
       projects: projects,

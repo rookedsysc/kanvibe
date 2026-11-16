@@ -32,7 +32,8 @@
       "localTarget": "현재 로컬 환경",
       "remoteTarget": "{host}",
       "installPrompt": "{target}에 {tool}이(가) 설치되어 있지 않습니다. 지금 설치하시겠습니까?",
-      "installFailed": "{tool} 설치에 실패했습니다: {error}"
+      "installFailed": "{tool} 설치에 실패했습니다: {error}",
+      "herdrServerHandoffPrompt": "{host}의 herdr 서버가 이전 KanVibe 방식으로 실행 중이라 로컬 herdr에 machine으로 등록할 수 없습니다. herdr live handoff(실험 기능)로 서버를 교체할까요? 실행 중인 pane과 작업은 그대로 유지되고, 이 호스트에 열린 터미널은 잠시 끊겼다가 자동으로 다시 연결됩니다."
     },
     "doneAlert": {
       "title": "Done 이동 경고",
@@ -202,6 +203,8 @@
     "createHooksBackgroundFailedBody": "\"{taskTitle}\" hooks 자동 설치에 실패했습니다. 상세 화면의 Hooks 상태에서 다시 설치할 수 있습니다.",
     "peerDeletionFailedTitle": "다른 데스크탑에서는 삭제하지 못함",
     "peerDeletionFailedBody": "\"{taskTitle}\"을(를) 이 데스크탑에서는 지웠지만 {peerUrls}에는 남아 있습니다. 그 데스크탑이 켜지면 직접 삭제하세요.",
+    "herdrMachineRegistrationFailedTitle": "{sshHost} Herdr machine 등록 실패",
+    "herdrMachineRegistrationFailedBody": "Herdr가 거부한 이유: {reason}. 터미널에서 herdr --remote {sshHost} --session {herdrSession}을 실행해 원격 서버를 확인하세요.",
     "deleteConfirm": "이 작업을 삭제하시겠습니까?",
     "deleting": "삭제 중…",
     "deleteFailed": "삭제하지 못했습니다: {reason}",
@@ -362,6 +365,7 @@
         "taskSearch": "작업 빠른 검색",
         "boardNotification": "알림 센터",
         "boardProjectFilter": "프로젝트 필터",
+        "boardDesktopFilter": "데스크톱 필터",
         "commandPalette": "커맨드 팔레트",
         "boardPageFind": "페이지 내 검색",
         "createTask": "작업 생성",
