@@ -577,7 +577,10 @@ describe("TaskDetailRoute", () => {
 
     await screen.findByTestId("task-title");
 
-    expect(mocks.markTaskNotificationsRead).toHaveBeenCalledWith("task-1");
+    /** 읽음 처리는 제목이 그려진 뒤의 effect에서 실행되므로, 부하가 큰 CI에서는 제목보다 늦게 호출될 수 있다 */
+    await waitFor(() => {
+      expect(mocks.markTaskNotificationsRead).toHaveBeenCalledWith("task-1");
+    });
   });
 
   it("창이 비활성이면 상세 화면이 새로고침돼도 알림을 읽음 처리하지 않는다", async () => {
