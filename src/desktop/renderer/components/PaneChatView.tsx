@@ -79,6 +79,7 @@ export function PaneChatView({ taskId, paneId, taskTitle, paneTabs = [], isVisib
       </header>
       {chat.readError ? <div role="alert" className="flex items-center justify-between gap-3 px-4 py-2 text-xs text-status-error">{t("readError")}<button type="button" onClick={() => void chat.refresh()} className={controlClass}>{t("retry")}</button></div> : null}
       {preferences.error ? <p role="alert" className="px-4 py-2 text-xs text-status-error">{t("preferencesError")}</p> : null}
+      <div className="relative flex min-h-0 flex-1 flex-col">
       <div ref={viewport} data-testid="pane-chat-transcript" className="min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable] px-4 py-6 sm:px-8" onScroll={() => {
         const node = viewport.current;
         if (!node) return;
@@ -114,6 +115,11 @@ export function PaneChatView({ taskId, paneId, taskTitle, paneTabs = [], isVisib
           </div>)}
         </div>
       </div>
+        {modelPickerOpen && snapshot?.targetToken ? <div className="pointer-events-none absolute inset-y-2 left-4 z-20 flex w-80 max-w-[calc(100%-2rem)] items-end sm:left-8"><PaneChatModelPicker key={snapshot.targetToken} taskId={taskId} targetToken={snapshot.targetToken} initialSettings={snapshot.modelSettings} onClose={(restoreFocus = true) => {
+          setModelPickerOpen(false);
+          if (restoreFocus) requestAnimationFrame(() => viewport.current?.closest("section")?.querySelector<HTMLButtonElement>("[data-pane-chat-model-trigger]")?.focus());
+        }} onChanged={() => void chat.refresh()} /></div> : null}
+      </div>
       {isDetached ? <button type="button" onClick={() => {
         followLatest.current = true;
         if (viewport.current) viewport.current.scrollTop = viewport.current.scrollHeight;
@@ -121,10 +127,6 @@ export function PaneChatView({ taskId, paneId, taskTitle, paneTabs = [], isVisib
       }} className="absolute bottom-44 left-1/2 -translate-x-1/2 rounded-full border border-border-default bg-bg-surface px-4 py-2 text-xs text-text-primary">{t("jumpToLatest")} ↓</button> : null}
       {previewFilePath ? <AiChatFilePreview taskId={taskId} filePath={previewFilePath} onClose={() => setPreviewFilePath(null)} /> : null}
       <div className="relative flex max-h-[70%] min-h-0 shrink-0 flex-col">
-        {modelPickerOpen && snapshot?.targetToken ? <div className="absolute bottom-full left-4 z-20 mb-2 w-80 max-w-[calc(100%-2rem)] sm:left-8"><PaneChatModelPicker key={snapshot.targetToken} taskId={taskId} targetToken={snapshot.targetToken} initialSettings={snapshot.modelSettings} onClose={(restoreFocus = true) => {
-          setModelPickerOpen(false);
-          if (restoreFocus) requestAnimationFrame(() => viewport.current?.closest("section")?.querySelector<HTMLButtonElement>("[data-pane-chat-model-trigger]")?.focus());
-        }} onChanged={() => void chat.refresh()} /></div> : null}
         <PaneChatComposer taskId={taskId} chat={chat} isVisible={isVisible} isModelPickerOpen={modelPickerOpen} onModel={() => void openModelPicker()} />
       </div>
     </section>

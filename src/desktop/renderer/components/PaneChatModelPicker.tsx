@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import { useTranslations } from "next-intl";
 import { changePaneChatModelSetting, getPaneChatModelSettings } from "@/desktop/renderer/actions/paneChat";
 import type { PaneChatModelSettings, PaneChatModelSettingChange } from "@/lib/aiSessions/paneChatModelSettings";
@@ -25,10 +25,11 @@ export function PaneChatModelPicker({ taskId, targetToken, initialSettings, onCl
     const invalidatePendingUpdates = () => { generation.current++; };
     return () => { cancelled = true; invalidatePendingUpdates(); };
   }, [taskId, targetToken, retry]);
-  useEffect(() => {
-    if (hasSettings) (dialog.current?.querySelector<HTMLButtonElement>('[aria-checked="true"]') ?? dialog.current?.querySelector<HTMLButtonElement>('[role="menuitemradio"]'))?.focus();
+  // 비활성화된 옵션은 포커스를 잃으므로 변경 중에는 dialog가 Escape 입력을 받는다.
+  useLayoutEffect(() => {
+    if (hasSettings && !busy) (dialog.current?.querySelector<HTMLButtonElement>('[aria-checked="true"]') ?? dialog.current?.querySelector<HTMLButtonElement>('[role="menuitemradio"]'))?.focus();
     else dialog.current?.focus();
-  }, [hasSettings]);
+  }, [hasSettings, busy]);
   useEffect(() => {
     function dismiss(event: PointerEvent) {
       const target = event.target;
@@ -65,15 +66,15 @@ export function PaneChatModelPicker({ taskId, targetToken, initialSettings, onCl
   }
   const model = settings?.models.find((item) => item.id === settings.model);
   const optionClass = "min-h-9 rounded-md px-2.5 text-xs focus-visible:outline-2 focus-visible:outline-brand-primary disabled:opacity-40";
-  return <section ref={dialog} role="dialog" tabIndex={-1} aria-label={t("model")} aria-busy={busy} className="max-h-[min(32rem,65vh)] overflow-y-auto rounded-xl border border-border-default bg-bg-surface text-text-primary shadow-xl outline-none" onKeyDown={(event) => {
+  return <section ref={dialog} role="dialog" tabIndex={-1} aria-label={t("model")} aria-busy={busy} className="pointer-events-auto max-h-full w-full overflow-y-auto rounded-xl border border-border-default bg-bg-surface text-text-primary shadow-xl outline-none" onKeyDown={(event) => {
     if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); onClose(); }
   }}>
-    <header className="flex items-center justify-between px-4 pb-1 pt-3">
+    <header className="sticky top-0 z-10 flex items-center justify-between bg-bg-surface px-4 pb-1 pt-3">
       <h3 className="text-xs font-medium text-text-secondary">{t("model")}</h3>
       <button type="button" aria-label={t("closeModel")} onClick={() => onClose()} className="flex h-8 w-8 items-center justify-center rounded-md text-lg text-text-secondary hover:bg-bg-page focus-visible:outline-2 focus-visible:outline-brand-primary"><span aria-hidden="true">×</span></button>
     </header>
     {!settings ? <p role="status" className="px-4 py-5 text-sm text-text-secondary">{t("loading")}</p> : <>
-      <div role="menu" aria-label={t("model")} onKeyDown={navigateModels} className="max-h-[min(35vh,18rem)] overflow-y-auto px-2 pb-2">
+      <div role="menu" aria-label={t("model")} onKeyDown={navigateModels} className="px-2 pb-2">
         {settings.models.map((item) => <button key={item.id} type="button" role="menuitemradio" aria-checked={item.id === settings.model} disabled={busy} onClick={() => { if (item.id !== settings.model) void change({ kind: "model", model: item.id }); }} className={`flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-left text-sm focus-visible:outline-2 focus-visible:outline-brand-primary disabled:opacity-50 ${item.id === settings.model ? "bg-brand-subtle text-text-primary" : "hover:bg-bg-page"}`}>
           <span className="min-w-0 flex-1 truncate">{item.label}</span>
           {item.id === settings.model ? <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" className="shrink-0 text-brand-primary"><path d="m3 8 3 3 7-7" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" /></svg> : null}

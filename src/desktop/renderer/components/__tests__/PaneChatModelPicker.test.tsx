@@ -90,3 +90,18 @@ it("ignores an older catalog response after a setting update is confirmed", asyn
   await act(async () => finishInitial(settings));
   expect(screen.getByRole("menuitemradio", { name: "Beta", checked: true })).toBeTruthy();
 });
+
+it("keeps keyboard focus in the popup while a model change disables its controls", async () => {
+  let finish!: () => void;
+  actions.changePaneChatModelSetting.mockReturnValue(new Promise<void>((resolve) => { finish = resolve; }));
+  const view = open();
+  const next = await screen.findByRole("menuitemradio", { name: "Beta" });
+  next.focus();
+  fireEvent.click(next);
+  expect(screen.getByRole("dialog").getAttribute("aria-busy")).toBe("true");
+  expect(document.activeElement).toBe(screen.getByRole("dialog"));
+  fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+  expect(view.onClose).toHaveBeenCalledOnce();
+  await act(async () => finish());
+  expect(document.activeElement).toBe(screen.getByRole("menuitemradio", { name: "Alpha" }));
+});
