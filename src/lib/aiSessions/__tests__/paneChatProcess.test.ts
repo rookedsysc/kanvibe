@@ -4,6 +4,25 @@ const shell = "100 1 100 200 ttys010 Thu Nov 12 18:00:00 2026 zsh /bin/zsh";
 const row = (pid: number, parent: number, command: string, args: string) => `${pid} ${parent} 200 200 ttys010 Thu Nov 12 19:00:00 2026 ${command} ${args}`;
 
 describe("pane 입력을 소유한 CLI 프로세스", () => {
+  it.each([
+    ["2.1.325", "claude --dangerously-skip-permissions", "claude"],
+    ["node", "node --no-warnings /opt/node_modules/@google/gemini-cli/bundle/gemini.js", "gemini"],
+    ["node", "node --max-old-space-size 4096 /opt/node_modules/@google/gemini-cli/dist/index.js", "gemini"],
+    ["bun", "bun /opt/bin/opencode", "opencode"],
+    ["opencode.exe", "/opt/node_modules/opencode-ai/bin/opencode.exe", "opencode"],
+  ])("실제 CLI 실행 형태를 인식한다 (%s)", (command, args, provider) => {
+    expect(findPaneChatProcess(`${shell}\n${row(200, 100, command, args)}`, 100)).toMatchObject({ pid: 200, provider });
+  });
+  it("공식 Gemini 메모리 재실행 wrapper의 입력 소유 자식을 고른다", () => {
+    const script = "/opt/node_modules/@google/gemini-cli/bundle/gemini.js";
+    expect(findPaneChatProcess([shell, row(200, 100, "node", `node ${script}`), row(201, 200, "node", `node --max-old-space-size=4096 ${script}`)].join("\n"), 100)).toMatchObject({ pid: 201, provider: "gemini" });
+    expect(findPaneChatProcess([shell, row(200, 100, "node", `node ${script}`), row(201, 200, "node", `node ${script}`)].join("\n"), 100)).toBeNull();
+    expect(findPaneChatProcess([shell, row(200, 100, "node", `node ${script}`), row(201, 200, "node", `node ${script}`), row(202, 201, "gemini", "gemini")].join("\n"), 100)).toBeNull();
+  });
+  it("Node eval과 옵션 인자의 provider 경로를 실행 스크립트로 오인하지 않는다", () => {
+    expect(findPaneChatProcess(`${shell}\n${row(200, 100, "node", "node -e /opt/node_modules/@google/gemini-cli/dist/index.js")}`, 100)).toBeNull();
+    expect(findPaneChatProcess(`${shell}\n${row(200, 100, "node", "node --require /opt/bin/gemini /tmp/other.js")}`, 100)).toBeNull();
+  });
   it("버전 이름으로 노출된 공식 Claude native 실행 경로를 인식한다", () => {
     const shell = "40181 1 40181 40185 ttys138 Fri Nov 13 11:29:03 2026 zsh /bin/zsh";
     const native = '40185 40181 40185 40185 ttys138 Fri Nov 13 11:29:04 2026 2.1.323 /Users/rookedsysc/.local/bin/claude --bare --tools --strict-mcp-config --mcp-config {"mcpServers":{}} --model qa-local';

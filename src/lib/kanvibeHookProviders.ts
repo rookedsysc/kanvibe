@@ -125,11 +125,12 @@ export const KANVIBE_HOOK_PROVIDER_MODULES = {
     provider: "openCode",
     label: "OpenCode",
     getInstallInputPaths: getOpenCodeHookInstallInputPaths,
-    buildFiles: (repoPath, taskId, hookServerUrl, _existingFiles, sshHost) => buildOpenCodeHookFiles(
+    buildFiles: (repoPath, taskId, hookServerUrl, existingFiles, sshHost) => buildOpenCodeHookFiles(
       repoPath,
       taskId,
       hookServerUrl,
       sshHost,
+      readExistingContent(existingFiles, getOpenCodeHookInstallInputPaths(repoPath, sshHost)[0]),
     ),
     install: setupOpenCodeHooks,
     getStatus: getOpenCodeHooksStatus,

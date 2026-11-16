@@ -20,28 +20,41 @@ interface ProcessRow {
 }
 
 const PROVIDERS = new Set<PaneChatProvider>(["claude", "codex", "opencode", "gemini"]);
-const INTERPRETERS = /^(?:node|nodejs|python(?:\d+(?:\.\d+)?)?|ruby|bash|sh|zsh)$/;
+const INTERPRETERS = /^(?:node|nodejs|bun|python(?:\d+(?:\.\d+)?)?|ruby|bash|sh|zsh)$/;
+
+function interpreterScript(args: string): string {
+  const tokens = args.match(/"(?:[^"\\]|\\.)*"|'[^']*'|\S+/g)?.map((token) => token.replace(/^["']|["']$/g, "")) ?? [];
+  for (let index = 1; index < tokens.length; index++) {
+    const token = tokens[index];
+    if (token === "--") return tokens[index + 1] ?? "";
+    if (/^(?:-[epc].*|--(?:eval|print|command)(?:=.*)?)$/.test(token)) return "";
+    if (/^(?:-r|--require|--import|--loader|--experimental-loader|--max-old-space-size|--max_old_space_size)$/.test(token)) { index++; continue; }
+    if (token.startsWith("-")) continue;
+    return token;
+  }
+  return "";
+}
 
 function detectProvider(row: Pick<ProcessRow, "command" | "args">): PaneChatProvider | null {
   const executable = row.command.split("/").at(-1)?.replace(/\.exe$/i, "").toLowerCase() ?? "";
   if (PROVIDERS.has(executable as PaneChatProvider)) return executable as PaneChatProvider;
   const nativeExecutable = row.args.match(/^\S+/)?.[0] ?? "";
   // 공식 native 설치는 ucomm에 버전 파일명이 드러나므로 argv의 실행 경로까지 확인한다.
-  if (/^\d+\.\d+\.\d+$/.test(executable) && nativeExecutable.startsWith("/") && (
-    /^\/(?:[^/\s]+\/)*claude$/.test(nativeExecutable)
+  if (/^\d+\.\d+\.\d+$/.test(executable) && (
+    nativeExecutable === "claude" || /^\/(?:[^/\s]+\/)*claude$/.test(nativeExecutable)
     || nativeExecutable.endsWith(`/.local/share/claude/versions/${executable}`)
   )) return "claude";
   if (!INTERPRETERS.test(executable)) return null;
-  const script = row.args.match(/^\S+\s+([^\s]+)/)?.[1]?.replace(/^["']|["']$/g, "") ?? "";
+  const script = interpreterScript(row.args);
   const basename = script.split("/").at(-1) ?? "";
   if (PROVIDERS.has(basename as PaneChatProvider)) return basename as PaneChatProvider;
   if (/\/@anthropic-ai\/claude-code\/.*(?:cli|index)\.js$/.test(script)) return "claude";
-  if (/\/@google\/gemini-cli\/.*(?:cli|index)\.js$/.test(script)) return "gemini";
+  if (/\/@google\/gemini-cli\/(?:.*\/)?(?:cli|index|gemini)\.js$/.test(script)) return "gemini";
   if (/\/@openai\/codex\/.*codex\.js$/.test(script)) return "codex";
   return null;
 }
 
-export function isPaneChatProviderProcess(command: string, args: string, provider: "claude" | "codex"): boolean {
+export function isPaneChatProviderProcess(command: string, args: string, provider: PaneChatProvider): boolean {
   return detectProvider({ command, args }) === provider;
 }
 
@@ -69,6 +82,13 @@ export function findPaneChatProcess(output: string, rootPid: number): PaneChatPr
   let row: ProcessRow;
   if (candidates.length === 1) row = candidates[0];
   else {
+    const geminiWrapper = candidates.find((candidate) => /^(?:node|nodejs)$/.test(candidate.command.split("/").at(-1) ?? "")
+      && candidates.some((child) => child.parentPid === candidate.pid && detectProvider(child) === "gemini"
+        && /(?:^|\s)--max-old-space-size(?:=|\s)/.test(child.args) && interpreterScript(child.args) === interpreterScript(candidate.args)));
+    if (candidates.length === 2 && geminiWrapper && detectProvider(geminiWrapper) === "gemini") {
+      const child = candidates.find((candidate) => candidate.parentPid === geminiWrapper.pid)!;
+      return { pid: child.pid, processStartTime: child.processStartTime, provider: "gemini" };
+    }
     const wrapper = candidates.find((candidate) => /^(?:node|nodejs)$/i.test(candidate.command.split("/").at(-1) ?? ""));
     const native = candidates.find((candidate) => candidate.parentPid === wrapper?.pid && candidate.command.split("/").at(-1) === "codex");
     const knownWrapper = wrapper && /\/@openai\/codex\/(?:bin\/)?codex\.js(?:\s|$)/.test(wrapper.args);

@@ -36,6 +36,29 @@ describe("openCodeHooksSetup", () => {
   });
 
   describe("setupOpenCodeHooks - file operations", () => {
+    it("TUI 사용자 설정과 다른 plugin을 보존하며 observer가 없는 기존 설치를 갱신 대상으로 본다", async () => {
+      await mkdir(join(tempDir, ".opencode"), { recursive: true });
+      const tuiPath = join(tempDir, ".opencode", "tui.json");
+      await writeFile(tuiPath, JSON.stringify({ theme: "existing", plugin: ["other-plugin"] }));
+      await setupOpenCodeHooks(tempDir, "task-1", "http://localhost:3000");
+      await setupOpenCodeHooks(tempDir, "task-1", "http://localhost:3000");
+      const config = JSON.parse(await readFile(tuiPath, "utf8"));
+      const observer = join(tempDir, ".opencode", "kanvibe-tui.mjs");
+      expect(config).toEqual({ theme: "existing", plugin: ["other-plugin", observer] });
+      expect(await readFile(observer, "utf8")).toContain("api.route.current");
+      expect((await getOpenCodeHooksStatus(tempDir)).installed).toBe(true);
+      await rm(observer);
+      expect((await getOpenCodeHooksStatus(tempDir)).installed).toBe(false);
+    });
+
+    it("해석할 수 없는 TUI 사용자 설정을 덮어쓰지 않는다", async () => {
+      await mkdir(join(tempDir, ".opencode"), { recursive: true });
+      const tuiPath = join(tempDir, ".opencode", "tui.json");
+      await writeFile(tuiPath, "invalid existing config");
+      await expect(setupOpenCodeHooks(tempDir, "task-1", "http://localhost:3000")).rejects.toThrow();
+      expect(await readFile(tuiPath, "utf8")).toBe("invalid existing config");
+    });
+
     it("should create plugin file at .opencode/plugins/kanvibe-plugin.ts", async () => {
       // Given
       const repoPath = tempDir;

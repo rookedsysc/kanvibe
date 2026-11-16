@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ execGit: vi.fn(), claude: vi.fn(), codex: vi.fn(), home: vi.fn(), readFile: vi.fn(), exists: vi.fn(), codexRollout: vi.fn() }));
+const mocks = vi.hoisted(() => ({ execGit: vi.fn(), claude: vi.fn(), codex: vi.fn(), home: vi.fn(), readFile: vi.fn(), exists: vi.fn(), codexRollout: vi.fn(), gemini: vi.fn(), opencode: vi.fn() }));
 vi.mock("@/lib/gitOperations", () => ({ execGit: mocks.execGit }));
 vi.mock("@/lib/aiSessions/readClaudeSessions", () => ({ readClaudeSessions: mocks.claude }));
 vi.mock("@/lib/aiSessions/readCodexSessions", () => ({ readCodexSessions: mocks.codex, findCodexMainThreadRollout: mocks.codexRollout }));
 
+vi.mock("@/lib/aiSessions/readGeminiSessions", () => ({ readGeminiSessions: mocks.gemini }));
+vi.mock("@/lib/aiSessions/readOpenCodeSessions", () => ({ readOpenCodeSessions: mocks.opencode }));
 vi.mock("@/lib/hostFileAccess", () => ({ getHomeDirectory: mocks.home, readTextFile: mocks.readFile, pathExists: mocks.exists }));
 
 const started = "Thu Nov 12 19:46:51 2026";
@@ -28,6 +30,63 @@ describe("pane chat hook session bindings", () => {
     mocks.execGit.mockResolvedValue(processTable);
     mocks.claude.mockResolvedValue({ sessions: [{ id: "session-a", sourceRef: "/home/.claude/projects/a/session-a.jsonl" }] });
     mocks.codex.mockResolvedValue({ sessions: [] });
+  });
+
+  it("Gemini의 실제 자식 hook과 새 세션을 연결하고 다른 cwd를 거부한다", async () => {
+    const registry = await import("../paneChatSessionBindings");
+    mocks.home.mockResolvedValue("/home/user");
+    mocks.execGit.mockResolvedValue(`100 1 ${started} node node --max-old-space-size=4096 /opt/node_modules/@google/gemini-cli/bundle/gemini.js\n300 100 ${started} bash bash hook.sh`);
+    const payload = { session_id: "gemini-a", cwd: "/repo/a", transcript_path: "/home/user/.gemini/tmp/project/chats/session-a.jsonl" };
+    const record = () => registry.recordPaneChatSessionBinding(context, { provider: "gemini", hookPid: 300, payloadBase64: Buffer.from(JSON.stringify(payload)).toString("base64") });
+    await record();
+    expect(await registry.findPaneChatSessionBinding({ ...query, provider: "gemini" })).toMatchObject({ sessionId: "gemini-a", sourceRef: payload.transcript_path, pending: true });
+    payload.session_id = "gemini-b";
+    payload.transcript_path = "/home/user/.gemini/tmp/project/chats/session-b.jsonl";
+    await record();
+    expect(await registry.findPaneChatSessionBinding({ ...query, provider: "gemini" })).toMatchObject({ sessionId: "gemini-b", sourceRef: payload.transcript_path });
+    payload.cwd = "/other";
+    payload.session_id = "wrong";
+    await record();
+    expect(await registry.findPaneChatSessionBinding({ ...query, provider: "gemini" })).toMatchObject({ sessionId: "gemini-b" });
+  });
+
+  it("Gemini hook의 외부 경로는 읽지 않고 기존 reader가 찾은 ID만 허용한다", async () => {
+    const registry = await import("../paneChatSessionBindings");
+    mocks.home.mockResolvedValue("/home/user");
+    mocks.gemini.mockResolvedValue({ sessions: [] });
+    mocks.execGit.mockResolvedValue(`100 1 ${started} gemini gemini\n300 100 ${started} bash hook.sh`);
+    await registry.recordPaneChatSessionBinding(context, { provider: "gemini", hookPid: 300, payloadBase64: Buffer.from(JSON.stringify({ session_id: "missing", cwd: "/repo/a", transcript_path: "/private/secret.jsonl" })).toString("base64") });
+    expect(await registry.findPaneChatSessionBinding({ ...query, provider: "gemini" })).toBeNull();
+    expect(mocks.readFile).not.toHaveBeenCalled();
+  });
+
+  it("OpenCode TUI의 home→A→B→A revision을 실제 PID와 시작시각에 묶는다", async () => {
+    const registry = await import("../paneChatSessionBindings");
+    const process = { pid: 100, provider: "opencode" as const, processStartTime: started };
+    const route = { pid: 100, processStartTime: started, cwd: "/repo/a", sessionId: null as string | null, revision: 1, updatedAt: Date.now() };
+    mocks.readFile.mockImplementation(async () => JSON.stringify(route));
+    mocks.opencode.mockImplementation(async () => ({ sessions: [{ id: route.sessionId, sourceRef: route.sessionId }, { id: "ses_unrelated", sourceRef: "ses_unrelated" }] }));
+    expect(await registry.findPaneChatProcessSessionBinding(context, process)).toMatchObject({ sessionId: "opencode-home:100", empty: true, revision: 1 });
+    for (const id of ["ses_A", "ses_B", "ses_A"]) {
+      route.sessionId = id;
+      route.revision++;
+      expect(await registry.findPaneChatProcessSessionBinding(context, process)).toEqual({ sessionId: id, sourceRef: id, revision: route.revision });
+    }
+    expect(mocks.readFile).toHaveBeenCalledWith("/repo/a/.kanvibe/pane-chat/opencode-100.json", null);
+    expect(await registry.findPaneChatProcessSessionBinding(context, { ...process, processStartTime: "reused PID" })).toBeNull();
+  });
+  it("SSH 호스트의 작은 시계 오차는 허용한다", async () => {
+    const registry = await import("../paneChatSessionBindings");
+    mocks.readFile.mockResolvedValue(JSON.stringify({ pid: 100, processStartTime: started, cwd: "/repo/a", sessionId: "ses_A", revision: 1, updatedAt: Date.now() + 1_000 }));
+    expect(await registry.findPaneChatProcessSessionBinding({ ...context, sshHost: "remote" }, { pid: 100, provider: "opencode", processStartTime: started })).toEqual({ sessionId: "ses_A", sourceRef: "ses_A", revision: 1 });
+  });
+  it.each([
+    { pid: 101 }, { processStartTime: "old incarnation" }, { cwd: "/other" },
+    { updatedAt: Date.now() - 10_000 }, { updatedAt: Date.now() + 10_000 }, { sessionId: "../../secret" }, { revision: 0 },
+  ])("OpenCode의 다른 실행·경로·만료된 observer 기록은 거부한다 %j", async (invalid) => {
+    const registry = await import("../paneChatSessionBindings");
+    mocks.readFile.mockResolvedValue(JSON.stringify({ pid: 100, processStartTime: started, cwd: "/repo/a", sessionId: "ses_A", revision: 1, updatedAt: Date.now(), ...invalid }));
+    expect(await registry.findPaneChatProcessSessionBinding(context, { pid: 100, provider: "opencode", processStartTime: started })).toBeNull();
   });
 
   it("binds the exact provider ancestor and refuses another pane, host, task or process incarnation", async () => {
