@@ -420,10 +420,25 @@ export function ensureHerdrRemoteMachine(sessionName: string, sshHost: string): 
   return remoteMachineRegistration;
 }
 
+/**
+ * Herdr는 서버 프로세스가 자기 세션의 리더일 때만 원격 서버를 로컬 machine으로 저장한다. nohup만으로는 ssh 명령 셸의 세션에 남아 등록이 거부된다.
+ * setsid가 없는 원격(macOS 등)은 perl로 세션을 분리하고, 둘 다 없으면 machine 등록은 포기하더라도 서버는 띄울 수 있게 nohup으로 둔다.
+ * 명령 앞에 exec를 붙여야 분리된 셸 프로세스가 그대로 Herdr 서버가 되어 세션 리더 자격을 이어받는다.
+ */
+function buildDetachedRemoteServerLaunchCommand(command: string): string {
+  const serverShell = `sh -c ${quoteShellArgument(`exec ${command}`)} </dev/null >/dev/null 2>&1 &`;
+  return [
+    `if command -v setsid >/dev/null 2>&1; then setsid ${serverShell}`,
+    `elif command -v perl >/dev/null 2>&1; then perl -MPOSIX -e 'POSIX::setsid() or die; exec @ARGV or die' ${serverShell}`,
+    `else nohup ${serverShell}`,
+    "fi",
+  ].join("\n");
+}
+
 async function startHerdrServer(sessionName: string, sshHost?: string | null): Promise<void> {
   const command = buildHerdrCommand(sessionName, ["server"]);
   if (sshHost) {
-    await execGit(`nohup ${command} </dev/null >/dev/null 2>&1 &`, sshHost);
+    await execGit(buildDetachedRemoteServerLaunchCommand(command), sshHost);
     return;
   }
   // nohup만 쓰면 앱의 프로세스 그룹에 남아 종료 신호를 함께 받는다.

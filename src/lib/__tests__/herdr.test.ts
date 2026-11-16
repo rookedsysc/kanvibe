@@ -1,6 +1,8 @@
 /** @vitest-environment node */
 import { createServer } from "net";
-import { mkdir, mkdtemp, rm, stat, writeFile } from "fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "fs/promises";
+import { execFile } from "child_process";
+import { promisify } from "util";
 import { tmpdir } from "os";
 import path from "path";
 import { once, EventEmitter } from "events";
@@ -199,7 +201,31 @@ describe("Herdr 부트스트랩", () => {
       .mockImplementation(respondAsHealthyServer);
     await ensureHerdrSession("feature", "/work", null, "remote");
     expect(spawn).not.toHaveBeenCalled();
-    expect(execGit).toHaveBeenCalledWith(`nohup ${commandFor(["server"])} </dev/null >/dev/null 2>&1 &`, "remote");
+    expect(execGit).toHaveBeenNthCalledWith(2, expect.stringContaining("setsid"), "remote");
+  });
+  it("SSH 서버는 machine 등록이 허용되도록 자기 세션의 리더 프로세스로 시작한다", async () => {
+    // Given: 원격 시작 명령을 그대로 받아 실행할 수 있도록, 자기 세션 정보를 기록하는 가짜 herdr를 PATH 맨 앞에 둔다
+    execGit.mockRejectedValueOnce(new Error("server not running"))
+      .mockResolvedValueOnce("")
+      .mockImplementation(respondAsHealthyServer);
+    await ensureHerdrSession("feature", "/work", null, "remote");
+    const launchCommand: string = execGit.mock.calls[1][0];
+    directory = await mkdtemp(path.join(tmpdir(), "kanvibe-herdr-launch-"));
+    const resultPath = path.join(directory, "launch-result");
+    await writeFile(path.join(directory, "herdr"), [
+      "#!/usr/bin/env python3",
+      "import os, sys",
+      `open(${JSON.stringify(resultPath)}, "w").write(f"{os.getsid(0)} {os.getpid()} {' '.join(sys.argv[1:])}")`,
+    ].join("\n"), { mode: 0o755 });
+
+    // When: 원격 셸과 같은 POSIX sh에서 실행한다
+    await promisify(execFile)("/bin/sh", ["-c", launchCommand], { env: { ...process.env, PATH: `${directory}:${process.env.PATH}` } });
+    await vi.waitFor(async () => expect((await stat(resultPath)).size).toBeGreaterThan(0), { timeout: 5_000 });
+
+    // Then: herdr 프로세스 자신이 세션 리더여야 Herdr가 detached daemon으로 인정한다
+    const [sessionId, processId, ...herdrArguments] = (await readFile(resultPath, "utf8")).split(" ");
+    expect(sessionId).toBe(processId);
+    expect(herdrArguments).toEqual(["--session", "feature", "server"]);
   });
   it("기존 세션에 다시 연결하면 레이아웃과 명령을 재실행하지 않는다", async () => {
     execGit.mockImplementation(respondAsHealthyServer);
