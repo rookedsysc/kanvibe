@@ -8,12 +8,34 @@ import { usePaneChatTranscript } from "@/desktop/renderer/hooks/usePaneChatTrans
 import { usePaneChatPreferences } from "@/desktop/renderer/hooks/usePaneChatPreferences";
 import { isAiInstructionMessage } from "@/lib/aiSessions/messageInstructions";
 import type { TerminalTab } from "@/desktop/shared/terminalTabs";
+import type { PaneChatCodexThreadReveal } from "@/desktop/shared/paneChat";
+import type { AiSessionProvider } from "@/lib/aiSessions/types";
 import { PaneChatComposer } from "./PaneChatComposer";
 import { AiChatTranscriptMessage } from "./AiChatTranscriptMessage";
 import { AiChatFilePreview } from "./AiChatFilePreview";
 import { PaneChatModelPicker } from "./PaneChatModelPicker";
 
 const NEAR_BOTTOM_PX = 96;
+const REVEAL_OUTCOME_MESSAGES: Record<PaneChatCodexThreadReveal["outcome"], string> = {
+  revealed: "revealRevealed",
+  "input-not-empty": "revealInputNotEmpty",
+  "unsupported-version": "revealUnsupportedVersion",
+  "thread-not-found": "revealThreadNotFound",
+};
+
+/** footer에서 대화 ID를 찾지 못한 Codex. 사용자가 "대화 ID 표시"로 연결할 수 있는 상태다 */
+function isCodexFooterReason(reason: string | null): boolean {
+  return reason === "codex-thread-unconfirmed" || reason === "codex-thread-input-busy";
+}
+
+/** 대화를 연결하지 못한 원인에 맞는 안내 문구 키 */
+function describeUnavailableTranscript(provider: AiSessionProvider, reason: string | null): string {
+  if (reason === "transcript-read-failed") return "transcriptReadFailed";
+  if (reason === "codex-thread-record-missing") return "codexRecordMissing";
+  if (provider === "claude") return "claudeIdentityMissing";
+  if (provider === "codex") return "codexIdentityMissing";
+  return "transcriptIdentityMissing";
+}
 const controlClass = "min-h-10 rounded-md border border-border-default bg-bg-surface px-3 text-xs text-text-primary hover:bg-bg-page focus-visible:outline-2 focus-visible:outline-brand-primary disabled:opacity-40";
 
 export function PaneChatView({ taskId, paneId, taskTitle, paneTabs = [], isVisible = true, onHistory, onTerminal }: {
@@ -34,6 +56,7 @@ export function PaneChatView({ taskId, paneId, taskTitle, paneTabs = [], isVisib
   const [isDetached, setIsDetached] = useState(false);
   const [previewFilePath, setPreviewFilePath] = useState<string | null>(null);
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
+  const [revealOutcome, setRevealOutcome] = useState<PaneChatCodexThreadReveal["outcome"] | null>(null);
   const viewport = useRef<HTMLDivElement>(null);
   const followLatest = useRef(true);
   const messages = transcript.messages;
@@ -47,6 +70,7 @@ export function PaneChatView({ taskId, paneId, taskTitle, paneTabs = [], isVisib
     setIsDetached(false);
     setPreviewFilePath(null);
     setModelPickerOpen(false);
+    setRevealOutcome(null);
   }, [targetKey]);
 
   useLayoutEffect(() => {
@@ -55,6 +79,10 @@ export function PaneChatView({ taskId, paneId, taskTitle, paneTabs = [], isVisib
       scrollAnchor.current = null;
     } else if (followLatest.current && viewport.current) viewport.current.scrollTop = viewport.current.scrollHeight;
   }, [messages, chat.pendingMessages.length, targetKey, isVisible]);
+
+  async function revealCodexThread() {
+    setRevealOutcome(await chat.revealCodexThread());
+  }
 
   async function openModelPicker() {
     if (snapshot?.modelSettings || snapshot?.modelPicker.supportsApi) { setModelPickerOpen((value) => !value); return; }
@@ -102,7 +130,17 @@ export function PaneChatView({ taskId, paneId, taskTitle, paneTabs = [], isVisib
           </> : null}
           {snapshot?.provider && snapshot.transcript.status === "unavailable" ? <div role="status" className="space-y-3 rounded-lg bg-bg-surface p-4 text-sm text-text-secondary">
             <p>{t(isWaitingForInput ? "transcriptWaiting" : "transcriptUnavailable")}</p>
-            <p>{t(isWaitingForInput ? "transcriptInputBusy" : snapshot.transcript.reason === "transcript-read-failed" ? "transcriptReadFailed" : "transcriptIdentityMissing")}</p>
+            {isCodexFooterReason(snapshot.transcript.reason) ? <>
+              {isWaitingForInput ? <p>{t("transcriptInputBusy")}</p> : null}
+              <p>{t("codexDaemonLimit")}</p>
+              <p>{t("codexRevealHint")}</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <button type="button" disabled={isWaitingForInput || chat.isBusy} onClick={() => void revealCodexThread()} className="min-h-10 rounded-md bg-brand-primary px-3 text-xs text-text-inverse hover:bg-brand-hover focus-visible:outline-2 focus-visible:outline-brand-primary disabled:opacity-40">{t(chat.isBusy ? "revealingThread" : "revealThread")}</button>
+                {isWaitingForInput ? <span className="text-xs">{t("codexRevealBusy")}</span> : null}
+              </div>
+              {revealOutcome ? <p role={revealOutcome === "revealed" ? "status" : "alert"} className={revealOutcome === "revealed" ? "text-text-primary" : "text-status-warning"}>{t(REVEAL_OUTCOME_MESSAGES[revealOutcome])}</p> : null}
+              <p>{t("codexNoDaemonHint")}</p>
+            </> : <p>{t(describeUnavailableTranscript(snapshot.provider, snapshot.transcript.reason))}</p>}
             <div className="flex flex-wrap gap-2"><button type="button" onClick={() => void chat.refresh()} className={controlClass}>{t("retry")}</button><button type="button" onClick={onTerminal} className={controlClass}>{t("terminal")}</button></div>
           </div> : null}
           {snapshot?.screen && snapshot.transcript.status !== "available" ? <details className="rounded-lg border border-border-subtle bg-bg-surface">

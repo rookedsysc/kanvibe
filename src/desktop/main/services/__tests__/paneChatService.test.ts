@@ -18,8 +18,10 @@ vi.mock("@/lib/aiSessions/codexThreadMetadata", () => ({ readCodexEmptyThread: m
 vi.mock("@/lib/aiSessions/codexThreadInput", () => ({ sendCodexThreadInput: mocks.apiInput }));
 vi.mock("@/lib/aiSessions/shared", async (importOriginal) => ({ ...await importOriginal<typeof import("@/lib/aiSessions/shared")>(), readJsonLinesTail: modelMocks.tail }));
 vi.mock("@/lib/hostFileAccess", async (importOriginal) => ({ ...await importOriginal<typeof import("@/lib/hostFileAccess")>(), readTextFile: modelMocks.readTextFile }));
-import { focusPaneChatTerminal, getPaneChatLayout, getPaneChatSnapshot, getPaneChatModelSettings, getPaneChatTranscriptPage, getPaneChatSuggestions, stagePaneChatAttachment, removePaneChatAttachment, sendPaneChatPrompt, interruptPaneChat, openPaneChatModelPicker, changePaneChatModelSetting, sendPaneChatKey } from "../paneChatService";
+import { focusPaneChatTerminal, getPaneChatLayout, getPaneChatSnapshot, getPaneChatModelSettings, getPaneChatTranscriptPage, getPaneChatSuggestions, stagePaneChatAttachment, removePaneChatAttachment, sendPaneChatPrompt, interruptPaneChat, openPaneChatModelPicker, changePaneChatModelSetting, sendPaneChatKey, revealPaneChatCodexThread } from "../paneChatService";
 
+/** pane root의 tty로 좁힌 프로세스 조회 명령인지. 다른 `ps` 호출(예: tty 단독 조회)과 구분한다 */
+const isPaneProcessTableCommand = (command: string) => command.includes("ucomm=,args=");
 const processTable = (start = "Thu Nov 12 19:00:00 2026") => `100 1 100 200 ttys010 Thu Nov 12 18:00:00 2026 /bin/zsh /bin/zsh\n200 100 200 200 ttys010 ${start} /usr/bin/python3 python3 /tmp/codex\n300 100 300 200 ttys010 Thu Nov 12 18:00:00 2026 /tmp/claude /tmp/claude`;
 const surface = { task: { id: "task-chat", sessionType: SessionType.TMUX, sessionName: "kv-task", sshHost: null, worktreePath: "/repo", project: { repoPath: "/repo" } }, paneId: "%3", rootPid: 100, screen: "CLI screen", inputLine: "› ", cursorColumn: 2 };
 
@@ -29,7 +31,7 @@ beforeEach(() => {
   mocks.processBinding.mockResolvedValue(null);
   mocks.reportedBinding.mockResolvedValue(null);
   mocks.surface.mockResolvedValue(surface);
-  mocks.exec.mockImplementation(async (command: string) => { if (command.startsWith("ps ")) return processTable(); throw new Error("No open transcript"); });
+  mocks.exec.mockImplementation(async (command: string) => { if (isPaneProcessTableCommand(command)) return processTable(); throw new Error("No open transcript"); });
   mocks.binding.mockResolvedValue({ sessionId: "exact-session", sourceRef: "/allowed/exact.jsonl" });
   mocks.codex.mockResolvedValue({ sessionId: "exact-session", provider: "codex", messages: [], nextCursor: null });
   mocks.claude.mockResolvedValue({ sessionId: "exact-session", provider: "claude", messages: [], nextCursor: null });
@@ -526,6 +528,27 @@ it("does not share a conversation draft key across hosts with the same session i
   expect(remote.conversationKey).not.toBe(local.conversationKey);
 });
 
+describe("pane process lookup", () => {
+  const scopedCommand = "pane_tty=$(ps -o tty= -p 100 | tr -d ' '); case \"$pane_tty\" in \"\"|\"?\"|\"??\") ;; *) ps -wwo pid=,ppid=,pgid=,tpgid=,tty=,lstart=,ucomm=,args= -t \"$pane_tty\" ;; esac";
+
+  it.each([null, "remote-host"])("pane root의 tty에 붙은 프로세스만 같은 셸 명령으로 조회한다 (sshHost=%s)", async (sshHost) => {
+    mocks.surface.mockResolvedValue({ ...surface, task: { ...surface.task, sshHost } });
+    await getPaneChatSnapshot("task-chat", "%3");
+    const processLookups = mocks.exec.mock.calls.filter(([command]) => isPaneProcessTableCommand(command));
+    expect(processLookups.length).toBeGreaterThan(0);
+    for (const [command, host] of processLookups) {
+      expect(command).toBe(scopedCommand);
+      expect(host).toBe(sshHost);
+    }
+    expect(mocks.exec.mock.calls.some(([command]) => command.includes("-wwaxo"))).toBe(false);
+  });
+
+  it("tty를 얻지 못해 조회 결과가 비면 CLI가 없는 것으로 보고 연결하지 않는다", async () => {
+    mocks.exec.mockImplementation(async (command: string) => { if (isPaneProcessTableCommand(command)) return ""; throw new Error("No open transcript"); });
+    const snapshot = await getPaneChatSnapshot("task-chat", "%3");
+    expect(snapshot).toMatchObject({ canSend: false, targetToken: null, reason: "no-foreground-ai-cli", provider: null });
+  });
+});
 
 const THREAD_X = "0190aaaa-0000-7000-8000-00000000000a";
 const THREAD_Y = "0190bbbb-0000-7000-8000-00000000000b";
@@ -546,6 +569,10 @@ class FakeCodexPane {
   readonly commands: string[] = [];
   showFooter = true;
   initialFooter = "  gpt-sol high · ~/repo";
+  /** 상태줄 명령을 실행해도 footer에 ID가 나타나지 않는 화면(예: 좁은 pane에서 잘림) */
+  ignoresStatusLine = false;
+  /** 붙여넣기를 입력란에 그리지 않는 화면 */
+  dropsPaste = false;
   /** 사용자가 여러 줄 입력의 첫 줄로 커서를 올려 둔 상태 */
   isCursorOnFirstComposerRow = false;
 
@@ -564,6 +591,7 @@ class FakeCodexPane {
   private apply(bytes: string) {
     const pasted = bytes.match(/^\x1b\[200~([\s\S]*)\x1b\[201~$/)?.[1];
     if (pasted !== undefined) {
+      if (this.dropsPaste) return;
       // 실제 TUI는 이미지 경로를 순번 자리표시로 바꾸고, 긴 글은 글자 수만 적힌 자리표시로 접는다.
       if (/\.png$/.test(pasted)) this.composer += `[Image #${(this.composer.match(/\[Image #\d+\]/g)?.length ?? 0) + 1}] `;
       else this.composer += pasted.length > 1000 ? `[Pasted Content ${pasted.length} chars]` : pasted;
@@ -574,6 +602,8 @@ class FakeCodexPane {
     this.composer = "";
     if (!text.startsWith("/")) { this.submissions.push({ threadId: this.threadId, text }); return; }
     this.commands.push(text);
+    // 실제 0.169.0 TUI는 붙여넣은 `/statusline thread-id`를 실행해 이 세션의 footer를 대화 ID로 바꾼다.
+    if (text === "/statusline thread-id" && !this.ignoresStatusLine) this.threadsShowingId.add(this.threadId);
   }
 
   surface(task: object) {
@@ -601,7 +631,7 @@ function createCodexTask(version = "codex-cli 0.169.0") {
   mocks.surface.mockImplementation(async (_taskId: string, paneId?: string) => panes[paneId ?? "%A"]?.surface(task) ?? null);
   mocks.write.mockImplementation(async (_taskId: string, paneId: string, bytes: string) => panes[paneId].write(bytes));
   mocks.exec.mockImplementation(async (command: string) => {
-    if (command.startsWith("ps ")) return codexProcessTable;
+    if (isPaneProcessTableCommand(command)) return codexProcessTable;
     if (/^lsof -a -p \d+ -d txt -Fn$/.test(command)) return "p200\nftxt\nn/opt/codex/bin/codex\nftxt\nn/usr/lib/dyld";
     if (command === "'/opt/codex/bin/codex' --version") return version;
     throw new Error("No open transcript");
@@ -644,6 +674,69 @@ describe("Codex displayed-thread footer binding", () => {
     expect(mocks.codex).toHaveBeenLastCalledWith(expect.anything(), THREAD_X, rolloutFile(THREAD_X), "100", 100);
     a.switchThread(THREAD_Y);
     await expect(settle(getPaneChatTranscriptPage(taskId, bound.targetToken!, "200"))).rejects.toMatchObject({ name: "PaneChatTargetChangedError" });
+  });
+
+  it("대화 ID 표시는 빈 입력란에 명령을 한 번 붙여넣고 Enter로 실행해 그 pane의 대화를 연결한다", async () => {
+    const { taskId, a, b } = createCodexTask();
+    a.showFooter = false;
+    b.showFooter = false;
+    expect(await settle(getPaneChatSnapshot(taskId, "%A"))).toMatchObject({ canSend: false, reason: "codex-thread-unconfirmed" });
+    expect(await settle(revealPaneChatCodexThread(taskId, "%A"))).toEqual({ outcome: "revealed" });
+    expect(mocks.write.mock.calls.map(([, paneId, bytes]) => [paneId, bytes])).toEqual([["%A", "\x1b[200~/statusline thread-id\x1b[201~"], ["%A", "\r"]]);
+    expect(a.commands).toEqual(["/statusline thread-id"]);
+    expect(b.commands).toEqual([]);
+    expect(await settle(getPaneChatSnapshot(taskId, "%A"))).toMatchObject({ canSend: true, transcript: { status: "available", sessionId: THREAD_X } });
+    expect(await settle(getPaneChatSnapshot(taskId, "%B"))).toMatchObject({ canSend: false, reason: "codex-thread-unconfirmed" });
+  });
+
+  it("대화 ID 표시는 입력란에 사용자 글이 있으면 아무것도 쓰지 않는다", async () => {
+    const { taskId, a } = createCodexTask();
+    a.showFooter = false;
+    a.composer = "draft in progress";
+    expect(await settle(revealPaneChatCodexThread(taskId, "%A"))).toEqual({ outcome: "input-not-empty" });
+    expect(mocks.write).not.toHaveBeenCalled();
+    expect(a.composer).toBe("draft in progress");
+  });
+
+  it("대화 ID 표시는 footer 배치를 확인하지 않은 Codex 버전에는 쓰지 않는다", async () => {
+    const { taskId, a } = createCodexTask("codex-cli 0.170.0");
+    a.showFooter = false;
+    expect(await settle(revealPaneChatCodexThread(taskId, "%A"))).toEqual({ outcome: "unsupported-version" });
+    expect(mocks.write).not.toHaveBeenCalled();
+  });
+
+  it("대화 ID 표시는 붙여넣은 명령이 입력란에 보이지 않으면 Enter를 보내지 않는다", async () => {
+    const { taskId, a } = createCodexTask();
+    a.showFooter = false;
+    a.dropsPaste = true;
+    await expect(settle(revealPaneChatCodexThread(taskId, "%A"))).rejects.toMatchObject({ name: "PaneChatInputError" });
+    expect(mocks.write.mock.calls.map(([, , bytes]) => bytes)).toEqual(["\x1b[200~/statusline thread-id\x1b[201~"]);
+    expect(a.commands).toEqual([]);
+  });
+
+  it("대화 ID 표시는 명령 실행 뒤에도 footer에 ID가 없으면 찾지 못했다고 알린다", async () => {
+    const { taskId, a } = createCodexTask();
+    a.showFooter = false;
+    a.ignoresStatusLine = true;
+    expect(await settle(revealPaneChatCodexThread(taskId, "%A"))).toEqual({ outcome: "thread-not-found" });
+    expect(a.commands).toEqual(["/statusline thread-id"]);
+  });
+
+  it("대화 ID 표시는 붙여넣은 뒤 pane의 CLI 프로세스가 바뀌면 Enter를 보내지 않는다", async () => {
+    const { taskId, a } = createCodexTask();
+    a.showFooter = false;
+    mocks.write.mockImplementationOnce(async (_taskId: string, _paneId: string, bytes: string) => {
+      a.write(bytes);
+      mocks.exec.mockImplementation(async (command: string) => {
+        if (isPaneProcessTableCommand(command)) return codexProcessTable.replace("Thu Nov 12 19:00:00 2026 codex codex resume", "Thu Nov 12 19:30:00 2026 codex codex resume");
+        if (/^lsof -a -p \d+ -d txt -Fn$/.test(command)) return "p200\nftxt\nn/opt/codex/bin/codex";
+        if (command === "'/opt/codex/bin/codex' --version") return "codex-cli 0.169.0";
+        throw new Error("No open transcript");
+      });
+    });
+    await expect(settle(revealPaneChatCodexThread(taskId, "%A"))).rejects.toMatchObject({ name: "PaneChatTargetChangedError" });
+    expect(mocks.write).toHaveBeenCalledTimes(1);
+    expect(a.commands).toEqual([]);
   });
 
   it("never writes statusline while passively reading an unconfigured Codex pane", async () => {

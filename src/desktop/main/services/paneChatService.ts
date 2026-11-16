@@ -18,13 +18,18 @@ import { sendCodexThreadInput } from "@/lib/aiSessions/codexThreadInput";
 import { readCodexThreadSettings, updateCodexThreadSettings } from "@/lib/aiSessions/codexThreadSettings";
 import { findPaneChatProcess, type PaneChatProcess } from "@/lib/aiSessions/paneChatProcess";
 import { findPaneChatSessionBinding, findPaneChatProcessSessionBinding, findPaneChatReportedSessionBinding } from "@/lib/aiSessions/paneChatSessionBindings";
-import { MAX_PANE_CHAT_ATTACHMENTS, type PaneChatActionResult, type PaneChatAttachment, type PaneChatAttachmentInput, type PaneChatKey, type PaneChatLayout, type PaneChatSnapshot, type PaneChatSuggestionKind, type PaneChatSuggestions } from "@/desktop/shared/paneChat";
+import { MAX_PANE_CHAT_ATTACHMENTS, type PaneChatActionResult, type PaneChatAttachment, type PaneChatCodexThreadReveal, type PaneChatAttachmentInput, type PaneChatKey, type PaneChatLayout, type PaneChatSnapshot, type PaneChatSuggestionKind, type PaneChatSuggestions } from "@/desktop/shared/paneChat";
 import { readPaneChatLayout, readPaneChatSurface, type PaneChatSurface } from "./paneChatSurface";
 import { discardPaneChatAttachment, fingerprintPaneChatAttachments, resolvePaneChatAttachments, retainPaneChatAttachments, storePaneChatAttachment, type PaneChatAttachmentOwner } from "./paneChatAttachmentService";
 import { readPaneChatSuggestions } from "./paneChatComposerCatalog";
 import { writeToPane } from "./mobileBridgeService";
 
-const PROCESS_TABLE_COMMAND = "ps -wwaxo pid=,ppid=,pgid=,tpgid=,tty=,lstart=,ucomm=,args=";
+const PROCESS_TABLE_COLUMNS = "pid=,ppid=,pgid=,tpgid=,tty=,lstart=,ucomm=,args=";
+/** 사용자가 버튼을 눌렀을 때만 Codex 하단 상태줄을 대화 ID로 바꾸는 명령. 그 TUI 세션에만 적용되고 설정 파일에는 저장되지 않는다 */
+const CODEX_THREAD_FOOTER_COMMAND = "/statusline thread-id";
+/** 붙여넣은 명령이 입력란에 보이거나, 실행 뒤 대화 ID가 footer에 나타나기까지 화면을 다시 읽는 횟수와 간격 */
+const CODEX_FOOTER_READ_ATTEMPTS = 20;
+const CODEX_FOOTER_READ_INTERVAL_MS = 50;
 const PROCESS_PROBE_TIMEOUT_MS = 5_000;
 const MAX_PROMPT_BYTES = 64 * 1024;
 const MAX_TARGET_LEASES = 256;
@@ -116,7 +121,14 @@ function conversationKeyFor(surface: PaneChatSurface, process: PaneChatProcess, 
 }
 async function inspectProcess(surface: PaneChatSurface): Promise<PaneChatProcess | null> {
   if (!surface.rootPid) return null;
-  return findPaneChatProcess(await execGit(PROCESS_TABLE_COMMAND, surface.task.sshHost, { timeoutMs: PROCESS_PROBE_TIMEOUT_MS }), surface.rootPid);
+  return findPaneChatProcess(await execGit(buildPaneProcessTableCommand(surface.rootPid), surface.task.sshHost, { timeoutMs: PROCESS_PROBE_TIMEOUT_MS }), surface.rootPid);
+}
+/**
+ * pane root와 같은 터미널에 붙은 프로세스만 조회한다. 판정은 root의 tty에 있는 자손만 보므로 전체 프로세스 표를 읽을 필요가 없다.
+ * tty가 없거나 확인되지 않으면 아무것도 출력하지 않아 "CLI 없음"으로 판정된다.
+ */
+function buildPaneProcessTableCommand(rootPid: number): string {
+  return `pane_tty=$(ps -o tty= -p ${rootPid} | tr -d ' '); case "$pane_tty" in ""|"?"|"??") ;; *) ps -wwo ${PROCESS_TABLE_COLUMNS} -t "$pane_tty" ;; esac`;
 }
 function retireChangedLeases(taskId: string, paneId: string, identity: string, conversation: string | null): void {
   for (const [token, lease] of leases) {
@@ -615,6 +627,47 @@ export function openPaneChatModelPicker(taskId: string, targetToken: string): Pr
     await requireReadyInput(taskId, targetToken);
     await typePaneChatCommand(taskId, targetToken, "/model");
   });
+}
+
+/**
+ * 사용자가 "대화 ID 표시"를 눌렀을 때만 Codex에 `/statusline thread-id`를 붙여넣고 실행해, footer에 대화 ID를 띄운다.
+ *
+ * 공유 데몬에서 도는 Codex는 화면 밖에서 대화를 알려 주지 않으므로 footer가 유일한 식별 신호다. 표시 배치를 실제로 확인한 버전에서,
+ * Codex 고유의 빈 입력란이 확인될 때만 입력한다. 붙여넣기 전후와 Enter 직전에 같은 pane·같은 CLI 프로세스인지 다시 확인하고,
+ * 입력란에 명령이 그대로 보이지 않으면 Enter를 보내지 않는다. 다른 pane 입력과 겹치지 않도록 태스크의 입력 큐에서 실행한다.
+ */
+export async function revealPaneChatCodexThread(taskId: string, paneId?: string): Promise<PaneChatCodexThreadReveal> {
+  if (typeof taskId !== "string" || !taskId || (paneId !== undefined && (typeof paneId !== "string" || !paneId))) throw inputError("태스크와 pane 식별자가 올바르지 않습니다.");
+  let outcome: PaneChatCodexThreadReveal["outcome"] = "thread-not-found";
+  await queueMutation(taskId, async () => {
+    const surface = await readPaneChatSurface(taskId, paneId);
+    const process = surface ? await inspectProcess(surface) : null;
+    if (!surface || process?.provider !== "codex") throw changedTargetError();
+    if (!await codexDisplayExecution(surface, process)) { outcome = "unsupported-version"; return; }
+    if (codexDisplay(surface)?.threadId) { outcome = "revealed"; return; }
+    const identity = identityFor(surface, process);
+    const readSurface = () => sameExecutionSurface(taskId, surface.paneId, identity);
+    if (readInputState(await readSurface(), process, true) !== "ready") { outcome = "input-not-empty"; return; }
+    await writeToPane(taskId, surface.paneId, `\x1b[200~${CODEX_THREAD_FOOTER_COMMAND}\x1b[201~`);
+    if (!await waitForCodexScreen(readSurface, (current) => isSameComposerText(codexDisplay(current)?.composerText ?? "", CODEX_THREAD_FOOTER_COMMAND, current.viewportColumns ?? undefined))) {
+      throw inputError("Codex 입력란에서 붙여넣은 명령을 확인하지 못해 실행하지 않았습니다. 터미널에서 입력란을 확인해 주세요.");
+    }
+    await delay(PROMPT_SUBMIT_DELAY_MS);
+    const beforeSubmit = await readSurface();
+    if (!isSameComposerText(codexDisplay(beforeSubmit)?.composerText ?? "", CODEX_THREAD_FOOTER_COMMAND, beforeSubmit.viewportColumns ?? undefined)) {
+      throw inputError("Codex 입력란이 바뀌어 대화 ID 표시 명령을 실행하지 않았습니다. 터미널에서 입력란을 확인해 주세요.");
+    }
+    await writeToPane(taskId, surface.paneId, "\r");
+    if (await waitForCodexScreen(readSurface, (current) => !!codexDisplay(current)?.threadId)) outcome = "revealed";
+  });
+  return { outcome };
+}
+async function waitForCodexScreen(readSurface: () => Promise<PaneChatSurface>, isExpected: (surface: PaneChatSurface) => boolean): Promise<boolean> {
+  for (let attempt = 0; attempt < CODEX_FOOTER_READ_ATTEMPTS; attempt++) {
+    if (isExpected(await readSurface())) return true;
+    await delay(CODEX_FOOTER_READ_INTERVAL_MS);
+  }
+  return false;
 }
 
 async function codexSettingsTarget(taskId: string, targetToken: string) {
