@@ -649,13 +649,15 @@ class FakeDesktopClient implements DesktopClient {
   ) async => throw StateError('No attachment fixture');
 
   @override
-  Future<List<PaneChatSuggestion>> getPaneChatSuggestions(
+  Future<({List<PaneChatSuggestion> items, bool isTruncated})>
+  getPaneChatSuggestions(
     DesktopConnection connection,
     String taskId,
     String targetToken,
     String kind,
-    String query,
-  ) async => const [];
+    String query, {
+    int? limit,
+  }) async => (items: const <PaneChatSuggestion>[], isTruncated: false);
 
   @override
   Future<List<int>> fetchChatAttachment(

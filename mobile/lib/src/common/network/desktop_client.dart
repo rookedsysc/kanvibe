@@ -420,19 +420,23 @@ class DesktopClient {
     _composerBody(response);
   }
 
-  Future<List<PaneChatSuggestion>> getPaneChatSuggestions(
+  /// [limit]을 주면 데스크톱이 그 개수까지 돌려준다. 구버전 데스크톱은 무시하고 기본 개수만 준 뒤 더 있다고 알린다
+  Future<({List<PaneChatSuggestion> items, bool isTruncated})>
+  getPaneChatSuggestions(
     DesktopConnection connection,
     String taskId,
     String targetToken,
     String kind,
-    String query,
-  ) async {
+    String query, {
+    int? limit,
+  }) async {
     final response = await _clientFor(connection)
         .get(
           _paneComposerUri(connection, taskId, 'suggestions', {
             'targetToken': targetToken,
             'kind': kind,
             'query': query,
+            if (limit != null) 'limit': '$limit',
           }),
           headers: connection.authorizationHeaders,
         )
@@ -441,11 +445,12 @@ class DesktopClient {
     if (body['targetToken'] != targetToken) {
       throw const FormatException('CLI 대상이 변경되었습니다.');
     }
-    return (body['items'] as List)
+    final items = (body['items'] as List)
         .map(
           (item) => PaneChatSuggestion.fromJson(item as Map<String, dynamic>),
         )
         .toList();
+    return (items: items, isTruncated: body['truncated'] == true);
   }
 
   Future<List<int>> fetchChatAttachment(
