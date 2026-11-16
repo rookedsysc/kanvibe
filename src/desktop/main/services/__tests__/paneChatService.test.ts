@@ -134,6 +134,16 @@ describe("pane chat exact CLI control", () => {
     expect(mocks.write).not.toHaveBeenCalled();
   });
 
+  it("passes a raised suggestion limit to the catalog and rejects limits outside 1 to 512", async () => {
+    const target = await getPaneChatSnapshot("task-chat", "%3");
+    mocks.catalog.mockResolvedValue({ items: [], truncated: false });
+    await getPaneChatSuggestions("task-chat", target.targetToken!, "skill", "", 512);
+    expect(mocks.catalog).toHaveBeenLastCalledWith(expect.anything(), "skill", "", 512);
+    mocks.catalog.mockClear();
+    for (const limit of [0, 513, 1.5, Number.NaN]) await expect(getPaneChatSuggestions("task-chat", target.targetToken!, "skill", "", limit)).rejects.toMatchObject({ name: "PaneChatInputError" });
+    expect(mocks.catalog).not.toHaveBeenCalled();
+  });
+
   it("permits the same request to retry after a definite pre-write refusal", async () => {
     const target = await getPaneChatSnapshot("task-chat");
     mocks.surface.mockResolvedValue({ ...surface, inputLine: "› native text", cursorColumn: 13 });

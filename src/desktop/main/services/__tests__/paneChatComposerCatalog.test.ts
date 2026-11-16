@@ -81,4 +81,40 @@ describe("pane chat composer catalog", () => {
     expect(result.items).toHaveLength(20);
     expect(result.truncated).toBe(true);
   });
+  it("returns the whole catalog when the caller raises the limit to filter on its own side", async () => {
+    const cwd = path.join(directory, "repo");
+    for (let index = 0; index < 21; index++) await skill(path.join(cwd, ".agents/skills"), `skill-${index}`, `---\nname: skill-${index}\ndescription: Result\n---\n`);
+    const result = await readPaneChatSuggestions({ provider: "codex", cwd, homeDirectory: directory }, "skill", "", 512);
+    expect(result.items).toHaveLength(21);
+    expect(result.truncated).toBe(false);
+  });
+  it("reuses a scanned catalog for ten seconds and then picks up a newly added skill", async () => {
+    const cwd = path.join(directory, "repo");
+    const context = { provider: "codex" as const, cwd, homeDirectory: directory };
+    const labels = async () => (await readPaneChatSuggestions(context, "skill", "")).items.map((entry) => entry.label);
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      await skill(path.join(cwd, ".agents/skills"), "first", "---\nname: first\ndescription: First\n---\n");
+      expect(await labels()).toEqual(["first"]);
+      await skill(path.join(cwd, ".agents/skills"), "second", "---\nname: second\ndescription: Second\n---\n");
+      vi.advanceTimersByTime(9_999);
+      expect(await labels()).toEqual(["first"]);
+      vi.advanceTimersByTime(1);
+      expect(await labels()).toEqual(["first", "second"]);
+    } finally { vi.useRealTimers(); }
+  });
+  it("shares one scan between requests that arrive while it is still running", async () => {
+    const context = { provider: "codex" as const, cwd: "/remote/repo", homeDirectory: "/remote/home", providerHome: "/remote/home/.codex", sshHost: "shared-scan-host" };
+    remoteExec.mockResolvedValue("");
+    await Promise.all([readPaneChatSuggestions(context, "skill", ""), readPaneChatSuggestions(context, "command", "")]);
+    const scannedRoots = remoteExec.mock.calls.filter((call) => String(call[0]).includes("'/remote/home/.codex/skills'"));
+    expect(scannedRoots).toHaveLength(1);
+  });
+  it("does not remember a failed scan", async () => {
+    const context = { provider: "codex" as const, cwd: "/remote/repo", homeDirectory: "/remote/home", providerHome: "/remote/home/.codex", sshHost: "failing-scan-host" };
+    remoteExec.mockRejectedValueOnce(new Error("ssh unavailable"));
+    await expect(readPaneChatSuggestions(context, "skill", "")).rejects.toThrow("ssh unavailable");
+    remoteExec.mockResolvedValue("");
+    await expect(readPaneChatSuggestions(context, "skill", "")).resolves.toEqual({ items: [], truncated: false });
+  });
 });

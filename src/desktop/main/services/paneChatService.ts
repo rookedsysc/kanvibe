@@ -18,7 +18,7 @@ import { sendCodexThreadInput } from "@/lib/aiSessions/codexThreadInput";
 import { readCodexThreadSettings, updateCodexThreadSettings } from "@/lib/aiSessions/codexThreadSettings";
 import { findPaneChatProcess, type PaneChatProcess } from "@/lib/aiSessions/paneChatProcess";
 import { findPaneChatSessionBinding, findPaneChatProcessSessionBinding, findPaneChatReportedSessionBinding } from "@/lib/aiSessions/paneChatSessionBindings";
-import { MAX_PANE_CHAT_ATTACHMENTS, type PaneChatActionResult, type PaneChatAttachment, type PaneChatCodexThreadReveal, type PaneChatAttachmentInput, type PaneChatKey, type PaneChatLayout, type PaneChatSnapshot, type PaneChatSuggestionKind, type PaneChatSuggestions } from "@/desktop/shared/paneChat";
+import { MAX_PANE_CHAT_ATTACHMENTS, MAX_PANE_CHAT_CATALOG_SUGGESTIONS, type PaneChatActionResult, type PaneChatAttachment, type PaneChatCodexThreadReveal, type PaneChatAttachmentInput, type PaneChatKey, type PaneChatLayout, type PaneChatSnapshot, type PaneChatSuggestionKind, type PaneChatSuggestions } from "@/desktop/shared/paneChat";
 import { readPaneChatLayout, readPaneChatSurface, type PaneChatSurface } from "./paneChatSurface";
 import { discardPaneChatAttachment, fingerprintPaneChatAttachments, resolvePaneChatAttachments, retainPaneChatAttachments, storePaneChatAttachment, type PaneChatAttachmentOwner } from "./paneChatAttachmentService";
 import { readPaneChatSuggestions } from "./paneChatComposerCatalog";
@@ -516,8 +516,9 @@ export async function removePaneChatAttachment(taskId: string, targetToken: stri
   return { success: true };
 }
 
-export async function getPaneChatSuggestions(taskId: string, targetToken: string, kind: PaneChatSuggestionKind, query: string): Promise<PaneChatSuggestions> {
+export async function getPaneChatSuggestions(taskId: string, targetToken: string, kind: PaneChatSuggestionKind, query: string, limit?: number): Promise<PaneChatSuggestions> {
   if (!["skill", "command", "file"].includes(kind) || typeof query !== "string" || query.length > 256 || /[\x00-\x1f\x7f]/.test(query)) throw inputError("검색 종류·검색어가 올바르지 않습니다.");
+  if (limit !== undefined && (!Number.isInteger(limit) || limit < 1 || limit > MAX_PANE_CHAT_CATALOG_SUGGESTIONS)) throw inputError("제안 개수 상한이 올바르지 않습니다.");
   const lease = await assertTarget(taskId, targetToken);
   if (lease.process.provider !== "claude" && lease.process.provider !== "codex") return { targetToken, items: [], truncated: false };
   const surface = await readPaneChatSurface(taskId, lease.requestedPaneId, false);
@@ -534,7 +535,7 @@ export async function getPaneChatSuggestions(taskId: string, targetToken: string
       // 프로세스 cwd 조회가 막혀도 task의 검증된 worktree 카탈로그는 사용할 수 있다.
     }
   }
-  const result = await readPaneChatSuggestions({ provider: lease.process.provider, cwd, workspacePath, sshHost: surface.task.sshHost, processId: lease.process.pid }, kind, query);
+  const result = await readPaneChatSuggestions({ provider: lease.process.provider, cwd, workspacePath, sshHost: surface.task.sshHost, processId: lease.process.pid }, kind, query, limit);
   await assertTarget(taskId, targetToken);
   return { targetToken, ...result };
 }

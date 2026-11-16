@@ -429,7 +429,7 @@ async function handlePaneChatRequest(request, response, bridge, taskId, action, 
       if (action === "suggestions") {
         const token = searchParams.get("targetToken");
         if (!token) { writeJson(response, 400, { success: false, error: "CLI 대상 토큰이 필요합니다" }); return; }
-        const result = await bridge.getPaneChatSuggestions(taskId, token, searchParams.get("kind"), searchParams.get("query") ?? "");
+        const result = await bridge.getPaneChatSuggestions(taskId, token, searchParams.get("kind"), searchParams.get("query") ?? "", ...(searchParams.has("limit") ? [Number(searchParams.get("limit"))] : []));
         writeJson(response, 200, { success: true, ...result });
         return;
       }

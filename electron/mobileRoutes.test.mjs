@@ -1709,6 +1709,11 @@ describe("채팅 composer 첨부와 자동완성 HTTP", () => {
     expect(result).toMatchObject({ status: 200, body: { targetToken: "token", items: [{ insertText: "$review" }] } });
     expect(bridge.getPaneChatSuggestions).toHaveBeenCalledWith("task-1", "token", "skill", "review");
   });
+  it("전체 목록을 받으려는 요청의 개수 상한을 숫자로 전달한다", async () => {
+    const result = await request("/api/mobile/tasks/task-1/pane-chat/suggestions?targetToken=token&kind=skill&query=&limit=512", { headers });
+    expect(result.status).toBe(200);
+    expect(bridge.getPaneChatSuggestions).toHaveBeenCalledWith("task-1", "token", "skill", "", 512);
+  });
   it("첨부 ID와 중복 방지 식별자를 메시지와 함께 전달한다", async () => {
     await request("/api/mobile/tasks/task-1/pane-chat/prompt", { method: "POST", headers, body: JSON.stringify({ targetToken: "token", text: "caption", attachmentIds: ["owned-id"], requestId: "once" }) });
     expect(bridge.sendPaneChatPrompt).toHaveBeenCalledWith("task-1", "token", "caption", ["owned-id"], "once");
