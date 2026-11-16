@@ -75,8 +75,20 @@ describe("aiUsageService", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.resetAllMocks();
   });
+
+  /** 최근 결과와 진행 중인 조회는 모듈이 기억하므로, 그 동작을 보는 테스트는 새 인스턴스를 받아야 서로 오염되지 않는다 */
+  async function loadFreshAiUsageService() {
+    vi.resetModules();
+    return import("@/desktop/main/services/aiUsageService");
+  }
+
+  function freezeTimeAt(isoTime: string): void {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(isoTime));
+  }
 
   it("한 번도 조회하지 않았으면 캐시가 비어 있다", async () => {
     const { getCachedAiUsageSnapshot } = await import("@/desktop/main/services/aiUsageService");
@@ -192,6 +204,60 @@ describe("aiUsageService", () => {
     const snapshot = await getAiUsageSnapshot();
 
     expect(snapshot.accounts[0].windows).toEqual([]);
+  });
+
+  it("재사용을 허용한 조회가 겹치면 한 번만 집계해 같은 결과를 나눠 준다", async () => {
+    const { getAiUsageSnapshot } = await loadFreshAiUsageService();
+    mockAggregateAiUsage.mockResolvedValue(createSnapshot(22));
+
+    const [firstSnapshot, secondSnapshot] = await Promise.all([
+      getAiUsageSnapshot({ canReuseRecentSnapshot: true }),
+      getAiUsageSnapshot({ canReuseRecentSnapshot: true }),
+    ]);
+
+    expect(mockAggregateAiUsage).toHaveBeenCalledTimes(1);
+    expect(secondSnapshot).toBe(firstSnapshot);
+  });
+
+  it("재사용을 허용한 조회는 5분 안에는 다시 집계하지 않는다", async () => {
+    freezeTimeAt("2026-08-10T06:00:00.000Z");
+    const { getAiUsageSnapshot } = await loadFreshAiUsageService();
+    mockAggregateAiUsage.mockResolvedValue(createSnapshot(22));
+    await getAiUsageSnapshot({ canReuseRecentSnapshot: true });
+
+    vi.setSystemTime(new Date("2026-08-10T06:04:59.000Z"));
+    mockAggregateAiUsage.mockResolvedValue(createSnapshot(80));
+    const snapshot = await getAiUsageSnapshot({ canReuseRecentSnapshot: true });
+
+    expect(mockAggregateAiUsage).toHaveBeenCalledTimes(1);
+    expect(snapshot.accounts[0].windows[0].usedPercent).toBe(22);
+  });
+
+  it("5분이 지나면 재사용을 허용한 조회도 다시 집계한다", async () => {
+    freezeTimeAt("2026-08-10T06:00:00.000Z");
+    const { getAiUsageSnapshot } = await loadFreshAiUsageService();
+    mockAggregateAiUsage.mockResolvedValue(createSnapshot(22));
+    await getAiUsageSnapshot({ canReuseRecentSnapshot: true });
+
+    vi.setSystemTime(new Date("2026-08-10T06:05:00.000Z"));
+    mockAggregateAiUsage.mockResolvedValue(createSnapshot(80));
+    const snapshot = await getAiUsageSnapshot({ canReuseRecentSnapshot: true });
+
+    expect(mockAggregateAiUsage).toHaveBeenCalledTimes(2);
+    expect(snapshot.accounts[0].windows[0].usedPercent).toBe(80);
+  });
+
+  it("재사용을 허용하지 않은 조회는 5분 안이어도 다시 집계한다", async () => {
+    freezeTimeAt("2026-08-10T06:00:00.000Z");
+    const { getAiUsageSnapshot } = await loadFreshAiUsageService();
+    mockAggregateAiUsage.mockResolvedValue(createSnapshot(22));
+    await getAiUsageSnapshot({ canReuseRecentSnapshot: true });
+
+    mockAggregateAiUsage.mockResolvedValue(createSnapshot(80));
+    const snapshot = await getAiUsageSnapshot();
+
+    expect(mockAggregateAiUsage).toHaveBeenCalledTimes(2);
+    expect(snapshot.accounts[0].windows[0].usedPercent).toBe(80);
   });
 
   it("캐시 저장이 실패해도 조회 결과는 그대로 돌려준다", async () => {

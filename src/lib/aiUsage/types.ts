@@ -61,3 +61,8 @@ export interface AiUsageSnapshot {
   accounts: AiUsageAccountResult[];
   fetchedAt: string;
 }
+
+export interface AiUsageSnapshotOptions {
+  /** 사람이 요청하지 않은 조회가 켠다. 주기 안에 받아 둔 결과나 진행 중인 조회가 있으면 새로 조회하지 않는다 */
+  canReuseRecentSnapshot?: boolean;
+}

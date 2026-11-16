@@ -6,6 +6,8 @@ import type { AiAccountSummary } from "@/desktop/main/services/aiAccountService"
 import { getAiUsageSnapshot, getCachedAiUsageSnapshot } from "@/desktop/renderer/actions/aiUsage";
 import type { AiUsageFailureReason, AiUsageSnapshot } from "@/lib/aiUsage/types";
 
+vi.mock("@/desktop/renderer/hooks/useIsWindowActive", () => ({ useIsWindowActive: () => true }));
+
 vi.mock("@/desktop/renderer/actions/aiUsage", () => ({
   getAiUsageSnapshot: vi.fn(),
   getCachedAiUsageSnapshot: vi.fn(),
