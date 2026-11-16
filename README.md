@@ -295,7 +295,7 @@ For an SSH task, connect to that task's SSH host first, then run the command the
 ### Mobile Companion (Flutter)
 
 - View tasks by status on phones; tablets at 768dp and wider show Kanban columns. Filter projects and switch between saved PCs.
-- Select multiple local and SSH desktops together with projects. Filters use neutral checkmarks without selected accent colors. The desktop control lives in `src/components/DesktopFilter.tsx`; mobile uses the board feature's snapshot and per-connection filter controllers.
+- Select multiple local and SSH desktops together with projects. Selecting desktops narrows the project filter to those desktops' projects and clears project selections from other desktops. Each whole row in the desktop list toggles its desktop. Filters use neutral checkmarks without selected accent colors. The desktop control lives in `src/components/DesktopFilter.tsx`; mobile uses the board feature's snapshot and per-connection filter controllers.
 - Sync cleans registrations for deleted repository directories and task worktrees. Connection or permission failures preserve records; files, branches, and running sessions stay intact.
 - Open the task’s existing tmux, Zellij, or plain terminal session. Each tab shows one pane on both phones and tablets; add a shell tab without returning to the PC.
 - Read terminal output and type with the on-screen keyboard, including in SSH remote tasks. Create tasks, change status, inspect task details, and open the linked PR.
@@ -319,6 +319,7 @@ For an SSH task, connect to that task's SSH host first, then run the command the
 | `Enter` | Focused Worktree task list | Focus the selected task's terminal |
 | `Cmd/Ctrl+Shift+P` | Board | Open the project filter dropdown |
 | `Cmd/Ctrl+Shift+I` | Board | Open the notifications dropdown |
+| `Cmd/Ctrl+Shift+D` | Board | Open the desktop filter (default, configurable) |
 | `Cmd+[` / `Cmd+]` (macOS), `Alt+[` / `Alt+]` (Linux) | Global | Navigate back/forward through app history; back falls back to board home when there is no previous page |
 | `Cmd+1/2/3` (macOS), `Alt+1/2/3` (Linux) | Task detail | Activate the numbered detail dock items: info, status/hooks, and AI chat. These shortcuts are intercepted before terminal input |
 | `Cmd+4` (macOS), `Alt+4` (Linux) | Task detail | Open the task PR in the browser when a PR exists; otherwise the shortcut belongs to the fourth numbered dock item when present |

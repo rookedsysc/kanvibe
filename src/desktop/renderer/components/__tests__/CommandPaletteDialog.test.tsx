@@ -64,6 +64,7 @@ function BoardMoveHandlerHarness({
   useEffect(() => boardCommands.registerBoardHandlers({
     toggleNotificationCenter: () => {},
     openProjectFilter: () => {},
+    openDesktopFilter: () => {},
     openCreateTaskModal: () => {},
     moveFocusedTaskToStatus,
   }), [boardCommands, moveFocusedTaskToStatus]);

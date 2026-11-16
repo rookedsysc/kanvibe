@@ -1050,6 +1050,7 @@ function TaskDetailContent({ id }: { id: string }) {
       notificationCenterRef.current?.toggle();
     },
     openProjectFilter() {},
+    openDesktopFilter() {},
     openCreateTaskModal(defaults) {
       setCreateTaskDefaults(defaults ?? getBranchTodoDefaultsFromTask(currentTaskRef.current));
       setIsCreateTaskModalOpen(true);

@@ -362,6 +362,7 @@
         "taskSearch": "작업 빠른 검색",
         "boardNotification": "알림 센터",
         "boardProjectFilter": "프로젝트 필터",
+        "boardDesktopFilter": "데스크톱 필터",
         "commandPalette": "커맨드 팔레트",
         "boardPageFind": "페이지 내 검색",
         "createTask": "작업 생성",

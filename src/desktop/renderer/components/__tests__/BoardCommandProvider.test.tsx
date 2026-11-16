@@ -1,5 +1,5 @@
 import { useEffect, type ReactNode } from "react";
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, createEvent, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BoardCommandProvider, useBoardCommands } from "@/desktop/renderer/components/BoardCommandProvider";
@@ -22,11 +22,13 @@ vi.mock("@/desktop/renderer/utils/refresh", () => ({
 function BoardCommandHarness({
   onToggleNotificationCenter,
   onOpenProjectFilter,
+  onOpenDesktopFilter = () => {},
   onOpenCreateTaskModal,
   blockShortcuts = false,
 }: {
   onToggleNotificationCenter: () => void;
   onOpenProjectFilter: () => void;
+  onOpenDesktopFilter?: () => void;
   onOpenCreateTaskModal: (defaults?: { projectId: string; baseBranch: string }) => void;
   blockShortcuts?: boolean;
 }) {
@@ -35,8 +37,9 @@ function BoardCommandHarness({
   useEffect(() => boardCommands.registerBoardHandlers({
     toggleNotificationCenter: onToggleNotificationCenter,
     openProjectFilter: onOpenProjectFilter,
+    openDesktopFilter: onOpenDesktopFilter,
     openCreateTaskModal: onOpenCreateTaskModal,
-  }), [boardCommands, onOpenCreateTaskModal, onOpenProjectFilter, onToggleNotificationCenter]);
+  }), [boardCommands, onOpenCreateTaskModal, onOpenDesktopFilter, onOpenProjectFilter, onToggleNotificationCenter]);
 
   useEffect(() => {
     if (!blockShortcuts) {
@@ -121,6 +124,29 @@ describe("BoardCommandProvider", () => {
     expect(onToggleNotificationCenter).toHaveBeenCalledTimes(1);
     expect(onOpenProjectFilter).toHaveBeenCalledTimes(1);
     expect(screen.getByText("branch-enabled")).toBeTruthy();
+  });
+
+  it("dispatches the desktop filter shortcut to the registered handler", () => {
+    const onOpenProjectFilter = vi.fn();
+    const onOpenDesktopFilter = vi.fn();
+
+    renderWithRouter(
+      <BoardCommandProvider>
+        <BoardCommandHarness
+          onToggleNotificationCenter={vi.fn()}
+          onOpenProjectFilter={onOpenProjectFilter}
+          onOpenDesktopFilter={onOpenDesktopFilter}
+          onOpenCreateTaskModal={vi.fn()}
+        />
+      </BoardCommandProvider>,
+    );
+
+    const shortcutEvent = createEvent.keyDown(window, { key: "d", ctrlKey: true, shiftKey: true });
+    fireEvent(window, shortcutEvent);
+
+    expect(onOpenDesktopFilter).toHaveBeenCalledTimes(1);
+    expect(onOpenProjectFilter).not.toHaveBeenCalled();
+    expect(shortcutEvent.defaultPrevented).toBe(true);
   });
 
   it("opens the command palette from the global shortcut and blocks other board shortcuts while open", () => {

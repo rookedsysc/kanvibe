@@ -259,6 +259,7 @@ herdr session attach kanvibe
 | `Enter` | 已聚焦的 Worktree 任务列表 | 将焦点移到所选任务的终端 |
 | `Cmd/Ctrl+Shift+P` | 看板 | 打开项目筛选下拉框 |
 | `Cmd/Ctrl+Shift+I` | 看板 | 打开通知下拉框 |
+| `Cmd/Ctrl+Shift+D` | 看板 | 打开桌面筛选（默认，可配置） |
 | `Cmd+[` / `Cmd+]` (macOS), `Alt+[` / `Alt+]` (Linux) | 全局 | 在应用历史中后退/前进；没有上一页时后退到看板首页 |
 | `Cmd+1/2/3` (macOS), `Alt+1/2/3` (Linux) | 任务详情 | 激活编号详情 dock 项：信息、状态/hooks 和 AI 聊天。这些快捷键会先于终端输入被拦截 |
 | `Cmd+4` (macOS), `Alt+4` (Linux) | 任务详情 | 任务有 PR 时在浏览器中打开该 PR；否则该快捷键属于当前可见的第四个 dock 项 |

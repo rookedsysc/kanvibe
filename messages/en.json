@@ -362,6 +362,7 @@
         "taskSearch": "Task quick search",
         "boardNotification": "Notification center",
         "boardProjectFilter": "Project filter",
+        "boardDesktopFilter": "Desktop filter",
         "commandPalette": "Command palette",
         "boardPageFind": "Find on page",
         "createTask": "Create task",
