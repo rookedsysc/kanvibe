@@ -5,7 +5,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { DragDropContext, type DropResult } from "@hello-pangea/dnd";
 import BoardPageFindBar from "./BoardPageFindBar";
 import BoardSortPicker from "./BoardSortPicker";
-import DesktopFilter, { isOnDesktops, pickAvailableDesktops } from "./DesktopFilter";
+import DesktopFilter, { isOnDesktops, pickAvailableDesktops, type DesktopFilterHandle } from "./DesktopFilter";
 import Column from "./Column";
 import type { TaskDeletionState, TaskMoveState } from "./TaskCard";
 import CreateTaskModal from "./CreateTaskModal";
@@ -403,6 +403,7 @@ export default function Board({
   const unreadNotificationCountByTask = useUnreadNotificationCountByTask();
   const notificationCenterRef = useRef<NotificationCenterButtonHandle>(null);
   const projectSelectorRef = useRef<ProjectSelectorHandle>(null);
+  const desktopFilterRef = useRef<DesktopFilterHandle>(null);
   const hasAppliedInitialFocusRef = useRef(false);
   const pendingTaskDeleteSequenceRef = useRef<{
     taskId: string;
@@ -974,6 +975,9 @@ export default function Board({
     openProjectFilter() {
       projectSelectorRef.current?.open();
     },
+    openDesktopFilter() {
+      desktopFilterRef.current?.open();
+    },
     openCreateTaskModal(defaults) {
       setBranchTodoDefaults(defaults ?? null);
       setIsModalOpen(true);
@@ -1119,7 +1123,7 @@ export default function Board({
               compact
             />
           </div>
-          <DesktopFilter hosts={desktopHosts} selectedDesktops={activeDesktopFilters} onChange={changeDesktopFilter} />
+          <DesktopFilter ref={desktopFilterRef} hosts={desktopHosts} selectedDesktops={activeDesktopFilters} onChange={changeDesktopFilter} />
           <BoardSortPicker preference={sortPreference} onChange={setSortPreference} />
           <button
             type="button"

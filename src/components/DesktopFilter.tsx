@@ -1,10 +1,14 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { forwardRef, useEffect, useId, useImperativeHandle, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 
 interface DesktopFilterProps {
   hosts: string[];
   selectedDesktops: string[];
   onChange: (desktops: string[]) => void;
+}
+
+export interface DesktopFilterHandle {
+  open: () => void;
 }
 
 /** 프로젝트·태스크가 속한 데스크톱을 필터 선택값과 같은 형식으로 나타낸다 */
@@ -23,7 +27,10 @@ export function isOnDesktops(sshHost: string | null | undefined, activeDesktops:
   return activeDesktops.length === 0 || activeDesktops.includes(getDesktopKey(sshHost));
 }
 
-export default function DesktopFilter({ hosts, selectedDesktops, onChange }: DesktopFilterProps) {
+const DesktopFilter = forwardRef<DesktopFilterHandle, DesktopFilterProps>(function DesktopFilter(
+  { hosts, selectedDesktops, onChange },
+  ref,
+) {
   const t = useTranslations("board");
   const tc = useTranslations("common");
   const [isOpen, setIsOpen] = useState(false);
@@ -36,6 +43,8 @@ export default function DesktopFilter({ hosts, selectedDesktops, onChange }: Des
     : selected.length === 1 ? selected[0].label : t("selectedDesktops", { count: selected.length });
   const toggleDesktop = (desktop: string) => onChange(selectedDesktops.includes(desktop)
     ? selectedDesktops.filter((value) => value !== desktop) : [...selectedDesktops, desktop]);
+
+  useImperativeHandle(ref, () => ({ open: () => setIsOpen(true) }), []);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -110,4 +119,6 @@ export default function DesktopFilter({ hosts, selectedDesktops, onChange }: Des
       )}
     </div>
   );
-}
+});
+
+export default DesktopFilter;

@@ -319,6 +319,7 @@ For an SSH task, connect to that task's SSH host first, then run the command the
 | `Enter` | Focused Worktree task list | Focus the selected task's terminal |
 | `Cmd/Ctrl+Shift+P` | Board | Open the project filter dropdown |
 | `Cmd/Ctrl+Shift+I` | Board | Open the notifications dropdown |
+| `Cmd/Ctrl+Shift+D` | Board | Open the desktop filter (default, configurable) |
 | `Cmd+[` / `Cmd+]` (macOS), `Alt+[` / `Alt+]` (Linux) | Global | Navigate back/forward through app history; back falls back to board home when there is no previous page |
 | `Cmd+1/2/3` (macOS), `Alt+1/2/3` (Linux) | Task detail | Activate the numbered detail dock items: info, status/hooks, and AI chat. These shortcuts are intercepted before terminal input |
 | `Cmd+4` (macOS), `Alt+4` (Linux) | Task detail | Open the task PR in the browser when a PR exists; otherwise the shortcut belongs to the fourth numbered dock item when present |

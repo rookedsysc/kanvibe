@@ -35,6 +35,7 @@ export interface ActiveTaskContext {
 interface BoardCommandHandlers {
   toggleNotificationCenter: () => void;
   openProjectFilter: () => void;
+  openDesktopFilter: () => void;
   openCreateTaskModal: (defaults?: BranchTodoDefaults) => void;
   moveFocusedTaskToStatus?: (
     status: TaskStatus,
@@ -239,6 +240,16 @@ export function BoardCommandProvider({ children }: PropsWithChildren) {
 
         event.preventDefault();
         handlersRef.current.openProjectFilter();
+        return;
+      }
+
+      if (shortcutCommand === "boardDesktopFilter") {
+        if (!handlersRef.current) {
+          return;
+        }
+
+        event.preventDefault();
+        handlersRef.current.openDesktopFilter();
         return;
       }
 

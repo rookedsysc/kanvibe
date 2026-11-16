@@ -32,6 +32,7 @@ export const SHORTCUTS = {
   workspaceTaskListFocus: "Mod+Alt",
   boardNotification: "Mod+Shift+I",
   boardProjectFilter: "Mod+Shift+F",
+  boardDesktopFilter: "Mod+Shift+D",
   commandPalette: "Mod+Shift+P",
   createTask: "Mod+N",
   newWindow: "Mod+Shift+N",

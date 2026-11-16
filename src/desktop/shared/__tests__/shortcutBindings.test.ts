@@ -213,6 +213,20 @@ describe("커맨드 팔레트 단축키", () => {
       "mac",
     )).toBe("boardProjectFilter");
   });
+
+  it("Mod+Shift+D는 macOS와 Linux에서 데스크톱 필터를 연다", () => {
+    expect(DEFAULT_SHORTCUT_BINDINGS.boardDesktopFilter).toBe("Mod+Shift+D");
+    expect(findShortcutCommandForEvent(
+      DEFAULT_SHORTCUT_BINDINGS,
+      new KeyboardEvent("keydown", { key: "d", metaKey: true, shiftKey: true }),
+      "mac",
+    )).toBe("boardDesktopFilter");
+    expect(findShortcutCommandForEvent(
+      DEFAULT_SHORTCUT_BINDINGS,
+      new KeyboardEvent("keydown", { key: "D", ctrlKey: true, shiftKey: true }),
+      "linux",
+    )).toBe("boardDesktopFilter");
+  });
 });
 
 describe("단축키 재배정", () => {

@@ -547,6 +547,16 @@ describe("Board defaultSessionType sync", () => {
     expect(projectSelector.dataset.selectedProjectIds).toBe("remote-project");
   });
 
+  it("Mod+Shift+D는 데스크톱 필터를 열고 첫 항목에 포커스한다", () => {
+    renderBoardWithLocalAndRemoteProjects();
+    expect(screen.queryByRole("dialog", { name: "desktopFilter" })).toBeNull();
+
+    fireEvent.keyDown(window, { key: "d", ctrlKey: true, shiftKey: true });
+
+    expect(screen.getByRole("dialog", { name: "desktopFilter" })).toBeTruthy();
+    expect(document.activeElement).toBe(screen.getByRole("checkbox", { name: "allDesktops" }));
+  });
+
   it("defaultSessionType prop이 변경되면 내부 상태와 하위 컴포넌트가 동기화된다", async () => {
     // Given
     const baseProps = {
