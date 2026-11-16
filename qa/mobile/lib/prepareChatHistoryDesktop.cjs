@@ -70,7 +70,38 @@ function seedAgentFiles() {
     ],
   }));
 }
+/**
+ * 태스크의 터미널에 가짜 Codex CLI만 띄워 둔다. --pane-chat과 달리 데스크톱 화면에서 채팅을 조작하지 않으므로,
+ * 모바일 흐름이 데스크톱 화면 구성과 무관하게 살아 있는 CLI pane을 쓸 수 있다.
+ */
+async function startLiveCli(page, invoke, taskId) {
+  const cliPath = path.join(fakeHome, 'fixture-bin', 'codex');
+  fs.mkdirSync(path.dirname(cliPath), { recursive: true });
+  fs.copyFileSync(path.join(__dirname, '../../electron/lib/pane-chat-cli.py'), cliPath);
+  await page.evaluate(async (id) => {
+    const { navigateToTaskDetail } = await import('/src/desktop/renderer/utils/taskNavigation.ts');
+    await navigateToTaskDetail(id, { currentLocale: 'ko' });
+  }, taskId);
+  await page.locator('.xterm').first().waitFor({ state: 'visible', timeout: 30000 });
+  const deadline = Date.now() + 30000;
+  const until = async (read, accept, label) => {
+    for (;;) {
+      const value = await read();
+      if (accept(value)) return value;
+      if (Date.now() > deadline) throw new Error(`${label}: ${JSON.stringify(value)}`);
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+  };
+  const tabs = await until(() => invoke('terminalTabs', 'listTerminalTabs', taskId), (result) => result.tabs.some((tab) => tab.isActive), 'active task tab');
+  const tabId = tabs.tabs.find((tab) => tab.isActive).id;
+  await until(() => invoke('mobileBridge', 'getTaskSurfaces', taskId), (surfaces) => surfaces.tabs.some((tab) => tab.id === tabId), 'task PTY');
+  const command = `/usr/bin/python3 '${cliPath.replace(/'/g, `'"'"'`)}' codex live-pane-a\r`;
+  await page.evaluate(({ id, tab, input }) => { window.kanvibeDesktop.writeTerminal(id, tab, input); }, { id: taskId, tab: tabId, input: command });
+  await until(() => invoke('paneChat', 'getPaneChatSnapshot', taskId), (snapshot) => snapshot.provider === 'codex' && snapshot.inputState === 'ready', 'Codex foreground');
+}
+
 async function main() {
+  const needsTerminalSession = process.argv.includes('--pane-chat') || process.argv.includes('--live-cli');
   if (fs.existsSync(path.join(runDir, 'app-data'))) throw new Error('Use a fresh --run-dir');
   fs.mkdirSync(repo, { recursive: true });
   // 격리 HOME에 zsh 시작 파일이 없으면 zsh-newuser-install 화면이 떠서 fixture가 터미널에 친 입력을 먹는다
@@ -105,8 +136,8 @@ async function main() {
     await invoke('appSettings', 'setDefaultSessionType', 'terminal');
     const project = await invoke('project', 'registerProject', historyPrefix, repo);
     if (!project.success) throw new Error(JSON.stringify(project));
-    const task = await invoke('kanban', 'createTask', { title: taskTitle, projectId: project.project.id, ...(process.argv.includes('--pane-chat') ? { baseBranch: 'main' } : {}) });
-    if (process.argv.includes('--pane-chat')) {
+    const task = await invoke('kanban', 'createTask', { title: taskTitle, projectId: project.project.id, ...(needsTerminalSession ? { baseBranch: 'main' } : {}) });
+    if (needsTerminalSession) {
       const connected = await invoke('kanban', 'connectTerminalSession', task.id, 'terminal');
       if (connected?.sessionType !== 'terminal' || !connected.sessionName) throw new Error('Fixture terminal session did not connect');
     }
@@ -129,6 +160,8 @@ async function main() {
       const fixture = JSON.parse(fs.readFileSync(path.join(runDir, 'fixture.json'), 'utf8'));
       fs.writeFileSync(path.join(runDir, 'fixture.json'), JSON.stringify({ ...fixture, live }, null, 2));
     }
+
+    if (process.argv.includes('--live-cli')) await startLiveCli(page, invoke, task.id);
 
     if (process.argv.includes('--desktop-ui')) {
       await page.setViewportSize({ width: 1440, height: 960 });
