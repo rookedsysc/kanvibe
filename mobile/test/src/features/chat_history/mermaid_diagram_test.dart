@@ -244,4 +244,57 @@ void main() {
     await settleMermaid(t);
     expect(ready(), findsOneWidget);
   });
+  group('넓은 다이어그램', () {
+    /// 요청한 너비마다 그 너비의 이미지를 주고, PC가 잰 원래 너비를 함께 싣는다
+    Future<List<int>> mountWide(WidgetTester t, {int? naturalWidth}) async {
+      final requestedWidths = <int>[];
+      await mountMermaid(t, const MermaidDiagram(definition: definition), (
+        r,
+      ) async {
+        final width = (jsonDecode(r.body) as Map)['width'] as int;
+        requestedWidths.add(width);
+        return mermaidResponse({
+          ...imageEnvelope(width: width, height: width == 400 ? 60 : 160),
+          'naturalWidth': ?naturalWidth,
+        });
+      });
+      await settleMermaid(t);
+      return requestedWidths;
+    }
+
+    Finder horizontalScroll() => find.descendant(
+      of: find.byType(MermaidDiagram),
+      matching: find.byWidgetPredicate(
+        (w) => w is Scrollable && w.axisDirection == AxisDirection.right,
+      ),
+    );
+
+    testWidgets('화면보다 넓으면 원래 너비로 다시 받아 옆으로 밀어 읽게 한다', (t) async {
+      final requestedWidths = await mountWide(t, naturalWidth: 1100);
+
+      expect(requestedWidths, [400, 1116]);
+      expect(ready(), findsOneWidget);
+      final gesture = await t.startGesture(
+        t.getTopLeft(find.byType(MermaidDiagram)) + const Offset(100, 60),
+      );
+      for (var step = 0; step < 50; step++) {
+        await gesture.moveBy(const Offset(-4, 0));
+        await t.pump(const Duration(milliseconds: 8));
+      }
+      await gesture.up();
+      await t.pumpAndSettle();
+      expect(
+        t.state<ScrollableState>(horizontalScroll()).position.pixels,
+        greaterThan(0),
+      );
+    });
+
+    testWidgets('원래 너비를 알려 주지 않는 PC면 지금처럼 화면 너비 이미지 하나만 받는다', (t) async {
+      final requestedWidths = await mountWide(t);
+
+      expect(requestedWidths, [400]);
+      expect(ready(), findsOneWidget);
+      expect(horizontalScroll(), findsNothing);
+    });
+  });
 }

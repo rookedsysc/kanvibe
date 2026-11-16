@@ -97,7 +97,16 @@ class MermaidRepository {
     } else {
       _validatePng(bytes, width, height);
     }
-    return MermaidImage(bytes: bytes, width: width, height: height);
+    final naturalWidth = response['naturalWidth'];
+    return MermaidImage(
+      bytes: bytes,
+      width: width,
+      height: height,
+      // 원래 너비를 알려 주지 않는 오래된 PC면 없다
+      naturalWidth: naturalWidth is int && naturalWidth > 0
+          ? naturalWidth
+          : null,
+    );
   }
 
   void _validatePng(Uint8List bytes, int width, int height) {
