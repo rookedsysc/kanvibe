@@ -5,7 +5,7 @@ import { TerminalPaneChatLayer } from "../TerminalPaneChatLayer";
 import { REQUEST_TOGGLE_PANE_CHAT_EVENT } from "@/desktop/renderer/utils/terminalFocus";
 import { getAppSetting } from "@/desktop/renderer/actions/appSettings";
 
-const actions = vi.hoisted(() => ({ getPaneChatLayout: vi.fn(), focusPaneChatTerminal: vi.fn() }));
+const actions = vi.hoisted(() => ({ getPaneChatLayout: vi.fn(), focusPaneChatTerminal: vi.fn(), getPaneChatModes: vi.fn(), setPaneChatMode: vi.fn() }));
 vi.mock("@/desktop/renderer/actions/paneChat", () => actions);
 vi.mock("@/desktop/renderer/actions/appSettings", () => ({ getAppSetting: vi.fn().mockResolvedValue(null), setAppSetting: vi.fn().mockResolvedValue(undefined) }));
 vi.mock("next-intl", () => ({ useTranslations: () => (key: string) => key }));
@@ -28,7 +28,19 @@ const split = {
 };
 const metrics = { cols: 80, rows: 24, left: 0, top: 0, width: 800, height: 480 };
 
-beforeEach(() => { sessionStorage.clear(); vi.clearAllMocks(); actions.getPaneChatLayout.mockResolvedValue(split); actions.focusPaneChatTerminal.mockResolvedValue({ success: true }); });
+/** 데스크톱 앱 설정에 저장된 작업별 pane 채팅 모드를 흉내 낸다 */
+let savedModes: Record<string, Record<string, boolean>> = {};
+
+beforeEach(() => {
+  savedModes = {};
+  vi.clearAllMocks();
+  actions.getPaneChatLayout.mockResolvedValue(split);
+  actions.focusPaneChatTerminal.mockResolvedValue({ success: true });
+  actions.getPaneChatModes.mockImplementation(async (taskId: string) => ({ ...savedModes[taskId] }));
+  actions.setPaneChatMode.mockImplementation(async (taskId: string, paneId: string, isEnabled: boolean) => {
+    savedModes[taskId] = { ...savedModes[taskId], [paneId]: isEnabled };
+  });
+});
 afterEach(() => { cleanup(); vi.useRealTimers(); });
 
 async function toggle() {
@@ -91,6 +103,67 @@ describe("pane-local chat layer", () => {
     open();
     await act(async () => {});
     expect(screen.queryByTestId("chat-%1")).toBeNull();
+  });
+
+  it("창 저장소가 비어 있어도 앱에 저장된 채팅 모드로 pane을 채팅 UI로 연다", async () => {
+    sessionStorage.clear();
+    savedModes["task-1"] = { "%1": true };
+    open();
+    await act(async () => {});
+    expect(screen.getByTestId("chat-%1").getAttribute("data-visible")).toBe("true");
+  });
+
+  it("채팅으로 바꾸면 true를, 터미널로 되돌리면 false를 pane 단위로 저장한다", async () => {
+    open();
+    await toggle();
+    expect(actions.setPaneChatMode).toHaveBeenCalledWith("task-1", "%1", true);
+    await act(async () => { fireEvent.click(screen.getByText("terminal-%1")); });
+    expect(actions.setPaneChatMode).toHaveBeenLastCalledWith("task-1", "%1", false);
+    expect(actions.setPaneChatMode).toHaveBeenCalledTimes(2);
+  });
+
+  it("직접 터미널로 둔 pane은 기본 채팅 모드 설정이 켜져 있어도 터미널로 남는다", async () => {
+    vi.mocked(getAppSetting).mockImplementation(async (key) => key === "pane_chat_default_enabled" ? "true" : null);
+    let resolveModes!: (modes: Record<string, boolean>) => void;
+    actions.getPaneChatModes.mockReturnValue(new Promise((accept) => { resolveModes = accept; }));
+    open();
+    await act(async () => {});
+    // 저장된 기록을 읽기 전에는 기본 채팅 모드를 적용하지 않는다
+    expect(screen.queryByTestId("chat-%1")).toBeNull();
+    await act(async () => resolveModes({ "%1": false }));
+    expect(screen.queryByTestId("chat-%1")).toBeNull();
+    expect(actions.setPaneChatMode).not.toHaveBeenCalled();
+    vi.mocked(getAppSetting).mockResolvedValue(null);
+  });
+
+  it("저장된 모드를 읽지 못해도 오류 없이 터미널로 열리고 전환은 계속 동작한다", async () => {
+    actions.getPaneChatModes.mockRejectedValue(new Error("settings unavailable"));
+    open();
+    await act(async () => {});
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.queryByTestId("chat-%1")).toBeNull();
+    await toggle();
+    expect(screen.getByTestId("chat-%1").getAttribute("data-visible")).toBe("true");
+    expect(actions.setPaneChatMode).toHaveBeenCalledWith("task-1", "%1", true);
+  });
+
+  it.each([
+    ["레이아웃이 먼저", "layout-first"],
+    ["모드 조회가 먼저", "modes-first"],
+  ] as const)("창을 다시 열어 복원한 활성 pane은 %s 끝나도 채팅 화면으로 포커스를 옮긴다", async (_label, order) => {
+    let resolveModes!: (modes: Record<string, boolean>) => void;
+    let resolveLayout!: (layout: typeof split) => void;
+    actions.getPaneChatModes.mockReturnValue(new Promise((accept) => { resolveModes = accept; }));
+    actions.getPaneChatLayout.mockReturnValue(new Promise((accept) => { resolveLayout = accept; }));
+    const { onChatFocusChange } = open();
+    await act(async () => {});
+    const finishModes = () => act(async () => resolveModes({ "%1": true }));
+    const finishLayout = () => act(async () => resolveLayout(split));
+    if (order === "layout-first") { await finishLayout(); await finishModes(); } else { await finishModes(); await finishLayout(); }
+    await act(async () => { await new Promise((done) => requestAnimationFrame(() => done(null))); });
+    expect(screen.getByTestId("chat-%1").getAttribute("data-visible")).toBe("true");
+    expect(onChatFocusChange).toHaveBeenCalledWith(true);
+    expect(screen.getByTestId("chat-%1").parentElement!.contains(document.activeElement)).toBe(true);
   });
 
   it("다른 태스크에는 같은 pane ID가 있어도 채팅 모드를 복원하지 않는다", async () => {

@@ -24,6 +24,8 @@ import { discardPaneChatAttachment, fingerprintPaneChatAttachments, resolvePaneC
 import { readPaneChatSuggestions } from "./paneChatComposerCatalog";
 import { writeToPane } from "./mobileBridgeService";
 
+export { getPaneChatModes, setPaneChatMode } from "./paneChatModeStore";
+
 const PROCESS_TABLE_COLUMNS = "pid=,ppid=,pgid=,tpgid=,tty=,lstart=,ucomm=,args=";
 /** 사용자가 버튼을 눌렀을 때만 Codex 하단 상태줄을 대화 ID로 바꾸는 명령. 그 TUI 세션에만 적용되고 설정 파일에는 저장되지 않는다 */
 const CODEX_THREAD_FOOTER_COMMAND = "/statusline thread-id";

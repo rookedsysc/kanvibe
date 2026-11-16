@@ -14,6 +14,12 @@ export const getPaneChatLayout = (taskId: string, terminalTabId?: string): Promi
 export const focusPaneChatTerminal = (taskId: string, paneId: string): Promise<PaneChatActionResult> =>
   invokeDesktop("paneChat", "focusPaneChatTerminal", taskId, paneId);
 
+export const getPaneChatModes = (taskId: string): Promise<Record<string, boolean>> =>
+  invokeDesktop("paneChat", "getPaneChatModes", taskId);
+
+export const setPaneChatMode = (taskId: string, paneId: string, isEnabled: boolean): Promise<void> =>
+  invokeDesktop("paneChat", "setPaneChatMode", taskId, paneId, isEnabled);
+
 export const getPaneChatSnapshot = (taskId: string, paneId?: string): Promise<PaneChatSnapshot> =>
   invokeDesktop("paneChat", "getPaneChatSnapshot", taskId, paneId);
 
