@@ -6,7 +6,8 @@ import type { Readable, Writable } from "node:stream";
 import { WebSocketServer, WebSocket } from "ws";
 import { createLocalShellEnvironment } from "./shellEnvironment";
 import {
-  decodeRemoteTerminalBytes, isRemoteTerminalSize, parseHerdrTerminalRecord, buildScreenRedraw, REMOTE_TERMINAL_COMMAND_TIMEOUT_MS,
+  decodeRemoteTerminalBytes, isRemoteTerminalSize, parseHerdrTerminalRecord, buildHerdrScreenRedraw, REMOTE_TERMINAL_COMMAND_TIMEOUT_MS,
+  parseTerminalScrollRequest, buildHerdrScrollControlRecord,
   REMOTE_TERMINAL_ENVELOPE_BYTES, REMOTE_TERMINAL_FRAME_BYTES, REMOTE_TERMINAL_INPUT_BYTES, REMOTE_TERMINAL_INPUT_QUEUE_BYTES,
   REMOTE_TERMINAL_OWNER_LEASE_MS, REMOTE_TERMINAL_ADMISSION_MS, type RemoteTerminalWireGrant,
 } from "./remoteTerminalProtocol";
@@ -215,7 +216,7 @@ export async function startRemoteTerminalAgent(
       child.stdin.on("error", () => { group.ownsTerminal = false; closeGroup(group); });
       const [history] = await Promise.all([snapshot(owner.grant.snapshotCommand), initialFrame]);
       if (group.dead) throw new Error("Terminal closed during bootstrap");
-      group.history = buildScreenRedraw(history, null);
+      group.history = buildHerdrScreenRedraw(history);
       group.initialized = true;
       bootstrapping = false;
       for (const client of group.clients) { client.send(group.history + bufferedFrames); client.ready = true; }
@@ -238,7 +239,7 @@ export async function startRemoteTerminalAgent(
     if (group.dead || grant.active !== client || !grants.has(grant.grantId)) throw new Error("Terminal grant revoked");
     if (wasReady) {
       // Re-read history and request a current native full frame instead of caching unbounded deltas.
-      const history = buildScreenRedraw(await snapshot(grant.snapshotCommand), null);
+      const history = buildHerdrScreenRedraw(await snapshot(grant.snapshotCommand));
       if (group.dead || grant.active !== client || !grants.has(grant.grantId)) throw new Error("Terminal grant revoked");
       await new Promise<void>((resolve, reject) => {
         const timer = setTimeout(() => { group.joiners.delete(client); reject(new Error("Terminal refresh timed out")); }, REMOTE_TERMINAL_COMMAND_TIMEOUT_MS);
@@ -258,6 +259,13 @@ export async function startRemoteTerminalAgent(
       const record = JSON.parse(bytes.toString("utf8"));
       // 이력 갱신은 A의 미러에만 있는 요청이다. 직접 연결한 기기가 보내도 이 연결의 이력은 붙을 때 받은 것 그대로다.
       if (record.type === "refresh-history") return;
+      const scroll = parseTerminalScrollRequest(record);
+      if (scroll) {
+        // 휠은 마우스 보고를 켠 프로그램에 입력으로 닿으므로 키 입력과 같이 이 연결이 grant를 쓴 것으로 남긴다.
+        client.wrote = true;
+        sendController(group, buildHerdrScrollControlRecord(scroll));
+        return;
+      }
       if (record.type !== "resize" || !isRemoteTerminalSize(record.cols, record.rows)) throw new Error("Invalid terminal size");
       client.size = { cols: record.cols, rows: record.rows };
       group.size = client.size;
