@@ -47,6 +47,12 @@ const PROMPT_SUBMIT_DELAY_MS = 500;
 const PICKER_CHARACTER_DELAY_MS = 40;
 const IMAGE_ATTACHMENT_SETTLE_MS = 300;
 const KEY_BYTES: Record<PaneChatKey, string> = { up: "\x1b[A", down: "\x1b[B", left: "\x1b[D", right: "\x1b[C", enter: "\r", escape: "\x1b" };
+/** Claude가 작업 중일 때만 입력란 아래 footer에 붙이는 중단 안내 */
+const CLAUDE_WORKING_FOOTER_HINT = /\besc to interrupt\b/;
+/** Codex가 작업 중일 때만 입력란 위에 띄우는 상태 줄. 예: "• Working (3s • esc to interrupt)" */
+const CODEX_WORKING_STATUS_LINE = /^•\s.*\(.*\besc to interrupt\)$/;
+/** Codex 상태 줄과 입력란 사이에는 사용량 경고 같은 줄이 끼어들 수 있어 입력란 위로 이만큼 찾는다 */
+const CODEX_WORKING_STATUS_SEARCH_ROWS = 6;
 
 interface TargetLease {
   taskId: string;
@@ -206,6 +212,25 @@ function readInputState(surface: PaneChatSurface, process: PaneChatProcess, veri
   const value = line.slice(start + marker.length).trim();
   const isPlaceholder = process.provider === "codex" ? value === "Ask Codex to do anything" : /^Try\s+/.test(value);
   return surface.cursorColumn === start + marker.length + 1 && (!value || isPlaceholder) ? "ready" : "occupied";
+}
+/**
+ * 에이전트가 응답을 만들거나 도구를 실행하는 중인지 화면 표시로 판정한다.
+ * Claude 2.1.325와 Codex 0.169에서 작업 중에만 나타나고 끝나면 사라지는 것을 확인한 자리만 본다.
+ * 대화 본문에 같은 문구가 있어도 속지 않게 입력란 기준 위치로 좁히고, 확인하지 않은 CLI나 화면 좌표가 없는 surface는 unknown이다.
+ */
+function readAgentActivity(surface: PaneChatSurface, process: PaneChatProcess): PaneChatSnapshot["agentActivity"] {
+  const lines = surface.viewportLines;
+  const inputRow = surface.cursorRow;
+  if (!lines || inputRow === null || inputRow === undefined || inputRow < 0 || inputRow >= lines.length) return "unknown";
+  if (process.provider === "claude") {
+    const footer = lines.slice(inputRow + 1);
+    return footer.some((line) => CLAUDE_WORKING_FOOTER_HINT.test(line)) ? "working" : "idle";
+  }
+  if (process.provider === "codex") {
+    const aboveComposer = lines.slice(Math.max(0, inputRow - CODEX_WORKING_STATUS_SEARCH_ROWS), inputRow);
+    return aboveComposer.some((line) => CODEX_WORKING_STATUS_LINE.test(line.trim())) ? "working" : "idle";
+  }
+  return "unknown";
 }
 async function requireReadyInput(taskId: string, token: string): Promise<void> {
   const lease = await assertTarget(taskId, token);
@@ -378,7 +403,7 @@ export async function getPaneChatAgentProvider(taskId: string, paneId: string): 
 export async function readPaneChat(taskId: string, paneId?: string): Promise<PaneChatReading> {
   const reading = (snapshot: PaneChatSnapshot, localTranscriptFile: string | null = null): PaneChatReading => ({ snapshot, localTranscriptFile });
   if (typeof taskId !== "string" || !taskId || (paneId !== undefined && typeof paneId !== "string")) throw inputError("태스크와 pane 식별자가 올바르지 않습니다.");
-  const disabled: PaneChatSnapshot = { taskId, paneId: null, sessionType: null, provider: null, targetToken: null, canSend: false, inputState: "unknown", screen: "", reason: "pane-unavailable", transcript: emptyTranscript("exact-session-unavailable"), modelPicker: { supported: false, mode: "native-cli" } };
+  const disabled: PaneChatSnapshot = { taskId, paneId: null, sessionType: null, provider: null, targetToken: null, canSend: false, inputState: "unknown", agentActivity: "unknown", screen: "", reason: "pane-unavailable", transcript: emptyTranscript("exact-session-unavailable"), modelPicker: { supported: false, mode: "native-cli" } };
   let surface: PaneChatSurface | null;
   try { surface = await readPaneChatSurface(taskId, paneId); } catch { return reading(disabled); }
   if (!surface) return reading(disabled);
@@ -412,7 +437,7 @@ export async function readPaneChat(taskId: string, paneId?: string): Promise<Pan
   const canSend = transcript.status === "available";
   const targetToken = canSend ? leaseTarget(surface, process, paneId, conversation) : null;
   const conversationKey = binding && canSend ? conversationKeyFor(surface, process, conversation)! : undefined;
-  return reading({ ...snapshot, provider: process.provider, targetToken, canSend, ...(conversationKey ? { conversationKey } : {}), inputState: readInputState(surface, process, !!displayState), reason: canSend ? null : transcript.reason, transcript, modelPicker: { supported: supportsComposer, mode: "native-cli", supportsApi: !!displayState }, ...(modelSettings ? { modelSettings } : {}), composer: { attachments: supportsComposer, skills: supportsComposer, fileMentions: supportsComposer, canSendWhileBusy: !!displayState, maxAttachmentBytes: MAX_ATTACHMENT_BYTES, maxAttachments: MAX_PANE_CHAT_ATTACHMENTS } }, surface.task.sshHost ? null : sourceRef);
+  return reading({ ...snapshot, provider: process.provider, targetToken, canSend, ...(conversationKey ? { conversationKey } : {}), inputState: readInputState(surface, process, !!displayState), agentActivity: readAgentActivity(surface, process), reason: canSend ? null : transcript.reason, transcript, modelPicker: { supported: supportsComposer, mode: "native-cli", supportsApi: !!displayState }, ...(modelSettings ? { modelSettings } : {}), composer: { attachments: supportsComposer, skills: supportsComposer, fileMentions: supportsComposer, canSendWhileBusy: !!displayState, maxAttachmentBytes: MAX_ATTACHMENT_BYTES, maxAttachments: MAX_PANE_CHAT_ATTACHMENTS } }, surface.task.sshHost ? null : sourceRef);
 }
 
 async function assertTarget(taskId: string, token: string, expectedComposer?: string[]): Promise<TargetLease> {

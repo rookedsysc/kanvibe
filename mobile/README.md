@@ -194,6 +194,8 @@ KANVIBE_MOBILE_PUSH_RELAY_TOKEN='<relay-config-secret>' pnpm dev
 
 태스크 화면의 pane 탭 아래 `터미널` / `채팅` 아이콘으로 선택한 pane의 표시 모드를 바꾼다. 외부 키보드에서는 macOS·iOS `⌘⇧J`, Android 등에서는 `Ctrl+Shift+J`를 사용한다. 모드와 초안은 pane별로 유지하며, 상단 `대화 기록`은 기존 히스토리를 연다. `TaskDetailScreen`이 모드를 소유하고 `PaneTerminalView`는 단축키를 CLI 입력보다 먼저 처리한다. 키 조합은 `presentation/pane_chat_shortcut.dart`에서 공유한다.
 
+채팅 모드에서 에이전트가 일하는 동안 대화 맨 아래에 `작업 중…`과 경과 초를 표시하고, 입력이 비어 있으면 전송 버튼을 `응답 중단`으로 바꾼다. 작업 여부는 데스크탑이 CLI 화면으로 판정해 스냅샷의 `agentActivity`(`working`·`idle`·`unknown`)로 보내며, `unknown`이면 보낸 메시지가 기록에 나타날 때까지만 작업 중으로 본다. 판정은 `paneChatAgentWorkingProvider`가 모아 `PaneChatTranscriptList`와 `PaneChatComposer`가 함께 쓴다.
+
 ## 원격 Herdr 터미널 연결
 
 A에 등록된 원격 B의 Herdr pane은 A의 인증된 TLS API로 연결 권한을 받은 뒤 B에 직접 연결한다. B의 포트에 닿지 않으면 같은 B 스트림을 A가 중계한다. 연결 뒤 전송한 키는 재접속 때 다시 보내지 않으며, 화면을 떠나거나 앱이 배경으로 가면 준비 중인 요청과 소켓도 취소한다.

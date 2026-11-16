@@ -464,6 +464,9 @@
   },
   "taskDetail": {
     "paneChat": {
+      "stopResponse": "停止响应",
+      "agentWorking": "处理中…",
+      "agentWorkingElapsed": "{seconds} 秒",
       "showInstructions": "显示指令",
       "preferencesError": "无法读取或保存聊天显示设置，请重试。",
       "loadOlder": "加载更早的消息",

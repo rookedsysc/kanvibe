@@ -18,7 +18,7 @@ const message = (text: string) => ({ role: "assistant" as const, timestamp: null
 /** texts는 오래된 것부터 적는다. 실제 스냅샷은 최신순이라 뒤집어 담는다 */
 function snapshotOf(texts: string[], overrides: Partial<PaneChatSnapshot> = {}): PaneChatSnapshot {
   return {
-    taskId: "task-1", paneId: "%1", sessionType: null, provider: "claude", targetToken: "token", canSend: true, inputState: "ready", screen: "화면 A", reason: null,
+    taskId: "task-1", paneId: "%1", sessionType: null, provider: "claude", targetToken: "token", canSend: true, inputState: "ready", agentActivity: "idle", screen: "화면 A", reason: null,
     transcript: { status: "available", reason: null, sessionId: "session-a", messages: texts.map(message).reverse(), nextCursor: null },
     modelPicker: { supported: true, mode: "native-cli" },
     ...overrides,

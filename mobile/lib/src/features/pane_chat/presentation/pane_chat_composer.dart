@@ -304,6 +304,15 @@ class _PaneChatComposerState extends ConsumerState<PaneChatComposer> {
         )
         .value;
     final attachmentsEnabled = pane?.snapshot.composer.attachments == true;
+    final paneTarget = (
+      taskId: widget.target.taskId,
+      paneId: widget.target.paneId,
+    );
+    // Claude 데스크톱 앱처럼 작업 중이고 보낼 내용이 없으면 전송 자리를 중단 버튼으로 쓴다
+    final isStopInPlaceOfSend =
+        ref.watch(paneChatAgentWorkingProvider(paneTarget)) &&
+        draft.text.trim().isEmpty &&
+        draft.attachments.isEmpty;
     return Container(
       margin: const EdgeInsets.fromLTRB(
         AppSizes.p12,
@@ -410,7 +419,24 @@ class _PaneChatComposerState extends ConsumerState<PaneChatComposer> {
                   ),
                 ),
               Expanded(child: widget.toolbar),
-              if (widget.showPrompt)
+              if (widget.showPrompt && isStopInPlaceOfSend)
+                Semantics(
+                  identifier: 'pane-chat-stop-response',
+                  child: IconButton.filled(
+                    tooltip: '응답 중단',
+                    onPressed: widget.isActive && pane?.canControl == true
+                        ? ref
+                              .read(paneChatProvider(paneTarget).notifier)
+                              .interrupt
+                        : null,
+                    icon: const Icon(Icons.stop),
+                    constraints: const BoxConstraints(
+                      minWidth: AppSizes.minTouchTarget,
+                      minHeight: AppSizes.minTouchTarget,
+                    ),
+                  ),
+                )
+              else if (widget.showPrompt)
                 Semantics(
                   identifier: 'pane-chat-send',
                   child: IconButton.filled(
