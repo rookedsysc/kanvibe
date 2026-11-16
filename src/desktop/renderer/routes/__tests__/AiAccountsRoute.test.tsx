@@ -4,7 +4,7 @@ import AiAccountsRoute from "@/desktop/renderer/routes/AiAccountsRoute";
 import { addAiAccount, listAiAccounts, removeAiAccount } from "@/desktop/renderer/actions/aiAccounts";
 import type { AiAccountSummary } from "@/desktop/main/services/aiAccountService";
 import { getAiUsageSnapshot, getCachedAiUsageSnapshot } from "@/desktop/renderer/actions/aiUsage";
-import type { AiUsageSnapshot } from "@/lib/aiUsage/types";
+import type { AiUsageFailureReason, AiUsageSnapshot } from "@/lib/aiUsage/types";
 
 vi.mock("@/desktop/renderer/actions/aiUsage", () => ({
   getAiUsageSnapshot: vi.fn(),
@@ -52,12 +52,15 @@ function createAccount(overrides: Partial<AiAccountSummary> = {}): AiAccountSumm
   };
 }
 
-function createUsage(accountId = "work-id"): AiUsageSnapshot {
+function createUsage(
+  accountId = "work-id",
+  reason: AiUsageFailureReason = "expired-credentials",
+): AiUsageSnapshot {
   return {
     fetchedAt: "2026-11-15T10:00:00Z",
     accounts: [{
       provider: "claude", accountId, label: "same-label", status: "unavailable",
-      planName: null, windows: [], reason: "expired-credentials", fetchedAt: "2026-11-15T10:00:00Z",
+      planName: null, windows: [], reason, fetchedAt: "2026-11-15T10:00:00Z",
     }],
   };
 }
@@ -95,6 +98,16 @@ describe("AiAccountsRoute - 요청 상태", () => {
     expect(listAiAccounts).toHaveBeenCalledTimes(2);
     expect(screen.queryByTestId("login-terminal")).toBeNull();
     expect(screen.getAllByTestId("ai-accounts-provider-claude")).toHaveLength(1);
+  });
+
+  it("Claude 실행을 기다리는 계정은 로그인된 계정으로 보여준다", async () => {
+    vi.mocked(listAiAccounts).mockResolvedValue([createAccount()]);
+    vi.mocked(getAiUsageSnapshot).mockResolvedValue(createUsage("work-id", "awaiting-cli-refresh"));
+    render(<AiAccountsRoute />);
+    const row = await screen.findByTestId("ai-account-row");
+    await within(row).findByText("reasons.awaiting-cli-refresh");
+    expect(within(row).getByText("loggedIn")).toBeTruthy();
+    expect(within(row).getByRole("button", { name: "relogin" })).toBeTruthy();
   });
 
   it("로그인 명령 실패 시 터미널 출력을 남기고 닫은 뒤 다시 로그인할 수 있다", async () => {

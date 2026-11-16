@@ -146,6 +146,21 @@ describe("aiUsageService", () => {
     expect(snapshot.accounts[0].reason).toBe("expired-credentials");
   });
 
+  it("Claude 실행을 기다리는 계정에는 직전 값과 그 조회 시각을 이어 붙인다", async () => {
+    const { getAiUsageSnapshot } = await import("@/desktop/main/services/aiUsageService");
+
+    mockAggregateAiUsage.mockResolvedValue(createSnapshot(22, "2999-01-01T00:00:00.000Z"));
+    await getAiUsageSnapshot();
+    mockAggregateAiUsage.mockResolvedValue(
+      createFailedSnapshot("2026-08-10T06:05:00.000Z", "awaiting-cli-refresh"),
+    );
+    const snapshot = await getAiUsageSnapshot();
+
+    expect(snapshot.accounts[0].windows[0].usedPercent).toBe(22);
+    expect(snapshot.accounts[0].reason).toBe("awaiting-cli-refresh");
+    expect(snapshot.accounts[0].fetchedAt).toBe("2026-08-10T06:00:00.000Z");
+  });
+
   it("이어 붙인 값에는 그 값이 만들어진 조회 시각을 남긴다", async () => {
     const { getAiUsageSnapshot } = await import("@/desktop/main/services/aiUsageService");
 

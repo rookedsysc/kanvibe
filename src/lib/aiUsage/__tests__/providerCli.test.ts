@@ -4,7 +4,6 @@ import {
   createProviderCliEnvironment,
   getProviderLoginCommand,
   readProviderAuthStatus,
-  refreshCredentialsThroughCli,
 } from "@/lib/aiUsage/providerCli";
 
 const { mockExecFile } = vi.hoisted(() => ({ mockExecFile: vi.fn() }));
@@ -159,23 +158,5 @@ describe("readProviderAuthStatus", () => {
     stubCliOutput("not json at all");
 
     expect(await readProviderAuthStatus("claude", "/home/tester/.claude")).toBeNull();
-  });
-});
-
-describe("refreshCredentialsThroughCli", () => {
-  it("계정 루트를 CLI 환경에 실어 상태를 물으면서 갱신을 맡긴다", async () => {
-    stubCliOutput(JSON.stringify({ loggedIn: true }));
-
-    expect(await refreshCredentialsThroughCli("claude", "/home/tester/.claude-work")).toBe(true);
-    const [command, args, options] = mockExecFile.mock.calls[0];
-    expect(command).toBe("claude");
-    expect(args).toEqual(["auth", "status", "--json"]);
-    expect(options.env.CLAUDE_CONFIG_DIR).toBe("/home/tester/.claude-work");
-  });
-
-  it("CLI가 로그인 상태를 확인해 주지 못하면 다시 읽을 가치가 없다고 답한다", async () => {
-    stubCliOutput(JSON.stringify({ loggedIn: false }));
-
-    expect(await refreshCredentialsThroughCli("claude", "/home/tester/.claude")).toBe(false);
   });
 });
