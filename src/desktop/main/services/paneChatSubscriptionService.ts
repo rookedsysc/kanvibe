@@ -1,7 +1,7 @@
 import { watch, type FSWatcher } from "node:fs";
 import { advancePaneChatTimeline, isPaneChatCursorCurrent, readPaneChatTimelineSeq, type PaneChatTimeline, type PaneChatTimelineRow } from "@/lib/aiSessions/paneChatTimeline";
 import type { PaneChatCursor, PaneChatPushEvent, PaneChatSnapshot, PaneChatSubscriptionFreshness, PaneChatSubscriptionTarget } from "@/desktop/shared/paneChat";
-import { getPaneChatAgentProvider, isPaneChatActionInProgress, readPaneChat } from "./paneChatService";
+import { getPaneChatAgentProvider, isPaneChatActionInProgress, readPaneChat, readRecentPaneChat, type PaneChatReadOptions } from "./paneChatService";
 
 /** 대화를 보는 구독자가 있는 pane을 다시 읽는 주기. 입력 상태와 CLI 화면은 파일이 아니라 터미널에서만 알 수 있다 */
 const CHAT_READ_INTERVAL_MS = 1_000;
@@ -116,6 +116,10 @@ function hasChatSubscriber(watcher: PaneWatcher): boolean {
   return [...watcher.subscribers].some((subscriber) => subscriber.target.detail === "chat");
 }
 
+function hasScreenSubscriber(watcher: PaneWatcher): boolean {
+  return [...watcher.subscribers].some((subscriber) => subscriber.target.detail === "chat" && subscriber.target.wantsScreen);
+}
+
 function scheduleRead(watcher: PaneWatcher, delayMs: number): void {
   if (watcher.readTimer) clearTimeout(watcher.readTimer);
   watcher.readTimer = setTimeout(() => {
@@ -175,7 +179,7 @@ async function readWatchedPane(watcher: PaneWatcher): Promise<void> {
   watcher.isReadRequested = false;
   try {
     if (hasChatSubscriber(watcher)) {
-      const reading = await readPaneChat(watcher.taskId, watcher.paneId);
+      const reading = await readPaneChat(watcher.taskId, watcher.paneId, { includeScreen: hasScreenSubscriber(watcher), isSharedWithOtherViewers: true });
       if (watcher.subscribers.size === 0) return;
       watchTranscriptFile(watcher, reading.localTranscriptFile);
       emitChangedState(watcher, sequenceSnapshot(reading.snapshot));
@@ -287,7 +291,10 @@ export function clearPaneChatSubscriptions(owner: object): void {
   for (const [key, subscriber] of subscribers) removeSubscriber(key, subscriber);
 }
 
-/** 순번이 붙은 스냅샷. 구독자는 여기서 받은 위치부터 push를 이어 받는다 */
-export async function getSequencedPaneChatSnapshot(taskId: string, paneId?: string): Promise<PaneChatSnapshot> {
-  return sequenceSnapshot((await readPaneChat(taskId, paneId)).snapshot);
+/**
+ * 순번이 붙은 스냅샷. 구독자는 여기서 받은 위치부터 push를 이어 받는다.
+ * push가 끊긴 휴대폰은 이 조회로 CLI 화면도 받으므로, 화면이 필요 없다고 알리지 않은 조회는 화면을 함께 읽는다.
+ */
+export async function getSequencedPaneChatSnapshot(taskId: string, paneId?: string, options: Pick<PaneChatReadOptions, "includeScreen"> = {}): Promise<PaneChatSnapshot> {
+  return sequenceSnapshot((await readRecentPaneChat(taskId, paneId, { includeScreen: options.includeScreen ?? true })).snapshot);
 }

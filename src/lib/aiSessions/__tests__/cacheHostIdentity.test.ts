@@ -11,7 +11,7 @@ vi.mock("@/lib/gitOperations", () => ({ execGit: execute }));
 afterEach(() => vi.clearAllMocks());
 
 describe("host-specific JSONL reads", () => {
-  it.each(["getCachedOrParse", "getCachedOrParseHead"] as const)("isolates local and remote cache entries for %s", async (method) => {
+  it.each(["getCachedOrParse", "getCachedOrParseHead", "getCachedOrParseTail"] as const)("isolates local and remote cache entries for %s", async (method) => {
     const shared = await import("@/lib/aiSessions/shared");
     const file = `/same/${method}.jsonl`;
     for (const host of [null, "host-a", "host-b"]) {

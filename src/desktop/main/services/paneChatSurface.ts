@@ -19,6 +19,7 @@ export interface PaneChatSurface {
   paneId: string;
   rootPid: number | null;
   agentSession?: { provider: "claude" | "codex" | "gemini" | "opencode"; sessionId: string };
+  /** 일반 터미널과 Herdr의 현재 화면. tmux와 Zellij는 비워 두고, 보여 줄 때만 `readPaneChatScreen`으로 스크롤백을 읽는다 */
   screen: string;
   inputLine: string | null;
   cursorColumn: number | null;
@@ -85,7 +86,7 @@ export async function readPaneChatSurface(taskId: string, requestedPaneId?: stri
         } finally { terminal.dispose(); }
       }
     }
-    return { task, paneId: pane[0], rootPid: Number(pane[1]), screen: capture ? stripVTControlCharacters(await run(buildTmuxCapturePaneCommand(pane[0]))) : "", inputLine, cursorColumn, ...(capture ? { cursorRow, viewportLines, viewportColumns, inputIsPlaceholder, observation } : {}) };
+    return { task, paneId: pane[0], rootPid: Number(pane[1]), screen: "", inputLine, cursorColumn, ...(capture ? { cursorRow, viewportLines, viewportColumns, inputIsPlaceholder, observation } : {}) };
   }
 
   if (task.sessionType === SessionType.HERDR) {
@@ -120,9 +121,21 @@ export async function readPaneChatSurface(taskId: string, requestedPaneId?: stri
     const paneId = `terminal_${pane.id}`;
     // PID를 제공하지 않는 Zellij 버전은 정확한 화면만 반환하고 입력은 허용하지 않는다.
     const pid = pane.terminal_pid ?? pane.pid;
-    return { task, paneId, rootPid: Number.isSafeInteger(pid) && pid > 0 ? pid : null, inputLine: null, cursorColumn: null, screen: capture ? stripVTControlCharacters(await run(buildZellijDumpPaneCommand(task.sessionName, paneId))) : "" };
+    return { task, paneId, rootPid: Number.isSafeInteger(pid) && pid > 0 ? pid : null, inputLine: null, cursorColumn: null, screen: "" };
   }
   return null;
+}
+
+/**
+ * pane의 CLI 화면을 스크롤백까지 읽는다.
+ * tmux와 Zellij는 외부 명령을 한 번 더 실행하고 큰 문자열을 만들므로, 대상 확인과 떼어 화면을 실제로 보여 줄 때만 부른다.
+ * 일반 터미널과 Herdr는 surface를 읽을 때 이미 얻은 화면을 그대로 쓴다.
+ */
+export async function readPaneChatScreen(surface: PaneChatSurface): Promise<string> {
+  const { task, paneId } = surface;
+  if (task.sessionType === SessionType.TMUX) return stripVTControlCharacters(await execGit(buildTmuxCapturePaneCommand(paneId), task.sshHost, { timeoutMs: PANE_CHAT_PROBE_TIMEOUT_MS }));
+  if (task.sessionType === SessionType.ZELLIJ) return stripVTControlCharacters(await execGit(buildZellijDumpPaneCommand(task.sessionName!, paneId), task.sshHost, { timeoutMs: PANE_CHAT_PROBE_TIMEOUT_MS }));
+  return surface.screen;
 }
 
 function hasValidPaneBounds(bounds: PaneChatBounds): boolean {

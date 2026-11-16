@@ -10,7 +10,8 @@ const mocks = vi.hoisted(() => ({
   closedFileWatchers: 0,
 }));
 
-vi.mock("../paneChatService", () => ({ readPaneChat: mocks.readPaneChat, getPaneChatAgentProvider: mocks.getPaneChatAgentProvider, isPaneChatActionInProgress: mocks.isActionInProgress }));
+// 최근 결과를 재사용할지는 paneChatService가 정하므로, 여기서는 두 조회를 같은 읽기로 본다
+vi.mock("../paneChatService", () => ({ readPaneChat: mocks.readPaneChat, readRecentPaneChat: mocks.readPaneChat, getPaneChatAgentProvider: mocks.getPaneChatAgentProvider, isPaneChatActionInProgress: mocks.isActionInProgress }));
 vi.mock("node:fs", () => ({ watch: mocks.watch }));
 
 const message = (text: string) => ({ role: "assistant" as const, timestamp: null, text, fullText: text, isTruncated: false });
@@ -142,6 +143,34 @@ describe("pane 채팅 구독", () => {
     await vi.advanceTimersByTimeAsync(1_000);
     expect(withScreen).toEqual([expect.objectContaining({ type: "pane-chat-state", state: expect.objectContaining({ screen: "화면 B" }) })]);
     expect(withoutScreen).toEqual([]);
+  });
+
+  it("화면을 원하는 구독자가 있을 때만 CLI 화면까지 읽고, 읽은 결과를 같은 pane의 다른 조회와 나눈다", async () => {
+    const service = await loadService();
+    const owner = {};
+    serveTranscript(["a"]);
+    service.setPaneChatSubscriptions(owner, [chatTarget], () => {});
+    await vi.advanceTimersByTimeAsync(0);
+    expect(mocks.readPaneChat).toHaveBeenLastCalledWith("task-1", "%1", { includeScreen: false, isSharedWithOtherViewers: true });
+
+    // 직전 읽기와 붙어 오는 요청은 묶음 간격 뒤에 읽는다
+    service.setPaneChatSubscriptions(owner, [{ ...chatTarget, wantsScreen: true }], () => {});
+    await vi.advanceTimersByTimeAsync(100);
+    expect(mocks.readPaneChat).toHaveBeenLastCalledWith("task-1", "%1", { includeScreen: true, isSharedWithOtherViewers: true });
+  });
+
+  it("HTTP 조회는 push가 끊긴 휴대폰에 CLI 화면도 보여 줄 수 있게 화면까지 읽는다", async () => {
+    const service = await loadService();
+    serveTranscript(["a"]);
+    await service.getSequencedPaneChatSnapshot("task-1", "%1");
+    expect(mocks.readPaneChat).toHaveBeenLastCalledWith("task-1", "%1", { includeScreen: true });
+  });
+
+  it("화면이 필요 없다고 알린 HTTP 조회는 CLI 화면을 읽지 않는다", async () => {
+    const service = await loadService();
+    serveTranscript(["a"]);
+    await service.getSequencedPaneChatSnapshot("task-1", "%1", { includeScreen: false });
+    expect(mocks.readPaneChat).toHaveBeenLastCalledWith("task-1", "%1", { includeScreen: false });
   });
 
   it("입력 상태가 바뀌면 화면을 요청하지 않은 구독자에게도 상태를 보낸다", async () => {

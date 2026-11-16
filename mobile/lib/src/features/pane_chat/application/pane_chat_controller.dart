@@ -200,6 +200,11 @@ class PaneChatController extends AsyncNotifier<PaneChatState> {
     if (_wantsScreen == wantsScreen) return;
     _wantsScreen = wantsScreen;
     if (_subscriber != null) _subscribe();
+    // push가 없을 때는 화면 없이 받은 마지막 조회 결과가 다음 조회까지 빈 화면으로 남지 않게 바로 다시 받는다.
+    // 데스크탑은 대화 기록을 잇지 못하면 요청과 상관없이 화면을 담아 보내므로, 그 결과를 보고 있을 때는 다시 받지 않는다
+    final isShowingScreenlessSnapshot =
+        state.value?.snapshot.transcript.available ?? false;
+    if (wantsScreen && !_isLive && isShowingScreenlessSnapshot) _catchUp();
   }
 
   void _changeLive({required bool isLive, required bool isBehind}) {
@@ -302,7 +307,7 @@ class PaneChatController extends AsyncNotifier<PaneChatState> {
     try {
       return await ref
           .read(desktopClientProvider)
-          .fetchPaneChat(connection, target);
+          .fetchPaneChat(connection, target, includeScreen: _wantsScreen);
     } on DesktopRequestException catch (error) {
       await _forgetUnauthorized(connection, error);
       rethrow;

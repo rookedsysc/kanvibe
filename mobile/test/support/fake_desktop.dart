@@ -603,8 +603,9 @@ class FakeDesktopClient implements DesktopClient {
   @override
   Future<PaneChatSnapshot> fetchPaneChat(
     DesktopConnection connection,
-    PaneChatTarget target,
-  ) async => PaneChatSnapshot(
+    PaneChatTarget target, {
+    bool includeScreen = true,
+  }) async => PaneChatSnapshot(
     taskId: target.taskId,
     paneId: target.paneId,
     provider: null,
@@ -616,6 +617,13 @@ class FakeDesktopClient implements DesktopClient {
     transcript: const PaneChatTranscript(available: false, messages: []),
     modelPickerSupported: false,
   );
+
+  /// pane 채팅 조회를 바꾼 테스트가 에이전트 확인에도 같은 답을 쓰도록 그 조회를 따른다
+  @override
+  Future<String?> fetchPaneAgentProvider(
+    DesktopConnection connection,
+    PaneChatTarget target,
+  ) async => (await fetchPaneChat(connection, target)).provider;
 
   @override
   Future<void> sendPaneChatAction(
@@ -649,13 +657,15 @@ class FakeDesktopClient implements DesktopClient {
   ) async => throw StateError('No attachment fixture');
 
   @override
-  Future<List<PaneChatSuggestion>> getPaneChatSuggestions(
+  Future<({List<PaneChatSuggestion> items, bool isTruncated})>
+  getPaneChatSuggestions(
     DesktopConnection connection,
     String taskId,
     String targetToken,
     String kind,
-    String query,
-  ) async => const [];
+    String query, {
+    int? limit,
+  }) async => (items: const <PaneChatSuggestion>[], isTruncated: false);
 
   @override
   Future<List<int>> fetchChatAttachment(

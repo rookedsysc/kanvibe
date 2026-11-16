@@ -1,9 +1,9 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { useTranslations } from "next-intl";
 import { getPaneChatSuggestions } from "@/desktop/renderer/actions/paneChat";
 import { usePaneChatComposer } from "@/desktop/renderer/hooks/usePaneChatComposer";
 import type { usePaneChat } from "@/desktop/renderer/hooks/usePaneChat";
-import type { PaneChatSuggestion, PaneChatSuggestionKind } from "@/desktop/shared/paneChat";
+import { MAX_PANE_CHAT_CATALOG_SUGGESTIONS, MAX_PANE_CHAT_SUGGESTIONS, filterPaneChatSuggestions, type PaneChatSuggestion, type PaneChatSuggestionKind } from "@/desktop/shared/paneChat";
 
 const SUGGESTION_DEBOUNCE_MS = 180;
 const COMPOSER_MIN_HEIGHT = 64;
@@ -11,6 +11,8 @@ const COMPOSER_RESIZE_STEP = 24;
 const COMPOSER_MAX_HEIGHT_RATIO = 0.6;
 const controlClass = "min-h-10 shrink-0 rounded-md px-2 text-xs text-text-secondary hover:bg-bg-page focus-visible:outline-2 focus-visible:outline-brand-primary disabled:opacity-40";
 interface Completion { kind: PaneChatSuggestionKind; query: string; start: number; end: number }
+/** 메뉴를 열 때 한 번 받아 둔 skill·명령 목록. 전부 받았으면 글자 입력을 화면에서 거르고, 일부만 받았으면 글자마다 데스크톱에 묻는다 */
+type SuggestionCatalog = { items: PaneChatSuggestion[]; isComplete: boolean } | "failed";
 
 export function PaneChatComposer({ taskId, chat, isVisible, onModel, isModelPickerOpen = false }: {
   taskId: string;
@@ -30,6 +32,8 @@ export function PaneChatComposer({ taskId, chat, isVisible, onModel, isModelPick
   const [skillPicker, setSkillPicker] = useState(false);
   const [dismissed, setDismissed] = useState<string | null>(null);
   const [suggestions, setSuggestions] = useState<{ key: string; items: PaneChatSuggestion[]; loading: boolean; error: boolean; truncated: boolean } | null>(null);
+  const [catalogs, setCatalogs] = useState<Partial<Record<string, SuggestionCatalog>>>({});
+  const catalogRequests = useRef(new Set<string>());
   const [active, setActive] = useState(0);
   const [retry, setRetry] = useState(0);
   const [inputHeight, setInputHeight] = useState(COMPOSER_MIN_HEIGHT);
@@ -45,12 +49,21 @@ export function PaneChatComposer({ taskId, chat, isVisible, onModel, isModelPick
   const supported = completion?.kind === "file" ? capabilities?.fileMentions : capabilities?.skills;
   const completionKey = completion && supported && isVisible && canEdit ? JSON.stringify([taskId, target, composer.text, caret, skillPicker, completion.kind, completion.query]) : null;
   const showSuggestions = !!completionKey && completionKey !== dismissed;
-  const currentSuggestions = suggestions?.key === completionKey ? suggestions : null;
+  const kind = completion?.kind;
+  const query = completion?.query;
+  const catalogKey = showSuggestions && kind !== "file" ? JSON.stringify([taskId, target, kind]) : null;
+  const catalog = catalogKey ? catalogs[catalogKey] : undefined;
+  const catalogMatches = useMemo(() => catalog && catalog !== "failed" && catalog.isComplete && query !== undefined ? filterPaneChatSuggestions(catalog.items, query, MAX_PANE_CHAT_SUGGESTIONS) : null, [catalog, query]);
+  const asksDesktopPerQuery = showSuggestions && (kind === "file" || (!!catalog && catalog !== "failed" && !catalog.isComplete));
+  const currentSuggestions = useMemo(() => catalogMatches ? { ...catalogMatches, loading: false, error: false }
+    : catalog === "failed" ? { items: [], loading: false, error: true, truncated: false }
+    : asksDesktopPerQuery && suggestions?.key === completionKey ? suggestions : null, [catalogMatches, catalog, asksDesktopPerQuery, suggestions, completionKey]);
 
   useEffect(() => {
     setSkillPicker(false);
     setDismissed(null);
     setCaret(0);
+    setCatalogs({});
   }, [target, taskId]);
 
   useEffect(() => { if (skillPicker) skillSearch.current?.focus(); }, [skillPicker]);
@@ -60,12 +73,25 @@ export function PaneChatComposer({ taskId, chat, isVisible, onModel, isModelPick
     if (isVisible && canEdit && pane?.contains(document.activeElement)) textarea.current?.focus();
   }, [isVisible, canEdit, target]);
 
-  const kind = completion?.kind;
-  const query = completion?.query;
+  useEffect(() => { setActive(0); }, [completionKey]);
+
   useEffect(() => {
-    if (!showSuggestions || !completionKey || !target || !kind || query === undefined) return;
+    if (!catalogKey || !target || !kind || catalogRequests.current.has(catalogKey)) return;
+    const requests = catalogRequests.current;
+    requests.add(catalogKey);
+    setCatalogs((known) => known[catalogKey] === "failed" ? { ...known, [catalogKey]: undefined } : known);
+    void getPaneChatSuggestions(taskId, target, kind, "", MAX_PANE_CHAT_CATALOG_SUGGESTIONS).then((result): SuggestionCatalog => {
+      if (result.targetToken !== target) throw new Error("pane chat target changed");
+      return { items: result.items, isComplete: !result.truncated };
+    }).then((loaded) => setCatalogs((known) => ({ ...known, [catalogKey]: loaded })))
+      // 다시 받는 데 실패해도 이미 받아 둔 목록이 있으면 그대로 보여 준다.
+      .catch(() => setCatalogs((known) => known[catalogKey] && known[catalogKey] !== "failed" ? known : { ...known, [catalogKey]: "failed" }))
+      .finally(() => requests.delete(catalogKey));
+  }, [catalogKey, taskId, target, kind, retry]);
+
+  useEffect(() => {
+    if (!asksDesktopPerQuery || !completionKey || !target || !kind || query === undefined) return;
     let disposed = false;
-    setActive(0);
     setSuggestions({ key: completionKey, items: [], loading: true, error: false, truncated: false });
     const timer = setTimeout(() => {
       void getPaneChatSuggestions(taskId, target, kind, query).then((result) => {
@@ -75,7 +101,7 @@ export function PaneChatComposer({ taskId, chat, isVisible, onModel, isModelPick
     });
     }, SUGGESTION_DEBOUNCE_MS);
     return () => { disposed = true; clearTimeout(timer); };
-  }, [showSuggestions, completionKey, taskId, target, kind, query, retry]);
+  }, [asksDesktopPerQuery, completionKey, taskId, target, kind, query, retry]);
 
   useEffect(() => {
     if (showSuggestions) document.getElementById(`${listId}-${active}`)?.scrollIntoView?.({ block: "nearest" });
