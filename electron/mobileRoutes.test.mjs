@@ -1650,7 +1650,18 @@ describe("현재 pane 채팅 인증 및 대상 경계", () => {
   it("인증된 기기는 요청한 정확한 pane 스냅샷을 읽는다", async () => {
     const result = await request("/api/mobile/tasks/task-1/pane-chat?paneId=%253", { headers });
     expect(result).toMatchObject({ status: 200, body: { success: true, snapshot: { paneId: "%3", targetToken: "opaque-token" } } });
-    expect(bridge.getSequencedPaneChatSnapshot).toHaveBeenCalledWith("task-1", "%3");
+    expect(bridge.getSequencedPaneChatSnapshot).toHaveBeenCalledWith("task-1", "%3", { includeScreen: true });
+  });
+  it("화면을 숨긴 기기의 조회는 CLI 화면 없이 스냅샷을 읽는다", async () => {
+    await request("/api/mobile/tasks/task-1/pane-chat?paneId=%253&wantsScreen=false", { headers });
+    expect(bridge.getSequencedPaneChatSnapshot).toHaveBeenCalledWith("task-1", "%3", { includeScreen: false });
+  });
+  it("에이전트 이름만 묻는 조회는 스냅샷을 읽지 않고 이름만 돌려준다", async () => {
+    bridge.getPaneChatAgentProvider = vi.fn(async () => "codex");
+    const result = await request("/api/mobile/tasks/task-1/pane-chat?paneId=%253&detail=agent", { headers });
+    expect(result).toEqual({ status: 200, body: { success: true, provider: "codex" } });
+    expect(bridge.getPaneChatAgentProvider).toHaveBeenCalledWith("task-1", "%3");
+    expect(bridge.getSequencedPaneChatSnapshot).not.toHaveBeenCalled();
   });
   it("토큰 없는 기기는 스냅샷과 메시지 전송에 접근할 수 없다", async () => {
     expect((await request("/api/mobile/tasks/task-1/pane-chat")).status).toBe(401);
@@ -1708,6 +1719,11 @@ describe("채팅 composer 첨부와 자동완성 HTTP", () => {
     const result = await request("/api/mobile/tasks/task-1/pane-chat/suggestions?targetToken=token&kind=skill&query=review", { headers });
     expect(result).toMatchObject({ status: 200, body: { targetToken: "token", items: [{ insertText: "$review" }] } });
     expect(bridge.getPaneChatSuggestions).toHaveBeenCalledWith("task-1", "token", "skill", "review");
+  });
+  it("전체 목록을 받으려는 요청의 개수 상한을 숫자로 전달한다", async () => {
+    const result = await request("/api/mobile/tasks/task-1/pane-chat/suggestions?targetToken=token&kind=skill&query=&limit=512", { headers });
+    expect(result.status).toBe(200);
+    expect(bridge.getPaneChatSuggestions).toHaveBeenCalledWith("task-1", "token", "skill", "", 512);
   });
   it("첨부 ID와 중복 방지 식별자를 메시지와 함께 전달한다", async () => {
     await request("/api/mobile/tasks/task-1/pane-chat/prompt", { method: "POST", headers, body: JSON.stringify({ targetToken: "token", text: "caption", attachmentIds: ["owned-id"], requestId: "once" }) });

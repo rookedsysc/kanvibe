@@ -5,6 +5,8 @@ import type { AggregatedAiMessage, AiSessionProvider } from "@/lib/aiSessions/ty
 export type PaneChatKey = "up" | "down" | "left" | "right" | "enter" | "escape";
 export const MAX_PANE_CHAT_ATTACHMENTS = 10;
 export const MAX_PANE_CHAT_SUGGESTIONS = 20;
+/** 입력창이 메뉴를 열 때 한 번에 받아 두고 자기 쪽에서 거르는 skill·명령 목록의 상한 */
+export const MAX_PANE_CHAT_CATALOG_SUGGESTIONS = 512;
 
 export interface PaneChatAttachmentInput {
   name: string;
@@ -33,6 +35,14 @@ export interface PaneChatSuggestions {
   targetToken: string;
   items: PaneChatSuggestion[];
   truncated: boolean;
+}
+
+/** 이름이나 설명에 검색어가 들어 있는 제안을 이름순으로 limit개까지 남기고, 더 있었는지 알린다 */
+export function filterPaneChatSuggestions(suggestions: PaneChatSuggestion[], query: string, limit: number): Pick<PaneChatSuggestions, "items" | "truncated"> {
+  const loweredQuery = query.toLowerCase();
+  const matches = suggestions.filter((suggestion) => `${suggestion.label} ${suggestion.description}`.toLowerCase().includes(loweredQuery));
+  matches.sort((left, right) => left.label.localeCompare(right.label));
+  return { items: matches.slice(0, limit), truncated: matches.length > limit };
 }
 
 export interface PaneChatBounds {

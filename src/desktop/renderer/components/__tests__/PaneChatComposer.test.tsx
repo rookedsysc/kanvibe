@@ -176,9 +176,9 @@ describe("pane chat composer", () => {
   });
 
   it("searches caret tokens and selects suggestions with arrows and Tab without sending", async () => {
-    const view = open(); edit("Please $re");
+    const view = open(); edit("Please $e");
     await screen.findByRole("option", { name: "Review" });
-    expect(actions.getPaneChatSuggestions).toHaveBeenLastCalledWith("task", "pane-a", "skill", "re");
+    expect(actions.getPaneChatSuggestions).toHaveBeenLastCalledWith("task", "pane-a", "skill", "", 512);
     fireEvent.keyDown(screen.getByRole("textbox"), { key: "ArrowDown" });
     fireEvent.keyDown(screen.getByRole("textbox"), { key: "Tab" });
     expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe("Please $test ");
@@ -190,10 +190,10 @@ describe("pane chat composer", () => {
     fireEvent.click(screen.getByRole("button", { name: "skills" }));
     fireEvent.change(screen.getByRole("textbox", { name: "searchSkills" }), { target: { value: "review" } });
     fireEvent.click(await screen.findByRole("option", { name: "Review" }));
-    expect(actions.getPaneChatSuggestions).toHaveBeenLastCalledWith("task", "pane-a", "skill", "review");
+    expect(actions.getPaneChatSuggestions).toHaveBeenLastCalledWith("task", "pane-a", "skill", "", 512);
     expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe("$review ");
-    edit("/te"); await screen.findByRole("option", { name: "Review" });
-    expect(actions.getPaneChatSuggestions).toHaveBeenLastCalledWith("task", "pane-a", "command", "te");
+    edit("/te"); await screen.findByRole("option", { name: "Test" });
+    expect(actions.getPaneChatSuggestions).toHaveBeenLastCalledWith("task", "pane-a", "command", "", 512);
     edit("@src"); await screen.findByRole("option", { name: "Review" });
     expect(actions.getPaneChatSuggestions).toHaveBeenLastCalledWith("task", "pane-a", "file", "src");
     fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter", isComposing: true });
@@ -203,12 +203,12 @@ describe("pane chat composer", () => {
     expect(view.chat.send).not.toHaveBeenCalled();
   });
 
-  it("ignores stale catalog responses and retries a visible lookup error", async () => {
+  it("ignores stale file responses and retries a visible lookup error", async () => {
     let resolve!: (value: PaneChatSuggestions) => void;
     actions.getPaneChatSuggestions.mockReturnValueOnce(new Promise((accept) => { resolve = accept; })).mockRejectedValueOnce(new Error("offline"));
-    open(); edit("$r");
+    open(); edit("@r");
     await waitFor(() => expect(actions.getPaneChatSuggestions).toHaveBeenCalledTimes(1));
-    edit("$te");
+    edit("@te");
     await screen.findByText("suggestionsError");
     await act(async () => resolve(suggestions()));
     expect(screen.queryByRole("option")).toBeNull();
@@ -216,19 +216,91 @@ describe("pane chat composer", () => {
     await screen.findByRole("option", { name: "Test" });
   });
 
-  it("debounces rapid queries and blocks Enter while lookup is loading or empty", async () => {
+  it("requests the skill list once for rapid typing and blocks Enter while it is loading or empty", async () => {
     actions.getPaneChatSuggestions.mockResolvedValue({ targetToken: "pane-a", items: [], truncated: false });
     const view = open(); edit("$r"); edit("$re"); edit("$review");
     fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" });
     expect(view.chat.send).not.toHaveBeenCalled();
     await screen.findByText("noSuggestions");
     expect(actions.getPaneChatSuggestions).toHaveBeenCalledTimes(1);
-    expect(actions.getPaneChatSuggestions).toHaveBeenCalledWith("task", "pane-a", "skill", "review");
+    expect(actions.getPaneChatSuggestions).toHaveBeenCalledWith("task", "pane-a", "skill", "", 512);
     fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" });
     expect(view.chat.send).not.toHaveBeenCalled();
     fireEvent.keyDown(screen.getByRole("textbox"), { key: "Escape" });
     fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" });
     await waitFor(() => expect(view.chat.send).toHaveBeenCalledTimes(1));
+  });
+
+  it("filters a loaded command list on screen for each keystroke without asking the desktop again", async () => {
+    open(); edit("/");
+    await screen.findByRole("option", { name: "Review" });
+    expect(actions.getPaneChatSuggestions).toHaveBeenCalledTimes(1);
+    edit("/te");
+    expect(screen.getAllByRole("option").map((option) => option.getAttribute("aria-label"))).toEqual(["Test"]);
+    edit("/tes");
+    expect(screen.getAllByRole("option").map((option) => option.getAttribute("aria-label"))).toEqual(["Test"]);
+    edit("/zzz");
+    expect(screen.queryByRole("option")).toBeNull();
+    expect(screen.getByText("noSuggestions")).toBeTruthy();
+    expect(screen.queryByText("loadingSuggestions")).toBeNull();
+    expect(actions.getPaneChatSuggestions).toHaveBeenCalledTimes(1);
+  });
+
+  it("asks the desktop for each query when the skill list arrives incomplete", async () => {
+    actions.getPaneChatSuggestions.mockImplementation(async (_taskId: string, targetToken: string, _kind: string, query: string, limit?: number) => limit
+      ? { targetToken, truncated: true, items: [{ id: "skill-0", label: "Alpha", description: "First of many", insertText: "$alpha" }] }
+      : { targetToken, truncated: false, items: [{ id: "skill-found", label: "Found " + query, description: "From desktop", insertText: "$found" }] });
+    open(); edit("$");
+    await screen.findByRole("option", { name: "Found" });
+    edit("$rev");
+    await screen.findByRole("option", { name: "Found rev" });
+    expect(actions.getPaneChatSuggestions).toHaveBeenLastCalledWith("task", "pane-a", "skill", "rev");
+    expect(screen.queryByRole("option", { name: "Alpha" })).toBeNull();
+  });
+
+  it("shows the remembered skill list at once when the menu reopens and refreshes it in the background", async () => {
+    open(); edit("$");
+    await screen.findByRole("option", { name: "Review" });
+    edit("");
+    expect(screen.queryByRole("listbox")).toBeNull();
+    let refresh!: (value: PaneChatSuggestions) => void;
+    actions.getPaneChatSuggestions.mockReturnValueOnce(new Promise((accept) => { refresh = accept; }));
+    edit("$");
+    expect(screen.getAllByRole("option").map((option) => option.getAttribute("aria-label"))).toEqual(["Review", "Test"]);
+    expect(actions.getPaneChatSuggestions).toHaveBeenCalledTimes(2);
+    await act(async () => refresh({ targetToken: "pane-a", truncated: false, items: [...suggestions().items, { id: "skill-3", label: "Plan", description: "Outline work", insertText: "$plan" }] }));
+    expect(screen.getAllByRole("option").map((option) => option.getAttribute("aria-label"))).toEqual(["Plan", "Review", "Test"]);
+  });
+
+  it("keeps the remembered skill list when a background refresh fails", async () => {
+    open(); edit("$");
+    await screen.findByRole("option", { name: "Review" });
+    edit("");
+    actions.getPaneChatSuggestions.mockRejectedValueOnce(new Error("offline"));
+    edit("$");
+    await waitFor(() => expect(actions.getPaneChatSuggestions).toHaveBeenCalledTimes(2));
+    await act(async () => {});
+    expect(screen.getAllByRole("option").map((option) => option.getAttribute("aria-label"))).toEqual(["Review", "Test"]);
+    expect(screen.queryByText("suggestionsError")).toBeNull();
+  });
+
+  it("shows a skill list error, retries it, and ignores a list answered for another pane", async () => {
+    actions.getPaneChatSuggestions.mockRejectedValueOnce(new Error("offline")).mockResolvedValueOnce(suggestions("pane-b"));
+    open(); edit("$");
+    await screen.findByText("suggestionsError");
+    fireEvent.click(screen.getByRole("button", { name: "retryAttachment" }));
+    await waitFor(() => expect(actions.getPaneChatSuggestions).toHaveBeenCalledTimes(2));
+    await screen.findByText("suggestionsError");
+    expect(screen.queryByRole("option")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "retryAttachment" }));
+    await screen.findByRole("option", { name: "Review" });
+  });
+
+  it("waits for typing to pause before asking the desktop for matching files", async () => {
+    open(); edit("@s"); edit("@sr"); edit("@src");
+    await screen.findByRole("option", { name: "Review" });
+    expect(actions.getPaneChatSuggestions).toHaveBeenCalledTimes(1);
+    expect(actions.getPaneChatSuggestions).toHaveBeenCalledWith("task", "pane-a", "file", "src");
   });
 
   it("cleans up an upload whose staging reply arrives after unmount", async () => {

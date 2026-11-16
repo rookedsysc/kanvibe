@@ -6,7 +6,7 @@ vi.mock("@/lib/gitOperations", () => ({ execGit: mocks.exec }));
 vi.mock("@/lib/terminal", () => ({ listLocalTerminalTabs: mocks.tabs, readLocalTerminalTabSnapshot: mocks.snapshot, readTaskTerminalAttachment: mocks.attachment, getHerdrTaskActivePaneId: mocks.herdrFocus, getHerdrTaskSurfaceBounds: mocks.herdrBounds }));
 vi.mock("../mobileBridgeService", () => ({ readHerdrPaneFrameForChat: mocks.herdrFrame }));
 vi.mock("@/lib/herdr", () => ({ listHerdrTaskPaneTabIds: mocks.herdrPanes, readHerdrTabs: mocks.herdrTabs, runHerdrCommand: mocks.herdr }));
-import { readPaneChatLayout, readPaneChatSurface } from "../paneChatSurface";
+import { readPaneChatLayout, readPaneChatScreen, readPaneChatSurface } from "../paneChatSurface";
 function withAttachedClient(resolve: (command: string) => string) {
   return async (command: string) => {
     if (command.startsWith("tmux list-clients")) return "9000\tkv\t$1\t\t%3";
@@ -125,8 +125,21 @@ describe("pane chat surface ownership", () => {
 
   it("selects the focused pane in the active tmux window instead of the first pane", async () => {
     mocks.exec.mockImplementation(withAttachedClient((command) => command.startsWith("tmux list-panes") ? "%1\t100\t0\t1\n%2\t200\t1\t0\n%3\t300\t1\t1" : "exact pane screen"));
-    expect(await readPaneChatSurface("task")).toMatchObject({ paneId: "%3", rootPid: 300, screen: "exact pane screen" });
+    const surface = await readPaneChatSurface("task");
+    expect(surface).toMatchObject({ paneId: "%3", rootPid: 300 });
     expect(mocks.exec).toHaveBeenLastCalledWith(expect.stringContaining(" -t '%3'"), null, expect.anything());
+    expect(await readPaneChatScreen(surface!)).toBe("exact pane screen");
+    expect(mocks.exec).toHaveBeenLastCalledWith(expect.stringContaining("capture-pane -pe -S -2000 -t '%3'"), null, expect.anything());
+  });
+  it("tmux와 Zellij pane을 확인할 때는 스크롤백을 읽지 않는다", async () => {
+    mocks.exec.mockImplementation(async (command: string) => command.startsWith("tmux list-panes") ? "%3\t300\t1\t1" : "2\t0\t80\t1\n› ");
+    expect(await readPaneChatSurface("task", "%3")).toMatchObject({ paneId: "%3", screen: "" });
+    expect(mocks.exec.mock.calls.some((call) => call[0].includes("capture-pane -pe -S"))).toBe(false);
+    mocks.exec.mockClear();
+    mocks.task.mockResolvedValue({ ...task, sessionType: SessionType.ZELLIJ });
+    mocks.exec.mockImplementation(async () => JSON.stringify([[{ id: 7, is_plugin: false, is_focused: true, tab_id: 0 }], [{ tab_id: 0, active: true }]]));
+    expect(await readPaneChatSurface("task")).toMatchObject({ paneId: "terminal_7", screen: "" });
+    expect(mocks.exec.mock.calls.some((call) => call[0].includes("dump-screen"))).toBe(false);
   });
   it("rejects a requested tmux pane outside the task session", async () => {
     mocks.exec.mockResolvedValue("%1\t100\t1\t1");
@@ -148,7 +161,9 @@ describe("pane chat surface ownership", () => {
   it("keeps a Zellij screen available when the installed version has no process identity", async () => {
     mocks.task.mockResolvedValue({ ...task, sessionType: SessionType.ZELLIJ });
     mocks.exec.mockImplementation(async (command: string) => command.startsWith("printf") ? JSON.stringify([[{ id: 7, is_plugin: false, is_focused: true, tab_id: 0 }], [{ tab_id: 0, active: true }]]) : "zellij screen");
-    expect(await readPaneChatSurface("task")).toMatchObject({ paneId: "terminal_7", rootPid: null, screen: "zellij screen" });
+    const surface = await readPaneChatSurface("task");
+    expect(surface).toMatchObject({ paneId: "terminal_7", rootPid: null });
+    expect(await readPaneChatScreen(surface!)).toBe("zellij screen");
   });
   it("selects the active Zellij tab even when inactive tabs retain a focused pane", async () => {
     mocks.task.mockResolvedValue({ ...task, sessionType: SessionType.ZELLIJ });
@@ -159,14 +174,16 @@ describe("pane chat surface ownership", () => {
     mocks.exec.mockImplementation(async (command: string) => command.startsWith("printf")
       ? JSON.stringify([panes, [{ tab_id: 0, active: false }, { tab_id: 1, active: true }]])
       : command.includes("list-panes") ? JSON.stringify(panes) : "active tab screen");
-    expect(await readPaneChatSurface("task")).toMatchObject({ paneId: "terminal_1", screen: "active tab screen" });
+    const surface = await readPaneChatSurface("task");
+    expect(surface).toMatchObject({ paneId: "terminal_1" });
+    expect(await readPaneChatScreen(surface!)).toBe("active tab screen");
   });
   it("tmux와 Zellij 캡처의 ANSI 색상과 OSC 링크를 plain text 화면에서 제거한다", async () => {
     mocks.exec.mockImplementation(withAttachedClient((command) => command.startsWith("tmux list-panes") ? "%3\t300\t1\t1" : "\x1b[32mSelected model\x1b[0m\n\x1b]8;;https://example.com\x07Safe link\x1b]8;;\x07"));
-    expect((await readPaneChatSurface("task"))?.screen).toBe("Selected model\nSafe link");
+    expect(await readPaneChatScreen((await readPaneChatSurface("task"))!)).toBe("Selected model\nSafe link");
     mocks.task.mockResolvedValue({ ...task, sessionType: SessionType.ZELLIJ });
     mocks.exec.mockImplementation(async (command: string) => command.startsWith("printf") ? JSON.stringify([[{ id: 7, is_plugin: false, is_focused: true, tab_id: 0 }], [{ tab_id: 0, active: true }]]) : "\x1b[32mZellij model\x1b[0m");
-    expect((await readPaneChatSurface("task"))?.screen).toBe("Zellij model");
+    expect(await readPaneChatScreen((await readPaneChatSurface("task"))!)).toBe("Zellij model");
   });
 
   it("grouped tmux client의 실제 활성 pane을 canonical session의 활성 pane보다 우선한다", async () => {

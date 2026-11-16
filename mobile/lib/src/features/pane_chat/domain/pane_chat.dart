@@ -384,3 +384,25 @@ class PaneChatSuggestion {
         insertText: value['insertText'] as String,
       );
 }
+
+/// 입력창 메뉴에 한 번에 보여 주는 제안 수
+const maxPaneChatSuggestions = 20;
+
+/// 메뉴를 열 때 한 번에 받아 두고 기기에서 거르는 skill·명령 목록의 상한
+const maxPaneChatCatalogSuggestions = 512;
+
+/// 데스크톱이 이름순으로 준 목록에서 이름이나 설명에 검색어가 들어 있는 제안만 남긴다
+List<PaneChatSuggestion> filterPaneChatSuggestions(
+  List<PaneChatSuggestion> suggestions,
+  String query,
+) {
+  final loweredQuery = query.toLowerCase();
+  return suggestions
+      .where(
+        (suggestion) => '${suggestion.label} ${suggestion.description}'
+            .toLowerCase()
+            .contains(loweredQuery),
+      )
+      .take(maxPaneChatSuggestions)
+      .toList();
+}

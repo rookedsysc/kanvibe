@@ -199,7 +199,7 @@ void main() {
         'lease',
         'skill',
         '스킬',
-      )).single.insertText,
+      )).items.single.insertText,
       r'$skill',
     );
     expect(
@@ -493,6 +493,152 @@ void main() {
           .single
           .label,
       'new',
+    );
+  });
+
+  group('skill·명령 목록', () {
+    Map<String, String> suggestion(String label) => {
+      'id': label,
+      'label': label,
+      'description': '',
+      'insertText': '/$label',
+    };
+    http.Response catalog(List<String> labels, {bool truncated = false}) =>
+        fixtures.response({
+          'success': true,
+          'targetToken': 'target-a',
+          'items': labels.map(suggestion).toList(),
+          'truncated': truncated,
+        });
+    List<String> shownLabels(ProviderContainer container) => container
+        .read(paneChatComposerProvider(owner))
+        .suggestions
+        .map((item) => item.label)
+        .toList();
+
+    test('메뉴를 열 때 한 번만 받고 이어지는 글자 입력은 기기에서 바로 거른다', () async {
+      final requests = <Map<String, String>>[];
+      final env = await ready((r) async {
+        if (r.url.pathSegments.last == 'suggestions') {
+          requests.add(r.url.queryParameters);
+          return catalog(['plan', 'review', 'test']);
+        }
+        return fixtures.response({'snapshot': snapshot()});
+      });
+      env.controller.suggest('command', '');
+      await flush();
+      expect(shownLabels(env.container), ['plan', 'review', 'test']);
+      expect(requests.single, {
+        'targetToken': 'target-a',
+        'kind': 'command',
+        'query': '',
+        'limit': '512',
+      });
+
+      env.controller.suggest('command', 're');
+      expect(shownLabels(env.container), ['review']);
+      expect(
+        env.container
+            .read(paneChatComposerProvider(owner))
+            .isLoadingSuggestions,
+        false,
+      );
+      env.controller.suggest('command', 'zzz');
+      expect(shownLabels(env.container), isEmpty);
+      await Future<void>.delayed(const Duration(milliseconds: 220));
+      expect(requests, hasLength(1));
+    });
+
+    test('일부만 받은 목록이면 글자마다 데스크톱에 묻는다', () async {
+      final requests = <Map<String, String>>[];
+      final env = await ready((r) async {
+        if (r.url.pathSegments.last == 'suggestions') {
+          requests.add(r.url.queryParameters);
+          final query = r.url.queryParameters['query']!;
+          return r.url.queryParameters.containsKey('limit')
+              ? catalog(['alpha'], truncated: true)
+              : catalog(['found-$query']);
+        }
+        return fixtures.response({'snapshot': snapshot()});
+      });
+      env.controller.suggest('skill', '');
+      await flush();
+      await Future<void>.delayed(const Duration(milliseconds: 220));
+      expect(shownLabels(env.container), ['found-']);
+
+      env.controller.suggest('skill', 'rev');
+      await Future<void>.delayed(const Duration(milliseconds: 220));
+      expect(shownLabels(env.container), ['found-rev']);
+      expect(requests.last, {
+        'targetToken': 'target-a',
+        'kind': 'skill',
+        'query': 'rev',
+      });
+    });
+
+    test('메뉴를 다시 열면 받아 둔 목록을 바로 보여 주고 뒤에서 새로 받는다', () async {
+      final refreshed = Completer<http.Response>();
+      var calls = 0;
+      final env = await ready((r) async {
+        if (r.url.pathSegments.last == 'suggestions') {
+          calls++;
+          return calls == 1 ? catalog(['review']) : refreshed.future;
+        }
+        return fixtures.response({'snapshot': snapshot()});
+      });
+      env.controller.suggest('skill', '');
+      await flush();
+      env.controller.dismissSuggestions();
+
+      env.controller.suggest('skill', '');
+      expect(shownLabels(env.container), ['review']);
+      await flush();
+      expect(calls, 2);
+      refreshed.complete(catalog(['plan', 'review']));
+      await flush();
+      expect(shownLabels(env.container), ['plan', 'review']);
+    });
+
+    test(
+      '다시 받기에 실패하면 받아 둔 목록을 유지하고, 처음 받기에 실패하면 오류를 보인 뒤 다음 입력에서 다시 받는다',
+      () async {
+        var calls = 0;
+        final env = await ready((r) async {
+          if (r.url.pathSegments.last == 'suggestions') {
+            calls++;
+            if (r.url.queryParameters['kind'] == 'skill') {
+              return calls == 1
+                  ? catalog(['review'])
+                  : http.Response('{"success":false}', 500);
+            }
+            return calls == 3
+                ? http.Response('{"success":false}', 500)
+                : catalog(['help']);
+          }
+          return fixtures.response({'snapshot': snapshot()});
+        });
+        env.controller.suggest('skill', '');
+        await flush();
+        env.controller.dismissSuggestions();
+        env.controller.suggest('skill', '');
+        await flush();
+        expect(calls, 2);
+        expect(shownLabels(env.container), ['review']);
+        expect(
+          env.container.read(paneChatComposerProvider(owner)).suggestionError,
+          isNull,
+        );
+
+        env.controller.suggest('command', '');
+        await flush();
+        expect(
+          env.container.read(paneChatComposerProvider(owner)).suggestionError,
+          isNotNull,
+        );
+        env.controller.suggest('command', 'h');
+        await flush();
+        expect(shownLabels(env.container), ['help']);
+      },
     );
   });
 

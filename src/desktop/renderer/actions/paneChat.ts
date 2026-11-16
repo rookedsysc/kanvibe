@@ -47,5 +47,5 @@ export const stagePaneChatAttachment = (taskId: string, targetToken: string, inp
 export const removePaneChatAttachment = (taskId: string, targetToken: string, id: string): Promise<PaneChatActionResult> =>
   invokeDesktop("paneChat", "removePaneChatAttachment", taskId, targetToken, id);
 
-export const getPaneChatSuggestions = (taskId: string, targetToken: string, kind: PaneChatSuggestionKind, query: string): Promise<PaneChatSuggestions> =>
-  invokeDesktop("paneChat", "getPaneChatSuggestions", taskId, targetToken, kind, query);
+export const getPaneChatSuggestions = (taskId: string, targetToken: string, kind: PaneChatSuggestionKind, query: string, limit?: number): Promise<PaneChatSuggestions> =>
+  invokeDesktop("paneChat", "getPaneChatSuggestions", taskId, targetToken, kind, query, ...(limit === undefined ? [] : [limit]));
