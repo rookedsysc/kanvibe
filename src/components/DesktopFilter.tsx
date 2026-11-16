@@ -27,7 +27,7 @@ export default function DesktopFilter({ hosts, selectedDesktops, onChange }: Des
       if (!containerRef.current?.contains(event.target as Node)) setIsOpen(false);
     };
     document.addEventListener("mousedown", closeOutside);
-    containerRef.current?.querySelector<HTMLInputElement>("input")?.focus();
+    containerRef.current?.querySelector<HTMLButtonElement>('[role="checkbox"]')?.focus();
     return () => document.removeEventListener("mousedown", closeOutside);
   }, [isOpen]);
 
@@ -67,18 +67,29 @@ export default function DesktopFilter({ hosts, selectedDesktops, onChange }: Des
       </button>
       {isOpen && (
         <div id={menuId} role="dialog" aria-label={t("desktopFilter")} className="absolute right-0 z-50 mt-1 max-h-64 w-56 overflow-y-auto rounded-md border border-border-default bg-bg-surface p-1 shadow-md">
-          {[{ value: "", label: t("allDesktops") }, ...options].map((option) => (
-            <label key={option.value} className="flex min-h-9 cursor-pointer items-center gap-3 rounded px-2 py-1.5 text-sm text-text-primary hover:bg-bg-page">
-              <input
-                type="checkbox"
-                checked={option.value === "" ? selected.length === 0 : selectedDesktops.includes(option.value)}
-                onChange={() => option.value === "" ? onChange([]) : toggleDesktop(option.value)}
-                style={{ accentColor: "var(--color-text-primary)" }}
-                className="h-3.5 w-3.5 shrink-0"
-              />
-              <span className="truncate">{option.label}</span>
-            </label>
-          ))}
+          {[{ value: "", label: t("allDesktops") }, ...options].map((option) => {
+            const isChecked = option.value === "" ? selected.length === 0 : selectedDesktops.includes(option.value);
+            // 행 전체를 포커스 가능한 버튼으로 두어야 이름을 눌러도 포커스가 메뉴 안에 남아 메뉴가 닫히지 않는다
+            return (
+              <button
+                key={option.value}
+                type="button"
+                role="checkbox"
+                aria-checked={isChecked}
+                onClick={() => option.value === "" ? onChange([]) : toggleDesktop(option.value)}
+                className="flex min-h-9 w-full cursor-pointer items-center gap-3 rounded px-2 py-1.5 text-left text-sm text-text-primary hover:bg-bg-page focus-visible:outline focus-visible:outline-2 focus-visible:outline-border-strong"
+              >
+                <span aria-hidden="true" className="flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-sm border border-border-strong">
+                  {isChecked && (
+                    <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
+                      <path d="M1 4L3.5 6.5L9 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  )}
+                </span>
+                <span className="truncate">{option.label}</span>
+              </button>
+            );
+          })}
         </div>
       )}
     </div>
