@@ -433,7 +433,13 @@ async function handlePaneChatRequest(request, response, bridge, taskId, action, 
         writeJson(response, 200, { success: true, ...result });
         return;
       }
-      const snapshot = await bridge.getSequencedPaneChatSnapshot(taskId, searchParams.get("paneId") ?? undefined);
+      const paneId = searchParams.get("paneId") ?? undefined;
+      // 에이전트 이름만 필요한 터미널 화면은 화면과 대화 기록을 읽지 않고 이름만 받는다
+      if (searchParams.get("detail") === "agent" && paneId) {
+        writeJson(response, 200, { success: true, provider: await bridge.getPaneChatAgentProvider(taskId, paneId) });
+        return;
+      }
+      const snapshot = await bridge.getSequencedPaneChatSnapshot(taskId, paneId, { includeScreen: searchParams.get("wantsScreen") !== "false" });
       writeJson(response, 200, { success: true, snapshot });
       return;
     }

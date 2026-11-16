@@ -482,6 +482,9 @@ const fileParseCache = new Map<string, FileParseCache<unknown>>();
 /** 앞 N줄 파싱 결과 전용 캐시. 호스트와 실제 파일 경로를 키로 사용하되 전체 캐시와 분리 관리한다. */
 const headParseCache = new Map<string, FileParseCache<unknown>>();
 
+/** 끝 N줄 파싱 결과 전용 캐시. 같은 파일의 전체·앞부분 파싱 결과와 섞이지 않도록 따로 둔다. */
+const tailParseCache = new Map<string, FileParseCache<unknown>>();
+
 function evictOldestIfNeeded(cache: Map<string, unknown>): void {
   if (cache.size >= FILE_PARSE_CACHE_MAX) {
     const oldestKey = cache.keys().next().value;
@@ -500,6 +503,10 @@ export function getCachedOrParse<T>(filePath: string, parseFn: () => Promise<T>,
 
 export function getCachedOrParseHead<T>(filePath: string, parseFn: () => Promise<T>, sshHost?: string | null): Promise<T> {
   return readWithFileCache(headParseCache, filePath, parseFn, sshHost);
+}
+
+export function getCachedOrParseTail<T>(filePath: string, parseFn: () => Promise<T>, sshHost?: string | null): Promise<T> {
+  return readWithFileCache(tailParseCache, filePath, parseFn, sshHost);
 }
 
 async function readWithFileCache<T>(

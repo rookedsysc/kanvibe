@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { getFileMtimeMs } from "@/lib/hostFileAccess";
-import { getCachedOrParse, getCachedOrParseHead } from "@/lib/aiSessions/shared";
+import { getCachedOrParse, getCachedOrParseHead, getCachedOrParseTail } from "@/lib/aiSessions/shared";
 
 vi.mock("@/lib/hostFileAccess", async (importOriginal) => ({
   ...await importOriginal<typeof import("@/lib/hostFileAccess")>(),
@@ -12,6 +12,7 @@ afterEach(() => vi.restoreAllMocks());
 describe.each([
   ["full", getCachedOrParse],
   ["head", getCachedOrParseHead],
+  ["tail", getCachedOrParseTail],
 ] as const)("%s parsing cache freshness", (kind, getParsed) => {
   it("eventually reparses a remote last write with unchanged coarse mtime", async () => {
     const clock = vi.spyOn(Date, "now").mockReturnValue(10_000);
