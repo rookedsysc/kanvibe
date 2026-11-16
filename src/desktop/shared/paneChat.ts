@@ -74,6 +74,8 @@ export interface PaneChatSnapshot {
   conversationKey?: string;
   canSend: boolean;
   inputState: "ready" | "occupied" | "unknown";
+  /** 에이전트가 응답을 만들거나 도구를 실행하는 중인지. 화면으로 확인하지 못하는 CLI나 surface는 unknown이다 */
+  agentActivity: "working" | "idle" | "unknown";
   screen: string;
   reason: string | null;
   transcript: {

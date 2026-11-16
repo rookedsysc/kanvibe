@@ -156,6 +156,9 @@ export function usePaneChat(taskId: string, isVisible = true, paneId?: string) {
     usedRows.add(messageKey(recorded));
     return false;
   }) : [];
+  // CLI 화면으로 작업 중인지 모르는 경우에도, 보낸 메시지가 기록되기 전까지는 에이전트가 받아 처리하는 중으로 본다
+  const hasUnrecordedSend = pendingMessages.some((row) => row.state !== "error");
+  const isAgentWorking = snapshot?.agentActivity === "working" || hasUnrecordedSend;
   const acknowledgedKey = JSON.stringify(acknowledged);
   useEffect(() => {
     const ids = new Set<string>(JSON.parse(acknowledgedKey));
@@ -165,7 +168,7 @@ export function usePaneChat(taskId: string, isVisible = true, paneId?: string) {
   }, [acknowledgedKey]);
 
   return {
-    snapshot, pendingMessages,
+    snapshot, pendingMessages, isAgentWorking,
     readError, actionError, isBusy,
     isReady: isReady && result?.taskId === taskId && result.paneId === paneId,
     refresh: () => refreshRef.current(),

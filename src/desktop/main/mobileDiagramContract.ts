@@ -1,5 +1,6 @@
 export type MobileDiagramInput = { definition: string; theme: "light" | "dark"; width: number };
-export type MobileDiagramImage = { imageBase64: string; width: number; height: number; mimeType: "image/png" | "image/jpeg" };
+/** naturalWidth는 칸 너비에 맞춰 줄이기 전 다이어그램의 원래 너비다. 모바일이 넓은 다이어그램을 원래 크기로 다시 받을지 정할 때 쓴다 */
+export type MobileDiagramImage = { imageBase64: string; width: number; height: number; mimeType: "image/png" | "image/jpeg"; naturalWidth?: number };
 export const MOBILE_DIAGRAM_LIMITS = { definitionBytes: 65536, widthMin: 320, widthMax: 1200, heightMax: 2400, imageBytes: 4 * 1024 * 1024, pixels: 2880000, pending: 4, cacheEntries: 16, cacheBytes: 16 * 1024 * 1024, timeoutMs: 15000 } as const;
 
 export class MobileDiagramError extends Error {

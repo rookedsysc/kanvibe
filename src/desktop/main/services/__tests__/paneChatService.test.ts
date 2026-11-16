@@ -1153,3 +1153,47 @@ describe("Codex displayed-thread footer binding", () => {
     expect(snapshot.transcript).toMatchObject({ status: "available", sessionId: "hook-session" });
   });
 });
+
+describe("pane chat agent activity", () => {
+  const claudeProcesses = () => processTable().replace("/usr/bin/python3 python3 /tmp/codex", "/tmp/claude /tmp/claude");
+  const rule = "─".repeat(40);
+  /** Claude Code 2.1.325를 tmux에서 실제로 돌려 캡처한 화면의 아래쪽. 작업 중일 때만 footer에 중단 안내가 붙는다 */
+  const claudeScreen = (footer: string, aboveBox = "· Swooping… (2s · thinking with high effort)") => [aboveBox, "                                    ● high · /effort", rule, "❯ ", rule, footer];
+  const claudeWorkingFooter = "  ⏵⏵ auto mode on (shift+tab to cycle) · esc to interrupt · ← 1 agent";
+  const claudeIdleFooter = "  ⏵⏵ auto mode on (shift+tab to cycle) · ← 1 agent";
+  /** Codex 0.169를 실제로 돌려 캡처한 화면의 아래쪽. 작업 중일 때만 입력란 위에 Working 줄이 생긴다 */
+  const codexScreen = (status: string) => [status, "                         ⚠ weekly limit: 10% left · /status", "› Ask Codex to do anything", "  GPT-6.1-Sol high · /repo", "  ← for agents · ? for shortcuts"];
+
+  it.each([
+    ["working", claudeScreen(claudeWorkingFooter)],
+    ["idle", claudeScreen(claudeIdleFooter, "")],
+    // 입력란 위 대화 본문에 같은 문구가 있어도 footer에 없으면 작업 중이 아니다
+    ["idle", claudeScreen(claudeIdleFooter, "Press esc to interrupt a running agent.")],
+  ] as const)("Claude 화면에서 %s로 판정한다", async (expected, viewportLines) => {
+    mocks.exec.mockResolvedValue(claudeProcesses());
+    mocks.surface.mockResolvedValue({ ...surface, inputLine: "❯ ", cursorColumn: 2, cursorRow: 3, viewportLines });
+    expect((await getPaneChatSnapshot("task-chat", "%3")).agentActivity).toBe(expected);
+  });
+
+  it.each([
+    ["working", "• Working (0s • esc to interrupt)"],
+    ["idle", ""],
+  ] as const)("Codex 화면에서 %s로 판정한다", async (expected, status) => {
+    const viewportLines = codexScreen(status);
+    mocks.surface.mockResolvedValue({ ...surface, inputLine: viewportLines[2], cursorColumn: 2, cursorRow: 2, viewportLines });
+    expect((await getPaneChatSnapshot("task-chat", "%3")).agentActivity).toBe(expected);
+  });
+
+  it("화면 좌표가 없는 surface(zellij)나 확인하지 않은 CLI는 unknown이다", async () => {
+    mocks.exec.mockResolvedValue(claudeProcesses());
+    mocks.surface.mockResolvedValue({ ...surface, inputLine: null, cursorColumn: null, screen: claudeScreen(claudeWorkingFooter).join("\n") });
+    expect((await getPaneChatSnapshot("task-chat", "%3")).agentActivity).toBe("unknown");
+
+    mocks.exec.mockResolvedValue("100 1 100 200 ttys010 Thu Nov 12 18:00:00 2026 zsh /bin/zsh\n200 100 200 200 ttys010 Thu Nov 12 19:00:00 2026 opencode.exe opencode");
+    mocks.processBinding.mockResolvedValue({ sessionId: "open", sourceRef: "/allowed/open", revision: 1 });
+    mocks.opencode.mockResolvedValue({ sessionId: "open", provider: "opencode", messages: [], nextCursor: null });
+    const viewportLines = ["  ┃  Ask anything…", "  ┃  Build · esc to interrupt", "  ╹▀▀▀"];
+    mocks.surface.mockResolvedValue({ ...surface, inputLine: viewportLines[0], cursorColumn: 5, cursorRow: 0, viewportLines });
+    expect((await getPaneChatSnapshot("task-chat", "%3")).agentActivity).toBe("unknown");
+  });
+});

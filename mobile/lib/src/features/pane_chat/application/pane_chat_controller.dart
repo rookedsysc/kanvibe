@@ -22,6 +22,18 @@ final paneChatPendingPromptProvider = NotifierProvider.autoDispose
       PaneChatPendingPrompt.new,
     );
 
+/// 에이전트가 응답을 만드는 중인지. 데스크탑이 CLI 화면으로 작업 중을 확인했거나, 보낸 메시지가 아직 기록에 나타나지 않았으면 작업 중이다
+final paneChatAgentWorkingProvider = Provider.autoDispose
+    .family<bool, PaneChatTarget>((ref, target) {
+      final activity = ref.watch(
+        paneChatProvider(target)
+            .select((value) => value.value?.snapshot.agentActivity),
+      );
+      final hasUnrecordedSend =
+          ref.watch(paneChatPendingPromptProvider(target)) != null;
+      return activity == PaneChatAgentActivity.working || hasUnrecordedSend;
+    });
+
 class PaneChatPendingPrompt extends Notifier<String?> {
   PaneChatPendingPrompt(this.target);
   final PaneChatTarget target;

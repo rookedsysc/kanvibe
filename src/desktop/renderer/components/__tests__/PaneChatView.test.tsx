@@ -12,7 +12,7 @@ const actions = vi.hoisted(() => ({
 }));
 vi.mock("@/desktop/renderer/actions/paneChat", () => actions);
 vi.mock("@/desktop/renderer/actions/appSettings", () => ({ getAppSetting: vi.fn().mockResolvedValue(null), setAppSetting: vi.fn().mockResolvedValue(undefined) }));
-vi.mock("next-intl", () => ({ useTranslations: () => (key: string) => key }));
+vi.mock("next-intl", () => ({ useTranslations: () => (key: string, values?: Record<string, unknown>) => values ? `${key} ${JSON.stringify(values)}` : key }));
 vi.mock("@/components/AiProviderIcon", () => ({ AiProviderIcon: () => null }));
 vi.mock("../AiChatTranscriptMessage", () => ({
   AiChatTranscriptMessage: ({ message }: { message: { text: string } }) => <article>{message.text}</article>,
@@ -21,7 +21,7 @@ vi.mock("../AiChatTranscriptMessage", () => ({
 function snapshot(token = "process-a"): PaneChatSnapshot {
   return {
     taskId: "task-1", paneId: "%3", sessionType: "tmux" as PaneChatSnapshot["sessionType"],
-    provider: "codex", targetToken: token, canSend: true, inputState: "ready",
+    provider: "codex", targetToken: token, canSend: true, inputState: "ready", agentActivity: "idle",
     screen: "Codex ready", reason: null, modelPicker: { supported: true, mode: "native-cli" },
     transcript: { status: "available", reason: null, sessionId: "session-a", nextCursor: null, messages: [
       { role: "assistant", timestamp: null, text: "Exact pane response", fullText: "Exact pane response", isTruncated: false },
@@ -355,5 +355,46 @@ describe("연결하지 못한 대화의 원인별 안내", () => {
     open();
     expect(await screen.findByText(message)).toBeTruthy();
     expect(screen.queryByRole("button", { name: "revealThread" })).toBeNull();
+  });
+});
+
+describe("agent working feedback", () => {
+  it("CLI가 작업 중이면 대화 끝에 작업 중 표시와 경과 초를 보이고, 끝나면 지운다", async () => {
+    vi.useFakeTimers();
+    actions.getPaneChatSnapshot.mockResolvedValue({ ...snapshot(), agentActivity: "working" });
+    await act(async () => { open(); });
+    const indicator = screen.getByTestId("pane-chat-working");
+    expect(indicator.getAttribute("role")).toBe("status");
+    expect(indicator.textContent).toContain("agentWorking");
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    expect(screen.getByTestId("pane-chat-working").textContent).toContain('agentWorkingElapsed {"seconds":1}');
+
+    actions.getPaneChatSnapshot.mockResolvedValue({ ...snapshot(), agentActivity: "idle" });
+    await act(async () => { await vi.advanceTimersByTimeAsync(1500); });
+    expect(screen.queryByTestId("pane-chat-working")).toBeNull();
+  });
+
+  it("작업 중인지 알 수 없는 CLI도 보낸 메시지가 기록되기 전까지는 작업 중으로 보인다", async () => {
+    actions.getPaneChatSnapshot.mockResolvedValue({ ...snapshot(), agentActivity: "unknown" });
+    actions.sendPaneChatPrompt.mockReturnValue(new Promise(() => {}));
+    open();
+    await screen.findByText("Exact pane response");
+    expect(screen.queryByTestId("pane-chat-working")).toBeNull();
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "Start working" } });
+    fireEvent.click(screen.getByRole("button", { name: "send" }));
+    expect(screen.getByTestId("pane-chat-working")).toBeTruthy();
+  });
+
+  it("작업 중이고 입력이 비어 있으면 전송 버튼이 응답 중지로 바뀌고, 입력하면 다시 전송이 된다", async () => {
+    actions.getPaneChatSnapshot.mockResolvedValue({ ...snapshot(), agentActivity: "working" });
+    open();
+    const stop = await screen.findByRole("button", { name: "stopResponse" });
+    expect(screen.queryByRole("button", { name: "send" })).toBeNull();
+    fireEvent.click(stop);
+    await waitFor(() => expect(actions.interruptPaneChat).toHaveBeenCalledWith("task-1", "process-a"));
+
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "Follow-up" } });
+    expect(screen.queryByRole("button", { name: "stopResponse" })).toBeNull();
+    expect(screen.getByRole("button", { name: "send" })).toBeTruthy();
   });
 });

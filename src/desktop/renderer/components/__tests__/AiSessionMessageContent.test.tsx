@@ -3,6 +3,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { AiSessionMessageContent } from "../AiSessionMessageContent";
 
 vi.mock("next-intl", () => ({ useTranslations: () => (key: string) => key }));
+const mermaidMocks = vi.hoisted(() => ({ render: vi.fn() }));
+vi.mock("mermaid", () => ({ default: { initialize: vi.fn(), render: mermaidMocks.render } }));
 
 const clipboardDescriptor = Object.getOwnPropertyDescriptor(navigator, "clipboard");
 afterEach(() => {
@@ -73,6 +75,21 @@ describe("AiSessionMessageContent", () => {
 
     const table = container.querySelector(".kv-chat-table > table");
     expect(table?.querySelectorAll("td")).toHaveLength(2);
+  });
+
+  it("넓은 Mermaid 다이어그램을 칸 너비로 줄이지 않고 원래 너비로 그려 옆으로 넘기게 한다", async () => {
+    // Mermaid는 width="100%"와 max-width로 SVG를 칸 너비에 맞춰 줄인다
+    mermaidMocks.render.mockResolvedValue({ svg: '<svg width="100%" style="max-width: 1600px;" viewBox="0 0 1600 400"><g></g></svg>' });
+    const { container } = render(<AiSessionMessageContent text={"```mermaid\ngraph LR\n  A --> B\n```"} />);
+
+    const svg = await waitFor(() => {
+      const element = container.querySelector<SVGSVGElement>("[data-testid='ai-session-mermaid-diagram'] svg");
+      if (!element) throw new Error("다이어그램이 아직 그려지지 않았습니다");
+      return element;
+    });
+    expect(svg.getAttribute("width")).toBe("1600");
+    expect(svg.style.maxWidth).toBe("none");
+    expect(container.querySelector("[data-testid='ai-session-mermaid-diagram']")?.className).toContain("overflow-x-auto");
   });
 
   it("본문에 섞인 스크립트와 인라인 스타일은 그리지 않는다", () => {

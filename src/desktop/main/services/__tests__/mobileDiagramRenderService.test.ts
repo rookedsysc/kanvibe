@@ -20,7 +20,7 @@ function jpeg(width = 640, height = 120) {
   image.writeUInt16BE(width, marker + 7);
   return image;
 }
-beforeEach(() => { vi.resetModules(); native.render.mockReset(); native.render.mockResolvedValue(jpeg()); });
+beforeEach(() => { vi.resetModules(); native.render.mockReset(); native.render.mockResolvedValue({ encoded: jpeg() }); });
 
 describe("diagram input and native image boundary", () => {
   it("rejects four-component scans even when their segment length and entropy bounds are consistent", () => {
@@ -77,7 +77,7 @@ describe("desktop renderer capacity and result lifecycle", () => {
   it("evicts by encoded image bytes before the entry count is reached", async () => {
     const { renderMobileDiagram } = await import("../mobileDiagramRenderService");
     const large = Buffer.concat([png(), Buffer.alloc(3 * 1024 * 1024 - 33)]);
-    native.render.mockResolvedValue(large);
+    native.render.mockResolvedValue({ encoded: large });
     await renderMobileDiagram(input);
     for (let index = 0; index < 4; index++) await renderMobileDiagram({ ...input, definition: `flowchart LR\nMemory${index}-->Bound` });
     await renderMobileDiagram(input);
@@ -86,12 +86,12 @@ describe("desktop renderer capacity and result lifecycle", () => {
 
   it("deduplicates concurrent requests and serves immutable cached copies", async () => {
     const { renderMobileDiagram } = await import("../mobileDiagramRenderService");
-    let complete!: (value: Buffer) => void;
+    let complete!: (value: { encoded: Buffer }) => void;
     native.render.mockImplementationOnce(() => new Promise((resolve) => { complete = resolve; }));
     const first = renderMobileDiagram(input);
     const second = renderMobileDiagram(input);
     await vi.waitFor(() => expect(native.render).toHaveBeenCalledTimes(1));
-    complete(jpeg());
+    complete({ encoded: jpeg() });
     const [one, two] = await Promise.all([first, second]);
     expect(one).toEqual(two);
     one.height = 999;
@@ -100,19 +100,26 @@ describe("desktop renderer capacity and result lifecycle", () => {
   });
   it("runs one worker, admits three waiting jobs and rejects a fifth distinct job", async () => {
     const { renderMobileDiagram } = await import("../mobileDiagramRenderService");
-    const completions: Array<(value: Buffer) => void> = [];
+    const completions: Array<(value: { encoded: Buffer }) => void> = [];
     native.render.mockImplementation(() => new Promise((resolve) => completions.push(resolve)));
     const jobs = [0, 1, 2, 3].map((index) => renderMobileDiagram({ ...input, definition: `flowchart LR\nA-->B${index}` }));
     expect(() => renderMobileDiagram({ ...input, definition: "flowchart LR\nX-->Y" })).toThrowError(/요청이 많습니다/);
     await vi.waitFor(() => expect(completions).toHaveLength(1));
-    completions[0](jpeg());
+    completions[0]({ encoded: jpeg() });
     await vi.waitFor(() => expect(completions).toHaveLength(2));
-    completions[1](jpeg());
+    completions[1]({ encoded: jpeg() });
     await vi.waitFor(() => expect(completions).toHaveLength(3));
-    completions[2](jpeg());
+    completions[2]({ encoded: jpeg() });
     await vi.waitFor(() => expect(completions).toHaveLength(4));
-    completions[3](jpeg());
+    completions[3]({ encoded: jpeg() });
     expect(await Promise.all(jobs)).toHaveLength(4);
+  });
+  it("PC가 잰 다이어그램 원래 너비를 응답에 싣고, 모르면 필드를 비운다", async () => {
+    const { renderMobileDiagram } = await import("../mobileDiagramRenderService");
+    native.render.mockResolvedValueOnce({ encoded: jpeg(), naturalWidth: 1100 });
+    expect(await renderMobileDiagram(input)).toMatchObject({ width: 640, naturalWidth: 1100 });
+    const withoutNaturalWidth = await renderMobileDiagram({ ...input, definition: "flowchart LR\nOld-->Desktop" });
+    expect(withoutNaturalWidth).not.toHaveProperty("naturalWidth");
   });
   it("does not cache failures and allows the next queued request to run", async () => {
     const { renderMobileDiagram } = await import("../mobileDiagramRenderService");
