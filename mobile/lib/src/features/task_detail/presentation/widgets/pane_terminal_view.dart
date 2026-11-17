@@ -90,7 +90,10 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
     WidgetsBinding.instance.addObserver(this);
     _terminal = xterm.Terminal(
       maxLines: _scrollbackLines,
-      mouseHandler: _TerminalWheelMouseHandler(_readTouchedCell),
+      mouseHandler: _TerminalWheelMouseHandler(
+        _readTouchedCell,
+        _scrollThroughMultiplexer,
+      ),
     );
     _terminal.resize(widget.pane.width, widget.pane.height);
     _terminalController.addListener(_applyDeferredRedraw);
@@ -145,6 +148,18 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
       (position.dx ~/ cellSize.width).clamp(0, _terminal.viewWidth - 1),
       (position.dy ~/ cellSize.height).clamp(0, _terminal.viewHeight - 1),
     );
+  }
+
+  /// Herdr만 휠을 받아 pane 모드에 맞춰 나눠 주는 입구가 있다. 그 밖의 세션은 휠 보고를 원시 입력으로 보낸다
+  bool get _canMultiplexerTakeWheel => widget.sessionType == SessionType.herdr;
+
+  /// 멀티플렉서에 휠을 넘겼으면 true. 원시 휠 보고는 마우스 보고를 켜지 않은 프로그램에 글자로 찍히므로 이때는 입력으로 보내지 않는다
+  bool _scrollThroughMultiplexer(bool isUp, xterm.CellOffset position) {
+    if (!_canMultiplexerTakeWheel) return false;
+    if (widget.isActive && _failureMessage == null) {
+      _stream?.scroll(isUp: isUp, column: position.x, row: position.y);
+    }
+    return true;
   }
 
   void _startTouch(PointerDownEvent event) {
@@ -523,6 +538,8 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
                           return KeyEventResult.ignored;
                         },
                         scrollController: _verticalScroll,
+                        // 멀티플렉서가 휠을 받으면 마우스 모드가 꺼진 프로그램의 화살표 키 변환도 멀티플렉서가 맡는다
+                        simulateScroll: !_canMultiplexerTakeWheel,
                         backgroundOpacity: 0,
                         theme: _terminalTheme,
                         textStyle: _textStyle,
@@ -648,9 +665,14 @@ class _PaneStreamFailure extends StatelessWidget {
 // 화면 전체 기준 위치를 터미널 안 위치로 읽어 휠이 실제로 닿은 칸보다 아래쪽 칸을 가리킨다.
 // https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Wheel-mice
 class _TerminalWheelMouseHandler extends xterm.TerminalMouseHandler {
-  const _TerminalWheelMouseHandler(this._readTouchedCell);
+  const _TerminalWheelMouseHandler(
+    this._readTouchedCell,
+    this._scrollThroughMultiplexer,
+  );
 
   final xterm.CellOffset? Function() _readTouchedCell;
+  final bool Function(bool isUp, xterm.CellOffset position)
+  _scrollThroughMultiplexer;
 
   @override
   String? call(xterm.TerminalMouseEvent event) {
@@ -664,6 +686,16 @@ class _TerminalWheelMouseHandler extends xterm.TerminalMouseHandler {
             state: event.state,
             platform: event.platform,
           );
+    final isVerticalWheel =
+        event.button == xterm.TerminalMouseButton.wheelUp ||
+        event.button == xterm.TerminalMouseButton.wheelDown;
+    if (isVerticalWheel &&
+        _scrollThroughMultiplexer(
+          event.button == xterm.TerminalMouseButton.wheelUp,
+          locatedEvent.position,
+        )) {
+      return null;
+    }
     final output = xterm.defaultMouseHandler(locatedEvent);
     if (output == null || !event.button.isWheel) return output;
     final button = event.button.id - 4;

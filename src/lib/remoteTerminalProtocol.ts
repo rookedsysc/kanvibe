@@ -56,6 +56,27 @@ export function isRemoteTerminalSize(cols: unknown, rows: unknown): boolean {
   return [cols, rows].every((value) => typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= REMOTE_TERMINAL_MAX_DIMENSION);
 }
 
+/** 모바일 손가락 스크롤 한 줄. 칸 좌표는 0부터 센다 */
+export interface TerminalScrollRequest {
+  direction: "up" | "down";
+  column: number;
+  row: number;
+}
+
+export function parseTerminalScrollRequest(record: { type?: unknown; direction?: unknown; column?: unknown; row?: unknown }): TerminalScrollRequest | null {
+  if (record.type !== "scroll" || (record.direction !== "up" && record.direction !== "down")) return null;
+  const isCell = [record.column, record.row].every((value) => typeof value === "number" && Number.isInteger(value) && value >= 0 && value < REMOTE_TERMINAL_MAX_DIMENSION);
+  return isCell ? { direction: record.direction, column: record.column as number, row: record.row as number } : null;
+}
+
+/**
+ * 휠 한 칸을 Herdr 제어 명령으로 바꾼다. 원시 휠 보고를 pane 입력으로 넣으면 마우스 보고를 켜지 않은 프로그램에 글자로 찍히므로,
+ * Herdr 서버가 pane의 실제 모드를 보고 휠 보고·화살표 키·자체 스크롤백 중 하나로 고르게 한다.
+ */
+export function buildHerdrScrollControlRecord(request: TerminalScrollRequest): object {
+  return { type: "terminal.scroll", direction: request.direction, lines: 1, column: request.column, row: request.row };
+}
+
 export type HerdrObserveRecord =
   | { type: "frame"; isFullScreen: boolean; output: string; width?: number; height?: number }
   | { type: "closed" };
@@ -109,6 +130,20 @@ export function buildScreenRedraw(screen: string, cursor: TerminalCursorPosition
   const lines = screen.split(/\r?\n/).slice(-MAX_MIRROR_LINES).join("\r\n");
   return `${CLEAR_SCREEN_AND_SCROLLBACK}${lines}${cursor ? buildCursorMoveFromLastLine(cursor) : ""}`;
 }
+
+/**
+ * Herdr pane의 화면을 모바일 터미널이 대체 화면에서 다시 그리는 출력으로 바꾼다.
+ *
+ * Herdr 프레임에는 화면·마우스 모드 전환이 없고 공개 API도 모드를 알려 주지 않는다. 대체 화면에 두어야 모바일이 손가락 스크롤을
+ * 자기 스크롤백 대신 휠 이벤트로 내보내고, 그 휠은 `buildHerdrScrollControlRecord`로 Herdr가 pane 모드에 맞춰 처리한다.
+ * 이 출력은 구독 중에도 다시 나간다. 모드 전환이 맨 앞에 오면 모바일이 다시 그리기로 알아보지 못해 선택 중인 화면을 지우므로,
+ * 지우기를 모드 전환 앞에도 한 번 둔다.
+ */
+export function buildHerdrScreenRedraw(screen: string): string {
+  return `${CLEAR_SCREEN_AND_SCROLLBACK}${HERDR_SCREEN_MODES}${buildScreenRedraw(screen, null)}`;
+}
+
+const HERDR_SCREEN_MODES = "\x1b[?1049h\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1005l\x1b[?1006l";
 
 /**
  * 덤프 앞에는 스크롤백이 붙고 모바일 화면 높이도 pane과 다를 수 있어, 절대 좌표로는 커서가 놓일 줄을 알 수 없다.

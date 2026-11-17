@@ -402,7 +402,7 @@ void main() {
     await expectLater(client.fetchTask(_connection, 'task-1'), unauthorized);
   });
 
-  test('실제 WebSocket에서 크기는 binary, 입력은 text 프레임으로 전송한다', () async {
+  test('실제 WebSocket에서 크기와 휠은 binary, 입력은 text 프레임으로 전송한다', () async {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     addTearDown(() => server.close(force: true));
     final received = <dynamic>[];
@@ -412,7 +412,7 @@ void main() {
       final socket = await WebSocketTransformer.upgrade(request);
       socket.listen((event) {
         received.add(event);
-        if (received.length == 2) {
+        if (received.length == 3) {
           socket.add('terminal-output');
           messages.complete();
         }
@@ -432,6 +432,7 @@ void main() {
     addTearDown(stream.close);
     final output = stream.output.first;
     stream.resize(44, 70);
+    stream.scroll(isUp: false, column: 3, row: 7);
     const text = '{"type":"resize","cols":10,"rows":5}';
     stream.write(text);
     await messages.future.timeout(const Duration(seconds: 5));
@@ -440,6 +441,12 @@ void main() {
       'type': 'resize',
       'cols': 44,
       'rows': 70,
+    });
+    expect(jsonDecode(utf8.decode(received[1] as List<int>)), {
+      'type': 'scroll',
+      'direction': 'down',
+      'column': 3,
+      'row': 7,
     });
     expect(received.last, text);
     expect(await output, 'terminal-output');
