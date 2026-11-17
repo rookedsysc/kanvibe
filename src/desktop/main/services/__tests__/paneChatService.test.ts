@@ -800,6 +800,10 @@ class FakeCodexPane {
   readonly dialogKeys: string[] = [];
   /** 선택 화면 위에 보이는 대화 내용. 새 대화를 시작하면 바뀐다 */
   history = "• Earlier reply";
+  /** pane이 좁아져 줄이 다시 접히면서 화면 위로 밀려난 줄 수 */
+  rowsScrolledOff = 0;
+  /** 머리글 아래의 작업 경로 줄. 실제 TUI는 pane 너비에 맞춰 가운데를 줄여 다시 그린다 */
+  headerDirectoryLine = "     ~/projects/qa/run/workspace";
 
   constructor(readonly paneId: string, readonly rootPid: number, public threadId: string) {}
 
@@ -844,7 +848,7 @@ class FakeCodexPane {
   surface(task: object) {
     if (this.dialog) {
       // 실제 TUI는 선택 화면을 화면 아래에 붙이고 커서를 마지막 줄 끝에 세워 둔다. 대화 ID가 있던 footer는 가려진다.
-      const rows = ["  >_ OpenAI Codex (v0.169.0)", "", this.history, "", "", ...this.dialog];
+      const rows = ["  >_ OpenAI Codex (v0.169.0)", this.headerDirectoryLine, "", ...this.history.split("\n"), "", "", ...this.dialog].slice(this.rowsScrolledOff);
       return { observation: ++codexObservationSequence, task, paneId: this.paneId, rootPid: this.rootPid, screen: rows.join("\n"), inputLine: rows.at(-1)!, cursorColumn: 120, viewportLines: rows, cursorRow: rows.length - 1, viewportColumns: 120, inputIsPlaceholder: false };
     }
     const [firstLine, ...moreLines] = (this.composer || "Ask Codex to do anything").split("\n");
@@ -1037,6 +1041,40 @@ describe("Codex displayed-thread footer binding", () => {
 
       expect(reopened).toMatchObject({ canSend: false, targetToken: null });
       expect(reopened.prompt).toBeUndefined();
+    });
+
+    it("선택 화면이 뜬 채 pane 너비가 바뀌어 대화 내용과 선택지가 다시 접히고 위쪽 줄이 밀려나도 대화를 유지한다", async () => {
+      const { taskId, a } = createCodexTask();
+      const bound = await readChat(taskId);
+      a.history = "• Earlier reply that is long enough to be folded when the pane gets narrower";
+      a.dialog = RATE_LIMIT;
+      await readChat(taskId);
+      a.history = "• Earlier reply that is long enough to be folded\n  when the pane gets narrower";
+      a.dialog = ["  Approaching rate limits", "", "", "› 1. Switch to", "     gpt-6-luna", "  2. Keep current model", "", "  enter select · esc back"];
+      a.rowsScrolledOff = 2;
+
+      expect(await readChat(taskId)).toMatchObject({ canSend: true, targetToken: bound.targetToken, prompt: { title: "Approaching rate limits" } });
+    });
+
+    it("선택 화면이 뜬 채 pane 너비가 바뀌어 머리글의 작업 경로가 줄여 다시 그려져도 대화를 유지한다", async () => {
+      const { taskId, a } = createCodexTask();
+      const bound = await readChat(taskId);
+      a.dialog = RATE_LIMIT;
+      await readChat(taskId);
+      a.headerDirectoryLine = "     ~/projects/…/run/workspace";
+
+      expect(await readChat(taskId)).toMatchObject({ canSend: true, targetToken: bound.targetToken, prompt: { title: "Approaching rate limits" } });
+    });
+
+    it("이전 대화 내용이 화면 위쪽에 남아 있어도 선택 화면 바로 위가 새 대화의 머리글이면 유지를 끝낸다", async () => {
+      const { taskId, a } = createCodexTask();
+      await readChat(taskId);
+      a.dialog = RATE_LIMIT;
+      await readChat(taskId);
+      a.switchThread(THREAD_Y);
+      a.history = "• Earlier reply\n\n  >_ OpenAI Codex (v0.169.0)\n     ~/projects/qa/run/workspace";
+
+      expect(await readChat(taskId)).toMatchObject({ canSend: false, targetToken: null });
     });
 
     it("터미널에서 강조 줄만 옮긴 같은 선택 화면은 계속 유지한다", async () => {

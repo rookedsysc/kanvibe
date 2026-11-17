@@ -17,7 +17,7 @@ import { readCodexEmptyThread } from "@/lib/aiSessions/codexThreadMetadata";
 import { sendCodexThreadInput } from "@/lib/aiSessions/codexThreadInput";
 import { readCodexThreadSettings, updateCodexThreadSettings } from "@/lib/aiSessions/codexThreadSettings";
 import { applyAskedQuestions, isBlankClaudeTextEntry, readClaudeAskedQuestions, readClaudePrompt, type PaneChatPromptScreen } from "@/lib/aiSessions/paneChatClaudePrompt";
-import { readCodexPrompt } from "@/lib/aiSessions/paneChatCodexPrompt";
+import { readCodexPrompt, readCodexPromptWithConversation } from "@/lib/aiSessions/paneChatCodexPrompt";
 import { isClaudeComposerShowingPaste, readClaudeComposerText } from "@/lib/aiSessions/paneChatClaudeComposer";
 import { findPaneChatProcess, type PaneChatProcess } from "@/lib/aiSessions/paneChatProcess";
 import { findPaneChatSessionBinding, findPaneChatProcessSessionBinding, findPaneChatReportedSessionBinding } from "@/lib/aiSessions/paneChatSessionBindings";
@@ -60,8 +60,8 @@ const CODEX_WORKING_STATUS_LINE = /^•\s.*\(.*\besc to interrupt\)$/;
 const PROMPT_REACTION_READ_ATTEMPTS = 6;
 /** 선택 화면이 대화 ID를 가리는 동안, 대화 ID나 그 선택 화면을 이 시간 안에 다시 확인하지 못했으면 대화가 이어진다고 보지 않는다 */
 const CODEX_HELD_THREAD_MAX_GAP_MS = 5_000;
-/** Codex 선택 화면에서 강조된 선택지 줄의 머리 */
-const CODEX_HIGHLIGHTED_OPTION = /^› (\d+\. )/;
+/** 같은 대화인지 견줄 때 쓰는, 선택 화면 바로 위 대화 내용의 끝 글자 수. pane 너비가 바뀌어 줄이 다시 접혀도 대화의 끝부분은 화면에 남는다 */
+const CODEX_HELD_CONVERSATION_TAIL_LENGTH = 200;
 /** Codex 상태 줄과 입력란 사이에는 사용량 경고 같은 줄이 끼어들 수 있어 입력란 위로 이만큼 찾는다 */
 const CODEX_WORKING_STATUS_SEARCH_ROWS = 6;
 
@@ -85,8 +85,14 @@ interface CodexDisplayExecution {
   observation: number;
   /** 대화 ID를, 또는 그 ID를 가린 선택 화면을 마지막으로 확인한 시각 */
   confirmedAt: number;
-  /** 대화 ID를 가린 채 지켜보고 있는 화면의 글(강조 표시는 뺀 것). 대화 ID가 보이는 동안에는 null이다 */
-  heldBehindPrompt: string | null;
+  /** 대화 ID를 가린 채 지켜보고 있는 화면. 대화 ID가 보이는 동안에는 null이다 */
+  heldBehindPrompt: CodexHeldScreen | null;
+}
+/** 대화 ID를 가린 화면이 같은 화면인지 견줄 값. 줄바꿈과 공백을 뺀 글자만 담아, pane 너비가 바뀌어 줄이 다시 접혀도 같다 */
+interface CodexHeldScreen {
+  prompt: string;
+  /** 선택 화면 바로 위 대화 내용의 끝부분 */
+  conversationTail: string;
 }
 const codexDisplays = new Map<string, Promise<CodexDisplayExecution | null>>();
 
@@ -117,18 +123,35 @@ function codexDisplay(surface: PaneChatSurface) {
  *
  * 대화 ID를 본 직후부터 그 선택 화면을 끊김 없이 지켜본 경우에만 그렇게 본다. 채팅을 꺼 둔 동안처럼 지켜보지 않은 사이나,
  * 대화 ID를 다시 보지 못한 채 다른 선택 화면으로 넘어가는 사이에는 터미널에서 대화를 바꿨을 수 있다.
- * 새 대화에서 글자가 같은 선택 화면이 다시 뜰 수도 있으므로, 같은 화면인지는 선택 화면 위의 대화 내용까지 견준다.
+ * 새 대화에서 글자가 같은 선택 화면이 다시 뜰 수도 있으므로, 같은 화면인지는 선택 화면 바로 위의 대화 내용까지 견준다.
  */
 function holdCodexThreadBehindPrompt(state: CodexDisplayExecution, surface: PaneChatSurface): string | null {
-  const screen = surface.viewportLines ? readCodexPrompt(surface.viewportLines) : null;
+  const shown = surface.viewportLines ? describeCodexHeldScreen(surface.viewportLines) : null;
   const now = Date.now();
-  if (!screen || !state.observedThread || now - state.confirmedAt > CODEX_HELD_THREAD_MAX_GAP_MS) return null;
-  // 터미널에서 화살표로 강조 줄만 옮긴 것은 같은 화면이다
-  const shownScreen = surface.viewportLines!.map((line) => line.replace(CODEX_HIGHLIGHTED_OPTION, "  $1")).join("\n");
-  if (state.heldBehindPrompt !== null && state.heldBehindPrompt !== shownScreen) return null;
-  state.heldBehindPrompt = shownScreen;
+  if (!shown || !state.observedThread || now - state.confirmedAt > CODEX_HELD_THREAD_MAX_GAP_MS) return null;
+  const held = state.heldBehindPrompt;
+  if (held && !(held.prompt === shown.prompt && isSameConversationTail(held.conversationTail, shown.conversationTail))) return null;
+  // 더 길게 보인 쪽을 기준으로 남겨, 짧아진 끝부분만으로 다른 대화를 같은 대화로 보는 일이 없게 한다
+  state.heldBehindPrompt = held && held.conversationTail.length > shown.conversationTail.length ? held : shown;
   state.confirmedAt = now;
   return state.observedThread;
+}
+const withoutWhitespace = (text: string) => text.replace(/\s/g, "");
+/** 터미널에서 화살표로 강조 줄만 옮긴 것은 같은 화면이므로 강조된 선택지는 담지 않는다 */
+function describeCodexHeldScreen(viewportLines: string[]): CodexHeldScreen | null {
+  const shown = readCodexPromptWithConversation(viewportLines);
+  if (!shown) return null;
+  const { title, detail, options } = shown.screen;
+  const conversation = withoutWhitespace(shown.conversationRows.join(""));
+  return {
+    prompt: withoutWhitespace(JSON.stringify([title, detail, options.map((option) => [option.label, option.description])])),
+    conversationTail: conversation.slice(-CODEX_HELD_CONVERSATION_TAIL_LENGTH),
+  };
+}
+/** pane 너비가 바뀌면 화면 위로 밀려나는 줄 수가 달라져 보이는 양이 다르다. 덜 보이는 쪽이 더 보이는 쪽의 끝과 같으면 같은 대화의 끝부분이다 */
+function isSameConversationTail(heldTail: string, shownTail: string): boolean {
+  const [shorter, longer] = heldTail.length <= shownTail.length ? [heldTail, shownTail] : [shownTail, heldTail];
+  return shorter ? longer.endsWith(shorter) : !longer;
 }
 function observeCodexThread(state: CodexDisplayExecution, id: string | null, observation?: number): void {
   if (observation !== undefined && observation < state.observation && id !== state.observedThread) throw changedTargetError();

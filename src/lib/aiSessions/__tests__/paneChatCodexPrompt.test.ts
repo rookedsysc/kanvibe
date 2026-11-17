@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { readCodexPrompt } from "@/lib/aiSessions/paneChatCodexPrompt";
+import { readCodexPrompt, readCodexPromptWithConversation } from "@/lib/aiSessions/paneChatCodexPrompt";
 
 /** Codex CLI 0.169.0이 실제로 그린 화면을 옮긴 것. 선택 화면은 화면 아래에 붙고, 위쪽은 빈 줄 둘로 대화 내용과 떨어진다 */
 const HISTORY = ["• Ran git tag probe-approval-1", "  └ (no output)", "", "  Worked for 28s • 6:23 PM", "", ""];
@@ -134,5 +134,35 @@ describe("readCodexPrompt", () => {
     ["선택지와 안내 줄 사이에 빈 줄이 없는 화면", ["", "", "  Continue?", "", "", "› 1. Yes", "  2. No", "  enter select · esc back"]],
   ])("%s은 선택 화면으로 읽지 않는다", (_name, lines) => {
     expect(readCodexPrompt(lines)).toBeNull();
+  });
+
+  describe("선택 화면 위의 대화 내용", () => {
+    const dialog = approval.slice(HISTORY.length);
+    const content = ["• You ran echo qa-content", "  └ qa-content", "", "  Worked for <1s • 10:14 PM"];
+    const conversationAbove = (rowsAboveDialog: string[]) => readCodexPromptWithConversation([...rowsAboveDialog, "", "", ...dialog])?.conversationRows.filter((row) => row.trim());
+
+    it("머리글이 화면에 없으면 선택 화면 위의 줄을 모두 대화 내용으로 읽는다", () => {
+      expect(conversationAbove(content)).toEqual(content.filter((row) => row.trim()));
+    });
+
+    it("머리글은 대화 내용에서 뺀다. 작업 경로 줄은 pane 너비에 맞춰 줄여 다시 그려지기 때문이다", () => {
+      const narrowHeader = ["", "  >_ OpenAI Codex (v0.169.0)", "     ~/projects/…/run/workspace", ""];
+      const wideHeader = ["", "  >_ OpenAI Codex (v0.169.0)", "     ~/projects/qa/run/workspace", ""];
+
+      expect(conversationAbove([...narrowHeader, ...content])).toEqual(conversationAbove([...wideHeader, ...content]));
+      expect(conversationAbove([...narrowHeader, ...content])).toEqual(content.filter((row) => row.trim()));
+    });
+
+    it("상자로 그린 머리글도 상자 끝까지 뺀다", () => {
+      const boxedHeader = ["╭──────────────────────────────────────╮", "│ >_ OpenAI Codex (v0.169.0)           │", "│                                      │", "│ model:     gpt-6-luna medium         │", "│ directory: ~/projects/qa/workspace   │", "╰──────────────────────────────────────╯", ""];
+
+      expect(conversationAbove([...boxedHeader, ...content])).toEqual(content.filter((row) => row.trim()));
+    });
+
+    it("이전 대화의 내용이 화면 위쪽에 남아 있어도 마지막 머리글 아래만 읽는다", () => {
+      const newHeader = ["", "  >_ OpenAI Codex (v0.169.0)", "     ~/projects/qa/run/workspace", ""];
+
+      expect(conversationAbove([...content, ...newHeader])).toEqual([]);
+    });
   });
 });

@@ -10,6 +10,8 @@ const DIALOG_TEXT_LINE = /^ {2}\S/;
 const INLINE_DESCRIPTION_GAP = /\s{2,}/;
 /** pane이 좁아 넘어간 선택지의 나머지 줄. 라벨이나 설명이 시작한 칸에 맞춰 들여쓴다 */
 const WRAPPED_OPTION_ROW = /^ {5,}\S/;
+/** Codex가 대화를 시작할 때 찍는 머리글의 첫 줄. 넓은 pane에서는 상자 안에 그린다 */
+const HEADER_TITLE_LINE = /^[\s│]*>_ OpenAI Codex\b/;
 
 const isBlank = (line: string | undefined) => !line?.trim();
 
@@ -21,6 +23,11 @@ const isBlank = (line: string | undefined) => !line?.trim();
  * Codex CLI 0.169.0의 실제 화면으로 확인한 배치이고, 읽지 못하는 화면은 null이다.
  */
 export function readCodexPrompt(lines: string[]): PaneChatPromptScreen | null {
+  return readCodexPromptWithConversation(lines)?.screen ?? null;
+}
+
+/** 선택 화면을 읽고, 그 위에 보이는 대화 내용의 줄도 함께 돌려준다 */
+export function readCodexPromptWithConversation(lines: string[]): { screen: PaneChatPromptScreen; conversationRows: string[] } | null {
   let hintRow = lines.length - 1;
   while (hintRow >= 0 && isBlank(lines[hintRow])) hintRow--;
   if (hintRow < 0 || !KEY_HINT_LINE.test(lines[hintRow]) || !isBlank(lines[hintRow - 1])) return null;
@@ -40,7 +47,7 @@ export function readCodexPrompt(lines: string[]): PaneChatPromptScreen | null {
   const paragraphs = lines.slice(textStart, textEnd + 1).map((line) => line.trim()).join("\n").split(/\n{2,}/).filter(Boolean);
   if (!paragraphs.length) return null;
 
-  return {
+  const screen: PaneChatPromptScreen = {
     kind: PERMISSION_TITLE.test(paragraphs[0]) ? "permission" : "confirmation",
     title: paragraphs[0],
     detail: paragraphs.slice(1).join("\n\n"),
@@ -51,6 +58,18 @@ export function readCodexPrompt(lines: string[]): PaneChatPromptScreen | null {
     isTextEntryActive: false,
     hasHiddenOptions: false,
   };
+  return { screen, conversationRows: withoutHeader(lines.slice(0, textStart)) };
+}
+
+/**
+ * 머리글이 화면에 보이면 그 아래의 줄만 남긴다. 머리글의 작업 경로 줄은 pane 너비에 맞춰 줄여 다시 그려져, 같은 대화에서도 글자가 달라진다.
+ * 머리글은 빈 줄에서 끝난다. 이전 대화의 내용이 화면 위쪽에 남아 있으면 마지막 머리글이 지금 대화의 시작이다.
+ */
+function withoutHeader(rows: string[]): string[] {
+  const titleRow = rows.findLastIndex((row) => HEADER_TITLE_LINE.test(row));
+  if (titleRow < 0) return rows;
+  const firstRowBelowHeader = rows.findIndex((row, index) => index > titleRow && isBlank(row));
+  return firstRowBelowHeader < 0 ? [] : rows.slice(firstRowBelowHeader);
 }
 
 /**
