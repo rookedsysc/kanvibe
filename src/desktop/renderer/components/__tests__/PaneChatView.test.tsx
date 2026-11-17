@@ -127,6 +127,32 @@ describe("current pane chat", () => {
     expect(screen.queryByText("Codex ready")).toBeNull();
   });
 
+  describe("메시지를 보내지 못했을 때", () => {
+    async function sendAndFail(message: string) {
+      actions.sendPaneChatPrompt.mockRejectedValue(new Error(`Error invoking remote method 'kanvibe:invoke': ${message}`));
+      open();
+      await screen.findByText("Exact pane response");
+      fireEvent.change(screen.getByRole("textbox"), { target: { value: "Unsent request" } });
+      fireEvent.click(screen.getByRole("button", { name: "send" }));
+      await screen.findByRole("alert");
+    }
+
+    it("CLI에 들어가지 않은 것이 확실하면 말풍선을 지우고, 글과 이유는 입력창에 남긴다", async () => {
+      await sendAndFail("PaneChatInputError: CLI 입력란이 비어 있지 않습니다.");
+
+      await waitFor(() => expect(screen.queryByTestId("pane-chat-pending-message")).toBeNull());
+      expect(screen.getByRole("textbox")).toHaveProperty("value", "Unsent request");
+      expect(screen.getByRole("alert").textContent).toBe("CLI 입력란이 비어 있지 않습니다.");
+    });
+
+    it("전달됐는지 알 수 없으면 말풍선을 남겨 터미널에서 확인하게 한다", async () => {
+      await sendAndFail("PaneChatDeliveryUncertainError: CLI 전송 결과를 확인할 수 없습니다.");
+
+      expect(screen.getByTestId("pane-chat-pending-message").textContent).toContain("Unsent request");
+      expect(screen.getByTestId("pane-chat-pending-message").textContent).toContain("sendError");
+    });
+  });
+
   describe("CLI가 선택 화면을 띄운 동안", () => {
     const prompt: NonNullable<PaneChatSnapshot["prompt"]> = {
       id: "prompt-a", kind: "confirmation", title: "Switch model?", detail: "", stepsLine: null, highlightedNumber: 1, isMultiSelect: false, isTextEntryActive: false, hasHiddenOptions: false,
@@ -176,6 +202,20 @@ describe("current pane chat", () => {
       expect(screen.getByRole("textbox", { name: "promptTextPlaceholder" })).toHaveProperty("value", "Garlic");
     });
 
+    it("선택 화면이 닫혔다가 같은 화면이 다시 떠도 지난번의 거절 안내는 남기지 않는다", async () => {
+      actions.getPaneChatSnapshot.mockResolvedValue({ ...snapshot(), provider: "claude", inputState: "occupied", prompt });
+      actions.answerPaneChatPrompt.mockRejectedValue(new Error("CLI의 선택 화면이 바뀌어 답을 보내지 않았습니다."));
+      open();
+      actions.getPaneChatSnapshot.mockResolvedValue(snapshot());
+      fireEvent.click(await screen.findByRole("button", { name: /Yes, switch/ }));
+      await waitFor(() => expect(screen.queryByTestId("pane-chat-prompt")).toBeNull());
+
+      actions.getPaneChatSnapshot.mockResolvedValue({ ...snapshot(), provider: "claude", inputState: "occupied", prompt });
+
+      await screen.findByTestId("pane-chat-prompt", {}, { timeout: 4_000 });
+      expect(screen.queryByRole("alert")).toBeNull();
+    });
+
     it("답을 보낸 뒤 바뀐 화면을 받아 올 때까지는 카드를 다시 누를 수 없다", async () => {
       actions.getPaneChatSnapshot.mockResolvedValue({ ...snapshot(), provider: "claude", inputState: "occupied", prompt });
       actions.answerPaneChatPrompt.mockResolvedValue({ success: true });
@@ -191,6 +231,51 @@ describe("current pane chat", () => {
 
       await act(async () => deliver({ ...snapshot(), provider: "claude", inputState: "occupied", prompt }));
       await waitFor(() => expect(screen.getByRole("button", { name: /Yes, switch/ })).toHaveProperty("disabled", false));
+    });
+
+    describe("다중 선택에서 답을 보내는 중에 다른 선택지를 누르면", () => {
+      const toppings = { ...prompt, kind: "question" as const, title: "Which toppings?", isMultiSelect: true, options: [
+        { number: 1, label: "Cheese", description: "", isChecked: false, isTextEntry: false },
+        { number: 2, label: "Olives", description: "", isChecked: false, isTextEntry: false },
+      ] };
+      const asking = (shown: typeof toppings) => ({ ...snapshot(), provider: "claude" as const, inputState: "occupied" as const, prompt: shown });
+      /** 첫 답이 전달되는 중에 멈춰 있는 화면을 만들고, 그 전달을 끝내는 함수를 돌려준다 */
+      async function clickCheeseAndHold() {
+        actions.getPaneChatSnapshot.mockResolvedValue(asking(toppings));
+        let finishFirstAnswer!: () => void;
+        actions.answerPaneChatPrompt.mockReturnValueOnce(new Promise((resolve) => { finishFirstAnswer = () => resolve({ success: true }); }));
+        actions.answerPaneChatPrompt.mockResolvedValue({ success: true });
+        open();
+        fireEvent.click(await screen.findByRole("button", { name: /Cheese/ }));
+        await waitFor(() => expect(actions.answerPaneChatPrompt).toHaveBeenCalledTimes(1));
+        return finishFirstAnswer;
+      }
+
+      it("기억해 뒀다가 화면이 갱신되면 그 화면의 식별값으로 차례로 보내고, 보내는 중인 선택지를 또 누른 것은 한 번으로 친다", async () => {
+        const finishFirstAnswer = await clickCheeseAndHold();
+        fireEvent.click(screen.getByRole("button", { name: /Olives/ }));
+        fireEvent.click(screen.getByRole("button", { name: /Cheese/ }));
+        actions.getPaneChatSnapshot.mockResolvedValue(asking({ ...toppings, id: "prompt-cheese-checked", options: [{ ...toppings.options[0], isChecked: true }, toppings.options[1]] }));
+
+        await act(async () => finishFirstAnswer());
+
+        await waitFor(() => expect(actions.answerPaneChatPrompt).toHaveBeenCalledTimes(2));
+        expect(actions.answerPaneChatPrompt.mock.calls.map((call) => [call[2], call[3]])).toEqual([
+          ["prompt-a", { type: "option", number: 1 }],
+          ["prompt-cheese-checked", { type: "option", number: 2 }],
+        ]);
+      });
+
+      it("그사이 다른 질문으로 넘어갔으면 기억해 둔 답을 버린다", async () => {
+        const finishFirstAnswer = await clickCheeseAndHold();
+        fireEvent.click(screen.getByRole("button", { name: /Olives/ }));
+        actions.getPaneChatSnapshot.mockResolvedValue(asking({ ...toppings, id: "prompt-next", title: "Which size?" }));
+
+        await act(async () => finishFirstAnswer());
+
+        await screen.findByText("Which size?");
+        expect(actions.answerPaneChatPrompt).toHaveBeenCalledTimes(1);
+      });
     });
 
     it("선택 화면이 없으면 카드 없이 입력창을 보여 준다", async () => {
