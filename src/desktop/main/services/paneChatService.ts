@@ -716,9 +716,19 @@ export function interruptPaneChat(taskId: string, targetToken: string): Promise<
   return serializeAction(taskId, targetToken, (lease) => writeToVerifiedTarget(taskId, targetToken, lease, "\x03"));
 }
 /**
+ * Enter 직전에 Claude 입력란이 방금 넣은 명령 그대로인지 확인한다.
+ * 붙여넣고 기다리는 사이 입력란의 글이 바뀌었거나 선택 화면이 떴으면 Enter가 다른 것을 제출하므로 누르지 않는다.
+ */
+async function requireClaudeComposerText(taskId: string, lease: TargetLease, expectedText: string): Promise<void> {
+  const inputLine = (await readPaneChatSurface(taskId, lease.requestedPaneId))?.inputLine ?? "";
+  const markerIndex = inputLine.indexOf("❯");
+  const isShowingExpectedText = markerIndex >= 0 && !inputLine.slice(0, markerIndex).trim() && inputLine.slice(markerIndex + 1).trim() === expectedText;
+  if (!isShowingExpectedText) throw inputError("CLI 입력란에서 보낸 내용을 확인하지 못해 제출하지 않았습니다. 터미널에서 확인해 주세요.");
+}
+/**
  * 슬래시 명령을 CLI 입력란에 넣고 Enter로 실행한다.
  * 입력란의 글을 화면에서 읽을 수 있는 Codex에는 글자마다 에코를 확인하며 치고, 그 밖의 CLI에는 한 번에 붙여넣는다.
- * 어느 쪽이든 Enter는 기다린 뒤 대상을 다시 확인하고 보낸다.
+ * 어느 쪽이든 Enter는 기다린 뒤 대상을 다시 확인하고 보낸다. Claude는 입력란에 넣은 명령이 그대로 있는지도 마지막에 확인한다.
  */
 async function submitPaneChatCommand(taskId: string, targetToken: string, lease: TargetLease, command: string): Promise<void> {
   if (await codexDisplays.get(lease.identity)) {
@@ -732,7 +742,9 @@ async function submitPaneChatCommand(taskId: string, targetToken: string, lease:
     await writeToVerifiedTarget(taskId, targetToken, lease, `\x1b[200~${command}\x1b[201~`);
   }
   await delay(PROMPT_SUBMIT_DELAY_MS);
-  await writeFenced(taskId, targetToken, "\r", undefined, [command]);
+  const verifiedLease = await assertTarget(taskId, targetToken, [command]);
+  if (verifiedLease.process.provider === "claude") await requireClaudeComposerText(taskId, verifiedLease, command);
+  await writeToVerifiedTarget(taskId, targetToken, verifiedLease, "\r");
 }
 export function openPaneChatModelPicker(taskId: string, targetToken: string): Promise<PaneChatActionResult> {
   return serializeAction(taskId, targetToken, async (lease) => {

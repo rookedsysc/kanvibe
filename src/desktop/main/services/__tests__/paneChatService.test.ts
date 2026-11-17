@@ -397,6 +397,32 @@ describe("pane chat exact CLI control", () => {
     expect(mocks.write.mock.calls.map((call) => call[2])).toEqual(["\x1b[200~/model\x1b[201~"]);
   });
 
+  describe("Claude에 넣은 명령의 Enter 직전 입력란 확인", () => {
+    const emptyClaudeInput = { ...surface, inputLine: "❯\u00a0", cursorColumn: 2 };
+    /** 명령을 붙여넣은 뒤 Enter를 기다리는 사이 Claude 화면의 커서 줄이 [inputLine]으로 바뀐 상황을 만든다 */
+    async function openPickerWithInputLineAfterPaste(inputLine: string) {
+      mocks.exec.mockResolvedValue(processTable().replace("/usr/bin/python3 python3 /tmp/codex", "/tmp/claude /tmp/claude"));
+      mocks.surface.mockResolvedValue(emptyClaudeInput);
+      const target = await getPaneChatSnapshot("task-chat", "%3");
+      mocks.write.mockImplementationOnce(async () => { mocks.surface.mockResolvedValue({ ...emptyClaudeInput, inputLine, cursorColumn: inputLine.length }); });
+      return openPaneChatModelPicker("task-chat", target.targetToken!);
+    }
+
+    it("입력란이 넣은 명령 그대로이면 Enter를 누른다", async () => {
+      await openPickerWithInputLineAfterPaste("❯\u00a0/model");
+      expect(mocks.write.mock.calls.map((call) => call[2])).toEqual(["\x1b[200~/model\x1b[201~", "\r"]);
+    });
+
+    it.each([
+      ["그사이 입력란의 글이 바뀌면", "❯\u00a0Reply with exactly: RACE"],
+      ["그사이 선택 화면이 뜨면", "   ❯ 1. Yes, switch to Opus 5.5"],
+      ["입력란 줄을 찾지 못하면", "  Enter to confirm · Esc to cancel"],
+    ])("%s Enter를 누르지 않는다", async (_, inputLine) => {
+      await expect(openPickerWithInputLineAfterPaste(inputLine)).rejects.toMatchObject({ name: "PaneChatInputError" });
+      expect(mocks.write.mock.calls.map((call) => call[2])).toEqual(["\x1b[200~/model\x1b[201~"]);
+    });
+  });
+
   it("verifies the target once for a navigation key and once for an interrupt", async () => {
     const target = await getPaneChatSnapshot("task-chat");
     mocks.surface.mockClear();
