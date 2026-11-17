@@ -17,6 +17,7 @@ import '../../../../common/providers.dart';
 import '../../domain/mirror_pane.dart';
 import '../../../task_create/domain/session_type.dart';
 import '../pane_chat_shortcut.dart';
+import 'terminal_selection_overlay.dart';
 import 'terminal_soft_keyboard.dart';
 
 /// 선택한 pane을 화면 너비에 맞춰 표시한다.
@@ -59,6 +60,7 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
   final _horizontalScroll = ScrollController();
   final _verticalScroll = ScrollController();
   final _terminalController = xterm.TerminalController();
+  final _terminalViewKey = GlobalKey<xterm.TerminalViewState>();
   bool _isParsingRemoteOutput = false;
   String _pendingEscape = '';
   final _deferredOutput = <String>[];
@@ -369,6 +371,19 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
     }
   }
 
+  Future<void> _pasteClipboard() async {
+    // 선택이 남아 있으면 화면 다시 그리기가 보류되어 붙여넣은 결과가 보이지 않는다.
+    _terminalController.clearSelection();
+    try {
+      final clipboard = await Clipboard.getData(Clipboard.kTextPlain);
+      final text = clipboard?.text;
+      if (text == null || text.isEmpty || !mounted) return;
+      _terminal.paste(text);
+    } on PlatformException catch (error) {
+      debugPrint('터미널 붙여넣기 실패: ${error.code}');
+    }
+  }
+
   String _normalizeLegacyTitles(String data) {
     final combined = '$_pendingEscape$data';
     _pendingEscape = combined.endsWith('\x1b') ? '\x1b' : '';
@@ -519,30 +534,42 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
                   child: Semantics(
                     identifier: 'pane-terminal',
                     label: '터미널 입력',
-                    child: Listener(
-                      onPointerDown: _startTouch,
-                      onPointerMove: _requestHistoryWhenScrollingBack,
-                      child: xterm.TerminalView(
-                        _terminal,
-                        controller: _terminalController,
-                        autoResize: widget.canResize,
-                        hardwareKeyboardOnly: true,
-                        onKeyEvent: (_, event) {
-                          if (widget.isActive &&
-                              widget.onToggleChat != null &&
-                              paneChatShortcut(Theme.of(context).platform)
-                                  .accepts(event, HardwareKeyboard.instance)) {
-                            widget.onToggleChat!();
-                            return KeyEventResult.handled;
-                          }
-                          return KeyEventResult.ignored;
-                        },
-                        scrollController: _verticalScroll,
-                        // 멀티플렉서가 휠을 받으면 마우스 모드가 꺼진 프로그램의 화살표 키 변환도 멀티플렉서가 맡는다
-                        simulateScroll: !_canMultiplexerTakeWheel,
-                        backgroundOpacity: 0,
-                        theme: _terminalTheme,
-                        textStyle: _textStyle,
+                    child: TerminalSelectionOverlay(
+                      terminal: _terminal,
+                      controller: _terminalController,
+                      terminalViewKey: _terminalViewKey,
+                      verticalScroll: _verticalScroll,
+                      horizontalScroll: _horizontalScroll,
+                      isActive: widget.isActive,
+                      onCopy: _copySelection,
+                      onPaste: _pasteClipboard,
+                      child: Listener(
+                        onPointerDown: _startTouch,
+                        onPointerMove: _requestHistoryWhenScrollingBack,
+                        child: xterm.TerminalView(
+                          _terminal,
+                          key: _terminalViewKey,
+                          controller: _terminalController,
+                          autoResize: widget.canResize,
+                          hardwareKeyboardOnly: true,
+                          onKeyEvent: (_, event) {
+                            if (widget.isActive &&
+                                widget.onToggleChat != null &&
+                                paneChatShortcut(
+                                  Theme.of(context).platform,
+                                ).accepts(event, HardwareKeyboard.instance)) {
+                              widget.onToggleChat!();
+                              return KeyEventResult.handled;
+                            }
+                            return KeyEventResult.ignored;
+                          },
+                          scrollController: _verticalScroll,
+                          // 멀티플렉서가 휠을 받으면 마우스 모드가 꺼진 프로그램의 화살표 키 변환도 멀티플렉서가 맡는다
+                          simulateScroll: !_canMultiplexerTakeWheel,
+                          backgroundOpacity: 0,
+                          theme: _terminalTheme,
+                          textStyle: _textStyle,
+                        ),
                       ),
                     ),
                   ),
@@ -564,42 +591,14 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
             surfacesProvider(widget.taskId)
                 .select((state) => state.asData?.value.isMutating ?? false),
           ),
-      child: Stack(
-        children: [
-          terminalView,
-          Positioned(
-            top: 8,
-            right: 8,
-            child: ListenableBuilder(
-              listenable: _terminalController,
-              builder: (context, _) {
-                if (_terminalController.selection == null) {
-                  return const SizedBox.shrink();
-                }
-                return Material(
-                  color: AppColors.bgSurface,
-                  borderRadius: BorderRadius.circular(8),
-                  child: TextButton.icon(
-                    onPressed: _copySelection,
-                    style: TextButton.styleFrom(
-                      minimumSize: const Size(48, 48),
-                    ),
-                    icon: const Icon(Icons.copy),
-                    label: Text(context.tr('복사')),
-                  ),
-                );
-              },
-            ),
-          ),
-        ],
-      ),
+      child: terminalView,
     );
   }
 }
 
 const _terminalTheme = xterm.TerminalTheme(
   cursor: AppColors.brandPrimary,
-  selection: AppColors.brandSubtle,
+  selection: AppColors.terminalSelection,
   foreground: AppColors.textPrimary,
   background: AppColors.terminalBg,
   black: Color(0xFF3B3F49),

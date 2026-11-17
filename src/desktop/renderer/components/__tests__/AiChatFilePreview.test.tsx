@@ -83,6 +83,17 @@ describe("AiChatFilePreview", () => {
     expect(screen.queryByRole("button", { name: "rendered" })).toBeNull();
   });
 
+  it("같은 파일로 다시 그려도 색을 입힌 코드의 글자가 그대로 남는다", async () => {
+    respondWith("const total = 3;");
+    const { rerender } = render(<AiChatFilePreview taskId="task-1" filePath="src/app.ts" onClose={() => {}} />);
+    const keyword = (await screen.findByTestId("ai-chat-file-source")).querySelector(".hljs-keyword");
+    expect(keyword?.textContent).toBe("const");
+
+    rerender(<AiChatFilePreview taskId="task-1" filePath="src/app.ts" onClose={() => {}} />);
+
+    expect(screen.getByTestId("ai-chat-file-source").querySelector(".hljs-keyword")).toBe(keyword);
+  });
+
   it("다른 파일로 바꾸면 이전 파일의 내용을 새 파일의 형태로 그리지 않고 불러오는 중으로 돌아간다", async () => {
     readTaskWorkspaceFile.mockResolvedValueOnce({ ok: true, file: { path: "src/app.ts", content: "const html = '<script>window.ran = 1</script>';" } });
     readTaskWorkspaceFile.mockReturnValue(new Promise(() => {}));

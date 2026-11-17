@@ -176,9 +176,10 @@ function createMermaidElementId(definition: string, index: number, componentId: 
 function MarkdownContent({ markdown }: { markdown: string }) {
   const t = useTranslations("taskDetail");
   const copyLabel = t("aiSessions.copyMessage");
-  const html = useMemo(() => renderMarkdownHtml(markdown, copyLabel), [markdown, copyLabel]);
+  /** React는 이 객체가 달라지면 내용이 같아도 본문을 통째로 다시 넣어 선택한 글자가 풀린다. 내용이 바뀔 때만 새 객체를 만든다 */
+  const markup = useMemo(() => ({ __html: renderMarkdownHtml(markdown, copyLabel) }), [markdown, copyLabel]);
 
-  if (!html.trim()) {
+  if (!markup.__html.trim()) {
     return null;
   }
 
@@ -202,7 +203,7 @@ function MarkdownContent({ markdown }: { markdown: string }) {
     <div
       className="ai-session-markdown text-sm leading-6 [&_*:first-child]:mt-0 [&_*:last-child]:mb-0 [&_a]:text-brand-primary [&_a]:underline-offset-2 [&_a:hover]:underline [&_blockquote]:my-3 [&_blockquote]:border-l-2 [&_blockquote]:border-border-default [&_blockquote]:pl-3 [&_blockquote]:text-text-muted [&_code]:rounded [&_code]:bg-bg-page [&_code]:px-1 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-[0.86em] [&_h1]:mb-3 [&_h1]:mt-5 [&_h1]:text-lg [&_h1]:font-semibold [&_h1]:text-text-primary [&_h2]:mb-2 [&_h2]:mt-4 [&_h2]:text-base [&_h2]:font-semibold [&_h2]:text-text-primary [&_h3]:mb-2 [&_h3]:mt-4 [&_h3]:text-sm [&_h3]:font-semibold [&_h3]:text-text-primary [&_hr]:my-4 [&_hr]:border-border-subtle [&_li]:my-1 [&_ol]:my-3 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-3 [&_pre]:overflow-x-auto [&_pre]:p-3 [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_strong]:font-semibold [&_strong]:text-text-primary [&_table]:w-max [&_table]:min-w-full [&_table]:border-collapse [&_td]:max-w-xs [&_td]:border [&_td]:border-border-default [&_td]:px-3 [&_td]:py-1.5 [&_td]:align-top [&_th]:max-w-xs [&_th]:border [&_th]:border-border-default [&_th]:bg-bg-page [&_th]:px-3 [&_th]:py-1.5 [&_th]:text-left [&_th]:align-top [&_ul]:my-3 [&_ul]:list-disc [&_ul]:pl-5"
       onClick={(event) => void copyCodeBlock(event)}
-      dangerouslySetInnerHTML={{ __html: html }}
+      dangerouslySetInnerHTML={markup}
     />
   );
 }
@@ -248,6 +249,9 @@ function MermaidDiagram({ definition, index }: { definition: string; index: numb
     };
   }, [definition, elementId]);
 
+  /** MarkdownContent의 markup과 같은 이유로 그림이 바뀔 때만 새 객체를 만든다 */
+  const svgMarkup = useMemo(() => (svg ? { __html: svg } : null), [svg]);
+
   if (hasError) {
     return (
       <pre
@@ -264,10 +268,10 @@ function MermaidDiagram({ definition, index }: { definition: string; index: numb
       data-testid="ai-session-mermaid-diagram"
       className="my-3 overflow-x-auto rounded-lg border border-border-subtle bg-bg-page p-3"
     >
-      {svg ? (
+      {svgMarkup ? (
         <div
           className="min-w-max [&_svg]:h-auto"
-          dangerouslySetInnerHTML={{ __html: svg }}
+          dangerouslySetInnerHTML={svgMarkup}
         />
       ) : (
         <p className="text-xs text-text-muted">Rendering diagram…</p>
