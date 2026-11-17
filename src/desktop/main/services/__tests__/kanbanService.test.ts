@@ -3002,7 +3002,7 @@ describe("kanbanService.getSearchableTasks", () => {
 
     // Then
     expect(mocks.taskRepo.find).toHaveBeenCalledWith({
-      relations: ["project"],
+      relations: { project: true },
       order: { updatedAt: "DESC", createdAt: "DESC" },
     });
     expect(result).toEqual([

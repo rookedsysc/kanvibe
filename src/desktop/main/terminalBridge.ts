@@ -236,7 +236,8 @@ export async function attachTaskTerminal(
   // 초기 pane 명령은 hook을 필요로 할 수 있으므로 자동 실행 순서를 유지한다.
   const hooksRequiredBeforeAttach = tmuxPaneLayout?.panes.some((pane) => pane.command.trim());
   if (hooksRequiredBeforeAttach) {
-    await measurePhase("hooksBeforeAttachMs", () => ensureTerminalHooks(task));
+    // hook은 부가 기능이라 준비에 실패해도 터미널 연결을 막지 않는다. 실패 알림은 ensureTerminalHooks가 처리한다.
+    await measurePhase("hooksBeforeAttachMs", () => ensureTerminalHooks(task).catch(() => {}));
     if (client.readyState !== client.OPEN) return;
   }
 

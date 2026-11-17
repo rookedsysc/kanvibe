@@ -537,7 +537,7 @@ export async function getMoreDoneTasks(
 /** 단일 작업을 ID로 조회한다 */
 export async function getTaskById(taskId: string): Promise<KanbanTask | null> {
   const repo = await getTaskRepository();
-  const task = await repo.findOne({ where: { id: taskId }, relations: ["project"] });
+  const task = await repo.findOne({ where: { id: taskId }, relations: { project: true } });
   return task ? serialize(task) : null;
 }
 
@@ -545,7 +545,7 @@ export async function getTaskById(taskId: string): Promise<KanbanTask | null> {
 export async function getSearchableTasks(): Promise<SearchableTask[]> {
   const repo = await getTaskRepository();
   const tasks = await repo.find({
-    relations: ["project"],
+    relations: { project: true },
     order: { updatedAt: "DESC", createdAt: "DESC" },
   });
 
@@ -569,7 +569,7 @@ export async function getTaskIdByProjectAndBranch(
   const repo = await getTaskRepository();
   const task = await repo.findOne({
     where: { projectId, branchName },
-    select: ["id"],
+    select: { id: true },
   });
   return task?.id ?? null;
 }

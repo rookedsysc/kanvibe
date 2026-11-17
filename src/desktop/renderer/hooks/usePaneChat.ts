@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as actions from "@/desktop/renderer/actions/paneChat";
-import type { PaneChatActionResult, PaneChatCodexThreadReveal, PaneChatKey, PaneChatSnapshot } from "@/desktop/shared/paneChat";
+import { getPaneChatPromptDialogKey, type PaneChatActionResult, type PaneChatCodexThreadReveal, type PaneChatKey, type PaneChatPrompt, type PaneChatPromptAnswer, type PaneChatSnapshot } from "@/desktop/shared/paneChat";
 import { useIsWindowActive } from "./useIsWindowActive";
 import type { AggregatedAiMessage } from "@/lib/aiSessions/types";
 
 const POLL_INTERVAL_MS = 1_500;
 const UNAVAILABLE_BACKOFF_THRESHOLD = 3;
 const UNAVAILABLE_POLL_INTERVAL_MS = 5_000;
+/** Electron이 IPC 오류 앞에 붙이는 호출 경로와 오류 이름. 떼어 내면 서비스가 쓴 안내문만 남는다 */
+const IPC_ERROR_PREFIX = /^Error invoking remote method '[^']*': (?:\w+: )?/;
+const describeActionError = (error: unknown) => error instanceof Error ? error.message.replace(IPC_ERROR_PREFIX, "") : "CLI action failed";
 
 interface PendingMessage {
   id: string;
@@ -23,6 +26,8 @@ export function usePaneChat(taskId: string, isVisible = true, paneId?: string) {
   const [result, setResult] = useState<{ taskId: string; paneId?: string; snapshot: PaneChatSnapshot } | null>(null);
   const [readError, setReadError] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  /** 선택 화면에 답을 보내지 못한 이유. 그 선택 화면의 카드에만 보이도록 어느 화면의 일인지 함께 둔다 */
+  const [promptError, setPromptError] = useState<{ dialogKey: string; message: string } | null>(null);
   const [isBusy, setIsBusy] = useState(false);
   const [isReady, setIsReady] = useState(false);
   const [pending, setPending] = useState<PendingMessage[]>([]);
@@ -84,19 +89,19 @@ export function usePaneChat(taskId: string, isVisible = true, paneId?: string) {
     };
   }, [taskId, paneId, isActive, isVisible]);
 
-  const run = useCallback(async (action: (token: string) => Promise<PaneChatActionResult>, preserveSendReceipt = false): Promise<boolean> => {
+  const run = useCallback(async (action: (token: string) => Promise<PaneChatActionResult>, preserveSendReceipt = false, reportError: (message: string | null) => void = setActionError): Promise<boolean> => {
     const target = current.current;
     if (!isVisible || busy.current || !target?.canSend || !target.targetToken || target.taskId !== taskId || (paneId !== undefined && target.paneId !== paneId)) return false;
     const epoch = generation.current;
     busy.current = true;
     setIsBusy(true);
-    setActionError(null);
+    reportError(null);
     try {
       const accepted = await action(target.targetToken);
       return accepted.success && (preserveSendReceipt || (generation.current === epoch && current.current?.targetToken === target.targetToken));
     } catch (error) {
       if (generation.current === epoch && current.current?.targetToken === target.targetToken) {
-        setActionError(error instanceof Error ? error.message : "CLI action failed");
+        reportError(describeActionError(error));
       }
       return false;
     } finally {
@@ -131,7 +136,7 @@ export function usePaneChat(taskId: string, isVisible = true, paneId?: string) {
     try {
       return (await actions.revealPaneChatCodexThread(taskId, paneId)).outcome;
     } catch (error) {
-      if (generation.current === epoch) setActionError(error instanceof Error ? error.message : "CLI action failed");
+      if (generation.current === epoch) setActionError(describeActionError(error));
       return null;
     } finally {
       busy.current = false;
@@ -169,7 +174,7 @@ export function usePaneChat(taskId: string, isVisible = true, paneId?: string) {
 
   return {
     snapshot, pendingMessages, isAgentWorking,
-    readError, actionError, isBusy,
+    readError, actionError, promptError, isBusy,
     isReady: isReady && result?.taskId === taskId && result.paneId === paneId,
     refresh: () => refreshRef.current(),
     send,
@@ -177,5 +182,11 @@ export function usePaneChat(taskId: string, isVisible = true, paneId?: string) {
     interrupt: () => run((token) => actions.interruptPaneChat(taskId, token)),
     openModelPicker: () => run((token) => actions.openPaneChatModelPicker(taskId, token)),
     sendKey: (key: PaneChatKey) => run((token) => actions.sendPaneChatKey(taskId, token, key)),
+    answerPrompt: (prompt: PaneChatPrompt, answer: PaneChatPromptAnswer) => run(async (token) => {
+      const accepted = await actions.answerPaneChatPrompt(taskId, token, prompt.id, answer);
+      // 바뀐 화면을 받아 온 뒤에야 카드를 다시 누를 수 있게 해, 다음 답이 낡은 카드에서 나가지 않게 한다
+      await refreshRef.current();
+      return accepted;
+    }, false, (message) => setPromptError(message ? { dialogKey: getPaneChatPromptDialogKey(prompt), message } : null)),
   };
 }
