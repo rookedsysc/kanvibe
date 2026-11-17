@@ -1532,6 +1532,22 @@ describe("Claude 선택 화면에 채팅에서 답하기", () => {
     expect((await getPaneChatSnapshot("task-chat", "%3")).prompt?.kind).toBe("confirmation");
   });
 
+  it("AI의 질문은 대화 기록의 질문 원문으로 라벨과 설명을 가르되, 답을 보낼 때의 화면 식별값은 화면에서 읽은 그대로다", async () => {
+    const label = "Use the shared configuration preset from the platform team with strict lint rules enabled";
+    const narrowQuestion = ["Which preset?", "", "❯ 1. Use the shared configuration preset from the", "     platform team with strict lint rules enabled", "     recommended for new repositories", "  2. Minimal", "     smallest setup", "  3. Chat about this"];
+    mocks.surface.mockResolvedValue({ ...claudeScreen(narrowQuestion, 2, 0), viewportColumns: 50 });
+    const fromScreenOnly = await getPaneChatSnapshot("task-chat", "%3");
+    modelMocks.tail.mockResolvedValue([{ type: "assistant", message: { role: "assistant", content: [{ type: "tool_use", name: "AskUserQuestion", input: { questions: [{ question: "Which preset?", options: [{ label, description: "recommended for new repositories" }, { label: "Minimal", description: "smallest setup" }] }] } }] } }]);
+
+    const refined = await getPaneChatSnapshot("task-chat", "%3");
+
+    expect(fromScreenOnly.prompt?.options[0].label).toBe("Use the shared configuration preset from the");
+    expect(refined.prompt?.options[0]).toMatchObject({ label, description: "recommended for new repositories" });
+    expect(refined.prompt?.id).toBe(fromScreenOnly.prompt?.id);
+    expect(await answer(refined, { type: "option", number: 1 })).toBe("sent");
+    expect(typedKeys()).toEqual(["1"]);
+  });
+
   it("입력란이 보이는 화면과, 화면 배치를 확인하지 않은 CLI의 같은 화면은 선택 화면으로 싣지 않는다", async () => {
     mocks.surface.mockResolvedValue(claudeScreen(INPUT_BOX, 1, 2));
     expect((await getPaneChatSnapshot("task-chat", "%3")).prompt).toBeUndefined();

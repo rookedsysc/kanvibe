@@ -16,7 +16,7 @@ import { expectCodexComposerTexts, isCodexMainComposerReady, isCodexThreadFooter
 import { readCodexEmptyThread } from "@/lib/aiSessions/codexThreadMetadata";
 import { sendCodexThreadInput } from "@/lib/aiSessions/codexThreadInput";
 import { readCodexThreadSettings, updateCodexThreadSettings } from "@/lib/aiSessions/codexThreadSettings";
-import { isBlankClaudeTextEntry, readClaudePrompt, type PaneChatPromptScreen } from "@/lib/aiSessions/paneChatClaudePrompt";
+import { applyAskedQuestions, isBlankClaudeTextEntry, readClaudeAskedQuestions, readClaudePrompt, type PaneChatPromptScreen } from "@/lib/aiSessions/paneChatClaudePrompt";
 import { readCodexPrompt } from "@/lib/aiSessions/paneChatCodexPrompt";
 import { isClaudeComposerShowingPaste, readClaudeComposerText } from "@/lib/aiSessions/paneChatClaudeComposer";
 import { findPaneChatProcess, type PaneChatProcess } from "@/lib/aiSessions/paneChatProcess";
@@ -293,6 +293,20 @@ function readShownPrompt(surface: PaneChatSurface, process: PaneChatProcess): Pa
   return { ...screen, id };
 }
 
+/**
+ * AI의 질문은 대화 기록에 질문 원문이 남는다. 화면에서는 넘어간 라벨과 설명을 가를 수 없는 경우가 있어, 원문이 화면과 맞으면 그 라벨과 설명으로 보여 준다.
+ * 같은 화면인지 가리는 값은 화면에서 읽은 그대로 둔다. 기록은 화면보다 늦게 쓰일 수 있어 답을 보낼 때의 확인에는 쓰지 않는다.
+ */
+async function showAskedQuestionText(prompt: PaneChatPrompt, sourceRef: string, sshHost: string | null | undefined): Promise<PaneChatPrompt> {
+  if (prompt.kind !== "question") return prompt;
+  try {
+    const records = await getCachedOrParseTail(sourceRef, () => readJsonLinesTail(sourceRef, MODEL_STATE_TAIL_LINES, sshHost), sshHost);
+    return applyAskedQuestions(prompt, readClaudeAskedQuestions(records));
+  } catch {
+    return prompt;
+  }
+}
+
 function emptyTranscript(reason: string): PaneChatSnapshot["transcript"] {
   return { status: "unavailable", reason, sessionId: null, messages: [], nextCursor: null };
 }
@@ -558,7 +572,8 @@ async function readVerifiedPaneChat(taskId: string, paneId: string | undefined, 
   const canSend = transcript.status === "available";
   const targetToken = canSend ? leaseTarget(surface, process, paneId, conversation) : null;
   const conversationKey = binding && canSend ? conversationKeyFor(surface, process, conversation)! : undefined;
-  const shownPrompt = canSend ? readShownPrompt(surface, process) : null;
+  const promptOnScreen = canSend ? readShownPrompt(surface, process) : null;
+  const shownPrompt = promptOnScreen && binding ? await showAskedQuestionText(promptOnScreen, binding.sourceRef, surface.task.sshHost) : promptOnScreen;
   return reading({ ...snapshot, screen, provider: process.provider, targetToken, canSend, ...(conversationKey ? { conversationKey } : {}), inputState: readInputState(surface, process, !!displayState), agentActivity: readAgentActivity(surface, process), reason: canSend ? null : transcript.reason, transcript, modelPicker: { supported: supportsComposer, mode: "native-cli", supportsApi: !!displayState }, ...(modelSettings ? { modelSettings } : {}), ...(shownPrompt ? { prompt: shownPrompt } : {}), composer: { attachments: supportsComposer, skills: supportsComposer, fileMentions: supportsComposer, canSendWhileBusy: !!displayState, maxAttachmentBytes: MAX_ATTACHMENT_BYTES, maxAttachments: MAX_PANE_CHAT_ATTACHMENTS } }, surface.task.sshHost ? null : sourceRef);
 }
 

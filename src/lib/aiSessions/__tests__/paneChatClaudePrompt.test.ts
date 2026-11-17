@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { readClaudePrompt } from "@/lib/aiSessions/paneChatClaudePrompt";
+import { applyAskedQuestions, readClaudeAskedQuestions, readClaudePrompt } from "@/lib/aiSessions/paneChatClaudePrompt";
 
 const BORDER = "─".repeat(40);
 
@@ -254,5 +254,54 @@ describe("readClaudePrompt", () => {
     ["제목 없이 잘린 화면", ["❯ 1. Yes", "  2. No"], 0, 0],
   ])("%s은 선택 화면으로 읽지 않는다", (_name, lines, cursorRow, cursorColumn) => {
     expect(readClaudePrompt(lines, cursorRow, cursorColumn)).toBeNull();
+  });
+});
+
+describe("대화 기록의 질문 원문으로 선택지 다듬기", () => {
+  const asked = [{
+    question: "Which preset?",
+    options: [
+      { label: "Use the shared configuration preset from the platform team with strict lint rules enabled", description: "recommended for new repositories" },
+      { label: "Minimal", description: "smallest setup" },
+    ],
+  }];
+  /** 50칸 pane에서 라벨이 두 줄로 넘어가고, 둘째 줄이 화면 끝에 가까워 설명과 가를 수 없는 화면 */
+  const narrow = [
+    "Which preset?", "",
+    "❯ 1. Use the shared configuration preset from the", "     platform team with strict lint rules enabled", "     recommended for new repositories",
+    "  2. Minimal", "     smallest setup",
+    "  3. Type something.", "  4. Chat about this",
+  ];
+
+  it("대화 기록 끝의 질문 도구 호출에서 질문과 선택지의 라벨·설명을 꺼낸다", () => {
+    const records = [
+      { type: "assistant", message: { role: "assistant", content: [{ type: "tool_use", name: "AskUserQuestion", input: { questions: [{ question: "Old?", options: [{ label: "A", description: "a" }] }] } }] } },
+      { type: "user", message: { role: "user", content: [{ type: "tool_result", content: "answered" }] } },
+      { type: "assistant", message: { role: "assistant", content: [{ type: "text", text: "asking" }, { type: "tool_use", name: "AskUserQuestion", input: { questions: asked } }] } },
+    ];
+
+    expect(readClaudeAskedQuestions(records)).toEqual(asked);
+    expect(readClaudeAskedQuestions([{ type: "assistant", message: { content: [{ type: "tool_use", name: "Bash", input: { command: "ls" } }] } }])).toEqual([]);
+    expect(readClaudeAskedQuestions([{ type: "assistant", message: { content: [{ type: "tool_use", name: "AskUserQuestion", input: { questions: "broken" } }] } }])).toEqual([]);
+  });
+
+  it("화면만으로 가를 수 없던 라벨과 설명을 질문 원문대로 가른다", () => {
+    const screen = readClaudePrompt(narrow, 2, 0, 50)!;
+    expect(screen.options[0].label).toBe("Use the shared configuration preset from the");
+
+    expect(applyAskedQuestions(screen, asked).options).toMatchObject([
+      { number: 1, label: asked[0].options[0].label, description: "recommended for new repositories" },
+      { number: 2, label: "Minimal", description: "smallest setup" },
+      { number: 3, label: "Type something.", isTextEntry: true },
+      { number: 4, label: "Chat about this" },
+    ]);
+  });
+
+  it("질문이나 선택지가 화면과 맞지 않으면 화면에서 읽은 그대로 둔다", () => {
+    const screen = readClaudePrompt(narrow, 2, 0, 50)!;
+
+    expect(applyAskedQuestions(screen, [{ question: "Another question?", options: asked[0].options }])).toEqual(screen);
+    expect(applyAskedQuestions(screen, [{ question: "Which preset?", options: [{ label: "Different", description: "text" }, asked[0].options[1]] }]).options[0]).toEqual(screen.options[0]);
+    expect(applyAskedQuestions(readClaudePrompt(permission, 7, 1)!, asked)).toEqual(readClaudePrompt(permission, 7, 1));
   });
 });

@@ -204,3 +204,51 @@ function formatDetail(detailLines: string[]): string {
   const indent = Math.min(...lines.filter(Boolean).map(indentOf));
   return lines.map((line) => line.slice(indent)).join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
+
+/** 대화 기록에 남은 AI의 질문 하나. 화면에서는 가를 수 없는 라벨과 설명의 경계가 여기에 있다 */
+export interface ClaudeAskedQuestion {
+  question: string;
+  options: { label: string; description: string }[];
+}
+
+/** Claude가 사용자에게 질문할 때 부르는 도구 */
+const QUESTION_TOOL = "AskUserQuestion";
+
+const withoutWhitespace = (text: string) => text.replace(/\s/g, "");
+
+/** 대화 기록 끝에서 가장 최근의 질문 도구 호출을 찾아 질문과 선택지를 꺼낸다. 없거나 형식이 다르면 빈 목록이다 */
+export function readClaudeAskedQuestions(records: unknown[]): ClaudeAskedQuestion[] {
+  for (let index = records.length - 1; index >= 0; index--) {
+    const content = (records[index] as { message?: { content?: unknown } } | null)?.message?.content;
+    if (!Array.isArray(content)) continue;
+    const call = content.findLast((part) => part?.type === "tool_use" && part.name === QUESTION_TOOL);
+    if (!call) continue;
+    const questions: unknown = call.input?.questions;
+    if (!Array.isArray(questions)) return [];
+    return questions.flatMap((asked: { question?: unknown; options?: unknown }) => {
+      if (typeof asked?.question !== "string" || !Array.isArray(asked.options)) return [];
+      const options = asked.options.flatMap((option: { label?: unknown; description?: unknown }) => typeof option?.label === "string"
+        ? [{ label: option.label, description: typeof option.description === "string" ? option.description : "" }]
+        : []);
+      return [{ question: asked.question, options }];
+    });
+  }
+  return [];
+}
+
+/**
+ * 화면에서 읽은 AI의 질문에, 대화 기록에 남은 질문 원문의 라벨과 설명을 입힌다.
+ *
+ * 화면에서는 넘어간 라벨의 끝과 설명의 시작을 가를 수 없는 경우가 있다. 원문의 질문이 화면의 제목과 같고,
+ * 선택지의 글이 화면의 그 번호 선택지와 공백만 다를 때에만 원문으로 바꾼다. 맞지 않으면 화면에서 읽은 그대로 둔다.
+ */
+export function applyAskedQuestions<Screen extends PaneChatPromptScreen>(screen: Screen, askedQuestions: ClaudeAskedQuestion[]): Screen {
+  const asked = screen.kind === "question" ? askedQuestions.find((candidate) => withoutWhitespace(candidate.question) === withoutWhitespace(screen.title)) : undefined;
+  if (!asked) return screen;
+  const options = screen.options.map((option) => {
+    const original = asked.options[option.number - 1];
+    const isSameText = !!original && withoutWhitespace(`${original.label}${original.description}`) === withoutWhitespace(`${option.label}${option.description}`);
+    return isSameText ? { ...option, label: original.label.trim(), description: original.description.trim() } : option;
+  });
+  return { ...screen, options };
+}
