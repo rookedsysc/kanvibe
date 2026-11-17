@@ -76,6 +76,7 @@ readline.createInterface({input:process.stdin}).on('line', line=>{
     fs.appendFileSync(counter, 'input:'+Buffer.from(input).toString('base64')+'\\n');
     frame(input);
   } else if(message.type==='terminal.resize') frame('viewport',true,message.cols,message.rows);
+  else if(message.type==='terminal.scroll') fs.appendFileSync(counter, 'scroll:'+JSON.stringify(message)+'\\n');
   else if(message.type==='terminal.release') process.exit(0);
 });
 process.stdin.on('end',()=>process.exit(0));
@@ -134,6 +135,28 @@ describe("B terminal real TLS/stdio contract", () => {
     expect(closeCodes).toEqual([]);
     const counter = (await readFile(path.join(directory, "counter"), "utf8")).trim().split("\n");
     expect(counter).toEqual(["start", `input:${Buffer.from("AFTER_REFRESH").toString("base64")}`]);
+  });
+
+  it("직접 붙은 기기에 대체 화면으로 이력을 보내고 휠은 pane 입력이 아닌 terminal.scroll로 controller에 전달한다", async () => {
+    const grant = makeGrant("direct-scroll");
+    expect(await request("grant", { grant })).toMatchObject({ ok: true });
+    const direct = connect(grant);
+    const frames: string[] = [];
+    direct.on("message", (data) => frames.push(data.toString()));
+    await once(direct, "open");
+    await poll(() => frames.some((frame) => frame.includes("controller-ready")));
+    expect(frames.find((frame) => frame.includes("initial-history"))).toContain("\x1b[?1049h\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1005l\x1b[?1006l");
+
+    direct.send(Buffer.from(JSON.stringify({ type: "scroll", direction: "up", column: 4, row: 2 })));
+    direct.send("AFTER_SCROLL");
+    await poll(() => frames.some((frame) => frame.includes("AFTER_SCROLL")));
+
+    const counter = (await readFile(path.join(directory, "counter"), "utf8")).trim().split("\n");
+    expect(counter).toEqual([
+      "start",
+      `scroll:${JSON.stringify({ type: "terminal.scroll", direction: "up", lines: 1, column: 4, row: 2 })}`,
+      `input:${Buffer.from("AFTER_SCROLL").toString("base64")}`,
+    ]);
   });
 
   it("잘못된 capability와 다른 pane relay를 거절하고 기기 해제는 직접 연결도 닫는다", async () => {

@@ -1,0 +1,59 @@
+appId: ${APP_ID}
+# 데스크톱 fixture(--pane-chat)가 Claude pane에서 한 번 응답한 뒤 실행한다. 가짜 Claude는 실제 2.1.325처럼 응답 뒤 빈 입력란에 다음 질문 추천을 dim으로 그린다
+---
+- launchApp:
+    clearState: true
+- setOrientation: PORTRAIT
+- extendedWaitUntil:
+    visible: "데스크탑에 연결"
+    timeout: 90000
+- runScript:
+    file: ../scripts/issue-dev-pairing-code.js
+- tapOn: "데스크탑 주소"
+- eraseText: 30
+- inputText: "10.0.2.2"
+- tapOn: "포트"
+- eraseText: 5
+- inputText: ${DESKTOP_PORT}
+- tapOn: "연결 코드"
+- inputText: ${output.pairingCode}
+- scrollUntilVisible:
+    element: "연결"
+    direction: DOWN
+    timeout: 60000
+- tapOn: "연결"
+- extendedWaitUntil:
+    visible: "(?s).*Chat History Fixture.*"
+    timeout: 40000
+- tapOn: "(?s).*Chat History Fixture.*"
+- tapOn:
+    id: "terminal-tab-${CLAUDE_PANE_ID}"
+- runFlow:
+    when:
+      notVisible:
+        id: pane-chat-input
+    commands:
+      - tapOn:
+          id: pane-chat-toggle
+- extendedWaitUntil:
+    visible: "(?s).*live-pane-b received on fixture-fast: Only pane B.*"
+    timeout: 30000
+# 추천 문구가 떠 있어도 데스크톱처럼 입력창이 보이고 대기 안내 없이 바로 이어서 보낼 수 있다
+- assertVisible:
+    id: pane-chat-input
+- assertNotVisible: "(?s).*CLI에서 응답을 기다리고 있습니다.*"
+- takeScreenshot: claude-suggestion-input-visible
+- tapOn:
+    id: pane-chat-input
+- inputText: "Follow up after suggestion"
+- tapOn:
+    id: pane-chat-send
+- hideKeyboard
+- extendedWaitUntil:
+    visible: "(?s).*live-pane-b received on fixture-fast: Follow up after suggestion.*"
+    timeout: 30000
+# 두 번째 응답 뒤에도 추천 문구가 다시 그려지므로 입력창이 남아 있어야 한다
+- assertVisible:
+    id: pane-chat-input
+- assertNotVisible: "(?s).*CLI에서 응답을 기다리고 있습니다.*"
+- takeScreenshot: claude-follow-up-sent

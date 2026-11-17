@@ -996,6 +996,22 @@ describe("키 입력 순서", () => {
     expect(release).toHaveBeenCalledTimes(1);
   });
 
+  it("binary 휠은 크기 요청으로 잡은 viewport에 넘기고 터미널 입력으로 쓰지 않는다", async () => {
+    const scroll = vi.fn(async () => {});
+    bridge.claimPaneViewport.mockResolvedValue({ resize: vi.fn(async () => {}), scroll, release: vi.fn(async () => {}) });
+    const client = await openPaneStreamClient("Bearer good");
+    const wheel = { type: "scroll", direction: "up", column: 4, row: 2 };
+    client.send(Buffer.from(JSON.stringify(wheel)));
+    client.send(Buffer.from(JSON.stringify({ type: "resize", cols: 44, rows: 70 })));
+    client.send(Buffer.from(JSON.stringify(wheel)));
+    client.send("done");
+    await waitFor(() => bridge.writeToPane.mock.calls.length > 0);
+    /** 크기 요청 전의 휠은 제어 연결이 없어 보낼 곳이 없다 */
+    expect(scroll.mock.calls).toEqual([[wheel]]);
+    expect(bridge.writeToPane.mock.calls.map((call) => call[2])).toEqual(["done"]);
+    client.close();
+  });
+
   it("binary 이력 갱신 요청은 미러에 전달하고 터미널 입력이나 크기 변경으로 쓰지 않는다", async () => {
     const client = await openPaneStreamClient("Bearer good");
     client.send(Buffer.from(JSON.stringify({ type: "refresh-history" })));
@@ -1876,8 +1892,11 @@ describe("원격 pane 지속 연결 경로", () => {
     client.send("ls\n");
     const resize = Buffer.from(JSON.stringify({ type: "resize", cols: 100, rows: 30 }));
     client.send(resize);
-    await waitFor(() => relay.write.mock.calls.length === 2);
-    expect(relay.write.mock.calls.map(([data, binary]) => [data.toString(), binary])).toEqual([["ls\n", false], [resize.toString(), true]]);
+    /** 휠도 B의 Herdr 제어 연결이 처리하므로 그대로 넘긴다 */
+    const wheel = Buffer.from(JSON.stringify({ type: "scroll", direction: "down", column: 0, row: 29 }));
+    client.send(wheel);
+    await waitFor(() => relay.write.mock.calls.length === 3);
+    expect(relay.write.mock.calls.map(([data, binary]) => [data.toString(), binary])).toEqual([["ls\n", false], [resize.toString(), true], [wheel.toString(), true]]);
     expect(bridge.refreshPaneHistory).not.toHaveBeenCalled();
     expect(bridge.writeToPane).not.toHaveBeenCalled();
     expect(bridge.claimPaneViewport).not.toHaveBeenCalled();

@@ -528,6 +528,33 @@ describe("pane chat exact CLI control", () => {
     expect(mocks.codex).toHaveBeenCalledWith(expect.objectContaining({ worktreePath: "/repo" }), "exact-session", "/allowed/exact.jsonl", null, 100);
   });
 
+  it("Claude가 응답 뒤 dim으로 그린 추천 문구는 빈 입력란으로 보고 보낸 글을 붙여넣는다", async () => {
+    mocks.exec.mockResolvedValue(processTable().replace("/usr/bin/python3 python3 /tmp/codex", "/tmp/claude /tmp/claude"));
+    const suggestion = { ...surface, inputLine: "❯\u00a0숨김 폴더 포함하면 몇 개야?", cursorColumn: 2, inputIsPlaceholder: true };
+    mocks.surface.mockResolvedValue(suggestion);
+    const target = await getPaneChatSnapshot("task-chat", "%3");
+    expect(target.inputState).toBe("ready");
+    await sendPaneChatPrompt("task-chat", target.targetToken!, "hello");
+    expect(mocks.write.mock.calls).toEqual([["task-chat", "%3", "\x1b[200~hello\x1b[201~"], ["task-chat", "%3", "\r"]]);
+    mocks.surface.mockResolvedValue({ ...suggestion, inputIsPlaceholder: false });
+    expect((await getPaneChatSnapshot("task-chat", "%3")).inputState).toBe("occupied");
+  });
+
+  it("Claude 입력란에 직접 쓴 글은 계속 막는다", async () => {
+    mocks.exec.mockResolvedValue(processTable().replace("/usr/bin/python3 python3 /tmp/codex", "/tmp/claude /tmp/claude"));
+    mocks.surface.mockResolvedValue({ ...surface, inputLine: "❯\u00a0abc", cursorColumn: 5, inputIsPlaceholder: false });
+    const target = await getPaneChatSnapshot("task-chat", "%3");
+    expect(target.inputState).toBe("occupied");
+    await expect(sendPaneChatPrompt("task-chat", target.targetToken!, "hello")).rejects.toMatchObject({ name: "PaneChatInputError" });
+    expect(mocks.write).not.toHaveBeenCalled();
+  });
+
+  it("Codex 표시 모드가 아닌 버전의 dim 동적 제안은 빈 입력란으로 본다", async () => {
+    const viewportLines = ["› Summarize recent commits", "", "  gpt-sol low · /repo"];
+    mocks.surface.mockResolvedValue({ ...surface, inputLine: viewportLines[0], cursorColumn: 2, cursorRow: 0, viewportLines, inputIsPlaceholder: true });
+    expect((await getPaneChatSnapshot("task-chat", "%3")).inputState).toBe("ready");
+  });
+
   it("keeps a terminal draft intact and refuses prompt/model commands while the cursor is occupied", async () => {
     mocks.surface.mockResolvedValue({ ...surface, inputLine: "› unfinished draft", cursorColumn: 18 });
     const target = await getPaneChatSnapshot("task-chat");
@@ -1079,6 +1106,18 @@ describe("Codex displayed-thread footer binding", () => {
     expect(mocks.rollout).not.toHaveBeenCalled();
     expect(mocks.write).not.toHaveBeenCalled();
     expect(a.composer).toBe("Ask Codex to do anything");
+  });
+
+  it("검증된 표시 모드에서는 dim 제안이 보여도 빈 입력란 배치가 아니면 입력을 막는다", async () => {
+    const { taskId, a } = createCodexTask();
+    await settle(getPaneChatSnapshot(taskId, "%A"));
+    const fakeSurface = a.surface.bind(a);
+    a.surface = (task: object) => {
+      const native = fakeSurface(task);
+      const viewportLines = native.viewportLines.slice(0, -1);
+      return { ...native, viewportLines, screen: viewportLines.join("\n") };
+    };
+    expect(await settle(getPaneChatSnapshot(taskId, "%A"))).toMatchObject({ inputState: "occupied" });
   });
 
   it("keeps the bound thread and its token while the terminal holds a draft under the same footer", async () => {

@@ -59,14 +59,15 @@ async function runPaneChatScenario({ page, invoke, taskId, repo, fakeHome, runDi
   await page.getByText("live-pane-a received on fixture-fast: Pane A first line", { exact: false }).first().waitFor({ state: "visible", timeout: 30000 });
   await page.screenshot({ path: path.join(runDir, "desktop-live-chat.png"), animations: "disabled" });
   await until(read, (snapshot) => snapshot.inputState === "ready", "prompt accepted");
-  await page.getByRole("button", { name: "모델 선택", exact: true }).click();
-  await page.getByTestId("pane-chat-controls").getByText("Select model", { exact: false }).waitFor({ state: "visible" });
+  // 모델 설정을 읽은 CLI는 모델 이름을 띄운 버튼과 간단한 모델 선택창으로 모델을 바꾼다
+  await page.locator("[data-pane-chat-model-trigger]").click();
+  const modelPicker = page.getByRole("dialog", { name: "모델 선택", exact: true });
+  await modelPicker.waitFor({ state: "visible" });
   await page.screenshot({ path: path.join(runDir, "desktop-model-picker.png"), animations: "disabled" });
-  await page.getByRole("button", { name: "아래로", exact: true }).click();
-  await until(read, (snapshot) => snapshot.screen.includes("› 2. fixture-deep"), "model highlight");
-  await page.getByRole("button", { name: "선택 / 확인", exact: true }).click();
+  await modelPicker.getByRole("menuitemradio", { name: "Fixture Deep" }).click();
   await until(read, (snapshot) => snapshot.inputState === "ready" && snapshot.screen.includes("model: fixture-deep"), "model confirmed");
-  await page.getByRole("button", { name: "조작창 접기", exact: true }).click();
+  await page.keyboard.press("Escape");
+  await modelPicker.waitFor({ state: "hidden" });
   await input.fill("After changing the model");
   await page.getByRole("button", { name: "보내기", exact: true }).click();
   await page.getByText("live-pane-a received on fixture-deep: After changing the model", { exact: true }).waitFor({ state: "visible", timeout: 30000 });

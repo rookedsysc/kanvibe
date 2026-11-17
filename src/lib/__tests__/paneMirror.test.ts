@@ -29,11 +29,11 @@ import {
   buildZellijResizeFloatingPaneCommand,
   buildZellijWritePaneCommand,
   parseTmuxPaneState,
-  buildHerdrInputModeSequences,
   parseTmuxMirrorPaneList,
   parseZellijMirrorPaneList,
   parseZellijViewportState,
 } from "@/lib/paneMirror";
+import { buildHerdrScreenRedraw, buildHerdrScrollControlRecord, parseTerminalScrollRequest } from "@/lib/remoteTerminalProtocol";
 
 const INJECTION_PANE_ID = "%1'; rm -rf /; '";
 
@@ -421,15 +421,28 @@ describe("Herdr observe 레코드", () => {
   });
 });
 
-describe("buildHerdrInputModeSequences", () => {
+describe("Herdr 모바일 스크롤", () => {
   const RESET_MOUSE = "\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1005l\x1b[?1006l";
 
-  it("휠을 받는 프로그램이 앞쪽 프로세스 어디에 있든 전체 화면과 SGR 마우스 모드를 켠다", () => {
-    expect(buildHerdrInputModeSequences(["codex", "node"])).toBe(`\x1b[?1049h${RESET_MOUSE}\x1b[?1000h\x1b[?1006h`);
+  it("어떤 프로그램이 돌든 모바일을 대체 화면에 두고 마우스 보고는 꺼서 손가락 스크롤이 휠로만 나가게 한다", () => {
+    expect(buildHerdrScreenRedraw("a\nb")).toBe(`\x1b[H\x1b[2J\x1b[3J\x1b[?1049h${RESET_MOUSE}\x1b[H\x1b[2J\x1b[3Ja\r\nb`);
   });
 
-  it("휠을 받는다고 확인하지 않은 프로그램과 빈 pane은 일반 화면으로 두고 마우스 모드를 끈다", () => {
-    expect(buildHerdrInputModeSequences(["claude", "serena"])).toBe(`\x1b[?1049l${RESET_MOUSE}`);
-    expect(buildHerdrInputModeSequences([])).toBe(`\x1b[?1049l${RESET_MOUSE}`);
+  it("휠 한 칸을 Herdr가 pane 모드를 보고 처리하는 terminal.scroll 한 줄로 바꾼다", () => {
+    const request = parseTerminalScrollRequest({ type: "scroll", direction: "up", column: 4, row: 2 });
+
+    expect(request).toEqual({ direction: "up", column: 4, row: 2 });
+    expect(buildHerdrScrollControlRecord(request!)).toEqual({ type: "terminal.scroll", direction: "up", lines: 1, column: 4, row: 2 });
+  });
+
+  it.each([
+    [{ type: "resize", direction: "up", column: 0, row: 0 }],
+    [{ type: "scroll", direction: "left", column: 0, row: 0 }],
+    [{ type: "scroll", direction: "down", column: -1, row: 0 }],
+    [{ type: "scroll", direction: "down", column: 0, row: 500 }],
+    [{ type: "scroll", direction: "down", column: 1.5, row: 0 }],
+    [{ type: "scroll", direction: "down", column: "1", row: 0 }],
+  ])("방향이나 칸이 잘못된 요청 %j은 버린다", (record) => {
+    expect(parseTerminalScrollRequest(record)).toBeNull();
   });
 });

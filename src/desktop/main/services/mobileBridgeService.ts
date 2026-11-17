@@ -51,7 +51,6 @@ import {
   buildHerdrControlPaneCommand,
   buildHerdrObservePaneCommand,
   buildHerdrPaneShortcutCommand,
-  buildHerdrInputModeSequences,
   buildHerdrRecentScreenCommand,
   buildHerdrWritePaneCommand,
   buildScreenRedraw,
@@ -100,7 +99,7 @@ import {
   releaseTaskTerminalViewport,
   writeTerminalTabInput,
 } from "@/lib/terminal";
-import { listHerdrMirrorPanes, readHerdrPaneExtent, readHerdrPaneForegroundPrograms, readHerdrTaskPaneSize } from "@/lib/herdr";
+import { listHerdrMirrorPanes, readHerdrPaneExtent, readHerdrTaskPaneSize } from "@/lib/herdr";
 import { getSessionDependencyStatus } from "@/lib/remoteSessionDependency";
 import { isSessionAlive, quoteForPosixShell } from "@/lib/worktree";
 import {
@@ -111,7 +110,9 @@ import {
   revokeRemoteTerminalTask,
   stopRemoteTerminalAgents,
 } from "@/desktop/main/services/remoteTerminalService";
-import type { RemoteTerminalGrant } from "@/lib/remoteTerminalProtocol";
+import {
+  buildHerdrScreenRedraw, buildHerdrScrollControlRecord, parseTerminalScrollRequest, type RemoteTerminalGrant, type TerminalScrollRequest,
+} from "@/lib/remoteTerminalProtocol";
 
 /**
  * 모바일 클라이언트가 데스크탑을 읽고, 터미널 pane을 비추고, 태스크를 만들거나 옮기는 경로.
@@ -1146,6 +1147,8 @@ const paneSubscriptions = new Map<string, PaneClaim>();
 interface PaneViewportDriver {
   resize: (paneId: string, cols: number, rows: number) => Promise<void>;
   restore: () => Promise<void>;
+  /** 휠을 멀티플렉서에 넘기는 길이 있는 세션만 둔다. 없는 세션의 모바일은 휠을 원시 입력으로 보낸다 */
+  scroll?: (request: TerminalScrollRequest) => Promise<void>;
 }
 
 interface PaneViewportRequest {
@@ -1356,6 +1359,15 @@ function createHerdrViewportDriver(target: MirrorSessionTarget, taskId: string, 
         });
       });
     },
+    /** 제어 연결은 모바일의 첫 크기 요청으로 열린다. 그 전에 온 휠은 보낼 곳이 없어 버린다 */
+    scroll: async (request) => {
+      if (failure) throw failure;
+      const child = controller;
+      if (!child?.stdin) return;
+      child.stdin.write(`${JSON.stringify(buildHerdrScrollControlRecord(request))}\n`, (error) => {
+        if (error) failController(child, error);
+      });
+    },
     restore: async () => {
       const child = controller;
       if (!child) return;
@@ -1393,6 +1405,7 @@ function createHerdrViewportDriver(target: MirrorSessionTarget, taskId: string, 
 /** 창 배치를 공유하는 pane은 같은 줄에서 크기를 바꿔야 한 기기의 퇴장이 다른 기기의 화면을 되돌리지 않는다. */
 export async function claimPaneViewport(taskId: string, paneId: string): Promise<{
   resize: (cols: number, rows: number) => Promise<string | null>;
+  scroll: (record: Parameters<typeof parseTerminalScrollRequest>[0]) => Promise<void>;
   release: () => Promise<void>;
 }> {
   if (paneViewportShutdown) throw new Error("데스크탑이 종료 중입니다.");
@@ -1438,6 +1451,12 @@ export async function claimPaneViewport(taskId: string, paneId: string): Promise
         }
       });
       return snapshot;
+    },
+    /** 크기 요청과 같은 줄에 세워, 제어 연결이 열리고 반납되는 사이에 휠이 끼어들지 않게 한다 */
+    scroll: async (record) => {
+      const scrollRequest = parseTerminalScrollRequest(record);
+      if (!scrollRequest || released || !claimed.clients.has(id)) return;
+      await queuePaneViewport(claimed, async (driver) => driver.scroll?.(scrollRequest));
     },
     release: () => {
       if (released) return released;
@@ -1762,14 +1781,8 @@ export async function stopAllPaneMirrors(shutdown = false): Promise<void> {
   await Promise.all(restorations);
 }
 
-/**
- * 모바일 터미널은 이 글자들로 시작하는 청크만 "화면을 다시 그리는 출력"으로 알아보고, 글자를 선택한 동안에는 적용을 미룬다.
- * `buildScreenRedraw`가 맨 앞에 붙이는 것과 같은 글자들이다.
- */
-const SCREEN_REDRAW_START = "\x1b[H\x1b[2J\x1b[3J";
-
 /** pane의 지금 화면을 모바일 터미널이 처음부터 다시 그리는 출력으로 떠 온다 */
-async function readPaneSnapshot(target: MirrorSessionTarget, paneId: string, inputModes?: string): Promise<string> {
+async function readPaneSnapshot(target: MirrorSessionTarget, paneId: string): Promise<string> {
   if (target.sessionType === SessionType.ZELLIJ) {
     const dump = await runMirrorCommand(buildZellijDumpPaneCommand(target.sessionName, paneId), target.sshHost);
     return buildScreenRedraw(dump, null);
@@ -1777,11 +1790,7 @@ async function readPaneSnapshot(target: MirrorSessionTarget, paneId: string, inp
 
   if (target.sessionType === SessionType.HERDR) {
     const recentScreen = await runMirrorCommand(buildHerdrRecentScreenCommand(target.sessionName, paneId), target.sshHost);
-    /**
-     * 이 스냅샷은 구독 중에도 이력이 바뀔 때마다 다시 나간다. 모드 전환이 맨 앞에 오면 모바일이 다시 그리기로 알아보지 못해
-     * 선택 중인 화면을 지우므로, 지우기를 모드 전환 앞에도 한 번 둔다. 화면을 바꾼 뒤의 지우기는 `buildScreenRedraw`가 맡는다.
-     */
-    return `${SCREEN_REDRAW_START}${inputModes ?? buildHerdrInputModeSequences([])}${buildScreenRedraw(recentScreen, null)}`;
+    return buildHerdrScreenRedraw(recentScreen);
   }
 
   /** 화면과 커서를 한 번에 읽는다. 원격이면 왕복이 하나 줄고, 둘 사이에 화면이 바뀌는 틈도 좁아진다 */
@@ -1793,10 +1802,6 @@ async function readPaneSnapshot(target: MirrorSessionTarget, paneId: string, inp
   const state = cursorLineStart === -1 ? null : parseTmuxPaneState(output.slice(cursorLineStart + 1));
   const screen = state ? output.slice(0, cursorLineStart) : output;
   return `${state?.restoreSequences ?? ""}${buildScreenRedraw(screen, state?.cursor ?? null)}`;
-}
-
-async function readHerdrInputModes(target: MirrorSessionTarget, paneId: string): Promise<string> {
-  return buildHerdrInputModeSequences(await readHerdrPaneForegroundPrograms(target.sessionName, paneId, target.sshHost));
 }
 
 async function startPaneSubscription(
@@ -1842,7 +1847,6 @@ async function startPaneSubscription(
  * 새 observe의 첫 프레임은 항상 전체 화면이라, 이력을 받은 화면과 커서를 끊김 없이 맞출 수 있다.
  * Herdr의 스크롤백이 상한에 닿거나 프로그램이 제자리에서 다시 그리면 줄 수가 늘지 않는다.
  * 그런 이력은 모바일이 위로 올려 보기 시작할 때 요청하는 갱신으로 맞춘다.
- * 전체 화면 프로그램이 뜨거나 끝나 화면·마우스 모드가 바뀐 경우에도 같은 길로 다시 보낸다.
  */
 async function startHerdrFrameStream(
   target: MirrorSessionTarget,
@@ -1865,8 +1869,6 @@ async function startHerdrFrameStream(
   const paneSize = { cols: pane.width, rows: pane.height };
   let lastRequestedRefreshAt = Number.NEGATIVE_INFINITY;
   let extent = await readHerdrPaneExtent(target.sessionName, paneId, target.sshHost);
-  // Process names only tune wheel handling. The quiet refresh can enrich them after the first usable screen.
-  let inputModes = buildHerdrInputModeSequences([]);
 
   const stopObserver = () => {
     const stoppingObserver = observer;
@@ -1958,19 +1960,14 @@ async function startHerdrFrameStream(
     }
     isRefreshing = true;
     try {
-      const [nextExtent, nextInputModes] = await Promise.all([
-        readHerdrPaneExtent(target.sessionName, paneId, target.sshHost),
-        readHerdrInputModes(target, paneId),
-      ]);
-      const isUnchanged = nextExtent.historyRows === extent.historyRows && nextExtent.viewportRows === extent.viewportRows
-        && nextInputModes === inputModes;
+      const nextExtent = await readHerdrPaneExtent(target.sessionName, paneId, target.sshHost);
+      const isUnchanged = nextExtent.historyRows === extent.historyRows && nextExtent.viewportRows === extent.viewportRows;
       if (isStopped || (isUnchanged && !isRequested)) {
         return;
       }
-      const snapshot = await readPaneSnapshot(target, paneId, nextInputModes);
+      const snapshot = await readPaneSnapshot(target, paneId);
       if (isStopped) return;
       extent = nextExtent;
-      inputModes = nextInputModes;
       stopObserver();
       broadcast(snapshot);
       if (!isStopped) {

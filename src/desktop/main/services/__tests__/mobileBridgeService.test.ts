@@ -2137,9 +2137,8 @@ describe("Herdr 세션 미러", () => {
   const herdrCommand = (...args: string[]) => buildHerdrCommand("herdr-session", args);
   const herdrResult = (value: unknown) => JSON.stringify({ id: "test", result: value });
   let historyRows = 0;
-  let foregroundPrograms = ["claude"];
-  const MAIN_SCREEN_MODES = "\x1b[?1049l\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1005l\x1b[?1006l";
-  const WHEEL_SCREEN_MODES = "\x1b[?1049h\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1005l\x1b[?1006l\x1b[?1000h\x1b[?1006h";
+  /** 모바일을 대체 화면에 두고 마우스 보고는 끈다. 손가락 스크롤이 휠로 나와 Herdr 제어 연결로 간다 */
+  const HERDR_SCREEN_MODES = "\x1b[?1049h\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1005l\x1b[?1006l";
   /** 모바일은 이 글자들로 시작하는 청크만 "다시 그리기"로 알아보고, 글자를 선택한 동안 적용을 미룬다 */
   const REDRAW_START = "\x1b[H\x1b[2J\x1b[3J";
 
@@ -2152,7 +2151,7 @@ describe("Herdr 세션 미러", () => {
     if (command.includes("'pane' 'layout'")) {
       return herdrResult({ layout: { area: { x: 0, y: 0, width: 120, height: 40 }, focused_pane_id: "w1:p1", zoomed: false, panes: [{ pane_id: "w1:p1", rect: { x: 0, y: 0, width: 120, height: 40 } }] } });
     }
-    if (command.includes("'process-info'")) return herdrResult({ process_info: { foreground_processes: foregroundPrograms.map((name) => ({ name })) } });
+    if (command.includes("'process-info'")) return herdrResult({ process_info: { foreground_processes: [{ name: "claude" }] } });
     if (command === herdrCommand("pane", "get", "w1:p1")) {
       return herdrResult({ pane: { pane_id: "w1:p1", tab_id: "w1:t1", scroll: { max_offset_from_bottom: historyRows, viewport_rows: 38 } } });
     }
@@ -2176,7 +2175,6 @@ describe("Herdr 세션 미러", () => {
 
   beforeEach(() => {
     historyRows = 0;
-    foregroundPrograms = ["claude"];
     findOneByMock.mockResolvedValue(HERDR_TASK);
     stubHerdrSession();
     spawnMock.mockImplementation(() => createObserver());
@@ -2214,25 +2212,6 @@ describe("Herdr 세션 미러", () => {
     expect(surfaces.geometryTabId).toBe("w1:t2");
     expect(surfaces.tabs[1].panes).toMatchObject([{ id: "w1:p2", left: 0, width: 60 }, { id: "w1:p3", left: 60, width: 60 }]);
     expect(executed().filter((command) => command.includes("'pane' 'layout'"))).toEqual([herdrCommand("pane", "layout", "--pane", "w1:p2")]);
-  });
-
-  it("첫 화면과 observe 구독은 느린 프로세스 모드를 기다리지 않는다", async () => {
-    let releaseModes!: () => void;
-    const modes = new Promise<string>((resolve) => { releaseModes = () => resolve(herdrResult({ process_info: { foreground_processes: [{ name: "codex" }] } })); });
-    const respond = execGitMock.getMockImplementation()!;
-    execGitMock.mockImplementation((command: string) => command.includes("'process-info'") ? modes : respond(command));
-    const chunks: string[] = [];
-    let unsubscribe: (() => void) | undefined;
-    const subscribing = subscribeToPane("herdr-task", "w1:p1", (chunk) => chunks.push(chunk), () => {}).then((stop) => { unsubscribe = stop; });
-    try {
-      await vi.waitFor(() => expect(chunks[0]).toContain("history-0"), { timeout: 150 });
-      await vi.waitFor(() => expect(unsubscribe).toBeTypeOf("function"), { timeout: 150 });
-      expect(spawnMock).toHaveBeenCalledOnce();
-    } finally {
-      releaseModes();
-      await subscribing;
-      unsubscribe?.();
-    }
   });
 
   describe("B 지속 연결 권한", () => {
@@ -2430,6 +2409,44 @@ describe("Herdr 세션 미러", () => {
     return { controllers, observers };
   };
 
+  it("모바일 휠은 크기 요청으로 연 제어 연결에 terminal.scroll 한 줄로 가고 pane 입력에는 쓰지 않는다", async () => {
+    const { controllers } = installControllers();
+    const unsubscribe = await subscribeToPane("herdr-task", "w1:p1", () => {}, () => {});
+    const viewport = await claimPaneViewport("herdr-task", "w1:p1");
+    await viewport.resize(44, 70);
+
+    await viewport.scroll({ type: "scroll", direction: "up", column: 4, row: 2 });
+    await viewport.scroll({ type: "scroll", direction: "down", column: 0, row: 69 });
+
+    const controller = controllers[0] as ReturnType<typeof createObserver> & { stdin: { write: ReturnType<typeof vi.fn> } };
+    /** 첫 크기는 제어 연결을 여는 명령 인자로 갔으므로 stdin에는 휠만 남는다 */
+    expect(controller.stdin.write.mock.calls.map(([line]) => JSON.parse(line))).toEqual([
+      { type: "terminal.scroll", direction: "up", lines: 1, column: 4, row: 2 },
+      { type: "terminal.scroll", direction: "down", lines: 1, column: 0, row: 69 },
+    ]);
+    expect(executed().some((command) => command.includes("'send-text'"))).toBe(false);
+    await viewport.release();
+    unsubscribe();
+  });
+
+  it("제어 연결이 열리기 전의 휠과 방향·칸이 잘못된 휠은 버린다", async () => {
+    const { controllers } = installControllers();
+    const unsubscribe = await subscribeToPane("herdr-task", "w1:p1", () => {}, () => {});
+    const viewport = await claimPaneViewport("herdr-task", "w1:p1");
+
+    await viewport.scroll({ type: "scroll", direction: "up", column: 0, row: 0 });
+    expect(controllers).toHaveLength(0);
+
+    await viewport.resize(44, 70);
+    await viewport.scroll({ type: "scroll", direction: "sideways", column: 0, row: 0 });
+    await viewport.scroll({ type: "scroll", direction: "up", column: -1, row: 0 });
+
+    const controller = controllers[0] as ReturnType<typeof createObserver> & { stdin: { write: ReturnType<typeof vi.fn> } };
+    expect(controller.stdin.write).not.toHaveBeenCalled();
+    await viewport.release();
+    unsubscribe();
+  });
+
   it("터미널을 열고 크기를 정하는 동안 pane 목록은 구독과 크기 소유에서 한 번씩만 읽는다", async () => {
     installControllers();
     const unsubscribe = await subscribeToPane("herdr-task", "w1:p1", () => {}, () => {});
@@ -2593,7 +2610,7 @@ describe("Herdr 세션 미러", () => {
     const chunks: string[] = [];
 
     const unsubscribe = await subscribeToPane("herdr-task", "w1:p1", (chunk) => chunks.push(chunk), () => {});
-    expect(chunks).toEqual([`${REDRAW_START}${MAIN_SCREEN_MODES}${buildScreenRedraw("history-0", null)}`]);
+    expect(chunks).toEqual([`${REDRAW_START}${HERDR_SCREEN_MODES}${buildScreenRedraw("history-0", null)}`]);
     expect(spawnMock.mock.calls[0][1][1]).toBe(buildHerdrObservePaneCommand("herdr-session", "w1:p1", 120, 38));
 
     const line = frame("screen", true);
@@ -2621,7 +2638,7 @@ describe("Herdr 세션 미러", () => {
     await vi.advanceTimersByTimeAsync(1);
 
     expect(spawnMock).toHaveBeenCalledTimes(2);
-    expect(chunks).toContain(`${REDRAW_START}${MAIN_SCREEN_MODES}${buildScreenRedraw("history-5", null)}`);
+    expect(chunks).toContain(`${REDRAW_START}${HERDR_SCREEN_MODES}${buildScreenRedraw("history-5", null)}`);
 
     /** 멈춘 observe의 뒤늦은 프레임과 종료는 새 스트림을 흔들지 않는다 */
     observers[0].stdout.emit("data", frame("stale"));
@@ -2637,53 +2654,6 @@ describe("Herdr 세션 미러", () => {
     unsubscribe();
   });
 
-  it("첫 화면을 보낸 뒤 휠을 받는 프로그램의 전체 화면과 마우스 모드를 보강한다", async () => {
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-    foregroundPrograms = ["codex", "mcp-server"];
-    const chunks: string[] = [];
-    const unsubscribe = await subscribeToPane("herdr-task", "w1:p1", (chunk) => chunks.push(chunk), () => {});
-
-    expect(chunks).toEqual([`${REDRAW_START}${MAIN_SCREEN_MODES}${buildScreenRedraw("history-0", null)}`]);
-    await vi.advanceTimersByTimeAsync(1_000);
-    expect(chunks.at(-1)).toBe(`${REDRAW_START}${WHEEL_SCREEN_MODES}${buildScreenRedraw("history-0", null)}`);
-    unsubscribe();
-  });
-
-  it("모드 보강 중 구독을 해제하면 늦은 응답이 화면이나 observe를 다시 만들지 않는다", async () => {
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-    let releaseModes!: () => void;
-    const modes = new Promise<string>((resolve) => { releaseModes = () => resolve(herdrResult({ process_info: { foreground_processes: [{ name: "codex" }] } })); });
-    const respond = execGitMock.getMockImplementation()!;
-    execGitMock.mockImplementation((command: string) => command.includes("'process-info'") ? modes : respond(command));
-    const chunks: string[] = [];
-    const unsubscribe = await subscribeToPane("herdr-task", "w1:p1", (chunk) => chunks.push(chunk), () => {});
-    await vi.advanceTimersByTimeAsync(1_000);
-    expect(executed().some((command) => command.includes("'process-info'"))).toBe(true);
-
-    unsubscribe();
-    releaseModes();
-    await vi.advanceTimersByTimeAsync(0);
-
-    expect(chunks).toEqual([`${REDRAW_START}${MAIN_SCREEN_MODES}${buildScreenRedraw("history-0", null)}`]);
-    expect(spawnMock).toHaveBeenCalledOnce();
-  });
-
-  it("출력이 잠잠해진 뒤 휠을 받는 프로그램이 새로 떴으면 모드를 켠 화면을 다시 보낸다", async () => {
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-    const observers = [createObserver(), createObserver()];
-    spawnMock.mockImplementationOnce(() => observers[0]).mockImplementationOnce(() => observers[1]);
-    const chunks: string[] = [];
-    const unsubscribe = await subscribeToPane("herdr-task", "w1:p1", (chunk) => chunks.push(chunk), () => {});
-
-    foregroundPrograms = ["codex"];
-    observers[0].stdout.emit("data", frame("codex started"));
-    await vi.advanceTimersByTimeAsync(1_000);
-
-    expect(chunks.at(-1)).toBe(`${REDRAW_START}${WHEEL_SCREEN_MODES}${buildScreenRedraw("history-0", null)}`);
-    expect(spawnMock).toHaveBeenCalledTimes(2);
-    unsubscribe();
-  });
-
   it("모바일이 이력 갱신을 요청하면 줄 수가 그대로여도 다시 보내고 연달은 요청은 한 번만 처리한다", async () => {
     const observers = [createObserver(), createObserver(), createObserver()];
     observers.forEach((observer) => spawnMock.mockImplementationOnce(() => observer));
@@ -2694,7 +2664,7 @@ describe("Herdr 세션 미러", () => {
     await refreshPaneHistory("herdr-task", "w1:p1");
     await refreshPaneHistory("herdr-task", "w1:p1");
 
-    expect(chunks).toEqual([`${REDRAW_START}${MAIN_SCREEN_MODES}${buildScreenRedraw("history-0", null)}`]);
+    expect(chunks).toEqual([`${REDRAW_START}${HERDR_SCREEN_MODES}${buildScreenRedraw("history-0", null)}`]);
     expect(spawnMock).toHaveBeenCalledTimes(2);
     unsubscribe();
   });

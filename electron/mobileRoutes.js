@@ -935,6 +935,11 @@ async function openPaneStream(webSocket, bridge, taskId, paneId, deviceId, grant
         remoteRelay.write(data, isBinary);
         return;
       }
+      /** 휠은 크기 요청으로 연 제어 연결을 타고 멀티플렉서로 간다. 그 연결이 아직 없으면 보낼 곳이 없다 */
+      if (control?.type === "scroll") {
+        await viewport?.scroll(control);
+        return;
+      }
       if (isBinary) {
         if (control?.type !== "resize" || ![control.cols, control.rows].every((value) => Number.isInteger(value) && value >= 1 && value <= 500)) return;
         resize = control;
