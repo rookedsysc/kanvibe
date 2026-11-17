@@ -115,6 +115,11 @@ function isClaudeImageCompanion(event: ClaudeProjectEvent): boolean {
     && /^\[Image: source: /.test(extractPlainText(event.message?.content));
 }
 
+/** Claude Code가 대화 파일에 함께 남기는 API 요청 로그. 요청에 실어 보낸 메시지의 사본이라 role은 있어도 대화의 한 줄이 아니다 */
+function isClaudeApiRequestLog(event: ClaudeProjectEvent): boolean {
+  return event.type === "api-request-blob";
+}
+
 export async function readClaudeSessions(context: AiSessionReaderContext): Promise<AiSessionReaderResult> {
   const rootExists = await pathExists(await getClaudeRootDirectory(context), context.sshHost);
   if (!rootExists) {
@@ -174,7 +179,7 @@ function readClaudeSessionTranscript(events: unknown[], filePath: string, sessio
     if (event.sessionId !== sessionId) continue;
     if (typeof event.cwd === "string") transcript.isSessionInScope = determineMatchScope(event.cwd, context) !== null;
     if (!transcript.isSessionInScope) continue;
-    if (isClaudeImageCompanion(event)) continue;
+    if (isClaudeImageCompanion(event) || isClaudeApiRequestLog(event)) continue;
     if (!transcript.matchedPath && typeof event.cwd === "string") transcript.matchedPath = event.cwd;
 
     for (const { role, text, attachments, toolName, files } of extractClaudeEventMessages(event, filePath)) {
@@ -538,7 +543,8 @@ function matchesClaudeQuery(query: string | undefined, ...values: Array<string |
 function resolveClaudeRole(event: ClaudeProjectEvent): AiMessageRole {
   if (hasClaudeContentPartType(event.message?.content, "tool_result")) return "tool";
   if (event.message?.role === "system" || event.type === "system") return "system";
-  if (event.message?.role === "user") return "user";
+  // isMeta가 붙은 사용자 줄은 사용자가 친 글이 아니라 CLI가 끼워 넣은 문맥(명령 안내문, 스킬 본문)이다
+  if (event.message?.role === "user") return event.isMeta === true ? "system" : "user";
   if (event.message?.role === "assistant") return "assistant";
   if (event.type === "progress") return "tool";
   return "unknown";
