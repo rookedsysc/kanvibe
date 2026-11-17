@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type RefObject } from "react";
 import { useTranslations } from "next-intl";
-import { focusPaneChatTerminal, getPaneChatAgentProvider, getPaneChatLayout, getPaneChatModes, setPaneChatMode } from "@/desktop/renderer/actions/paneChat";
+import { focusPaneChatTerminal, getPaneChatAgentProvider, getPaneChatLayout, getPaneChatModes, getPaneChatSnapshot, setPaneChatMode } from "@/desktop/renderer/actions/paneChat";
 import { useIsWindowActive } from "@/desktop/renderer/hooks/useIsWindowActive";
 import { usePaneChatPreferences } from "@/desktop/renderer/hooks/usePaneChatPreferences";
 import { REQUEST_TOGGLE_PANE_CHAT_EVENT, requestActiveTerminalFocusAfterUiSettles } from "@/desktop/renderer/utils/terminalFocus";
@@ -10,6 +10,16 @@ import { Chatting01Icon } from "@hugeicons/core-free-icons";
 import { PaneChatView } from "./PaneChatView";
 
 const LAYOUT_POLL_INTERVAL_MS = 1_000;
+
+/**
+ * 자동으로 채팅을 열 만한 pane인지 확인한다. CLI가 실행 중이어도 폴더 신뢰 확인 같은 첫 화면에서는 대화를 연결할 수 없어, 채팅이 그 화면을 가리기만 한다.
+ * Codex가 "대화 ID 표시"를 기다리는 상태는 채팅에서 버튼을 눌러야 연결되므로 연다. CLI가 없는 pane이 대부분이라 값싼 프로세스 확인을 먼저 한다.
+ */
+async function isPaneChatReadyToOpen(taskId: string, paneId: string): Promise<boolean> {
+  if (!await getPaneChatAgentProvider(taskId, paneId)) return false;
+  const snapshot = await getPaneChatSnapshot(taskId, paneId);
+  return snapshot.canSend || snapshot.transcript.reason === "codex-thread-unconfirmed";
+}
 
 export interface TerminalChatGrid {
   cols: number;
@@ -175,7 +185,7 @@ export function TerminalPaneChatLayer({ taskId, terminalTabId, taskTitle, termin
 
   const agentProbingPanes = useRef(new Set<string>());
   /**
-   * 저장된 채팅 모드나 기본 채팅 모드로 자동으로 열 pane은, 그 pane에서 CLI가 실행 중인 것이 확인된 뒤에만 채팅으로 연다.
+   * 저장된 채팅 모드나 기본 채팅 모드로 자동으로 열 pane은, 그 pane의 CLI와 대화를 연결할 수 있는 것이 확인된 뒤에만 채팅으로 연다.
    * 연결할 CLI가 없는 pane에 채팅 화면을 띄우지 않기 위해서다. pane 배치를 읽을 때마다 다시 확인하므로 나중에 CLI를 실행한 pane도 채팅으로 바뀐다.
    * 기본 채팅 모드는 저장된 기록을 읽은 뒤에만 적용해야 직접 터미널로 둔 pane을 다시 열지 않는다. 조회에 실패하면 그 기록을 알 수 없으므로 적용하지 않는다.
    */
@@ -190,8 +200,8 @@ export function TerminalPaneChatLayer({ taskId, terminalTabId, taskTitle, termin
       const isAwaitingAgent = paneId === defaultChatPaneId || savedChatPanesAwaitingAgent.current.has(paneId);
       if (!isAwaitingAgent || agentProbingPanes.current.has(paneId)) continue;
       agentProbingPanes.current.add(paneId);
-      void getPaneChatAgentProvider(taskId, paneId).then((provider) => {
-        if (!provider || !visibleRef.current || generation.current !== epoch) return;
+      void isPaneChatReadyToOpen(taskId, paneId).then((isReadyToOpen) => {
+        if (!isReadyToOpen || !visibleRef.current || generation.current !== epoch) return;
         const isSavedChatPane = savedChatPanesAwaitingAgent.current.delete(paneId);
         // 확인을 기다리는 사이 사용자가 직접 전환했거나 기본 채팅 모드를 껐으면 그 선택을 따른다.
         if (!isSavedChatPane && decidedModes.current.has(paneId)) return;

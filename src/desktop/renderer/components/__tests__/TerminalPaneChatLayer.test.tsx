@@ -5,7 +5,7 @@ import { TerminalPaneChatLayer } from "../TerminalPaneChatLayer";
 import { REQUEST_TOGGLE_PANE_CHAT_EVENT } from "@/desktop/renderer/utils/terminalFocus";
 import { getAppSetting } from "@/desktop/renderer/actions/appSettings";
 
-const actions = vi.hoisted(() => ({ getPaneChatLayout: vi.fn(), getPaneChatAgentProvider: vi.fn(), focusPaneChatTerminal: vi.fn(), getPaneChatModes: vi.fn(), setPaneChatMode: vi.fn() }));
+const actions = vi.hoisted(() => ({ getPaneChatLayout: vi.fn(), getPaneChatAgentProvider: vi.fn(), getPaneChatSnapshot: vi.fn(), focusPaneChatTerminal: vi.fn(), getPaneChatModes: vi.fn(), setPaneChatMode: vi.fn() }));
 vi.mock("@/desktop/renderer/actions/paneChat", () => actions);
 vi.mock("@/desktop/renderer/actions/appSettings", () => ({ getAppSetting: vi.fn().mockResolvedValue(null), setAppSetting: vi.fn().mockResolvedValue(undefined) }));
 vi.mock("next-intl", () => ({ useTranslations: () => (key: string) => key }));
@@ -30,6 +30,9 @@ const metrics = { cols: 80, rows: 24, left: 0, top: 0, width: 800, height: 480 }
 /** 실제 조회처럼 부를 때마다 새 객체를 돌려준다. 주기 조회가 이어지는 동안의 변화를 보는 테스트에서 쓴다 */
 const readFreshLayout = async () => ({ ...split });
 
+/** 자동으로 채팅을 열지 정할 때 보는 값만 담은 pane 채팅 상태 */
+const chatState = (canSend: boolean, reason: string | null = null) => ({ canSend, transcript: { reason } });
+
 /** 데스크톱 앱 설정에 저장된 작업별 pane 채팅 모드를 흉내 낸다 */
 let savedModes: Record<string, Record<string, boolean>> = {};
 
@@ -37,8 +40,9 @@ beforeEach(() => {
   savedModes = {};
   vi.clearAllMocks();
   actions.getPaneChatLayout.mockResolvedValue(split);
-  // 따로 바꾸지 않는 테스트에서는 모든 pane에서 CLI가 실행 중이다.
+  // 따로 바꾸지 않는 테스트에서는 모든 pane에서 CLI가 실행 중이고 그 대화를 연결할 수 있다.
   actions.getPaneChatAgentProvider.mockResolvedValue("claude");
+  actions.getPaneChatSnapshot.mockResolvedValue(chatState(true));
   actions.focusPaneChatTerminal.mockResolvedValue({ success: true });
   actions.getPaneChatModes.mockImplementation(async (taskId: string) => ({ ...savedModes[taskId] }));
   actions.setPaneChatMode.mockImplementation(async (taskId: string, paneId: string, isEnabled: boolean) => {
@@ -116,6 +120,44 @@ describe("pane-local chat layer", () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(1100); });
     expect(screen.getByTestId("chat-%1").getAttribute("data-visible")).toBe("true");
     expect(actions.setPaneChatMode).not.toHaveBeenCalled();
+  });
+
+  it("CLI가 실행 중이어도 신뢰 확인 같은 첫 화면이라 대화를 연결할 수 없으면 채팅으로 덮지 않고, 연결할 수 있게 되면 연다", async () => {
+    vi.useFakeTimers();
+    vi.mocked(getAppSetting).mockImplementation(async (key) => key === "pane_chat_default_enabled" ? "true" : null);
+    actions.getPaneChatLayout.mockImplementation(readFreshLayout);
+    actions.getPaneChatSnapshot.mockResolvedValue(chatState(false, "exact-session-unavailable"));
+    await act(async () => { open(); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(1100); });
+    expect(actions.getPaneChatSnapshot).toHaveBeenCalledWith("task-1", "%1");
+    expect(screen.queryByTestId("chat-%1")).toBeNull();
+    expect(screen.queryByTestId("pane-chat-loading")).toBeNull();
+    expect(actions.setPaneChatMode).not.toHaveBeenCalled();
+    actions.getPaneChatSnapshot.mockResolvedValue(chatState(true));
+    await act(async () => { await vi.advanceTimersByTimeAsync(1100); });
+    expect(screen.getByTestId("chat-%1").getAttribute("data-visible")).toBe("true");
+    expect(actions.setPaneChatMode).toHaveBeenCalledWith("task-1", "%1", true);
+    vi.mocked(getAppSetting).mockResolvedValue(null);
+  });
+
+  it("Codex가 대화 ID 표시를 기다리는 상태면 채팅에서 누를 수 있게 연다", async () => {
+    vi.mocked(getAppSetting).mockImplementation(async (key) => key === "pane_chat_default_enabled" ? "true" : null);
+    actions.getPaneChatAgentProvider.mockResolvedValue("codex");
+    actions.getPaneChatSnapshot.mockResolvedValue(chatState(false, "codex-thread-unconfirmed"));
+    open();
+    await act(async () => {});
+    expect(screen.getByTestId("chat-%1").getAttribute("data-visible")).toBe("true");
+    vi.mocked(getAppSetting).mockResolvedValue(null);
+  });
+
+  it("CLI가 없는 pane에서는 대화 상태까지 읽지 않는다", async () => {
+    vi.mocked(getAppSetting).mockImplementation(async (key) => key === "pane_chat_default_enabled" ? "true" : null);
+    actions.getPaneChatAgentProvider.mockResolvedValue(null);
+    open();
+    await act(async () => {});
+    expect(actions.getPaneChatAgentProvider).toHaveBeenCalledWith("task-1", "%1");
+    expect(actions.getPaneChatSnapshot).not.toHaveBeenCalled();
+    vi.mocked(getAppSetting).mockResolvedValue(null);
   });
 
   it("직접 채팅으로 전환하면 CLI가 없는 pane도 채팅을 연다", async () => {
