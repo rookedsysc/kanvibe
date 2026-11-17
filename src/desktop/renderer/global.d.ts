@@ -33,6 +33,8 @@ declare global {
       ) => Promise<{ ok: boolean; remotePath?: string; error?: string }>;
       /** Ctrl+V 등 네이티브 paste 이벤트를 만들지 않는 트리거를 위한 동기 클립보드 이미지 조회 */
       readClipboardImage: () => string | null;
+      /** 우클릭한 자리의 상태에 맞는 OS 글자 메뉴(복사·잘라내기·붙여넣기·전체 선택)를 연다 */
+      showTextContextMenu: (request: { isEditable: boolean; hasSelection: boolean }) => void;
       onTerminalData: (listener: (event: { taskId: string; tabId: string | null; data: string }) => void) => () => void;
       onTerminalClose: (listener: (event: { taskId: string; tabId: string | null; reason: string | null }) => void) => () => void;
       /** AI 계정 로그인 세션은 태스크에 묶이지 않으므로 계정 루트가 식별자다 */

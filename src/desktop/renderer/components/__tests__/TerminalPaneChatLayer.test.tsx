@@ -41,7 +41,7 @@ beforeEach(() => {
     savedModes[taskId] = { ...savedModes[taskId], [paneId]: isEnabled };
   });
 });
-afterEach(() => { cleanup(); vi.useRealTimers(); });
+afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 
 async function toggle() {
   await act(async () => { window.dispatchEvent(new Event(REQUEST_TOGGLE_PANE_CHAT_EVENT)); });
@@ -202,6 +202,29 @@ describe("pane-local chat layer", () => {
     await toggle();
     expect(screen.getByTestId("chat-%1").getAttribute("data-visible")).toBe("true");
     expect(screen.getByTestId("chat-%2").getAttribute("data-visible")).toBe("true");
+  });
+
+  it("채팅 화면 안에서 우클릭하면 그 자리에 맞는 OS 글자 메뉴를 요청한다", async () => {
+    const showTextContextMenu = vi.fn();
+    vi.stubGlobal("kanvibeDesktop", { showTextContextMenu });
+    open();
+    await toggle();
+
+    fireEvent.contextMenu(screen.getByLabelText("draft-%1"));
+
+    expect(showTextContextMenu).toHaveBeenCalledExactlyOnceWith({ isEditable: true, hasSelection: false });
+  });
+
+  it("채팅 화면 밖 터미널 영역의 우클릭에는 글자 메뉴를 요청하지 않는다", async () => {
+    const showTextContextMenu = vi.fn();
+    vi.stubGlobal("kanvibeDesktop", { showTextContextMenu });
+    open();
+    await toggle();
+
+    const wasDefaultAllowed = fireEvent.contextMenu(screen.getByTestId("terminal"));
+
+    expect(wasDefaultAllowed).toBe(true);
+    expect(showTextContextMenu).not.toHaveBeenCalled();
   });
 
   it("does not act on hidden terminal tabs", async () => {

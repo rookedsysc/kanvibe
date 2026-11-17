@@ -84,6 +84,9 @@ contextBridge.exposeInMainWorld("kanvibeDesktop", {
   readClipboardImage() {
     return ipcRenderer.sendSync("kanvibe:clipboard-read-image");
   },
+  showTextContextMenu(request) {
+    ipcRenderer.send("kanvibe:text-context-menu", request);
+  },
   openAiAccountLogin(provider, accountRoot, cols, rows) {
     return ipcRenderer.invoke("kanvibe:ai-login-open", provider, accountRoot, cols, rows);
   },
