@@ -439,6 +439,7 @@ export interface OpenCodeHooksStatus extends Partial<HookTargetRegistrationStatu
   hasParallelTargetFanout?: boolean;
   hasMainSessionGuard?: boolean;
   hasDuplicateProgressGuard?: boolean;
+  hasPaneChatBinding?: boolean;
   hasExpectedHookServerUrl?: boolean;
   hasReachableHookServer?: boolean;
   boundTaskId?: string | null;
@@ -530,6 +531,7 @@ export async function getOpenCodeHooksStatus(
     hasParallelTargetFanout,
     hasMainSessionGuard,
     hasDuplicateProgressGuard,
+    hasPaneChatBinding,
     hasExpectedHookServerUrl: hookServerValidation.hasExpectedHookServerUrl,
     hasReachableHookServer: hookServerValidation.hasReachableHookServer,
     boundTaskId,
