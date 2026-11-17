@@ -3,9 +3,12 @@ import path from "node:path";
 import { getHomeDirectory } from "@/lib/hostFileAccess";
 import { execGit } from "@/lib/gitOperations";
 import { quoteForPosixShell } from "@/lib/worktree";
-import { MAX_PANE_CHAT_SUGGESTIONS, type PaneChatSuggestion, type PaneChatSuggestionKind } from "@/desktop/shared/paneChat";
+import { MAX_PANE_CHAT_SUGGESTIONS, filterPaneChatSuggestions, type PaneChatSuggestion, type PaneChatSuggestionKind } from "@/desktop/shared/paneChat";
 
 const MAX_CATALOG_FILES = 512;
+/** 새로 설치한 skill이 메뉴에 나타나기까지 걸릴 수 있는 최대 시간이기도 하다 */
+const COMMAND_CATALOG_TTL_MS = 10_000;
+const MAX_CACHED_COMMAND_CATALOGS = 32;
 const MAX_CATALOG_DEPTH = 8;
 const MAX_CATALOG_DIRECTORIES = 2048;
 const CATALOG_READ_CONCURRENCY = 32;
@@ -22,6 +25,9 @@ interface CatalogContext {
   workspacePath?: string;
 }
 interface CatalogRoot { directory: string; commands: boolean }
+/** 검색어로 거르기 전의 전체 제안. skill 메뉴와 명령 메뉴는 같은 이름이 겹칠 때 고르는 항목이 달라 따로 둔다 */
+interface CommandCatalog { skill: PaneChatSuggestion[]; command: PaneChatSuggestion[]; truncated: boolean }
+const commandCatalogs = new Map<string, { readAt: number; catalog: Promise<CommandCatalog> }>();
 
 function fileMention(filePath: string): string {
   return /[\s@"']/.test(filePath) ? `@"${filePath.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"` : `@${filePath}`;
@@ -117,13 +123,35 @@ function skillMetadata(content: string, fallbackName: string): { name: string; d
   return { name, description: description === ">" || description === "|" ? (header?.match(/^description:\s*[>|]\s*\n((?:[ \t]+.*\n?)*)/m)?.[1] ?? "").trim().replace(/\s+/g, " ").slice(0, 512) : (description ?? content.split("\n").find((line) => line.trim() && !line.startsWith("#")) ?? "").slice(0, 512) };
 }
 
-export async function readPaneChatSuggestions(context: CatalogContext, kind: PaneChatSuggestionKind, query: string): Promise<{ items: PaneChatSuggestion[]; truncated: boolean }> {
+export async function readPaneChatSuggestions(context: CatalogContext, kind: PaneChatSuggestionKind, query: string, limit = MAX_PANE_CHAT_SUGGESTIONS): Promise<{ items: PaneChatSuggestion[]; truncated: boolean }> {
   if (kind === "file") {
     const workspace = context.workspacePath ?? context.cwd;
     const output = await execGit(`printf '\\0' && git -C ${quoteForPosixShell(workspace)} ls-files --cached --others --exclude-standard -z`, context.sshHost, { timeoutMs: CATALOG_TIMEOUT_MS });
     const matches = [...new Set(output.split("\0").filter((file) => file && !/[\x00-\x1f\x7f]/.test(file) && file.toLowerCase().includes(query.toLowerCase())))].sort();
     return { items: matches.slice(0, MAX_PANE_CHAT_SUGGESTIONS).map((file) => ({ id: `file:${file}`, label: file, description: "", insertText: fileMention(path.posix.join(workspace, file)) })), truncated: matches.length > MAX_PANE_CHAT_SUGGESTIONS };
   }
+  const catalog = await readCachedCommandCatalog(context);
+  const matches = filterPaneChatSuggestions(catalog[kind], query, limit);
+  return { items: matches.items, truncated: catalog.truncated || matches.truncated };
+}
+
+/**
+ * 같은 CLI의 skill·명령 목록을 잠깐 기억해, 메뉴를 열거나 글자를 칠 때마다 설정 폴더를 다시 훑지 않는다.
+ * 훑는 중에 온 요청은 같은 결과를 함께 기다리고, 실패한 조회는 기억하지 않는다.
+ */
+function readCachedCommandCatalog(context: CatalogContext): Promise<CommandCatalog> {
+  const key = JSON.stringify([context.sshHost ?? null, context.provider, context.cwd, context.workspacePath ?? null, context.processId ?? null, context.homeDirectory ?? null, context.providerHome ?? null]);
+  const cached = commandCatalogs.get(key);
+  if (cached && Date.now() - cached.readAt < COMMAND_CATALOG_TTL_MS) return cached.catalog;
+  const catalog = scanCommandCatalog(context);
+  commandCatalogs.delete(key);
+  commandCatalogs.set(key, { readAt: Date.now(), catalog });
+  if (commandCatalogs.size > MAX_CACHED_COMMAND_CATALOGS) commandCatalogs.delete(commandCatalogs.keys().next().value!);
+  catalog.catch(() => { if (commandCatalogs.get(key)?.catalog === catalog) commandCatalogs.delete(key); });
+  return catalog;
+}
+
+async function scanCommandCatalog(context: CatalogContext): Promise<CommandCatalog> {
   const { home, provider } = await providerRoots(context);
   const projectPaths = [context.cwd];
   if (context.workspacePath && context.cwd.startsWith(`${context.workspacePath}/`)) {
@@ -142,17 +170,20 @@ export async function readPaneChatSuggestions(context: CatalogContext, kind: Pan
     { directory: path.posix.join(provider, "plugins/cache"), commands: false },
   ];
   const catalog = await catalogFiles(context, roots);
+  return { skill: listCommandSuggestions(context.provider, catalog.files, "skill"), command: listCommandSuggestions(context.provider, catalog.files, "command"), truncated: catalog.truncated };
+}
+
+function listCommandSuggestions(provider: CatalogContext["provider"], files: { filePath: string; root: CatalogRoot; content: string }[], kind: "skill" | "command"): PaneChatSuggestion[] {
   const unique = new Map<string, PaneChatSuggestion>();
-  for (const entry of catalog.files) {
+  for (const entry of files) {
     if (kind === "skill" && entry.root.commands) continue;
     const fallback = entry.root.commands ? path.posix.relative(entry.root.directory, entry.filePath).replace(/\.md$/, "").replaceAll("/", ":") : path.posix.basename(path.posix.dirname(entry.filePath));
     const metadata = skillMetadata(entry.content, fallback);
     if (!metadata || unique.has(metadata.name)) continue;
-    const prefix = entry.root.commands || context.provider === "claude" ? "/" : "$";
-    const commandName = entry.root.commands && context.provider === "codex" ? `prompts:${metadata.name}` : metadata.name;
+    const prefix = entry.root.commands || provider === "claude" ? "/" : "$";
+    const commandName = entry.root.commands && provider === "codex" ? `prompts:${metadata.name}` : metadata.name;
     unique.set(metadata.name, { id: `${entry.root.commands ? "command" : "skill"}:${metadata.name}`, label: metadata.name, description: metadata.description, insertText: `${prefix}${commandName}` });
   }
   if (kind === "command") for (const command of ["model", "help"]) if (!unique.has(command)) unique.set(command, { id: `command:${command}`, label: command, description: command === "model" ? "모델 선택" : "CLI 도움말", insertText: `/${command}` });
-  const matches = [...unique.values()].filter((entry) => `${entry.label} ${entry.description}`.toLowerCase().includes(query.toLowerCase())).sort((a, b) => a.label.localeCompare(b.label));
-  return { items: matches.slice(0, MAX_PANE_CHAT_SUGGESTIONS), truncated: catalog.truncated || matches.length > MAX_PANE_CHAT_SUGGESTIONS };
+  return [...unique.values()];
 }

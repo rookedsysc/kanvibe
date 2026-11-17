@@ -12,6 +12,7 @@ import {
   LOCAL_SESSION_FILE_PARSE_CONCURRENCY,
   paginateItems,
   pickLiveSessionFiles,
+  readAppendedJsonLines,
   readJsonLines,
   readJsonLinesHead,
   readJsonLinesTail,
@@ -83,7 +84,7 @@ export async function readCodexSessionDetail(
     : await listFilesRecursivelyBySuffix(await getCodexSessionsDirectory(context), ".jsonl", context.sshHost);
 
   for (const filePath of rolloutFiles) {
-    const detail = await parseCodexSessionDetail(filePath, context, sessionId, cursor, limit);
+    const detail = await parseCodexSessionDetail(filePath, context, sessionId, cursor, limit, !!sourceRef);
     if (detail) return detail;
   }
 
@@ -187,37 +188,82 @@ async function parseCodexSessionDetail(
   context: AiSessionReaderContext,
   sessionId: string,
   cursor?: string | null,
-  limit = DEFAULT_DETAIL_LIMIT
+  limit = DEFAULT_DETAIL_LIMIT,
+  /** 호출자가 이 대화의 파일을 짚어 준 경우. 그 파일은 되풀이해 읽히므로 붙은 줄만 이어 읽는다 */
+  isKnownSessionFile = false,
 ): Promise<AiSessionDetailReaderResult | null> {
-  const events = await getCachedOrParse(filePath, () => readJsonLines(filePath, context.sshHost), context.sshHost);
-  let matchedPath: string | null = null;
-  let title: string | null = null;
-  const messages: AggregatedAiMessage[] = [];
-  const seenMessages = new Set<string>();
-  const toolNames = new Map<string, string>();
+  const readEvents = () => isKnownSessionFile && !context.sshHost ? readAppendedJsonLines(filePath) : readJsonLines(filePath, context.sshHost);
+  const events = await getCachedOrParse(filePath, readEvents, context.sshHost);
+  const transcript = readCodexSessionTranscript(events, filePath, sessionId, context);
+  if (transcript.isOtherSession || !transcript.matchedPath) return null;
+  transcript.newestFirstMessages ??= sortMessagesDescending(transcript.messages);
+  const paginated = paginateItems(transcript.newestFirstMessages, cursor, limit);
+  return createSessionDetail({
+    sessionId,
+    provider: "codex",
+    title: transcript.title,
+    matchedPath: transcript.matchedPath,
+    sourceRef: filePath,
+    messages: paginated.items,
+    nextCursor: paginated.nextCursor,
+  });
+}
 
-  for (const rawEvent of events) {
-    const event = rawEvent as CodexRolloutEvent;
+/** 한 rollout 파일의 대화가 남긴 메시지와, 그 파일의 이벤트를 어디까지 읽어 만들었는지 */
+interface CodexSessionTranscript {
+  readEventCount: number;
+  /** 파일의 session_meta가 다른 대화나 다른 작업 경로를 가리킨다. 한 번 그렇게 판정되면 뒤에 붙는 줄도 읽지 않는다 */
+  isOtherSession: boolean;
+  matchedPath: string | null;
+  title: string | null;
+  /** 파일에 적힌 순서 */
+  messages: AggregatedAiMessage[];
+  /** messages를 최신순으로 정렬해 둔 것. 메시지가 늘면 버리고 다음에 다시 만든다 */
+  newestFirstMessages: AggregatedAiMessage[] | null;
+  seenMessages: Set<string>;
+  toolNames: Map<string, string>;
+}
+
+/** 검색어처럼 조건이 계속 바뀌는 조회가 한 파일에 결과를 끝없이 쌓지 않도록 조건 수를 제한한다 */
+const MAX_TRANSCRIPTS_PER_EVENT_LIST = 8;
+/** 이벤트 배열이 살아 있는 동안만 그 배열로 만든 메시지를 기억한다. 파일을 처음부터 다시 읽으면 배열이 바뀌어 함께 버려진다 */
+const codexSessionTranscripts = new WeakMap<unknown[], Map<string, CodexSessionTranscript>>();
+
+/**
+ * 이벤트 배열에서 한 대화의 메시지를 만든다. 같은 배열을 같은 조건으로 다시 받으면 지난번에 읽은 곳 뒤로 붙은 이벤트만 읽어,
+ * 긴 대화를 보는 동안 매번 전체를 다시 만들지 않는다.
+ */
+function readCodexSessionTranscript(events: unknown[], filePath: string, sessionId: string, context: AiSessionReaderContext): CodexSessionTranscript {
+  const transcripts = codexSessionTranscripts.get(events) ?? new Map<string, CodexSessionTranscript>();
+  codexSessionTranscripts.set(events, transcripts);
+  const conditions = JSON.stringify([filePath, sessionId, context]);
+  const transcript = transcripts.get(conditions) ?? { readEventCount: 0, isOtherSession: false, matchedPath: null, title: null, messages: [], newestFirstMessages: null, seenMessages: new Set<string>(), toolNames: new Map<string, string>() };
+  if (!transcripts.has(conditions) && transcripts.size >= MAX_TRANSCRIPTS_PER_EVENT_LIST) transcripts.delete(transcripts.keys().next().value!);
+  transcripts.set(conditions, transcript);
+
+  for (; !transcript.isOtherSession && transcript.readEventCount < events.length; transcript.readEventCount += 1) {
+    const event = events[transcript.readEventCount] as CodexRolloutEvent;
     if (event.type === "session_meta") {
       const payload = event.payload ?? {};
       const candidateSessionId = typeof payload.id === "string" ? payload.id : path.basename(filePath, ".jsonl");
-      if (candidateSessionId !== sessionId) return null;
-
       const cwd = typeof payload.cwd === "string" ? payload.cwd : null;
-      if (!determineMatchScope(cwd, context)) return null;
-      matchedPath = cwd;
+      if (candidateSessionId !== sessionId || !determineMatchScope(cwd, context)) {
+        transcript.isOtherSession = true;
+        continue;
+      }
+      transcript.matchedPath = cwd;
       continue;
     }
 
-    for (const message of extractCodexEventMessages(event, filePath, toolNames)) {
+    for (const message of extractCodexEventMessages(event, filePath, transcript.toolNames)) {
       if (!context.includeInstructions && shouldSkipCodexMessage(message.role, message.text)) {
         continue;
       }
       const messageKey = createCodexMessageKey(message.role, event.timestamp, message.text, message.attachments);
-      if (seenMessages.has(messageKey)) {
+      if (transcript.seenMessages.has(messageKey)) {
         continue;
       }
-      seenMessages.add(messageKey);
+      transcript.seenMessages.add(messageKey);
 
       if (context.roles && context.roles.length > 0 && !context.roles.includes(message.role)) {
         continue;
@@ -227,26 +273,18 @@ async function parseCodexSessionDetail(
         continue;
       }
 
-      if (message.role === "user" && !title) {
-        title = truncateText(message.text, 80);
+      if (message.role === "user" && !transcript.title) {
+        transcript.title = truncateText(message.text, 80);
       }
 
       const previewMessage = makePreviewMessage(message.role, event.timestamp, message.text, message.attachments);
-      if (previewMessage) messages.push(withToolCall(previewMessage, message));
+      if (previewMessage) {
+        transcript.messages.push(withToolCall(previewMessage, message));
+        transcript.newestFirstMessages = null;
+      }
     }
   }
-
-  if (!matchedPath) return null;
-  const paginated = paginateItems(sortMessagesDescending(messages), cursor, limit);
-  return createSessionDetail({
-    sessionId,
-    provider: "codex",
-    title,
-    matchedPath,
-    sourceRef: filePath,
-    messages: paginated.items,
-    nextCursor: paginated.nextCursor,
-  });
+  return transcript;
 }
 
 interface CodexEventMessage {

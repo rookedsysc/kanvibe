@@ -1,7 +1,7 @@
 import { getAiAccountRegistrations } from "@/desktop/main/services/aiAccountService";
 import { getAppSetting, setAppSetting } from "@/desktop/main/services/appSettingsService";
 import { aggregateAiUsage } from "@/lib/aiUsage/aggregateAiUsage";
-import { SIGN_IN_FAILURE_REASONS } from "@/lib/aiUsage/shared";
+import { AI_USAGE_REFRESH_INTERVAL_MS, SIGN_IN_FAILURE_REASONS } from "@/lib/aiUsage/shared";
 import {
   fromCachedSnapshot,
   toCacheableSnapshot,
@@ -10,6 +10,7 @@ import {
 import type {
   AiUsageAccountResult,
   AiUsageSnapshot,
+  AiUsageSnapshotOptions,
   AiUsageWindow,
 } from "@/lib/aiUsage/types";
 
@@ -84,7 +85,7 @@ function withLastKnownWindows(
   };
 }
 
-export async function getAiUsageSnapshot(): Promise<AiUsageSnapshot> {
+async function fetchAiUsageSnapshot(): Promise<AiUsageSnapshot> {
   const registrations = await getAiAccountRegistrations();
   const snapshot = carryLastKnownUsage(
     await aggregateAiUsage(registrations),
@@ -102,4 +103,48 @@ export async function getAiUsageSnapshot(): Promise<AiUsageSnapshot> {
   }
 
   return snapshot;
+}
+
+/**
+ * 창과 패널이 나눠 쓰는 마지막 조회 결과와 지금 진행 중인 조회.
+ *
+ * 패널은 태스크를 옮길 때마다 새로 열리고 창도 여럿이라, 저마다 조회하면 사용량 엔드포인트가 금방 잠긴다.
+ * 앱이 떠 있는 동안만 의미가 있는 값이라 저장하지 않고 모듈이 기억한다.
+ */
+let recentSnapshot: AiUsageSnapshot | null = null;
+let snapshotInFlight: Promise<AiUsageSnapshot> | null = null;
+
+/** 시계가 뒤로 돌아가 조회 시각이 미래가 된 결과는 얼마나 묵었는지 알 수 없으므로 신선하다고 보지 않는다 */
+function isWithinRefreshInterval(snapshot: AiUsageSnapshot): boolean {
+  const elapsedMs = Date.now() - Date.parse(snapshot.fetchedAt);
+  return elapsedMs >= 0 && elapsedMs < AI_USAGE_REFRESH_INTERVAL_MS;
+}
+
+/**
+ * 옵션 없이 부르면 언제나 새로 조회한다. 새로고침이나 로그인 직후처럼 사람이 방금 바꾼 상태를 봐야 하는 호출이
+ * 이쪽이고, 진행 중인 조회에도 합류하지 않는다. 그 조회는 상태가 바뀌기 전에 출발했을 수 있다.
+ */
+export function getAiUsageSnapshot(options: AiUsageSnapshotOptions = {}): Promise<AiUsageSnapshot> {
+  if (options.canReuseRecentSnapshot) {
+    if (snapshotInFlight) {
+      return snapshotInFlight;
+    }
+
+    if (recentSnapshot && isWithinRefreshInterval(recentSnapshot)) {
+      return Promise.resolve(recentSnapshot);
+    }
+  }
+
+  const snapshotRequest = fetchAiUsageSnapshot()
+    .then((snapshot) => {
+      recentSnapshot = snapshot;
+      return snapshot;
+    })
+    .finally(() => {
+      if (snapshotInFlight === snapshotRequest) {
+        snapshotInFlight = null;
+      }
+    });
+  snapshotInFlight = snapshotRequest;
+  return snapshotRequest;
 }

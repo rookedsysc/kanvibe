@@ -49,10 +49,24 @@ describe("isolated diagram worker", () => {
     let frames = 0;
     contents.invalidate.mockImplementation(() => { frames++; contents.emit("paint", {}, {}, frames === 1 ? blank : painted); });
     contents.ipc.emit("kanvibe:diagram:complete", { senderFrame: contents.mainFrame }, { success: true, height: 100 });
-    expect(await pending).toEqual(png);
+    expect(await pending).toEqual({ encoded: png });
     expect(frames).toBe(2);
     expect(fake.windows[0].closed).toBe(true);
     expect(fake.app.listenerCount("before-quit")).toBe(0);
+  });
+
+  it.each([
+    [1100, { naturalWidth: 1100 }],
+    [-5, {}],
+    ["1100", {}],
+  ])("worker가 알려 준 다이어그램 원래 너비 %s를 올바를 때만 넘긴다", async (naturalWidth, expected) => {
+    const pending = renderDiagramInDesktop(input);
+    await vi.waitFor(() => expect(fake.views).toHaveLength(1));
+    const contents = fake.views[0].webContents;
+    const png = Buffer.from("native image capture");
+    contents.invalidate.mockImplementation(() => contents.emit("paint", {}, {}, { crop: () => ({ toBitmap: () => Buffer.from([255,255,255,255,0,0,0,255]), toJPEG: () => png }) }));
+    contents.ipc.emit("kanvibe:diagram:complete", { senderFrame: contents.mainFrame }, { success: true, height: 100, naturalWidth });
+    expect(await pending).toEqual({ encoded: png, ...expected });
   });
 
   it("does not retain a worker when native window construction fails", async () => {

@@ -1,7 +1,7 @@
 import mermaid from "mermaid";
 
 type RenderInput = { definition: string; theme: "light" | "dark"; width: number };
-type RenderResult = { success: boolean; height?: number };
+type RenderResult = { success: boolean; height?: number; naturalWidth?: number };
 declare global {
   interface Window {
     diagramWorker: {
@@ -45,7 +45,7 @@ window.diagramWorker.receive(async ({ definition, theme, width }) => {
     // Offscreen Desktop compositor가 SVG 프레임을 만든 뒤 native 캡처를 요청한다.
     await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
     const height = Math.min(2400, Math.ceil(container.getBoundingClientRect().height) + 16);
-    window.diagramWorker.complete({ success: true, height });
+    window.diagramWorker.complete({ success: true, height, naturalWidth: Math.ceil(naturalWidth) });
   } catch {
     window.diagramWorker.complete({ success: false });
   }

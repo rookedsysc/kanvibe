@@ -20,8 +20,8 @@ export function renderMobileDiagram(value: unknown): Promise<MobileDiagramImage>
   if (existing) return existing.then((image) => ({ ...image }));
   if (inFlight.size >= MOBILE_DIAGRAM_LIMITS.pending) throw new MobileDiagramError(429, "다이어그램 요청이 많습니다. 잠시 후 다시 시도해 주세요");
   const job = queue.catch(() => undefined).then(async () => {
-    const encoded = await renderDiagramInDesktop(input);
-    const image = validateMobileDiagramImage(encoded, input.width);
+    const { encoded, naturalWidth } = await renderDiagramInDesktop(input);
+    const image: MobileDiagramImage = { ...validateMobileDiagramImage(encoded, input.width), ...(naturalWidth ? { naturalWidth } : {}) };
     const bytes = Buffer.byteLength(image.imageBase64);
     cache.set(key, { image, bytes });
     cacheBytes += bytes;

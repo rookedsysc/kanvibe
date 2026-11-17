@@ -15,7 +15,13 @@ export function isDiagramWorkerResource(url: string, rendererRoot: string): bool
   }
 }
 
-export async function renderDiagramInDesktop(input: MobileDiagramInput): Promise<Buffer> {
+/** PC가 그린 다이어그램 이미지. naturalWidth는 줄이기 전 SVG의 원래 너비이며 worker가 알려 주지 않으면 없다 */
+export interface DesktopDiagramRender {
+  encoded: Buffer;
+  naturalWidth?: number;
+}
+
+export async function renderDiagramInDesktop(input: MobileDiagramInput): Promise<DesktopDiagramRender> {
   const { app, BrowserWindow, session, nativeImage } = await import("electron");
   if (!app.isReady()) throw new MobileDiagramError(503, "Desktop 다이어그램 렌더러를 사용할 수 없습니다");
   const rendererRoot = path.join(app.getAppPath(), "build", "renderer");
@@ -55,7 +61,7 @@ export async function renderDiagramInDesktop(input: MobileDiagramInput): Promise
   contents.on("will-frame-navigate", (event) => event.preventDefault());
   contents.on("will-attach-webview", (event) => event.preventDefault());
 
-  return new Promise<Buffer>((resolve, reject) => {
+  return new Promise<DesktopDiagramRender>((resolve, reject) => {
     let settled = false;
     let capturing = false;
     const cleanup = () => {
@@ -67,11 +73,11 @@ export async function renderDiagramInDesktop(input: MobileDiagramInput): Promise
       // Renderer 종료와 native 객체 해제가 겹쳐도 대기열의 Promise는 반드시 끝낸다.
       try { if (!window.isDestroyed()) window.destroy(); } catch { /* 이미 닫힌 소유 창 */ }
     };
-    const finish = (error?: MobileDiagramError, png?: Buffer) => {
+    const finish = (error?: MobileDiagramError, rendered?: DesktopDiagramRender) => {
       if (settled) return;
       settled = true;
       cleanup();
-      if (error) reject(error); else resolve(png!);
+      if (error) reject(error); else resolve(rendered!);
     };
     const unavailable = () => finish(new MobileDiagramError(503, "Desktop 다이어그램 렌더러를 사용할 수 없습니다"));
     const quit = () => unavailable();
@@ -87,7 +93,7 @@ export async function renderDiagramInDesktop(input: MobileDiagramInput): Promise
     contents.ipc.on("kanvibe:diagram:complete", async (event, result: unknown) => {
       if (settled || capturing) return;
       if (event.senderFrame !== contents.mainFrame || !result || typeof result !== "object") return unavailable();
-      const { success, height } = result as { success?: unknown; height?: unknown };
+      const { success, height, naturalWidth } = result as { success?: unknown; height?: unknown; naturalWidth?: unknown };
       if (success !== true) return finish(new MobileDiagramError(422, "다이어그램 문법을 확인해 주세요"));
       if (typeof height !== "number" || !Number.isInteger(height) || height < 1 || height > 2400) return unavailable();
       capturing = true;
@@ -115,7 +121,8 @@ export async function renderDiagramInDesktop(input: MobileDiagramInput): Promise
         const decoded = nativeImage.createFromBuffer(encoded);
         const size = decoded.getSize();
         if (decoded.isEmpty() || size.width !== input.width || size.height !== height) return unavailable();
-        finish(undefined, encoded);
+        const hasNaturalWidth = typeof naturalWidth === "number" && Number.isInteger(naturalWidth) && naturalWidth > 0;
+        finish(undefined, { encoded, ...(hasNaturalWidth ? { naturalWidth } : {}) });
       } catch {
         unavailable();
       }

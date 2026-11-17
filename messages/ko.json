@@ -498,6 +498,9 @@
       "placeholder": "현재 CLI에 메시지 보내기…",
       "model": "모델 선택",
       "stop": "중단",
+      "stopResponse": "응답 중단",
+      "agentWorking": "작업 중…",
+      "agentWorkingElapsed": "{seconds}초",
       "controls": "CLI 조작",
       "closeControls": "조작창 접기",
       "confirm": "선택 / 확인",
@@ -759,6 +762,7 @@
       "reasons": {
         "missing-credentials": "로그인되어 있지 않습니다.",
         "expired-credentials": "인증이 만료됐습니다. 계정 화면에서 다시 로그인하면 앱이 갱신합니다.",
+        "awaiting-cli-refresh": "Claude Code를 실행하면 사용량이 다시 갱신됩니다.",
         "keychain-unreadable": "Keychain을 읽지 못했습니다. 맥 화면을 잠금 해제한 뒤 새로고침해 주세요.",
         "gemini-cli-not-found": "토큰이 만료됐고 Gemini CLI를 찾지 못해 갱신할 수 없습니다.",
         "rate-limited": "요청이 너무 잦아 잠시 뒤 다시 시도해야 합니다.",

@@ -259,9 +259,33 @@ class DesktopClient {
   // Foreground-process inspection and exact transcript lookup can each outlast a normal board request.
   static const _paneChatTimeout = Duration(seconds: 30);
 
+  /// [includeScreen]이 false면 대화 기록을 보여 줄 수 있는 동안 데스크탑이 CLI 화면을 읽지 않는다
   Future<PaneChatSnapshot> fetchPaneChat(
     DesktopConnection connection,
+    PaneChatTarget target, {
+    bool includeScreen = true,
+  }) async {
+    final body = await _getPaneChat(connection, target, {
+      if (!includeScreen) 'wantsScreen': 'false',
+    });
+    return _readPaneChatSnapshot(body, target);
+  }
+
+  /// pane에서 돌고 있는 에이전트 CLI의 이름만 묻는다. 화면과 대화 기록은 받지 않는다
+  Future<String?> fetchPaneAgentProvider(
+    DesktopConnection connection,
     PaneChatTarget target,
+  ) async {
+    final body = await _getPaneChat(connection, target, {'detail': 'agent'});
+    // 이름만 답하는 조회를 모르는 데스크탑은 스냅샷 전체를 돌려주므로 그 안의 이름을 쓴다
+    if (body.containsKey('provider')) return body['provider'] as String?;
+    return _readPaneChatSnapshot(body, target).provider;
+  }
+
+  Future<Map<String, dynamic>> _getPaneChat(
+    DesktopConnection connection,
+    PaneChatTarget target,
+    Map<String, String> extraQueryParameters,
   ) async {
     final response = await _clientFor(connection)
         .get(
@@ -275,7 +299,10 @@ class DesktopClient {
                   target.taskId,
                   'pane-chat',
                 ],
-                queryParameters: {'paneId': target.paneId},
+                queryParameters: {
+                  'paneId': target.paneId,
+                  ...extraQueryParameters,
+                },
               ),
           headers: connection.authorizationHeaders,
         )
@@ -286,7 +313,13 @@ class DesktopClient {
         message: _readErrorMessage(response.body),
       );
     }
-    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  PaneChatSnapshot _readPaneChatSnapshot(
+    Map<String, dynamic> body,
+    PaneChatTarget target,
+  ) {
     final snapshot = PaneChatSnapshot.fromJson(
       body['snapshot'] as Map<String, dynamic>,
     );
@@ -420,19 +453,23 @@ class DesktopClient {
     _composerBody(response);
   }
 
-  Future<List<PaneChatSuggestion>> getPaneChatSuggestions(
+  /// [limit]을 주면 데스크톱이 그 개수까지 돌려준다. 구버전 데스크톱은 무시하고 기본 개수만 준 뒤 더 있다고 알린다
+  Future<({List<PaneChatSuggestion> items, bool isTruncated})>
+  getPaneChatSuggestions(
     DesktopConnection connection,
     String taskId,
     String targetToken,
     String kind,
-    String query,
-  ) async {
+    String query, {
+    int? limit,
+  }) async {
     final response = await _clientFor(connection)
         .get(
           _paneComposerUri(connection, taskId, 'suggestions', {
             'targetToken': targetToken,
             'kind': kind,
             'query': query,
+            if (limit != null) 'limit': '$limit',
           }),
           headers: connection.authorizationHeaders,
         )
@@ -441,11 +478,12 @@ class DesktopClient {
     if (body['targetToken'] != targetToken) {
       throw const FormatException('CLI 대상이 변경되었습니다.');
     }
-    return (body['items'] as List)
+    final items = (body['items'] as List)
         .map(
           (item) => PaneChatSuggestion.fromJson(item as Map<String, dynamic>),
         )
         .toList();
+    return (items: items, isTruncated: body['truncated'] == true);
   }
 
   Future<List<int>> fetchChatAttachment(

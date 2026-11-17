@@ -67,9 +67,9 @@ class PaneAgentWatcher extends Notifier<String?> {
       final connection = connections.activeConnection;
       if (!ref.mounted) return;
       if (connection != null) {
-        final snapshot = await ref
+        final provider = await ref
             .read(desktopClientProvider)
-            .fetchPaneChat(connection, target);
+            .fetchPaneAgentProvider(connection, target);
         if (!ref.mounted ||
             revision != _stateRevision ||
             ref
@@ -80,7 +80,7 @@ class PaneAgentWatcher extends Notifier<String?> {
                 connection.id) {
           return;
         }
-        state = snapshot.provider;
+        state = provider;
       }
     } catch (_) {
       // 일시적인 조회 실패로 버튼이 사라지지 않도록 마지막으로 확인한 값을 유지한다

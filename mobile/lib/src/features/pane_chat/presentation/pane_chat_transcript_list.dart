@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -91,7 +93,10 @@ class _PaneChatTranscriptListState
     if (messages.isEmpty && pendingPrompt == null) {
       return const Center(child: Text('현재 CLI에 첫 메시지를 보내세요.'));
     }
-    final entries = _buildEntries(messages, pendingPrompt);
+    final isAgentWorking =
+        snapshot.canSend &&
+        ref.watch(paneChatAgentWorkingProvider(widget.target));
+    final entries = _buildEntries(messages, pendingPrompt, isAgentWorking);
     final entryIndexes = {
       for (var index = 0; index < entries.length; index++)
         entries[index].key: index,
@@ -127,6 +132,9 @@ class _PaneChatTranscriptListState
                   );
                 }
                 final entry = entries[index];
+                if (entry.isWorkingIndicator) {
+                  return _AgentWorkingIndicator(key: entry.key);
+                }
                 if (entry.isPending) {
                   return Semantics(
                     key: entry.key,
@@ -188,6 +196,7 @@ class _PaneChatTranscriptListState
   List<_TranscriptEntry> _buildEntries(
     List<ChatMessage> messages,
     String? pendingPrompt,
+    bool isAgentWorking,
   ) {
     final occurrences = <(String, DateTime?, String), int>{};
     final messageKeys = <LocalKey>[
@@ -204,6 +213,14 @@ class _PaneChatTranscriptListState
         )),
     ];
     final entries = <_TranscriptEntry>[
+      // 목록이 뒤집혀 있어 맨 앞 항목이 대화 맨 아래, 보낸 메시지 바로 밑에 놓인다
+      if (isAgentWorking)
+        const _TranscriptEntry(
+          key: ValueKey('pane-chat-working'),
+          messages: [],
+          messageKeys: [],
+          isWorkingIndicator: true,
+        ),
       if (pendingPrompt != null)
         _TranscriptEntry(
           key: const ValueKey('pane-chat-pending'),
@@ -246,6 +263,7 @@ class _TranscriptEntry {
     required this.messages,
     required this.messageKeys,
     this.isPending = false,
+    this.isWorkingIndicator = false,
   });
 
   final LocalKey key;
@@ -254,6 +272,91 @@ class _TranscriptEntry {
   final List<ChatMessage> messages;
   final List<LocalKey> messageKeys;
   final bool isPending;
+
+  /// 메시지가 아니라 에이전트가 작업 중임을 알리는 자리
+  final bool isWorkingIndicator;
+}
+
+/// 보낸 메시지를 에이전트가 처리하는 동안 대화 맨 아래에 붙는 표시.
+///
+/// Claude 데스크톱 앱처럼 아이콘이 숨 쉬듯 깜빡이고 경과 초가 올라가, 기록이 아직 늘지 않아도 일이 진행 중임을 알 수 있다.
+/// 애니메이션 줄이기를 켠 기기에서는 깜빡이지 않는다.
+class _AgentWorkingIndicator extends StatefulWidget {
+  const _AgentWorkingIndicator({super.key});
+
+  @override
+  State<_AgentWorkingIndicator> createState() => _AgentWorkingIndicatorState();
+}
+
+class _AgentWorkingIndicatorState extends State<_AgentWorkingIndicator>
+    with SingleTickerProviderStateMixin {
+  static const _pulseDuration = Duration(milliseconds: 900);
+  static const _dimmestOpacity = 0.35;
+
+  late final AnimationController _pulse = AnimationController(
+    vsync: this,
+    duration: _pulseDuration,
+    lowerBound: _dimmestOpacity,
+  );
+  late final Timer _elapsedTicker;
+  int _elapsedSeconds = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _elapsedTicker = Timer.periodic(
+      const Duration(seconds: 1),
+      (_) => setState(() => _elapsedSeconds++),
+    );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _pulse.value = 1;
+    } else if (!_pulse.isAnimating) {
+      _pulse.repeat(reverse: true);
+    }
+  }
+
+  @override
+  void dispose() {
+    _elapsedTicker.cancel();
+    _pulse.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final style = Theme.of(context).textTheme.bodySmall
+        ?.copyWith(color: context.colors.textSecondary);
+    return Semantics(
+      identifier: 'pane-chat-working',
+      liveRegion: true,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: AppSizes.p8),
+        child: Row(
+          children: [
+            FadeTransition(
+              opacity: _pulse,
+              child: const Icon(
+                Icons.auto_awesome,
+                size: AppSizes.p16,
+                color: AppColors.brandPrimary,
+              ),
+            ),
+            const SizedBox(width: AppSizes.p8),
+            Text('작업 중…', style: style),
+            if (_elapsedSeconds > 0) ...[
+              const SizedBox(width: AppSizes.p8),
+              Text('$_elapsedSeconds초', style: style),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 /// 연달아 실행한 도구와 추론을 한 줄로 접어 답변 본문이 먼저 읽히게 한다

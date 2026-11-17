@@ -6,7 +6,7 @@ import { focusHerdrTaskPane, listLocalTerminalTabs } from "@/lib/terminal";
 import { quoteForPosixShell } from "@/lib/worktree";
 import { getHomeDirectory, pathExists, readTextFile } from "@/lib/hostFileAccess";
 import { MAX_ATTACHMENT_BYTES } from "@/lib/attachmentContent";
-import { readJsonLinesHead, readJsonLinesTail } from "@/lib/aiSessions/shared";
+import { getCachedOrParseTail, readJsonLinesHead, readJsonLinesTail } from "@/lib/aiSessions/shared";
 import { buildPaneChatModelCommand, buildPaneChatModelSettings, parseCodexModelCatalog, parsePaneChatModelSettingChange, readClaudeModelState, readCodexModelState, type PaneChatModelOption, type PaneChatModelSettings } from "@/lib/aiSessions/paneChatModelSettings";
 import { readClaudeSessionDetail } from "@/lib/aiSessions/readClaudeSessions";
 import { readGeminiSessionDetail } from "@/lib/aiSessions/readGeminiSessions";
@@ -18,8 +18,8 @@ import { sendCodexThreadInput } from "@/lib/aiSessions/codexThreadInput";
 import { readCodexThreadSettings, updateCodexThreadSettings } from "@/lib/aiSessions/codexThreadSettings";
 import { findPaneChatProcess, type PaneChatProcess } from "@/lib/aiSessions/paneChatProcess";
 import { findPaneChatSessionBinding, findPaneChatProcessSessionBinding, findPaneChatReportedSessionBinding } from "@/lib/aiSessions/paneChatSessionBindings";
-import { MAX_PANE_CHAT_ATTACHMENTS, type PaneChatActionResult, type PaneChatAttachment, type PaneChatCodexThreadReveal, type PaneChatAttachmentInput, type PaneChatKey, type PaneChatLayout, type PaneChatSnapshot, type PaneChatSuggestionKind, type PaneChatSuggestions } from "@/desktop/shared/paneChat";
-import { readPaneChatLayout, readPaneChatSurface, type PaneChatSurface } from "./paneChatSurface";
+import { MAX_PANE_CHAT_ATTACHMENTS, MAX_PANE_CHAT_CATALOG_SUGGESTIONS, type PaneChatActionResult, type PaneChatAttachment, type PaneChatCodexThreadReveal, type PaneChatAttachmentInput, type PaneChatKey, type PaneChatLayout, type PaneChatSnapshot, type PaneChatSuggestionKind, type PaneChatSuggestions } from "@/desktop/shared/paneChat";
+import { readPaneChatLayout, readPaneChatScreen, readPaneChatSurface, type PaneChatSurface } from "./paneChatSurface";
 import { discardPaneChatAttachment, fingerprintPaneChatAttachments, resolvePaneChatAttachments, retainPaneChatAttachments, storePaneChatAttachment, type PaneChatAttachmentOwner } from "./paneChatAttachmentService";
 import { readPaneChatSuggestions } from "./paneChatComposerCatalog";
 import { writeToPane } from "./mobileBridgeService";
@@ -42,11 +42,19 @@ const transcriptReaders = { claude: readClaudeSessionDetail, codex: readCodexSes
 const MODEL_STATE_TAIL_LINES = 200;
 /** Codex 모델 목록은 CLI가 가끔 갱신하는 캐시라, 매번 다시 읽지 않고 이 시간 동안 재사용한다 */
 const CODEX_MODEL_CATALOG_TTL_MS = 60_000;
+/** 구독 감시가 읽은 결과를 같은 pane의 데스크톱·HTTP 조회가 재사용하는 최대 경과 시간. 구독 감시가 pane을 다시 읽는 주기와 같다 */
+const SHARED_READING_MAX_AGE_MS = 1_000;
 // Orca CLI bridge와 같은 간격으로 붙여넣기 처리가 끝난 뒤 Enter를 보내고 선택기 명령은 한 글자씩 친다.
 const PROMPT_SUBMIT_DELAY_MS = 500;
 const PICKER_CHARACTER_DELAY_MS = 40;
 const IMAGE_ATTACHMENT_SETTLE_MS = 300;
 const KEY_BYTES: Record<PaneChatKey, string> = { up: "\x1b[A", down: "\x1b[B", left: "\x1b[D", right: "\x1b[C", enter: "\r", escape: "\x1b" };
+/** Claude가 작업 중일 때만 입력란 아래 footer에 붙이는 중단 안내 */
+const CLAUDE_WORKING_FOOTER_HINT = /\besc to interrupt\b/;
+/** Codex가 작업 중일 때만 입력란 위에 띄우는 상태 줄. 예: "• Working (3s • esc to interrupt)" */
+const CODEX_WORKING_STATUS_LINE = /^•\s.*\(.*\besc to interrupt\)$/;
+/** Codex 상태 줄과 입력란 사이에는 사용량 경고 같은 줄이 끼어들 수 있어 입력란 위로 이만큼 찾는다 */
+const CODEX_WORKING_STATUS_SEARCH_ROWS = 6;
 
 interface TargetLease {
   taskId: string;
@@ -207,6 +215,25 @@ function readInputState(surface: PaneChatSurface, process: PaneChatProcess, veri
   const isPlaceholder = surface.inputIsPlaceholder === true || (process.provider === "codex" ? value === "Ask Codex to do anything" : /^Try\s+/.test(value));
   return surface.cursorColumn === start + marker.length + 1 && (!value || isPlaceholder) ? "ready" : "occupied";
 }
+/**
+ * 에이전트가 응답을 만들거나 도구를 실행하는 중인지 화면 표시로 판정한다.
+ * Claude 2.1.325와 Codex 0.169에서 작업 중에만 나타나고 끝나면 사라지는 것을 확인한 자리만 본다.
+ * 대화 본문에 같은 문구가 있어도 속지 않게 입력란 기준 위치로 좁히고, 확인하지 않은 CLI나 화면 좌표가 없는 surface는 unknown이다.
+ */
+function readAgentActivity(surface: PaneChatSurface, process: PaneChatProcess): PaneChatSnapshot["agentActivity"] {
+  const lines = surface.viewportLines;
+  const inputRow = surface.cursorRow;
+  if (!lines || inputRow === null || inputRow === undefined || inputRow < 0 || inputRow >= lines.length) return "unknown";
+  if (process.provider === "claude") {
+    const footer = lines.slice(inputRow + 1);
+    return footer.some((line) => CLAUDE_WORKING_FOOTER_HINT.test(line)) ? "working" : "idle";
+  }
+  if (process.provider === "codex") {
+    const aboveComposer = lines.slice(Math.max(0, inputRow - CODEX_WORKING_STATUS_SEARCH_ROWS), inputRow);
+    return aboveComposer.some((line) => CODEX_WORKING_STATUS_LINE.test(line.trim())) ? "working" : "idle";
+  }
+  return "unknown";
+}
 async function requireReadyInput(taskId: string, token: string): Promise<void> {
   const lease = await assertTarget(taskId, token);
   const surface = await readPaneChatSurface(taskId, lease.requestedPaneId);
@@ -334,7 +361,8 @@ async function readCodexModelCatalog(sshHost: string | null | undefined): Promis
 
 async function readModelSettings(provider: "claude" | "codex", sourceRef: string, sshHost: string | null | undefined, pending = false): Promise<PaneChatModelSettings> {
   const [records, models] = await Promise.all([
-    pending && !await pathExists(sourceRef, sshHost) ? Promise.resolve([]) : readJsonLinesTail(sourceRef, MODEL_STATE_TAIL_LINES, sshHost),
+    // 화면을 보는 동안 매초 불리므로, 기록 파일이 바뀌지 않았으면 원격에서 끝부분을 다시 받지 않는다
+    pending && !await pathExists(sourceRef, sshHost) ? Promise.resolve([]) : getCachedOrParseTail(sourceRef, () => readJsonLinesTail(sourceRef, MODEL_STATE_TAIL_LINES, sshHost), sshHost),
     provider === "codex" ? readCodexModelCatalog(sshHost) : Promise.resolve([]),
   ]);
   return buildPaneChatModelSettings(provider, provider === "claude" ? readClaudeModelState(records) : readCodexModelState(records), models);
@@ -346,8 +374,54 @@ export interface PaneChatReading {
   localTranscriptFile: string | null;
 }
 
+export interface PaneChatReadOptions {
+  /** 대화 기록을 연결했어도 CLI 화면을 함께 읽는다. 기록을 연결하지 못했으면 이 값과 상관없이 화면을 읽는다 */
+  includeScreen?: boolean;
+  /** 같은 pane을 보는 다른 조회가 이 결과를 잠깐 재사용하도록 남긴다. 주기적으로 pane을 읽는 구독 감시만 켠다 */
+  isSharedWithOtherViewers?: boolean;
+}
+
+interface SharedPaneChatReading {
+  taskId: string;
+  startedAt: number;
+  includesScreen: boolean;
+  reading: Promise<PaneChatReading>;
+}
+/** 구독 감시가 최근에 읽은 결과. 데스크톱 창과 휴대폰이 같은 pane을 볼 때 외부 명령을 두 번 실행하지 않으려고 남긴다 */
+const sharedReadings = new Map<string, SharedPaneChatReading>();
+
+function sharedReadingKey(taskId: string, paneId: string | undefined): string {
+  // 스냅샷의 targetToken은 요청한 pane 식별자별로 발급되므로, 같은 식별자로 요청한 조회끼리만 공유한다
+  return JSON.stringify([taskId, paneId ?? null]);
+}
+
+function forgetSharedReadings(taskId: string): void {
+  for (const [key, shared] of sharedReadings) {
+    if (shared.taskId === taskId) sharedReadings.delete(key);
+  }
+}
+
+function shareReading(key: string, shared: SharedPaneChatReading): void {
+  for (const [candidate, previous] of sharedReadings) {
+    if (shared.startedAt - previous.startedAt > SHARED_READING_MAX_AGE_MS) sharedReadings.delete(candidate);
+  }
+  sharedReadings.set(key, shared);
+  shared.reading.catch(() => { if (sharedReadings.get(key) === shared) sharedReadings.delete(key); });
+}
+
+/**
+ * 구독 감시가 방금 읽은 같은 pane의 결과가 있으면 그것을, 없으면 새로 읽는다.
+ * 재사용하는 결과도 읽을 때 대상 확인을 두 번 거친 값이고, 전송은 여전히 `assertTarget`이 다시 확인한다.
+ */
+export function readRecentPaneChat(taskId: string, paneId?: string, options: Pick<PaneChatReadOptions, "includeScreen"> = {}): Promise<PaneChatReading> {
+  const shared = sharedReadings.get(sharedReadingKey(taskId, paneId));
+  const isFresh = !!shared && Date.now() - shared.startedAt <= SHARED_READING_MAX_AGE_MS;
+  if (shared && isFresh && !mutations.has(taskId) && (shared.includesScreen || !options.includeScreen)) return shared.reading;
+  return readPaneChat(taskId, paneId, options);
+}
+
 export async function getPaneChatSnapshot(taskId: string, paneId?: string): Promise<PaneChatSnapshot> {
-  return (await readPaneChat(taskId, paneId)).snapshot;
+  return (await readRecentPaneChat(taskId, paneId)).snapshot;
 }
 
 /** 현재 검증된 pane 대화의 이전 기록만 읽고, 조회 도중 대상이 바뀌면 결과를 버린다. */
@@ -375,22 +449,34 @@ export async function getPaneChatAgentProvider(taskId: string, paneId: string): 
   }
 }
 
-export async function readPaneChat(taskId: string, paneId?: string): Promise<PaneChatReading> {
+export function readPaneChat(taskId: string, paneId?: string, options: PaneChatReadOptions = {}): Promise<PaneChatReading> {
+  const includeScreen = options.includeScreen === true;
+  const reading = readVerifiedPaneChat(taskId, paneId, includeScreen);
+  if (options.isSharedWithOtherViewers) shareReading(sharedReadingKey(taskId, paneId), { taskId, startedAt: Date.now(), includesScreen: includeScreen, reading });
+  return reading;
+}
+
+async function readVerifiedPaneChat(taskId: string, paneId: string | undefined, includeScreen: boolean): Promise<PaneChatReading> {
   const reading = (snapshot: PaneChatSnapshot, localTranscriptFile: string | null = null): PaneChatReading => ({ snapshot, localTranscriptFile });
   if (typeof taskId !== "string" || !taskId || (paneId !== undefined && typeof paneId !== "string")) throw inputError("태스크와 pane 식별자가 올바르지 않습니다.");
-  const disabled: PaneChatSnapshot = { taskId, paneId: null, sessionType: null, provider: null, targetToken: null, canSend: false, inputState: "unknown", screen: "", reason: "pane-unavailable", transcript: emptyTranscript("exact-session-unavailable"), modelPicker: { supported: false, mode: "native-cli" } };
+  const disabled: PaneChatSnapshot = { taskId, paneId: null, sessionType: null, provider: null, targetToken: null, canSend: false, inputState: "unknown", agentActivity: "unknown", screen: "", reason: "pane-unavailable", transcript: emptyTranscript("exact-session-unavailable"), modelPicker: { supported: false, mode: "native-cli" } };
   let surface: PaneChatSurface | null;
   try { surface = await readPaneChatSurface(taskId, paneId); } catch { return reading(disabled); }
   if (!surface) return reading(disabled);
-  const snapshot = { ...disabled, paneId: surface.paneId, sessionType: surface.task.sessionType, screen: surface.screen };
+  const verifiedSurface = surface;
+  const snapshot = { ...disabled, paneId: surface.paneId, sessionType: surface.task.sessionType };
+  // 대화 기록을 보여 주지 못하는 상태에서는 CLI 화면이 유일하게 보여 줄 내용이라 함께 읽는다
+  const readingWithScreen = async (unavailable: PaneChatSnapshot): Promise<PaneChatReading> => {
+    try { return reading({ ...unavailable, screen: await readPaneChatScreen(verifiedSurface) }); } catch { return reading(disabled); }
+  };
   let process: PaneChatProcess | null;
-  try { process = await inspectProcess(surface); } catch { return reading({ ...snapshot, reason: "process-inspection-unavailable" }); }
-  if (!process) return reading({ ...snapshot, reason: "no-foreground-ai-cli" });
+  try { process = await inspectProcess(surface); } catch { return readingWithScreen({ ...snapshot, reason: "process-inspection-unavailable" }); }
+  if (!process) return readingWithScreen({ ...snapshot, reason: "no-foreground-ai-cli" });
   const displayState = await codexDisplayExecution(surface, process);
   const executionIdentity = identityFor(surface, process);
   let binding: Awaited<ReturnType<typeof resolveConversation>>;
   try { binding = await resolveConversation(surface, process); }
-  catch (error) { return reading(error instanceof Error && error.name === "PaneChatTargetChangedError" ? { ...disabled, reason: "target-changed" } : { ...snapshot, provider: process.provider, reason: "transcript-read-failed", transcript: emptyTranscript("transcript-read-failed") }); }
+  catch (error) { return error instanceof Error && error.name === "PaneChatTargetChangedError" ? reading({ ...disabled, reason: "target-changed" }) : readingWithScreen({ ...snapshot, provider: process.provider, reason: "transcript-read-failed", transcript: emptyTranscript("transcript-read-failed") }); }
   const conversation = conversationIdentity(binding);
   const supportsComposer = process.provider === "claude" || process.provider === "codex";
   const [transcriptRead, modelSettings] = await Promise.all([
@@ -402,6 +488,11 @@ export async function readPaneChat(taskId: string, paneId?: string): Promise<Pan
   let { transcript } = transcriptRead;
   const { sourceRef } = transcriptRead;
   if (displayState && !binding) transcript = emptyTranscript(displayState.reason);
+  // 화면은 두 번째 확인보다 먼저 읽어, 읽는 사이 대상이 바뀌었으면 그 화면도 함께 버려지게 한다
+  let screen = "";
+  if (includeScreen || transcript.status !== "available") {
+    try { screen = await readPaneChatScreen(surface); } catch { return reading(disabled); }
+  }
   try {
     const latest = await readPaneChatSurface(taskId, paneId, !!displayState);
     const latestProcess = latest ? await inspectProcess(latest) : null;
@@ -412,7 +503,7 @@ export async function readPaneChat(taskId: string, paneId?: string): Promise<Pan
   const canSend = transcript.status === "available";
   const targetToken = canSend ? leaseTarget(surface, process, paneId, conversation) : null;
   const conversationKey = binding && canSend ? conversationKeyFor(surface, process, conversation)! : undefined;
-  return reading({ ...snapshot, provider: process.provider, targetToken, canSend, ...(conversationKey ? { conversationKey } : {}), inputState: readInputState(surface, process, !!displayState), reason: canSend ? null : transcript.reason, transcript, modelPicker: { supported: supportsComposer, mode: "native-cli", supportsApi: !!displayState }, ...(modelSettings ? { modelSettings } : {}), composer: { attachments: supportsComposer, skills: supportsComposer, fileMentions: supportsComposer, canSendWhileBusy: !!displayState, maxAttachmentBytes: MAX_ATTACHMENT_BYTES, maxAttachments: MAX_PANE_CHAT_ATTACHMENTS } }, surface.task.sshHost ? null : sourceRef);
+  return reading({ ...snapshot, screen, provider: process.provider, targetToken, canSend, ...(conversationKey ? { conversationKey } : {}), inputState: readInputState(surface, process, !!displayState), agentActivity: readAgentActivity(surface, process), reason: canSend ? null : transcript.reason, transcript, modelPicker: { supported: supportsComposer, mode: "native-cli", supportsApi: !!displayState }, ...(modelSettings ? { modelSettings } : {}), composer: { attachments: supportsComposer, skills: supportsComposer, fileMentions: supportsComposer, canSendWhileBusy: !!displayState, maxAttachmentBytes: MAX_ATTACHMENT_BYTES, maxAttachments: MAX_PANE_CHAT_ATTACHMENTS } }, surface.task.sshHost ? null : sourceRef);
 }
 
 async function assertTarget(taskId: string, token: string, expectedComposer?: string[]): Promise<TargetLease> {
@@ -479,7 +570,11 @@ async function queueMutation(taskId: string, action: () => Promise<void>): Promi
   const current = previous.catch(() => undefined).then(action);
   mutations.set(taskId, current);
   try { await current; }
-  finally { if (mutations.get(taskId) === current) mutations.delete(taskId); }
+  finally {
+    if (mutations.get(taskId) === current) mutations.delete(taskId);
+    // 입력을 치기 전에 읽은 결과를 재사용하면 방금 보낸 내용이 다음 주기까지 보이지 않는다
+    forgetSharedReadings(taskId);
+  }
 }
 async function serializeAction(taskId: string, token: string, action: () => Promise<void>): Promise<PaneChatActionResult> {
   await queueMutation(taskId, async () => { await assertTarget(taskId, token); await action(); });
@@ -516,8 +611,9 @@ export async function removePaneChatAttachment(taskId: string, targetToken: stri
   return { success: true };
 }
 
-export async function getPaneChatSuggestions(taskId: string, targetToken: string, kind: PaneChatSuggestionKind, query: string): Promise<PaneChatSuggestions> {
+export async function getPaneChatSuggestions(taskId: string, targetToken: string, kind: PaneChatSuggestionKind, query: string, limit?: number): Promise<PaneChatSuggestions> {
   if (!["skill", "command", "file"].includes(kind) || typeof query !== "string" || query.length > 256 || /[\x00-\x1f\x7f]/.test(query)) throw inputError("검색 종류·검색어가 올바르지 않습니다.");
+  if (limit !== undefined && (!Number.isInteger(limit) || limit < 1 || limit > MAX_PANE_CHAT_CATALOG_SUGGESTIONS)) throw inputError("제안 개수 상한이 올바르지 않습니다.");
   const lease = await assertTarget(taskId, targetToken);
   if (lease.process.provider !== "claude" && lease.process.provider !== "codex") return { targetToken, items: [], truncated: false };
   const surface = await readPaneChatSurface(taskId, lease.requestedPaneId, false);
@@ -534,7 +630,7 @@ export async function getPaneChatSuggestions(taskId: string, targetToken: string
       // 프로세스 cwd 조회가 막혀도 task의 검증된 worktree 카탈로그는 사용할 수 있다.
     }
   }
-  const result = await readPaneChatSuggestions({ provider: lease.process.provider, cwd, workspacePath, sshHost: surface.task.sshHost, processId: lease.process.pid }, kind, query);
+  const result = await readPaneChatSuggestions({ provider: lease.process.provider, cwd, workspacePath, sshHost: surface.task.sshHost, processId: lease.process.pid }, kind, query, limit);
   await assertTarget(taskId, targetToken);
   return { targetToken, ...result };
 }

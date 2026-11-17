@@ -36,6 +36,27 @@ function describeUnavailableTranscript(provider: AiSessionProvider, reason: stri
   if (provider === "codex") return "codexIdentityMissing";
   return "transcriptIdentityMissing";
 }
+/**
+ * 보낸 메시지를 에이전트가 처리하는 동안 대화 끝에 붙는 표시. Claude 데스크톱 앱처럼 제공자 아이콘이 숨 쉬듯 깜빡이고 경과 초가 올라가
+ * 기록이 아직 늘지 않아도 일이 진행 중임을 알 수 있다. 작업이 끝나면 사라지고 다음 작업에서 다시 0초부터 센다.
+ */
+function PaneChatWorkingIndicator({ provider }: { provider: AiSessionProvider | null }) {
+  const t = useTranslations("taskDetail.paneChat");
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  useEffect(() => {
+    const startedAt = Date.now();
+    const timer = setInterval(() => setElapsedSeconds(Math.floor((Date.now() - startedAt) / 1_000)), 1_000);
+    return () => clearInterval(timer);
+  }, []);
+  return (
+    <div data-testid="pane-chat-working" role="status" className="flex items-center gap-2 py-2 text-xs text-text-secondary">
+      {provider ? <span aria-hidden="true" className="motion-safe:animate-pulse"><AiProviderIcon provider={provider} size={16} /></span> : null}
+      <span>{t("agentWorking")}</span>
+      {elapsedSeconds > 0 ? <span className="tabular-nums">{t("agentWorkingElapsed", { seconds: elapsedSeconds })}</span> : null}
+    </div>
+  );
+}
+
 const controlClass = "min-h-10 rounded-md border border-border-default bg-bg-surface px-3 text-xs text-text-primary hover:bg-bg-page focus-visible:outline-2 focus-visible:outline-brand-primary disabled:opacity-40";
 
 export function PaneChatView({ taskId, paneId, taskTitle, paneTabs = [], isVisible = true, onHistory, onTerminal }: {
@@ -78,7 +99,7 @@ export function PaneChatView({ taskId, paneId, taskTitle, paneTabs = [], isVisib
       viewport.current.scrollTop = scrollAnchor.current.top + viewport.current.scrollHeight - scrollAnchor.current.height;
       scrollAnchor.current = null;
     } else if (followLatest.current && viewport.current) viewport.current.scrollTop = viewport.current.scrollHeight;
-  }, [messages, chat.pendingMessages.length, targetKey, isVisible]);
+  }, [messages, chat.pendingMessages.length, chat.isAgentWorking, targetKey, isVisible]);
 
   async function revealCodexThread() {
     setRevealOutcome(await chat.revealCodexThread());
@@ -151,6 +172,7 @@ export function PaneChatView({ taskId, paneId, taskTitle, paneTabs = [], isVisib
             <AiChatTranscriptMessage message={pending.message} provider={snapshot?.provider ?? "codex"} />
             <p role="status" className="text-right text-xs text-text-secondary">{t(pending.state === "sending" ? "sending" : pending.state === "sent" ? "messageSent" : "sendError")}</p>
           </div>)}
+          {chat.isAgentWorking && snapshot?.canSend ? <PaneChatWorkingIndicator provider={snapshot.provider} /> : null}
         </div>
       </div>
         {modelPickerOpen && snapshot?.targetToken ? <div className="pointer-events-none absolute inset-y-2 left-4 z-20 flex w-80 max-w-[calc(100%-2rem)] items-end sm:left-8"><PaneChatModelPicker key={snapshot.targetToken} taskId={taskId} targetToken={snapshot.targetToken} initialSettings={snapshot.modelSettings} onClose={(restoreFocus = true) => {

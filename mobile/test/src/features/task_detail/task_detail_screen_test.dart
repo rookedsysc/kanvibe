@@ -2371,8 +2371,9 @@ class _AgentPaneClient extends FakeDesktopClient {
   @override
   Future<PaneChatSnapshot> fetchPaneChat(
     DesktopConnection connection,
-    PaneChatTarget target,
-  ) async => PaneChatSnapshot(
+    PaneChatTarget target, {
+    bool includeScreen = true,
+  }) async => PaneChatSnapshot(
     taskId: target.taskId,
     paneId: target.paneId,
     provider: 'claude',

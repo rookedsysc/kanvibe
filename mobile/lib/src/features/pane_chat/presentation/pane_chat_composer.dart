@@ -302,6 +302,15 @@ class _PaneChatComposerState extends ConsumerState<PaneChatComposer> {
     final attachmentsEnabled = pane?.snapshot.composer.attachments == true;
     // 데스크톱처럼 입력과 첨부는 대상 CLI만 정해지면 열어 두고, 전송만 CLI 입력 상태에 따라 막는다
     final canEdit = widget.isActive && pane?.snapshot.targetToken != null;
+    final paneTarget = (
+      taskId: widget.target.taskId,
+      paneId: widget.target.paneId,
+    );
+    // Claude 데스크톱 앱처럼 작업 중이고 보낼 내용이 없으면 전송 자리를 중단 버튼으로 쓴다
+    final isStopInPlaceOfSend =
+        ref.watch(paneChatAgentWorkingProvider(paneTarget)) &&
+        draft.text.trim().isEmpty &&
+        draft.attachments.isEmpty;
     return Container(
       margin: const EdgeInsets.fromLTRB(
         AppSizes.p12,
@@ -396,29 +405,47 @@ class _PaneChatComposerState extends ConsumerState<PaneChatComposer> {
                   ),
                 ),
               Expanded(child: widget.toolbar),
-              Semantics(
-                identifier: 'pane-chat-send',
-                child: IconButton.filled(
-                  tooltip: '메시지 전송',
-                  onPressed:
-                      widget.isActive &&
-                          pane?.canSendPrompt(draft.text) == true &&
-                          draft.canSend
-                      ? notifier.send
-                      : null,
-                  icon: draft.isSending
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.arrow_upward),
-                  constraints: const BoxConstraints(
-                    minWidth: AppSizes.minTouchTarget,
-                    minHeight: AppSizes.minTouchTarget,
+              if (isStopInPlaceOfSend)
+                Semantics(
+                  identifier: 'pane-chat-stop-response',
+                  child: IconButton.filled(
+                    tooltip: '응답 중단',
+                    onPressed: widget.isActive && pane?.canControl == true
+                        ? ref
+                              .read(paneChatProvider(paneTarget).notifier)
+                              .interrupt
+                        : null,
+                    icon: const Icon(Icons.stop),
+                    constraints: const BoxConstraints(
+                      minWidth: AppSizes.minTouchTarget,
+                      minHeight: AppSizes.minTouchTarget,
+                    ),
+                  ),
+                )
+              else
+                Semantics(
+                  identifier: 'pane-chat-send',
+                  child: IconButton.filled(
+                    tooltip: '메시지 전송',
+                    onPressed:
+                        widget.isActive &&
+                            pane?.canSendPrompt(draft.text) == true &&
+                            draft.canSend
+                        ? notifier.send
+                        : null,
+                    icon: draft.isSending
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.arrow_upward),
+                    constraints: const BoxConstraints(
+                      minWidth: AppSizes.minTouchTarget,
+                      minHeight: AppSizes.minTouchTarget,
+                    ),
                   ),
                 ),
-              ),
             ],
           ),
         ],

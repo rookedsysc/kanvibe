@@ -2,9 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SessionType } from "@/entities/KanbanTask";
 import type { CodexThreadInput } from "@/lib/aiSessions/codexThreadInput";
 
-const mocks = vi.hoisted(() => ({ surface: vi.fn(), layout: vi.fn(), exec: vi.fn(), write: vi.fn(), apiInput: vi.fn(), binding: vi.fn(), processBinding: vi.fn().mockResolvedValue(null), reportedBinding: vi.fn().mockResolvedValue(null), claude: vi.fn(), codex: vi.fn(), gemini: vi.fn(), opencode: vi.fn(), rollout: vi.fn(), emptyThread: vi.fn(), focusHerdr: vi.fn(), tabs: vi.fn(), catalog: vi.fn() }));
+const mocks = vi.hoisted(() => ({ surface: vi.fn(), screen: vi.fn(), layout: vi.fn(), exec: vi.fn(), write: vi.fn(), apiInput: vi.fn(), binding: vi.fn(), processBinding: vi.fn().mockResolvedValue(null), reportedBinding: vi.fn().mockResolvedValue(null), claude: vi.fn(), codex: vi.fn(), gemini: vi.fn(), opencode: vi.fn(), rollout: vi.fn(), emptyThread: vi.fn(), focusHerdr: vi.fn(), tabs: vi.fn(), catalog: vi.fn() }));
 const modelMocks = vi.hoisted(() => ({ tail: vi.fn(), readTextFile: vi.fn() }));
-vi.mock("../paneChatSurface", () => ({ readPaneChatSurface: mocks.surface, readPaneChatLayout: mocks.layout }));
+vi.mock("../paneChatSurface", () => ({ readPaneChatSurface: mocks.surface, readPaneChatScreen: mocks.screen, readPaneChatLayout: mocks.layout }));
 vi.mock("@/lib/gitOperations", () => ({ execGit: mocks.exec }));
 vi.mock("@/lib/terminal", () => ({ focusHerdrTaskPane: mocks.focusHerdr, listLocalTerminalTabs: mocks.tabs }));
 vi.mock("../mobileBridgeService", () => ({ writeToPane: mocks.write }));
@@ -18,7 +18,7 @@ vi.mock("@/lib/aiSessions/codexThreadMetadata", () => ({ readCodexEmptyThread: m
 vi.mock("@/lib/aiSessions/codexThreadInput", () => ({ sendCodexThreadInput: mocks.apiInput }));
 vi.mock("@/lib/aiSessions/shared", async (importOriginal) => ({ ...await importOriginal<typeof import("@/lib/aiSessions/shared")>(), readJsonLinesTail: modelMocks.tail }));
 vi.mock("@/lib/hostFileAccess", async (importOriginal) => ({ ...await importOriginal<typeof import("@/lib/hostFileAccess")>(), readTextFile: modelMocks.readTextFile }));
-import { focusPaneChatTerminal, getPaneChatLayout, getPaneChatSnapshot, getPaneChatModelSettings, getPaneChatTranscriptPage, getPaneChatSuggestions, stagePaneChatAttachment, removePaneChatAttachment, sendPaneChatPrompt, interruptPaneChat, openPaneChatModelPicker, changePaneChatModelSetting, sendPaneChatKey, revealPaneChatCodexThread } from "../paneChatService";
+import { focusPaneChatTerminal, getPaneChatLayout, getPaneChatSnapshot, readPaneChat, readRecentPaneChat, getPaneChatModelSettings, getPaneChatTranscriptPage, getPaneChatSuggestions, stagePaneChatAttachment, removePaneChatAttachment, sendPaneChatPrompt, interruptPaneChat, openPaneChatModelPicker, changePaneChatModelSetting, sendPaneChatKey, revealPaneChatCodexThread } from "../paneChatService";
 
 /** pane root의 tty로 좁힌 프로세스 조회 명령인지. 다른 `ps` 호출(예: tty 단독 조회)과 구분한다 */
 const isPaneProcessTableCommand = (command: string) => command.includes("ucomm=,args=");
@@ -31,6 +31,7 @@ beforeEach(() => {
   mocks.processBinding.mockResolvedValue(null);
   mocks.reportedBinding.mockResolvedValue(null);
   mocks.surface.mockResolvedValue(surface);
+  mocks.screen.mockImplementation(async (read: { screen: string }) => read.screen);
   mocks.exec.mockImplementation(async (command: string) => { if (isPaneProcessTableCommand(command)) return processTable(); throw new Error("No open transcript"); });
   mocks.binding.mockResolvedValue({ sessionId: "exact-session", sourceRef: "/allowed/exact.jsonl" });
   mocks.codex.mockResolvedValue({ sessionId: "exact-session", provider: "codex", messages: [], nextCursor: null });
@@ -132,6 +133,16 @@ describe("pane chat exact CLI control", () => {
     mocks.catalog.mockImplementationOnce(async () => { mocks.exec.mockResolvedValue(processTable("Thu Nov 12 20:00:00 2026")); return { items: [], truncated: false }; });
     await expect(getPaneChatSuggestions("task-chat", target.targetToken!, "file", "readme")).rejects.toMatchObject({ name: "PaneChatTargetChangedError" });
     expect(mocks.write).not.toHaveBeenCalled();
+  });
+
+  it("passes a raised suggestion limit to the catalog and rejects limits outside 1 to 512", async () => {
+    const target = await getPaneChatSnapshot("task-chat", "%3");
+    mocks.catalog.mockResolvedValue({ items: [], truncated: false });
+    await getPaneChatSuggestions("task-chat", target.targetToken!, "skill", "", 512);
+    expect(mocks.catalog).toHaveBeenLastCalledWith(expect.anything(), "skill", "", 512);
+    mocks.catalog.mockClear();
+    for (const limit of [0, 513, 1.5, Number.NaN]) await expect(getPaneChatSuggestions("task-chat", target.targetToken!, "skill", "", limit)).rejects.toMatchObject({ name: "PaneChatInputError" });
+    expect(mocks.catalog).not.toHaveBeenCalled();
   });
 
   it("permits the same request to retry after a definite pre-write refusal", async () => {
@@ -279,6 +290,55 @@ describe("pane chat exact CLI control", () => {
     expect(mocks.write.mock.calls).toEqual([["task-chat", "%3", "\x03"]]);
   });
 
+  it("대화 기록을 연결했으면 CLI 화면 스크롤백을 읽지 않고, 화면을 요청했거나 기록을 연결하지 못했을 때만 읽는다", async () => {
+    const withTranscript = await getPaneChatSnapshot("task-chat", "%3");
+    expect(withTranscript).toMatchObject({ canSend: true, screen: "" });
+    expect(mocks.screen).not.toHaveBeenCalled();
+
+    const requested = await readPaneChat("task-chat", "%3", { includeScreen: true });
+    expect(requested.snapshot).toMatchObject({ canSend: true, screen: "CLI screen" });
+    expect(mocks.screen).toHaveBeenCalledTimes(1);
+
+    mocks.binding.mockResolvedValue(null);
+    expect(await getPaneChatSnapshot("task-chat", "%3")).toMatchObject({ canSend: false, screen: "CLI screen" });
+    expect(mocks.screen).toHaveBeenCalledTimes(2);
+  });
+
+  it("CLI 화면을 읽지 못하면 대화를 연결했어도 그 pane을 보여 주지 않는다", async () => {
+    mocks.screen.mockRejectedValue(new Error("capture failed"));
+    expect((await readPaneChat("task-chat", "%3", { includeScreen: true })).snapshot).toMatchObject({ paneId: null, canSend: false, reason: "pane-unavailable" });
+  });
+
+  it("구독 감시가 1초 안에 읽은 결과를 같은 pane의 데스크톱 조회가 재사용하고, 시간이 지나거나 pane에 입력을 친 뒤에는 새로 읽는다", async () => {
+    const now = vi.spyOn(Date, "now");
+    try {
+      now.mockReturnValue(1_000_000);
+      const watched = await readPaneChat("task-chat", "%7", { isSharedWithOtherViewers: true });
+      const readsByWatcher = mocks.surface.mock.calls.length;
+
+      expect(await getPaneChatSnapshot("task-chat", "%7")).toBe(watched.snapshot);
+      expect(mocks.surface.mock.calls.length).toBe(readsByWatcher);
+
+      // 화면이 필요한 조회는 화면 없이 읽은 결과를 쓰지 않고, 다른 pane 식별자로 요청한 조회와는 lease가 달라 나누지 않는다
+      expect((await readRecentPaneChat("task-chat", "%7", { includeScreen: true })).snapshot.screen).toBe("CLI screen");
+      await getPaneChatSnapshot("task-chat");
+      const readsAfterOtherRequests = mocks.surface.mock.calls.length;
+      expect(readsAfterOtherRequests).toBeGreaterThan(readsByWatcher);
+
+      now.mockReturnValue(1_001_001);
+      await getPaneChatSnapshot("task-chat", "%7");
+      expect(mocks.surface.mock.calls.length).toBeGreaterThan(readsAfterOtherRequests);
+
+      const rewatched = await readPaneChat("task-chat", "%7", { isSharedWithOtherViewers: true });
+      await interruptPaneChat("task-chat", rewatched.snapshot.targetToken!);
+      const readsAfterInput = mocks.surface.mock.calls.length;
+      await getPaneChatSnapshot("task-chat", "%7");
+      expect(mocks.surface.mock.calls.length).toBeGreaterThan(readsAfterInput);
+    } finally {
+      now.mockRestore();
+    }
+  });
+
   it("keeps the exact CLI visible but refuses input while conversation mapping is unavailable", async () => {
     mocks.binding.mockResolvedValue(null);
     const first = await getPaneChatSnapshot("task-chat");
@@ -341,6 +401,29 @@ describe("pane chat exact CLI control", () => {
     expect(modelMocks.tail).toHaveBeenCalledWith("/allowed/exact.jsonl", 200, null);
   });
 
+  it("원격 기록 파일이 바뀌지 않았으면 모델 설정용 끝부분을 다시 받지 않는다", async () => {
+    const remoteFile = "/remote/model-cache.jsonl";
+    let remoteMtimeSeconds = "1700000000";
+    mocks.surface.mockResolvedValue({ ...surface, task: { ...surface.task, sshHost: "remote-host" } });
+    mocks.binding.mockResolvedValue({ sessionId: "exact-session", sourceRef: remoteFile });
+    mocks.exec.mockImplementation(async (command: string) => {
+      if (isPaneProcessTableCommand(command)) return processTable().replace("/usr/bin/python3 python3 /tmp/codex", "/tmp/claude /tmp/claude");
+      if (command.includes("stat -c %Y")) return remoteMtimeSeconds;
+      throw new Error("No open transcript");
+    });
+    modelMocks.tail.mockResolvedValue([{ type: "assistant", message: { model: "claude-sonnet-4-6" } }]);
+
+    expect((await readPaneChat("task-chat", "%3")).snapshot.modelSettings?.model).toBe("sonnet");
+    expect((await readPaneChat("task-chat", "%3")).snapshot.modelSettings?.model).toBe("sonnet");
+    expect(modelMocks.tail).toHaveBeenCalledTimes(1);
+
+    remoteMtimeSeconds = "1700000005";
+    modelMocks.tail.mockResolvedValue([{ type: "assistant", message: { model: "claude-opus-4-6" } }]);
+    expect((await readPaneChat("task-chat", "%3")).snapshot.modelSettings?.model).toBe("opus");
+    expect(modelMocks.tail).toHaveBeenCalledTimes(2);
+    expect(modelMocks.tail).toHaveBeenLastCalledWith(remoteFile, 200, "remote-host");
+  });
+
   it("reads the Claude picker metadata without opening a CLI picker", async () => {
     mocks.exec.mockResolvedValue(processTable().replace("/usr/bin/python3 python3 /tmp/codex", "/tmp/claude /tmp/claude"));
     modelMocks.tail.mockResolvedValue([{ type: "assistant", message: { model: "claude-sonnet-4-6" } }]);
@@ -363,7 +446,8 @@ describe("pane chat exact CLI control", () => {
     });
     const reading = getPaneChatSnapshot("task-chat", "%3");
     await transcriptStarted;
-    expect(modelMocks.tail).toHaveBeenCalled();
+    // 모델 설정은 기록 파일의 수정 시각을 확인한 뒤 읽으므로, 대화 기록 읽기가 막혀 있는 동안 시작되는지를 기다려 본다
+    await vi.waitFor(() => expect(modelMocks.tail).toHaveBeenCalled());
     release();
     expect((await reading).transcript.status).toBe("available");
   });
@@ -1106,5 +1190,49 @@ describe("Codex displayed-thread footer binding", () => {
     const snapshot = await settle(getPaneChatSnapshot(taskId, "%A"));
     expect(mocks.write).not.toHaveBeenCalled();
     expect(snapshot.transcript).toMatchObject({ status: "available", sessionId: "hook-session" });
+  });
+});
+
+describe("pane chat agent activity", () => {
+  const claudeProcesses = () => processTable().replace("/usr/bin/python3 python3 /tmp/codex", "/tmp/claude /tmp/claude");
+  const rule = "─".repeat(40);
+  /** Claude Code 2.1.325를 tmux에서 실제로 돌려 캡처한 화면의 아래쪽. 작업 중일 때만 footer에 중단 안내가 붙는다 */
+  const claudeScreen = (footer: string, aboveBox = "· Swooping… (2s · thinking with high effort)") => [aboveBox, "                                    ● high · /effort", rule, "❯ ", rule, footer];
+  const claudeWorkingFooter = "  ⏵⏵ auto mode on (shift+tab to cycle) · esc to interrupt · ← 1 agent";
+  const claudeIdleFooter = "  ⏵⏵ auto mode on (shift+tab to cycle) · ← 1 agent";
+  /** Codex 0.169를 실제로 돌려 캡처한 화면의 아래쪽. 작업 중일 때만 입력란 위에 Working 줄이 생긴다 */
+  const codexScreen = (status: string) => [status, "                         ⚠ weekly limit: 10% left · /status", "› Ask Codex to do anything", "  GPT-6.1-Sol high · /repo", "  ← for agents · ? for shortcuts"];
+
+  it.each([
+    ["working", claudeScreen(claudeWorkingFooter)],
+    ["idle", claudeScreen(claudeIdleFooter, "")],
+    // 입력란 위 대화 본문에 같은 문구가 있어도 footer에 없으면 작업 중이 아니다
+    ["idle", claudeScreen(claudeIdleFooter, "Press esc to interrupt a running agent.")],
+  ] as const)("Claude 화면에서 %s로 판정한다", async (expected, viewportLines) => {
+    mocks.exec.mockResolvedValue(claudeProcesses());
+    mocks.surface.mockResolvedValue({ ...surface, inputLine: "❯ ", cursorColumn: 2, cursorRow: 3, viewportLines });
+    expect((await getPaneChatSnapshot("task-chat", "%3")).agentActivity).toBe(expected);
+  });
+
+  it.each([
+    ["working", "• Working (0s • esc to interrupt)"],
+    ["idle", ""],
+  ] as const)("Codex 화면에서 %s로 판정한다", async (expected, status) => {
+    const viewportLines = codexScreen(status);
+    mocks.surface.mockResolvedValue({ ...surface, inputLine: viewportLines[2], cursorColumn: 2, cursorRow: 2, viewportLines });
+    expect((await getPaneChatSnapshot("task-chat", "%3")).agentActivity).toBe(expected);
+  });
+
+  it("화면 좌표가 없는 surface(zellij)나 확인하지 않은 CLI는 unknown이다", async () => {
+    mocks.exec.mockResolvedValue(claudeProcesses());
+    mocks.surface.mockResolvedValue({ ...surface, inputLine: null, cursorColumn: null, screen: claudeScreen(claudeWorkingFooter).join("\n") });
+    expect((await getPaneChatSnapshot("task-chat", "%3")).agentActivity).toBe("unknown");
+
+    mocks.exec.mockResolvedValue("100 1 100 200 ttys010 Thu Nov 12 18:00:00 2026 zsh /bin/zsh\n200 100 200 200 ttys010 Thu Nov 12 19:00:00 2026 opencode.exe opencode");
+    mocks.processBinding.mockResolvedValue({ sessionId: "open", sourceRef: "/allowed/open", revision: 1 });
+    mocks.opencode.mockResolvedValue({ sessionId: "open", provider: "opencode", messages: [], nextCursor: null });
+    const viewportLines = ["  ┃  Ask anything…", "  ┃  Build · esc to interrupt", "  ╹▀▀▀"];
+    mocks.surface.mockResolvedValue({ ...surface, inputLine: viewportLines[0], cursorColumn: 5, cursorRow: 0, viewportLines });
+    expect((await getPaneChatSnapshot("task-chat", "%3")).agentActivity).toBe("unknown");
   });
 });

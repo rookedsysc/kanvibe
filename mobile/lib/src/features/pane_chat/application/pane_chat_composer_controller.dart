@@ -73,6 +73,13 @@ class _ComposerLifetime {
   final DesktopConnection? connection;
   final String taskId, targetToken;
   final stagedIds = <String>{}, pendingSendIds = <String>{};
+
+  /// 메뉴를 열 때 한 번 받아 둔 skill·명령 목록. 전부 받은 종류만 담고, 글자 입력은 이 목록을 기기에서 거른다
+  final catalogs = <String, List<PaneChatSuggestion>>{};
+
+  /// 목록이 상한보다 길거나 구버전 데스크톱이라 일부만 받은 종류. 글자마다 데스크톱에 묻는다
+  final partialCatalogKinds = <String>{};
+  final loadingCatalogKinds = <String>{};
   bool disposed = false;
 
   Future<void> cleanup(Iterable<String> ids) async {
@@ -100,6 +107,9 @@ class PaneChatComposerController extends Notifier<PaneChatComposerState> {
   String get ownerKey =>
       '${target.connectionId}:${target.taskId}:${target.paneId}:${target.conversationKey}';
   Timer? _suggestionTimer;
+
+  /// 지금 열려 있는 skill·명령 메뉴와 그 검색어. 파일 제안이거나 메뉴가 닫혀 있으면 null이다
+  ({String kind, String query})? _openCatalog;
   int _suggestionEpoch = 0, _localId = 0;
   bool _active = false;
   late _ComposerLifetime _lifetime;
@@ -479,18 +489,96 @@ class PaneChatComposerController extends Notifier<PaneChatComposerState> {
   void dismissSuggestions() {
     _suggestionEpoch++;
     _suggestionTimer?.cancel();
+    _openCatalog = null;
     _update(suggestions: [], loading: false);
   }
 
   void suggest(String kind, String query) {
     _suggestionTimer?.cancel();
     final epoch = ++_suggestionEpoch;
+    if (kind == 'file') {
+      _openCatalog = null;
+      _askDesktop(kind, query, epoch);
+      return;
+    }
+    final isMenuOpening = _openCatalog?.kind != kind;
+    _openCatalog = (kind: kind, query: query);
+    _showOpenCatalog();
+    final isCatalogUnknown =
+        !_lifetime.catalogs.containsKey(kind) &&
+        !_lifetime.partialCatalogKinds.contains(kind);
+    if (isMenuOpening || isCatalogUnknown) unawaited(_loadCatalog(kind));
+  }
+
+  /// 열려 있는 skill·명령 메뉴를 받아 둔 목록으로 채운다. 아직 받지 못했으면 불러오는 중으로 둔다
+  void _showOpenCatalog() {
+    final open = _openCatalog;
+    if (open == null) return;
+    final catalog = _lifetime.catalogs[open.kind];
+    if (catalog != null) {
+      _update(
+        suggestions: filterPaneChatSuggestions(catalog, open.query),
+        loading: false,
+      );
+    } else if (_lifetime.partialCatalogKinds.contains(open.kind)) {
+      _askDesktop(open.kind, open.query, _suggestionEpoch);
+    } else {
+      _update(suggestions: [], loading: true);
+    }
+  }
+
+  Future<void> _loadCatalog(String kind) async {
+    final lifetime = _lifetime;
+    final connection = _connection;
+    if (!_ownsTarget ||
+        connection == null ||
+        !lifetime.loadingCatalogKinds.add(kind)) {
+      return;
+    }
+    bool showsCatalog() =>
+        ref.mounted &&
+        identical(lifetime, _lifetime) &&
+        _openCatalog?.kind == kind &&
+        _ownsTarget;
+    try {
+      final catalog = await ref
+          .read(desktopClientProvider)
+          .getPaneChatSuggestions(
+            connection,
+            target.taskId,
+            lifetime.targetToken,
+            kind,
+            '',
+            limit: maxPaneChatCatalogSuggestions,
+          );
+      if (catalog.isTruncated) {
+        lifetime.catalogs.remove(kind);
+        lifetime.partialCatalogKinds.add(kind);
+      } else {
+        lifetime.partialCatalogKinds.remove(kind);
+        lifetime.catalogs[kind] = catalog.items;
+      }
+      if (showsCatalog()) _showOpenCatalog();
+    } catch (_) {
+      // 다시 받는 데 실패해도 이미 받아 둔 목록이 있으면 그대로 보여 준다.
+      final hasRememberedCatalog =
+          lifetime.catalogs.containsKey(kind) ||
+          lifetime.partialCatalogKinds.contains(kind);
+      if (!hasRememberedCatalog && showsCatalog()) _showSuggestionFailure();
+    } finally {
+      lifetime.loadingCatalogKinds.remove(kind);
+    }
+  }
+
+  /// 입력이 잠깐 멈춘 뒤에 이 검색어에 맞는 제안을 데스크톱에 묻는다
+  void _askDesktop(String kind, String query, int epoch) {
+    _suggestionTimer?.cancel();
     _update(suggestions: [], loading: true);
     _suggestionTimer = Timer(const Duration(milliseconds: 180), () async {
       final connection = _connection;
       if (!_ownsTarget || connection == null) return;
       try {
-        final items = await ref
+        final matches = await ref
             .read(desktopClientProvider)
             .getPaneChatSuggestions(
               connection,
@@ -500,17 +588,21 @@ class PaneChatComposerController extends Notifier<PaneChatComposerState> {
               query,
             );
         if (ref.mounted && epoch == _suggestionEpoch && _ownsTarget) {
-          _update(suggestions: items, loading: false);
+          _update(suggestions: matches.items, loading: false);
         }
       } catch (_) {
         if (ref.mounted && epoch == _suggestionEpoch && _ownsTarget) {
-          _update(
-            suggestions: [],
-            loading: false,
-            suggestionError: '추천을 불러오지 못했습니다. 다시 입력해 주세요.',
-          );
+          _showSuggestionFailure();
         }
       }
     });
+  }
+
+  void _showSuggestionFailure() {
+    _update(
+      suggestions: [],
+      loading: false,
+      suggestionError: '추천을 불러오지 못했습니다. 다시 입력해 주세요.',
+    );
   }
 }

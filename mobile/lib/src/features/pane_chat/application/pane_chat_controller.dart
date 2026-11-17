@@ -22,6 +22,18 @@ final paneChatPendingPromptProvider = NotifierProvider.autoDispose
       PaneChatPendingPrompt.new,
     );
 
+/// 에이전트가 응답을 만드는 중인지. 데스크탑이 CLI 화면으로 작업 중을 확인했거나, 보낸 메시지가 아직 기록에 나타나지 않았으면 작업 중이다
+final paneChatAgentWorkingProvider = Provider.autoDispose
+    .family<bool, PaneChatTarget>((ref, target) {
+      final activity = ref.watch(
+        paneChatProvider(target)
+            .select((value) => value.value?.snapshot.agentActivity),
+      );
+      final hasUnrecordedSend =
+          ref.watch(paneChatPendingPromptProvider(target)) != null;
+      return activity == PaneChatAgentActivity.working || hasUnrecordedSend;
+    });
+
 class PaneChatPendingPrompt extends Notifier<String?> {
   PaneChatPendingPrompt(this.target);
   final PaneChatTarget target;
@@ -196,6 +208,11 @@ class PaneChatController extends AsyncNotifier<PaneChatState> {
     if (_wantsScreen == wantsScreen) return;
     _wantsScreen = wantsScreen;
     if (_subscriber != null) _subscribe();
+    // push가 없을 때는 화면 없이 받은 마지막 조회 결과가 다음 조회까지 빈 화면으로 남지 않게 바로 다시 받는다.
+    // 데스크탑은 대화 기록을 잇지 못하면 요청과 상관없이 화면을 담아 보내므로, 그 결과를 보고 있을 때는 다시 받지 않는다
+    final isShowingScreenlessSnapshot =
+        state.value?.snapshot.transcript.available ?? false;
+    if (wantsScreen && !_isLive && isShowingScreenlessSnapshot) _catchUp();
   }
 
   void _changeLive({required bool isLive, required bool isBehind}) {
@@ -313,7 +330,7 @@ class PaneChatController extends AsyncNotifier<PaneChatState> {
     try {
       return await ref
           .read(desktopClientProvider)
-          .fetchPaneChat(connection, target);
+          .fetchPaneChat(connection, target, includeScreen: _wantsScreen);
     } on DesktopRequestException catch (error) {
       await _forgetUnauthorized(connection, error);
       rethrow;

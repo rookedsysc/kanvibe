@@ -429,11 +429,17 @@ async function handlePaneChatRequest(request, response, bridge, taskId, action, 
       if (action === "suggestions") {
         const token = searchParams.get("targetToken");
         if (!token) { writeJson(response, 400, { success: false, error: "CLI 대상 토큰이 필요합니다" }); return; }
-        const result = await bridge.getPaneChatSuggestions(taskId, token, searchParams.get("kind"), searchParams.get("query") ?? "");
+        const result = await bridge.getPaneChatSuggestions(taskId, token, searchParams.get("kind"), searchParams.get("query") ?? "", ...(searchParams.has("limit") ? [Number(searchParams.get("limit"))] : []));
         writeJson(response, 200, { success: true, ...result });
         return;
       }
-      const snapshot = await bridge.getSequencedPaneChatSnapshot(taskId, searchParams.get("paneId") ?? undefined);
+      const paneId = searchParams.get("paneId") ?? undefined;
+      // 에이전트 이름만 필요한 터미널 화면은 화면과 대화 기록을 읽지 않고 이름만 받는다
+      if (searchParams.get("detail") === "agent" && paneId) {
+        writeJson(response, 200, { success: true, provider: await bridge.getPaneChatAgentProvider(taskId, paneId) });
+        return;
+      }
+      const snapshot = await bridge.getSequencedPaneChatSnapshot(taskId, paneId, { includeScreen: searchParams.get("wantsScreen") !== "false" });
       writeJson(response, 200, { success: true, snapshot });
       return;
     }

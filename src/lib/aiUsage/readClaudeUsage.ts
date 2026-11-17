@@ -8,12 +8,8 @@ import {
   createUsageWindow,
 } from "@/lib/aiUsage/shared";
 import {
-  isClaudeTokenExpiring,
-  refreshClaudeCredentials,
-} from "@/lib/aiUsage/claudeOAuthRefresh";
-import { writeCredentialsAtomically } from "@/lib/aiUsage/atomicCredentialsWrite";
-import { refreshCredentialsThroughCli } from "@/lib/aiUsage/providerCli";
-import {
+  hasUsableClaudeRefreshToken,
+  isClaudeAccessTokenExpired,
   readClaudeAccessToken,
   readClaudeKeychainCredentials,
   readClaudeSubscriptionType,
@@ -69,74 +65,8 @@ interface ClaudeUsageResponse {
   limits?: unknown;
 }
 
-/**
- * Keychain에 있는 자격증명을 갱신한다.
- *
- * Keychain 항목은 Claude Code의 소유라 KanVibe가 회전된 refresh 토큰을 되쓰면 CLI 쪽 로그인이 깨진다.
- * 그래서 갱신 자체를 소유자에게 맡기고 결과만 다시 읽는다. 예전에는 여기서 포기하고 사용자에게
- * "터미널에서 claude를 한 번 실행하라"고 떠넘겼는데, 그 실행을 앱이 대신하는 것이 이 함수다.
- */
-async function refreshKeychainCredentials(configDir: string): Promise<string> {
-  await refreshCredentialsThroughCli("claude", configDir);
-
-  const refreshedResult = await readClaudeKeychainCredentials([configDir]);
-  return refreshedResult.outcome === "found" ? refreshedResult.credentials : "";
-}
-
 function toCredentialsPath(configDir: string): string {
   return path.join(configDir, ".credentials.json");
-}
-
-/**
- * Keychain이 원본이다. 만료 임박이 아니면 있는 값을 그대로 쓰고, 만료 임박일 때만 CLI에 갱신을 맡긴다.
- */
-async function refreshExpiringKeychainCredentials(
-  configDir: string,
-  keychainCredentials: string,
-): Promise<string> {
-  if (!isClaudeTokenExpiring(keychainCredentials)) {
-    return keychainCredentials;
-  }
-
-  const refreshedCredentials = await refreshKeychainCredentials(configDir);
-  return refreshedCredentials || keychainCredentials;
-}
-
-/**
- * 파일이 원본이다. 액세스 토큰이 만료 임박이면 갱신한 뒤 돌려준다.
- *
- * refresh 토큰은 한 번 쓰면 회전되므로, 갱신에 성공하면 조회보다 먼저 파일에 되쓴다.
- * 되쓰기가 실패하면 저장된 refresh 토큰은 이미 서버에서 무효가 된 상태라 CLI 재로그인이 필요해진다 —
- * 복구할 방법이 없으므로 최소한 눈에 띄게 남긴다.
- *
- * 직접 갱신이 실패하면 CLI에 한 번 맡겨 본다. 저장된 refresh 토큰이 이미 회전된 뒤라면
- * 최신 값을 아는 쪽은 CLI뿐이고, 그 경우에도 사용자가 터미널로 나갈 이유는 없다.
- */
-async function refreshExpiringFileCredentials(
-  configDir: string,
-  fileCredentials: string,
-): Promise<string> {
-  if (!isClaudeTokenExpiring(fileCredentials)) {
-    return fileCredentials;
-  }
-
-  const credentialsPath = toCredentialsPath(configDir);
-  const refreshedCredentials = await refreshClaudeCredentials(fileCredentials);
-  if (!refreshedCredentials) {
-    await refreshCredentialsThroughCli("claude", configDir);
-    return (await readTextFile(credentialsPath)) || fileCredentials;
-  }
-
-  try {
-    await writeCredentialsAtomically(credentialsPath, refreshedCredentials);
-  } catch (error) {
-    console.error(
-      `[ai-usage] 갱신한 Claude 자격증명을 저장하지 못했습니다. ${credentialsPath}의 refresh 토큰이 무효일 수 있어 재로그인이 필요할 수 있습니다:`,
-      error instanceof Error ? error.message : error,
-    );
-  }
-
-  return refreshedCredentials;
 }
 
 /**
@@ -160,7 +90,12 @@ function isKeychainFresher(fileCredentials: string, keychainCredentials: string)
   return keychainExpiresAt !== null && (fileExpiresAt === null || keychainExpiresAt > fileExpiresAt);
 }
 
-/** 파일과 Keychain 중 신선한 쪽을 고르고, 그쪽이 만료 임박이면 그 저장소의 소유자에게 갱신을 맡긴다 */
+/**
+ * 파일과 Keychain 중 신선한 쪽을 읽기만 한다.
+ *
+ * refresh 토큰은 한 번 쓰면 회전돼서, KanVibe가 대신 갱신하면 Claude Code가 들고 있던 값이 무효가 되고
+ * 두 곳에 서로 다른 로그인이 남는다. 그래서 갱신은 Claude Code만 하고 여기서는 저장소에 쓰지 않는다.
+ */
 async function readFreshClaudeCredentials(
   configDir: string,
 ): Promise<{ credentials: string; isKeychainUnreadable: boolean }> {
@@ -169,21 +104,23 @@ async function readFreshClaudeCredentials(
   const keychainCredentials = keychainResult.outcome === "found" ? keychainResult.credentials : "";
   const isKeychainUnreadable = keychainResult.outcome === "unreadable";
 
-  if (isKeychainFresher(fileCredentials, keychainCredentials)) {
-    return {
-      credentials: await refreshExpiringKeychainCredentials(configDir, keychainCredentials),
-      isKeychainUnreadable,
-    };
-  }
-
-  if (!fileCredentials) {
-    return { credentials: "", isKeychainUnreadable };
-  }
-
   return {
-    credentials: await refreshExpiringFileCredentials(configDir, fileCredentials),
+    credentials: isKeychainFresher(fileCredentials, keychainCredentials)
+      ? keychainCredentials
+      : fileCredentials,
     isKeychainUnreadable,
   };
+}
+
+/**
+ * 액세스 토큰을 쓸 수 없을 때, Claude Code가 풀 수 있는 부재와 사용자가 다시 로그인해야 하는 부재를 가른다.
+ * 앞쪽은 로그인이 살아 있으므로 재로그인을 권하지 않는다.
+ */
+function createUnusableTokenUsage(account: AiUsageAccount, credentials: string): AiUsageAccountResult {
+  return createUnavailableUsage(
+    account,
+    hasUsableClaudeRefreshToken(credentials) ? "awaiting-cli-refresh" : "expired-credentials",
+  );
 }
 
 function toClaudeUsageWindow(
@@ -264,6 +201,11 @@ export async function readClaudeUsage(account: AiUsageAccount): Promise<AiUsageA
     );
   }
 
+  // 만료된 토큰은 보내도 거절될 뿐이라, 몇 번 안 되는 호출 예산을 거기에 쓰지 않는다
+  if (isClaudeAccessTokenExpired(credentials)) {
+    return createUnusableTokenUsage(account, credentials);
+  }
+
   if (Date.now() < usageRetryAllowedAtMs) {
     return createErrorUsage(account, "rate-limited");
   }
@@ -286,7 +228,11 @@ export async function readClaudeUsage(account: AiUsageAccount): Promise<AiUsageA
     if (response.status === TOO_MANY_REQUESTS_STATUS) {
       usageRetryAllowedAtMs = toRetryAllowedAtMs(response);
     }
-    return classifyUsageHttpFailure(account, response.status);
+
+    const failure = classifyUsageHttpFailure(account, response.status);
+    return failure.reason === "expired-credentials"
+      ? createUnusableTokenUsage(account, credentials)
+      : failure;
   }
 
   let payload: ClaudeUsageResponse;

@@ -148,6 +148,21 @@ function renderMarkdownHtml(markdown: string, copyLabel: string) {
   return decorateMarkdownElements(sanitizedHtml, copyLabel);
 }
 
+/**
+ * Mermaid는 SVG에 width="100%"와 max-width를 붙여 칸 너비에 맞춰 줄인다.
+ * 넓은 다이어그램의 글자가 읽을 수 없을 만큼 작아지지 않게 viewBox의 원래 너비로 고정하고, 넘치는 부분은 틀에서 옆으로 넘긴다.
+ */
+function fixSvgToNaturalWidth(svgMarkup: string): string {
+  const template = document.createElement("template");
+  template.innerHTML = svgMarkup;
+  const svg = template.content.querySelector("svg");
+  const naturalWidth = Number(svg?.getAttribute("viewBox")?.trim().split(/[\s,]+/)[2]);
+  if (!svg || !Number.isFinite(naturalWidth) || naturalWidth <= 0) return svgMarkup;
+  svg.setAttribute("width", String(naturalWidth));
+  svg.style.maxWidth = "none";
+  return template.innerHTML;
+}
+
 function createMermaidElementId(definition: string, index: number, componentId: string) {
   let hash = 0;
   for (let charIndex = 0; charIndex < definition.length; charIndex += 1) {
@@ -217,7 +232,7 @@ function MermaidDiagram({ definition, index }: { definition: string; index: numb
         const result = await mermaidApi.render(elementId, definition);
         const sanitizedSvg = DOMPurify.sanitize(result.svg, MERMAID_SANITIZE_CONFIG);
         if (!cancelled) {
-          setSvg(sanitizedSvg);
+          setSvg(fixSvgToNaturalWidth(sanitizedSvg));
         }
       } catch {
         if (!cancelled) {
@@ -251,7 +266,7 @@ function MermaidDiagram({ definition, index }: { definition: string; index: numb
     >
       {svg ? (
         <div
-          className="min-w-max [&_svg]:h-auto [&_svg]:max-w-full"
+          className="min-w-max [&_svg]:h-auto"
           dangerouslySetInnerHTML={{ __html: svg }}
         />
       ) : (

@@ -22,6 +22,16 @@ enum PaneChatRowsOutcome {
 
 enum PaneChatInputState { ready, occupied, unknown }
 
+/// 에이전트가 응답을 만들거나 도구를 실행하는 중인지. 데스크탑이 CLI 화면으로 판정하며, 판정할 수 없거나 오래된 데스크탑이면 unknown이다
+enum PaneChatAgentActivity {
+  working,
+  idle,
+  unknown;
+
+  static PaneChatAgentActivity fromJson(Object? value) =>
+      values.where((activity) => activity.name == value).firstOrNull ?? unknown;
+}
+
 enum PaneChatKey { up, down, left, right, enter, escape }
 
 enum PaneChatAction {
@@ -108,6 +118,7 @@ class PaneChatSnapshot {
     required this.targetToken,
     required this.canSend,
     required this.inputState,
+    this.agentActivity = PaneChatAgentActivity.unknown,
     required this.screen,
     required this.reason,
     required this.transcript,
@@ -129,6 +140,7 @@ class PaneChatSnapshot {
   final String? conversationKey;
   final bool canSend;
   final PaneChatInputState inputState;
+  final PaneChatAgentActivity agentActivity;
   final String screen;
   final String? reason;
   final PaneChatTranscript transcript;
@@ -175,6 +187,11 @@ class PaneChatSnapshot {
                 .firstOrNull ??
             PaneChatInputState.unknown,
       ),
+      agentActivity: pick(
+        'agentActivity',
+        agentActivity,
+        PaneChatAgentActivity.fromJson,
+      ),
       screen: pick('screen', screen, (value) => value as String? ?? ''),
       reason: pick('reason', reason, (value) => value as String?),
       transcript: pushedTranscript == null
@@ -207,6 +224,7 @@ class PaneChatSnapshot {
     conversationKey: conversationKey,
     canSend: canSend,
     inputState: inputState,
+    agentActivity: agentActivity,
     screen: screen,
     reason: reason,
     transcript: next,
@@ -234,6 +252,7 @@ class PaneChatSnapshot {
               .where((state) => state.name == value['inputState'])
               .firstOrNull ??
           PaneChatInputState.unknown,
+      agentActivity: PaneChatAgentActivity.fromJson(value['agentActivity']),
       screen: value['screen'] as String? ?? '',
       reason: value['reason'] as String?,
       transcript: PaneChatTranscript.fromJson(
@@ -393,4 +412,26 @@ class PaneChatSuggestion {
         description: value['description'] as String? ?? '',
         insertText: value['insertText'] as String,
       );
+}
+
+/// 입력창 메뉴에 한 번에 보여 주는 제안 수
+const maxPaneChatSuggestions = 20;
+
+/// 메뉴를 열 때 한 번에 받아 두고 기기에서 거르는 skill·명령 목록의 상한
+const maxPaneChatCatalogSuggestions = 512;
+
+/// 데스크톱이 이름순으로 준 목록에서 이름이나 설명에 검색어가 들어 있는 제안만 남긴다
+List<PaneChatSuggestion> filterPaneChatSuggestions(
+  List<PaneChatSuggestion> suggestions,
+  String query,
+) {
+  final loweredQuery = query.toLowerCase();
+  return suggestions
+      .where(
+        (suggestion) => '${suggestion.label} ${suggestion.description}'
+            .toLowerCase()
+            .contains(loweredQuery),
+      )
+      .take(maxPaneChatSuggestions)
+      .toList();
 }

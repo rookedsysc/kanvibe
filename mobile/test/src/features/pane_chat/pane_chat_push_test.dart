@@ -63,8 +63,9 @@ class _PushDesktop extends FakeDesktopClient {
   @override
   Future<PaneChatSnapshot> fetchPaneChat(
     DesktopConnection connection,
-    PaneChatTarget target,
-  ) async {
+    PaneChatTarget target, {
+    bool includeScreen = true,
+  }) async {
     fetchedPanes.add(target.paneId);
     if (heldSnapshot != null) return heldSnapshot!.future;
     return PaneChatSnapshot.fromJson({

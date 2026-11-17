@@ -35,6 +35,7 @@ Map<String, dynamic> snapshotJson({
   bool available = true,
   String screen = '› 현재 CLI 화면',
   bool canSendWhileBusy = false,
+  String? agentActivity,
 }) => {
   'taskId': target.taskId,
   'paneId': target.paneId,
@@ -43,6 +44,7 @@ Map<String, dynamic> snapshotJson({
   'targetToken': provider == null ? null : token,
   'canSend': provider != null,
   'inputState': inputState,
+  'agentActivity': ?agentActivity,
   'screen': screen,
   'reason': provider == null ? 'no-foreground-ai-cli' : null,
   'transcript': {
@@ -84,6 +86,7 @@ Future<void> pumpChat(
   WidgetTester tester,
   ProviderContainer container, {
   TextScaler textScaler = TextScaler.noScaling,
+  bool settle = true,
 }) async {
   await tester.pumpWidget(
     UncontrolledProviderScope(
@@ -102,6 +105,13 @@ Future<void> pumpChat(
       ),
     ),
   );
+  if (!settle) {
+    // 작업 중 표시는 계속 움직이므로 settle을 기다리지 않고 조회가 끝날 만큼만 진행한다
+    for (var frame = 0; frame < 5; frame++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    return;
+  }
   await tester.pumpAndSettle();
 }
 
@@ -175,6 +185,77 @@ void main() {
       await tester.pump();
     });
   }
+
+  testWidgets('CLI 화면을 숨긴 동안에는 화면 없이 조회하고, 화면을 열면 바로 화면까지 다시 받는다', (
+    tester,
+  ) async {
+    final queries = <Map<String, String>>[];
+    final client = DesktopClient(
+      httpClient: MockClient((request) async {
+        queries.add(request.url.queryParameters);
+        return response({'snapshot': snapshotJson()});
+      }),
+    );
+    final container = setup(client);
+    addTearDown(client.close);
+    await pumpChat(tester, container);
+    expect(queries, isNotEmpty);
+    expect(queries.every((query) => query['wantsScreen'] == 'false'), isTrue);
+    queries.clear();
+    await tester.tap(find.text('CLI'));
+    await tester.pump();
+    expect(queries.first, {'paneId': '%19'});
+    await tester.pumpWidget(const SizedBox.shrink());
+    container.dispose();
+    await tester.pump();
+  });
+
+  testWidgets('대화 기록이 없는 pane은 첫 응답에 화면이 이미 있으므로 열 때 한 번만 조회한다', (
+    tester,
+  ) async {
+    final queries = <Map<String, String>>[];
+    final client = DesktopClient(
+      httpClient: MockClient((request) async {
+        queries.add(request.url.queryParameters);
+        return response({'snapshot': snapshotJson(available: false)});
+      }),
+    );
+    final container = setup(client);
+    addTearDown(client.close);
+    await pumpChat(tester, container);
+    expect(queries, [
+      {'paneId': '%19', 'wantsScreen': 'false'},
+    ]);
+    await tester.pumpWidget(const SizedBox.shrink());
+    container.dispose();
+    await tester.pump();
+  });
+
+  test('에이전트 확인은 이름만 묻고, 이름만 답하지 못하는 데스크탑이면 스냅샷의 이름을 쓴다', () async {
+    final queries = <Map<String, String>>[];
+    var isNewDesktop = true;
+    final client = DesktopClient(
+      httpClient: MockClient((request) async {
+        queries.add(request.url.queryParameters);
+        return response(
+          isNewDesktop
+              ? {'success': true, 'provider': 'claude'}
+              : {'success': true, 'snapshot': snapshotJson()},
+        );
+      }),
+    );
+    addTearDown(client.close);
+    expect(await client.fetchPaneAgentProvider(pcA, target), 'claude');
+    isNewDesktop = false;
+    expect(
+      await client.fetchPaneAgentProvider(pcA, target),
+      PaneChatSnapshot.fromJson(snapshotJson()).provider,
+    );
+    expect(queries, [
+      {'paneId': '%19', 'detail': 'agent'},
+      {'paneId': '%19', 'detail': 'agent'},
+    ]);
+  });
 
   test('정확한 pane 조회와 prompt·모델·키·중단은 인증과 대상 토큰을 실제 계약대로 보낸다', () async {
     final requests = <http.Request>[];
@@ -1144,6 +1225,113 @@ void main() {
     await tester.pump();
   });
 
+  group('에이전트 작업 중 표시', () {
+    test('스냅샷의 작업 상태를 읽고, 없거나 모르는 값은 unknown으로 둔다', () {
+      PaneChatAgentActivity read(Object? value) =>
+          PaneChatSnapshot.fromJson(snapshotJson()..['agentActivity'] = value)
+              .agentActivity;
+      expect(read('working'), PaneChatAgentActivity.working);
+      expect(read('idle'), PaneChatAgentActivity.idle);
+      expect(read(null), PaneChatAgentActivity.unknown);
+      expect(read('future-state'), PaneChatAgentActivity.unknown);
+      final pushed = PaneChatSnapshot.fromJson(
+        snapshotJson(agentActivity: 'idle'),
+      ).applyPushedState({'agentActivity': 'working'});
+      expect(pushed.agentActivity, PaneChatAgentActivity.working);
+    });
+
+    Future<ProviderContainer> openWith(
+      WidgetTester tester,
+      String agentActivity, {
+      List<String>? actions,
+    }) async {
+      final client = DesktopClient(
+        httpClient: MockClient((request) async {
+          if (request.method == 'GET') {
+            return response({
+              'snapshot': snapshotJson(agentActivity: agentActivity),
+            });
+          }
+          actions?.add(request.url.pathSegments.last);
+          return response({'success': true});
+        }),
+      );
+      final container = setup(client);
+      addTearDown(container.dispose);
+      addTearDown(client.close);
+      await pumpChat(tester, container, settle: agentActivity != 'working');
+      return container;
+    }
+
+    /// 화면을 내리고 폴링을 멈춰 남은 타이머가 없게 한다
+    Future<void> close(WidgetTester tester, ProviderContainer container) async {
+      await tester.pumpWidget(const SizedBox.shrink());
+      container.dispose();
+      await tester.pump();
+    }
+
+    testWidgets('CLI가 작업 중이면 대화 끝에 작업 중 표시를 보이고, 쉬고 있으면 보이지 않는다', (
+      tester,
+    ) async {
+      final working = await openWith(tester, 'working');
+      expect(find.bySemanticsIdentifier('pane-chat-working'), findsOneWidget);
+      expect(find.text('작업 중…'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 1));
+      expect(find.text('1초'), findsOneWidget);
+      await close(tester, working);
+
+      final idle = await openWith(tester, 'idle');
+      expect(find.bySemanticsIdentifier('pane-chat-working'), findsNothing);
+      await close(tester, idle);
+    });
+
+    testWidgets('작업 상태를 모르는 CLI도 보낸 메시지가 기록되기 전에는 작업 중으로 보인다', (tester) async {
+      final delivered = Completer<void>();
+      final client = DesktopClient(
+        httpClient: MockClient((request) async {
+          if (request.method == 'GET') {
+            return response({'snapshot': snapshotJson()});
+          }
+          await delivered.future;
+          return response({'success': true});
+        }),
+      );
+      final container = setup(client);
+      addTearDown(container.dispose);
+      addTearDown(client.close);
+      await pumpChat(tester, container);
+      expect(find.bySemanticsIdentifier('pane-chat-working'), findsNothing);
+      await tester.enterText(find.byType(TextField), '작업해 줘');
+      await tester.pump();
+      await tester.tap(find.byTooltip('메시지 전송'));
+      await tester.pump();
+      await tester.pump();
+      expect(find.bySemanticsIdentifier('pane-chat-working'), findsOneWidget);
+      delivered.complete();
+      await tester.pumpWidget(const SizedBox.shrink());
+      container.dispose();
+      await tester.pump();
+    });
+
+    testWidgets('작업 중이고 입력이 비어 있으면 전송 버튼이 응답 중단으로 바뀌고 누르면 중단을 보낸다', (
+      tester,
+    ) async {
+      final actions = <String>[];
+      final container = await openWith(tester, 'working', actions: actions);
+      expect(find.byTooltip('메시지 전송'), findsNothing);
+      await tester.tap(find.byTooltip('응답 중단'));
+      await tester.pump();
+      await tester.pump();
+      expect(actions, ['interrupt']);
+
+      await tester.enterText(find.byType(TextField), '추가 지시');
+      await tester.pump();
+      expect(find.byTooltip('응답 중단'), findsNothing);
+      expect(find.byTooltip('메시지 전송'), findsOneWidget);
+      await close(tester, container);
+    });
+  });
+
   testWidgets('연달아 실행한 도구는 한 줄로 접히고 펼치면 실행한 순서대로 보인다', (tester) async {
     final client = DesktopClient(
       httpClient: MockClient((_) async {
@@ -1532,8 +1720,9 @@ class _PaneFixtureClient extends FakeDesktopClient {
   @override
   Future<PaneChatSnapshot> fetchPaneChat(
     DesktopConnection connection,
-    PaneChatTarget target,
-  ) async {
+    PaneChatTarget target, {
+    bool includeScreen = true,
+  }) async {
     readTargets.add(target);
     final hasAgent = agentPaneIds?.contains(target.paneId) ?? true;
     return PaneChatSnapshot.fromJson(
