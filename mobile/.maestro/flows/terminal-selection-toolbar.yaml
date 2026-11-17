@@ -1,0 +1,86 @@
+# 터미널 글자를 길게 눌러 선택하고, 손잡이로 범위를 늘려 복사한 뒤 다른 입력칸에 붙여넣는다.
+# 글자가 없는 곳을 길게 눌러 휴대폰 클립보드의 명령을 터미널에 붙여넣는 것도 함께 본다.
+#
+# 터미널 글자는 xterm이 캔버스로 그려 접근성 트리에 없다. 그래서 화면을 같은 줄로 가득 채워
+# 터미널 안 어느 높이를 눌러도 같은 단어가 잡히게 하고, 손잡이와 버튼 줄만 셀렉터로 찾는다.
+# 키보드를 내리지 않는다. 러너가 IME를 꺼 두므로 hideKeyboard의 back이 앱을 닫는다.
+appId: ${APP_ID}
+env:
+  DESKTOP_API_FROM_HOST: http://127.0.0.1:39736
+  PROBE_API_FROM_HOST: http://127.0.0.1:19737
+---
+- launchApp:
+    clearState: true
+- setOrientation: PORTRAIT
+- extendedWaitUntil:
+    visible: "데스크탑에 연결"
+    timeout: 90000
+# 붙여넣기가 이번 실행의 OS 클립보드를 읽는지 가리도록, 터미널에 들어가기 전에 OS 복사 메뉴로 명령을 넣어 둔다.
+- tapOn: "PC 이름.*"
+- inputText: "touch MAESTRO_PASTE_OK"
+- longPressOn: "touch MAESTRO_PASTE_OK"
+- extendedWaitUntil:
+    visible: "(Select all|모두 선택)"
+    timeout: 10000
+- tapOn: "(Select all|모두 선택)"
+- tapOn: "(Copy|복사)"
+- runFlow: ../subflows/pairs-and-opens-board.yaml
+- runFlow: ../subflows/opens-session-task-terminal.yaml
+- extendedWaitUntil:
+    visible:
+      id: pane-terminal
+    timeout: 20000
+- tapOn:
+    id: pane-terminal
+- inputText: "yes ALPHA BRAVO CHARLIE | head -60"
+- pressKey: Enter
+- takeScreenshot: selection-01-filled
+# 줄의 오른쪽 끝은 글자가 없는 자리다.
+- longPressOn:
+    point: "90%,35%"
+- extendedWaitUntil:
+    visible: "(Paste|붙여넣기)"
+    timeout: 10000
+- takeScreenshot: selection-02-paste-toolbar
+- tapOn: "(Paste|붙여넣기)"
+- pressKey: Enter
+- runScript:
+    file: ../scripts/assert-terminal-command-ran.js
+    env:
+      MARKER: MAESTRO_PASTE_OK
+- assertTrue: ${output.terminalCommandRan}
+- takeScreenshot: selection-03-pasted-into-terminal
+# 줄의 왼쪽 끝은 첫 단어 ALPHA다.
+- longPressOn:
+    point: "5%,35%"
+- extendedWaitUntil:
+    visible:
+      id: terminal-selection-end-handle
+    timeout: 10000
+- assertVisible:
+    id: terminal-selection-start-handle
+- assertVisible: "(Copy|복사)"
+- takeScreenshot: selection-04-word-selected
+- swipe:
+    from:
+      id: terminal-selection-end-handle
+    direction: RIGHT
+- extendedWaitUntil:
+    visible: "(Copy|복사)"
+    timeout: 10000
+- takeScreenshot: selection-05-range-extended
+- tapOn: "(Copy|복사)"
+- assertNotVisible:
+    id: terminal-selection-end-handle
+- runFlow: ../subflows/opens-task-menu.yaml
+- tapOn:
+    id: create-task-from-current
+- extendedWaitUntil:
+    visible: "브랜치 이름 \\*"
+    timeout: 15000
+- tapOn: "브랜치 이름 \\*"
+- longPressOn: "브랜치 이름 \\*"
+- tapOn: "(Paste|붙여넣기)"
+# ALPHA 한 단어만 잡혔다면 BRAVO가 없다. 손잡이로 범위를 늘린 결과여야 통과한다.
+- assertVisible: "(?s).*ALPHA BRAVO.*"
+- takeScreenshot: selection-06-copied-text-pasted

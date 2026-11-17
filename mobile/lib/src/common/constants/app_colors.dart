@@ -35,6 +35,9 @@ abstract final class AppColors {
 
   static const terminalChrome = Color(0xFF0F1014);
   static const terminalBg = Color(0xFF050608);
+
+  /// 데스크탑 터미널의 `selectionBackground`(`src/lib/terminalMouseSelection.ts`)와 같은 값
+  static const terminalSelection = Color(0x803B82F6);
   static const terminalText = Color(0xFFA0A7B4);
 
   /// 에이전트 정체성 색. CLI의 브랜드색이라 상태색과 섞지 않는다
