@@ -380,13 +380,30 @@ describe("pane chat exact CLI control", () => {
     expect(mocks.write).not.toHaveBeenCalled();
   });
 
-  it("opens the real Codex picker by typing its command, and permits only known navigation keys", async () => {
+  it("opens the real Codex picker by pasting its command once, and permits only known navigation keys", async () => {
     const target = await getPaneChatSnapshot("task-chat");
     await openPaneChatModelPicker("task-chat", target.targetToken!);
-    expect(mocks.write.mock.calls.map((call) => call[2])).toEqual([..."/model", "\r"]);
+    expect(mocks.write.mock.calls.map((call) => call[2])).toEqual(["\x1b[200~/model\x1b[201~", "\r"]);
     await sendPaneChatKey("task-chat", target.targetToken!, "down");
     expect(mocks.write).toHaveBeenLastCalledWith("task-chat", "%3", "\x1b[B");
     await expect(sendPaneChatKey("task-chat", target.targetToken!, "command" as "down")).rejects.toMatchObject({ name: "PaneChatInputError" });
+  });
+
+  it("does not press Enter if the CLI is replaced after the command was pasted", async () => {
+    const target = await getPaneChatSnapshot("task-chat");
+    mocks.write.mockImplementationOnce(async () => { mocks.exec.mockResolvedValue(processTable("Thu Nov 12 19:02:00 2026")); });
+    await expect(openPaneChatModelPicker("task-chat", target.targetToken!)).rejects.toMatchObject({ name: "PaneChatTargetChangedError" });
+    expect(mocks.write.mock.calls.map((call) => call[2])).toEqual(["\x1b[200~/model\x1b[201~"]);
+  });
+
+  it("verifies the target once for a navigation key and once for an interrupt", async () => {
+    const target = await getPaneChatSnapshot("task-chat");
+    mocks.surface.mockClear();
+    await sendPaneChatKey("task-chat", target.targetToken!, "down");
+    expect(mocks.surface).toHaveBeenCalledTimes(1);
+    mocks.surface.mockClear();
+    await interruptPaneChat("task-chat", target.targetToken!);
+    expect(mocks.surface).toHaveBeenCalledTimes(1);
   });
 
   it("reports the current model settings and selectable options from the exact session", async () => {
@@ -488,14 +505,26 @@ describe("pane chat exact CLI control", () => {
     expect(snapshot).not.toHaveProperty("modelSettings");
   });
 
-  it("changes a model setting by typing the slash command built from the selectable options", async () => {
+  it("changes a model setting by pasting the slash command built from the selectable options", async () => {
     bindCodexSession();
     const target = await getPaneChatSnapshot("task-chat");
     await changePaneChatModelSetting("task-chat", target.targetToken!, { kind: "effort", effort: "high" });
-    expect(mocks.write.mock.calls.map((call) => call[2])).toEqual([..."/model --reasoning=high", "\r"]);
+    expect(mocks.write.mock.calls.map((call) => call[2])).toEqual(["\x1b[200~/model --reasoning=high\x1b[201~", "\r"]);
     mocks.write.mockClear();
     await changePaneChatModelSetting("task-chat", target.targetToken!, { kind: "fast", isFast: true });
-    expect(mocks.write.mock.calls.map((call) => call[2]).join("")).toBe("/model --speed=priority\r");
+    expect(mocks.write.mock.calls.map((call) => call[2])).toEqual(["\x1b[200~/model --speed=priority\x1b[201~", "\r"]);
+  });
+
+  it("verifies the target the same number of times however long the model command is", async () => {
+    bindCodexSession();
+    const target = await getPaneChatSnapshot("task-chat");
+    mocks.surface.mockClear();
+    await changePaneChatModelSetting("task-chat", target.targetToken!, { kind: "model", model: "gpt-luna" });
+    const targetReadsForShortCommand = mocks.surface.mock.calls.length;
+    mocks.surface.mockClear();
+    await changePaneChatModelSetting("task-chat", target.targetToken!, { kind: "effort", effort: "high" });
+    expect(mocks.write.mock.calls.map((call) => call[2])).toEqual(["\x1b[200~/model gpt-luna\x1b[201~", "\r", "\x1b[200~/model --reasoning=high\x1b[201~", "\r"]);
+    expect(mocks.surface.mock.calls.length).toBe(targetReadsForShortCommand);
   });
 
   it.each([

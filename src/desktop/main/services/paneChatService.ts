@@ -44,7 +44,7 @@ const MODEL_STATE_TAIL_LINES = 200;
 const CODEX_MODEL_CATALOG_TTL_MS = 60_000;
 /** 구독 감시가 읽은 결과를 같은 pane의 데스크톱·HTTP 조회가 재사용하는 최대 경과 시간. 구독 감시가 pane을 다시 읽는 주기와 같다 */
 const SHARED_READING_MAX_AGE_MS = 1_000;
-// Orca CLI bridge와 같은 간격으로 붙여넣기 처리가 끝난 뒤 Enter를 보내고 선택기 명령은 한 글자씩 친다.
+// Orca CLI bridge와 같은 간격으로 붙여넣기 처리가 끝난 뒤 Enter를 보내고, 에코를 확인하며 치는 명령은 한 글자씩 친다.
 const PROMPT_SUBMIT_DELAY_MS = 500;
 const PICKER_CHARACTER_DELAY_MS = 40;
 const IMAGE_ATTACHMENT_SETTLE_MS = 300;
@@ -234,8 +234,7 @@ function readAgentActivity(surface: PaneChatSurface, process: PaneChatProcess): 
   }
   return "unknown";
 }
-async function requireReadyInput(taskId: string, token: string): Promise<void> {
-  const lease = await assertTarget(taskId, token);
+async function requireReadyInput(taskId: string, lease: TargetLease): Promise<void> {
   const surface = await readPaneChatSurface(taskId, lease.requestedPaneId);
   if (!surface || readInputState(surface, lease.process, !!await codexDisplayExecution(surface, lease.process)) !== "ready") throw inputError("CLI 입력란이 비어 있지 않거나 선택 화면이 열려 있습니다. 터미널에서 현재 상태를 확인해 주세요.");
 }
@@ -576,8 +575,17 @@ async function queueMutation(taskId: string, action: () => Promise<void>): Promi
     forgetSharedReadings(taskId);
   }
 }
-async function serializeAction(taskId: string, token: string, action: () => Promise<void>): Promise<PaneChatActionResult> {
-  await queueMutation(taskId, async () => { await assertTarget(taskId, token); await action(); });
+/**
+ * 같은 동작 안에서 방금 확인한 대상에 pane을 다시 조회하지 않고 쓴다.
+ * 그사이 다른 조회가 대상 변경을 알아채 lease를 회수했으면 쓰지 않는다.
+ */
+async function writeToVerifiedTarget(taskId: string, token: string, lease: TargetLease, bytes: string): Promise<void> {
+  if (leases.get(token) !== lease) throw changedTargetError();
+  await writeToPane(taskId, lease.paneId, bytes);
+}
+/** 대상 확인은 pane·프로세스·대화를 다시 조회하는 비싼 일이라, 동작마다 여기서 한 번 하고 그 결과를 동작에 넘긴다 */
+async function serializeAction(taskId: string, token: string, action: (lease: TargetLease) => Promise<void>): Promise<PaneChatActionResult> {
+  await queueMutation(taskId, async () => { await action(await assertTarget(taskId, token)); });
   return { success: true };
 }
 /** 이 태스크의 pane에 프롬프트나 명령을 치고 있는 중인지. 그동안의 입력란은 사용자가 아니라 KanVibe가 채운 것이다 */
@@ -654,8 +662,7 @@ export function sendPaneChatPrompt(taskId: string, targetToken: string, text: st
   if (previous) return previous.fingerprint === fingerprint ? previous.result : Promise.reject(inputError("동일한 요청 식별자로 다른 메시지를 보낼 수 없습니다."));
   let writeAttempted = false;
   const write = (bytes: string, expectedComposer?: string[]) => writeFenced(taskId, targetToken, bytes, () => { writeAttempted = true; }, expectedComposer);
-  const result = serializeAction(taskId, targetToken, async () => {
-    const lease = await assertTarget(taskId, targetToken);
+  const result = serializeAction(taskId, targetToken, async (lease) => {
     const owner = attachmentIds.length ? await attachmentOwner(taskId, targetToken) : null;
     const attachments = owner ? resolvePaneChatAttachments(owner, attachmentIds) : [];
     const files = attachments.filter((entry) => entry.kind === "file").map((entry) => formatFileMention(entry.path));
@@ -682,7 +689,7 @@ export function sendPaneChatPrompt(taskId: string, targetToken: string, text: st
       });
       return;
     }
-    await requireReadyInput(taskId, targetToken);
+    await requireReadyInput(taskId, lease);
     let expectedComposer = ["", "Ask Codex to do anything"];
     for (const image of images) {
       const escaped = image.path.replace(/[^a-zA-Z0-9_./@:\-\u0080-\uffff]/g, "\\$&");
@@ -706,24 +713,32 @@ export function sendPaneChatPrompt(taskId: string, targetToken: string, text: st
   return result;
 }
 export function interruptPaneChat(taskId: string, targetToken: string): Promise<PaneChatActionResult> {
-  return serializeAction(taskId, targetToken, () => writeFenced(taskId, targetToken, "\x03"));
+  return serializeAction(taskId, targetToken, (lease) => writeToVerifiedTarget(taskId, targetToken, lease, "\x03"));
 }
-async function typePaneChatCommand(taskId: string, targetToken: string, command: string): Promise<void> {
-  let echoed = "";
-  for (const character of command) {
-    await writeFenced(taskId, targetToken, character, undefined, echoed ? [echoed] : ["", "Ask Codex to do anything"]);
-    echoed += character;
-    await delay(PICKER_CHARACTER_DELAY_MS);
+/**
+ * 슬래시 명령을 CLI 입력란에 넣고 Enter로 실행한다.
+ * 입력란의 글을 화면에서 읽을 수 있는 Codex에는 글자마다 에코를 확인하며 치고, 그 밖의 CLI에는 한 번에 붙여넣는다.
+ * 어느 쪽이든 Enter는 기다린 뒤 대상을 다시 확인하고 보낸다.
+ */
+async function submitPaneChatCommand(taskId: string, targetToken: string, lease: TargetLease, command: string): Promise<void> {
+  if (await codexDisplays.get(lease.identity)) {
+    let echoed = "";
+    for (const character of command) {
+      await writeFenced(taskId, targetToken, character, undefined, echoed ? [echoed] : ["", "Ask Codex to do anything"]);
+      echoed += character;
+      await delay(PICKER_CHARACTER_DELAY_MS);
+    }
+  } else {
+    await writeToVerifiedTarget(taskId, targetToken, lease, `\x1b[200~${command}\x1b[201~`);
   }
   await delay(PROMPT_SUBMIT_DELAY_MS);
   await writeFenced(taskId, targetToken, "\r", undefined, [command]);
 }
 export function openPaneChatModelPicker(taskId: string, targetToken: string): Promise<PaneChatActionResult> {
-  return serializeAction(taskId, targetToken, async () => {
-    const lease = await assertTarget(taskId, targetToken);
+  return serializeAction(taskId, targetToken, async (lease) => {
     if (lease.process.provider !== "claude" && lease.process.provider !== "codex") throw inputError("이 CLI의 모델 선택기는 지원되지 않습니다.");
-    await requireReadyInput(taskId, targetToken);
-    await typePaneChatCommand(taskId, targetToken, "/model");
+    await requireReadyInput(taskId, lease);
+    await submitPaneChatCommand(taskId, targetToken, lease, "/model");
   });
 }
 
@@ -799,22 +814,21 @@ export async function getPaneChatModelSettings(taskId: string, targetToken: stri
 export function changePaneChatModelSetting(taskId: string, targetToken: string, requestedChange: unknown): Promise<PaneChatActionResult> {
   const change = parsePaneChatModelSettingChange(requestedChange);
   if (!change) return Promise.reject(inputError("모델 설정 변경 형식이 올바르지 않습니다."));
-  return serializeAction(taskId, targetToken, async () => {
-    const lease = await assertTarget(taskId, targetToken);
+  return serializeAction(taskId, targetToken, async (lease) => {
     const { provider } = lease.process;
     if (provider !== "claude" && provider !== "codex") throw inputError("이 CLI의 모델 설정은 지원되지 않습니다.");
     if (provider === "codex" && await codexDisplays.get(lease.identity)) {
       await updateCodexThreadSettings(await codexSettingsTarget(taskId, targetToken), change);
       return;
     }
-    await requireReadyInput(taskId, targetToken);
+    await requireReadyInput(taskId, lease);
     const { modelSettings } = (await readPaneChat(taskId, lease.requestedPaneId)).snapshot;
     const command = modelSettings ? buildPaneChatModelCommand(provider, modelSettings, change) : null;
     if (!command) throw inputError("지금은 이 설정을 바꿀 수 없습니다. 터미널에서 현재 상태를 확인해 주세요.");
-    await typePaneChatCommand(taskId, targetToken, command);
+    await submitPaneChatCommand(taskId, targetToken, lease, command);
   });
 }
 export function sendPaneChatKey(taskId: string, targetToken: string, key: PaneChatKey): Promise<PaneChatActionResult> {
   if (!Object.hasOwn(KEY_BYTES, key)) return Promise.reject(inputError("허용되지 않는 선택기 키입니다."));
-  return serializeAction(taskId, targetToken, () => writeFenced(taskId, targetToken, KEY_BYTES[key]));
+  return serializeAction(taskId, targetToken, (lease) => writeToVerifiedTarget(taskId, targetToken, lease, KEY_BYTES[key]));
 }
