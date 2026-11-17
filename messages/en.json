@@ -294,7 +294,7 @@
     "folderNavHint": "↑↓ Navigate · Tab Drill down · Enter Select · Backspace Go up · Esc Close",
     "detailPageSection": "Detail Page",
     "defaultChatMode": "Open chat mode by default",
-    "defaultChatModeDescription": "Open new panes in chat mode. Panes you switch manually keep your choice.",
+    "defaultChatModeDescription": "Open new panes in chat mode while a CLI such as Claude or Codex is running in them. Panes you switch manually keep your choice.",
     "chatSettingsError": "Could not load or save chat settings.",
     "sidebarDefaultCollapsed": "Collapse sidebar by default",
     "sidebarDefaultCollapsedDescription": "Start with the left sidebar collapsed when entering the detail page.",

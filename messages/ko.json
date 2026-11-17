@@ -294,7 +294,7 @@
     "folderNavHint": "↑↓ 이동 · Tab 하위 폴더 · Enter 선택 · Backspace 상위 폴더 · Esc 닫기",
     "detailPageSection": "상세 페이지",
     "defaultChatMode": "기본으로 채팅 모드 열기",
-    "defaultChatModeDescription": "새 pane을 채팅 모드로 엽니다. 직접 전환한 pane은 마지막 선택을 유지합니다.",
+    "defaultChatModeDescription": "Claude·Codex 같은 CLI가 실행 중인 새 pane을 채팅 모드로 엽니다. 직접 전환한 pane은 마지막 선택을 유지합니다.",
     "chatSettingsError": "채팅 설정을 불러오거나 저장하지 못했습니다.",
     "sidebarDefaultCollapsed": "사이드바 기본 접기",
     "sidebarDefaultCollapsedDescription": "상세 페이지 진입 시 왼쪽 사이드바를 접은 상태로 시작합니다.",

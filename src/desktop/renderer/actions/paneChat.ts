@@ -20,6 +20,9 @@ export const getPaneChatModes = (taskId: string): Promise<Record<string, boolean
 export const setPaneChatMode = (taskId: string, paneId: string, isEnabled: boolean): Promise<void> =>
   invokeDesktop("paneChat", "setPaneChatMode", taskId, paneId, isEnabled);
 
+export const getPaneChatAgentProvider = (taskId: string, paneId: string): Promise<PaneChatSnapshot["provider"]> =>
+  invokeDesktop("paneChat", "getPaneChatAgentProvider", taskId, paneId);
+
 export const getPaneChatSnapshot = (taskId: string, paneId?: string): Promise<PaneChatSnapshot> =>
   invokeDesktop("paneChat", "getPaneChatSnapshot", taskId, paneId);
 
