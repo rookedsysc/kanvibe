@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SessionType } from "@/entities/KanbanTask";
 import type { CodexThreadInput } from "@/lib/aiSessions/codexThreadInput";
 
-const mocks = vi.hoisted(() => ({ surface: vi.fn(), screen: vi.fn(), layout: vi.fn(), exec: vi.fn(), write: vi.fn(), apiInput: vi.fn(), binding: vi.fn(), processBinding: vi.fn().mockResolvedValue(null), reportedBinding: vi.fn().mockResolvedValue(null), claude: vi.fn(), codex: vi.fn(), gemini: vi.fn(), opencode: vi.fn(), rollout: vi.fn(), emptyThread: vi.fn(), focusHerdr: vi.fn(), tabs: vi.fn(), catalog: vi.fn() }));
+const mocks = vi.hoisted(() => ({ surface: vi.fn(), screen: vi.fn(), layout: vi.fn(), exec: vi.fn(), write: vi.fn(), apiInput: vi.fn(), threadSettings: vi.fn(), binding: vi.fn(), processBinding: vi.fn().mockResolvedValue(null), reportedBinding: vi.fn().mockResolvedValue(null), claude: vi.fn(), codex: vi.fn(), gemini: vi.fn(), opencode: vi.fn(), rollout: vi.fn(), emptyThread: vi.fn(), focusHerdr: vi.fn(), tabs: vi.fn(), catalog: vi.fn() }));
 const modelMocks = vi.hoisted(() => ({ tail: vi.fn(), readTextFile: vi.fn() }));
 vi.mock("../paneChatSurface", () => ({ readPaneChatSurface: mocks.surface, readPaneChatScreen: mocks.screen, readPaneChatLayout: mocks.layout }));
 vi.mock("@/lib/gitOperations", () => ({ execGit: mocks.exec }));
@@ -16,6 +16,7 @@ vi.mock("@/lib/aiSessions/readGeminiSessions", () => ({ readGeminiSessionDetail:
 vi.mock("@/lib/aiSessions/readOpenCodeSessions", () => ({ readOpenCodeSessionDetail: mocks.opencode }));
 vi.mock("@/lib/aiSessions/codexThreadMetadata", () => ({ readCodexEmptyThread: mocks.emptyThread }));
 vi.mock("@/lib/aiSessions/codexThreadInput", () => ({ sendCodexThreadInput: mocks.apiInput }));
+vi.mock("@/lib/aiSessions/codexThreadSettings", () => ({ readCodexThreadSettings: mocks.threadSettings }));
 vi.mock("@/lib/aiSessions/shared", async (importOriginal) => ({ ...await importOriginal<typeof import("@/lib/aiSessions/shared")>(), readJsonLinesTail: modelMocks.tail }));
 vi.mock("@/lib/hostFileAccess", async (importOriginal) => ({ ...await importOriginal<typeof import("@/lib/hostFileAccess")>(), readTextFile: modelMocks.readTextFile }));
 import { focusPaneChatTerminal, getPaneChatLayout, getPaneChatSnapshot, readPaneChat, readRecentPaneChat, getPaneChatModelSettings, getPaneChatTranscriptPage, getPaneChatSuggestions, stagePaneChatAttachment, removePaneChatAttachment, sendPaneChatPrompt, interruptPaneChat, openPaneChatModelPicker, changePaneChatModelSetting, sendPaneChatKey, revealPaneChatCodexThread } from "../paneChatService";
@@ -746,6 +747,11 @@ class FakeCodexPane {
     if (text === "/statusline thread-id" && !this.ignoresStatusLine) this.threadsShowingId.add(this.threadId);
   }
 
+  /** 화면을 읽지 않는 조회의 결과. 실제 pane 조회처럼 입력란·커서·화면 줄이 없다 */
+  surfaceWithoutScreen(task: object) {
+    return { task, paneId: this.paneId, rootPid: this.rootPid, screen: "", inputLine: null, cursorColumn: null };
+  }
+
   surface(task: object) {
     const [firstLine, ...moreLines] = (this.composer || "Ask Codex to do anything").split("\n");
     // 명령 이름을 치는 동안에는 선택 표시가 붙은 자동완성 줄이 입력란 위에 뜬다.
@@ -768,7 +774,11 @@ function createCodexTask(version = "codex-cli 0.169.0") {
   const a = new FakeCodexPane("%A", 100, THREAD_X);
   const b = new FakeCodexPane("%B", 110, THREAD_Z);
   const panes: Record<string, FakeCodexPane> = { "%A": a, "%B": b };
-  mocks.surface.mockImplementation(async (_taskId: string, paneId?: string) => panes[paneId ?? "%A"]?.surface(task) ?? null);
+  mocks.surface.mockImplementation(async (_taskId: string, paneId?: string, capture = true) => {
+    const pane = panes[paneId ?? "%A"];
+    if (!pane) return null;
+    return capture ? pane.surface(task) : pane.surfaceWithoutScreen(task);
+  });
   mocks.write.mockImplementation(async (_taskId: string, paneId: string, bytes: string) => panes[paneId].write(bytes));
   mocks.exec.mockImplementation(async (command: string) => {
     if (isPaneProcessTableCommand(command)) return codexProcessTable;
@@ -814,6 +824,16 @@ describe("Codex displayed-thread footer binding", () => {
     expect(mocks.codex).toHaveBeenLastCalledWith(expect.anything(), THREAD_X, rolloutFile(THREAD_X), "100", 100);
     a.switchThread(THREAD_Y);
     await expect(settle(getPaneChatTranscriptPage(taskId, bound.targetToken!, "200"))).rejects.toMatchObject({ name: "PaneChatTargetChangedError" });
+  });
+
+  it("연결된 Codex의 모델 설정을 읽어도 대화가 바뀐 것으로 판정하지 않고 연결을 유지한다", async () => {
+    const { taskId } = createCodexTask();
+    const apiSettings = { model: "gpt-sol", effort: "low", isFast: null, models: [] };
+    mocks.threadSettings.mockResolvedValue(apiSettings);
+    const bound = await settle(getPaneChatSnapshot(taskId, "%A"));
+    expect(await settle(getPaneChatModelSettings(taskId, bound.targetToken!))).toEqual(apiSettings);
+    expect(mocks.threadSettings).toHaveBeenCalledWith(expect.objectContaining({ threadId: THREAD_X, sourceRef: rolloutFile(THREAD_X) }));
+    expect(await settle(getPaneChatSnapshot(taskId, "%A"))).toMatchObject({ canSend: true, targetToken: bound.targetToken });
   });
 
   it("대화 ID 표시는 빈 입력란에 명령을 한 번 붙여넣고 Enter로 실행해 그 pane의 대화를 연결한다", async () => {

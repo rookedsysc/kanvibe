@@ -796,11 +796,13 @@ export async function getPaneChatModelSettings(taskId: string, targetToken: stri
   const { provider } = lease.process;
   if (!lease.conversation || (provider !== "claude" && provider !== "codex")) throw inputError("이 CLI의 모델 설정은 지원되지 않습니다.");
   const [, sourceRef] = JSON.parse(lease.conversation) as [string, string];
-  const surface = await readPaneChatSurface(taskId, lease.requestedPaneId, false);
+  const isCodexDisplay = provider === "codex" && !!await codexDisplays.get(lease.identity);
+  // 대화 ID 표시 대상의 대화는 화면 하단에서만 읽힌다. 화면 없이 다시 확인하면 대화가 사라진 것으로 판정돼 연결이 끊긴다.
+  const surface = await readPaneChatSurface(taskId, lease.requestedPaneId, isCodexDisplay);
   if (!surface) throw changedTargetError();
   const binding = await resolveConversation(surface, lease.process);
   if (conversationIdentity(binding) !== lease.conversation) throw changedTargetError();
-  const settings = provider === "codex" && await codexDisplays.get(lease.identity)
+  const settings = isCodexDisplay
     ? await readCodexThreadSettings(await codexSettingsTarget(taskId, targetToken))
     : await readModelSettings(provider, sourceRef, surface.task.sshHost, binding?.pending);
   await assertTarget(taskId, targetToken);
