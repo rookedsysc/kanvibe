@@ -8,7 +8,6 @@ import { builtinModules } from "node:module";
 import { createServer, connect, type Socket } from "node:net";
 import { request } from "node:http";
 import path from "node:path";
-import { homedir } from "node:os";
 import { createHostRecordDecoder, encodeHostRecord, type HostRecord } from "../remoteHostProtocol";
 import { startRemoteHostServer } from "../remoteHostServer";
 import { HOST_BOOTSTRAP_LOADER } from "../remoteHostBootstrap";
@@ -43,9 +42,9 @@ describe("remote host provider", () => {
     socket.write(encodeHostRecord({ type: "hello", version: 1, namespace: "qa-provider", clientId, role: "desktop", buildHash: "a".repeat(64), ...hello }));
     return { socket, next, send: (record: HostRecord) => socket.write(encodeHostRecord(record)) };
   }
-  function post(clientId: string, body = "{}", headers: Record<string, string> = {}) {
+  function post(clientId: string, body = "{}", headers: Record<string, string> = {}, url = "/api/hooks/status") {
     return new Promise<{ status: number; body: string }>((resolve, reject) => {
-      const req = request({ socketPath: server!.paths.hookSocketPath, method: "POST", path: "/api/hooks/status", headers: { "x-kanvibe-client-id": clientId, ...headers } }, (response) => {
+      const req = request({ socketPath: server!.paths.hookSocketPath, method: "POST", path: url, headers: { "x-kanvibe-client-id": clientId, ...headers } }, (response) => {
         let result = ""; response.on("data", (chunk) => { result += chunk; });
         response.on("end", () => resolve({ status: response.statusCode!, body: result }));
       }); req.on("error", reject); req.end(body);
@@ -106,17 +105,18 @@ describe("remote host provider", () => {
       expect(upstream.listening).toBe(true);
     } finally { await new Promise<void>((resolve) => upstream.close(() => resolve())); }
   });
-  it("routes live hooks to one desktop and durably accepts offline status events", async () => {
-    await start(); expect((await post("offline", '{"taskId":"fixture","status":"done"}')).status).toBe(202);
+  it("routes hooks to one desktop, reports offline503 and never retains them", async () => {
+    await start(); expect(await post("offline", '{"taskId":"fixture","status":"done"}')).toEqual({ status: 503, body: "Desktop offline; request not replayed" });
+    expect(await post("offline", "{}", {}, "/api/cli/tasks")).toEqual({ status: 503, body: "Desktop offline; request not replayed" });
+    expect(await post("bad/client")).toEqual({ status: 400, body: "Invalid hook client" });
     const peer = await client(); await peer.next("ready");
-    peer.send({ type: "hook.subscribe", id: "subscribe" });
     const pending = post("client-one", '{"taskId":"fixture","status":"done"}'); const hook = await peer.next("hook.request");
     expect(hook.path).toBe("/api/hooks/status");
     expect(Buffer.from(String(hook.body), "base64").toString()).toBe('{"taskId":"fixture","status":"done"}');
     peer.send({ type: "hook.response", id: hook.id, status: 202, headers: { "content-type": "application/json" }, body: Buffer.from('{"ok":true}').toString("base64") });
     expect(await pending).toEqual({ status: 202, body: '{"ok":true}' });
     peer.socket.destroy();
-    expect((await post("client-one", '{"taskId":"fixture","status":"done"}')).status).toBe(202);
+    await expect.poll(() => post("client-one", '{"taskId":"fixture","status":"done"}')).toEqual({ status: 503, body: "Desktop offline; request not replayed" });
   });
   it("rejects duplicate live client IDs without replacing the first desktop", async () => {
     await start(); const first = await client(); const original = await first.next("ready");
@@ -244,7 +244,6 @@ describe("standalone host bootstrap", () => {
         catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error; }
       }
       await Promise.all([...daemonPids].map(waitForHostFixtureExit));
-      await rm(path.join(homedir(), ".local", "state", "kanvibe", "host", namespace), { recursive: true, force: true });
       await rm(`/tmp/kv-${process.getuid!()}/${namespace}`, { recursive: true, force: true });
       await rm(bundleDirectory, { recursive: true, force: true });
     }
@@ -309,7 +308,6 @@ describe("standalone host bootstrap", () => {
       if (stop) { stop.send({ type: "stop", id: "owned-stop" }); await stop.next("stopped"); }
       children.forEach((child) => { child.stdin?.end(); child.kill(); });
       await waitForHostFixtureExit(daemonPid);
-      await rm(path.join(homedir(), ".local", "state", "kanvibe", "host", namespace), { recursive: true, force: true });
       await rm(`/tmp/kv-${process.getuid!()}/${namespace}`, { recursive: true, force: true });
       await rm(bundleDirectory, { recursive: true, force: true });
     }
