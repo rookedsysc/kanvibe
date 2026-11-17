@@ -8,7 +8,7 @@ const actions = vi.hoisted(() => ({
   getPaneChatSnapshot: vi.fn(), sendPaneChatPrompt: vi.fn(), interruptPaneChat: vi.fn(),
   openPaneChatModelPicker: vi.fn(), sendPaneChatKey: vi.fn(),
   getPaneChatTranscriptPage: vi.fn(), getPaneChatModelSettings: vi.fn(), changePaneChatModelSetting: vi.fn(),
-  revealPaneChatCodexThread: vi.fn(),
+  revealPaneChatCodexThread: vi.fn(), answerPaneChatPrompt: vi.fn(),
 }));
 vi.mock("@/desktop/renderer/actions/paneChat", () => actions);
 vi.mock("@/desktop/renderer/actions/appSettings", () => ({ getAppSetting: vi.fn().mockResolvedValue(null), setAppSetting: vi.fn().mockResolvedValue(undefined) }));
@@ -125,6 +125,63 @@ describe("current pane chat", () => {
     await screen.findByText("Exact pane response");
     expect(screen.queryByText("screen")).toBeNull();
     expect(screen.queryByText("Codex ready")).toBeNull();
+  });
+
+  describe("CLI가 선택 화면을 띄운 동안", () => {
+    const prompt: NonNullable<PaneChatSnapshot["prompt"]> = {
+      id: "prompt-a", kind: "confirmation", title: "Switch model?", detail: "", stepsLine: null, highlightedNumber: 1, isMultiSelect: false, isTextEntryActive: false, hasHiddenOptions: false,
+      options: [{ number: 1, label: "Yes, switch", description: "", isChecked: false, isTextEntry: false }, { number: 2, label: "No, go back", description: "", isChecked: false, isTextEntry: false }],
+    };
+
+    it("입력창 자리에 그 화면의 카드를 보여 주고, 고른 답을 현재 대상과 그 화면의 식별값으로 보낸다", async () => {
+      actions.getPaneChatSnapshot.mockResolvedValue({ ...snapshot(), provider: "claude", inputState: "occupied", prompt });
+      actions.answerPaneChatPrompt.mockResolvedValue({ success: true });
+      open();
+
+      fireEvent.click(await screen.findByRole("button", { name: /No, go back/ }));
+
+      expect(screen.getByRole("textbox", { hidden: true }).closest(".hidden")).not.toBeNull();
+      await waitFor(() => expect(actions.answerPaneChatPrompt).toHaveBeenCalledWith("task-1", "process-a", "prompt-a", { type: "option", number: 2 }));
+    });
+
+    it("답을 보내지 못하면 서비스가 쓴 안내문만 그 카드에서 알리고, 다른 선택 화면의 카드에는 남기지 않는다", async () => {
+      actions.getPaneChatSnapshot.mockResolvedValue({ ...snapshot(), provider: "claude", inputState: "occupied", prompt });
+      actions.answerPaneChatPrompt.mockRejectedValue(new Error("Error invoking remote method 'kanvibe:invoke': PaneChatInputError: CLI의 선택 화면이 바뀌어 답을 보내지 않았습니다."));
+      open();
+
+      fireEvent.click(await screen.findByRole("button", { name: /Yes, switch/ }));
+      expect((await screen.findByRole("alert")).textContent).toBe("CLI의 선택 화면이 바뀌어 답을 보내지 않았습니다.");
+
+      actions.getPaneChatSnapshot.mockResolvedValue({ ...snapshot(), provider: "claude", inputState: "occupied", prompt: { ...prompt, id: "prompt-b", title: "Do you want to proceed?" } });
+
+      await screen.findByText("Do you want to proceed?", {}, { timeout: 4_000 });
+      expect(screen.queryByRole("alert")).toBeNull();
+    });
+
+    it("답을 보낸 뒤 바뀐 화면을 받아 올 때까지는 카드를 다시 누를 수 없다", async () => {
+      actions.getPaneChatSnapshot.mockResolvedValue({ ...snapshot(), provider: "claude", inputState: "occupied", prompt });
+      actions.answerPaneChatPrompt.mockResolvedValue({ success: true });
+      open();
+      const yes = await screen.findByRole("button", { name: /Yes, switch/ });
+      let deliver!: (value: PaneChatSnapshot) => void;
+      actions.getPaneChatSnapshot.mockReturnValue(new Promise((resolve) => { deliver = resolve; }));
+
+      fireEvent.click(yes);
+      await waitFor(() => expect(actions.answerPaneChatPrompt).toHaveBeenCalledTimes(1));
+      await act(async () => {});
+      expect(yes).toHaveProperty("disabled", true);
+
+      await act(async () => deliver({ ...snapshot(), provider: "claude", inputState: "occupied", prompt }));
+      await waitFor(() => expect(screen.getByRole("button", { name: /Yes, switch/ })).toHaveProperty("disabled", false));
+    });
+
+    it("선택 화면이 없으면 카드 없이 입력창을 보여 준다", async () => {
+      open();
+      await screen.findByText("Exact pane response");
+
+      expect(screen.queryByTestId("pane-chat-prompt")).toBeNull();
+      expect(screen.getByRole("textbox").closest(".hidden")).toBeNull();
+    });
   });
 
   it("queries the explicit pane instead of following another terminal's focus", async () => {

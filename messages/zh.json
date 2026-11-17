@@ -524,7 +524,16 @@
       "returnError": "无法返回此窗格的终端，请重试。",
       "toggle": "切换当前窗格终端/聊天",
       "welcomeTitle": "开始与 {provider} 对话",
-      "welcomeHint": "在下方输入消息，会直接发送到此窗格中的 CLI。"
+      "welcomeHint": "在下方输入消息，会直接发送到此窗格中的 CLI。",
+      "promptQuestion": "AI 的提问",
+      "promptPermission": "权限确认",
+      "promptConfirmation": "CLI 确认",
+      "promptTextPlaceholder": "直接输入…",
+      "promptSubmitText": "用此内容回答",
+      "promptPrevious": "上一个问题",
+      "promptNext": "下一个问题",
+      "promptTextEntered": "这是直接输入的内容。如需修改，请在终端中编辑。",
+      "promptHiddenOptions": "窗格太矮，还有未显示的选项。其余选项请在终端中查看。"
     },
     "backToBoard": "返回看板",
     "moveToTodo": "待办",

@@ -556,7 +556,16 @@
       "savingModel": "Applying settings…",
       "messageSent": "Sent",
       "inputOccupied": "There is an unfinished draft in the terminal. Submit or clear it there before sending a chat message.",
-      "inputWaiting": "Send when the CLI is ready for a prompt. Handle confirmation requests in CLI controls."
+      "inputWaiting": "Send when the CLI is ready for a prompt.",
+      "promptQuestion": "Question from AI",
+      "promptPermission": "Permission request",
+      "promptConfirmation": "CLI confirmation",
+      "promptTextPlaceholder": "Type your own answer…",
+      "promptSubmitText": "Answer with this text",
+      "promptPrevious": "Previous question",
+      "promptNext": "Next question",
+      "promptTextEntered": "This is your typed answer. To change it, edit it in the terminal.",
+      "promptHiddenOptions": "The pane is too short to show every option. Check the rest in the terminal."
     },
     "backToBoard": "Back to Board",
     "moveToTodo": "Todo",

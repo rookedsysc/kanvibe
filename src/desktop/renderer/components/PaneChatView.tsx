@@ -14,6 +14,7 @@ import { PaneChatComposer } from "./PaneChatComposer";
 import { AiChatTranscriptMessage } from "./AiChatTranscriptMessage";
 import { AiChatFilePreview } from "./AiChatFilePreview";
 import { PaneChatModelPicker } from "./PaneChatModelPicker";
+import { PaneChatPromptCard } from "./PaneChatPromptCard";
 
 const NEAR_BOTTOM_PX = 96;
 const REVEAL_OUTCOME_MESSAGES: Record<PaneChatCodexThreadReveal["outcome"], string> = {
@@ -99,6 +100,7 @@ export function PaneChatView({ taskId, paneId, taskTitle, paneTabs = [], isVisib
   const scrollAnchor = useRef<{ top: number; height: number } | null>(null);
   const paneName = paneTabs.find((tab) => tab.id === snapshot?.paneId)?.name;
   const isWaitingForInput = snapshot?.transcript.reason === "codex-thread-input-busy";
+  const prompt = snapshot?.prompt;
   const isNewConversation = !!snapshot?.canSend && snapshot.transcript.status === "available" && visibleMessages.length === 0
     && !transcript.nextCursor && chat.pendingMessages.length === 0 && !chat.isAgentWorking;
 
@@ -115,7 +117,7 @@ export function PaneChatView({ taskId, paneId, taskTitle, paneTabs = [], isVisib
       viewport.current.scrollTop = scrollAnchor.current.top + viewport.current.scrollHeight - scrollAnchor.current.height;
       scrollAnchor.current = null;
     } else if (followLatest.current && viewport.current) viewport.current.scrollTop = viewport.current.scrollHeight;
-  }, [messages, chat.pendingMessages.length, chat.isAgentWorking, targetKey, isVisible]);
+  }, [messages, chat.pendingMessages.length, chat.isAgentWorking, targetKey, isVisible, prompt?.id]);
 
   async function revealCodexThread() {
     setRevealOutcome(await chat.revealCodexThread());
@@ -202,7 +204,9 @@ export function PaneChatView({ taskId, paneId, taskTitle, paneTabs = [], isVisib
         setIsDetached(false);
       }} className="absolute bottom-44 left-1/2 -translate-x-1/2 rounded-full border border-border-default bg-bg-surface px-4 py-2 text-xs text-text-primary">{t("jumpToLatest")} ↓</button> : null}
       {previewFilePath ? <AiChatFilePreview taskId={taskId} filePath={previewFilePath} onClose={() => setPreviewFilePath(null)} /> : null}
-      <div className="relative flex max-h-[70%] min-h-0 shrink-0 flex-col">
+      {prompt ? <PaneChatPromptCard key={prompt.id} prompt={prompt} isBusy={chat.isBusy} error={chat.promptError?.promptId === prompt.id ? chat.promptError.message : null} onAnswer={(answer) => void chat.answerPrompt(prompt.id, answer)} onTerminal={onTerminal} /> : null}
+      {/* 선택 화면이 떠 있는 동안 CLI는 메시지를 받지 않는다. 쓰던 글이 남도록 입력창은 지우지 않고 가려 둔다. */}
+      <div className={`relative max-h-[70%] min-h-0 shrink-0 flex-col ${prompt ? "hidden" : "flex"}`}>
         <PaneChatComposer taskId={taskId} chat={chat} isVisible={isVisible} isModelPickerOpen={modelPickerOpen} onModel={() => void openModelPicker()} />
       </div>
       {/* 대화 영역과 같은 몫의 여백을 입력창 아래에 두어 첫 화면 안내와 입력창을 가운데로 모은다. */}

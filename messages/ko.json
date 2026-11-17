@@ -556,7 +556,16 @@
       "savingModel": "설정 적용 중…",
       "messageSent": "전송됨",
       "inputOccupied": "터미널에 입력 중인 내용이 있습니다. 터미널에서 전송하거나 지운 뒤 채팅을 보내세요.",
-      "inputWaiting": "CLI가 입력을 받을 때 전송할 수 있습니다. 확인 요청은 CLI 조작에서 처리하세요."
+      "inputWaiting": "CLI가 입력을 받을 때 전송할 수 있습니다.",
+      "promptQuestion": "AI의 질문",
+      "promptPermission": "권한 확인",
+      "promptConfirmation": "CLI 확인",
+      "promptTextPlaceholder": "직접 입력…",
+      "promptSubmitText": "이 글로 답하기",
+      "promptPrevious": "이전 질문",
+      "promptNext": "다음 질문",
+      "promptTextEntered": "직접 입력한 글입니다. 고치려면 터미널에서 수정해 주세요.",
+      "promptHiddenOptions": "pane이 짧아 화면에 보이지 않는 선택지가 더 있습니다. 나머지는 터미널에서 확인해 주세요."
     },
     "backToBoard": "보드로 돌아가기",
     "moveToTodo": "Todo",
