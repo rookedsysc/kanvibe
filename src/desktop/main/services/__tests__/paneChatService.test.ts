@@ -19,7 +19,7 @@ vi.mock("@/lib/aiSessions/codexThreadInput", () => ({ sendCodexThreadInput: mock
 vi.mock("@/lib/aiSessions/codexThreadSettings", () => ({ readCodexThreadSettings: mocks.threadSettings }));
 vi.mock("@/lib/aiSessions/shared", async (importOriginal) => ({ ...await importOriginal<typeof import("@/lib/aiSessions/shared")>(), readJsonLinesTail: modelMocks.tail }));
 vi.mock("@/lib/hostFileAccess", async (importOriginal) => ({ ...await importOriginal<typeof import("@/lib/hostFileAccess")>(), readTextFile: modelMocks.readTextFile }));
-import { focusPaneChatTerminal, getPaneChatLayout, getPaneChatSnapshot, readPaneChat, readRecentPaneChat, getPaneChatModelSettings, getPaneChatTranscriptPage, getPaneChatSuggestions, stagePaneChatAttachment, removePaneChatAttachment, sendPaneChatPrompt, interruptPaneChat, openPaneChatModelPicker, changePaneChatModelSetting, sendPaneChatKey, revealPaneChatCodexThread } from "../paneChatService";
+import { focusPaneChatTerminal, getPaneChatLayout, getPaneChatSnapshot, readPaneChat, readRecentPaneChat, getPaneChatModelSettings, getPaneChatTranscriptPage, getPaneChatSuggestions, stagePaneChatAttachment, removePaneChatAttachment, sendPaneChatPrompt, interruptPaneChat, openPaneChatModelPicker, changePaneChatModelSetting, answerPaneChatPrompt, sendPaneChatKey, revealPaneChatCodexThread } from "../paneChatService";
 
 /** pane root의 tty로 좁힌 프로세스 조회 명령인지. 다른 `ps` 호출(예: tty 단독 조회)과 구분한다 */
 const isPaneProcessTableCommand = (command: string) => command.includes("ucomm=,args=");
@@ -1309,5 +1309,225 @@ describe("pane chat agent activity", () => {
     const viewportLines = ["  ┃  Ask anything…", "  ┃  Build · esc to interrupt", "  ╹▀▀▀"];
     mocks.surface.mockResolvedValue({ ...surface, inputLine: viewportLines[0], cursorColumn: 5, cursorRow: 0, viewportLines });
     expect((await getPaneChatSnapshot("task-chat", "%3")).agentActivity).toBe("unknown");
+  });
+});
+
+describe("Claude 선택 화면에 채팅에서 답하기", () => {
+  const MODEL_SWITCH = ["▔".repeat(20), "   Switch model?", "   ❯ 1. Yes, switch to Opus 5.5", "     2. No, go back"];
+  const QUESTION_HEAD = ["─".repeat(20), "←  ☐ Size  ☐ Notes  ✔ Submit  →", "", "Which size?", ""];
+  const QUESTION = [...QUESTION_HEAD, "❯ 1. Small", "  2. Large", "  3. Type something."];
+  const TOPPINGS_HEAD = ["─".repeat(20), "←  ☐ Toppings  ✔ Submit  →", "", "Which toppings?", ""];
+  const INPUT_BOX = ["─".repeat(20), "❯ ", "─".repeat(20)];
+  /** [lines]가 그려진 Claude 화면. 커서는 [cursorRow]번째 줄의 [cursorColumn] 칸에 있다 */
+  const claudeScreen = (lines: string[], cursorRow: number, cursorColumn: number) => ({ ...surface, viewportLines: lines, cursorRow, cursorColumn, inputLine: lines[cursorRow] });
+  const typedKeys = () => mocks.write.mock.calls.map((call) => call[2]);
+  /** 단일 선택 질문의 직접 입력 줄이 [text]를 입력받는 중인 화면 */
+  const typingScreen = (text: string) => claudeScreen([...QUESTION_HEAD, "  1. Small", "  2. Large", `❯ 3. ${text}`], 7, 5 + text.length);
+  /** 다중 선택 질문. [highlighted]번 줄이 강조돼 있고 3번이 직접 입력 줄이다 */
+  function toppingsScreen(highlighted: number, textEntry = "[ ] Type something", cheese = "[ ]") {
+    const rows = [`1. ${cheese} Cheese`, "2. [ ] Olives", `3. ${textEntry}`].map((row, index) => `${index + 1 === highlighted ? "❯" : " "} ${row}`);
+    return claudeScreen([...TOPPINGS_HEAD, ...rows, "     Submit"], 4 + highlighted, highlighted === 3 ? 9 : 0);
+  }
+  /** 다음에 보내는 키들이 차례로 화면을 [screens]로 바꾼다. 그 뒤의 키에는 선택 화면이 닫히고 입력란이 나온다 */
+  function screenAfterEachKey(...screens: ReturnType<typeof claudeScreen>[]) {
+    for (const screen of screens) mocks.write.mockImplementationOnce(async () => { mocks.surface.mockResolvedValue(screen); });
+  }
+  /** 답을 보내고, 화면을 다시 읽으며 기다리는 시간을 흘려보낸 뒤 그 결과를 받는다 */
+  async function answer(snapshot: Awaited<ReturnType<typeof getPaneChatSnapshot>>, requested: unknown) {
+    const answering = answerPaneChatPrompt("task-chat", snapshot.targetToken!, snapshot.prompt!.id, requested);
+    const outcome = answering.then(() => "sent", (error: Error) => error.name);
+    await vi.advanceTimersByTimeAsync(5_000);
+    return outcome;
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    mocks.exec.mockResolvedValue(processTable().replace("/usr/bin/python3 python3 /tmp/codex", "/tmp/claude /tmp/claude"));
+    mocks.surface.mockResolvedValue(claudeScreen(MODEL_SWITCH, 2, 3));
+    mocks.write.mockImplementation(async () => { mocks.surface.mockResolvedValue(claudeScreen(INPUT_BOX, 1, 2)); });
+  });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it("화면의 선택 화면을 종류와 함께 스냅샷에 싣는다", async () => {
+    const { prompt } = await getPaneChatSnapshot("task-chat", "%3");
+
+    expect(prompt).toMatchObject({ kind: "confirmation", title: "Switch model?", options: [{ number: 1, label: "Yes, switch to Opus 5.5" }, { number: 2, label: "No, go back" }] });
+    expect(prompt?.id).toEqual(expect.any(String));
+  });
+
+  it("종류는 화면으로 가린다. 대화 기록에 도구 호출이 아직 없어도 권한 확인이고, 도구가 실행 중이어도 모델 전환 확인은 CLI의 확인이다", async () => {
+    mocks.surface.mockResolvedValue(claudeScreen(["─".repeat(20), " Bash command", "╌".repeat(20), " touch a", "╌".repeat(20), " Do you want to proceed?", " ❯ 1. Yes", "   2. No"], 6, 1));
+    expect((await getPaneChatSnapshot("task-chat", "%3")).prompt).toMatchObject({ kind: "permission", detail: "Bash command\n\ntouch a" });
+
+    mocks.claude.mockResolvedValue({ sessionId: "exact-session", provider: "claude", messages: [{ role: "tool", text: "sleep 30", fullText: "sleep 30", toolName: "Bash" }], nextCursor: null });
+    mocks.surface.mockResolvedValue(claudeScreen(MODEL_SWITCH, 2, 3));
+    expect((await getPaneChatSnapshot("task-chat", "%3")).prompt?.kind).toBe("confirmation");
+  });
+
+  it("입력란이 보이는 화면과, 화면 배치를 확인하지 않은 CLI의 같은 화면은 선택 화면으로 싣지 않는다", async () => {
+    mocks.surface.mockResolvedValue(claudeScreen(INPUT_BOX, 1, 2));
+    expect((await getPaneChatSnapshot("task-chat", "%3")).prompt).toBeUndefined();
+
+    mocks.exec.mockResolvedValue(processTable());
+    mocks.surface.mockResolvedValue(claudeScreen(MODEL_SWITCH, 2, 3));
+    expect((await getPaneChatSnapshot("task-chat", "%3")).prompt).toBeUndefined();
+  });
+
+  it("같은 선택 화면이 떠 있으면 고른 번호의 숫자 키를 한 번 보낸다", async () => {
+    const snapshot = await getPaneChatSnapshot("task-chat", "%3");
+
+    expect(await answer(snapshot, { type: "option", number: 2 })).toBe("sent");
+
+    expect(mocks.write.mock.calls).toEqual([["task-chat", "%3", "2"]]);
+  });
+
+  it("강조 위치만 바뀐 화면은 같은 선택 화면으로 본다", async () => {
+    const snapshot = await getPaneChatSnapshot("task-chat", "%3");
+    mocks.surface.mockResolvedValue(claudeScreen([MODEL_SWITCH[0], MODEL_SWITCH[1], "     1. Yes, switch to Opus 5.5", "   ❯ 2. No, go back"], 3, 3));
+
+    expect(await answer(snapshot, { type: "option", number: 1 })).toBe("sent");
+
+    expect(typedKeys()).toEqual(["1"]);
+  });
+
+  it.each([
+    ["다른 선택 화면으로 바뀌었으면", claudeScreen([MODEL_SWITCH[0], "   Do you want to proceed?", "   ❯ 1. Yes", "     2. No"], 2, 3)],
+    ["선택 화면이 닫혔으면", claudeScreen(INPUT_BOX, 1, 2)],
+  ])("답을 보내기 직전에 %s 키를 보내지 않는다", async (_name, changedScreen) => {
+    const snapshot = await getPaneChatSnapshot("task-chat", "%3");
+    mocks.surface.mockResolvedValue(changedScreen);
+
+    expect(await answer(snapshot, { type: "option", number: 1 })).toBe("PaneChatInputError");
+
+    expect(typedKeys()).toEqual([]);
+  });
+
+  it("카드를 본 뒤 터미널에서 체크 상태를 바꿨으면, 같은 숫자 키가 그 선택을 되돌리므로 보내지 않는다", async () => {
+    mocks.surface.mockResolvedValue(toppingsScreen(2));
+    const snapshot = await getPaneChatSnapshot("task-chat", "%3");
+    mocks.surface.mockResolvedValue(toppingsScreen(2, "[ ] Type something", "[✔]"));
+
+    expect(await answer(snapshot, { type: "option", number: 1 })).toBe("PaneChatInputError");
+
+    expect(typedKeys()).toEqual([]);
+  });
+
+  it("키를 보낸 뒤 화면이 그 키에 반응할 때까지 기다렸다가 끝난다. 반응이 없어도 한정된 시간 뒤에 끝난다", async () => {
+    const snapshot = await getPaneChatSnapshot("task-chat", "%3");
+    let hasReacted = false;
+    mocks.write.mockImplementationOnce(async () => { setTimeout(() => { hasReacted = true; mocks.surface.mockResolvedValue(claudeScreen(INPUT_BOX, 1, 2)); }, 120); });
+    const answering = answerPaneChatPrompt("task-chat", snapshot.targetToken!, snapshot.prompt!.id, { type: "option", number: 2 }).then(() => hasReacted);
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(await answering).toBe(true);
+
+    mocks.surface.mockResolvedValue(claudeScreen(MODEL_SWITCH, 2, 3));
+    const unchanged = await getPaneChatSnapshot("task-chat", "%3");
+    mocks.write.mockImplementationOnce(async () => {});
+    expect(await answer(unchanged, { type: "option", number: 2 })).toBe("sent");
+  });
+
+  it("글을 입력받는 중인 화면에서는 숫자가 글자로 들어가므로, 위 화살표로 그 줄을 벗어난 것을 확인한 뒤 숫자 키를 보낸다", async () => {
+    mocks.surface.mockResolvedValue(typingScreen("term  ✔"));
+    const snapshot = await getPaneChatSnapshot("task-chat", "%3");
+    screenAfterEachKey(claudeScreen([...QUESTION_HEAD, "  1. Small", "❯ 2. Large", "  3. term ✔"], 6, 0));
+
+    expect(await answer(snapshot, { type: "option", number: 1 })).toBe("sent");
+
+    expect(typedKeys()).toEqual(["\x1b[A", "1"]);
+  });
+
+  it("글을 입력받는 중에 질문을 옮길 때도 위 화살표로 그 줄을 벗어난 뒤 좌우 화살표를 보낸다", async () => {
+    mocks.surface.mockResolvedValue(typingScreen("Type something."));
+    const snapshot = await getPaneChatSnapshot("task-chat", "%3");
+    screenAfterEachKey(claudeScreen([...QUESTION_HEAD, "  1. Small", "❯ 2. Large", "  3. Type something."], 6, 0));
+
+    expect(await answer(snapshot, { type: "step", direction: "next" })).toBe("sent");
+
+    expect(typedKeys()).toEqual(["\x1b[A", "\x1b[C"]);
+  });
+
+  it("단일 선택의 직접 입력은 그 줄의 숫자 키로 글을 받게 하고, 붙여넣은 글이 그 줄에 그대로 보일 때 Enter로 답한다", async () => {
+    mocks.surface.mockResolvedValue(claudeScreen(QUESTION, 5, 0));
+    const snapshot = await getPaneChatSnapshot("task-chat", "%3");
+    screenAfterEachKey(typingScreen("Type something."), typingScreen("Extra large"));
+
+    expect(await answer(snapshot, { type: "text", number: 3, text: " Extra large " })).toBe("sent");
+
+    expect(typedKeys()).toEqual(["3", "\x1b[200~Extra large\x1b[201~", "\r"]);
+  });
+
+  it("다중 선택의 직접 입력은 숫자 키가 체크만 뒤집으므로 화살표로 그 줄까지 옮기고, 글을 넣은 뒤 Enter 없이 그 줄을 벗어난다", async () => {
+    mocks.surface.mockResolvedValue(toppingsScreen(1));
+    const snapshot = await getPaneChatSnapshot("task-chat", "%3");
+    screenAfterEachKey(toppingsScreen(2), toppingsScreen(3), toppingsScreen(3, "[✔] Garlic"), toppingsScreen(2, "[✔] Garlic"));
+
+    expect(await answer(snapshot, { type: "text", number: 3, text: "Garlic" })).toBe("sent");
+
+    expect(typedKeys()).toEqual(["\x1b[B", "\x1b[B", "\x1b[200~Garlic\x1b[201~", "\x1b[A"]);
+  });
+
+  it("직접 입력 줄에 이미 같은 글이 들어 있으면 다시 넣지 않고 Enter로 답한다", async () => {
+    mocks.surface.mockResolvedValue(typingScreen("Extra large"));
+    const snapshot = await getPaneChatSnapshot("task-chat", "%3");
+
+    expect(await answer(snapshot, { type: "text", number: 3, text: "Extra large" })).toBe("sent");
+
+    expect(typedKeys()).toEqual(["\r"]);
+  });
+
+  it("직접 입력 줄에 다른 글이 들어 있으면 글이 합쳐지지 않도록 아무 키도 보내지 않는다", async () => {
+    mocks.surface.mockResolvedValue(typingScreen("from terminal"));
+    const snapshot = await getPaneChatSnapshot("task-chat", "%3");
+
+    expect(await answer(snapshot, { type: "text", number: 3, text: "from chat" })).toBe("PaneChatInputError");
+
+    expect(typedKeys()).toEqual([]);
+  });
+
+  it("붙여넣은 글이 직접 입력 줄에 그대로 보이지 않으면 Enter를 누르지 않는다", async () => {
+    mocks.surface.mockResolvedValue(typingScreen("Type something."));
+    const snapshot = await getPaneChatSnapshot("task-chat", "%3");
+    screenAfterEachKey(typingScreen("Extra largeX"));
+
+    expect(await answer(snapshot, { type: "text", number: 3, text: "Extra large" })).toBe("PaneChatInputError");
+
+    expect(typedKeys()).toEqual(["\x1b[200~Extra large\x1b[201~"]);
+  });
+
+  it.each([
+    ["다음 질문", { type: "step", direction: "next" }, "\x1b[C"],
+    ["이전 질문", { type: "step", direction: "previous" }, "\x1b[D"],
+    ["취소", { type: "cancel" }, "\x1b"],
+  ])("%s은 그 키 하나를 보낸다", async (_name, requested, key) => {
+    mocks.surface.mockResolvedValue(claudeScreen(QUESTION, 5, 0));
+    const snapshot = await getPaneChatSnapshot("task-chat", "%3");
+
+    expect(await answer(snapshot, requested)).toBe("sent");
+
+    expect(typedKeys()).toEqual([key]);
+  });
+
+  it.each([
+    ["단계가 없는 화면에서 질문 이동", { type: "step", direction: "next" }],
+    ["화면에 없는 번호", { type: "option", number: 3 }],
+    ["두 자리 번호", { type: "option", number: 10 }],
+    ["직접 입력 줄이 아닌 선택지에 글 넣기", { type: "text", number: 1, text: "note" }],
+    ["줄바꿈이 든 글", { type: "text", number: 1, text: "a\nb" }],
+    ["알 수 없는 종류", { type: "enter" }],
+  ])("거절하고 키를 보내지 않는 답: %s", async (_name, requested) => {
+    const snapshot = await getPaneChatSnapshot("task-chat", "%3");
+
+    expect(await answer(snapshot, requested)).toBe("PaneChatInputError");
+
+    expect(typedKeys()).toEqual([]);
+  });
+
+  it("비어 있는 직접 입력 줄은 번호 선택으로 고를 수 없다", async () => {
+    mocks.surface.mockResolvedValue(claudeScreen(QUESTION, 5, 0));
+    const snapshot = await getPaneChatSnapshot("task-chat", "%3");
+
+    expect(await answer(snapshot, { type: "option", number: 3 })).toBe("PaneChatInputError");
+
+    expect(typedKeys()).toEqual([]);
   });
 });
