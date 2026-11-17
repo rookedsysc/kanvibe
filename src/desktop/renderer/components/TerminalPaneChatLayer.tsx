@@ -4,6 +4,7 @@ import { focusPaneChatTerminal, getPaneChatAgentProvider, getPaneChatLayout, get
 import { useIsWindowActive } from "@/desktop/renderer/hooks/useIsWindowActive";
 import { usePaneChatPreferences } from "@/desktop/renderer/hooks/usePaneChatPreferences";
 import { REQUEST_TOGGLE_PANE_CHAT_EVENT, requestActiveTerminalFocusAfterUiSettles } from "@/desktop/renderer/utils/terminalFocus";
+import { requestTextContextMenu } from "@/desktop/renderer/utils/textContextMenu";
 import type { PaneChatLayout, PaneChatLayoutPane } from "@/desktop/shared/paneChat";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Chatting01Icon } from "@hugeicons/core-free-icons";
@@ -277,7 +278,7 @@ export function TerminalPaneChatLayer({ taskId, terminalTabId, taskTitle, termin
       }} onPointerDownCapture={() => {
         focusedPane.current = paneId;
         onChatFocusChange(true);
-      }}>
+      }} onContextMenu={requestTextContextMenu}>
         <PaneChatView taskId={taskId} paneId={paneId} taskTitle={taskTitle} isVisible={visible} onHistory={onHistory ?? (() => {})} onTerminal={() => closePane(paneId)} />
       </div>;
     })}

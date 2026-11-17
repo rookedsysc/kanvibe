@@ -7,7 +7,7 @@ const os = require("node:os");
 const path = require("node:path");
 const process = require("node:process");
 const { pathToFileURL } = require("node:url");
-const { app, BrowserWindow, clipboard, ipcMain, powerMonitor, session, shell } = require("electron");
+const { app, BrowserWindow, clipboard, ipcMain, Menu, powerMonitor, session, shell } = require("electron");
 const { createDesktopDiagnostics, resolveDesktopLogPath, serializeErrorForLog } = require("./diagnostics");
 const { applyAppDataDirectoryOverride, resolveHookServerPort } = require("./runtimeEnvironment");
 const { prepareDevelopmentDatabase } = require("./developmentDatabase");
@@ -988,6 +988,24 @@ function registerDesktopHandlers() {
   ipcMain.on("kanvibe:clipboard-read-image", (event) => {
     const image = clipboard.readImage();
     event.returnValue = image.isEmpty() ? null : `data:image/png;base64,${image.toPNG().toString("base64")}`;
+  });
+
+  /**
+   * Electron은 우클릭 메뉴를 기본으로 띄우지 않는다. 메인 프로세스는 우클릭한 자리가 어느 화면인지 알 수 없으므로
+   * 렌더러가 보낸 상태대로 OS 편집 메뉴를 보낸 창에 연다. role 항목이라 복사와 붙여넣기는 OS가 직접 수행한다.
+   */
+  ipcMain.on("kanvibe:text-context-menu", (event, request) => {
+    const senderWindow = BrowserWindow.fromWebContents(event.sender);
+    if (!senderWindow || senderWindow.isDestroyed()) return;
+    const isEditable = request?.isEditable === true;
+    const hasSelection = request?.hasSelection === true;
+    Menu.buildFromTemplate([
+      { role: "cut", visible: isEditable, enabled: hasSelection },
+      { role: "copy", enabled: hasSelection },
+      { role: "paste", visible: isEditable },
+      { type: "separator" },
+      { role: "selectAll" },
+    ]).popup({ window: senderWindow });
   });
 
   ipcMain.handle("kanvibe:ai-login-open", async (event, provider, accountRoot, cols, rows) => {
