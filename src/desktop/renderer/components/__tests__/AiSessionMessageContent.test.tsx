@@ -92,6 +92,46 @@ describe("AiSessionMessageContent", () => {
     expect(container.querySelector("[data-testid='ai-session-mermaid-diagram']")?.className).toContain("overflow-x-auto");
   });
 
+  it("같은 내용으로 다시 그려도 선택한 본문 글자가 그대로 남는다", () => {
+    const text = "선택할 **문장**입니다.";
+    const { container, rerender } = render(<AiSessionMessageContent text={text} />);
+    const paragraph = container.querySelector("p")!;
+    const range = document.createRange();
+    range.selectNodeContents(paragraph);
+    const selection = window.getSelection()!;
+    selection.removeAllRanges();
+    selection.addRange(range);
+
+    rerender(<AiSessionMessageContent text={text} />);
+
+    expect(container.querySelector("p")).toBe(paragraph);
+    expect(selection.toString()).toBe("선택할 문장입니다.");
+  });
+
+  it("내용이 바뀌면 다시 그릴 때 새 내용을 보인다", () => {
+    const { container, rerender } = render(<AiSessionMessageContent text={"처음 답변"} />);
+
+    rerender(<AiSessionMessageContent text={"이어진 답변"} />);
+
+    expect(container.querySelector("p")?.textContent).toBe("이어진 답변");
+  });
+
+  it("같은 내용으로 다시 그려도 다이어그램 안의 글자가 그대로 남는다", async () => {
+    mermaidMocks.render.mockResolvedValue({ svg: '<svg viewBox="0 0 200 100"><text>노드 이름</text></svg>' });
+    const text = "```mermaid\ngraph LR\n  A --> B\n```";
+    const { container, rerender } = render(<AiSessionMessageContent text={text} />);
+    const findLabel = () => container.querySelector("[data-testid='ai-session-mermaid-diagram'] svg text");
+    const label = await waitFor(() => {
+      const element = findLabel();
+      if (!element) throw new Error("다이어그램이 아직 그려지지 않았습니다");
+      return element;
+    });
+
+    rerender(<AiSessionMessageContent text={text} />);
+
+    expect(findLabel()).toBe(label);
+  });
+
   it("본문에 섞인 스크립트와 인라인 스타일은 그리지 않는다", () => {
     const { container } = render(<AiSessionMessageContent text={"<script>window.hacked = true</script><p style=\"color:red\">안전한 문단</p>"} />);
 

@@ -46,14 +46,15 @@ export function buildSandboxedPreviewDocument(content: string) {
 
 function SourceView({ filePath, content }: { filePath: string; content: string }) {
   const extension = readFileExtension(filePath);
+  /** 답변 본문(AiSessionMessageContent의 MarkdownContent)과 같은 이유로, 넘길 객체를 내용이 바뀔 때만 새로 만든다 */
   const highlighted = useMemo(
-    () => (extension && hljs.getLanguage(extension) ? hljs.highlight(content, { language: extension }).value : null),
+    () => (extension && hljs.getLanguage(extension) ? { __html: hljs.highlight(content, { language: extension }).value } : null),
     [content, extension],
   );
 
   return (
     <pre data-testid="ai-chat-file-source" className="kv-chat-code m-0! min-h-full overflow-auto! rounded-none! border-0! p-4 font-mono text-xs leading-5 text-text-primary">
-      {highlighted === null ? <code>{content}</code> : <code dangerouslySetInnerHTML={{ __html: highlighted }} />}
+      {highlighted === null ? <code>{content}</code> : <code dangerouslySetInnerHTML={highlighted} />}
     </pre>
   );
 }
