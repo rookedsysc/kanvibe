@@ -933,18 +933,23 @@ describe("Codex displayed-thread footer binding", () => {
   describe("Codex가 선택 화면을 띄운 동안", () => {
     const APPROVAL = ["  Would you like to run the following command?", "", "  $ git tag demo", "", "", "› 1. Yes, proceed (y)", "  2. No, and tell Codex what to do differently (esc)", "", "  Press enter to confirm or esc to cancel"];
     const RATE_LIMIT = ["  Approaching rate limits", "", "", "› 1. Switch to gpt-6-luna", "  2. Keep current model", "", "  enter select · esc back"];
+    /**
+     * 채팅이 pane을 한 번 읽는다. 대화를 유지하는 조건이 "마지막 확인 뒤 지난 시간"이라, 가짜 시계를 흘리며 기다리지 않고 바로 기다린다.
+     * 흘리며 기다리면 파일 조회가 느린 환경에서 읽기 한 번 사이에 가짜 시간이 몇 초씩 지나간다.
+     */
+    const readChat = (taskId: string) => getPaneChatSnapshot(taskId, "%A");
 
     it("선택 화면이 하단의 대화 ID를 가려도 직전에 확인한 대화를 유지하고, 그 화면을 스냅샷에 싣는다", async () => {
       const { taskId, a } = createCodexTask();
-      const bound = await settle(getPaneChatSnapshot(taskId, "%A"));
+      const bound = await readChat(taskId);
       a.dialog = APPROVAL;
 
-      const asking = await settle(getPaneChatSnapshot(taskId, "%A"));
+      const asking = await readChat(taskId);
 
       expect(asking).toMatchObject({ canSend: true, targetToken: bound.targetToken, transcript: { status: "available", sessionId: THREAD_X } });
       expect(asking.prompt).toMatchObject({ kind: "permission", title: "Would you like to run the following command?", detail: "$ git tag demo", options: [{ number: 1, label: "Yes, proceed (y)" }, { number: 2 }] });
       a.dialog = null;
-      expect(await settle(getPaneChatSnapshot(taskId, "%A"))).toMatchObject({ canSend: true, targetToken: bound.targetToken });
+      expect(await readChat(taskId)).toMatchObject({ canSend: true, targetToken: bound.targetToken });
     });
 
     it("대화를 확인한 적 없는 Codex의 선택 화면은 대화로 연결하지 않는다", async () => {
@@ -952,18 +957,18 @@ describe("Codex displayed-thread footer binding", () => {
       a.showFooter = false;
       a.dialog = APPROVAL;
 
-      expect(await settle(getPaneChatSnapshot(taskId, "%A"))).toMatchObject({ canSend: false, targetToken: null });
+      expect(await readChat(taskId)).toMatchObject({ canSend: false, targetToken: null });
     });
 
     it("선택 화면이 닫힌 뒤 다른 대화의 ID가 보이면 유지하던 대화를 버린다", async () => {
       const { taskId, a } = createCodexTask();
-      const bound = await settle(getPaneChatSnapshot(taskId, "%A"));
+      const bound = await readChat(taskId);
       a.dialog = RATE_LIMIT;
-      await settle(getPaneChatSnapshot(taskId, "%A"));
+      await readChat(taskId);
       a.dialog = null;
       a.switchThread(THREAD_Y);
 
-      const after = await settle(getPaneChatSnapshot(taskId, "%A"));
+      const after = await readChat(taskId);
 
       expect(after.targetToken).not.toBe(bound.targetToken);
       await expect(settle(interruptPaneChat(taskId, bound.targetToken!))).rejects.toMatchObject({ name: "PaneChatTargetChangedError" });
@@ -971,14 +976,14 @@ describe("Codex displayed-thread footer binding", () => {
 
     it("카드에서 고른 번호를 숫자 키 하나로, 취소를 Esc로 보낸다", async () => {
       const { taskId, a } = createCodexTask();
-      await settle(getPaneChatSnapshot(taskId, "%A"));
+      await readChat(taskId);
       a.dialog = APPROVAL;
-      const asking = await settle(getPaneChatSnapshot(taskId, "%A"));
+      const asking = await readChat(taskId);
 
       await settle(answerPaneChatPrompt(taskId, asking.targetToken!, asking.prompt!.id, { type: "option", number: 2 }));
-      await settle(getPaneChatSnapshot(taskId, "%A"));
+      await readChat(taskId);
       a.dialog = RATE_LIMIT;
-      const warned = await settle(getPaneChatSnapshot(taskId, "%A"));
+      const warned = await readChat(taskId);
       await settle(answerPaneChatPrompt(taskId, warned.targetToken!, warned.prompt!.id, { type: "cancel" }));
 
       expect(a.dialogKeys).toEqual(["2", "\x1b"]);
@@ -986,9 +991,9 @@ describe("Codex displayed-thread footer binding", () => {
 
     it("카드를 본 뒤 다른 선택 화면으로 바뀌었으면 키를 보내지 않는다", async () => {
       const { taskId, a } = createCodexTask();
-      await settle(getPaneChatSnapshot(taskId, "%A"));
+      await readChat(taskId);
       a.dialog = APPROVAL;
-      const asking = await settle(getPaneChatSnapshot(taskId, "%A"));
+      const asking = await readChat(taskId);
       a.dialog = RATE_LIMIT;
 
       await expect(settle(answerPaneChatPrompt(taskId, asking.targetToken!, asking.prompt!.id, { type: "option", number: 1 }))).rejects.toMatchObject({ name: "PaneChatTargetChangedError" });
@@ -998,23 +1003,23 @@ describe("Codex displayed-thread footer binding", () => {
 
     it("같은 선택 화면을 계속 지켜보는 동안에는 오래 떠 있어도 대화를 유지한다", async () => {
       const { taskId, a } = createCodexTask();
-      const bound = await settle(getPaneChatSnapshot(taskId, "%A"));
+      const bound = await readChat(taskId);
       a.dialog = APPROVAL;
 
       for (let poll = 0; poll < 12; poll++) {
         await vi.advanceTimersByTimeAsync(1_500);
-        expect(await settle(getPaneChatSnapshot(taskId, "%A"))).toMatchObject({ canSend: true, targetToken: bound.targetToken });
+        expect(await readChat(taskId)).toMatchObject({ canSend: true, targetToken: bound.targetToken });
       }
     });
 
     it("대화 ID를 본 지 오래됐으면 그사이 대화가 바뀌었을 수 있으므로, 선택 화면이 떠 있어도 이전 대화를 보여 주지 않는다", async () => {
       const { taskId, a } = createCodexTask();
-      await settle(getPaneChatSnapshot(taskId, "%A"));
+      await readChat(taskId);
       await vi.advanceTimersByTimeAsync(60_000);
       a.switchThread(THREAD_Y);
       a.dialog = RATE_LIMIT;
 
-      const reopened = await settle(getPaneChatSnapshot(taskId, "%A"));
+      const reopened = await readChat(taskId);
 
       expect(reopened).toMatchObject({ canSend: false, targetToken: null });
       expect(reopened.prompt).toBeUndefined();
@@ -1022,13 +1027,13 @@ describe("Codex displayed-thread footer binding", () => {
 
     it("글자가 같은 선택 화면이라도 그 위의 대화 내용이 바뀌었으면 새 대화에서 다시 뜬 화면이므로 유지를 끝낸다", async () => {
       const { taskId, a } = createCodexTask();
-      await settle(getPaneChatSnapshot(taskId, "%A"));
+      await readChat(taskId);
       a.dialog = RATE_LIMIT;
-      await settle(getPaneChatSnapshot(taskId, "%A"));
+      await readChat(taskId);
       a.switchThread(THREAD_Y);
       a.history = "  >_ New conversation";
 
-      const reopened = await settle(getPaneChatSnapshot(taskId, "%A"));
+      const reopened = await readChat(taskId);
 
       expect(reopened).toMatchObject({ canSend: false, targetToken: null });
       expect(reopened.prompt).toBeUndefined();
@@ -1036,23 +1041,23 @@ describe("Codex displayed-thread footer binding", () => {
 
     it("터미널에서 강조 줄만 옮긴 같은 선택 화면은 계속 유지한다", async () => {
       const { taskId, a } = createCodexTask();
-      const bound = await settle(getPaneChatSnapshot(taskId, "%A"));
+      const bound = await readChat(taskId);
       a.dialog = RATE_LIMIT;
-      await settle(getPaneChatSnapshot(taskId, "%A"));
+      await readChat(taskId);
       a.dialog = RATE_LIMIT.map((line) => line.startsWith("› 1.") ? line.replace("›", " ") : line.startsWith("  2.") ? `›${line.slice(1)}` : line);
 
-      expect(await settle(getPaneChatSnapshot(taskId, "%A"))).toMatchObject({ canSend: true, targetToken: bound.targetToken, prompt: { highlightedNumber: 2 } });
+      expect(await readChat(taskId)).toMatchObject({ canSend: true, targetToken: bound.targetToken, prompt: { highlightedNumber: 2 } });
     });
 
     it("대화 ID를 다시 보지 못한 채 다른 선택 화면으로 넘어가면 그사이 대화가 바뀌었을 수 있으므로 유지를 끝낸다", async () => {
       const { taskId, a } = createCodexTask();
-      await settle(getPaneChatSnapshot(taskId, "%A"));
+      await readChat(taskId);
       a.dialog = APPROVAL;
-      await settle(getPaneChatSnapshot(taskId, "%A"));
+      await readChat(taskId);
       a.switchThread(THREAD_Y);
       a.dialog = RATE_LIMIT;
 
-      expect(await settle(getPaneChatSnapshot(taskId, "%A"))).toMatchObject({ canSend: false, targetToken: null });
+      expect(await readChat(taskId)).toMatchObject({ canSend: false, targetToken: null });
     });
   });
 
