@@ -60,6 +60,8 @@ const CODEX_WORKING_STATUS_LINE = /^•\s.*\(.*\besc to interrupt\)$/;
 const PROMPT_REACTION_READ_ATTEMPTS = 6;
 /** 선택 화면이 대화 ID를 가리는 동안, 대화 ID나 그 선택 화면을 이 시간 안에 다시 확인하지 못했으면 대화가 이어진다고 보지 않는다 */
 const CODEX_HELD_THREAD_MAX_GAP_MS = 5_000;
+/** Codex 선택 화면에서 강조된 선택지 줄의 머리 */
+const CODEX_HIGHLIGHTED_OPTION = /^› (\d+\. )/;
 /** Codex 상태 줄과 입력란 사이에는 사용량 경고 같은 줄이 끼어들 수 있어 입력란 위로 이만큼 찾는다 */
 const CODEX_WORKING_STATUS_SEARCH_ROWS = 6;
 
@@ -83,7 +85,7 @@ interface CodexDisplayExecution {
   observation: number;
   /** 대화 ID를, 또는 그 ID를 가린 선택 화면을 마지막으로 확인한 시각 */
   confirmedAt: number;
-  /** 대화 ID를 가린 채 지켜보고 있는 선택 화면. 대화 ID가 보이는 동안에는 null이다 */
+  /** 대화 ID를 가린 채 지켜보고 있는 화면의 글(강조 표시는 뺀 것). 대화 ID가 보이는 동안에는 null이다 */
   heldBehindPrompt: string | null;
 }
 const codexDisplays = new Map<string, Promise<CodexDisplayExecution | null>>();
@@ -115,14 +117,16 @@ function codexDisplay(surface: PaneChatSurface) {
  *
  * 대화 ID를 본 직후부터 그 선택 화면을 끊김 없이 지켜본 경우에만 그렇게 본다. 채팅을 꺼 둔 동안처럼 지켜보지 않은 사이나,
  * 대화 ID를 다시 보지 못한 채 다른 선택 화면으로 넘어가는 사이에는 터미널에서 대화를 바꿨을 수 있다.
+ * 새 대화에서 글자가 같은 선택 화면이 다시 뜰 수도 있으므로, 같은 화면인지는 선택 화면 위의 대화 내용까지 견준다.
  */
 function holdCodexThreadBehindPrompt(state: CodexDisplayExecution, surface: PaneChatSurface): string | null {
   const screen = surface.viewportLines ? readCodexPrompt(surface.viewportLines) : null;
   const now = Date.now();
   if (!screen || !state.observedThread || now - state.confirmedAt > CODEX_HELD_THREAD_MAX_GAP_MS) return null;
-  const shownPrompt = JSON.stringify([screen.title, screen.detail, screen.options.map((option) => option.label)]);
-  if (state.heldBehindPrompt !== null && state.heldBehindPrompt !== shownPrompt) return null;
-  state.heldBehindPrompt = shownPrompt;
+  // 터미널에서 화살표로 강조 줄만 옮긴 것은 같은 화면이다
+  const shownScreen = surface.viewportLines!.map((line) => line.replace(CODEX_HIGHLIGHTED_OPTION, "  $1")).join("\n");
+  if (state.heldBehindPrompt !== null && state.heldBehindPrompt !== shownScreen) return null;
+  state.heldBehindPrompt = shownScreen;
   state.confirmedAt = now;
   return state.observedThread;
 }

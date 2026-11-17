@@ -798,6 +798,8 @@ class FakeCodexPane {
   /** 입력란과 footer 자리를 차지한 선택 화면의 줄. 숫자 키나 Esc를 받으면 닫힌다 */
   dialog: string[] | null = null;
   readonly dialogKeys: string[] = [];
+  /** 선택 화면 위에 보이는 대화 내용. 새 대화를 시작하면 바뀐다 */
+  history = "• Earlier reply";
 
   constructor(readonly paneId: string, readonly rootPid: number, public threadId: string) {}
 
@@ -842,7 +844,7 @@ class FakeCodexPane {
   surface(task: object) {
     if (this.dialog) {
       // 실제 TUI는 선택 화면을 화면 아래에 붙이고 커서를 마지막 줄 끝에 세워 둔다. 대화 ID가 있던 footer는 가려진다.
-      const rows = ["  >_ OpenAI Codex (v0.169.0)", "", "• Earlier reply", "", "", ...this.dialog];
+      const rows = ["  >_ OpenAI Codex (v0.169.0)", "", this.history, "", "", ...this.dialog];
       return { observation: ++codexObservationSequence, task, paneId: this.paneId, rootPid: this.rootPid, screen: rows.join("\n"), inputLine: rows.at(-1)!, cursorColumn: 120, viewportLines: rows, cursorRow: rows.length - 1, viewportColumns: 120, inputIsPlaceholder: false };
     }
     const [firstLine, ...moreLines] = (this.composer || "Ask Codex to do anything").split("\n");
@@ -1016,6 +1018,30 @@ describe("Codex displayed-thread footer binding", () => {
 
       expect(reopened).toMatchObject({ canSend: false, targetToken: null });
       expect(reopened.prompt).toBeUndefined();
+    });
+
+    it("글자가 같은 선택 화면이라도 그 위의 대화 내용이 바뀌었으면 새 대화에서 다시 뜬 화면이므로 유지를 끝낸다", async () => {
+      const { taskId, a } = createCodexTask();
+      await settle(getPaneChatSnapshot(taskId, "%A"));
+      a.dialog = RATE_LIMIT;
+      await settle(getPaneChatSnapshot(taskId, "%A"));
+      a.switchThread(THREAD_Y);
+      a.history = "  >_ New conversation";
+
+      const reopened = await settle(getPaneChatSnapshot(taskId, "%A"));
+
+      expect(reopened).toMatchObject({ canSend: false, targetToken: null });
+      expect(reopened.prompt).toBeUndefined();
+    });
+
+    it("터미널에서 강조 줄만 옮긴 같은 선택 화면은 계속 유지한다", async () => {
+      const { taskId, a } = createCodexTask();
+      const bound = await settle(getPaneChatSnapshot(taskId, "%A"));
+      a.dialog = RATE_LIMIT;
+      await settle(getPaneChatSnapshot(taskId, "%A"));
+      a.dialog = RATE_LIMIT.map((line) => line.startsWith("› 1.") ? line.replace("›", " ") : line.startsWith("  2.") ? `›${line.slice(1)}` : line);
+
+      expect(await settle(getPaneChatSnapshot(taskId, "%A"))).toMatchObject({ canSend: true, targetToken: bound.targetToken, prompt: { highlightedNumber: 2 } });
     });
 
     it("대화 ID를 다시 보지 못한 채 다른 선택 화면으로 넘어가면 그사이 대화가 바뀌었을 수 있으므로 유지를 끝낸다", async () => {
