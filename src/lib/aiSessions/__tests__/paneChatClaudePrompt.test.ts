@@ -109,6 +109,48 @@ describe("readClaudePrompt", () => {
     expect(prompt?.options[1].description).toBe("t-of-issues/workspace from this project");
   });
 
+  describe("화면 너비를 알 때 줄이 넘어간 선택지", () => {
+    const hardWrapped = "   2. Yes, and always allow access to /home/user/kanvibe__worktrees/fix-lo";
+
+    it("한 줄에 다 들어가지 않는 긴 경로가 낱말 가운데에서 끊기면 공백 없이 라벨에 이어 붙인다", () => {
+      const longPath = "/home/user/projects/kanvibe__worktrees/fix-lot-of-issues/qa-results/workspace-directory";
+      const head = "   2. Yes, and always allow access to ";
+      const wrapColumn = 70;
+      const rows = [head + longPath.slice(0, wrapColumn - head.length), `      ${longPath.slice(wrapColumn - head.length)} now`];
+      const screen = permission.flatMap((line) => line === hardWrapped ? rows : line.startsWith("      t-of-issues") ? [] : [line]);
+
+      expect(readClaudePrompt(screen, 7, 1, wrapColumn + 1)?.options[1]).toMatchObject({ label: `Yes, and always allow access to ${longPath} now`, description: "" });
+    });
+
+    it("다음 낱말이 들어갈 자리가 없어 넘어간 줄은 공백을 두고 라벨에 이어 붙인다", () => {
+      const wordWrapped = permission.map((line) => line === hardWrapped ? "   2. Yes, and do not ask again for commands that start with git" : line.startsWith("      t-of-issues") ? "      tag in this workspace" : line);
+
+      expect(readClaudePrompt(wordWrapped, 7, 1, 67)?.options[1]).toMatchObject({ label: "Yes, and do not ask again for commands that start with git tag in this workspace", description: "" });
+    });
+
+    it("짧은 선택지 아래의 설명 줄은 그대로 설명으로 둔다", () => {
+      expect(readClaudePrompt(singleQuestion, 6, 0, 120)?.options[0]).toMatchObject({ label: "Red (warm)", description: "Warm" });
+    });
+
+    it("질문 화면에서 한 줄 라벨이 화면 끝에 가까워 설명의 첫 낱말이 들어갈 자리가 없어도, 설명은 설명으로 둔다", () => {
+      const nearEdge = ["Which preset?", "", "❯ 1. Use the shared configuration preset with strict lint rules", "     recommended for new repositories", "  2. Minimal", "     smallest setup", "  3. Chat about this"];
+
+      expect(readClaudePrompt(nearEdge, 2, 0, 70)?.options[0]).toMatchObject({ label: "Use the shared configuration preset with strict lint rules", description: "recommended for new repositories" });
+    });
+
+    it("질문 화면에서도 넘어간 라벨과 설명 사이가 분명하면 라벨을 이어 붙인다", () => {
+      const wrappedThenDescribed = ["Which preset?", "", "❯ 1. Use the shared configuration preset from the", "     platform team", "     recommended", "  2. Minimal", "     smallest setup", "  3. Chat about this"];
+
+      expect(readClaudePrompt(wrappedThenDescribed, 2, 0, 54)?.options[0]).toMatchObject({ label: "Use the shared configuration preset from the platform team", description: "recommended" });
+    });
+
+    it("넘어간 라벨 뒤에 오는 설명 줄은 설명으로 둔다", () => {
+      const withDescription = ["Pick one?", "", "❯ 1. A fairly long option label that needs", "     two lines", "     its description", "  2. Short"];
+
+      expect(readClaudePrompt(withDescription, 2, 0, 44)?.options[0]).toMatchObject({ label: "A fairly long option label that needs two lines", description: "its description" });
+    });
+  });
+
   it("모델 전환 확인처럼 경계선 바로 아래에서 시작하는 화면은 안내문 전체를 제목으로 읽는다", () => {
     expect(readClaudePrompt(modelSwitch, 3, 3)).toMatchObject({
       kind: "confirmation",
