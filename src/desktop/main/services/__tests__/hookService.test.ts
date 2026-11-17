@@ -117,7 +117,7 @@ describe("hookService.updateHookTaskStatus", () => {
 
     expect(mocks.taskRepo.findOne).toHaveBeenCalledWith({
       where: { id: task.id },
-      relations: ["project"],
+      relations: { project: true },
     });
     expect(mocks.broadcastTaskStatusChanged).toHaveBeenCalledWith({
       projectName: project.name,

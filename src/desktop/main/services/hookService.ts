@@ -45,7 +45,7 @@ export async function updateHookTaskStatus(input: HookStatusInput, sourceSshHost
   const taskRepo = await getTaskRepository();
   const task = await taskRepo.findOne({
     where: { id: input.taskId },
-    relations: ["project"],
+    relations: { project: true },
   });
 
   if (task && !isTaskReachableFromTunnel(task, task.project, sourceSshHosts)) {
@@ -116,7 +116,7 @@ export async function updateJournalHookTaskStatus(input: HookStatusInput, source
   const taskStatus = Object.hasOwn(STATUS_MAP, statusKey) ? STATUS_MAP[statusKey] : undefined;
   if (!taskStatus) return { success: false, error: "Invalid journal hook status", status: 400 };
   const taskRepo = await getTaskRepository();
-  const task = await taskRepo.findOne({ where: { id: input.taskId }, relations: ["project"] });
+  const task = await taskRepo.findOne({ where: { id: input.taskId }, relations: { project: true } });
   if (!task || !isTaskReachableFromTunnel(task, task.project, sourceSshHosts)) {
     return { success: false, error: "Journal hook target not found", status: 404 };
   }
