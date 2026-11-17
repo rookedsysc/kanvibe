@@ -67,9 +67,10 @@ describe("PaneChatPromptCard", () => {
     expect(screen.getByRole("button", { name: "promptNext" })).toHaveProperty("disabled", false);
   });
 
-  it("화면에 다 보이지 않는 선택지가 있으면 나머지는 터미널에서 확인하라고 알린다", () => {
+  it("화면에 다 보이지 않는 선택지가 있으면 나머지는 터미널에서 확인하라고, 선택지 목록보다 먼저 알린다", () => {
     open({ ...question, hasHiddenOptions: true });
-    expect(screen.getByText("promptHiddenOptions")).toBeTruthy();
+    const notice = screen.getByText("promptHiddenOptions");
+    expect(notice.compareDocumentPosition(screen.getByRole("list")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
     cleanup();
     open(question);

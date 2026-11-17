@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as actions from "@/desktop/renderer/actions/paneChat";
-import type { PaneChatActionResult, PaneChatCodexThreadReveal, PaneChatKey, PaneChatPromptAnswer, PaneChatSnapshot } from "@/desktop/shared/paneChat";
+import { getPaneChatPromptDialogKey, type PaneChatActionResult, type PaneChatCodexThreadReveal, type PaneChatKey, type PaneChatPrompt, type PaneChatPromptAnswer, type PaneChatSnapshot } from "@/desktop/shared/paneChat";
 import { useIsWindowActive } from "./useIsWindowActive";
 import type { AggregatedAiMessage } from "@/lib/aiSessions/types";
 
@@ -26,8 +26,8 @@ export function usePaneChat(taskId: string, isVisible = true, paneId?: string) {
   const [result, setResult] = useState<{ taskId: string; paneId?: string; snapshot: PaneChatSnapshot } | null>(null);
   const [readError, setReadError] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
-  /** 선택 화면에 답을 보내지 못한 이유. 그 답을 누른 카드에만 보이도록 어느 선택 화면의 일인지 함께 둔다 */
-  const [promptError, setPromptError] = useState<{ promptId: string; message: string } | null>(null);
+  /** 선택 화면에 답을 보내지 못한 이유. 그 선택 화면의 카드에만 보이도록 어느 화면의 일인지 함께 둔다 */
+  const [promptError, setPromptError] = useState<{ dialogKey: string; message: string } | null>(null);
   const [isBusy, setIsBusy] = useState(false);
   const [isReady, setIsReady] = useState(false);
   const [pending, setPending] = useState<PendingMessage[]>([]);
@@ -182,11 +182,11 @@ export function usePaneChat(taskId: string, isVisible = true, paneId?: string) {
     interrupt: () => run((token) => actions.interruptPaneChat(taskId, token)),
     openModelPicker: () => run((token) => actions.openPaneChatModelPicker(taskId, token)),
     sendKey: (key: PaneChatKey) => run((token) => actions.sendPaneChatKey(taskId, token, key)),
-    answerPrompt: (promptId: string, answer: PaneChatPromptAnswer) => run(async (token) => {
-      const accepted = await actions.answerPaneChatPrompt(taskId, token, promptId, answer);
+    answerPrompt: (prompt: PaneChatPrompt, answer: PaneChatPromptAnswer) => run(async (token) => {
+      const accepted = await actions.answerPaneChatPrompt(taskId, token, prompt.id, answer);
       // 바뀐 화면을 받아 온 뒤에야 카드를 다시 누를 수 있게 해, 다음 답이 낡은 카드에서 나가지 않게 한다
       await refreshRef.current();
       return accepted;
-    }, false, (message) => setPromptError(message ? { promptId, message } : null)),
+    }, false, (message) => setPromptError(message ? { dialogKey: getPaneChatPromptDialogKey(prompt), message } : null)),
   };
 }

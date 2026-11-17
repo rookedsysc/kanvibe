@@ -52,6 +52,14 @@ export interface PaneChatPrompt extends PaneChatPromptScreen {
   id: string;
 }
 
+/**
+ * 체크 상태가 바뀌어도 같은 선택 화면으로 묶는 값.
+ * 답을 보낼 때의 `id`는 체크가 바뀌면 달라지므로, 화면에 떠 있는 카드와 그 카드에 남길 안내는 이 값으로 이어 붙인다.
+ */
+export function getPaneChatPromptDialogKey(prompt: PaneChatPrompt): string {
+  return JSON.stringify([prompt.kind, prompt.title, prompt.detail]);
+}
+
 /** 선택 화면에 보낼 답. option은 번호 선택, text는 직접 입력 줄에 글을 넣어 고르기, step은 질문 사이 이동, cancel은 Esc다 */
 export type PaneChatPromptAnswer =
   | { type: "option"; number: number }

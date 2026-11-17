@@ -8,7 +8,7 @@ import { usePaneChatTranscript } from "@/desktop/renderer/hooks/usePaneChatTrans
 import { usePaneChatPreferences } from "@/desktop/renderer/hooks/usePaneChatPreferences";
 import { isAiInstructionMessage } from "@/lib/aiSessions/messageInstructions";
 import type { TerminalTab } from "@/desktop/shared/terminalTabs";
-import type { PaneChatCodexThreadReveal } from "@/desktop/shared/paneChat";
+import { getPaneChatPromptDialogKey, type PaneChatCodexThreadReveal } from "@/desktop/shared/paneChat";
 import type { AiSessionProvider } from "@/lib/aiSessions/types";
 import { PaneChatComposer } from "./PaneChatComposer";
 import { AiChatTranscriptMessage } from "./AiChatTranscriptMessage";
@@ -101,6 +101,7 @@ export function PaneChatView({ taskId, paneId, taskTitle, paneTabs = [], isVisib
   const paneName = paneTabs.find((tab) => tab.id === snapshot?.paneId)?.name;
   const isWaitingForInput = snapshot?.transcript.reason === "codex-thread-input-busy";
   const prompt = snapshot?.prompt;
+  const promptDialogKey = prompt ? getPaneChatPromptDialogKey(prompt) : null;
   const isNewConversation = !!snapshot?.canSend && snapshot.transcript.status === "available" && visibleMessages.length === 0
     && !transcript.nextCursor && chat.pendingMessages.length === 0 && !chat.isAgentWorking;
 
@@ -117,7 +118,7 @@ export function PaneChatView({ taskId, paneId, taskTitle, paneTabs = [], isVisib
       viewport.current.scrollTop = scrollAnchor.current.top + viewport.current.scrollHeight - scrollAnchor.current.height;
       scrollAnchor.current = null;
     } else if (followLatest.current && viewport.current) viewport.current.scrollTop = viewport.current.scrollHeight;
-  }, [messages, chat.pendingMessages.length, chat.isAgentWorking, targetKey, isVisible, prompt?.id]);
+  }, [messages, chat.pendingMessages.length, chat.isAgentWorking, targetKey, isVisible, promptDialogKey]);
 
   async function revealCodexThread() {
     setRevealOutcome(await chat.revealCodexThread());
@@ -204,7 +205,8 @@ export function PaneChatView({ taskId, paneId, taskTitle, paneTabs = [], isVisib
         setIsDetached(false);
       }} className="absolute bottom-44 left-1/2 -translate-x-1/2 rounded-full border border-border-default bg-bg-surface px-4 py-2 text-xs text-text-primary">{t("jumpToLatest")} ↓</button> : null}
       {previewFilePath ? <AiChatFilePreview taskId={taskId} filePath={previewFilePath} onClose={() => setPreviewFilePath(null)} /> : null}
-      {prompt ? <PaneChatPromptCard key={prompt.id} prompt={prompt} isBusy={chat.isBusy} error={chat.promptError?.promptId === prompt.id ? chat.promptError.message : null} onAnswer={(answer) => void chat.answerPrompt(prompt.id, answer)} onTerminal={onTerminal} /> : null}
+      {/* 체크만 바뀐 같은 선택 화면에서는 카드를 다시 만들지 않아, 적던 글과 답을 보내지 못한 이유가 남는다. 다른 선택 화면이 뜨면 새 카드로 시작한다. */}
+      {prompt ? <PaneChatPromptCard key={promptDialogKey} prompt={prompt} isBusy={chat.isBusy} error={chat.promptError?.dialogKey === promptDialogKey ? chat.promptError.message : null} onAnswer={(answer) => void chat.answerPrompt(prompt, answer)} onTerminal={onTerminal} /> : null}
       {/* 선택 화면이 떠 있는 동안 CLI는 메시지를 받지 않는다. 쓰던 글이 남도록 입력창은 지우지 않고 가려 둔다. */}
       <div className={`relative max-h-[70%] min-h-0 shrink-0 flex-col ${prompt ? "hidden" : "flex"}`}>
         <PaneChatComposer taskId={taskId} chat={chat} isVisible={isVisible} isModelPickerOpen={modelPickerOpen} onModel={() => void openModelPicker()} />

@@ -158,6 +158,24 @@ describe("current pane chat", () => {
       expect(screen.queryByRole("alert")).toBeNull();
     });
 
+    it("같은 선택 화면의 체크 상태만 바뀌어 카드가 갱신돼도, 답을 보내지 못한 이유와 적던 글은 그대로 남는다", async () => {
+      const toppings = { ...prompt, kind: "question" as const, title: "Which toppings?", isMultiSelect: true, options: [
+        { number: 1, label: "Cheese", description: "", isChecked: false, isTextEntry: false },
+        { number: 2, label: "Type something", description: "", isChecked: false, isTextEntry: true },
+      ] };
+      actions.getPaneChatSnapshot.mockResolvedValue({ ...snapshot(), provider: "claude", inputState: "occupied", prompt: toppings });
+      actions.answerPaneChatPrompt.mockRejectedValue(new Error("CLI의 선택 화면이 바뀌어 답을 보내지 않았습니다."));
+      open();
+      fireEvent.change(await screen.findByRole("textbox", { name: "promptTextPlaceholder" }), { target: { value: "Garlic" } });
+      actions.getPaneChatSnapshot.mockResolvedValue({ ...snapshot(), provider: "claude", inputState: "occupied", prompt: { ...toppings, id: "prompt-a-checked", options: [{ ...toppings.options[0], isChecked: true }, toppings.options[1]] } });
+
+      fireEvent.click(screen.getByRole("button", { name: /Cheese/ }));
+
+      await waitFor(() => expect(screen.getByRole("button", { name: /Cheese/, pressed: true })).toBeTruthy());
+      expect(screen.getByRole("alert").textContent).toBe("CLI의 선택 화면이 바뀌어 답을 보내지 않았습니다.");
+      expect(screen.getByRole("textbox", { name: "promptTextPlaceholder" })).toHaveProperty("value", "Garlic");
+    });
+
     it("답을 보낸 뒤 바뀐 화면을 받아 올 때까지는 카드를 다시 누를 수 없다", async () => {
       actions.getPaneChatSnapshot.mockResolvedValue({ ...snapshot(), provider: "claude", inputState: "occupied", prompt });
       actions.answerPaneChatPrompt.mockResolvedValue({ success: true });

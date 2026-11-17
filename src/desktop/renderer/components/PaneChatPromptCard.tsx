@@ -47,6 +47,7 @@ export function PaneChatPromptCard({ prompt, isBusy, error, onAnswer, onTerminal
         </div>
         {prompt.detail ? <pre className="max-h-40 overflow-auto whitespace-pre-wrap rounded-md bg-bg-page px-3 py-2 font-mono text-xs leading-5 text-text-primary">{prompt.detail}</pre> : null}
         <p className="whitespace-pre-line text-sm font-medium text-text-primary">{prompt.title}</p>
+        {prompt.hasHiddenOptions ? <p role="status" className="text-xs text-text-secondary">{t("promptHiddenOptions")}</p> : null}
         <ul className="flex flex-col gap-1.5">
           {prompt.options.map((option) => <li key={option.number}>
             {isBlankClaudeTextEntry(option) ? <PaneChatPromptTextEntry option={option} isBusy={isBusy} onSubmit={(text) => onAnswer({ type: "text", number: option.number, text })} />
@@ -63,7 +64,6 @@ export function PaneChatPromptCard({ prompt, isBusy, error, onAnswer, onTerminal
               </button>}
           </li>)}
         </ul>
-        {prompt.hasHiddenOptions ? <p role="status" className="text-xs text-text-secondary">{t("promptHiddenOptions")}</p> : null}
         {error ? <p role="alert" className="text-xs text-status-error">{error}</p> : null}
         <div className="flex flex-wrap items-center gap-2">
           {prompt.stepsLine ? <>
