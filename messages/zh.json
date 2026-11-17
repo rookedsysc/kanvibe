@@ -522,7 +522,9 @@
       "noSuggestions": "未找到匹配项。",
       "moreSuggestions": "请输入更多内容以缩小结果范围。",
       "returnError": "无法返回此窗格的终端，请重试。",
-      "toggle": "切换当前窗格终端/聊天"
+      "toggle": "切换当前窗格终端/聊天",
+      "welcomeTitle": "开始与 {provider} 对话",
+      "welcomeHint": "在下方输入消息，会直接发送到此窗格中的 CLI。"
     },
     "backToBoard": "返回看板",
     "moveToTodo": "待办",

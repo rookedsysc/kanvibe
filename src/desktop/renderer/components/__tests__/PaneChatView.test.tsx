@@ -262,6 +262,34 @@ describe("current pane chat", () => {
     expect(view.onHistory).toHaveBeenCalledTimes(1);
     expect(actions.sendPaneChatPrompt).not.toHaveBeenCalled();
   });
+
+  it("전송할 수 있는 빈 대화는 CLI 이름이 든 첫 화면 안내를 입력창 위에 보여 준다", async () => {
+    actions.getPaneChatSnapshot.mockResolvedValue({ ...snapshot(), transcript: { ...snapshot().transcript, messages: [] } });
+    open();
+    const welcome = await screen.findByTestId("pane-chat-welcome");
+    expect(welcome.textContent).toContain('welcomeTitle {"provider":"Codex"}');
+    expect(welcome.compareDocumentPosition(screen.getByTestId("pane-chat-composer")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect((screen.getByRole("textbox") as HTMLTextAreaElement).disabled).toBe(false);
+  });
+
+  it("대화에 메시지가 있으면 첫 화면 안내를 보여 주지 않는다", async () => {
+    open();
+    await screen.findByText("Exact pane response");
+    expect(screen.queryByTestId("pane-chat-welcome")).toBeNull();
+  });
+
+  it("빈 대화에서 첫 메시지를 보내면 첫 화면 안내를 걷고 같은 입력창을 그대로 둔다", async () => {
+    actions.getPaneChatSnapshot.mockResolvedValue({ ...snapshot(), transcript: { ...snapshot().transcript, messages: [] } });
+    actions.sendPaneChatPrompt.mockReturnValue(new Promise(() => {}));
+    open();
+    await screen.findByTestId("pane-chat-welcome");
+    const composerInput = screen.getByRole("textbox");
+    fireEvent.change(composerInput, { target: { value: "First request" } });
+    fireEvent.click(screen.getByRole("button", { name: "send" }));
+    expect(screen.getByText("First request", { selector: "article" })).toBeTruthy();
+    expect(screen.queryByTestId("pane-chat-welcome")).toBeNull();
+    expect(screen.getByRole("textbox")).toBe(composerInput);
+  });
 });
 
 
