@@ -35,6 +35,7 @@ CLAUDE_MODEL_IDS = {"fable": "claude-fable-5-2", "opus": "claude-opus-5-5", "son
 picker = False
 draft = ""
 paste = False
+suggestion = ""
 
 
 def write_event(role, text):
@@ -113,6 +114,9 @@ def screen():
         marker = "❯" if provider == "claude" else "›"
         shown_model = models[model] if provider == "codex" else f"{models[model]} ({claude_model})"
         sys.stdout.write(f"{provider} · {session_id}\r\nmodel: {shown_model}\r\neffort: {effort} · speed: {'fast' if fast else 'standard'}\r\nReady for a prompt\r\n{marker} {draft}")
+        # 실제 Claude Code 2.1.325처럼 응답 뒤 빈 입력란에 다음 질문 추천을 dim으로 그리고 커서는 입력 시작 칸에 둔다
+        if provider == "claude" and not draft and suggestion:
+            sys.stdout.write(f"\x1b[2m{suggestion}\x1b[0m\r\x1b[2C")
     sys.stdout.flush()
 
 
@@ -191,6 +195,7 @@ try:
                     sys.stdout.write(f"\r\n{reply}\r\n")
                     sys.stdout.flush()
                     write_event("assistant", reply)
+                    suggestion = "Ask a follow-up question"
                     screen()
             else:
                 draft += decoder.decode(byte)

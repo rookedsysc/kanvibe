@@ -34,6 +34,7 @@ Map<String, dynamic> snapshotJson({
   String inputState = 'ready',
   bool available = true,
   String screen = '› 현재 CLI 화면',
+  bool canSendWhileBusy = false,
   String? agentActivity,
 }) => {
   'taskId': target.taskId,
@@ -58,6 +59,7 @@ Map<String, dynamic> snapshotJson({
     'nextCursor': null,
   },
   'modelPicker': {'supported': provider != null, 'mode': 'native-cli'},
+  if (canSendWhileBusy) 'composer': {'canSendWhileBusy': true},
 };
 
 http.Response response(Object value, [int code = 200]) => http.Response(
@@ -893,6 +895,77 @@ void main() {
     expect(find.text('가장 최신 답변'), findsOneWidget);
     expect(find.byTooltip('최신 메시지로 이동'), findsNothing);
     expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+    container.dispose();
+    await tester.pump();
+  });
+
+  testWidgets('데스크톱처럼 CLI가 입력을 받지 못해도 입력창은 보이고 전송만 막는다', (tester) async {
+    final client = DesktopClient(
+      httpClient: MockClient(
+        (request) async =>
+            response({'snapshot': snapshotJson(inputState: 'occupied')}),
+      ),
+    );
+    final container = setup(client);
+    addTearDown(container.dispose);
+    addTearDown(client.close);
+    await pumpChat(tester, container);
+    expect(find.byType(TextField), findsOneWidget);
+    await tester.enterText(find.byType(TextField), '다음 질문');
+    await tester.pump();
+    final send = find.descendant(
+      of: find.bySemanticsIdentifier('pane-chat-send'),
+      matching: find.byType(IconButton),
+    );
+    expect(send, findsOneWidget);
+    expect(tester.widget<IconButton>(send).onPressed, isNull);
+    expect(
+      find.text('CLI에서 응답을 기다리고 있습니다. CLI 버튼으로 현재 화면을 확인하세요.'),
+      findsOneWidget,
+    );
+    await tester.pumpWidget(const SizedBox.shrink());
+    container.dispose();
+    await tester.pump();
+  });
+
+  testWidgets('작업 중에도 받을 수 있는 CLI는 일반 글만 보내고 / 명령은 막는다', (tester) async {
+    final bodies = <String>[];
+    final client = DesktopClient(
+      httpClient: MockClient((request) async {
+        if (request.method == 'GET') {
+          return response({
+            'snapshot': snapshotJson(
+              inputState: 'occupied',
+              canSendWhileBusy: true,
+            ),
+          });
+        }
+        bodies.add((jsonDecode(request.body) as Map)['text'] as String);
+        return response({'success': true});
+      }),
+    );
+    final container = setup(client);
+    addTearDown(container.dispose);
+    addTearDown(client.close);
+    await pumpChat(tester, container);
+    expect(find.textContaining('CLI에서 응답을 기다리고 있습니다'), findsNothing);
+    final send = find.descendant(
+      of: find.bySemanticsIdentifier('pane-chat-send'),
+      matching: find.byType(IconButton),
+    );
+    await tester.enterText(find.byType(TextField), '  /model');
+    await tester.pump();
+    expect(tester.widget<IconButton>(send).onPressed, isNull);
+    expect(
+      await container.read(paneChatProvider(target).notifier).send('/model'),
+      isFalse,
+    );
+    await tester.enterText(find.byType(TextField), '작업 중 추가 질문');
+    await tester.pump();
+    await tester.tap(send);
+    await tester.pumpAndSettle();
+    expect(bodies, ['작업 중 추가 질문']);
     await tester.pumpWidget(const SizedBox.shrink());
     container.dispose();
     await tester.pump();

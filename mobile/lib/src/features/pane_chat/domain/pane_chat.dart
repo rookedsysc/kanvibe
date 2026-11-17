@@ -145,6 +145,11 @@ class PaneChatSnapshot {
   final String? reason;
   final PaneChatTranscript transcript;
   final bool modelPickerSupported;
+
+  /// 데스크톱 composer의 전송 조건과 같다. 작업 중에도 받을 수 있는 CLI라도 `/` 명령은 CLI 입력란에 직접 치므로 빈 입력란이 필요하다
+  bool acceptsPromptText(String text) =>
+      inputState == PaneChatInputState.ready ||
+      (composer.canSendWhileBusy && !text.trimLeft().startsWith('/'));
   final PaneChatCapabilities composer;
 
   /// 데스크탑이 밀어 준 상태에서 실려 온 값만 덮어쓴다. 대화 줄은 건드리지 않는다
@@ -373,8 +378,12 @@ class PaneChatCapabilities {
     this.fileMentions = false,
     this.maxAttachmentBytes = 10 * 1024 * 1024,
     this.maxAttachments = 10,
+    this.canSendWhileBusy = false,
   });
   final bool attachments, skills, fileMentions;
+
+  /// CLI가 작업 중이거나 입력란이 비어 있지 않아도 데스크톱이 일반 프롬프트를 API로 전달할 수 있는지
+  final bool canSendWhileBusy;
   final int maxAttachmentBytes, maxAttachments;
   factory PaneChatCapabilities.fromJson(Map<String, dynamic> value) =>
       PaneChatCapabilities(
@@ -384,6 +393,7 @@ class PaneChatCapabilities {
         maxAttachmentBytes:
             value['maxAttachmentBytes'] as int? ?? 10 * 1024 * 1024,
         maxAttachments: value['maxAttachments'] as int? ?? 10,
+        canSendWhileBusy: value['canSendWhileBusy'] == true,
       );
 }
 

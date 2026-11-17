@@ -123,6 +123,21 @@ describe("pane chat surface ownership", () => {
     expect(await readPaneChatSurface("task", "%3")).toMatchObject({ inputIsPlaceholder: false, inputLine: "› Ask Codex to do anything" });
   });
 
+  it("실제 Claude 2.1.325 화면에서 응답 뒤 dim 추천 문구와 직접 쓴 글을 구분한다", async () => {
+    // 실제 화면은 `❯` 뒤에 일반 공백이 아닌 no-break space(U+00A0)를 그린다
+    const border = "\x1b[38;5;244m" + "─".repeat(100);
+    const status = "\x1b[39m  \x1b[38;5;220m⏵⏵ auto mode on\x1b[38;5;246m (shift+tab to cycle)\x1b[39m";
+    let capture = `2\t1\t100\t4\n${border}\n\x1b[39m❯\u00a0\x1b[2m숨김 폴더 포함하면 몇 개야?\x1b[0m\n${border}\n${status}`;
+    mocks.exec.mockImplementation(async (command: string) => {
+      if (command.startsWith("tmux list-panes")) return "%3\t300\t1\t1";
+      if (command.includes("#{cursor_x}")) return capture;
+      return "visible screen";
+    });
+    expect(await readPaneChatSurface("task", "%3")).toMatchObject({ cursorRow: 1, cursorColumn: 2, inputIsPlaceholder: true, inputLine: "❯\u00a0숨김 폴더 포함하면 몇 개야?" });
+    capture = `5\t1\t100\t4\n${border}\n\x1b[39m❯\u00a0abc\n${border}\n${status}`;
+    expect(await readPaneChatSurface("task", "%3")).toMatchObject({ cursorColumn: 5, inputIsPlaceholder: false, inputLine: "❯\u00a0abc" });
+  });
+
   it("selects the focused pane in the active tmux window instead of the first pane", async () => {
     mocks.exec.mockImplementation(withAttachedClient((command) => command.startsWith("tmux list-panes") ? "%1\t100\t0\t1\n%2\t200\t1\t0\n%3\t300\t1\t1" : "exact pane screen"));
     const surface = await readPaneChatSurface("task");

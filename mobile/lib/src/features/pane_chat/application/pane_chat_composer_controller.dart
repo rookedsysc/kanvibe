@@ -428,7 +428,9 @@ class PaneChatComposerController extends Notifier<PaneChatComposerState> {
   }
 
   Future<bool> send() async {
-    if (!_ownsTarget || !state.canSend || _pane?.canPrompt != true) {
+    if (!_ownsTarget ||
+        !state.canSend ||
+        _pane?.canSendPrompt(state.text) != true) {
       return false;
     }
     final lifetime = _lifetime;

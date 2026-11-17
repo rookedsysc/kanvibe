@@ -212,7 +212,7 @@ function readInputState(surface: PaneChatSurface, process: PaneChatProcess, veri
   const start = line.indexOf(marker);
   if (start < 0 || line.slice(0, start).trim()) return "unknown";
   const value = line.slice(start + marker.length).trim();
-  const isPlaceholder = process.provider === "codex" ? value === "Ask Codex to do anything" : /^Try\s+/.test(value);
+  const isPlaceholder = surface.inputIsPlaceholder === true || (process.provider === "codex" ? value === "Ask Codex to do anything" : /^Try\s+/.test(value));
   return surface.cursorColumn === start + marker.length + 1 && (!value || isPlaceholder) ? "ready" : "occupied";
 }
 /**

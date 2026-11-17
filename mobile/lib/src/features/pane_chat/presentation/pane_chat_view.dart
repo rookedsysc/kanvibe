@@ -130,7 +130,8 @@ class _PaneChatViewState extends ConsumerState<PaneChatView> {
                     action: '터미널로 돌아가기',
                     onAction: widget.onReturnToTerminal,
                   )
-                else if (snapshot.inputState != PaneChatInputState.ready)
+                else if (snapshot.inputState != PaneChatInputState.ready &&
+                    !snapshot.composer.canSendWhileBusy)
                   _PaneChatNotice(
                     text: snapshot.inputState == PaneChatInputState.occupied
                         ? 'CLI에서 응답을 기다리고 있습니다. CLI 버튼으로 현재 화면을 확인하세요.'
@@ -160,7 +161,6 @@ class _PaneChatViewState extends ConsumerState<PaneChatView> {
                       conversationKey: conversationKey!,
                     ),
                     isActive: widget.isActive,
-                    showPrompt: snapshot.inputState == PaneChatInputState.ready,
                     toolbar: Wrap(
                       crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
