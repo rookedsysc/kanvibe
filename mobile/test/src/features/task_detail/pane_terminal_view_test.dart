@@ -1186,7 +1186,8 @@ void main() {
       view.terminal.buffer.createAnchor(5, 0),
     );
     await tester.pump();
-    final position = terminalCellPosition(tester, 1, 0);
+    // 선택 양끝의 손잡이는 주변 터치를 자기 것으로 받으므로, 손잡이에서 떨어진 자리를 누른다.
+    final position = terminalCellPosition(tester, 10, 3);
     await tester.tapAt(position);
     await tester.pump(kDoubleTapTimeout);
     expect(view.controller!.selection, isNull);
@@ -1220,6 +1221,60 @@ void main() {
     expect(find.widgetWithText(TextButton, '복사'), findsOneWidget);
     expect(find.widgetWithText(TextButton, '붙여넣기'), findsOneWidget);
     expect(tester.testTextInput.isVisible, isFalse);
+  });
+
+  testWidgets('화면 왼쪽 끝에서 시작하는 선택도 시작 손잡이가 화면 안에 그려진다', (tester) async {
+    final client = FakeDesktopClient();
+    await pumpPane(tester, _pane, client: client, store: FakeConnectionStore());
+    client.openedPanes[_pane.id]!.add('alpha beta gamma');
+    await tester.pumpAndSettle();
+
+    await longPressTerminalCell(tester, 1, 0);
+
+    expect(selectedTerminalText(tester), 'alpha');
+    final handleShape = tester.getRect(
+      find
+          .descendant(
+            of: find.byKey(_startHandleKey),
+            matching: find.byType(CustomPaint),
+          )
+          .first,
+    );
+    expect(handleShape.left, greaterThanOrEqualTo(0));
+  });
+
+  testWidgets('화면 오른쪽 끝에서 끝나는 선택도 끝 손잡이가 화면 안에 그려진다', (tester) async {
+    final client = FakeDesktopClient();
+    await pumpPane(
+      tester,
+      _pane,
+      client: client,
+      store: FakeConnectionStore(),
+      canResize: true,
+    );
+    final view = tester.widget<xterm.TerminalView>(
+      find.byType(xterm.TerminalView),
+    );
+    final buffer = view.terminal.buffer;
+
+    view.controller!.setSelection(
+      buffer.createAnchor(view.terminal.viewWidth - 4, 0),
+      buffer.createAnchor(view.terminal.viewWidth, 0),
+    );
+    await tester.pumpAndSettle();
+
+    final handleShape = tester.getRect(
+      find
+          .descendant(
+            of: find.byKey(_endHandleKey),
+            matching: find.byType(CustomPaint),
+          )
+          .first,
+    );
+    expect(
+      handleShape.right,
+      lessThanOrEqualTo(tester.getRect(find.byType(xterm.TerminalView)).right),
+    );
   });
 
   testWidgets('손잡이를 끌면 글자 단위로 선택 범위가 늘어나고 버튼 줄이 다시 뜬다', (tester) async {

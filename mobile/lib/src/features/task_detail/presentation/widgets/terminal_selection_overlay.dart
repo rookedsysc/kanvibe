@@ -359,6 +359,14 @@ class _TerminalSelectionOverlayState extends State<TerminalSelectionOverlay> {
     final placement = _locateSelection();
     final overlayBox = context.findRenderObject();
     if (placement == null || overlayBox is! RenderBox) return const [];
+    final controls = switch (Theme.of(context).platform) {
+      TargetPlatform.iOS ||
+      TargetPlatform.macOS => cupertinoTextSelectionControls,
+      _ => materialTextSelectionControls,
+    };
+    final visibleBounds = placement.terminalBounds.intersect(
+      Offset.zero & MediaQuery.sizeOf(context),
+    );
     return [
       for (final (isStartHandle, linePoint) in [
         (true, placement.start),
@@ -369,27 +377,52 @@ class _TerminalSelectionOverlayState extends State<TerminalSelectionOverlay> {
             placement.terminalBounds.inflate(1).contains(linePoint))
           _buildHandle(
             context,
+            controls: controls,
             isStartHandle: isStartHandle,
+            type: _chooseHandleType(
+              controls,
+              isStartHandle: isStartHandle,
+              linePoint: linePoint,
+              lineHeight: placement.lineHeight,
+              visibleBounds: visibleBounds,
+            ),
             linePoint: overlayBox.globalToLocal(linePoint),
             lineHeight: placement.lineHeight,
           ),
     ];
   }
 
-  Widget _buildHandle(
-    BuildContext context, {
+  /// 시작 손잡이는 왼쪽으로, 끝 손잡이는 오른쪽으로 뻗는다. 화면 가장자리에 붙은 끝에서는 그 모양이 화면 밖에 그려져 보이지도 잡히지도 않으므로 안쪽으로 뻗는 모양으로 바꾼다
+  TextSelectionHandleType _chooseHandleType(
+    TextSelectionControls controls, {
     required bool isStartHandle,
     required Offset linePoint,
     required double lineHeight,
+    required Rect visibleBounds,
   }) {
-    final controls = switch (Theme.of(context).platform) {
-      TargetPlatform.iOS ||
-      TargetPlatform.macOS => cupertinoTextSelectionControls,
-      _ => materialTextSelectionControls,
-    };
-    final type = isStartHandle
-        ? TextSelectionHandleType.left
-        : TextSelectionHandleType.right;
+    final handleWidth = controls.getHandleSize(lineHeight).width;
+    bool isInsideScreen(TextSelectionHandleType type) {
+      final left = linePoint.dx - controls.getHandleAnchor(type, lineHeight).dx;
+      return left >= visibleBounds.left &&
+          left + handleWidth <= visibleBounds.right;
+    }
+
+    final (outward, inward) = isStartHandle
+        ? (TextSelectionHandleType.left, TextSelectionHandleType.right)
+        : (TextSelectionHandleType.right, TextSelectionHandleType.left);
+    return !isInsideScreen(outward) && isInsideScreen(inward)
+        ? inward
+        : outward;
+  }
+
+  Widget _buildHandle(
+    BuildContext context, {
+    required TextSelectionControls controls,
+    required bool isStartHandle,
+    required TextSelectionHandleType type,
+    required Offset linePoint,
+    required double lineHeight,
+  }) {
     final anchor = controls.getHandleAnchor(type, lineHeight);
     return Positioned(
       key: isStartHandle ? _startHandleKey : _endHandleKey,

@@ -20,9 +20,9 @@ env:
 - inputText: "touch MAESTRO_PASTE_OK"
 - longPressOn: "touch MAESTRO_PASTE_OK"
 - extendedWaitUntil:
-    visible: "(Select all|모두 선택)"
+    visible: "(Select all|모두 선택|전체 선택)"
     timeout: 10000
-- tapOn: "(Select all|모두 선택)"
+- tapOn: "(Select all|모두 선택|전체 선택)"
 - tapOn: "(Copy|복사)"
 - runFlow: ../subflows/pairs-and-opens-board.yaml
 - runFlow: ../subflows/opens-session-task-terminal.yaml
