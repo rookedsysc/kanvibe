@@ -10,6 +10,14 @@ const UNAVAILABLE_POLL_INTERVAL_MS = 5_000;
 /** Electron이 IPC 오류 앞에 붙이는 호출 경로와 오류 이름. 떼어 내면 서비스가 쓴 안내문만 남는다 */
 const IPC_ERROR_PREFIX = /^Error invoking remote method '[^']*': (?:\w+: )?/;
 const describeActionError = (error: unknown) => error instanceof Error ? error.message.replace(IPC_ERROR_PREFIX, "") : "CLI action failed";
+/** CLI에 글을 넣기 시작한 뒤에 실패해 전달됐는지 알 수 없는 전송. Electron은 서비스 오류의 이름을 문구 안에 실어 보낸다 */
+const isDeliveryUncertain = (error: unknown) => error instanceof Error && error.message.includes("PaneChatDeliveryUncertainError");
+/** 답을 보내는 중에 눌러 차례를 기다리는 다중 선택의 선택지 */
+interface QueuedPromptOption {
+  dialogKey: string;
+  number: number;
+  label: string;
+}
 
 interface PendingMessage {
   id: string;
@@ -19,6 +27,19 @@ interface PendingMessage {
   state: "sending" | "sent" | "error";
 }
 const messageKey = (message: AggregatedAiMessage) => JSON.stringify([message.timestamp, message.fullText || message.text, message.attachments?.map((item) => item.id)]);
+const withoutWhitespace = (text: string) => text.replace(/\s/g, "");
+/**
+ * 기록된 사용자 메시지가 이 보낸 글의 기록인지 가린다.
+ * CLI는 받은 글의 끝 공백과 줄바꿈을 떼고 탭을 공백으로 바꿔 기록하므로 공백은 빼고 견준다.
+ * 첨부한 파일은 글 뒤에 `@경로`로 붙여 보내므로, 기록이 보낸 글로 시작하고 바로 파일 언급이 이어져도 같은 메시지다.
+ */
+function isRecordOfSentText(recorded: AggregatedAiMessage, sentText: string): boolean {
+  const recordedText = recorded.fullText || recorded.text;
+  if (!sentText.trim()) return !!recorded.attachments?.length || recordedText.startsWith("@");
+  const recordedCharacters = withoutWhitespace(recordedText);
+  const sentCharacters = withoutWhitespace(sentText);
+  return recordedCharacters === sentCharacters || recordedText.startsWith(`${sentText}\n\n`) || recordedCharacters.startsWith(`${sentCharacters}@`);
+}
 const conversationKey = (snapshot: PaneChatSnapshot) => JSON.stringify([snapshot.taskId, snapshot.paneId, snapshot.conversationKey ?? snapshot.targetToken]);
 
 export function usePaneChat(taskId: string, isVisible = true, paneId?: string) {
@@ -35,6 +56,8 @@ export function usePaneChat(taskId: string, isVisible = true, paneId?: string) {
   const current = useRef<PaneChatSnapshot | null>(null);
   const generation = useRef(0);
   const busy = useRef(false);
+  const queuedPromptOptions = useRef<QueuedPromptOption[]>([]);
+  const sendingPromptOption = useRef<number | null>(null);
   const refreshRef = useRef<() => Promise<void>>(async () => {});
 
   useEffect(() => {
@@ -66,6 +89,8 @@ export function usePaneChat(taskId: string, isVisible = true, paneId?: string) {
           current.current = snapshot;
           setIsReady(paneId === undefined || snapshot.paneId === paneId);
           setResult({ taskId, paneId, snapshot });
+          // 선택 화면이 닫히면 그 화면에 남긴 안내도 끝난다. 같은 화면이 나중에 다시 떠도 지난 안내를 보여 주지 않는다
+          setPromptError((shown) => shown && snapshot.prompt && getPaneChatPromptDialogKey(snapshot.prompt) === shown.dialogKey ? shown : null);
           setReadError(false);
         } catch {
           if (!disposed) {
@@ -89,7 +114,7 @@ export function usePaneChat(taskId: string, isVisible = true, paneId?: string) {
     };
   }, [taskId, paneId, isActive, isVisible]);
 
-  const run = useCallback(async (action: (token: string) => Promise<PaneChatActionResult>, preserveSendReceipt = false, reportError: (message: string | null) => void = setActionError): Promise<boolean> => {
+  const run = useCallback(async (action: (token: string) => Promise<PaneChatActionResult>, preserveSendReceipt = false, reportError: (message: string | null, error?: unknown) => void = setActionError): Promise<boolean> => {
     const target = current.current;
     if (!isVisible || busy.current || !target?.canSend || !target.targetToken || target.taskId !== taskId || (paneId !== undefined && target.paneId !== paneId)) return false;
     const epoch = generation.current;
@@ -101,7 +126,7 @@ export function usePaneChat(taskId: string, isVisible = true, paneId?: string) {
       return accepted.success && (preserveSendReceipt || (generation.current === epoch && current.current?.targetToken === target.targetToken));
     } catch (error) {
       if (generation.current === epoch && current.current?.targetToken === target.targetToken) {
-        reportError(describeActionError(error));
+        reportError(describeActionError(error), error);
       }
       return false;
     } finally {
@@ -121,8 +146,43 @@ export function usePaneChat(taskId: string, isVisible = true, paneId?: string) {
       id, conversation, state: "sending", baseline: target.transcript.messages.map(messageKey),
       message: { role: "user", timestamp: new Date().toISOString(), text, fullText: text, isTruncated: false },
     }]);
-    const accepted = await run((token) => actions.sendPaneChatPrompt(taskId, token, text, attachmentIds, id), true);
-    if (!isCommand) setPending((rows) => rows.map((row) => row.id === id ? { ...row, state: accepted ? "sent" : "error" } : row));
+    let mayHaveBeenDelivered = false;
+    const accepted = await run((token) => actions.sendPaneChatPrompt(taskId, token, text, attachmentIds, id), true, (message, error) => {
+      mayHaveBeenDelivered = isDeliveryUncertain(error);
+      setActionError(message);
+    });
+    // CLI에 들어가지 않은 것이 확실한 글은 입력창에 그대로 남으므로 말풍선을 지운다. 전달됐을 수도 있는 글만 말풍선으로 남긴다
+    if (!isCommand) setPending((rows) => accepted || mayHaveBeenDelivered
+      ? rows.map((row) => row.id === id ? { ...row, state: accepted ? "sent" : "error" } : row)
+      : rows.filter((row) => row.id !== id));
+    return accepted;
+  }
+
+  /**
+   * 선택 화면에 답을 보낸다. 답을 보내고 바뀐 화면을 받아 오는 동안 누른 다중 선택의 다른 선택지는 기억해 뒀다가,
+   * 같은 선택 화면에 그 선택지가 그대로 있을 때 차례로 보낸다. 보내는 중인 선택지를 또 누른 것은 한 번으로 친다.
+   */
+  async function answerPrompt(prompt: PaneChatPrompt, answer: PaneChatPromptAnswer): Promise<boolean> {
+    const dialogKey = getPaneChatPromptDialogKey(prompt);
+    if (busy.current) {
+      const option = answer.type === "option" && prompt.isMultiSelect ? prompt.options.find((candidate) => candidate.number === answer.number) : undefined;
+      const isAlreadyWaiting = answer.type === "option" && (sendingPromptOption.current === answer.number || queuedPromptOptions.current.some((queued) => queued.number === answer.number));
+      if (option && !isAlreadyWaiting) queuedPromptOptions.current.push({ dialogKey, number: option.number, label: option.label });
+      return false;
+    }
+    sendingPromptOption.current = answer.type === "option" ? answer.number : null;
+    const accepted = await run(async (token) => {
+      const result = await actions.answerPaneChatPrompt(taskId, token, prompt.id, answer);
+      // 바뀐 화면을 받아 온 뒤에야 다음 답을 보내, 낡은 카드의 답이 나가지 않게 한다
+      await refreshRef.current();
+      return result;
+    }, false, (message) => setPromptError(message ? { dialogKey, message } : null));
+    sendingPromptOption.current = null;
+    const next = queuedPromptOptions.current.shift();
+    const shown = current.current?.prompt;
+    const isStillOffered = !!next && !!shown && getPaneChatPromptDialogKey(shown) === next.dialogKey && shown.options.some((option) => option.number === next.number && option.label === next.label);
+    if (accepted && isStillOffered) return answerPrompt(shown!, { type: "option", number: next!.number });
+    queuedPromptOptions.current = [];
     return accepted;
   }
 
@@ -152,9 +212,7 @@ export function usePaneChat(taskId: string, isVisible = true, paneId?: string) {
     if (row.conversation !== conversationKey(snapshot)) return false;
     const recorded = snapshot.transcript.messages.find((message) => {
       const key = messageKey(message);
-      const text = message.fullText || message.text;
-      return message.role === "user" && !usedRows.has(key) && !row.baseline.includes(key)
-        && (row.message.text ? text === row.message.text || text.startsWith(`${row.message.text}\n\n`) : !!message.attachments?.length);
+      return message.role === "user" && !usedRows.has(key) && !row.baseline.includes(key) && isRecordOfSentText(message, row.message.text);
     });
     if (!recorded) return true;
     acknowledged.push(row.id);
@@ -182,11 +240,6 @@ export function usePaneChat(taskId: string, isVisible = true, paneId?: string) {
     interrupt: () => run((token) => actions.interruptPaneChat(taskId, token)),
     openModelPicker: () => run((token) => actions.openPaneChatModelPicker(taskId, token)),
     sendKey: (key: PaneChatKey) => run((token) => actions.sendPaneChatKey(taskId, token, key)),
-    answerPrompt: (prompt: PaneChatPrompt, answer: PaneChatPromptAnswer) => run(async (token) => {
-      const accepted = await actions.answerPaneChatPrompt(taskId, token, prompt.id, answer);
-      // 바뀐 화면을 받아 온 뒤에야 카드를 다시 누를 수 있게 해, 다음 답이 낡은 카드에서 나가지 않게 한다
-      await refreshRef.current();
-      return accepted;
-    }, false, (message) => setPromptError(message ? { dialogKey: getPaneChatPromptDialogKey(prompt), message } : null)),
+    answerPrompt,
   };
 }

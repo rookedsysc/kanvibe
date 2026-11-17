@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { readClaudePrompt } from "@/lib/aiSessions/paneChatClaudePrompt";
+import { applyAskedQuestions, readClaudeAskedQuestions, readClaudePrompt } from "@/lib/aiSessions/paneChatClaudePrompt";
 
 const BORDER = "─".repeat(40);
 
@@ -109,6 +109,48 @@ describe("readClaudePrompt", () => {
     expect(prompt?.options[1].description).toBe("t-of-issues/workspace from this project");
   });
 
+  describe("화면 너비를 알 때 줄이 넘어간 선택지", () => {
+    const hardWrapped = "   2. Yes, and always allow access to /home/user/kanvibe__worktrees/fix-lo";
+
+    it("한 줄에 다 들어가지 않는 긴 경로가 낱말 가운데에서 끊기면 공백 없이 라벨에 이어 붙인다", () => {
+      const longPath = "/home/user/projects/kanvibe__worktrees/fix-lot-of-issues/qa-results/workspace-directory";
+      const head = "   2. Yes, and always allow access to ";
+      const wrapColumn = 70;
+      const rows = [head + longPath.slice(0, wrapColumn - head.length), `      ${longPath.slice(wrapColumn - head.length)} now`];
+      const screen = permission.flatMap((line) => line === hardWrapped ? rows : line.startsWith("      t-of-issues") ? [] : [line]);
+
+      expect(readClaudePrompt(screen, 7, 1, wrapColumn + 1)?.options[1]).toMatchObject({ label: `Yes, and always allow access to ${longPath} now`, description: "" });
+    });
+
+    it("다음 낱말이 들어갈 자리가 없어 넘어간 줄은 공백을 두고 라벨에 이어 붙인다", () => {
+      const wordWrapped = permission.map((line) => line === hardWrapped ? "   2. Yes, and do not ask again for commands that start with git" : line.startsWith("      t-of-issues") ? "      tag in this workspace" : line);
+
+      expect(readClaudePrompt(wordWrapped, 7, 1, 67)?.options[1]).toMatchObject({ label: "Yes, and do not ask again for commands that start with git tag in this workspace", description: "" });
+    });
+
+    it("짧은 선택지 아래의 설명 줄은 그대로 설명으로 둔다", () => {
+      expect(readClaudePrompt(singleQuestion, 6, 0, 120)?.options[0]).toMatchObject({ label: "Red (warm)", description: "Warm" });
+    });
+
+    it("질문 화면에서 한 줄 라벨이 화면 끝에 가까워 설명의 첫 낱말이 들어갈 자리가 없어도, 설명은 설명으로 둔다", () => {
+      const nearEdge = ["Which preset?", "", "❯ 1. Use the shared configuration preset with strict lint rules", "     recommended for new repositories", "  2. Minimal", "     smallest setup", "  3. Chat about this"];
+
+      expect(readClaudePrompt(nearEdge, 2, 0, 70)?.options[0]).toMatchObject({ label: "Use the shared configuration preset with strict lint rules", description: "recommended for new repositories" });
+    });
+
+    it("질문 화면에서도 넘어간 라벨과 설명 사이가 분명하면 라벨을 이어 붙인다", () => {
+      const wrappedThenDescribed = ["Which preset?", "", "❯ 1. Use the shared configuration preset from the", "     platform team", "     recommended", "  2. Minimal", "     smallest setup", "  3. Chat about this"];
+
+      expect(readClaudePrompt(wrappedThenDescribed, 2, 0, 54)?.options[0]).toMatchObject({ label: "Use the shared configuration preset from the platform team", description: "recommended" });
+    });
+
+    it("넘어간 라벨 뒤에 오는 설명 줄은 설명으로 둔다", () => {
+      const withDescription = ["Pick one?", "", "❯ 1. A fairly long option label that needs", "     two lines", "     its description", "  2. Short"];
+
+      expect(readClaudePrompt(withDescription, 2, 0, 44)?.options[0]).toMatchObject({ label: "A fairly long option label that needs two lines", description: "its description" });
+    });
+  });
+
   it("모델 전환 확인처럼 경계선 바로 아래에서 시작하는 화면은 안내문 전체를 제목으로 읽는다", () => {
     expect(readClaudePrompt(modelSwitch, 3, 3)).toMatchObject({
       kind: "confirmation",
@@ -212,5 +254,54 @@ describe("readClaudePrompt", () => {
     ["제목 없이 잘린 화면", ["❯ 1. Yes", "  2. No"], 0, 0],
   ])("%s은 선택 화면으로 읽지 않는다", (_name, lines, cursorRow, cursorColumn) => {
     expect(readClaudePrompt(lines, cursorRow, cursorColumn)).toBeNull();
+  });
+});
+
+describe("대화 기록의 질문 원문으로 선택지 다듬기", () => {
+  const asked = [{
+    question: "Which preset?",
+    options: [
+      { label: "Use the shared configuration preset from the platform team with strict lint rules enabled", description: "recommended for new repositories" },
+      { label: "Minimal", description: "smallest setup" },
+    ],
+  }];
+  /** 50칸 pane에서 라벨이 두 줄로 넘어가고, 둘째 줄이 화면 끝에 가까워 설명과 가를 수 없는 화면 */
+  const narrow = [
+    "Which preset?", "",
+    "❯ 1. Use the shared configuration preset from the", "     platform team with strict lint rules enabled", "     recommended for new repositories",
+    "  2. Minimal", "     smallest setup",
+    "  3. Type something.", "  4. Chat about this",
+  ];
+
+  it("대화 기록 끝의 질문 도구 호출에서 질문과 선택지의 라벨·설명을 꺼낸다", () => {
+    const records = [
+      { type: "assistant", message: { role: "assistant", content: [{ type: "tool_use", name: "AskUserQuestion", input: { questions: [{ question: "Old?", options: [{ label: "A", description: "a" }] }] } }] } },
+      { type: "user", message: { role: "user", content: [{ type: "tool_result", content: "answered" }] } },
+      { type: "assistant", message: { role: "assistant", content: [{ type: "text", text: "asking" }, { type: "tool_use", name: "AskUserQuestion", input: { questions: asked } }] } },
+    ];
+
+    expect(readClaudeAskedQuestions(records)).toEqual(asked);
+    expect(readClaudeAskedQuestions([{ type: "assistant", message: { content: [{ type: "tool_use", name: "Bash", input: { command: "ls" } }] } }])).toEqual([]);
+    expect(readClaudeAskedQuestions([{ type: "assistant", message: { content: [{ type: "tool_use", name: "AskUserQuestion", input: { questions: "broken" } }] } }])).toEqual([]);
+  });
+
+  it("화면만으로 가를 수 없던 라벨과 설명을 질문 원문대로 가른다", () => {
+    const screen = readClaudePrompt(narrow, 2, 0, 50)!;
+    expect(screen.options[0].label).toBe("Use the shared configuration preset from the");
+
+    expect(applyAskedQuestions(screen, asked).options).toMatchObject([
+      { number: 1, label: asked[0].options[0].label, description: "recommended for new repositories" },
+      { number: 2, label: "Minimal", description: "smallest setup" },
+      { number: 3, label: "Type something.", isTextEntry: true },
+      { number: 4, label: "Chat about this" },
+    ]);
+  });
+
+  it("질문이나 선택지가 화면과 맞지 않으면 화면에서 읽은 그대로 둔다", () => {
+    const screen = readClaudePrompt(narrow, 2, 0, 50)!;
+
+    expect(applyAskedQuestions(screen, [{ question: "Another question?", options: asked[0].options }])).toEqual(screen);
+    expect(applyAskedQuestions(screen, [{ question: "Which preset?", options: [{ label: "Different", description: "text" }, asked[0].options[1]] }]).options[0]).toEqual(screen.options[0]);
+    expect(applyAskedQuestions(readClaudePrompt(permission, 7, 1)!, asked)).toEqual(readClaudePrompt(permission, 7, 1));
   });
 });

@@ -198,12 +198,12 @@ export function PaneChatView({ taskId, paneId, taskTitle, paneTabs = [], isVisib
           setModelPickerOpen(false);
           if (restoreFocus) requestAnimationFrame(() => viewport.current?.closest("section")?.querySelector<HTMLButtonElement>("[data-pane-chat-model-trigger]")?.focus());
         }} onChanged={() => void chat.refresh()} /></div> : null}
-      </div>
       {isDetached ? <button type="button" onClick={() => {
         followLatest.current = true;
         if (viewport.current) viewport.current.scrollTop = viewport.current.scrollHeight;
         setIsDetached(false);
-      }} className="absolute bottom-44 left-1/2 -translate-x-1/2 rounded-full border border-border-default bg-bg-surface px-4 py-2 text-xs text-text-primary">{t("jumpToLatest")} ↓</button> : null}
+      }} className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full border border-border-default bg-bg-surface px-4 py-2 text-xs text-text-primary">{t("jumpToLatest")} ↓</button> : null}
+      </div>
       {previewFilePath ? <AiChatFilePreview taskId={taskId} filePath={previewFilePath} onClose={() => setPreviewFilePath(null)} /> : null}
       {/* 체크만 바뀐 같은 선택 화면에서는 카드를 다시 만들지 않아, 적던 글과 답을 보내지 못한 이유가 남는다. 다른 선택 화면이 뜨면 새 카드로 시작한다. */}
       {prompt ? <PaneChatPromptCard key={promptDialogKey} prompt={prompt} isBusy={chat.isBusy} error={chat.promptError?.dialogKey === promptDialogKey ? chat.promptError.message : null} onAnswer={(answer) => void chat.answerPrompt(prompt, answer)} onTerminal={onTerminal} /> : null}
