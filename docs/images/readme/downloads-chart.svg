@@ -3,39 +3,39 @@
   <text x="380" y="24" text-anchor="middle" font-size="14" font-weight="600" fill="#202632">KanVibe DMG Downloads (Last 30 Days)</text>
   <line x1="60" y1="40" x2="60" y2="220" stroke="#d0d5dd" stroke-width="1" />
   <line x1="60" y1="220" x2="730" y2="220" stroke="#d0d5dd" stroke-width="1" />
-  <path d="M 60.0 220.0 L 83.1 220.0 L 106.2 220.0 L 129.3 216.7 L 152.4 213.5 L 175.5 210.2 L 198.6 210.2 L 221.7 210.2 L 244.8 210.2 L 267.9 210.2 L 291.0 210.2 L 314.1 206.9 L 337.2 206.9 L 360.3 206.9 L 383.4 206.9 L 406.6 206.9 L 429.7 125.1 L 452.8 125.1 L 475.9 121.8 L 499.0 118.5 L 522.1 115.3 L 545.2 105.5 L 568.3 89.1 L 591.4 89.1 L 614.5 72.7 L 637.6 62.9 L 660.7 53.1 L 683.8 46.5 L 706.9 43.3 L 730.0 40.0" fill="none" stroke="#0064FF" stroke-width="2" />
+  <path d="M 60.0 220.0 L 83.1 220.0 L 106.2 216.8 L 129.3 213.6 L 152.4 210.4 L 175.5 210.4 L 198.6 210.4 L 221.7 210.4 L 244.8 210.4 L 267.9 210.4 L 291.0 207.1 L 314.1 207.1 L 337.2 207.1 L 360.3 207.1 L 383.4 207.1 L 406.6 126.8 L 429.7 126.8 L 452.8 123.6 L 475.9 120.4 L 499.0 117.1 L 522.1 107.5 L 545.2 91.4 L 568.3 91.4 L 591.4 75.4 L 614.5 65.7 L 637.6 56.1 L 660.7 49.6 L 683.8 46.4 L 706.9 43.2 L 730.0 40.0" fill="none" stroke="#0064FF" stroke-width="2" />
   <circle cx="60.0" cy="220.0" r="3" fill="#0064FF" />
   <circle cx="83.1" cy="220.0" r="3" fill="#0064FF" />
-  <circle cx="106.2" cy="220.0" r="3" fill="#0064FF" />
-  <circle cx="129.3" cy="216.7" r="3" fill="#0064FF" />
-  <circle cx="152.4" cy="213.5" r="3" fill="#0064FF" />
-  <circle cx="175.5" cy="210.2" r="3" fill="#0064FF" />
-  <circle cx="198.6" cy="210.2" r="3" fill="#0064FF" />
-  <circle cx="221.7" cy="210.2" r="3" fill="#0064FF" />
-  <circle cx="244.8" cy="210.2" r="3" fill="#0064FF" />
-  <circle cx="267.9" cy="210.2" r="3" fill="#0064FF" />
-  <circle cx="291.0" cy="210.2" r="3" fill="#0064FF" />
-  <circle cx="314.1" cy="206.9" r="3" fill="#0064FF" />
-  <circle cx="337.2" cy="206.9" r="3" fill="#0064FF" />
-  <circle cx="360.3" cy="206.9" r="3" fill="#0064FF" />
-  <circle cx="383.4" cy="206.9" r="3" fill="#0064FF" />
-  <circle cx="406.6" cy="206.9" r="3" fill="#0064FF" />
-  <circle cx="429.7" cy="125.1" r="3" fill="#0064FF" />
-  <circle cx="452.8" cy="125.1" r="3" fill="#0064FF" />
-  <circle cx="475.9" cy="121.8" r="3" fill="#0064FF" />
-  <circle cx="499.0" cy="118.5" r="3" fill="#0064FF" />
-  <circle cx="522.1" cy="115.3" r="3" fill="#0064FF" />
-  <circle cx="545.2" cy="105.5" r="3" fill="#0064FF" />
-  <circle cx="568.3" cy="89.1" r="3" fill="#0064FF" />
-  <circle cx="591.4" cy="89.1" r="3" fill="#0064FF" />
-  <circle cx="614.5" cy="72.7" r="3" fill="#0064FF" />
-  <circle cx="637.6" cy="62.9" r="3" fill="#0064FF" />
-  <circle cx="660.7" cy="53.1" r="3" fill="#0064FF" />
-  <circle cx="683.8" cy="46.5" r="3" fill="#0064FF" />
-  <circle cx="706.9" cy="43.3" r="3" fill="#0064FF" />
+  <circle cx="106.2" cy="216.8" r="3" fill="#0064FF" />
+  <circle cx="129.3" cy="213.6" r="3" fill="#0064FF" />
+  <circle cx="152.4" cy="210.4" r="3" fill="#0064FF" />
+  <circle cx="175.5" cy="210.4" r="3" fill="#0064FF" />
+  <circle cx="198.6" cy="210.4" r="3" fill="#0064FF" />
+  <circle cx="221.7" cy="210.4" r="3" fill="#0064FF" />
+  <circle cx="244.8" cy="210.4" r="3" fill="#0064FF" />
+  <circle cx="267.9" cy="210.4" r="3" fill="#0064FF" />
+  <circle cx="291.0" cy="207.1" r="3" fill="#0064FF" />
+  <circle cx="314.1" cy="207.1" r="3" fill="#0064FF" />
+  <circle cx="337.2" cy="207.1" r="3" fill="#0064FF" />
+  <circle cx="360.3" cy="207.1" r="3" fill="#0064FF" />
+  <circle cx="383.4" cy="207.1" r="3" fill="#0064FF" />
+  <circle cx="406.6" cy="126.8" r="3" fill="#0064FF" />
+  <circle cx="429.7" cy="126.8" r="3" fill="#0064FF" />
+  <circle cx="452.8" cy="123.6" r="3" fill="#0064FF" />
+  <circle cx="475.9" cy="120.4" r="3" fill="#0064FF" />
+  <circle cx="499.0" cy="117.1" r="3" fill="#0064FF" />
+  <circle cx="522.1" cy="107.5" r="3" fill="#0064FF" />
+  <circle cx="545.2" cy="91.4" r="3" fill="#0064FF" />
+  <circle cx="568.3" cy="91.4" r="3" fill="#0064FF" />
+  <circle cx="591.4" cy="75.4" r="3" fill="#0064FF" />
+  <circle cx="614.5" cy="65.7" r="3" fill="#0064FF" />
+  <circle cx="637.6" cy="56.1" r="3" fill="#0064FF" />
+  <circle cx="660.7" cy="49.6" r="3" fill="#0064FF" />
+  <circle cx="683.8" cy="46.4" r="3" fill="#0064FF" />
+  <circle cx="706.9" cy="43.2" r="3" fill="#0064FF" />
   <circle cx="730.0" cy="40.0" r="3" fill="#0064FF" />
-  <text x="50" y="44" text-anchor="end" font-size="11" fill="#667085">161</text>
+  <text x="50" y="44" text-anchor="end" font-size="11" fill="#667085">162</text>
   <text x="50" y="224" text-anchor="end" font-size="11" fill="#667085">106</text>
-  <text x="60" y="248" text-anchor="start" font-size="11" fill="#667085">2026-10-18</text>
-  <text x="730" y="248" text-anchor="end" font-size="11" fill="#667085">2026-11-16</text>
+  <text x="60" y="248" text-anchor="start" font-size="11" fill="#667085">2026-10-19</text>
+  <text x="730" y="248" text-anchor="end" font-size="11" fill="#667085">2026-11-17</text>
 </svg>
