@@ -27,6 +27,19 @@ interface PendingMessage {
   state: "sending" | "sent" | "error";
 }
 const messageKey = (message: AggregatedAiMessage) => JSON.stringify([message.timestamp, message.fullText || message.text, message.attachments?.map((item) => item.id)]);
+const withoutWhitespace = (text: string) => text.replace(/\s/g, "");
+/**
+ * 기록된 사용자 메시지가 이 보낸 글의 기록인지 가린다.
+ * CLI는 받은 글의 끝 공백과 줄바꿈을 떼고 탭을 공백으로 바꿔 기록하므로 공백은 빼고 견준다.
+ * 첨부한 파일은 글 뒤에 `@경로`로 붙여 보내므로, 기록이 보낸 글로 시작하고 바로 파일 언급이 이어져도 같은 메시지다.
+ */
+function isRecordOfSentText(recorded: AggregatedAiMessage, sentText: string): boolean {
+  const recordedText = recorded.fullText || recorded.text;
+  if (!sentText.trim()) return !!recorded.attachments?.length || recordedText.startsWith("@");
+  const recordedCharacters = withoutWhitespace(recordedText);
+  const sentCharacters = withoutWhitespace(sentText);
+  return recordedCharacters === sentCharacters || recordedText.startsWith(`${sentText}\n\n`) || recordedCharacters.startsWith(`${sentCharacters}@`);
+}
 const conversationKey = (snapshot: PaneChatSnapshot) => JSON.stringify([snapshot.taskId, snapshot.paneId, snapshot.conversationKey ?? snapshot.targetToken]);
 
 export function usePaneChat(taskId: string, isVisible = true, paneId?: string) {
@@ -199,9 +212,7 @@ export function usePaneChat(taskId: string, isVisible = true, paneId?: string) {
     if (row.conversation !== conversationKey(snapshot)) return false;
     const recorded = snapshot.transcript.messages.find((message) => {
       const key = messageKey(message);
-      const text = message.fullText || message.text;
-      return message.role === "user" && !usedRows.has(key) && !row.baseline.includes(key)
-        && (row.message.text ? text === row.message.text || text.startsWith(`${row.message.text}\n\n`) : !!message.attachments?.length);
+      return message.role === "user" && !usedRows.has(key) && !row.baseline.includes(key) && isRecordOfSentText(message, row.message.text);
     });
     if (!recorded) return true;
     acknowledged.push(row.id);

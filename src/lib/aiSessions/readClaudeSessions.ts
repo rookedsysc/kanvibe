@@ -66,9 +66,20 @@ interface ClaudeSessionAccumulator {
   hasQueryMatch: boolean;
 }
 
+/** Claude가 입력란에서 접어 보여 준 붙여넣기를 기록할 때 두르는 표시. 여닫는 표시에 같은 id가 붙는다 */
+const PASTED_CONTENT_WRAPPER = /<pasted_content id="([^"]*)">\n?([\s\S]*?)\n?<\/pasted_content id="\1">/g;
+/** Claude가 `!`로 시작한 셸 명령을 명령만 따로 남기는 모양 */
+const SHELL_COMMAND_RECORD = /^<bash-input>([\s\S]*)<\/bash-input>$/;
+
+/** Claude가 사용자 글에 두른 표시를 걷어, 사용자가 보낸 글로 되돌린다 */
+function restoreClaudeSentText(recordedText: string): string {
+  return recordedText.replace(PASTED_CONTENT_WRAPPER, "$2").replace(SHELL_COMMAND_RECORD, "!$1").trim();
+}
+
 function getClaudeMessageText(event: ClaudeProjectEvent): string {
   const text = extractPlainText(event.message?.content);
-  return event.imagePasteIds?.length ? text.replace(/^(?:\[Image #\d+\]\s*)+/, "") : text;
+  const withoutImageMarkers = event.imagePasteIds?.length ? text.replace(/^(?:\[Image #\d+\]\s*)+/, "") : text;
+  return event.message?.role === "user" ? restoreClaudeSentText(withoutImageMarkers) : withoutImageMarkers;
 }
 
 interface ClaudeEventMessage {
