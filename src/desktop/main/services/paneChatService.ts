@@ -16,7 +16,9 @@ import { expectCodexComposerTexts, isCodexMainComposerReady, isCodexThreadFooter
 import { readCodexEmptyThread } from "@/lib/aiSessions/codexThreadMetadata";
 import { sendCodexThreadInput } from "@/lib/aiSessions/codexThreadInput";
 import { readCodexThreadSettings, updateCodexThreadSettings } from "@/lib/aiSessions/codexThreadSettings";
-import { isBlankClaudeTextEntry, readClaudePrompt } from "@/lib/aiSessions/paneChatClaudePrompt";
+import { isBlankClaudeTextEntry, readClaudePrompt, type PaneChatPromptScreen } from "@/lib/aiSessions/paneChatClaudePrompt";
+import { readCodexPrompt } from "@/lib/aiSessions/paneChatCodexPrompt";
+import { isClaudeComposerShowingPaste, readClaudeComposerText } from "@/lib/aiSessions/paneChatClaudeComposer";
 import { findPaneChatProcess, type PaneChatProcess } from "@/lib/aiSessions/paneChatProcess";
 import { findPaneChatSessionBinding, findPaneChatProcessSessionBinding, findPaneChatReportedSessionBinding } from "@/lib/aiSessions/paneChatSessionBindings";
 import { MAX_PANE_CHAT_ATTACHMENTS, MAX_PANE_CHAT_CATALOG_SUGGESTIONS, parsePaneChatPromptAnswer, type PaneChatActionResult, type PaneChatAttachment, type PaneChatCodexThreadReveal, type PaneChatAttachmentInput, type PaneChatKey, type PaneChatLayout, type PaneChatPrompt, type PaneChatPromptAnswer, type PaneChatSnapshot, type PaneChatSuggestionKind, type PaneChatSuggestions } from "@/desktop/shared/paneChat";
@@ -56,6 +58,8 @@ const CLAUDE_WORKING_FOOTER_HINT = /\besc to interrupt\b/;
 const CODEX_WORKING_STATUS_LINE = /^•\s.*\(.*\besc to interrupt\)$/;
 /** 답을 보낸 뒤 선택 화면이 그 키에 반응하기를 기다리며 화면을 다시 읽는 횟수. 반응이 없는 키(첫 질문에서의 이전 이동)도 있어 짧게 둔다 */
 const PROMPT_REACTION_READ_ATTEMPTS = 6;
+/** 선택 화면이 대화 ID를 가리는 동안, 대화 ID나 그 선택 화면을 이 시간 안에 다시 확인하지 못했으면 대화가 이어진다고 보지 않는다 */
+const CODEX_HELD_THREAD_MAX_GAP_MS = 5_000;
 /** Codex 상태 줄과 입력란 사이에는 사용량 경고 같은 줄이 끼어들 수 있어 입력란 위로 이만큼 찾는다 */
 const CODEX_WORKING_STATUS_SEARCH_ROWS = 6;
 
@@ -77,6 +81,10 @@ interface CodexDisplayExecution {
   revision: number;
   reason: string;
   observation: number;
+  /** 대화 ID를, 또는 그 ID를 가린 선택 화면을 마지막으로 확인한 시각 */
+  confirmedAt: number;
+  /** 대화 ID를 가린 채 지켜보고 있는 선택 화면. 대화 ID가 보이는 동안에는 null이다 */
+  heldBehindPrompt: string | null;
 }
 const codexDisplays = new Map<string, Promise<CodexDisplayExecution | null>>();
 
@@ -91,7 +99,7 @@ async function codexDisplayExecution(surface: PaneChatSurface, process: PaneChat
         const binaries = [...new Set(output.split("\n").filter((line) => line.startsWith("n/") && line.endsWith("/codex")).map((line) => line.slice(1)))];
         if (binaries.length !== 1) return null;
         const version = await execGit(`${quoteForPosixShell(binaries[0])} --version`, surface.task.sshHost, { timeoutMs: PROCESS_PROBE_TIMEOUT_MS });
-        return isCodexThreadFooterSupported(version) ? { observedThread: null, revision: 0, reason: "codex-thread-unconfirmed", observation: 0 } : null;
+        return isCodexThreadFooterSupported(version) ? { observedThread: null, revision: 0, reason: "codex-thread-unconfirmed", observation: 0, confirmedAt: 0, heldBehindPrompt: null } : null;
       } catch { return null; }
     })();
     if (codexDisplays.size >= MAX_TARGET_LEASES) codexDisplays.delete(codexDisplays.keys().next().value!);
@@ -102,9 +110,27 @@ async function codexDisplayExecution(surface: PaneChatSurface, process: PaneChat
 function codexDisplay(surface: PaneChatSurface) {
   return surface.viewportLines && Number.isInteger(surface.cursorRow) ? readCodexDisplay(surface.viewportLines, surface.cursorRow!, surface.inputIsPlaceholder === true) : null;
 }
+/**
+ * Codex의 선택 화면은 대화 ID가 있던 하단을 가린다. 같은 선택 화면이 떠 있는 동안에는 대화를 바꿀 수 없으므로 직전에 확인한 대화가 이어진다.
+ *
+ * 대화 ID를 본 직후부터 그 선택 화면을 끊김 없이 지켜본 경우에만 그렇게 본다. 채팅을 꺼 둔 동안처럼 지켜보지 않은 사이나,
+ * 대화 ID를 다시 보지 못한 채 다른 선택 화면으로 넘어가는 사이에는 터미널에서 대화를 바꿨을 수 있다.
+ */
+function holdCodexThreadBehindPrompt(state: CodexDisplayExecution, surface: PaneChatSurface): string | null {
+  const screen = surface.viewportLines ? readCodexPrompt(surface.viewportLines) : null;
+  const now = Date.now();
+  if (!screen || !state.observedThread || now - state.confirmedAt > CODEX_HELD_THREAD_MAX_GAP_MS) return null;
+  const shownPrompt = JSON.stringify([screen.title, screen.detail, screen.options.map((option) => option.label)]);
+  if (state.heldBehindPrompt !== null && state.heldBehindPrompt !== shownPrompt) return null;
+  state.heldBehindPrompt = shownPrompt;
+  state.confirmedAt = now;
+  return state.observedThread;
+}
 function observeCodexThread(state: CodexDisplayExecution, id: string | null, observation?: number): void {
   if (observation !== undefined && observation < state.observation && id !== state.observedThread) throw changedTargetError();
   state.observation = Math.max(state.observation, observation ?? state.observation);
+  state.heldBehindPrompt = null;
+  if (id) state.confirmedAt = Date.now();
   if (state.observedThread === id) return;
   state.observedThread = id;
   state.revision++;
@@ -248,14 +274,20 @@ async function requireReadyInput(taskId: string, lease: TargetLease): Promise<vo
   if (!surface || readInputState(surface, lease.process, !!await codexDisplayExecution(surface, lease.process)) !== "ready") throw inputError("CLI 입력란이 비어 있지 않거나 선택 화면이 열려 있습니다. 터미널에서 현재 상태를 확인해 주세요.");
 }
 
+/** 화면에 떠 있는 선택 화면. 화면 배치를 확인한 Claude와 Codex만 읽는다 */
+function readPromptScreen(surface: PaneChatSurface, process: PaneChatProcess): PaneChatPromptScreen | null {
+  if (!surface.viewportLines) return null;
+  if (process.provider === "codex") return readCodexPrompt(surface.viewportLines);
+  if (process.provider !== "claude" || !Number.isInteger(surface.cursorRow) || surface.cursorColumn === null) return null;
+  return readClaudePrompt(surface.viewportLines, surface.cursorRow!, surface.cursorColumn, surface.viewportColumns);
+}
 /**
- * 화면에 떠 있는 선택 화면을 읽고, 같은 화면인지 가릴 값을 붙인다. 화면 배치를 확인한 Claude만 읽는다.
+ * 화면에 떠 있는 선택 화면을 읽고, 같은 화면인지 가릴 값을 붙인다.
  * 체크 상태는 그 값에 넣는다. 카드를 본 뒤 터미널에서 체크를 바꿨으면 같은 숫자 키가 그 선택을 되돌리기 때문이다.
  * 강조 위치와 단계 줄은 어느 키가 무엇을 고르는지를 바꾸지 않으므로 넣지 않는다.
  */
 function readShownPrompt(surface: PaneChatSurface, process: PaneChatProcess): PaneChatPrompt | null {
-  if (process.provider !== "claude" || !surface.viewportLines || !Number.isInteger(surface.cursorRow) || surface.cursorColumn === null) return null;
-  const screen = readClaudePrompt(surface.viewportLines, surface.cursorRow!, surface.cursorColumn);
+  const screen = readPromptScreen(surface, process);
   if (!screen) return null;
   const id = createHash("sha256").update(JSON.stringify([screen.title, screen.detail, screen.options.map((option) => [option.number, option.label, option.description, option.isChecked])])).digest("hex");
   return { ...screen, id };
@@ -273,7 +305,9 @@ async function resolveConversation(surface: PaneChatSurface, process: PaneChatPr
   const { task } = surface;
   const context = { worktreePath: task.worktreePath ?? task.project?.repoPath ?? null, repoPath: task.project?.repoPath ?? null, sshHost: task.sshHost };
   const displayed = await codexDisplayExecution(surface, process);
-  const id = displayed ? codexDisplay(surface)?.threadId : null;
+  const shownId = displayed ? codexDisplay(surface)?.threadId : null;
+  const heldId = displayed && !shownId ? holdCodexThreadBehindPrompt(displayed, surface) : null;
+  const id = shownId ?? heldId;
   if (displayed && id) {
     if (displayed.observedThread !== id && readInputState(surface, process, true) !== "ready") {
       observeCodexThread(displayed, null, surface.observation);
@@ -284,7 +318,7 @@ async function resolveConversation(surface: PaneChatSurface, process: PaneChatPr
     const pending = !sourceRef;
     sourceRef ??= await readCodexEmptyThread(context, id, process.codexServerSocket);
     if (!sourceRef) { observeCodexThread(displayed, null, surface.observation); displayed.reason = "codex-thread-record-missing"; return null; }
-    observeCodexThread(displayed, id, surface.observation);
+    if (shownId) observeCodexThread(displayed, id, surface.observation);
     return { sessionId: id, sourceRef, revision: displayed.revision, ...(pending ? { pending: true } : {}) };
   }
   if (displayed) {
@@ -722,6 +756,7 @@ export function sendPaneChatPrompt(taskId: string, targetToken: string, text: st
     }
     if (body) await write(`\x1b[200~${body}\x1b[201~`, expectedComposer);
     await delay(PROMPT_SUBMIT_DELAY_MS);
+    if (lease.process.provider === "claude") await requireClaudeComposerShowsPaste(taskId, lease, body, images.length);
     await write("\r", expectCodexComposerTexts(body, images.length));
   }).catch((error) => {
     if (!writeAttempted && requestId) receipts.get(receiptOwner)?.delete(requestId);
@@ -737,6 +772,15 @@ export function sendPaneChatPrompt(taskId: string, targetToken: string, text: st
 }
 export function interruptPaneChat(taskId: string, targetToken: string): Promise<PaneChatActionResult> {
   return serializeAction(taskId, targetToken, (lease) => writeToVerifiedTarget(taskId, targetToken, lease, "\x03"));
+}
+/**
+ * Enter 직전에 Claude 입력란이 방금 붙여넣은 메시지 그대로인지 확인한다.
+ * 붙여넣고 기다리는 사이 터미널에서 입력란을 지우고 다른 글을 쳤거나 선택 화면이 떴으면 Enter가 그것을 제출하므로 누르지 않는다.
+ */
+async function requireClaudeComposerShowsPaste(taskId: string, lease: TargetLease, pastedText: string, imageCount: number): Promise<void> {
+  const surface = await readPaneChatSurface(taskId, lease.requestedPaneId);
+  const composerText = surface?.viewportLines && Number.isInteger(surface.cursorRow) ? readClaudeComposerText(surface.viewportLines, surface.cursorRow!) : null;
+  if (composerText === null || !isClaudeComposerShowingPaste(composerText, pastedText, imageCount)) throw unconfirmedInputError();
 }
 /**
  * Enter 직전에 Claude 입력란이 방금 넣은 명령 그대로인지 확인한다.
