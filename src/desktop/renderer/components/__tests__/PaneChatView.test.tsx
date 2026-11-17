@@ -278,6 +278,19 @@ describe("current pane chat", () => {
       });
     });
 
+    it("대화를 위로 스크롤해 뜬 최신으로 이동 버튼은 대화 영역 안에 두어, 입력창보다 높은 카드를 가리지 않는다", async () => {
+      actions.getPaneChatSnapshot.mockResolvedValue({ ...snapshot(), provider: "claude", inputState: "occupied", prompt });
+      open();
+      await screen.findByTestId("pane-chat-prompt");
+      const transcript = screen.getByTestId("pane-chat-transcript");
+      Object.defineProperties(transcript, { scrollHeight: { value: 2_000, configurable: true }, clientHeight: { value: 400, configurable: true } });
+      fireEvent.scroll(transcript, { target: { scrollTop: 0 } });
+
+      const jumpToLatest = screen.getByRole("button", { name: /jumpToLatest/ });
+      expect(transcript.parentElement?.contains(jumpToLatest)).toBe(true);
+      expect(screen.getByTestId("pane-chat-prompt").contains(jumpToLatest)).toBe(false);
+    });
+
     it("선택 화면이 없으면 카드 없이 입력창을 보여 준다", async () => {
       open();
       await screen.findByText("Exact pane response");
