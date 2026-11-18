@@ -416,7 +416,7 @@ The main service owns sync status (`backgroundTaskSyncService`); `useBackgroundT
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/hooks/status` | POST | Update task status by `taskId` + `status`; if the target is missing, KanVibe still sends a browser notification and returns `404` without changing status |
+| `/api/hooks/status` | POST | Update task status by `taskId` + `status`; if the target is missing, KanVibe still sends a browser notification and returns `404` without changing status. Requires `Authorization: Bearer <task token>` from `.kanvibe/targets.json`, otherwise `401` |
 
 ### GitHub-style Diff View
 

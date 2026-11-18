@@ -60,7 +60,7 @@ namespace는 같은 원격 계정에서 `dev`와 `prod`의 서버·소켓·상�
 
 ## hook 이벤트는 저장 성공과 앱 반영을 구분한다
 
-원격 hook는 namespace의 안정 소켓에 요청을 보내고 데스크톱 client ID로 전달 대상을 정합니다. 영속 journal은 끊김 중 이벤트를 보관하는 파일이며 `POST /api/hooks/status`만 저장합니다. Task CLI의 태스크 생성·삭제·등록 요청과 터미널 입력·원격 명령은 journal에 넣어 나중에 실행하지 않습니다.
+원격 hook는 namespace의 안정 소켓에 요청을 보내고 데스크톱 client ID로 전달 대상을 정합니다. 영속 journal은 끊김 중 이벤트를 보관하는 파일이며 `POST /api/hooks/status`만 저장합니다. Task CLI의 태스크 생성·삭제·등록·조회·세션 준비 요청과 터미널 입력·원격 명령은 journal에 넣어 나중에 실행하지 않습니다.
 
 | 응답·상태 | 의미 | 후속 동작 |
 | --- | --- | --- |
