@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { chmod, lstat, mkdtemp, readFile, rm, symlink } from "node:fs/promises";
+import { chmod, lstat, mkdir, mkdtemp, readFile, rm, symlink } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { createHash, randomUUID } from "node:crypto";
@@ -8,7 +8,6 @@ import { builtinModules } from "node:module";
 import { createServer, connect, type Socket } from "node:net";
 import { request } from "node:http";
 import path from "node:path";
-import { homedir } from "node:os";
 import { createHostRecordDecoder, encodeHostRecord, type HostRecord } from "../remoteHostProtocol";
 import { startRemoteHostServer } from "../remoteHostServer";
 import { HOST_BOOTSTRAP_LOADER } from "../remoteHostBootstrap";
@@ -43,9 +42,9 @@ describe("remote host provider", () => {
     socket.write(encodeHostRecord({ type: "hello", version: 1, namespace: "qa-provider", clientId, role: "desktop", buildHash: "a".repeat(64), ...hello }));
     return { socket, next, send: (record: HostRecord) => socket.write(encodeHostRecord(record)) };
   }
-  function post(clientId: string, body = "{}", headers: Record<string, string> = {}) {
+  function post(clientId: string, body = "{}", headers: Record<string, string> = {}, url = "/api/hooks/status") {
     return new Promise<{ status: number; body: string }>((resolve, reject) => {
-      const req = request({ socketPath: server!.paths.hookSocketPath, method: "POST", path: "/api/hooks/status", headers: { "x-kanvibe-client-id": clientId, ...headers } }, (response) => {
+      const req = request({ socketPath: server!.paths.hookSocketPath, method: "POST", path: url, headers: { "x-kanvibe-client-id": clientId, ...headers } }, (response) => {
         let result = ""; response.on("data", (chunk) => { result += chunk; });
         response.on("end", () => resolve({ status: response.statusCode!, body: result }));
       }); req.on("error", reject); req.end(body);
@@ -106,17 +105,18 @@ describe("remote host provider", () => {
       expect(upstream.listening).toBe(true);
     } finally { await new Promise<void>((resolve) => upstream.close(() => resolve())); }
   });
-  it("routes live hooks to one desktop and durably accepts offline status events", async () => {
-    await start(); expect((await post("offline", '{"taskId":"fixture","status":"done"}')).status).toBe(202);
+  it("routes hooks to one desktop, reports offline503 and never retains them", async () => {
+    await start(); expect(await post("offline", '{"taskId":"fixture","status":"done"}')).toEqual({ status: 503, body: "Desktop offline; request not replayed" });
+    expect(await post("offline", "{}", {}, "/api/cli/tasks")).toEqual({ status: 503, body: "Desktop offline; request not replayed" });
+    expect(await post("bad/client")).toEqual({ status: 400, body: "Invalid hook client" });
     const peer = await client(); await peer.next("ready");
-    peer.send({ type: "hook.subscribe", id: "subscribe" });
     const pending = post("client-one", '{"taskId":"fixture","status":"done"}'); const hook = await peer.next("hook.request");
     expect(hook.path).toBe("/api/hooks/status");
     expect(Buffer.from(String(hook.body), "base64").toString()).toBe('{"taskId":"fixture","status":"done"}');
     peer.send({ type: "hook.response", id: hook.id, status: 202, headers: { "content-type": "application/json" }, body: Buffer.from('{"ok":true}').toString("base64") });
     expect(await pending).toEqual({ status: 202, body: '{"ok":true}' });
     peer.socket.destroy();
-    expect((await post("client-one", '{"taskId":"fixture","status":"done"}')).status).toBe(202);
+    await expect.poll(() => post("client-one", '{"taskId":"fixture","status":"done"}')).toEqual({ status: 503, body: "Desktop offline; request not replayed" });
   });
   it("rejects duplicate live client IDs without replacing the first desktop", async () => {
     await start(); const first = await client(); const original = await first.next("ready");
@@ -184,18 +184,58 @@ async function waitForHostFixtureExit(pid: number | undefined): Promise<void> {
   }
 }
 
+async function buildHostBundle(bundleDirectory: string): Promise<{ source: string; hash: string }> {
+  const { build } = await import("vite");
+  await build({ configFile: false, logLevel: "silent", resolve: { conditions: ["node", "import"], mainFields: ["main"] }, build: {
+    target: "node18", outDir: bundleDirectory, emptyOutDir: true, minify: false,
+    lib: { entry: path.resolve("src/lib/remoteHostServer.ts"), formats: ["cjs"], fileName: () => "host-server.cjs" },
+    rollupOptions: { external: [...builtinModules, ...builtinModules.map((name) => `node:${name}`)] },
+  } });
+  const source = await readFile(path.join(bundleDirectory, "host-server.cjs"), "utf8");
+  return { source, hash: createHash("sha256").update(source).digest("hex") };
+}
+
+type HostBootstrapBridge = ReturnType<typeof startHostBootstrapBridge>;
+function startHostBootstrapBridge(bundle: { source: string; hash: string }, namespace: string, children: ReturnType<typeof spawn>[]) {
+  const child = spawn(process.execPath, ["-e", HOST_BOOTSTRAP_LOADER], { stdio: ["pipe", "pipe", "pipe"] }); children.push(child);
+  let stderr = ""; child.stderr!.on("data", (chunk) => { stderr += chunk; });
+  const queue: HostRecord[] = []; const waiters: Array<{ type: string; resolve: (record: HostRecord) => void }> = [];
+  const receive = (record: HostRecord) => {
+    const index = waiters.findIndex((entry) => entry.type === record.type);
+    if (index >= 0) waiters.splice(index, 1)[0].resolve(record); else queue.push(record);
+  };
+  const decode = createHostRecordDecoder(receive);
+  let lines = Buffer.alloc(0), isBridged = false, markBridged!: () => void;
+  const bridged = new Promise<void>((resolve) => { markBridged = resolve; });
+  child.stdout!.on("data", (chunk: Buffer) => {
+    if (isBridged) { decode(chunk); return; }
+    lines = Buffer.concat([lines, chunk]);
+    let index: number;
+    while ((index = lines.indexOf(10)) >= 0) {
+      const record = JSON.parse(lines.subarray(0, index).toString()); lines = lines.subarray(index + 1);
+      if (record.type === "bootstrap-ready") child.stdin!.write(JSON.stringify({ source: bundle.source, hash: bundle.hash, namespace }) + "\n");
+      if (record.type === "bridge-ready") {
+        isBridged = true; markBridged(); child.stdin!.write(encodeHostRecord({ type: "hello", version: 1, namespace, clientId: randomUUID(), role: "desktop", buildHash: bundle.hash }));
+        if (lines.length) decode(lines); break;
+      }
+    }
+  });
+  const next = (type: string) => {
+    const index = queue.findIndex((entry) => entry.type === type);
+    if (index >= 0) return Promise.resolve(queue.splice(index, 1)[0]);
+    return new Promise<HostRecord>((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error(`Bootstrap ${type} timed out: ${stderr}`)), 10_000);
+      waiters.push({ type, resolve: (record) => { clearTimeout(timeout); resolve(record); } });
+    });
+  };
+  return { child, bridged, next, send: (record: HostRecord) => child.stdin!.write(encodeHostRecord(record)) };
+}
+
 describe("standalone host bootstrap", () => {
   it("publishes one complete immutable bundle for eight concurrent loaders", async () => {
     const namespace = `qa-r-${randomUUID().slice(0, 8)}`;
     const bundleDirectory = await mkdtemp("/tmp/kvhost-race-");
-    const { build } = await import("vite");
-    await build({ configFile: false, logLevel: "silent", resolve: { conditions: ["node", "import"], mainFields: ["main"] }, build: {
-      target: "node18", outDir: bundleDirectory, emptyOutDir: true, minify: false,
-      lib: { entry: path.resolve("src/lib/remoteHostServer.ts"), formats: ["cjs"], fileName: () => "host-server.cjs" },
-      rollupOptions: { external: [...builtinModules, ...builtinModules.map((name) => `node:${name}`)] },
-    } });
-    const source = await readFile(path.join(bundleDirectory, "host-server.cjs"), "utf8");
-    const hash = createHash("sha256").update(source).digest("hex");
+    const { source, hash } = await buildHostBundle(bundleDirectory);
     // 느린 파일시스템의 부분 쓰기를 실제 loader 프로세스에서 재현한다.
     const slowWrite = `const slowFs=require('node:fs'),write=slowFs.writeFileSync;slowFs.writeFileSync=(fd,text,...args)=>{if(typeof fd==='number'&&typeof text==='string'){const n=Math.floor(text.length/2);write(fd,text.slice(0,n),...args);Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,300);write(fd,text.slice(n),...args);}else write(fd,text,...args);};`;
     // ready의 PID는 당선된 데몬뿐이다. 아직 기동 중인 후보도 디렉터리 삭제 전에 종료해야 한다.
@@ -244,7 +284,6 @@ describe("standalone host bootstrap", () => {
         catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error; }
       }
       await Promise.all([...daemonPids].map(waitForHostFixtureExit));
-      await rm(path.join(homedir(), ".local", "state", "kanvibe", "host", namespace), { recursive: true, force: true });
       await rm(`/tmp/kv-${process.getuid!()}/${namespace}`, { recursive: true, force: true });
       await rm(bundleDirectory, { recursive: true, force: true });
     }
@@ -252,54 +291,14 @@ describe("standalone host bootstrap", () => {
   it("retains a detached daemon across two binary bridges and stops only its owned fixture", async () => {
     const namespace = `qa-b-${randomUUID().slice(0, 8)}`;
     const bundleDirectory = await mkdtemp("/tmp/kvhost-bundle-");
-    const { build } = await import("vite");
-    await build({ configFile: false, logLevel: "silent", resolve: { conditions: ["node", "import"], mainFields: ["main"] }, build: {
-      target: "node18", outDir: bundleDirectory, emptyOutDir: true, minify: false,
-      lib: { entry: path.resolve("src/lib/remoteHostServer.ts"), formats: ["cjs"], fileName: () => "host-server.cjs" },
-      rollupOptions: { external: [...builtinModules, ...builtinModules.map((name) => `node:${name}`)] },
-    } });
-    const source = await readFile(path.join(bundleDirectory, "host-server.cjs"), "utf8");
-    const hash = createHash("sha256").update(source).digest("hex");
+    const bundle = await buildHostBundle(bundleDirectory);
     const children: ReturnType<typeof spawn>[] = [];
-    const started = async () => {
-      const child = spawn(process.execPath, ["-e", HOST_BOOTSTRAP_LOADER], { stdio: ["pipe", "pipe", "pipe"] }); children.push(child);
-      let stderr = ""; child.stderr!.on("data", (chunk) => { stderr += chunk; });
-      const queue: HostRecord[] = []; const waiters: Array<{ type: string; resolve: (record: HostRecord) => void }> = [];
-      const receive = (record: HostRecord) => {
-        const index = waiters.findIndex((entry) => entry.type === record.type);
-        if (index >= 0) waiters.splice(index, 1)[0].resolve(record); else queue.push(record);
-      };
-      const decode = createHostRecordDecoder(receive);
-      let lines = Buffer.alloc(0), bridged = false;
-      child.stdout!.on("data", (chunk: Buffer) => {
-        if (bridged) { decode(chunk); return; }
-        lines = Buffer.concat([lines, chunk]);
-        let index: number;
-        while ((index = lines.indexOf(10)) >= 0) {
-          const record = JSON.parse(lines.subarray(0, index).toString()); lines = lines.subarray(index + 1);
-          if (record.type === "bootstrap-ready") child.stdin!.write(JSON.stringify({ source, hash, namespace }) + "\n");
-          if (record.type === "bridge-ready") {
-            bridged = true; child.stdin!.write(encodeHostRecord({ type: "hello", version: 1, namespace, clientId: randomUUID(), role: "desktop", buildHash: hash }));
-            if (lines.length) decode(lines); break;
-          }
-        }
-      });
-      const next = (type: string) => {
-        const index = queue.findIndex((entry) => entry.type === type);
-        if (index >= 0) return Promise.resolve(queue.splice(index, 1)[0]);
-        return new Promise<HostRecord>((resolve, reject) => {
-          const timeout = setTimeout(() => reject(new Error(`Bootstrap ${type} timed out: ${stderr}`)), 10_000);
-          waiters.push({ type, resolve: (record) => { clearTimeout(timeout); resolve(record); } });
-        });
-      };
-      return { child, next, send: (record: HostRecord) => child.stdin!.write(encodeHostRecord(record)) };
-    };
-    let stop: Awaited<ReturnType<typeof started>> | undefined;
+    let stop: HostBootstrapBridge | undefined;
     let daemonPid: number | undefined;
     try {
-      const first = await started(); const one = await first.next("ready"); daemonPid = Number(one.pid);
+      const first = startHostBootstrapBridge(bundle, namespace, children); const one = await first.next("ready"); daemonPid = Number(one.pid);
       first.child.stdin!.end();
-      const second = await started(); stop = second; const two = await second.next("ready");
+      const second = startHostBootstrapBridge(bundle, namespace, children); stop = second; const two = await second.next("ready");
       expect(two.instanceId).toBe(one.instanceId); expect(two.pid).toBe(one.pid);
       second.send({ type: "exec.open", id: "binary", command: "printf '\\377\\000a'", timeoutMs: 3000, maxBufferBytes: 4096 });
       const output = await second.next("exec.data");
@@ -309,8 +308,57 @@ describe("standalone host bootstrap", () => {
       if (stop) { stop.send({ type: "stop", id: "owned-stop" }); await stop.next("stopped"); }
       children.forEach((child) => { child.stdin?.end(); child.kill(); });
       await waitForHostFixtureExit(daemonPid);
-      await rm(path.join(homedir(), ".local", "state", "kanvibe", "host", namespace), { recursive: true, force: true });
       await rm(`/tmp/kv-${process.getuid!()}/${namespace}`, { recursive: true, force: true });
+      await rm(bundleDirectory, { recursive: true, force: true });
+    }
+  }, 20_000);
+  it("replaces a previous build daemon so the new build is not rejected with a handshake mismatch", async () => {
+    const namespace = `qa-u-${randomUUID().slice(0, 8)}`;
+    const bundleDirectory = await mkdtemp("/tmp/kvhost-upgrade-");
+    const current = await buildHostBundle(bundleDirectory);
+    const previousSource = `${current.source}\n// 이전 빌드\n`;
+    const previous = { source: previousSource, hash: createHash("sha256").update(previousSource).digest("hex") };
+    const children: ReturnType<typeof spawn>[] = [];
+    let currentBridge: HostBootstrapBridge | undefined;
+    let previousPid: number | undefined, currentPid: number | undefined;
+    try {
+      const previousBridge = startHostBootstrapBridge(previous, namespace, children);
+      previousPid = Number((await previousBridge.next("ready")).pid);
+      currentBridge = startHostBootstrapBridge(current, namespace, children);
+      const ready = await currentBridge.next("ready");
+      currentPid = Number(ready.pid);
+      expect(ready.buildHash).toBe(current.hash);
+      expect(currentPid).not.toBe(previousPid);
+      await waitForHostFixtureExit(previousPid);
+    } finally {
+      if (currentBridge && currentPid) { currentBridge.send({ type: "stop", id: "owned-stop" }); await currentBridge.next("stopped"); }
+      children.forEach((child) => { child.stdin?.end(); child.kill(); });
+      for (const pid of [previousPid, currentPid]) {
+        try { if (pid) process.kill(pid, "SIGTERM"); }
+        catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error; }
+      }
+      await Promise.all([previousPid, currentPid].map(waitForHostFixtureExit));
+      await rm(`/tmp/kv-${process.getuid!()}/${namespace}`, { recursive: true, force: true });
+      await rm(bundleDirectory, { recursive: true, force: true });
+    }
+  }, 30_000);
+  it("leaves a start lock owner alone when it is not a KanVibe host daemon", async () => {
+    const namespace = `qa-l-${randomUUID().slice(0, 8)}`;
+    const bundleDirectory = await mkdtemp("/tmp/kvhost-lock-");
+    const bundle = await buildHostBundle(bundleDirectory);
+    const namespaceDirectory = `/tmp/kv-${process.getuid!()}/${namespace}`;
+    await mkdir(namespaceDirectory, { recursive: true, mode: 0o700 });
+    // KanVibe daemon이 아닌 프로세스가 rpc 소켓과 start.lock을 쥐고 있는 상황을 만든다.
+    const unrelatedOwner = spawn(process.execPath, ["-e", `const fs=require('node:fs');require('node:net').createServer(()=>{}).listen(${JSON.stringify(`${namespaceDirectory}/rpc-v1.sock`)},()=>{fs.mkdirSync(${JSON.stringify(`${namespaceDirectory}/start.lock`)},{mode:0o700});fs.writeFileSync(${JSON.stringify(`${namespaceDirectory}/start.lock/pid`)},String(process.pid),{mode:0o600});process.stdout.write('listening\\n');});`], { stdio: ["ignore", "pipe", "inherit"] });
+    const children: ReturnType<typeof spawn>[] = [unrelatedOwner];
+    try {
+      await once(unrelatedOwner.stdout!, "data");
+      await startHostBootstrapBridge(bundle, namespace, children).bridged;
+      expect(() => process.kill(unrelatedOwner.pid!, 0)).not.toThrow();
+    } finally {
+      children.forEach((child) => { child.stdin?.end(); child.kill(); });
+      await waitForHostFixtureExit(unrelatedOwner.pid);
+      await rm(namespaceDirectory, { recursive: true, force: true });
       await rm(bundleDirectory, { recursive: true, force: true });
     }
   }, 20_000);
