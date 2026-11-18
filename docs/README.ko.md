@@ -50,7 +50,7 @@ open -a KanVibe
 
 **Mobile 터미널 호환성:** `herdr`, `tmux`, `zellij`, `terminal` 세션을 모두 지원합니다. Herdr 세션은 원본 격자를 유지한 채 스크롤로 읽습니다.
 
-[원격 호스트 연결·터미널 수명·hook 전달과 업그레이드 안내](./remote-host-transport.ko.md)
+[원격 호스트 연결·터미널 수명·hook 보관과 업그레이드 안내](./remote-host-transport.ko.md)
 
 ## PC에서 시작하고, 휴대폰에서 이어가기
 

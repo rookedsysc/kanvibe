@@ -158,7 +158,27 @@ async function connectHookTunnel(tunnel: HookTunnel): Promise<void> {
   });
 }
 
+
+async function forwardJournalHookRequest(tunnel: HookTunnel, record: HostRecord): Promise<{ status: number; headers: Record<string, string>; body: string }> {
+  let input;
+  try { input = JSON.parse(decodeHostBytes(record.body, HOST_RECORD_BYTES / 2).toString("utf8")); }
+  catch { return { status: 400, headers: {}, body: "" }; }
+  const { updateJournalHookTaskStatus } = await import("@/desktop/main/services/hookService");
+  const result = await updateJournalHookTaskStatus(input, tunnel.sshHosts);
+  return { status: result.status ?? 200, headers: { "content-type": "application/json" }, body: Buffer.from(JSON.stringify(result)).toString("base64") };
+}
+
 function forwardHostHookRequest(tunnel: HookTunnel, record: HostRecord): Promise<{ status: number; headers: Record<string, string>; body: string }> {
+  if (record.journal !== undefined) {
+    const journal = record.journal as { sequence?: unknown; receivedAt?: unknown; replay?: unknown } | null;
+    if (tunnel.isClosed || record.path !== "/api/hooks/status" || record.method !== "POST"
+      || typeof record.id !== "string" || !/^[A-Za-z0-9-]{1,128}$/.test(record.id)
+      || !journal || !Number.isSafeInteger(journal.sequence) || Number(journal.sequence) < 1
+      || !Number.isSafeInteger(journal.receivedAt) || Number(journal.receivedAt) < 0 || typeof journal.replay !== "boolean") {
+      return Promise.resolve({ status: 400, headers: {}, body: Buffer.from(JSON.stringify({ success: false, error: "Invalid journal hook envelope" })).toString("base64") });
+    }
+    if (journal.replay) return forwardJournalHookRequest(tunnel, record);
+  }
   return new Promise((resolve, reject) => {
     if (tunnel.isClosed || typeof record.path !== "string" || typeof record.method !== "string") { reject(new Error("Invalid hook request")); return; }
     const request = http.request({ socketPath: tunnel.localSocketPath, path: record.path, method: record.method, headers: record.headers as http.OutgoingHttpHeaders }, (response) => {
