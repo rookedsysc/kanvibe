@@ -2060,7 +2060,7 @@ describe("kanbanService.createTask", () => {
       expect(mocks.execGit).toHaveBeenCalledTimes(2);
     });
 
-    it("백그라운드 PR 동기화는 인증이 깨진 저장소에서 첫 task만 gh를 부르고 나머지 task는 같은 실패를 보고한다", async () => {
+    it("백그라운드 PR 동기화는 각 task 경로의 인증 실패를 기억하고 다음 주기에 재사용한다", async () => {
       // Given
       vi.spyOn(console, "error").mockImplementation(() => {});
       mocks.taskRepo.find.mockResolvedValue(["task-a", "task-b", "task-c"].map((id) => ({
@@ -2086,14 +2086,14 @@ describe("kanbanService.createTask", () => {
       const firstCycle = await syncActiveTaskPullRequests(new Set());
       const secondCycle = await syncActiveTaskPullRequests(new Set());
 
-      // Then: 실패 보고는 task마다 그대로 남고, 원격 gh 호출은 한 번뿐이다
+      // Then: 경로마다 한 번 조회하고 다음 주기에는 저장된 실패를 쓴다
       expect(firstCycle.failures?.map((failure) => failure.taskId)).toEqual(["task-a", "task-b", "task-c"]);
       expect(secondCycle.failures?.map((failure) => failure.reason)).toEqual([AUTH_FAILURE, AUTH_FAILURE, AUTH_FAILURE]);
-      expect(mocks.execGit).toHaveBeenCalledTimes(1);
+      expect(mocks.execGit).toHaveBeenCalledTimes(3);
     });
   });
 
-  it("원격 프로젝트는 프로젝트 repo 경로와 SSH를 사용해 gh CLI로 PR URL을 조회한다", async () => {
+  it("원격 프로젝트는 task worktree 경로와 SSH를 사용해 gh CLI로 PR URL을 조회한다", async () => {
     mocks.taskRepo.findOneBy.mockResolvedValue({
       id: "task-6",
       projectId: "project-remote",
@@ -2115,7 +2115,7 @@ describe("kanbanService.createTask", () => {
     const result = await fetchAndSavePrUrl("task-6");
 
     const remoteGithubCliCall = readGitHubCliCall();
-    expectGitHubCliCommand(remoteGithubCliCall.command, "/remote/repo", PR_LIST_URL_ARGUMENTS_FOR("feature/remote-pr"));
+    expectGitHubCliCommand(remoteGithubCliCall.command, "/Users/local/repo__worktrees/feature-remote-pr", PR_LIST_URL_ARGUMENTS_FOR("feature/remote-pr"));
     expect(remoteGithubCliCall.sshHost).toBe("remote-host");
     /** 원격은 SSH 계층이 이미 제한 시간을 관리하므로 명령에 따로 걸지 않는다 */
     expect(remoteGithubCliCall.options).toBeUndefined();
@@ -2181,7 +2181,7 @@ describe("kanbanService.createTask", () => {
     const result = await fetchAndSavePrUrl("task-8");
 
     expect(result).toBeNull();
-    expectGitHubCliCommand(readGitHubCliCall().command, "/remote/repo", PR_LIST_URL_ARGUMENTS_FOR("feature/no-gh"));
+    expectGitHubCliCommand(readGitHubCliCall().command, "/Users/local/repo__worktrees/feature-no-gh", PR_LIST_URL_ARGUMENTS_FOR("feature/no-gh"));
     expect(mocks.taskRepo.save).not.toHaveBeenCalled();
     expect(mocks.broadcastBoardUpdate).not.toHaveBeenCalled();
     expect(consoleErrorSpy).not.toHaveBeenCalled();
@@ -2489,7 +2489,7 @@ describe("kanbanService.createTask", () => {
       // Then
       expectGitHubCliCommand(
         readGitHubCliCall(0).command,
-        "/workspace/repo",
+        "/workspace/repo__worktrees/pr-stuck",
         PR_LIST_INFO_ARGUMENTS_FOR("feature/pr-stuck"),
       );
       expect(githubCliOptions).toEqual([{ timeoutMs: 10_000 }]);
@@ -3241,6 +3241,24 @@ describe("kanbanService gh 실행 셸 명령", () => {
     expect(output).toBe(`gh:${nestedRepository}`);
   });
 
+  it("실제 셸에서 gh 저장소 판별 실패 후 Git origin으로 조회를 복구한다", async () => {
+    const repositoryPath = createRepository("git-fallback");
+    execFileSync("git", ["init", repositoryPath]);
+    execFileSync("git", ["-C", repositoryPath, "remote", "add", "origin", "git@github.com:example/repo.git"]);
+    await captureGitHubCliCommand(repositoryPath);
+    const stubDirectory = createShellStubs();
+    nodeFs.writeFileSync(nodePath.join(stubDirectory, "gh"), [
+      "#!/bin/sh",
+      'case "$*" in',
+      '  *"--repo example/repo"*) printf %s "https://github.com/example/repo/pull/12" ;;',
+      '  *) echo "GraphQL: Could not resolve to a Repository" >&2; exit 1 ;;',
+      "esac",
+    ].join("\n"), { mode: 0o755 });
+    mocks.execGit.mockImplementation(async (command: string) => runGitHubCliCommand(command, stubDirectory));
+    const { fetchAndSavePrUrl } = await import("@/desktop/main/services/kanbanService");
+    expect(await fetchAndSavePrUrl("task-gh")).toBe("https://github.com/example/repo/pull/12");
+  });
+
   /** 엉뚱한 저장소의 PR을 task.prUrl로 저장하면 머지 알림까지 잘못 뜬다. 실패가 낫다 */
   it("등록 경로 아래 저장소가 둘 이상이면 어느 쪽으로도 내려가지 않는다", async () => {
     // Given
@@ -3586,5 +3604,92 @@ describe("kanbanService 세션 타입 변경", () => {
     expect(result).toEqual({ changedCount: 1, failedCount: 1 });
     expect(mocks.removeSessionOnly).toHaveBeenCalledWith("tmux", "repo-a", null);
     expect(mocks.removeSessionOnly).toHaveBeenCalledTimes(1);
+  });
+});
+
+
+describe("kanbanService task PR repository fallback", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.clearAllMocks();
+    mocks.execGit.mockReset();
+    mocks.taskRepo.update.mockResolvedValue({ affected: 1 });
+    mocks.taskRepo.findOneBy.mockResolvedValue({
+      id: "fallback-task", projectId: "fallback-project", branchName: "feat/fallback",
+      worktreePath: "/tasks/fallback", sshHost: "dev-vm", prUrl: null,
+    });
+    mocks.projectRepo.findOneBy.mockResolvedValue({
+      repoPath: "/projects/repo", sshHost: "dev-vm", defaultBranch: "main",
+    });
+  });
+
+  it("task worktree에서 프로젝트보다 먼저 조회한다", async () => {
+    mocks.execGit.mockResolvedValue("https://github.com/example/repo/pull/12");
+    const { fetchAndSavePrUrl } = await import("@/desktop/main/services/kanbanService");
+    await fetchAndSavePrUrl("fallback-task");
+    expect(readGitHubCliCall().command).toContain("repo='/tasks/fallback'");
+  });
+
+  it.each([
+    "git@github.com:example/repo.git",
+    "https://github.com/example/repo.git",
+    "ssh://git@github.com/example/repo.git",
+  ])("저장소 판별 실패 시 Git origin으로 재조회한다: %s", async (remoteUrl) => {
+    mocks.execGit
+      .mockRejectedValueOnce(new Error("GraphQL: Could not resolve to a Repository with the name 'stale/repo'. (repository)"))
+      .mockResolvedValueOnce(remoteUrl)
+      .mockResolvedValueOnce("https://github.com/example/repo/pull/12");
+    const { fetchAndSavePrUrl } = await import("@/desktop/main/services/kanbanService");
+    expect(await fetchAndSavePrUrl("fallback-task")).toBe("https://github.com/example/repo/pull/12");
+    expect(mocks.execGit).toHaveBeenCalledTimes(3);
+    expect(readGitHubCliCall(1).command).toContain("git remote get-url origin");
+    expect(readGitHubCliCall(2).command).toContain("--repo 'example/repo'");
+    for (const [command, host] of mocks.execGit.mock.calls) {
+      expect(command).toContain("repo='/tasks/fallback'");
+      expect(host).toBe("dev-vm");
+    }
+  });
+
+  it("백그라운드 상태 조회에도 동일한 fallback을 적용한다", async () => {
+    const task = await mocks.taskRepo.findOneBy();
+    mocks.taskRepo.find.mockResolvedValue([{ ...task, title: "fallback", status: "progress" }]);
+    mocks.execGit
+      .mockRejectedValueOnce(new Error("GraphQL: Could not resolve to a Repository with the name 'stale/repo'. (repository)"))
+      .mockResolvedValueOnce("git@github.com:example/repo.git")
+      .mockResolvedValueOnce(JSON.stringify([{ url: "https://github.com/example/repo/pull/12", state: "OPEN" }]));
+    const { syncActiveTaskPullRequests } = await import("@/desktop/main/services/kanbanService");
+    expect((await syncActiveTaskPullRequests(new Set())).updatedTaskIds).toEqual(["fallback-task"]);
+    expect(readGitHubCliCall().command).toContain("--repo 'example/repo'");
+    expect(readGitHubCliCall().command).toContain("--state all");
+  });
+
+  it("Git origin도 읽을 수 없으면 원래 조회 오류를 유지한다", async () => {
+    const error = new Error("GraphQL: Could not resolve to a Repository with the name 'stale/repo'. (repository)");
+    mocks.execGit.mockRejectedValueOnce(error).mockRejectedValueOnce(new Error("no origin"));
+    const { fetchAndSavePrUrl } = await import("@/desktop/main/services/kanbanService");
+    await expect(fetchAndSavePrUrl("fallback-task")).rejects.toBe(error);
+  });
+
+  it("Git origin이 GitHub 저장소가 아니면 원래 오류를 유지한다", async () => {
+    const error = new Error("GraphQL: Could not resolve to a Repository");
+    mocks.execGit.mockRejectedValueOnce(error).mockResolvedValueOnce("git@gitlab.com:example/repo.git");
+    const { fetchAndSavePrUrl } = await import("@/desktop/main/services/kanbanService");
+    await expect(fetchAndSavePrUrl("fallback-task")).rejects.toBe(error);
+    expect(mocks.execGit).toHaveBeenCalledTimes(2);
+  });
+
+  it("저장소를 명시한 재조회도 실패하면 그 오류를 전달한다", async () => {
+    const error = new Error("HTTP 403: forbidden");
+    mocks.execGit.mockRejectedValueOnce(new Error("GraphQL: Could not resolve to a Repository"))
+      .mockResolvedValueOnce("git@github.com:example/repo.git").mockRejectedValueOnce(error);
+    const { fetchAndSavePrUrl } = await import("@/desktop/main/services/kanbanService");
+    await expect(fetchAndSavePrUrl("fallback-task")).rejects.toBe(error);
+  });
+
+  it("정상 조회의 빈 결과에는 fallback하지 않는다", async () => {
+    mocks.execGit.mockResolvedValue("");
+    const { fetchAndSavePrUrl } = await import("@/desktop/main/services/kanbanService");
+    expect(await fetchAndSavePrUrl("fallback-task")).toBeNull();
+    expect(mocks.execGit).toHaveBeenCalledTimes(1);
   });
 });
