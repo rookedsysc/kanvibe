@@ -11,7 +11,7 @@ namespace는 같은 원격 계정에서 `dev`와 `prod`의 서버·소켓·상�
 | 대상 | 소유자와 식별 | 연결 종료 뒤 |
 | --- | --- | --- |
 | 공용 SSH 연결 | 데스크톱의 호스트 연결 모듈 | 닫히며 다음 접속에서 다시 연결 |
-| 원격 daemon | 원격 OS 사용자·namespace | SSH나 앱 종료 뒤에도 유지. OS 재부팅·명시 중지에는 종료 |
+| 원격 daemon | 원격 OS 사용자·namespace | SSH나 앱 종료 뒤에도 유지. OS 재부팅·명시 중지·다른 build 앱의 접속에는 종료 |
 | 일반 terminal의 PTY | daemon, 발급된 session ID와 데스크톱 client ID | detach 후 같은 소유 세션에 재접속 |
 | tmux·zellij 접속용 PTY | daemon | detach 후 유지. tmux·zellij 자체 서버와 별도 수명 |
 | Herdr 세션 | 기존 Herdr 서버 | KanVibe 접속 해제로 Herdr 서버·다른 사용자의 세션을 종료하지 않음 |
@@ -112,21 +112,24 @@ diff 서비스에는 전역 또는 호스트별 갱신 대기열과 동시 실�
 
 원격 시작 전 OS·CPU·Node-API 버전과 파일 hash·경로·소유권을 검사하고 native 모듈을 실제로 로딩합니다. Node-API 조건을 만족해도 libc나 시스템 요구사항 때문에 로딩이 실패할 수 있습니다. beta 버전을 자동 추종하지 않으며 버전을 바꾸면 native·입력 ACK 경계를 다시 검증해야 합니다.
 
-서버 build가 현재 앱과 다르면 기존 daemon을 자동 교체하거나 강제 종료하지 않습니다. 인증·host key·daemon protocol/build·무결성 오류를 기존 SSH PTY로 조용히 우회하지도 않습니다.
+서버 build가 현재 앱과 다르면 bootstrap이 기존 daemon을 내리고 현재 앱의 build로 새 daemon을 시작합니다. namespace마다 rpc 소켓이 하나뿐이라, 이전 build daemon을 그대로 두면 새 앱의 연결이 `Host handshake mismatch`로 거부되고 그 원격 호스트의 명령 실행·도구 설치·hook tunnel이 모두 막히기 때문입니다. 인증·host key·daemon protocol·무결성 오류를 기존 SSH PTY로 조용히 우회하지는 않습니다.
 
-업그레이드와 되돌리기는 다음 순서로 운영자가 명시적으로 수행합니다.
+교체는 다음 조건을 모두 확인한 daemon에만 `SIGTERM`을 보냅니다.
 
-1. 사용 중인 원격 사용자·namespace·daemon PID·instance ID·build hash와 연결 중인 client를 확인합니다. PID 파일만으로 실행 대상을 확정하지 않습니다.
-2. 해당 daemon의 모든 client에서 작업을 저장하고 유지할 세션을 정리합니다. daemon 중지는 일반 terminal PTY를 끝내며, 실행 중인 명령도 연결 종료의 영향을 받습니다.
-3. 호환 연결에서는 내부 `stop` 요청으로 중지할 수 있습니다. build 불일치로 연결이 거부되는 경우에는 원격 OS의 프로세스 정보에서 사용자·실행 파일 경로·namespace·build 인자를 대조한 뒤 그 daemon에만 `SIGTERM`을 전달합니다. 살아 있는 소켓이나 알 수 없는 PID를 지워 교체하지 않습니다.
-4. 확인한 새 앱 빌드로 다시 접속합니다. bootstrap이 검증된 bundle과 해당 플랫폼 파일을 준비하고 새 daemon을 시작합니다. `ready`의 build hash·기능 목록과 실제 입력·재접속을 확인합니다.
-5. 되돌릴 때도 먼저 소유 작업을 정리하고 같은 명시 중지 절차를 거친 뒤 이전 앱 빌드로 접속합니다. hook 보관 파일을 쓰던 빌드로 되돌리는 경우는 아래 절을 먼저 확인합니다.
+- PID는 daemon이 시작하며 기록한 `start.lock/pid`에서 읽고, 파일이 같은 사용자 소유의 일반 파일이어야 합니다.
+- 원격 `ps`로 읽은 그 프로세스가 같은 사용자이고, 같은 namespace 디렉터리의 `server-<hash>.cjs --serve <namespace> <hash>`로 실행 중이며, 그 hash가 현재 앱과 달라야 합니다.
+- 어느 하나라도 확인할 수 없으면(`ps` 실행 실패, 형식 불일치, 다른 프로그램) 건드리지 않고 기존처럼 연결을 시도합니다.
+- `SIGTERM` 뒤 8초 안에 종료하지 않으면 강제 종료하지 않고 연결을 실패로 끝냅니다.
+
+교체되는 daemon이 소유한 일반 terminal PTY는 종료되고, 실행 중인 명령도 연결 종료의 영향을 받습니다. tmux·zellij·Herdr 서버는 daemon과 수명이 별개라 유지됩니다. 같은 namespace에 build가 다른 앱 둘이 번갈아 접속하면 접속할 때마다 상대 daemon을 교체하므로, 개발 checkout 여러 개를 함께 쓸 때는 같은 build로 맞춥니다.
+
+같은 build끼리는 기존 daemon을 그대로 공유합니다. 되돌릴 때도 이전 앱 빌드로 접속하면 같은 방식으로 교체됩니다. hook 보관 파일을 쓰던 빌드로 되돌리는 경우는 아래 절을 먼저 확인합니다.
 
 ### hook 보관 파일을 쓰던 빌드에서 올라올 때
 
 dev 빌드 가운데 상태 hook을 원격 사용자 홈의 `~/.local/state/kanvibe/host/<namespace>/hook-journal-v1.json`에 보관했다가 재전달하던 것이 있습니다. 태그 릴리스 1.5.5까지는 포함되지 않았습니다. 현재 빌드는 이 파일을 읽지도, 쓰지도, 지우지도 않으며 파일이 손상돼 있어도 daemon 시작에 영향이 없습니다.
 
-- 그 빌드의 daemon이 아직 떠 있으면 build가 달라 새 앱의 연결을 거부합니다. 그동안 그 daemon은 상태 hook을 계속 `202`로 받아 파일에 쌓지만 새 앱에는 전달하지 못합니다. 위 1~4단계로 그 daemon을 명시적으로 중지하고 새 빌드로 접속합니다. 앱이 대신 종료하지 않습니다.
+- 그 빌드의 daemon이 아직 떠 있으면 새 앱이 접속할 때 위 조건으로 교체합니다. 교체 전까지 그 daemon은 상태 hook을 `202`로 받아 파일에 쌓지만 새 앱에는 전달하지 못합니다.
 - 새 빌드로 접속해도 파일에 쌓여 있던 이벤트는 전달되지 않습니다. 접속 직후 각 태스크의 `.kanvibe/status.json`을 읽어 보드를 최신 상태로 맞추며, 쌓여 있던 이벤트의 알림은 오지 않습니다.
 - 남은 파일은 그대로 둬도 됩니다. 기록을 남겨 두려면 원격에서 권한과 시각을 유지해 복사합니다. 삭제 여부는 운영자가 정하며 KanVibe는 이 파일과 디렉터리를 정리하지 않습니다.
 
@@ -136,7 +139,7 @@ dev 빌드 가운데 상태 hook을 원격 사용자 홈의 `~/.local/state/kanv
 
 - 그 빌드로 되돌리면 daemon이 남아 있는 파일을 다시 읽어 그 안의 이벤트 전달을 다시 시도합니다. 원하지 않으면 되돌리기 전에 파일을 다른 이름으로 옮겨 둡니다.
 
-개발 checkout에서는 `pnpm build`가 원격 bundle·PTY manifest까지 생성합니다. 이 빌드가 성공했다고 설치 앱이 바뀌거나 실행 중 daemon이 업그레이드되지는 않습니다. 빌드가 바뀐 같은 namespace의 앱들을 동시에 연결하면 불일치할 수 있으므로 함께 점검합니다.
+개발 checkout에서는 `pnpm build`가 원격 bundle·PTY manifest까지 생성합니다. 이 빌드가 성공했다고 설치 앱이 바뀌지는 않으며, 실행 중 daemon은 새 build 앱이 다음에 접속할 때 교체됩니다. 빌드가 다른 같은 namespace의 앱들을 동시에 연결하면 서로 daemon을 교체하므로 함께 점검합니다.
 
 OS 로그인 시 자동 시작이나 launchd·systemd 등록은 하지 않습니다. 다음 접속의 bootstrap이 서버를 시작합니다. 서버 재시작으로 소유 PTY를 되살리거나 이전 입력을 재실행하는 복구는 제공하지 않습니다.
 
