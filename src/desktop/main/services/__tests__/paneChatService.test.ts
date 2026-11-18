@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SessionType } from "@/entities/KanbanTask";
 import type { CodexThreadInput } from "@/lib/aiSessions/codexThreadInput";
 
-const mocks = vi.hoisted(() => ({ surface: vi.fn(), screen: vi.fn(), layout: vi.fn(), exec: vi.fn(), write: vi.fn(), apiInput: vi.fn(), binding: vi.fn(), processBinding: vi.fn().mockResolvedValue(null), reportedBinding: vi.fn().mockResolvedValue(null), claude: vi.fn(), codex: vi.fn(), gemini: vi.fn(), opencode: vi.fn(), rollout: vi.fn(), emptyThread: vi.fn(), focusHerdr: vi.fn(), tabs: vi.fn(), catalog: vi.fn() }));
+const mocks = vi.hoisted(() => ({ surface: vi.fn(), screen: vi.fn(), layout: vi.fn(), exec: vi.fn(), write: vi.fn(), apiInput: vi.fn(), threadSettings: vi.fn(), binding: vi.fn(), processBinding: vi.fn().mockResolvedValue(null), reportedBinding: vi.fn().mockResolvedValue(null), claude: vi.fn(), codex: vi.fn(), gemini: vi.fn(), opencode: vi.fn(), rollout: vi.fn(), emptyThread: vi.fn(), focusHerdr: vi.fn(), tabs: vi.fn(), catalog: vi.fn() }));
 const modelMocks = vi.hoisted(() => ({ tail: vi.fn(), readTextFile: vi.fn() }));
 vi.mock("../paneChatSurface", () => ({ readPaneChatSurface: mocks.surface, readPaneChatScreen: mocks.screen, readPaneChatLayout: mocks.layout }));
 vi.mock("@/lib/gitOperations", () => ({ execGit: mocks.exec }));
@@ -16,9 +16,10 @@ vi.mock("@/lib/aiSessions/readGeminiSessions", () => ({ readGeminiSessionDetail:
 vi.mock("@/lib/aiSessions/readOpenCodeSessions", () => ({ readOpenCodeSessionDetail: mocks.opencode }));
 vi.mock("@/lib/aiSessions/codexThreadMetadata", () => ({ readCodexEmptyThread: mocks.emptyThread }));
 vi.mock("@/lib/aiSessions/codexThreadInput", () => ({ sendCodexThreadInput: mocks.apiInput }));
+vi.mock("@/lib/aiSessions/codexThreadSettings", () => ({ readCodexThreadSettings: mocks.threadSettings }));
 vi.mock("@/lib/aiSessions/shared", async (importOriginal) => ({ ...await importOriginal<typeof import("@/lib/aiSessions/shared")>(), readJsonLinesTail: modelMocks.tail }));
 vi.mock("@/lib/hostFileAccess", async (importOriginal) => ({ ...await importOriginal<typeof import("@/lib/hostFileAccess")>(), readTextFile: modelMocks.readTextFile }));
-import { focusPaneChatTerminal, getPaneChatLayout, getPaneChatSnapshot, readPaneChat, readRecentPaneChat, getPaneChatModelSettings, getPaneChatTranscriptPage, getPaneChatSuggestions, stagePaneChatAttachment, removePaneChatAttachment, sendPaneChatPrompt, interruptPaneChat, openPaneChatModelPicker, changePaneChatModelSetting, sendPaneChatKey, revealPaneChatCodexThread } from "../paneChatService";
+import { focusPaneChatTerminal, getPaneChatLayout, getPaneChatSnapshot, readPaneChat, readRecentPaneChat, getPaneChatModelSettings, getPaneChatTranscriptPage, getPaneChatSuggestions, stagePaneChatAttachment, removePaneChatAttachment, sendPaneChatPrompt, interruptPaneChat, openPaneChatModelPicker, changePaneChatModelSetting, answerPaneChatPrompt, sendPaneChatKey, revealPaneChatCodexThread } from "../paneChatService";
 
 /** pane root의 tty로 좁힌 프로세스 조회 명령인지. 다른 `ps` 호출(예: tty 단독 조회)과 구분한다 */
 const isPaneProcessTableCommand = (command: string) => command.includes("ucomm=,args=");
@@ -43,6 +44,20 @@ beforeEach(() => {
     { slug: "gpt-luna", display_name: "GPT Luna", visibility: "list", priority: 2, supported_reasoning_levels: [], service_tiers: [] },
   ] }));
 });
+
+/**
+ * [emptyInput] 화면으로 시작해, 붙여넣은 글을 입력란에 그대로 그리는 Claude를 흉내 낸다.
+ * 실제 Claude처럼 입력란은 경계선 아래에서 시작하고, 이어지는 줄은 두 칸 들여쓰며(빈 줄은 빈 채로), 커서는 글 끝에 있다.
+ */
+function showClaudeEchoingPastes(emptyInput: object) {
+  mocks.surface.mockResolvedValue(emptyInput);
+  mocks.write.mockImplementation(async (_taskId: string, _paneId: string, bytes: string) => {
+    const pasted = bytes.match(/^\x1b\[200~([\s\S]*)\x1b\[201~$/)?.[1];
+    if (pasted === undefined) return;
+    const rows = pasted.trimEnd().split("\n").map((line, index) => index ? (line && `  ${line}`) : `❯\u00a0${line}`);
+    mocks.surface.mockResolvedValue({ ...emptyInput, viewportLines: ["─".repeat(20), ...rows], cursorRow: rows.length, cursorColumn: rows.at(-1)!.length, inputLine: rows.at(-1)!, inputIsPlaceholder: false });
+  });
+}
 
 /** hook이 묶어 준 Codex 기록에서 현재 모델 설정을 읽을 수 있는 상태로 만든다 */
 function bindCodexSession(model = "gpt-sol") {
@@ -201,7 +216,7 @@ describe("pane chat exact CLI control", () => {
 
   it.each(["", "Read this file"])("closes a staged Claude file reference before one submit Enter (caption=%s)", async (text) => {
     mocks.exec.mockResolvedValue(processTable().replace("/usr/bin/python3 python3 /tmp/codex", "/tmp/claude /tmp/claude"));
-    mocks.surface.mockResolvedValue({ ...surface, inputLine: "❯ " });
+    showClaudeEchoingPastes({ ...surface, inputLine: "❯ " });
     const target = await getPaneChatSnapshot("task-chat", "%3");
     const attachment = await stagePaneChatAttachment("task-chat", target.targetToken!, { name: "file with spaces.txt", mimeType: "text/plain", dataUrl: "data:text/plain;base64,aGVsbG8=" });
     await sendPaneChatPrompt("task-chat", target.targetToken!, text, [attachment.id]);
@@ -222,7 +237,7 @@ describe("pane chat exact CLI control", () => {
     ["Contact person@example.com", "Contact person@example.com"],
   ])("preserves Claude text while terminating only a final file mention (%s)", async (text, expected) => {
     mocks.exec.mockResolvedValue(processTable().replace("/usr/bin/python3 python3 /tmp/codex", "/tmp/claude /tmp/claude"));
-    mocks.surface.mockResolvedValue({ ...surface, inputLine: "❯ " });
+    showClaudeEchoingPastes({ ...surface, inputLine: "❯ " });
     const target = await getPaneChatSnapshot("task-chat", "%3");
     await sendPaneChatPrompt("task-chat", target.targetToken!, text);
     expect(mocks.write.mock.calls).toEqual([["task-chat", "%3", `\x1b[200~${expected}\x1b[201~`], ["task-chat", "%3", "\r"]]);
@@ -380,13 +395,95 @@ describe("pane chat exact CLI control", () => {
     expect(mocks.write).not.toHaveBeenCalled();
   });
 
-  it("opens the real Codex picker by typing its command, and permits only known navigation keys", async () => {
+  it("opens the real Codex picker by pasting its command once, and permits only known navigation keys", async () => {
     const target = await getPaneChatSnapshot("task-chat");
     await openPaneChatModelPicker("task-chat", target.targetToken!);
-    expect(mocks.write.mock.calls.map((call) => call[2])).toEqual([..."/model", "\r"]);
+    expect(mocks.write.mock.calls.map((call) => call[2])).toEqual(["\x1b[200~/model\x1b[201~", "\r"]);
     await sendPaneChatKey("task-chat", target.targetToken!, "down");
     expect(mocks.write).toHaveBeenLastCalledWith("task-chat", "%3", "\x1b[B");
     await expect(sendPaneChatKey("task-chat", target.targetToken!, "command" as "down")).rejects.toMatchObject({ name: "PaneChatInputError" });
+  });
+
+  it("does not press Enter if the CLI is replaced after the command was pasted", async () => {
+    const target = await getPaneChatSnapshot("task-chat");
+    mocks.write.mockImplementationOnce(async () => { mocks.exec.mockResolvedValue(processTable("Thu Nov 12 19:02:00 2026")); });
+    await expect(openPaneChatModelPicker("task-chat", target.targetToken!)).rejects.toMatchObject({ name: "PaneChatTargetChangedError" });
+    expect(mocks.write.mock.calls.map((call) => call[2])).toEqual(["\x1b[200~/model\x1b[201~"]);
+  });
+
+  describe("Claude에 넣은 명령의 Enter 직전 입력란 확인", () => {
+    const emptyClaudeInput = { ...surface, inputLine: "❯\u00a0", cursorColumn: 2 };
+    /** 명령을 붙여넣은 뒤 Enter를 기다리는 사이 Claude 화면의 커서 줄이 [inputLine]으로 바뀐 상황을 만든다 */
+    async function openPickerWithInputLineAfterPaste(inputLine: string) {
+      mocks.exec.mockResolvedValue(processTable().replace("/usr/bin/python3 python3 /tmp/codex", "/tmp/claude /tmp/claude"));
+      mocks.surface.mockResolvedValue(emptyClaudeInput);
+      const target = await getPaneChatSnapshot("task-chat", "%3");
+      mocks.write.mockImplementationOnce(async () => { mocks.surface.mockResolvedValue({ ...emptyClaudeInput, inputLine, cursorColumn: inputLine.length }); });
+      return openPaneChatModelPicker("task-chat", target.targetToken!);
+    }
+
+    it("입력란이 넣은 명령 그대로이면 Enter를 누른다", async () => {
+      await openPickerWithInputLineAfterPaste("❯\u00a0/model");
+      expect(mocks.write.mock.calls.map((call) => call[2])).toEqual(["\x1b[200~/model\x1b[201~", "\r"]);
+    });
+
+    it.each([
+      ["그사이 입력란의 글이 바뀌면", "❯\u00a0Reply with exactly: RACE"],
+      ["그사이 선택 화면이 뜨면", "   ❯ 1. Yes, switch to Opus 5.5"],
+      ["입력란 줄을 찾지 못하면", "  Enter to confirm · Esc to cancel"],
+    ])("%s Enter를 누르지 않는다", async (_, inputLine) => {
+      await expect(openPickerWithInputLineAfterPaste(inputLine)).rejects.toMatchObject({ name: "PaneChatInputError" });
+      expect(mocks.write.mock.calls.map((call) => call[2])).toEqual(["\x1b[200~/model\x1b[201~"]);
+    });
+  });
+
+  describe("Claude에 보낸 일반 메시지의 Enter 직전 입력란 확인", () => {
+    const BORDER = "─".repeat(40);
+    /** 입력란에 [composerRows]가 그려진 Claude 화면. 커서는 입력란의 마지막 줄 끝에 있다 */
+    const claudeComposer = (...composerRows: string[]) => {
+      const lines = ["● earlier reply", BORDER, ...composerRows, BORDER, "  ? for shortcuts"];
+      return { ...surface, viewportLines: lines, cursorRow: composerRows.length + 1, cursorColumn: composerRows.at(-1)!.length, inputLine: composerRows.at(-1)! };
+    };
+    let sendSequence = 0;
+    /** [text]를 보내고, 붙여넣은 뒤 Enter를 기다리는 사이 화면이 [afterPaste]로 바뀐 상황을 만든다 */
+    async function sendWithScreenAfterPaste(text: string, afterPaste: object) {
+      mocks.exec.mockResolvedValue(processTable().replace("/usr/bin/python3 python3 /tmp/codex", "/tmp/claude /tmp/claude"));
+      mocks.surface.mockResolvedValue({ ...claudeComposer("❯\u00a0"), cursorColumn: 2 });
+      const target = await getPaneChatSnapshot("task-chat", "%3");
+      mocks.write.mockImplementationOnce(async () => { mocks.surface.mockResolvedValue(afterPaste); });
+      return sendPaneChatPrompt("task-chat", target.targetToken!, text, [], `claude-message-${++sendSequence}`);
+    }
+    const sentBytes = () => mocks.write.mock.calls.map((call) => call[2]);
+
+    it.each([
+      ["한 줄 글이 그대로 보이면", "Reply with exactly: OK", ["❯\u00a0Reply with exactly: OK"]],
+      ["긴 글이 여러 줄로 나뉘어 보이면", "word000 word001 word002 word003", ["❯\u00a0word000 word001", "  word002 word003"]],
+      ["여러 줄 글이 접힌 표시로 보이면", "a\nb\nc\nd\ne", ["❯\u00a0[Pasted text #1 +4 lines]"]],
+    ])("%s Enter를 누른다", async (_name, text, composerRows) => {
+      await sendWithScreenAfterPaste(text, claudeComposer(...composerRows));
+
+      expect(sentBytes()).toEqual([`\x1b[200~${text}\x1b[201~`, "\r"]);
+    });
+
+    it.each([
+      ["그사이 입력란의 글이 바뀌면", claudeComposer("❯\u00a0Reply with exactly: RACE")],
+      ["그사이 입력란이 비워지면", { ...claudeComposer("❯\u00a0"), cursorColumn: 2 }],
+      ["그사이 선택 화면이 뜨면", { ...surface, viewportLines: [BORDER, " Do you want to proceed?", " ❯ 1. Yes", "   2. No"], cursorRow: 2, cursorColumn: 1, inputLine: " ❯ 1. Yes" }],
+    ])("%s Enter를 누르지 않는다", async (_name, afterPaste) => {
+      await expect(sendWithScreenAfterPaste("Reply with exactly: OK", afterPaste)).rejects.toMatchObject({ name: "PaneChatDeliveryUncertainError" });
+
+      expect(sentBytes()).toEqual(["\x1b[200~Reply with exactly: OK\x1b[201~"]);
+    });
+  });
+
+  it("verifies the target once for a navigation key and once for an interrupt", async () => {
+    const target = await getPaneChatSnapshot("task-chat");
+    mocks.surface.mockClear();
+    await sendPaneChatKey("task-chat", target.targetToken!, "down");
+    expect(mocks.surface).toHaveBeenCalledTimes(1);
+    mocks.surface.mockClear();
+    await interruptPaneChat("task-chat", target.targetToken!);
+    expect(mocks.surface).toHaveBeenCalledTimes(1);
   });
 
   it("reports the current model settings and selectable options from the exact session", async () => {
@@ -488,14 +585,26 @@ describe("pane chat exact CLI control", () => {
     expect(snapshot).not.toHaveProperty("modelSettings");
   });
 
-  it("changes a model setting by typing the slash command built from the selectable options", async () => {
+  it("changes a model setting by pasting the slash command built from the selectable options", async () => {
     bindCodexSession();
     const target = await getPaneChatSnapshot("task-chat");
     await changePaneChatModelSetting("task-chat", target.targetToken!, { kind: "effort", effort: "high" });
-    expect(mocks.write.mock.calls.map((call) => call[2])).toEqual([..."/model --reasoning=high", "\r"]);
+    expect(mocks.write.mock.calls.map((call) => call[2])).toEqual(["\x1b[200~/model --reasoning=high\x1b[201~", "\r"]);
     mocks.write.mockClear();
     await changePaneChatModelSetting("task-chat", target.targetToken!, { kind: "fast", isFast: true });
-    expect(mocks.write.mock.calls.map((call) => call[2]).join("")).toBe("/model --speed=priority\r");
+    expect(mocks.write.mock.calls.map((call) => call[2])).toEqual(["\x1b[200~/model --speed=priority\x1b[201~", "\r"]);
+  });
+
+  it("verifies the target the same number of times however long the model command is", async () => {
+    bindCodexSession();
+    const target = await getPaneChatSnapshot("task-chat");
+    mocks.surface.mockClear();
+    await changePaneChatModelSetting("task-chat", target.targetToken!, { kind: "model", model: "gpt-luna" });
+    const targetReadsForShortCommand = mocks.surface.mock.calls.length;
+    mocks.surface.mockClear();
+    await changePaneChatModelSetting("task-chat", target.targetToken!, { kind: "effort", effort: "high" });
+    expect(mocks.write.mock.calls.map((call) => call[2])).toEqual(["\x1b[200~/model gpt-luna\x1b[201~", "\r", "\x1b[200~/model --reasoning=high\x1b[201~", "\r"]);
+    expect(mocks.surface.mock.calls.length).toBe(targetReadsForShortCommand);
   });
 
   it.each([
@@ -531,7 +640,7 @@ describe("pane chat exact CLI control", () => {
   it("Claude가 응답 뒤 dim으로 그린 추천 문구는 빈 입력란으로 보고 보낸 글을 붙여넣는다", async () => {
     mocks.exec.mockResolvedValue(processTable().replace("/usr/bin/python3 python3 /tmp/codex", "/tmp/claude /tmp/claude"));
     const suggestion = { ...surface, inputLine: "❯\u00a0숨김 폴더 포함하면 몇 개야?", cursorColumn: 2, inputIsPlaceholder: true };
-    mocks.surface.mockResolvedValue(suggestion);
+    showClaudeEchoingPastes(suggestion);
     const target = await getPaneChatSnapshot("task-chat", "%3");
     expect(target.inputState).toBe("ready");
     await sendPaneChatPrompt("task-chat", target.targetToken!, "hello");
@@ -686,6 +795,15 @@ class FakeCodexPane {
   dropsPaste = false;
   /** 사용자가 여러 줄 입력의 첫 줄로 커서를 올려 둔 상태 */
   isCursorOnFirstComposerRow = false;
+  /** 입력란과 footer 자리를 차지한 선택 화면의 줄. 숫자 키나 Esc를 받으면 닫힌다 */
+  dialog: string[] | null = null;
+  readonly dialogKeys: string[] = [];
+  /** 선택 화면 위에 보이는 대화 내용. 새 대화를 시작하면 바뀐다 */
+  history = "• Earlier reply";
+  /** pane이 좁아져 줄이 다시 접히면서 화면 위로 밀려난 줄 수 */
+  rowsScrolledOff = 0;
+  /** 머리글 아래의 작업 경로 줄. 실제 TUI는 pane 너비에 맞춰 가운데를 줄여 다시 그린다 */
+  headerDirectoryLine = "     ~/projects/qa/run/workspace";
 
   constructor(readonly paneId: string, readonly rootPid: number, public threadId: string) {}
 
@@ -696,6 +814,11 @@ class FakeCodexPane {
   }
 
   write(bytes: string) {
+    if (this.dialog) {
+      this.dialogKeys.push(bytes);
+      this.dialog = null;
+      return;
+    }
     this.apply(bytes);
   }
 
@@ -717,7 +840,17 @@ class FakeCodexPane {
     if (text === "/statusline thread-id" && !this.ignoresStatusLine) this.threadsShowingId.add(this.threadId);
   }
 
+  /** 화면을 읽지 않는 조회의 결과. 실제 pane 조회처럼 입력란·커서·화면 줄이 없다 */
+  surfaceWithoutScreen(task: object) {
+    return { task, paneId: this.paneId, rootPid: this.rootPid, screen: "", inputLine: null, cursorColumn: null };
+  }
+
   surface(task: object) {
+    if (this.dialog) {
+      // 실제 TUI는 선택 화면을 화면 아래에 붙이고 커서를 마지막 줄 끝에 세워 둔다. 대화 ID가 있던 footer는 가려진다.
+      const rows = ["  >_ OpenAI Codex (v0.169.0)", this.headerDirectoryLine, "", ...this.history.split("\n"), "", "", ...this.dialog].slice(this.rowsScrolledOff);
+      return { observation: ++codexObservationSequence, task, paneId: this.paneId, rootPid: this.rootPid, screen: rows.join("\n"), inputLine: rows.at(-1)!, cursorColumn: 120, viewportLines: rows, cursorRow: rows.length - 1, viewportColumns: 120, inputIsPlaceholder: false };
+    }
     const [firstLine, ...moreLines] = (this.composer || "Ask Codex to do anything").split("\n");
     // 명령 이름을 치는 동안에는 선택 표시가 붙은 자동완성 줄이 입력란 위에 뜬다.
     const commandPopup = /^\/\S*$/.test(this.composer) ? ["› /model  choose what model and reasoning effort to use", ""] : [];
@@ -739,7 +872,11 @@ function createCodexTask(version = "codex-cli 0.169.0") {
   const a = new FakeCodexPane("%A", 100, THREAD_X);
   const b = new FakeCodexPane("%B", 110, THREAD_Z);
   const panes: Record<string, FakeCodexPane> = { "%A": a, "%B": b };
-  mocks.surface.mockImplementation(async (_taskId: string, paneId?: string) => panes[paneId ?? "%A"]?.surface(task) ?? null);
+  mocks.surface.mockImplementation(async (_taskId: string, paneId?: string, capture = true) => {
+    const pane = panes[paneId ?? "%A"];
+    if (!pane) return null;
+    return capture ? pane.surface(task) : pane.surfaceWithoutScreen(task);
+  });
   mocks.write.mockImplementation(async (_taskId: string, paneId: string, bytes: string) => panes[paneId].write(bytes));
   mocks.exec.mockImplementation(async (command: string) => {
     if (isPaneProcessTableCommand(command)) return codexProcessTable;
@@ -785,6 +922,181 @@ describe("Codex displayed-thread footer binding", () => {
     expect(mocks.codex).toHaveBeenLastCalledWith(expect.anything(), THREAD_X, rolloutFile(THREAD_X), "100", 100);
     a.switchThread(THREAD_Y);
     await expect(settle(getPaneChatTranscriptPage(taskId, bound.targetToken!, "200"))).rejects.toMatchObject({ name: "PaneChatTargetChangedError" });
+  });
+
+  it("연결된 Codex의 모델 설정을 읽어도 대화가 바뀐 것으로 판정하지 않고 연결을 유지한다", async () => {
+    const { taskId } = createCodexTask();
+    const apiSettings = { model: "gpt-sol", effort: "low", isFast: null, models: [] };
+    mocks.threadSettings.mockResolvedValue(apiSettings);
+    const bound = await settle(getPaneChatSnapshot(taskId, "%A"));
+    expect(await settle(getPaneChatModelSettings(taskId, bound.targetToken!))).toEqual(apiSettings);
+    expect(mocks.threadSettings).toHaveBeenCalledWith(expect.objectContaining({ threadId: THREAD_X, sourceRef: rolloutFile(THREAD_X) }));
+    expect(await settle(getPaneChatSnapshot(taskId, "%A"))).toMatchObject({ canSend: true, targetToken: bound.targetToken });
+  });
+
+  describe("Codex가 선택 화면을 띄운 동안", () => {
+    const APPROVAL = ["  Would you like to run the following command?", "", "  $ git tag demo", "", "", "› 1. Yes, proceed (y)", "  2. No, and tell Codex what to do differently (esc)", "", "  Press enter to confirm or esc to cancel"];
+    const RATE_LIMIT = ["  Approaching rate limits", "", "", "› 1. Switch to gpt-6-luna", "  2. Keep current model", "", "  enter select · esc back"];
+    /**
+     * 채팅이 pane을 한 번 읽는다. 대화를 유지하는 조건이 "마지막 확인 뒤 지난 시간"이라, 가짜 시계를 흘리며 기다리지 않고 바로 기다린다.
+     * 흘리며 기다리면 파일 조회가 느린 환경에서 읽기 한 번 사이에 가짜 시간이 몇 초씩 지나간다.
+     */
+    const readChat = (taskId: string) => getPaneChatSnapshot(taskId, "%A");
+
+    it("선택 화면이 하단의 대화 ID를 가려도 직전에 확인한 대화를 유지하고, 그 화면을 스냅샷에 싣는다", async () => {
+      const { taskId, a } = createCodexTask();
+      const bound = await readChat(taskId);
+      a.dialog = APPROVAL;
+
+      const asking = await readChat(taskId);
+
+      expect(asking).toMatchObject({ canSend: true, targetToken: bound.targetToken, transcript: { status: "available", sessionId: THREAD_X } });
+      expect(asking.prompt).toMatchObject({ kind: "permission", title: "Would you like to run the following command?", detail: "$ git tag demo", options: [{ number: 1, label: "Yes, proceed (y)" }, { number: 2 }] });
+      a.dialog = null;
+      expect(await readChat(taskId)).toMatchObject({ canSend: true, targetToken: bound.targetToken });
+    });
+
+    it("대화를 확인한 적 없는 Codex의 선택 화면은 대화로 연결하지 않는다", async () => {
+      const { taskId, a } = createCodexTask();
+      a.showFooter = false;
+      a.dialog = APPROVAL;
+
+      expect(await readChat(taskId)).toMatchObject({ canSend: false, targetToken: null });
+    });
+
+    it("선택 화면이 닫힌 뒤 다른 대화의 ID가 보이면 유지하던 대화를 버린다", async () => {
+      const { taskId, a } = createCodexTask();
+      const bound = await readChat(taskId);
+      a.dialog = RATE_LIMIT;
+      await readChat(taskId);
+      a.dialog = null;
+      a.switchThread(THREAD_Y);
+
+      const after = await readChat(taskId);
+
+      expect(after.targetToken).not.toBe(bound.targetToken);
+      await expect(settle(interruptPaneChat(taskId, bound.targetToken!))).rejects.toMatchObject({ name: "PaneChatTargetChangedError" });
+    });
+
+    it("카드에서 고른 번호를 숫자 키 하나로, 취소를 Esc로 보낸다", async () => {
+      const { taskId, a } = createCodexTask();
+      await readChat(taskId);
+      a.dialog = APPROVAL;
+      const asking = await readChat(taskId);
+
+      await settle(answerPaneChatPrompt(taskId, asking.targetToken!, asking.prompt!.id, { type: "option", number: 2 }));
+      await readChat(taskId);
+      a.dialog = RATE_LIMIT;
+      const warned = await readChat(taskId);
+      await settle(answerPaneChatPrompt(taskId, warned.targetToken!, warned.prompt!.id, { type: "cancel" }));
+
+      expect(a.dialogKeys).toEqual(["2", "\x1b"]);
+    });
+
+    it("카드를 본 뒤 다른 선택 화면으로 바뀌었으면 키를 보내지 않는다", async () => {
+      const { taskId, a } = createCodexTask();
+      await readChat(taskId);
+      a.dialog = APPROVAL;
+      const asking = await readChat(taskId);
+      a.dialog = RATE_LIMIT;
+
+      await expect(settle(answerPaneChatPrompt(taskId, asking.targetToken!, asking.prompt!.id, { type: "option", number: 1 }))).rejects.toMatchObject({ name: "PaneChatTargetChangedError" });
+
+      expect(a.dialogKeys).toEqual([]);
+    });
+
+    it("같은 선택 화면을 계속 지켜보는 동안에는 오래 떠 있어도 대화를 유지한다", async () => {
+      const { taskId, a } = createCodexTask();
+      const bound = await readChat(taskId);
+      a.dialog = APPROVAL;
+
+      for (let poll = 0; poll < 12; poll++) {
+        await vi.advanceTimersByTimeAsync(1_500);
+        expect(await readChat(taskId)).toMatchObject({ canSend: true, targetToken: bound.targetToken });
+      }
+    });
+
+    it("대화 ID를 본 지 오래됐으면 그사이 대화가 바뀌었을 수 있으므로, 선택 화면이 떠 있어도 이전 대화를 보여 주지 않는다", async () => {
+      const { taskId, a } = createCodexTask();
+      await readChat(taskId);
+      await vi.advanceTimersByTimeAsync(60_000);
+      a.switchThread(THREAD_Y);
+      a.dialog = RATE_LIMIT;
+
+      const reopened = await readChat(taskId);
+
+      expect(reopened).toMatchObject({ canSend: false, targetToken: null });
+      expect(reopened.prompt).toBeUndefined();
+    });
+
+    it("글자가 같은 선택 화면이라도 그 위의 대화 내용이 바뀌었으면 새 대화에서 다시 뜬 화면이므로 유지를 끝낸다", async () => {
+      const { taskId, a } = createCodexTask();
+      await readChat(taskId);
+      a.dialog = RATE_LIMIT;
+      await readChat(taskId);
+      a.switchThread(THREAD_Y);
+      a.history = "  >_ New conversation";
+
+      const reopened = await readChat(taskId);
+
+      expect(reopened).toMatchObject({ canSend: false, targetToken: null });
+      expect(reopened.prompt).toBeUndefined();
+    });
+
+    it("선택 화면이 뜬 채 pane 너비가 바뀌어 대화 내용과 선택지가 다시 접히고 위쪽 줄이 밀려나도 대화를 유지한다", async () => {
+      const { taskId, a } = createCodexTask();
+      const bound = await readChat(taskId);
+      a.history = "• Earlier reply that is long enough to be folded when the pane gets narrower";
+      a.dialog = RATE_LIMIT;
+      await readChat(taskId);
+      a.history = "• Earlier reply that is long enough to be folded\n  when the pane gets narrower";
+      a.dialog = ["  Approaching rate limits", "", "", "› 1. Switch to", "     gpt-6-luna", "  2. Keep current model", "", "  enter select · esc back"];
+      a.rowsScrolledOff = 2;
+
+      expect(await readChat(taskId)).toMatchObject({ canSend: true, targetToken: bound.targetToken, prompt: { title: "Approaching rate limits" } });
+    });
+
+    it("선택 화면이 뜬 채 pane 너비가 바뀌어 머리글의 작업 경로가 줄여 다시 그려져도 대화를 유지한다", async () => {
+      const { taskId, a } = createCodexTask();
+      const bound = await readChat(taskId);
+      a.dialog = RATE_LIMIT;
+      await readChat(taskId);
+      a.headerDirectoryLine = "     ~/projects/…/run/workspace";
+
+      expect(await readChat(taskId)).toMatchObject({ canSend: true, targetToken: bound.targetToken, prompt: { title: "Approaching rate limits" } });
+    });
+
+    it("이전 대화 내용이 화면 위쪽에 남아 있어도 선택 화면 바로 위가 새 대화의 머리글이면 유지를 끝낸다", async () => {
+      const { taskId, a } = createCodexTask();
+      await readChat(taskId);
+      a.dialog = RATE_LIMIT;
+      await readChat(taskId);
+      a.switchThread(THREAD_Y);
+      a.history = "• Earlier reply\n\n  >_ OpenAI Codex (v0.169.0)\n     ~/projects/qa/run/workspace";
+
+      expect(await readChat(taskId)).toMatchObject({ canSend: false, targetToken: null });
+    });
+
+    it("터미널에서 강조 줄만 옮긴 같은 선택 화면은 계속 유지한다", async () => {
+      const { taskId, a } = createCodexTask();
+      const bound = await readChat(taskId);
+      a.dialog = RATE_LIMIT;
+      await readChat(taskId);
+      a.dialog = RATE_LIMIT.map((line) => line.startsWith("› 1.") ? line.replace("›", " ") : line.startsWith("  2.") ? `›${line.slice(1)}` : line);
+
+      expect(await readChat(taskId)).toMatchObject({ canSend: true, targetToken: bound.targetToken, prompt: { highlightedNumber: 2 } });
+    });
+
+    it("대화 ID를 다시 보지 못한 채 다른 선택 화면으로 넘어가면 그사이 대화가 바뀌었을 수 있으므로 유지를 끝낸다", async () => {
+      const { taskId, a } = createCodexTask();
+      await readChat(taskId);
+      a.dialog = APPROVAL;
+      await readChat(taskId);
+      a.switchThread(THREAD_Y);
+      a.dialog = RATE_LIMIT;
+
+      expect(await readChat(taskId)).toMatchObject({ canSend: false, targetToken: null });
+    });
   });
 
   it("대화 ID 표시는 빈 입력란에 명령을 한 번 붙여넣고 Enter로 실행해 그 pane의 대화를 연결한다", async () => {
@@ -1234,5 +1546,241 @@ describe("pane chat agent activity", () => {
     const viewportLines = ["  ┃  Ask anything…", "  ┃  Build · esc to interrupt", "  ╹▀▀▀"];
     mocks.surface.mockResolvedValue({ ...surface, inputLine: viewportLines[0], cursorColumn: 5, cursorRow: 0, viewportLines });
     expect((await getPaneChatSnapshot("task-chat", "%3")).agentActivity).toBe("unknown");
+  });
+});
+
+describe("Claude 선택 화면에 채팅에서 답하기", () => {
+  const MODEL_SWITCH = ["▔".repeat(20), "   Switch model?", "   ❯ 1. Yes, switch to Opus 5.5", "     2. No, go back"];
+  const QUESTION_HEAD = ["─".repeat(20), "←  ☐ Size  ☐ Notes  ✔ Submit  →", "", "Which size?", ""];
+  const QUESTION = [...QUESTION_HEAD, "❯ 1. Small", "  2. Large", "  3. Type something."];
+  const TOPPINGS_HEAD = ["─".repeat(20), "←  ☐ Toppings  ✔ Submit  →", "", "Which toppings?", ""];
+  const INPUT_BOX = ["─".repeat(20), "❯ ", "─".repeat(20)];
+  /** [lines]가 그려진 Claude 화면. 커서는 [cursorRow]번째 줄의 [cursorColumn] 칸에 있다 */
+  const claudeScreen = (lines: string[], cursorRow: number, cursorColumn: number) => ({ ...surface, viewportLines: lines, cursorRow, cursorColumn, inputLine: lines[cursorRow] });
+  const typedKeys = () => mocks.write.mock.calls.map((call) => call[2]);
+  /** 단일 선택 질문의 직접 입력 줄이 [text]를 입력받는 중인 화면 */
+  const typingScreen = (text: string) => claudeScreen([...QUESTION_HEAD, "  1. Small", "  2. Large", `❯ 3. ${text}`], 7, 5 + text.length);
+  /** 다중 선택 질문. [highlighted]번 줄이 강조돼 있고 3번이 직접 입력 줄이다 */
+  function toppingsScreen(highlighted: number, textEntry = "[ ] Type something", cheese = "[ ]") {
+    const rows = [`1. ${cheese} Cheese`, "2. [ ] Olives", `3. ${textEntry}`].map((row, index) => `${index + 1 === highlighted ? "❯" : " "} ${row}`);
+    return claudeScreen([...TOPPINGS_HEAD, ...rows, "     Submit"], 4 + highlighted, highlighted === 3 ? 9 : 0);
+  }
+  /** 다음에 보내는 키들이 차례로 화면을 [screens]로 바꾼다. 그 뒤의 키에는 선택 화면이 닫히고 입력란이 나온다 */
+  function screenAfterEachKey(...screens: ReturnType<typeof claudeScreen>[]) {
+    for (const screen of screens) mocks.write.mockImplementationOnce(async () => { mocks.surface.mockResolvedValue(screen); });
+  }
+  /** 답을 보내고, 화면을 다시 읽으며 기다리는 시간을 흘려보낸 뒤 그 결과를 받는다 */
+  async function answer(snapshot: Awaited<ReturnType<typeof getPaneChatSnapshot>>, requested: unknown) {
+    const answering = answerPaneChatPrompt("task-chat", snapshot.targetToken!, snapshot.prompt!.id, requested);
+    const outcome = answering.then(() => "sent", (error: Error) => error.name);
+    await vi.advanceTimersByTimeAsync(5_000);
+    return outcome;
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    mocks.exec.mockResolvedValue(processTable().replace("/usr/bin/python3 python3 /tmp/codex", "/tmp/claude /tmp/claude"));
+    mocks.surface.mockResolvedValue(claudeScreen(MODEL_SWITCH, 2, 3));
+    mocks.write.mockImplementation(async () => { mocks.surface.mockResolvedValue(claudeScreen(INPUT_BOX, 1, 2)); });
+  });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it("화면의 선택 화면을 종류와 함께 스냅샷에 싣는다", async () => {
+    const { prompt } = await getPaneChatSnapshot("task-chat", "%3");
+
+    expect(prompt).toMatchObject({ kind: "confirmation", title: "Switch model?", options: [{ number: 1, label: "Yes, switch to Opus 5.5" }, { number: 2, label: "No, go back" }] });
+    expect(prompt?.id).toEqual(expect.any(String));
+  });
+
+  it("종류는 화면으로 가린다. 대화 기록에 도구 호출이 아직 없어도 권한 확인이고, 도구가 실행 중이어도 모델 전환 확인은 CLI의 확인이다", async () => {
+    mocks.surface.mockResolvedValue(claudeScreen(["─".repeat(20), " Bash command", "╌".repeat(20), " touch a", "╌".repeat(20), " Do you want to proceed?", " ❯ 1. Yes", "   2. No"], 6, 1));
+    expect((await getPaneChatSnapshot("task-chat", "%3")).prompt).toMatchObject({ kind: "permission", detail: "Bash command\n\ntouch a" });
+
+    mocks.claude.mockResolvedValue({ sessionId: "exact-session", provider: "claude", messages: [{ role: "tool", text: "sleep 30", fullText: "sleep 30", toolName: "Bash" }], nextCursor: null });
+    mocks.surface.mockResolvedValue(claudeScreen(MODEL_SWITCH, 2, 3));
+    expect((await getPaneChatSnapshot("task-chat", "%3")).prompt?.kind).toBe("confirmation");
+  });
+
+  it("AI의 질문은 대화 기록의 질문 원문으로 라벨과 설명을 가르되, 답을 보낼 때의 화면 식별값은 화면에서 읽은 그대로다", async () => {
+    const label = "Use the shared configuration preset from the platform team with strict lint rules enabled";
+    const narrowQuestion = ["Which preset?", "", "❯ 1. Use the shared configuration preset from the", "     platform team with strict lint rules enabled", "     recommended for new repositories", "  2. Minimal", "     smallest setup", "  3. Chat about this"];
+    mocks.surface.mockResolvedValue({ ...claudeScreen(narrowQuestion, 2, 0), viewportColumns: 50 });
+    const fromScreenOnly = await getPaneChatSnapshot("task-chat", "%3");
+    modelMocks.tail.mockResolvedValue([{ type: "assistant", message: { role: "assistant", content: [{ type: "tool_use", name: "AskUserQuestion", input: { questions: [{ question: "Which preset?", options: [{ label, description: "recommended for new repositories" }, { label: "Minimal", description: "smallest setup" }] }] } }] } }]);
+
+    const refined = await getPaneChatSnapshot("task-chat", "%3");
+
+    expect(fromScreenOnly.prompt?.options[0].label).toBe("Use the shared configuration preset from the");
+    expect(refined.prompt?.options[0]).toMatchObject({ label, description: "recommended for new repositories" });
+    expect(refined.prompt?.id).toBe(fromScreenOnly.prompt?.id);
+    expect(await answer(refined, { type: "option", number: 1 })).toBe("sent");
+    expect(typedKeys()).toEqual(["1"]);
+  });
+
+  it("입력란이 보이는 화면과, 화면 배치를 확인하지 않은 CLI의 같은 화면은 선택 화면으로 싣지 않는다", async () => {
+    mocks.surface.mockResolvedValue(claudeScreen(INPUT_BOX, 1, 2));
+    expect((await getPaneChatSnapshot("task-chat", "%3")).prompt).toBeUndefined();
+
+    mocks.exec.mockResolvedValue(processTable());
+    mocks.surface.mockResolvedValue(claudeScreen(MODEL_SWITCH, 2, 3));
+    expect((await getPaneChatSnapshot("task-chat", "%3")).prompt).toBeUndefined();
+  });
+
+  it("같은 선택 화면이 떠 있으면 고른 번호의 숫자 키를 한 번 보낸다", async () => {
+    const snapshot = await getPaneChatSnapshot("task-chat", "%3");
+
+    expect(await answer(snapshot, { type: "option", number: 2 })).toBe("sent");
+
+    expect(mocks.write.mock.calls).toEqual([["task-chat", "%3", "2"]]);
+  });
+
+  it("강조 위치만 바뀐 화면은 같은 선택 화면으로 본다", async () => {
+    const snapshot = await getPaneChatSnapshot("task-chat", "%3");
+    mocks.surface.mockResolvedValue(claudeScreen([MODEL_SWITCH[0], MODEL_SWITCH[1], "     1. Yes, switch to Opus 5.5", "   ❯ 2. No, go back"], 3, 3));
+
+    expect(await answer(snapshot, { type: "option", number: 1 })).toBe("sent");
+
+    expect(typedKeys()).toEqual(["1"]);
+  });
+
+  it.each([
+    ["다른 선택 화면으로 바뀌었으면", claudeScreen([MODEL_SWITCH[0], "   Do you want to proceed?", "   ❯ 1. Yes", "     2. No"], 2, 3)],
+    ["선택 화면이 닫혔으면", claudeScreen(INPUT_BOX, 1, 2)],
+  ])("답을 보내기 직전에 %s 키를 보내지 않는다", async (_name, changedScreen) => {
+    const snapshot = await getPaneChatSnapshot("task-chat", "%3");
+    mocks.surface.mockResolvedValue(changedScreen);
+
+    expect(await answer(snapshot, { type: "option", number: 1 })).toBe("PaneChatInputError");
+
+    expect(typedKeys()).toEqual([]);
+  });
+
+  it("카드를 본 뒤 터미널에서 체크 상태를 바꿨으면, 같은 숫자 키가 그 선택을 되돌리므로 보내지 않는다", async () => {
+    mocks.surface.mockResolvedValue(toppingsScreen(2));
+    const snapshot = await getPaneChatSnapshot("task-chat", "%3");
+    mocks.surface.mockResolvedValue(toppingsScreen(2, "[ ] Type something", "[✔]"));
+
+    expect(await answer(snapshot, { type: "option", number: 1 })).toBe("PaneChatInputError");
+
+    expect(typedKeys()).toEqual([]);
+  });
+
+  it("키를 보낸 뒤 화면이 그 키에 반응할 때까지 기다렸다가 끝난다. 반응이 없어도 한정된 시간 뒤에 끝난다", async () => {
+    const snapshot = await getPaneChatSnapshot("task-chat", "%3");
+    let hasReacted = false;
+    mocks.write.mockImplementationOnce(async () => { setTimeout(() => { hasReacted = true; mocks.surface.mockResolvedValue(claudeScreen(INPUT_BOX, 1, 2)); }, 120); });
+    const answering = answerPaneChatPrompt("task-chat", snapshot.targetToken!, snapshot.prompt!.id, { type: "option", number: 2 }).then(() => hasReacted);
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(await answering).toBe(true);
+
+    mocks.surface.mockResolvedValue(claudeScreen(MODEL_SWITCH, 2, 3));
+    const unchanged = await getPaneChatSnapshot("task-chat", "%3");
+    mocks.write.mockImplementationOnce(async () => {});
+    expect(await answer(unchanged, { type: "option", number: 2 })).toBe("sent");
+  });
+
+  it("글을 입력받는 중인 화면에서는 숫자가 글자로 들어가므로, 위 화살표로 그 줄을 벗어난 것을 확인한 뒤 숫자 키를 보낸다", async () => {
+    mocks.surface.mockResolvedValue(typingScreen("term  ✔"));
+    const snapshot = await getPaneChatSnapshot("task-chat", "%3");
+    screenAfterEachKey(claudeScreen([...QUESTION_HEAD, "  1. Small", "❯ 2. Large", "  3. term ✔"], 6, 0));
+
+    expect(await answer(snapshot, { type: "option", number: 1 })).toBe("sent");
+
+    expect(typedKeys()).toEqual(["\x1b[A", "1"]);
+  });
+
+  it("글을 입력받는 중에 질문을 옮길 때도 위 화살표로 그 줄을 벗어난 뒤 좌우 화살표를 보낸다", async () => {
+    mocks.surface.mockResolvedValue(typingScreen("Type something."));
+    const snapshot = await getPaneChatSnapshot("task-chat", "%3");
+    screenAfterEachKey(claudeScreen([...QUESTION_HEAD, "  1. Small", "❯ 2. Large", "  3. Type something."], 6, 0));
+
+    expect(await answer(snapshot, { type: "step", direction: "next" })).toBe("sent");
+
+    expect(typedKeys()).toEqual(["\x1b[A", "\x1b[C"]);
+  });
+
+  it("단일 선택의 직접 입력은 그 줄의 숫자 키로 글을 받게 하고, 붙여넣은 글이 그 줄에 그대로 보일 때 Enter로 답한다", async () => {
+    mocks.surface.mockResolvedValue(claudeScreen(QUESTION, 5, 0));
+    const snapshot = await getPaneChatSnapshot("task-chat", "%3");
+    screenAfterEachKey(typingScreen("Type something."), typingScreen("Extra large"));
+
+    expect(await answer(snapshot, { type: "text", number: 3, text: " Extra large " })).toBe("sent");
+
+    expect(typedKeys()).toEqual(["3", "\x1b[200~Extra large\x1b[201~", "\r"]);
+  });
+
+  it("다중 선택의 직접 입력은 숫자 키가 체크만 뒤집으므로 화살표로 그 줄까지 옮기고, 글을 넣은 뒤 Enter 없이 그 줄을 벗어난다", async () => {
+    mocks.surface.mockResolvedValue(toppingsScreen(1));
+    const snapshot = await getPaneChatSnapshot("task-chat", "%3");
+    screenAfterEachKey(toppingsScreen(2), toppingsScreen(3), toppingsScreen(3, "[✔] Garlic"), toppingsScreen(2, "[✔] Garlic"));
+
+    expect(await answer(snapshot, { type: "text", number: 3, text: "Garlic" })).toBe("sent");
+
+    expect(typedKeys()).toEqual(["\x1b[B", "\x1b[B", "\x1b[200~Garlic\x1b[201~", "\x1b[A"]);
+  });
+
+  it("직접 입력 줄에 이미 같은 글이 들어 있으면 다시 넣지 않고 Enter로 답한다", async () => {
+    mocks.surface.mockResolvedValue(typingScreen("Extra large"));
+    const snapshot = await getPaneChatSnapshot("task-chat", "%3");
+
+    expect(await answer(snapshot, { type: "text", number: 3, text: "Extra large" })).toBe("sent");
+
+    expect(typedKeys()).toEqual(["\r"]);
+  });
+
+  it("직접 입력 줄에 다른 글이 들어 있으면 글이 합쳐지지 않도록 아무 키도 보내지 않는다", async () => {
+    mocks.surface.mockResolvedValue(typingScreen("from terminal"));
+    const snapshot = await getPaneChatSnapshot("task-chat", "%3");
+
+    expect(await answer(snapshot, { type: "text", number: 3, text: "from chat" })).toBe("PaneChatInputError");
+
+    expect(typedKeys()).toEqual([]);
+  });
+
+  it("붙여넣은 글이 직접 입력 줄에 그대로 보이지 않으면 Enter를 누르지 않는다", async () => {
+    mocks.surface.mockResolvedValue(typingScreen("Type something."));
+    const snapshot = await getPaneChatSnapshot("task-chat", "%3");
+    screenAfterEachKey(typingScreen("Extra largeX"));
+
+    expect(await answer(snapshot, { type: "text", number: 3, text: "Extra large" })).toBe("PaneChatInputError");
+
+    expect(typedKeys()).toEqual(["\x1b[200~Extra large\x1b[201~"]);
+  });
+
+  it.each([
+    ["다음 질문", { type: "step", direction: "next" }, "\x1b[C"],
+    ["이전 질문", { type: "step", direction: "previous" }, "\x1b[D"],
+    ["취소", { type: "cancel" }, "\x1b"],
+  ])("%s은 그 키 하나를 보낸다", async (_name, requested, key) => {
+    mocks.surface.mockResolvedValue(claudeScreen(QUESTION, 5, 0));
+    const snapshot = await getPaneChatSnapshot("task-chat", "%3");
+
+    expect(await answer(snapshot, requested)).toBe("sent");
+
+    expect(typedKeys()).toEqual([key]);
+  });
+
+  it.each([
+    ["단계가 없는 화면에서 질문 이동", { type: "step", direction: "next" }],
+    ["화면에 없는 번호", { type: "option", number: 3 }],
+    ["두 자리 번호", { type: "option", number: 10 }],
+    ["직접 입력 줄이 아닌 선택지에 글 넣기", { type: "text", number: 1, text: "note" }],
+    ["줄바꿈이 든 글", { type: "text", number: 1, text: "a\nb" }],
+    ["알 수 없는 종류", { type: "enter" }],
+  ])("거절하고 키를 보내지 않는 답: %s", async (_name, requested) => {
+    const snapshot = await getPaneChatSnapshot("task-chat", "%3");
+
+    expect(await answer(snapshot, requested)).toBe("PaneChatInputError");
+
+    expect(typedKeys()).toEqual([]);
+  });
+
+  it("비어 있는 직접 입력 줄은 번호 선택으로 고를 수 없다", async () => {
+    mocks.surface.mockResolvedValue(claudeScreen(QUESTION, 5, 0));
+    const snapshot = await getPaneChatSnapshot("task-chat", "%3");
+
+    expect(await answer(snapshot, { type: "option", number: 3 })).toBe("PaneChatInputError");
+
+    expect(typedKeys()).toEqual([]);
   });
 });

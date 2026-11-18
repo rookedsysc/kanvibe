@@ -1,4 +1,5 @@
 import { In, Not, IsNull } from "typeorm";
+import { parseGitHubRepositoryReference } from "@/lib/githubProjectIcon";
 import { quoteShellArgument } from "@/lib/hostFileAccess";
 import { getTaskRepository } from "@/lib/database";
 import { KanbanTask, TaskStatus, SessionType } from "@/entities/KanbanTask";
@@ -259,27 +260,16 @@ function reportTaskHookInstallFailure(
 const MISSING_REPOSITORY_MARKER = "kanvibe-missing-repository";
 
 /**
- * 저장소 안에서 gh를 실행할 셸 명령을 만든다.
- *
- * 등록된 경로가 저장소를 감싼 상위 폴더일 수 있어, `.git`이 없으면 바로 아래에서 저장소를 한 번 더 찾는다.
- * 후보가 둘 이상이면 어느 쪽이 이 태스크의 저장소인지 알 수 없어 승격하지 않는다. 엉뚱한 저장소의 PR을
- * 링크하는 것보다 조회가 실패하는 편이 낫다.
- *
- * 저장소나 그 상위 경로에 `.envrc`가 있으면 direnv를 태워 gh를 부른다. GitHub 인증을 `.envrc`에 심어 둔 경우
- * 셸을 거치지 않고 gh를 부르면 인증이 빠진 채로 돌아 권한 없음으로 실패한다. direnv는 가장 가까운 상위 `.envrc`를
- * 읽으므로, `~/work`처럼 상위 폴더에 경로별로 둔 설정도 같은 방식으로 찾는다. direnv 경로 자체가 실패할 수도 있어
- * (`direnv allow` 안 된 `.envrc` 등) 평범한 gh 호출로 되돌아간다.
- *
- * 명령 문자열에 `>/dev/null 2>&1`을 넣지 않는다. `shouldLogRemoteCommandFailure`가 그 패턴을 조용한
- * probe로 보고 원격 실패 로그를 통째로 지운다.
+ * 등록 경로가 저장소의 부모면 유일한 하위 저장소를 선택한다.
+ * gh와 Git fallback이 같은 디렉터리와 direnv 환경을 사용해야 한다.
  */
-function buildGitHubCliCommand(repoPath: string, ghArguments: string): string {
+function buildRepositoryCommand(repoPath: string, command: string): string {
   return [
     `repo=${quoteForShell(repoPath)}`,
     'if [ ! -e "$repo/.git" ]; then nested=""; nestedCount=0; for candidate in "$repo"/*/; do if [ -e "$candidate.git" ]; then nested="${candidate%/}"; nestedCount=$((nestedCount + 1)); fi; done; if [ "$nestedCount" -eq 1 ]; then repo="$nested"; fi; fi',
     `cd "$repo" || { printf %s ${quoteForShell(MISSING_REPOSITORY_MARKER)}; exit 0; }`,
     'envrcDirectory=""; directory="$PWD"; while :; do if [ -f "$directory/.envrc" ]; then envrcDirectory="$directory"; break; fi; if [ "$directory" = "/" ]; then break; fi; directory=$(dirname "$directory"); done',
-    `if [ -n "$envrcDirectory" ] && command -v direnv >/dev/null; then direnv exec "$repo" gh ${ghArguments} || gh ${ghArguments}; else gh ${ghArguments}; fi`,
+    `if [ -n "$envrcDirectory" ] && command -v direnv >/dev/null; then direnv exec "$repo" ${command} || ${command}; else ${command}; fi`,
   ].join("; ");
 }
 
@@ -333,7 +323,7 @@ async function execGitHubCliPullRequestQuery(
 
   const failureKey = buildGitHubCliAuthFailureKey(cwd, sshHost);
   try {
-    const output = await execGit(buildGitHubCliCommand(cwd, ghArguments), sshHost, getGitHubCliExecOptions(sshHost));
+    const output = await queryPullRequestWithRepositoryFallback(cwd, sshHost, ghArguments);
     gitHubCliAuthFailures.delete(failureKey);
     return output;
   } catch (error) {
@@ -341,6 +331,37 @@ async function execGitHubCliPullRequestQuery(
       gitHubCliAuthFailures.set(failureKey, { until: Date.now() + GITHUB_CLI_AUTH_FAILURE_COOLDOWN_MS, error });
     }
     throw error;
+  }
+}
+
+async function queryPullRequestWithRepositoryFallback(
+  cwd: string,
+  sshHost: string | null | undefined,
+  ghArguments: string,
+): Promise<string> {
+  const options = getGitHubCliExecOptions(sshHost);
+  try {
+    return await execGit(buildRepositoryCommand(cwd, `gh ${ghArguments}`), sshHost, options);
+  } catch (error) {
+    if (!/Could not resolve to a Repository|Could not determine base repository/i.test(getErrorMessage(error))) {
+      throw error;
+    }
+
+    let remoteUrl: string;
+    try {
+      remoteUrl = await execGit(buildRepositoryCommand(cwd, "git remote get-url origin"), sshHost, options);
+    } catch {
+      throw error;
+    }
+    const repository = parseGitHubRepositoryReference(remoteUrl);
+    if (!repository) throw error;
+
+    const reference = `${repository.owner}/${repository.repository}`;
+    return execGit(
+      buildRepositoryCommand(cwd, `gh ${ghArguments} --repo ${quoteForShell(reference)}`),
+      sshHost,
+      options,
+    );
   }
 }
 
@@ -449,7 +470,7 @@ async function resolveTaskGitContext(
   }
 
   return {
-    cwd: repoPath ?? task.worktreePath ?? process.cwd(),
+    cwd: task.worktreePath ?? repoPath ?? process.cwd(),
     sshHost,
   };
 }
@@ -537,7 +558,7 @@ export async function getMoreDoneTasks(
 /** 단일 작업을 ID로 조회한다 */
 export async function getTaskById(taskId: string): Promise<KanbanTask | null> {
   const repo = await getTaskRepository();
-  const task = await repo.findOne({ where: { id: taskId }, relations: ["project"] });
+  const task = await repo.findOne({ where: { id: taskId }, relations: { project: true } });
   return task ? serialize(task) : null;
 }
 
@@ -545,7 +566,7 @@ export async function getTaskById(taskId: string): Promise<KanbanTask | null> {
 export async function getSearchableTasks(): Promise<SearchableTask[]> {
   const repo = await getTaskRepository();
   const tasks = await repo.find({
-    relations: ["project"],
+    relations: { project: true },
     order: { updatedAt: "DESC", createdAt: "DESC" },
   });
 
@@ -569,7 +590,7 @@ export async function getTaskIdByProjectAndBranch(
   const repo = await getTaskRepository();
   const task = await repo.findOne({
     where: { projectId, branchName },
-    select: ["id"],
+    select: { id: true },
   });
   return task?.id ?? null;
 }

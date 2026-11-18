@@ -1,5 +1,5 @@
 import { invokeDesktop } from "@/desktop/renderer/ipc";
-import type { PaneChatActionResult, PaneChatAttachment, PaneChatCodexThreadReveal, PaneChatAttachmentInput, PaneChatKey, PaneChatLayout, PaneChatSnapshot, PaneChatSuggestionKind, PaneChatSuggestions } from "@/desktop/shared/paneChat";
+import type { PaneChatActionResult, PaneChatAttachment, PaneChatCodexThreadReveal, PaneChatAttachmentInput, PaneChatKey, PaneChatLayout, PaneChatPromptAnswer, PaneChatSnapshot, PaneChatSuggestionKind, PaneChatSuggestions } from "@/desktop/shared/paneChat";
 import type { PaneChatModelSettings, PaneChatModelSettingChange } from "@/lib/aiSessions/paneChatModelSettings";
 
 export const getPaneChatModelSettings = (taskId: string, targetToken: string): Promise<PaneChatModelSettings> =>
@@ -19,6 +19,9 @@ export const getPaneChatModes = (taskId: string): Promise<Record<string, boolean
 
 export const setPaneChatMode = (taskId: string, paneId: string, isEnabled: boolean): Promise<void> =>
   invokeDesktop("paneChat", "setPaneChatMode", taskId, paneId, isEnabled);
+
+export const getPaneChatAgentProvider = (taskId: string, paneId: string): Promise<PaneChatSnapshot["provider"]> =>
+  invokeDesktop("paneChat", "getPaneChatAgentProvider", taskId, paneId);
 
 export const getPaneChatSnapshot = (taskId: string, paneId?: string): Promise<PaneChatSnapshot> =>
   invokeDesktop("paneChat", "getPaneChatSnapshot", taskId, paneId);
@@ -40,6 +43,9 @@ export const revealPaneChatCodexThread = (taskId: string, paneId?: string): Prom
 
 export const sendPaneChatKey = (taskId: string, targetToken: string, key: PaneChatKey): Promise<PaneChatActionResult> =>
   invokeDesktop("paneChat", "sendPaneChatKey", taskId, targetToken, key);
+
+export const answerPaneChatPrompt = (taskId: string, targetToken: string, promptId: string, answer: PaneChatPromptAnswer): Promise<PaneChatActionResult> =>
+  invokeDesktop("paneChat", "answerPaneChatPrompt", taskId, targetToken, promptId, answer);
 
 export const stagePaneChatAttachment = (taskId: string, targetToken: string, input: PaneChatAttachmentInput): Promise<PaneChatAttachment> =>
   invokeDesktop("paneChat", "stagePaneChatAttachment", taskId, targetToken, input);

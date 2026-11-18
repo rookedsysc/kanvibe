@@ -98,3 +98,26 @@ describe("readClaudeSessionDetail가 읽은 기록을 이어 쓰는 방식", () 
     expect(texts(await readDetail())).toEqual(["내 답", "내 질문"]);
   });
 });
+
+describe("readClaudeSessionDetail가 대화가 아닌 기록을 다루는 방식", () => {
+  const record = (fields: Record<string, unknown>) => `${JSON.stringify({ sessionId: SESSION_ID, ...fields })}\n`;
+
+  it("대화 파일에 함께 남는 API 요청 로그는 메시지로 싣지 않는다", async () => {
+    const requestCopy = [{ type: "text", text: "<system-reminder>저장소 지침</system-reminder>" }, { type: "text", text: "질문" }];
+    await writeFile(sessionFile, entry(1, "user", "질문")
+      + record({ type: "api-request-blob", hash: "request-user", message: { role: "user", content: requestCopy } })
+      + record({ type: "api-request-blob", hash: "request-system", message: { role: "system", content: [{ type: "text", text: "hook 출력" }] } })
+      + entry(2, "assistant", "답"));
+    await markModified();
+    expect(texts(await readDetail())).toEqual(["답", "질문"]);
+  });
+
+  it("사용자가 친 글이 아니라고 Claude가 표시한 줄은 지침 역할로 싣는다", async () => {
+    const skillBody = "Base directory for this skill: /skills/example";
+    await writeFile(sessionFile, entry(1, "user", "질문")
+      + record({ type: "user", isMeta: true, cwd: worktreePath, timestamp: "2026-01-01T00:02:00.000Z", message: { role: "user", content: skillBody } }));
+    await markModified();
+    const detail = await readDetail();
+    expect(detail?.messages.map((message) => [message.role, message.fullText])).toEqual([["system", skillBody], ["user", "질문"]]);
+  });
+});

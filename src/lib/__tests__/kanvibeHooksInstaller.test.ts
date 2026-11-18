@@ -946,6 +946,16 @@ describe("kanvibeHooksInstaller conditional migration", () => {
     expect(mockWriteHookProviderFiles).toHaveBeenCalledTimes(HOOK_WRITE_BATCH_COUNT);
   });
 
+  it("OpenCode의 pane 채팅 연결만 빠진 설치는 확인 불가로 실패하지 않고 다시 설치해 복구한다", async () => {
+    const { ensureKanvibeHooksCurrent } = await import("../kanvibeHooksInstaller");
+    const observerPath = `${repoPath}/.opencode/kanvibe-tui.mjs`;
+    files.delete(observerPath);
+
+    await expect(ensureKanvibeHooksCurrent(repoPath, "task-1", "remote-host")).resolves.toBe(true);
+
+    expect(files.get(observerPath)?.content).toContain("kanvibe-pane-chat");
+  });
+
   it("검증 결과는 다른 원격 호스트의 검사를 생략하지 않는다", async () => {
     const { ensureKanvibeHooksCurrent } = await import("../kanvibeHooksInstaller");
     await ensureKanvibeHooksCurrent(repoPath, "task-1", "remote-host");

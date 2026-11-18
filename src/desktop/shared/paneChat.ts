@@ -1,4 +1,5 @@
 import type { PaneChatModelSettings } from "@/lib/aiSessions/paneChatModelSettings";
+import type { PaneChatPromptScreen } from "@/lib/aiSessions/paneChatClaudePrompt";
 import type { SessionType } from "@/entities/KanbanTask";
 import type { AggregatedAiMessage, AiSessionProvider } from "@/lib/aiSessions/types";
 
@@ -43,6 +44,45 @@ export function filterPaneChatSuggestions(suggestions: PaneChatSuggestion[], que
   const matches = suggestions.filter((suggestion) => `${suggestion.label} ${suggestion.description}`.toLowerCase().includes(loweredQuery));
   matches.sort((left, right) => left.label.localeCompare(right.label));
   return { items: matches.slice(0, limit), truncated: matches.length > limit };
+}
+
+/** CLI가 답을 기다리며 띄운 선택 화면. 채팅이 같은 내용을 카드로 보여 주고, 고른 답을 키 입력으로 전달한다 */
+export interface PaneChatPrompt extends PaneChatPromptScreen {
+  /** 같은 선택 화면인지 가리는 값. 답을 보낼 때 그대로 돌려준다 */
+  id: string;
+}
+
+/**
+ * 체크 상태가 바뀌어도 같은 선택 화면으로 묶는 값.
+ * 답을 보낼 때의 `id`는 체크가 바뀌면 달라지므로, 화면에 떠 있는 카드와 그 카드에 남길 안내는 이 값으로 이어 붙인다.
+ */
+export function getPaneChatPromptDialogKey(prompt: PaneChatPrompt): string {
+  return JSON.stringify([prompt.kind, prompt.title, prompt.detail]);
+}
+
+/** 선택 화면에 보낼 답. option은 번호 선택, text는 직접 입력 줄에 글을 넣어 고르기, step은 질문 사이 이동, cancel은 Esc다 */
+export type PaneChatPromptAnswer =
+  | { type: "option"; number: number }
+  | { type: "text"; number: number; text: string }
+  | { type: "step"; direction: "previous" | "next" }
+  | { type: "cancel" };
+/** 숫자 키 하나로 고를 수 있는 선택지 번호의 상한. 두 자리 번호는 첫 숫자가 다른 선택지를 골라 버린다 */
+export const MAX_PANE_CHAT_PROMPT_OPTION_NUMBER = 9;
+/** 직접 입력 줄에 넣을 수 있는 글자 수. 넣은 글이 그 줄에 그대로 보이는지 확인할 수 있는 길이로 둔다 */
+export const MAX_PANE_CHAT_PROMPT_TEXT_LENGTH = 500;
+
+/** 렌더러가 보낸 값이 선택 화면에 보낼 수 있는 답이면 그 답을, 아니면 null을 돌려준다 */
+export function parsePaneChatPromptAnswer(value: unknown): PaneChatPromptAnswer | null {
+  if (!value || typeof value !== "object") return null;
+  const answer = value as Record<string, unknown>;
+  if (answer.type === "cancel") return { type: "cancel" };
+  if (answer.type === "step") return answer.direction === "previous" || answer.direction === "next" ? { type: "step", direction: answer.direction } : null;
+  const number = answer.number;
+  if (typeof number !== "number" || !Number.isInteger(number) || number < 1 || number > MAX_PANE_CHAT_PROMPT_OPTION_NUMBER) return null;
+  if (answer.type === "option") return { type: "option", number };
+  if (answer.type !== "text" || typeof answer.text !== "string") return null;
+  const text = answer.text.trim();
+  return text && text.length <= MAX_PANE_CHAT_PROMPT_TEXT_LENGTH && !/[\x00-\x1f\x7f]/.test(text) ? { type: "text", number, text } : null;
 }
 
 export interface PaneChatBounds {
@@ -92,6 +132,8 @@ export interface PaneChatSnapshot {
   modelPicker: { supported: boolean; mode: "native-cli"; supportsApi?: boolean };
   /** 현재 모델·effort와 고를 수 있는 선택지. 기록에서 읽지 못했거나 지원하지 않는 CLI면 없다 */
   modelSettings?: PaneChatModelSettings;
+  /** CLI가 답을 기다리며 띄운 선택 화면. 화면 배치를 확인한 CLI에서 대화가 연결돼 있을 때만 있다 */
+  prompt?: PaneChatPrompt;
   composer?: { attachments: boolean; skills: boolean; fileMentions: boolean; canSendWhileBusy?: boolean; maxAttachmentBytes: number; maxAttachments: number };
 }
 

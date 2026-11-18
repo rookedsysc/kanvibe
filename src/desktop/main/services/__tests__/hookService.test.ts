@@ -97,15 +97,6 @@ describe("hookService.updateHookTaskStatus", () => {
     expect(mocks.broadcastTaskStatusChanged).not.toHaveBeenCalled();
   });
 
-  it("저널 재전달도 보관된 토큰이 없으면 401로 거절한다", async () => {
-    const { updateJournalHookTaskStatus } = await import("@/desktop/main/services/hookService");
-
-    const result = await updateJournalHookTaskStatus({ taskId: "task-1", status: TaskStatus.REVIEW }, undefined, new Set(["host-a"]));
-
-    expect(result).toMatchObject({ success: false, status: 401 });
-    expect(mocks.taskRepo.findOne).not.toHaveBeenCalled();
-  });
-
   it("터널로 들어온 요청은 다른 호스트의 작업을 바꾸지 못한다", async () => {
     const { updateHookTaskStatus } = await import("@/desktop/main/services/hookService");
     mocks.taskRepo.findOne.mockResolvedValue({
@@ -147,7 +138,7 @@ describe("hookService.updateHookTaskStatus", () => {
 
     expect(mocks.taskRepo.findOne).toHaveBeenCalledWith({
       where: { id: task.id },
-      relations: ["project"],
+      relations: { project: true },
     });
     expect(mocks.broadcastTaskStatusChanged).toHaveBeenCalledWith({
       projectName: project.name,

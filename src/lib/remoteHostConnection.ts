@@ -237,10 +237,7 @@ export class HostConnection extends EventEmitter {
     if (typeof record.id === "string") this.receivers.get(record.id)?.(record);
   }
 
-  setHookHandler(handler: HostHookHandler): void {
-    this.hookHandler = handler;
-    this.send({ type: "hook.subscribe", id: randomUUID() });
-  }
+  setHookHandler(handler: HostHookHandler): void { this.hookHandler = handler; }
 
   private async answerHook(request: HostRecord): Promise<void> {
     try {

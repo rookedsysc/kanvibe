@@ -346,14 +346,22 @@ describe("terminalBridge existing remote session migration", () => {
     }
   });
 
-  it("hook 준비 실패 시 초기 pane 명령의 자동 실행은 시작하지 않는다", async () => {
+  it("hook 준비에 실패해도 실패를 알리고 터미널 연결은 이어 간다", async () => {
     const layout = await import("@/desktop/main/services/paneLayoutService");
     vi.mocked(layout.getEffectivePaneLayout).mockResolvedValueOnce({ panes: [{ position: 0, command: "codex" }] } as never);
     mockEnsureKanvibeHooksCurrent.mockRejectedValueOnce(new Error("hook unavailable"));
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const bridge = await importBridge();
     const terminal = await import("@/lib/terminal");
-    await expect(bridge.attachTaskTerminal(remoteTask(), null, new bridge.CallbackTerminalClient(() => {}))).rejects.toThrow("hook unavailable");
-    expect(terminal.attachRemoteSession).not.toHaveBeenCalled();
+    try {
+      await expect(bridge.attachTaskTerminal(remoteTask(), null, new bridge.CallbackTerminalClient(() => {}))).resolves.toBeUndefined();
+    } finally {
+      consoleErrorSpy.mockRestore();
+    }
+    expect(terminal.attachRemoteSession).toHaveBeenCalledTimes(1);
+    expect(mockEnsureKanvibeHooksCurrent.mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(terminal.attachRemoteSession).mock.invocationCallOrder[0]);
+    expect(mockEnsureKanvibeHooksCurrent).toHaveBeenCalledTimes(1);
+    expect(mockBroadcastTaskHookInstallFailed.mock.calls).toEqual([[{ taskId: "task-1", taskTitle: "existing task", error: "hook unavailable" }]]);
   });
 
 });

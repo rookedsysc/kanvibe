@@ -1213,7 +1213,7 @@ export async function getTaskHooksStatuses(
   taskId: string,
 ): Promise<Awaited<ReturnType<typeof getKanvibeHooksStatuses>> | null> {
   const taskRepo = await getTaskRepository();
-  const task = await taskRepo.findOne({ where: { id: taskId }, relations: ["project"] });
+  const task = await taskRepo.findOne({ where: { id: taskId }, relations: { project: true } });
   if (!task?.project) return null;
 
   const hookTarget = await resolveTaskHookTarget(task, { readOnly: true });
@@ -1226,7 +1226,7 @@ export async function getTaskHooksStatus(
   taskId: string
 ): Promise<ClaudeHooksStatus | null> {
   const taskRepo = await getTaskRepository();
-  const task = await taskRepo.findOne({ where: { id: taskId }, relations: ["project"] });
+  const task = await taskRepo.findOne({ where: { id: taskId }, relations: { project: true } });
   if (!task?.project) return null;
 
   const hookTarget = await resolveTaskHookTarget(task, { readOnly: true });
@@ -1240,7 +1240,7 @@ export async function installTaskHooks(
   taskId: string
 ): Promise<{ success: boolean; error?: string; status?: ClaudeHooksStatus | null }> {
   const taskRepo = await getTaskRepository();
-  const task = await taskRepo.findOne({ where: { id: taskId }, relations: ["project"] });
+  const task = await taskRepo.findOne({ where: { id: taskId }, relations: { project: true } });
   if (!task?.project) return { success: false, error: "프로젝트를 찾을 수 없습니다." };
 
   try {
@@ -1298,7 +1298,7 @@ export async function getTaskGeminiHooksStatus(
   taskId: string
 ): Promise<GeminiHooksStatus | null> {
   const taskRepo = await getTaskRepository();
-  const task = await taskRepo.findOne({ where: { id: taskId }, relations: ["project"] });
+  const task = await taskRepo.findOne({ where: { id: taskId }, relations: { project: true } });
   if (!task?.project) return null;
 
   const hookTarget = await resolveTaskHookTarget(task, { readOnly: true });
@@ -1312,7 +1312,7 @@ export async function installTaskGeminiHooks(
   taskId: string
 ): Promise<{ success: boolean; error?: string; status?: GeminiHooksStatus | null }> {
   const taskRepo = await getTaskRepository();
-  const task = await taskRepo.findOne({ where: { id: taskId }, relations: ["project"] });
+  const task = await taskRepo.findOne({ where: { id: taskId }, relations: { project: true } });
   if (!task?.project) return { success: false, error: "프로젝트를 찾을 수 없습니다." };
 
   try {
@@ -1367,7 +1367,7 @@ export async function getTaskCodexHooksStatus(
   taskId: string
 ): Promise<CodexHooksStatus | null> {
   const taskRepo = await getTaskRepository();
-  const task = await taskRepo.findOne({ where: { id: taskId }, relations: ["project"] });
+  const task = await taskRepo.findOne({ where: { id: taskId }, relations: { project: true } });
   if (!task?.project) return null;
 
   const hookTarget = await resolveTaskHookTarget(task, { readOnly: true });
@@ -1380,7 +1380,7 @@ export async function installTaskCodexHooks(
   taskId: string
 ): Promise<{ success: boolean; error?: string; status?: CodexHooksStatus | null }> {
   const taskRepo = await getTaskRepository();
-  const task = await taskRepo.findOne({ where: { id: taskId }, relations: ["project"] });
+  const task = await taskRepo.findOne({ where: { id: taskId }, relations: { project: true } });
   if (!task?.project) return { success: false, error: "프로젝트를 찾을 수 없습니다." };
 
   try {
@@ -1428,7 +1428,7 @@ export async function installTaskOpenCodeHooks(
   const taskRepo = await getTaskRepository();
   const task = await taskRepo.findOne({
     where: { id: taskId },
-    relations: ["project"],
+    relations: { project: true },
   });
   if (!task?.project) return { success: false, error: "Task or project not found" };
 
@@ -1455,7 +1455,7 @@ export async function getTaskOpenCodeHooksStatus(
   const taskRepo = await getTaskRepository();
   const task = await taskRepo.findOne({
     where: { id: taskId },
-    relations: ["project"],
+    relations: { project: true },
   });
   if (!task?.project) return null;
 
@@ -1475,7 +1475,7 @@ export async function getTaskAiSessions(
   const taskRepo = await getTaskRepository();
   const task = await taskRepo.findOne({
     where: { id: taskId },
-    relations: ["project"],
+    relations: { project: true },
   });
 
   if (!task?.project) {
@@ -1512,7 +1512,7 @@ export async function getTaskAiSessionDetail(
   const taskRepo = await getTaskRepository();
   const task = await taskRepo.findOne({
     where: { id: taskId },
-    relations: ["project"],
+    relations: { project: true },
   });
 
   if (!task?.project) {
@@ -1547,7 +1547,7 @@ export async function getTaskAiSessionAttachment(
   attachmentId: string,
   sourceRef?: string | null,
 ): Promise<AiSessionAttachmentContent | null> {
-  const task = await (await getTaskRepository()).findOne({ where: { id: taskId }, relations: ["project"] });
+  const task = await (await getTaskRepository()).findOne({ where: { id: taskId }, relations: { project: true } });
   if (!task?.project) return null;
   return readAiSessionAttachment({ worktreePath: task.worktreePath || task.project.repoPath, repoPath: task.project.repoPath, sshHost: task.project.sshHost }, provider, sessionId, attachmentId, sourceRef);
 }
@@ -1556,7 +1556,7 @@ export async function getTaskLiveAiSessions(taskId: string): Promise<LiveAiSessi
   const taskRepo = await getTaskRepository();
   const task = await taskRepo.findOne({
     where: { id: taskId },
-    relations: ["project"],
+    relations: { project: true },
   });
 
   if (!task?.project) {
@@ -1594,7 +1594,7 @@ export async function getTaskAgentCallGraph(
   const taskRepo = await getTaskRepository();
   const task = await taskRepo.findOne({
     where: { id: taskId },
-    relations: ["project"],
+    relations: { project: true },
   });
 
   if (!task?.project) {

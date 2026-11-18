@@ -8,7 +8,7 @@ const actions = vi.hoisted(() => ({
   getPaneChatSnapshot: vi.fn(), sendPaneChatPrompt: vi.fn(), interruptPaneChat: vi.fn(),
   openPaneChatModelPicker: vi.fn(), sendPaneChatKey: vi.fn(),
   getPaneChatTranscriptPage: vi.fn(), getPaneChatModelSettings: vi.fn(), changePaneChatModelSetting: vi.fn(),
-  revealPaneChatCodexThread: vi.fn(),
+  revealPaneChatCodexThread: vi.fn(), answerPaneChatPrompt: vi.fn(),
 }));
 vi.mock("@/desktop/renderer/actions/paneChat", () => actions);
 vi.mock("@/desktop/renderer/actions/appSettings", () => ({ getAppSetting: vi.fn().mockResolvedValue(null), setAppSetting: vi.fn().mockResolvedValue(undefined) }));
@@ -125,6 +125,179 @@ describe("current pane chat", () => {
     await screen.findByText("Exact pane response");
     expect(screen.queryByText("screen")).toBeNull();
     expect(screen.queryByText("Codex ready")).toBeNull();
+  });
+
+  describe("메시지를 보내지 못했을 때", () => {
+    async function sendAndFail(message: string) {
+      actions.sendPaneChatPrompt.mockRejectedValue(new Error(`Error invoking remote method 'kanvibe:invoke': ${message}`));
+      open();
+      await screen.findByText("Exact pane response");
+      fireEvent.change(screen.getByRole("textbox"), { target: { value: "Unsent request" } });
+      fireEvent.click(screen.getByRole("button", { name: "send" }));
+      await screen.findByRole("alert");
+    }
+
+    it("CLI에 들어가지 않은 것이 확실하면 말풍선을 지우고, 글과 이유는 입력창에 남긴다", async () => {
+      await sendAndFail("PaneChatInputError: CLI 입력란이 비어 있지 않습니다.");
+
+      await waitFor(() => expect(screen.queryByTestId("pane-chat-pending-message")).toBeNull());
+      expect(screen.getByRole("textbox")).toHaveProperty("value", "Unsent request");
+      expect(screen.getByRole("alert").textContent).toBe("CLI 입력란이 비어 있지 않습니다.");
+    });
+
+    it("전달됐는지 알 수 없으면 말풍선을 남겨 터미널에서 확인하게 한다", async () => {
+      await sendAndFail("PaneChatDeliveryUncertainError: CLI 전송 결과를 확인할 수 없습니다.");
+
+      expect(screen.getByTestId("pane-chat-pending-message").textContent).toContain("Unsent request");
+      expect(screen.getByTestId("pane-chat-pending-message").textContent).toContain("sendError");
+    });
+  });
+
+  describe("CLI가 선택 화면을 띄운 동안", () => {
+    const prompt: NonNullable<PaneChatSnapshot["prompt"]> = {
+      id: "prompt-a", kind: "confirmation", title: "Switch model?", detail: "", stepsLine: null, highlightedNumber: 1, isMultiSelect: false, isTextEntryActive: false, hasHiddenOptions: false,
+      options: [{ number: 1, label: "Yes, switch", description: "", isChecked: false, isTextEntry: false }, { number: 2, label: "No, go back", description: "", isChecked: false, isTextEntry: false }],
+    };
+
+    it("입력창 자리에 그 화면의 카드를 보여 주고, 고른 답을 현재 대상과 그 화면의 식별값으로 보낸다", async () => {
+      actions.getPaneChatSnapshot.mockResolvedValue({ ...snapshot(), provider: "claude", inputState: "occupied", prompt });
+      actions.answerPaneChatPrompt.mockResolvedValue({ success: true });
+      open();
+
+      fireEvent.click(await screen.findByRole("button", { name: /No, go back/ }));
+
+      expect(screen.getByRole("textbox", { hidden: true }).closest(".hidden")).not.toBeNull();
+      await waitFor(() => expect(actions.answerPaneChatPrompt).toHaveBeenCalledWith("task-1", "process-a", "prompt-a", { type: "option", number: 2 }));
+    });
+
+    it("답을 보내지 못하면 서비스가 쓴 안내문만 그 카드에서 알리고, 다른 선택 화면의 카드에는 남기지 않는다", async () => {
+      actions.getPaneChatSnapshot.mockResolvedValue({ ...snapshot(), provider: "claude", inputState: "occupied", prompt });
+      actions.answerPaneChatPrompt.mockRejectedValue(new Error("Error invoking remote method 'kanvibe:invoke': PaneChatInputError: CLI의 선택 화면이 바뀌어 답을 보내지 않았습니다."));
+      open();
+
+      fireEvent.click(await screen.findByRole("button", { name: /Yes, switch/ }));
+      expect((await screen.findByRole("alert")).textContent).toBe("CLI의 선택 화면이 바뀌어 답을 보내지 않았습니다.");
+
+      actions.getPaneChatSnapshot.mockResolvedValue({ ...snapshot(), provider: "claude", inputState: "occupied", prompt: { ...prompt, id: "prompt-b", title: "Do you want to proceed?" } });
+
+      await screen.findByText("Do you want to proceed?", {}, { timeout: 4_000 });
+      expect(screen.queryByRole("alert")).toBeNull();
+    });
+
+    it("같은 선택 화면의 체크 상태만 바뀌어 카드가 갱신돼도, 답을 보내지 못한 이유와 적던 글은 그대로 남는다", async () => {
+      const toppings = { ...prompt, kind: "question" as const, title: "Which toppings?", isMultiSelect: true, options: [
+        { number: 1, label: "Cheese", description: "", isChecked: false, isTextEntry: false },
+        { number: 2, label: "Type something", description: "", isChecked: false, isTextEntry: true },
+      ] };
+      actions.getPaneChatSnapshot.mockResolvedValue({ ...snapshot(), provider: "claude", inputState: "occupied", prompt: toppings });
+      actions.answerPaneChatPrompt.mockRejectedValue(new Error("CLI의 선택 화면이 바뀌어 답을 보내지 않았습니다."));
+      open();
+      fireEvent.change(await screen.findByRole("textbox", { name: "promptTextPlaceholder" }), { target: { value: "Garlic" } });
+      actions.getPaneChatSnapshot.mockResolvedValue({ ...snapshot(), provider: "claude", inputState: "occupied", prompt: { ...toppings, id: "prompt-a-checked", options: [{ ...toppings.options[0], isChecked: true }, toppings.options[1]] } });
+
+      fireEvent.click(screen.getByRole("button", { name: /Cheese/ }));
+
+      await waitFor(() => expect(screen.getByRole("button", { name: /Cheese/, pressed: true })).toBeTruthy());
+      expect(screen.getByRole("alert").textContent).toBe("CLI의 선택 화면이 바뀌어 답을 보내지 않았습니다.");
+      expect(screen.getByRole("textbox", { name: "promptTextPlaceholder" })).toHaveProperty("value", "Garlic");
+    });
+
+    it("선택 화면이 닫혔다가 같은 화면이 다시 떠도 지난번의 거절 안내는 남기지 않는다", async () => {
+      actions.getPaneChatSnapshot.mockResolvedValue({ ...snapshot(), provider: "claude", inputState: "occupied", prompt });
+      actions.answerPaneChatPrompt.mockRejectedValue(new Error("CLI의 선택 화면이 바뀌어 답을 보내지 않았습니다."));
+      open();
+      actions.getPaneChatSnapshot.mockResolvedValue(snapshot());
+      fireEvent.click(await screen.findByRole("button", { name: /Yes, switch/ }));
+      await waitFor(() => expect(screen.queryByTestId("pane-chat-prompt")).toBeNull());
+
+      actions.getPaneChatSnapshot.mockResolvedValue({ ...snapshot(), provider: "claude", inputState: "occupied", prompt });
+
+      await screen.findByTestId("pane-chat-prompt", {}, { timeout: 4_000 });
+      expect(screen.queryByRole("alert")).toBeNull();
+    });
+
+    it("답을 보낸 뒤 바뀐 화면을 받아 올 때까지는 카드를 다시 누를 수 없다", async () => {
+      actions.getPaneChatSnapshot.mockResolvedValue({ ...snapshot(), provider: "claude", inputState: "occupied", prompt });
+      actions.answerPaneChatPrompt.mockResolvedValue({ success: true });
+      open();
+      const yes = await screen.findByRole("button", { name: /Yes, switch/ });
+      let deliver!: (value: PaneChatSnapshot) => void;
+      actions.getPaneChatSnapshot.mockReturnValue(new Promise((resolve) => { deliver = resolve; }));
+
+      fireEvent.click(yes);
+      await waitFor(() => expect(actions.answerPaneChatPrompt).toHaveBeenCalledTimes(1));
+      await act(async () => {});
+      expect(yes).toHaveProperty("disabled", true);
+
+      await act(async () => deliver({ ...snapshot(), provider: "claude", inputState: "occupied", prompt }));
+      await waitFor(() => expect(screen.getByRole("button", { name: /Yes, switch/ })).toHaveProperty("disabled", false));
+    });
+
+    describe("다중 선택에서 답을 보내는 중에 다른 선택지를 누르면", () => {
+      const toppings = { ...prompt, kind: "question" as const, title: "Which toppings?", isMultiSelect: true, options: [
+        { number: 1, label: "Cheese", description: "", isChecked: false, isTextEntry: false },
+        { number: 2, label: "Olives", description: "", isChecked: false, isTextEntry: false },
+      ] };
+      const asking = (shown: typeof toppings) => ({ ...snapshot(), provider: "claude" as const, inputState: "occupied" as const, prompt: shown });
+      /** 첫 답이 전달되는 중에 멈춰 있는 화면을 만들고, 그 전달을 끝내는 함수를 돌려준다 */
+      async function clickCheeseAndHold() {
+        actions.getPaneChatSnapshot.mockResolvedValue(asking(toppings));
+        let finishFirstAnswer!: () => void;
+        actions.answerPaneChatPrompt.mockReturnValueOnce(new Promise((resolve) => { finishFirstAnswer = () => resolve({ success: true }); }));
+        actions.answerPaneChatPrompt.mockResolvedValue({ success: true });
+        open();
+        fireEvent.click(await screen.findByRole("button", { name: /Cheese/ }));
+        await waitFor(() => expect(actions.answerPaneChatPrompt).toHaveBeenCalledTimes(1));
+        return finishFirstAnswer;
+      }
+
+      it("기억해 뒀다가 화면이 갱신되면 그 화면의 식별값으로 차례로 보내고, 보내는 중인 선택지를 또 누른 것은 한 번으로 친다", async () => {
+        const finishFirstAnswer = await clickCheeseAndHold();
+        fireEvent.click(screen.getByRole("button", { name: /Olives/ }));
+        fireEvent.click(screen.getByRole("button", { name: /Cheese/ }));
+        actions.getPaneChatSnapshot.mockResolvedValue(asking({ ...toppings, id: "prompt-cheese-checked", options: [{ ...toppings.options[0], isChecked: true }, toppings.options[1]] }));
+
+        await act(async () => finishFirstAnswer());
+
+        await waitFor(() => expect(actions.answerPaneChatPrompt).toHaveBeenCalledTimes(2));
+        expect(actions.answerPaneChatPrompt.mock.calls.map((call) => [call[2], call[3]])).toEqual([
+          ["prompt-a", { type: "option", number: 1 }],
+          ["prompt-cheese-checked", { type: "option", number: 2 }],
+        ]);
+      });
+
+      it("그사이 다른 질문으로 넘어갔으면 기억해 둔 답을 버린다", async () => {
+        const finishFirstAnswer = await clickCheeseAndHold();
+        fireEvent.click(screen.getByRole("button", { name: /Olives/ }));
+        actions.getPaneChatSnapshot.mockResolvedValue(asking({ ...toppings, id: "prompt-next", title: "Which size?" }));
+
+        await act(async () => finishFirstAnswer());
+
+        await screen.findByText("Which size?");
+        expect(actions.answerPaneChatPrompt).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    it("대화를 위로 스크롤해 뜬 최신으로 이동 버튼은 대화 영역 안에 두어, 입력창보다 높은 카드를 가리지 않는다", async () => {
+      actions.getPaneChatSnapshot.mockResolvedValue({ ...snapshot(), provider: "claude", inputState: "occupied", prompt });
+      open();
+      await screen.findByTestId("pane-chat-prompt");
+      const transcript = screen.getByTestId("pane-chat-transcript");
+      Object.defineProperties(transcript, { scrollHeight: { value: 2_000, configurable: true }, clientHeight: { value: 400, configurable: true } });
+      fireEvent.scroll(transcript, { target: { scrollTop: 0 } });
+
+      const jumpToLatest = screen.getByRole("button", { name: /jumpToLatest/ });
+      expect(transcript.parentElement?.contains(jumpToLatest)).toBe(true);
+      expect(screen.getByTestId("pane-chat-prompt").contains(jumpToLatest)).toBe(false);
+    });
+
+    it("선택 화면이 없으면 카드 없이 입력창을 보여 준다", async () => {
+      open();
+      await screen.findByText("Exact pane response");
+
+      expect(screen.queryByTestId("pane-chat-prompt")).toBeNull();
+      expect(screen.getByRole("textbox").closest(".hidden")).toBeNull();
+    });
   });
 
   it("queries the explicit pane instead of following another terminal's focus", async () => {
@@ -261,6 +434,34 @@ describe("current pane chat", () => {
     fireEvent.click(screen.getByRole("button", { name: "history" }));
     expect(view.onHistory).toHaveBeenCalledTimes(1);
     expect(actions.sendPaneChatPrompt).not.toHaveBeenCalled();
+  });
+
+  it("전송할 수 있는 빈 대화는 CLI 이름이 든 첫 화면 안내를 입력창 위에 보여 준다", async () => {
+    actions.getPaneChatSnapshot.mockResolvedValue({ ...snapshot(), transcript: { ...snapshot().transcript, messages: [] } });
+    open();
+    const welcome = await screen.findByTestId("pane-chat-welcome");
+    expect(welcome.textContent).toContain('welcomeTitle {"provider":"Codex"}');
+    expect(welcome.compareDocumentPosition(screen.getByTestId("pane-chat-composer")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect((screen.getByRole("textbox") as HTMLTextAreaElement).disabled).toBe(false);
+  });
+
+  it("대화에 메시지가 있으면 첫 화면 안내를 보여 주지 않는다", async () => {
+    open();
+    await screen.findByText("Exact pane response");
+    expect(screen.queryByTestId("pane-chat-welcome")).toBeNull();
+  });
+
+  it("빈 대화에서 첫 메시지를 보내면 첫 화면 안내를 걷고 같은 입력창을 그대로 둔다", async () => {
+    actions.getPaneChatSnapshot.mockResolvedValue({ ...snapshot(), transcript: { ...snapshot().transcript, messages: [] } });
+    actions.sendPaneChatPrompt.mockReturnValue(new Promise(() => {}));
+    open();
+    await screen.findByTestId("pane-chat-welcome");
+    const composerInput = screen.getByRole("textbox");
+    fireEvent.change(composerInput, { target: { value: "First request" } });
+    fireEvent.click(screen.getByRole("button", { name: "send" }));
+    expect(screen.getByText("First request", { selector: "article" })).toBeTruthy();
+    expect(screen.queryByTestId("pane-chat-welcome")).toBeNull();
+    expect(screen.getByRole("textbox")).toBe(composerInput);
   });
 });
 

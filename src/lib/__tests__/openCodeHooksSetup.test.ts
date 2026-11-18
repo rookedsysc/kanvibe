@@ -59,6 +59,15 @@ describe("openCodeHooksSetup", () => {
       expect(await readFile(tuiPath, "utf8")).toBe("invalid existing config");
     });
 
+    it("pane 채팅 연결만 빠진 설치는 그 항목을 실패한 확인으로 알린다", async () => {
+      await setupOpenCodeHooks(tempDir, "task-1", "http://localhost:3000");
+      expect((await getOpenCodeHooksStatus(tempDir)).hasPaneChatBinding).toBe(true);
+      await rm(join(tempDir, ".opencode", "kanvibe-tui.mjs"));
+      const status = await getOpenCodeHooksStatus(tempDir);
+      expect(status.installed).toBe(false);
+      expect(status.hasPaneChatBinding).toBe(false);
+    });
+
     it("should create plugin file at .opencode/plugins/kanvibe-plugin.ts", async () => {
       // Given
       const repoPath = tempDir;

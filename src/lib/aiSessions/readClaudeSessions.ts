@@ -66,9 +66,20 @@ interface ClaudeSessionAccumulator {
   hasQueryMatch: boolean;
 }
 
+/** Claude가 입력란에서 접어 보여 준 붙여넣기를 기록할 때 두르는 표시. 여닫는 표시에 같은 id가 붙는다 */
+const PASTED_CONTENT_WRAPPER = /<pasted_content id="([^"]*)">\n?([\s\S]*?)\n?<\/pasted_content id="\1">/g;
+/** Claude가 `!`로 시작한 셸 명령을 명령만 따로 남기는 모양 */
+const SHELL_COMMAND_RECORD = /^<bash-input>([\s\S]*)<\/bash-input>$/;
+
+/** Claude가 사용자 글에 두른 표시를 걷어, 사용자가 보낸 글로 되돌린다 */
+function restoreClaudeSentText(recordedText: string): string {
+  return recordedText.replace(PASTED_CONTENT_WRAPPER, "$2").replace(SHELL_COMMAND_RECORD, "!$1").trim();
+}
+
 function getClaudeMessageText(event: ClaudeProjectEvent): string {
   const text = extractPlainText(event.message?.content);
-  return event.imagePasteIds?.length ? text.replace(/^(?:\[Image #\d+\]\s*)+/, "") : text;
+  const withoutImageMarkers = event.imagePasteIds?.length ? text.replace(/^(?:\[Image #\d+\]\s*)+/, "") : text;
+  return event.message?.role === "user" ? restoreClaudeSentText(withoutImageMarkers) : withoutImageMarkers;
 }
 
 interface ClaudeEventMessage {
@@ -113,6 +124,11 @@ function extractClaudeEventMessages(event: ClaudeProjectEvent, sourceRef: string
 function isClaudeImageCompanion(event: ClaudeProjectEvent): boolean {
   return event.isMeta === true && event.turnCompanion === true
     && /^\[Image: source: /.test(extractPlainText(event.message?.content));
+}
+
+/** Claude Code가 대화 파일에 함께 남기는 API 요청 로그. 요청에 실어 보낸 메시지의 사본이라 role은 있어도 대화의 한 줄이 아니다 */
+function isClaudeApiRequestLog(event: ClaudeProjectEvent): boolean {
+  return event.type === "api-request-blob";
 }
 
 export async function readClaudeSessions(context: AiSessionReaderContext): Promise<AiSessionReaderResult> {
@@ -174,7 +190,7 @@ function readClaudeSessionTranscript(events: unknown[], filePath: string, sessio
     if (event.sessionId !== sessionId) continue;
     if (typeof event.cwd === "string") transcript.isSessionInScope = determineMatchScope(event.cwd, context) !== null;
     if (!transcript.isSessionInScope) continue;
-    if (isClaudeImageCompanion(event)) continue;
+    if (isClaudeImageCompanion(event) || isClaudeApiRequestLog(event)) continue;
     if (!transcript.matchedPath && typeof event.cwd === "string") transcript.matchedPath = event.cwd;
 
     for (const { role, text, attachments, toolName, files } of extractClaudeEventMessages(event, filePath)) {
@@ -538,7 +554,8 @@ function matchesClaudeQuery(query: string | undefined, ...values: Array<string |
 function resolveClaudeRole(event: ClaudeProjectEvent): AiMessageRole {
   if (hasClaudeContentPartType(event.message?.content, "tool_result")) return "tool";
   if (event.message?.role === "system" || event.type === "system") return "system";
-  if (event.message?.role === "user") return "user";
+  // isMeta가 붙은 사용자 줄은 사용자가 친 글이 아니라 CLI가 끼워 넣은 문맥(명령 안내문, 스킬 본문)이다
+  if (event.message?.role === "user") return event.isMeta === true ? "system" : "user";
   if (event.message?.role === "assistant") return "assistant";
   if (event.type === "progress") return "tool";
   return "unknown";

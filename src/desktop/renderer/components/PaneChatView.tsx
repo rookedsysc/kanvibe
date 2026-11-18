@@ -8,12 +8,13 @@ import { usePaneChatTranscript } from "@/desktop/renderer/hooks/usePaneChatTrans
 import { usePaneChatPreferences } from "@/desktop/renderer/hooks/usePaneChatPreferences";
 import { isAiInstructionMessage } from "@/lib/aiSessions/messageInstructions";
 import type { TerminalTab } from "@/desktop/shared/terminalTabs";
-import type { PaneChatCodexThreadReveal } from "@/desktop/shared/paneChat";
+import { getPaneChatPromptDialogKey, type PaneChatCodexThreadReveal } from "@/desktop/shared/paneChat";
 import type { AiSessionProvider } from "@/lib/aiSessions/types";
 import { PaneChatComposer } from "./PaneChatComposer";
 import { AiChatTranscriptMessage } from "./AiChatTranscriptMessage";
 import { AiChatFilePreview } from "./AiChatFilePreview";
 import { PaneChatModelPicker } from "./PaneChatModelPicker";
+import { PaneChatPromptCard } from "./PaneChatPromptCard";
 
 const NEAR_BOTTOM_PX = 96;
 const REVEAL_OUTCOME_MESSAGES: Record<PaneChatCodexThreadReveal["outcome"], string> = {
@@ -57,6 +58,20 @@ function PaneChatWorkingIndicator({ provider }: { provider: AiSessionProvider | 
   );
 }
 
+/** 아직 주고받은 메시지가 없는 대화의 첫 화면. 바로 아래 입력창과 한 묶음으로 화면 가운데에 놓여, 지금 써도 되는 화면임을 알린다 */
+function PaneChatWelcome({ provider }: { provider: AiSessionProvider }) {
+  const t = useTranslations("taskDetail.paneChat");
+  return (
+    <div data-testid="pane-chat-welcome" className="flex flex-col items-center gap-2 pb-2 text-center">
+      <div className="flex items-center gap-3">
+        <AiProviderIcon provider={provider} size={28} />
+        <h3 className="text-xl font-medium text-text-primary">{t("welcomeTitle", { provider: AI_SESSION_PROVIDER_LABELS[provider] })}</h3>
+      </div>
+      <p className="text-sm text-text-secondary">{t("welcomeHint")}</p>
+    </div>
+  );
+}
+
 const controlClass = "min-h-10 rounded-md border border-border-default bg-bg-surface px-3 text-xs text-text-primary hover:bg-bg-page focus-visible:outline-2 focus-visible:outline-brand-primary disabled:opacity-40";
 
 export function PaneChatView({ taskId, paneId, taskTitle, paneTabs = [], isVisible = true, onHistory, onTerminal }: {
@@ -85,6 +100,10 @@ export function PaneChatView({ taskId, paneId, taskTitle, paneTabs = [], isVisib
   const scrollAnchor = useRef<{ top: number; height: number } | null>(null);
   const paneName = paneTabs.find((tab) => tab.id === snapshot?.paneId)?.name;
   const isWaitingForInput = snapshot?.transcript.reason === "codex-thread-input-busy";
+  const prompt = snapshot?.prompt;
+  const promptDialogKey = prompt ? getPaneChatPromptDialogKey(prompt) : null;
+  const isNewConversation = !!snapshot?.canSend && snapshot.transcript.status === "available" && visibleMessages.length === 0
+    && !transcript.nextCursor && chat.pendingMessages.length === 0 && !chat.isAgentWorking;
 
   useEffect(() => {
     followLatest.current = true;
@@ -99,7 +118,7 @@ export function PaneChatView({ taskId, paneId, taskTitle, paneTabs = [], isVisib
       viewport.current.scrollTop = scrollAnchor.current.top + viewport.current.scrollHeight - scrollAnchor.current.height;
       scrollAnchor.current = null;
     } else if (followLatest.current && viewport.current) viewport.current.scrollTop = viewport.current.scrollHeight;
-  }, [messages, chat.pendingMessages.length, chat.isAgentWorking, targetKey, isVisible]);
+  }, [messages, chat.pendingMessages.length, chat.isAgentWorking, targetKey, isVisible, promptDialogKey]);
 
   async function revealCodexThread() {
     setRevealOutcome(await chat.revealCodexThread());
@@ -129,13 +148,13 @@ export function PaneChatView({ taskId, paneId, taskTitle, paneTabs = [], isVisib
       {chat.readError ? <div role="alert" className="flex items-center justify-between gap-3 px-4 py-2 text-xs text-status-error">{t("readError")}<button type="button" onClick={() => void chat.refresh()} className={controlClass}>{t("retry")}</button></div> : null}
       {preferences.error ? <p role="alert" className="px-4 py-2 text-xs text-status-error">{t("preferencesError")}</p> : null}
       <div className="relative flex min-h-0 flex-1 flex-col">
-      <div ref={viewport} data-testid="pane-chat-transcript" className="min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable] px-4 py-6 sm:px-8" onScroll={() => {
+      <div ref={viewport} data-testid="pane-chat-transcript" className={`min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable] px-4 py-6 sm:px-8 ${isNewConversation ? "flex flex-col justify-end" : ""}`} onScroll={() => {
         const node = viewport.current;
         if (!node) return;
         followLatest.current = node.scrollHeight - node.scrollTop - node.clientHeight < NEAR_BOTTOM_PX;
         setIsDetached(!followLatest.current);
       }}>
-        <div className="mx-auto max-w-3xl space-y-2.5">
+        <div className="mx-auto w-full max-w-3xl space-y-2.5">
           {!snapshot && !chat.readError ? <p role="status" className="text-sm text-text-secondary">{t("loading")}</p> : null}
           {snapshot && !snapshot.canSend && !snapshot.provider ? <div className="space-y-4"><p className="text-sm text-text-secondary">{t("noAgent")}</p><button type="button" onClick={onTerminal} className={controlClass}>{t("terminal")}</button></div> : null}
           {snapshot?.canSend && snapshot.transcript.status === "available" ? <>
@@ -144,7 +163,7 @@ export function PaneChatView({ taskId, paneId, taskTitle, paneTabs = [], isVisib
               followLatest.current = false;
             })} className={controlClass}>{t(transcript.loading ? "loadingOlder" : "loadOlder")}</button> : null}
             {transcript.error ? <p role="alert" className="text-xs text-status-error">{t("olderError")}</p> : null}
-            {visibleMessages.length === 0 ? <p className="text-sm text-text-secondary">{t("empty")}</p> : null}
+            {isNewConversation ? <PaneChatWelcome provider={snapshot.provider!} /> : null}
             {getChatTranscriptRows(visibleMessages, snapshot.transcript.sessionId).map(({ message, key }) => (
               <AiChatTranscriptMessage key={key} message={message} provider={snapshot.provider!} attachmentContext={snapshot.transcript.sessionId ? { taskId, provider: snapshot.provider!, sessionId: snapshot.transcript.sessionId } : undefined} onOpenFile={(file) => setPreviewFilePath(file.path)} />
             ))}
@@ -179,16 +198,21 @@ export function PaneChatView({ taskId, paneId, taskTitle, paneTabs = [], isVisib
           setModelPickerOpen(false);
           if (restoreFocus) requestAnimationFrame(() => viewport.current?.closest("section")?.querySelector<HTMLButtonElement>("[data-pane-chat-model-trigger]")?.focus());
         }} onChanged={() => void chat.refresh()} /></div> : null}
-      </div>
       {isDetached ? <button type="button" onClick={() => {
         followLatest.current = true;
         if (viewport.current) viewport.current.scrollTop = viewport.current.scrollHeight;
         setIsDetached(false);
-      }} className="absolute bottom-44 left-1/2 -translate-x-1/2 rounded-full border border-border-default bg-bg-surface px-4 py-2 text-xs text-text-primary">{t("jumpToLatest")} ↓</button> : null}
+      }} className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full border border-border-default bg-bg-surface px-4 py-2 text-xs text-text-primary">{t("jumpToLatest")} ↓</button> : null}
+      </div>
       {previewFilePath ? <AiChatFilePreview taskId={taskId} filePath={previewFilePath} onClose={() => setPreviewFilePath(null)} /> : null}
-      <div className="relative flex max-h-[70%] min-h-0 shrink-0 flex-col">
+      {/* 체크만 바뀐 같은 선택 화면에서는 카드를 다시 만들지 않아, 적던 글과 답을 보내지 못한 이유가 남는다. 다른 선택 화면이 뜨면 새 카드로 시작한다. */}
+      {prompt ? <PaneChatPromptCard key={promptDialogKey} prompt={prompt} isBusy={chat.isBusy} error={chat.promptError?.dialogKey === promptDialogKey ? chat.promptError.message : null} onAnswer={(answer) => void chat.answerPrompt(prompt, answer)} onTerminal={onTerminal} /> : null}
+      {/* 선택 화면이 떠 있는 동안 CLI는 메시지를 받지 않는다. 쓰던 글이 남도록 입력창은 지우지 않고 가려 둔다. */}
+      <div className={`relative max-h-[70%] min-h-0 shrink-0 flex-col ${prompt ? "hidden" : "flex"}`}>
         <PaneChatComposer taskId={taskId} chat={chat} isVisible={isVisible} isModelPickerOpen={modelPickerOpen} onModel={() => void openModelPicker()} />
       </div>
+      {/* 대화 영역과 같은 몫의 여백을 입력창 아래에 두어 첫 화면 안내와 입력창을 가운데로 모은다. */}
+      {isNewConversation ? <div aria-hidden="true" className="flex-1" /> : null}
     </section>
   );
 }

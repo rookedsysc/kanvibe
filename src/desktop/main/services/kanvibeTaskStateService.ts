@@ -53,7 +53,7 @@ export async function readPersistedTaskStatusAtPath(
 export async function syncTaskStatusesFromFiles(): Promise<{ changed: boolean; errors: string[] }> {
   const repository = await getTaskRepository();
   const tasks = await repository.find({
-    relations: ["project"],
+    relations: { project: true },
     select: {
       id: true, status: true, worktreePath: true, sshHost: true, branchName: true, updatedAt: true,
       project: { repoPath: true, defaultBranch: true, sshHost: true },
@@ -91,7 +91,7 @@ export async function syncTaskStatusesFromFiles(): Promise<{ changed: boolean; e
 
 export async function refreshHostTaskStatuses(sshHosts: ReadonlySet<string>, isCurrent: () => boolean): Promise<void> {
   const repository = await getTaskRepository();
-  const tasks = await repository.find({ relations: ["project"] });
+  const tasks = await repository.find({ relations: { project: true } });
   let changed = false;
   for (const task of tasks) {
     const sshHost = task.sshHost ?? task.project?.sshHost;
