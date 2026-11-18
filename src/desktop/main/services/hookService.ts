@@ -6,6 +6,8 @@ import { isTaskReachableFromTunnel } from "@/desktop/main/services/hookTunnelSer
 import { persistTaskStateForTask } from "@/desktop/main/services/kanvibeTaskStateService";
 import { readKanvibeTaskState } from "@/lib/kanvibeProjectState";
 import { recordPaneChatSessionBinding } from "@/lib/aiSessions/paneChatSessionBindings";
+import { parseBearerToken } from "@/lib/mobilePairing";
+import { isValidTaskCliToken } from "@/desktop/main/services/taskCliTokenService";
 
 const STATUS_MAP: Record<string, TaskStatus> = {
   todo: TaskStatus.TODO,
@@ -21,16 +23,39 @@ export interface HookStatusInput {
   agentSession?: unknown;
 }
 
+const HOOK_AUTHENTICATION_FAILURE = {
+  success: false,
+  error: "hook 인증에 실패했습니다. KanVibe에서 이 task에 접속하면 hooks가 다시 설치됩니다.",
+  status: 401,
+} as const;
+
 /**
+ * 상태 hook도 task CLI와 같은 task 토큰으로 인증한다. 토큰은 그 worktree의 targets.json을 읽을 수 있어야 얻으므로,
+ * 소켓이나 평문 포트에 닿기만 한 프로세스가 아무 task의 상태를 바꾸지 못한다.
+ */
+async function isAuthorizedHookRequest(taskId: string, authorizationHeader: string | undefined): Promise<boolean> {
+  const token = parseBearerToken(authorizationHeader);
+  return token !== null && await isValidTaskCliToken(taskId, token);
+}
+
+/**
+ * @param authorizationHeader `Bearer <task 토큰>`. 없거나 다른 task의 토큰이면 task를 조회하지 않고 401로 거절한다
  * @param sourceSshHosts 요청이 들어온 터널이 맡은 호스트 별칭들. 터널로 온 요청은 그 호스트의 task만 바꿀 수 있다
  */
-export async function updateHookTaskStatus(input: HookStatusInput, sourceSshHosts?: ReadonlySet<string>) {
+export async function updateHookTaskStatus(
+  input: HookStatusInput,
+  authorizationHeader: string | undefined,
+  sourceSshHosts?: ReadonlySet<string>,
+) {
   if (!input.taskId || !input.status) {
     return {
       success: false,
       error: "taskId, status는 필수입니다.",
       status: 400,
     };
+  }
+  if (!await isAuthorizedHookRequest(input.taskId, authorizationHeader)) {
+    return HOOK_AUTHENTICATION_FAILURE;
   }
 
   const taskStatus = STATUS_MAP[input.status.toLowerCase()];
@@ -108,9 +133,16 @@ export async function updateHookTaskStatus(input: HookStatusInput, sourceSshHost
 }
 
 /** 재전달은 현재 원격 상태를 확인하고 DB만 갱신해 오래된 hook이 상태 파일을 되돌리지 않게 한다. */
-export async function updateJournalHookTaskStatus(input: HookStatusInput, sourceSshHosts: ReadonlySet<string>) {
+export async function updateJournalHookTaskStatus(
+  input: HookStatusInput,
+  authorizationHeader: string | undefined,
+  sourceSshHosts: ReadonlySet<string>,
+) {
   if (!sourceSshHosts?.size || !input || typeof input.taskId !== "string" || !input.taskId || typeof input.status !== "string") {
     return { success: false, error: "Invalid journal hook scope or input", status: 400 };
+  }
+  if (!await isAuthorizedHookRequest(input.taskId, authorizationHeader)) {
+    return HOOK_AUTHENTICATION_FAILURE;
   }
   const statusKey = input.status.toLowerCase();
   const taskStatus = Object.hasOwn(STATUS_MAP, statusKey) ? STATUS_MAP[statusKey] : undefined;

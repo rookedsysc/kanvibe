@@ -38,7 +38,7 @@ function validateRequest(clientId: string, request: HostHookJournalRequest): voi
   if (!CLIENT_ID.test(clientId) || request.method !== "POST" || request.path !== "/api/hooks/status") throw new Error("Invalid journal hook request");
   if (!request.headers || typeof request.headers !== "object" || Array.isArray(request.headers)) throw new Error("Invalid journal hook headers");
   for (const [key, value] of Object.entries(request.headers)) {
-    if (!["content-type", "x-kanvibe-client-id"].includes(key) || typeof value !== "string" || value.length > 8192 || /[\r\n]/.test(value)) throw new Error("Invalid journal hook headers");
+    if (!["content-type", "authorization", "x-kanvibe-client-id"].includes(key) || typeof value !== "string" || value.length > 8192 || /[\r\n]/.test(value)) throw new Error("Invalid journal hook headers");
     if (key === "x-kanvibe-client-id" && value !== clientId) throw new Error("Journal hook client mismatch");
   }
   const input: unknown = JSON.parse(decodeHostBytes(request.body, MAX_HOOK_BYTES).toString("utf8"));

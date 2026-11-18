@@ -25,6 +25,16 @@ describe("durable host hook journal", () => {
     expect((await lstat(path.dirname(restored.filePath))).mode & 0o777).toBe(0o700);
   });
 
+  it("상태 hook의 task 토큰 헤더를 보관해, 데스크탑이 다시 연결된 뒤 재전달할 때도 같은 토큰으로 인증하게 한다", async () => {
+    const journal = await open();
+    const authorizedRequest = { ...request(), headers: { "content-type": "application/json", authorization: "Bearer task-token" } };
+
+    const appended = await journal.append("client-a", authorizedRequest);
+
+    expect((await (await open()).next("client-a"))?.headers).toEqual({ "content-type": "application/json", authorization: "Bearer task-token" });
+    expect(appended.headers.authorization).toBe("Bearer task-token");
+  });
+
   it("keeps lost acknowledgements and removes only the client's oldest acknowledged event", async () => {
     const journal = await open();
     const a = await journal.append("client-a", request());
