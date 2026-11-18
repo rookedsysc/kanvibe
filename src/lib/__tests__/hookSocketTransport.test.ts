@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { execFile } from "node:child_process";
-import { chmodSync, linkSync, mkdirSync, mkdtempSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, linkSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import http from "node:http";
 import { createRequire } from "node:module";
 import path from "node:path";
@@ -499,6 +499,25 @@ describe("hook 터널 소켓 전송", () => {
 
       expect(viaSocket).toHaveLength(1);
       expect(received).toEqual([]);
+    });
+
+    it("데스크탑이 꺼져 통보가 503으로 실패해도 status.json에는 최신 상태가 남는다", async () => {
+      // Given
+      let attempts = 0;
+      const offlineDesktop = http.createServer((request, response) => {
+        attempts += 1;
+        request.resume();
+        response.writeHead(503).end("Desktop offline; request not replayed");
+      });
+      await listen(offlineDesktop, path.join(socketDirectory, socketFileName));
+
+      // When
+      const result = await runShell(buildHookScript("http://127.0.0.1:1"), workspace);
+
+      // Then
+      expect(result.code).toBe(0);
+      expect(attempts).toBe(1);
+      expect(JSON.parse(readFileSync(path.join(workspace, ".kanvibe", "status.json"), "utf8"))).toMatchObject({ schemaVersion: 1, status: "review" });
     });
 
     it("로컬 loopback 등록은 HTTP로 상태를 보낸다", async () => {
