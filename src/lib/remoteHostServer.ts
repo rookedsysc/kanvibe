@@ -1,4 +1,4 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { execFile, spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { constants } from "node:fs";
 import { chmod, lstat, mkdir, open, readFile, rm } from "node:fs/promises";
@@ -20,6 +20,7 @@ const MAX_COMMAND_TEXT_BYTES = HOST_RECORD_BYTES / 2;
 const MAX_COMMAND_TIMEOUT_MS = 24 * 60 * 60_000;
 const HOOK_RESPONSE_TIMEOUT_MS = 120_000;
 const HELLO_TIMEOUT_MS = 10_000;
+const PREVIOUS_DAEMON_STOP_TIMEOUT_MS = 8_000;
 const HOOK_PATHS = new Set(["/api/hooks/status", "/api/cli/tasks", "/api/cli/tasks/delete", "/api/cli/tasks/register"]);
 const HOOK_READ_PATHS = new Set(["/api/hooks/health", "/api/install/hooks.sh"]);
 
@@ -307,10 +308,54 @@ export async function startRemoteHostServer(options: RemoteHostServerOptions) {
   return { paths, instanceId, pid: process.pid, close };
 }
 
+// namespace마다 rpc 소켓이 하나뿐이라 이전 빌드 daemon이 살아 있으면 새 빌드 bridge가 그 daemon에 붙고 build 불일치로 거부된다.
+// start.lock에 기록된 PID가 같은 사용자로 이 디렉터리의 다른 build bundle을 --serve 중일 때만 내리고, 확인할 수 없으면 건드리지 않는다.
+async function stopPreviousBuildDaemon(directory: string, namespace: string, buildHash: string): Promise<void> {
+  const pid = await readStartLockOwnerPid(directory);
+  if (!pid) return;
+  const runningBuildHash = await readServingBuildHash(pid, directory, namespace);
+  if (!runningBuildHash || runningBuildHash === buildHash) return;
+  try { process.kill(pid, "SIGTERM"); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code === "ESRCH") return; throw error; }
+  const deadline = Date.now() + PREVIOUS_DAEMON_STOP_TIMEOUT_MS;
+  while (isProcessAlive(pid)) {
+    if (Date.now() >= deadline) throw new Error(`Previous host daemon ${pid} did not stop after SIGTERM`);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+}
+
+async function readStartLockOwnerPid(directory: string): Promise<number | undefined> {
+  const ownerPath = path.join(directory, "start.lock", "pid");
+  try {
+    const owner = await lstat(ownerPath);
+    if (!owner.isFile() || owner.isSymbolicLink() || owner.uid !== process.getuid?.()) return undefined;
+    const pid = Number(await readFile(ownerPath, "utf8"));
+    return Number.isSafeInteger(pid) && pid > 1 ? pid : undefined;
+  } catch { return undefined; }
+}
+
+function readServingBuildHash(pid: number, directory: string, namespace: string): Promise<string | undefined> {
+  const escapedDirectory = directory.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const servingPattern = new RegExp(`\\s${escapedDirectory}/server-([a-f0-9]{64})\\.cjs --serve ${namespace} \\1(\\s|$)`);
+  return new Promise((resolve) => {
+    execFile("ps", ["-ww", "-o", "uid=", "-o", "args=", "-p", String(pid)], { timeout: 2_000, env: createLocalShellEnvironment() }, (error, stdout) => {
+      const processLine = /^\s*(\d+)\s+(.*)$/.exec(String(stdout).trim());
+      if (error || !processLine || Number(processLine[1]) !== process.getuid?.()) { resolve(undefined); return; }
+      resolve(servingPattern.exec(processLine[2])?.[1]);
+    });
+  });
+}
+
+function isProcessAlive(pid: number): boolean {
+  try { process.kill(pid, 0); return true; }
+  catch (error) { return (error as NodeJS.ErrnoException).code !== "ESRCH"; }
+}
+
 export async function startRemoteHostBridge(options: { namespace: string; sourcePath: string; buildHash: string; ptyModulePath?: string; ptyArtifactHash?: string }, input: Readable, output: Writable): Promise<void> {
   const paths = await preparePaths(options.namespace);
   const stat = await lstat(options.sourcePath);
   if (!stat.isFile() || stat.isSymbolicLink() || stat.uid !== process.getuid?.() || path.dirname(options.sourcePath) !== paths.directory) throw new Error("Untrusted host bundle");
+  await stopPreviousBuildDaemon(paths.directory, options.namespace, options.buildHash);
   let socket: Socket;
   try { socket = await connectSocket(paths.rpcSocketPath); }
   catch (error) {
