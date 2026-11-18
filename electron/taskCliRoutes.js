@@ -5,10 +5,12 @@ const TASK_CLI_ROUTES = {
   "/api/cli/tasks": { serviceFunctionName: "createTaskFromCli", successStatus: 201 },
   "/api/cli/tasks/delete": { serviceFunctionName: "deleteTaskFromCli", successStatus: 200 },
   "/api/cli/tasks/register": { serviceFunctionName: "registerTaskFromPeer", successStatus: 200 },
+  "/api/cli/tasks/list": { serviceFunctionName: "listTasksFromCli", successStatus: 200 },
+  "/api/cli/tasks/session": { serviceFunctionName: "prepareTaskSessionFromCli", successStatus: 200 },
 };
 
 /**
- * task CLI의 생성·삭제 요청을 처리한다. 처리한 경로면 true를 돌려준다.
+ * task CLI의 생성·삭제·조회·세션 준비 요청을 처리한다. 처리한 경로면 true를 돌려준다.
  *
  * 인증은 서비스가 targets.json에 기록한 task 단위 토큰으로 한다. 토큰은 worktree 파일을 읽을 수 있어야 얻으므로
  * 인증 뒤의 오류 메시지에 git 출력이 섞여도 요청자가 이미 볼 수 있는 범위를 넘지 않아, CLI가 원인을 보여 줄 수 있게 그대로 돌려준다.

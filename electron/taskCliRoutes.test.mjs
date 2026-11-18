@@ -49,6 +49,8 @@ describe("taskCliRoutes", () => {
       createTaskFromCli: vi.fn(async () => ({ id: "created-task" })),
       deleteTaskFromCli: vi.fn(async () => ({ id: "deleted-task", deleted: true })),
       registerTaskFromPeer: vi.fn(async () => ({ id: "registered-task" })),
+      listTasksFromCli: vi.fn(async () => [{ id: "listed-task" }]),
+      prepareTaskSessionFromCli: vi.fn(async () => ({ id: "prepared-task", session: { isPrepared: true } })),
     };
     await startServer();
   });
@@ -62,6 +64,8 @@ describe("taskCliRoutes", () => {
     ["/api/cli/tasks", "createTaskFromCli", 201, { id: "created-task" }],
     ["/api/cli/tasks/delete", "deleteTaskFromCli", 200, { id: "deleted-task", deleted: true }],
     ["/api/cli/tasks/register", "registerTaskFromPeer", 200, { id: "registered-task" }],
+    ["/api/cli/tasks/list", "listTasksFromCli", 200, [{ id: "listed-task" }]],
+    ["/api/cli/tasks/session", "prepareTaskSessionFromCli", 200, { id: "prepared-task", session: { isPrepared: true } }],
   ])("POST %s 는 Authorization 헤더와 본문을 %s 에 넘기고 결과를 돌려준다", async (path, functionName, status, data) => {
     const result = await send("POST", path, JSON.stringify({ contextTaskId: "task-1" }), { Authorization: "Bearer token-1" });
 

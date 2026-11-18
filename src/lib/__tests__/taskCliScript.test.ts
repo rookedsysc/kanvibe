@@ -57,6 +57,8 @@ async function startFakeClient(respond?: (call: RecordedCall) => unknown): Promi
         createTaskFromCli: recordCall("createTaskFromCli"),
         deleteTaskFromCli: recordCall("deleteTaskFromCli"),
         registerTaskFromPeer: recordCall("registerTaskFromPeer"),
+        listTasksFromCli: recordCall("listTasksFromCli"),
+        prepareTaskSessionFromCli: recordCall("prepareTaskSessionFromCli"),
       },
     });
   });
@@ -306,6 +308,73 @@ describe("task CLI script", () => {
       expect(unknownRun.stderr).toContain("등록된 client가 아닙니다");
     });
 
+    it("설명과 우선순위를 본문에 실어 보낸다", async () => {
+      const client = await startFakeClient();
+      await writeTargets([{ url: client.url, taskId: "task-1", token: "token-1" }]);
+
+      const run = await runCli(["create", "--branch", "feat/new", "--description", "로그인\n오류 수정", "--priority", "high"]);
+
+      expect(run.exitCode).toBe(0);
+      expect(client.calls[0].body).toMatchObject({ description: "로그인\n오류 수정", priority: "high" });
+    });
+
+    it("다른 client에 등록을 전파하지 못한 곳이 있으면 생성은 성공으로 끝내되 남은 client 수를 경고한다", async () => {
+      const client = await startFakeClient(() => ({
+        id: "created-task",
+        session: { isPrepared: true },
+        peers: [
+          { url: "http://10.0.0.7:9736", isSuccess: false, httpStatus: "000", message: "연결할 수 없습니다" },
+          { url: "http://10.0.0.8:9736", isSuccess: true, httpStatus: "200", message: "ok" },
+        ],
+      }));
+      await writeTargets([{ url: client.url, taskId: "task-1", token: "token-1" }]);
+
+      const run = await runCli(["create", "--branch", "feat/new"]);
+
+      expect(run.exitCode).toBe(0);
+      expect(JSON.parse(run.stdout).data.id).toBe("created-task");
+      expect(run.stderr).toContain("1곳에는 task 등록을 전파하지 못했습니다");
+    });
+
+    it("살아 있는 첫 client가 404를 돌려주면 다른 client를 --target-url로 고르라고 안내한다", async () => {
+      const notFound = () => {
+        throw Object.assign(new Error("feat/other 브랜치의 task를 찾을 수 없습니다."), { name: "TaskCliRequestError", statusCode: 404 });
+      };
+      const answeringClient = await startFakeClient(notFound);
+      const ownerClient = await startFakeClient();
+      await writeTargets([
+        { url: answeringClient.url, taskId: "task-1", token: "token-1" },
+        { url: ownerClient.url, taskId: "task-2", token: "token-2" },
+      ]);
+
+      const run = await runCli(["delete", "--yes", "--branch", "feat/other"]);
+
+      expect(run.exitCode).toBe(1);
+      expect(run.stderr).toContain("--target-url로 지정해 다시 실행하세요");
+      expect(run.stderr).toContain(ownerClient.url);
+      expect(ownerClient.calls).toEqual([]);
+    });
+
+    it("404 안내는 --target-url로 이미 골랐거나 다른 client가 없으면 하지 않는다", async () => {
+      const notFound = () => {
+        throw Object.assign(new Error("task를 찾을 수 없습니다"), { name: "TaskCliRequestError", statusCode: 404 });
+      };
+      const onlyClient = await startFakeClient(notFound);
+      await writeTargets([{ url: onlyClient.url, taskId: "task-1", token: "token-1" }]);
+      const singleRun = await runCli(["session", "--branch", "feat/other"]);
+
+      const otherClient = await startFakeClient();
+      await writeTargets([
+        { url: onlyClient.url, taskId: "task-1", token: "token-1" },
+        { url: otherClient.url, taskId: "task-2", token: "token-2" },
+      ]);
+      const selectedRun = await runCli(["session", "--branch", "feat/other", "--target-url", onlyClient.url]);
+
+      expect([singleRun.exitCode, selectedRun.exitCode]).toEqual([1, 1]);
+      expect(singleRun.stderr).not.toContain("--target-url로 지정해");
+      expect(selectedRun.stderr).not.toContain("--target-url로 지정해");
+    });
+
     it("CLI 토큰이 없는 예전 등록만 있으면 요청하지 않고 hooks 재설치를 안내한다", async () => {
       const client = await startFakeClient();
       await writeTargets([{ url: client.url, taskId: "task-1" }]);
@@ -315,6 +384,33 @@ describe("task CLI script", () => {
       expect(run.exitCode).toBe(1);
       expect(run.stderr).toContain("hooks를 다시 설치하세요");
       expect(client.calls).toEqual([]);
+    });
+  });
+
+  describe("list와 session", () => {
+    it("list는 현재 task의 토큰으로 목록 경로에 요청하고 응답을 그대로 출력한다", async () => {
+      const client = await startFakeClient(() => [{ id: "task-1", branchName: "feat/current" }]);
+      await writeTargets([{ url: client.url, taskId: "task-1", token: "token-1" }]);
+
+      const run = await runCli(["list"]);
+
+      expect(run.exitCode).toBe(0);
+      expect(JSON.parse(run.stdout)).toEqual({ success: true, data: [{ id: "task-1", branchName: "feat/current" }] });
+      expect(client.calls).toEqual([{ functionName: "listTasksFromCli", authorization: "Bearer token-1", body: { contextTaskId: "task-1" } }]);
+    });
+
+    it("session은 브랜치를 주면 그 task를, 생략하면 현재 task를 준비하도록 요청한다", async () => {
+      const client = await startFakeClient();
+      await writeTargets([{ url: client.url, taskId: "task-1", token: "token-1" }]);
+
+      const currentRun = await runCli(["session"]);
+      const branchRun = await runCli(["session", "--branch", "feat/sibling"]);
+
+      expect([currentRun.exitCode, branchRun.exitCode]).toEqual([0, 0]);
+      expect(client.calls.map(({ functionName, body }) => ({ functionName, body }))).toEqual([
+        { functionName: "prepareTaskSessionFromCli", body: { contextTaskId: "task-1" } },
+        { functionName: "prepareTaskSessionFromCli", body: { contextTaskId: "task-1", branchName: "feat/sibling" } },
+      ]);
     });
   });
 

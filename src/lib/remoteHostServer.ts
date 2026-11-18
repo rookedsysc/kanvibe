@@ -21,7 +21,7 @@ const MAX_COMMAND_TEXT_BYTES = HOST_RECORD_BYTES / 2;
 const MAX_COMMAND_TIMEOUT_MS = 24 * 60 * 60_000;
 const HOOK_RESPONSE_TIMEOUT_MS = 120_000;
 const HELLO_TIMEOUT_MS = 10_000;
-const HOOK_PATHS = new Set(["/api/hooks/status", "/api/cli/tasks", "/api/cli/tasks/delete", "/api/cli/tasks/register"]);
+const HOOK_PATHS = new Set(["/api/hooks/status", "/api/cli/tasks", "/api/cli/tasks/delete", "/api/cli/tasks/register", "/api/cli/tasks/list", "/api/cli/tasks/session"]);
 const HOOK_READ_PATHS = new Set(["/api/hooks/health", "/api/install/hooks.sh"]);
 
 export interface RemoteHostServerOptions { namespace: string; buildHash: string; rootDirectory?: string; ptyModulePath?: string; ptyArtifactHash?: string }

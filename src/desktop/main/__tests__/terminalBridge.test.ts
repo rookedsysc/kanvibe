@@ -215,6 +215,17 @@ describe("terminalBridge existing remote session migration", () => {
     expect(vi.mocked(terminal.attachRemoteSession).mock.invocationCallOrder[0]).toBeLessThan(mockEnsureKanvibeHooksCurrent.mock.invocationCallOrder[0]);
   });
 
+  it("로컬 task도 attach 뒤 백그라운드로 훅을 검사해, 토큰이 없는 이전 버전 hook을 다시 설치한다", async () => {
+    const bridge = await importBridge();
+    const terminal = await import("@/lib/terminal");
+    const localTask = { ...remoteTask(), sshHost: null, worktreePath: "/local/repo__worktrees/feat" };
+
+    await bridge.attachTaskTerminal(localTask, null, new bridge.CallbackTerminalClient(() => {}));
+
+    await vi.waitFor(() => expect(mockEnsureKanvibeHooksCurrent).toHaveBeenCalledWith("/local/repo__worktrees/feat", "task-1", null));
+    expect(vi.mocked(terminal.attachLocalSession).mock.invocationCallOrder[0]).toBeLessThan(mockEnsureKanvibeHooksCurrent.mock.invocationCallOrder[0]);
+  });
+
   it("원격 터미널을 열 때 백그라운드 실패로 걸린 SSH cooldown을 원격 명령보다 먼저 해제한다", async () => {
     const bridge = await importBridge();
     const remoteSessionDependency = await import("@/lib/remoteSessionDependency");

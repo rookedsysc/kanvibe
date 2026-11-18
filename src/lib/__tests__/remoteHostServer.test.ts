@@ -43,9 +43,9 @@ describe("remote host provider", () => {
     socket.write(encodeHostRecord({ type: "hello", version: 1, namespace: "qa-provider", clientId, role: "desktop", buildHash: "a".repeat(64), ...hello }));
     return { socket, next, send: (record: HostRecord) => socket.write(encodeHostRecord(record)) };
   }
-  function post(clientId: string, body = "{}", headers: Record<string, string> = {}) {
+  function post(clientId: string, body = "{}", headers: Record<string, string> = {}, requestPath = "/api/hooks/status") {
     return new Promise<{ status: number; body: string }>((resolve, reject) => {
-      const req = request({ socketPath: server!.paths.hookSocketPath, method: "POST", path: "/api/hooks/status", headers: { "x-kanvibe-client-id": clientId, ...headers } }, (response) => {
+      const req = request({ socketPath: server!.paths.hookSocketPath, method: "POST", path: requestPath, headers: { "x-kanvibe-client-id": clientId, ...headers } }, (response) => {
         let result = ""; response.on("data", (chunk) => { result += chunk; });
         response.on("end", () => resolve({ status: response.statusCode!, body: result }));
       }); req.on("error", reject); req.end(body);
@@ -117,6 +117,16 @@ describe("remote host provider", () => {
     expect(await pending).toEqual({ status: 202, body: '{"ok":true}' });
     peer.socket.destroy();
     expect((await post("client-one", '{"taskId":"fixture","status":"done"}')).status).toBe(202);
+  });
+  it.each(["/api/cli/tasks/list", "/api/cli/tasks/session"])("task CLI의 %s 요청과 토큰을 연결된 데스크탑에 넘긴다", async (requestPath) => {
+    await start(); const peer = await client(); await peer.next("ready");
+    peer.send({ type: "hook.subscribe", id: "subscribe" });
+    const pending = post("client-one", '{"contextTaskId":"fixture"}', { authorization: "Bearer task-token" }, requestPath);
+    const hook = await peer.next("hook.request");
+    expect(hook.path).toBe(requestPath);
+    expect((hook.headers as Record<string, string>).authorization).toBe("Bearer task-token");
+    peer.send({ type: "hook.response", id: hook.id, status: 200, headers: { "content-type": "application/json" }, body: Buffer.from("[]").toString("base64") });
+    expect(await pending).toEqual({ status: 200, body: "[]" });
   });
   it("rejects duplicate live client IDs without replacing the first desktop", async () => {
     await start(); const first = await client(); const original = await first.next("ready");
