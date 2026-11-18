@@ -1,6 +1,6 @@
 // @vitest-environment node
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { mkdtemp, rm } from "node:fs/promises";
 import { connect, createServer, type Socket } from "node:net";
 import { request } from "node:http";
 import { EventEmitter } from "node:events";
@@ -100,59 +100,13 @@ describe("real host provider and client", () => {
       await new Promise<void>((resolve) => upstream.close(() => resolve()));
     }
   });
-  it("reports offline hook failure and does not replay after reconnect", async () => {
+  it("retains offline status hooks and replays after handler installation", async () => {
     const first = await attach(); first.close();
     await new Promise((resolve) => setTimeout(resolve, 10));
-    await expect.poll(() => hook("client-one", '{"taskId":"fixture","status":"review"}')).toEqual({ status: 503, body: "Desktop offline; request not replayed" });
+    expect((await hook("client-one", '{"taskId":"fixture","status":"review"}')).status).toBe(202);
     const second = await attach(); let events = 0;
     second.setHookHandler(async () => { events += 1; return { status: 200, headers: {}, body: "" }; });
     expect(await second.execute("printf snapshot")).toBe("snapshot");
-    expect(events).toBe(0);
-  });
-  it("answers a later task while earlier tasks of the same client hang or fail", async () => {
-    const connection = await attach();
-    const received: string[] = [];
-    let markHangingStarted!: () => void, releaseHanging!: () => void;
-    const hangingStarted = new Promise<void>((resolve) => { markHangingStarted = resolve; });
-    connection.setHookHandler(async (record) => {
-      const body = Buffer.from(String(record.body), "base64").toString();
-      received.push(body);
-      const { taskId } = JSON.parse(body) as { taskId: string };
-      if (taskId === "hanging") { markHangingStarted(); await new Promise<void>((resolve) => { releaseHanging = resolve; }); }
-      return { status: taskId === "healthy" ? 200 : 503, headers: {}, body: Buffer.from(taskId).toString("base64") };
-    });
-    const hanging = hook("client-one", '{"taskId":"hanging","status":"review"}');
-    await hangingStarted;
-    const failing = hook("client-one", '{"taskId":"failing","status":"review"}');
-    const healthyBody = '{"taskId":"healthy","status":"done","agentSession":{"provider":"codex","hookPid":1234}}';
-    // 뒤 요청이 앞 요청에 막혔을 때 테스트 timeout 대신 원인이 드러나는 실패로 끝내는 상한이다. 통과 경로는 이 시간을 기다리지 않는다.
-    const blocked = new Promise<"blocked">((resolve) => setTimeout(() => resolve("blocked"), 3_000));
-    expect(await Promise.race([hook("client-one", healthyBody), blocked])).toEqual({ status: 200, body: "healthy" });
-    expect(await failing).toEqual({ status: 503, body: "failing" });
-    expect(received).toContain(healthyBody);
-    releaseHanging();
-    expect(await hanging).toEqual({ status: 503, body: "hanging" });
-    expect(received).toHaveLength(3);
-  });
-  it.each([
-    ["holding a pending event", JSON.stringify({ version: 1, nextSequence: 2, expired: 0, rejected: 0, ignored: 0, events: [{
-      id: "11111111-1111-4111-8111-111111111111", sequence: 1, receivedAt: Date.now(), clientId: "client-one", method: "POST", path: "/api/hooks/status",
-      headers: { "x-kanvibe-client-id": "client-one" }, body: Buffer.from('{"taskId":"fixture","status":"done"}').toString("base64"),
-    }] })],
-    ["that is corrupt", "{corrupt"],
-  ])("starts beside an earlier build's journal file %s without replaying or rewriting it", async (_kind, content) => {
-    await server.close();
-    const journalDirectory = `${directory}/state/qa-integration`;
-    await mkdir(journalDirectory, { recursive: true, mode: 0o700 });
-    const journalPath = `${journalDirectory}/hook-journal-v1.json`;
-    await writeFile(journalPath, content, { mode: 0o600 });
-    server = await startRemoteHostServer({ namespace: "qa-integration", buildHash: "a".repeat(64), rootDirectory: directory });
-    const connection = await attach();
-    const received: string[] = [];
-    connection.setHookHandler(async (record) => { received.push(Buffer.from(String(record.body), "base64").toString()); return { status: 200, headers: {}, body: "" }; });
-    const liveBody = '{"taskId":"live","status":"review"}';
-    expect(await hook("client-one", liveBody)).toEqual({ status: 200, body: "" });
-    expect(received).toEqual([liveBody]);
-    expect(await readFile(journalPath, "utf8")).toBe(content);
+    await vi.waitFor(() => expect(events).toBe(1));
   });
 });

@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-const mocks = vi.hoisted(() => ({ find: vi.fn(), update: vi.fn(), execute: vi.fn(), broadcast: vi.fn(), statusChanged: vi.fn() }));
+const mocks = vi.hoisted(() => ({ find: vi.fn(), update: vi.fn(), execute: vi.fn(), broadcast: vi.fn() }));
 vi.mock("@/lib/database", () => ({ getTaskRepository: async () => ({ find: mocks.find, update: mocks.update }), getProjectRepository: vi.fn() }));
 vi.mock("@/lib/gitOperations", () => ({ execGit: mocks.execute, resolvePathForShell: (value: string) => value }));
-vi.mock("@/lib/boardNotifier", () => ({ broadcastBoardUpdate: mocks.broadcast, broadcastTaskStatusChanged: mocks.statusChanged }));
+vi.mock("@/lib/boardNotifier", () => ({ broadcastBoardUpdate: mocks.broadcast }));
 import { refreshHostTaskStatuses } from "@/desktop/main/services/kanvibeTaskStateService";
 
 describe("host reconnect current status snapshot", () => {
@@ -18,7 +18,6 @@ describe("host reconnect current status snapshot", () => {
     expect(mocks.execute).toHaveBeenCalledWith(expect.stringContaining("/fixture/one/.kanvibe/status.json"), "host-a", expect.any(Object));
     expect(mocks.update).toHaveBeenCalledWith({ id: "one", status: "progress", updatedAt: expect.objectContaining({ objectLiteralParameters: { snapshotUpdatedAt: updatedAt.toISOString() } }) }, { status: "review" });
     expect(mocks.broadcast).toHaveBeenCalledTimes(1);
-    expect(mocks.statusChanged).not.toHaveBeenCalled();
   });
   it("does not overwrite a live DB update that won while the file was read", async () => {
     mocks.update.mockResolvedValue({ affected: 0 });
