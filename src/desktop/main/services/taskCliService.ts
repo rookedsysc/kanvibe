@@ -127,9 +127,11 @@ export async function createTaskFromCli(
     sessionType: requestedSessionType ?? creationBase.inheritedSessionType ?? SessionType.TERMINAL,
     projectId: project.id,
   });
-  const peers = await propagateTaskRegistrationToPeers(project.repoPath, branchName, project.sshHost);
-  const createdTaskEntity = await findTaskInProject({ id: createdTask.id }, project, `만든 task를 찾을 수 없습니다: ${createdTask.id}`);
-  const session = await prepareCliTaskSession(createdTaskEntity);
+  // 전파와 세션 준비는 서로의 결과를 쓰지 않으므로 함께 시작해 응답 지연을 둘 중 긴 쪽으로 줄인다
+  const [peers, { createdTaskEntity, session }] = await Promise.all([
+    propagateTaskRegistrationToPeers(project.repoPath, branchName, project.sshHost),
+    prepareCreatedTaskSession(createdTask.id, project),
+  ]);
 
   return {
     id: createdTask.id,
@@ -189,6 +191,11 @@ export async function prepareTaskSessionFromCli(
     sshHost: targetTask.sshHost,
     session,
   };
+}
+
+async function prepareCreatedTaskSession(createdTaskId: string, project: Project): Promise<{ createdTaskEntity: KanbanTask; session: CliTaskSession }> {
+  const createdTaskEntity = await findTaskInProject({ id: createdTaskId }, project, `만든 task를 찾을 수 없습니다: ${createdTaskId}`);
+  return { createdTaskEntity, session: await prepareCliTaskSession(createdTaskEntity) };
 }
 
 /** 세션 준비 실패는 task 생성 실패가 아니므로 응답에만 남기고, 에이전트가 session 명령으로 다시 시도하게 한다 */

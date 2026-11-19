@@ -253,6 +253,17 @@ describe("taskCliService", () => {
       expect(created).toMatchObject({ sessionName: "repo-feat-new", sshHost: "devbox", session: { isPrepared: true } });
     });
 
+    it("다른 client로의 전파가 끝나기를 기다리지 않고 세션 준비를 함께 시작한다", async () => {
+      let finishPropagation: (results: typeof PEER_RESULTS) => void = () => {};
+      mocks.propagateTaskRegistrationToPeers.mockReturnValue(new Promise((resolve) => { finishPropagation = resolve; }));
+
+      const creation = createTaskFromCli(AUTHORIZATION, { contextTaskId: CONTEXT_TASK.id, branchName: "feat/new", baseBranch: "main" });
+      await vi.waitFor(() => expect(mocks.prepareTaskTerminal).toHaveBeenCalledTimes(1));
+      finishPropagation(PEER_RESULTS);
+
+      await expect(creation).resolves.toMatchObject({ session: { isPrepared: true }, peers: PEER_RESULTS });
+    });
+
     it("세션 준비가 실패해도 task는 남기고 응답의 session.error로 알린다", async () => {
       mocks.prepareTaskTerminal.mockRejectedValue(new Error("tmux 세션 생성에 실패했습니다."));
 
