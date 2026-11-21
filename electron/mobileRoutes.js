@@ -935,9 +935,13 @@ async function openPaneStream(webSocket, bridge, taskId, paneId, deviceId, grant
         remoteRelay.write(data, isBinary);
         return;
       }
-      /** 휠은 크기 요청으로 연 제어 연결을 타고 멀티플렉서로 간다. 그 연결이 아직 없으면 보낼 곳이 없다 */
+      /**
+       * 휠은 크기 요청으로 연 제어 연결을 타고 멀티플렉서로 간다. 그 연결이 아직 없으면 보낼 곳이 없다.
+       * 휠이 바꾼 화면이 평소 출력 흐름으로 오지 않는 세션은 그 화면을 돌려주므로 이 기기에 보낸다.
+       */
       if (control?.type === "scroll") {
-        await viewport?.scroll(control);
+        const screen = await viewport?.scroll(control);
+        if (typeof screen === "string" && !isClosed && webSocket.readyState === webSocket.OPEN) webSocket.send(screen);
         return;
       }
       if (isBinary) {

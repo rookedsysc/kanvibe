@@ -152,8 +152,9 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
     );
   }
 
-  /// Herdr만 휠을 받아 pane 모드에 맞춰 나눠 주는 입구가 있다. 그 밖의 세션은 휠 보고를 원시 입력으로 보낸다
-  bool get _canMultiplexerTakeWheel => widget.sessionType == SessionType.herdr;
+  /// 멀티플렉서 세션은 휠을 멀티플렉서에 넘겨 pane 모드에 맞춰 처리하게 한다. 멀티플렉서가 없는 터미널 탭만 휠 보고를 원시 입력으로 보낸다
+  bool get _canMultiplexerTakeWheel =>
+      widget.sessionType != SessionType.terminal;
 
   /// 멀티플렉서에 휠을 넘겼으면 true. 원시 휠 보고는 마우스 보고를 켜지 않은 프로그램에 글자로 찍히므로 이때는 입력으로 보내지 않는다
   bool _scrollThroughMultiplexer(bool isUp, xterm.CellOffset position) {

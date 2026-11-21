@@ -1012,6 +1012,19 @@ describe("키 입력 순서", () => {
     client.close();
   });
 
+  it("휠이 바꾼 화면을 viewport가 돌려주면 그 기기에 보낸다", async () => {
+    const scroll = vi.fn(async () => "copy-mode-screen");
+    bridge.claimPaneViewport.mockResolvedValue({ resize: vi.fn(async () => null), scroll, release: vi.fn(async () => {}) });
+    const client = await openPaneStreamClient("Bearer good");
+    const received = [];
+    client.on("message", (data) => received.push(data.toString()));
+    client.send(Buffer.from(JSON.stringify({ type: "resize", cols: 44, rows: 70 })));
+    client.send(Buffer.from(JSON.stringify({ type: "scroll", direction: "up", column: 0, row: 0 })));
+    await waitFor(() => received.includes("copy-mode-screen"));
+    expect(received).toContain("copy-mode-screen");
+    client.close();
+  });
+
   it("binary 이력 갱신 요청은 미러에 전달하고 터미널 입력이나 크기 변경으로 쓰지 않는다", async () => {
     const client = await openPaneStreamClient("Bearer good");
     client.send(Buffer.from(JSON.stringify({ type: "refresh-history" })));

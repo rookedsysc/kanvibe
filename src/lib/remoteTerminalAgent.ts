@@ -6,7 +6,7 @@ import type { Readable, Writable } from "node:stream";
 import { WebSocketServer, WebSocket } from "ws";
 import { createLocalShellEnvironment } from "./shellEnvironment";
 import {
-  decodeRemoteTerminalBytes, isRemoteTerminalSize, parseHerdrTerminalRecord, buildHerdrScreenRedraw, REMOTE_TERMINAL_COMMAND_TIMEOUT_MS,
+  decodeRemoteTerminalBytes, isRemoteTerminalSize, parseHerdrTerminalRecord, buildWheelDelegatedScreenRedraw, REMOTE_TERMINAL_COMMAND_TIMEOUT_MS,
   parseTerminalScrollRequest, buildHerdrScrollControlRecord,
   REMOTE_TERMINAL_ENVELOPE_BYTES, REMOTE_TERMINAL_FRAME_BYTES, REMOTE_TERMINAL_INPUT_BYTES, REMOTE_TERMINAL_INPUT_QUEUE_BYTES,
   REMOTE_TERMINAL_OWNER_LEASE_MS, REMOTE_TERMINAL_ADMISSION_MS, type RemoteTerminalWireGrant,
@@ -216,7 +216,7 @@ export async function startRemoteTerminalAgent(
       child.stdin.on("error", () => { group.ownsTerminal = false; closeGroup(group); });
       const [history] = await Promise.all([snapshot(owner.grant.snapshotCommand), initialFrame]);
       if (group.dead) throw new Error("Terminal closed during bootstrap");
-      group.history = buildHerdrScreenRedraw(history);
+      group.history = buildWheelDelegatedScreenRedraw(history);
       group.initialized = true;
       bootstrapping = false;
       for (const client of group.clients) { client.send(group.history + bufferedFrames); client.ready = true; }
@@ -239,7 +239,7 @@ export async function startRemoteTerminalAgent(
     if (group.dead || grant.active !== client || !grants.has(grant.grantId)) throw new Error("Terminal grant revoked");
     if (wasReady) {
       // Re-read history and request a current native full frame instead of caching unbounded deltas.
-      const history = buildHerdrScreenRedraw(await snapshot(grant.snapshotCommand));
+      const history = buildWheelDelegatedScreenRedraw(await snapshot(grant.snapshotCommand));
       if (group.dead || grant.active !== client || !grants.has(grant.grantId)) throw new Error("Terminal grant revoked");
       await new Promise<void>((resolve, reject) => {
         const timer = setTimeout(() => { group.joiners.delete(client); reject(new Error("Terminal refresh timed out")); }, REMOTE_TERMINAL_COMMAND_TIMEOUT_MS);

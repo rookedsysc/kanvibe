@@ -56,6 +56,14 @@ import {
   buildScreenRedraw,
   buildTmuxClosePaneCommand,
   buildTmuxPaneShortcutCommand,
+  buildTmuxCaptureCopyModeViewCommand,
+  buildTmuxCopyModeViewCommand,
+  buildTmuxCopyModeWheelCommand,
+  buildTmuxEnterWheelCopyModeCommand,
+  buildTmuxWheelStateCommand,
+  buildZellijDumpViewportCommand,
+  parseTmuxCopyModeView,
+  parseTmuxWheelState,
   buildZellijClosePaneCommand,
   buildZellijPaneShortcutCommand,
   buildTmuxCancelPipePaneCommand,
@@ -68,7 +76,6 @@ import {
   buildTmuxResizeViewportCommand,
   buildTmuxRestoreViewportCommand,
   buildTmuxSendKeysCommand,
-  buildZellijDumpPaneCommand,
   buildZellijListMirrorPanesCommand,
   buildZellijReadViewportCommand,
   buildZellijSelectTabCommand,
@@ -97,6 +104,7 @@ import {
   resizeTerminalTab,
   resizeTaskTerminalViewport,
   releaseTaskTerminalViewport,
+  writeTaskTerminalInput,
   writeTerminalTabInput,
 } from "@/lib/terminal";
 import { listHerdrMirrorPanes, readHerdrPaneExtent, readHerdrTaskPaneSize } from "@/lib/herdr";
@@ -111,7 +119,7 @@ import {
   stopRemoteTerminalAgents,
 } from "@/desktop/main/services/remoteTerminalService";
 import {
-  buildHerdrScreenRedraw, buildHerdrScrollControlRecord, parseTerminalScrollRequest, type RemoteTerminalGrant, type TerminalScrollRequest,
+  buildWheelDelegatedScreenRedraw, buildHerdrScrollControlRecord, buildMouseWheelReport, parseTerminalScrollRequest, type RemoteTerminalGrant, type TerminalScrollRequest,
 } from "@/lib/remoteTerminalProtocol";
 
 /**
@@ -135,6 +143,8 @@ import {
 const MIRROR_COMMAND_TIMEOUT_MS = 5_000;
 const MAX_CHAT_OBSERVE_FRAME_BYTES = 1024 * 1024;
 const VIEWPORT_SETTLE_POLL_INTERVAL_MS = 50;
+/** Zellij 클라이언트에 넣은 휠이 pane 화면에 반영될 때까지 기다리는 시간 */
+const ZELLIJ_WHEEL_SETTLE_MS = 100;
 
 /**
  * zellij에는 tmux `pipe-pane`에 해당하는 출력 스트림이 없어 화면을 주기적으로 다시 뜬다.
@@ -1147,8 +1157,11 @@ const paneSubscriptions = new Map<string, PaneClaim>();
 interface PaneViewportDriver {
   resize: (paneId: string, cols: number, rows: number) => Promise<void>;
   restore: () => Promise<void>;
-  /** 휠을 멀티플렉서에 넘기는 길이 있는 세션만 둔다. 없는 세션의 모바일은 휠을 원시 입력으로 보낸다 */
-  scroll?: (request: TerminalScrollRequest) => Promise<void>;
+  /**
+   * 휠을 멀티플렉서에 넘기는 길이 있는 세션만 둔다. 없는 세션의 모바일은 휠을 원시 입력으로 보낸다.
+   * 휠이 바꾼 화면이 평소 출력 흐름으로 오지 않으면 그 화면을 돌려준다.
+   */
+  scroll?: (paneId: string, request: TerminalScrollRequest) => Promise<string | null>;
 }
 
 interface PaneViewportRequest {
@@ -1165,9 +1178,9 @@ interface PaneViewportGroup {
 const paneViewports = new Map<string, PaneViewportGroup>();
 let paneViewportShutdown = false;
 
-function queuePaneViewport(group: PaneViewportGroup, action: (driver: PaneViewportDriver) => Promise<void>): Promise<void> {
+function queuePaneViewport<T>(group: PaneViewportGroup, action: (driver: PaneViewportDriver) => Promise<T>): Promise<T> {
   const operation = group.pending.then(() => group.driver).then(action);
-  group.pending = operation.catch(() => {});
+  group.pending = operation.then(() => {}, () => {});
   return operation;
 }
 
@@ -1198,7 +1211,39 @@ async function createPaneViewportDriver(target: MirrorSessionTarget, taskId: str
       await runMirrorCommand(buildTmuxResizeViewportCommand(paneId, geometry, cols, rows), target.sshHost);
     },
     restore: async () => { await runMirrorCommand(buildTmuxRestoreViewportCommand(pane.tabId, state), target.sshHost); },
+    scroll: (paneId, request) => scrollTmuxPaneLikeWheel(target, paneId, request),
   };
+}
+
+/**
+ * tmux 기본 휠 바인딩이 고르는 길을 그대로 밟는다. 바깥에서 tmux에 마우스 이벤트를 넣는 명령이 없어 갈림길만 옮겨 온다.
+ *
+ * 대체 화면이나 copy-mode, 마우스 보고를 켠 프로그램이면 휠을 pane에 넘긴다(`send-keys -M`). 그때 copy-mode는 휠 폭만큼 움직이고,
+ * 보고를 켠 프로그램은 휠 보고를 받으며, 보고를 켜지 않은 대체 화면 프로그램에는 아무것도 가지 않는다.
+ * 그 밖의 위로 굴린 휠은 copy-mode로 들어간다. 아래로 굴린 휠에는 기본 바인딩이 없다.
+ */
+async function scrollTmuxPaneLikeWheel(target: MirrorSessionTarget, paneId: string, request: TerminalScrollRequest): Promise<string | null> {
+  const wheelState = parseTmuxWheelState(await runMirrorCommand(buildTmuxWheelStateCommand(paneId), target.sshHost));
+  if (!wheelState) return null;
+  if (wheelState.isInCopyMode) {
+    await runMirrorCommand(buildTmuxCopyModeWheelCommand(paneId, request.direction), target.sshHost);
+    return readTmuxScreenAfterCopyModeWheel(target, paneId);
+  }
+  if (wheelState.isMouseReporting) {
+    const report = buildMouseWheelReport(request.direction, request.column, request.row, wheelState.encoding);
+    if (report) await runMirrorCommand(buildTmuxSendKeysCommand(paneId, report), target.sshHost);
+    return null;
+  }
+  if (wheelState.isAlternateScreen || request.direction === "down") return null;
+  await runMirrorCommand(buildTmuxEnterWheelCopyModeCommand(paneId), target.sshHost);
+  return readTmuxScreenAfterCopyModeWheel(target, paneId);
+}
+
+/** 맨 아래까지 내려 copy-mode가 끝났으면 프로그램 화면과 그 모드를 다시 보내고, 아직 copy-mode면 그 화면을 보낸다 */
+async function readTmuxScreenAfterCopyModeWheel(target: MirrorSessionTarget, paneId: string): Promise<string> {
+  const view = parseTmuxCopyModeView(await runMirrorCommand(buildTmuxCopyModeViewCommand(paneId), target.sshHost));
+  if (!view) return readPaneSnapshot(target, paneId);
+  return buildScreenRedraw(await runMirrorCommand(buildTmuxCaptureCopyModeViewCommand(paneId, view), target.sshHost), null);
 }
 
 async function createZellijViewportDriver(target: MirrorSessionTarget, taskId: string, paneId: string): Promise<PaneViewportDriver> {
@@ -1257,6 +1302,22 @@ async function createZellijViewportDriver(target: MirrorSessionTarget, taskId: s
         await new Promise((resolve) => setTimeout(resolve, VIEWPORT_SETTLE_POLL_INTERVAL_MS));
       } while (Date.now() < deadline);
       throw new Error("다른 Zellij 클라이언트나 탭 배치가 모바일 크기를 제한하고 있습니다.");
+    },
+    /**
+     * 데스크탑에 붙은 Zellij 클라이언트에 실제 휠을 넣어, Zellij가 pane 모드에 맞춰 휠 보고·화살표 키·자체 스크롤백 중 하나를 고르게 한다.
+     * 클라이언트는 활성 탭만 그리므로 크기를 맞출 때처럼 pane의 탭을 먼저 띄운다.
+     */
+    scroll: async (id, request) => {
+      const selected = await readGeometry(id);
+      await runMirrorCommand(buildZellijSelectTabCommand(target.sessionName, selected.tabId), target.sshHost);
+      if (!selected.contentOrigin) return null;
+      const { left, top } = selected.contentOrigin;
+      const report = buildMouseWheelReport(request.direction, left + request.column, top + request.row, "sgr");
+      if (!report) return null;
+      writeTaskTerminalInput(taskId, report);
+      // 휠은 클라이언트를 거쳐 비동기로 반영되므로 잠깐 기다린 뒤 떠야 움직인 화면이 담긴다.
+      await new Promise((resolve) => setTimeout(resolve, ZELLIJ_WHEEL_SETTLE_MS));
+      return readPaneSnapshot(target, id);
     },
     restore: async () => {
       try {
@@ -1360,13 +1421,14 @@ function createHerdrViewportDriver(target: MirrorSessionTarget, taskId: string, 
       });
     },
     /** 제어 연결은 모바일의 첫 크기 요청으로 열린다. 그 전에 온 휠은 보낼 곳이 없어 버린다 */
-    scroll: async (request) => {
+    scroll: async (_paneId, request) => {
       if (failure) throw failure;
       const child = controller;
-      if (!child?.stdin) return;
+      if (!child?.stdin) return null;
       child.stdin.write(`${JSON.stringify(buildHerdrScrollControlRecord(request))}\n`, (error) => {
         if (error) failController(child, error);
       });
+      return null;
     },
     restore: async () => {
       const child = controller;
@@ -1405,7 +1467,7 @@ function createHerdrViewportDriver(target: MirrorSessionTarget, taskId: string, 
 /** 창 배치를 공유하는 pane은 같은 줄에서 크기를 바꿔야 한 기기의 퇴장이 다른 기기의 화면을 되돌리지 않는다. */
 export async function claimPaneViewport(taskId: string, paneId: string): Promise<{
   resize: (cols: number, rows: number) => Promise<string | null>;
-  scroll: (record: Parameters<typeof parseTerminalScrollRequest>[0]) => Promise<void>;
+  scroll: (record: Parameters<typeof parseTerminalScrollRequest>[0]) => Promise<string | null>;
   release: () => Promise<void>;
 }> {
   if (paneViewportShutdown) throw new Error("데스크탑이 종료 중입니다.");
@@ -1455,8 +1517,8 @@ export async function claimPaneViewport(taskId: string, paneId: string): Promise
     /** 크기 요청과 같은 줄에 세워, 제어 연결이 열리고 반납되는 사이에 휠이 끼어들지 않게 한다 */
     scroll: async (record) => {
       const scrollRequest = parseTerminalScrollRequest(record);
-      if (!scrollRequest || released || !claimed.clients.has(id)) return;
-      await queuePaneViewport(claimed, async (driver) => driver.scroll?.(scrollRequest));
+      if (!scrollRequest || released || !claimed.clients.has(id)) return null;
+      return queuePaneViewport(claimed, async (driver) => (await driver.scroll?.(paneId, scrollRequest)) ?? null);
     },
     release: () => {
       if (released) return released;
@@ -1784,13 +1846,13 @@ export async function stopAllPaneMirrors(shutdown = false): Promise<void> {
 /** pane의 지금 화면을 모바일 터미널이 처음부터 다시 그리는 출력으로 떠 온다 */
 async function readPaneSnapshot(target: MirrorSessionTarget, paneId: string): Promise<string> {
   if (target.sessionType === SessionType.ZELLIJ) {
-    const dump = await runMirrorCommand(buildZellijDumpPaneCommand(target.sessionName, paneId), target.sshHost);
-    return buildScreenRedraw(dump, null);
+    const dump = await runMirrorCommand(buildZellijDumpViewportCommand(target.sessionName, paneId), target.sshHost);
+    return buildWheelDelegatedScreenRedraw(dump);
   }
 
   if (target.sessionType === SessionType.HERDR) {
     const recentScreen = await runMirrorCommand(buildHerdrRecentScreenCommand(target.sessionName, paneId), target.sshHost);
-    return buildHerdrScreenRedraw(recentScreen);
+    return buildWheelDelegatedScreenRedraw(recentScreen);
   }
 
   /** 화면과 커서를 한 번에 읽는다. 원격이면 왕복이 하나 줄고, 둘 사이에 화면이 바뀌는 틈도 좁아진다 */
