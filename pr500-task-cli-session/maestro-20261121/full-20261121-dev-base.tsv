@@ -1,0 +1,14 @@
+flow	result	maestro_rc	fixture	seconds
+terminal-clipboard	FAIL	1	ready	57
+mobile-shortcuts	FAIL	1	ready	34
+project-filter-notifications	FAIL	1	ready	92
+task-detail-notification-read	FAIL	1	ready	77
+chat-history	FAIL	1	ready	212
+pane-chat	BLOCKED	-	fixture-failed(2)	6
+focused-pane-chat	BLOCKED	-	fixture-failed(2)	6
+pane-chat-model-settings	BLOCKED	-	fixture-failed(2)	6
+pane-chat-claude-suggestion	BLOCKED	-	fixture-failed(2)	6
+pane-chat-skill-autocomplete	BLOCKED	-	fixture-failed(2)	6
+background-sync	PASS	0	ready	67
+multi-pc	FAIL	1	ready	92
+remote-terminal-transport	FAIL	1	ready	76

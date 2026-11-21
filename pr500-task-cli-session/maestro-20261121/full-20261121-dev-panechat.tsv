@@ -1,0 +1,6 @@
+flow	result	maestro_rc	fixture	seconds
+pane-chat	BLOCKED	-	fixture-failed(2)	53
+focused-pane-chat	BLOCKED	-	fixture-failed(2)	53
+pane-chat-model-settings	BLOCKED	-	fixture-failed(2)	52
+pane-chat-claude-suggestion	BLOCKED	-	fixture-failed(2)	52
+pane-chat-skill-autocomplete	PASS	0	ready	81

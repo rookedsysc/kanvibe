@@ -1,0 +1,7 @@
+terminal-clipboard	PR: [Failed] recording-wrapper (35s) (Assertion is false: "(Select all|모두 선택)" is visible)	DEV: [Failed] recording-wrapper (35s) (Assertion is false: "(Select all|모두 선택)" is visible)
+mobile-shortcuts	PR: [Failed] recording-wrapper (14s)	DEV: [Failed] recording-wrapper (14s)
+project-filter-notifications	PR: [Failed] recording-wrapper (1m 15s) (Assertion is false: id: project-filter-option-495df3bf-3a54-42ba-9324-6b88d36d2ced is not visible)	DEV: [Failed] recording-wrapper (1m 15s) (Assertion is false: id: project-filter-option-f00f3e15-09f0-47d4-90a1-dd69431e5143 is not visible)
+task-detail-notification-read	PR: [Failed] recording-wrapper (1m) (Assertion is false: "이 태스크에는 터미널 세션이 없습니다." is visible)	DEV: [Failed] recording-wrapper (1m) (Assertion is false: "이 태스크에는 터미널 세션이 없습니다." is visible)
+chat-history	PR: [Failed] recording-wrapper (3m 19s) (Element not found: Text matching regex: Dismiss menu)	DEV: [Failed] recording-wrapper (3m 17s) (Element not found: Text matching regex: Dismiss menu)
+multi-pc	PR: [Failed] recording-wrapper (1m 17s) (Assertion is false: "Studio task\nPrimary" is visible)	DEV: [Failed] recording-wrapper (1m 18s) (Assertion is false: "Studio task\nPrimary" is visible)
+remote-terminal-transport	PR: [Failed] recording-wrapper (1m 4s) (Assertion is false: id: pane-terminal is visible)	DEV: [Failed] recording-wrapper (1m 3s) (Assertion is false: id: pane-terminal is visible)
