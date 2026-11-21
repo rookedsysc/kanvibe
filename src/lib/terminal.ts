@@ -1,5 +1,6 @@
 import path from "path";
-import { ensureHerdrRemoteMachine, ensureHerdrSession, getHerdrClientSocketPath, handoffHerdrRemoteServer, HerdrServerHandoffRequiredError, readHerdrClientTabBarPosition } from "@/lib/herdr";
+import { ensureHerdrRemoteMachine, ensureHerdrSession, getHerdrClientSocketPath, handoffHerdrRemoteServer, HerdrServerHandoffRequiredError, listHerdrTaskPaneTabIds, readHerdrClientTabBarPosition } from "@/lib/herdr";
+import { execGit } from "@/lib/gitOperations";
 import { existsSync } from "fs";
 import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
@@ -791,6 +792,12 @@ async function spawnLocalSession(
   let zellijNeedsCreation = false;
   let herdrWorkspaceId: string | null = null;
 
+  const pendingPreparation = findPendingSessionPreparation(null, sessionName);
+  if (pendingPreparation) {
+    await pendingPreparation;
+    if (ws.readyState !== ws.OPEN) return;
+  }
+
   if (sessionType === SessionType.HERDR) {
     herdrWorkspaceId = await ensureHerdrSession(sessionName, cwd || process.env.HOME || "/", tmuxPaneLayout);
     if (ws.readyState !== ws.OPEN) return;
@@ -991,6 +998,11 @@ async function spawnRemoteSession(
   const terminalEnvironment = createLocalShellEnvironment();
   const terminalKey = buildTerminalKey(taskId, tabId);
   let herdrWorkspaceId: string | null = null;
+  const pendingPreparation = findPendingSessionPreparation(sshHost, sessionName);
+  if (pendingPreparation) {
+    await pendingPreparation;
+    if (ws.readyState !== ws.OPEN) return;
+  }
   if (sessionType !== SessionType.HERDR) {
     const connection = await getRemoteHostConnection(sshHost);
     if (connection) {
@@ -1144,22 +1156,10 @@ function buildRemoteTmuxAttachCommand(
   tmuxPaneLayout?: TmuxPaneLayoutConfig | null,
 ): string {
   const quotedSessionName = quoteForPosixShell(sessionName);
-  const buildBootstrapWithFallback = (enableClipboard: boolean) => {
-    const buildBootstrapCommand = (withoutUserConfigFile: boolean) => buildTmuxSessionBootstrapCommand(
-      sessionName,
-      worktreePath ?? "",
-      tmuxPaneLayout && tmuxPaneLayout.layoutType !== PaneLayoutType.SINGLE
-        ? tmuxPaneLayout
-        : null,
-      { attachAfterBootstrap: true, withoutUserConfigFile, enableClipboard },
-    );
-    const bootstrapWithRetry = [
-      buildBootstrapCommand(false),
-      `{ tmux kill-session -t ${quotedSessionName} 2>/dev/null; ${buildBootstrapCommand(true)}; }`,
-    ].join(" || ");
-
-    return `${bootstrapWithRetry} || { ${buildRemoteInteractiveShellFallbackCommand()}; };`;
-  };
+  const bootstrapThenAttach = buildRemoteTmuxBootstrapCommand(sessionName, worktreePath, tmuxPaneLayout, {
+    attachAfterBootstrap: true,
+    failureCommand: buildRemoteInteractiveShellFallbackCommand(),
+  });
 
   return [
     `if tmux has-session -t ${quotedSessionName} 2>/dev/null; then`,
@@ -1170,10 +1170,43 @@ function buildRemoteTmuxAttachCommand(
      */
     `${buildTmuxHideStatusBarCommand(sessionName)} 2>/dev/null;`,
     `exec tmux attach-session -t ${quotedSessionName};`,
-    `else __kanvibe_clipboard_probe=0; ${buildTmuxUserClipboardDirectiveTestCommand()} || __kanvibe_clipboard_probe=$?;`,
+    `else ${bootstrapThenAttach}`,
+    "fi",
+  ].join(" ");
+}
+
+/**
+ * 원격 tmux 세션을 만드는 셸 조각. 사용자가 tmux 설정에서 set-clipboard를 정해 뒀으면 그 값을 건드리지 않는다.
+ * 사용자 설정 때문에 기동이 실패하면 설정 없이 한 번 더 만들고, 그래도 실패하면 failureCommand를 실행한다.
+ */
+function buildRemoteTmuxBootstrapCommand(
+  sessionName: string,
+  worktreePath: string | null | undefined,
+  tmuxPaneLayout: TmuxPaneLayoutConfig | null | undefined,
+  options: { attachAfterBootstrap: boolean; failureCommand: string },
+): string {
+  const quotedSessionName = quoteForPosixShell(sessionName);
+  const buildBootstrapWithFallback = (enableClipboard: boolean) => {
+    const buildBootstrapCommand = (withoutUserConfigFile: boolean) => buildTmuxSessionBootstrapCommand(
+      sessionName,
+      worktreePath ?? "",
+      tmuxPaneLayout && tmuxPaneLayout.layoutType !== PaneLayoutType.SINGLE
+        ? tmuxPaneLayout
+        : null,
+      { attachAfterBootstrap: options.attachAfterBootstrap, withoutUserConfigFile, enableClipboard },
+    );
+    const bootstrapWithRetry = [
+      buildBootstrapCommand(false),
+      `{ tmux kill-session -t ${quotedSessionName} 2>/dev/null; ${buildBootstrapCommand(true)}; }`,
+    ].join(" || ");
+
+    return `${bootstrapWithRetry} || { ${options.failureCommand}; };`;
+  };
+
+  return [
+    `__kanvibe_clipboard_probe=0; ${buildTmuxUserClipboardDirectiveTestCommand()} || __kanvibe_clipboard_probe=$?;`,
     `if [ "$__kanvibe_clipboard_probe" -eq 1 ]; then ${buildBootstrapWithFallback(true)}`,
     `else ${buildBootstrapWithFallback(false)} fi;`,
-    "fi",
   ].join(" ");
 }
 
@@ -1220,6 +1253,125 @@ function buildRemoteZellijAttachCommand(
   }
 
   return `${attachWhenAlive} exec zellij ${createArguments.join(" ")}`;
+}
+
+/**
+ * 화면 attach 없이 원격 zellij 세션을 background로 만든다. 레이아웃 파일이 있으면 적용한다.
+ * attach 명령과 같은 이유로 cd 실패는 기본 디렉터리에서 계속하되, 세션 생성 실패는 명령 실패로 남긴다.
+ */
+function buildRemoteZellijPrepareCommand(sessionName: string, worktreePath: string | null): string {
+  const quotedSessionName = quoteForPosixShell(sessionName);
+  const createInBackground = `zellij attach --create-background ${quotedSessionName}`;
+  const createSteps = worktreePath
+    ? [
+        `cd ${quoteForPosixShell(worktreePath)} 2>/dev/null || true;`,
+        `if [ -f ${quoteForPosixShell(path.posix.join(worktreePath, ZELLIJ_LAYOUT_FILENAME))} ]; then`,
+        `zellij --layout ${quoteForPosixShell(path.posix.join(worktreePath, ZELLIJ_LAYOUT_FILENAME))} attach --create-background ${quotedSessionName};`,
+        `else ${createInBackground}; fi`,
+      ].join(" ")
+    : createInBackground;
+
+  return `if ${buildZellijAliveSessionCheckCommand(sessionName)}; then :; else ${createSteps}; fi`;
+}
+
+/** 화면 attach 없이 세션만 준비한 결과. 에이전트가 같은 세션에 접속할 수 있게 접속 대상을 함께 돌려준다 */
+export interface PreparedTerminalSession {
+  isPrepared: boolean;
+  /** 준비하지 않은 이유. terminal 타입처럼 미리 만들 세션이 없을 때만 있다 */
+  skippedReason?: string;
+  herdrWorkspaceId?: string;
+  herdrPanes?: { paneId: string; tabId: string }[];
+}
+
+export interface TerminalSessionPreparationTarget {
+  taskId: string;
+  sessionType: SessionType;
+  sessionName: string;
+  worktreePath: string | null;
+  sshHost: string | null;
+  tmuxPaneLayout: TmuxPaneLayoutConfig | null;
+}
+
+/**
+ * 같은 세션의 준비가 겹치면 tmux는 두 번째 생성이 실패하고, 실패 재시도 경로의 kill-session이
+ * 먼저 만들어진 세션을 지운다. 그래서 같은 세션의 준비는 진행 중인 하나를 함께 기다린다.
+ */
+const pendingSessionPreparations = new Map<string, Promise<PreparedTerminalSession>>();
+
+function buildSessionPreparationKey(sshHost: string | null | undefined, sessionName: string): string {
+  return JSON.stringify([sshHost ?? null, sessionName]);
+}
+
+/**
+ * 화면 attach가 세션을 만들기 전에 확인한다. 같은 세션을 CLI가 준비하는 중일 때만 기다릴 약속을 돌려줘,
+ * 준비가 없는 평소 attach는 지금과 같은 순서로 바로 진행한다.
+ */
+function findPendingSessionPreparation(sshHost: string | null | undefined, sessionName: string): Promise<unknown> | undefined {
+  return pendingSessionPreparations.get(buildSessionPreparationKey(sshHost, sessionName))?.catch(() => undefined);
+}
+
+/**
+ * task의 멀티플렉서 세션을 화면 attach와 같은 부트스트랩으로 만든다. 이미 있으면 그대로 둔다.
+ * attach 없이 세션만 있어야 에이전트가 화면이 보여 줄 세션 안에서 작업을 시작할 수 있다.
+ */
+export function prepareTerminalSession(target: TerminalSessionPreparationTarget): Promise<PreparedTerminalSession> {
+  const preparationKey = buildSessionPreparationKey(target.sshHost, target.sessionName);
+  const pendingPreparation = pendingSessionPreparations.get(preparationKey);
+  if (pendingPreparation) return pendingPreparation;
+
+  const preparation = runTerminalSessionPreparation(target).finally(() => {
+    pendingSessionPreparations.delete(preparationKey);
+  });
+  pendingSessionPreparations.set(preparationKey, preparation);
+  return preparation;
+}
+
+async function runTerminalSessionPreparation(target: TerminalSessionPreparationTarget): Promise<PreparedTerminalSession> {
+  if (target.sessionType === SessionType.TERMINAL) {
+    return { isPrepared: false, skippedReason: "terminal 세션은 화면에서 열 때 셸을 새로 띄우므로 미리 만들 세션이 없습니다." };
+  }
+
+  /** 화면이 같은 task의 터미널을 만드는 중이면 그 attach가 세션을 만들므로 끝나기를 기다린 뒤 확인만 한다 */
+  const terminalBeingCreated = findSharedTerminal(buildTerminalKey(target.taskId, null));
+  if (terminalBeingCreated instanceof Promise) await terminalBeingCreated.catch(() => null);
+
+  const workingDirectory = target.worktreePath || (target.sshHost ? "~" : process.env.HOME || "/");
+  if (target.sessionType === SessionType.HERDR) {
+    const workspaceId = await ensureHerdrSession(target.sessionName, workingDirectory, target.tmuxPaneLayout, target.sshHost);
+    if (!workspaceId) throw new Error("Herdr Space를 준비하지 못했습니다.");
+    const herdrPanes = await listHerdrTaskPaneTabIds(target.sessionName, target.sshHost);
+    return { isPrepared: true, herdrWorkspaceId: workspaceId, herdrPanes: herdrPanes.map(({ paneId, tabId }) => ({ paneId, tabId })) };
+  }
+
+  if (target.sshHost) {
+    const prepareCommand = target.sessionType === SessionType.TMUX
+      ? `if tmux has-session -t ${quoteForPosixShell(target.sessionName)} 2>/dev/null; then :; else ${buildRemoteTmuxBootstrapCommand(
+          target.sessionName, target.worktreePath, target.tmuxPaneLayout, { attachAfterBootstrap: false, failureCommand: "exit 1" },
+        )} fi`
+      : buildRemoteZellijPrepareCommand(target.sessionName, target.worktreePath);
+    await execGit(buildRemoteShellCommand(prepareCommand), target.sshHost, { timeoutMs: TMUX_BOOTSTRAP_TIMEOUT_MS });
+    return { isPrepared: true };
+  }
+
+  const terminalEnvironment = createLocalShellEnvironment();
+  if (target.sessionType === SessionType.TMUX) {
+    if (!isTmuxSessionAlive(target.sessionName)) {
+      bootstrapLocalTmuxSession(target.sessionName, workingDirectory, target.tmuxPaneLayout, terminalEnvironment);
+    }
+    return { isPrepared: true };
+  }
+
+  if (!isZellijSessionAlive(target.sessionName)) {
+    const layoutFile = target.worktreePath ? path.join(target.worktreePath, ZELLIJ_LAYOUT_FILENAME) : null;
+    const layoutArgument = layoutFile && existsSync(layoutFile) ? `--layout ${quoteForPosixShell(layoutFile)} ` : "";
+    execSync(`zellij ${layoutArgument}attach --create-background ${quoteForPosixShell(target.sessionName)}`, {
+      cwd: workingDirectory,
+      env: terminalEnvironment,
+      timeout: TMUX_BOOTSTRAP_TIMEOUT_MS,
+      stdio: "ignore",
+    });
+  }
+  return { isPrepared: true };
 }
 
 function buildRemoteInteractiveShellFallbackCommand(): string {

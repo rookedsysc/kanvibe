@@ -1,5 +1,6 @@
 import { SessionType, type KanbanTask } from "@/entities/KanbanTask";
 import type { Project } from "@/entities/Project";
+import { TaskPriority } from "@/entities/TaskPriority";
 import { broadcastBoardUpdate } from "@/lib/boardNotifier";
 import { getProjectRepository, getTaskRepository } from "@/lib/database";
 import { isSafeGitRef } from "@/lib/gitRef";
@@ -17,6 +18,7 @@ import {
   propagateTaskRegistrationToPeers,
   type PeerTargetResult,
 } from "@/desktop/main/services/taskTargetPropagationService";
+import { prepareTaskTerminal } from "@/desktop/main/terminalBridge";
 
 /** CLI 요청을 거절할 때 HTTP 응답 코드와 함께 던진다 */
 export class TaskCliRequestError extends Error {
@@ -26,6 +28,15 @@ export class TaskCliRequestError extends Error {
   }
 }
 
+/** 에이전트가 화면과 같은 세션에 접속하는 데 쓰는 준비 결과. 준비에 실패하면 error만 있고 task는 그대로 남는다 */
+export interface CliTaskSession {
+  isPrepared: boolean;
+  skippedReason?: string;
+  error?: string;
+  herdrWorkspaceId?: string;
+  herdrPanes?: { paneId: string; tabId: string }[];
+}
+
 export interface CreatedCliTask {
   id: string;
   projectId: string | null;
@@ -33,8 +44,32 @@ export interface CreatedCliTask {
   baseBranch: string | null;
   worktreePath: string | null;
   sessionType: SessionType | null;
+  sessionName: string | null;
+  sshHost: string | null;
   status: string;
+  session: CliTaskSession;
   peers: PeerTargetResult[];
+}
+
+export interface PreparedCliTaskSession {
+  id: string;
+  branchName: string | null;
+  sessionType: SessionType | null;
+  sessionName: string | null;
+  sshHost: string | null;
+  session: CliTaskSession;
+}
+
+export interface ListedCliTask {
+  id: string;
+  title: string;
+  branchName: string | null;
+  status: string;
+  priority: TaskPriority | null;
+  worktreePath: string | null;
+  sessionType: SessionType | null;
+  sessionName: string | null;
+  sshHost: string | null;
 }
 
 export interface DeletedCliTask {
@@ -74,6 +109,8 @@ export async function createTaskFromCli(
   const { contextTask, project } = await authorizeTaskContext(authorizationHeader, body, sourceSshHosts);
   const branchName = readGitRefField(body, "branchName");
   const title = readOptionalStringField(body, "title");
+  const description = readOptionalStringField(body, "description");
+  const priority = readPriorityField(body);
   const requestedSessionType = readSessionTypeField(body);
   const creationBase = await resolveCreationBase(body, contextTask, project);
 
@@ -83,12 +120,18 @@ export async function createTaskFromCli(
 
   const createdTask = await createTask({
     title: title || branchName,
+    description,
+    priority,
     branchName,
     baseBranch: creationBase.baseBranch,
     sessionType: requestedSessionType ?? creationBase.inheritedSessionType ?? SessionType.TERMINAL,
     projectId: project.id,
   });
-  const peers = await propagateTaskRegistrationToPeers(project.repoPath, branchName, project.sshHost);
+  // 전파와 세션 준비는 서로의 결과를 쓰지 않으므로 함께 시작해 응답 지연을 둘 중 긴 쪽으로 줄인다
+  const [peers, { createdTaskEntity, session }] = await Promise.all([
+    propagateTaskRegistrationToPeers(project.repoPath, branchName, project.sshHost),
+    prepareCreatedTaskSession(createdTask.id, project),
+  ]);
 
   return {
     id: createdTask.id,
@@ -97,9 +140,76 @@ export async function createTaskFromCli(
     baseBranch: createdTask.baseBranch,
     worktreePath: createdTask.worktreePath,
     sessionType: createdTask.sessionType,
+    sessionName: createdTaskEntity.sessionName,
+    sshHost: createdTaskEntity.sshHost,
     status: createdTask.status,
+    session,
     peers,
   };
+}
+
+/** 같은 프로젝트의 task를 돌려준다. 토큰 하나로 볼 수 있는 범위를 생성·삭제와 같은 프로젝트 안으로 묶는다 */
+export async function listTasksFromCli(
+  authorizationHeader: string | undefined,
+  body: CliRequestBody,
+  sourceSshHosts?: ReadonlySet<string>,
+): Promise<ListedCliTask[]> {
+  const { project } = await authorizeTaskContext(authorizationHeader, body, sourceSshHosts);
+  const projectTasks = await (await getTaskRepository()).find({ where: { projectId: project.id }, order: { createdAt: "ASC" } });
+
+  return projectTasks.map((task) => ({
+    id: task.id,
+    title: task.title,
+    branchName: task.branchName,
+    status: task.status,
+    priority: task.priority,
+    worktreePath: task.worktreePath,
+    sessionType: task.sessionType,
+    sessionName: task.sessionName,
+    sshHost: task.sshHost,
+  }));
+}
+
+/**
+ * task의 세션을 준비한다. 브랜치를 주지 않으면 요청한 worktree의 task가 대상이다.
+ * 세션 생성 전에 만든 task나 준비가 실패했던 task를 에이전트가 다시 준비할 때 쓴다.
+ */
+export async function prepareTaskSessionFromCli(
+  authorizationHeader: string | undefined,
+  body: CliRequestBody,
+  sourceSshHosts?: ReadonlySet<string>,
+): Promise<PreparedCliTaskSession> {
+  const { contextTask, project } = await authorizeTaskContext(authorizationHeader, body, sourceSshHosts);
+  const targetTask = await resolveBranchTarget(body, contextTask, project);
+  const session = await prepareCliTaskSession(targetTask);
+
+  return {
+    id: targetTask.id,
+    branchName: targetTask.branchName,
+    sessionType: targetTask.sessionType,
+    sessionName: targetTask.sessionName,
+    sshHost: targetTask.sshHost,
+    session,
+  };
+}
+
+async function prepareCreatedTaskSession(createdTaskId: string, project: Project): Promise<{ createdTaskEntity: KanbanTask; session: CliTaskSession }> {
+  const createdTaskEntity = await findTaskInProject({ id: createdTaskId }, project, `만든 task를 찾을 수 없습니다: ${createdTaskId}`);
+  return { createdTaskEntity, session: await prepareCliTaskSession(createdTaskEntity) };
+}
+
+/** 세션 준비 실패는 task 생성 실패가 아니므로 응답에만 남기고, 에이전트가 session 명령으로 다시 시도하게 한다 */
+async function prepareCliTaskSession(task: KanbanTask): Promise<CliTaskSession> {
+  if (!task.sessionType || !task.sessionName) {
+    return { isPrepared: false, error: "task에 연결된 세션이 없습니다." };
+  }
+
+  try {
+    return await prepareTaskTerminal(task);
+  } catch (error) {
+    console.error("[task-cli] 세션을 준비하지 못했습니다", { taskId: task.id, error });
+    return { isPrepared: false, error: error instanceof Error ? error.message : "세션을 준비하지 못했습니다." };
+  }
 }
 
 /**
@@ -116,7 +226,10 @@ export async function deleteTaskFromCli(
     throw new TaskCliRequestError("삭제를 확인하는 confirmed: true가 필요합니다.", 400);
   }
 
-  const targetTask = await resolveDeletionTarget(body, contextTask, project);
+  const targetTask = await resolveBranchTarget(body, contextTask, project);
+  if (targetTask.branchName === project.defaultBranch) {
+    throw new TaskCliRequestError(`프로젝트 기본 브랜치(${project.defaultBranch})의 task는 CLI로 지울 수 없습니다. KanVibe 화면에서 지우세요.`, 403);
+  }
 
   try {
     const deletion = await deleteTaskAcrossTargets(targetTask.id, {
@@ -234,7 +347,7 @@ async function resolveCreationBase(
   return { baseBranch: fromTask.branchName, inheritedSessionType: fromTask.sessionType };
 }
 
-async function resolveDeletionTarget(
+async function resolveBranchTarget(
   body: CliRequestBody,
   contextTask: KanbanTask,
   project: Project,
@@ -285,6 +398,19 @@ function readGitRefField(body: CliRequestBody, fieldName: string): string {
     throw new TaskCliRequestError(`${fieldName}에 쓸 수 없는 문자가 있습니다: ${value}`, 400);
   }
   return value;
+}
+
+function readPriorityField(body: CliRequestBody): TaskPriority | undefined {
+  const value = readOptionalStringField(body, "priority");
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const priority = Object.values(TaskPriority).find((candidate) => candidate === value);
+  if (!priority) {
+    throw new TaskCliRequestError(`priority 값이 올바르지 않습니다: ${value} (low, medium, high 중 하나)`, 400);
+  }
+  return priority;
 }
 
 function readSessionTypeField(body: CliRequestBody): SessionType | undefined {

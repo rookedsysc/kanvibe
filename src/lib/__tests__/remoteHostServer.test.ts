@@ -118,6 +118,15 @@ describe("remote host provider", () => {
     peer.socket.destroy();
     await expect.poll(() => post("client-one", '{"taskId":"fixture","status":"done"}')).toEqual({ status: 503, body: "Desktop offline; request not replayed" });
   });
+  it.each(["/api/cli/tasks/list", "/api/cli/tasks/session"])("task CLI의 %s 요청과 토큰을 연결된 데스크탑에 넘긴다", async (requestPath) => {
+    await start(); const peer = await client(); await peer.next("ready");
+    const pending = post("client-one", '{"contextTaskId":"fixture"}', { authorization: "Bearer task-token" }, requestPath);
+    const hook = await peer.next("hook.request");
+    expect(hook.path).toBe(requestPath);
+    expect((hook.headers as Record<string, string>).authorization).toBe("Bearer task-token");
+    peer.send({ type: "hook.response", id: hook.id, status: 200, headers: { "content-type": "application/json" }, body: Buffer.from("[]").toString("base64") });
+    expect(await pending).toEqual({ status: 200, body: "[]" });
+  });
   it("rejects duplicate live client IDs without replacing the first desktop", async () => {
     await start(); const first = await client(); const original = await first.next("ready");
     const second = await client(); expect((await second.next("error")).error).toBeTruthy();

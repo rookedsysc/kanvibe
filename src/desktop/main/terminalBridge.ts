@@ -4,7 +4,7 @@ import { EventEmitter } from "node:events";
 import type { WebContents } from "electron";
 import { getProjectRepository, getTaskRepository } from "@/lib/database";
 import { SessionType, type KanbanTask } from "@/entities/KanbanTask";
-import { attachLocalSession, attachRemoteSession, focusSession } from "@/lib/terminal";
+import { attachLocalSession, attachRemoteSession, focusSession, prepareTerminalSession, type PreparedTerminalSession } from "@/lib/terminal";
 import { parseSSHConfig, type SSHHostConfig } from "@/lib/sshConfig";
 import { ensureRemoteSessionDependency } from "@/lib/remoteSessionDependency";
 import { clearRemoteSSHTransportCooldown } from "@/lib/gitOperations";
@@ -208,6 +208,10 @@ export async function attachTaskTerminal(
   if (client.readyState !== client.OPEN) return;
   if (!task.sshHost) {
     await attachLocalSession(task.id, tabId, sessionType, sessionName, client as never, task.worktreePath, cols, rows, tmuxPaneLayout);
+    if (client.readyState === client.OPEN) {
+      // 상태 hook은 task 토큰이 있어야 받아지므로, 토큰을 보내지 않는 이전 버전 hook을 로컬 task도 접속할 때 갱신한다.
+      void ensureTerminalHooks(task).catch(() => {});
+    }
     return;
   }
 
@@ -267,6 +271,34 @@ export async function attachTaskTerminal(
     // 실패 알림은 ensureTerminalHooks가 처리한다. 열린 터미널의 수명과 분리한다.
     void ensureTerminalHooks(task).catch(() => {});
   }
+}
+
+/**
+ * 화면 attach 없이 태스크의 세션만 만든다. 이미 있으면 그대로 둔다.
+ * attach와 같은 pane 레이아웃, 원격 의존성 확인, 초기 pane 명령 전 hook 확인을 거쳐야 화면이 나중에 같은 세션을 연다.
+ */
+export async function prepareTaskTerminal(task: KanbanTask): Promise<PreparedTerminalSession> {
+  const sessionType = task.sessionType as SessionType;
+  const tmuxPaneLayout = (sessionType === SessionType.TMUX || sessionType === SessionType.HERDR)
+    ? await getEffectivePaneLayout(task.projectId ?? undefined)
+    : null;
+
+  if (task.sshHost && sessionType !== SessionType.TERMINAL) {
+    clearRemoteSSHTransportCooldown(task.sshHost);
+    await ensureRemoteSessionDependency(sessionType, task.sshHost);
+    if (tmuxPaneLayout?.panes.some((pane) => pane.command.trim())) {
+      await ensureTerminalHooks(task);
+    }
+  }
+
+  return prepareTerminalSession({
+    taskId: task.id,
+    sessionType,
+    sessionName: task.sessionName as string,
+    worktreePath: task.worktreePath,
+    sshHost: task.sshHost,
+    tmuxPaneLayout,
+  });
 }
 
 async function ensureTerminalHooks(task: KanbanTask): Promise<void> {

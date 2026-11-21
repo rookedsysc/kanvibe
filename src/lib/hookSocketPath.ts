@@ -8,7 +8,7 @@ import { isValidHostNamespace } from "./remoteHostProtocol";
 const HOOK_SOCKET_DIR_SHELL = '/tmp/kv-$(id -u)';
 const HOOK_CLIENT_ID_PATTERN = /^[A-Za-z0-9-]+$/;
 
-export const HOOK_TRANSPORT_VERSION_MARKER = "KANVIBE_HOOK_TRANSPORT_VERSION=3";
+export const HOOK_TRANSPORT_VERSION_MARKER = "KANVIBE_HOOK_TRANSPORT_VERSION=4";
 export const HOOK_LOOPBACK_URL_PATTERN = String.raw`^https?://(localhost|127[.]0[.]0[.]1|\[::1\])(:[0-9]+)?/?$`;
 
 /** transport가 없는 구형 등록도 loopback 주소만 TCP를 허용한다. */

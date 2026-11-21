@@ -261,6 +261,66 @@ describe("shellHookScript", () => {
     }
   });
 
+  it("client마다 자기 task 토큰을 Authorization 헤더로 표준 입력에 실어 보내고, 명령줄에는 토큰을 남기지 않는다", async () => {
+    const repoPath = await mkdtemp(join(tmpdir(), "kanvibe-hook-token-"));
+
+    try {
+      const sandboxBinDir = join(repoPath, "sandbox-bin");
+      await mkdir(join(repoPath, ".kanvibe"), { recursive: true });
+      await mkdir(sandboxBinDir, { recursive: true });
+      /** transport와 namespace가 비어 있는 항목이 앞 칸을 밀어내도 토큰 칸이 어긋나지 않는지 함께 본다 */
+      await writeFile(
+        join(repoPath, ".kanvibe", "targets.json"),
+        JSON.stringify({
+          schemaVersion: 1,
+          targets: [
+            { url: "http://127.0.0.1:9736", taskId: "local-task", token: "localtoken1" },
+            { url: "http://localhost:9737", taskId: "dev-task", token: "devtoken2", clientId: "client-2", transport: "local" },
+          ],
+        }),
+        "utf8",
+      );
+
+      for (const tool of ["bash", "grep", "awk", "sed", "date", "mkdir", "touch", "dirname", "cat"]) {
+        await symlink(resolveRealBinary(tool)!, join(sandboxBinDir, tool));
+      }
+      const curlLogPath = join(repoPath, "curl.log");
+      const fakeCurlPath = join(sandboxBinDir, "curl");
+      await writeFile(
+        fakeCurlPath,
+        ["#!/bin/sh", 'headers="$(cat)"', 'printf \'%s | %s\\n\' "$headers" "$*" >> "$KANVIBE_CURL_LOG"'].join("\n"),
+        "utf8",
+      );
+      await chmod(fakeCurlPath, 0o755);
+
+      const hookDir = join(repoPath, ".claude", "hooks");
+      await mkdir(hookDir, { recursive: true });
+      const scriptPath = join(hookDir, "kanvibe-test-hook.sh");
+      await writeFile(
+        scriptPath,
+        ["#!/bin/bash", 'KANVIBE_URL="http://fallback:9736"', buildShellTaskIdResolver("fallback-task"), buildShellKanvibeStatusUpdater("review")].join("\n"),
+        "utf8",
+      );
+      await execFileAsync(resolveRealBinary("bash")!, [scriptPath], {
+        cwd: repoPath,
+        env: { PATH: sandboxBinDir, HOME: repoPath, KANVIBE_CURL_LOG: curlLogPath },
+      });
+
+      const deliveries = (await readFile(curlLogPath, "utf8")).trim().split("\n").map((line) => {
+        const [headers, argv] = line.split(" | ");
+        return { headers, taskId: argv.match(/"taskId":\s*"([^"]+)"/)?.[1], argv };
+      }).sort((left, right) => (left.taskId ?? "").localeCompare(right.taskId ?? ""));
+
+      expect(deliveries.map(({ headers, taskId }) => ({ headers, taskId }))).toEqual([
+        { headers: "Authorization: Bearer devtoken2", taskId: "dev-task" },
+        { headers: "Authorization: Bearer localtoken1", taskId: "local-task" },
+      ]);
+      expect(deliveries.every(({ argv }) => !argv.includes("devtoken2") && !argv.includes("localtoken1"))).toBe(true);
+    } finally {
+      await rm(repoPath, { recursive: true, force: true });
+    }
+  });
+
   it("status json persistence 판정은 legacy status.md hook을 거부한다", () => {
     const updater = buildShellKanvibeStatusUpdater("review");
     const legacyUpdater = updater.replaceAll("status.json", "status.md");

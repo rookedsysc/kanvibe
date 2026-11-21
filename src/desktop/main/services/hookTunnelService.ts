@@ -28,6 +28,13 @@ const TUNNEL_STABLE_AFTER_MS = 30_000;
 const TUNNEL_SERVER_ALIVE_INTERVAL_SECONDS = 15;
 const TUNNEL_SERVER_ALIVE_COUNT_MAX = 2;
 const TUNNEL_CONNECT_TIMEOUT_SECONDS = 10;
+/** 상태 hook은 금방 끝나므로 응답이 없으면 빨리 포기한다 */
+const HOOK_FORWARD_IDLE_TIMEOUT_MS = 12_000;
+/**
+ * task CLI는 원격 worktree 생성과 세션 준비까지 마친 뒤에야 응답하므로 상태 hook보다 오래 기다린다.
+ * 원격 호스트가 데스크탑 응답을 기다리는 상한(120초)보다 짧게 잡아, 원격 쪽이 먼저 끊어 결과를 잃지 않게 한다.
+ */
+const TASK_CLI_FORWARD_IDLE_TIMEOUT_MS = 110_000;
 /** Unix 소켓 경로 길이 제한(약 104자)을 넘지 않도록 os.tmpdir() 대신 짧은 경로를 쓴다 */
 const LOCAL_SOCKET_DIRECTORY_PREFIX = "/tmp/kvh-";
 
@@ -171,7 +178,8 @@ function forwardHostHookRequest(tunnel: HookTunnel, record: HostRecord): Promise
         resolve({ status: response.statusCode ?? 502, headers, body: Buffer.concat(chunks).toString("base64") });
       });
     });
-    request.setTimeout(12_000, () => request.destroy(new Error("Hook request timed out")));
+    const idleTimeoutMs = record.path.startsWith("/api/cli/") ? TASK_CLI_FORWARD_IDLE_TIMEOUT_MS : HOOK_FORWARD_IDLE_TIMEOUT_MS;
+    request.setTimeout(idleTimeoutMs, () => request.destroy(new Error("Hook request timed out")));
     request.once("error", reject);
     try { request.end(decodeHostBytes(record.body, HOST_RECORD_BYTES / 2)); } catch (error) { request.destroy(); reject(error); }
   });

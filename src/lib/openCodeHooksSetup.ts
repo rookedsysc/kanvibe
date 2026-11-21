@@ -99,7 +99,7 @@ export const KanvibePlugin: Plugin = async ({ client }) => {
     }
   }
 
-  type KanvibeTarget = { url: string; taskId: string; clientId?: string; transport?: string; remoteHostNamespace?: string };
+  type KanvibeTarget = { url: string; taskId: string; token?: string; clientId?: string; transport?: string; remoteHostNamespace?: string };
 
   function normalizeKanvibeUrl(url: string): string {
     return url.trim().replace(/\\/+$/, "");
@@ -128,11 +128,12 @@ export const KanvibePlugin: Plugin = async ({ client }) => {
         const clientId = typeof target?.clientId === "string" && /^[A-Za-z0-9-]+$/.test(target.clientId)
           ? target.clientId
           : undefined;
+        const token = typeof target?.token === "string" && /^[A-Za-z0-9]+$/.test(target.token) ? target.token : undefined;
         seenUrls.add(url);
         const transport = target.transport === undefined ? undefined : String(target.transport);
         const remoteHostNamespace = target.remoteHostNamespace;
         if (remoteHostNamespace !== undefined && (typeof remoteHostNamespace !== "string" || !/^(dev|prod|qa-[a-z0-9-]{1,24})$/.test(remoteHostNamespace))) continue;
-        normalizedTargets.push({ url, taskId, clientId, transport, remoteHostNamespace });
+        normalizedTargets.push({ url, taskId, token, clientId, transport, remoteHostNamespace });
       }
 
       return normalizedTargets.length > 0 ? normalizedTargets : getFallbackKanvibeTarget();
@@ -168,7 +169,11 @@ export const KanvibePlugin: Plugin = async ({ client }) => {
     const response = await fetch(target.url + "/api/hooks/status", {
       method: "POST",
       redirect: "error",
-      headers: { "Content-Type": "application/json", ...(unix ? { "x-kanvibe-client-id": target.clientId ?? "" } : {}) },
+      headers: {
+        "Content-Type": "application/json",
+        ...(target.token ? { Authorization: "Bearer " + target.token } : {}),
+        ...(unix ? { "x-kanvibe-client-id": target.clientId ?? "" } : {}),
+      },
       body: JSON.stringify({ taskId: target.taskId, status }),
       signal: AbortSignal.timeout(KANVIBE_NOTIFY_TIMEOUT_MS),
       ...(unix ? { unix } : {}),

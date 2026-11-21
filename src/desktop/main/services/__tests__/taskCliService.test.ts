@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => {
 
   return {
     DirtyWorktreeError,
-    taskRepo: { findOneBy: vi.fn() },
+    taskRepo: { findOneBy: vi.fn(), find: vi.fn() },
     projectRepo: { findOneBy: vi.fn() },
     createTask: vi.fn(),
     deleteTaskAcrossTargets: vi.fn(),
@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => {
     isValidTaskCliToken: vi.fn(),
     propagateTaskRegistrationToPeers: vi.fn(),
     broadcastBoardUpdate: vi.fn(),
+    prepareTaskTerminal: vi.fn(),
   };
 });
 
@@ -54,7 +55,11 @@ vi.mock("@/desktop/main/services/taskTargetPropagationService", () => ({
   propagateTaskRegistrationToPeers: mocks.propagateTaskRegistrationToPeers,
 }));
 
-const { createTaskFromCli, deleteTaskFromCli, registerTaskFromPeer } = await import(
+vi.mock("@/desktop/main/terminalBridge", () => ({
+  prepareTaskTerminal: mocks.prepareTaskTerminal,
+}));
+
+const { createTaskFromCli, deleteTaskFromCli, listTasksFromCli, prepareTaskSessionFromCli, registerTaskFromPeer } = await import(
   "@/desktop/main/services/taskCliService"
 );
 
@@ -69,10 +74,16 @@ const CONTEXT_TASK = {
 };
 const PEER_RESULTS = [{ url: "http://10.0.0.7:9736", isSuccess: true, httpStatus: "200", message: "ok" }];
 
+let knownTasks: Array<Record<string, unknown>> = [];
+
 /** id나 브랜치, 프로젝트가 모두 맞는 task만 돌려줘 실제 저장소 조회처럼 프로젝트 경계를 지킨다 */
 function givenTasks(tasks: Array<Record<string, unknown>>): void {
+  knownTasks = [...tasks];
   mocks.taskRepo.findOneBy.mockImplementation(async (where: Record<string, unknown>) => (
-    tasks.find((task) => Object.entries(where).every(([key, value]) => task[key] === value)) ?? null
+    knownTasks.find((task) => Object.entries(where).every(([key, value]) => task[key] === value)) ?? null
+  ));
+  mocks.taskRepo.find.mockImplementation(async ({ where }: { where: { projectId: string } }) => (
+    knownTasks.filter((task) => task.projectId === where.projectId)
   ));
 }
 
@@ -94,12 +105,19 @@ describe("taskCliService", () => {
     mocks.projectRepo.findOneBy.mockResolvedValue(PROJECT);
     mocks.getTaskIdByProjectAndBranch.mockResolvedValue(null);
     mocks.propagateTaskRegistrationToPeers.mockResolvedValue(PEER_RESULTS);
-    mocks.createTask.mockImplementation(async (input: Record<string, unknown>) => ({
-      id: "created-task",
-      status: "todo",
-      worktreePath: "/remote/repo__worktrees/feat-new",
-      ...input,
-    }));
+    mocks.createTask.mockImplementation(async (input: Record<string, unknown>) => {
+      const createdTask = {
+        id: "created-task",
+        status: "todo",
+        worktreePath: "/remote/repo__worktrees/feat-new",
+        sessionName: "repo-feat-new",
+        sshHost: "devbox",
+        ...input,
+      };
+      knownTasks.push(createdTask);
+      return createdTask;
+    });
+    mocks.prepareTaskTerminal.mockResolvedValue({ isPrepared: true });
   });
 
   describe("인증", () => {
@@ -224,6 +242,110 @@ describe("taskCliService", () => {
         .rejects.toThrow("already exists");
       expect(mocks.propagateTaskRegistrationToPeers).not.toHaveBeenCalled();
     });
+
+    it("만든 task의 세션을 화면과 같은 준비 경로로 한 번 만들고, 접속 정보를 응답에 담는다", async () => {
+      mocks.prepareTaskTerminal.mockResolvedValue({ isPrepared: true });
+
+      const created = await createTaskFromCli(AUTHORIZATION, { contextTaskId: CONTEXT_TASK.id, branchName: "feat/new", baseBranch: "main" });
+
+      expect(mocks.prepareTaskTerminal).toHaveBeenCalledTimes(1);
+      expect(mocks.prepareTaskTerminal).toHaveBeenCalledWith(expect.objectContaining({ id: "created-task", sessionName: "repo-feat-new" }));
+      expect(created).toMatchObject({ sessionName: "repo-feat-new", sshHost: "devbox", session: { isPrepared: true } });
+    });
+
+    it("다른 client로의 전파가 끝나기를 기다리지 않고 세션 준비를 함께 시작한다", async () => {
+      let finishPropagation: (results: typeof PEER_RESULTS) => void = () => {};
+      mocks.propagateTaskRegistrationToPeers.mockReturnValue(new Promise((resolve) => { finishPropagation = resolve; }));
+
+      const creation = createTaskFromCli(AUTHORIZATION, { contextTaskId: CONTEXT_TASK.id, branchName: "feat/new", baseBranch: "main" });
+      await vi.waitFor(() => expect(mocks.prepareTaskTerminal).toHaveBeenCalledTimes(1));
+      finishPropagation(PEER_RESULTS);
+
+      await expect(creation).resolves.toMatchObject({ session: { isPrepared: true }, peers: PEER_RESULTS });
+    });
+
+    it("세션 준비가 실패해도 task는 남기고 응답의 session.error로 알린다", async () => {
+      mocks.prepareTaskTerminal.mockRejectedValue(new Error("tmux 세션 생성에 실패했습니다."));
+
+      const created = await createTaskFromCli(AUTHORIZATION, { contextTaskId: CONTEXT_TASK.id, branchName: "feat/new", baseBranch: "main" });
+
+      expect(created).toMatchObject({ id: "created-task", session: { isPrepared: false, error: "tmux 세션 생성에 실패했습니다." } });
+      expect(mocks.propagateTaskRegistrationToPeers).toHaveBeenCalledTimes(1);
+    });
+
+    it("설명과 우선순위를 task에 저장하고, 허용하지 않는 우선순위는 400으로 거절한다", async () => {
+      await createTaskFromCli(AUTHORIZATION, {
+        contextTaskId: CONTEXT_TASK.id, branchName: "feat/new", baseBranch: "main", description: "로그인 오류 수정", priority: "high",
+      });
+      expect(mocks.createTask).toHaveBeenCalledWith(expect.objectContaining({ description: "로그인 오류 수정", priority: "high" }));
+
+      mocks.createTask.mockClear();
+      await expectCliError(
+        createTaskFromCli(AUTHORIZATION, { contextTaskId: CONTEXT_TASK.id, branchName: "feat/x", baseBranch: "main", priority: "urgent" }),
+        400,
+        "priority 값이 올바르지 않습니다",
+      );
+      expect(mocks.createTask).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("조회", () => {
+    it("같은 프로젝트의 task만 세션 정보와 함께 돌려준다", async () => {
+      givenTasks([
+        { ...CONTEXT_TASK, title: "현재", status: "progress", priority: null, sessionName: "repo-feat-current", sshHost: "devbox" },
+        { id: "foreign-task", projectId: "project-2", branchName: "feat/foreign", title: "남의 것" },
+      ]);
+
+      const listedTasks = await listTasksFromCli(AUTHORIZATION, { contextTaskId: CONTEXT_TASK.id });
+
+      expect(listedTasks).toEqual([{
+        id: "context-task",
+        title: "현재",
+        branchName: "feat/current",
+        status: "progress",
+        priority: null,
+        worktreePath: CONTEXT_TASK.worktreePath,
+        sessionType: "tmux",
+        sessionName: "repo-feat-current",
+        sshHost: "devbox",
+      }]);
+    });
+
+    it("다른 task의 토큰으로는 목록을 읽지 못한다", async () => {
+      await expectCliError(listTasksFromCli("Bearer other-token", { contextTaskId: CONTEXT_TASK.id }), 401);
+      expect(mocks.taskRepo.find).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("세션 준비", () => {
+    it("브랜치를 주지 않으면 요청한 task의 세션을 준비해 접속 정보와 함께 돌려준다", async () => {
+      givenTasks([{ ...CONTEXT_TASK, sessionName: "repo-feat-current", sshHost: "devbox" }]);
+      mocks.prepareTaskTerminal.mockResolvedValue({ isPrepared: true });
+
+      await expect(prepareTaskSessionFromCli(AUTHORIZATION, { contextTaskId: CONTEXT_TASK.id })).resolves.toEqual({
+        id: "context-task",
+        branchName: "feat/current",
+        sessionType: "tmux",
+        sessionName: "repo-feat-current",
+        sshHost: "devbox",
+        session: { isPrepared: true },
+      });
+    });
+
+    it("같은 프로젝트의 다른 브랜치 task는 준비하고, 다른 프로젝트 브랜치는 404로 거절한다", async () => {
+      givenTasks([
+        CONTEXT_TASK,
+        { id: "sibling-task", projectId: "project-1", branchName: "feat/sibling", sessionType: "zellij", sessionName: "repo-feat-sibling" },
+        { id: "foreign-task", projectId: "project-2", branchName: "feat/foreign", sessionType: "tmux", sessionName: "other" },
+      ]);
+
+      await prepareTaskSessionFromCli(AUTHORIZATION, { contextTaskId: CONTEXT_TASK.id, branchName: "feat/sibling" });
+      expect(mocks.prepareTaskTerminal).toHaveBeenCalledWith(expect.objectContaining({ id: "sibling-task" }));
+
+      mocks.prepareTaskTerminal.mockClear();
+      await expectCliError(prepareTaskSessionFromCli(AUTHORIZATION, { contextTaskId: CONTEXT_TASK.id, branchName: "feat/foreign" }), 404);
+      expect(mocks.prepareTaskTerminal).not.toHaveBeenCalled();
+    });
   });
 
   describe("삭제", () => {
@@ -267,6 +389,17 @@ describe("taskCliService", () => {
       givenTasks([CONTEXT_TASK, { id: "foreign-task", projectId: "project-2", branchName: "feat/foreign" }]);
 
       await expectCliError(deleteTaskFromCli(AUTHORIZATION, { contextTaskId: CONTEXT_TASK.id, branchName: "feat/foreign", confirmed: true }), 404);
+      expect(mocks.deleteTaskAcrossTargets).not.toHaveBeenCalled();
+    });
+
+    it("프로젝트 기본 브랜치의 루트 task는 CLI로 지우지 못하게 403으로 거절한다", async () => {
+      givenTasks([CONTEXT_TASK, { id: "root-task", projectId: "project-1", branchName: "main" }]);
+
+      await expectCliError(
+        deleteTaskFromCli(AUTHORIZATION, { contextTaskId: CONTEXT_TASK.id, branchName: "main", confirmed: true, force: true }),
+        403,
+        "기본 브랜치",
+      );
       expect(mocks.deleteTaskAcrossTargets).not.toHaveBeenCalled();
     });
 

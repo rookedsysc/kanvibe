@@ -350,7 +350,7 @@ AI 代理 Hooks 触发的任务状态变更会发送**浏览器通知**，显示
 
 | 端点 | 方法 | 说明 |
 |------|------|------|
-| `/api/hooks/status` | POST | 通过 `taskId` + `status` 更新任务状态；如果目标不存在，则只发送浏览器通知并返回 `404`，不会修改状态 |
+| `/api/hooks/status` | POST | 通过 `taskId` + `status` 更新任务状态；如果目标不存在，则只发送浏览器通知并返回 `404`，不会修改状态。需要 `.kanvibe/targets.json` 中的 `Authorization: Bearer <任务令牌>`，否则返回 `401` |
 
 ### GitHub 风格 Diff 视图
 

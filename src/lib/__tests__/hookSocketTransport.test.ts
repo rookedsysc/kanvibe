@@ -25,6 +25,7 @@ const socketFileName = buildHookSocketFileName(CLIENT_ID);
 interface ReceivedRequest {
   path: string;
   body: string;
+  authorization?: string;
 }
 
 function runShell(script: string, cwd: string): Promise<{ code: number; stdout: string; stderr: string }> {
@@ -42,7 +43,7 @@ function startRecordingServer(received: ReceivedRequest[]): http.Server {
       body += chunk;
     });
     request.on("end", () => {
-      received.push({ path: request.url ?? "", body });
+      received.push({ path: request.url ?? "", body, ...(request.headers.authorization ? { authorization: request.headers.authorization } : {}) });
       response.end("{}");
     });
   });
@@ -533,10 +534,10 @@ describe("hook 터널 소켓 전송", () => {
   });
 
   describe("OpenCode 생성 플러그인", () => {
-    async function notify(targetUrl: string, transport?: string): Promise<void> {
+    async function notify(targetUrl: string, transport?: string, token?: string): Promise<void> {
       mkdirSync(path.join(workspace, ".kanvibe"), { recursive: true });
       writeFileSync(path.join(workspace, ".kanvibe", "targets.json"), JSON.stringify({
-        targets: [{ url: targetUrl, taskId: "task-1", clientId: CLIENT_ID, transport }],
+        targets: [{ url: targetUrl, taskId: "task-1", clientId: CLIENT_ID, transport, token }],
       }));
       const pluginPath = path.join(workspace, ".opencode", "plugins", "kanvibe-plugin.ts");
       const source = generatePluginScript(targetUrl, "task-1")
@@ -580,6 +581,18 @@ describe("hook 터널 소켓 전송", () => {
       await notify(`http://127.0.0.1:${(server.address() as { port: number }).port}`, "ssh");
 
       expect(received).toEqual([]);
+    });
+
+    it("targets.json의 task 토큰을 Authorization 헤더로 실어 상태를 보낸다", async () => {
+      const received: ReceivedRequest[] = [];
+      const server = startRecordingServer(received);
+      await listen(server, 0, "127.0.0.1");
+
+      await notify(`http://127.0.0.1:${(server.address() as { port: number }).port}`, "local", "tasktoken1");
+
+      expect(received.map(({ path: requestPath, authorization }) => ({ requestPath, authorization }))).toEqual([
+        { requestPath: "/api/hooks/status", authorization: "Bearer tasktoken1" },
+      ]);
     });
 
     it.each(["local", undefined])("로컬/transport 없는 legacy loopback 등록(%s)은 HTTP로 보낸다", async (transport) => {

@@ -35,6 +35,12 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/entities/KanbanTask", () => entityMocks);
 
+/** 상태 hook은 task 토큰으로 인증한다. 이 파일은 인증 뒤의 동작을 다루므로 "valid-token"만 통과시킨다 */
+const VALID_HOOK_AUTHORIZATION = "Bearer valid-token";
+vi.mock("@/desktop/main/services/taskCliTokenService", () => ({
+  isValidTaskCliToken: async (_taskId: string, token: string) => token === "valid-token",
+}));
+
 const { TaskStatus } = entityMocks;
 
 vi.mock("@/lib/database", () => ({
@@ -76,6 +82,21 @@ describe("hookService.updateHookTaskStatus", () => {
     mocks.execGit.mockResolvedValue(".git");
   });
 
+  it.each([
+    ["토큰 없음", undefined],
+    ["다른 task의 토큰", "Bearer other-token"],
+    ["Bearer 형식이 아님", "valid-token"],
+  ])("%s이면 task를 조회하지 않고 401로 거절해 상태를 바꾸지 않는다", async (_case, authorizationHeader) => {
+    const { updateHookTaskStatus } = await import("@/desktop/main/services/hookService");
+
+    const result = await updateHookTaskStatus({ taskId: "task-1", status: TaskStatus.REVIEW }, authorizationHeader);
+
+    expect(result).toMatchObject({ success: false, status: 401 });
+    expect(mocks.taskRepo.findOne).not.toHaveBeenCalled();
+    expect(mocks.taskRepo.save).not.toHaveBeenCalled();
+    expect(mocks.broadcastTaskStatusChanged).not.toHaveBeenCalled();
+  });
+
   it("터널로 들어온 요청은 다른 호스트의 작업을 바꾸지 못한다", async () => {
     const { updateHookTaskStatus } = await import("@/desktop/main/services/hookService");
     mocks.taskRepo.findOne.mockResolvedValue({
@@ -84,7 +105,7 @@ describe("hookService.updateHookTaskStatus", () => {
       sshHost: "host-b",
     });
 
-    const result = await updateHookTaskStatus({ taskId: "task-1", status: TaskStatus.REVIEW }, new Set(["host-a"]));
+    const result = await updateHookTaskStatus({ taskId: "task-1", status: TaskStatus.REVIEW }, VALID_HOOK_AUTHORIZATION, new Set(["host-a"]));
 
     expect(result).toMatchObject({ success: false, status: 404 });
     expect(mocks.taskRepo.save).not.toHaveBeenCalled();
@@ -113,7 +134,7 @@ describe("hookService.updateHookTaskStatus", () => {
     const result = await updateHookTaskStatus({
       taskId: task.id,
       status: TaskStatus.REVIEW,
-    });
+    }, VALID_HOOK_AUTHORIZATION);
 
     expect(mocks.taskRepo.findOne).toHaveBeenCalledWith({
       where: { id: task.id },
@@ -160,7 +181,7 @@ describe("hookService.updateHookTaskStatus", () => {
     const result = await updateHookTaskStatus({
       taskId: task.id,
       status: TaskStatus.DONE,
-    });
+    }, VALID_HOOK_AUTHORIZATION);
 
     expect(mocks.execGit).toHaveBeenCalledWith(
       "git -C '/workspace/api__worktrees/feature-hook-done' rev-parse --path-format=absolute --git-common-dir",
@@ -204,7 +225,7 @@ describe("hookService.updateHookTaskStatus", () => {
     mocks.taskRepo.findOne.mockResolvedValue(task);
     mocks.taskRepo.save.mockImplementation(async (value) => value);
 
-    await updateHookTaskStatus({ taskId: task.id, status: TaskStatus.REVIEW });
+    await updateHookTaskStatus({ taskId: task.id, status: TaskStatus.REVIEW }, VALID_HOOK_AUTHORIZATION);
 
     expect(mocks.writeTextFile).toHaveBeenCalledWith(
       "/workspace/api__worktrees/feature-sync/.kanvibe/status.json",
@@ -236,7 +257,7 @@ describe("hookService.updateHookTaskStatus", () => {
         .mockResolvedValueOnce(undefined)
         .mockRejectedValueOnce(new Error("state write failed"));
 
-      const result = await updateHookTaskStatus({ taskId: task.id, status: TaskStatus.REVIEW });
+      const result = await updateHookTaskStatus({ taskId: task.id, status: TaskStatus.REVIEW }, VALID_HOOK_AUTHORIZATION);
 
       expect(result).toEqual({
         success: true,
@@ -267,7 +288,7 @@ describe("hookService.updateHookTaskStatus", () => {
     const result = await updateHookTaskStatus({
       taskId: "",
       status: TaskStatus.REVIEW,
-    });
+    }, VALID_HOOK_AUTHORIZATION);
 
     expect(result).toEqual({
       success: false,
@@ -292,7 +313,7 @@ describe("hook 상태 저장 위치 소유권", () => {
     mocks.projectRepo.findOneBy.mockResolvedValue(project);
     mocks.taskRepo.findOne.mockResolvedValue({ id: "task", title: "task", projectId: "project", project, branchName, worktreePath: null, sshHost: null });
     const { updateHookTaskStatus } = await import("@/desktop/main/services/hookService");
-    expect((await updateHookTaskStatus({ taskId: "task", status: "done" })).success).toBe(true);
+    expect((await updateHookTaskStatus({ taskId: "task", status: "done" }, VALID_HOOK_AUTHORIZATION)).success).toBe(true);
     if (branchName === "main") {
       expect(mocks.writeTextFile).toHaveBeenCalledWith("/fixture/root/.kanvibe/status.json", expect.stringContaining('"status": "done"'), "remote");
     } else {
@@ -306,7 +327,7 @@ describe("hook 상태 저장 위치 소유권", () => {
     mocks.taskRepo.findOne.mockResolvedValue({ id: "task", title: "task", projectId: "project", project, worktreePath: "/fixture/feature", sshHost: null });
     const metadata = { provider: "claude", hookPid: 123, payloadBase64: "e30=" };
     const { updateHookTaskStatus } = await import("@/desktop/main/services/hookService");
-    expect((await updateHookTaskStatus({ taskId: "task", status: "progress", agentSession: metadata })).success).toBe(true);
+    expect((await updateHookTaskStatus({ taskId: "task", status: "progress", agentSession: metadata }, VALID_HOOK_AUTHORIZATION)).success).toBe(true);
     expect(mocks.recordPaneChatSessionBinding).toHaveBeenCalledWith({ taskId: "task", worktreePath: "/fixture/feature", repoPath: "/fixture/root", sshHost: null }, metadata);
   });
 
@@ -315,9 +336,9 @@ describe("hook 상태 저장 위치 소유권", () => {
     mocks.taskRepo.findOne.mockResolvedValue({ id: "task", title: "task", status: "progress", projectId: "project", project, worktreePath: "/fixture/feature", sshHost: "remote" });
     const metadata = { provider: "codex", hookPid: 123, payloadBase64: "e30=" };
     const { updateHookTaskStatus } = await import("@/desktop/main/services/hookService");
-    await updateHookTaskStatus({ taskId: "task", status: "progress", agentSession: metadata });
+    await updateHookTaskStatus({ taskId: "task", status: "progress", agentSession: metadata }, VALID_HOOK_AUTHORIZATION);
     expect(mocks.recordPaneChatSessionBinding).not.toHaveBeenCalled();
-    await updateHookTaskStatus({ taskId: "task", status: "progress", agentSession: metadata }, new Set(["remote"]));
+    await updateHookTaskStatus({ taskId: "task", status: "progress", agentSession: metadata }, VALID_HOOK_AUTHORIZATION, new Set(["remote"]));
     expect(mocks.recordPaneChatSessionBinding).toHaveBeenCalledWith(expect.objectContaining({ sshHost: "remote" }), metadata);
   });
 });

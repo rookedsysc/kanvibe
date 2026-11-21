@@ -81,7 +81,7 @@ function createHookServer({ host, port, mobileTlsPort, mobileTlsDirectory, isDev
 
     if (request.method === "POST" && request.url === "/api/hooks/status") {
       try {
-        const result = await hookService.updateHookTaskStatus(await readJsonBody(request), sourceSshHosts);
+        const result = await hookService.updateHookTaskStatus(await readJsonBody(request), request.headers.authorization, sourceSshHosts);
         writeJson(response, result.status || 200, result);
       } catch (error) {
         writeJson(response, 500, { success: false, error: error instanceof Error ? error.message : "서버 오류" });

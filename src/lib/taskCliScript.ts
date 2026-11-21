@@ -19,7 +19,7 @@ const TASK_CLI_FILE_MODE = 0o755;
 const TASK_CLI_SCRIPT = `#!/bin/bash
 
 # KanVibe task CLI
-# 이 worktree에 등록된 KanVibe client에 task 생성·삭제를 요청한다. 사용법: bash .kanvibe/task.sh help
+# 이 worktree에 등록된 KanVibe client에 task 생성·삭제·조회와 세션 준비를 요청한다. 사용법: bash .kanvibe/task.sh help
 
 set -u
 
@@ -37,13 +37,19 @@ SELECTED_TARGET_ROWS=""
 print_usage() {
   cat <<'USAGE'
 사용법:
-  bash .kanvibe/task.sh create --branch <새 브랜치> [--title <제목>] [--from-task <task ID>]
+  bash .kanvibe/task.sh create --branch <새 브랜치> [--title <제목>] [--description <설명>]
+                               [--priority low|medium|high] [--from-task <task ID>]
                                [--session-type tmux|zellij|herdr|terminal] [--target-url <client URL>]
+  bash .kanvibe/task.sh session [--branch <task 브랜치>] [--target-url <client URL>]
+  bash .kanvibe/task.sh list [--target-url <client URL>]
   bash .kanvibe/task.sh delete --yes [--branch <삭제할 task 브랜치>] [--force] [--target-url <client URL>]
 
-create  현재 worktree의 브랜치(또는 --from-task로 지정한 task의 브랜치)에서 새 worktree와 task를 만든다.
+create  현재 worktree의 브랜치(또는 --from-task로 지정한 task의 브랜치)에서 새 worktree와 task를 만들고,
+        KanVibe 화면이 열 세션(tmux·zellij·herdr)을 미리 만든다. 응답의 sessionName·sshHost·session으로 접속한다.
         요청을 받은 client만 worktree를 만들고, 나머지 client에는 task 등록만 전파된다.
-delete  task와 그 worktree·브랜치·세션을 등록된 모든 client에서 삭제한다.
+session task의 세션을 준비하고 접속 정보를 돌려준다. --branch를 생략하면 현재 worktree의 task가 대상이다.
+list    같은 프로젝트의 task 목록(id·브랜치·상태·세션 정보)을 JSON으로 출력한다.
+delete  task와 그 worktree·브랜치·세션을 등록된 모든 client에서 삭제한다. 기본 브랜치의 task는 지울 수 없다.
         커밋하지 않은 변경이 있으면 거부하며, --force를 붙이면 그래도 삭제한다.
 --target-url을 생략하면 targets.json의 첫 client로 보내고, 연결이 안 될 때만 다음 client로 넘어간다.
 USAGE
@@ -216,10 +222,22 @@ send_to_one_target() {
     fi
 
     printf 'kanvibe task: %s 요청 실패 (HTTP %s)\\n%s\\n' "\${url}" "\${RESPONSE_STATUS}" "\${RESPONSE_BODY}" >&2
+    if [ "\${RESPONSE_STATUS}" = "404" ] && [ -z "\${target_url}" ]; then
+      print_other_target_hint "\${url}"
+    fi
     return 1
   done <<< "\${SELECTED_TARGET_ROWS}"
 
   fail "요청을 받을 수 있는 KanVibe client가 없습니다."
+}
+
+# 살아 있는 client가 그 task를 모르면 404로 끝나고 다음 client로 넘어가지 않으므로, task를 가진 client를 고를 수 있게 나머지 주소를 알려 준다
+print_other_target_hint() {
+  local answered_url=$1 other_urls
+  other_urls="$(printf '%s\\n' "\${SELECTED_TARGET_ROWS}" | awk -F '\\t' -v url="\${answered_url}" '$1 != url { print "  " $1 }')"
+  if [ -n "\${other_urls}" ]; then
+    printf 'kanvibe task: %s 에는 대상 task가 없습니다. task를 가진 client를 --target-url로 지정해 다시 실행하세요. 등록된 다른 client:\\n%s\\n' "\${answered_url}" "\${other_urls}" >&2
+  fi
 }
 
 # KanVibe client가 다른 client에 생성 등록·삭제를 전파할 때 쓰는 내부 명령. 결과를 client마다 한 줄씩 남긴다
@@ -251,12 +269,14 @@ require_value() {
 }
 
 create_task() {
-  local branch_name="" title="" from_task_id="" session_type="" target_url="" base_branch="" fields=""
+  local branch_name="" title="" description="" priority="" from_task_id="" session_type="" target_url="" base_branch="" fields=""
 
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --branch) require_value "$1" "\${2:-}"; branch_name=$2; shift 2 ;;
       --title) require_value "$1" "\${2:-}"; title=$2; shift 2 ;;
+      --description) require_value "$1" "\${2:-}"; description=$2; shift 2 ;;
+      --priority) require_value "$1" "\${2:-}"; priority=$2; shift 2 ;;
       --from-task) require_value "$1" "\${2:-}"; from_task_id=$2; shift 2 ;;
       --session-type) require_value "$1" "\${2:-}"; session_type=$2; shift 2 ;;
       --target-url) require_value "$1" "\${2:-}"; target_url=$2; shift 2 ;;
@@ -272,6 +292,12 @@ create_task() {
   if [ -n "\${title}" ]; then
     fields="\${fields}$(json_field title "\${title}")"
   fi
+  if [ -n "\${description}" ]; then
+    fields="\${fields}$(json_field description "\${description}")"
+  fi
+  if [ -n "\${priority}" ]; then
+    fields="\${fields}$(json_field priority "\${priority}")"
+  fi
   if [ -n "\${session_type}" ]; then
     fields="\${fields}$(json_field sessionType "\${session_type}")"
   fi
@@ -284,7 +310,40 @@ create_task() {
     fields="\${fields}$(json_field baseBranch "\${base_branch}")"
   fi
 
-  send_to_one_target "/api/cli/tasks" "\${fields}" "\${target_url}"
+  if ! send_to_one_target "/api/cli/tasks" "\${fields}" "\${target_url}"; then
+    return 1
+  fi
+  warn_unpropagated_peers "task 등록을 전파하지 못했습니다. 그 client의 보드에는 이 task가 없으니 출력의 peers를 확인하세요."
+}
+
+prepare_task_session() {
+  local branch_name="" target_url="" fields=""
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --branch) require_value "$1" "\${2:-}"; branch_name=$2; shift 2 ;;
+      --target-url) require_value "$1" "\${2:-}"; target_url=$2; shift 2 ;;
+      *) fail "알 수 없는 옵션입니다: $1" "\${KANVIBE_USAGE_ERROR}" ;;
+    esac
+  done
+
+  if [ -n "\${branch_name}" ]; then
+    fields="$(json_field branchName "\${branch_name}")"
+  fi
+  send_to_one_target "/api/cli/tasks/session" "\${fields}" "\${target_url}"
+}
+
+list_tasks() {
+  local target_url=""
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --target-url) require_value "$1" "\${2:-}"; target_url=$2; shift 2 ;;
+      *) fail "알 수 없는 옵션입니다: $1" "\${KANVIBE_USAGE_ERROR}" ;;
+    esac
+  done
+
+  send_to_one_target "/api/cli/tasks/list" "" "\${target_url}"
 }
 
 delete_task() {
@@ -312,15 +371,15 @@ delete_task() {
   if ! send_to_one_target "/api/cli/tasks/delete" "\${fields}" "\${target_url}"; then
     return 1
   fi
-  warn_unpropagated_peers
+  warn_unpropagated_peers "삭제를 전파하지 못했습니다. 그 client에는 task가 남아 있으니 출력의 peers를 확인하고 그곳에서 직접 지우세요."
 }
 
-# 받은 client는 지웠지만 꺼져 있던 client에는 task가 남으므로, 응답의 peers에서 실패한 수를 세어 알린다
+# 요청받은 client는 처리했지만 꺼져 있던 client에는 반영되지 않으므로, 응답의 peers에서 실패한 수를 세어 알린다
 warn_unpropagated_peers() {
-  local failed_peer_count
+  local unpropagated_guidance=$1 failed_peer_count
   failed_peer_count="$(printf '%s' "\${RESPONSE_BODY}" | grep -oE '"isSuccess"[[:space:]]*:[[:space:]]*false' | wc -l | tr -d ' ')"
   if [ "\${failed_peer_count}" -gt 0 ]; then
-    printf 'kanvibe task: 다른 client %s곳에는 삭제를 전파하지 못했습니다. 그 client에는 task가 남아 있으니 출력의 peers를 확인하고 그곳에서 직접 지우세요.\\n' "\${failed_peer_count}" >&2
+    printf 'kanvibe task: 다른 client %s곳에는 %s\\n' "\${failed_peer_count}" "\${unpropagated_guidance}" >&2
   fi
 }
 
@@ -349,6 +408,8 @@ propagate_command() {
 
 case "\${1:-help}" in
   create) shift; create_task "$@" ;;
+  session) shift; prepare_task_session "$@" ;;
+  list) shift; list_tasks "$@" ;;
   delete) shift; delete_task "$@" ;;
   propagate-delete|propagate-register) propagate_command "$@" ;;
   help|-h|--help) print_usage ;;
