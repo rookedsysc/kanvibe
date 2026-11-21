@@ -283,7 +283,7 @@ Zellij는 모바일에서 선택한 pane의 탭을 PC에서도 활성화한 뒤,
 
 인증된 `GET/PATCH /api/mobile/notification-settings`는 기존 데스크탑 AppSettings를 읽고 쓴다. PATCH는 `isEnabled: boolean`과 `enabledStatuses: string[]`를 받으며 잘못된 상태는 400으로 거절한다. 구버전 PC에서 설정 조회가 실패하면 데스크탑을 업데이트한다. 설정 화면은 `features/notifications/presentation/notification_settings_screen.dart`, 비동기 상태와 저장은 `application/notification_settings_controller.dart`, 불변 설정 값은 `domain/notification_settings.dart`가 소유한다.
 
-모바일에 연결하기 전에 쌓인 출력도 스크롤할 수 있도록 tmux는 이전 2000줄을 함께 가져오고 Zellij는 `dump-screen --full`, Herdr는 `pane read --source recent`로 이전 출력을 가져온다. Zellij는 기존 pane 지정 덤프 API를 지원하는 버전이 필요하며 모바일 터미널은 최대 2000줄을 보관한다. 스크롤 중 화면 덤프가 갱신되어도 기존 xterm 스크롤 위치를 유지한다. tmux는 화면 크기를 바꾼 뒤 새 크기의 화면을 다시 받아 마지막 출력과 커서 위치도 유지한다.
+모바일에 연결하기 전에 쌓인 출력도 스크롤할 수 있도록 tmux는 이전 2000줄을 함께 가져오고, Herdr는 `pane read --source recent`로 이전 출력을 가져온다. Zellij는 `dump-screen`으로 지금 보이는 화면만 가져오고 이전 출력은 Zellij 자체 스크롤로 본다. Zellij는 기존 pane 지정 덤프 API를 지원하는 버전이 필요하며 모바일 터미널은 최대 2000줄을 보관한다. 스크롤 중 화면 덤프가 갱신되어도 기존 xterm 스크롤 위치를 유지한다. tmux는 화면 크기를 바꾼 뒤 새 크기의 화면을 다시 받아 마지막 출력과 커서 위치도 유지한다.
 
 격리 데스크탑 fixture(`qa/mobile/lib/prepareQaDesktop.cjs`)에 이전 출력을 준비하고 모바일을 페어링해 보드를 연 뒤 `mobile/.maestro/flows/terminal-notification-settings.yaml`로 설정 저장·재진입과 터미널 스와이프를 검증한다. 녹화는 흐름 안의 `startRecording`을 사용한다.
 
@@ -297,7 +297,7 @@ Herdr 세션은 같은 fixture에서 `mobile/.maestro/flows/herdr-terminal.yaml`
 
 손잡이를 화면 가장자리로 끌어도 화면이 따라 스크롤되지는 않는다. 보이는 범위보다 넓게 선택하려면 화면을 민 뒤 손잡이를 다시 끈다. 터미널 밖을 누르면 버튼 줄만 내려가고, 터미널을 짧게 누르면 선택이 풀린다. 선택 범위는 `features/task_detail/presentation/widgets/pane_terminal_view.dart`의 기존 터미널 컨트롤러가 가지고, 손잡이와 버튼 줄은 같은 폴더의 `terminal_selection_overlay.dart`가 그린다.
 
-손가락으로 위아래로 밀면 이전 출력과 최신 출력 사이를 스크롤한다. tmux, Zellij, Herdr는 접속 전의 이력도 가져오며 모바일에는 최근 2,000줄까지 보관한다. Zellij 화면이 갱신돼도 선택 중인 글자는 유지하고, 복사하거나 선택을 해제하면 최신 화면을 적용한다. 이력·모드 복원에는 이 기능이 포함된 데스크탑 빌드가 필요하다.
+손가락으로 위아래로 밀면 이전 출력과 최신 출력 사이를 스크롤한다. 전체 화면 프로그램이 떠 있거나 Zellij·Herdr pane이면 밀기를 화살표 키로 바꾸지 않고 마우스 휠로 멀티플렉서에 넘겨, 멀티플렉서가 자기 휠 규칙대로 처리하게 한다. tmux는 기본 휠 바인딩처럼 마우스 보고를 켠 프로그램에는 휠을 넘기고, 켜지 않은 전체 화면 프로그램에는 아무것도 보내지 않으며, copy-mode에서는 5줄씩 움직인다. Zellij는 데스크탑에 붙은 Zellij 클라이언트에 실제 휠을 넣으므로 Zellij의 마우스 설정과 규칙(전체 화면 프로그램에는 화살표 키, 그 밖에는 자체 스크롤백)을 그대로 따른다. tmux와 Herdr는 접속 전의 이력도 가져오며 모바일에는 최근 2,000줄까지 보관한다. Zellij 화면이 갱신돼도 선택 중인 글자는 유지하고, 복사하거나 선택을 해제하면 최신 화면을 적용한다. 이력·모드 복원에는 이 기능이 포함된 데스크탑 빌드가 필요하다.
 
 ## 태스크 상단 메뉴
 

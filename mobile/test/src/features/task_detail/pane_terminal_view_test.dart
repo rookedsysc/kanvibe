@@ -385,11 +385,86 @@ void main() {
     );
   }
 
-  /// 데스크탑이 Herdr pane 화면 앞에 붙이는 모드: 대체 화면에 두고 마우스 보고는 끈다
-  const herdrScreenModes =
+  /// 데스크탑이 Herdr·Zellij 화면 앞에 붙이는 모드이자, 마우스 보고를 켜지 않은 전체 화면 프로그램을 띄운 tmux pane의 모드
+  const alternateScreenWithoutMouse =
       '\x1b[H\x1b[2J\x1b[3J\x1b[?1049h\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1005l\x1b[?1006l';
 
-  testWidgets('Herdr pane의 손가락 스크롤은 원시 휠 보고나 화살표 키 대신 멀티플렉서 휠로 간다', (
+  for (final multiplexer in [
+    SessionType.tmux,
+    SessionType.zellij,
+    SessionType.herdr,
+  ]) {
+    testWidgets(
+      '${multiplexer.name} pane의 손가락 스크롤은 원시 휠 보고나 화살표 키 대신 멀티플렉서 휠로 간다',
+      (tester) async {
+        final client = FakeDesktopClient();
+        await pumpPane(
+          tester,
+          _pane,
+          client: client,
+          store: FakeConnectionStore(),
+          canResize: true,
+          sessionType: multiplexer,
+        );
+        client.openedPanes[_pane.id]!.add(
+          '${alternateScreenWithoutMouse}ready',
+        );
+        await tester.pumpAndSettle();
+
+        await tester.drag(
+          find.byType(xterm.TerminalView),
+          const Offset(0, 250),
+        );
+        await tester.pumpAndSettle();
+        final scrolledUp = List.of(client.scrolledPanes[_pane.id] ?? const []);
+        await tester.drag(
+          find.byType(xterm.TerminalView),
+          const Offset(0, -250),
+        );
+        await tester.pumpAndSettle();
+        final scrolledDown = (client.scrolledPanes[_pane.id] ?? const []).skip(
+          scrolledUp.length,
+        );
+
+        expect(scrolledUp, isNotEmpty);
+        expect(scrolledUp.every((wheel) => wheel.isUp), isTrue);
+        expect(scrolledDown, isNotEmpty);
+        expect(scrolledDown.every((wheel) => !wheel.isUp), isTrue);
+        expect(client.writtenInput[_pane.id] ?? const [], isEmpty);
+      },
+    );
+
+    testWidgets('${multiplexer.name} pane에 넘기는 휠은 손가락이 닿은 칸을 가리킨다', (
+      tester,
+    ) async {
+      final client = FakeDesktopClient();
+      await pumpPane(
+        tester,
+        _pane,
+        client: client,
+        store: FakeConnectionStore(),
+        canResize: true,
+        sessionType: multiplexer,
+        screenInsets: const EdgeInsets.only(top: 160),
+      );
+      client.openedPanes[_pane.id]!.add('${alternateScreenWithoutMouse}ready');
+      await tester.pumpAndSettle();
+
+      await tester.dragFrom(
+        terminalCellPosition(tester, 4, 2),
+        const Offset(0, 250),
+      );
+      await tester.pumpAndSettle();
+
+      expect(client.scrolledPanes[_pane.id]?.first, (
+        isUp: true,
+        column: 4,
+        row: 2,
+      ));
+    });
+  }
+
+  testWidgets('마우스 보고를 켠 프로그램의 tmux pane 휠도 원시 보고 대신 멀티플렉서 휠로 간다', (
     tester,
   ) async {
     final client = FakeDesktopClient();
@@ -399,52 +474,16 @@ void main() {
       client: client,
       store: FakeConnectionStore(),
       canResize: true,
-      sessionType: SessionType.herdr,
+      sessionType: SessionType.tmux,
     );
-    client.openedPanes[_pane.id]!.add('${herdrScreenModes}ready');
+    client.openedPanes[_pane.id]!.add('\x1b[?1049h\x1b[?1000h\x1b[?1006hready');
     await tester.pumpAndSettle();
 
     await tester.drag(find.byType(xterm.TerminalView), const Offset(0, 250));
     await tester.pumpAndSettle();
-    final scrolledUp = List.of(client.scrolledPanes[_pane.id] ?? const []);
-    await tester.drag(find.byType(xterm.TerminalView), const Offset(0, -250));
-    await tester.pumpAndSettle();
-    final scrolledDown = (client.scrolledPanes[_pane.id] ?? const []).skip(
-      scrolledUp.length,
-    );
 
-    expect(scrolledUp, isNotEmpty);
-    expect(scrolledUp.every((wheel) => wheel.isUp), isTrue);
-    expect(scrolledDown, isNotEmpty);
-    expect(scrolledDown.every((wheel) => !wheel.isUp), isTrue);
+    expect(client.scrolledPanes[_pane.id], isNotEmpty);
     expect(client.writtenInput[_pane.id] ?? const [], isEmpty);
-  });
-
-  testWidgets('Herdr pane에 넘기는 휠은 손가락이 닿은 칸을 가리킨다', (tester) async {
-    final client = FakeDesktopClient();
-    await pumpPane(
-      tester,
-      _pane,
-      client: client,
-      store: FakeConnectionStore(),
-      canResize: true,
-      sessionType: SessionType.herdr,
-      screenInsets: const EdgeInsets.only(top: 160),
-    );
-    client.openedPanes[_pane.id]!.add('${herdrScreenModes}ready');
-    await tester.pumpAndSettle();
-
-    await tester.dragFrom(
-      terminalCellPosition(tester, 4, 2),
-      const Offset(0, 250),
-    );
-    await tester.pumpAndSettle();
-
-    expect(client.scrolledPanes[_pane.id]?.first, (
-      isUp: true,
-      column: 4,
-      row: 2,
-    ));
   });
 
   testWidgets('화면 프레임만 받는 세션은 맨 아래에서 올려 보기 시작할 때 이력 갱신을 한 번 요청한다', (
