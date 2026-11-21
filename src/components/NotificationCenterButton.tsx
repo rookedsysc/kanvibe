@@ -8,16 +8,21 @@ import {
 } from "@/desktop/renderer/actions/appSettings";
 import { getTaskById } from "@/desktop/renderer/actions/kanban";
 import {
-  activateNotification,
   listNotifications,
   markAllNotificationsRead,
   markNotificationRead,
 } from "@/desktop/renderer/actions/notifications";
 import { useHasBoardShortcutBlocker } from "@/desktop/renderer/components/BoardCommandProvider";
+import { showActionStatus } from "@/desktop/renderer/components/ActionStatusToast";
+import { useTrackedAction } from "@/desktop/renderer/hooks/useTrackedAction";
+import InlineLoadError from "@/components/InlineLoadError";
 import { redirect } from "@/desktop/renderer/navigation";
 import { requestActiveTerminalFocusAfterUiSettles } from "@/desktop/renderer/utils/terminalFocus";
 import { navigateToTaskDetail } from "@/desktop/renderer/utils/taskNavigation";
 import type { AppNotification } from "@/desktop/shared/notifications";
+import BackgroundSyncStatus from "@/desktop/renderer/components/BackgroundSyncStatus";
+import { useBackgroundTaskSync } from "@/desktop/renderer/hooks/useBackgroundTaskSync";
+import { useBackgroundSyncReview, openBackgroundSyncReview, getBackgroundSyncReviewCount } from "@/desktop/renderer/hooks/useBackgroundSyncReview";
 
 interface NotificationCenterButtonProps {
   buttonClassName?: string;
@@ -90,6 +95,8 @@ const NotificationCenterButton = forwardRef<NotificationCenterButtonHandle, Noti
   ref,
 ) {
   const t = useTranslations("common");
+  const sync = useBackgroundTaskSync();
+  const reviewState = useBackgroundSyncReview();
   const hasShortcutBlocker = useHasBoardShortcutBlocker();
   const containerRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -98,6 +105,11 @@ const NotificationCenterButton = forwardRef<NotificationCenterButtonHandle, Noti
   const highlightedIndexRef = useRef(0);
   const [isOpen, setIsOpen] = useState(false);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [hasLoadedNotifications, setHasLoadedNotifications] = useState(false);
+  const [notificationLoadFailure, setNotificationLoadFailure] = useState<string | null>(null);
+  /** 읽음 저장과 이동을 기다리는 알림. 같은 알림을 거듭 열지 않게 하고 그 행에 진행을 보인다 */
+  const [openingNotificationId, setOpeningNotificationId] = useState<string | null>(null);
+  const openingNotificationIdRef = useRef<string | null>(null);
   const [isUnreadOnly, setIsUnreadOnly] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const [missingTaskNotification, setMissingTaskNotification] = useState<AppNotification | null>(null);
@@ -143,16 +155,24 @@ const NotificationCenterButton = forwardRef<NotificationCenterButtonHandle, Noti
     },
   }), [closePanel, openPanel, togglePanel]);
 
-  useEffect(() => {
-    async function load() {
+  /** 목록을 읽지 못하면 알림이 없는 것처럼 보이지 않게 실패 사유를 따로 남긴다 */
+  const loadNotifications = useCallback(async () => {
+    try {
       setNotifications(sortNotificationsByNewestFirst(await listNotifications()));
+      setNotificationLoadFailure(null);
+    } catch (error) {
+      setNotificationLoadFailure(error instanceof Error ? error.message : String(error));
+    } finally {
+      setHasLoadedNotifications(true);
     }
-
-    void load();
-    return window.kanvibeDesktop?.onNotificationsChanged?.(() => {
-      void load();
-    });
   }, []);
+
+  useEffect(() => {
+    void loadNotifications();
+    return window.kanvibeDesktop?.onNotificationsChanged?.(() => {
+      void loadNotifications();
+    });
+  }, [loadNotifications]);
 
   useEffect(() => {
     async function restoreUnreadOnlyFilter() {
@@ -221,18 +241,19 @@ const NotificationCenterButton = forwardRef<NotificationCenterButtonHandle, Noti
     )));
   }, []);
 
-  const handleNotificationClick = useCallback(async (
+  const openNotification = useCallback(async (
     notification: AppNotification,
     { openInNewWindow = false }: { openInNewWindow?: boolean } = {},
   ) => {
     await markNotificationAsRead(notification);
 
-    closePanel();
-
     if (notification.action?.type === "background-sync-review") {
-      await activateNotification(notification.id);
+      closePanel();
+      openBackgroundSyncReview(notification);
       return;
     }
+
+    closePanel();
 
     if (notification.taskId) {
       const task = await getTaskById(notification.taskId);
@@ -260,6 +281,31 @@ const NotificationCenterButton = forwardRef<NotificationCenterButtonHandle, Noti
     redirect(notification.relativePath);
   }, [closePanel, markNotificationAsRead]);
 
+  /** 패널이 닫힌 뒤에도 실패할 수 있으므로 열기 실패는 토스트로 알린다 */
+  const handleNotificationClick = useCallback(async (
+    notification: AppNotification,
+    options: { openInNewWindow?: boolean } = {},
+  ) => {
+    if (openingNotificationIdRef.current) {
+      return;
+    }
+
+    openingNotificationIdRef.current = notification.id;
+    setOpeningNotificationId(notification.id);
+    try {
+      await openNotification(notification, options);
+    } catch (error) {
+      console.error("Failed to open notification", error);
+      showActionStatus({
+        kind: "failure",
+        message: t("notificationOpenFailed", { reason: error instanceof Error ? error.message : String(error) }),
+      });
+    } finally {
+      openingNotificationIdRef.current = null;
+      setOpeningNotificationId(null);
+    }
+  }, [openNotification, t]);
+
   useEffect(() => {
     if (!isOpen) {
       return;
@@ -275,6 +321,8 @@ const NotificationCenterButton = forwardRef<NotificationCenterButtonHandle, Noti
     }
 
     function handleWindowKeyDown(event: KeyboardEvent) {
+      if (reviewState.isOpen) return;
+      if (event.target instanceof Element && event.target.closest("section")) return;
       if (hasShortcutBlocker) {
         return;
       }
@@ -321,7 +369,12 @@ const NotificationCenterButton = forwardRef<NotificationCenterButtonHandle, Noti
               return;
             }
             event.preventDefault();
-            void markNotificationAsRead(highlightedNotification);
+            void markNotificationAsRead(highlightedNotification).catch((error) => {
+              showActionStatus({
+                kind: "failure",
+                message: t("notificationMarkReadFailed", { reason: error instanceof Error ? error.message : String(error) }),
+              });
+            });
             return;
           }
         case "Escape":
@@ -335,12 +388,25 @@ const NotificationCenterButton = forwardRef<NotificationCenterButtonHandle, Noti
     return () => {
       window.removeEventListener("keydown", handleWindowKeyDown);
     };
-  }, [closePanel, handleNotificationClick, hasShortcutBlocker, highlightedNotificationIndex, isOpen, markNotificationAsRead, visibleNotifications]);
+  }, [closePanel, handleNotificationClick, hasShortcutBlocker, highlightedNotificationIndex, isOpen, markNotificationAsRead, t, visibleNotifications, reviewState.isOpen]);
 
-  async function handleMarkAllRead() {
+  const markAllReadAction = useTrackedAction(async () => {
     await markAllNotificationsRead();
     setNotifications((current) => current.map((notification) => ({ ...notification, isRead: true })));
-  }
+  });
+
+  const reviewNotification = reviewState.isCleaning
+    ? reviewState.notification
+    : notifications.find((notification) => notification.action?.type === "background-sync-review") ?? null;
+  const openReview = () => {
+    if (!reviewNotification) return;
+    if (reviewState.isCleaning) {
+      closePanel();
+      openBackgroundSyncReview(reviewNotification);
+      return;
+    }
+    void handleNotificationClick(reviewNotification);
+  };
 
   return (
     <div ref={containerRef} className="relative">
@@ -350,12 +416,17 @@ const NotificationCenterButton = forwardRef<NotificationCenterButtonHandle, Noti
         className={`relative rounded-md p-1.5 text-text-muted hover:bg-bg-page hover:text-text-primary transition-colors ${buttonClassName}`.trim()}
         title={t("notifications")}
         aria-label={t("notifications")}
+        aria-expanded={isOpen}
       >
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M15 17h5l-1.4-1.4A2 2 0 0 1 18 14.2V11a6 6 0 1 0-12 0v3.2a2 2 0 0 1-.6 1.4L4 17h5" />
           <path d="M9 17a3 3 0 0 0 6 0" />
         </svg>
-        {unreadCount > 0 ? (
+        {reviewState.isCleaning || sync.isStarting || sync.status?.isRunning ? (
+          <span aria-label={t(reviewState.isCleaning ? "backgroundSyncStatus.cleaning" : "backgroundSyncStatus.running")} role="status" className="absolute -right-1 -top-1 h-3 w-3 rounded-full border-2 border-brand-primary border-t-transparent motion-safe:animate-spin" />
+        ) : sync.error || sync.status?.phase === "failed" ? (
+          <span aria-label={t("backgroundSyncStatus.failed")} role="status" className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-status-error text-[10px] font-semibold text-white">!</span>
+        ) : unreadCount > 0 ? (
           <span className="absolute -right-1 -top-1 min-w-4 h-4 rounded-full bg-brand-primary px-1 text-[10px] font-semibold text-white flex items-center justify-center">
             {unreadCount > 9 ? "9+" : unreadCount}
           </span>
@@ -369,8 +440,10 @@ const NotificationCenterButton = forwardRef<NotificationCenterButtonHandle, Noti
           aria-label={t("notifications")}
           tabIndex={-1}
           data-terminal-focus-blocker="true"
-          className={`absolute right-0 z-50 mt-2 w-96 max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-border-default bg-bg-surface shadow-xl ${panelClassName}`.trim()}
+          className={`absolute right-0 z-50 mt-2 w-96 max-w-[calc(100vw-5rem)] overflow-hidden rounded-xl border border-border-default bg-bg-surface shadow-xl ${panelClassName}`.trim()}
         >
+          <div className="max-h-[calc(100dvh-6rem)] overflow-y-auto">
+          <BackgroundSyncStatus sync={sync} reviewCount={getBackgroundSyncReviewCount(reviewNotification)} isCleaning={reviewState.isCleaning} onOpenReview={reviewNotification ? openReview : undefined} />
           <div className="border-b border-border-default px-4 py-3">
             <div className="flex items-center justify-between">
               <div>
@@ -379,8 +452,14 @@ const NotificationCenterButton = forwardRef<NotificationCenterButtonHandle, Noti
                   {unreadCount > 0 ? t("unreadCount", { count: unreadCount }) : t("allCaughtUp")}
                 </p>
               </div>
-              <button type="button" onClick={handleMarkAllRead} className="text-xs text-text-secondary hover:text-text-primary transition-colors">
-                {t("markAllRead")}
+              <button
+                type="button"
+                onClick={() => void markAllReadAction.run()}
+                disabled={markAllReadAction.isPending}
+                aria-busy={markAllReadAction.isPending || undefined}
+                className="text-xs text-text-secondary hover:text-text-primary transition-colors disabled:cursor-progress disabled:opacity-60"
+              >
+                {markAllReadAction.isPending ? t("markingAllRead") : t("markAllRead")}
               </button>
             </div>
 
@@ -399,11 +478,30 @@ const NotificationCenterButton = forwardRef<NotificationCenterButtonHandle, Noti
             </div>
           </div>
 
+          {markAllReadAction.error ? (
+            <InlineLoadError
+              className="mx-4 mt-3"
+              message={t("markAllReadFailed", { reason: markAllReadAction.error })}
+              onRetry={() => void markAllReadAction.retry()}
+            />
+          ) : null}
+          {notificationLoadFailure ? (
+            <InlineLoadError
+              className="mx-4 mt-3"
+              message={t("loadFailed", { reason: notificationLoadFailure })}
+              onRetry={() => void loadNotifications()}
+            />
+          ) : null}
+
           <div className="max-h-[28rem] overflow-y-auto">
             {visibleNotifications.length === 0 ? (
-              <div className="px-4 py-8 text-center text-sm text-text-muted">
-                {isUnreadOnly ? t("noUnreadNotifications") : t("noNotifications")}
-              </div>
+              notificationLoadFailure ? null : (
+                <div role={hasLoadedNotifications ? undefined : "status"} className="px-4 py-8 text-center text-sm text-text-muted">
+                  {!hasLoadedNotifications
+                    ? t("loading")
+                    : isUnreadOnly ? t("noUnreadNotifications") : t("noNotifications")}
+                </div>
+              )
             ) : visibleNotifications.map((notification, index) => (
               <button
                 key={notification.id}
@@ -411,6 +509,7 @@ const NotificationCenterButton = forwardRef<NotificationCenterButtonHandle, Noti
                   itemRefs.current[index] = node;
                 }}
                 type="button"
+                aria-busy={openingNotificationId === notification.id || undefined}
                 onClick={(event) => handleNotificationClick(notification, { openInNewWindow: event.shiftKey })}
                 onMouseEnter={() => {
                   highlightedIndexRef.current = index;
@@ -423,7 +522,11 @@ const NotificationCenterButton = forwardRef<NotificationCenterButtonHandle, Noti
                 }`}
               >
                 <div className="flex items-start gap-3">
-                  <span className={`mt-1 h-2.5 w-2.5 rounded-full ${notification.isRead ? "bg-border-default" : "bg-brand-primary"}`} />
+                  {openingNotificationId === notification.id ? (
+                    <span aria-hidden="true" className="mt-0.5 h-3 w-3 shrink-0 rounded-full border-2 border-current border-t-transparent text-text-muted motion-safe:animate-spin" />
+                  ) : (
+                    <span className={`mt-1 h-2.5 w-2.5 rounded-full ${notification.isRead ? "bg-border-default" : "bg-brand-primary"}`} />
+                  )}
                   <div className="min-w-0 flex-1">
                     <div className="flex items-start justify-between gap-3">
                       <p className="text-sm font-medium text-text-primary">{notification.title}</p>
@@ -434,6 +537,7 @@ const NotificationCenterButton = forwardRef<NotificationCenterButtonHandle, Noti
                 </div>
               </button>
             ))}
+          </div>
           </div>
         </div>
       ) : null}

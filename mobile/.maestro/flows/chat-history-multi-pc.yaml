@@ -1,7 +1,7 @@
 appId: ${APP_ID}
 env:
-  PRIMARY_PORT: "19738"
-  SECOND_PORT: "19739"
+  PRIMARY_PORT: "19748"
+  SECOND_PORT: "19749"
   PRIMARY_TASK_TITLE: "Chat History Fixture"
   SECOND_TASK_TITLE: "Chat History Fixture - Second"
   PRIMARY_HISTORY_PREFIX: "History QA"
@@ -19,7 +19,7 @@ env:
           id: android:id/input_method_nav_back
 - tapOn: "(Back|뒤로)"
 - extendedWaitUntil:
-    visible: "채팅 History"
+    visible: "대화 기록"
     timeout: 10000
 - runFlow:
     when:
@@ -34,6 +34,7 @@ env:
     visible:
       id: chat-history
     timeout: 10000
+- tapOn: "Dismiss menu"
 - runFlow:
     when:
       visible:
@@ -109,7 +110,7 @@ env:
           id: android:id/input_method_nav_back
 - tapOn: "(Back|뒤로)"
 - extendedWaitUntil:
-    visible: "채팅 History"
+    visible: "대화 기록"
     timeout: 10000
 - runFlow:
     when:
@@ -124,6 +125,7 @@ env:
     visible:
       id: chat-history
     timeout: 10000
+- tapOn: "Dismiss menu"
 - runFlow:
     when:
       visible:

@@ -1,6 +1,6 @@
 appId: ${APP_ID}
 env:
-  DESKTOP_API_FROM_HOST: http://127.0.0.1:19736
+  DESKTOP_API_FROM_HOST: http://127.0.0.1:39736
   PROBE_API_FROM_HOST: http://127.0.0.1:19737
 ---
 - launchApp:

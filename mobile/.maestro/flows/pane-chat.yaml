@@ -1,0 +1,79 @@
+appId: ${APP_ID}
+env:
+  DESKTOP_PORT: "19748"
+  DESKTOP_API_FROM_HOST: http://127.0.0.1:19738
+---
+- launchApp:
+    clearState: true
+- setOrientation: PORTRAIT
+- extendedWaitUntil:
+    visible: "데스크탑에 연결"
+    timeout: 90000
+- runScript:
+    file: ../scripts/issue-dev-pairing-code.js
+- tapOn: "데스크탑 주소"
+- inputText: "10.0.2.2"
+- tapOn: "포트"
+- eraseText: 5
+- inputText: ${DESKTOP_PORT}
+- tapOn: "연결 코드"
+- inputText: ${output.pairingCode}
+- scrollUntilVisible:
+    element: "연결"
+    direction: DOWN
+    timeout: 60000
+- tapOn: "연결"
+- extendedWaitUntil:
+    visible: "(?s).*Chat History Fixture.*"
+    timeout: 40000
+- tapOn: "(?s).*Chat History Fixture.*"
+- tapOn:
+    id: pane-chat-toggle
+- extendedWaitUntil:
+    visible:
+      id: pane-chat-input
+    timeout: 30000
+- tapOn:
+    id: pane-chat-input
+- inputText: "From Android"
+- tapOn:
+    id: pane-chat-send
+- extendedWaitUntil:
+    visible: "(?s).*live-pane-a received on fixture-deep: From Android.*"
+    timeout: 30000
+- takeScreenshot: mobile-live-response
+- tapOn:
+    text: "^모델$"
+    enabled: true
+    retryTapIfNoChange: true
+- extendedWaitUntil:
+    visible:
+      id: pane-chat-model-settings
+    timeout: 30000
+- takeScreenshot: mobile-model-settings
+- tapOn:
+    id: pane-chat-model-name
+- tapOn: "Fixture Fast"
+- extendedWaitUntil:
+    visible:
+      id: pane-chat-fast-mode
+    timeout: 30000
+- tapOn:
+    text: "^모델$"
+    enabled: true
+- tapOn:
+    id: pane-chat-input
+- inputText: "Android changed model"
+- tapOn:
+    id: pane-chat-send
+- extendedWaitUntil:
+    visible: "(?s).*live-pane-a received on fixture-fast: Android changed model.*"
+    timeout: 30000
+- takeScreenshot: mobile-selected-model-response
+- tapOn:
+    id: pane-chat-toggle
+- assertNotVisible:
+    id: pane-chat-input
+- tapOn:
+    id: pane-chat-toggle
+- assertVisible: "(?s).*Android changed model.*"

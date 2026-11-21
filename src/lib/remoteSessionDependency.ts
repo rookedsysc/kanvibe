@@ -1,5 +1,5 @@
 import { SessionType } from "@/entities/KanbanTask";
-import { execGit, isSSHTransportError } from "@/lib/gitOperations";
+import { execGit, isSSHConnectionError } from "@/lib/gitOperations";
 
 const blockedTargets = new Map<string, string>();
 const availableTargets = new Map<string, number>();
@@ -74,7 +74,7 @@ async function hasSessionDependency(toolName: string, sshHost?: string | null): 
   } catch (error) {
     availableTargets.delete(buildBlockedTargetKey(toolName, sshHost));
 
-    if (sshHost && isSSHTransportError(error)) {
+    if (sshHost && isSSHConnectionError(error)) {
       throw error;
     }
 
@@ -143,7 +143,7 @@ export async function installSessionDependency(
   } catch (error) {
     availableTargets.delete(blockedTargetKey);
 
-    if (sshHost && isSSHTransportError(error)) {
+    if (sshHost && isSSHConnectionError(error)) {
       throw error;
     }
 

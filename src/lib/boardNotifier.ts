@@ -1,4 +1,5 @@
 import { EventEmitter } from "node:events";
+import type { BackgroundTaskSyncStatus } from "@/desktop/shared/backgroundTaskSync";
 
 export interface BoardUpdatedPayload {
   type: "board-updated";
@@ -28,6 +29,19 @@ export interface TaskHookInstallFailedPayload {
   taskId: string;
   taskTitle: string;
   error: string;
+}
+
+/** 원격 Herdr 서버를 로컬 Herdr의 SSH machine으로 저장하지 못했다. herdrSession은 원격에서 확인 명령에 넘길 세션 이름이다 */
+export interface HerdrMachineRegistrationFailedPayload {
+  sshHost: string;
+  herdrSession: string;
+  reason: string;
+}
+
+/** 원격 Herdr 서버가 이전 방식으로 떠 있어 교체해야 machine으로 등록할 수 있다. 화면은 사용자에게 교체 여부를 묻는다 */
+export interface HerdrServerHandoffRequiredPayload {
+  sshHost: string;
+  herdrSession: string;
 }
 
 export interface TaskPeerDeletionFailedPayload {
@@ -84,16 +98,23 @@ export interface BackgroundSyncReviewPayload {
 
 export type BoardEventPayload =
   | BoardUpdatedPayload
+  | { type: "background-sync-status-changed"; status: BackgroundTaskSyncStatus }
   | ({ type: "task-status-changed" } & TaskStatusChangedPayload)
   | ({ type: "hook-status-target-missing" } & HookStatusTargetMissingPayload)
   | ({ type: "task-hook-install-failed" } & TaskHookInstallFailedPayload)
   | ({ type: "task-session-changed" } & TaskSessionChangedPayload)
   | ({ type: "task-peer-deletion-failed" } & TaskPeerDeletionFailedPayload)
+  | ({ type: "herdr-machine-registration-failed" } & HerdrMachineRegistrationFailedPayload)
+  | ({ type: "herdr-server-handoff-required" } & HerdrServerHandoffRequiredPayload)
   | ({ type: "task-pr-merged-detected" } & TaskPrMergedDetectedPayload)
   | ({ type: "task-pr-merged-detected-batch" } & TaskPrMergedDetectedBatchPayload)
   | ({ type: "background-sync-review-needed" } & BackgroundSyncReviewPayload);
 
 const boardEventEmitter = new EventEmitter();
+
+export function broadcastBackgroundSyncStatus(status: BackgroundTaskSyncStatus) {
+  emitBoardEvent({ type: "background-sync-status-changed", status });
+}
 
 export function subscribeToBoardEvents(
   listener: (payload: BoardEventPayload) => void,
@@ -130,6 +151,16 @@ export function broadcastHookStatusTargetMissing(payload: HookStatusTargetMissin
 /** 새 태스크 생성 후 hooks 자동 설치가 실패하면 렌더러에 안내를 브로드캐스트한다 */
 export function broadcastTaskHookInstallFailed(payload: TaskHookInstallFailedPayload) {
   emitBoardEvent({ type: "task-hook-install-failed", ...payload });
+}
+
+/** 원격 Herdr 서버의 machine 등록이 실패하면 렌더러에 원인과 확인 방법을 알린다 */
+export function broadcastHerdrMachineRegistrationFailed(payload: HerdrMachineRegistrationFailedPayload) {
+  emitBoardEvent({ type: "herdr-machine-registration-failed", ...payload });
+}
+
+/** 원격 Herdr 서버 교체가 필요하면 렌더러가 사용자에게 교체 여부를 묻도록 알린다 */
+export function broadcastHerdrServerHandoffRequired(payload: HerdrServerHandoffRequiredPayload) {
+  emitBoardEvent({ type: "herdr-server-handoff-required", ...payload });
 }
 
 /** 이 데스크탑에서는 지웠지만 꺼져 있던 다른 데스크탑에는 task가 남았음을 렌더러에 알린다 */

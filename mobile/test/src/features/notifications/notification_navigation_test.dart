@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kanvibe_mobile/src/app.dart';
 import 'package:kanvibe_mobile/src/common/network/desktop_connection.dart';
@@ -224,7 +225,7 @@ void main() {
     await tester.pumpAndSettle();
     notifications.opened.add(taskNotification());
     await tester.pumpAndSettle();
-    await tester.pageBack();
+    Navigator.of(tester.element(find.byType(TaskDetailScreen))).pop();
     await tester.pumpAndSettle();
 
     expect(find.byType(TaskDetailScreen), findsNothing);

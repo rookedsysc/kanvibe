@@ -6,9 +6,11 @@ import {
   focusHerdrTaskTab,
   getHerdrTaskActiveTabId,
   closeLocalTerminalTab,
+  closeRemoteTerminalTab,
   createLocalTerminalTab,
   getLocalTerminalTabProcess,
   listLocalTerminalTabs,
+  listRemoteTerminalTabs,
   moveLocalTerminalTab,
   renameLocalTerminalTab,
   selectLocalTerminalTab,
@@ -81,8 +83,8 @@ async function findTerminalSessionTarget(taskId: string): Promise<TerminalSessio
   };
 }
 
-function runTabCommand(command: string, sshHost: string | null): Promise<string> {
-  return execGit(command, sshHost, { timeoutMs: TAB_COMMAND_TIMEOUT_MS });
+function runTabCommand(command: string, sshHost: string | null, shouldLogFailure = true): Promise<string> {
+  return execGit(command, sshHost, { timeoutMs: TAB_COMMAND_TIMEOUT_MS, shouldLogFailure });
 }
 
 async function runTabCommands(commands: string[], sshHost: string | null): Promise<void> {
@@ -116,7 +118,8 @@ async function readTabs(target: TerminalSessionTarget): Promise<TerminalTab[]> {
   }
   if (target.sessionType === SessionType.TMUX) {
     return parseTmuxWindowList(
-      await runTabCommand(buildTmuxListWindowsCommand(target.sessionName), target.sshHost),
+      // 탭 바가 주기적으로 조회하므로 세션이 꺼져 있을 때의 실패를 매번 오류 로그로 남기지 않는다.
+      await runTabCommand(buildTmuxListWindowsCommand(target.sessionName), target.sshHost, false),
     );
   }
 
@@ -138,7 +141,9 @@ export async function listTerminalTabs(taskId: string): Promise<TerminalTabListR
   }
 
   if (target.sessionType === SessionType.TERMINAL) {
-    return { ok: true, tabs: listLocalTerminalTabs(taskId) };
+    try {
+      return { ok: true, tabs: target.sshHost ? await listRemoteTerminalTabs(taskId, target.sshHost, target.sessionName) : listLocalTerminalTabs(taskId) };
+    } catch (error) { return { ...toFailure(error), tabs: [] }; }
   }
 
   try {
@@ -161,6 +166,7 @@ export async function createTerminalTab(taskId: string): Promise<TerminalTabMuta
   }
 
   if (target.sessionType === SessionType.TERMINAL) {
+    if (target.sshHost) await listRemoteTerminalTabs(taskId, target.sshHost, target.sessionName);
     createLocalTerminalTab(taskId);
     return { ok: true };
   }
@@ -195,7 +201,7 @@ export async function getTerminalTabCloseInfo(taskId: string, tabId: string): Pr
     }
 
     const tabs = target.sessionType === SessionType.TERMINAL
-      ? listLocalTerminalTabs(taskId)
+      ? target.sshHost ? await listRemoteTerminalTabs(taskId, target.sshHost, target.sessionName) : listLocalTerminalTabs(taskId)
       : await readTabs(target);
     if (!tabs.some((tab) => tab.id === tabId)) {
       return { ok: false, shouldCloseWindow: false, processNames: null, error: "탭을 찾을 수 없습니다." };
@@ -245,6 +251,7 @@ export async function selectTerminalTab(
   }
 
   if (target.sessionType === SessionType.TERMINAL) {
+    if (target.sshHost) await listRemoteTerminalTabs(taskId, target.sshHost, target.sessionName);
     selectLocalTerminalTab(taskId, tabId);
     return { ok: true };
   }
@@ -303,7 +310,10 @@ export async function closeTerminalTab(
   }
 
   if (target.sessionType === SessionType.TERMINAL) {
-    return { ok: true, shouldCloseWindow: closeLocalTerminalTab(taskId, tabId) === 0 };
+    try {
+      const remaining = target.sshHost ? await closeRemoteTerminalTab(taskId, tabId, target.sshHost, target.sessionName) : closeLocalTerminalTab(taskId, tabId);
+      return { ok: true, shouldCloseWindow: remaining === 0 };
+    } catch (error) { return toFailure(error); }
   }
 
   const sessionKey = JSON.stringify([target.sshHost, target.sessionType, target.sessionName]);
@@ -364,6 +374,7 @@ export async function renameTerminalTab(
   }
 
   if (target.sessionType === SessionType.TERMINAL) {
+    if (target.sshHost) await listRemoteTerminalTabs(taskId, target.sshHost, target.sessionName);
     renameLocalTerminalTab(taskId, tabId, trimmedName);
     return { ok: true };
   }
@@ -417,6 +428,7 @@ export async function moveTerminalTab(
   }
 
   if (target.sessionType === SessionType.TERMINAL) {
+    if (target.sshHost) await listRemoteTerminalTabs(taskId, target.sshHost, target.sessionName);
     moveLocalTerminalTab(taskId, tabId, targetIndex);
     return { ok: true };
   }

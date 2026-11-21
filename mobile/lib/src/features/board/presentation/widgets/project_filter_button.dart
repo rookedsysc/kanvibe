@@ -1,3 +1,5 @@
+import '../../../../common/l10n/app_localizations.dart';
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -7,6 +9,7 @@ import '../../../../common/constants/app_colors.dart';
 import '../../../../common/constants/app_sizes.dart';
 import '../../../../common/constants/project_colors.dart';
 import '../../../../common/providers.dart';
+import '../../application/board_desktop_filter_controller.dart';
 import '../../application/board_project_filter_controller.dart';
 
 class ProjectFilterButton extends ConsumerWidget {
@@ -33,7 +36,9 @@ class ProjectFilterButton extends ConsumerWidget {
       key: const ValueKey('project-filter'),
       identifier: 'project-filter',
       selected: count > 0,
-      value: count == 0 ? '전체 프로젝트' : '$count개 선택',
+      value: count == 0
+          ? context.tr('전체 프로젝트')
+          : context.tr('{count}개 선택', {'count': count}),
       child: IconButton(
         onPressed: connectionId == null || !board.hasValue || board.isLoading
             ? null
@@ -50,7 +55,7 @@ class ProjectFilterButton extends ConsumerWidget {
           minWidth: AppSizes.minTouchTarget,
           minHeight: AppSizes.minTouchTarget,
         ),
-        tooltip: '프로젝트 필터',
+        tooltip: context.tr('프로젝트 필터'),
         color: count > 0 ? AppColors.brandPrimary : null,
         icon: Badge(
           isLabelVisible: count > 0,
@@ -101,7 +106,10 @@ class _ProjectFilterSheetState extends ConsumerState<_ProjectFilterSheet> {
     final selected = connectionId == null
         ? const <String>{}
         : ref.watch(boardProjectFilterProvider(connectionId));
-    final projects = board.value?.creatableProjects ?? const [];
+    final desktops = connectionId == null
+        ? const <String>{}
+        : ref.watch(boardDesktopFilterProvider(connectionId));
+    final projects = board.value?.projectsOnDesktops(desktops) ?? const [];
     final hasSelection = projects.any(
       (project) => selected.contains(project.id),
     );
@@ -129,7 +137,7 @@ class _ProjectFilterSheetState extends ConsumerState<_ProjectFilterSheet> {
                   children: [
                     Expanded(
                       child: Text(
-                        '프로젝트 필터',
+                        context.tr('프로젝트 필터'),
                         style: Theme.of(context).textTheme.titleMedium,
                       ),
                     ),
@@ -138,7 +146,7 @@ class _ProjectFilterSheetState extends ConsumerState<_ProjectFilterSheet> {
                       identifier: 'project-filter-close',
                       child: IconButton(
                         onPressed: () => Navigator.of(context).pop(),
-                        tooltip: '닫기',
+                        tooltip: context.tr('닫기'),
                         constraints: const BoxConstraints(
                           minWidth: AppSizes.minTouchTarget,
                           minHeight: AppSizes.minTouchTarget,
@@ -161,8 +169,8 @@ class _ProjectFilterSheetState extends ConsumerState<_ProjectFilterSheet> {
                           identifier: 'project-filter-search',
                           child: TextField(
                             onChanged: _search,
-                            decoration: const InputDecoration(
-                              labelText: '프로젝트 검색',
+                            decoration: InputDecoration(
+                              labelText: context.tr('프로젝트 검색'),
                               prefixIcon: Icon(Icons.search),
                             ),
                           ),
@@ -183,7 +191,7 @@ class _ProjectFilterSheetState extends ConsumerState<_ProjectFilterSheet> {
                                           .notifier,
                                     )
                                     .showAllProjects(),
-                          title: const Text('전체 프로젝트'),
+                          title: Text(context.tr('전체 프로젝트')),
                           contentPadding: const EdgeInsets.symmetric(
                             horizontal: AppSizes.p16,
                             vertical: AppSizes.p4,
@@ -200,7 +208,7 @@ class _ProjectFilterSheetState extends ConsumerState<_ProjectFilterSheet> {
                         child: Center(
                           child: TextButton(
                             onPressed: () => ref.invalidate(boardProvider),
-                            child: const Text('프로젝트를 불러오지 못했습니다. 다시 시도'),
+                            child: Text(context.tr('프로젝트를 불러오지 못했습니다. 다시 시도')),
                           ),
                         ),
                       )
@@ -209,9 +217,11 @@ class _ProjectFilterSheetState extends ConsumerState<_ProjectFilterSheet> {
                         child: Padding(
                           padding: const EdgeInsets.all(AppSizes.p24),
                           child: Text(
-                            projects.isEmpty
-                                ? '등록된 프로젝트가 없습니다.'
-                                : '검색 결과가 없습니다.',
+                            context.tr(
+                              projects.isEmpty
+                                  ? '등록된 프로젝트가 없습니다.'
+                                  : '검색 결과가 없습니다.',
+                            ),
                             textAlign: TextAlign.center,
                           ),
                         ),
@@ -255,7 +265,7 @@ class _ProjectFilterSheetState extends ConsumerState<_ProjectFilterSheet> {
                               ),
                               subtitle: Text(
                                 [
-                                  project.sshHost ?? '로컬',
+                                  project.sshHost ?? context.tr('로컬'),
                                   if (project.repoPath != null)
                                     project.repoPath!,
                                 ].join(' · '),

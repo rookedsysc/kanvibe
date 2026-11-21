@@ -32,6 +32,7 @@ export const SHORTCUTS = {
   workspaceTaskListFocus: "Mod+Alt",
   boardNotification: "Mod+Shift+I",
   boardProjectFilter: "Mod+Shift+F",
+  boardDesktopFilter: "Mod+Shift+D",
   commandPalette: "Mod+Shift+P",
   createTask: "Mod+N",
   newWindow: "Mod+Shift+N",
@@ -43,6 +44,7 @@ export const SHORTCUTS = {
   terminalWindowClose: "Mod+Shift+W",
   terminalTabPrevious: "Mod+Shift+[",
   terminalTabNext: "Mod+Shift+]",
+  terminalToggleChat: "Mod+Shift+J",
   taskDetailUsage: "Mod+0",
 } as const;
 

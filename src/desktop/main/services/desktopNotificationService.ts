@@ -69,8 +69,14 @@ export async function deliverBoardEventNotification(
   locale: string,
   options: DesktopNotificationOptions,
 ): Promise<boolean> {
-  if (payload.type === "board-updated" || payload.type === "task-session-changed") {
+  if (payload.type === "board-updated" || payload.type === "task-session-changed" || payload.type === "background-sync-status-changed") {
     return false;
+  }
+
+  if (payload.type === "background-sync-review-needed") {
+    const { created } = await createNotification(buildBackgroundSyncReviewNotification({ ...payload, locale }).desktopPayload);
+    if (created) options.onNotificationsChanged?.();
+    return true;
   }
 
   const settings = await getNotificationSettings();
@@ -89,15 +95,8 @@ export async function deliverBoardEventNotification(
     }).desktopPayload, options);
   }
 
-  if (payload.type === "task-hook-install-failed" || payload.type === "task-peer-deletion-failed") {
+  if (payload.type === "task-hook-install-failed" || payload.type === "task-peer-deletion-failed" || payload.type === "herdr-machine-registration-failed" || payload.type === "herdr-server-handoff-required") {
     return false;
-  }
-
-  if (payload.type === "background-sync-review-needed") {
-    return deliverDesktopNotification(buildBackgroundSyncReviewNotification({
-      ...payload,
-      locale,
-    }).desktopPayload, options);
   }
 
   if (

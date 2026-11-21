@@ -1,11 +1,12 @@
-import { act, forwardRef, useEffect, useImperativeHandle } from "react";
+import { act, forwardRef, useEffect, useImperativeHandle, useState } from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createEvent, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import Board from "../Board";
 import CommandPaletteDialog from "@/desktop/renderer/components/CommandPaletteDialog";
 import { deleteTask, getMoreDoneTasks, moveTaskToColumn } from "@/desktop/renderer/actions/kanban";
-import { runBackgroundTaskSyncNow } from "@/desktop/renderer/actions/backgroundTaskSync";
+import { startBackgroundTaskSyncNow } from "@/desktop/renderer/actions/backgroundTaskSync";
+import { useProjectFilterParams } from "@/desktop/renderer/hooks/useProjectFilterParams";
 import { useTaskKindFilterParams } from "@/desktop/renderer/hooks/useTaskKindFilterParams";
 import { useBoardSortPreference } from "@/desktop/renderer/hooks/useBoardSortPreference";
 import { TaskPriority } from "@/entities/TaskPriority";
@@ -81,7 +82,8 @@ vi.mock("@/desktop/renderer/actions/kanban", () => ({
 }));
 
 vi.mock("@/desktop/renderer/actions/backgroundTaskSync", () => ({
-  runBackgroundTaskSyncNow: vi.fn().mockResolvedValue({ reviewNeeded: false, boardUpdated: false }),
+  getBackgroundTaskSyncStatus: vi.fn().mockResolvedValue({ phase: "idle", isRunning: false, completedStages: 0, reviewNeeded: false, boardUpdated: false, error: null }),
+  startBackgroundTaskSyncNow: vi.fn().mockResolvedValue({ reviewNeeded: false, boardUpdated: false }),
 }));
 
 const diffStatsMock = vi.hoisted(() => vi.fn().mockResolvedValue({}));
@@ -109,7 +111,7 @@ vi.mock("@/desktop/renderer/hooks/useBoardSortPreference", () => ({
 }));
 
 vi.mock("../Column", () => ({
-  default: ({ status, tasks, diffStatsByTaskId, projectNameMap, projectColorMap, projectIconMap, projectGroupMap, onLoadMore, hasMore, isLoadingMore }: {
+  default: ({ status, tasks, diffStatsByTaskId, projectNameMap, projectColorMap, projectIconMap, projectGroupMap, onLoadMore, hasMore, isLoadingMore, loadMoreError, taskDeletionStateById, onRetryTaskDelete, taskMoveStateById, onRetryTaskMove }: {
     status: TaskStatus;
     tasks: KanbanTask[];
     projectNameMap: Record<string, string>;
@@ -119,10 +121,19 @@ vi.mock("../Column", () => ({
     onLoadMore?: () => void;
     hasMore?: boolean;
     isLoadingMore?: boolean;
+    loadMoreError?: string | null;
     diffStatsByTaskId?: Record<string, { fileCount: number; additions: number; deletions: number }>;
+    taskDeletionStateById?: Record<string, { status: "deleting" } | { status: "failed"; reason: string }>;
+    onRetryTaskDelete?: (task: KanbanTask) => void;
+    taskMoveStateById?: Record<string, { status: "saving" } | { status: "failed"; reason: string; targetStatus: TaskStatus }>;
+    onRetryTaskMove?: (task: KanbanTask) => void;
   }) => (
     <div data-testid="column">
-      {tasks.map((task, index) => (
+      {tasks.map((task, index) => {
+        const deletionState = taskDeletionStateById?.[task.id];
+        const moveState = taskMoveStateById?.[task.id];
+        return (
+        <span key={task.id}>
         <a
           key={task.id}
           href={`/task/${task.id}`}
@@ -135,24 +146,46 @@ vi.mock("../Column", () => ({
           data-project-icon={projectIconMap[task.projectId ?? ""] ?? projectIconMap[projectNameMap[task.projectId ?? ""]]}
           data-project-group={projectGroupMap?.[task.projectId ?? ""]}
           data-diff-stats={diffStatsByTaskId?.[task.id] ? JSON.stringify(diffStatsByTaskId[task.id]) : undefined}
+          data-deletion-status={deletionState?.status}
+          data-deletion-reason={deletionState?.status === "failed" ? deletionState.reason : undefined}
+          data-move-status={moveState?.status}
+          data-move-reason={moveState?.status === "failed" ? moveState.reason : undefined}
         >
           {task.title}
         </a>
-      ))}
+        {deletionState?.status === "failed" ? (
+          <button onClick={() => onRetryTaskDelete?.(task)}>retry-delete-{task.id}</button>
+        ) : null}
+        {moveState?.status === "failed" ? (
+          <button onClick={() => onRetryTaskMove?.(task)}>retry-move-{task.id}</button>
+        ) : null}
+        </span>
+        );
+      })}
       {hasMore && <button onClick={onLoadMore} disabled={isLoadingMore}>load-more-{status}</button>}
+      {loadMoreError ? <p role="alert">{loadMoreError}</p> : null}
     </div>
   ),
 }));
 
 vi.mock("../ProjectSelector", () => ({
-  default: forwardRef(function MockProjectSelector(_props, ref) {
+  default: forwardRef(function MockProjectSelector(
+    props: { projects: Project[]; selectedProjectIds?: string[] },
+    ref,
+  ) {
     useImperativeHandle(ref, () => ({
       open() {},
       close() {},
       focus() {},
     }), []);
 
-    return <div data-testid="project-selector" />;
+    return (
+      <div
+        data-testid="project-selector"
+        data-project-ids={props.projects.map((project) => project.id).join(",")}
+        data-selected-project-ids={(props.selectedProjectIds ?? []).join(",")}
+      />
+    );
   }),
 }));
 
@@ -434,9 +467,94 @@ describe("Board defaultSessionType sync", () => {
     vi.clearAllMocks();
     vi.mocked(useTaskKindFilterParams).mockReturnValue(["all", vi.fn()] as const);
     vi.mocked(useBoardSortPreference).mockReturnValue([{ keys: [] }, vi.fn()] as const);
+    vi.mocked(useProjectFilterParams).mockReturnValue([[], vi.fn()]);
     delete window.kanvibeDesktop;
     mockNavigatorPlatform("Linux x86_64");
     mockWindowFind();
+  });
+
+  it("데스크톱 필터는 여러 호스트를 선택하고 개별 해제와 전체 복원을 지원한다", () => {
+    const tasks = createTaskKindFilterTasks();
+    tasks[TaskStatus.TODO][1].sshHost = "devbox";
+    tasks[TaskStatus.TODO][2].sshHost = "prod";
+    render(
+      <Board initialTasks={tasks} initialDoneTotal={0} initialDoneLimit={20}
+        sshHosts={["devbox", "prod"]} projects={[createProject()]} sidebarDefaultCollapsed={false}
+        doneAlertDismissed={false} notificationSettings={{ isEnabled: true, enabledStatuses: [] }}
+        defaultSessionType={SessionType.TMUX} taskSearchShortcut="Mod+Shift+O" />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "desktopFilter" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "devbox" }));
+    expectTaskKindFilterVisibleTasks(["Branch Worktree Task"]);
+    fireEvent.click(screen.getByRole("checkbox", { name: "prod" }));
+    expectTaskKindFilterVisibleTasks(["Branch Worktree Task", "Plain Task"]);
+    fireEvent.click(screen.getByRole("checkbox", { name: "devbox" }));
+    expectTaskKindFilterVisibleTasks(["Plain Task"]);
+    fireEvent.click(screen.getByRole("checkbox", { name: "local" }));
+    expectTaskKindFilterVisibleTasks(["Root Project Task", "Plain Task"]);
+    fireEvent.click(screen.getByRole("checkbox", { name: "allDesktops" }));
+    expectTaskKindFilterVisibleTasks(["Root Project Task", "Branch Worktree Task", "Plain Task"]);
+    fireEvent.keyDown(screen.getByRole("button", { name: "desktopFilter" }), { key: "Escape" });
+    expect(screen.queryByRole("checkbox", { name: "devbox" })).toBeNull();
+  });
+
+  function renderBoardWithLocalAndRemoteProjects() {
+    const projects = [
+      createProject({ id: "local-project", name: "local-app" }),
+      createProject({ id: "remote-project", name: "remote-app", sshHost: "devbox" }),
+      createProject({ id: "remote-worktree", name: "remote-app-wt", sshHost: "devbox", isWorktree: true }),
+    ];
+    render(
+      <MemoryRouter initialEntries={["/ko"]}>
+        <BoardCommandProvider>
+          <Board initialTasks={createEmptyTasks()} initialDoneTotal={0} initialDoneLimit={20}
+            sshHosts={["devbox"]} projects={projects} sidebarDefaultCollapsed={false}
+            doneAlertDismissed={false} notificationSettings={{ isEnabled: true, enabledStatuses: [] }}
+            defaultSessionType={SessionType.TMUX} taskSearchShortcut="Mod+Shift+O" />
+        </BoardCommandProvider>
+      </MemoryRouter>,
+    );
+  }
+
+  it("데스크톱 필터를 고르면 프로젝트 필터 후보를 그 데스크톱의 메인 프로젝트로 좁힌다", () => {
+    renderBoardWithLocalAndRemoteProjects();
+    const projectSelector = screen.getByTestId("project-selector");
+    expect(projectSelector.dataset.projectIds).toBe("local-project,remote-project");
+
+    fireEvent.click(screen.getByRole("button", { name: "desktopFilter" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "devbox" }));
+    expect(projectSelector.dataset.projectIds).toBe("remote-project");
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "local" }));
+    expect(projectSelector.dataset.projectIds).toBe("local-project,remote-project");
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "devbox" }));
+    expect(projectSelector.dataset.projectIds).toBe("local-project");
+  });
+
+  it("데스크톱 필터를 바꾸면 다른 데스크톱 프로젝트의 선택을 지우고 전체로 돌아가도 되살리지 않는다", () => {
+    vi.mocked(useProjectFilterParams).mockImplementation(
+      () => useState<string[]>(["local-project", "remote-project"]),
+    );
+    renderBoardWithLocalAndRemoteProjects();
+    const projectSelector = screen.getByTestId("project-selector");
+
+    fireEvent.click(screen.getByRole("button", { name: "desktopFilter" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "devbox" }));
+    expect(projectSelector.dataset.selectedProjectIds).toBe("remote-project");
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "allDesktops" }));
+    expect(projectSelector.dataset.selectedProjectIds).toBe("remote-project");
+  });
+
+  it("Mod+Shift+D는 데스크톱 필터를 열고 첫 항목에 포커스한다", () => {
+    renderBoardWithLocalAndRemoteProjects();
+    expect(screen.queryByRole("dialog", { name: "desktopFilter" })).toBeNull();
+
+    fireEvent.keyDown(window, { key: "d", ctrlKey: true, shiftKey: true });
+
+    expect(screen.getByRole("dialog", { name: "desktopFilter" })).toBeTruthy();
+    expect(document.activeElement).toBe(screen.getByRole("checkbox", { name: "allDesktops" }));
   });
 
   it("defaultSessionType prop이 변경되면 내부 상태와 하위 컴포넌트가 동기화된다", async () => {
@@ -992,6 +1110,94 @@ describe("Board defaultSessionType sync", () => {
     consoleErrorMock.mockRestore();
   });
 
+  it("삭제 응답을 기다리는 동안 카드에 삭제 중 상태를 전달하고 같은 task를 다시 삭제해도 요청을 한 번만 보낸다", async () => {
+    const confirmMock = vi.spyOn(window, "confirm").mockReturnValue(true);
+    let resolveDelete: (value: boolean) => void = () => {};
+    vi.mocked(deleteTask).mockReturnValueOnce(new Promise((resolve) => {
+      resolveDelete = resolve;
+    }));
+
+    render(
+      <Board
+        initialTasks={createTasksWithTodo()}
+        initialDoneTotal={0}
+        initialDoneLimit={20}
+        sshHosts={[]}
+        projects={[createProject()]}
+        sidebarDefaultCollapsed={false}
+        doneAlertDismissed={false}
+        notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
+        defaultSessionType={SessionType.TMUX}
+        taskSearchShortcut="Mod+Shift+O"
+      />,
+    );
+
+    const taskLink = await screen.findByRole("link", { name: "Test Task" });
+    taskLink.focus();
+    fireEvent.keyDown(taskLink, { key: "d" });
+    fireEvent.keyDown(taskLink, { key: "d" });
+
+    await waitFor(() => {
+      expect(screen.getByRole("link", { name: "Test Task" }).getAttribute("data-deletion-status")).toBe("deleting");
+    });
+
+    const sameTaskLink = screen.getByRole("link", { name: "Test Task" });
+    sameTaskLink.focus();
+    fireEvent.keyDown(sameTaskLink, { key: "d" });
+    fireEvent.keyDown(sameTaskLink, { key: "d" });
+
+    expect(deleteTask).toHaveBeenCalledTimes(1);
+
+    resolveDelete(true);
+    await waitFor(() => {
+      expect(screen.queryByRole("link", { name: "Test Task" })).toBeNull();
+    });
+
+    confirmMock.mockRestore();
+  });
+
+  it("삭제가 실패하면 카드에 실패 사유를 남기고 다시 시도로 삭제를 끝낼 수 있다", async () => {
+    const confirmMock = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const consoleErrorMock = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.mocked(deleteTask)
+      .mockRejectedValueOnce(new Error("peer timeout"))
+      .mockResolvedValueOnce(true);
+
+    render(
+      <Board
+        initialTasks={createTasksWithTodo()}
+        initialDoneTotal={0}
+        initialDoneLimit={20}
+        sshHosts={[]}
+        projects={[createProject()]}
+        sidebarDefaultCollapsed={false}
+        doneAlertDismissed={false}
+        notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
+        defaultSessionType={SessionType.TMUX}
+        taskSearchShortcut="Mod+Shift+O"
+      />,
+    );
+
+    const taskLink = await screen.findByRole("link", { name: "Test Task" });
+    taskLink.focus();
+    fireEvent.keyDown(taskLink, { key: "d" });
+    fireEvent.keyDown(taskLink, { key: "d" });
+
+    await waitFor(() => {
+      expect(screen.getByRole("link", { name: "Test Task" }).getAttribute("data-deletion-reason")).toBe("peer timeout");
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "retry-delete-task-1" }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("link", { name: "Test Task" })).toBeNull();
+    });
+    expect(deleteTask).toHaveBeenCalledTimes(2);
+
+    confirmMock.mockRestore();
+    consoleErrorMock.mockRestore();
+  });
+
   it("포커스된 task에서 dd를 누르는 중 보드 task 목록이 refresh되어도 삭제 sequence를 유지한다", async () => {
     const confirmMock = vi.spyOn(window, "confirm").mockReturnValue(true);
     vi.mocked(deleteTask).mockResolvedValueOnce(true);
@@ -1247,7 +1453,7 @@ describe("Board defaultSessionType sync", () => {
     fireEvent.change(commandInput, { target: { value: "sync" } });
     fireEvent.keyDown(commandInput, { key: "Enter" });
 
-    expect(runBackgroundTaskSyncNow).toHaveBeenCalledTimes(1);
+    expect(startBackgroundTaskSyncNow).toHaveBeenCalledTimes(1);
     expect(moveTaskToColumn).not.toHaveBeenCalled();
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).toBeNull();
@@ -1373,6 +1579,86 @@ describe("Board defaultSessionType sync", () => {
     await waitFor(() => {
       expect(moveTaskToColumn).toHaveBeenCalledWith("task-1", TaskStatus.REVIEW);
     });
+  });
+
+  it("옮긴 카드를 저장하는 동안 저장 중 상태를 전달하고 저장이 끝나면 지운다", async () => {
+    let resolveMove: () => void = () => {};
+    vi.mocked(moveTaskToColumn).mockReturnValueOnce(new Promise<void>((resolve) => {
+      resolveMove = resolve;
+    }));
+
+    render(
+      <Board
+        initialTasks={createTasksWithTodo()}
+        initialDoneTotal={0}
+        initialDoneLimit={20}
+        sshHosts={[]}
+        projects={[createProject()]}
+        sidebarDefaultCollapsed={false}
+        doneAlertDismissed={false}
+        notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
+        defaultSessionType={SessionType.TMUX}
+        taskSearchShortcut="Mod+Shift+O"
+      />,
+    );
+
+    const taskLink = await screen.findByRole("link", { name: "Test Task" });
+    taskLink.focus();
+    fireEvent.keyDown(taskLink, { key: "F10", shiftKey: true });
+    fireEvent.click(await screen.findByRole("button", { name: "change-status-review" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("link", { name: "Test Task" }).getAttribute("data-move-status")).toBe("saving");
+    });
+    expect(screen.getByRole("link", { name: "Test Task" }).getAttribute("data-kanban-status")).toBe(TaskStatus.REVIEW);
+
+    resolveMove();
+
+    await waitFor(() => {
+      expect(screen.getByRole("link", { name: "Test Task" }).getAttribute("data-move-status")).toBeNull();
+    });
+  });
+
+  it("이동 저장이 실패하면 카드를 원래 칸으로 되돌리고 사유와 다시 옮기기를 남긴다", async () => {
+    const consoleErrorMock = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.mocked(moveTaskToColumn)
+      .mockRejectedValueOnce(new Error("db locked"))
+      .mockResolvedValueOnce(undefined);
+
+    render(
+      <Board
+        initialTasks={createTasksWithTodo()}
+        initialDoneTotal={0}
+        initialDoneLimit={20}
+        sshHosts={[]}
+        projects={[createProject()]}
+        sidebarDefaultCollapsed={false}
+        doneAlertDismissed={false}
+        notificationSettings={{ isEnabled: true, enabledStatuses: ["progress", "pending", "review"] }}
+        defaultSessionType={SessionType.TMUX}
+        taskSearchShortcut="Mod+Shift+O"
+      />,
+    );
+
+    const taskLink = await screen.findByRole("link", { name: "Test Task" });
+    taskLink.focus();
+    fireEvent.keyDown(taskLink, { key: "F10", shiftKey: true });
+    fireEvent.click(await screen.findByRole("button", { name: "change-status-review" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("link", { name: "Test Task" }).getAttribute("data-move-reason")).toBe("db locked");
+    });
+    expect(screen.getByRole("link", { name: "Test Task" }).getAttribute("data-kanban-status")).toBe(TaskStatus.TODO);
+
+    fireEvent.click(screen.getByRole("button", { name: "retry-move-task-1" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("link", { name: "Test Task" }).getAttribute("data-kanban-status")).toBe(TaskStatus.REVIEW);
+    });
+    expect(moveTaskToColumn).toHaveBeenCalledTimes(2);
+    expect(moveTaskToColumn).toHaveBeenLastCalledWith("task-1", TaskStatus.REVIEW);
+
+    consoleErrorMock.mockRestore();
   });
 
   it("보드 검색 바에서 Enter와 Shift+Enter로 순방향/역방향 찾기를 호출한다", async () => {
@@ -1751,6 +2037,21 @@ describe("Board pagination and project identity regressions", () => {
     await act(async () => current.resolve({ tasks: donePage(20), doneTotal: 80 }));
     expect((screen.getByText("load-more-done") as HTMLButtonElement).disabled).toBe(false);
     expect(screen.queryByText("Done 40")).toBeNull();
+  });
+
+  it("더 불러오기가 실패하면 사유를 남기고 다시 누르면 같은 페이지를 다시 요청한다", async () => {
+    vi.mocked(getMoreDoneTasks).mockRejectedValueOnce(new Error("db locked"))
+      .mockResolvedValueOnce({ tasks: donePage(20), doneTotal: 80 });
+    render(<Board {...props()} initialTasks={{ ...createEmptyTasks(), done: donePage(0) }} />);
+    fireEvent.click(screen.getByText("load-more-done"));
+
+    expect((await screen.findByRole("alert")).textContent).toBe("db locked");
+
+    fireEvent.click(screen.getByText("load-more-done"));
+
+    await screen.findByText("Done 20");
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(vi.mocked(getMoreDoneTasks).mock.calls.map(([offset]) => offset)).toEqual([20, 20]);
   });
 
   it("deduplicates overlapping Done results while advancing by the fetched page size", async () => {

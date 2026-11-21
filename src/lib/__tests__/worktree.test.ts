@@ -511,6 +511,71 @@ describe("removeWorktreeAndBranch", () => {
     );
   });
 
+  it("should prune the broken registration and keep deleting the branch when worktree removal fails", async () => {
+    // Given
+    mockListWorktrees.mockResolvedValue([
+      { path: "/workspace/repo", branch: "main", isBare: false },
+      { path: "/tmp/broken-worktree", branch: "feature/broken", isBare: false },
+    ]);
+    mockExecGit.mockImplementation(async (command: string) => {
+      if (command.includes("worktree remove")) throw new Error("validation failed, cannot remove working tree");
+      return "";
+    });
+    const { removeWorktreeAndBranch } = await import("@/lib/worktree");
+
+    // When
+    await removeWorktreeAndBranch("/workspace/repo", "feature/broken", null, { throwOnError: true });
+
+    // Then
+    expect(mockExecGit).toHaveBeenCalledWith("git -C '/workspace/repo' worktree prune", null);
+    expect(filterCalls("branch -D 'feature/broken'")).toHaveLength(1);
+  });
+
+  it("should keep deleting the branch when both worktree removal and prune fail", async () => {
+    // Given
+    mockListWorktrees.mockResolvedValue([
+      { path: "/workspace/repo", branch: "main", isBare: false },
+      { path: "/tmp/broken-worktree", branch: "feature/broken", isBare: false },
+    ]);
+    mockExecGit.mockImplementation(async (command: string) => {
+      if (command.includes("worktree remove") || command.includes("worktree prune")) {
+        throw new Error("git failed");
+      }
+      return "";
+    });
+    const { removeWorktreeAndBranch } = await import("@/lib/worktree");
+
+    // When
+    await removeWorktreeAndBranch("/workspace/repo", "feature/broken", null, { throwOnError: true });
+
+    // Then
+    expect(filterCalls("branch -D 'feature/broken'")).toHaveLength(1);
+  });
+
+  it("should keep deleting the branch when stale worktree directory cleanup fails", async () => {
+    // Given
+    mockListWorktrees.mockResolvedValue([
+      { path: "/workspace/repo", branch: "main", isBare: false },
+    ]);
+    mockExecGit.mockImplementation(async (command: string) => {
+      if (command.includes("rm -rf --")) throw new Error("permission denied");
+      return "";
+    });
+    const { removeWorktreeAndBranch } = await import("@/lib/worktree");
+
+    // When
+    await removeWorktreeAndBranch(
+      "/workspace/repo",
+      "feature/stale-dir",
+      null,
+      { throwOnError: true, worktreePath: "/workspace/repo__worktrees/feature-stale-dir" },
+    );
+
+    // Then
+    expect(filterCalls("rm -rf --").length).toBeGreaterThan(0);
+    expect(filterCalls("branch -D 'feature/stale-dir'")).toHaveLength(1);
+  });
+
   it("should not remove or delete a branch checked out in the project root", async () => {
     // Given
     mockListWorktrees.mockResolvedValue([

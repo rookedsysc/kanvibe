@@ -33,6 +33,7 @@ class MobileNotifications {
   static const _payloadFields = {
     'type',
     'eventId',
+    'kind',
     'taskId',
     'title',
     'body',

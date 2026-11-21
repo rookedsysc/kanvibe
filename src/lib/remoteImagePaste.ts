@@ -31,13 +31,22 @@ export async function transferImageToRemoteHost(
   sshConfig: SSHHostConfig,
   imageBuffer: Buffer,
 ): Promise<string> {
+  return transferFileToRemoteHost(sshConfig, imageBuffer, "png");
+}
+
+export async function transferFileToRemoteHost(
+  sshConfig: SSHHostConfig,
+  buffer: Buffer,
+  extension: string,
+): Promise<string> {
+  if (!/^[a-z0-9]{1,12}$/.test(extension)) throw new Error("첨부 파일 확장자가 올바르지 않습니다.");
   const uuid = randomUUID();
-  const remotePath = buildRemoteImagePastePath(uuid);
+  const remotePath = extension === "png" ? buildRemoteImagePastePath(uuid) : path.posix.join(REMOTE_TEMP_DIRECTORY, `kanvibe-paste-${uuid}.${extension}`);
   const localDirectory = await mkdtemp(path.join(tmpdir(), "kanvibe-paste-"));
-  const localPath = path.join(localDirectory, `${uuid}.png`);
+  const localPath = path.join(localDirectory, `${uuid}.${extension}`);
 
   try {
-    await writeFile(localPath, imageBuffer);
+    await writeFile(localPath, buffer, { mode: 0o600 });
     await runSCP(buildSCPArgs(sshConfig, localPath, remotePath));
     return remotePath;
   } finally {

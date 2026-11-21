@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import {
   deleteProject,
@@ -8,11 +8,18 @@ import {
   type ScanResult,
 } from "@/desktop/renderer/actions/project";
 import { useBoardCommands } from "@/desktop/renderer/components/BoardCommandProvider";
+import { showActionStatus } from "@/desktop/renderer/components/ActionStatusToast";
+import { useTrackedAction } from "@/desktop/renderer/hooks/useTrackedAction";
+import InlineLoadError from "@/components/InlineLoadError";
 import type { Project } from "@/entities/Project";
 import FolderSearchInput from "@/components/FolderSearchInput";
 import ProjectIcon from "@/components/ProjectIcon";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 import { matchesProjectSearch } from "@/utils/projectSearch";
+
+function getErrorReason(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
+}
 
 interface ProjectRegistryDialogProps {
   isOpen: boolean;
@@ -30,12 +37,40 @@ export default function ProjectRegistryDialog({
   const t = useTranslations("settings");
   const tc = useTranslations("common");
   const { registerShortcutBlocker } = useBoardCommands();
-  const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
   const [scanSshHost, setScanSshHost] = useState("");
   const [projectSearchQuery, setProjectSearchQuery] = useState("");
+  const [deleteTargetProjectId, setDeleteTargetProjectId] = useState<string | null>(null);
+  /** 보드는 닫힌 대화상자를 내리므로, 닫힌 뒤 끝난 결과는 토스트로 알린다 */
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  /** 스캔과 프로젝트 삭제는 서로 다른 작업이라 진행·실패 상태를 따로 둔다 */
+  const scanAction = useTrackedAction(async (scanPath: string, sshHost: string | undefined) => {
+    try {
+      const result = await scanAndRegisterProjects(scanPath, sshHost);
+      applyScanResult(result);
+    } catch (scanError) {
+      announceIfClosed("failure", t("scanFailed", { reason: getErrorReason(scanError) }));
+      throw scanError;
+    }
+  });
+  const deleteAction = useTrackedAction(async (projectId: string, projectName: string) => {
+    try {
+      await deleteProject(projectId);
+      announceIfClosed("success", t("deleteProjectSucceeded", { name: projectName }));
+    } catch (deleteError) {
+      announceIfClosed("failure", t("deleteProjectFailed", { reason: getErrorReason(deleteError) }));
+      throw deleteError;
+    }
+  });
 
   const filteredProjects = useMemo(
     () => projects.filter((project) => matchesProjectSearch(project, projectSearchQuery)),
@@ -52,6 +87,34 @@ export default function ProjectRegistryDialog({
 
   if (!isOpen) return null;
 
+  function announceIfClosed(kind: "success" | "failure", message: string) {
+    if (!isMountedRef.current) {
+      showActionStatus({ kind, message });
+    }
+  }
+
+  function applyScanResult(result: ScanResult) {
+    setScanResult(result);
+
+    const messages: string[] = [];
+
+    if (result.registered.length > 0) {
+      messages.push(t("registeredCount", { count: result.registered.length }));
+    }
+    if (result.worktreeTasks.length > 0) {
+      messages.push(t("worktreeTasksRegistered", { count: result.worktreeTasks.length }));
+    }
+
+    if (messages.length > 0) {
+      setSuccessMessage(messages.join(" / "));
+      announceIfClosed("success", messages.join(" / "));
+    } else if (result.skipped.length > 0) {
+      setSuccessMessage(t("noNewProjects"));
+    } else if (result.errors.length === 0) {
+      setError(t("noGitRepos"));
+    }
+  }
+
   function handleScan(formData: FormData) {
     setError(null);
     setSuccessMessage(null);
@@ -64,38 +127,15 @@ export default function ProjectRegistryDialog({
       return;
     }
 
-    startTransition(async () => {
-      const result = await scanAndRegisterProjects(
-        scanPath,
-        (formData.get("scanSshHost") as string) || undefined,
-      );
-      setScanResult(result);
-
-      const messages: string[] = [];
-
-      if (result.registered.length > 0) {
-        messages.push(t("registeredCount", { count: result.registered.length }));
-      }
-      if (result.worktreeTasks.length > 0) {
-        messages.push(t("worktreeTasksRegistered", { count: result.worktreeTasks.length }));
-      }
-
-      if (messages.length > 0) {
-        setSuccessMessage(messages.join(" / "));
-      } else if (result.skipped.length > 0) {
-        setSuccessMessage(t("noNewProjects"));
-      } else if (result.errors.length === 0) {
-        setError(t("noGitRepos"));
-      }
-    });
+    void scanAction.run(scanPath, (formData.get("scanSshHost") as string) || undefined);
   }
 
   function handleDelete(projectId: string, projectName: string) {
+    if (deleteAction.isPending) return;
     if (!confirm(t("deleteConfirm", { name: projectName }))) return;
 
-    startTransition(async () => {
-      await deleteProject(projectId);
-    });
+    setDeleteTargetProjectId(projectId);
+    void deleteAction.run(projectId, projectName);
   }
 
   return (
@@ -159,12 +199,21 @@ export default function ProjectRegistryDialog({
 
             <button
               type="submit"
-              disabled={isPending}
+              disabled={scanAction.isPending}
+              aria-busy={scanAction.isPending || undefined}
               className="w-full rounded-md bg-brand-primary py-1.5 text-sm text-text-inverse transition-colors hover:bg-brand-hover disabled:opacity-50"
             >
-              {isPending ? t("scanning") : t("scanButton")}
+              {scanAction.isPending ? t("scanning") : t("scanButton")}
             </button>
           </form>
+
+          {scanAction.error ? (
+            <InlineLoadError
+              className="mt-3"
+              message={t("scanFailed", { reason: scanAction.error })}
+              onRetry={() => void scanAction.retry()}
+            />
+          ) : null}
 
           {scanResult && (
             <div className="mt-3 space-y-1 rounded-lg border border-border-default bg-bg-page p-3">
@@ -230,40 +279,53 @@ export default function ProjectRegistryDialog({
               </p>
             ) : (
               <ul className="space-y-2">
-                {filteredProjects.map((project) => (
-                  <li
-                    key={project.id}
-                    className="rounded-md bg-bg-page p-2"
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="flex items-center gap-1.5 truncate text-sm font-medium text-text-primary">
-                          <ProjectIcon projectName={project.name} iconDataUrl={project.iconDataUrl} />
-                          {project.name}
-                        </p>
-                        <p className="truncate font-mono text-xs text-text-muted">
-                          {project.sshHost && (
-                            <span className="text-tag-ssh-text">
-                              {project.sshHost}:
-                            </span>
-                          )}
-                          {project.repoPath}
-                        </p>
-                        <p className="text-xs text-text-muted">
-                          {t("defaultBranch")}: {project.defaultBranch}
-                        </p>
+                {filteredProjects.map((project) => {
+                  const isDeletingProject = deleteAction.pendingArgs?.[0] === project.id;
+                  const deleteFailureReason =
+                    !deleteAction.isPending && deleteTargetProjectId === project.id ? deleteAction.error : null;
+                  return (
+                    <li
+                      key={project.id}
+                      aria-busy={isDeletingProject || undefined}
+                      className="rounded-md bg-bg-page p-2"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="flex items-center gap-1.5 truncate text-sm font-medium text-text-primary">
+                            <ProjectIcon projectName={project.name} iconDataUrl={project.iconDataUrl} />
+                            {project.name}
+                          </p>
+                          <p className="truncate font-mono text-xs text-text-muted">
+                            {project.sshHost && (
+                              <span className="text-tag-ssh-text">
+                                {project.sshHost}:
+                              </span>
+                            )}
+                            {project.repoPath}
+                          </p>
+                          <p className="text-xs text-text-muted">
+                            {t("defaultBranch")}: {project.defaultBranch}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(project.id, project.name)}
+                          disabled={deleteAction.isPending}
+                          className="shrink-0 text-xs text-status-error hover:opacity-80 disabled:opacity-50"
+                        >
+                          {isDeletingProject ? t("deletingProject") : t("deleteProject")}
+                        </button>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => handleDelete(project.id, project.name)}
-                        disabled={isPending}
-                        className="shrink-0 text-xs text-status-error hover:opacity-80 disabled:opacity-50"
-                      >
-                        {t("deleteProject")}
-                      </button>
-                    </div>
-                  </li>
-                ))}
+                      {deleteFailureReason ? (
+                        <InlineLoadError
+                          className="mt-2"
+                          message={t("deleteProjectFailed", { reason: deleteFailureReason })}
+                          onRetry={() => void deleteAction.retry()}
+                        />
+                      ) : null}
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </div>

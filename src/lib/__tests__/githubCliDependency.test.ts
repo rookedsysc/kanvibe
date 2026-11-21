@@ -2,23 +2,24 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockExecGit = vi.fn();
 
-vi.mock("@/lib/gitOperations", () => ({
+vi.mock("@/lib/gitOperations", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/lib/gitOperations")>(),
   execGit: (...args: unknown[]) => mockExecGit(...args),
-  isSSHTransportError: (error: unknown) => {
-    const message = error instanceof Error
-      ? error.message
-      : error && typeof error === "object" && "stderr" in error
-        ? String((error as { stderr?: string }).stderr)
-        : "";
-
-    return /Connection (?:reset|closed)|kex_exchange_identification/.test(message);
-  },
 }));
 
 describe("githubCliDependency", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
+  });
+
+  it.each(["Permission denied (publickey)", "Host key verification failed"])("접속 오류는 gh 미설치로 판단하지 않는다: %s", async (message) => {
+    mockExecGit.mockRejectedValueOnce(new Error(message));
+    const { getGitHubCliStatus } = await import("@/lib/githubCliDependency");
+    await expect(getGitHubCliStatus("remote-a")).rejects.toThrow(message);
+    expect(mockExecGit).toHaveBeenCalledOnce();
+    mockExecGit.mockResolvedValueOnce("");
+    await expect(getGitHubCliStatus("remote-a")).resolves.toMatchObject({ available: true, blockedReason: null });
   });
 
   it("로컬 환경에서도 gh 상태를 조회한다", async () => {

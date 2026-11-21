@@ -17,6 +17,7 @@ interface KanvibeDesktopApi {
   onWorkspaceListFocusShortcut?: (listener: () => void) => () => void;
   onTaskDetailDockShortcut?: (listener: (shortcutIndex: number) => void) => () => void;
   onTaskDetailUsageShortcut?: (listener: () => void) => () => void;
+  onTerminalToggleChatShortcut?: (listener: () => void) => () => void;
   notifyShortcutBindingsChanged?: () => void;
   onShortcutBindingsChanged?: (listener: () => void) => () => void;
   notifyShortcutCaptureChanged?: (isCapturing: boolean) => void;

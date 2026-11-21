@@ -3,29 +3,58 @@ import { execFileSync, execSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({
-  taskRepo: {
-    findOne: vi.fn(),
-  },
-  taskDiffStatsRepo: {
-    find: vi.fn(),
-    save: vi.fn(),
-  },
-  execGit: vi.fn(),
-  readTextFile: vi.fn(),
-  writeTextFile: vi.fn(),
-}));
+const mocks = vi.hoisted(() => {
+  /** task별 실행 호스트와 DB에서 삭제된 task를 구분한다 */
+  const taskHosts = {
+    hostByTaskId: {} as Record<string, string>,
+    missingTaskIds: new Set<string>(),
+  };
+
+  return {
+    taskHosts,
+    taskRepo: {
+      findOne: vi.fn(),
+      find: async ({ where }: { where: { id: { value: string[] } } }) => where.id.value
+        .filter((taskId) => !taskHosts.missingTaskIds.has(taskId))
+        .map((taskId) => ({ id: taskId })),
+    },
+    taskDiffStatsRepo: {
+      find: vi.fn(),
+      save: vi.fn(),
+    },
+    execGit: vi.fn(),
+    /** execGit 호출 순서대로 그 명령이 받은 원격 명령 우선순위 */
+    execGitPriorities: [] as Array<"background" | "foreground">,
+    readTextFile: vi.fn(),
+    writeTextFile: vi.fn(),
+  };
+});
 
 vi.mock("@/lib/database", () => ({
   getTaskRepository: vi.fn(async () => mocks.taskRepo),
   getTaskDiffStatsRepository: vi.fn(async () => mocks.taskDiffStatsRepo),
 }));
 
-vi.mock("@/lib/gitOperations", () => ({
-  execGit: mocks.execGit,
-}));
+vi.mock("@/lib/gitOperations", async () => {
+  const { AsyncLocalStorage } = await import("node:async_hooks");
+  const backgroundPriority = new AsyncLocalStorage<true>();
+
+  return {
+    execGit: (...args: unknown[]) => {
+      mocks.execGitPriorities.push(backgroundPriority.getStore() ? "background" : "foreground");
+      return mocks.execGit(...args);
+    },
+    runWithBackgroundSSHCommands: <T>(operation: () => Promise<T>) => backgroundPriority.run(true, operation),
+  };
+});
+
+beforeEach(() => {
+  mocks.taskHosts.hostByTaskId = {};
+  mocks.taskHosts.missingTaskIds.clear();
+  mocks.execGitPriorities.length = 0;
+});
 
 vi.mock("@/lib/hostFileAccess", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/hostFileAccess")>();
@@ -52,8 +81,8 @@ describe("diffService remote task support", () => {
     });
     mocks.execGit.mockImplementation(async (command: string, sshHost?: string | null) => {
       expect(sshHost).toBe("remote-host");
-      expect(command).toContain("git -C '/remote/worktrees/fix-qa' diff 'main...fix/qa' --name-status");
-      expect(command).toContain("git -C '/remote/worktrees/fix-qa' diff 'main...fix/qa' --numstat");
+      expect(command).toContain("git -C '/remote/worktrees/fix-qa' diff HEAD --name-status");
+      expect(command).toContain("git -C '/remote/worktrees/fix-qa' diff HEAD --numstat");
       expect(command).toContain("git -C '/remote/worktrees/fix-qa' status --porcelain --untracked-files=all");
       return [
         "__KANVIBE_DIFF_NAME_STATUS__",
@@ -72,7 +101,7 @@ describe("diffService remote task support", () => {
       { path: "docs/new.md", status: "added", additions: 0, deletions: 0 },
     ]);
     expect(mocks.execGit).toHaveBeenCalledWith(
-      expect.stringContaining("git -C '/remote/worktrees/fix-qa' diff 'main...fix/qa' --name-status"),
+      expect.stringContaining("git -C '/remote/worktrees/fix-qa' diff HEAD --name-status"),
       "remote-host",
     );
     expect(mocks.execGit).toHaveBeenCalledTimes(1);
@@ -97,7 +126,7 @@ describe("diffService remote task support", () => {
     await expect(saveFileContent("task-1", "src/app.ts", "updated")).resolves.toEqual({ success: true });
 
     expect(mocks.execGit).toHaveBeenCalledWith(
-      expect.stringContaining("git -C '/remote/worktrees/fix-qa' show 'main:src/app.ts'"),
+      expect.stringContaining("git -C '/remote/worktrees/fix-qa' show 'HEAD:src/app.ts'"),
       "remote-host",
     );
     expect(mocks.readTextFile).toHaveBeenCalledWith("/remote/worktrees/fix-qa/src/app.ts", "remote-host");
@@ -135,9 +164,8 @@ describe("getTaskDiffStats", () => {
 
     const { getTaskDiffStats } = await import("@/desktop/main/services/diffService");
 
-    await expect(getTaskDiffStats(["task-progress"])).resolves.toEqual({
-      "task-progress": { fileCount: 1, additions: 12, deletions: 3 },
-    });
+    await expect(getTaskDiffStats(["task-progress"])).resolves.toEqual({});
+    await vi.waitFor(() => expect(mocks.taskDiffStatsRepo.save).toHaveBeenCalled());
     expect(mocks.execGit).toHaveBeenCalledTimes(1);
     expect(mocks.taskDiffStatsRepo.save).toHaveBeenCalledWith({
       taskId: "task-progress",
@@ -158,8 +186,9 @@ describe("getTaskDiffStats", () => {
 
     await expect(getTaskDiffStats(["task-progress"])).resolves.toEqual({
       "task-review": { fileCount: 4, additions: 40, deletions: 8 },
-      "task-progress": { fileCount: 1, additions: 12, deletions: 3 },
+      "task-progress": { fileCount: 1, additions: 1, deletions: 1 },
     });
+    await vi.waitFor(() => expect(mocks.taskDiffStatsRepo.save).toHaveBeenCalled());
     expect(mocks.execGit).toHaveBeenCalledTimes(1);
   });
 
@@ -210,7 +239,72 @@ describe("getTaskDiffStats", () => {
 
 
 describe("실제 Git 파일명", () => {
-  it("공백·한글·탭·개행과 커밋/작업 트리 rename의 목적지 경로를 읽고 저장한다", async () => {
+  it.each([null, "remote-host"])("HEAD 이후의 미커밋 파일·줄 수·원본만 반환하고 커밋 후 집계를 비운다 (host=%s)", async (sshHost) => {
+    const directory = mkdtempSync(path.join(tmpdir(), "kanvibe-uncommitted-"));
+    const git = (...args: string[]) => execFileSync("git", ["-C", directory, ...args], { encoding: "utf8" });
+    const write = (name: string, content: string | Buffer) => writeFileSync(path.join(directory, name), content);
+    try {
+      git("init", "-b", "main");
+      git("config", "user.email", "fixture@example.invalid");
+      git("config", "user.name", "fixture");
+      write("tracked.txt", "base\n");
+      write("deleted.txt", "remove\nthis\n");
+      write("reverted.txt", "original\n");
+      write("old.txt", "rename\n");
+      write(".gitignore", "ignored.txt\n");
+      git("add", ".");
+      git("commit", "-m", "base");
+      git("switch", "-c", "feature");
+      write("tracked.txt", "committed\n");
+      write("committed-only.txt", "already committed\n");
+      git("add", ".");
+      git("commit", "-m", "feature changes");
+      write("tracked.txt", "staged\n");
+      write("staged.txt", "new staged\n");
+      write("reverted.txt", "staged change\n");
+      write("removed-add.txt", "temporary\n");
+      git("add", ".");
+      write("tracked.txt", "working\nextra\n");
+      write("reverted.txt", "original\n");
+      rmSync(path.join(directory, "removed-add.txt"));
+      rmSync(path.join(directory, "deleted.txt"));
+      git("mv", "old.txt", "new.txt");
+      write("untracked ' 한글.txt", "one\ntwo");
+      write("binary.dat", Buffer.from([0, 1, 2]));
+      write("empty.txt", "");
+      write("ignored.txt", "ignored\n");
+      vi.resetModules();
+      vi.clearAllMocks();
+      mocks.taskRepo.findOne.mockResolvedValue({ worktreePath: directory, branchName: "feature", baseBranch: "main", sshHost });
+      mocks.taskDiffStatsRepo.save.mockResolvedValue(undefined);
+      mocks.execGit.mockImplementation(async (command: string, host: string | null) => {
+        expect(host).toBe(sshHost);
+        return execSync(command, { encoding: "utf8" });
+      });
+      const service = await import("@/desktop/main/services/diffService");
+      const files = await service.getGitDiffFiles("fixture");
+      expect(files.sort((a, b) => a.path.localeCompare(b.path))).toEqual([
+        { path: "binary.dat", status: "added", additions: 0, deletions: 0 },
+        { path: "deleted.txt", status: "deleted", additions: 0, deletions: 2 },
+        { path: "empty.txt", status: "added", additions: 0, deletions: 0 },
+        { path: "new.txt", originalPath: "old.txt", status: "renamed", additions: 0, deletions: 0 },
+        { path: "staged.txt", status: "added", additions: 1, deletions: 0 },
+        { path: "tracked.txt", status: "modified", additions: 2, deletions: 1 },
+        { path: "untracked ' 한글.txt", status: "added", additions: 2, deletions: 0 },
+      ]);
+      expect(mocks.taskDiffStatsRepo.save).toHaveBeenLastCalledWith({ taskId: "fixture", fileCount: 7, additions: 5, deletions: 3 });
+      expect(await service.getOriginalFileContent("fixture", "tracked.txt")).toBe("committed\n");
+      expect(await service.getOriginalFileContent("fixture", "old.txt")).toBe("rename\n");
+      git("add", "-A");
+      git("commit", "-m", "finish changes");
+      expect(await service.getGitDiffFiles("fixture")).toEqual([]);
+      expect(mocks.taskDiffStatsRepo.save).toHaveBeenLastCalledWith({ taskId: "fixture", fileCount: 0, additions: 0, deletions: 0 });
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("공백·한글·탭·개행과 미커밋 rename의 목적지 경로를 읽고 저장한다", async () => {
     const directory = mkdtempSync(path.join(tmpdir(), "kanvibe-diff-path-"));
     const git = (...args: string[]) => execFileSync("git", ["-C", directory, ...args], { encoding: "utf8" });
     try {
@@ -226,6 +320,7 @@ describe("실제 Git 파일명", () => {
       writeFileSync(path.join(directory, "stats\n\t한글.txt"), "first\nsecond\n");
       git("add", ".");
       git("commit", "-m", "rename");
+      writeFileSync(path.join(directory, "stats\n\t한글.txt"), "first\nsecond\nthird\n");
       git("mv", "working old.txt", "working 새 파일.txt");
       const untracked = ["hello world.txt", "한글.txt", "tab\tfile.txt", "line\nfile.txt"];
       for (const name of untracked) writeFileSync(path.join(directory, name), "original\n");
@@ -238,10 +333,11 @@ describe("실제 Git 파일명", () => {
       mocks.writeTextFile.mockImplementation(async (filePath: string, contents: string) => writeFileSync(filePath, contents));
       const service = await import("@/desktop/main/services/diffService");
       const files = await service.getGitDiffFiles("fixture");
-      const expected = [...untracked, "committed 한글\tnew.txt", "working 새 파일.txt", "stats\n\t한글.txt"];
-      expect(files.find((file) => file.path === "stats\n\t한글.txt")).toEqual({ path: "stats\n\t한글.txt", status: "added", additions: 2, deletions: 0 });
+      const expected = [...untracked, "working 새 파일.txt", "stats\n\t한글.txt"];
+      expect(files.find((file) => file.path === "stats\n\t한글.txt")).toEqual({ path: "stats\n\t한글.txt", status: "modified", additions: 1, deletions: 0 });
       expect(files.map((file) => file.path).sort()).toEqual(expected.sort());
-      expect(files.filter((file) => file.status === "renamed").map((file) => file.path).sort()).toEqual(["committed 한글\tnew.txt", "working 새 파일.txt"].sort());
+      expect(files.filter((file) => file.status === "renamed").map((file) => file.path)).toEqual(["working 새 파일.txt"]);
+      expect(untracked.map((name) => files.find((file) => file.path === name)?.additions)).toEqual([1, 1, 1, 1]);
       for (const name of expected) {
         expect(await service.getFileContent("fixture", name)).not.toBe("");
         expect(await service.saveFileContent("fixture", name, "updated\n")).toEqual({ success: true });
@@ -255,7 +351,7 @@ describe("실제 Git 파일명", () => {
 
 
 describe("diff 실패와 경로 경계", () => {
-  it("잘못된 revision은 캐시를 보존하고 정상 빈 diff만 0으로 저장한다", async () => {
+  it("기준 브랜치가 없어도 미커밋 변경을 조회하고 Git 실패 시 캐시를 보존한다", async () => {
     const directory = mkdtempSync(path.join(tmpdir(), "kanvibe-diff-failure-"));
     const git = (...args: string[]) => execFileSync("git", ["-C", directory, ...args], { encoding: "utf8" });
     try {
@@ -274,10 +370,13 @@ describe("diff 실패와 경로 경계", () => {
       const service = await import("@/desktop/main/services/diffService");
 
       expect(await service.getTaskDiffStats(["fixture"])).toEqual({ fixture: { fileCount: 8, additions: 21, deletions: 5 } });
-      expect(mocks.taskDiffStatsRepo.save).not.toHaveBeenCalled();
-      task.baseBranch = "main";
-      expect(await service.getTaskDiffStats(["fixture"])).toEqual({ fixture: { fileCount: 0, additions: 0, deletions: 0 } });
+      await service.getGitDiffFiles("fixture");
+      expect(await service.getGitDiffFiles("fixture")).toEqual([]);
       expect(mocks.taskDiffStatsRepo.save).toHaveBeenCalledWith({ taskId: "fixture", fileCount: 0, additions: 0, deletions: 0 });
+      mocks.taskDiffStatsRepo.save.mockClear();
+      task.worktreePath = path.join(directory, "missing-worktree");
+      expect(await service.getGitDiffFiles("fixture")).toEqual([]);
+      expect(mocks.taskDiffStatsRepo.save).not.toHaveBeenCalled();
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
@@ -312,6 +411,110 @@ describe("diff 실패와 경로 경계", () => {
 });
 
 
+describe("readTaskWorkspaceFile", () => {
+  const MAX_FILE_BYTES = 1024 * 1024;
+  let directory: string;
+  let outsideDirectory: string;
+
+  async function loadService(sshHost: string | null = null) {
+    vi.resetModules();
+    vi.clearAllMocks();
+    mocks.taskRepo.findOne.mockResolvedValue({ worktreePath: directory, branchName: "main", sshHost });
+    mocks.execGit.mockImplementation(async (command: string) => execSync(command, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 4 * MAX_FILE_BYTES }).trim());
+    return import("@/desktop/main/services/diffService");
+  }
+
+  beforeEach(() => {
+    directory = mkdtempSync(path.join(tmpdir(), "kanvibe-workspace-file-"));
+    outsideDirectory = mkdtempSync(path.join(tmpdir(), "kanvibe-workspace-outside-"));
+    mkdirSync(path.join(directory, "docs"));
+    writeFileSync(path.join(directory, "docs/plan.md"), "# plan\n본문\n");
+    writeFileSync(path.join(outsideDirectory, "secret.txt"), "secret");
+  });
+
+  afterEach(() => {
+    rmSync(directory, { recursive: true, force: true });
+    rmSync(outsideDirectory, { recursive: true, force: true });
+  });
+
+  it("worktree 안의 상대 경로는 내용을 읽어 돌려준다", async () => {
+    const service = await loadService();
+
+    await expect(service.readTaskWorkspaceFile("task-1", "docs/plan.md")).resolves.toEqual({ path: "docs/plan.md", content: "# plan\n본문\n" });
+  });
+
+  it("worktree 안의 절대 경로는 상대 경로로 바꿔 돌려준다", async () => {
+    const service = await loadService();
+
+    await expect(service.readTaskWorkspaceFile("task-1", path.join(directory, "docs/plan.md")))
+      .resolves.toEqual({ path: path.join("docs", "plan.md"), content: "# plan\n본문\n" });
+  });
+
+  it.each([null, "remote-host"])("상위 경로와 worktree 밖 절대 경로는 읽지 않고 outside-worktree로 거절한다 (host=%s)", async (sshHost) => {
+    const service = await loadService(sshHost);
+    const outsideFile = path.join(outsideDirectory, "secret.txt");
+
+    await expect(service.readTaskWorkspaceFile("task-1", `../${path.basename(outsideDirectory)}/secret.txt`))
+      .rejects.toMatchObject({ name: "TaskWorkspaceFileError", reason: "outside-worktree", message: "outside-worktree" });
+    await expect(service.readTaskWorkspaceFile("task-1", outsideFile))
+      .rejects.toMatchObject({ name: "TaskWorkspaceFileError", reason: "outside-worktree" });
+    await expect(service.readTaskWorkspaceFile("task-1", `${directory}-sibling/secret.txt`))
+      .rejects.toMatchObject({ name: "TaskWorkspaceFileError", reason: "outside-worktree" });
+    expect(mocks.execGit).not.toHaveBeenCalled();
+  });
+
+  it.each([null, "remote-host"])("1MiB를 넘으면 too-large로 거절하고 정확히 1MiB는 읽는다 (host=%s)", async (sshHost) => {
+    writeFileSync(path.join(directory, "limit.txt"), "a".repeat(MAX_FILE_BYTES));
+    writeFileSync(path.join(directory, "over.txt"), "a".repeat(MAX_FILE_BYTES + 1));
+    const service = await loadService(sshHost);
+
+    const atLimit = await service.readTaskWorkspaceFile("task-1", "limit.txt");
+    expect(atLimit.path).toBe("limit.txt");
+    expect(Buffer.byteLength(atLimit.content)).toBe(MAX_FILE_BYTES);
+    await expect(service.readTaskWorkspaceFile("task-1", "over.txt"))
+      .rejects.toMatchObject({ name: "TaskWorkspaceFileError", reason: "too-large" });
+  });
+
+  it.each([null, "remote-host"])("없는 파일과 디렉터리는 not-found로 알린다 (host=%s)", async (sshHost) => {
+    const service = await loadService(sshHost);
+
+    await expect(service.readTaskWorkspaceFile("task-1", "docs/missing.md"))
+      .rejects.toMatchObject({ name: "TaskWorkspaceFileError", reason: "not-found" });
+    await expect(service.readTaskWorkspaceFile("task-1", "docs"))
+      .rejects.toMatchObject({ name: "TaskWorkspaceFileError", reason: "not-found" });
+  });
+
+  it("없는 태스크는 not-found로 알린다", async () => {
+    const service = await loadService();
+    mocks.taskRepo.findOne.mockResolvedValue(null);
+
+    await expect(service.readTaskWorkspaceFile("missing-task", "docs/plan.md"))
+      .rejects.toMatchObject({ name: "TaskWorkspaceFileError", reason: "not-found" });
+  });
+
+  it("원격 태스크는 sshHost로 크기를 먼저 재고 내용을 읽는다", async () => {
+    const service = await loadService("remote-host");
+
+    await expect(service.readTaskWorkspaceFile("task-1", path.join(directory, "docs/plan.md")))
+      .resolves.toEqual({ path: "docs/plan.md", content: "# plan\n본문" });
+    expect(mocks.execGit).toHaveBeenCalledWith(
+      expect.stringContaining(`wc -c < '${directory}/docs/plan.md'`),
+      "remote-host",
+      { maxBufferBytes: MAX_FILE_BYTES + 4096 },
+    );
+  });
+
+  it("원격 명령이 실패하면 내부 오류 대신 unreadable로 알린다", async () => {
+    const service = await loadService("remote-host");
+    mocks.execGit.mockRejectedValue(new Error("ssh: connect to host remote-host port 22: Connection refused"));
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await expect(service.readTaskWorkspaceFile("task-1", "docs/plan.md"))
+      .rejects.toMatchObject({ name: "TaskWorkspaceFileError", reason: "unreadable", message: "unreadable" });
+    consoleError.mockRestore();
+  });
+});
+
 describe("rename 원본 내용", () => {
   it.each([
     ["committed", false],
@@ -320,7 +523,7 @@ describe("rename 원본 내용", () => {
     ["staged", true],
     ["chained", false],
     ["chained", true],
-  ] as const)("%s rename에서 수정 여부=%s와 무관하게 이전 경로의 원본을 읽는다", async (kind, edited) => {
+  ] as const)("%s rename에서 수정 여부=%s일 때 HEAD 이후 변경과 원본을 읽는다", async (kind, edited) => {
     const directory = mkdtempSync(path.join(tmpdir(), "kanvibe-rename-original-"));
     const git = (...args: string[]) => execFileSync("git", ["-C", directory, ...args], { encoding: "utf8" });
     const oldPath = "old 한글\tfile.txt";
@@ -349,12 +552,147 @@ describe("rename 원본 내용", () => {
       mocks.readTextFile.mockImplementation(async (filePath: string) => readFileSync(filePath, "utf8"));
       const service = await import("@/desktop/main/services/diffService");
       const files = await service.getGitDiffFiles("fixture");
+      if (kind === "committed") {
+        expect(files).toEqual([]);
+        expect(await service.getOriginalFileContent("fixture", newPath)).toBe(current);
+        return;
+      }
       expect(files).toHaveLength(1);
-      expect(files[0]).toMatchObject({ path: finalPath, originalPath: oldPath, status: "renamed" });
-      expect(await service.getOriginalFileContent("fixture", files[0].originalPath ?? files[0].path)).toBe(original);
+      expect(files[0]).toMatchObject({ path: finalPath, originalPath: kind === "chained" ? newPath : oldPath, status: "renamed" });
+      expect(await service.getOriginalFileContent("fixture", files[0].originalPath ?? files[0].path)).toBe(kind === "chained" ? current : original);
       expect(await service.getFileContent("fixture", files[0].path)).toBe(current);
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
   });
+});
+
+
+describe("cached lazy diff refresh", () => {
+  const output = (additions: number) => ["__KANVIBE_DIFF_NAME_STATUS__", "M\0a.ts", "__KANVIBE_DIFF_NUMSTAT__", `${additions}\t0\ta.ts`, "__KANVIBE_DIFF_WORKING_TREE__"].join("\0") + "\0";
+  beforeEach(() => {
+    vi.resetModules(); vi.resetAllMocks();
+    const cache = new Map<string, object>([["slow", { taskId: "slow", fileCount: 1, additions: 9, deletions: 0 }]]);
+    mocks.taskDiffStatsRepo.find.mockImplementation(async () => [...cache.values()]);
+    mocks.taskDiffStatsRepo.save.mockImplementation(async (record) => { cache.set(record.taskId, record); });
+    mocks.taskRepo.findOne.mockImplementation(async ({ where }) => ({ id: where.id, worktreePath: `/repo/${where.id}`, branchName: where.id, baseBranch: "dev", sshHost: mocks.taskHosts.hostByTaskId[where.id] ?? null }));
+  });
+
+  it("느린 git을 기다리지 않고 cache를 반환하고 완료된 항목부터 다음 조회에 보여준다", async () => {
+    let finish!: (value: string) => void;
+    mocks.execGit.mockImplementation((command: string) => command.includes("/repo/slow") ? new Promise<string>((resolve) => { finish = resolve; }) : Promise.resolve(output(3)));
+    const service = await import("@/desktop/main/services/diffService");
+    let initial: unknown;
+    const pending = service.getTaskDiffStats(["slow", "fast"]).then((value) => { initial = value; });
+    try {
+      await vi.waitFor(() => expect(initial).toEqual({ slow: { fileCount: 1, additions: 9, deletions: 0 } }), { timeout: 200 });
+      await vi.waitFor(() => expect(mocks.taskDiffStatsRepo.save).toHaveBeenCalledWith({ taskId: "fast", fileCount: 1, additions: 3, deletions: 0 }));
+      expect(await service.getTaskDiffStats([])).toEqual({ slow: { fileCount: 1, additions: 9, deletions: 0 }, fast: { fileCount: 1, additions: 3, deletions: 0 } });
+    } finally { finish(output(7)); await pending; }
+    await vi.waitFor(() => expect(mocks.taskDiffStatsRepo.save).toHaveBeenCalledWith({ taskId: "slow", fileCount: 1, additions: 7, deletions: 0 }));
+  });
+
+  it("갱신 개수를 제한하지 않고 진행 중인 task 중복은 합친다", async () => {
+    const finish: Array<(value: string) => void> = [];
+    mocks.execGit.mockImplementation(() => new Promise<string>((resolve) => { finish.push(resolve); }));
+    const service = await import("@/desktop/main/services/diffService");
+    const first = service.getTaskDiffStats(["one", "two", "three", "one"]);
+    const duplicate = service.getTaskDiffStats(["one", "two", "three"]);
+    try {
+      await vi.waitFor(() => expect(mocks.execGit).toHaveBeenCalledTimes(3), { timeout: 200 });
+      expect(finish).toHaveLength(3);
+      finish[1](output(2));
+      await vi.waitFor(() => expect(mocks.taskDiffStatsRepo.save).toHaveBeenCalledTimes(1));
+      expect(mocks.execGit).toHaveBeenCalledTimes(3);
+    } finally {
+      for (const resolve of finish) resolve(output(1));
+      await Promise.all([first, duplicate]);
+    }
+    await vi.waitFor(() => expect(mocks.taskDiffStatsRepo.save).toHaveBeenCalledTimes(3));
+  });
+
+  it("같은 호스트와 다른 호스트 및 로컬의 모든 갱신을 제한 없이 시작한다", async () => {
+    mocks.taskHosts.hostByTaskId = { "slow-1": "slow-host", "slow-2": "slow-host", "slow-3": "slow-host", "other-1": "other-host" };
+    const finish = new Map<string, (value: string) => void>();
+    mocks.execGit.mockImplementation((command: string) => new Promise<string>((resolve) => {
+      finish.set(/\/repo\/([a-z0-9-]+)/.exec(command)![1], resolve);
+    }));
+    const service = await import("@/desktop/main/services/diffService");
+
+    await service.getTaskDiffStats(["slow-1", "slow-2", "slow-3", "other-1", "local-1"]);
+
+    try {
+      // 앞선 갱신이 끝나지 않아도 같은 호스트의 세 번째 task와 다른 호스트의 task가 모두 시작된다.
+      await vi.waitFor(() => expect([...finish.keys()].sort()).toEqual(["local-1", "other-1", "slow-1", "slow-2", "slow-3"]), { timeout: 200 });
+      expect(mocks.taskDiffStatsRepo.save).not.toHaveBeenCalled();
+    } finally {
+      for (const resolve of finish.values()) resolve(output(1));
+    }
+    await vi.waitFor(() => expect(mocks.taskDiffStatsRepo.save).toHaveBeenCalledTimes(5));
+    expect(mocks.execGit).toHaveBeenCalledTimes(5);
+  });
+
+  it("보드 배지 갱신은 background 우선순위로, 상세의 직접 조회는 화면 요청 우선순위로 원격 명령을 낸다", async () => {
+    mocks.taskHosts.hostByTaskId = { board: "remote-host", detail: "remote-host" };
+    mocks.execGit.mockResolvedValue(output(1));
+    const service = await import("@/desktop/main/services/diffService");
+
+    await service.getTaskDiffStats(["board"]);
+    await vi.waitFor(() => expect(mocks.taskDiffStatsRepo.save).toHaveBeenCalledTimes(1));
+    await service.getGitDiffFiles("detail");
+
+    expect(mocks.execGitPriorities).toEqual(["background", "foreground"]);
+  });
+
+  it("DB에서 사라진 task는 갱신을 예약하지 않아 폴링마다 실패하는 조회를 내지 않는다", async () => {
+    mocks.taskHosts.missingTaskIds.add("deleted");
+    mocks.execGit.mockResolvedValue(output(4));
+    const service = await import("@/desktop/main/services/diffService");
+
+    await service.getTaskDiffStats(["deleted", "alive"]);
+    await vi.waitFor(() => expect(mocks.taskDiffStatsRepo.save).toHaveBeenCalledTimes(1));
+
+    expect(mocks.execGit).toHaveBeenCalledTimes(1);
+    expect(mocks.taskRepo.findOne).toHaveBeenCalledTimes(1);
+    expect(mocks.taskRepo.findOne).toHaveBeenCalledWith({ where: { id: "alive" } });
+  });
+
+  it("상세와 board가 같은 task 읽기와 저장을 공유하고 옛 요청의 역전을 막는다", async () => {
+    let finish!: (value: string) => void;
+    mocks.execGit.mockImplementationOnce(() => new Promise<string>((resolve) => { finish = resolve; }));
+    const service = await import("@/desktop/main/services/diffService");
+    const detail = service.getGitDiffFiles("same");
+    const duplicateDetail = service.getGitDiffFiles("same");
+    const board = service.getTaskDiffStats(["same", "same"]);
+    await vi.waitFor(() => expect(mocks.execGit).toHaveBeenCalled());
+    const count = mocks.execGit.mock.calls.length;
+    finish(output(1));
+    await Promise.all([detail, duplicateDetail, board]);
+    expect(count).toBe(1);
+    expect(mocks.taskDiffStatsRepo.save).toHaveBeenCalledTimes(1);
+    mocks.execGit.mockResolvedValue(output(8));
+    await service.getGitDiffFiles("same");
+    expect(await service.getTaskDiffStats([])).toMatchObject({ same: { additions: 8 } });
+  });
+
+  it("board에서 갱신 중인 task를 상세에서 읽어도 같은 조회와 저장을 공유한다", async () => {
+    const finish = new Map<string, (value: string) => void>();
+    mocks.execGit.mockImplementation((command: string) => new Promise<string>((resolve) => {
+      const taskId = ["one", "two", "three"].find((id) => command.includes(`/repo/${id}`))!;
+      finish.set(taskId, resolve);
+    }));
+    const service = await import("@/desktop/main/services/diffService");
+    await service.getTaskDiffStats(["one", "two", "three"]);
+    await vi.waitFor(() => expect(finish.size).toBe(3));
+    const detail = service.getGitDiffFiles("three");
+    expect(mocks.execGit).toHaveBeenCalledTimes(3);
+    finish.get("three")!(output(3));
+    await detail;
+    finish.get("one")!(output(1));
+    finish.get("two")!(output(2));
+    await vi.waitFor(() => expect(mocks.taskDiffStatsRepo.save).toHaveBeenCalledTimes(3));
+    expect(mocks.execGit).toHaveBeenCalledTimes(3);
+    expect(await service.getTaskDiffStats([])).toMatchObject({ three: { additions: 3 } });
+  });
+
 });

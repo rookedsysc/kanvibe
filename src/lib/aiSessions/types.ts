@@ -5,12 +5,38 @@ export type AiSessionMatchScope = "worktree";
 
 export type AiMessageRole = "user" | "assistant" | "tool" | "system" | "developer" | "reasoning" | "unknown";
 
+export interface AiMessageAttachment {
+  id: string;
+  kind: "image" | "file";
+  name: string;
+  mimeType: string | null;
+  sizeBytes: number | null;
+}
+
+export interface AiSessionAttachmentContent {
+  id: string;
+  name: string;
+  mimeType: string;
+  dataUrl: string;
+}
+
+/** AI가 만들거나 고친 파일 하나. `path`는 에이전트가 기록한 그대로라 대개 절대 경로다 */
+export interface AiMessageFile {
+  path: string;
+  change: "created" | "modified";
+}
+
 export interface AggregatedAiMessage {
   role: AiMessageRole;
   timestamp: string | null;
   text: string;
   fullText: string;
   isTruncated: boolean;
+  attachments?: AiMessageAttachment[];
+  /** 도구 호출 메시지일 때 그 도구의 이름 */
+  toolName?: string;
+  /** 이 도구 호출이 만들거나 고친 파일 */
+  files?: AiMessageFile[];
 }
 
 export interface AggregatedAiSession {
@@ -154,6 +180,8 @@ export interface AiSessionReaderContext {
   repoPath: string | null;
   query?: string;
   roles?: AiMessageRole[];
+  /** 채팅 화면에서 사용자가 지침 표시를 선택할 수 있도록 자동 주입 문맥도 함께 읽는다. */
+  includeInstructions?: boolean;
   cursor?: string | null;
   limit?: number;
   sshHost?: string | null;

@@ -1,0 +1,91 @@
+# 채팅 입력창의 skill 메뉴가 목록을 한 번 받아 두고, 이어지는 글자 입력을 기기에서 거르는지 본다.
+#
+# 준비: node qa/mobile/lib/prepareChatHistoryDesktop.cjs --run-dir <새 폴더> --live-cli
+# 그 준비 단계가 격리된 HOME에 qa-plan, qa-release, qa-review 세 skill을 심어 둔다.
+appId: ${APP_ID}
+env:
+  DESKTOP_PORT: "19748"
+  DESKTOP_API_FROM_HOST: http://127.0.0.1:19738
+---
+- launchApp:
+    clearState: true
+- setOrientation: PORTRAIT
+- extendedWaitUntil:
+    visible: "데스크탑에 연결"
+    timeout: 90000
+- runScript:
+    file: ../scripts/issue-dev-pairing-code.js
+- tapOn: "데스크탑 주소"
+- inputText: "10.0.2.2"
+- tapOn: "포트"
+- eraseText: 5
+- inputText: ${DESKTOP_PORT}
+- tapOn: "연결 코드"
+- inputText: ${output.pairingCode}
+- scrollUntilVisible:
+    element: "연결"
+    direction: DOWN
+    timeout: 60000
+- tapOn: "연결"
+- extendedWaitUntil:
+    visible: "(?s).*Chat History Fixture.*"
+    timeout: 40000
+- tapOn: "(?s).*Chat History Fixture.*"
+# 채팅 모드는 데스크탑에 저장되어 앞선 실행이 켜 둔 채로 열릴 수 있다. 그때 전환을 누르면 터미널로 돌아가 버리므로,
+# 저장된 모드가 복원될 시간을 준 뒤 입력창이 없을 때만 전환한다.
+- extendedWaitUntil:
+    visible:
+      id: pane-chat-toggle
+    timeout: 30000
+- extendedWaitUntil:
+    visible:
+      id: pane-chat-input
+    timeout: 5000
+    optional: true
+- runFlow:
+    when:
+      notVisible:
+        id: pane-chat-input
+    commands:
+      - tapOn:
+          id: pane-chat-toggle
+- extendedWaitUntil:
+    visible:
+      id: pane-chat-input
+    timeout: 30000
+# skill 버튼을 누르면 검색어 없이 전체 목록이 열린다
+- tapOn:
+    id: pane-chat-skills
+- extendedWaitUntil:
+    visible:
+      id: pane-chat-completions
+    timeout: 30000
+# 메뉴 항목은 이름과 설명이 한 덩어리로 읽히므로 이름으로 시작하는지를 본다
+- assertVisible: "(?s)qa-plan.*"
+- assertVisible: "(?s)qa-release.*"
+- assertVisible: "(?s)qa-review.*"
+- takeScreenshot: skill-menu-all
+# 글자를 이어 치면 목록이 그 자리에서 좁혀진다
+- tapOn:
+    id: pane-chat-input
+- inputText: "$qa-re"
+- extendedWaitUntil:
+    notVisible: "(?s)qa-plan.*"
+    timeout: 10000
+- assertVisible: "(?s)qa-release.*"
+- assertVisible: "(?s)qa-review.*"
+- takeScreenshot: skill-menu-filtered-qa-re
+- inputText: "v"
+- extendedWaitUntil:
+    notVisible: "(?s)qa-release.*"
+    timeout: 10000
+- assertVisible: "(?s)qa-review.*"
+- takeScreenshot: skill-menu-filtered-qa-rev
+# 고르면 입력창에 그 skill이 들어가고 메뉴가 닫힌다
+- tapOn: "(?s)qa-review.*"
+- assertNotVisible:
+    id: pane-chat-completions
+- assertVisible:
+    id: pane-chat-input
+    text: ".*qa-review.*"
+- takeScreenshot: skill-inserted

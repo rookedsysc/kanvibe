@@ -1,4 +1,4 @@
-import { execGit, isSSHTransportError } from "@/lib/gitOperations";
+import { execGit, isSSHConnectionError } from "@/lib/gitOperations";
 
 const blockedTargets = new Map<string, string>();
 const availableTargets = new Map<string, number>();
@@ -52,7 +52,7 @@ async function hasGitHubCli(sshHost?: string | null): Promise<boolean> {
       rememberAvailable(sshHost);
       return true;
     } catch (error) {
-      if (sshHost && isSSHTransportError(error)) {
+      if (sshHost && isSSHConnectionError(error)) {
         throw error;
       }
 
@@ -102,7 +102,7 @@ export async function installGitHubCli(sshHost?: string | null): Promise<void> {
     await execGit("command -v gh >/dev/null 2>&1", sshHost);
     rememberAvailable(sshHost);
   } catch (error) {
-    if (sshHost && isSSHTransportError(error)) {
+    if (sshHost && isSSHConnectionError(error)) {
       throw error;
     }
 

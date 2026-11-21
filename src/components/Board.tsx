@@ -1,11 +1,13 @@
 "use client";
 
-import { useState, useCallback, useEffect, useMemo, useRef, useTransition } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { DragDropContext, type DropResult } from "@hello-pangea/dnd";
 import BoardPageFindBar from "./BoardPageFindBar";
 import BoardSortPicker from "./BoardSortPicker";
+import DesktopFilter, { isOnDesktops, pickAvailableDesktops, type DesktopFilterHandle } from "./DesktopFilter";
 import Column from "./Column";
+import type { TaskDeletionState, TaskMoveState } from "./TaskCard";
 import CreateTaskModal from "./CreateTaskModal";
 import ProjectRegistryDialog from "./ProjectRegistryDialog";
 import NotificationCenterButton from "./NotificationCenterButton";
@@ -280,6 +282,36 @@ interface DragMovePlan {
   doneTotalDelta: number;
   doneOffsetDelta: number;
   persistence: { taskId: string; status: TaskStatus };
+  /** 저장에 실패하면 이 task만 원래 칸·자리로 되돌린다 */
+  restore: { task: KanbanTask; status: TaskStatus; index: number };
+}
+
+/** 저장에 실패한 task 하나만 원래 자리로 돌린다. 그 사이 다른 카드에 생긴 변화는 덮지 않는다 */
+function restoreMovedTask(currentTasks: TasksByStatus, plan: DragMovePlan): TasksByStatus {
+  const { taskId, status: movedStatus } = plan.persistence;
+  const { task, status: originalStatus, index } = plan.restore;
+  if (!currentTasks[movedStatus].some((candidate) => candidate.id === taskId)) {
+    return currentTasks;
+  }
+
+  const originalColumn = [...currentTasks[originalStatus]];
+  originalColumn.splice(Math.min(index, originalColumn.length), 0, task);
+  return {
+    ...currentTasks,
+    [movedStatus]: currentTasks[movedStatus].filter((candidate) => candidate.id !== taskId),
+    [originalStatus]: originalColumn,
+  };
+}
+
+/** task별 요청 상태 기록에서 한 항목을 바꾸거나(null이면) 지운다 */
+function setRequestStateEntry<T>(states: Record<string, T>, taskId: string, state: T | null): Record<string, T> {
+  const next = { ...states };
+  if (state) {
+    next[taskId] = state;
+  } else {
+    delete next[taskId];
+  }
+  return next;
 }
 
 /**
@@ -315,6 +347,7 @@ function buildDragMovePlan(
     doneTotalDelta: doneDelta,
     doneOffsetDelta: doneDelta,
     persistence: { taskId: draggableId, status: destStatus },
+    restore: { task: movedTask, status: sourceStatus, index: source.index },
   };
 }
 
@@ -350,21 +383,27 @@ export default function Board({
     projects.map((p) => p.id),
   );
   const [taskKindFilter, setTaskKindFilter] = useTaskKindFilterParams();
+  const [selectedDesktops, setSelectedDesktops] = useState<string[]>([]);
   const [sortPreference, setSortPreference] = useBoardSortPreference();
   const [doneTotal, setDoneTotal] = useState(initialDoneTotal);
   const [doneOffset, setDoneOffset] = useState(initialDoneLimit);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [loadMoreDoneError, setLoadMoreDoneError] = useState<string | null>(null);
   const donePageGenerationRef = useRef(0);
   const loadingDonePageGenerationRef = useRef<number | null>(null);
   const [isDoneAlertDismissed, setIsDoneAlertDismissed] = useState(doneAlertDismissed);
+  const [taskDeletionStateById, setTaskDeletionStateById] = useState<Record<string, TaskDeletionState>>({});
+  const deletingTaskIdsRef = useRef(new Set<string>());
+  const [taskMoveStateById, setTaskMoveStateById] = useState<Record<string, TaskMoveState>>({});
+  const savingMoveTaskIdsRef = useRef(new Set<string>());
   /** 사용자 안내 후에 실행하기 위해 잡아 둔 Done 이동 */
   const [pendingDoneResult, setPendingDoneResult] = useState<DropResult | null>(null);
   const [currentDefaultSessionType, setCurrentDefaultSessionType] = useState<SessionType>(defaultSessionType);
   const [shouldUseMacTitlebarLayout, setShouldUseMacTitlebarLayout] = useState(false);
-  const [, startDragPersistenceTransition] = useTransition();
   const unreadNotificationCountByTask = useUnreadNotificationCountByTask();
   const notificationCenterRef = useRef<NotificationCenterButtonHandle>(null);
   const projectSelectorRef = useRef<ProjectSelectorHandle>(null);
+  const desktopFilterRef = useRef<DesktopFilterHandle>(null);
   const hasAppliedInitialFocusRef = useRef(false);
   const pendingTaskDeleteSequenceRef = useRef<{
     taskId: string;
@@ -398,11 +437,30 @@ export default function Board({
     [projects],
   );
 
-  /** 필터 드롭다운에 표시할 메인 프로젝트 목록 (worktree 제외) */
-  const filterableProjects = useMemo(
-    () => projects.filter((p) => !p.isWorktree),
-    [projects]
+  const desktopHosts = useMemo(() => Array.from(new Set([
+    ...sshHosts,
+    ...projects.map((project) => project.sshHost),
+    ...Object.values(tasks).flat().map((task) => task.sshHost),
+  ].filter((host): host is string => Boolean(host)))).sort(), [projects, sshHosts, tasks]);
+  const activeDesktopFilters = useMemo(
+    () => pickAvailableDesktops(selectedDesktops, desktopHosts),
+    [desktopHosts, selectedDesktops],
   );
+
+  /** 필터 드롭다운에 표시할 메인 프로젝트 목록 (worktree 제외). 데스크톱 필터가 있으면 그 데스크톱 프로젝트만 남긴다 */
+  const filterableProjects = useMemo(
+    () => projects.filter((p) => !p.isWorktree && isOnDesktops(p.sshHost, activeDesktopFilters)),
+    [projects, activeDesktopFilters]
+  );
+
+  /** 데스크톱 필터를 바꾸면 다른 데스크톱 프로젝트의 선택을 지워, 숨은 선택이 보드를 비우지 않게 한다 */
+  const changeDesktopFilter = useCallback((desktops: string[]) => {
+    setSelectedDesktops(desktops);
+    const nextActiveDesktops = pickAvailableDesktops(desktops, desktopHosts);
+    setSelectedProjectIds((previousIds) => previousIds.filter((projectId) => (
+      isOnDesktops(projectLookup.get(projectId)?.sshHost, nextActiveDesktops)
+    )));
+  }, [desktopHosts, projectLookup, setSelectedProjectIds]);
 
   /** 선택된 프로젝트 + worktree 프로젝트 ID 집합. null이면 전체 표시 */
   const projectFilterSet = useMemo(
@@ -410,12 +468,14 @@ export default function Board({
     [selectedProjectIds, projects],
   );
 
-  /** 프로젝트 + task kind 필터가 적용된 태스크 목록 */
-  const hasActiveBoardTaskFilter = projectFilterSet !== null || taskKindFilter !== "all";
-  const boardTaskFilter = useCallback<BoardTaskFilter>((task) => (
-    matchesProjectFilter(task, projectFilterSet)
-    && matchesTaskKindFilter(task, taskKindFilter, projectLookup)
-  ), [projectFilterSet, projectLookup, taskKindFilter]);
+  /** 선택한 보드 필터를 모두 만족하는 태스크만 표시한다 */
+  const hasActiveBoardTaskFilter = projectFilterSet !== null || taskKindFilter !== "all" || activeDesktopFilters.length > 0;
+  const boardTaskFilter = useCallback<BoardTaskFilter>((task) => {
+    const host = task.sshHost || projectLookup.get(task.projectId ?? "")?.sshHost;
+    return matchesProjectFilter(task, projectFilterSet)
+      && matchesTaskKindFilter(task, taskKindFilter, projectLookup)
+      && isOnDesktops(host, activeDesktopFilters);
+  }, [activeDesktopFilters, projectFilterSet, projectLookup, taskKindFilter]);
 
   const filteredTasks = useMemo(() => {
     if (!hasActiveBoardTaskFilter) return tasks;
@@ -634,16 +694,42 @@ export default function Board({
     }
   }, []);
 
+  const updateTaskDeletionState = useCallback((taskId: string, deletionState: TaskDeletionState | null) => {
+    setTaskDeletionStateById((prev) => setRequestStateEntry(prev, taskId, deletionState));
+  }, []);
+
+  const updateTaskMoveState = useCallback((taskId: string, moveState: TaskMoveState | null) => {
+    setTaskMoveStateById((prev) => setRequestStateEntry(prev, taskId, moveState));
+  }, []);
+
+  /** 같은 task의 삭제는 한 번만 보낸다. 메뉴·키보드·재시도가 모두 이 함수를 지나므로 여기서 막는다 */
   const deleteTaskFromBoard = useCallback(async (task: Pick<KanbanTask, "id" | "status">) => {
+    if (deletingTaskIdsRef.current.has(task.id)) {
+      return;
+    }
+
+    deletingTaskIdsRef.current.add(task.id);
+    updateTaskDeletionState(task.id, { status: "deleting" });
     try {
       const didDelete = await deleteTask(task.id);
       if (didDelete) {
         removeTaskFromBoard(task);
       }
+      updateTaskDeletionState(task.id, null);
     } catch (error) {
       console.error("Failed to delete task", error);
+      updateTaskDeletionState(task.id, {
+        status: "failed",
+        reason: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      deletingTaskIdsRef.current.delete(task.id);
     }
-  }, [removeTaskFromBoard]);
+  }, [removeTaskFromBoard, updateTaskDeletionState]);
+
+  const handleRetryTaskDelete = useCallback((task: KanbanTask) => {
+    void deleteTaskFromBoard(task);
+  }, [deleteTaskFromBoard]);
 
   useEffect(() => {
     function resetPendingTaskDeleteSequence() {
@@ -766,6 +852,7 @@ export default function Board({
     if (loadingDonePageGenerationRef.current === generation) return;
     loadingDonePageGenerationRef.current = generation;
     setIsLoadingMore(true);
+    setLoadMoreDoneError(null);
     try {
       const result = await getMoreDoneTasks(doneOffset);
       if (generation !== donePageGenerationRef.current) return;
@@ -777,6 +864,11 @@ export default function Board({
       }));
       setDoneOffset((prev) => prev + result.tasks.length);
       setDoneTotal(result.doneTotal);
+    } catch (error) {
+      // 실패를 더 불러올 항목이 없는 것처럼 두지 않고 버튼 옆에 사유를 남겨 같은 페이지를 다시 요청하게 한다
+      if (generation === donePageGenerationRef.current) {
+        setLoadMoreDoneError(error instanceof Error ? error.message : String(error));
+      }
     } finally {
       if (generation === donePageGenerationRef.current) {
         loadingDonePageGenerationRef.current = null;
@@ -785,27 +877,52 @@ export default function Board({
     }
   }, [doneOffset]);
 
-  /** 드래그 결과를 받아 state 업데이트 + DB 반영을 수행한다 */
+  const applyDoneCountDeltas = useCallback((plan: DragMovePlan, direction: 1 | -1) => {
+    if (plan.doneTotalDelta !== 0) {
+      setDoneTotal((prev) => prev + plan.doneTotalDelta * direction);
+    }
+
+    if (plan.doneOffsetDelta !== 0) {
+      setDoneOffset((prev) => prev + plan.doneOffsetDelta * direction);
+    }
+  }, []);
+
+  /**
+   * 카드를 먼저 옮기고 저장한다. 저장하는 동안 카드에 저장 중을 보이고 같은 카드의 이동을 막으며,
+   * 실패하면 카드를 원래 자리로 돌리고 사유와 다시 옮기기를 남긴다.
+   */
   const executeDragMove = useCallback(
     (result: DropResult) => {
       const plan = buildDragMovePlan(tasks, result);
       if (!plan) return;
 
+      const { taskId, status: targetStatus } = plan.persistence;
+      if (savingMoveTaskIdsRef.current.has(taskId)) return;
+
+      savingMoveTaskIdsRef.current.add(taskId);
       setTasks(plan.updatedTasks);
+      applyDoneCountDeltas(plan, 1);
+      updateTaskMoveState(taskId, { status: "saving" });
 
-      if (plan.doneTotalDelta !== 0) {
-        setDoneTotal((prev) => prev + plan.doneTotalDelta);
-      }
-
-      if (plan.doneOffsetDelta !== 0) {
-        setDoneOffset((prev) => prev + plan.doneOffsetDelta);
-      }
-
-      startDragPersistenceTransition(async () => {
-        await moveTaskToColumn(plan.persistence.taskId, plan.persistence.status);
-      });
+      void (async () => {
+        try {
+          await moveTaskToColumn(taskId, targetStatus);
+          updateTaskMoveState(taskId, null);
+        } catch (error) {
+          console.error("Failed to move task", error);
+          setTasks((prev) => restoreMovedTask(prev, plan));
+          applyDoneCountDeltas(plan, -1);
+          updateTaskMoveState(taskId, {
+            status: "failed",
+            targetStatus,
+            reason: error instanceof Error ? error.message : String(error),
+          });
+        } finally {
+          savingMoveTaskIdsRef.current.delete(taskId);
+        }
+      })();
     },
-    [startDragPersistenceTransition, tasks]
+    [applyDoneCountDeltas, tasks, updateTaskMoveState]
   );
 
   const moveTaskToStatus = useCallback(
@@ -829,6 +946,13 @@ export default function Board({
     [executeDragMove, displayedTasks, isDoneAlertDismissed, tasks],
   );
 
+  const handleRetryTaskMove = useCallback((task: KanbanTask) => {
+    const moveState = taskMoveStateById[task.id];
+    if (moveState?.status === "failed") {
+      moveTaskToStatus(task, moveState.targetStatus);
+    }
+  }, [moveTaskToStatus, taskMoveStateById]);
+
   const moveFocusedTaskToStatus = useCallback(
     (newStatus: TaskStatus, taskIdOverride?: string | null): "moved" | "missing-focus" | "missing-task" => {
       const taskCard = getFocusedBoardTaskCard();
@@ -850,6 +974,9 @@ export default function Board({
     },
     openProjectFilter() {
       projectSelectorRef.current?.open();
+    },
+    openDesktopFilter() {
+      desktopFilterRef.current?.open();
     },
     openCreateTaskModal(defaults) {
       setBranchTodoDefaults(defaults ?? null);
@@ -957,7 +1084,7 @@ export default function Board({
           height={32}
           className="kanvibe-brand-logo mr-auto hidden h-8 w-auto shrink-0 pr-6 xl:block"
         />
-        <div className="flex items-center gap-3 [-webkit-app-region:no-drag]">
+        <div className="flex flex-wrap items-center justify-end gap-3 [-webkit-app-region:no-drag]">
           <div
             role="group"
             aria-label={t("taskKindFilter.label")}
@@ -996,6 +1123,7 @@ export default function Board({
               compact
             />
           </div>
+          <DesktopFilter ref={desktopFilterRef} hosts={desktopHosts} selectedDesktops={activeDesktopFilters} onChange={changeDesktopFilter} />
           <BoardSortPicker preference={sortPreference} onChange={setSortPreference} />
           <button
             type="button"
@@ -1062,11 +1190,16 @@ export default function Board({
                   vimModeEnabled={vimModeEnabled}
                   runningAgentPanes={runningAgentPanes}
                   diffStatsByTaskId={diffStatsByTaskId}
+                  taskDeletionStateById={taskDeletionStateById}
+                  onRetryTaskDelete={handleRetryTaskDelete}
+                  taskMoveStateById={taskMoveStateById}
+                  onRetryTaskMove={handleRetryTaskMove}
                   {...(col.status === TaskStatus.DONE && {
                     totalCount: doneTotal,
                     hasMore: doneOffset < doneTotal,
                     onLoadMore: handleLoadMoreDone,
                     isLoadingMore,
+                    loadMoreError: loadMoreDoneError,
                   })}
                 />
               ))}

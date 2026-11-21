@@ -213,6 +213,20 @@ describe("커맨드 팔레트 단축키", () => {
       "mac",
     )).toBe("boardProjectFilter");
   });
+
+  it("Mod+Shift+D는 macOS와 Linux에서 데스크톱 필터를 연다", () => {
+    expect(DEFAULT_SHORTCUT_BINDINGS.boardDesktopFilter).toBe("Mod+Shift+D");
+    expect(findShortcutCommandForEvent(
+      DEFAULT_SHORTCUT_BINDINGS,
+      new KeyboardEvent("keydown", { key: "d", metaKey: true, shiftKey: true }),
+      "mac",
+    )).toBe("boardDesktopFilter");
+    expect(findShortcutCommandForEvent(
+      DEFAULT_SHORTCUT_BINDINGS,
+      new KeyboardEvent("keydown", { key: "D", ctrlKey: true, shiftKey: true }),
+      "linux",
+    )).toBe("boardDesktopFilter");
+  });
 });
 
 describe("단축키 재배정", () => {
@@ -332,5 +346,17 @@ describe("단축키 재배정", () => {
       ...DEFAULT_SHORTCUT_BINDINGS,
       taskSearch: "Ctrl+Shift+O",
     }, "linux")).toEqual({});
+  });
+});
+
+
+describe("현재 pane 채팅 전환 단축키", () => {
+  it.each([
+    { platform: "mac", renderer: { metaKey: true }, electron: { meta: true } },
+    { platform: "linux", renderer: { ctrlKey: true }, electron: { control: true } },
+  ] as const)("$platform에서 renderer와 Electron이 동일한 전환을 인식한다", ({ platform, renderer, electron }) => {
+    expect(findShortcutCommandForEvent(DEFAULT_SHORTCUT_BINDINGS, new KeyboardEvent("keydown", { key: "J", shiftKey: true, ...renderer }), platform)).toBe("terminalToggleChat");
+    expect(findShortcutCommandForElectronInput(DEFAULT_SHORTCUT_BINDINGS, { type: "keyDown", key: "J", shift: true, ...electron }, platform)).toBe("terminalToggleChat");
+    expect(findShortcutCommandForEvent(DEFAULT_SHORTCUT_BINDINGS, new KeyboardEvent("keydown", { key: "j", ...renderer }), platform)).not.toBe("terminalToggleChat");
   });
 });

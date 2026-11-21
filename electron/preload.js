@@ -84,6 +84,9 @@ contextBridge.exposeInMainWorld("kanvibeDesktop", {
   readClipboardImage() {
     return ipcRenderer.sendSync("kanvibe:clipboard-read-image");
   },
+  showTextContextMenu(request) {
+    ipcRenderer.send("kanvibe:text-context-menu", request);
+  },
   openAiAccountLogin(provider, accountRoot, cols, rows) {
     return ipcRenderer.invoke("kanvibe:ai-login-open", provider, accountRoot, cols, rows);
   },
@@ -200,6 +203,13 @@ contextBridge.exposeInMainWorld("kanvibeDesktop", {
     ipcRenderer.on("kanvibe:task-detail-dock-shortcut", handler);
     return () => {
       ipcRenderer.removeListener("kanvibe:task-detail-dock-shortcut", handler);
+    };
+  },
+  onTerminalToggleChatShortcut(listener) {
+    const handler = () => listener();
+    ipcRenderer.on("kanvibe:terminal-toggle-chat-shortcut", handler);
+    return () => {
+      ipcRenderer.removeListener("kanvibe:terminal-toggle-chat-shortcut", handler);
     };
   },
   onTaskDetailUsageShortcut(listener) {

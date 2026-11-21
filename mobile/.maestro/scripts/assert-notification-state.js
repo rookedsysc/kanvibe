@@ -8,7 +8,7 @@ if (expectedUnread >= 0) query.push(`unread=${expectedUnread}`);
 if (requiresEvent) query.push(`eventsAfter=${previousEvents}`);
 const suffix = query.length ? `?${query.join("&")}` : "";
 const action = String(DESKTOP_ACTION);
-const allowedActions = ["", "read-one", "read-all", "create", "update-task"];
+const allowedActions = ["", "read-one", "read-all", "create", "update-task", "create-task-notification"];
 if (allowedActions.indexOf(action) < 0) throw new Error(`알 수 없는 fixture 동작: ${action}`);
 const response = action
   ? http.post(`${PROBE_API_FROM_HOST}/desktop/${action}${suffix}`, { body: "" })

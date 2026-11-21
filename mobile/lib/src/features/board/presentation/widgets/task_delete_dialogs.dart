@@ -1,3 +1,5 @@
+import '../../../../common/l10n/app_localizations.dart';
+
 import 'package:flutter/material.dart';
 
 import '../../../../common/constants/app_colors.dart';
@@ -38,18 +40,20 @@ Future<bool> _askConfirmation(
   final isConfirmed = await showDialog<bool>(
     context: context,
     builder: (dialogContext) => AlertDialog(
-      backgroundColor: AppColors.bgSurface,
-      title: Text(title),
-      content: Text(message),
+      backgroundColor: context.colors.bgSurface,
+      title: Text(context.tr(title)),
+      content: Text(context.tr(message)),
       actions: [
         TextButton(
           onPressed: () => Navigator.of(dialogContext).pop(false),
-          child: const Text('취소'),
+          child: Text(context.tr('취소')),
         ),
         TextButton(
           onPressed: () => Navigator.of(dialogContext).pop(true),
-          style: TextButton.styleFrom(foregroundColor: AppColors.statusError),
-          child: Text(confirmLabel),
+          style: TextButton.styleFrom(
+            foregroundColor: Theme.of(context).colorScheme.error,
+          ),
+          child: Text(context.tr(confirmLabel)),
         ),
       ],
     ),

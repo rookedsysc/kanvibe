@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { execFile } from "node:child_process";
-import { chmodSync, linkSync, mkdirSync, mkdtempSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, linkSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import http from "node:http";
 import { createRequire } from "node:module";
 import path from "node:path";
@@ -109,6 +109,34 @@ describe("hook 터널 소켓 전송", () => {
 
     // Then
     expect(result.stdout).toBe(socketPath);
+  });
+
+  it.each(["dev", "prod", "qa-fixture"])("namespaced shell hook and CLI reach the stable %s endpoint with client identity", async (namespace) => {
+    const directory = path.join(socketDirectory, namespace);
+    mkdirSync(directory, { mode: 0o700 });
+    const received: Array<{ path: string; client: string | string[] | undefined }> = [];
+    await listen(http.createServer((request, response) => {
+      request.resume();
+      request.on("end", () => { received.push({ path: request.url!, client: request.headers["x-kanvibe-client-id"] }); response.end("{}"); });
+    }), path.join(directory, "hooks-v1.sock"));
+    mkdirSync(path.join(workspace, ".kanvibe"), { recursive: true });
+    writeFileSync(path.join(workspace, ".kanvibe", "targets.json"), JSON.stringify({ targets: [{ url: "http://stale.invalid:9736", taskId: "task-1", token: "token-1", clientId: CLIENT_ID, transport: "ssh", remoteHostNamespace: namespace }] }));
+    const assignment = withTestSocketDirectory(buildShellOwnedHookSocketAssignment("found", CLIENT_ID, namespace));
+    expect((await runShell(`${assignment}; printf '%s' "$found"`, workspace)).stdout).toBe(path.join(directory, "hooks-v1.sock"));
+    const hook = `TASK_ID=task-1\nKANVIBE_URL=http://stale.invalid:9736\nset --\ngit init -q\n${withTestSocketDirectory(buildShellKanvibeStatusUpdater("review"))}`;
+    expect((await runShell(hook, workspace)).code).toBe(0);
+    expect((await runShell(withTestSocketDirectory(buildTaskCliCommand(workspace, ["delete", "--yes"])), workspace)).code).toBe(0);
+    expect(received).toEqual([
+      { path: "/api/hooks/status", client: CLIENT_ID },
+      { path: "/api/cli/tasks/delete", client: CLIENT_ID },
+    ]);
+  });
+
+  it.each(["qa-", "../prod", "qa-TOO", "qa-1234567890123456789012345"])("rejects invalid namespace %s even if a legacy socket is live", async (namespace) => {
+    await listen(http.createServer(), path.join(socketDirectory, socketFileName));
+    const result = await runShell(`${withTestSocketDirectory(buildShellHookSocketResolver())}\nkanvibe_hook_socket '${CLIENT_ID}' '${namespace}'`, workspace);
+    expect(result.stdout).toBe("");
+    expect(() => buildShellOwnedHookSocketAssignment("found", CLIENT_ID, namespace)).toThrow();
   });
 
   it.each([
@@ -471,6 +499,25 @@ describe("hook 터널 소켓 전송", () => {
 
       expect(viaSocket).toHaveLength(1);
       expect(received).toEqual([]);
+    });
+
+    it("데스크탑이 꺼져 통보가 503으로 실패해도 status.json에는 최신 상태가 남는다", async () => {
+      // Given
+      let attempts = 0;
+      const offlineDesktop = http.createServer((request, response) => {
+        attempts += 1;
+        request.resume();
+        response.writeHead(503).end("Desktop offline; request not replayed");
+      });
+      await listen(offlineDesktop, path.join(socketDirectory, socketFileName));
+
+      // When
+      const result = await runShell(buildHookScript("http://127.0.0.1:1"), workspace);
+
+      // Then
+      expect(result.code).toBe(0);
+      expect(attempts).toBe(1);
+      expect(JSON.parse(readFileSync(path.join(workspace, ".kanvibe", "status.json"), "utf8"))).toMatchObject({ schemaVersion: 1, status: "review" });
     });
 
     it("로컬 loopback 등록은 HTTP로 상태를 보낸다", async () => {

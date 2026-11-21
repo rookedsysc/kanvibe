@@ -1,4 +1,5 @@
 import { syncRegisteredProjectWorktrees, type RegisteredProjectWorktreeSyncResult } from "@/desktop/main/services/projectService";
+import { syncTaskStatusesFromFiles } from "@/desktop/main/services/kanvibeTaskStateService";
 import {
   syncActiveTaskPullRequests,
   syncActiveTaskPulls,
@@ -7,6 +8,7 @@ import {
 } from "@/desktop/main/services/kanbanService";
 import {
   broadcastBackgroundSyncReviewNeeded,
+  broadcastBackgroundSyncStatus,
   broadcastBoardUpdate,
   type BackgroundSyncFailurePayload,
 } from "@/lib/boardNotifier";
@@ -16,6 +18,9 @@ import {
   registerBackgroundSyncIntervalChangedCallback,
   registerBackgroundSyncEnabledChangedCallback,
 } from "@/desktop/main/services/appSettingsService";
+import type { BackgroundTaskSyncStatus } from "@/desktop/shared/backgroundTaskSync";
+
+import { runWithBackgroundSSHCommands } from "@/lib/gitOperations";
 
 const INITIAL_SYNC_DELAY_MS = 20_000;
 const FALLBACK_SYNC_INTERVAL_MS = 10 * 60_000;
@@ -23,6 +28,19 @@ const FALLBACK_SYNC_INTERVAL_MS = 10 * 60_000;
 let activeBackgroundTaskSyncStop: (() => void) | null = null;
 let activeBackgroundTaskSyncCycle: Promise<BackgroundTaskSyncRunResult> | null = null;
 const emittedMergeEventKeys = new Set<string>();
+let backgroundTaskSyncStatus: BackgroundTaskSyncStatus = {
+  phase: "idle", isRunning: false, completedStages: 0,
+  reviewNeeded: false, boardUpdated: false, error: null,
+};
+
+export function getBackgroundTaskSyncStatus(): BackgroundTaskSyncStatus {
+  return { ...backgroundTaskSyncStatus };
+}
+
+function updateBackgroundTaskSyncStatus(update: Partial<BackgroundTaskSyncStatus>) {
+  backgroundTaskSyncStatus = { ...backgroundTaskSyncStatus, ...update };
+  broadcastBackgroundSyncStatus(getBackgroundTaskSyncStatus());
+}
 
 export interface BackgroundTaskSyncRunResult {
   reviewNeeded: boolean;
@@ -92,6 +110,12 @@ async function runBackgroundSyncStage<T>(
 }
 
 async function executeBackgroundTaskSyncCycle(): Promise<BackgroundTaskSyncRunResult> {
+  const taskStatusSync = await runBackgroundSyncStage(
+    "task status sync",
+    syncTaskStatusesFromFiles,
+    () => ({ changed: false, errors: [] as string[] }),
+    (reason) => ({ operation: "worktree-sync", target: "task 상태 sync", reason }),
+  );
   const worktreeSync = await runBackgroundSyncStage(
     "worktree sync",
     syncRegisteredProjectWorktrees,
@@ -102,6 +126,7 @@ async function executeBackgroundTaskSyncCycle(): Promise<BackgroundTaskSyncRunRe
       reason,
     }),
   );
+  updateBackgroundTaskSyncStatus({ phase: "pull-requests", completedStages: 1 });
   const prSync = await runBackgroundSyncStage(
     "pull request sync",
     () => syncActiveTaskPullRequests(emittedMergeEventKeys),
@@ -112,6 +137,7 @@ async function executeBackgroundTaskSyncCycle(): Promise<BackgroundTaskSyncRunRe
       reason,
     }),
   );
+  updateBackgroundTaskSyncStatus({ phase: "pulls", completedStages: 2 });
   const pullSync = await runBackgroundSyncStage(
     "task pull sync",
     syncActiveTaskPulls,
@@ -126,6 +152,12 @@ async function executeBackgroundTaskSyncCycle(): Promise<BackgroundTaskSyncRunRe
   const prSyncResult = prSync.result;
   const pullSyncResult = pullSync.result;
   const failures: BackgroundSyncFailurePayload[] = [
+    ...(taskStatusSync.failure ? [taskStatusSync.failure] : []),
+    ...taskStatusSync.result.errors.map((reason) => ({
+      operation: "worktree-sync" as const,
+      target: "task 상태 sync",
+      reason,
+    })),
     ...(worktreeSync.failure ? [worktreeSync.failure] : []),
     ...worktreeSyncResult.errors.map((reason) => ({
       operation: "worktree-sync" as const,
@@ -152,7 +184,7 @@ async function executeBackgroundTaskSyncCycle(): Promise<BackgroundTaskSyncRunRe
   }
 
   const hasUpdatedPulledTasks = pullSyncResult.pulledTasks.some((task) => task.status === "updated");
-  const boardUpdated = worktreeSyncResult.changed || prSyncResult.updatedTaskIds.length > 0 || hasUpdatedPulledTasks;
+  const boardUpdated = taskStatusSync.result.changed || worktreeSyncResult.changed || prSyncResult.updatedTaskIds.length > 0 || hasUpdatedPulledTasks;
   if (boardUpdated) {
     broadcastBoardUpdate();
   }
@@ -165,10 +197,28 @@ function runSharedBackgroundTaskSyncCycle(): Promise<BackgroundTaskSyncRunResult
     return activeBackgroundTaskSyncCycle;
   }
 
-  activeBackgroundTaskSyncCycle = executeBackgroundTaskSyncCycle().finally(() => {
-    activeBackgroundTaskSyncCycle = null;
+  activeBackgroundTaskSyncCycle = Promise.resolve().then(() => runWithBackgroundSSHCommands(executeBackgroundTaskSyncCycle)).then(
+    (result) => {
+      updateBackgroundTaskSyncStatus({ ...result, phase: "completed", isRunning: false, completedStages: 3 });
+      return result;
+    },
+    (error: unknown) => {
+      updateBackgroundTaskSyncStatus({ phase: "failed", isRunning: false, error: getErrorMessage(error) });
+      throw error;
+    },
+  ).finally(() => { activeBackgroundTaskSyncCycle = null; });
+  updateBackgroundTaskSyncStatus({
+    phase: "worktrees", isRunning: true, completedStages: 0,
+    reviewNeeded: false, boardUpdated: false, error: null,
   });
   return activeBackgroundTaskSyncCycle;
+}
+
+export function startBackgroundTaskSyncNow(): BackgroundTaskSyncStatus {
+  void runSharedBackgroundTaskSyncCycle().catch((error: unknown) => {
+    console.error("[background-task-sync] Manual sync failed:", error);
+  });
+  return getBackgroundTaskSyncStatus();
 }
 
 export function runBackgroundTaskSyncNow(): Promise<BackgroundTaskSyncRunResult> {

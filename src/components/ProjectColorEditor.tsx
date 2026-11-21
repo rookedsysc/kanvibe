@@ -1,10 +1,12 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
+import { useTranslations } from "next-intl";
 import { useRouter } from "@/desktop/renderer/navigation";
 import { HexColorPicker, HexColorInput } from "react-colorful";
 import { updateProjectColor } from "@/desktop/renderer/actions/kanban";
 import { computeProjectColor } from "@/lib/projectColor";
+import { useTrackedAction } from "@/desktop/renderer/hooks/useTrackedAction";
 
 const PRESET_COLORS = [
   "#F9A8D4", "#93C5FD", "#86EFAC", "#C4B5FD",
@@ -18,7 +20,7 @@ interface ProjectColorEditorProps {
 }
 
 export default function ProjectColorEditor({ projectId, projectName, currentColor }: ProjectColorEditorProps) {
-  const [isPending, startTransition] = useTransition();
+  const tc = useTranslations("common");
   const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
   const fallbackColor = currentColor || computeProjectColor(projectName);
@@ -30,12 +32,21 @@ export default function ProjectColorEditor({ projectId, projectName, currentColo
     setIsOpen(true);
   }
 
+  /** 미리 바꿔 보인 색은 저장이 실패하면 저장된 색으로 되돌려, 저장되지 않은 색이 남아 보이지 않게 한다 */
+  const colorSave = useTrackedAction(async (hex: string) => {
+    try {
+      await updateProjectColor(projectId, hex);
+    } catch (error) {
+      setColor(currentColor || computeProjectColor(projectName));
+      throw error;
+    }
+    router.refresh();
+  });
+  const isPending = colorSave.isPending;
+
   function handleApply(hex: string) {
     setColor(hex);
-    startTransition(async () => {
-      await updateProjectColor(projectId, hex);
-      router.refresh();
-    });
+    void colorSave.run(hex);
   }
 
   return (
@@ -44,10 +55,18 @@ export default function ProjectColorEditor({ projectId, projectName, currentColo
       <button
         type="button"
         onClick={handleOpen}
-        className={`w-6 h-6 rounded-full border-2 border-border-default cursor-pointer transition-transform hover:scale-110 ${isPending ? "opacity-50" : ""}`}
+        disabled={isPending}
+        aria-busy={isPending || undefined}
+        className={`w-6 h-6 rounded-full border-2 border-border-default cursor-pointer transition-transform hover:scale-110 disabled:cursor-progress ${isPending ? "opacity-50" : ""}`}
         style={{ backgroundColor: color }}
         aria-label="Pick color"
       />
+
+      {colorSave.error ? (
+        <p role="alert" className="absolute right-0 top-8 z-30 w-[220px] text-[11px] text-status-error">
+          {tc("saveFailed", { reason: colorSave.error })}
+        </p>
+      ) : null}
 
       {/* 색상 선택 팝오버 */}
       {isOpen && (

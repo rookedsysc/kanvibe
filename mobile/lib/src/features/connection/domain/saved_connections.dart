@@ -55,6 +55,28 @@ class SavedConnections {
     return SavedConnections(connections: connections, activeId: id);
   }
 
+  SavedConnections rename(String id, String name) {
+    final connection = find(id);
+    final trimmedName = name.trim();
+    if (connection == null || connection.name == trimmedName) return this;
+    return SavedConnections(
+      connections: [
+        for (final entry in connections)
+          if (entry.id == id)
+            DesktopConnection(
+              host: entry.host,
+              port: entry.port,
+              token: entry.token,
+              name: trimmedName,
+              certificateFingerprint: entry.certificateFingerprint,
+            )
+          else
+            entry,
+      ],
+      activeId: activeId,
+    );
+  }
+
   SavedConnections remove(String id) => SavedConnections(
     connections: connections
         .where((connection) => connection.id != id)

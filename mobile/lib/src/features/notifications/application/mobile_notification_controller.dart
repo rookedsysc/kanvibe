@@ -1,3 +1,5 @@
+import '../domain/operational_warning.dart';
+
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
@@ -5,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../common/network/desktop_client.dart';
 import '../../../common/network/desktop_connection.dart';
+import '../../../common/network/desktop_socket_events.dart';
 import '../../../common/providers.dart';
 import '../../connection/domain/saved_connections.dart';
 import '../data/mobile_notifications.dart';
@@ -44,6 +47,7 @@ final mobileNotificationControllerProvider =
         onDeviceUnpaired: (connection) => ref
             .read(connectionControllerProvider.notifier)
             .forgetLocally(connection.id, connection.token),
+        onPaneChatEvent: ref.read(desktopSocketEventsProvider).add,
       );
       ref.listen(connectionControllerProvider, (_, next) {
         controller.setConnections(next.value ?? const SavedConnections());
@@ -76,11 +80,16 @@ class MobileNotificationController {
     required this.notifications,
     required this.onBoardChanged,
     required this.onDeviceUnpaired,
+    required this.onPaneChatEvent,
   }) {
     _foregroundSubscription = notifications.foregroundMessages.listen(
       _receivePush,
     );
     _openedSubscription = notifications.openedNotifications.listen((json) {
+      if (json['type'] == 'operational-warning') {
+        _receiveOperationalWarning(json, isOpened: true);
+        return;
+      }
       final notification = TaskNotification.fromJson(json);
       if (!_isDisposed && notification != null) _openRequests.add(notification);
     });
@@ -95,9 +104,15 @@ class MobileNotificationController {
   final MobileNotifications notifications;
   final void Function(String connectionId) onBoardChanged;
   final Future<void> Function(DesktopConnection connection) onDeviceUnpaired;
+
+  /// pane 채팅이 듣는 소켓 이벤트. 연결됨·끊김도 함께 알려 push와 주기 조회를 오가게 한다
+  final void Function(String connectionId, Map<String, dynamic> event)
+  onPaneChatEvent;
   final _openRequests = StreamController<TaskNotification>.broadcast();
   final _taskUpdates = StreamController<TaskNotification>.broadcast();
   final _inboxUpdates = StreamController<String>.broadcast();
+  final _syncUpdates = StreamController<String>.broadcast();
+  final _warningUpdates = StreamController<OperationalWarning>.broadcast();
   final _connections = <String, DesktopConnection>{};
   final _sessions = <String, _EventSession>{};
   final _registrationQueues = <String, Future<void>>{};
@@ -114,9 +129,17 @@ class MobileNotificationController {
   Stream<TaskNotification> get openRequests => _openRequests.stream;
   Stream<TaskNotification> get taskUpdates => _taskUpdates.stream;
   Stream<String> get inboxUpdates => _inboxUpdates.stream;
+  Stream<String> get syncUpdates => _syncUpdates.stream;
+  Stream<OperationalWarning> get warningUpdates => _warningUpdates.stream;
 
   TaskNotification? takeInitialNotification() {
     final json = notifications.takeInitialNotification();
+    if (json?['type'] == 'operational-warning') {
+      scheduleMicrotask(
+        () => _receiveOperationalWarning(json!, isOpened: true),
+      );
+      return null;
+    }
     return json == null ? null : TaskNotification.fromJson(json);
   }
 
@@ -158,6 +181,7 @@ class MobileNotificationController {
       _startSession(connection);
       onBoardChanged(connection.id);
       _inboxUpdates.add(connection.id);
+      _syncUpdates.add(connection.id);
     }
     unawaited(_refreshPushToken());
   }
@@ -205,17 +229,35 @@ class MobileNotificationController {
     if (session.isClosed || !_isActive || !_isCurrent(session.connection)) {
       return;
     }
+    final type = json['type'];
+    if (type is String && type.startsWith('pane-chat-')) {
+      onPaneChatEvent(session.connection.id, json);
+      return;
+    }
+    if (type == 'connected') onPaneChatEvent(session.connection.id, json);
     if (json['type'] == 'connected' || json['type'] == 'board-updated') {
       session.retrySeconds = 1;
       onBoardChanged(session.connection.id);
       if (json['type'] == 'connected') {
         _inboxUpdates.add(session.connection.id);
+        _syncUpdates.add(session.connection.id);
         unawaited(_registerNotifications(session.connection));
       }
       return;
     }
     if (json['type'] == 'notifications-changed') {
       _inboxUpdates.add(session.connection.id);
+      return;
+    }
+    if (json['type'] == 'background-sync-status-changed') {
+      _syncUpdates.add(session.connection.id);
+      return;
+    }
+    if (json['type'] == 'operational-warning') {
+      _receiveOperationalWarning({
+        ...json,
+        'connectionId': session.connection.id,
+      });
       return;
     }
     final notification = TaskNotification.fromJson({
@@ -226,8 +268,41 @@ class MobileNotificationController {
   }
 
   void _receivePush(Map<String, dynamic> json) {
+    if (json['type'] == 'operational-warning') {
+      _receiveOperationalWarning(json);
+      return;
+    }
     final notification = TaskNotification.fromJson(json);
     if (notification != null) _receiveTaskNotification(notification);
+  }
+
+  void _receiveOperationalWarning(
+    Map<String, dynamic> json, {
+    bool isOpened = false,
+  }) {
+    if (_isDisposed || (!_isActive && !isOpened)) return;
+    final warning = OperationalWarning.fromJson(json);
+    if (warning == null ||
+        (!isOpened && !_connections.containsKey(warning.connectionId))) {
+      return;
+    }
+    if (!isOpened &&
+        warning.kind == 'hook-status-target-missing' &&
+        !warning.shouldNotify) {
+      return;
+    }
+    if (!_seenEvents.add(warning.dedupeKey) && !isOpened) return;
+    if (_seenEvents.length > _retainedEventCount) {
+      _seenEvents.remove(_seenEvents.first);
+    }
+    _warningUpdates.add(warning);
+    if (warning.shouldNotify && !isOpened) {
+      unawaited(
+        notifications.show(warning.toJson()).catchError((Object error) {
+          debugPrint('운영 알림 표시 실패: $error');
+        }),
+      );
+    }
   }
 
   void _receiveTaskNotification(TaskNotification notification) {
@@ -262,6 +337,7 @@ class MobileNotificationController {
     }
     unawaited(session.subscription?.cancel());
     unawaited(session.stream?.close());
+    onPaneChatEvent(session.connection.id, const {'type': 'disconnected'});
     session.retry = Timer(Duration(seconds: session.retrySeconds), () {
       session.retry = null;
       _connectSession(session);
@@ -282,6 +358,8 @@ class MobileNotificationController {
     session.retry?.cancel();
     unawaited(session.subscription?.cancel());
     unawaited(session.stream?.close());
+    // 컨트롤러가 정리되는 중에는 듣는 쪽도 함께 사라지므로 알리지 않는다
+    if (!_isDisposed) onPaneChatEvent(id, const {'type': 'disconnected'});
   }
 
   Future<void> _refreshPushToken() async {
@@ -356,6 +434,8 @@ class MobileNotificationController {
     await _openRequests.close();
     await _taskUpdates.close();
     await _inboxUpdates.close();
+    await _syncUpdates.close();
+    await _warningUpdates.close();
   }
 }
 

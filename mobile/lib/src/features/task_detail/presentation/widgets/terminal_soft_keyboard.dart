@@ -1,3 +1,5 @@
+import '../../../../common/l10n/app_localizations.dart';
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
@@ -245,14 +247,14 @@ class _TerminalSoftKeyboardState extends State<TerminalSoftKeyboard>
                     child: Semantics(
                       identifier: 'shortcut-expand',
                       child: IconButton.filledTonal(
-                        tooltip: '단축키 바 펼치기',
+                        tooltip: context.tr('단축키 바 펼치기'),
                         style: IconButton.styleFrom(
                           backgroundColor: AppColors.buttonNeutral,
                           foregroundColor: AppColors.textPrimary,
                         ),
                         onPressed: () =>
                             setState(() => _isShortcutBarVisible = true),
-                        icon: const Icon(Icons.keyboard_arrow_up),
+                        icon: Icon(Icons.keyboard_arrow_up),
                       ),
                     ),
                   ),
@@ -324,7 +326,7 @@ class _TerminalSoftKeyboardState extends State<TerminalSoftKeyboard>
 
     _connection = TextInput.attach(
       this,
-      const TextInputConfiguration(
+      TextInputConfiguration(
         /// 자동 대문자와 자동 수정이 없는 키보드. 명령어의 첫 글자가 대문자로 바뀌면 안 된다
         inputType: TextInputType.emailAddress,
         inputAction: TextInputAction.done,

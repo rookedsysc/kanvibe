@@ -14,6 +14,12 @@ export default defineConfig({
   build: {
     outDir: "build/renderer",
     emptyOutDir: true,
+    rollupOptions: {
+      input: {
+        app: resolvePath("index.html"),
+        diagramWorker: resolvePath("diagram-worker.html"),
+      },
+    },
   },
   resolve: {
     alias: [

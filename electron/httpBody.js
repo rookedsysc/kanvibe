@@ -8,14 +8,14 @@
 
 const MAX_BODY_BYTES = 64 * 1024;
 
-function readJsonBody(request) {
+function readJsonBody(request, maxBytes = MAX_BODY_BYTES) {
   return new Promise((resolve, reject) => {
     let body = "";
     let receivedBytes = 0;
 
     request.on("data", (chunk) => {
       receivedBytes += Buffer.byteLength(chunk);
-      if (receivedBytes > MAX_BODY_BYTES) {
+      if (receivedBytes > maxBytes) {
         request.destroy();
         reject(new Error("요청 본문이 너무 큽니다"));
         return;

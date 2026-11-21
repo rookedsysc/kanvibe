@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:kanvibe_mobile/src/common/network/desktop_client.dart';
 import 'package:kanvibe_mobile/src/common/providers.dart';
 import 'package:kanvibe_mobile/src/features/connection/data/connection_store.dart';
@@ -32,6 +33,89 @@ ProviderContainer containerWith(
 }
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  test('수정한 별칭은 새 컨트롤러와 보안 저장소에서 복원된다', () async {
+    FlutterSecureStorage.setMockInitialValues({});
+    final store = ConnectionStore();
+    const pc = DesktopConnection(
+      host: '127.0.0.1',
+      port: 9746,
+      token: 'a',
+      name: '이전 이름',
+    );
+    await store.writeRegistry(
+      SavedConnections(connections: [pc], activeId: pc.id),
+    );
+    final container = ProviderContainer(
+      overrides: [connectionStoreProvider.overrideWithValue(store)],
+    );
+    await container.read(connectionControllerProvider.future);
+    await container
+        .read(connectionControllerProvider.notifier)
+        .rename(pc.id, '새 별칭');
+    container.dispose();
+    final restarted = ProviderContainer();
+    addTearDown(restarted.dispose);
+    final restored = await restarted.read(connectionControllerProvider.future);
+    expect(restored.activeConnection?.name, '새 별칭');
+    expect(restored.activeConnection?.token, pc.token);
+  });
+
+  test('별칭만 바꾸고 선택과 인증 정보를 보존하며 빈 별칭은 주소를 표시한다', () async {
+    const pcA = DesktopConnection(
+      host: '127.0.0.1',
+      port: 9746,
+      token: 'a',
+      name: '작업실',
+      certificateFingerprint: 'pinned-certificate',
+    );
+    const pcB = DesktopConnection(
+      host: '127.0.0.2',
+      port: 9746,
+      token: 'b',
+      name: '집',
+    );
+    final store = FakeConnectionStore(
+      initial: SavedConnections(connections: [pcA, pcB], activeId: pcA.id),
+    );
+    final client = FakeDesktopClient();
+    final container = containerWith(client, store);
+    await container.read(connectionControllerProvider.future);
+    final controller = container.read(connectionControllerProvider.notifier);
+
+    await controller.rename(pcA.id, '  회사 PC  ');
+    await controller.rename(pcB.id, '  ');
+
+    final saved = await store.readRegistry();
+    expect(saved.activeId, pcA.id);
+    expect(saved.connections, hasLength(2));
+    expect(saved.find(pcA.id)?.toJson(), {...pcA.toJson(), 'name': '회사 PC'});
+    expect(saved.find(pcB.id)?.toJson(), {...pcB.toJson(), 'name': ''});
+    expect(saved.find(pcB.id)?.displayName, pcB.host);
+    expect(client.pairCalls, isEmpty);
+    expect(client.unpairCalls, isEmpty);
+  });
+
+  test('삭제 저장 중 별칭 변경이 들어와도 삭제된 PC를 되살리지 않는다', () async {
+    const pc = DesktopConnection(host: '127.0.0.1', port: 9746, token: 'a');
+    final store = _DelayedConnectionStore(
+      SavedConnections(connections: [pc], activeId: pc.id),
+    );
+    final container = ProviderContainer(
+      overrides: [connectionStoreProvider.overrideWithValue(store)],
+    );
+    addTearDown(container.dispose);
+    await container.read(connectionControllerProvider.future);
+    final controller = container.read(connectionControllerProvider.notifier);
+    final removing = controller.forgetLocally(pc.id);
+    await store.firstWriteStarted.future;
+    final renaming = controller.rename(pc.id, '새 이름');
+    store.allowFirstWrite.complete();
+    await Future.wait([removing, renaming]);
+    expect(store.registry.connections, isEmpty);
+    expect(store.registry.activeId, isNull);
+  });
+
   test('두 PC를 등록하고 전환해도 두 토큰이 남고 원격 해제를 요청하지 않는다', () async {
     final client = FakeDesktopClient(pairToken: 'token-b');
     final store = FakeConnectionStore();

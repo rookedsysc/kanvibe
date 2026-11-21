@@ -7,6 +7,7 @@ import {
   getCurrentShortcutPlatform,
 } from "@/desktop/renderer/utils/keyboardShortcut";
 import type { TerminalTab } from "@/desktop/shared/terminalTabs";
+import type { TerminalTabPendingAction } from "@/desktop/renderer/hooks/useTerminalTabs";
 
 interface TerminalTabBarProps {
   tabs: TerminalTab[];
@@ -15,6 +16,10 @@ interface TerminalTabBarProps {
   onClose: (tabId: string) => void;
   onRename: (tabId: string, name: string) => void;
   onMove: (tabId: string, targetIndex: number) => void;
+  /** 처리 중인 탭 명령. 탭 명령은 한 번에 하나만 나가므로 그동안 추가 버튼을 막는다 */
+  pendingAction?: TerminalTabPendingAction | null;
+  actionError?: string | null;
+  onRetryAction?: () => void;
 }
 
 /**
@@ -28,8 +33,13 @@ export default function TerminalTabBar({
   onClose,
   onRename,
   onMove,
+  pendingAction = null,
+  actionError = null,
+  onRetryAction,
 }: TerminalTabBarProps) {
   const t = useTranslations("taskDetail");
+  const tc = useTranslations("common");
+  const isCreatingTab = pendingAction?.kind === "create";
   const shortcutPlatform = getCurrentShortcutPlatform();
   const [renamingTabId, setRenamingTabId] = useState<string | null>(null);
   const [draggingTabId, setDraggingTabId] = useState<string | null>(null);
@@ -70,6 +80,7 @@ export default function TerminalTabBar({
           data-terminal-tab-id={tab.id}
           role="tab"
           aria-selected={tab.isActive}
+          aria-busy={pendingAction?.tabId === tab.id || undefined}
           tabIndex={-1}
           draggable={renamingTabId !== tab.id}
           onDragStart={() => setDraggingTabId(tab.id)}
@@ -93,7 +104,9 @@ export default function TerminalTabBar({
             tab.isActive
               ? "bg-brand-primary text-text-inverse"
               : "text-terminal-text hover:bg-white/5"
-          } ${hasDivider ? "border-l border-white/10" : "border-l border-transparent"}`}
+          } ${hasDivider ? "border-l border-white/10" : "border-l border-transparent"} ${
+            pendingAction?.tabId === tab.id ? "cursor-progress opacity-60" : ""
+          }`}
         >
           {renamingTabId === tab.id ? (
             <input
@@ -144,11 +157,28 @@ export default function TerminalTabBar({
         type="button"
         data-testid="terminal-tab-new"
         aria-label={t("newTerminalTab")}
+        aria-busy={isCreatingTab || undefined}
+        title={isCreatingTab ? t("terminalTabCreating") : undefined}
+        disabled={pendingAction !== null}
         onClick={onCreate}
-        className="shrink-0 rounded-md px-2 py-1 text-xs text-terminal-text transition-colors hover:bg-white/10"
+        className="shrink-0 rounded-md px-2 py-1 text-xs text-terminal-text transition-colors hover:bg-white/10 disabled:cursor-progress disabled:opacity-60"
       >
-        +
+        {isCreatingTab ? (
+          <span aria-hidden="true" className="inline-block h-3 w-3 rounded-full border-2 border-current border-t-transparent align-middle motion-safe:animate-spin" />
+        ) : "+"}
       </button>
+      {actionError ? (
+        <span role="alert" className="ml-2 flex shrink-0 items-center gap-1.5 text-[11px] text-status-error">
+          <span className="max-w-64 truncate" title={actionError}>{t("terminalTabActionFailed", { reason: actionError })}</span>
+          <button
+            type="button"
+            onClick={onRetryAction}
+            className="rounded px-1.5 py-0.5 font-medium text-terminal-text underline-offset-2 hover:underline"
+          >
+            {tc("retry")}
+          </button>
+        </span>
+      ) : null}
     </div>
   );
 }

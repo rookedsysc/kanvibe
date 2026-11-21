@@ -108,6 +108,69 @@ describe("kanvibeTaskStateService", () => {
     consoleWarn.mockRestore();
   });
 
+  it("에이전트 hook 이벤트가 이어져도 같은 저장소의 git exclude는 한 번만 확인하고 상태는 매번 기록한다", async () => {
+    const { persistTaskStateAtPath } = await import("@/desktop/main/services/kanvibeTaskStateService");
+    const repoPath = "/remote/repo__worktrees/feature-task";
+
+    await persistTaskStateAtPath(repoPath, { id: "task-1", status: TaskStatus.PROGRESS }, "remote-host");
+    await persistTaskStateAtPath(repoPath, { id: "task-1", status: TaskStatus.PENDING }, "remote-host");
+    await persistTaskStateAtPath(repoPath, { id: "task-1", status: TaskStatus.REVIEW }, "remote-host");
+
+    // exclude 확인은 원격에서 검증 접속을 두세 번 쓰므로 이벤트마다 되풀이하지 않는다.
+    expect(mocks.addAiToolPatternsToGitExclude).toHaveBeenCalledTimes(1);
+    expect(mocks.writeKanvibeTaskStatus.mock.calls.map(([, status]) => status)).toEqual([
+      TaskStatus.PROGRESS,
+      TaskStatus.PENDING,
+      TaskStatus.REVIEW,
+    ]);
+  });
+
+  it("git exclude 확인은 저장소와 호스트마다 따로 기억하고, 동시에 온 기록은 진행 중인 확인을 함께 기다린다", async () => {
+    let finishExcludeCheck!: () => void;
+    mocks.addAiToolPatternsToGitExclude.mockImplementationOnce(() => new Promise<void>((resolve) => { finishExcludeCheck = resolve; }));
+    const { persistTaskStateAtPath } = await import("@/desktop/main/services/kanvibeTaskStateService");
+
+    const firstWrite = persistTaskStateAtPath("/repo/a", { id: "task-1", status: TaskStatus.PROGRESS }, "host-a");
+    const overlappingWrite = persistTaskStateAtPath("/repo/a", { id: "task-1", status: TaskStatus.REVIEW }, "host-a");
+    await Promise.resolve();
+
+    // 확인이 끝나기 전에는 어느 쪽도 상태 파일을 쓰지 않아 exclude 뒤에 기록하는 순서가 유지된다.
+    expect(mocks.addAiToolPatternsToGitExclude).toHaveBeenCalledTimes(1);
+    expect(mocks.writeKanvibeTaskStatus).not.toHaveBeenCalled();
+    finishExcludeCheck();
+    await Promise.all([firstWrite, overlappingWrite]);
+    expect(mocks.writeKanvibeTaskStatus).toHaveBeenCalledTimes(2);
+
+    await persistTaskStateAtPath("/repo/a", { id: "task-2", status: TaskStatus.PROGRESS }, "host-b");
+    await persistTaskStateAtPath("/repo/b", { id: "task-3", status: TaskStatus.PROGRESS }, "host-a");
+    expect(mocks.addAiToolPatternsToGitExclude).toHaveBeenCalledTimes(3);
+  });
+
+  it("실패한 git exclude 확인은 기억하지 않아 다음 기록에서 다시 시도하고, 기억한 확인도 시간이 지나면 다시 한다", async () => {
+    vi.useFakeTimers();
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      mocks.addAiToolPatternsToGitExclude.mockRejectedValueOnce(new Error("Connection reset by peer"));
+      const { persistTaskStateAtPath } = await import("@/desktop/main/services/kanvibeTaskStateService");
+      const persist = () => persistTaskStateAtPath("/repo/a", { id: "task-1", status: TaskStatus.PROGRESS }, "host-a");
+
+      await persist();
+      await persist();
+      expect(mocks.addAiToolPatternsToGitExclude).toHaveBeenCalledTimes(2);
+
+      await persist();
+      expect(mocks.addAiToolPatternsToGitExclude).toHaveBeenCalledTimes(2);
+
+      // 누군가 exclude를 지워도 이 시간 뒤의 기록이 복구한다.
+      vi.advanceTimersByTime(10 * 60_000);
+      await persist();
+      expect(mocks.addAiToolPatternsToGitExclude).toHaveBeenCalledTimes(3);
+    } finally {
+      consoleWarn.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
   it("path 기반 task 상태 저장은 실패해도 호출자 흐름을 막지 않는다", async () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
     mocks.writeKanvibeTaskStatus.mockRejectedValue(new Error("disk full"));

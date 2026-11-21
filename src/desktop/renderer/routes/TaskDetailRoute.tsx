@@ -1,5 +1,6 @@
+import { getChatTranscriptRows } from "@/desktop/renderer/utils/chatTranscript";
 import { AI_SESSION_PROVIDER_LABELS, AI_SESSION_PROVIDERS } from "@/lib/aiSessions/providers";
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   Activity03Icon,
@@ -13,6 +14,8 @@ import { useParams } from "react-router-dom";
 import AutoConnectTerminalSession from "@/components/AutoConnectTerminalSession";
 import CreateTaskModal from "@/components/CreateTaskModal";
 import DeleteTaskButton from "@/components/DeleteTaskButton";
+import InlineLoadError from "@/components/InlineLoadError";
+import RouteRefreshFailureBanner from "@/desktop/renderer/components/RouteRefreshFailureBanner";
 import DoneStatusButton from "@/components/DoneStatusButton";
 import HooksStatusCard from "@/components/HooksStatusCard";
 import { AiProviderIcon } from "@/components/AiProviderIcon";
@@ -22,18 +25,20 @@ import TaskDetailInfoCard from "@/components/TaskDetailInfoCard";
 import TaskDetailTitleCard from "@/components/TaskDetailTitleCard";
 import { Link, useRouter } from "@/desktop/renderer/navigation";
 import { getDefaultSessionType, getDoneAlertDismissed, getSidebarDefaultCollapsed } from "@/desktop/renderer/actions/appSettings";
-import { deleteTask, getTaskById, getTaskIdByProjectAndBranch, updateTaskStatus } from "@/desktop/renderer/actions/kanban";
+import { deleteTask, fetchAndSavePrUrl, getTaskById, getTaskIdByProjectAndBranch, updateTaskStatus } from "@/desktop/renderer/actions/kanban";
 import {
   getTaskAiSessions,
   getTaskAiSessionDetail,
   getTaskCodexHooksStatus,
   getTaskGeminiHooksStatus,
   getTaskHooksStatus,
+  getTaskHooksStatuses,
   getTaskOpenCodeHooksStatus,
   getAllProjects,
 } from "@/desktop/renderer/actions/project";
 import AiUsagePanel from "@/desktop/renderer/components/AiUsagePanel";
-import { AiSessionMessageContent } from "@/desktop/renderer/components/AiSessionMessageContent";
+import { AiChatTranscriptMessage } from "@/desktop/renderer/components/AiChatTranscriptMessage";
+import { AiChatFilePreview } from "@/desktop/renderer/components/AiChatFilePreview";
 import {
   useBoardCommands,
   useHasBoardShortcutBlocker,
@@ -47,6 +52,7 @@ import { useMarkTaskNotificationsReadWhenFocused } from "@/desktop/renderer/hook
 import { useTaskAgentCallGraph, useTaskLiveAiSessions } from "@/desktop/renderer/hooks/useLiveAiSessions";
 import { useTaskDiffFiles } from "@/desktop/renderer/hooks/useTaskDiffStats";
 import { useTerminalTabs } from "@/desktop/renderer/hooks/useTerminalTabs";
+import { useTrackedAction } from "@/desktop/renderer/hooks/useTrackedAction";
 import { getTerminalTabCloseInfo } from "@/desktop/renderer/actions/terminalTabs";
 import type { TerminalTabShortcutCommand } from "@/desktop/shared/terminalTabs";
 import { fetchPrUrlWithPrompt } from "@/desktop/renderer/utils/fetchPrUrlWithPrompt";
@@ -64,16 +70,15 @@ import {
   resolveTerminalTabCommand,
 } from "@/desktop/shared/shortcutBindings";
 import { resolveTaskDetailDockLabel, type TaskDetailDockItemId } from "@/desktop/shared/taskDetailDock";
-import { INITIAL_DESKTOP_LOAD_TIMEOUT_MS, logDesktopInitialLoadTimeout } from "@/desktop/renderer/utils/loadingTimeout";
+import { useRouteLoadStatus } from "@/desktop/renderer/utils/loadingTimeout";
 import { rememberBoardFocusTask } from "@/desktop/renderer/utils/boardFocusTarget";
 import { buildRouteCacheKey, readRouteCache, removeRouteCache, writeRouteCache } from "@/desktop/renderer/utils/routeCache";
 import { useRefreshSignal } from "@/desktop/renderer/utils/refresh";
-import { requestActiveTerminalFocusAfterUiSettles } from "@/desktop/renderer/utils/terminalFocus";
+import { requestActiveTerminalFocusAfterUiSettles, requestTogglePaneChat } from "@/desktop/renderer/utils/terminalFocus";
 import { SessionType, TaskStatus } from "@/entities/KanbanTask";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 import type {
   AiMessageRole,
-  AggregatedAiMessage,
   AggregatedAiSession,
   AggregatedAiSessionDetail,
   AggregatedAiSessionsResult,
@@ -90,6 +95,7 @@ const STATUS_TRANSITIONS = [
 
 const INLINE_CHAT_DETAIL_LIMIT = 40;
 const INLINE_CHAT_SESSION_LIMIT = 20;
+const INLINE_CHAT_NEAR_BOTTOM_PX = 96;
 
 const AGENT_TAG_STYLES: Record<string, string> = {
   claude: "bg-tag-claude-bg text-tag-claude-text",
@@ -98,7 +104,7 @@ const AGENT_TAG_STYLES: Record<string, string> = {
 };
 
 type DetailPanel = "overview" | "status" | "liveSessions" | "usage";
-type MainView = "terminal" | "chat";
+type MainView = "terminal" | "history";
 type TaskDetailDockItem = {
   id: TaskDetailDockItemId;
   label: string;
@@ -106,6 +112,8 @@ type TaskDetailDockItem = {
   renderIcon: () => ReactNode;
   onActivate: () => void;
   href?: string;
+  /** 외부 명령(PR 조회·편집기 실행)을 기다리는 중이면 자리에 진행을 보인다 */
+  isBusy?: boolean;
 };
 
 const PR_DOCK_INSERT_INDEX = 3;
@@ -240,13 +248,6 @@ const AI_SESSION_PROVIDER_STYLES: Partial<Record<AggregatedAiSession["provider"]
   opencode: "border-tag-neutral-text/30 bg-tag-neutral-bg text-tag-neutral-text",
 };
 
-const AI_SESSION_PROVIDER_ICON_STYLES: Partial<Record<AggregatedAiSession["provider"], string>> = {
-  claude: "border-tag-claude-text/40 bg-tag-claude-bg text-tag-claude-text",
-  gemini: "border-tag-gemini-text/40 bg-tag-gemini-bg text-tag-gemini-text",
-  codex: "border-tag-codex-text/40 bg-tag-codex-bg text-tag-codex-text",
-  opencode: "border-tag-neutral-text/40 bg-tag-neutral-bg text-tag-neutral-text",
-};
-
 const AI_SESSION_PROVIDER_ORDER = AI_SESSION_PROVIDERS;
 
 const INLINE_CHAT_ROLE_FILTERS: AiMessageRole[] = [
@@ -285,6 +286,11 @@ function InlineAiChatView({ taskId }: { taskId: string }) {
   const loadedTaskIdRef = useRef<string | null>(null);
   const latestMessageAnchorRef = useRef<HTMLDivElement | null>(null);
   const shouldScrollToLatestMessageRef = useRef(false);
+  const messagePaneRef = useRef<HTMLDivElement | null>(null);
+  const pendingScrollAnchorRef = useRef<{ top: number; height: number } | null>(null);
+  const [showJumpToLatest, setShowJumpToLatest] = useState(false);
+  const [previewFilePath, setPreviewFilePath] = useState<string | null>(null);
+  const [detailReloadRevision, setDetailReloadRevision] = useState(0);
   const historyRequestIdRef = useRef(0);
   const olderMessagesRequestIdRef = useRef(0);
 
@@ -292,6 +298,10 @@ function InlineAiChatView({ taskId }: { taskId: string }) {
     () => history?.sessions.find((session) => getAiSessionKey(session) === selectedSessionKey) ?? null,
     [history?.sessions, selectedSessionKey],
   );
+
+  useEffect(() => {
+    setPreviewFilePath(null);
+  }, [selectedSessionKey]);
 
   const providerCounts = useMemo(() => {
     const counts = Object.fromEntries(AI_SESSION_PROVIDERS.map((provider) => [provider, 0])) as Record<AggregatedAiSession["provider"], number>;
@@ -415,6 +425,8 @@ function InlineAiChatView({ taskId }: { taskId: string }) {
     setDetailError(null);
     setIsOlderMessagesLoading(false);
     shouldScrollToLatestMessageRef.current = true;
+    pendingScrollAnchorRef.current = null;
+    setShowJumpToLatest(false);
 
     getTaskAiSessionDetail(
       taskId,
@@ -442,7 +454,7 @@ function InlineAiChatView({ taskId }: { taskId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [activeRoles, appliedSearchQuery, detailErrorMessage, selectedSession, taskId]);
+  }, [activeRoles, appliedSearchQuery, detailErrorMessage, detailReloadRevision, selectedSession, taskId]);
 
   const selectedSessionId = selectedSession?.id ?? null;
   const messages = useMemo(() => {
@@ -452,7 +464,7 @@ function InlineAiChatView({ taskId }: { taskId: string }) {
 
     return detail.messages;
   }, [detail?.messages, detail?.sessionId, selectedSessionId]);
-  const displayedMessages = useMemo(() => [...messages].reverse(), [messages]);
+  const displayedMessages = useMemo(() => getChatTranscriptRows(messages, selectedSessionKey), [messages, selectedSessionKey]);
   const error = selectedSession && detailError?.sessionId === selectedSession.id ? detailError.message : null;
   const isDetailLoading = Boolean(selectedSession && detail?.sessionId !== selectedSession.id && !error);
 
@@ -464,6 +476,15 @@ function InlineAiChatView({ taskId }: { taskId: string }) {
     latestMessageAnchorRef.current?.scrollIntoView?.({ block: "end" });
     shouldScrollToLatestMessageRef.current = false;
   }, [displayedMessages.length, isDetailLoading, selectedSession]);
+
+  useLayoutEffect(() => {
+    const anchor = pendingScrollAnchorRef.current;
+    const pane = messagePaneRef.current;
+    if (anchor && pane) {
+      pane.scrollTop = anchor.top + pane.scrollHeight - anchor.height;
+      pendingScrollAnchorRef.current = null;
+    }
+  }, [displayedMessages]);
 
   function toggleRole(role: AiMessageRole) {
     olderMessagesRequestIdRef.current += 1;
@@ -528,6 +549,8 @@ function InlineAiChatView({ taskId }: { taskId: string }) {
         return;
       }
 
+      const pane = messagePaneRef.current;
+      if (pane) pendingScrollAnchorRef.current = { top: pane.scrollTop, height: pane.scrollHeight };
       setDetail((current) => {
         if (!current || current.sessionId !== result.sessionId) {
           return result;
@@ -556,202 +579,130 @@ function InlineAiChatView({ taskId }: { taskId: string }) {
     : t("aiSessions.noPreview");
 
   return (
-    <div
-      data-testid="inline-ai-chat"
-      className="flex h-full min-h-0 flex-1 translate-y-0 flex-col overflow-hidden rounded-lg border border-border-default bg-bg-page opacity-100 shadow-md transition-all duration-200 ease-out"
-    >
-      <div className="flex shrink-0 items-center gap-3 border-b border-border-default bg-terminal-chrome px-4 py-2.5">
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-xs font-semibold text-terminal-text">
-            {selectedSession?.title ?? t("aiSessions.title")}
-          </p>
-          <p className="mt-0.5 truncate text-[11px] text-terminal-text/70">
-            {selectedSession ? AI_SESSION_PROVIDER_LABELS[selectedSession.provider] : historyCountLabel}
-          </p>
-        </div>
-        {selectedSession ? <AiSessionProviderBadge provider={selectedSession.provider} /> : null}
-        <form onSubmit={handleSearchSubmit} className="flex w-[320px] items-center gap-2">
-          <label htmlFor="ai-session-search" className="sr-only">
-            {t("aiSessions.searchLabel")}
-          </label>
-          <input
-            id="ai-session-search"
-            value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
-            placeholder={t("aiSessions.searchPlaceholder")}
-            className="min-w-0 flex-1 rounded-md border border-terminal-text/20 bg-black/10 px-3 py-1.5 text-[11px] text-terminal-text placeholder:text-terminal-text/45 outline-none transition-colors focus:border-terminal-text/50"
-          />
-          <button
-            type="submit"
-            disabled={isHistoryLoading}
-            className="rounded-md border border-terminal-text/20 px-3 py-1.5 text-[11px] font-semibold text-terminal-text transition-colors hover:bg-white/10 disabled:opacity-50"
-          >
-            {t("aiSessions.search")}
-          </button>
-        </form>
-      </div>
-
+    <section data-testid="inline-ai-chat" className="@container flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-bg-page">
+      <header className="flex shrink-0 items-center justify-between gap-3 border-b border-border-subtle px-5 py-3">
+        <h1 className="text-sm font-semibold text-text-primary">{t("aiSessions.inlineChat")}</h1>
+        <button type="button" onClick={() => void loadHistory(appliedSearchQuery ?? "")} disabled={isHistoryLoading}
+          className="rounded-md px-2 py-1.5 text-xs text-text-secondary hover:bg-bg-surface focus-visible:outline-2 focus-visible:outline-brand-primary disabled:opacity-50">
+          {t("aiSessions.refresh")}
+        </button>
+      </header>
       <div className="flex min-h-0 flex-1">
-        <div className="flex w-[340px] shrink-0 border-r border-border-default bg-bg-surface/45">
-          <div className="flex w-14 shrink-0 flex-col items-center gap-2 overflow-x-hidden overflow-y-auto border-r border-border-default bg-bg-page/70 px-2 py-3">
-            {AI_SESSION_PROVIDER_ORDER.filter((provider) => ["claude", "codex", "opencode", "gemini"].includes(provider)
-              || history?.sources.some((source) => source.provider === provider && source.available) || history?.sessions.some((session) => session.provider === provider)).map((provider) => {
-              const isActive = activeProviders.includes(provider);
-              const count = providerCounts[provider];
-              return (
-                <button
-                  key={provider}
-                  type="button"
-                  data-testid={`ai-session-filter-${provider}`}
-                  aria-label={t("aiSessions.providerFilterLabel", { provider: AI_SESSION_PROVIDER_LABELS[provider] })}
-                  aria-pressed={isActive}
-                  title={t("aiSessions.providerFilterLabel", { provider: AI_SESSION_PROVIDER_LABELS[provider] })}
-                  onClick={() => toggleProvider(provider)}
-                  className={`relative flex size-10 items-center justify-center rounded-full border text-[11px] font-bold shadow-sm transition-all ${
-                    isActive
-                      ? `${(AI_SESSION_PROVIDER_ICON_STYLES[provider] ?? "border-border-default bg-bg-surface text-text-primary")} ring-2 ring-brand-primary/45 ring-offset-2 ring-offset-bg-page`
-                      : `${(AI_SESSION_PROVIDER_ICON_STYLES[provider] ?? "border-border-default bg-bg-surface text-text-primary")} opacity-65 hover:opacity-100`
-                  }`}
-                >
-                  <AiProviderIcon
-                    provider={provider}
-                    className="inline-flex h-[18px] w-[18px] items-center justify-center"
-                    imageClassName="block h-[18px] w-[18px] object-contain"
-                    size={18}
-                  />
-                  {history ? (
-                    <span className="absolute -bottom-1 -right-1 flex min-w-4 items-center justify-center rounded-full border border-bg-page bg-bg-surface px-1 text-[9px] leading-4 text-text-muted">
-                      {count}
-                    </span>
-                  ) : null}
-                </button>
-              );
-            })}
+        <aside aria-label={t("aiSessions.history")} className={`${selectedSession ? "hidden @min-[720px]:flex" : "flex"} w-full shrink-0 flex-col border-r border-border-subtle bg-bg-surface/35 @min-[720px]:w-72`}>
+          <div className="shrink-0 px-4 pb-2 pt-4">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <h2 className="text-xs font-semibold text-text-secondary">{t("aiSessions.history")}</h2>
+              <span className="text-xs tabular-nums text-text-muted">{historyCountLabel}</span>
+            </div>
+            <form onSubmit={handleSearchSubmit} className="flex items-center gap-1.5">
+              <label htmlFor="ai-session-search" className="sr-only">{t("aiSessions.searchLabel")}</label>
+              <input id="ai-session-search" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder={t("aiSessions.searchPlaceholder")}
+                className="min-w-0 flex-1 rounded-md border border-border-default bg-bg-page px-3 py-2 text-xs text-text-primary placeholder:text-text-muted focus:border-brand-primary focus:outline-none" />
+              <button type="submit" disabled={isHistoryLoading} className="rounded-md px-2 py-2 text-xs text-text-secondary hover:bg-bg-surface focus-visible:outline-2 focus-visible:outline-brand-primary disabled:opacity-50">{t("aiSessions.search")}</button>
+            </form>
           </div>
-
-          <div className="min-w-0 flex-1 overflow-y-auto p-3">
-            {!history && !isHistoryLoading && !historyError ? <InlineAiChatEmpty compact text={t("aiSessions.noPreview")} /> : null}
-            {historyError ? <InlineAiChatEmpty compact text={historyError} /> : null}
+          <div className="flex shrink-0 gap-1 overflow-x-auto px-3 pb-2">
+            {AI_SESSION_PROVIDER_ORDER.filter((provider) => ["claude", "codex", "opencode", "gemini"].includes(provider)
+              || history?.sources.some((source) => source.provider === provider && source.available) || history?.sessions.some((session) => session.provider === provider)).map((provider) => (
+              <button key={provider} type="button" data-testid={`ai-session-filter-${provider}`}
+                aria-label={t("aiSessions.providerFilterLabel", { provider: AI_SESSION_PROVIDER_LABELS[provider] })}
+                aria-pressed={activeProviders.includes(provider)} title={AI_SESSION_PROVIDER_LABELS[provider]} onClick={() => toggleProvider(provider)}
+                className={`flex min-h-9 shrink-0 items-center gap-1.5 rounded-md px-2 text-xs transition-colors focus-visible:outline-2 focus-visible:outline-brand-primary ${activeProviders.includes(provider) ? "bg-brand-subtle text-text-brand" : "text-text-secondary hover:bg-bg-surface"}`}>
+                <AiProviderIcon provider={provider} size={16} />
+                <span className="tabular-nums">{providerCounts[provider]}</span>
+              </button>
+            ))}
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
+            {historyError ? <div role="alert"><InlineAiChatEmpty compact text={historyError} /></div> : null}
             {isHistoryLoading ? <InlineAiChatEmpty compact text={t("aiSessions.loadingDetail")} /> : null}
             {history ? (
-              filteredSessions.length > 0 || history.nextCursor ? (
-                <div data-testid="ai-session-list" className="space-y-2">
-                  {filteredSessions.length > 0 ? (
-                    filteredSessions.map((session) => {
-                      const sessionKey = getAiSessionKey(session);
-                      const isSelected = selectedSessionKey === sessionKey;
-                      return (
-                        <button
-                          key={sessionKey}
-                          type="button"
-                          onClick={() => {
-                            shouldScrollToLatestMessageRef.current = true;
-                            setSelectedSessionKey(sessionKey);
-                            setActiveRoles([]);
-                          }}
-                          className={`w-full rounded-xl border p-3 text-left transition-colors ${
-                            isSelected
-                              ? "border-brand-primary bg-brand-subtle"
-                              : "border-border-default bg-bg-page hover:border-brand-primary/70"
-                          }`}
-                          aria-label={`${AI_SESSION_PROVIDER_LABELS[session.provider]} ${session.title ?? session.firstUserPrompt ?? session.id}`}
-                        >
-                          <div className="mb-2 flex items-start gap-2">
-                            <AiSessionProviderIcon provider={session.provider} />
-                            <span className="min-w-0 flex-1 truncate text-xs font-semibold text-text-primary">
-                              {session.title ?? session.firstUserPrompt ?? session.id}
-                            </span>
-                          </div>
-                          {session.firstUserPrompt ? (
-                            <p className="line-clamp-2 text-[11px] leading-4 text-text-muted">{session.firstUserPrompt}</p>
-                          ) : null}
-                          <p className="mt-2 text-[10px] text-text-muted">{session.messageCount}</p>
-                        </button>
-                      );
-                    })
-                  ) : (
-                    <InlineAiChatEmpty compact text={history.isRemote ? t("aiSessions.remoteBadge") : t("aiSessions.noPreview")} />
-                  )}
-                  {history.nextCursor ? (
-                    <button
-                      type="button"
-                      onClick={() => void handleLoadMoreSessions()}
-                      disabled={isHistoryLoading}
-                      className="w-full rounded-lg border border-dashed border-border-default px-3 py-2 text-[11px] font-semibold text-text-muted transition-colors hover:border-brand-primary hover:text-text-brand disabled:opacity-50"
-                    >
-                      {isHistoryLoading ? t("aiSessions.loadingDetail") : t("aiSessions.loadMoreSessions")}
+              <div data-testid="ai-session-list" className="space-y-1">
+                {filteredSessions.map((session) => {
+                  const title = session.title ?? session.firstUserPrompt ?? session.id;
+                  const preview = session.firstUserPrompt?.trim();
+                  return (
+                    <button key={getAiSessionKey(session)} type="button"
+                      onClick={() => { shouldScrollToLatestMessageRef.current = true; setSelectedSessionKey(getAiSessionKey(session)); setActiveRoles([]); }}
+                      className={`w-full rounded-lg px-3 py-3 text-left transition-colors focus-visible:outline-2 focus-visible:outline-brand-primary ${selectedSessionKey === getAiSessionKey(session) ? "bg-bg-surface" : "hover:bg-bg-surface/75"}`}
+                      aria-current={selectedSessionKey === getAiSessionKey(session) ? "true" : undefined}
+                      aria-label={`${AI_SESSION_PROVIDER_LABELS[session.provider]} ${title}`}>
+                      <div className="flex items-center gap-2">
+                        <AiSessionProviderIcon provider={session.provider} />
+                        <span className="min-w-0 flex-1 truncate text-sm font-medium text-text-primary">{title}</span>
+                      </div>
+                      {preview && preview !== title.trim() ? <p className="mt-1.5 line-clamp-2 text-xs leading-5 text-text-secondary">{session.firstUserPrompt}</p> : null}
+                      <div className="mt-2 flex justify-between gap-2 text-xs text-text-muted">
+                        <span>{t("aiSessions.messageCount", { count: session.messageCount })}</span>
+                        {session.updatedAt && Number.isFinite(Date.parse(session.updatedAt)) ? <time dateTime={session.updatedAt}>{new Date(session.updatedAt).toLocaleDateString()}</time> : null}
+                      </div>
                     </button>
-                  ) : null}
-                </div>
-              ) : <InlineAiChatEmpty compact text={history.isRemote ? t("aiSessions.remoteBadge") : t("aiSessions.noPreview")} />
-            ) : null}
-          </div>
-        </div>
-
-        <div className="flex min-w-0 flex-1 flex-col">
-          {selectedSession ? (
-            <div className="flex shrink-0 flex-wrap gap-2 border-b border-border-default px-4 py-2">
-              {INLINE_CHAT_ROLE_FILTERS.map((role) => {
-                const isActive = activeRoles.includes(role);
-                return (
-                  <button
-                    key={role}
-                    type="button"
-                    aria-label={t(`aiSessions.roles.${role}`)}
-                    aria-pressed={isActive}
-                    onClick={() => toggleRole(role)}
-                    className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors ${
-                      isActive
-                        ? "border-brand-primary bg-brand-subtle text-text-brand"
-                        : "border-border-default bg-bg-surface text-text-muted hover:border-brand-primary/70 hover:text-text-primary"
-                    }`}
-                  >
-                    {t(`aiSessions.roles.${role}`)}
-                  </button>
-                );
-              })}
-            </div>
-          ) : null}
-
-          <div data-testid="ai-session-messages" className="flex-1 space-y-4 overflow-y-auto px-5 py-5">
-            {!history && !isHistoryLoading && !historyError ? <InlineAiChatEmpty text={t("aiSessions.noPreview")} /> : null}
-            {historyError ? <InlineAiChatEmpty text={historyError} /> : null}
-            {history && !selectedSession ? <InlineAiChatEmpty text={t("aiSessions.selectSession")} /> : null}
-            {selectedSession && isDetailLoading ? <InlineAiChatEmpty text={t("aiSessions.loadingDetail")} /> : null}
-            {selectedSession && !isDetailLoading && error ? <InlineAiChatEmpty text={error} /> : null}
-            {selectedSession && !isDetailLoading && !error && messages.length === 0 ? <InlineAiChatEmpty text={t("aiSessions.noPreview")} /> : null}
-            {selectedSession && !isDetailLoading && !error && detail?.sessionId === selectedSession.id && detail.nextCursor ? (
-              <div className="flex justify-center">
-                <button
-                  type="button"
-                  onClick={() => void handleLoadOlderMessages()}
-                  disabled={isOlderMessagesLoading}
-                  className="rounded-full border border-border-default bg-bg-surface px-4 py-2 text-xs font-semibold text-text-muted transition-colors hover:border-brand-primary hover:text-text-brand disabled:opacity-50"
-                >
-                  {isOlderMessagesLoading ? t("aiSessions.loadingDetail") : t("aiSessions.loadOlderMessages")}
-                </button>
+                  );
+                })}
+                {filteredSessions.length === 0 && !isHistoryLoading ? <InlineAiChatEmpty compact text={history.isRemote ? t("aiSessions.remoteBadge") : t("aiSessions.noPreview")} /> : null}
+                {history.nextCursor ? <button type="button" onClick={() => void handleLoadMoreSessions()} disabled={isHistoryLoading}
+                  className="w-full rounded-md px-3 py-3 text-xs text-text-secondary hover:bg-bg-surface focus-visible:outline-2 focus-visible:outline-brand-primary disabled:opacity-50">
+                  {isHistoryLoading ? t("aiSessions.loadingDetail") : t("aiSessions.loadMoreSessions")}
+                </button> : null}
               </div>
             ) : null}
-            {selectedSession && !isDetailLoading && !error && displayedMessages.map((message, index) => (
-              <InlineAiChatMessage
-                key={`${message.role}-${message.timestamp ?? index}-${index}`}
-                message={message}
-                provider={selectedSession.provider}
-              />
-            ))}
-            <div ref={latestMessageAnchorRef} aria-hidden="true" />
           </div>
+        </aside>
+        <div className={`${selectedSession ? "flex" : "hidden @min-[720px]:flex"} relative min-w-0 flex-1 flex-col`}>
+          {selectedSession ? (
+            <>
+              <div className="flex shrink-0 items-center gap-3 border-b border-border-subtle px-4 py-3">
+                <button type="button" onClick={() => setSelectedSessionKey(null)} aria-label={t("aiSessions.backToHistory")}
+                  className="rounded-md px-2 py-1.5 text-sm text-text-secondary hover:bg-bg-surface @min-[720px]:hidden">←</button>
+                <div className="min-w-0 flex-1"><h2 className="truncate text-sm font-medium text-text-primary">{selectedSession.title ?? selectedSession.firstUserPrompt ?? selectedSession.id}</h2></div>
+                <AiSessionProviderBadge provider={selectedSession.provider} />
+              </div>
+              <div className="flex shrink-0 gap-1 overflow-x-auto border-b border-border-subtle px-4 py-2">
+                {INLINE_CHAT_ROLE_FILTERS.map((role) => (
+                  <button key={role} type="button" aria-label={t(`aiSessions.roles.${role}`)} aria-pressed={activeRoles.includes(role)} onClick={() => toggleRole(role)}
+                    className={`shrink-0 rounded-md px-2 py-1.5 text-xs transition-colors focus-visible:outline-2 focus-visible:outline-brand-primary ${activeRoles.includes(role) ? "bg-brand-subtle text-text-brand" : "text-text-secondary hover:bg-bg-surface"}`}>
+                    {t(`aiSessions.roles.${role}`)}
+                  </button>
+                ))}
+              </div>
+            </>
+          ) : null}
+          <div ref={messagePaneRef} data-testid="ai-session-messages" className="min-h-0 flex-1 overflow-y-auto px-5 py-6"
+            onScroll={(event) => { const pane = event.currentTarget; setShowJumpToLatest(pane.scrollHeight - pane.scrollTop - pane.clientHeight > INLINE_CHAT_NEAR_BOTTOM_PX); }}>
+            <div className="mx-auto w-full max-w-3xl space-y-2.5">
+              {history && !selectedSession ? <InlineAiChatEmpty text={t("aiSessions.selectSession")} /> : null}
+              {selectedSession && isDetailLoading ? <InlineAiChatEmpty text={t("aiSessions.loadingDetail")} /> : null}
+              {selectedSession && !isDetailLoading && error ? <div role="alert" className="text-center"><InlineAiChatEmpty text={error} /><button type="button" onClick={() => setDetailReloadRevision((value) => value + 1)} className="rounded-md px-3 py-2 text-xs text-text-brand">{t("aiSessions.retry")}</button></div> : null}
+              {selectedSession && !isDetailLoading && !error && messages.length === 0 ? <InlineAiChatEmpty text={t("aiSessions.noPreview")} /> : null}
+              {selectedSession && !isDetailLoading && detail?.sessionId === selectedSession.id && detail.nextCursor ? (
+                <div className="flex justify-center"><button type="button" onClick={() => void handleLoadOlderMessages()} disabled={isOlderMessagesLoading}
+                  className="rounded-md border border-border-subtle px-4 py-2 text-xs text-text-secondary hover:bg-bg-surface focus-visible:outline-2 focus-visible:outline-brand-primary disabled:opacity-50">
+                  {isOlderMessagesLoading ? t("aiSessions.loadingDetail") : t("aiSessions.loadOlderMessages")}
+                </button></div>
+              ) : null}
+              {selectedSession && !isDetailLoading && displayedMessages.map(({ message, key }) => (
+                <AiChatTranscriptMessage key={key} message={message} provider={selectedSession.provider} attachmentContext={{ taskId, provider: selectedSession.provider, sessionId: selectedSession.id, sourceRef: selectedSession.sourceRef }} onOpenFile={(file) => setPreviewFilePath(file.path)} />
+              ))}
+              <div ref={latestMessageAnchorRef} aria-hidden="true" />
+            </div>
+          </div>
+          {selectedSession ? <footer className="shrink-0 border-t border-border-subtle px-4 py-3 text-center text-xs text-text-secondary">{t("aiSessions.readOnlyHistory")}</footer> : null}
+          {selectedSession && previewFilePath ? <AiChatFilePreview taskId={taskId} filePath={previewFilePath} onClose={() => setPreviewFilePath(null)} /> : null}
+          {selectedSession && showJumpToLatest ? <button type="button" onClick={() => { latestMessageAnchorRef.current?.scrollIntoView?.({ block: "end" }); setShowJumpToLatest(false); }}
+            className="absolute bottom-16 left-1/2 -translate-x-1/2 rounded-full border border-border-default bg-bg-surface px-4 py-2 text-xs text-text-primary shadow-md focus-visible:outline-2 focus-visible:outline-brand-primary">{t("aiSessions.jumpToLatest")} ↓</button> : null}
         </div>
       </div>
-    </div>
+    </section>
   );
 }
+
 function AiSessionProviderIcon({ provider, testId = true }: { provider: AggregatedAiSession["provider"]; testId?: boolean }) {
   return (
     <AiProviderIcon
       provider={provider}
       testId={testId ? `ai-session-provider-${provider}` : undefined}
-      className={`flex size-6 shrink-0 items-center justify-center rounded-full border ${(AI_SESSION_PROVIDER_ICON_STYLES[provider] ?? "border-border-default bg-bg-surface text-text-primary")}`}
+      className="flex size-5 shrink-0 items-center justify-center"
       imageClassName="block h-4 w-4 object-contain"
       size={16}
     />
@@ -779,50 +730,6 @@ function InlineAiChatEmpty({ text, compact = false }: { text: string; compact?: 
   );
 }
 
-function InlineAiChatMessage({ message, provider }: { message: AggregatedAiMessage; provider: AggregatedAiSession["provider"] }) {
-  const t = useTranslations("taskDetail");
-  const isUserMessage = message.role === "user";
-  const displayedText = message.fullText || message.text;
-  const [copyState, setCopyState] = useState<"idle" | "copied" | "error">("idle");
-  const copyLabel = t(`aiSessions.${copyState === "idle" ? "copyMessage" : copyState === "copied" ? "copiedMessage" : "copyFailed"}`);
-
-  async function copyMessage() {
-    try {
-      await navigator.clipboard.writeText(displayedText);
-      setCopyState("copied");
-    } catch {
-      setCopyState("error");
-    }
-  }
-
-  return (
-    <div className={`flex ${isUserMessage ? "justify-end" : "justify-start"}`}>
-      <div
-        className={`max-w-[74%] select-text rounded-2xl px-4 py-3 text-sm leading-6 shadow-sm ${
-          isUserMessage
-            ? "rounded-br-md bg-brand-primary text-white"
-            : "rounded-bl-md border border-border-default bg-bg-surface text-text-primary"
-        }`}
-      >
-        <div className={`mb-2 flex items-center gap-2 text-[11px] font-semibold ${isUserMessage ? "text-white/75" : "text-text-muted"}`}>
-          <AiSessionProviderIcon provider={provider} testId={false} />
-          <span>{message.role}</span>
-          <button
-            type="button"
-            onClick={() => void copyMessage()}
-            className={`ml-auto select-none rounded px-2 py-0.5 transition-colors ${
-              isUserMessage ? "hover:bg-white/15 hover:text-white" : "hover:bg-bg-page hover:text-text-primary"
-            }`}
-            aria-label={copyLabel}
-          >
-            {copyLabel}
-          </button>
-        </div>
-        <AiSessionMessageContent text={displayedText} isUserMessage={isUserMessage} />
-      </div>
-    </div>
-  );
-}
 
 export default function TaskDetailRoute() {
   const { id = "" } = useParams();
@@ -842,6 +749,7 @@ function TaskDetailContent({ id }: { id: string }) {
   );
   const cachedState = cachedRoute?.state ?? null;
   const [state, setState] = useState<TaskDetailState | null | undefined>(cachedState ?? undefined);
+  const { isLoadDelayed, loadFailureReason, retrySignal, beginLoad, retryLoad } = useRouteLoadStatus();
   const [isCreateTaskModalOpen, setIsCreateTaskModalOpen] = useState(false);
   const [createTaskDefaults, setCreateTaskDefaults] = useState<BranchTodoDefaults | null>(null);
   const currentTaskRef = useRef<TaskDetailState["task"] | null>(cachedState?.task ?? null);
@@ -858,12 +766,30 @@ function TaskDetailContent({ id }: { id: string }) {
   const isTerminalTabClosingRef = useRef(false);
   const dockItemsRef = useRef<TaskDetailDockItem[]>([]);
   const commonTranslationsRef = useRef(tc);
+  const automaticPrLookupTaskIdRef = useRef<string | null>(null);
+  const loadedHookStatusTaskIdRef = useRef<string | null>(null);
+  const [isHookStatusLoading, setIsHookStatusLoading] = useState(false);
   const hasTerminal = !!(state?.task.sessionType && state.task.sessionName);
+  /** 상태 버튼·Done 버튼·커맨드 팔레트 이동이 같은 요청 하나를 나눠 써서, 응답 전에는 다른 상태로 겹쳐 옮기지 않는다 */
+  const statusMove = useTrackedAction(async (newStatus: TaskStatus) => {
+    const updatedTask = await updateTaskStatus(id, newStatus);
+    if (updatedTask) {
+      setState((current) => current
+        ? {
+            ...current,
+            task: {
+              ...current.task,
+              ...updatedTask,
+            },
+          }
+        : current);
+    }
+  });
   const terminalTabs = useTerminalTabs({
     taskId: id ?? "",
     sessionType: (state?.task.sessionType as SessionType | undefined) ?? null,
     isRemote: !!state?.task.sshHost,
-    isVisible: hasTerminal && mainView === "terminal",
+    isVisible: hasTerminal && mainView !== "history",
   });
   useMarkTaskNotificationsReadWhenFocused(state?.task.id ?? null);
   const shortcutPlatform = getCurrentShortcutPlatform();
@@ -914,18 +840,32 @@ function TaskDetailContent({ id }: { id: string }) {
     requestActiveTerminalFocusAfterUiSettles();
   }, [id, terminalTabs]);
 
-  const toggleChatView = useCallback(() => {
-    setMainView((current) => {
-      const nextView = current === "chat" ? "terminal" : "chat";
-      if (nextView === "chat") {
-        markDefaultPanelDismissed();
-        setActivePanel(null);
-      } else {
-        requestActiveTerminalFocusAfterUiSettles();
-      }
-      return nextView;
-    });
+  const toggleHistoryView = useCallback(() => {
+    markDefaultPanelDismissed();
+    setActivePanel(null);
+    setMainView((current) => current === "history" ? "terminal" : "history");
   }, [markDefaultPanelDismissed]);
+
+  const togglePaneChat = useCallback(() => {
+    if (!hasTerminal || mainView !== "terminal" || hasShortcutBlocker) return;
+    requestTogglePaneChat();
+  }, [hasTerminal, mainView, hasShortcutBlocker]);
+
+  useEffect(() => {
+    function handlePaneChatShortcut(event: KeyboardEvent) {
+      if (findShortcutCommandForEvent(shortcutBindings, event, shortcutPlatform) !== "terminalToggleChat") return;
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      togglePaneChat();
+    }
+    window.addEventListener("keydown", handlePaneChatShortcut, { capture: true });
+    const unsubscribe = window.kanvibeDesktop?.onTerminalToggleChatShortcut?.(togglePaneChat);
+    return () => {
+      window.removeEventListener("keydown", handlePaneChatShortcut, { capture: true });
+      unsubscribe?.();
+    };
+  }, [shortcutBindings, shortcutPlatform, togglePaneChat]);
 
   /**
    * PR 자리를 눌렀을 때 링크가 아직 없으면 그 자리에서 찾아 연다.
@@ -942,12 +882,14 @@ function TaskDetailContent({ id }: { id: string }) {
       return;
     }
 
-    /** 조회가 던지면 자동 조회 경로와 같이 로그를 남긴다. 삼키면 눌러도 아무 일이 없어 보인다 */
+    /** 조회 실패와 PR 없음은 사용자가 할 일이 달라 따로 알린다. 실패는 다시 눌러 볼 수 있고, 없음은 PR을 만들어야 한다 */
     let prUrl: string | null = null;
     try {
       prUrl = await fetchPrUrlWithPrompt(task, commonTranslationsRef.current);
     } catch (error) {
       console.error("PR URL 조회 실패:", error);
+      window.alert(t("pullRequestLookupFailed", { reason: error instanceof Error ? error.message : String(error) }));
+      return;
     }
 
     if (!prUrl) {
@@ -980,6 +922,10 @@ function TaskDetailContent({ id }: { id: string }) {
     }
   }, [t]);
 
+  /** 같은 외부 명령을 기다리는 동안 다시 눌러도 겹쳐 보내지 않는다 */
+  const { run: runOpenPullRequest, isPending: isOpeningPullRequest } = useTrackedAction(openPullRequest);
+  const { run: runOpenInVsCode, isPending: isOpeningVsCode } = useTrackedAction(openInVsCode);
+
   const dockItems = useMemo<TaskDetailDockItem[]>(() => {
     if (!state) {
       return [];
@@ -1010,7 +956,7 @@ function TaskDetailContent({ id }: { id: string }) {
       {
         id: "chat",
         label: resolveTaskDetailDockLabel(t, "chat"),
-        isActive: mainView === "chat",
+        isActive: mainView === "history",
         renderIcon: () => (
           <HugeiconsIcon
             icon={Chatting01Icon}
@@ -1019,7 +965,7 @@ function TaskDetailContent({ id }: { id: string }) {
             aria-hidden="true"
           />
         ),
-        onActivate: toggleChatView,
+        onActivate: toggleHistoryView,
       },
       {
         id: "live-sessions",
@@ -1044,9 +990,10 @@ function TaskDetailContent({ id }: { id: string }) {
       isActive: false,
       renderIcon: () => <PullRequestIcon />,
       onActivate: () => {
-        void openPullRequest();
+        void runOpenPullRequest();
       },
       href: state.task.prUrl ?? undefined,
+      isBusy: isOpeningPullRequest,
     });
 
     items.push({
@@ -1062,12 +1009,13 @@ function TaskDetailContent({ id }: { id: string }) {
         />
       ),
       onActivate: () => {
-        void openInVsCode();
+        void runOpenInVsCode();
       },
+      isBusy: isOpeningVsCode,
     });
 
     return items;
-  }, [mainView, openInVsCode, openPullRequest, state, statusPanelLabel, t, toggleChatView, toggleDetailPanel, visiblePanel]);
+  }, [isOpeningPullRequest, isOpeningVsCode, mainView, runOpenInVsCode, runOpenPullRequest, state, statusPanelLabel, t, toggleHistoryView, toggleDetailPanel, visiblePanel]);
 
   // dock 항목을 렌더 시점에 ref로 넘겨두면 shortcut 구독을 다시 등록하지 않아도 항상 최신 dock을 실행한다.
   // 구독을 dock 변경마다 재등록하면 커밋과 effect flush 사이에 들어온 shortcut이 이전 dock(빈 배열)을 보고 무시된다.
@@ -1102,6 +1050,7 @@ function TaskDetailContent({ id }: { id: string }) {
       notificationCenterRef.current?.toggle();
     },
     openProjectFilter() {},
+    openDesktopFilter() {},
     openCreateTaskModal(defaults) {
       setCreateTaskDefaults(defaults ?? getBranchTodoDefaultsFromTask(currentTaskRef.current));
       setIsCreateTaskModalOpen(true);
@@ -1301,46 +1250,63 @@ function TaskDetailContent({ id }: { id: string }) {
     }
   }, [closeTerminalTabOrWindow, hasTerminal, mainView, terminalTabs]);
 
-  /** main은 모달·입력 포커스를 모르므로, 렌더러 keydown 경로와 같은 차단 조건을 여기서도 건다 */
+  /**
+   * main은 모달·입력 포커스를 모르므로, 렌더러 keydown 경로와 같은 차단 조건을 여기서도 건다.
+   * 리스너는 한 번만 등록하고 Effect Event로 최신 탭·화면 상태를 읽는다. 상태가 바뀔 때마다
+   * 다시 등록하면 탭이 막 그려진 뒤 재등록 전에 들어온 명령이 이전 상태(활성 탭 없음)로 처리되어 무시된다.
+   */
+  const handleTerminalTabShortcutCommand = useEffectEvent((command: TerminalTabShortcutCommand) => {
+    if (hasShortcutBlocker) {
+      return;
+    }
+
+    runTerminalTabCommand(command);
+  });
+
   useEffect(() => (
     window.kanvibeDesktop?.onTerminalTabShortcut?.((command: TerminalTabShortcutCommand) => {
-      if (hasShortcutBlocker) {
-        return;
-      }
-
-      runTerminalTabCommand(command);
+      handleTerminalTabShortcutCommand(command);
     }) ?? undefined
-  ), [hasShortcutBlocker, runTerminalTabCommand]);
+  // eslint-plugin-react-hooks 5.x는 useEffectEvent를 몰라 의존성으로 요구하지만, Effect Event는 의존성에 넣지 않는다.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  ), []);
 
   /**
    * main의 `before-input-event`가 놓친 입력을 렌더러가 받는 두 번째 경로.
    * 여기서 이벤트를 소비해야 xterm이 같은 키를 셸로 흘려보내지 않는다.
+   * IPC 경로와 같은 이유로 리스너는 한 번만 등록하고 최신 상태는 Effect Event로 읽는다.
    */
+  const handleTerminalTabShortcutKeyDown = useEffectEvent((event: KeyboardEvent) => {
+    if (hasShortcutBlocker) {
+      return;
+    }
+
+    const command = resolveTerminalTabCommand(
+      findShortcutCommandForEvent(shortcutBindings, event, shortcutPlatform),
+      true,
+    );
+    if (!command) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
+    runTerminalTabCommand(command);
+  });
+
   useEffect(() => {
     function handleTerminalTabShortcut(event: KeyboardEvent) {
-      if (hasShortcutBlocker) {
-        return;
-      }
-
-      const command = resolveTerminalTabCommand(
-        findShortcutCommandForEvent(shortcutBindings, event, shortcutPlatform),
-        true,
-      );
-      if (!command) {
-        return;
-      }
-
-      event.preventDefault();
-      event.stopPropagation();
-      event.stopImmediatePropagation();
-      runTerminalTabCommand(command);
+      handleTerminalTabShortcutKeyDown(event);
     }
 
     window.addEventListener("keydown", handleTerminalTabShortcut, { capture: true });
     return () => {
       window.removeEventListener("keydown", handleTerminalTabShortcut, { capture: true });
     };
-  }, [hasShortcutBlocker, runTerminalTabCommand, shortcutBindings, shortcutPlatform]);
+  // eslint-plugin-react-hooks 5.x는 useEffectEvent를 몰라 의존성으로 요구하지만, Effect Event는 의존성에 넣지 않는다.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => (
     window.kanvibeDesktop?.onTaskDetailDockShortcut?.((shortcutIndex: number) => {
@@ -1399,22 +1365,7 @@ function TaskDetailContent({ id }: { id: string }) {
 
   useEffect(() => {
     let cancelled = false;
-    let loadingTimeout: number | null = window.setTimeout(() => {
-      loadingTimeout = null;
-      if (!cancelled) {
-        logDesktopInitialLoadTimeout("task-detail", { taskId: id });
-        setState((current) => current === undefined ? null : current);
-      }
-    }, INITIAL_DESKTOP_LOAD_TIMEOUT_MS);
-
-    const clearLoadingTimeout = () => {
-      if (loadingTimeout === null) {
-        return;
-      }
-
-      window.clearTimeout(loadingTimeout);
-      loadingTimeout = null;
-    };
+    const loadAttempt = beginLoad("task-detail", { taskId: id });
 
     (async () => {
       try {
@@ -1422,16 +1373,15 @@ function TaskDetailContent({ id }: { id: string }) {
           getTaskById(id),
           getSidebarDefaultCollapsed().catch(() => DEFAULT_DETAIL_STATE.sidebarDefaultCollapsed),
         ]);
-        clearLoadingTimeout();
 
-        if (!task) {
-          if (!cancelled) {
-            setState(null);
-          }
+        if (cancelled) {
           return;
         }
 
-        if (cancelled) {
+        loadAttempt.succeed();
+        // 조회가 성공했는데 task가 없을 때만 task 없음 화면으로 보낸다
+        if (!task) {
+          setState(null);
           return;
         }
 
@@ -1454,7 +1404,12 @@ function TaskDetailContent({ id }: { id: string }) {
         if (task.branchName && !task.prUrl) {
           void (async () => {
             try {
-              const prUrl = await fetchPrUrlWithPrompt(task, commonTranslationsRef.current);
+              // gh 설치 확인과 설치 질문은 task를 처음 열 때만 한다. 보드 갱신으로 다시 도는 조회가 되풀이하면 원격 확인과 질문이 매번 뜬다.
+              const isFirstLookupForTask = automaticPrLookupTaskIdRef.current !== task.id;
+              automaticPrLookupTaskIdRef.current = task.id;
+              const prUrl = isFirstLookupForTask
+                ? await fetchPrUrlWithPrompt(task, commonTranslationsRef.current, { isAutomatic: true })
+                : await fetchAndSavePrUrl(task.id, { isAutomatic: true });
               if (!prUrl || cancelled) {
                 return;
               }
@@ -1509,40 +1464,69 @@ function TaskDetailContent({ id }: { id: string }) {
           }
         })();
 
-        void (async () => {
-          try {
-            const [claudeHooksStatus, geminiHooksStatus, codexHooksStatus, openCodeHooksStatus] = await Promise.all([
-              task.projectId ? getTaskHooksStatus(id) : Promise.resolve(null),
-              task.projectId ? getTaskGeminiHooksStatus(id) : Promise.resolve(null),
-              task.projectId ? getTaskCodexHooksStatus(id) : Promise.resolve(null),
-              task.projectId ? getTaskOpenCodeHooksStatus(id) : Promise.resolve(null),
-            ]);
-
-            applySupplementalState({
-              claudeHooksStatus,
-              geminiHooksStatus,
-              codexHooksStatus,
-              openCodeHooksStatus,
-            });
-          } catch (error) {
-            console.error("Failed to load task hook statuses:", error);
-          }
-        })();
-
       } catch (error) {
-        clearLoadingTimeout();
         console.error("Failed to load task detail:", error);
         if (!cancelled) {
-          setState((current) => current === undefined ? null : current);
+          loadAttempt.fail(error);
         }
       }
     })();
 
     return () => {
       cancelled = true;
-      clearLoadingTimeout();
+      loadAttempt.cancel();
     };
-  }, [id, refreshSignal]);
+  }, [beginLoad, id, refreshSignal, retrySignal]);
+
+  /**
+   * hook 상태는 상태 패널에서만 보이고, 원격 task에서는 조회 한 번이 새 SSH 접속이다.
+   * 보드 갱신마다 따라 읽으면 패널을 열지 않은 창까지 접속을 쌓으므로, 패널이 열려 있는 동안에만 읽는다.
+   * 열려 있는 동안의 보드 갱신은 백그라운드 설치·복구 결과를 반영하려고 다시 묻고, 되풀이 접속은 main이 막는다.
+   */
+  const isStatusPanelVisible = visiblePanel === "status";
+  const hookStatusTaskId = state?.task.projectId ? state.task.id : null;
+  useEffect(() => {
+    if (!isStatusPanelVisible || !hookStatusTaskId) {
+      return;
+    }
+
+    let cancelled = false;
+    // 이미 읽은 상태가 있으면 그 상태를 보여 준 채로 다시 읽어, 보드 갱신마다 읽는 중 표시가 깜빡이지 않게 한다.
+    if (loadedHookStatusTaskIdRef.current !== hookStatusTaskId) {
+      setIsHookStatusLoading(true);
+    }
+
+    void (async () => {
+      try {
+        const hookStatuses = await getTaskHooksStatuses(hookStatusTaskId);
+        if (cancelled) {
+          return;
+        }
+
+        loadedHookStatusTaskIdRef.current = hookStatusTaskId;
+        setState((current) => current && current.task.id === hookStatusTaskId
+          ? {
+              ...current,
+              claudeHooksStatus: hookStatuses?.claude ?? null,
+              geminiHooksStatus: hookStatuses?.gemini ?? null,
+              codexHooksStatus: hookStatuses?.codex ?? null,
+              openCodeHooksStatus: hookStatuses?.openCode ?? null,
+            }
+          : current);
+      } catch (error) {
+        console.error("Failed to load task hook statuses:", error);
+      } finally {
+        if (!cancelled) {
+          setIsHookStatusLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      setIsHookStatusLoading(false);
+    };
+  }, [hookStatusTaskId, isStatusPanelVisible, refreshSignal]);
 
   const agentTagStyle = useMemo(
     () => (state?.task.agentType ? AGENT_TAG_STYLES[state.task.agentType] ?? "bg-tag-neutral-bg text-tag-neutral-text" : null),
@@ -1575,7 +1559,22 @@ function TaskDetailContent({ id }: { id: string }) {
   }, { enabled: visiblePanel !== null });
 
   if (state === undefined) {
-    return <div className="min-h-screen flex items-center justify-center bg-bg-page text-text-muted">Loading...</div>;
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-3 bg-bg-page px-4 text-text-muted">
+        {loadFailureReason ? (
+          <InlineLoadError
+            className="w-full max-w-md"
+            message={tc("loadFailed", { reason: loadFailureReason })}
+            onRetry={retryLoad}
+          />
+        ) : (
+          <>
+            <span>Loading...</span>
+            {isLoadDelayed ? <p role="status" className="text-xs">{tc("loadDelayed")}</p> : null}
+          </>
+        )}
+      </div>
+    );
   }
 
   if (state === null) {
@@ -1596,35 +1595,8 @@ function TaskDetailContent({ id }: { id: string }) {
   }
 
   /** 커맨드 팔레트의 Move가 이 task를 대상으로 호출한다. 폼 액션인 handleStatusChange와 호출 형태가 달라 따로 둔다 */
-  async function movePaletteTaskToStatus(newStatus: TaskStatus) {
-    const updatedTask = await updateTaskStatus(id, newStatus);
-    if (updatedTask) {
-      setState((current) => current
-        ? {
-            ...current,
-            task: {
-              ...current.task,
-              ...updatedTask,
-            },
-          }
-        : current);
-    }
-  }
-
-  async function handleStatusChange(formData: FormData) {
-    const newStatus = formData.get("status") as TaskStatus;
-    const updatedTask = await updateTaskStatus(id, newStatus);
-    if (updatedTask) {
-      setState((current) => current
-        ? {
-            ...current,
-            task: {
-              ...current.task,
-              ...updatedTask,
-            },
-          }
-        : current);
-    }
+  function movePaletteTaskToStatus(newStatus: TaskStatus) {
+    return statusMove.run(newStatus);
   }
 
   async function handleDelete() {
@@ -1640,6 +1612,9 @@ function TaskDetailContent({ id }: { id: string }) {
 
   return (
     <div className="relative h-screen overflow-hidden bg-bg-page p-3">
+      {loadFailureReason ? (
+        <RouteRefreshFailureBanner reason={loadFailureReason} onRetry={retryLoad} />
+      ) : null}
       <aside className={`absolute bottom-3 left-3 top-3 z-40 flex w-12 flex-col items-center rounded-lg border border-border-default bg-bg-surface/95 p-1.5 shadow-sm ${needsMacDesktopHeaderOffset ? "pt-10" : ""}`}>
         <Link href="/" className="mb-2 rounded-md p-2 text-text-muted transition-colors hover:bg-bg-page hover:text-text-primary" title={t("backToBoard")}>
           <svg width="17" height="17" viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -1675,15 +1650,18 @@ function TaskDetailContent({ id }: { id: string }) {
               key={item.id}
               type="button"
               onClick={item.onActivate}
+              aria-busy={item.isBusy || undefined}
               className={`mb-1 rounded-md p-2 transition-colors ${
                 item.isActive
                   ? "bg-brand-subtle text-text-brand"
                   : "text-text-muted hover:bg-bg-page hover:text-text-primary"
-              }`}
+              } ${item.isBusy ? "cursor-progress" : ""}`}
               title={title}
               aria-label={item.label}
             >
-              {item.renderIcon()}
+              {item.isBusy ? (
+                <span aria-hidden="true" className="block h-[17px] w-[17px] rounded-full border-2 border-current border-t-transparent motion-safe:animate-spin" />
+              ) : item.renderIcon()}
             </button>
           );
         })}
@@ -1767,25 +1745,41 @@ function TaskDetailContent({ id }: { id: string }) {
             <div className="space-y-3">
               <div className="rounded-lg border border-border-default bg-bg-surface p-4">
                 <div className="flex flex-wrap gap-2">
-                  {STATUS_TRANSITIONS.filter((transition) => transition.status !== state.task.status).map((transition) => (
-                    transition.status === TaskStatus.DONE ? (
+                  {STATUS_TRANSITIONS.filter((transition) => transition.status !== state.task.status).map((transition) => {
+                    const label = statusMove.pendingArgs?.[0] === transition.status
+                      ? t("movingStatus", { status: t(transition.labelKey) })
+                      : t(transition.labelKey);
+
+                    return transition.status === TaskStatus.DONE ? (
                       <DoneStatusButton
                         key={transition.status}
-                        statusChangeAction={handleStatusChange}
-                        label={t(transition.labelKey)}
+                        onMoveToDone={() => { void statusMove.run(TaskStatus.DONE); }}
+                        label={label}
+                        isDisabled={statusMove.isPending}
                         hasCleanableResources={!!(state.task.branchName || state.task.sessionType)}
                         doneAlertDismissed={state.doneAlertDismissed}
                       />
                     ) : (
-                      <form key={transition.status} action={handleStatusChange}>
-                        <input type="hidden" name="status" value={transition.status} />
-                        <button type="submit" className="rounded-md border border-border-default bg-bg-page px-3 py-1.5 text-xs text-text-secondary transition-colors hover:border-brand-primary hover:text-text-brand">
-                          {t(transition.labelKey)}
-                        </button>
-                      </form>
-                    )
-                  ))}
+                      <button
+                        key={transition.status}
+                        type="button"
+                        disabled={statusMove.isPending}
+                        aria-busy={statusMove.pendingArgs?.[0] === transition.status || undefined}
+                        onClick={() => { void statusMove.run(transition.status); }}
+                        className="rounded-md border border-border-default bg-bg-page px-3 py-1.5 text-xs text-text-secondary transition-colors hover:border-brand-primary hover:text-text-brand disabled:cursor-progress disabled:opacity-60"
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
                 </div>
+                {statusMove.error ? (
+                  <InlineLoadError
+                    className="mt-3"
+                    message={t("statusChangeFailed", { reason: statusMove.error })}
+                    onRetry={() => { void statusMove.retry(); }}
+                  />
+                ) : null}
                 <div className="mt-3 border-t border-border-subtle pt-3">
                   <DeleteTaskButton deleteAction={handleDelete} />
                 </div>
@@ -1797,6 +1791,7 @@ function TaskDetailContent({ id }: { id: string }) {
                 initialCodexStatus={state.codexHooksStatus}
                 initialOpenCodeStatus={state.openCodeHooksStatus}
                 isRemote={!!state.task.sshHost}
+                isLoading={isHookStatusLoading}
                 onStatusesChange={(updates) => {
                   setState((current) => current
                     ? {
@@ -1818,10 +1813,14 @@ function TaskDetailContent({ id }: { id: string }) {
       ) : null}
 
       <main className="ml-14 flex h-full min-w-0 flex-col">
-        {mainView === "chat" ? (
-          <InlineAiChatView taskId={state.task.id} />
-        ) : hasTerminal ? (
-          <div className="flex-1 flex flex-col min-h-0 rounded-lg overflow-hidden shadow-md transition-all duration-200 ease-out">
+        {mainView === "history" ? (
+          <div className="flex min-h-0 flex-1 flex-col">
+            <button type="button" onClick={() => { setMainView("terminal"); requestActiveTerminalFocusAfterUiSettles(); }} className="self-start rounded-md px-4 py-2 text-xs text-text-brand">← {t("terminal")}</button>
+            <InlineAiChatView taskId={state.task.id} />
+          </div>
+        ) : null}
+        {hasTerminal ? (
+          <div className={mainView === "terminal" ? "flex-1 flex flex-col min-h-0 rounded-lg overflow-hidden shadow-md transition-all duration-200 ease-out" : "hidden"}>
             <div className="bg-terminal-chrome flex items-center gap-3 px-4 py-2.5 shrink-0">
               <span
                 data-testid="terminal-task-context"
@@ -1858,11 +1857,14 @@ function TaskDetailContent({ id }: { id: string }) {
                   onClose={(tabId) => { void closeTerminalTabOrWindow(tabId); }}
                   onRename={(tabId, name) => { void terminalTabs.renameTab(tabId, name); }}
                   onMove={(tabId, targetIndex) => { void terminalTabs.moveTab(tabId, targetIndex); }}
+                  pendingAction={terminalTabs.pendingAction}
+                  actionError={terminalTabs.actionError}
+                  onRetryAction={() => { void terminalTabs.retryAction(); }}
                 />
               ) : (
                 <span className="text-xs text-terminal-text font-mono truncate">{state.task.sessionName ?? t("terminal")}</span>
               )}
-              <div className="ml-auto">
+              <div>
                 <NotificationCenterButton ref={notificationCenterRef} buttonClassName="text-terminal-text hover:text-white hover:bg-white/10" panelClassName="mt-3" />
               </div>
             </div>
@@ -1877,13 +1879,20 @@ function TaskDetailContent({ id }: { id: string }) {
               <TerminalLoader
                 key={`${state.task.sessionType}:${state.task.sessionName}`}
                 taskId={state.task.id}
+                taskTitle={state.task.title}
+                onHistory={() => setMainView("history")}
                 tabs={state.task.sessionType === SessionType.TERMINAL ? terminalTabs.tabs : undefined}
+                tabsError={terminalTabs.error}
+                isTabListLoaded={terminalTabs.isTabListLoaded}
+                onRetryTabs={() => { void terminalTabs.refresh(); }}
+                onCreateTab={() => { void terminalTabs.createTab(); }}
                 isRemote={Boolean(state.task.sshHost)}
+                isHidden={mainView !== "terminal"}
               />
             </div>
           </div>
         ) : (
-          <div className="flex-1 flex items-center justify-center border border-dashed border-border-default rounded-lg bg-bg-surface">
+          <div className={mainView === "terminal" ? "flex-1 flex items-center justify-center border border-dashed border-border-default rounded-lg bg-bg-surface" : "hidden"}>
             {state.task.projectId ? (
               <AutoConnectTerminalSession
                 taskId={state.task.id}

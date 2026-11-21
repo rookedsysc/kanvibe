@@ -4,7 +4,7 @@ import { tmpdir } from "os";
 import path from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readClaudeSessionDetail, readClaudeSessions } from "@/lib/aiSessions/readClaudeSessions";
-import { readCodexSessionDetail, readCodexSessions } from "@/lib/aiSessions/readCodexSessions";
+import { findCodexMainThreadRollout, readCodexSessionDetail, readCodexSessions } from "@/lib/aiSessions/readCodexSessions";
 import { readGeminiSessionDetail, readGeminiSessions } from "@/lib/aiSessions/readGeminiSessions";
 
 let tempHome: string;
@@ -114,6 +114,31 @@ describe("AI session history readers", () => {
     vi.resetModules();
     vi.unstubAllEnvs();
     await rm(tempHome, { recursive: true, force: true });
+  });
+
+  it("resolves the exact main Codex thread among same-cwd rollouts and refuses duplicate identities", async () => {
+    const worktreePath = path.join(tempHome, "task");
+    const id = "0190aaaa-0000-7000-8000-00000000000a";
+    const otherId = "0190bbbb-0000-7000-8000-00000000000b";
+    const file = path.join(tempHome, ".codex/sessions/2026/11/14", `rollout-first-${id}.jsonl`);
+    const context = { worktreePath, repoPath: worktreePath };
+    await writeJsonLines(file, [{ type: "session_meta", payload: { id, cwd: worktreePath, source: "cli" } }]);
+    await writeJsonLines(path.join(path.dirname(file), `rollout-other-${otherId}.jsonl`), [{ type: "session_meta", payload: { id: otherId, cwd: worktreePath } }]);
+    expect(await findCodexMainThreadRollout(context, id)).toBe(file);
+    await writeJsonLines(path.join(path.dirname(file), `rollout-copy-${id}.jsonl`), [{ type: "session_meta", payload: { id, cwd: worktreePath } }]);
+    expect(await findCodexMainThreadRollout(context, id)).toBeNull();
+  });
+
+  it.each([
+    { source: { subagent: { spawn: { parent_thread_id: "parent" } } } },
+    { parent_thread_id: "parent" },
+    { id: "0190bbbb-0000-7000-8000-00000000000b" },
+    { cwd: "/different-task" },
+  ])("refuses child, mismatched and out-of-scope Codex display records: %j", async (extra) => {
+    const worktreePath = path.join(tempHome, "task");
+    const id = "0190aaaa-0000-7000-8000-00000000000a";
+    await writeJsonLines(path.join(tempHome, ".codex/sessions", `rollout-test-${id}.jsonl`), [{ type: "session_meta", payload: { id, cwd: worktreePath, ...extra } }]);
+    expect(await findCodexMainThreadRollout({ worktreePath, repoPath: worktreePath }, id)).toBeNull();
   });
 
   it("classifies Claude JSONL user text, system input, assistant answers, and tool results separately", async () => {
@@ -237,6 +262,84 @@ describe("AI session history readers", () => {
     expect(detail?.messages.find((message) => message.role === "developer")?.fullText).toBe("Follow project rules.");
   });
 
+  it("Claude 도구 호출과 thinking을 조각 순서대로 따로 메시지로 만들고 도구 이름과 파일을 싣는다", async () => {
+    const worktreePath = path.join(tempHome, "repo__worktrees", "task");
+    const sessionFile = path.join(tempHome, ".claude", "projects", claudeProjectDirectoryName(worktreePath), "claude-tools.jsonl");
+    const createdPath = path.join(worktreePath, "docs", "plan.md");
+    const modifiedPath = path.join(worktreePath, "src", "app.ts");
+    const assistantEntry = (timestamp: string, content: unknown[]) => ({
+      type: "assistant",
+      sessionId: "claude-tools",
+      cwd: worktreePath,
+      timestamp,
+      message: { role: "assistant", content },
+    });
+
+    await writeJsonLines(sessionFile, [
+      assistantEntry("2026-01-01T00:01:00.000Z", [
+        { type: "tool_use", id: "toolu_1", name: "Write", input: { file_path: createdPath, content: "# plan" } },
+      ]),
+      assistantEntry("2026-01-01T00:02:00.000Z", [
+        { type: "tool_use", id: "toolu_2", name: "Edit", input: { file_path: modifiedPath, old_string: "a", new_string: "b" } },
+      ]),
+      assistantEntry("2026-01-01T00:03:00.000Z", [
+        { type: "thinking", thinking: "어디를 고칠지 본다", signature: "sig" },
+        { type: "text", text: "테스트를 돌립니다." },
+        { type: "tool_use", id: "toolu_3", name: "Bash", input: { command: "pnpm test", description: "테스트 실행" } },
+      ]),
+      assistantEntry("2026-01-01T00:04:00.000Z", [{ type: "thinking", thinking: "", signature: "sig" }]),
+    ]);
+
+    const detail = await readClaudeSessionDetail({ worktreePath, repoPath: worktreePath }, "claude-tools", sessionFile, null, 20);
+    const messages = [...(detail?.messages ?? [])].reverse();
+
+    expect(messages.map(({ role, fullText, toolName, files }) => ({ role, fullText, toolName, files }))).toEqual([
+      { role: "tool", fullText: createdPath, toolName: "Write", files: [{ path: createdPath, change: "created" }] },
+      { role: "tool", fullText: modifiedPath, toolName: "Edit", files: [{ path: modifiedPath, change: "modified" }] },
+      { role: "reasoning", fullText: "어디를 고칠지 본다", toolName: undefined, files: undefined },
+      { role: "assistant", fullText: "테스트를 돌립니다.", toolName: undefined, files: undefined },
+      { role: "tool", fullText: "pnpm test", toolName: "Bash", files: undefined },
+    ]);
+    expect(messages[4]).not.toHaveProperty("files");
+  });
+
+  it("Codex 도구 호출에 도구 이름을 싣고 apply_patch가 만들거나 고친 파일만 싣는다", async () => {
+    const worktreePath = path.join(tempHome, "repo__worktrees", "task");
+    const sessionFile = path.join(tempHome, ".codex", "sessions", "2026", "codex-tools.jsonl");
+    const patch = [
+      "*** Begin Patch",
+      "*** Add File: docs/plan.md",
+      "+# plan",
+      "*** Update File: src/app.ts",
+      "@@",
+      "-a",
+      "+b",
+      "*** Delete File: src/old.ts",
+      "*** End Patch",
+    ].join("\n");
+
+    await writeJsonLines(sessionFile, [
+      { type: "session_meta", timestamp: "2026-01-01T00:00:00.000Z", payload: { id: "codex-tools", cwd: worktreePath, timestamp: "2026-01-01T00:00:00.000Z" } },
+      { type: "response_item", timestamp: "2026-01-01T00:01:00.000Z", payload: { type: "function_call", name: "read_file", arguments: "{\"path\":\"x\"}", call_id: "call_1" } },
+      { type: "response_item", timestamp: "2026-01-01T00:02:00.000Z", payload: { type: "custom_tool_call", status: "completed", call_id: "call_2", name: "apply_patch", input: patch } },
+      { type: "response_item", timestamp: "2026-01-01T00:03:00.000Z", payload: { type: "custom_tool_call_output", call_id: "call_2", output: [{ type: "input_text", text: "Success. Updated the following files" }] } },
+    ]);
+
+    const detail = await readCodexSessionDetail({ worktreePath, repoPath: worktreePath }, "codex-tools", sessionFile, null, 20);
+    const messages = [...(detail?.messages ?? [])].reverse();
+
+    expect(messages.map(({ role, fullText, toolName, files }) => ({ role, fullText, toolName, files }))).toEqual([
+      { role: "tool", fullText: "read_file: {\"path\":\"x\"}", toolName: "read_file", files: undefined },
+      {
+        role: "tool",
+        fullText: "docs/plan.md\nsrc/app.ts",
+        toolName: "apply_patch",
+        files: [{ path: "docs/plan.md", change: "created" }, { path: "src/app.ts", change: "modified" }],
+      },
+      { role: "tool", fullText: "Success. Updated the following files", toolName: "apply_patch", files: undefined },
+    ]);
+  });
+
   it("uses actual Codex exec prompts and final answers instead of internal environment messages", async () => {
     const worktreePath = path.join(tempHome, "repo__worktrees", "task");
     const sessionFile = path.join(tempHome, ".codex", "sessions", "2026", "codex-exec-session.jsonl");
@@ -292,6 +395,9 @@ describe("AI session history readers", () => {
       ["assistant", "KANVIBE_CODEX_HEADLESS_OK"],
       ["user", "Run the headless smoke check."],
     ]);
+    const withInstructions = await readCodexSessionDetail({ worktreePath, repoPath: worktreePath, includeInstructions: true }, "codex-exec-session", sessionFile, null, 20);
+    expect(withInstructions?.messages.map((message) => message.role)).toEqual(["assistant", "user", "user", "developer"]);
+    expect(withInstructions?.messages.at(-1)?.fullText).toContain("<permissions instructions>");
   });
 
   it("uses the latest Codex user or assistant message as the session activity time", async () => {
@@ -375,10 +481,13 @@ describe("AI session history readers", () => {
 
     expect(detail?.messages.map((message) => message.role)).toEqual([
       "system",
-      "tool",
-      "reasoning",
       "assistant",
+      "reasoning",
+      "tool",
       "user",
+    ]);
+    expect([...(detail?.messages ?? [])].reverse().map((message) => message.role)).toEqual([
+      "user", "tool", "reasoning", "assistant", "system",
     ]);
     expect(detail?.messages.find((message) => message.role === "tool")?.fullText).toContain("read_file");
   });

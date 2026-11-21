@@ -6,9 +6,29 @@ import '../domain/task_status.dart';
 ///
 /// 데스크탑과 같은 조회를 쓰므로 정렬(최근 수정 순)과 done 페이지 크기가 데스크탑과 같다.
 class BoardSnapshot {
-  const BoardSnapshot({required this.tasksByStatus, this.projects = const []});
+  const BoardSnapshot({
+    required this.tasksByStatus,
+    this.projects = const [],
+    this.doneTotal = 0,
+    this.doneLimit = 20,
+  });
 
   final Map<TaskStatus, List<BoardTask>> tasksByStatus;
+  final int doneTotal;
+  final int doneLimit;
+  List<BoardTask> get allTasks =>
+      tasksByStatus.values.expand((tasks) => tasks).toList();
+  bool get hasMoreDone => tasksIn(TaskStatus.done).length < doneTotal;
+
+  BoardSnapshot withTasks(
+    Map<TaskStatus, List<BoardTask>> tasks, {
+    int? doneTotal,
+  }) => BoardSnapshot(
+    tasksByStatus: tasks,
+    projects: projects,
+    doneTotal: doneTotal ?? this.doneTotal,
+    doneLimit: doneLimit,
+  );
 
   /// 데스크탑에 등록된 프로젝트. 태스크 생성 화면이 고를 대상으로 쓴다
   final List<BoardProject> projects;
@@ -21,6 +41,50 @@ class BoardSnapshot {
       tasksByStatus[status] ?? const [];
 
   bool get isEmpty => tasksByStatus.values.every((tasks) => tasks.isEmpty);
+
+  List<String> get desktopHosts => <String>{
+    for (final project in projects)
+      if (project.sshHost != null) project.sshHost!,
+    for (final tasks in tasksByStatus.values)
+      for (final task in tasks)
+        if (task.sshHost != null) task.sshHost!,
+  }.toList()..sort();
+
+  static String _desktopKey(String? sshHost) =>
+      sshHost == null ? 'local' : 'ssh:$sshHost';
+
+  /// 보드에 없는 호스트를 고른 값은 빼서, 사라진 호스트 때문에 보드가 비지 않게 한다
+  Set<String> _activeDesktops(Set<String> selected) => selected.intersection({
+    'local',
+    for (final host in desktopHosts) _desktopKey(host),
+  });
+
+  /// 고른 데스크톱의 메인 프로젝트. 데스크톱을 고르지 않았으면 전체다
+  List<BoardProject> projectsOnDesktops(Set<String> selected) {
+    final active = _activeDesktops(selected);
+    if (active.isEmpty) return creatableProjects;
+    return creatableProjects
+        .where((project) => active.contains(_desktopKey(project.sshHost)))
+        .toList();
+  }
+
+  BoardSnapshot filterByDesktops(Set<String> selected) {
+    final active = _activeDesktops(selected);
+    if (active.isEmpty) return this;
+    final projectHosts = {
+      for (final project in projects) project.id: project.sshHost,
+    };
+    return BoardSnapshot(
+      tasksByStatus: {
+        for (final entry in tasksByStatus.entries)
+          entry.key: entry.value.where((task) {
+            final host = task.sshHost ?? projectHosts[task.projectId];
+            return active.contains(_desktopKey(host));
+          }).toList(),
+      },
+      projects: projects,
+    );
+  }
 
   BoardSnapshot filterByProjectIds(Set<String> selectedIds) {
     final selectedProjects = creatableProjects
@@ -53,6 +117,8 @@ class BoardSnapshot {
               .toList(),
       },
       projects: projects,
+      doneTotal: doneTotal,
+      doneLimit: doneLimit,
     );
   }
 
@@ -72,6 +138,10 @@ class BoardSnapshot {
       for (final project in projects)
         if (project.color != null) project.id: project.color!,
     };
+    final projectIconsById = {
+      for (final project in projects)
+        if (project.iconDataUrl != null) project.id: project.iconDataUrl!,
+    };
     final rawTasks = json['tasks'];
     final tasksByStatus = <TaskStatus, List<BoardTask>>{};
 
@@ -86,13 +156,21 @@ class BoardSnapshot {
               entry,
               projectNamesById,
               projectColorsById: projectColorsById,
+              projectIconsById: projectIconsById,
             ),
           )
           .whereType<BoardTask>()
           .toList();
     }
 
-    return BoardSnapshot(tasksByStatus: tasksByStatus, projects: projects);
+    return BoardSnapshot(
+      tasksByStatus: tasksByStatus,
+      projects: projects,
+      doneTotal: json['doneTotal'] is int
+          ? json['doneTotal'] as int
+          : (tasksByStatus[TaskStatus.done]?.length ?? 0),
+      doneLimit: json['doneLimit'] is int ? json['doneLimit'] as int : 20,
+    );
   }
 
   /// 목록이 아닌 값이 오면 그 칸만 비운다. 응답 한 곳이 어긋났다고 보드 전체를 못 그리면 안 된다

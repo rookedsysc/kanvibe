@@ -2,7 +2,7 @@ import { access, chmod, lstat, mkdir, readFile, readdir, rename, rmdir, stat, un
 import { randomUUID } from "crypto";
 import { homedir, hostname } from "os";
 import path from "path";
-import { execGit, type ExecGitOptions } from "@/lib/gitOperations";
+import { execGit, resolvePathForShell, type ExecGitOptions } from "@/lib/gitOperations";
 
 const remoteHomeDirectoryCache = new Map<string, string>();
 const REMOTE_FILE_RECORD_PREFIX = "__KANVIBE_FILE_RECORD__";
@@ -55,6 +55,36 @@ export async function pathExists(targetPath: string, sshHost?: string | null): P
     sshHost,
   );
   return output.trim() === "1";
+}
+
+export async function isPathMissing(targetPath: string, sshHost?: string | null): Promise<boolean> {
+  if (!sshHost) {
+    try {
+      await lstat(targetPath);
+      return false;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return true;
+      throw error;
+    }
+  }
+
+  const output = await execGit([
+    `__kanvibe_probe=${resolvePathForShell(targetPath, sshHost)}`,
+    'if test -e "$__kanvibe_probe" || test -L "$__kanvibe_probe"; then',
+    "  printf 'present'",
+    "else",
+    '  while ! test -e "$__kanvibe_probe" && ! test -L "$__kanvibe_probe"; do',
+    '    __kanvibe_parent=$(dirname "$__kanvibe_probe")',
+    '    test "$__kanvibe_parent" != "$__kanvibe_probe" || exit 1',
+    '    __kanvibe_probe=$__kanvibe_parent',
+    '  done',
+    '  test -d "$__kanvibe_probe" && test -r "$__kanvibe_probe" && test -x "$__kanvibe_probe" || exit 1',
+    "  printf 'missing'",
+    "fi",
+  ].join("\n"), sshHost);
+  if (output.trim() === "missing") return true;
+  if (output.trim() === "present") return false;
+  throw new Error(`${targetPath} 경로를 확인하지 못했습니다.`);
 }
 
 /** 경로 가운데 심볼릭 링크인 첫 경로를 돌려준다. 없는 경로는 링크가 아니다 */
@@ -335,6 +365,8 @@ function buildRemoteFileUpdateCommand(targetPath: string, temporaryPath: string,
     '__kanvibe_host=$(uname -n | tr -d "\\n" | od -An -tx1 | tr -d " \\n") || exit $?;',
     'test -n "$__kanvibe_host" || exit 1;',
     `if ! mkdir -m 700 ${lockPath} 2>/dev/null; then`,
+    // mkdir 실패 직후 다른 작업이 잠금을 풀었으면 경로 오류가 아니라 사용 중으로 보고 재시도한다. 로컬 잠금의 ENOENT 처리와 같다.
+    `if ! test -e ${lockPath} && ! test -L ${lockPath}; then printf '%s\\n' ${quoteShellArgument(REMOTE_FILE_UPDATE_BUSY)}; exit 0; fi;`,
     `test -d ${lockPath} && ! test -L ${lockPath} || { printf '%s\\n' ${quoteShellArgument(`파일 잠금 경로를 확인하세요: ${targetPath}.lock`)} >&2; exit 1; };`,
     `set -- ${lockPath}/owner-*;`,
     'if [ "$#" = 1 ] && test -d "$1" && ! test -L "$1"; then',

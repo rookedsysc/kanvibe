@@ -6,10 +6,30 @@ import type { BoardEventPayload } from "@/lib/boardNotifier";
 
 const AUTO_DISMISS_MS = 5000;
 
-type AlertableBoardEvent = Extract<BoardEventPayload, { type: "task-hook-install-failed" | "task-peer-deletion-failed" }>;
+type AlertableBoardEvent = Extract<BoardEventPayload, { type: "task-hook-install-failed" | "task-peer-deletion-failed" | "herdr-machine-registration-failed" }>;
 
 function isAlertableBoardEvent(event: BoardEventPayload): event is AlertableBoardEvent {
-  return event.type === "task-hook-install-failed" || event.type === "task-peer-deletion-failed";
+  return event.type === "task-hook-install-failed" || event.type === "task-peer-deletion-failed" || event.type === "herdr-machine-registration-failed";
+}
+
+function buildAlertText(alert: AlertableBoardEvent, t: ReturnType<typeof useTranslations>) {
+  switch (alert.type) {
+    case "task-hook-install-failed":
+      return {
+        title: t("createHooksBackgroundFailedTitle"),
+        body: t("createHooksBackgroundFailedBody", { taskTitle: alert.taskTitle }),
+      };
+    case "task-peer-deletion-failed":
+      return {
+        title: t("peerDeletionFailedTitle"),
+        body: t("peerDeletionFailedBody", { taskTitle: alert.taskTitle, peerUrls: alert.failedPeerUrls.join(", ") }),
+      };
+    case "herdr-machine-registration-failed":
+      return {
+        title: t("herdrMachineRegistrationFailedTitle", { sshHost: alert.sshHost }),
+        body: t("herdrMachineRegistrationFailedBody", { reason: alert.reason, sshHost: alert.sshHost, herdrSession: alert.herdrSession }),
+      };
+  }
 }
 
 export default function BoardEventAlert() {
@@ -64,15 +84,7 @@ export default function BoardEventAlert() {
     return null;
   }
 
-  const alertText = alert.type === "task-hook-install-failed"
-    ? {
-        title: t("createHooksBackgroundFailedTitle"),
-        body: t("createHooksBackgroundFailedBody", { taskTitle: alert.taskTitle }),
-      }
-    : {
-        title: t("peerDeletionFailedTitle"),
-        body: t("peerDeletionFailedBody", { taskTitle: alert.taskTitle, peerUrls: alert.failedPeerUrls.join(", ") }),
-      };
+  const alertText = buildAlertText(alert, t);
 
   return (
     <div className="pointer-events-none fixed inset-x-0 top-4 z-[700] flex justify-center px-4">

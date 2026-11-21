@@ -38,12 +38,10 @@ describe("desktop runtime environment", () => {
     expect(source).not.toContain("process.env.NODE_ENV");
   });
 
-  it("uses port 19736 for hook server in desktop dev mode", () => {
+  it("wires the hook server port chosen for this launch before desktop handlers register", () => {
     const source = readFileSync(path.join(process.cwd(), "electron", "main.js"), "utf8");
 
-    expect(source).toContain("const DEV_HOOK_SERVER_PORT = 19736");
-    expect(source).toContain("const PACKAGED_HOOK_SERVER_PORT = 9736");
-    expect(source).toContain("const HOOK_SERVER_PORT = SHOULD_USE_SOURCE_MODULES ? DEV_HOOK_SERVER_PORT : PACKAGED_HOOK_SERVER_PORT");
+    expect(source).toContain("const HOOK_SERVER_PORT = resolveHookServerPort(app, process.env)");
     expect(source).toContain("setHookServerPort(HOOK_SERVER_PORT)");
     expect(source.indexOf("configureHookEndpointPort();")).toBeLessThan(
       source.indexOf("  registerDesktopHandlers();"),

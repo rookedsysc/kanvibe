@@ -1,5 +1,5 @@
 import { execFile, spawn } from "child_process";
-import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import path from "path";
 import { promisify } from "util";
@@ -28,6 +28,7 @@ vi.mock("fs/promises", async () => {
 
 vi.mock("@/lib/gitOperations", () => ({
   execGit: mocks.execGit,
+  resolvePathForShell: (targetPath: string) => quoteForPosixShell(targetPath),
 }));
 
 function quoteForPosixShell(value: string): string {
@@ -45,6 +46,53 @@ function wrapLikeRemoteExecGit(command: string): string {
 
   return `sh -lc ${quoteForPosixShell(wrappedCommand)}`;
 }
+
+describe("hostFileAccess.isPathMissing", () => {
+  let directory: string;
+
+  beforeEach(async () => {
+    directory = await mkdtemp(path.join(tmpdir(), "kanvibe-presence-"));
+    mocks.execGit.mockReset();
+    mocks.execGit.mockImplementation(async (command: string) => {
+      const { stdout } = await execFileAsync("sh", ["-lc", command]);
+      return stdout.trim();
+    });
+  });
+
+  afterEach(async () => {
+    await chmod(path.join(directory, "locked"), 0o700).catch(() => undefined);
+    await rm(directory, { recursive: true, force: true });
+  });
+
+  it.each([null, "remote-host"])("없는 중첩 경로만 삭제된 것으로 판별한다: %s", async (host) => {
+    const { isPathMissing } = await import("@/lib/hostFileAccess");
+    const missing = path.join(directory, "repo's folder", "worktree");
+    await expect(isPathMissing(directory, host)).resolves.toBe(false);
+    await expect(isPathMissing(missing, host)).resolves.toBe(true);
+    await expect(stat(missing)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it.each([null, "remote-host"])("끊어진 심볼릭 링크는 삭제로 취급하지 않는다: %s", async (host) => {
+    const { isPathMissing } = await import("@/lib/hostFileAccess");
+    const link = path.join(directory, "repo-link");
+    await symlink(path.join(directory, "removed-target"), link);
+    await expect(isPathMissing(link, host)).resolves.toBe(false);
+  });
+
+  it.each([null, "remote-host"])("상위 디렉토리 접근이 거절되면 삭제로 취급하지 않는다: %s", async (host) => {
+    const { isPathMissing } = await import("@/lib/hostFileAccess");
+    const locked = path.join(directory, "locked");
+    await mkdir(locked);
+    await chmod(locked, 0o000);
+    await expect(isPathMissing(path.join(locked, "repo"), host)).rejects.toThrow();
+  });
+
+  it("SSH 접속 실패를 삭제로 취급하지 않는다", async () => {
+    const { isPathMissing } = await import("@/lib/hostFileAccess");
+    mocks.execGit.mockRejectedValue(new Error("SSH connection refused"));
+    await expect(isPathMissing("/workspace/repo", "offline-host")).rejects.toThrow("SSH connection refused");
+  });
+});
 
 describe("hostFileAccess.readTextFiles", () => {
   let tempDir: string;
@@ -378,6 +426,28 @@ describe("hostFileAccess.updateTextFile 권한", () => {
     await expect(update).rejects.toThrow("publish failed");
     await expect(readFile(targetPath, "utf-8")).resolves.toBe("existing");
     await expect(stat(`${targetPath}.lock`)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("원격 잠금 생성이 실패한 직후 다른 작업이 잠금을 풀면 오류 대신 다시 시도한다", async () => {
+    // Given: 첫 잠금 mkdir만 경합에 진 것처럼 실패시키되, 잠금 경로는 이미 풀려 있어 존재하지 않는다
+    const targetPath = path.join(tempDir, "targets.json");
+    const lockPath = `${targetPath}.lock`;
+    const lostRaceMarker = path.join(tempDir, "lost-race");
+    runRemoteCommandsWithoutChmod();
+    const runRemoteCommand = mocks.execGit.getMockImplementation()!;
+    mocks.execGit.mockImplementation((command: string, ...rest: unknown[]) => runRemoteCommand(
+      `mkdir() { if [ "$3" = '${lockPath}' ] && [ ! -e '${lostRaceMarker}' ]; then : > '${lostRaceMarker}'; return 1; fi; command mkdir "$@"; }; ${command}`,
+      ...rest,
+    ));
+    const { updateTextFile } = await import("@/lib/hostFileAccess");
+
+    // When
+    await updateTextFile(targetPath, () => "next", "remote-host", 0o600);
+
+    // Then
+    await expect(readFile(targetPath, "utf-8")).resolves.toBe("next");
+    expect(mocks.execGit).toHaveBeenCalledTimes(2);
+    await expect(stat(lockPath)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it("원격의 현재 내용은 공백과 마지막 줄바꿈을 보존하고 한 SSH transaction으로 갱신한다", async () => {

@@ -136,8 +136,8 @@ function spawnViteServer(port) {
   });
 }
 
-function spawnElectron(devServerUrl) {
-  return spawn("pnpm", ["exec", "electron", "--no-sandbox", "."], {
+function spawnElectron(devServerUrl, appArgs) {
+  return spawn("pnpm", ["exec", "electron", "--no-sandbox", ".", ...appArgs], {
     stdio: "inherit",
     env: {
       ...process.env,
@@ -162,6 +162,7 @@ async function main() {
     installProjectDependencies();
   }
 
+  await require("./build-remote-terminal-agent.cjs").buildRemoteTerminalAgent();
   const devServerPort = await resolveDevServerPort();
   const devServerUrl = `http://${DEV_SERVER_HOST}:${devServerPort}`;
   const viteProcess = spawnViteServer(devServerPort);
@@ -185,7 +186,7 @@ async function main() {
     throw error;
   }
 
-  const electronProcess = spawnElectron(devServerUrl);
+  const electronProcess = spawnElectron(devServerUrl, process.argv.slice(2));
   electronProcess.on("exit", (code) => {
     stopChildren();
     process.exit(code ?? 0);

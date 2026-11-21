@@ -6,6 +6,7 @@ class InboxNotification {
     required this.taskId,
     required this.isRead,
     required this.createdAt,
+    this.actionType,
   });
 
   final String id;
@@ -14,6 +15,8 @@ class InboxNotification {
   final String? taskId;
   final bool isRead;
   final DateTime createdAt;
+  final String? actionType;
+  bool get hasSyncReview => actionType == 'background-sync-review';
 
   InboxNotification asRead() => InboxNotification(
     id: id,
@@ -22,6 +25,7 @@ class InboxNotification {
     taskId: taskId,
     isRead: true,
     createdAt: createdAt,
+    actionType: actionType,
   );
 
   static InboxNotification? fromJson(Map<String, dynamic> json) {
@@ -49,6 +53,9 @@ class InboxNotification {
       taskId: taskId is String && taskId.isNotEmpty ? taskId : null,
       isRead: isRead,
       createdAt: timestamp,
+      actionType: json['actionType'] is String
+          ? json['actionType'] as String
+          : null,
     );
   }
 }

@@ -24,12 +24,14 @@ const mocks = vi.hoisted(() => ({
   deleteTask: vi.fn(),
   getGitDiffFiles: vi.fn(),
   getTaskHooksStatus: vi.fn(),
+  getTaskHooksStatuses: vi.fn(),
   getTaskGeminiHooksStatus: vi.fn(),
   getTaskCodexHooksStatus: vi.fn(),
   getTaskOpenCodeHooksStatus: vi.fn(),
   getTaskAiSessions: vi.fn(),
   getTaskAiSessionDetail: vi.fn(),
   getTaskLiveAiSessions: vi.fn(),
+  getPaneChatSnapshot: vi.fn(),
   getAllProjects: vi.fn(),
   getSidebarDefaultCollapsed: vi.fn(),
   getSidebarHintDismissed: vi.fn(),
@@ -43,6 +45,7 @@ const mocks = vi.hoisted(() => ({
   markAllNotificationsRead: vi.fn(),
   activateNotification: vi.fn(),
   fetchPrUrlWithPrompt: vi.fn(),
+  fetchAndSavePrUrl: vi.fn(),
   openTaskInVsCode: vi.fn(),
   renderHooksStatusCard: vi.fn(),
   useRefreshSignal: vi.fn(() => 0),
@@ -66,6 +69,14 @@ function createDeferred<T>() {
   });
   return { promise, resolve, reject };
 }
+
+vi.mock("@/desktop/renderer/actions/paneChat", () => ({
+  getPaneChatSnapshot: mocks.getPaneChatSnapshot,
+  sendPaneChatPrompt: vi.fn(),
+  interruptPaneChat: vi.fn(),
+  openPaneChatModelPicker: vi.fn(),
+  sendPaneChatKey: vi.fn(),
+}));
 
 function TaskDetailShortcutBlocker() {
   const boardCommands = useBoardCommands();
@@ -158,6 +169,7 @@ vi.mock("@/desktop/renderer/actions/kanban", () => ({
   getTaskIdByProjectAndBranch: (...args: unknown[]) => mocks.getTaskIdByProjectAndBranch(...args),
   updateTaskStatus: (...args: unknown[]) => mocks.updateTaskStatus(...args),
   deleteTask: (...args: unknown[]) => mocks.deleteTask(...args),
+  fetchAndSavePrUrl: (...args: unknown[]) => mocks.fetchAndSavePrUrl(...args),
 }));
 
 vi.mock("@/desktop/renderer/actions/diff", () => ({
@@ -166,6 +178,7 @@ vi.mock("@/desktop/renderer/actions/diff", () => ({
 
 vi.mock("@/desktop/renderer/actions/project", () => ({
   getTaskHooksStatus: (...args: unknown[]) => mocks.getTaskHooksStatus(...args),
+  getTaskHooksStatuses: (...args: unknown[]) => mocks.getTaskHooksStatuses(...args),
   getTaskGeminiHooksStatus: (...args: unknown[]) => mocks.getTaskGeminiHooksStatus(...args),
   getTaskCodexHooksStatus: (...args: unknown[]) => mocks.getTaskCodexHooksStatus(...args),
   getTaskOpenCodeHooksStatus: (...args: unknown[]) => mocks.getTaskOpenCodeHooksStatus(...args),
@@ -234,15 +247,8 @@ vi.mock("@/components/DeleteTaskButton", () => ({
 }));
 
 vi.mock("@/components/DoneStatusButton", () => ({
-  default: ({ statusChangeAction }: { statusChangeAction: (formData: FormData) => Promise<void> }) => (
-    <button
-      type="button"
-      onClick={() => {
-        const formData = new FormData();
-        formData.set("status", "done");
-        void statusChangeAction(formData);
-      }}
-    >
+  default: ({ onMoveToDone, isDisabled }: { onMoveToDone: () => void; isDisabled?: boolean }) => (
+    <button type="button" disabled={isDisabled} onClick={onMoveToDone}>
       done
     </button>
   ),
@@ -312,10 +318,17 @@ describe("TaskDetailRoute", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.taskId = "task-1";
+    mocks.getPaneChatSnapshot.mockResolvedValue({
+      taskId: "task-1", paneId: "%1", provider: null, targetToken: null, canSend: false,
+      inputState: "unknown", screen: "", reason: "no-foreground-ai-cli",
+      transcript: { status: "unavailable", messages: [], sessionId: null, nextCursor: null },
+      modelPicker: { supported: false, mode: "native-cli" },
+    });
     sessionStorage.clear();
     mocks.getTaskIdByProjectAndBranch.mockResolvedValue(null);
     mocks.getGitDiffFiles.mockResolvedValue([]);
     mocks.getTaskHooksStatus.mockResolvedValue(null);
+    mocks.getTaskHooksStatuses.mockResolvedValue(null);
     mocks.getTaskGeminiHooksStatus.mockResolvedValue(null);
     mocks.getTaskCodexHooksStatus.mockResolvedValue(null);
     mocks.getTaskOpenCodeHooksStatus.mockResolvedValue(null);
@@ -365,6 +378,7 @@ describe("TaskDetailRoute", () => {
     mocks.updateTaskStatus.mockResolvedValue(null);
     mocks.deleteTask.mockResolvedValue(true);
     mocks.fetchPrUrlWithPrompt.mockResolvedValue(null);
+    mocks.fetchAndSavePrUrl.mockResolvedValue(null);
     mocks.clipboardWriteText.mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
@@ -563,7 +577,10 @@ describe("TaskDetailRoute", () => {
 
     await screen.findByTestId("task-title");
 
-    expect(mocks.markTaskNotificationsRead).toHaveBeenCalledWith("task-1");
+    /** 읽음 처리는 제목이 그려진 뒤의 effect에서 실행되므로, 부하가 큰 CI에서는 제목보다 늦게 호출될 수 있다 */
+    await waitFor(() => {
+      expect(mocks.markTaskNotificationsRead).toHaveBeenCalledWith("task-1");
+    });
   });
 
   it("창이 비활성이면 상세 화면이 새로고침돼도 알림을 읽음 처리하지 않는다", async () => {
@@ -633,7 +650,7 @@ describe("TaskDetailRoute", () => {
     expect(mocks.markTaskNotificationsRead).not.toHaveBeenCalled();
   });
 
-  it("초기 task 조회가 끝나지 않아도 Loading 화면에 고착되지 않는다", async () => {
+  it("초기 task 조회가 오래 걸리면 task 없음 화면 대신 지연 안내를 띄운 채 기다린다", async () => {
     vi.useFakeTimers();
     mocks.getTaskById.mockReturnValue(new Promise(() => {}));
 
@@ -642,8 +659,74 @@ describe("TaskDetailRoute", () => {
       await vi.advanceTimersByTimeAsync(INITIAL_DESKTOP_LOAD_TIMEOUT_MS);
     });
 
-    expect(screen.queryByText("Loading...")).toBeNull();
-    expect(screen.getByText("taskNotFound")).toBeTruthy();
+    expect(screen.getByText("loadDelayed")).toBeTruthy();
+    expect(screen.queryByText("taskNotFound")).toBeNull();
+  });
+
+  it("초기 task 조회가 실패하면 task 없음 화면 대신 실패 사유와 재시도를 보이고 재시도로 다시 불러온다", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.getTaskById.mockReset();
+    mocks.getTaskById
+      .mockRejectedValueOnce(new Error("db locked"))
+      .mockResolvedValueOnce(null);
+
+    render(<TaskDetailRoute />);
+
+    expect(await screen.findByText("loadFailed")).toBeTruthy();
+    expect(screen.queryByText("taskNotFound")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "retry" }));
+
+    expect(await screen.findByText("taskNotFound")).toBeTruthy();
+    expect(screen.queryByText("loadFailed")).toBeNull();
+  });
+
+  it("캐시된 task를 보여 주는 중 조회가 실패하면 캐시 화면을 유지하고 갱신 실패 배너를 보인다", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    sessionStorage.setItem(TASK_DETAIL_CACHE_KEY, JSON.stringify({
+      task: {
+        id: "task-1",
+        title: "cached task title",
+        description: null,
+        branchName: "feat/cached",
+        baseBranch: "main",
+        prUrl: null,
+        sessionType: null,
+        sessionName: null,
+        sshHost: null,
+        projectId: "project-1",
+        project: { id: "project-1", name: "kanvibe" },
+        status: "todo",
+        agentType: null,
+        worktreePath: "/repo__worktrees/cached",
+      },
+      baseBranchTaskId: null,
+      diffFiles: [],
+      claudeHooksStatus: null,
+      geminiHooksStatus: null,
+      codexHooksStatus: null,
+      openCodeHooksStatus: null,
+      aiSessions: {
+        isRemote: false,
+        targetPath: null,
+        repoPath: null,
+        sessions: [],
+        sources: [],
+      },
+      projects: [],
+      defaultSessionType: "tmux",
+      sidebarDefaultCollapsed: false,
+      sidebarHintDismissed: false,
+      doneAlertDismissed: false,
+    }));
+    mocks.getTaskById.mockRejectedValue(new Error("ipc closed"));
+
+    render(<TaskDetailRoute />);
+
+    expect(await screen.findByText("refreshFailed")).toBeTruthy();
+    expect(screen.queryByText("taskNotFound")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "info" }));
+    expect(screen.getByTestId("task-title").textContent).toBe("cached task title");
   });
 
   it("stale cache의 레거시 사이드바 힌트 값은 아이콘 패널 UI에 렌더링하지 않는다", () => {
@@ -831,6 +914,30 @@ describe("TaskDetailRoute", () => {
       await new Promise((resolve) => window.setTimeout(resolve, 0));
     });
     expect(mocks.getTaskById).toHaveBeenCalledTimes(taskLoadCountBeforeClose);
+  });
+
+  it("diff 응답이 느려도 task 화면과 terminal 입력을 사용할 수 있다", async () => {
+    const pendingDiff = createDeferred<[]>();
+    mocks.getGitDiffFiles.mockReturnValueOnce(pendingDiff.promise);
+    mocks.getTaskById.mockResolvedValue({
+      id: "task-1", title: "slow diff task", branchName: "perf/slow-diff", baseBranch: "dev",
+      sessionType: "tmux", sessionName: "slow-diff-session", sshHost: "remote-host",
+      projectId: "project-1", project: { id: "project-1", name: "kanvibe" },
+      status: "todo", worktreePath: "/remote/slow-diff", prUrl: null,
+    });
+    render(<TaskDetailRoute />);
+    try {
+      expect((await screen.findByTestId("task-title")).textContent).toBe("slow diff task");
+      await waitFor(() => expect(mocks.getGitDiffFiles).toHaveBeenCalledWith("task-1"));
+      const input = await screen.findByLabelText("terminal input");
+      fireEvent.change(input, { target: { value: "pwd" } });
+      expect((input as HTMLInputElement).value).toBe("pwd");
+      fireEvent.click(screen.getByRole("button", { name: "close" }));
+      expect(screen.queryByTestId("task-title")).toBeNull();
+      expect(screen.getByLabelText("terminal input")).toBe(input);
+    } finally {
+      await act(async () => { pendingDiff.resolve([]); });
+    }
   });
 
   it("터미널 탭 왼쪽 배지에 프로젝트 아이콘·이름과 태스크 이름을 함께 표시한다", async () => {
@@ -1203,6 +1310,94 @@ describe("TaskDetailRoute", () => {
     });
   });
 
+  it("PR 조회가 실패하면 PR 없음이 아니라 조회 실패로 알린다", async () => {
+    const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.fetchPrUrlWithPrompt.mockResolvedValueOnce(null).mockRejectedValueOnce(new Error("gh auth failed"));
+    mocks.getTaskById.mockResolvedValue({
+      id: "task-1",
+      title: "task title",
+      description: null,
+      branchName: "feat/detail-shortcut",
+      baseBranch: "main",
+      prUrl: null,
+      sessionType: "tmux",
+      sessionName: "task-session",
+      sshHost: null,
+      projectId: "project-1",
+      project: { id: "project-1", name: "kanvibe" },
+      status: "todo",
+      agentType: null,
+      worktreePath: "/repo__worktrees/detail-shortcut",
+    });
+
+    render(
+      <BoardCommandProvider>
+        <TaskDetailRoute />
+      </BoardCommandProvider>,
+    );
+
+    await screen.findByLabelText("terminal input");
+
+    await waitFor(() => {
+      expect(mocks.fetchPrUrlWithPrompt).toHaveBeenCalledTimes(1);
+    });
+    fireEvent.keyDown(window, { key: "4", ctrlKey: true });
+
+    await waitFor(() => {
+      expect(alertSpy).toHaveBeenCalledWith("pullRequestLookupFailed");
+    });
+    expect(alertSpy).not.toHaveBeenCalledWith("pullRequestNotFound");
+  });
+
+  it("PR 조회를 기다리는 동안 PR 자리에 진행을 보이고 다시 눌러도 한 번만 조회한다", async () => {
+    vi.spyOn(window, "alert").mockImplementation(() => {});
+    let resolveLookup: (value: string | null) => void = () => {};
+    mocks.fetchPrUrlWithPrompt.mockResolvedValueOnce(null).mockReturnValueOnce(new Promise((resolve) => {
+      resolveLookup = resolve;
+    }));
+    mocks.getTaskById.mockResolvedValue({
+      id: "task-1",
+      title: "task title",
+      description: null,
+      branchName: "feat/detail-shortcut",
+      baseBranch: "main",
+      prUrl: null,
+      sessionType: "tmux",
+      sessionName: "task-session",
+      sshHost: null,
+      projectId: "project-1",
+      project: { id: "project-1", name: "kanvibe" },
+      status: "todo",
+      agentType: null,
+      worktreePath: "/repo__worktrees/detail-shortcut",
+    });
+
+    render(
+      <BoardCommandProvider>
+        <TaskDetailRoute />
+      </BoardCommandProvider>,
+    );
+
+    await screen.findByLabelText("terminal input");
+
+    await waitFor(() => {
+      expect(mocks.fetchPrUrlWithPrompt).toHaveBeenCalledTimes(1);
+    });
+    fireEvent.keyDown(window, { key: "4", ctrlKey: true });
+    fireEvent.keyDown(window, { key: "4", ctrlKey: true });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "PR" }).getAttribute("aria-busy")).toBe("true");
+    });
+    expect(mocks.fetchPrUrlWithPrompt).toHaveBeenCalledTimes(2);
+
+    resolveLookup(null);
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "PR" }).getAttribute("aria-busy")).toBeNull();
+    });
+  });
+
   it("dock 6번 shortcut은 작업 폴더를 VS Code로 연다", async () => {
     mocks.openTaskInVsCode.mockResolvedValue({ ok: true });
     mocks.getTaskById.mockResolvedValue({
@@ -1411,6 +1606,7 @@ describe("TaskDetailRoute", () => {
     });
 
     expect(await screen.findByTestId("inline-ai-chat")).toBeTruthy();
+    expect(screen.queryByTestId("pane-chat")).toBeNull();
     await waitFor(() => {
       expect(mocks.getTaskAiSessions).toHaveBeenCalledWith("task-1", undefined, null, 20);
     });
@@ -1758,7 +1954,7 @@ describe("TaskDetailRoute", () => {
       expect(screen.getAllByText("Please fix the UI").length).toBeGreaterThanOrEqual(1);
     });
     expect(screen.getByText("Updated the terminal chat view.")).toBeTruthy();
-    expect(screen.queryByLabelText("terminal input")).toBeNull();
+    expect(screen.getByLabelText("terminal input").closest(".hidden")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "aiSessions.inlineChat" }));
 
@@ -1823,6 +2019,86 @@ describe("TaskDetailRoute", () => {
 
     expect(await screen.findByTestId("hooks-status-card")).toBeTruthy();
     expect(screen.getByText("done")).toBeTruthy();
+  });
+
+  it("상태 이동 응답을 기다리는 동안 대상 버튼에 진행 문구를 보이고 다른 상태 요청을 막는다", async () => {
+    const task = {
+      id: "task-1",
+      title: "task title",
+      description: null,
+      branchName: "feat/status-move",
+      baseBranch: "main",
+      prUrl: null,
+      sessionType: null,
+      sessionName: null,
+      sshHost: null,
+      projectId: "project-1",
+      project: { id: "project-1", name: "kanvibe" },
+      status: "todo",
+      agentType: null,
+      worktreePath: "/repo__worktrees/status-move",
+    };
+    mocks.getTaskById.mockResolvedValue(task);
+    let resolveMove: (value: unknown) => void = () => {};
+    mocks.updateTaskStatus.mockReturnValueOnce(new Promise((resolve) => {
+      resolveMove = resolve;
+    }));
+
+    render(<TaskDetailRoute />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "actions · hooksStatus" }));
+    fireEvent.click(screen.getByRole("button", { name: "moveToReview" }));
+
+    const pendingButton = await screen.findByRole("button", { name: "movingStatus" });
+    expect(pendingButton.getAttribute("aria-busy")).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "moveToProgress" }));
+
+    expect(mocks.updateTaskStatus).toHaveBeenCalledTimes(1);
+    expect(mocks.updateTaskStatus).toHaveBeenCalledWith("task-1", "review");
+
+    await act(async () => {
+      resolveMove({ ...task, status: "review" });
+    });
+
+    expect(await screen.findByRole("button", { name: "moveToTodo" })).toBeTruthy();
+  });
+
+  it("상태 이동이 실패하면 현재 상태를 유지하고 사유와 다시 시도를 보인다", async () => {
+    const task = {
+      id: "task-1",
+      title: "task title",
+      description: null,
+      branchName: "feat/status-move",
+      baseBranch: "main",
+      prUrl: null,
+      sessionType: null,
+      sessionName: null,
+      sshHost: null,
+      projectId: "project-1",
+      project: { id: "project-1", name: "kanvibe" },
+      status: "todo",
+      agentType: null,
+      worktreePath: "/repo__worktrees/status-move",
+    };
+    mocks.getTaskById.mockResolvedValue(task);
+    mocks.updateTaskStatus
+      .mockRejectedValueOnce(new Error("db locked"))
+      .mockResolvedValueOnce({ ...task, status: "review" });
+
+    render(<TaskDetailRoute />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "actions · hooksStatus" }));
+    fireEvent.click(screen.getByRole("button", { name: "moveToReview" }));
+
+    expect((await screen.findByRole("alert")).textContent).toContain("statusChangeFailed");
+    expect(screen.getByRole("button", { name: "moveToReview" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "retry" }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: "moveToReview" })).toBeNull();
+    });
+    expect(mocks.updateTaskStatus).toHaveBeenCalledTimes(2);
   });
 
   it("Done 상태로 변경해도 상세 화면을 유지한다", async () => {
@@ -1931,6 +2207,7 @@ describe("TaskDetailRoute", () => {
       worktreePath: "/repo__worktrees/detail-shortcut",
     });
     mocks.getTaskCodexHooksStatus.mockResolvedValue(codexStatus);
+    mocks.getTaskHooksStatuses.mockResolvedValue({ claude: null, gemini: null, codex: codexStatus, openCode: null });
     mocks.getTaskAiSessions.mockReturnValue(unresolvedAiSessions.promise);
 
     render(<TaskDetailRoute />);
@@ -1943,6 +2220,112 @@ describe("TaskDetailRoute", () => {
     expect(mocks.renderHooksStatusCard).toHaveBeenLastCalledWith(expect.objectContaining({
       initialCodexStatus: codexStatus,
     }));
+    expect(mocks.getTaskHooksStatuses).toHaveBeenCalledWith("task-1");
+    expect(mocks.getTaskCodexHooksStatus).not.toHaveBeenCalled();
+  });
+
+  describe("원격 조회를 부르는 보조 데이터", () => {
+    const remoteTaskWithoutPullRequest = {
+      id: "task-1",
+      title: "task title",
+      description: null,
+      branchName: "feat/remote-loading",
+      baseBranch: "main",
+      prUrl: null,
+      sessionType: "herdr",
+      sessionName: "kanvibe:remote-loading",
+      sshHost: "remote-host",
+      projectId: "project-1",
+      project: { id: "project-1", name: "kanvibe", sshHost: "remote-host" },
+      status: "progress",
+      agentType: null,
+      worktreePath: "/remote/repo__worktrees/remote-loading",
+    };
+
+    afterEach(() => {
+      mocks.useRefreshSignal.mockImplementation(() => 0);
+    });
+
+    it("hook 상태는 상태 패널이 열려 있는 동안에만 조회하고, 닫힌 창은 보드 갱신이 이어져도 조회하지 않는다", async () => {
+      let refreshSignal = 0;
+      mocks.useRefreshSignal.mockImplementation(() => refreshSignal);
+      mocks.getTaskById.mockResolvedValue(remoteTaskWithoutPullRequest);
+      mocks.getTaskHooksStatuses.mockResolvedValue({ claude: { installed: true }, gemini: null, codex: null, openCode: null });
+
+      const { rerender } = render(<TaskDetailRoute />);
+      await screen.findByTestId("task-title");
+
+      // 에이전트가 일하는 동안 보드 갱신이 세 번 이어진다
+      for (const boardUpdate of [1, 2, 3]) {
+        refreshSignal = boardUpdate;
+        rerender(<TaskDetailRoute />);
+        await waitFor(() => expect(mocks.getTaskById).toHaveBeenCalledTimes(boardUpdate + 1));
+      }
+      // 패널을 열지 않은 창은 hook 상태를 읽는 SSH 접속을 만들지 않는다.
+      expect(mocks.getTaskHooksStatuses).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByRole("button", { name: "actions · hooksStatus" }));
+      await waitFor(() => {
+        expect(screen.getByTestId("hooks-status-card").getAttribute("data-claude-installed")).toBe("true");
+      });
+      expect(mocks.getTaskHooksStatuses).toHaveBeenCalledTimes(1);
+
+      // 패널이 열려 있으면 백그라운드 설치·복구 결과를 반영하려고 다시 묻는다. 읽는 중 표시는 다시 띄우지 않는다.
+      refreshSignal = 4;
+      rerender(<TaskDetailRoute />);
+      await waitFor(() => expect(mocks.getTaskHooksStatuses).toHaveBeenCalledTimes(2));
+      expect(mocks.renderHooksStatusCard.mock.calls.filter(([props]) => props.isLoading === true)).toHaveLength(1);
+
+      // 패널을 닫으면 이후 보드 갱신은 다시 조회하지 않는다.
+      fireEvent.click(screen.getByRole("button", { name: "actions · hooksStatus" }));
+      refreshSignal = 5;
+      rerender(<TaskDetailRoute />);
+      await waitFor(() => expect(mocks.getTaskById).toHaveBeenCalledTimes(6));
+      expect(mocks.getTaskHooksStatuses).toHaveBeenCalledTimes(2);
+    });
+
+    it("hook 상태를 읽는 동안 상태 카드에 읽는 중임을 알린다", async () => {
+      let finishStatusRead!: (statuses: null) => void;
+      mocks.getTaskById.mockResolvedValue(remoteTaskWithoutPullRequest);
+      mocks.getTaskHooksStatuses.mockReturnValue(new Promise((resolve) => { finishStatusRead = resolve; }));
+
+      render(<TaskDetailRoute />);
+      fireEvent.click(await screen.findByRole("button", { name: "actions · hooksStatus" }));
+
+      await waitFor(() => {
+        expect(mocks.renderHooksStatusCard).toHaveBeenLastCalledWith(expect.objectContaining({ isLoading: true }));
+      });
+      await act(async () => { finishStatusRead(null); });
+      await waitFor(() => {
+        expect(mocks.renderHooksStatusCard).toHaveBeenLastCalledWith(expect.objectContaining({ isLoading: false }));
+      });
+    });
+
+    it("PR 자동 조회는 처음에만 gh 설치 확인을 거치고, 보드 갱신에서는 간격 제한이 걸리는 자동 조회로만 묻는다", async () => {
+      let refreshSignal = 0;
+      mocks.useRefreshSignal.mockImplementation(() => refreshSignal);
+      mocks.getTaskById.mockResolvedValue(remoteTaskWithoutPullRequest);
+
+      const { rerender } = render(<TaskDetailRoute />);
+      await screen.findByTestId("task-title");
+
+      await waitFor(() => expect(mocks.fetchPrUrlWithPrompt).toHaveBeenCalledTimes(1));
+      expect(mocks.fetchPrUrlWithPrompt).toHaveBeenCalledWith(
+        expect.objectContaining({ id: "task-1" }),
+        expect.anything(),
+        { isAutomatic: true },
+      );
+      expect(mocks.fetchAndSavePrUrl).not.toHaveBeenCalled();
+
+      for (const boardUpdate of [1, 2]) {
+        refreshSignal = boardUpdate;
+        rerender(<TaskDetailRoute />);
+        await waitFor(() => expect(mocks.fetchAndSavePrUrl).toHaveBeenCalledTimes(boardUpdate));
+      }
+      // 갱신마다 gh 설치 확인(원격 명령)과 설치 질문을 되풀이하지 않는다.
+      expect(mocks.fetchPrUrlWithPrompt).toHaveBeenCalledTimes(1);
+      expect(mocks.fetchAndSavePrUrl).toHaveBeenLastCalledWith("task-1", { isAutomatic: true });
+    });
   });
 
   it("상세 화면 좌측 하단 rail에는 알림 버튼을 렌더링하지 않는다", async () => {
@@ -2297,6 +2680,31 @@ describe("TaskDetailRoute", () => {
     expect(screen.queryByText("aiSessions.loadHistoryHint")).toBeNull();
   });
 
+  it.each([
+    { title: "Same title", prompt: "Same title", hasPreview: false },
+    { title: null, prompt: "Fallback prompt", hasPreview: false },
+    { title: "Different title", prompt: "A distinct first prompt", hasPreview: true },
+    { title: "Trimmed title", prompt: "  Trimmed title  ", hasPreview: false },
+  ])("history는 표시 제목과 다른 첫 입력만 preview로 보여 준다: $title", async ({ title, prompt, hasPreview }) => {
+    mocks.getSidebarDefaultCollapsed.mockResolvedValue(true);
+    mocks.getTaskById.mockResolvedValue({
+      id: "task-1", title: "task title", description: null, branchName: "feat/history-title",
+      baseBranch: "main", prUrl: null, sessionType: null, sessionName: null, sshHost: null,
+      projectId: "project-1", project: { id: "project-1", name: "kanvibe" }, status: "todo",
+      agentType: null, worktreePath: "/repo__worktrees/history-title",
+    });
+    mocks.getTaskAiSessions.mockResolvedValue({
+      isRemote: false, targetPath: "/repo__worktrees/history-title", repoPath: "/repo", sources: [], nextCursor: null,
+      sessions: [{ id: "title-session", provider: "claude", startedAt: null, updatedAt: null,
+        matchedPath: "/repo", matchScope: "worktree", title, firstUserPrompt: prompt, messageCount: 2, sourceRef: "title.jsonl" }],
+    });
+    render(<TaskDetailRoute />);
+    fireEvent.click(await screen.findByRole("button", { name: "aiSessions.inlineChat" }));
+    const row = await screen.findByRole("button", { name: `Claude ${title ?? prompt}` });
+    expect(row.querySelector("p")?.textContent ?? null).toBe(hasPreview ? prompt : null);
+    expect(row.querySelector("span.truncate")?.textContent).toBe(title ?? prompt);
+  });
+
   it("채팅 화면 세션 목록은 최신순 첫 페이지를 받고 다음 페이지를 이어 붙인다", async () => {
     mocks.getSidebarDefaultCollapsed.mockResolvedValue(true);
     mocks.getTaskById.mockResolvedValue({
@@ -2502,7 +2910,8 @@ describe("TaskDetailRoute", () => {
 
     expect(await screen.findByRole("heading", { level: 2, name: "작업 요약" })).toBeTruthy();
     expect(screen.getByText("첫 번째 항목").tagName).toBe("LI");
-    expect(screen.getByText("const value = 1;").closest("pre")).toBeTruthy();
+    /** 코드는 색을 입히느라 여러 조각으로 나뉘므로 블록 전체의 글자로 확인한다 */
+    expect([...document.querySelectorAll("pre")].map((block) => block.textContent)).toContain("const value = 1;\n");
     expect(await screen.findByTestId("rendered-mermaid-svg")).toBeTruthy();
     expect(screen.getByText(/graph TD/)).toBeTruthy();
     expect(screen.queryByText(/alert\("xss"\)/)).toBeNull();
@@ -2516,6 +2925,7 @@ describe("TaskDetailRoute", () => {
     expect(mocks.mermaidInitialize).toHaveBeenCalledWith(expect.objectContaining({
       securityLevel: "strict",
       startOnLoad: false,
+      htmlLabels: false,
       theme: "dark",
     }));
     expect(mocks.mermaidRender.mock.calls[0]?.[0]).toMatch(/^ai-session-mermaid-/);
@@ -3271,4 +3681,131 @@ describe("TaskDetailRoute", () => {
 
     expect(await screen.findByTestId("ai-usage-panel")).toBeTruthy();
   });
+
+  it("대화에서 기록으로 돌아가면 세션 목록을 유지하고 다시 선택할 수 있다", async () => {
+    mocks.getSidebarDefaultCollapsed.mockResolvedValue(true);
+    mocks.getTaskById.mockResolvedValue({ ...notificationReadTargetTask, worktreePath: "/repo" });
+    mocks.getTaskAiSessions.mockResolvedValue({
+      isRemote: false, targetPath: "/repo", repoPath: "/repo", nextCursor: null, sources: [],
+      sessions: [{ id: "back-chat", provider: "claude", title: "Back history", firstUserPrompt: "Request", messageCount: 1 }],
+    });
+    mocks.getTaskAiSessionDetail.mockResolvedValue({ sessionId: "back-chat", provider: "claude", nextCursor: null, messages: [
+      { role: "assistant", timestamp: null, text: "Saved answer", fullText: "Saved answer", isTruncated: false },
+    ] });
+    render(<TaskDetailRoute />);
+    fireEvent.click(await screen.findByRole("button", { name: "aiSessions.inlineChat" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Claude Back history" }));
+    expect(await screen.findByText("Saved answer")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "aiSessions.backToHistory" }));
+    expect(screen.getByRole("button", { name: "Claude Back history" })).toBeTruthy();
+    expect(screen.queryByText("Saved answer")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Claude Back history" }));
+    expect(await screen.findByText("Saved answer")).toBeTruthy();
+  });
+
+  it("이전 메시지를 추가해도 읽던 위치를 보존하며 최신 메시지 버튼으로 돌아간다", async () => {
+    mocks.getSidebarDefaultCollapsed.mockResolvedValue(true);
+    mocks.getTaskById.mockResolvedValue({ ...notificationReadTargetTask, worktreePath: "/repo" });
+    mocks.getTaskAiSessions.mockResolvedValue({
+      isRemote: false, targetPath: "/repo", repoPath: "/repo", nextCursor: null, sources: [],
+      sessions: [{ id: "anchor-chat", provider: "claude", title: "Anchor history", messageCount: 3 }],
+    });
+    mocks.getTaskAiSessionDetail.mockResolvedValueOnce({ sessionId: "anchor-chat", provider: "claude", nextCursor: "older", messages: [
+      { role: "assistant", timestamp: null, text: "Latest answer", fullText: "Latest answer", isTruncated: false },
+      { role: "user", timestamp: null, text: "Current prompt", fullText: "Current prompt", isTruncated: false },
+    ] }).mockResolvedValueOnce({ sessionId: "anchor-chat", provider: "claude", nextCursor: null, messages: [
+      { role: "assistant", timestamp: null, text: "Older answer", fullText: "Older answer", isTruncated: false },
+    ] });
+    render(<TaskDetailRoute />);
+    fireEvent.click(await screen.findByRole("button", { name: "aiSessions.inlineChat" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Claude Anchor history" }));
+    await screen.findByText("Latest answer");
+    const pane = screen.getByTestId("ai-session-messages");
+    Object.defineProperty(pane, "scrollHeight", { configurable: true, get: () => pane.querySelectorAll("article").length * 200 });
+    Object.defineProperty(pane, "clientHeight", { configurable: true, value: 100 });
+    pane.scrollTop = 20;
+    fireEvent.click(screen.getByRole("button", { name: "aiSessions.loadOlderMessages" }));
+    await screen.findByText("Older answer");
+    expect(pane.scrollTop).toBe(220);
+    fireEvent.scroll(pane);
+    const latest = await screen.findByRole("button", { name: /aiSessions.jumpToLatest/ });
+    fireEvent.click(latest);
+    expect(screen.queryByRole("button", { name: /aiSessions.jumpToLatest/ })).toBeNull();
+  });
+
+
+  it("이전 페이지를 추가해도 열어 둔 도구 메시지는 접히지 않고 중복 메시지는 구별한다", async () => {
+    mocks.getSidebarDefaultCollapsed.mockResolvedValue(true);
+    mocks.getTaskById.mockResolvedValue({ ...notificationReadTargetTask, worktreePath: "/repo" });
+    mocks.getTaskAiSessions.mockResolvedValue({
+      isRemote: false, targetPath: "/repo", repoPath: "/repo", nextCursor: null, sources: [],
+      sessions: [{ id: "disclosure-chat", provider: "claude", title: "Disclosure history", messageCount: 4 }],
+    });
+    const repeatedToolMessage = { role: "tool", timestamp: "2026-11-12T03:00:00Z", text: "Repeated tool output", fullText: "Repeated tool output", isTruncated: false };
+    mocks.getTaskAiSessionDetail.mockResolvedValueOnce({ sessionId: "disclosure-chat", provider: "claude", nextCursor: "older", messages: [
+      repeatedToolMessage, repeatedToolMessage,
+    ] }).mockResolvedValueOnce({ sessionId: "disclosure-chat", provider: "claude", nextCursor: null, messages: [
+      repeatedToolMessage,
+      { role: "user", timestamp: null, text: "Oldest prompt", fullText: "Oldest prompt", isTruncated: false },
+    ] });
+    render(<TaskDetailRoute />);
+    fireEvent.click(await screen.findByRole("button", { name: "aiSessions.inlineChat" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Claude Disclosure history" }));
+    const pane = screen.getByTestId("ai-session-messages");
+    await waitFor(() => expect(pane.querySelectorAll("details").length).toBe(2));
+    const latestTool = pane.querySelectorAll("details")[1];
+    fireEvent.click(latestTool.querySelector("summary")!);
+    expect(latestTool.open).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "aiSessions.loadOlderMessages" }));
+    await screen.findByText("Oldest prompt");
+    const disclosures = pane.querySelectorAll("details");
+    expect(disclosures.length).toBe(3);
+    expect(disclosures[2]).toBe(latestTool);
+    expect(disclosures[2].open).toBe(true);
+    expect(disclosures[0].open).toBe(false);
+  });
+
+  it("양쪽 pane 단축키는 터미널에 전달하고 dock은 기록을 연다", async () => {
+    let shortcut: (() => void) | undefined;
+    window.kanvibeDesktop = { isDesktop: true, onTerminalToggleChatShortcut: (listener: () => void) => { shortcut = listener; return () => { shortcut = undefined; }; } };
+    mocks.getSidebarDefaultCollapsed.mockResolvedValue(true);
+    mocks.getTaskById.mockResolvedValue({ ...notificationReadTargetTask, sessionType: "tmux", sessionName: "pane-shortcut-test" });
+    const toggle = vi.fn();
+    window.addEventListener("kanvibe:toggle-pane-chat", toggle);
+    try {
+      render(<BoardCommandProvider><TaskDetailRoute /></BoardCommandProvider>);
+      await screen.findByLabelText("terminal input");
+      expect(screen.queryByTestId("pane-chat-toggle")).toBeNull();
+      fireEvent.keyDown(window, { key: "J", ctrlKey: true, shiftKey: true });
+      expect(toggle).toHaveBeenCalledTimes(1);
+      act(() => shortcut?.());
+      expect(toggle).toHaveBeenCalledTimes(2);
+      expect(screen.getByLabelText("terminal input")).toBeTruthy();
+      fireEvent.click(screen.getByRole("button", { name: "aiSessions.inlineChat" }));
+      expect(await screen.findByTestId("inline-ai-chat")).toBeTruthy();
+      act(() => shortcut?.());
+      expect(toggle).toHaveBeenCalledTimes(2);
+    } finally {
+      window.removeEventListener("kanvibe:toggle-pane-chat", toggle);
+    }
+  });
+
+  it("모달이 열려 있으면 pane 전환 단축키를 차단한다", async () => {
+    let shortcut: (() => void) | undefined;
+    window.kanvibeDesktop = { isDesktop: true, onTerminalToggleChatShortcut: (listener: () => void) => { shortcut = listener; return () => {}; } };
+    mocks.getSidebarDefaultCollapsed.mockResolvedValue(true);
+    mocks.getTaskById.mockResolvedValue({ ...notificationReadTargetTask, sessionType: "tmux", sessionName: "pane-shortcut-test" });
+    const toggle = vi.fn();
+    window.addEventListener("kanvibe:toggle-pane-chat", toggle);
+    try {
+      render(<BoardCommandProvider><TaskDetailShortcutBlocker /><TaskDetailRoute /></BoardCommandProvider>);
+      await screen.findByLabelText("terminal input");
+      fireEvent.keyDown(window, { key: "J", ctrlKey: true, shiftKey: true });
+      act(() => shortcut?.());
+      expect(toggle).not.toHaveBeenCalled();
+    } finally {
+      window.removeEventListener("kanvibe:toggle-pane-chat", toggle);
+    }
+  });
+
 });

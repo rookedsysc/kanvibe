@@ -6,7 +6,7 @@
 # 뒤 절반은 모바일 시트로 되돌리며 기존 세션 닫기 확인을 거치는지 본다.
 appId: ${APP_ID}
 env:
-  DESKTOP_API_FROM_HOST: http://127.0.0.1:19736
+  DESKTOP_API_FROM_HOST: http://127.0.0.1:39736
 ---
 - launchApp:
     clearState: true

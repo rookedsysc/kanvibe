@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
-import { runBackgroundTaskSyncNow } from "@/desktop/renderer/actions/backgroundTaskSync";
+import { useBackgroundTaskSync } from "@/desktop/renderer/hooks/useBackgroundTaskSync";
 import { setBoardViewMode, type BoardViewMode } from "@/desktop/renderer/actions/appSettings";
 import { useRouter } from "@/desktop/renderer/navigation";
 import { useBoardCommands } from "@/desktop/renderer/components/BoardCommandProvider";
@@ -15,6 +15,7 @@ interface CommandItem {
   command: string;
   description: string;
   run: () => void;
+  disabled?: boolean;
 }
 
 export default function CommandPaletteDialog() {
@@ -23,6 +24,8 @@ export default function CommandPaletteDialog() {
   const t = useTranslations("commandPalette");
   const tBoard = useTranslations("board");
   const tc = useTranslations("common");
+  const sync = useBackgroundTaskSync();
+  const isSyncBusy = sync.isStarting || sync.status?.isRunning === true;
   const inputRef = useRef<HTMLInputElement>(null);
   const resultsListRef = useRef<HTMLDivElement>(null);
   const [query, setQuery] = useState("");
@@ -52,9 +55,8 @@ export default function CommandPaletteDialog() {
   useEscapeKey(closeDialog, { enabled: isCommandPaletteOpen });
 
   function runSync() {
-    void runBackgroundTaskSyncNow().catch((error) => {
-      console.error("Failed to run background task sync", error);
-    });
+    if (isSyncBusy) return;
+    void sync.start();
     closeDialog();
   }
 
@@ -86,7 +88,7 @@ export default function CommandPaletteDialog() {
 
   const commands = useMemo<CommandItem[]>(() => {
     const items: CommandItem[] = [
-      { id: "sync", command: "sync", description: t("syncLabel"), run: runSync },
+      { id: "sync", command: "sync", description: t(isSyncBusy ? "syncRunning" : "syncLabel"), run: runSync, disabled: isSyncBusy },
     ];
 
     if (hasMoveTarget) {
@@ -107,7 +109,7 @@ export default function CommandPaletteDialog() {
 
     return items;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hasMoveTarget, moveTargetStatuses, t, tBoard]);
+  }, [hasMoveTarget, moveTargetStatuses, t, tBoard, isSyncBusy, sync.start]);
 
   const results = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -195,8 +197,10 @@ export default function CommandPaletteDialog() {
                   key={command.id}
                   type="button"
                   onClick={command.run}
+                  disabled={command.disabled}
+                  aria-busy={command.id === "sync" && isSyncBusy || undefined}
                   onMouseEnter={() => setSelectedIndex(index)}
-                  className={`flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm transition-colors ${
+                  className={`flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm transition-colors disabled:cursor-progress disabled:opacity-60 ${
                     index === selectedResultIndex ? "bg-brand-primary/10" : "hover:bg-bg-page"
                   }`}
                 >

@@ -29,6 +29,7 @@ export type ShortcutCommandId =
   | "taskSearch"
   | "boardNotification"
   | "boardProjectFilter"
+  | "boardDesktopFilter"
   | "commandPalette"
   | "boardPageFind"
   | "createTask"
@@ -39,7 +40,8 @@ export type ShortcutCommandId =
   | "terminalTabClose"
   | "terminalWindowClose"
   | "terminalTabPrevious"
-  | "terminalTabNext";
+  | "terminalTabNext"
+  | "terminalToggleChat";
 
 /** 설정 화면에서 명령을 묶어 보여 주는 단위 */
 export type ShortcutCommandGroup = "taskDetailDock" | "taskDetail" | "board" | "terminal";
@@ -92,6 +94,7 @@ export const SHORTCUT_COMMAND_DEFINITIONS: readonly ShortcutCommandDefinition[] 
   { id: "taskSearch", group: "board", defaultShortcut: SHORTCUTS.taskSearchDefault, labelKey: "taskSearch" },
   { id: "boardNotification", group: "board", defaultShortcut: SHORTCUTS.boardNotification, labelKey: "boardNotification" },
   { id: "boardProjectFilter", group: "board", defaultShortcut: SHORTCUTS.boardProjectFilter, labelKey: "boardProjectFilter" },
+  { id: "boardDesktopFilter", group: "board", defaultShortcut: SHORTCUTS.boardDesktopFilter, labelKey: "boardDesktopFilter" },
   { id: "commandPalette", group: "board", defaultShortcut: SHORTCUTS.commandPalette, labelKey: "commandPalette" },
   { id: "boardPageFind", group: "board", defaultShortcut: SHORTCUTS.boardPageFind, labelKey: "boardPageFind" },
   { id: "createTask", group: "board", defaultShortcut: SHORTCUTS.createTask, labelKey: "createTask" },
@@ -103,6 +106,7 @@ export const SHORTCUT_COMMAND_DEFINITIONS: readonly ShortcutCommandDefinition[] 
   { id: "terminalWindowClose", group: "terminal", defaultShortcut: SHORTCUTS.terminalWindowClose, labelKey: "terminalWindowClose" },
   { id: "terminalTabPrevious", group: "terminal", defaultShortcut: SHORTCUTS.terminalTabPrevious, labelKey: "terminalTabPrevious" },
   { id: "terminalTabNext", group: "terminal", defaultShortcut: SHORTCUTS.terminalTabNext, labelKey: "terminalTabNext" },
+  { id: "terminalToggleChat", group: "terminal", defaultShortcut: SHORTCUTS.terminalToggleChat, labelKey: "terminalToggleChat" },
   ...TERMINAL_TAB_SHORTCUT_INDEXES.map<ShortcutCommandDefinition>((tabIndex) => ({
     id: createTerminalTabCommandId(tabIndex),
     group: "terminal",

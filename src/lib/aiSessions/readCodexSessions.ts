@@ -1,4 +1,6 @@
 import path from "path";
+import { extractMessageAttachments } from "./messageAttachments";
+import { summarizeCodexCustomToolCall, withToolCall } from "./messageFiles";
 import {
   createReaderResult,
   createSessionDetail,
@@ -10,6 +12,7 @@ import {
   LOCAL_SESSION_FILE_PARSE_CONCURRENCY,
   paginateItems,
   pickLiveSessionFiles,
+  readAppendedJsonLines,
   readJsonLines,
   readJsonLinesHead,
   readJsonLinesTail,
@@ -27,6 +30,8 @@ import {
 import type {
   AgentCallNode,
   AggregatedAiMessage,
+  AiMessageAttachment,
+  AiMessageFile,
   AggregatedAiSession,
   AiMessageRole,
   AiSessionDetailReaderResult,
@@ -79,11 +84,24 @@ export async function readCodexSessionDetail(
     : await listFilesRecursivelyBySuffix(await getCodexSessionsDirectory(context), ".jsonl", context.sshHost);
 
   for (const filePath of rolloutFiles) {
-    const detail = await parseCodexSessionDetail(filePath, context, sessionId, cursor, limit);
+    const detail = await parseCodexSessionDetail(filePath, context, sessionId, cursor, limit, !!sourceRef);
     if (detail) return detail;
   }
 
   return null;
+}
+
+/** 화면의 전체 ID와 작업 범위가 모두 일치하는 메인 대화만 찾는다. 같은 ID의 복제 기록도 임의로 고르지 않는다 */
+export async function findCodexMainThreadRollout(context: AiSessionReaderContext, threadId: string): Promise<string | null> {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(threadId)) return null;
+  const root = await getCodexSessionsDirectory(context);
+  const files = (await listFilesRecursivelyBySuffix(root, ".jsonl", context.sshHost)).filter((file) => path.basename(file).endsWith(`-${threadId}.jsonl`));
+  const matches: string[] = [];
+  for (const file of files) {
+    const meta = await readCodexSessionMeta(file, context.sshHost);
+    if (meta?.threadId === threadId && !meta.parentThreadId && !meta.isSubagent && determineMatchScope(meta.cwd, context)) matches.push(file);
+  }
+  return matches.length === 1 ? matches[0] : null;
 }
 
 async function parseCodexSessionSummary(filePath: string, context: AiSessionReaderContext): Promise<AggregatedAiSession | null> {
@@ -101,6 +119,7 @@ async function parseCodexSessionSummary(filePath: string, context: AiSessionRead
   let messageCount = 0;
   let hasQueryMatch = false;
   const seenMessages = new Set<string>();
+  const toolNames = new Map<string, string>();
 
   for (const rawEvent of events) {
     const event = rawEvent as CodexRolloutEvent;
@@ -121,19 +140,19 @@ async function parseCodexSessionSummary(filePath: string, context: AiSessionRead
       continue;
     }
 
-    const parsedMessages = extractCodexEventMessages(event);
+    const parsedMessages = extractCodexEventMessages(event, filePath, toolNames);
     for (const message of parsedMessages) {
       if (shouldSkipCodexMessage(message.role, message.text)) {
         continue;
       }
-      const messageKey = createCodexMessageKey(message.role, event.timestamp, message.text);
+      const messageKey = createCodexMessageKey(message.role, event.timestamp, message.text, message.attachments);
       if (seenMessages.has(messageKey)) {
         continue;
       }
       seenMessages.add(messageKey);
 
       if (message.role === "user" && !firstUserPrompt) {
-        firstUserPrompt = message.text;
+        firstUserPrompt = message.text || message.attachments?.map(attachment => attachment.name).join(", ") || null;
       }
 
       if (matchesCodexQuery(context.query, message.text)) {
@@ -169,70 +188,119 @@ async function parseCodexSessionDetail(
   context: AiSessionReaderContext,
   sessionId: string,
   cursor?: string | null,
-  limit = DEFAULT_DETAIL_LIMIT
+  limit = DEFAULT_DETAIL_LIMIT,
+  /** 호출자가 이 대화의 파일을 짚어 준 경우. 그 파일은 되풀이해 읽히므로 붙은 줄만 이어 읽는다 */
+  isKnownSessionFile = false,
 ): Promise<AiSessionDetailReaderResult | null> {
-  const events = await getCachedOrParse(filePath, () => readJsonLines(filePath, context.sshHost), context.sshHost);
-  let matchedPath: string | null = null;
-  let title: string | null = null;
-  const messages: AggregatedAiMessage[] = [];
-  const seenMessages = new Set<string>();
-
-  for (const rawEvent of events) {
-    const event = rawEvent as CodexRolloutEvent;
-    if (event.type === "session_meta") {
-      const payload = event.payload ?? {};
-      const candidateSessionId = typeof payload.id === "string" ? payload.id : path.basename(filePath, ".jsonl");
-      if (candidateSessionId !== sessionId) return null;
-
-      const cwd = typeof payload.cwd === "string" ? payload.cwd : null;
-      if (!determineMatchScope(cwd, context)) return null;
-      matchedPath = cwd;
-      continue;
-    }
-
-    for (const message of extractCodexEventMessages(event)) {
-      if (shouldSkipCodexMessage(message.role, message.text)) {
-        continue;
-      }
-      const messageKey = createCodexMessageKey(message.role, event.timestamp, message.text);
-      if (seenMessages.has(messageKey)) {
-        continue;
-      }
-      seenMessages.add(messageKey);
-
-      if (context.roles && context.roles.length > 0 && !context.roles.includes(message.role)) {
-        continue;
-      }
-
-      if (context.query && !message.text.toLowerCase().includes(context.query.toLowerCase())) {
-        continue;
-      }
-
-      if (message.role === "user" && !title) {
-        title = truncateText(message.text, 80);
-      }
-
-      const previewMessage = makePreviewMessage(message.role, event.timestamp, message.text);
-      if (previewMessage) messages.push(previewMessage);
-    }
-  }
-
-  if (!matchedPath) return null;
-  const paginated = paginateItems(sortMessagesDescending(messages), cursor, limit);
+  const readEvents = () => isKnownSessionFile && !context.sshHost ? readAppendedJsonLines(filePath) : readJsonLines(filePath, context.sshHost);
+  const events = await getCachedOrParse(filePath, readEvents, context.sshHost);
+  const transcript = readCodexSessionTranscript(events, filePath, sessionId, context);
+  if (transcript.isOtherSession || !transcript.matchedPath) return null;
+  transcript.newestFirstMessages ??= sortMessagesDescending(transcript.messages);
+  const paginated = paginateItems(transcript.newestFirstMessages, cursor, limit);
   return createSessionDetail({
     sessionId,
     provider: "codex",
-    title,
-    matchedPath,
+    title: transcript.title,
+    matchedPath: transcript.matchedPath,
     sourceRef: filePath,
     messages: paginated.items,
     nextCursor: paginated.nextCursor,
   });
 }
 
-function extractCodexEventMessages(event: CodexRolloutEvent): Array<{ role: AiMessageRole; text: string }> {
+/** 한 rollout 파일의 대화가 남긴 메시지와, 그 파일의 이벤트를 어디까지 읽어 만들었는지 */
+interface CodexSessionTranscript {
+  readEventCount: number;
+  /** 파일의 session_meta가 다른 대화나 다른 작업 경로를 가리킨다. 한 번 그렇게 판정되면 뒤에 붙는 줄도 읽지 않는다 */
+  isOtherSession: boolean;
+  matchedPath: string | null;
+  title: string | null;
+  /** 파일에 적힌 순서 */
+  messages: AggregatedAiMessage[];
+  /** messages를 최신순으로 정렬해 둔 것. 메시지가 늘면 버리고 다음에 다시 만든다 */
+  newestFirstMessages: AggregatedAiMessage[] | null;
+  seenMessages: Set<string>;
+  toolNames: Map<string, string>;
+}
+
+/** 검색어처럼 조건이 계속 바뀌는 조회가 한 파일에 결과를 끝없이 쌓지 않도록 조건 수를 제한한다 */
+const MAX_TRANSCRIPTS_PER_EVENT_LIST = 8;
+/** 이벤트 배열이 살아 있는 동안만 그 배열로 만든 메시지를 기억한다. 파일을 처음부터 다시 읽으면 배열이 바뀌어 함께 버려진다 */
+const codexSessionTranscripts = new WeakMap<unknown[], Map<string, CodexSessionTranscript>>();
+
+/**
+ * 이벤트 배열에서 한 대화의 메시지를 만든다. 같은 배열을 같은 조건으로 다시 받으면 지난번에 읽은 곳 뒤로 붙은 이벤트만 읽어,
+ * 긴 대화를 보는 동안 매번 전체를 다시 만들지 않는다.
+ */
+function readCodexSessionTranscript(events: unknown[], filePath: string, sessionId: string, context: AiSessionReaderContext): CodexSessionTranscript {
+  const transcripts = codexSessionTranscripts.get(events) ?? new Map<string, CodexSessionTranscript>();
+  codexSessionTranscripts.set(events, transcripts);
+  const conditions = JSON.stringify([filePath, sessionId, context]);
+  const transcript = transcripts.get(conditions) ?? { readEventCount: 0, isOtherSession: false, matchedPath: null, title: null, messages: [], newestFirstMessages: null, seenMessages: new Set<string>(), toolNames: new Map<string, string>() };
+  if (!transcripts.has(conditions) && transcripts.size >= MAX_TRANSCRIPTS_PER_EVENT_LIST) transcripts.delete(transcripts.keys().next().value!);
+  transcripts.set(conditions, transcript);
+
+  for (; !transcript.isOtherSession && transcript.readEventCount < events.length; transcript.readEventCount += 1) {
+    const event = events[transcript.readEventCount] as CodexRolloutEvent;
+    if (event.type === "session_meta") {
+      const payload = event.payload ?? {};
+      const candidateSessionId = typeof payload.id === "string" ? payload.id : path.basename(filePath, ".jsonl");
+      const cwd = typeof payload.cwd === "string" ? payload.cwd : null;
+      if (candidateSessionId !== sessionId || !determineMatchScope(cwd, context)) {
+        transcript.isOtherSession = true;
+        continue;
+      }
+      transcript.matchedPath = cwd;
+      continue;
+    }
+
+    for (const message of extractCodexEventMessages(event, filePath, transcript.toolNames)) {
+      if (!context.includeInstructions && shouldSkipCodexMessage(message.role, message.text)) {
+        continue;
+      }
+      const messageKey = createCodexMessageKey(message.role, event.timestamp, message.text, message.attachments);
+      if (transcript.seenMessages.has(messageKey)) {
+        continue;
+      }
+      transcript.seenMessages.add(messageKey);
+
+      if (context.roles && context.roles.length > 0 && !context.roles.includes(message.role)) {
+        continue;
+      }
+
+      if (context.query && ![message.text, ...(message.attachments ?? []).map(attachment => attachment.name)].join("\n").toLowerCase().includes(context.query.toLowerCase())) {
+        continue;
+      }
+
+      if (message.role === "user" && !transcript.title) {
+        transcript.title = truncateText(message.text, 80);
+      }
+
+      const previewMessage = makePreviewMessage(message.role, event.timestamp, message.text, message.attachments);
+      if (previewMessage) {
+        transcript.messages.push(withToolCall(previewMessage, message));
+        transcript.newestFirstMessages = null;
+      }
+    }
+  }
+  return transcript;
+}
+
+interface CodexEventMessage {
+  role: AiMessageRole;
+  text: string;
+  attachments?: AiMessageAttachment[];
+  toolName?: string;
+  files?: AiMessageFile[];
+}
+
+function extractCodexEventMessages(event: CodexRolloutEvent, sourceRef = "", toolNames = new Map<string, string>()): CodexEventMessage[] {
   if (event.type === "response_item") {
-    return extractCodexPayloadMessages(event.payload ?? {});
+    const payload = event.payload ?? {};
+    if (typeof payload.call_id === "string" && typeof payload.name === "string" && ["function_call", "tool_call", "custom_tool_call"].includes(String(payload.type))) toolNames.set(payload.call_id, payload.name);
+    return extractCodexPayloadMessages(payload, sourceRef).map((message) => message.role === "tool" && !message.toolName && typeof payload.call_id === "string" && toolNames.has(payload.call_id)
+      ? { ...message, toolName: toolNames.get(payload.call_id) } : message);
   }
 
   if (event.type === "event_msg") {
@@ -248,8 +316,8 @@ function extractCodexEventMessages(event: CodexRolloutEvent): Array<{ role: AiMe
   return [];
 }
 
-function createCodexMessageKey(role: AiMessageRole, timestamp: string | undefined, text: string): string {
-  return `${role}\u0000${timestamp ?? ""}\u0000${text}`;
+function createCodexMessageKey(role: AiMessageRole, timestamp: string | undefined, text: string, attachments?: AiMessageAttachment[]): string {
+  return `${role}\u0000${timestamp ?? ""}\u0000${text}\u0000${attachments?.map(attachment => attachment.id).join(",") ?? ""}`;
 }
 
 function shouldSkipCodexMessage(role: AiMessageRole, text: string): boolean {
@@ -275,11 +343,16 @@ function shouldSkipCodexMessage(role: AiMessageRole, text: string): boolean {
   return false;
 }
 
-function extractCodexPayloadMessages(payload: Record<string, unknown>): Array<{ role: AiMessageRole; text: string }> {
+function extractCodexPayloadMessages(payload: Record<string, unknown>, sourceRef: string): CodexEventMessage[] {
   if (payload.type === "message") {
     const role = resolveCodexMessageRole(payload.role);
-    const text = extractPlainText(payload.content);
-    return text ? [{ role, text }] : [];
+    const attachments = extractMessageAttachments(payload.content, sourceRef);
+    const content = attachments.length && Array.isArray(payload.content)
+      ? payload.content.filter(part => !part || typeof part !== "object" || typeof part.text !== "string" || !/^<image(?:\s[^>]*)?>$|^<\/image>$/.test(part.text.trim()))
+      : payload.content;
+    const rawText = extractPlainText(content);
+    const text = attachments.length ? rawText.replace(/^(?:\[Image #\d+\]\s*)+/, "") : rawText;
+    return text || attachments.length ? [{ role, text, ...(attachments.length ? { attachments } : {}) }] : [];
   }
 
   if (payload.type === "reasoning") {
@@ -295,10 +368,15 @@ function extractCodexPayloadMessages(payload: Record<string, unknown>): Array<{ 
         : "tool";
     const argumentText = extractPlainText(payload.arguments ?? payload.args ?? payload.input);
     const text = argumentText ? `${name}: ${argumentText}` : `${name} called`;
-    return [{ role: "tool", text }];
+    return [{ role: "tool", text, toolName: name }];
   }
 
-  if (payload.type === "function_call_output" || payload.type === "tool_result") {
+  if (payload.type === "custom_tool_call") {
+    const toolCall = summarizeCodexCustomToolCall(payload);
+    return [{ role: "tool", text: toolCall.summary, toolName: toolCall.toolName, files: toolCall.files }];
+  }
+
+  if (payload.type === "function_call_output" || payload.type === "custom_tool_call_output" || payload.type === "tool_result") {
     const text = extractPlainText(payload.output ?? payload.result ?? payload.content ?? payload);
     return text ? [{ role: "tool", text }] : [];
   }
@@ -394,6 +472,7 @@ const CODEX_CURRENT_TASK_LENGTH = 80;
 interface CodexThreadMeta {
   threadId: string;
   parentThreadId: string | null;
+  isSubagent: boolean;
   agentNickname: string | null;
   cwd: string | null;
   startedAt: string | null;
@@ -423,6 +502,7 @@ async function readCodexSessionMeta(
     return {
       threadId,
       parentThreadId: typeof meta.parent_thread_id === "string" ? meta.parent_thread_id : null,
+      isSubagent: !!meta.source && typeof meta.source === "object" && "subagent" in meta.source,
       agentNickname: typeof meta.agent_nickname === "string" ? meta.agent_nickname : null,
       cwd: typeof meta.cwd === "string" ? meta.cwd : null,
       startedAt: toIsoString(meta.timestamp),

@@ -1,7 +1,7 @@
 # prepareNotificationDesktop.cjs의 새 격리 fixture가 필요하다. 정본 러너의 내부 녹화를 사용한다.
 appId: ${APP_ID}
 env:
-  DESKTOP_API_FROM_HOST: http://127.0.0.1:19736
+  DESKTOP_API_FROM_HOST: http://127.0.0.1:39736
   PROBE_API_FROM_HOST: http://127.0.0.1:19737
   EXPECT_UNREAD: "-1"
   EXPECT_TOTAL: "-1"

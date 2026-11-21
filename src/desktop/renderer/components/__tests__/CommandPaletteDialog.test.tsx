@@ -1,14 +1,22 @@
 import { useEffect, type ReactNode } from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router-dom";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BoardCommandProvider, useBoardCommands } from "@/desktop/renderer/components/BoardCommandProvider";
 import CommandPaletteDialog from "@/desktop/renderer/components/CommandPaletteDialog";
 import { TaskStatus } from "@/entities/KanbanTask";
 
 const mocks = vi.hoisted(() => ({
-  runBackgroundTaskSyncNow: vi.fn(),
+  startBackgroundTaskSyncNow: vi.fn(),
+  getBackgroundTaskSyncStatus: vi.fn(),
   setBoardViewMode: vi.fn(),
+  showActionStatus: vi.fn((_input: unknown) => "status-id"),
+  dismissActionStatus: vi.fn((_id: string) => {}),
+}));
+
+vi.mock("@/desktop/renderer/components/ActionStatusToast", () => ({
+  showActionStatus: (input: unknown) => mocks.showActionStatus(input),
+  dismissActionStatus: (id: string) => mocks.dismissActionStatus(id),
 }));
 
 vi.mock("next-intl", () => ({
@@ -18,7 +26,8 @@ vi.mock("next-intl", () => ({
 }));
 
 vi.mock("@/desktop/renderer/actions/backgroundTaskSync", () => ({
-  runBackgroundTaskSyncNow: (...args: unknown[]) => mocks.runBackgroundTaskSyncNow(...args),
+  startBackgroundTaskSyncNow: (...args: unknown[]) => mocks.startBackgroundTaskSyncNow(...args),
+  getBackgroundTaskSyncStatus: () => mocks.getBackgroundTaskSyncStatus(),
 }));
 
 vi.mock("@/desktop/renderer/actions/appSettings", () => ({
@@ -55,6 +64,7 @@ function BoardMoveHandlerHarness({
   useEffect(() => boardCommands.registerBoardHandlers({
     toggleNotificationCenter: () => {},
     openProjectFilter: () => {},
+    openDesktopFilter: () => {},
     openCreateTaskModal: () => {},
     moveFocusedTaskToStatus,
   }), [boardCommands, moveFocusedTaskToStatus]);
@@ -79,6 +89,10 @@ function getSearchInput() {
 }
 
 describe("CommandPaletteDialog", () => {
+  beforeEach(() => {
+    mocks.getBackgroundTaskSyncStatus.mockResolvedValue({ phase: "idle", isRunning: false, completedStages: 0, reviewNeeded: false, boardUpdated: false, error: null });
+    window.kanvibeDesktop = { onBoardEvent: vi.fn(() => vi.fn()) } as unknown as NonNullable<typeof window.kanvibeDesktop>;
+  });
   afterEach(() => {
     vi.clearAllMocks();
   });
@@ -123,7 +137,7 @@ describe("CommandPaletteDialog", () => {
   });
 
   it("Sync 행을 클릭하면 백그라운드 동기화를 정확히 1회 호출하고 다이얼로그가 닫힌다", async () => {
-    mocks.runBackgroundTaskSyncNow.mockResolvedValue(undefined);
+    mocks.startBackgroundTaskSyncNow.mockResolvedValue({ reviewNeeded: false, boardUpdated: false });
 
     renderWithRouter(
       <BoardCommandProvider>
@@ -134,8 +148,20 @@ describe("CommandPaletteDialog", () => {
     openPalette();
     fireEvent.click(screen.getByRole("button", { name: /commandPalette\.syncLabel/ }));
 
-    expect(mocks.runBackgroundTaskSyncNow).toHaveBeenCalledTimes(1);
+    expect(mocks.startBackgroundTaskSyncNow).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("다른 화면에서 시작한 sync 진행 중에는 명령을 실행하지 않는다", async () => {
+    mocks.getBackgroundTaskSyncStatus.mockResolvedValue({ phase: "pulls", isRunning: true, completedStages: 2, reviewNeeded: false, boardUpdated: false, error: null });
+    renderWithRouter(<BoardCommandProvider><CommandPaletteDialog /></BoardCommandProvider>);
+    openPalette();
+    const button = await screen.findByRole("button", { name: /commandPalette\.syncRunning/ });
+    expect(button.hasAttribute("disabled")).toBe(true);
+    fireEvent.click(button);
+    fireEvent.keyDown(getSearchInput(), { key: "Enter" });
+    expect(mocks.startBackgroundTaskSyncNow).not.toHaveBeenCalled();
+    expect(mocks.showActionStatus).not.toHaveBeenCalled();
   });
 
   it("task 상세 컨텍스트가 있으면 'Move to Review' 행 클릭이 그 task를 이동한다", () => {
@@ -245,7 +271,7 @@ describe("CommandPaletteDialog", () => {
     fireEvent.keyDown(input, { key: "ArrowDown" });
     fireEvent.keyDown(input, { key: "Enter" });
 
-    expect(mocks.runBackgroundTaskSyncNow).not.toHaveBeenCalled();
+    expect(mocks.startBackgroundTaskSyncNow).not.toHaveBeenCalled();
     expect(moveTaskToStatus).toHaveBeenCalledTimes(1);
     expect(moveTaskToStatus).toHaveBeenCalledWith(TaskStatus.PROGRESS);
   });

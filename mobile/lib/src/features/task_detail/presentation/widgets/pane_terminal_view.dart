@@ -1,6 +1,9 @@
+import '../../../../common/l10n/app_localizations.dart';
+
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -13,6 +16,8 @@ import '../../../../common/network/desktop_connection.dart';
 import '../../../../common/providers.dart';
 import '../../domain/mirror_pane.dart';
 import '../../../task_create/domain/session_type.dart';
+import '../pane_chat_shortcut.dart';
+import 'terminal_selection_overlay.dart';
 import 'terminal_soft_keyboard.dart';
 
 /// 선택한 pane을 화면 너비에 맞춰 표시한다.
@@ -21,8 +26,12 @@ class PaneTerminalView extends ConsumerStatefulWidget {
     required this.taskId,
     required this.pane,
     this.canResize = false,
+    this.canRefreshHistory = false,
+    this.canPrepareDirectConnection = true,
     this.sessionType = SessionType.terminal,
     this.canRespondToDeviceQueries = false,
+    this.isActive = true,
+    this.onToggleChat,
     super.key,
   });
 
@@ -30,7 +39,11 @@ class PaneTerminalView extends ConsumerStatefulWidget {
   final String taskId;
   final MirrorPane pane;
   final bool canResize;
+  final bool canRefreshHistory;
+  final bool canPrepareDirectConnection;
   final bool canRespondToDeviceQueries;
+  final bool isActive;
+  final VoidCallback? onToggleChat;
 
   @override
   ConsumerState<PaneTerminalView> createState() => _PaneTerminalViewState();
@@ -47,6 +60,7 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
   final _horizontalScroll = ScrollController();
   final _verticalScroll = ScrollController();
   final _terminalController = xterm.TerminalController();
+  final _terminalViewKey = GlobalKey<xterm.TerminalViewState>();
   bool _isParsingRemoteOutput = false;
   String _pendingEscape = '';
   final _deferredOutput = <String>[];
@@ -54,6 +68,10 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
   bool _isSuspended = false;
   bool _isShortcutBusy = false;
   int _streamGeneration = 0;
+  Completer<void>? _streamCancellation;
+  Size? _cellSize;
+  Offset? _touchedPosition;
+  bool _hasRequestedHistoryForTouch = false;
 
   static const _screenRedrawPrefix = '\x1b[H\x1b[2J\x1b[3J';
   static const _firstFrameTimeout = Duration(seconds: 15);
@@ -74,12 +92,16 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
     WidgetsBinding.instance.addObserver(this);
     _terminal = xterm.Terminal(
       maxLines: _scrollbackLines,
-      mouseHandler: const _TerminalWheelMouseHandler(),
+      mouseHandler: _TerminalWheelMouseHandler(
+        _readTouchedCell,
+        _scrollThroughMultiplexer,
+      ),
     );
     _terminal.resize(widget.pane.width, widget.pane.height);
     _terminalController.addListener(_applyDeferredRedraw);
 
     _terminal.onOutput = (data) {
+      if (!widget.isActive) return;
       // 멀티플렉서가 응답한 질의 원문도 미러에 남으므로 파싱 중 생긴 자동 응답만 막는다.
       if (_isParsingRemoteOutput && !widget.canRespondToDeviceQueries) return;
       if (_failureMessage == null) _stream?.write(data);
@@ -95,6 +117,10 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
   @override
   void didUpdateWidget(PaneTerminalView oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (!oldWidget.isActive && widget.isActive) {
+      _lastSentSize = null;
+      _sendViewport(_terminal.viewWidth, _terminal.viewHeight);
+    }
     if (widget.canResize &&
         (widget.pane.width != oldWidget.pane.width ||
             widget.pane.height != oldWidget.pane.height)) {
@@ -115,9 +141,58 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
   /// 데스크탑 터미널이 보관하는 양과 비슷하게 잡는다. 더 늘리면 폰 메모리만 먹는다
   static const _scrollbackLines = 2000;
 
+  /// 손가락이 닿은 칸. 휠 보고에 실어야 프로그램이 그 자리의 영역을 스크롤한다
+  xterm.CellOffset? _readTouchedCell() {
+    final position = _touchedPosition;
+    final cellSize = _cellSize;
+    if (position == null || cellSize == null) return null;
+    return xterm.CellOffset(
+      (position.dx ~/ cellSize.width).clamp(0, _terminal.viewWidth - 1),
+      (position.dy ~/ cellSize.height).clamp(0, _terminal.viewHeight - 1),
+    );
+  }
+
+  /// Herdr만 휠을 받아 pane 모드에 맞춰 나눠 주는 입구가 있다. 그 밖의 세션은 휠 보고를 원시 입력으로 보낸다
+  bool get _canMultiplexerTakeWheel => widget.sessionType == SessionType.herdr;
+
+  /// 멀티플렉서에 휠을 넘겼으면 true. 원시 휠 보고는 마우스 보고를 켜지 않은 프로그램에 글자로 찍히므로 이때는 입력으로 보내지 않는다
+  bool _scrollThroughMultiplexer(bool isUp, xterm.CellOffset position) {
+    if (!_canMultiplexerTakeWheel) return false;
+    if (widget.isActive && _failureMessage == null) {
+      _stream?.scroll(isUp: isUp, column: position.x, row: position.y);
+    }
+    return true;
+  }
+
+  void _startTouch(PointerDownEvent event) {
+    _touchedPosition = event.localPosition;
+    _hasRequestedHistoryForTouch = false;
+  }
+
+  /// 맨 아래에서 지난 출력을 올려 보기 시작하면 데스크탑에 최신 이력을 한 번 요청한다.
+  ///
+  /// 화면 프레임은 보이는 칸만 덮어써서 위로 밀려난 줄이 폰에 쌓이지 않는다.
+  /// 요청하지 않으면 올려 본 내용이 처음 연결했을 때의 출력에 머문다.
+  void _requestHistoryWhenScrollingBack(PointerMoveEvent event) {
+    final touchStart = _touchedPosition;
+    if (!widget.canRefreshHistory ||
+        _hasRequestedHistoryForTouch ||
+        touchStart == null ||
+        _terminal.isUsingAltBuffer ||
+        event.localPosition.dy - touchStart.dy <= kTouchSlop) {
+      return;
+    }
+    _hasRequestedHistoryForTouch = true;
+    final isShowingLatest =
+        !_verticalScroll.hasClients ||
+        _verticalScroll.offset >= _verticalScroll.position.maxScrollExtent - 1;
+    if (isShowingLatest) _stream?.refreshHistory();
+  }
+
   void _sendViewport(int cols, int rows) {
     final size = (cols: cols, rows: rows);
     if (!widget.canResize ||
+        !widget.isActive ||
         _stream == null ||
         _isSuspended ||
         _failureMessage != null ||
@@ -138,6 +213,7 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
         state == AppLifecycleState.detached) {
       _isSuspended = true;
       _streamGeneration += 1;
+      _cancelStreamPreparation();
       _firstFrameTimer?.cancel();
       unawaited(_subscription?.cancel());
       unawaited(_stream?.close());
@@ -147,10 +223,19 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
 
   Future<void> _openStream() async {
     final generation = ++_streamGeneration;
+    _cancelStreamPreparation();
+    final cancellation = Completer<void>();
+    _streamCancellation = cancellation;
     _pendingEscape = '';
     _deferredOutput.clear();
     _terminalController.clearSelection();
     _firstFrameTimer = Timer(_firstFrameTimeout, () {
+      if (generation != _streamGeneration) return;
+      _streamGeneration += 1;
+      _cancelStreamPreparation();
+      unawaited(_subscription?.cancel());
+      unawaited(_stream?.close());
+      _stream = null;
       _failStream('터미널 응답이 없습니다. 데스크탑 연결을 확인한 뒤 다시 연결해 주세요.');
     });
     try {
@@ -161,9 +246,22 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
         _failStream('데스크탑에 연결되어 있지 않습니다. 다시 페어링해 주세요.');
         return;
       }
-      final stream = ref
+      final stream = await ref
           .read(desktopClientProvider)
-          .openPaneStream(connection, widget.taskId, widget.pane.id);
+          .openPaneStream(
+            connection,
+            widget.taskId,
+            widget.pane.id,
+            cancelled: cancellation.future,
+            canPrepareDirectConnection: widget.canPrepareDirectConnection,
+          );
+      if (!mounted ||
+          _isSuspended ||
+          generation != _streamGeneration ||
+          _failureMessage != null) {
+        unawaited(stream.close());
+        return;
+      }
       _connection = connection;
       _stream = stream;
       _lastSentSize = null;
@@ -199,12 +297,41 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
       _deferredOutput.add(data);
       return;
     }
+    final lineCountBeforeWrite = _terminal.buffer.height;
     _isParsingRemoteOutput = true;
     try {
       _terminal.write(_normalizeLegacyTitles(data));
     } finally {
       _isParsingRemoteOutput = false;
     }
+    if (ref.exists(surfacesProvider(widget.taskId))) {
+      final surfaces = ref
+          .read(surfacesProvider(widget.taskId))
+          .value
+          ?.surfaces;
+      if (surfaces != null &&
+          surfaces.allPanes.any((pane) => pane.id == widget.pane.id)) {
+        unawaited(
+          ref.read(surfacesProvider(widget.taskId).notifier).enrichMetadata(),
+        );
+      }
+    }
+    if (widget.canRefreshHistory && data.startsWith(_screenRedrawPrefix)) {
+      _keepDistanceFromLatest(lineCountBeforeWrite);
+    }
+  }
+
+  /// 다시 받은 이력이 더 길면 늘어난 만큼 화면을 내려, 맨 아래에서 올려 본 거리를 지킨다.
+  ///
+  /// 그대로 두면 새로 받은 줄이 보던 자리와 최신 화면 사이에 끼어, 방금 지나간 줄 대신 처음 연결했을 때의 출력이 보인다.
+  void _keepDistanceFromLatest(int lineCountBeforeWrite) {
+    final cellSize = _cellSize;
+    if (cellSize == null || !_verticalScroll.hasClients) return;
+    final position = _verticalScroll.position;
+    // 맨 아래를 보는 중이면 터미널이 스스로 최신 줄을 따라간다
+    if (position.pixels >= position.maxScrollExtent - 1) return;
+    final addedLineCount = _terminal.buffer.height - lineCountBeforeWrite;
+    position.correctBy(addedLineCount * cellSize.height);
   }
 
   void _applyDeferredRedraw() {
@@ -244,6 +371,19 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
     }
   }
 
+  Future<void> _pasteClipboard() async {
+    // 선택이 남아 있으면 화면 다시 그리기가 보류되어 붙여넣은 결과가 보이지 않는다.
+    _terminalController.clearSelection();
+    try {
+      final clipboard = await Clipboard.getData(Clipboard.kTextPlain);
+      final text = clipboard?.text;
+      if (text == null || text.isEmpty || !mounted) return;
+      _terminal.paste(text);
+    } on PlatformException catch (error) {
+      debugPrint('터미널 붙여넣기 실패: ${error.code}');
+    }
+  }
+
   String _normalizeLegacyTitles(String data) {
     final combined = '$_pendingEscape$data';
     _pendingEscape = combined.endsWith('\x1b') ? '\x1b' : '';
@@ -256,7 +396,17 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
     return ready.replaceAll('\x1bk', '\x1b]2;');
   }
 
+  void _cancelStreamPreparation() {
+    final cancellation = _streamCancellation;
+    _streamCancellation = null;
+    if (cancellation != null && !cancellation.isCompleted) {
+      cancellation.complete();
+    }
+  }
+
   Future<void> _retryStream() async {
+    _streamGeneration += 1;
+    _cancelStreamPreparation();
     _firstFrameTimer?.cancel();
     unawaited(_subscription?.cancel());
     unawaited(_stream?.close());
@@ -310,6 +460,7 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
     _firstFrameTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _streamGeneration += 1;
+    _cancelStreamPreparation();
     _horizontalScroll.dispose();
     _verticalScroll.dispose();
     _terminalController.removeListener(_applyDeferredRedraw);
@@ -330,8 +481,8 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('단축키를 실행하지 못했습니다. 연결과 데스크탑 버전을 확인해 주세요.'),
+          SnackBar(
+            content: Text(context.tr('단축키를 실행하지 못했습니다. 연결과 데스크탑 버전을 확인해 주세요.')),
           ),
         );
       }
@@ -354,6 +505,7 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
     )..layout();
     final terminalWidth = (metrics.width / 10 * widget.pane.width)
         .ceilToDouble();
+    _cellSize = Size(metrics.width / 10, metrics.height);
     metrics.dispose();
 
     final terminalView = ColoredBox(
@@ -382,15 +534,43 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
                   child: Semantics(
                     identifier: 'pane-terminal',
                     label: '터미널 입력',
-                    child: xterm.TerminalView(
-                      _terminal,
+                    child: TerminalSelectionOverlay(
+                      terminal: _terminal,
                       controller: _terminalController,
-                      autoResize: widget.canResize,
-                      hardwareKeyboardOnly: true,
-                      scrollController: _verticalScroll,
-                      backgroundOpacity: 0,
-                      theme: _terminalTheme,
-                      textStyle: _textStyle,
+                      terminalViewKey: _terminalViewKey,
+                      verticalScroll: _verticalScroll,
+                      horizontalScroll: _horizontalScroll,
+                      isActive: widget.isActive,
+                      onCopy: _copySelection,
+                      onPaste: _pasteClipboard,
+                      child: Listener(
+                        onPointerDown: _startTouch,
+                        onPointerMove: _requestHistoryWhenScrollingBack,
+                        child: xterm.TerminalView(
+                          _terminal,
+                          key: _terminalViewKey,
+                          controller: _terminalController,
+                          autoResize: widget.canResize,
+                          hardwareKeyboardOnly: true,
+                          onKeyEvent: (_, event) {
+                            if (widget.isActive &&
+                                widget.onToggleChat != null &&
+                                paneChatShortcut(
+                                  Theme.of(context).platform,
+                                ).accepts(event, HardwareKeyboard.instance)) {
+                              widget.onToggleChat!();
+                              return KeyEventResult.handled;
+                            }
+                            return KeyEventResult.ignored;
+                          },
+                          scrollController: _verticalScroll,
+                          // 멀티플렉서가 휠을 받으면 마우스 모드가 꺼진 프로그램의 화살표 키 변환도 멀티플렉서가 맡는다
+                          simulateScroll: !_canMultiplexerTakeWheel,
+                          backgroundOpacity: 0,
+                          theme: _terminalTheme,
+                          textStyle: _textStyle,
+                        ),
+                      ),
                     ),
                   ),
                 ),
@@ -411,42 +591,14 @@ class _PaneTerminalViewState extends ConsumerState<PaneTerminalView>
             surfacesProvider(widget.taskId)
                 .select((state) => state.asData?.value.isMutating ?? false),
           ),
-      child: Stack(
-        children: [
-          terminalView,
-          Positioned(
-            top: 8,
-            right: 8,
-            child: ListenableBuilder(
-              listenable: _terminalController,
-              builder: (context, _) {
-                if (_terminalController.selection == null) {
-                  return const SizedBox.shrink();
-                }
-                return Material(
-                  color: AppColors.bgSurface,
-                  borderRadius: BorderRadius.circular(8),
-                  child: TextButton.icon(
-                    onPressed: _copySelection,
-                    style: TextButton.styleFrom(
-                      minimumSize: const Size(48, 48),
-                    ),
-                    icon: const Icon(Icons.copy),
-                    label: const Text('복사'),
-                  ),
-                );
-              },
-            ),
-          ),
-        ],
-      ),
+      child: terminalView,
     );
   }
 }
 
 const _terminalTheme = xterm.TerminalTheme(
   cursor: AppColors.brandPrimary,
-  selection: AppColors.brandSubtle,
+  selection: AppColors.terminalSelection,
   foreground: AppColors.textPrimary,
   background: AppColors.terminalBg,
   black: Color(0xFF3B3F49),
@@ -487,12 +639,19 @@ class _PaneStreamFailure extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                message,
+                context.tr(message),
                 textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodyMedium,
+                style: Theme.of(context).textTheme.bodyMedium
+                    ?.copyWith(color: AppColors.textPrimary),
               ),
               const SizedBox(height: 16),
-              TextButton(onPressed: onRetry, child: const Text('다시 연결')),
+              TextButton(
+                onPressed: onRetry,
+                style: TextButton.styleFrom(
+                  foregroundColor: AppColors.textPrimary,
+                ),
+                child: Text(context.tr('다시 연결')),
+              ),
             ],
           ),
         ),
@@ -501,14 +660,42 @@ class _PaneStreamFailure extends StatelessWidget {
   }
 }
 
-// xterm 4.0.0의 휠 ID에는 Shift 비트가 잘못 포함되어 원격 프로그램이 스크롤을 무시한다.
+// xterm 4.0.0의 휠 보고에는 결함이 둘 있다. 휠 ID에 Shift 비트가 잘못 포함되어 원격 프로그램이 스크롤을 무시하고,
+// 화면 전체 기준 위치를 터미널 안 위치로 읽어 휠이 실제로 닿은 칸보다 아래쪽 칸을 가리킨다.
 // https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Wheel-mice
 class _TerminalWheelMouseHandler extends xterm.TerminalMouseHandler {
-  const _TerminalWheelMouseHandler();
+  const _TerminalWheelMouseHandler(
+    this._readTouchedCell,
+    this._scrollThroughMultiplexer,
+  );
+
+  final xterm.CellOffset? Function() _readTouchedCell;
+  final bool Function(bool isUp, xterm.CellOffset position)
+  _scrollThroughMultiplexer;
 
   @override
   String? call(xterm.TerminalMouseEvent event) {
-    final output = xterm.defaultMouseHandler(event);
+    final touchedCell = event.button.isWheel ? _readTouchedCell() : null;
+    final locatedEvent = touchedCell == null
+        ? event
+        : xterm.TerminalMouseEvent(
+            button: event.button,
+            buttonState: event.buttonState,
+            position: touchedCell,
+            state: event.state,
+            platform: event.platform,
+          );
+    final isVerticalWheel =
+        event.button == xterm.TerminalMouseButton.wheelUp ||
+        event.button == xterm.TerminalMouseButton.wheelDown;
+    if (isVerticalWheel &&
+        _scrollThroughMultiplexer(
+          event.button == xterm.TerminalMouseButton.wheelUp,
+          locatedEvent.position,
+        )) {
+      return null;
+    }
+    final output = xterm.defaultMouseHandler(locatedEvent);
     if (output == null || !event.button.isWheel) return output;
     final button = event.button.id - 4;
     return switch (event.state.mouseReportMode) {

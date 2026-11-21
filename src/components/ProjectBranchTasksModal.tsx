@@ -8,6 +8,7 @@ import { navigateToTaskDetail } from "@/desktop/renderer/utils/taskNavigation";
 import { TaskStatus } from "@/entities/KanbanTask";
 import type { KanbanTask } from "@/entities/KanbanTask";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
+import InlineLoadError from "@/components/InlineLoadError";
 
 interface ProjectBranchTasksModalProps {
   projectId: string;
@@ -26,6 +27,7 @@ export default function ProjectBranchTasksModal({
   onClose,
 }: ProjectBranchTasksModalProps) {
   const t = useTranslations("board.columns");
+  const tc = useTranslations("common");
   const router = useRouter();
   const pathname = usePathname();
   const [tasksByStatus, setTasksByStatus] = useState<Record<TaskStatus, KanbanTask[]>>({
@@ -36,6 +38,9 @@ export default function ProjectBranchTasksModal({
     [TaskStatus.DONE]: [],
   }); // 모달에서는 TODO, PENDING, REVIEW만 표시
   const [isLoading, setIsLoading] = useState(true);
+  /** 조회 실패를 작업 없음과 구분한다. 실패를 빈 칸으로 보이면 작업이 없다고 오해한다 */
+  const [loadFailureReason, setLoadFailureReason] = useState<string | null>(null);
+  const [reloadSignal, setReloadSignal] = useState(0);
 
   useEscapeKey(onClose);
 
@@ -60,13 +65,21 @@ export default function ProjectBranchTasksModal({
         });
 
         setTasksByStatus(filtered);
+        setLoadFailureReason(null);
       } catch (error) {
         console.error("Failed to load tasks:", error);
+        setLoadFailureReason(error instanceof Error ? error.message : String(error));
       } finally {
         setIsLoading(false);
       }
     })();
-  }, [projectId]);
+  }, [projectId, reloadSignal]);
+
+  const retryLoadTasks = () => {
+    setIsLoading(true);
+    setLoadFailureReason(null);
+    setReloadSignal((count) => count + 1);
+  };
 
   const handleTaskClick = async (taskId: string) => {
     await navigateToTaskDetail(taskId, {
@@ -115,6 +128,13 @@ export default function ProjectBranchTasksModal({
         {isLoading ? (
           <div className="flex-1 flex items-center justify-center">
             <p className="text-sm text-text-secondary">로딩 중...</p>
+          </div>
+        ) : loadFailureReason !== null ? (
+          <div className="flex-1 p-6">
+            <InlineLoadError
+              message={tc("loadFailed", { reason: loadFailureReason })}
+              onRetry={retryLoadTasks}
+            />
           </div>
         ) : (
           <div className="flex-1 overflow-x-auto p-6">

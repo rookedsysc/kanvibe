@@ -1,3 +1,6 @@
+import 'sync_review_screen.dart';
+import '../../../common/l10n/app_localizations.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -8,8 +11,10 @@ import '../../../common/constants/app_sizes.dart';
 import '../../../common/providers.dart';
 import '../../task_detail/presentation/task_detail_screen.dart';
 import '../application/notification_inbox_controller.dart';
+import '../application/background_sync_controller.dart';
 import '../application/notification_navigation_controller.dart';
 import '../domain/inbox_notification.dart';
+import 'background_sync_card.dart';
 
 const _notificationButtonConstraints = BoxConstraints(
   minWidth: AppSizes.minTouchTarget,
@@ -26,20 +31,36 @@ class NotificationCenterButton extends ConsumerWidget {
         (value) => value.value?.unreadCount ?? 0,
       ),
     );
+    final connection = ref.watch(
+      connectionControllerProvider.select(
+        (value) => value.value?.activeConnection,
+      ),
+    );
+    final syncRunning = ref.watch(
+      backgroundSyncProvider.select((value) {
+        final snapshot = value.value;
+        return snapshot?.belongsTo(connection) == true &&
+            (snapshot!.isStarting || snapshot.status.isRunning);
+      }),
+    );
     return Semantics(
       identifier: 'notification-center',
       child: IconButton(
         constraints: _notificationButtonConstraints,
         onPressed: () => Navigator.of(context).push(
-          MaterialPageRoute<void>(
-            builder: (_) => const NotificationCenterScreen(),
-          ),
+          MaterialPageRoute<void>(builder: (_) => NotificationCenterScreen()),
         ),
-        tooltip: '알림',
+        tooltip: context.tr('알림'),
         icon: Badge(
-          isLabelVisible: unread > 0,
-          label: Text(unread > 99 ? '99+' : '$unread'),
-          child: const Icon(Icons.notifications_outlined),
+          isLabelVisible: unread > 0 || syncRunning,
+          label: syncRunning
+              ? Icon(
+                  Icons.sync,
+                  size: 12,
+                  semanticLabel: context.tr('백그라운드 동기화 진행 중'),
+                )
+              : Text(unread > 99 ? '99+' : '$unread'),
+          child: Icon(Icons.notifications_outlined),
         ),
       ),
     );
@@ -106,6 +127,11 @@ class _NotificationCenterScreenState
       if (current?.id != connection.id || current?.token != connection.token) {
         return;
       }
+      if (notification.hasSyncReview) {
+        setState(() => _openingId = null);
+        await showSyncReviewDialog(context, notification.id);
+        return;
+      }
       final taskId = notification.taskId;
       if (taskId == null) return;
       final destination = await _navigation.prepareTaskDestination(
@@ -144,7 +170,7 @@ class _NotificationCenterScreenState
   void _showError(String message) {
     if (mounted) {
       ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(message)));
+          .showSnackBar(SnackBar(content: Text(context.tr(message))));
     }
   }
 
@@ -168,7 +194,7 @@ class _NotificationCenterScreenState
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('알림'),
+            Text(context.tr('알림')),
             if (connection != null)
               Text(
                 connection.displayName,
@@ -180,91 +206,124 @@ class _NotificationCenterScreenState
         ),
         actions: [
           IconButton(
-            tooltip: '알림 설정',
+            tooltip: context.tr('알림 설정'),
             onPressed: connection == null
                 ? null
                 : () => Navigator.of(context).push(
                     MaterialPageRoute<void>(
-                      builder: (_) => const NotificationSettingsScreen(),
+                      builder: (_) => NotificationSettingsScreen(),
                     ),
                   ),
-            icon: const Icon(Icons.settings_outlined),
+            icon: Icon(Icons.settings_outlined),
           ),
           Semantics(
             identifier: 'notifications-mark-all-read',
             child: IconButton(
               constraints: _notificationButtonConstraints,
-              tooltip: '모두 읽음',
+              tooltip: context.tr('모두 읽음'),
               onPressed: isUpdating || (inbox.value?.unreadCount ?? 0) == 0
                   ? null
                   : _markAllRead,
-              icon: const Icon(Icons.done_all),
+              icon: Icon(Icons.done_all),
             ),
           ),
           IconButton(
             constraints: _notificationButtonConstraints,
-            tooltip: '새로고침',
+            tooltip: context.tr('새로고침'),
             onPressed: isUpdating
                 ? null
                 : () => ref.invalidate(notificationInboxProvider),
-            icon: const Icon(Icons.refresh),
+            icon: Icon(Icons.refresh),
           ),
         ],
       ),
       body: SafeArea(
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: AppSizes.p16),
-              child: Wrap(
-                spacing: AppSizes.p8,
-                children: [
-                  Semantics(
-                    identifier: 'notifications-all',
-                    child: ChoiceChip(
-                      label: const Text('전체'),
-                      selectedColor: AppColors.brandSubtle,
-                      checkmarkColor: AppColors.brandPrimary,
-                      labelStyle: const TextStyle(color: AppColors.textPrimary),
-                      selected: !_unreadOnly,
-                      onSelected: (_) => setState(() => _unreadOnly = false),
+        child: RefreshIndicator(
+          onRefresh: () => ref.refresh(notificationInboxProvider.future),
+          child: CustomScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            slivers: [
+              SliverToBoxAdapter(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Padding(
+                      padding: EdgeInsets.fromLTRB(
+                        AppSizes.p12,
+                        AppSizes.p8,
+                        AppSizes.p12,
+                        AppSizes.p8,
+                      ),
+                      child: BackgroundSyncCard(),
                     ),
-                  ),
-                  Semantics(
-                    identifier: 'notifications-unread',
-                    child: ChoiceChip(
-                      label: const Text('안 읽음'),
-                      selectedColor: AppColors.brandSubtle,
-                      checkmarkColor: AppColors.brandPrimary,
-                      labelStyle: const TextStyle(color: AppColors.textPrimary),
-                      selected: _unreadOnly,
-                      onSelected: (_) => setState(() => _unreadOnly = true),
+                    Padding(
+                      padding: EdgeInsets.symmetric(horizontal: AppSizes.p16),
+                      child: Wrap(
+                        spacing: AppSizes.p8,
+                        children: [
+                          Semantics(
+                            identifier: 'notifications-all',
+                            child: ChoiceChip(
+                              label: Text(context.tr('전체')),
+                              selectedColor: AppColors.brandSubtle,
+                              checkmarkColor: AppColors.brandPrimary,
+                              labelStyle: TextStyle(
+                                color: context.colors.textPrimary,
+                              ),
+                              selected: !_unreadOnly,
+                              onSelected: (_) =>
+                                  setState(() => _unreadOnly = false),
+                            ),
+                          ),
+                          Semantics(
+                            identifier: 'notifications-unread',
+                            child: ChoiceChip(
+                              label: Text(context.tr('안 읽음')),
+                              selectedColor: AppColors.brandSubtle,
+                              checkmarkColor: AppColors.brandPrimary,
+                              labelStyle: TextStyle(
+                                color: context.colors.textPrimary,
+                              ),
+                              selected: _unreadOnly,
+                              onSelected: (_) =>
+                                  setState(() => _unreadOnly = true),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-            if (isUpdating) const LinearProgressIndicator(),
-            Expanded(
-              child: inbox.when(
-                loading: () => const Center(child: CircularProgressIndicator()),
-                error: (_, _) => Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(AppSizes.p24),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Text(
-                          '알림을 불러오지 못했습니다.\nPC 연결과 데스크톱 앱 버전을 확인해 주세요.',
-                          textAlign: TextAlign.center,
-                        ),
-                        const SizedBox(height: AppSizes.p16),
-                        FilledButton(
-                          onPressed: () =>
-                              ref.invalidate(notificationInboxProvider),
-                          child: const Text('다시 시도'),
-                        ),
-                      ],
+              if (isUpdating)
+                const SliverToBoxAdapter(child: LinearProgressIndicator()),
+              inbox.when(
+                loading: () => const SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: Center(child: CircularProgressIndicator()),
+                ),
+                error: (_, _) => SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(AppSizes.p24),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            context.tr(
+                              '알림을 불러오지 못했습니다.\nPC 연결과 데스크톱 앱 버전을 확인해 주세요.',
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: AppSizes.p16),
+                          FilledButton(
+                            onPressed: () =>
+                                ref.invalidate(notificationInboxProvider),
+                            child: Text(context.tr('다시 시도')),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -272,12 +331,9 @@ class _NotificationCenterScreenState
                   final visible = snapshot.notifications
                       .where((entry) => !_unreadOnly || !entry.isRead)
                       .toList();
-                  return RefreshIndicator(
-                    onRefresh: () =>
-                        ref.refresh(notificationInboxProvider.future),
-                    child: ListView.separated(
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      padding: const EdgeInsets.all(AppSizes.p16),
+                  return SliverPadding(
+                    padding: const EdgeInsets.all(AppSizes.p16),
+                    sliver: SliverList.separated(
                       itemCount: visible.isEmpty ? 1 : visible.length,
                       separatorBuilder: (_, _) => const Divider(),
                       itemBuilder: (context, index) => visible.isEmpty
@@ -304,8 +360,8 @@ class _NotificationCenterScreenState
                   );
                 },
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -342,7 +398,7 @@ class _NotificationRow extends StatelessWidget {
               ? Icons.notifications_none
               : Icons.mark_email_unread_outlined,
           color: notification.isRead
-              ? AppColors.textSecondary
+              ? context.colors.textSecondary
               : AppColors.brandPrimary,
         ),
         title: Text(
@@ -357,13 +413,16 @@ class _NotificationRow extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(notification.body),
-            const SizedBox(height: AppSizes.p4),
+            SizedBox(height: AppSizes.p4),
             Text(timestamp, style: Theme.of(context).textTheme.labelSmall),
-            if (notification.taskId == null) const Text('데스크톱에서 확인'),
+            if (notification.hasSyncReview)
+              Text(context.tr('동기화 결과 검토'))
+            else if (notification.taskId == null)
+              Text(context.tr('데스크톱에서 확인')),
           ],
         ),
         trailing: isOpening
-            ? const SizedBox(
+            ? SizedBox(
                 width: AppSizes.p24,
                 height: AppSizes.p24,
                 child: CircularProgressIndicator(),
@@ -374,9 +433,9 @@ class _NotificationRow extends StatelessWidget {
                 identifier: 'notification-mark-read-${notification.id}',
                 child: IconButton(
                   constraints: _notificationButtonConstraints,
-                  tooltip: '읽음 처리',
+                  tooltip: context.tr('읽음 처리'),
                   onPressed: onMarkRead,
-                  icon: const Icon(Icons.done),
+                  icon: Icon(Icons.done),
                 ),
               ),
       ),

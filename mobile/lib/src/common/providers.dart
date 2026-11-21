@@ -94,6 +94,10 @@ class ConnectionController extends AsyncNotifier<SavedConnections> {
     );
   }
 
+  Future<void> rename(String id, String name) async {
+    await _change((registry) => registry.rename(id, name));
+  }
+
   /// 지정한 PC를 데스크탑과 이 기기 양쪽에서 제거한다.
   ///
   /// PC가 꺼져 있어도 로컬 목록에서는 제거하고, 원격 해제 실패 여부를 화면에 돌려준다.
@@ -222,6 +226,7 @@ class TaskSurfacesController extends AsyncNotifier<TaskSurfacesState> {
 
   final String taskId;
   int _generation = 0;
+  int _metadataRequestedGeneration = -1;
 
   @override
   Future<TaskSurfacesState> build() async {
@@ -236,12 +241,80 @@ class TaskSurfacesController extends AsyncNotifier<TaskSurfacesState> {
     try {
       final surfaces = await ref
           .read(desktopClientProvider)
-          .fetchSurfaces(connection, taskId);
+          .fetchSurfaces(connection, taskId, minimal: true);
       return TaskSurfacesState(surfaces);
     } on DesktopRequestException catch (error) {
       await _forgetRejectedConnection(ref, error, connection);
       rethrow;
     }
+  }
+
+  Future<void> enrichMetadata() async {
+    if (state.isLoading ||
+        !state.hasValue ||
+        state.requireValue.isMutating ||
+        _metadataRequestedGeneration == _generation) {
+      return;
+    }
+    final previous = state.requireValue;
+    final generation = _generation;
+    _metadataRequestedGeneration = generation;
+    try {
+      final connection = (await ref.read(connectionControllerProvider.future))
+          .activeConnection;
+      if (connection == null ||
+          !ref.mounted ||
+          generation != _generation ||
+          !identical(state.value, previous)) {
+        return;
+      }
+      final surfaces = await ref
+          .read(desktopClientProvider)
+          .fetchSurfaces(connection, taskId);
+      if (!ref.mounted ||
+          generation != _generation ||
+          !identical(state.value, previous)) {
+        return;
+      }
+      state = AsyncData(TaskSurfacesState(surfaces));
+    } catch (_) {
+      // Labels are optional after the terminal is usable; failure must retain the current surface state.
+    }
+  }
+
+  Future<TaskSurfaces?> loadTabGeometry(String tabId) async {
+    if (state.isLoading || !state.hasValue || state.requireValue.isMutating) {
+      return null;
+    }
+    final previous = state.requireValue;
+    final generation = _generation;
+    final connection = (await ref.read(connectionControllerProvider.future))
+        .activeConnection;
+    if (connection == null) throw const DesktopDisconnectedException();
+    if (!ref.mounted ||
+        generation != _generation ||
+        !identical(state.value, previous)) {
+      return null;
+    }
+    final surfaces = await ref
+        .read(desktopClientProvider)
+        .fetchSurfaces(connection, taskId, minimal: true, tabId: tabId);
+    final tab = surfaces.tabs.where((tab) => tab.id == tabId).firstOrNull;
+    if ((surfaces.geometryTabId != null && surfaces.geometryTabId != tabId) ||
+        tab == null ||
+        tab.panes.isEmpty ||
+        tab.panes.any((pane) => pane.width <= 0 || pane.height <= 0)) {
+      throw const SurfaceUnavailableException(
+        SurfaceUnavailableReason.sessionNotRunning,
+      );
+    }
+    if (!ref.mounted ||
+        generation != _generation ||
+        !identical(state.value, previous)) {
+      return null;
+    }
+    state = AsyncData(TaskSurfacesState(surfaces));
+    return surfaces;
   }
 
   Future<void> startSession() async {
@@ -370,6 +443,47 @@ class TaskSurfacesController extends AsyncNotifier<TaskSurfacesState> {
     return processNames is List
         ? processNames.whereType<String>().toList()
         : [];
+  }
+
+  /// 데스크탑 앱 설정에 저장된 이 태스크의 pane별 채팅 모드를 읽는다. true가 채팅 UI, false가 직접 터미널로 되돌린 pane이다.
+  ///
+  /// 명령을 모르는 데스크탑이거나 조회가 실패하면 그대로 던져, 호출한 화면이 기록이 없는 것처럼 처리하도록 한다.
+  Future<Map<String, bool>> fetchPaneChatModes() async {
+    final connection = (await ref.read(connectionControllerProvider.future))
+        .activeConnection;
+    if (connection == null) {
+      throw const SurfaceUnavailableException(
+        SurfaceUnavailableReason.noSession,
+      );
+    }
+    final result = await ref
+        .read(desktopClientProvider)
+        .runCommand(connection, DesktopCommand.getPaneChatModes(taskId));
+    final modes = result['modes'];
+    return modes is Map
+        ? {
+            for (final entry in modes.entries)
+              if (entry.key is String && entry.value is bool)
+                entry.key as String: entry.value as bool,
+          }
+        : {};
+  }
+
+  /// pane 하나의 채팅 모드를 데스크탑 앱 설정에 저장한다. 실패는 호출한 화면이 처리한다.
+  Future<void> updatePaneChatMode(String paneId, bool isEnabled) async {
+    final connection = (await ref.read(connectionControllerProvider.future))
+        .activeConnection;
+    if (connection == null) {
+      throw const SurfaceUnavailableException(
+        SurfaceUnavailableReason.noSession,
+      );
+    }
+    await ref
+        .read(desktopClientProvider)
+        .runCommand(
+          connection,
+          DesktopCommand.setPaneChatMode(taskId, paneId, isEnabled),
+        );
   }
 
   /// pane 하나를 닫고 갱신된 탭 목록을 상태에 싣는다. 건너뛰었거나 화면이 바뀌었으면 null이다.

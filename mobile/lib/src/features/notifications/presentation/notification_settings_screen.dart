@@ -1,3 +1,5 @@
+import '../../../common/l10n/app_localizations.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -23,7 +25,7 @@ class _NotificationSettingsScreenState
         .save(isEnabled: isEnabled, enabledStatuses: enabledStatuses);
     if (!mounted || saved) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('설정을 저장하지 못했습니다. 다시 시도해 주세요.')),
+      SnackBar(content: Text(context.tr('설정을 저장하지 못했습니다. 다시 시도해 주세요.'))),
     );
   }
 
@@ -35,69 +37,69 @@ class _NotificationSettingsScreenState
         .value
         ?.activeConnection;
     return Scaffold(
-      appBar: AppBar(title: const Text('알림 설정')),
+      appBar: AppBar(title: Text(context.tr('알림 설정'))),
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 640),
+            constraints: BoxConstraints(maxWidth: 640),
             child: settings.when(
-              loading: () => const Center(child: CircularProgressIndicator()),
+              loading: () => Center(child: CircularProgressIndicator()),
               error: (_, _) => Center(
                 child: Padding(
-                  padding: const EdgeInsets.all(AppSizes.p24),
+                  padding: EdgeInsets.all(AppSizes.p24),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Text(
-                        '알림 설정을 불러오지 못했습니다.',
+                      Text(
+                        context.tr('알림 설정을 불러오지 못했습니다.'),
                         textAlign: TextAlign.center,
                       ),
-                      const SizedBox(height: AppSizes.p8),
-                      const Text(
-                        'PC 연결과 데스크탑 앱 버전을 확인해 주세요.',
+                      SizedBox(height: AppSizes.p8),
+                      Text(
+                        context.tr('PC 연결과 데스크탑 앱 버전을 확인해 주세요.'),
                         textAlign: TextAlign.center,
                       ),
-                      const SizedBox(height: AppSizes.p16),
+                      SizedBox(height: AppSizes.p16),
                       TextButton(
                         onPressed: () =>
                             ref.invalidate(notificationSettingsProvider),
-                        child: const Text('다시 시도'),
+                        child: Text(context.tr('다시 시도')),
                       ),
                     ],
                   ),
                 ),
               ),
               data: (preferences) => ListView(
-                padding: const EdgeInsets.all(AppSizes.p16),
+                padding: EdgeInsets.all(AppSizes.p16),
                 children: [
                   Text(
                     connection?.displayName ?? '연결된 PC',
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
-                  const SizedBox(height: AppSizes.p8),
-                  const Text('이 PC의 데스크탑과 모바일에 함께 적용됩니다.'),
-                  const SizedBox(height: AppSizes.p24),
+                  SizedBox(height: AppSizes.p8),
+                  Text(context.tr('이 PC의 데스크탑과 모바일에 함께 적용됩니다.')),
+                  SizedBox(height: AppSizes.p24),
                   Semantics(
                     identifier: 'notification-enabled',
                     child: SwitchListTile.adaptive(
                       activeTrackColor: AppColors.brandPrimary,
                       contentPadding: EdgeInsets.zero,
-                      title: const Text('상태 변경 알림'),
-                      subtitle: const Text('선택한 상태가 되면 알림을 받습니다.'),
+                      title: Text(context.tr('상태 변경 알림')),
+                      subtitle: Text(context.tr('선택한 상태가 되면 알림을 받습니다.')),
                       value: preferences.isEnabled,
                       onChanged: preferences.isSaving
                           ? null
                           : (value) => _update(isEnabled: value),
                     ),
                   ),
-                  const SizedBox(height: AppSizes.p24),
+                  SizedBox(height: AppSizes.p24),
                   Text(
-                    '알림을 받을 상태',
+                    context.tr('알림을 받을 상태'),
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
-                  const SizedBox(height: AppSizes.p8),
+                  SizedBox(height: AppSizes.p8),
                   Material(
-                    color: AppColors.bgSurface,
+                    color: context.colors.bgSurface,
                     child: Column(
                       children: [
                         for (final status in TaskStatus.values)
@@ -132,7 +134,7 @@ class _NotificationSettingsScreenState
                       ],
                     ),
                   ),
-                  const SizedBox(height: AppSizes.p16),
+                  SizedBox(height: AppSizes.p16),
                   Text(
                     preferences.isSaving
                         ? '저장 중…'

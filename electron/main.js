@@ -7,17 +7,17 @@ const os = require("node:os");
 const path = require("node:path");
 const process = require("node:process");
 const { pathToFileURL } = require("node:url");
-const { app, BrowserWindow, clipboard, ipcMain, powerMonitor, session, shell } = require("electron");
+const { app, BrowserWindow, clipboard, ipcMain, Menu, powerMonitor, session, shell } = require("electron");
 const { createDesktopDiagnostics, resolveDesktopLogPath, serializeErrorForLog } = require("./diagnostics");
-const { applyAppDataDirectoryOverride } = require("./runtimeEnvironment");
+const { applyAppDataDirectoryOverride, resolveHookServerPort } = require("./runtimeEnvironment");
+const { prepareDevelopmentDatabase } = require("./developmentDatabase");
+const { getUserWindows } = require("./diagramWorkerWindows");
 
 const DEFAULT_LOCALE = "ko";
 const APP_ICON_PATH = path.join(app.getAppPath(), "public", "branding", "app-icon.png");
 const RENDERER_DEV_URL = process.env.KANVIBE_RENDERER_URL || null;
 const SHOULD_USE_SOURCE_MODULES = Boolean(RENDERER_DEV_URL);
-const DEV_HOOK_SERVER_PORT = 19736;
-const PACKAGED_HOOK_SERVER_PORT = 9736;
-const HOOK_SERVER_PORT = SHOULD_USE_SOURCE_MODULES ? DEV_HOOK_SERVER_PORT : PACKAGED_HOOK_SERVER_PORT;
+const HOOK_SERVER_PORT = resolveHookServerPort(app, process.env);
 /** 모바일 E2E가 페어링 코드를 직접 받아 가는 경로는 소스로 띄운 개발 실행에서만 연다. `pnpm start`와 패키지된 앱에는 없다 */
 const IS_DEV_PAIRING_ROUTE_ENABLED = SHOULD_USE_SOURCE_MODULES && !app.isPackaged;
 const RENDERER_ABORT_RECOVERY_TIMEOUT_MS = 1000;
@@ -161,7 +161,7 @@ function attachRendererDiagnostics(browserWindow) {
 registerProcessDiagnostics();
 
 function broadcastNotificationsChanged() {
-  for (const window of BrowserWindow.getAllWindows()) {
+  for (const window of getUserWindows(BrowserWindow)) {
     if (!window.isDestroyed()) {
       window.webContents.send("kanvibe:notifications-changed");
     }
@@ -170,7 +170,7 @@ function broadcastNotificationsChanged() {
 
 /** 단축키 재배정은 저장한 창만이 아니라 열려 있는 모든 창의 렌더러 캐시에 반영돼야 한다 */
 function broadcastShortcutBindingsChanged() {
-  for (const window of BrowserWindow.getAllWindows()) {
+  for (const window of getUserWindows(BrowserWindow)) {
     if (!window.isDestroyed()) {
       window.webContents.send("kanvibe:shortcut-bindings-changed");
     }
@@ -178,7 +178,7 @@ function broadcastShortcutBindingsChanged() {
 }
 
 function broadcastNotificationActivated(appNotification) {
-  for (const window of BrowserWindow.getAllWindows()) {
+  for (const window of getUserWindows(BrowserWindow)) {
     sendNotificationActivated(window, appNotification);
   }
 }
@@ -435,7 +435,7 @@ function normalizeNotificationLocale(locale) {
 function getDesktopNotificationLocale() {
   const activeWindow = mainWindow && !mainWindow.isDestroyed()
     ? mainWindow
-    : BrowserWindow.getAllWindows().find((window) => !window.isDestroyed()) || null;
+    : getUserWindows(BrowserWindow).find((window) => !window.isDestroyed()) || null;
 
   const currentUrl = activeWindow?.webContents.getURL() || "";
   const matchedLocale = currentUrl.match(/#\/([^/?#]+)/)?.[1];
@@ -461,7 +461,7 @@ function getNotificationTargetPath(appNotification) {
 }
 
 function getAvailableWindows() {
-  return BrowserWindow.getAllWindows().filter((window) => !window.isDestroyed());
+  return getUserWindows(BrowserWindow).filter((window) => !window.isDestroyed());
 }
 
 function focusWindow(window) {
@@ -712,6 +712,14 @@ function attachWindowHandlers(browserWindow) {
     registerAppWindow(childWindow);
   });
 
+  /**
+   * 창 안에 넣은 문서는 스스로 다른 주소로 옮겨 가지 못한다.
+   * 채팅 파일 미리보기가 AI가 만든 HTML을 실행하므로, 그 문서가 주소를 바꿔 파일 내용을 밖으로 실어 보내는 길을 막는다.
+   */
+  browserWindow.webContents.on("will-frame-navigate", (event) => {
+    if (!event.isMainFrame) event.preventDefault();
+  });
+
   browserWindow.webContents.on("before-input-event", (event, input) => {
     const {
       getShortcutPlatformFromProcessPlatform,
@@ -796,6 +804,12 @@ function attachWindowHandlers(browserWindow) {
       event.preventDefault();
 
       browserWindow.webContents.send("kanvibe:task-detail-dock-shortcut", taskDetailDockShortcutIndex);
+      return;
+    }
+
+    if (shortcutCommand === "terminalToggleChat" && isTaskDetailRoute) {
+      event.preventDefault();
+      browserWindow.webContents.send("kanvibe:terminal-toggle-chat-shortcut");
       return;
     }
 
@@ -976,6 +990,24 @@ function registerDesktopHandlers() {
     event.returnValue = image.isEmpty() ? null : `data:image/png;base64,${image.toPNG().toString("base64")}`;
   });
 
+  /**
+   * Electron은 우클릭 메뉴를 기본으로 띄우지 않는다. 메인 프로세스는 우클릭한 자리가 어느 화면인지 알 수 없으므로
+   * 렌더러가 보낸 상태대로 OS 편집 메뉴를 보낸 창에 연다. role 항목이라 복사와 붙여넣기는 OS가 직접 수행한다.
+   */
+  ipcMain.on("kanvibe:text-context-menu", (event, request) => {
+    const senderWindow = BrowserWindow.fromWebContents(event.sender);
+    if (!senderWindow || senderWindow.isDestroyed()) return;
+    const isEditable = request?.isEditable === true;
+    const hasSelection = request?.hasSelection === true;
+    Menu.buildFromTemplate([
+      { role: "cut", visible: isEditable, enabled: hasSelection },
+      { role: "copy", enabled: hasSelection },
+      { role: "paste", visible: isEditable },
+      { type: "separator" },
+      { role: "selectAll" },
+    ]).popup({ window: senderWindow });
+  });
+
   ipcMain.handle("kanvibe:ai-login-open", async (event, provider, accountRoot, cols, rows) => {
     return openAiAccountLogin(event.sender, provider, accountRoot, cols, rows);
   });
@@ -1040,7 +1072,7 @@ function registerBoardEventForwarding() {
         console.error("[kanvibe] board event notification failed:", error);
       }
 
-      for (const window of BrowserWindow.getAllWindows()) {
+      for (const window of getUserWindows(BrowserWindow)) {
         if (!window.isDestroyed()) {
           window.webContents.send("kanvibe:board-event", payload);
         }
@@ -1059,6 +1091,9 @@ async function startHookServer() {
     mobileTlsPort: getMobileTlsPort(),
     mobileTlsDirectory: path.join(app.getPath("userData"), "mobile-tls"),
     isDevPairingRouteEnabled: IS_DEV_PAIRING_ROUTE_ENABLED,
+    remoteHostNamespace: app.isPackaged && !app.commandLine.hasSwitch("qa") ? "prod"
+      : SHOULD_USE_SOURCE_MODULES && !app.commandLine.hasSwitch("qa") ? "dev"
+        : `qa-${require("node:crypto").createHash("sha256").update(app.getPath("userData")).digest("hex").slice(0, 16)}`,
   });
 
   const { reconnectHookTunnels } = require(getRuntimeModulePath(path.join("src", "desktop", "main", "services", "hookTunnelService.ts")));
@@ -1125,6 +1160,14 @@ app.whenReady().then(async () => {
     app.dock.setIcon(APP_ICON_PATH);
   }
   initializeDiagnostics();
+  try {
+    await prepareDevelopmentDatabase(app, { isDevelopment: SHOULD_USE_SOURCE_MODULES });
+  } catch (error) {
+    logDiagnostic("main:development-database-failed", { error: serializeErrorForLog(error) });
+    console.error("[kanvibe] Development database preparation failed:", error);
+    app.exit(1);
+    return;
+  }
   ensureRuntimeEnvironment();
   diagnostics.log("main:startup", {
     appPath: app.getAppPath(),
@@ -1153,7 +1196,7 @@ app.whenReady().then(async () => {
   stopBackgroundTaskSync = startBackgroundTaskSync();
 
   app.on("activate", async () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
+    if (getUserWindows(BrowserWindow).length === 0) {
       await createMainWindow();
     }
   });

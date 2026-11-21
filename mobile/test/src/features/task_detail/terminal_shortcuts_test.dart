@@ -46,9 +46,10 @@ void main() {
   });
 
   test('Herdr는 분할과 확대만 제공하고 지난 출력은 손가락으로 읽는다', () {
-    final actions = terminalShortcuts(
-      SessionType.herdr,
-    ).map((key) => key.action).whereType<String>().toList();
+    final actions = terminalShortcuts(SessionType.herdr)
+        .map((key) => key.action)
+        .whereType<String>()
+        .toList();
     expect(actions, ['split-right', 'split-down', 'toggle-fullscreen']);
   });
 

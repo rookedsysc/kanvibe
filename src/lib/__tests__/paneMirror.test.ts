@@ -33,6 +33,7 @@ import {
   parseZellijMirrorPaneList,
   parseZellijViewportState,
 } from "@/lib/paneMirror";
+import { buildHerdrScreenRedraw, buildHerdrScrollControlRecord, parseTerminalScrollRequest } from "@/lib/remoteTerminalProtocol";
 
 const INJECTION_PANE_ID = "%1'; rm -rf /; '";
 
@@ -296,8 +297,8 @@ describe("zellij pane 명령", () => {
 
 describe("pane 단축키 명령", () => {
   it.each([
-    ["split-right", "tmux split-window -h -d -t '%19'"],
-    ["split-down", "tmux split-window -v -d -t '%19'"],
+    ["split-right", "tmux split-window -h -d -t '%19' -c '#{pane_current_path}'"],
+    ["split-down", "tmux split-window -v -d -t '%19' -c '#{pane_current_path}'"],
     ["toggle-fullscreen", "tmux resize-pane -Z -t '%19'"],
     ["copy-mode", "tmux copy-mode -t '%19'"],
     ["scroll-up", "tmux copy-mode -t '%19' && tmux send-keys -X -t '%19' page-up"],
@@ -417,5 +418,31 @@ describe("Herdr observe 레코드", () => {
     expect(parseHerdrObserveRecord('{"type":"terminal.closed","reason":"gone"}')).toEqual({ type: "closed" });
     expect(parseHerdrObserveRecord("{broken")).toBeNull();
     expect(parseHerdrObserveRecord('{"type":"terminal.other"}')).toBeNull();
+  });
+});
+
+describe("Herdr 모바일 스크롤", () => {
+  const RESET_MOUSE = "\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1005l\x1b[?1006l";
+
+  it("어떤 프로그램이 돌든 모바일을 대체 화면에 두고 마우스 보고는 꺼서 손가락 스크롤이 휠로만 나가게 한다", () => {
+    expect(buildHerdrScreenRedraw("a\nb")).toBe(`\x1b[H\x1b[2J\x1b[3J\x1b[?1049h${RESET_MOUSE}\x1b[H\x1b[2J\x1b[3Ja\r\nb`);
+  });
+
+  it("휠 한 칸을 Herdr가 pane 모드를 보고 처리하는 terminal.scroll 한 줄로 바꾼다", () => {
+    const request = parseTerminalScrollRequest({ type: "scroll", direction: "up", column: 4, row: 2 });
+
+    expect(request).toEqual({ direction: "up", column: 4, row: 2 });
+    expect(buildHerdrScrollControlRecord(request!)).toEqual({ type: "terminal.scroll", direction: "up", lines: 1, column: 4, row: 2 });
+  });
+
+  it.each([
+    [{ type: "resize", direction: "up", column: 0, row: 0 }],
+    [{ type: "scroll", direction: "left", column: 0, row: 0 }],
+    [{ type: "scroll", direction: "down", column: -1, row: 0 }],
+    [{ type: "scroll", direction: "down", column: 0, row: 500 }],
+    [{ type: "scroll", direction: "down", column: 1.5, row: 0 }],
+    [{ type: "scroll", direction: "down", column: "1", row: 0 }],
+  ])("방향이나 칸이 잘못된 요청 %j은 버린다", (record) => {
+    expect(parseTerminalScrollRequest(record)).toBeNull();
   });
 });

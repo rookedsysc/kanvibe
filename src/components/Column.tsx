@@ -3,8 +3,9 @@
 import { Fragment, useMemo } from "react";
 import { useTranslations } from "next-intl";
 import { Droppable } from "@hello-pangea/dnd";
-import TaskCard from "./TaskCard";
+import TaskCard, { type TaskDeletionState, type TaskMoveState } from "./TaskCard";
 import ProjectTaskGroup from "./ProjectTaskGroup";
+import InlineLoadError from "./InlineLoadError";
 import { useFlipReflow } from "@/desktop/renderer/hooks/useFlipReflow";
 import type { UnreadNotificationCountByTask } from "@/desktop/renderer/hooks/useUnreadNotificationCountByTask";
 import type { KanbanTask, TaskStatus } from "@/entities/KanbanTask";
@@ -28,11 +29,19 @@ interface ColumnProps {
   hasMore?: boolean;
   onLoadMore?: () => void;
   isLoadingMore?: boolean;
+  /** 더 불러오기가 실패한 사유. 있으면 버튼 아래에 알리고 다시 시도는 같은 페이지를 요청한다 */
+  loadMoreError?: string | null;
   vimModeEnabled?: boolean;
   /** 보드가 한 번만 조회해 모든 카드가 나눠 쓰는 실행중 에이전트 목록 */
   runningAgentPanes?: RunningAgentPane[];
   /** 보드가 한 번만 조회해 카드마다 나눠 쓰는 태스크별 변경 집계 */
   diffStatsByTaskId?: Record<string, TaskDiffStats>;
+  /** 보드가 관리하는 task별 삭제 요청 상태 */
+  taskDeletionStateById?: Record<string, TaskDeletionState>;
+  onRetryTaskDelete?: (task: KanbanTask) => void;
+  /** 보드가 관리하는 task별 이동 저장 상태 */
+  taskMoveStateById?: Record<string, TaskMoveState>;
+  onRetryTaskMove?: (task: KanbanTask) => void;
 }
 
 interface TaskGroup {
@@ -104,11 +113,17 @@ export default function Column({
   hasMore,
   onLoadMore,
   isLoadingMore,
+  loadMoreError,
   vimModeEnabled = true,
   runningAgentPanes,
   diffStatsByTaskId,
+  taskDeletionStateById,
+  onRetryTaskDelete,
+  taskMoveStateById,
+  onRetryTaskMove,
 }: ColumnProps) {
   const t = useTranslations("board");
+  const tc = useTranslations("common");
   const columnRef = useFlipReflow<HTMLDivElement>(tasks.map((task) => task.id).join(","));
 
   const groups = useMemo(
@@ -174,6 +189,10 @@ export default function Column({
                         vimModeEnabled={vimModeEnabled}
                         runningAgentPanes={runningAgentPanes}
                         diffStats={diffStatsByTaskId?.[task.id]}
+                        deletionState={taskDeletionStateById?.[task.id]}
+                        onRetryDelete={onRetryTaskDelete}
+                        moveState={taskMoveStateById?.[task.id]}
+                        onRetryMove={onRetryTaskMove}
                       />
                     ))}
                   </Fragment>
@@ -206,6 +225,10 @@ export default function Column({
                       vimModeEnabled={vimModeEnabled}
                       runningAgentPanes={runningAgentPanes}
                       diffStats={diffStatsByTaskId?.[task.id]}
+                      deletionState={taskDeletionStateById?.[task.id]}
+                      onRetryDelete={onRetryTaskDelete}
+                      moveState={taskMoveStateById?.[task.id]}
+                      onRetryMove={onRetryTaskMove}
                     />
                   ))}
                 </ProjectTaskGroup>
@@ -221,6 +244,13 @@ export default function Column({
                 {isLoadingMore ? t("loadingMore") : t("loadMore")}
               </button>
             )}
+            {hasMore && onLoadMore && loadMoreError ? (
+              <InlineLoadError
+                className="mt-2"
+                message={tc("loadFailed", { reason: loadMoreError })}
+                onRetry={onLoadMore}
+              />
+            ) : null}
           </div>
         )}
       </Droppable>

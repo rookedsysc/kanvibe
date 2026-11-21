@@ -4,7 +4,7 @@ import { useState, useEffect, useTransition, useCallback, useRef } from "react";
 import { useTranslations } from "next-intl";
 import { usePathname, useRouter } from "@/desktop/renderer/navigation";
 import { createTask } from "@/desktop/renderer/actions/kanban";
-import { getProjectBranches } from "@/desktop/renderer/actions/project";
+import { useProjectBranches } from "@/desktop/renderer/hooks/useProjectBranches";
 import { navigateToTaskDetail } from "@/desktop/renderer/utils/taskNavigation";
 import { SessionType } from "@/entities/KanbanTask";
 import { TaskPriority } from "@/entities/TaskPriority";
@@ -13,8 +13,10 @@ import { useEscapeKey } from "@/hooks/useEscapeKey";
 import ProjectSelector from "./ProjectSelector";
 import PrioritySelector from "./PrioritySelector";
 import BranchSearchInput from "./BranchSearchInput";
+import ProjectBranchesStatusNotice from "./ProjectBranchesStatusNotice";
 import SessionTypeOptions from "./SessionTypeOptions";
 import { ensureSessionDependencyWithPrompt } from "@/desktop/renderer/utils/sessionDependencyPrompt";
+import { showActionStatus } from "@/desktop/renderer/components/ActionStatusToast";
 
 interface CreateTaskModalProps {
   isOpen: boolean;
@@ -97,12 +99,32 @@ function CreateTaskModalContent({
   const [isPending, startTransition] = useTransition();
   const initialProjectId = defaultProjectId || "";
   const [selectedProjectId, setSelectedProjectId] = useState(initialProjectId);
-  const [branches, setBranches] = useState<string[]>([]);
+  const {
+    branches: fetchedBranches,
+    status: branchesStatus,
+    failureReason: branchesFailureReason,
+    reload: reloadBranches,
+  } = useProjectBranches(selectedProjectId);
+  /** defaultBaseBranch가 받아 온 브랜치 목록에 없으면 옵션에 추가한다 */
+  const branches = branchesStatus === "loaded" && defaultBaseBranch && !fetchedBranches.includes(defaultBaseBranch)
+    ? [defaultBaseBranch, ...fetchedBranches]
+    : fetchedBranches;
   const [baseBranch, setBaseBranch] = useState(() =>
     resolveInitialBaseBranch(projects, initialProjectId, defaultBaseBranch)
   );
   const [priority, setPriority] = useState<TaskPriority | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** 응답을 기다리는 동안 Enter·버튼 제출을 한 번만 받는다. 상태값은 같은 틱의 연속 입력을 막지 못해 ref로 막는다 */
+  const isSubmittingRef = useRef(false);
+  /** 생성 중 모달을 닫으면 결과를 모달 대신 토스트로 알리기 위해 열려 있는지 기억한다 */
+  const isModalMountedRef = useRef(true);
+
+  useEffect(() => {
+    isModalMountedRef.current = true;
+    return () => {
+      isModalMountedRef.current = false;
+    };
+  }, []);
 
   /** worktree가 아닌 프로젝트만 필터링한다 */
   const availableProjects = projects.filter((p) => !p.isWorktree);
@@ -111,29 +133,9 @@ function CreateTaskModalContent({
     (projectId: string) => {
       setSelectedProjectId(projectId);
       setBaseBranch(projectId ? findProjectDefaultBranch(projects, projectId) : "");
-      setBranches([]);
     },
     [projects],
   );
-
-  useEffect(() => {
-    if (!selectedProjectId) return;
-
-    let isCancelled = false;
-    getProjectBranches(selectedProjectId).then((result) => {
-      if (isCancelled) return;
-
-      setBranches(result);
-      /** defaultBaseBranch가 브랜치 목록에 없으면 옵션에 추가한다 */
-      if (defaultBaseBranch && !result.includes(defaultBaseBranch)) {
-        setBranches((prev) => [defaultBaseBranch, ...prev]);
-      }
-    });
-
-    return () => {
-      isCancelled = true;
-    };
-  }, [selectedProjectId, defaultBaseBranch]);
 
   useEscapeKey(onClose);
 
@@ -153,8 +155,10 @@ function CreateTaskModalContent({
 
   function handleSubmit(formData: FormData) {
     const branchName = formData.get("branchName") as string;
-    if (!branchName || !selectedProjectId) return;
+    if (!branchName || !selectedProjectId || isSubmittingRef.current) return;
+    isSubmittingRef.current = true;
     setError(null);
+    const currentLocale = pathname.split("/").filter(Boolean)[0];
 
     startTransition(async () => {
       try {
@@ -174,13 +178,30 @@ function CreateTaskModalContent({
           projectId: selectedProjectId,
           priority: priority || undefined,
         });
+        // 모달을 닫고 다른 일을 하던 사용자를 갑자기 옮기지 않고, 열지 말지는 토스트에서 고르게 한다
+        if (!isModalMountedRef.current) {
+          showActionStatus({
+            kind: "success",
+            message: t("createSucceeded", { title: branchName }),
+            action: { label: tc("open"), onAction: () => void navigateToTaskDetail(created.id, { currentLocale }) },
+          });
+          return;
+        }
+
         onClose();
         await navigateToTaskDetail(created.id, {
-          currentLocale: pathname.split("/").filter(Boolean)[0],
+          currentLocale,
           navigate: router.push,
         });
       } catch (error) {
-        setError(error instanceof Error ? error.message : t("createFailed"));
+        const reason = error instanceof Error ? error.message : t("createFailed");
+        if (isModalMountedRef.current) {
+          setError(reason);
+        } else {
+          showActionStatus({ kind: "failure", message: t("createFailedWithReason", { reason }) });
+        }
+      } finally {
+        isSubmittingRef.current = false;
       }
     });
   }
@@ -203,6 +224,9 @@ function CreateTaskModalContent({
     }
 
     event.preventDefault();
+    if (isSubmittingRef.current) {
+      return;
+    }
     event.currentTarget.requestSubmit();
   }
 
@@ -280,6 +304,11 @@ function CreateTaskModalContent({
                 projectName={selectedProjectName}
                 autoFocus
               />
+              <ProjectBranchesStatusNotice
+                status={branchesStatus}
+                failureReason={branchesFailureReason}
+                onRetry={reloadBranches}
+              />
             </div>
           )}
 
@@ -338,7 +367,7 @@ function CreateTaskModalContent({
               onClick={onClose}
               className="px-4 py-2 text-sm text-text-muted hover:text-text-primary transition-colors"
             >
-              {tc("cancel")}
+              {isPending ? tc("closeAndContinue") : tc("cancel")}
             </button>
             <button
               type="submit"

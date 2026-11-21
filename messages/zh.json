@@ -24,11 +24,16 @@
     "notFoundTitle": "页面不存在",
     "notFoundDescription": "你访问的路径不存在，或已经被移动。",
     "loading": "加载中...",
+    "retry": "重试",
+    "loadDelayed": "加载时间比平时更长，仍在等待…",
+    "loadFailed": "加载失败：{reason}",
+    "refreshFailed": "无法刷新，正在显示之前的数据：{reason}",
     "sessionDependency": {
       "localTarget": "当前本机环境",
       "remoteTarget": "{host}",
       "installPrompt": "{target} 上未安装 {tool}。现在安装吗？",
-      "installFailed": "安装 {tool} 失败：{error}"
+      "installFailed": "安装 {tool} 失败：{error}",
+      "herdrServerHandoffPrompt": "{host} 上的 herdr 服务器以旧的 KanVibe 方式运行，无法作为 machine 添加到本地 herdr。要使用 herdr live handoff（实验功能）替换服务器吗？正在运行的 pane 和任务会保留，此主机上打开的终端会短暂断开后自动重新连接。"
     },
     "doneAlert": {
       "title": "移动到完成",
@@ -42,7 +47,30 @@
       "message": "已确认 worktree PR {branchName} 已被合并。要删除任务“{taskTitle}”及其资源吗？",
       "prLinkLabel": "PR 链接"
     },
+    "backgroundSyncStatus": {
+      "detected": "发现 {count} 个项目",
+      "cleaning": "正在清理",
+      "cleanupContinues": "删除在后台执行，关闭窗口后仍会继续。",
+      "title": "后台同步",
+      "loading": "正在检查同步状态…",
+      "starting": "正在启动同步…",
+      "idle": "检查 worktree 和 PR 状态。",
+      "worktrees": "1/3 · 正在查找 worktree",
+      "pull-requests": "2/3 · 正在检查 PR",
+      "pulls": "3/3 · 正在拉取更改",
+      "completed": "同步完成",
+      "failed": "同步失败，请重试。",
+      "reviewNeeded": "同步完成 · 点击发现的项目查看结果。",
+      "boardUpdated": "同步完成 · 看板已更新。",
+      "noChanges": "同步完成 · 没有新的更改。",
+      "continues": "关闭此面板后同步仍会继续。",
+      "running": "同步中…",
+      "start": "立即同步",
+      "retry": "重试"
+    },
     "backgroundSyncReview": {
+      "backgroundProcessing": "删除在后台执行，关闭此窗口后仍会继续。点击正在清理可再次查看。",
+      "deleteInBackground": "在后台删除",
       "title": "后台同步检查",
       "message": "最近一次后台扫描发现了需要检查的项目。请勾选要删除的已合并 PR 任务，并同时确认新注册的 worktree。",
       "mergedSection": "已合并 PR",
@@ -55,7 +83,12 @@
       "taskPullFailure": "Task pull 失败",
       "worktreeFailure": "Worktree 同步失败",
       "emptyMerged": "本次检查中没有需要删除的已合并 PR 任务。",
-      "emptyRegistered": "本次检查中没有新注册的 worktree。"
+      "emptyRegistered": "本次检查中没有新注册的 worktree。",
+      "deleteProgress": "正在处理 {processed}/{total}…",
+      "deleteSummary": "共 {total} 个，已删除 {succeeded} 个，失败 {failed} 个",
+      "deleteSucceeded": "已删除",
+      "deleteFailed": "删除失败",
+      "retryFailedDeletes": "重试失败项"
     },
     "releaseUpdate": {
       "eyebrow": "新版本",
@@ -64,12 +97,23 @@
       "viewRelease": "查看版本",
       "dontShowVersionAgain": "不再显示此版本",
       "dismissOverlay": "关闭更新对话框"
-    }
+    },
+    "open": "打开",
+    "closeAndContinue": "关闭（后台继续）",
+    "saving": "正在保存…",
+    "saveFailed": "保存失败：{reason}",
+    "markingAllRead": "正在全部标为已读…",
+    "markAllReadFailed": "无法全部标为已读：{reason}",
+    "notificationOpenFailed": "无法打开通知：{reason}",
+    "notificationMarkReadFailed": "无法标为已读：{reason}"
   },
   "board": {
     "title": "",
     "newTask": "+ 新任务",
     "allProjects": "所有项目",
+    "desktopFilter": "桌面筛选",
+    "allDesktops": "所有桌面",
+    "selectedDesktops": "{count} 个桌面",
     "taskKindFilter": {
       "label": "任务类型筛选",
       "options": {
@@ -155,16 +199,27 @@
     "createTitle": "创建新任务",
     "createFailed": "创建任务失败。",
     "createHooksBackgroundFailedTitle": "自动安装 Hooks 失败",
-    "createHooksBackgroundFailedBody": "创建“{taskTitle}”后安装 hooks 失败。你可以在 Hooks 状态区域重新安装。",
+    "createHooksBackgroundFailedBody": "“{taskTitle}”的 hooks 安装失败。你可以在 Hooks 状态区域重新安装。",
     "peerDeletionFailedTitle": "未能在其他桌面删除",
     "peerDeletionFailedBody": "“{taskTitle}”已在此桌面删除，但仍保留在 {peerUrls}。请在该桌面恢复在线后手动删除。",
+    "herdrMachineRegistrationFailedTitle": "无法将 {sshHost} 添加为 Herdr machine",
+    "herdrMachineRegistrationFailedBody": "Herdr 拒绝的原因：{reason}。请在终端运行 herdr --remote {sshHost} --session {herdrSession} 检查远程服务器。",
     "deleteConfirm": "确定要删除此任务吗？",
+    "deleting": "正在删除…",
+    "deleteFailed": "删除失败：{reason}",
+    "retryDelete": "重试",
+    "moveSaving": "正在保存…",
+    "moveFailed": "移动失败，已恢复原位置：{reason}",
+    "retryMove": "重新移动",
     "priority": "优先级",
     "priorityLow": "!",
     "priorityMedium": "!!",
     "priorityHigh": "!!!",
     "priorityNone": "无",
-    "inheritedPriority": "继承自项目根任务的优先级。"
+    "inheritedPriority": "继承自项目根任务的优先级。",
+    "createSucceeded": "已创建“{title}”",
+    "createFailedWithReason": "创建任务失败：{reason}",
+    "branchesLoading": "正在加载分支…"
   },
   "branch": {
     "title": "创建分支",
@@ -177,7 +232,9 @@
     "submit": "创建分支",
     "submitting": "创建中...",
     "validationError": "项目和分支名称为必填项。",
-    "failedError": "创建分支失败。"
+    "failedError": "创建分支失败。",
+    "succeeded": "已分支到“{branchName}”",
+    "failedWithReason": "分支失败：{reason}"
   },
   "contextMenu": {
     "branchOff": "创建分支",
@@ -235,6 +292,9 @@
     "folderCount": "{count} 个文件夹",
     "folderNavHint": "↑↓ 导航 · Tab 进入子文件夹 · Enter 选择 · Backspace 返回上级 · Esc 关闭",
     "detailPageSection": "详情页",
+    "defaultChatMode": "默认打开聊天模式",
+    "defaultChatModeDescription": "当新窗格中正在运行 Claude、Codex 等 CLI 时，以聊天模式打开。手动切换的窗格会保留您的选择。",
+    "chatSettingsError": "无法读取或保存聊天设置。",
     "sidebarDefaultCollapsed": "默认折叠侧栏",
     "sidebarDefaultCollapsedDescription": "进入详情页时左侧栏默认折叠。",
     "notificationSection": "通知",
@@ -299,10 +359,12 @@
       },
       "commands": {
         "taskDetailDock": "Dock {index} · {item}",
+        "terminalToggleChat": "切换当前窗格终端/聊天",
         "taskDetailUsage": "AI 用量面板",
         "taskSearch": "任务快速搜索",
         "boardNotification": "通知中心",
         "boardProjectFilter": "项目筛选",
+        "boardDesktopFilter": "桌面筛选",
         "commandPalette": "命令面板",
         "boardPageFind": "页面内查找",
         "createTask": "创建任务",
@@ -316,7 +378,20 @@
         "terminalTabNext": "下一个终端标签",
         "terminalTab": "跳到终端标签 {index}"
       }
-    }
+    },
+    "mobilePairingIssuingCode": "正在生成代码…",
+    "mobilePairingClearingCode": "正在清除代码…",
+    "mobilePairingDisconnecting": "正在断开连接…",
+    "mobilePairingDevicesLoadFailed": "无法读取已连接的设备。",
+    "scanFailed": "扫描失败：{reason}",
+    "deletingProject": "正在删除…",
+    "deleteProjectFailed": "删除项目失败：{reason}",
+    "deleteProjectSucceeded": "已删除项目“{name}”",
+    "bulkSessionTypeChecking": "正在检查要更改的任务…",
+    "bulkSessionTypePreparingHost": "正在准备主机 {current}/{total} 的会话工具…",
+    "bulkSessionTypeChanging": "正在更改 {count} 个任务的会话类型…",
+    "bulkSessionTypeRetryFailed": "重新应用失败的任务",
+    "settingSaveFailed": "无法保存设置，已恢复之前的值：{reason}"
   },
   "taskSearch": {
     "title": "快速任务搜索",
@@ -333,7 +408,12 @@
     "viewKanbanLabel": "以看板显示",
     "viewWorkspaceLabel": "以工作区显示（任务列表 + 终端）",
     "empty": "没有匹配的命令",
-    "hint": "↑↓ 导航 · Enter 运行 · Esc 关闭"
+    "hint": "↑↓ 导航 · Enter 运行 · Esc 关闭",
+    "syncRunning": "正在同步…",
+    "syncNoChanges": "同步完成：无变更",
+    "syncBoardUpdated": "同步完成：已更新看板",
+    "syncReviewNeeded": "同步完成：有需要确认的项目",
+    "syncFailed": "同步失败：{reason}"
   },
   "workspace": {
     "taskListLabel": "任务列表",
@@ -387,12 +467,82 @@
     "configure": "设置"
   },
   "taskDetail": {
+    "paneChat": {
+      "stopResponse": "停止响应",
+      "agentWorking": "处理中…",
+      "agentWorkingElapsed": "{seconds} 秒",
+      "showInstructions": "显示指令",
+      "preferencesError": "无法读取或保存聊天显示设置，请重试。",
+      "loadOlder": "加载更早的消息",
+      "loadingOlder": "正在加载更早的消息…",
+      "olderError": "无法加载更早的消息，请重试。",
+      "effort": "推理强度",
+      "defaultEffort": "默认",
+      "closeModel": "关闭",
+      "modelAppliesNext": "模型和推理强度的更改将在后续任务中生效。",
+      "modelError": "无法读取或修改模型设置。",
+      "resizeComposer": "调整输入框大小",
+      "resizeComposerHint": "拖动顶部边框调整大小。聚焦后也可以使用方向键。",
+      "fastMode": "快速模式",
+      "savingModel": "正在应用设置…",
+      "messageSent": "已发送",
+      "attachmentTargetChanged": "连接目标已更新。请重试以上传此附件。",
+      "transcriptUnavailable": "无法确认当前 CLI 的对话。",
+      "transcriptWaiting": "正在等待连接 CLI 对话。",
+      "transcriptInputBusy": "CLI 正在工作，或正在使用输入或选择界面。CLI 就绪后会自动重新连接。终端中正在编写的内容会保留。",
+      "transcriptIdentityMissing": "KanVibe 无法确认此 CLI 正在显示的对话。请在终端中发送一条消息后重试，或在同一终端中继续。",
+      "claudeIdentityMissing": "在此 Claude 进程的会话文件（~/.claude/sessions）和 KanVibe hook 中都未找到当前对话。请在终端中发送一条消息后重试，或在同一终端中继续。",
+      "codexIdentityMissing": "无法通过 KanVibe hook 或底部状态栏中的对话 ID 确认此 Codex 正在显示的对话。从状态栏读取对话 ID 仅支持 Codex 0.169.0（zellij 除外）。在终端中用 `codex --no-daemon` 重新启动并发送第一条消息后，将通过 KanVibe hook 连接。",
+      "codexRecordMissing": "已读取底部状态栏中的对话 ID，但 Codex 中没有该对话的记录。请稍后重试或在同一终端中继续。",
+      "codexDaemonLimit": "当 Codex 0.169 通过共享后台服务器（守护进程）运行时，KanVibe 无法在终端之外得知此终端正在显示哪个对话。",
+      "codexRevealHint": "推荐：点击“显示对话 ID”，在此 Codex 的底部状态栏中显示对话 ID 并连接。在此 Codex 会话结束前，底部状态栏将改为显示对话 ID，Codex 配置文件不会改变。",
+      "codexNoDaemonHint": "或者在终端中用 `codex --no-daemon` 重新启动，发送第一条消息后会通过 KanVibe hook 自动连接。",
+      "codexRevealBusy": "Codex 正在工作或输入框不为空，暂时无法点击。完成任务或清空输入框后即可点击。",
+      "revealThread": "显示对话 ID",
+      "revealingThread": "正在显示对话 ID…",
+      "revealRevealed": "已在底部状态栏显示对话 ID，正在连接对话。",
+      "revealInputNotEmpty": "Codex 输入框不为空或正在工作，因此未输入。请在终端中清空输入框后再次点击。",
+      "revealUnsupportedVersion": "此 Codex 版本未验证从状态栏读取对话 ID，因此未输入。支持的版本：0.169.0。",
+      "revealThreadNotFound": "命令已执行，但未在底部状态栏中找到对话 ID。请在终端中检查窗格是否过窄导致 ID 被截断。",
+      "transcriptReadFailed": "无法读取对话记录。请重试或在同一终端中继续。",
+      "searchSkills": "搜索技能…",
+      "attachFiles": "文件",
+      "attachPhotos": "照片",
+      "attachments": "附件",
+      "skills": "技能",
+      "removeAttachment": "移除附件",
+      "retryAttachment": "重试",
+      "uploading": "正在上传…",
+      "removingAttachment": "正在移除…",
+      "attachmentTooLarge": "此文件超过附件大小限制。",
+      "attachmentLimit": "附件过多，请先移除文件。",
+      "loadingSuggestions": "正在搜索…",
+      "suggestions": "建议",
+      "suggestionsError": "无法加载建议。",
+      "noSuggestions": "未找到匹配项。",
+      "moreSuggestions": "请输入更多内容以缩小结果范围。",
+      "returnError": "无法返回此窗格的终端，请重试。",
+      "toggle": "切换当前窗格终端/聊天",
+      "welcomeTitle": "开始与 {provider} 对话",
+      "welcomeHint": "在下方输入消息，会直接发送到此窗格中的 CLI。",
+      "promptQuestion": "AI 的提问",
+      "promptPermission": "权限确认",
+      "promptConfirmation": "CLI 确认",
+      "promptTextPlaceholder": "直接输入…",
+      "promptSubmitText": "用此内容回答",
+      "promptPrevious": "上一个问题",
+      "promptNext": "下一个问题",
+      "promptTextEntered": "这是直接输入的内容。如需修改，请在终端中编辑。",
+      "promptHiddenOptions": "窗格太矮，还有未显示的选项。其余选项请在终端中查看。"
+    },
     "backToBoard": "返回看板",
     "moveToTodo": "待办",
     "moveToProgress": "进行中",
     "moveToReview": "审核",
     "moveToDone": "完成",
     "delete": "删除",
+    "deleting": "正在删除…",
+    "deleteFailed": "删除失败：{reason}",
     "terminal": "终端",
     "noTerminal": "此任务没有关联的终端会话。",
     "connectTerminal": "连接终端",
@@ -468,6 +618,18 @@
     "taskNotFound": "未找到任务。",
     "goBack": "返回",
     "aiSessions": {
+      "attachmentLoading": "正在加载附件…",
+      "attachmentUnavailable": "无法加载附件。",
+      "downloadAttachment": "下载",
+      "openImage": "放大图片",
+      "closeImage": "收起图片",
+      "history": "对话记录",
+      "refresh": "刷新",
+      "retry": "重试",
+      "backToHistory": "返回对话记录",
+      "messageCount": "{count} 条消息",
+      "readOnlyHistory": "已保存的对话。打开任务终端以继续聊天。",
+      "jumpToLatest": "最新消息",
       "title": "AI 会话",
       "inlineChat": "AI 聊天",
       "remoteBadge": "没有可显示的远程会话。",
@@ -482,6 +644,8 @@
       "loadingDetail": "正在加载消息...",
       "detailError": "加载会话详情失败。",
       "copyMessage": "复制",
+      "expandTool": "展开",
+      "collapseTool": "收起",
       "copiedMessage": "已复制",
       "copyFailed": "复制失败",
       "roles": {
@@ -492,6 +656,29 @@
         "reasoning": "推理",
         "tool": "工具",
         "unknown": "其他"
+      },
+      "changedFiles": "AI 更改的文件",
+      "fileChange": {
+        "created": "已创建",
+        "modified": "已修改"
+      },
+      "filePreview": {
+        "title": "{name} 预览",
+        "viewMode": "查看方式",
+        "rendered": "预览",
+        "source": "源码",
+        "copy": "复制",
+        "copied": "已复制",
+        "copyFailed": "复制失败",
+        "close": "关闭预览",
+        "loading": "正在加载文件…",
+        "retry": "重试",
+        "failure": {
+          "outside-worktree": "该文件位于任务文件夹之外，无法在此打开。",
+          "not-found": "文件已不存在。",
+          "too-large": "文件超过 1MB，无法预览。",
+          "unreadable": "无法读取文件。"
+        }
       }
     },
     "priority": "优先级",
@@ -553,6 +740,7 @@
       "reasons": {
         "missing-credentials": "尚未登录。",
         "expired-credentials": "认证已过期。在账号页面重新登录后，应用会自动刷新。",
+        "awaiting-cli-refresh": "运行 Claude Code 后用量会再次更新。",
         "keychain-unreadable": "无法读取钥匙串。请解锁 Mac 后刷新。",
         "gemini-cli-not-found": "令牌已过期，且未找到 Gemini CLI 无法刷新。",
         "rate-limited": "请求过于频繁，请稍后重试。",
@@ -563,7 +751,15 @@
     },
     "openInVsCode": "在 VS Code 中打开",
     "openInVsCodeFailed": "无法启动 VS Code。请确认 `code` 命令在 PATH 中。",
-    "pullRequestNotFound": "该分支没有关联的 PR。"
+    "pullRequestNotFound": "该分支没有关联的 PR。",
+    "movingStatus": "正在移动到 {status}…",
+    "statusChangeFailed": "无法更改状态：{reason}",
+    "terminalTabCreating": "正在添加终端标签…",
+    "terminalTabActionFailed": "标签操作失败：{reason}",
+    "pullRequestLookupFailed": "无法查询 PR：{reason}",
+    "imagePasteSending": "正在发送图片到远程…",
+    "imagePasteFailed": "图片发送失败：{reason}",
+    "imagePasteRetry": "重新发送"
   },
   "projectBranchTasks": {
     "title": "项目任务",
@@ -591,7 +787,8 @@
     "viewDiff": "查看差异",
     "fileCount": "已更改 {count} 个文件",
     "viewed": "已查看",
-    "markViewed": "查看"
+    "markViewed": "查看",
+    "unsavedChanges": "未保存的更改"
   },
   "aiAccounts": {
     "title": "AI 账号",
@@ -608,12 +805,17 @@
     "accountNamePlaceholder": "账号名称（例如 work）",
     "loginInProgress": "正在登录",
     "loginHint": "在下方窗口完成登录后，列表会自动刷新。若打开了浏览器，请在浏览器中完成认证。",
+    "loginFailed": "登录命令已退出，退出代码为 {code}。请查看下方输出，关闭此终端后重新登录。",
     "closeLogin": "关闭",
     "errors": {
       "invalid-name": "账号名称只能使用字母、数字、-、_ 和 . 。",
       "already-exists": "已存在同名账号。",
       "manual-logout-required": "该账号无法在应用内登出，因此仅从列表中移除。"
     },
-    "usageSection": "用量"
+    "usageSection": "用量",
+    "adding": "正在添加…",
+    "addFailed": "无法添加账户：{reason}",
+    "removing": "正在删除…",
+    "removeFailed": "无法删除账户：{reason}"
   }
 }

@@ -1,15 +1,14 @@
+import { isValidHostNamespace } from "./remoteHostProtocol";
+
 /**
- * 원격 호스트의 hook·CLI가 데스크탑으로 돌아오는 Unix 소켓 터널의 경로 규칙.
- *
- * 소켓 이름은 데스크탑 설치마다 한 번 만드는 client ID로 정한다. URL의 IP로 정하면 PC의 IP가 바뀐 뒤
- * targets.json에 남은 옛 주소로 소켓을 찾지 못한다.
- * 데스크탑이 만드는 소켓과 원격 스크립트가 찾는 소켓의 이름이 같아야 하므로 두 쪽의 규칙을 이 파일에 함께 둔다.
- * NFS 공유 홈과 Unix 소켓 경로 길이 제한을 피하려고 홈이 아니라 /tmp 아래에 둔다.
+ * 원격 hook·CLI는 namespace의 안정 소켓과 client ID로 데스크탑을 찾는다.
+ * 이전 전송은 client ID별 터널 소켓을 유지한다. 생성 셸과 TS가 같은 경로·신뢰 검사를 쓴다.
+ * NFS 공유 홈과 Unix 소켓 길이 제한을 피하도록 /tmp의 사용자 전용 디렉터리에 둔다.
  */
 const HOOK_SOCKET_DIR_SHELL = '/tmp/kv-$(id -u)';
 const HOOK_CLIENT_ID_PATTERN = /^[A-Za-z0-9-]+$/;
 
-export const HOOK_TRANSPORT_VERSION_MARKER = "KANVIBE_HOOK_TRANSPORT_VERSION=2";
+export const HOOK_TRANSPORT_VERSION_MARKER = "KANVIBE_HOOK_TRANSPORT_VERSION=3";
 export const HOOK_LOOPBACK_URL_PATTERN = String.raw`^https?://(localhost|127[.]0[.]0[.]1|\[::1\])(:[0-9]+)?/?$`;
 
 /** transport가 없는 구형 등록도 loopback 주소만 TCP를 허용한다. */
@@ -60,8 +59,18 @@ function buildShellTrustedSocketCondition(directoryVariable: string, socketVaria
  * 데스크탑이 원격에 보내는 한 줄짜리 명령(설치 스크립트 내려받기, 상태 확인)에서 쓰는 소켓 경로 대입.
  * 믿을 수 있는 소켓일 때만 경로를 담고, 아니면 빈 값을 담는다.
  */
-export function buildShellOwnedHookSocketAssignment(variableName: string, clientId: string): string {
+export function buildShellOwnedHookSocketAssignment(variableName: string, clientId: string, namespace?: string): string {
   const directoryVariable = `${variableName}_dir`;
+  if (namespace !== undefined) {
+    if (!isValidHostNamespace(namespace)) throw new Error("Invalid hook namespace");
+    return [
+      `${directoryVariable}="${HOOK_SOCKET_DIR_SHELL}"`,
+      `kanvibe_parent_trusted=; { [ ! -L "\${${directoryVariable}}" ] && [ -O "\${${directoryVariable}}" ] && [ "$(ls -ld "\${${directoryVariable}}" 2>/dev/null | cut -c1-10)" = "drwx------" ]; } && kanvibe_parent_trusted=1`,
+      `${directoryVariable}="\${${directoryVariable}}/${namespace}"`,
+      `${variableName}="\${${directoryVariable}}/hooks-v1.sock"`,
+      `{ [ "$kanvibe_parent_trusted" = 1 ] && ${buildShellTrustedSocketCondition(directoryVariable, variableName)}; } || ${variableName}=`,
+    ].join("; ");
+  }
   return [
     `${directoryVariable}="${HOOK_SOCKET_DIR_SHELL}"`,
     `${variableName}="\${${directoryVariable}}/${buildHookSocketFileName(clientId)}"`,
@@ -100,6 +109,16 @@ export function buildShellHookSocketResolver(): string {
   esac
   kanvibe_socket_dir="${HOOK_SOCKET_DIR_SHELL}"
   kanvibe_socket_path="\${kanvibe_socket_dir}/$1.sock"
+  if [ -n "$2" ]; then
+    case "$2" in
+      dev|prod|qa-?*) ;;
+      *) return 0 ;;
+    esac
+    case "$2" in *[!a-z0-9-]*|????????????????????????????*) return 0 ;; esac
+    if [ -L "\${kanvibe_socket_dir}" ] || [ ! -O "\${kanvibe_socket_dir}" ] || [ "$(ls -ld "\${kanvibe_socket_dir}" 2>/dev/null | cut -c1-10)" != "drwx------" ]; then return 0; fi
+    kanvibe_socket_dir="\${kanvibe_socket_dir}/$2"
+    kanvibe_socket_path="\${kanvibe_socket_dir}/hooks-v1.sock"
+  fi
   if ${buildShellTrustedSocketCondition("kanvibe_socket_dir", "kanvibe_socket_path")}; then
     printf '%s' "\${kanvibe_socket_path}"
   fi

@@ -1,4 +1,5 @@
 import { In, Not, IsNull } from "typeorm";
+import { parseGitHubRepositoryReference } from "@/lib/githubProjectIcon";
 import { quoteShellArgument } from "@/lib/hostFileAccess";
 import { getTaskRepository } from "@/lib/database";
 import { KanbanTask, TaskStatus, SessionType } from "@/entities/KanbanTask";
@@ -68,6 +69,16 @@ const ACTIVE_PULL_TASK_STATUSES = [
 ];
 const ACTIVE_TASK_PULL_GIT_TIMEOUT_MS = 10_000;
 const ACTIVE_TASK_PR_GITHUB_CLI_TIMEOUT_MS = 10_000;
+/**
+ * gh 인증은 사용자가 그 호스트에서 직접 고쳐야 풀린다. 그 전까지 같은 저장소에 자동 조회를 되풀이하면 실패할 원격 명령만 쌓인다.
+ * 이 시간 동안은 기억한 실패를 그대로 돌려주고, 사용자가 직접 요청한 조회는 기억과 무관하게 실행한다.
+ */
+const GITHUB_CLI_AUTH_FAILURE_COOLDOWN_MS = 5 * 60_000;
+/** 보드 갱신마다 따라 도는 자동 PR 조회를 task당 이 간격에 한 번으로 줄인다 */
+const AUTOMATIC_PR_LOOKUP_MIN_INTERVAL_MS = 30_000;
+const gitHubCliAuthFailures = new Map<string, { until: number; error: unknown }>();
+const automaticPrLookupAttempts = new Map<string, number>();
+const activePrUrlLookups = new Map<string, { isAutomatic: boolean; lookup: Promise<string | null> }>();
 const notifiedPullFailureKeys = new Set<string>();
 
 interface CleanupTaskResourcesOptions {
@@ -249,25 +260,16 @@ function reportTaskHookInstallFailure(
 const MISSING_REPOSITORY_MARKER = "kanvibe-missing-repository";
 
 /**
- * 저장소 안에서 gh를 실행할 셸 명령을 만든다.
- *
- * 등록된 경로가 저장소를 감싼 상위 폴더일 수 있어, `.git`이 없으면 바로 아래에서 저장소를 한 번 더 찾는다.
- * 후보가 둘 이상이면 어느 쪽이 이 태스크의 저장소인지 알 수 없어 승격하지 않는다. 엉뚱한 저장소의 PR을
- * 링크하는 것보다 조회가 실패하는 편이 낫다.
- *
- * `.envrc`가 있으면 direnv를 태워 gh를 부른다. GitHub 인증을 `.envrc`에 심어 둔 경우 셸을 거치지 않고
- * gh를 부르면 인증이 빠진 채로 돌아 권한 없음으로 실패한다. direnv 경로 자체가 실패할 수도 있어
- * (`direnv allow` 안 된 `.envrc` 등) 평범한 gh 호출로 되돌아간다.
- *
- * 명령 문자열에 `>/dev/null 2>&1`을 넣지 않는다. `shouldLogRemoteCommandFailure`가 그 패턴을 조용한
- * probe로 보고 원격 실패 로그를 통째로 지운다.
+ * 등록 경로가 저장소의 부모면 유일한 하위 저장소를 선택한다.
+ * gh와 Git fallback이 같은 디렉터리와 direnv 환경을 사용해야 한다.
  */
-function buildGitHubCliCommand(repoPath: string, ghArguments: string): string {
+function buildRepositoryCommand(repoPath: string, command: string): string {
   return [
     `repo=${quoteForShell(repoPath)}`,
     'if [ ! -e "$repo/.git" ]; then nested=""; nestedCount=0; for candidate in "$repo"/*/; do if [ -e "$candidate.git" ]; then nested="${candidate%/}"; nestedCount=$((nestedCount + 1)); fi; done; if [ "$nestedCount" -eq 1 ]; then repo="$nested"; fi; fi',
     `cd "$repo" || { printf %s ${quoteForShell(MISSING_REPOSITORY_MARKER)}; exit 0; }`,
-    `if [ -f "$repo/.envrc" ] && command -v direnv >/dev/null; then direnv exec "$repo" gh ${ghArguments} || gh ${ghArguments}; else gh ${ghArguments}; fi`,
+    'envrcDirectory=""; directory="$PWD"; while :; do if [ -f "$directory/.envrc" ]; then envrcDirectory="$directory"; break; fi; if [ "$directory" = "/" ]; then break; fi; directory=$(dirname "$directory"); done',
+    `if [ -n "$envrcDirectory" ] && command -v direnv >/dev/null; then direnv exec "$repo" ${command} || ${command}; else ${command}; fi`,
   ].join("; ");
 }
 
@@ -281,12 +283,95 @@ function getGitHubCliExecOptions(sshHost?: string | null): ExecGitOptions | unde
   return sshHost ? undefined : { timeoutMs: ACTIVE_TASK_PR_GITHUB_CLI_TIMEOUT_MS };
 }
 
+function buildGitHubCliAuthFailureKey(cwd: string, sshHost?: string | null): string {
+  return JSON.stringify([sshHost ?? null, cwd]);
+}
+
+function isGitHubCliAuthenticationError(error: unknown): boolean {
+  return /gh auth login|GH_TOKEN|HTTP 401|Bad credentials/i.test(getErrorMessage(error));
+}
+
+/** 이 저장소에서 최근에 gh 인증이 실패했으면 그 오류를 돌려준다 */
+function findRecentGitHubCliAuthFailure(cwd: string, sshHost?: string | null): unknown {
+  const failureKey = buildGitHubCliAuthFailureKey(cwd, sshHost);
+  const failure = gitHubCliAuthFailures.get(failureKey);
+  if (!failure) {
+    return undefined;
+  }
+  if (Date.now() >= failure.until) {
+    gitHubCliAuthFailures.delete(failureKey);
+    return undefined;
+  }
+  return failure.error;
+}
+
+/**
+ * 저장소 안에서 gh PR 조회를 실행하고 인증 실패를 저장소 단위로 기억한다.
+ * 인증은 `.envrc`로 경로마다 다를 수 있어 호스트가 아니라 호스트와 저장소 경로를 함께 키로 쓴다.
+ * @param shouldReuseRecentAuthFailure true면 최근 인증 실패가 남아 있을 때 원격 명령 없이 그 오류를 다시 던진다
+ */
+async function execGitHubCliPullRequestQuery(
+  cwd: string,
+  sshHost: string | null | undefined,
+  ghArguments: string,
+  shouldReuseRecentAuthFailure: boolean,
+): Promise<string> {
+  const recentAuthFailure = shouldReuseRecentAuthFailure ? findRecentGitHubCliAuthFailure(cwd, sshHost) : undefined;
+  if (recentAuthFailure !== undefined) {
+    throw recentAuthFailure;
+  }
+
+  const failureKey = buildGitHubCliAuthFailureKey(cwd, sshHost);
+  try {
+    const output = await queryPullRequestWithRepositoryFallback(cwd, sshHost, ghArguments);
+    gitHubCliAuthFailures.delete(failureKey);
+    return output;
+  } catch (error) {
+    if (isGitHubCliAuthenticationError(error)) {
+      gitHubCliAuthFailures.set(failureKey, { until: Date.now() + GITHUB_CLI_AUTH_FAILURE_COOLDOWN_MS, error });
+    }
+    throw error;
+  }
+}
+
+async function queryPullRequestWithRepositoryFallback(
+  cwd: string,
+  sshHost: string | null | undefined,
+  ghArguments: string,
+): Promise<string> {
+  const options = getGitHubCliExecOptions(sshHost);
+  try {
+    return await execGit(buildRepositoryCommand(cwd, `gh ${ghArguments}`), sshHost, options);
+  } catch (error) {
+    if (!/Could not resolve to a Repository|Could not determine base repository/i.test(getErrorMessage(error))) {
+      throw error;
+    }
+
+    let remoteUrl: string;
+    try {
+      remoteUrl = await execGit(buildRepositoryCommand(cwd, "git remote get-url origin"), sshHost, options);
+    } catch {
+      throw error;
+    }
+    const repository = parseGitHubRepositoryReference(remoteUrl);
+    if (!repository) throw error;
+
+    const reference = `${repository.owner}/${repository.repository}`;
+    return execGit(
+      buildRepositoryCommand(cwd, `gh ${ghArguments} --repo ${quoteForShell(reference)}`),
+      sshHost,
+      options,
+    );
+  }
+}
+
 async function getPrUrlFromGitHubCli(branchName: string, cwd: string, sshHost?: string | null): Promise<string | null> {
   try {
-    const output = await execGit(
-      buildGitHubCliCommand(cwd, `pr list --head ${quoteForShell(branchName)} --json url -q '.[0].url'`),
+    const output = await execGitHubCliPullRequestQuery(
+      cwd,
       sshHost,
-      getGitHubCliExecOptions(sshHost),
+      `pr list --head ${quoteForShell(branchName)} --json url -q '.[0].url'`,
+      false,
     );
     if (isMissingRepositoryOutput(output)) {
       return null;
@@ -334,10 +419,12 @@ async function getPrInfoFromGitHubCli(
   sshHost?: string | null,
 ): Promise<GitHubPullRequestInfo | null> {
   try {
-    const output = await execGit(
-      buildGitHubCliCommand(cwd, `pr list --head ${quoteForShell(branchName)} --state all --json url,state,mergedAt,updatedAt`),
+    // 백그라운드 동기화는 같은 저장소의 task마다 이 조회를 부르므로, 인증이 깨진 저장소에서는 첫 실패를 나머지가 함께 쓴다.
+    const output = await execGitHubCliPullRequestQuery(
+      cwd,
       sshHost,
-      getGitHubCliExecOptions(sshHost),
+      `pr list --head ${quoteForShell(branchName)} --state all --json url,state,mergedAt,updatedAt`,
+      true,
     );
     if (!output.trim() || isMissingRepositoryOutput(output)) {
       return null;
@@ -383,7 +470,7 @@ async function resolveTaskGitContext(
   }
 
   return {
-    cwd: repoPath ?? task.worktreePath ?? process.cwd(),
+    cwd: task.worktreePath ?? repoPath ?? process.cwd(),
     sshHost,
   };
 }
@@ -471,7 +558,7 @@ export async function getMoreDoneTasks(
 /** 단일 작업을 ID로 조회한다 */
 export async function getTaskById(taskId: string): Promise<KanbanTask | null> {
   const repo = await getTaskRepository();
-  const task = await repo.findOne({ where: { id: taskId }, relations: ["project"] });
+  const task = await repo.findOne({ where: { id: taskId }, relations: { project: true } });
   return task ? serialize(task) : null;
 }
 
@@ -479,7 +566,7 @@ export async function getTaskById(taskId: string): Promise<KanbanTask | null> {
 export async function getSearchableTasks(): Promise<SearchableTask[]> {
   const repo = await getTaskRepository();
   const tasks = await repo.find({
-    relations: ["project"],
+    relations: { project: true },
     order: { updatedAt: "DESC", createdAt: "DESC" },
   });
 
@@ -503,7 +590,7 @@ export async function getTaskIdByProjectAndBranch(
   const repo = await getTaskRepository();
   const task = await repo.findOne({
     where: { projectId, branchName },
-    select: ["id"],
+    select: { id: true },
   });
   return task?.id ?? null;
 }
@@ -568,20 +655,23 @@ export async function createTask(input: CreateTaskInput): Promise<KanbanTask> {
   }
 
   const saved = await repo.save(task);
+  const preparationJobs: Promise<void>[] = [];
 
   if (shouldInstallHooks && hookTargetPath) {
-    await installTaskHookFilesImmediately(
+    preparationJobs.push(installTaskHookFilesImmediately(
       hookTargetPath,
       saved,
       "새 태스크 hooks 동기 설치 실패",
-    );
+    ));
   }
 
-  await persistTaskState(saved);
+  preparationJobs.push(persistTaskState(saved));
 
   if (saved.description || saved.priority) {
-    await persistTaskMetadata(saved);
+    preparationJobs.push(persistTaskMetadata(saved));
   }
+
+  await Promise.all(preparationJobs);
 
   broadcastBoardUpdate();
 
@@ -824,6 +914,7 @@ export async function removeTaskRegistration(taskId: string): Promise<boolean> {
   if (!task) return false;
 
   await repo.remove(task);
+  broadcastTaskSessionChanged({ taskId });
   broadcastBoardUpdate();
   return true;
 }
@@ -874,6 +965,7 @@ export async function deleteTaskAcrossTargets(
   await deleteTaskResources(task);
 
   await repo.remove(task);
+  broadcastTaskSessionChanged({ taskId });
   broadcastBoardUpdate();
   return { isDeleted: true, peerResults };
 }
@@ -949,7 +1041,8 @@ export async function deleteTasks(taskIds: string[]): Promise<string[]> {
       await propagateDeletionToTaskPeers(task);
       await deleteTaskResources(task);
       await repo.remove(task);
-      deletedTaskIds.push(task.id);
+      broadcastTaskSessionChanged({ taskId });
+      deletedTaskIds.push(taskId);
     }
   } finally {
     if (deletedTaskIds.length > 0) {
@@ -1235,29 +1328,71 @@ export async function moveTaskToColumn(
  * 작업의 브랜치에 연결된 PR URL을 조회하여 DB에 저장한다.
  * `gh pr list` CLI를 사용하며, PR이 없으면 null을 유지한다.
  */
-export async function fetchAndSavePrUrl(taskId: string): Promise<string | null> {
+/**
+ * PR이 없으면 null을 돌려준다. gh가 없을 때도 조회할 수단이 없으니 같은 null이다.
+ * 그 밖의 조회 실패는 던진다. null로 삼키면 화면이 인증·네트워크 오류를 "PR 없음"으로 안내한다.
+ */
+export function fetchAndSavePrUrl(
+  taskId: string,
+  options: { isAutomatic?: boolean } = {},
+): Promise<string | null> {
+  /**
+   * 여러 창이 같은 task를 동시에 물으면 gh 조회 하나를 함께 쓴다. 다만 자동 조회는 기억한 인증 실패를 만나면
+   * gh를 부르지 않고 끝나므로, 사용자가 직접 요청한 조회는 자동 조회에 합류하지 않는다.
+   */
+  const isAutomatic = options.isAutomatic === true;
+  const activeLookup = activePrUrlLookups.get(taskId);
+  if (activeLookup && (isAutomatic || !activeLookup.isAutomatic)) {
+    return activeLookup.lookup;
+  }
+
+  /**
+   * 화면이 스스로 건 조회는 보드 갱신마다 다시 오므로 task당 간격을 둔다. 그 사이에 PR이 생기면
+   * 다음 자동 조회나 백그라운드 동기화, 사용자가 직접 누른 조회가 찾아낸다.
+   */
+  if (isAutomatic) {
+    const lastAttemptAt = automaticPrLookupAttempts.get(taskId);
+    if (lastAttemptAt !== undefined && Date.now() - lastAttemptAt < AUTOMATIC_PR_LOOKUP_MIN_INTERVAL_MS) {
+      return Promise.resolve(null);
+    }
+    automaticPrLookupAttempts.set(taskId, Date.now());
+  }
+
+  const startedLookup = { isAutomatic, lookup: Promise.resolve<string | null>(null) };
+  activePrUrlLookups.set(taskId, startedLookup);
+  startedLookup.lookup = lookUpAndSavePrUrl(taskId, isAutomatic).finally(() => {
+    if (activePrUrlLookups.get(taskId) === startedLookup) {
+      activePrUrlLookups.delete(taskId);
+    }
+  });
+  return startedLookup.lookup;
+}
+
+async function lookUpAndSavePrUrl(taskId: string, isAutomatic: boolean): Promise<string | null> {
   const repo = await getTaskRepository();
   const task = await repo.findOneBy({ id: taskId });
   if (!task?.branchName) return null;
 
+  let prUrl: string | null;
   try {
     const { cwd, sshHost } = await resolveTaskGitContext(task);
-    const prUrl = await getPrUrlFromGitHubCli(task.branchName, cwd, sshHost);
-
-    if (prUrl) {
-      const updateResult = await repo.update(
-        { id: task.id, branchName: task.branchName },
-        { prUrl },
-      );
-      if (updateResult.affected === 0) return null;
-      broadcastBoardUpdate();
-      return prUrl;
-    }
+    // 이미 한 번 알린 인증 실패를 화면 갱신마다 다시 던지지 않는다.
+    if (isAutomatic && findRecentGitHubCliAuthFailure(cwd, sshHost) !== undefined) return null;
+    prUrl = await getPrUrlFromGitHubCli(task.branchName, cwd, sshHost);
   } catch (error) {
     console.error("PR URL 조회 실패:", error);
+    throw error;
   }
 
-  return null;
+  if (!prUrl) return null;
+
+  const updateResult = await repo.update(
+    { id: task.id, branchName: task.branchName },
+    { prUrl },
+  );
+  if (updateResult.affected === 0) return null;
+  broadcastBoardUpdate();
+  return prUrl;
 }
 
 export async function syncActiveTaskPullRequests(

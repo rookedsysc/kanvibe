@@ -1,6 +1,6 @@
 /** @vitest-environment node */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { broadcastBoardUpdate, broadcastTaskStatusChanged } from "@/lib/boardNotifier";
+import { broadcastBoardUpdate, broadcastTaskStatusChanged, broadcastHookStatusTargetMissing, broadcastTaskHookInstallFailed } from "@/lib/boardNotifier";
 import { startMobileNotifications, stopMobileNotifications, subscribeToMobileEvents } from "@/desktop/main/services/mobileNotificationService";
 import { createPushRelayServer } from "../../../../../services/mobile-push-relay/server.mjs";
 
@@ -151,4 +151,54 @@ it.each([false, true])("알림 활성화=%s일 때 선택한 상태만 푸시하
     expect.objectContaining({ status: "done", shouldNotify: false }),
   ]);
   expect(fetchMock).toHaveBeenCalledTimes(isEnabled ? 1 : 0);
+});
+
+
+describe("모바일 운영 경고 전달", () => {
+  it("hook 설치 실패는 비밀 오류를 빼고 전경 경고로 전달한다", async () => {
+    const events: unknown[] = [];
+    unsubscribe = subscribeToMobileEvents((event) => events.push(event));
+    startMobileNotifications({ relayUrl: "https://relay.example/notifications", relayToken: "relay-secret", readSubscriptions: async () => subscriptions });
+    broadcastTaskHookInstallFailed({ taskId: "task-1", taskTitle: "fixture", error: "private shell command" });
+    await vi.waitFor(() => expect(events).toHaveLength(1));
+    expect(events[0]).toMatchObject({ type: "operational-warning", kind: "task-hook-install-failed", taskId: "task-1", shouldNotify: false });
+    expect(JSON.stringify(events)).not.toContain("private shell command");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+  it("대상 누락은 기존 상태별 설정을 따르고 WebSocket과 푸시가 같은 eventId를 쓴다", async () => {
+    const events: unknown[] = [];
+    unsubscribe = subscribeToMobileEvents((event) => events.push(event));
+    startMobileNotifications({ relayUrl: "https://relay.example/notifications", relayToken: "relay-secret", readSubscriptions: async () => subscriptions.slice(0, 1) });
+    broadcastHookStatusTargetMissing({ taskId: "missing", requestedStatus: "review", reason: "task-not-found" });
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+    const payload = JSON.parse(fetchMock.mock.calls[0][1]!.body as string);
+    expect(payload.data).toMatchObject({ type: "operational-warning", kind: "hook-status-target-missing", eventId: (events[0] as { eventId: string }).eventId });
+    notificationSettings.isEnabled = false;
+    broadcastHookStatusTargetMissing({ taskId: "missing", requestedStatus: "review", reason: "task-not-found" });
+    await vi.waitFor(() => expect(events).toHaveLength(2));
+    expect(events[1]).toMatchObject({ shouldNotify: false });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+  it("대상 누락 경고를 실제 중계 HTTP 계약으로 전달하고 알 수 없는 종류는 거절한다", async () => {
+    const provider = { send: vi.fn<(message: Record<string, unknown>) => Promise<void>>().mockResolvedValue(undefined) };
+    const relayToken = "operational-warning-fixture-token";
+    const relay = createPushRelayServer({ relayToken, provider });
+    await new Promise<void>((resolve) => relay.listen(0, "127.0.0.1", resolve));
+    vi.stubGlobal("fetch", nativeFetch);
+    try {
+      const port = (relay.address() as { port: number }).port;
+      startMobileNotifications({ relayUrl: `http://127.0.0.1:${port}/notifications`, relayToken, readSubscriptions: async () => subscriptions.slice(0, 1) });
+      broadcastHookStatusTargetMissing({ taskId: "missing", requestedStatus: "review", reason: "task-not-found" });
+      await vi.waitFor(() => expect(provider.send).toHaveBeenCalledOnce());
+      const message = provider.send.mock.calls[0][0];
+      expect(message.data).toMatchObject({ type: "operational-warning", kind: "hook-status-target-missing", taskId: "missing" });
+      const badResponse = await nativeFetch(`http://127.0.0.1:${port}/notifications`, { method: "POST", headers: { authorization: `Bearer ${relayToken}`, "content-type": "application/json" }, body: JSON.stringify({ token: message.token, notification: message.notification, data: { ...(message.data as Record<string, unknown>), kind: "arbitrary-command" } }) });
+      expect(badResponse.status).toBe(400);
+      expect(provider.send).toHaveBeenCalledTimes(1);
+    } finally {
+      stopMobileNotifications();
+      await new Promise<void>((resolve) => relay.close(() => resolve()));
+    }
+  });
+
 });

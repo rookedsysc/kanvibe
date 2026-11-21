@@ -3,17 +3,9 @@ import { SessionType } from "@/entities/KanbanTask";
 
 const mockExecGit = vi.fn();
 
-vi.mock("@/lib/gitOperations", () => ({
+vi.mock("@/lib/gitOperations", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/lib/gitOperations")>(),
   execGit: (...args: unknown[]) => mockExecGit(...args),
-  isSSHTransportError: (error: unknown) => {
-    const message = error instanceof Error
-      ? error.message
-      : error && typeof error === "object" && "stderr" in error
-        ? String((error as { stderr?: string }).stderr)
-        : "";
-
-    return /Connection (?:reset|closed)|kex_exchange_identification/.test(message);
-  },
 }));
 
 describe("remoteSessionDependency", () => {
@@ -83,13 +75,13 @@ describe("remoteSessionDependency", () => {
     expect(mockExecGit).not.toHaveBeenCalled();
   });
 
-  it("원격 의존성 확인 중 SSH 연결 실패가 발생하면 설치를 시도하거나 차단하지 않는다", async () => {
+  it.each(["Connection reset by 100.73.171.123 port 22", "Permission denied (publickey)", "Host key verification failed"])("접속 오류는 의존성 부재로 판단하거나 호스트를 차단하지 않는다: %s", async (message) => {
     // Given
-    mockExecGit.mockRejectedValueOnce(new Error("remote-a 원격 명령 실패: Connection reset by 100.73.171.123 port 22"));
+    mockExecGit.mockRejectedValueOnce(new Error(`remote-a 원격 명령 실패: ${message}`));
     const { ensureRemoteSessionDependency } = await import("@/lib/remoteSessionDependency");
 
     // When & Then
-    await expect(ensureRemoteSessionDependency(SessionType.TMUX, "remote-a")).rejects.toThrow(/Connection reset/);
+    await expect(ensureRemoteSessionDependency(SessionType.TMUX, "remote-a")).rejects.toThrow(message);
     expect(mockExecGit).toHaveBeenCalledTimes(1);
     expect(mockExecGit).toHaveBeenCalledWith("command -v tmux >/dev/null 2>&1", "remote-a");
 

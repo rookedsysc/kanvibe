@@ -41,6 +41,33 @@ class DesktopCommand {
         'paneId': paneId,
       }, _closeTabTimeout);
 
+  /// push로 받으려는 pane 전체를 통째로 바꾼다. 빈 목록이면 전부 해제한다.
+  ///
+  /// 응답의 `panes`는 pane마다 가진 위치가 최신인지(`current`) 다시 받아야 하는지(`behind`)를 알려 준다
+  factory DesktopCommand.setPaneChatSubscription(
+    List<Map<String, Object?>> panes,
+  ) => DesktopCommand._('set-pane-chat-subscription', {
+    'panes': panes,
+  }, _lookupTimeout);
+
+  /// 데스크탑 앱 설정에 저장된 이 태스크의 pane별 채팅 모드를 읽는다. 응답의 `modes`는 pane ID마다 채팅이면 true, 직접 터미널로 되돌렸으면 false다
+  factory DesktopCommand.getPaneChatModes(String taskId) => DesktopCommand._(
+    'get-pane-chat-modes',
+    {'taskId': taskId},
+    _lookupTimeout,
+  );
+
+  /// pane 하나의 채팅 모드를 데스크탑 앱 설정에 저장한다. 데스크탑 화면도 같은 값을 읽는다
+  factory DesktopCommand.setPaneChatMode(
+    String taskId,
+    String paneId,
+    bool isEnabled,
+  ) => DesktopCommand._('set-pane-chat-mode', {
+    'taskId': taskId,
+    'paneId': paneId,
+    'isEnabled': isEnabled,
+  }, _lookupTimeout);
+
   final String name;
   final Map<String, Object?> fields;
 

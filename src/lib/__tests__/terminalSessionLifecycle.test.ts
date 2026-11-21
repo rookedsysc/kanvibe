@@ -2,14 +2,20 @@
  * @vitest-environment node
  */
 import { spawnSync } from "child_process";
+import { HERDR_SERVER_REPLACED_CLOSE_REASON } from "@/desktop/shared/terminalConnection";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { SessionType } from "@/entities/KanbanTask";
 
-const { createHerdrClientProxy } = vi.hoisted(() => ({ createHerdrClientProxy: vi.fn() }));
+const { createHerdrClientProxy, readHerdrClientTabBarPosition, readHerdrMapping } = vi.hoisted(() => ({
+  createHerdrClientProxy: vi.fn(),
+  readHerdrClientTabBarPosition: vi.fn(async () => "top"),
+  readHerdrMapping: vi.fn(async () => JSON.stringify({ "task-a": "w1", "task-b": "w2" })),
+}));
 vi.mock("@/lib/herdrClientProxy", () => ({ createHerdrClientProxy }));
+vi.mock("@/lib/herdr", async (importOriginal) => ({ ...await importOriginal<typeof import("@/lib/herdr")>(), readHerdrClientTabBarPosition }));
 vi.mock("@/lib/hostFileAccess", async (importOriginal) => ({
   ...await importOriginal<typeof import("@/lib/hostFileAccess")>(),
-  readTextFile: async () => JSON.stringify({ "task-a": "w1", "task-b": "w2" }),
+  readTextFile: readHerdrMapping,
   updateTextFile: async (_path: string, update: (content: string) => string | Promise<string>) => {
     await update(JSON.stringify({ "task-a": "w1", "task-b": "w2" }));
   },
@@ -113,6 +119,7 @@ beforeEach(() => {
   vi.resetModules();
   spawnedPtys.length = 0;
   spawnCalls.length = 0;
+  readHerdrClientTabBarPosition.mockResolvedValue("top");
 });
 
 describe("Zellij 모바일 viewport 소유권", () => {
@@ -453,6 +460,12 @@ describe("terminal 세션 탭 레지스트리", () => {
   });
 });
 
+/** 명령과 상관없이 같은 응답을 돌려주는 mock용. workspace w1과 그 안의 정상 pane 하나가 있는 Herdr 서버다 */
+const HEALTHY_HERDR_SERVER_OUTPUT = JSON.stringify({ result: { workspaces: [{ workspace_id: "w1" }], panes: [{ pane_id: "w1:p1" }] } });
+/** 이전 KanVibe가 nohup으로 띄운 서버. 세션 리더가 아니라 machine으로 등록되지 않는다 */
+const NOHUP_HERDR_SERVER_STATUS = JSON.stringify({ running: true, capabilities: { detached_server_daemon: false, live_handoff: true } });
+const DETACHED_HERDR_SERVER_STATUS = JSON.stringify({ running: true, capabilities: { detached_server_daemon: true, live_handoff: true } });
+
 describe("Herdr 원격 machine 연결", () => {
   const config = { host: "host", hostname: "host", port: 22, username: "user", privateKeyPath: "/key" };
 
@@ -463,7 +476,7 @@ describe("Herdr 원격 machine 연결", () => {
       if (command.includes("'machine' 'list'")) return "[]";
       if (command.includes("'machine' 'add'")) return new Promise<string>((resolve) => { finishRegistration = resolve; });
       expect(sshHost).toBe("host");
-      return JSON.stringify({ result: { workspaces: [{ workspace_id: "w1" }] } });
+      return HEALTHY_HERDR_SERVER_OUTPUT;
     });
     const terminal = await importTerminalModule();
 
@@ -489,7 +502,7 @@ describe("Herdr 원격 machine 연결", () => {
     vi.mocked(git.execGit).mockImplementation(async (command) => {
       if (command.includes(`'machine' '${failedCommand}'`)) throw new Error("machine unavailable");
       if (command.includes("'machine' 'list'")) return "[]";
-      return JSON.stringify({ result: { workspaces: [{ workspace_id: "w1" }] } });
+      return HEALTHY_HERDR_SERVER_OUTPUT;
     });
     const terminal = await importTerminalModule();
     const ws = createMockWs();
@@ -505,9 +518,131 @@ describe("Herdr 원격 machine 연결", () => {
     }
   });
 
+  it("machine 등록이 거부되면 Herdr가 stderr에 남긴 거부 이유를 보드 알림으로 보낸다", async () => {
+    // Given: Herdr CLI는 안내 문구 뒤 마지막 줄에 거부 이유를 쓰고 실패한다
+    const git = await import("@/lib/gitOperations");
+    const { subscribeToBoardEvents } = await import("@/lib/boardNotifier");
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const boardEvents: unknown[] = [];
+    const unsubscribe = subscribeToBoardEvents((event) => boardEvents.push(event));
+    vi.mocked(git.execGit).mockImplementation(async (command) => {
+      if (command.includes("'machine' 'list'")) return "[]";
+      if (command.includes("'machine' 'add'")) {
+        throw Object.assign(new Error("Command failed: herdr machine add"), {
+          stderr: "remote herdr server on host (session project-task) is still running v0.9.5.\nerror: remote server is not ready for saved machines; machine was not saved\n",
+        });
+      }
+      return HEALTHY_HERDR_SERVER_OUTPUT;
+    });
+    const terminal = await importTerminalModule();
+    try {
+      // When
+      await terminal.attachRemoteSession("machine-task", null, "host", SessionType.HERDR, "project-task", createMockWs() as never, config, 120, 30, "/work");
+
+      // Then
+      await vi.waitFor(() => expect(boardEvents).toContainEqual({
+        type: "herdr-machine-registration-failed",
+        sshHost: "host",
+        herdrSession: "project-task",
+        reason: "error: remote server is not ready for saved machines; machine was not saved",
+      }));
+    } finally {
+      unsubscribe();
+      warning.mockRestore();
+    }
+  });
+
+  it("이전 방식으로 떠 있는 원격 서버는 machine 등록 대신 교체 확인을 화면에 요청한다", async () => {
+    // Given: 세션 리더가 아니지만 live handoff를 지원하는 원격 서버
+    const git = await import("@/lib/gitOperations");
+    const { subscribeToBoardEvents } = await import("@/lib/boardNotifier");
+    const boardEvents: unknown[] = [];
+    const unsubscribe = subscribeToBoardEvents((event) => boardEvents.push(event));
+    vi.mocked(git.execGit).mockImplementation(async (command) => {
+      if (command.includes("'machine' 'list'")) return "[]";
+      if (command.includes("'status' 'server'")) return NOHUP_HERDR_SERVER_STATUS;
+      return HEALTHY_HERDR_SERVER_OUTPUT;
+    });
+    const terminal = await importTerminalModule();
+    try {
+      // When
+      await terminal.attachRemoteSession("machine-task", null, "host", SessionType.HERDR, "project-task", createMockWs() as never, config, 120, 30, "/work");
+
+      // Then
+      await vi.waitFor(() => expect(boardEvents).toContainEqual({ type: "herdr-server-handoff-required", sshHost: "host", herdrSession: "project-task" }));
+      expect(vi.mocked(git.execGit).mock.calls.some(([command]) => command.includes("'machine' 'add'"))).toBe(false);
+    } finally {
+      unsubscribe();
+    }
+  });
+
+  it("승인된 서버 교체는 붙어 있던 화면을 다시 연결하라는 사유로 닫고, 교체 중 새 연결은 교체가 끝난 뒤 붙인 다음 machine을 등록한다", async () => {
+    // Given: 이전 방식 서버에 붙은 원격 Herdr 화면
+    const git = await import("@/lib/gitOperations");
+    let isHandedOff = false;
+    let finishHandoff!: () => void;
+    vi.mocked(git.execGit).mockImplementation(async (command) => {
+      if (command.includes("'machine' 'list'")) return "[]";
+      if (command.includes("'status' 'server'")) return isHandedOff ? DETACHED_HERDR_SERVER_STATUS : NOHUP_HERDR_SERVER_STATUS;
+      if (command.includes("'live-handoff'")) {
+        return new Promise<string>((resolve) => {
+          finishHandoff = () => { isHandedOff = true; resolve("live handoff complete"); };
+        });
+      }
+      return HEALTHY_HERDR_SERVER_OUTPUT;
+    });
+    const terminal = await importTerminalModule();
+    const attachedWs = createMockWs();
+    await terminal.attachRemoteSession("machine-task", null, "host", SessionType.HERDR, "project-task", attachedWs as never, config, 120, 30, "/work");
+
+    // When: 교체를 시작하고, 끝나기 전에 같은 서버로 새 화면을 연다
+    const replacing = terminal.replaceHerdrRemoteServer("host", "project-task");
+    await vi.waitFor(() => expect(finishHandoff).toBeTypeOf("function"));
+    const reconnectingWs = createMockWs();
+    const reconnecting = terminal.attachRemoteSession("other-task", null, "host", SessionType.HERDR, "project-task", reconnectingWs as never, config, 120, 30, "/work");
+    await Promise.resolve();
+    const spawnCountDuringHandoff = spawnCalls.length;
+    finishHandoff();
+    await replacing;
+    await reconnecting;
+
+    // Then: 이전 화면은 재연결 사유로 닫히고, 새 화면은 교체가 끝난 뒤에야 PTY를 얻고, machine 등록이 이어진다
+    expect(attachedWs.close).toHaveBeenCalledWith(1012, HERDR_SERVER_REPLACED_CLOSE_REASON);
+    expect(spawnedPtys[0].kill).toHaveBeenCalled();
+    expect(spawnCountDuringHandoff).toBe(1);
+    expect(spawnCalls).toHaveLength(2);
+    expect(vi.mocked(git.execGit).mock.calls.find(([command]) => command.includes("'live-handoff'"))?.[1]).toBe("host");
+    await vi.waitFor(() => expect(vi.mocked(git.execGit).mock.calls.some(([command]) => command.includes("'machine' 'add' 'host'"))).toBe(true));
+  });
+
+  it("서버 교체가 실패하면 서버를 강제로 내리지 않고 Herdr의 실패 이유를 보드 알림으로 보낸다", async () => {
+    // Given
+    const git = await import("@/lib/gitOperations");
+    const { subscribeToBoardEvents } = await import("@/lib/boardNotifier");
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const boardEvents: unknown[] = [];
+    const unsubscribe = subscribeToBoardEvents((event) => boardEvents.push(event));
+    vi.mocked(git.execGit).mockImplementation(async (command) => {
+      if (command.includes("'live-handoff'")) throw Object.assign(new Error("Command failed"), { stderr: "error: live handoff failed\n" });
+      return HEALTHY_HERDR_SERVER_OUTPUT;
+    });
+    const terminal = await importTerminalModule();
+    try {
+      // When
+      await terminal.replaceHerdrRemoteServer("host", "project-task");
+
+      // Then
+      expect(boardEvents).toContainEqual({ type: "herdr-machine-registration-failed", sshHost: "host", herdrSession: "project-task", reason: "error: live handoff failed" });
+      expect(vi.mocked(git.execGit).mock.calls.some(([command]) => command.includes("'stop'") || command.includes("'machine' 'add'"))).toBe(false);
+    } finally {
+      unsubscribe();
+      warning.mockRestore();
+    }
+  });
+
   it("로컬 Herdr 접속에서는 원격 machine을 조회하지 않는다", async () => {
     const git = await import("@/lib/gitOperations");
-    vi.mocked(git.execGit).mockResolvedValue(JSON.stringify({ result: { workspaces: [{ workspace_id: "w1" }] } }));
+    vi.mocked(git.execGit).mockResolvedValue(HEALTHY_HERDR_SERVER_OUTPUT);
     const terminal = await importTerminalModule();
 
     await terminal.attachLocalSession("local-machine-task", null, SessionType.HERDR, "project-task", createMockWs() as never, "/work");
@@ -521,7 +656,7 @@ describe("Herdr PTY 수명", () => {
   it.each([false, true])("준비 중 닫힌 %s 원격 클라이언트에는 PTY를 만들지 않는다", async (remote) => {
     const git = await import("@/lib/gitOperations");
     let finishBootstrap!: (output: string) => void;
-    vi.mocked(git.execGit).mockResolvedValue(JSON.stringify({ result: { workspaces: [{ workspace_id: "w1" }] } })).mockImplementationOnce(() => new Promise<string>((resolve) => {
+    vi.mocked(git.execGit).mockResolvedValue(HEALTHY_HERDR_SERVER_OUTPUT).mockImplementationOnce(() => new Promise<string>((resolve) => {
       finishBootstrap = resolve;
     }));
     const terminal = await importTerminalModule();
@@ -532,7 +667,7 @@ describe("Herdr PTY 수명", () => {
 
     ws.readyState = 3;
     ws.triggerClose();
-    finishBootstrap(JSON.stringify({ result: { workspaces: [{ workspace_id: "w1" }] } }));
+    finishBootstrap(HEALTHY_HERDR_SERVER_OUTPUT);
     await attaching;
 
     expect(spawnedPtys).toHaveLength(0);
@@ -546,7 +681,7 @@ describe("Herdr PTY 수명", () => {
   ])("동시 연결 준비 중 취소된 클라이언트는 남기지 않는다 (remote=%s, cancelledFirst=%s)", async (remote, cancelledFirst) => {
     const git = await import("@/lib/gitOperations");
     let finishBootstrap!: (output: string) => void;
-    vi.mocked(git.execGit).mockResolvedValue(JSON.stringify({ result: { workspaces: [{ workspace_id: "w1" }] } })).mockImplementationOnce(() => new Promise<string>((resolve) => {
+    vi.mocked(git.execGit).mockResolvedValue(HEALTHY_HERDR_SERVER_OUTPUT).mockImplementationOnce(() => new Promise<string>((resolve) => {
       finishBootstrap = resolve;
     }));
     const terminal = await importTerminalModule();
@@ -559,7 +694,7 @@ describe("Herdr PTY 수명", () => {
     const attaching = clients.map(attach);
     cancelled.readyState = 3;
     cancelled.triggerClose();
-    finishBootstrap(JSON.stringify({ result: { workspaces: [{ workspace_id: "w1" }] } }));
+    finishBootstrap(HEALTHY_HERDR_SERVER_OUTPUT);
     await Promise.all(attaching);
 
     expect(spawnedPtys).toHaveLength(1);
@@ -574,7 +709,7 @@ describe("Herdr PTY 수명", () => {
 
   it.each([false, true])("동시 %s 원격 연결에서도 PTY 하나를 공유하고 마지막 창만 분리한다", async (remote) => {
     const git = await import("@/lib/gitOperations");
-    vi.mocked(git.execGit).mockResolvedValue(JSON.stringify({ result: { workspaces: [{ workspace_id: "w1" }] } }));
+    vi.mocked(git.execGit).mockResolvedValue(HEALTHY_HERDR_SERVER_OUTPUT);
     const terminal = await importTerminalModule();
     const first = createMockWs();
     const second = createMockWs();
@@ -656,7 +791,7 @@ describe("공유 Herdr Space 클라이언트", () => {
     const git = await import("@/lib/gitOperations");
     vi.mocked(git.execGit).mockImplementation(async (command) => command.includes("'session' 'list'")
       ? JSON.stringify({ sessions: [{ name: "kanvibe", running: true, session_dir: "/config/herdr/sessions/kanvibe", socket_path: "/config/herdr/sessions/kanvibe/herdr.sock" }] })
-      : JSON.stringify({ result: { workspaces: [{ workspace_id: "w1" }, { workspace_id: "w2" }] } }));
+      : JSON.stringify({ result: { workspaces: [{ workspace_id: "w1" }, { workspace_id: "w2" }], panes: [{ pane_id: "w1:p1" }, { pane_id: "w2:p1" }] } }));
   });
   it.each([false, true])("공유 Space는 클라이언트 중계를 통해 연결하고 PTY 종료 때 중계도 닫는다 (remote=%s)", async (remote) => {
     const proxy = { socketPath: "/tmp/proxy/client", request: vi.fn(), getActiveTabId: () => "w1:t1", close: vi.fn(async () => {}) };
@@ -667,6 +802,7 @@ describe("공유 Herdr Space 클라이언트", () => {
       ? terminal.attachRemoteSession("task-a", null, "host", SessionType.HERDR, "kanvibe:task-a", ws as never, config, 120, 30, "/work")
       : terminal.attachLocalSession("task-a", null, SessionType.HERDR, "kanvibe:task-a", ws as never, "/work"));
     expect(createHerdrClientProxy).toHaveBeenCalledWith(expect.any(String), "w1");
+    expect(readHerdrMapping).toHaveBeenCalledOnce();
     expect(spawnCalls[0].args.join(" ")).toContain("HERDR_CLIENT_SOCKET_PATH=");
     expect(spawnCalls[0].args.join(" ")).not.toContain("--session 'kanvibe'");
     if (remote) {
@@ -704,6 +840,35 @@ describe("공유 Herdr Space 클라이언트", () => {
     expect(proxyA.request).toHaveBeenCalledWith("tab.focus", { tab_id: "w1:t2" });
     expect(proxyB.request).not.toHaveBeenCalled();
     await expect(terminal.focusHerdrTaskTab("task-a", "w2:t1")).rejects.toThrow("다른 Space");
+    terminal.killAllTerminalSessions();
+  });
+  it("채팅에서 돌아갈 pane은 task 소유 Herdr 클라이언트만 선택하고 다른 Space와 끊긴 연결은 거부한다", async () => {
+    const proxyA = { socketPath: "/tmp/a/client", request: vi.fn(async () => {}), getActiveTabId: () => "w1:t1", close: vi.fn(async () => {}) };
+    const proxyB = { ...proxyA, socketPath: "/tmp/b/client", request: vi.fn(async () => {}) };
+    createHerdrClientProxy.mockResolvedValueOnce(proxyA).mockResolvedValueOnce(proxyB);
+    const terminal = await importTerminalModule();
+    await expect(terminal.focusHerdrTaskPane("task-a", "w1:p2")).rejects.toThrow("연결");
+    await terminal.attachLocalSession("task-a", null, SessionType.HERDR, "kanvibe:task-a", createMockWs() as never, "/work/a");
+    await terminal.attachLocalSession("task-b", null, SessionType.HERDR, "kanvibe:task-b", createMockWs() as never, "/work/b");
+    await terminal.focusHerdrTaskPane("task-a", "w1:p2");
+    expect(proxyA.request.mock.calls).toEqual([["pane.focus", { pane_id: "w1:p2" }]]);
+    expect(proxyB.request).not.toHaveBeenCalled();
+    await expect(terminal.focusHerdrTaskPane("task-a", "w2:p1")).rejects.toThrow("다른 Space");
+    expect(proxyA.request).toHaveBeenCalledTimes(1);
+    terminal.killAllTerminalSessions();
+  });
+  it.each(["top", "bottom"] as const)("Herdr pane은 클라이언트 surface 크기와 %s 탭 위치로 실제 화면에 투영한다", async (position) => {
+    readHerdrClientTabBarPosition.mockResolvedValue(position);
+    let surfaceCols = 134;
+    const proxy = { socketPath: "/tmp/a/client", request: vi.fn(async () => {}), getActiveTabId: () => "w1:t1", getSurfaceSize: () => ({ cols: surfaceCols, rows: 47 }), close: vi.fn(async () => {}) };
+    createHerdrClientProxy.mockResolvedValueOnce(proxy);
+    const terminal = await importTerminalModule();
+    await terminal.attachLocalSession("task-a", null, SessionType.HERDR, "kanvibe:task-a", createMockWs() as never, "/work/a", 160, 48);
+    expect(await terminal.getHerdrTaskSurfaceBounds("task-a")).toEqual({ left: 26, top: position === "top" ? 1 : 0, width: 134, height: 47 });
+    surfaceCols = 156;
+    expect(await terminal.getHerdrTaskSurfaceBounds("task-a")).toEqual({ left: 4, top: position === "top" ? 1 : 0, width: 156, height: 47 });
+    readHerdrClientTabBarPosition.mockResolvedValue(position === "top" ? "bottom" : "top");
+    expect(await terminal.getHerdrTaskSurfaceBounds("task-a")).toBeNull();
     terminal.killAllTerminalSessions();
   });
 });

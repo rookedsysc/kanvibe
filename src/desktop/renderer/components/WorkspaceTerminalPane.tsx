@@ -56,6 +56,9 @@ export default function WorkspaceTerminalPane({
             onClose={(tabId) => { void terminalTabs.closeTab(tabId); }}
             onRename={(tabId, name) => { void terminalTabs.renameTab(tabId, name); }}
             onMove={(tabId, targetIndex) => { void terminalTabs.moveTab(tabId, targetIndex); }}
+            pendingAction={terminalTabs.pendingAction}
+            actionError={terminalTabs.actionError}
+            onRetryAction={() => { void terminalTabs.retryAction(); }}
           />
         ) : null}
       </div>
@@ -65,6 +68,10 @@ export default function WorkspaceTerminalPane({
             key={task.id}
             taskId={task.id}
             tabs={isTerminalSession ? terminalTabs.tabs : undefined}
+            tabsError={terminalTabs.error}
+            isTabListLoaded={terminalTabs.isTabListLoaded}
+            onRetryTabs={() => { void terminalTabs.refresh(); }}
+            onCreateTab={() => { void terminalTabs.createTab(); }}
             isRemote={Boolean(task.sshHost)}
           />
         ) : (

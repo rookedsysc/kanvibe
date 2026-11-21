@@ -95,6 +95,11 @@ export function buildGeminiHookFiles(
   const settings = parseJsonHookSettings(settingsContent);
   const hooks = ensureJsonHookBuckets(settings);
 
+  hooks.SessionStart = upsertJsonHookEntries(
+    hooks.SessionStart,
+    PROMPT_HOOK_SCRIPT_NAME,
+    buildMatcherCommandHookEntry(ALL_EVENTS_MATCHER, GEMINI_PROMPT_COMMAND, HOOK_TIMEOUT_MS),
+  );
   hooks.BeforeAgent = upsertJsonHookEntries(
     hooks.BeforeAgent,
     PROMPT_HOOK_SCRIPT_NAME,
@@ -169,6 +174,7 @@ function hasGeminiSettingsEntry(settingsContent: string): boolean {
   }
 
   return hasMatcherCommandHookEntry(hooks.BeforeAgent || [], ALL_EVENTS_MATCHER, GEMINI_PROMPT_COMMAND)
+    && hasMatcherCommandHookEntry(hooks.SessionStart || [], ALL_EVENTS_MATCHER, GEMINI_PROMPT_COMMAND)
     && hasMatcherCommandHookEntry(hooks.AfterAgent || [], ALL_EVENTS_MATCHER, GEMINI_STOP_COMMAND);
 }
 

@@ -19,6 +19,7 @@ const createTaskMock = vi.fn();
 const connectTerminalSessionMock = vi.fn();
 const updateTaskStatusMock = vi.fn();
 const getProjectBranchesMock = vi.fn();
+const getAllProjectsMock = vi.fn();
 const listSubdirectoriesMock = vi.fn();
 const scanAndRegisterProjectsMock = vi.fn();
 const getTaskByIdMock = vi.fn();
@@ -28,10 +29,21 @@ const findProjectOneByMock = vi.fn();
 const propagateTaskRegistrationToPeersMock = vi.fn();
 const getTaskAiSessionsMock = vi.fn();
 const getTaskAiSessionDetailMock = vi.fn();
+const getTaskAiSessionAttachmentMock = vi.fn();
+const readTaskWorkspaceFileMock = vi.fn();
 const attachTaskTerminalMock = vi.fn();
 const changeTaskSessionTypeMock = vi.fn();
 const isTaskSessionAliveMock = vi.fn();
 const getSessionDependencyStatusMock = vi.fn();
+const remoteTransport = vi.hoisted(() => ({
+  prepareRemoteTerminalGrant: vi.fn(),
+  attachRemoteTerminalRelay: vi.fn(),
+  revokeRemoteTerminalDevice: vi.fn(),
+  revokeRemoteTerminalGrant: vi.fn(),
+  revokeRemoteTerminalTask: vi.fn(),
+  stopRemoteTerminalAgents: vi.fn(),
+}));
+vi.mock("@/desktop/main/services/remoteTerminalService", () => remoteTransport);
 let defaultSessionTypeSetting = SessionType.TMUX;
 
 /** 데스크탑 PTY 대신 세우는 가짜. 테스트가 출력을 흘리고 셸을 끝낼 수 있다 */
@@ -124,12 +136,16 @@ vi.mock("@/lib/remoteSessionDependency", async (importOriginal) => {
     ),
   };
 });
+vi.mock("@/desktop/main/services/diffService", () => ({
+  readTaskWorkspaceFile: (...args: unknown[]) => readTaskWorkspaceFileMock(...args),
+}));
 vi.mock("@/desktop/main/services/projectService", () => ({
-  getAllProjects: async () => [],
+  getAllProjects: () => getAllProjectsMock(),
   listSubdirectories: (...args: unknown[]) => listSubdirectoriesMock(...args),
   scanAndRegisterProjects: (...args: unknown[]) => scanAndRegisterProjectsMock(...args),
   getTaskAiSessions: (...args: unknown[]) => getTaskAiSessionsMock(...args),
   getTaskAiSessionDetail: (...args: unknown[]) => getTaskAiSessionDetailMock(...args),
+  getTaskAiSessionAttachment: (...args: unknown[]) => getTaskAiSessionAttachmentMock(...args),
   getProjectBranches: (projectId: string) => getProjectBranchesMock(projectId),
 }));
 
@@ -146,6 +162,7 @@ const {
   authorizeMobileRequest,
   changeMobileTaskSessionType,
   claimPaneViewport,
+  refreshPaneHistory,
   closeMobilePane,
   createMobileTask,
   createMobileTerminalTab,
@@ -155,9 +172,12 @@ const {
   getMobileBoard,
   getMobileAiSessions,
   getMobileAiSessionDetail,
+  getMobileAiSessionAttachment,
   getMobileTask,
+  getMobileTaskFile,
   getMobileNotifications,
   markMobileNotificationRead,
+  markMobileTaskNotificationsRead,
   markAllMobileNotificationsRead,
   onMobileNotificationsChanged,
   listMobilePushSubscriptions,
@@ -443,6 +463,7 @@ describe("모바일 화면 크기", () => {
 
 beforeEach(() => {
   appSettingsStore.clear();
+  getAllProjectsMock.mockReset().mockResolvedValue([]);
   execGitMock.mockReset();
   findOneByMock.mockReset();
   spawnMock.mockReset();
@@ -643,9 +664,10 @@ describe("모바일 알림함", () => {
   const mobileNotification = {
     id: "inbox-1", title: "리뷰 요청", body: "변경을 확인해 주세요", taskId: "task-1", isRead: false,
     createdAt: "2026-11-01T00:00:00.000Z",
+    actionType: "background-sync-review",
   };
 
-  it("같은 데스크탑 저장소를 최신순으로 읽고 경로와 action을 모바일에 노출하지 않는다", async () => {
+  it("저장소를 최신순으로 읽고 검토 액션 종류만 공개하며 경로와 payload는 숨긴다", async () => {
     appSettingsStore.set("app_notifications", JSON.stringify([
       { ...notification, id: "older", taskId: null, createdAt: "2026-10-01T00:00:00.000Z" },
       notification,
@@ -682,6 +704,22 @@ describe("모바일 알림함", () => {
     expect(await listNotifications()).toEqual([
       { ...notification, isRead: true },
       { ...notification, id: "inbox-2", taskId: null, isRead: true },
+    ]);
+  });
+
+  it("task 읽음은 데스크탑 원본에서 그 task의 안읽은 알림만 읽음 처리하고 개수를 돌려준다", async () => {
+    appSettingsStore.set("app_notifications", JSON.stringify([
+      notification,
+      { ...notification, id: "inbox-2" },
+      { ...notification, id: "inbox-3", taskId: "other-task" },
+    ]));
+
+    expect(await markMobileTaskNotificationsRead(notification.taskId!)).toBe(2);
+    expect(await markMobileTaskNotificationsRead(notification.taskId!)).toBe(0);
+    expect(await listNotifications()).toEqual([
+      { ...notification, isRead: true },
+      { ...notification, id: "inbox-2", isRead: true },
+      { ...notification, id: "inbox-3", taskId: "other-task" },
     ]);
   });
 
@@ -1503,17 +1541,19 @@ describe("모바일 태스크 생성", () => {
     expect(createTaskMock).not.toHaveBeenCalled();
   });
 
-  it("세션 타입은 기기가 보낸 값과 관계없이 데스크탑 기본 세션 타입을 따른다", async () => {
+  it("세션 타입을 생략하면 PC 기본값을 쓰고 선택한 값은 검증해서 따른다", async () => {
     defaultSessionTypeSetting = SessionType.ZELLIJ;
     try {
-      await createMobileTask({ ...draft, sessionType: "tmux" } as never);
-      await createMobileTask({ ...draft, sessionType: "screen" } as never);
+      await createMobileTask(draft);
+      await createMobileTask({ ...draft, sessionType: "tmux" });
+      await expect(createMobileTask({ ...draft, sessionType: "screen" })).rejects.toThrow(/세션 타입/);
+      await expect(createMobileTask({ ...draft, sessionType: "" })).rejects.toThrow(/세션 타입/);
     } finally {
       defaultSessionTypeSetting = SessionType.TMUX;
     }
-
     expect(createTaskMock).toHaveBeenNthCalledWith(1, expect.objectContaining({ sessionType: "zellij" }));
-    expect(createTaskMock).toHaveBeenNthCalledWith(2, expect.objectContaining({ sessionType: "zellij" }));
+    expect(createTaskMock).toHaveBeenNthCalledWith(2, expect.objectContaining({ sessionType: "tmux" }));
+    expect(createTaskMock).toHaveBeenCalledTimes(2);
   });
 
   it("모바일 화면에 없는 칸은 데스크탑 요청에 실리지 않는다", async () => {
@@ -1816,6 +1856,20 @@ describe("terminal 세션 미러", () => {
 });
 
 describe("모바일 보드", () => {
+  it("반복 아이콘은 opt-in 보드에서 한 번만 싣고 기본 응답은 유지한다", async () => {
+    const icon = "data:image/svg+xml;base64," + "a".repeat(2000);
+    const projects = [{ id: "p1", iconDataUrl: icon }, { id: "p2", iconDataUrl: icon }, { id: "p3", iconDataUrl: null }];
+    getAllProjectsMock.mockResolvedValue(projects);
+
+    const compact = await getMobileBoard({ iconFormat: "deduplicated" });
+
+    expect(compact.projects).toEqual([{ id: "p1", iconDataUrl: null, iconKey: "0" }, { id: "p2", iconDataUrl: null, iconKey: "0" }, { id: "p3", iconDataUrl: null, iconKey: null }]);
+    expect(compact).toMatchObject({ projectIcons: { "0": icon } });
+    expect(JSON.stringify(compact).split(icon)).toHaveLength(2);
+    expect((await getMobileBoard()).projects).toEqual(projects);
+    expect(await getMobileBoard()).not.toHaveProperty("projectIcons");
+  });
+
   it("생성 화면이 쓸 데스크탑 기본 세션 타입을 함께 싣는다", async () => {
     defaultSessionTypeSetting = SessionType.ZELLIJ;
 
@@ -1917,7 +1971,7 @@ describe("모바일 pane 단축키", () => {
       return "snapshot";
     });
     const result = await executeMobileTerminalShortcut("shortcut-task", "%19", "split-right");
-    expect(executedCommands()).toContain("tmux split-window -h -d -t '%19'");
+    expect(executedCommands()).toContain("tmux split-window -h -d -t '%19' -c '#{pane_current_path}'");
     expect(result.surfaces.sessionType).toBe(SessionType.TMUX);
     expect(result.surfaces.tabs[0].panes[0].id).toBe("%19");
     expect(result.screen).toBeUndefined();
@@ -1997,6 +2051,31 @@ describe("모바일 pane 단축키", () => {
 });
 
 describe("모바일 History 신뢰 경로 캐시", () => {
+  it("활성 CLI 없이 현재 task에서 발견한 기록의 첨부만 읽고 다른 task와 섞지 않는다", async () => {
+    getTaskAiSessionsMock.mockResolvedValueOnce({ sessions: [{ id: "image-session", provider: "codex", sourceRef: "/trusted/image-rollout.jsonl" }], sources: [] });
+    getTaskAiSessionAttachmentMock.mockResolvedValue({ id: "image-id", name: "image.png", mimeType: "image/png", dataUrl: "data:image/png;base64,image" });
+    expect(await getMobileAiSessionAttachment("history-image-task", "codex", "image-session", "image-id")).toMatchObject({ id: "image-id" });
+    expect(getTaskAiSessionAttachmentMock).toHaveBeenLastCalledWith("history-image-task", "codex", "image-session", "image-id", "/trusted/image-rollout.jsonl");
+    getTaskAiSessionsMock.mockResolvedValueOnce({ sessions: [], sources: [] });
+    const before = getTaskAiSessionAttachmentMock.mock.calls.length;
+    expect(await getMobileAiSessionAttachment("other-image-task", "codex", "image-session", "image-id")).toBeNull();
+    expect(getTaskAiSessionAttachmentMock).toHaveBeenCalledTimes(before);
+  });
+
+  it("태스크 작업 폴더의 파일을 읽어 돌려주고 실패 사유는 그대로 올린다", async () => {
+    readTaskWorkspaceFileMock.mockResolvedValueOnce({ path: "docs/plan.md", content: "# plan" });
+    expect(await getMobileTaskFile("file-task", "/work/task/docs/plan.md")).toEqual({ path: "docs/plan.md", content: "# plan" });
+    expect(readTaskWorkspaceFileMock).toHaveBeenLastCalledWith("file-task", "/work/task/docs/plan.md");
+
+    readTaskWorkspaceFileMock.mockRejectedValueOnce(Object.assign(new Error("too-large"), { name: "TaskWorkspaceFileError", reason: "too-large" }));
+    await expect(getMobileTaskFile("file-task", "big.log")).rejects.toMatchObject({ name: "TaskWorkspaceFileError", reason: "too-large" });
+  });
+
+  it("기록 첨부의 내부 파일 오류를 모바일 응답에 노출하지 않는다", async () => {
+    getTaskAiSessionAttachmentMock.mockRejectedValueOnce(new Error("private host path"));
+    await expect(getMobileAiSessionAttachment("history-image-explicit", "codex", "image-session", "image-id", "/trusted/source")).rejects.toMatchObject({ name: "MobileTaskInputError", message: "첨부 파일을 불러올 수 없습니다. 파일 형식·크기와 원본 파일을 확인해 주세요." });
+  });
+
   it("목록에서 발견한 경로를 상세와 이전 페이지에 재사용하고 네트워크 응답에서는 제거한다", async () => {
     getTaskAiSessionsMock.mockResolvedValue({ sessions: [{ id: "s1", provider: "codex", sourceRef: "/trusted/rollout.jsonl" }], sources: [], nextCursor: null });
     getTaskAiSessionDetailMock.mockResolvedValue({ sessionId: "s1", provider: "codex", sourceRef: "/trusted/rollout.jsonl", messages: [] });
@@ -2058,6 +2137,10 @@ describe("Herdr 세션 미러", () => {
   const herdrCommand = (...args: string[]) => buildHerdrCommand("herdr-session", args);
   const herdrResult = (value: unknown) => JSON.stringify({ id: "test", result: value });
   let historyRows = 0;
+  /** 모바일을 대체 화면에 두고 마우스 보고는 끈다. 손가락 스크롤이 휠로 나와 Herdr 제어 연결로 간다 */
+  const HERDR_SCREEN_MODES = "\x1b[?1049h\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1005l\x1b[?1006l";
+  /** 모바일은 이 글자들로 시작하는 청크만 "다시 그리기"로 알아보고, 글자를 선택한 동안 적용을 미룬다 */
+  const REDRAW_START = "\x1b[H\x1b[2J\x1b[3J";
 
   const stubHerdrSession = () => execGitMock.mockImplementation(async (command: string) => {
     if (command === herdrCommand("workspace", "list")) return herdrResult({ workspaces: [{ workspace_id: "w1" }] });
@@ -2072,6 +2155,7 @@ describe("Herdr 세션 미러", () => {
     if (command === herdrCommand("pane", "get", "w1:p1")) {
       return herdrResult({ pane: { pane_id: "w1:p1", tab_id: "w1:t1", scroll: { max_offset_from_bottom: historyRows, viewport_rows: 38 } } });
     }
+    if (command.includes("'pane' 'get'")) return herdrResult({ pane: null });
     if (command.includes("'pane' 'read'")) return `history-${historyRows}`;
     return "";
   });
@@ -2096,6 +2180,149 @@ describe("Herdr 세션 미러", () => {
     spawnMock.mockImplementation(() => createObserver());
   });
 
+  it("최소 surfaces는 실행 명령 조회 없이 첫 pane 좌표를 돌려준다", async () => {
+    const surfaces = await getTaskSurfaces("herdr-task", { metadata: "minimal" });
+
+    expect(surfaces.tabs[0].panes[0]).toMatchObject({ id: "w1:p1", command: "", width: 120, height: 38 });
+    expect(surfaces.geometryTabId).toBe("w1:t1");
+    expect(executed().some((command) => command.includes("'process-info'"))).toBe(false);
+    expect((await getTaskSurfaces("herdr-task")).tabs[0].panes[0].command).toBe("claude");
+  });
+
+  it("최소 surfaces는 지정한 비첫 탭의 전체 pane 배치를 표시 가능하다고 식별한다", async () => {
+    const respond = execGitMock.getMockImplementation()!;
+    execGitMock.mockImplementation((command: string) => {
+      if (command === herdrCommand("pane", "list")) return Promise.resolve(herdrResult({ panes: [
+        { pane_id: "w1:p1", tab_id: "w1:t1", scroll: { viewport_rows: 38 } },
+        { pane_id: "w1:p2", tab_id: "w1:t2", scroll: { viewport_rows: 38 } },
+        { pane_id: "w1:p3", tab_id: "w1:t2", scroll: { viewport_rows: 38 } },
+      ] }));
+      if (command === herdrCommand("tab", "list")) return Promise.resolve(herdrResult({ tabs: [
+        { tab_id: "w1:t1", label: "first" }, { tab_id: "w1:t2", label: "selected" },
+      ] }));
+      if (command === herdrCommand("pane", "layout", "--pane", "w1:p2")) return Promise.resolve(herdrResult({ layout: {
+        area: { width: 120, height: 40 }, zoomed: false,
+        panes: [{ pane_id: "w1:p2", rect: { x: 0, y: 0, width: 60 } }, { pane_id: "w1:p3", rect: { x: 60, y: 0, width: 60 } }],
+      } }));
+      return respond(command);
+    });
+
+    const surfaces = await getTaskSurfaces("herdr-task", { metadata: "minimal", tabId: "w1:t2" });
+
+    expect(surfaces.geometryTabId).toBe("w1:t2");
+    expect(surfaces.tabs[1].panes).toMatchObject([{ id: "w1:p2", left: 0, width: 60 }, { id: "w1:p3", left: 60, width: 60 }]);
+    expect(executed().filter((command) => command.includes("'pane' 'layout'"))).toEqual([herdrCommand("pane", "layout", "--pane", "w1:p2")]);
+  });
+
+  describe("B 지속 연결 권한", () => {
+    const descriptor = {
+      version: 1 as const, grantId: "scoped-grant", expiresAt: Date.now() + 60_000,
+      direct: { host: "b.example", port: 19443, path: "/stream/scoped-grant", token: "capability", certificateFingerprint: "b".repeat(64) },
+    };
+    beforeEach(() => {
+      Object.values(remoteTransport).forEach((mock) => mock.mockReset());
+      remoteTransport.prepareRemoteTerminalGrant.mockResolvedValue(descriptor);
+    });
+    afterEach(async () => { await stopAllPaneMirrors(); });
+
+    it("검증한 원격 Herdr pane만 해당 기기의 권한으로 준비한다", async () => {
+      findOneByMock.mockResolvedValue({ ...HERDR_TASK, sshHost: "remote-b" });
+      const { prepareMobilePaneConnection } = await import("@/desktop/main/services/mobileBridgeService");
+      await expect(prepareMobilePaneConnection("herdr-task", "w1:p1", "device-one")).resolves.toEqual(descriptor);
+      expect(remoteTransport.prepareRemoteTerminalGrant).toHaveBeenCalledWith({
+        sshHost: "remote-b", sessionName: "herdr-session", taskId: "herdr-task", paneId: "w1:p1", deviceId: "device-one", cols: 120, rows: 38,
+      });
+      const commands = execGitMock.mock.calls.map(([command]) => command);
+      expect(commands).toEqual(expect.arrayContaining([herdrCommand("pane", "get", "w1:p1"), herdrCommand("pane", "layout", "--pane", "w1:p1")]));
+      expect(commands).toHaveLength(2);
+    });
+
+    it("다른 pane과 로컬 pane에는 B 권한을 발급하지 않는다", async () => {
+      const { prepareMobilePaneConnection } = await import("@/desktop/main/services/mobileBridgeService");
+      await expect(prepareMobilePaneConnection("herdr-task", "w1:p1", "device-one")).resolves.toBeNull();
+      findOneByMock.mockResolvedValue({ ...HERDR_TASK, sshHost: "remote-b" });
+      await expect(prepareMobilePaneConnection("herdr-task", "w9:p9", "device-one")).rejects.toMatchObject({ name: "SurfaceUnavailableError", reason: "session-not-running" });
+      expect(remoteTransport.prepareRemoteTerminalGrant).not.toHaveBeenCalled();
+    });
+
+    it("기존 legacy 구독이 남아 있으면 두 번째 controller를 준비하지 않는다", async () => {
+      const unsubscribe = await subscribeToPane("herdr-task", "w1:p1", () => {}, () => {});
+      findOneByMock.mockResolvedValue({ ...HERDR_TASK, sshHost: "remote-b" });
+      const { prepareMobilePaneConnection } = await import("@/desktop/main/services/mobileBridgeService");
+      await expect(prepareMobilePaneConnection("herdr-task", "w1:p1", "device-one")).resolves.toBeNull();
+      expect(remoteTransport.prepareRemoteTerminalGrant).not.toHaveBeenCalled();
+      unsubscribe();
+    });
+
+    it("세션 변경 중 도착한 늦은 권한을 폐기한다", async () => {
+      findOneByMock.mockResolvedValue({ ...HERDR_TASK, sshHost: "remote-b" });
+      let finish!: (value: typeof descriptor) => void;
+      let started!: () => void;
+      const preparing = new Promise<void>((resolve) => { started = resolve; });
+      remoteTransport.prepareRemoteTerminalGrant.mockImplementation(() => new Promise((resolve) => { finish = resolve; started(); }));
+      const { prepareMobilePaneConnection } = await import("@/desktop/main/services/mobileBridgeService");
+      const pending = prepareMobilePaneConnection("herdr-task", "w1:p1", "device-one");
+      const failure = expect(pending).rejects.toMatchObject({ name: "SurfaceUnavailableError" });
+      await preparing;
+      broadcastTaskSessionChanged({ taskId: "herdr-task" });
+      finish(descriptor);
+      await failure;
+      expect(remoteTransport.revokeRemoteTerminalTask).toHaveBeenCalledWith("herdr-task");
+    });
+
+    it("기기 연결 해제는 B에 열린 권한도 폐기한다", async () => {
+      const token = await pairOneDevice();
+      const [device] = await listPairedMobileDevices();
+      await expect(unpairMobileDeviceByToken(`Bearer ${token}`)).resolves.toBe(true);
+      expect(remoteTransport.revokeRemoteTerminalDevice).toHaveBeenCalledWith(device.deviceId);
+    });
+
+    it("task 조회를 기다리는 동안 해제된 기기의 권한을 새로 만들지 않는다", async () => {
+      const token = await pairOneDevice();
+      const [device] = await listPairedMobileDevices();
+      let finish!: (task: object) => void;
+      let started!: () => void;
+      const reading = new Promise<void>((resolve) => { started = resolve; });
+      findOneByMock.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; started(); }));
+      const { prepareMobilePaneConnection } = await import("@/desktop/main/services/mobileBridgeService");
+      const pending = prepareMobilePaneConnection("herdr-task", "w1:p1", device.deviceId);
+      const rejected = expect(pending).rejects.toMatchObject({ name: "SurfaceUnavailableError" });
+      await reading;
+      await unpairMobileDeviceByToken(`Bearer ${token}`);
+      finish({ ...HERDR_TASK, sshHost: "remote-b" });
+      await rejected;
+      expect(remoteTransport.prepareRemoteTerminalGrant).not.toHaveBeenCalled();
+    });
+
+    it("늦게 생긴 legacy 소유권 때문에 다른 pane의 B 접속까지 폐기하지 않는다", async () => {
+      findOneByMock.mockResolvedValue({ ...HERDR_TASK, sshHost: "remote-b" });
+      let finish!: (value: typeof descriptor) => void;
+      let started!: () => void;
+      const preparing = new Promise<void>((resolve) => { started = resolve; });
+      remoteTransport.prepareRemoteTerminalGrant.mockImplementation(() => new Promise((resolve) => { finish = resolve; started(); }));
+      const { prepareMobilePaneConnection } = await import("@/desktop/main/services/mobileBridgeService");
+      const pending = prepareMobilePaneConnection("herdr-task", "w1:p1", "device-one");
+      await preparing;
+      findOneByMock.mockResolvedValue(HERDR_TASK);
+      const unsubscribe = await subscribeToPane("herdr-task", "w1:p1", () => {}, () => {});
+      finish(descriptor);
+      await expect(pending).resolves.toBeNull();
+      expect(remoteTransport.revokeRemoteTerminalGrant).toHaveBeenCalledWith("scoped-grant");
+      expect(remoteTransport.revokeRemoteTerminalTask).not.toHaveBeenCalled();
+      unsubscribe();
+    });
+
+    it("relay의 grant와 기기·task·pane 범위를 변경하지 않는다", async () => {
+      const relay = { write: vi.fn(), close: vi.fn() };
+      remoteTransport.attachRemoteTerminalRelay.mockResolvedValue(relay);
+      const { openRemoteMobilePaneStream } = await import("@/desktop/main/services/mobileBridgeService");
+      const onData = vi.fn(); const onClose = vi.fn();
+      await expect(openRemoteMobilePaneStream("herdr-task", "w1:p1", "device-one", "scoped-grant", onData, onClose)).resolves.toBe(relay);
+      expect(remoteTransport.attachRemoteTerminalRelay).toHaveBeenCalledWith("scoped-grant", "device-one", "herdr-task", "w1:p1", onData, onClose);
+      expect(execGitMock).not.toHaveBeenCalled();
+    });
+  });
+
   afterEach(() => {
     vi.useRealTimers();
   });
@@ -2103,7 +2330,7 @@ describe("Herdr 세션 미러", () => {
   it("Herdr 태스크의 표면을 Herdr 조회로 만들고 tmux 명령은 실행하지 않는다", async () => {
     const surfaces = await getTaskSurfaces("herdr-task");
 
-    expect(surfaces).toMatchObject({ sessionType: SessionType.HERDR, canResize: true });
+    expect(surfaces).toMatchObject({ sessionType: SessionType.HERDR, canResize: true, canRefreshHistory: true });
     expect(surfaces.tabs).toEqual([{ id: "w1:t1", name: "work", panes: [expect.objectContaining({ id: "w1:p1", command: "claude", width: 120, height: 38 })] }]);
     expect(executed().filter((command) => command.includes("tmux"))).toEqual([]);
   });
@@ -2182,6 +2409,55 @@ describe("Herdr 세션 미러", () => {
     return { controllers, observers };
   };
 
+  it("모바일 휠은 크기 요청으로 연 제어 연결에 terminal.scroll 한 줄로 가고 pane 입력에는 쓰지 않는다", async () => {
+    const { controllers } = installControllers();
+    const unsubscribe = await subscribeToPane("herdr-task", "w1:p1", () => {}, () => {});
+    const viewport = await claimPaneViewport("herdr-task", "w1:p1");
+    await viewport.resize(44, 70);
+
+    await viewport.scroll({ type: "scroll", direction: "up", column: 4, row: 2 });
+    await viewport.scroll({ type: "scroll", direction: "down", column: 0, row: 69 });
+
+    const controller = controllers[0] as ReturnType<typeof createObserver> & { stdin: { write: ReturnType<typeof vi.fn> } };
+    /** 첫 크기는 제어 연결을 여는 명령 인자로 갔으므로 stdin에는 휠만 남는다 */
+    expect(controller.stdin.write.mock.calls.map(([line]) => JSON.parse(line))).toEqual([
+      { type: "terminal.scroll", direction: "up", lines: 1, column: 4, row: 2 },
+      { type: "terminal.scroll", direction: "down", lines: 1, column: 0, row: 69 },
+    ]);
+    expect(executed().some((command) => command.includes("'send-text'"))).toBe(false);
+    await viewport.release();
+    unsubscribe();
+  });
+
+  it("제어 연결이 열리기 전의 휠과 방향·칸이 잘못된 휠은 버린다", async () => {
+    const { controllers } = installControllers();
+    const unsubscribe = await subscribeToPane("herdr-task", "w1:p1", () => {}, () => {});
+    const viewport = await claimPaneViewport("herdr-task", "w1:p1");
+
+    await viewport.scroll({ type: "scroll", direction: "up", column: 0, row: 0 });
+    expect(controllers).toHaveLength(0);
+
+    await viewport.resize(44, 70);
+    await viewport.scroll({ type: "scroll", direction: "sideways", column: 0, row: 0 });
+    await viewport.scroll({ type: "scroll", direction: "up", column: -1, row: 0 });
+
+    const controller = controllers[0] as ReturnType<typeof createObserver> & { stdin: { write: ReturnType<typeof vi.fn> } };
+    expect(controller.stdin.write).not.toHaveBeenCalled();
+    await viewport.release();
+    unsubscribe();
+  });
+
+  it("터미널을 열고 크기를 정하는 동안 pane 목록은 구독과 크기 소유에서 한 번씩만 읽는다", async () => {
+    installControllers();
+    const unsubscribe = await subscribeToPane("herdr-task", "w1:p1", () => {}, () => {});
+    const viewport = await claimPaneViewport("herdr-task", "w1:p1");
+    await viewport.resize(44, 70);
+
+    expect(executed().filter((command) => command === herdrCommand("pane", "list"))).toHaveLength(2);
+    await viewport.release();
+    unsubscribe();
+  });
+
   it("모바일 마지막 요청을 한 controller에 적용하고 마지막 해제 때 제어를 반납한다", async () => {
     const { controllers, observers } = installControllers();
     const unsubscribe = await subscribeToPane("herdr-task", "w1:p1", () => {}, () => {});
@@ -2216,10 +2492,17 @@ describe("Herdr 세션 미러", () => {
     const original = execGitMock.getMockImplementation()!;
     execGitMock.mockImplementation(async (command, host) => {
       const output = await original(command, host);
-      if (command !== herdrCommand("pane", "list")) return output;
-      const response = JSON.parse(output);
-      response.result.panes.push({ ...response.result.panes[0], pane_id: "w1:p2" });
-      return JSON.stringify(response);
+      if (command === herdrCommand("pane", "list")) {
+        const response = JSON.parse(output);
+        response.result.panes.push({ ...response.result.panes[0], pane_id: "w1:p2" });
+        return JSON.stringify(response);
+      }
+      if (command.includes("'pane' 'layout'")) {
+        const response = JSON.parse(output);
+        response.result.layout.panes.push({ pane_id: "w1:p2", rect: { x: 60, y: 0, width: 60, height: 40 } });
+        return JSON.stringify(response);
+      }
+      return output;
     });
     const first = await claimPaneViewport("herdr-task", "w1:p1");
     const second = await claimPaneViewport("herdr-task", "w1:p2");
@@ -2308,13 +2591,26 @@ describe("Herdr 세션 미러", () => {
     await viewport.release();
   });
 
+  it("채팅 조회는 첫 full frame만 반환하고 부분 레코드를 조립한다", async () => {
+    const { readHerdrPaneFrameForChat } = await import("@/desktop/main/services/mobileBridgeService");
+    const observer = createObserver();
+    spawnMock.mockReturnValue(observer);
+    const read = readHerdrPaneFrameForChat("herdr-task", "w1:p1");
+    await vi.waitFor(() => expect(spawnMock).toHaveBeenCalledTimes(1));
+    observer.stdout.emit("data", frame("delta", false));
+    const full = frame("\x1b[3;3H› ", true);
+    observer.stdout.emit("data", full.slice(0, 12));
+    observer.stdout.emit("data", full.slice(12));
+    await expect(read).resolves.toEqual({ output: "\x1b[3;3H› ", width: 120, height: 38 });
+  });
+
   it("이력을 먼저 보내고 잘린 NDJSON 줄을 이어 프레임을 전달한다", async () => {
     const observer = createObserver();
     spawnMock.mockReturnValue(observer);
     const chunks: string[] = [];
 
     const unsubscribe = await subscribeToPane("herdr-task", "w1:p1", (chunk) => chunks.push(chunk), () => {});
-    expect(chunks).toEqual([buildScreenRedraw("history-0", null)]);
+    expect(chunks).toEqual([`${REDRAW_START}${HERDR_SCREEN_MODES}${buildScreenRedraw("history-0", null)}`]);
     expect(spawnMock.mock.calls[0][1][1]).toBe(buildHerdrObservePaneCommand("herdr-session", "w1:p1", 120, 38));
 
     const line = frame("screen", true);
@@ -2342,7 +2638,7 @@ describe("Herdr 세션 미러", () => {
     await vi.advanceTimersByTimeAsync(1);
 
     expect(spawnMock).toHaveBeenCalledTimes(2);
-    expect(chunks).toContain(buildScreenRedraw("history-5", null));
+    expect(chunks).toContain(`${REDRAW_START}${HERDR_SCREEN_MODES}${buildScreenRedraw("history-5", null)}`);
 
     /** 멈춘 observe의 뒤늦은 프레임과 종료는 새 스트림을 흔들지 않는다 */
     observers[0].stdout.emit("data", frame("stale"));
@@ -2356,6 +2652,28 @@ describe("Herdr 세션 미러", () => {
     expect(chunks.at(-1)).toBe("repaint");
     expect(spawnMock).toHaveBeenCalledTimes(2);
     unsubscribe();
+  });
+
+  it("모바일이 이력 갱신을 요청하면 줄 수가 그대로여도 다시 보내고 연달은 요청은 한 번만 처리한다", async () => {
+    const observers = [createObserver(), createObserver(), createObserver()];
+    observers.forEach((observer) => spawnMock.mockImplementationOnce(() => observer));
+    const chunks: string[] = [];
+    const unsubscribe = await subscribeToPane("herdr-task", "w1:p1", (chunk) => chunks.push(chunk), () => {});
+    chunks.length = 0;
+
+    await refreshPaneHistory("herdr-task", "w1:p1");
+    await refreshPaneHistory("herdr-task", "w1:p1");
+
+    expect(chunks).toEqual([`${REDRAW_START}${HERDR_SCREEN_MODES}${buildScreenRedraw("history-0", null)}`]);
+    expect(spawnMock).toHaveBeenCalledTimes(2);
+    unsubscribe();
+  });
+
+  it("구독이 없는 pane의 이력 갱신 요청은 아무 명령도 실행하지 않는다", async () => {
+    await refreshPaneHistory("herdr-task", "w1:p1");
+
+    expect(executed()).toEqual([]);
+    expect(spawnMock).not.toHaveBeenCalled();
   });
 
   it("이력이 그대로면 observe를 재시작하지 않는다", async () => {

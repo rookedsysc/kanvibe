@@ -26,6 +26,7 @@ import {
 } from "@/desktop/renderer/utils/boardTaskSort";
 import { TASK_STATUS_ORDER, type KanbanTask, type TaskStatus } from "@/entities/KanbanTask";
 import type { Project } from "@/entities/Project";
+import InlineLoadError from "@/components/InlineLoadError";
 
 interface WorkspaceTaskListProps {
   tasks: KanbanTask[];
@@ -35,6 +36,10 @@ interface WorkspaceTaskListProps {
   onSelectTask: (taskId: string) => void;
   hasMoreDoneTasks: boolean;
   onLoadMoreDoneTasks: () => void;
+  isLoadingMoreDoneTasks?: boolean;
+  /** 완료 task 더 불러오기가 실패한 사유. 있으면 버튼 아래에 다시 시도와 함께 알린다 */
+  loadMoreDoneTasksError?: string | null;
+  onRetryLoadMoreDoneTasks?: () => void;
 }
 
 const STATUS_DOT_CLASS_NAMES: Record<TaskStatus, string> = {
@@ -64,10 +69,14 @@ export default function WorkspaceTaskList({
   onSelectTask,
   hasMoreDoneTasks,
   onLoadMoreDoneTasks,
+  isLoadingMoreDoneTasks = false,
+  loadMoreDoneTasksError = null,
+  onRetryLoadMoreDoneTasks,
 }: WorkspaceTaskListProps) {
   const t = useTranslations("workspace");
   const tBoard = useTranslations("board");
   const tTask = useTranslations("task");
+  const tc = useTranslations("common");
   const locale = useLocale();
   const listRef = useRef<HTMLUListElement>(null);
   const [hasListFocus, setHasListFocus] = useState(false);
@@ -323,10 +332,19 @@ export default function WorkspaceTaskList({
           <button
             type="button"
             onClick={onLoadMoreDoneTasks}
-            className={`mt-1 w-full rounded-md px-2.5 py-2 text-left text-xs font-medium text-brand-primary hover:bg-bg-page ${FOCUS_RING_CLASS_NAME}`}
+            disabled={isLoadingMoreDoneTasks}
+            aria-busy={isLoadingMoreDoneTasks || undefined}
+            className={`mt-1 w-full rounded-md px-2.5 py-2 text-left text-xs font-medium text-brand-primary hover:bg-bg-page disabled:opacity-60 ${FOCUS_RING_CLASS_NAME}`}
           >
             {t("loadMoreDone")}
           </button>
+        ) : null}
+        {hasMoreDoneTasks && loadMoreDoneTasksError ? (
+          <InlineLoadError
+            className="mt-1"
+            message={tc("loadFailed", { reason: loadMoreDoneTasksError })}
+            onRetry={onRetryLoadMoreDoneTasks ?? onLoadMoreDoneTasks}
+          />
         ) : null}
       </div>
     </aside>

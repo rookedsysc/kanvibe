@@ -1,11 +1,12 @@
 import { createReadStream } from "fs";
-import { open, readdir, readFile } from "fs/promises";
+import { open, readdir, readFile, type FileHandle } from "fs/promises";
 import { createInterface } from "readline";
 import path from "path";
 import { execGit } from "@/lib/gitOperations";
 import { getFileMtimeMs, quoteShellArgument, readTextFile } from "@/lib/hostFileAccess";
 import type {
   AggregatedAiMessage,
+  AiMessageAttachment,
   AggregatedAiSession,
   AiMessageRole,
   AiSessionMatchScope,
@@ -95,7 +96,8 @@ export function sortSessionsDescending(sessions: AggregatedAiSession[]): Aggrega
 }
 
 export function sortMessagesDescending(messages: AggregatedAiMessage[]): AggregatedAiMessage[] {
-  return [...messages].sort((left, right) => {
+  // 같은 시각에도 나중에 추가된 기록을 먼저 반환해야 화면에서 뒤집을 때 원래 대화 순서가 된다.
+  return [...messages].reverse().sort((left, right) => {
     const leftValue = Date.parse(left.timestamp ?? "");
     const rightValue = Date.parse(right.timestamp ?? "");
 
@@ -121,11 +123,46 @@ function isTransportNoiseLine(trimmedLine: string): boolean {
   ].some((pattern) => pattern.test(trimmedLine));
 }
 
-export function preserveMessageText(value: string): string {
-  return value
+const CODE_FENCE_PATTERN = /^\s*(`{3,}|~{3,})(.*)$/;
+
+/** 닫는 울타리는 여는 울타리와 같은 글자로 그 이상 길어야 하고, 뒤에 언어 이름 같은 글이 붙지 않는다 */
+function isClosingFence(fence: RegExpExecArray, openFence: string): boolean {
+  const [, marker, trailingText] = fence;
+  return marker[0] === openFence[0] && marker.length >= openFence.length && !trailingText.trim();
+}
+
+function removeTransportNoise(line: string): string[] {
+  return line
     .replace(/\[Pasted ~\d+ lines\]/g, "\n")
-    .split(/\r?\n/)
-    .filter((line) => !isTransportNoiseLine(line.trim()))
+    .split("\n")
+    .filter((segment) => !isTransportNoiseLine(segment.trim()));
+}
+
+/**
+ * 터미널 잡음 줄을 지우되 코드 블록 안은 건드리지 않는다.
+ * 코드 블록에는 YAML의 `command:`나 컴파일러의 `error:`처럼 잡음과 같은 모양의 줄이 본문으로 들어 있고,
+ * 닫는 울타리가 없으면 글 끝까지를 코드 블록으로 본다.
+ */
+export function preserveMessageText(value: string): string {
+  let openFence: string | null = null;
+  const keptLines: string[] = [];
+
+  for (const line of value.split(/\r?\n/)) {
+    const fence = CODE_FENCE_PATTERN.exec(line);
+    if (openFence) {
+      keptLines.push(line);
+      if (fence && isClosingFence(fence, openFence)) openFence = null;
+      continue;
+    }
+    if (fence) {
+      openFence = fence[1];
+      keptLines.push(line);
+      continue;
+    }
+    keptLines.push(...removeTransportNoise(line));
+  }
+
+  return keptLines
     .join("\n")
     .replace(/[ \t]+$/gm, "")
     .trim();
@@ -251,6 +288,87 @@ export async function readJsonLines(filePath: string, sshHost?: string | null): 
     .filter((value) => value !== null);
 }
 
+interface AppendedJsonLines {
+  inode: number;
+  /** 여기까지는 줄 단위로 해석해 lines에 실었다 */
+  consumedBytes: number;
+  /** consumedBytes 바로 앞의 바이트. 다음에 읽을 때 같은 내용이 그 자리에 있어야 뒤에 붙은 것으로 본다 */
+  consumedTail: Buffer;
+  lines: unknown[];
+}
+
+/** 채팅으로 보고 있는 대화 기록만 들어오므로 적게 둔다. 줄 배열은 큰 세션에서 수십 MB가 된다 */
+const APPENDED_JSON_LINES_MAX = 8;
+const CONSUMED_TAIL_BYTES = 64;
+const LINE_FEED = 0x0a;
+const appendedJsonLines = new Map<string, AppendedJsonLines>();
+const appendedJsonLineReads = new Map<string, Promise<unknown[]>>();
+
+/**
+ * 줄이 뒤에만 붙는 로컬 JSONL을 읽는다. 지난번에 읽은 곳 뒤로 늘어난 부분만 읽어 같은 배열에 이어 붙이므로,
+ * 호출자는 돌려받은 배열이 그대로인 동안 앞쪽 줄을 다시 처리하지 않아도 된다.
+ * 파일이 짧아졌거나, 다른 파일로 바뀌었거나, 읽었던 자리의 내용이 달라졌으면 처음부터 다시 읽어 새 배열을 돌려준다.
+ */
+export function readAppendedJsonLines(filePath: string): Promise<unknown[]> {
+  // 같은 파일을 겹쳐 읽으면 두 읽기가 같은 위치에서 시작해 붙은 줄을 두 번 싣는다.
+  const previousRead = appendedJsonLineReads.get(filePath) ?? Promise.resolve([]);
+  const read = previousRead.catch(() => []).then(() => readAppendedJsonLinesInTurn(filePath));
+  appendedJsonLineReads.set(filePath, read);
+  void read.catch(() => undefined).then(() => {
+    if (appendedJsonLineReads.get(filePath) === read) appendedJsonLineReads.delete(filePath);
+  });
+  return read;
+}
+
+async function readAppendedJsonLinesInTurn(filePath: string): Promise<unknown[]> {
+  const handle = await open(filePath, "r");
+  try {
+    const stats = await handle.stat();
+    const known = appendedJsonLines.get(filePath);
+    const appendedBytes = known && known.inode === stats.ino && stats.size >= known.consumedBytes
+      ? await readBytesAfterConsumed(handle, known, stats.size)
+      : null;
+    const state = appendedBytes ? known! : { inode: stats.ino, consumedBytes: 0, consumedTail: Buffer.alloc(0), lines: [] };
+    consumeCompleteJsonLines(state, appendedBytes ?? await readFileBytes(handle, 0, stats.size));
+    appendedJsonLines.delete(filePath);
+    appendedJsonLines.set(filePath, state);
+    if (appendedJsonLines.size > APPENDED_JSON_LINES_MAX) appendedJsonLines.delete(appendedJsonLines.keys().next().value!);
+    return state.lines;
+  } finally {
+    await handle.close();
+  }
+}
+
+/** 읽었던 자리의 끝부분이 그대로면 그 뒤에 붙은 바이트를, 달라졌으면 null을 돌려준다 */
+async function readBytesAfterConsumed(handle: FileHandle, known: AppendedJsonLines, fileSize: number): Promise<Buffer | null> {
+  const tailLength = known.consumedTail.length;
+  const bytes = await readFileBytes(handle, known.consumedBytes - tailLength, fileSize);
+  return bytes.subarray(0, tailLength).equals(known.consumedTail) ? bytes.subarray(tailLength) : null;
+}
+
+async function readFileBytes(handle: FileHandle, start: number, end: number): Promise<Buffer> {
+  const bytes = Buffer.alloc(end - start);
+  const { bytesRead } = await handle.read(bytes, 0, bytes.length, start);
+  return bytes.subarray(0, bytesRead);
+}
+
+/** 줄바꿈으로 끝난 줄과, 줄바꿈은 없어도 온전한 JSON인 마지막 줄까지만 싣는다. 쓰는 중인 마지막 줄은 다음 읽기로 미룬다 */
+function consumeCompleteJsonLines(state: AppendedJsonLines, unread: Buffer): void {
+  const lastLineEnd = unread.lastIndexOf(LINE_FEED) + 1;
+  const completeLines = unread.subarray(0, lastLineEnd).toString("utf-8").split("\n");
+  const lastLine = safeJsonParse(unread.subarray(lastLineEnd).toString("utf-8").trim());
+  const consumed = lastLine === null ? unread.subarray(0, lastLineEnd) : unread;
+  for (const line of completeLines) {
+    const value = safeJsonParse(line.trim());
+    if (value !== null) state.lines.push(value);
+  }
+  if (lastLine !== null) state.lines.push(lastLine);
+  state.consumedBytes += consumed.length;
+  const tailSource = consumed.length >= CONSUMED_TAIL_BYTES ? consumed : Buffer.concat([state.consumedTail, consumed]);
+  // 방금 읽은 큰 버퍼를 붙잡지 않도록 끝부분만 복사해 둔다.
+  state.consumedTail = Buffer.from(tailSource.subarray(-CONSUMED_TAIL_BYTES));
+}
+
 export function safeJsonParse<T>(value: string): T | null {
   try {
     return JSON.parse(value) as T;
@@ -298,9 +416,9 @@ export function extractPlainText(value: unknown): string {
   return "";
 }
 
-export function makePreviewMessage(role: AiMessageRole, timestamp: unknown, text: string): AggregatedAiMessage | null {
+export function makePreviewMessage(role: AiMessageRole, timestamp: unknown, text: string, attachments: AiMessageAttachment[] = []): AggregatedAiMessage | null {
   const truncated = createTruncatedText(text);
-  if (!truncated.fullText) return null;
+  if (!truncated.fullText && !attachments.length) return null;
 
   return {
     role,
@@ -308,6 +426,7 @@ export function makePreviewMessage(role: AiMessageRole, timestamp: unknown, text
     text: truncated.previewText,
     fullText: truncated.fullText,
     isTruncated: truncated.isTruncated,
+    ...(attachments.length ? { attachments } : {}),
   };
 }
 
@@ -363,6 +482,9 @@ const fileParseCache = new Map<string, FileParseCache<unknown>>();
 /** 앞 N줄 파싱 결과 전용 캐시. 호스트와 실제 파일 경로를 키로 사용하되 전체 캐시와 분리 관리한다. */
 const headParseCache = new Map<string, FileParseCache<unknown>>();
 
+/** 끝 N줄 파싱 결과 전용 캐시. 같은 파일의 전체·앞부분 파싱 결과와 섞이지 않도록 따로 둔다. */
+const tailParseCache = new Map<string, FileParseCache<unknown>>();
+
 function evictOldestIfNeeded(cache: Map<string, unknown>): void {
   if (cache.size >= FILE_PARSE_CACHE_MAX) {
     const oldestKey = cache.keys().next().value;
@@ -381,6 +503,10 @@ export function getCachedOrParse<T>(filePath: string, parseFn: () => Promise<T>,
 
 export function getCachedOrParseHead<T>(filePath: string, parseFn: () => Promise<T>, sshHost?: string | null): Promise<T> {
   return readWithFileCache(headParseCache, filePath, parseFn, sshHost);
+}
+
+export function getCachedOrParseTail<T>(filePath: string, parseFn: () => Promise<T>, sshHost?: string | null): Promise<T> {
+  return readWithFileCache(tailParseCache, filePath, parseFn, sshHost);
 }
 
 async function readWithFileCache<T>(

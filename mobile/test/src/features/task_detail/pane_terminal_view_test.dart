@@ -1,4 +1,8 @@
 import 'dart:convert';
+import 'dart:async';
+
+import 'package:kanvibe_mobile/src/common/network/desktop_client.dart';
+import 'package:kanvibe_mobile/src/common/network/desktop_connection.dart';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -9,11 +13,41 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:kanvibe_mobile/src/common/constants/app_theme.dart';
 import 'package:kanvibe_mobile/src/common/providers.dart';
 import 'package:kanvibe_mobile/src/features/task_detail/domain/mirror_pane.dart';
+import 'package:kanvibe_mobile/src/features/task_create/domain/session_type.dart';
 import 'package:kanvibe_mobile/src/features/task_detail/presentation/widgets/pane_terminal_view.dart';
 import 'package:xterm/xterm.dart' as xterm;
 import 'package:kanvibe_mobile/src/features/task_detail/presentation/widgets/terminal_shortcut_bar.dart';
 
 import '../../../support/fake_desktop.dart';
+
+class DeferredPaneClient extends FakeDesktopClient {
+  final openings = <Completer<PaneStream>>[];
+  final cancelledOpenings = <int>[];
+  final arguments = <(DesktopConnection, String, String)>[];
+
+  @override
+  Future<PaneStream> openPaneStream(
+    DesktopConnection connection,
+    String taskId,
+    String paneId, {
+    Future<void>? cancelled,
+    bool canPrepareDirectConnection = true,
+  }) {
+    final index = openings.length;
+    final pending = Completer<PaneStream>();
+    openings.add(pending);
+    arguments.add((connection, taskId, paneId));
+    cancelled?.then((_) => cancelledOpenings.add(index));
+    return pending.future;
+  }
+
+  Future<void> finishOpening(int index) async {
+    final args = arguments[index];
+    openings[index].complete(
+      await super.openPaneStream(args.$1, args.$2, args.$3),
+    );
+  }
+}
 
 const _pane = MirrorPane(
   id: '%19',
@@ -33,8 +67,12 @@ Future<void> pumpPane(
   required FakeDesktopClient client,
   required FakeConnectionStore store,
   bool canResize = false,
+  bool canRefreshHistory = false,
   bool canRespondToDeviceQueries = false,
+  bool isActive = true,
+  SessionType sessionType = SessionType.terminal,
   TextScaler textScaler = TextScaler.noScaling,
+  EdgeInsets screenInsets = EdgeInsets.zero,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
@@ -52,12 +90,18 @@ Future<void> pumpPane(
           child: SizedBox(
             width: phoneSize.width,
             height: phoneSize.height,
-            child: PaneTerminalView(
-              canResize: canResize,
-              canRespondToDeviceQueries: canRespondToDeviceQueries,
-              taskId: 'task-1',
-              pane: pane,
-              key: ValueKey(pane.id),
+            child: Padding(
+              padding: screenInsets,
+              child: PaneTerminalView(
+                canResize: canResize,
+                canRefreshHistory: canRefreshHistory,
+                canRespondToDeviceQueries: canRespondToDeviceQueries,
+                isActive: isActive,
+                sessionType: sessionType,
+                taskId: 'task-1',
+                pane: pane,
+                key: ValueKey(pane.id),
+              ),
             ),
           ),
         ),
@@ -77,6 +121,99 @@ Offset terminalCellPosition(WidgetTester tester, int column, int row) {
   return render.localToGlobal(
     render.getOffset(xterm.CellOffset(column, row)) +
         Offset(render.cellSize.width / 2, render.cellSize.height / 2),
+  );
+}
+
+const _startHandleKey = ValueKey('terminal-selection-start-handle');
+const _endHandleKey = ValueKey('terminal-selection-end-handle');
+
+/// 터미널 칸 경계의 줄 아래쪽 점. 선택 손잡이가 붙는 자리다
+Offset terminalBoundaryBottom(WidgetTester tester, int column, int row) {
+  final render = tester
+      .state<xterm.TerminalViewState>(find.byType(xterm.TerminalView))
+      .renderTerminal;
+  return render.localToGlobal(
+    render.getOffset(xterm.CellOffset(column, row)) +
+        Offset(0, render.cellSize.height),
+  );
+}
+
+String? selectedTerminalText(WidgetTester tester) {
+  final view = tester.widget<xterm.TerminalView>(
+    find.byType(xterm.TerminalView),
+  );
+  final selection = view.controller!.selection;
+  return selection == null ? null : view.terminal.buffer.getText(selection);
+}
+
+/// 터미널 칸을 길게 눌렀다 뗀다. xterm이 탭마다 거는 더블탭 판정 타이머까지 흘려보낸다
+Future<void> longPressTerminalCell(
+  WidgetTester tester,
+  int column,
+  int row,
+) async {
+  final gesture = await tester.startGesture(
+    terminalCellPosition(tester, column, row),
+  );
+  await tester.pump(kLongPressTimeout + const Duration(milliseconds: 1));
+  await gesture.up(timeStamp: kLongPressTimeout);
+  await tester.pumpAndSettle();
+}
+
+Future<void> dragSelectionHandle(
+  WidgetTester tester,
+  Key handleKey, {
+  required int columns,
+  int rows = 0,
+}) async {
+  final cellSize = tester
+      .state<xterm.TerminalViewState>(find.byType(xterm.TerminalView))
+      .renderTerminal
+      .cellSize;
+  final gesture = await tester.startGesture(
+    tester.getCenter(find.byKey(handleKey)),
+  );
+  await gesture.moveBy(
+    Offset(cellSize.width * columns, cellSize.height * rows),
+  );
+  await tester.pump();
+  await gesture.up();
+  await tester.pumpAndSettle();
+}
+
+double terminalHorizontalScrollOffset(WidgetTester tester) => tester
+    .widget<SingleChildScrollView>(
+      find.ancestor(
+        of: find.byType(xterm.TerminalView),
+        matching: find.byType(SingleChildScrollView),
+      ),
+    )
+    .controller!
+    .offset;
+
+/// 휴대폰 클립보드를 흉내 낸다. 읽기에는 [clipboardText]를 돌려주고 쓰기는 [copiedText]에 모은다
+void mockSystemClipboard(
+  WidgetTester tester, {
+  String? clipboardText,
+  List<String>? copiedText,
+}) {
+  tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+    SystemChannels.platform,
+    (call) async {
+      if (call.method == 'Clipboard.setData') {
+        copiedText?.add((call.arguments as Map)['text'] as String);
+      }
+      if (call.method == 'Clipboard.getData' && clipboardText != null) {
+        return <String, dynamic>{'text': clipboardText};
+      }
+      return null;
+    },
+  );
+  addTearDown(
+    () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      null,
+    ),
   );
 }
 
@@ -216,6 +353,183 @@ void main() {
     });
   }
 
+  for (final touched in [
+    (column: 4, row: 2, report: '\x1b[<64;5;3M'),
+    (column: 0, row: 0, report: '\x1b[<64;1;1M'),
+  ]) {
+    testWidgets(
+      '화면 가운데 놓인 터미널의 휠 보고는 손가락이 닿은 칸 ${touched.report.substring(5)}을 가리킨다',
+      (tester) async {
+        final client = FakeDesktopClient();
+        await pumpPane(
+          tester,
+          _pane,
+          client: client,
+          store: FakeConnectionStore(),
+          canResize: true,
+          screenInsets: const EdgeInsets.only(top: 160),
+        );
+        client.openedPanes[_pane.id]!.add(
+          '\x1b[?1049h\x1b[?1000h\x1b[?1006hready',
+        );
+        await tester.pumpAndSettle();
+
+        await tester.dragFrom(
+          terminalCellPosition(tester, touched.column, touched.row),
+          const Offset(0, 250),
+        );
+        await tester.pumpAndSettle();
+
+        expect((client.writtenInput[_pane.id] ?? []).first, touched.report);
+      },
+    );
+  }
+
+  /// 데스크탑이 Herdr pane 화면 앞에 붙이는 모드: 대체 화면에 두고 마우스 보고는 끈다
+  const herdrScreenModes =
+      '\x1b[H\x1b[2J\x1b[3J\x1b[?1049h\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1005l\x1b[?1006l';
+
+  testWidgets('Herdr pane의 손가락 스크롤은 원시 휠 보고나 화살표 키 대신 멀티플렉서 휠로 간다', (
+    tester,
+  ) async {
+    final client = FakeDesktopClient();
+    await pumpPane(
+      tester,
+      _pane,
+      client: client,
+      store: FakeConnectionStore(),
+      canResize: true,
+      sessionType: SessionType.herdr,
+    );
+    client.openedPanes[_pane.id]!.add('${herdrScreenModes}ready');
+    await tester.pumpAndSettle();
+
+    await tester.drag(find.byType(xterm.TerminalView), const Offset(0, 250));
+    await tester.pumpAndSettle();
+    final scrolledUp = List.of(client.scrolledPanes[_pane.id] ?? const []);
+    await tester.drag(find.byType(xterm.TerminalView), const Offset(0, -250));
+    await tester.pumpAndSettle();
+    final scrolledDown = (client.scrolledPanes[_pane.id] ?? const []).skip(
+      scrolledUp.length,
+    );
+
+    expect(scrolledUp, isNotEmpty);
+    expect(scrolledUp.every((wheel) => wheel.isUp), isTrue);
+    expect(scrolledDown, isNotEmpty);
+    expect(scrolledDown.every((wheel) => !wheel.isUp), isTrue);
+    expect(client.writtenInput[_pane.id] ?? const [], isEmpty);
+  });
+
+  testWidgets('Herdr pane에 넘기는 휠은 손가락이 닿은 칸을 가리킨다', (tester) async {
+    final client = FakeDesktopClient();
+    await pumpPane(
+      tester,
+      _pane,
+      client: client,
+      store: FakeConnectionStore(),
+      canResize: true,
+      sessionType: SessionType.herdr,
+      screenInsets: const EdgeInsets.only(top: 160),
+    );
+    client.openedPanes[_pane.id]!.add('${herdrScreenModes}ready');
+    await tester.pumpAndSettle();
+
+    await tester.dragFrom(
+      terminalCellPosition(tester, 4, 2),
+      const Offset(0, 250),
+    );
+    await tester.pumpAndSettle();
+
+    expect(client.scrolledPanes[_pane.id]?.first, (
+      isUp: true,
+      column: 4,
+      row: 2,
+    ));
+  });
+
+  testWidgets('화면 프레임만 받는 세션은 맨 아래에서 올려 보기 시작할 때 이력 갱신을 한 번 요청한다', (
+    tester,
+  ) async {
+    final client = FakeDesktopClient();
+    await pumpPane(
+      tester,
+      _pane,
+      client: client,
+      store: FakeConnectionStore(),
+      canRefreshHistory: true,
+    );
+    client.openedPanes[_pane.id]!.add(
+      List.generate(180, (i) => 'line-$i\r\n').join(),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.drag(find.byType(xterm.TerminalView), const Offset(0, 300));
+    await tester.pumpAndSettle();
+    expect(client.historyRefreshRequests, [_pane.id]);
+
+    /// 이미 지난 출력을 보는 중에 더 올리는 것은 갱신할 이유가 아니다. 다시 보내면 읽던 자리의 내용이 바뀐다
+    await tester.drag(find.byType(xterm.TerminalView), const Offset(0, 300));
+    await tester.pumpAndSettle();
+    expect(client.historyRefreshRequests, [_pane.id]);
+  });
+
+  testWidgets('올려 보는 중에 더 긴 이력을 다시 받아도 맨 아래에서 올려 본 거리를 지킨다', (tester) async {
+    final client = FakeDesktopClient();
+    await pumpPane(
+      tester,
+      _pane,
+      client: client,
+      store: FakeConnectionStore(),
+      canRefreshHistory: true,
+    );
+    String history(int count) =>
+        '\x1b[H\x1b[2J\x1b[3J${List.generate(count, (i) => 'line-$i').join('\r\n')}';
+    client.openedPanes[_pane.id]!.add(history(180));
+    await tester.pumpAndSettle();
+    final scroll = tester
+        .widget<xterm.TerminalView>(find.byType(xterm.TerminalView))
+        .scrollController!;
+    await tester.drag(find.byType(xterm.TerminalView), const Offset(0, 300));
+    await tester.pumpAndSettle();
+    final distanceFromLatest = scroll.position.maxScrollExtent - scroll.offset;
+    expect(distanceFromLatest, greaterThan(0));
+
+    client.openedPanes[_pane.id]!.add(history(480));
+    await tester.pumpAndSettle();
+
+    expect(
+      scroll.position.maxScrollExtent - scroll.offset,
+      closeTo(distanceFromLatest, 1),
+    );
+  });
+
+  testWidgets('이력을 스스로 쌓는 세션과 전체 화면 프로그램에서는 이력 갱신을 요청하지 않는다', (tester) async {
+    final client = FakeDesktopClient();
+    await pumpPane(tester, _pane, client: client, store: FakeConnectionStore());
+    client.openedPanes[_pane.id]!.add(
+      List.generate(180, (i) => 'line-$i\r\n').join(),
+    );
+    await tester.pumpAndSettle();
+    await tester.drag(find.byType(xterm.TerminalView), const Offset(0, 300));
+    await tester.pumpAndSettle();
+    expect(client.historyRefreshRequests, isEmpty);
+
+    await pumpPane(
+      tester,
+      _pane,
+      client: client,
+      store: FakeConnectionStore(),
+      canRefreshHistory: true,
+    );
+    client.openedPanes[_pane.id]!.add(
+      '\x1b[?1049h\x1b[?1000h\x1b[?1006hfull-screen',
+    );
+    await tester.pumpAndSettle();
+    await tester.drag(find.byType(xterm.TerminalView), const Offset(0, 300));
+    await tester.pumpAndSettle();
+    expect(client.historyRefreshRequests, isEmpty);
+  });
+
   for (final canResize in [false, true]) {
     testWidgets('손가락으로 이전 출력과 최신 출력을 왕복한다 resize=$canResize', (tester) async {
       final client = FakeDesktopClient();
@@ -258,11 +572,16 @@ void main() {
       '\x1b[?2026h\x1b[?25l\x1b]8;;\x1b\\\x1b[2J\x1b[1;1H\x1b[0;38;5;2;49mframe-row\x1b[0m'
       '\x1b[2;3H\x1b[?25h\x1b[?2026l\x1b[2;3H\x1b[?25h',
     );
-    stream.add('\x1b[?2026h\x1b[?25l\x1b[1;7Hdiff\x1b[0m\x1b[2;3H\x1b[?25h\x1b[?2026l');
+    stream.add(
+      '\x1b[?2026h\x1b[?25l\x1b[1;7Hdiff\x1b[0m\x1b[2;3H\x1b[?25h\x1b[?2026l',
+    );
     await tester.pumpAndSettle();
 
     final terminal = mountedTerminal(tester);
-    final lines = terminal.buffer.lines.toList().map((line) => line.getText().trimRight()).toList();
+    final lines = terminal.buffer.lines
+        .toList()
+        .map((line) => line.getText().trimRight())
+        .toList();
     final viewportTop = terminal.buffer.scrollBack;
     expect(lines, contains('history-5'));
     expect(lines[viewportTop], 'frame-diff');
@@ -867,7 +1186,8 @@ void main() {
       view.terminal.buffer.createAnchor(5, 0),
     );
     await tester.pump();
-    final position = terminalCellPosition(tester, 1, 0);
+    // 선택 양끝의 손잡이는 주변 터치를 자기 것으로 받으므로, 손잡이에서 떨어진 자리를 누른다.
+    final position = terminalCellPosition(tester, 10, 3);
     await tester.tapAt(position);
     await tester.pump(kDoubleTapTimeout);
     expect(view.controller!.selection, isNull);
@@ -875,6 +1195,316 @@ void main() {
     await tester.tapAt(position);
     await tester.pump(kDoubleTapTimeout);
     expect(tester.testTextInput.isVisible, isTrue);
+  });
+
+  testWidgets('글자를 길게 눌렀다 떼면 선택 양끝 손잡이와 복사·붙여넣기 버튼 줄이 보인다', (tester) async {
+    final client = FakeDesktopClient();
+    await pumpPane(tester, _pane, client: client, store: FakeConnectionStore());
+    client.openedPanes[_pane.id]!.add('alpha beta gamma');
+    await tester.pumpAndSettle();
+
+    await longPressTerminalCell(tester, 7, 0);
+
+    expect(selectedTerminalText(tester), 'beta');
+    expect(
+      tester
+          .getRect(find.byKey(_startHandleKey))
+          .contains(terminalBoundaryBottom(tester, 6, 0) + const Offset(-1, 1)),
+      isTrue,
+    );
+    expect(
+      tester
+          .getRect(find.byKey(_endHandleKey))
+          .contains(terminalBoundaryBottom(tester, 10, 0) + const Offset(1, 1)),
+      isTrue,
+    );
+    expect(find.widgetWithText(TextButton, '복사'), findsOneWidget);
+    expect(find.widgetWithText(TextButton, '붙여넣기'), findsOneWidget);
+    expect(tester.testTextInput.isVisible, isFalse);
+  });
+
+  testWidgets('화면 왼쪽 끝에서 시작하는 선택도 시작 손잡이가 화면 안에 그려진다', (tester) async {
+    final client = FakeDesktopClient();
+    await pumpPane(tester, _pane, client: client, store: FakeConnectionStore());
+    client.openedPanes[_pane.id]!.add('alpha beta gamma');
+    await tester.pumpAndSettle();
+
+    await longPressTerminalCell(tester, 1, 0);
+
+    expect(selectedTerminalText(tester), 'alpha');
+    final handleShape = tester.getRect(
+      find
+          .descendant(
+            of: find.byKey(_startHandleKey),
+            matching: find.byType(CustomPaint),
+          )
+          .first,
+    );
+    expect(handleShape.left, greaterThanOrEqualTo(0));
+  });
+
+  testWidgets('화면 오른쪽 끝에서 끝나는 선택도 끝 손잡이가 화면 안에 그려진다', (tester) async {
+    final client = FakeDesktopClient();
+    await pumpPane(
+      tester,
+      _pane,
+      client: client,
+      store: FakeConnectionStore(),
+      canResize: true,
+    );
+    final view = tester.widget<xterm.TerminalView>(
+      find.byType(xterm.TerminalView),
+    );
+    final buffer = view.terminal.buffer;
+
+    view.controller!.setSelection(
+      buffer.createAnchor(view.terminal.viewWidth - 4, 0),
+      buffer.createAnchor(view.terminal.viewWidth, 0),
+    );
+    await tester.pumpAndSettle();
+
+    final handleShape = tester.getRect(
+      find
+          .descendant(
+            of: find.byKey(_endHandleKey),
+            matching: find.byType(CustomPaint),
+          )
+          .first,
+    );
+    expect(
+      handleShape.right,
+      lessThanOrEqualTo(tester.getRect(find.byType(xterm.TerminalView)).right),
+    );
+  });
+
+  testWidgets('손잡이를 끌면 글자 단위로 선택 범위가 늘어나고 버튼 줄이 다시 뜬다', (tester) async {
+    final client = FakeDesktopClient();
+    await pumpPane(tester, _pane, client: client, store: FakeConnectionStore());
+    client.openedPanes[_pane.id]!.add('alpha beta gamma');
+    await tester.pumpAndSettle();
+    await longPressTerminalCell(tester, 7, 0);
+
+    await dragSelectionHandle(tester, _endHandleKey, columns: 4);
+    expect(selectedTerminalText(tester), 'beta gam');
+
+    await dragSelectionHandle(tester, _startHandleKey, columns: -4);
+    expect(selectedTerminalText(tester), 'pha beta gam');
+    expect(find.widgetWithText(TextButton, '복사'), findsOneWidget);
+    expect(client.writtenInput[_pane.id], isNull);
+  });
+
+  testWidgets('손잡이를 여러 줄 아래로 끌면 그 줄까지 선택한다', (tester) async {
+    final client = FakeDesktopClient();
+    await pumpPane(tester, _pane, client: client, store: FakeConnectionStore());
+    client.openedPanes[_pane.id]!.add('alpha beta\r\ngamma delta');
+    await tester.pumpAndSettle();
+    await longPressTerminalCell(tester, 7, 0);
+
+    await dragSelectionHandle(tester, _endHandleKey, columns: -5, rows: 1);
+
+    expect(selectedTerminalText(tester), 'beta\ngamma');
+  });
+
+  testWidgets('끝 손잡이를 시작 손잡이 앞으로 넘겨도 선택 범위가 유효하다', (tester) async {
+    final client = FakeDesktopClient();
+    await pumpPane(tester, _pane, client: client, store: FakeConnectionStore());
+    client.openedPanes[_pane.id]!.add('alpha beta gamma');
+    await tester.pumpAndSettle();
+    await longPressTerminalCell(tester, 7, 0);
+
+    await dragSelectionHandle(tester, _endHandleKey, columns: -8);
+
+    final selection = tester
+        .widget<xterm.TerminalView>(find.byType(xterm.TerminalView))
+        .controller!
+        .selection!
+        .normalized;
+    expect(selection.begin, const xterm.CellOffset(2, 0));
+    expect(selection.end, const xterm.CellOffset(6, 0));
+    expect(find.byKey(_startHandleKey), findsOneWidget);
+    expect(find.byKey(_endHandleKey), findsOneWidget);
+  });
+
+  testWidgets('가로로 넘치는 pane에서 손잡이를 옆으로 끌어도 화면은 밀리지 않는다', (tester) async {
+    final client = FakeDesktopClient();
+    await pumpPane(tester, _pane, client: client, store: FakeConnectionStore());
+    client.openedPanes[_pane.id]!.add('alpha beta gamma');
+    await tester.pumpAndSettle();
+    await longPressTerminalCell(tester, 7, 0);
+    expect(terminalHorizontalScrollOffset(tester), 0);
+
+    // 왼쪽으로 끌면 가로 스크롤이 가져갈 수 있는 방향이다
+    await dragSelectionHandle(tester, _startHandleKey, columns: -4);
+
+    expect(terminalHorizontalScrollOffset(tester), 0);
+    expect(selectedTerminalText(tester), 'pha beta');
+  });
+
+  testWidgets('버튼 줄의 복사를 누르면 선택한 글자를 복사하고 손잡이와 버튼 줄이 사라진다', (tester) async {
+    final client = FakeDesktopClient();
+    await pumpPane(tester, _pane, client: client, store: FakeConnectionStore());
+    client.openedPanes[_pane.id]!.add('alpha beta gamma');
+    await tester.pumpAndSettle();
+    await longPressTerminalCell(tester, 7, 0);
+    final copiedText = <String>[];
+    mockSystemClipboard(tester, copiedText: copiedText);
+
+    await tester.tap(find.widgetWithText(TextButton, '복사'));
+    await tester.pumpAndSettle();
+
+    expect(copiedText, ['beta']);
+    expect(find.byKey(_startHandleKey), findsNothing);
+    expect(find.byKey(_endHandleKey), findsNothing);
+    expect(find.text('복사'), findsNothing);
+    expect(find.text('붙여넣기'), findsNothing);
+  });
+
+  testWidgets('글자가 없는 곳을 길게 누르면 붙여넣기만 있는 버튼 줄이 뜨고 키보드는 열리지 않는다', (
+    tester,
+  ) async {
+    await pumpPane(
+      tester,
+      _pane,
+      client: FakeDesktopClient(),
+      store: FakeConnectionStore(),
+    );
+
+    await longPressTerminalCell(tester, 3, 5);
+
+    expect(find.widgetWithText(TextButton, '붙여넣기'), findsOneWidget);
+    expect(find.text('복사'), findsNothing);
+    expect(find.byKey(_startHandleKey), findsNothing);
+    expect(tester.testTextInput.isVisible, isFalse);
+  });
+
+  testWidgets('붙여넣기를 누르면 클립보드 글자를 터미널 입력으로 한 번 보낸다', (tester) async {
+    final client = FakeDesktopClient();
+    await pumpPane(tester, _pane, client: client, store: FakeConnectionStore());
+    mockSystemClipboard(tester, clipboardText: 'echo 한글');
+    await longPressTerminalCell(tester, 3, 5);
+
+    await tester.tap(find.widgetWithText(TextButton, '붙여넣기'));
+    await tester.pumpAndSettle();
+
+    expect(client.writtenInput[_pane.id]!.join(), 'echo 한글');
+    expect(find.text('붙여넣기'), findsNothing);
+  });
+
+  testWidgets('선택한 채로 붙여넣으면 선택을 풀어 붙여넣은 결과가 화면에 보이게 한다', (tester) async {
+    final client = FakeDesktopClient();
+    await pumpPane(tester, _pane, client: client, store: FakeConnectionStore());
+    client.openedPanes[_pane.id]!.add('alpha beta gamma');
+    await tester.pumpAndSettle();
+    mockSystemClipboard(tester, clipboardText: 'ls');
+    await longPressTerminalCell(tester, 7, 0);
+
+    await tester.tap(find.widgetWithText(TextButton, '붙여넣기'));
+    await tester.pumpAndSettle();
+
+    expect(client.writtenInput[_pane.id]!.join(), 'ls');
+    expect(selectedTerminalText(tester), isNull);
+    expect(find.byKey(_startHandleKey), findsNothing);
+  });
+
+  testWidgets('클립보드가 비어 있으면 붙여넣기를 눌러도 아무것도 보내지 않는다', (tester) async {
+    final client = FakeDesktopClient();
+    await pumpPane(tester, _pane, client: client, store: FakeConnectionStore());
+    mockSystemClipboard(tester);
+    await longPressTerminalCell(tester, 3, 5);
+
+    await tester.tap(find.widgetWithText(TextButton, '붙여넣기'));
+    await tester.pumpAndSettle();
+
+    expect(client.writtenInput[_pane.id], isNull);
+    expect(find.text('붙여넣기'), findsNothing);
+  });
+
+  testWidgets('선택 색은 데스크톱 터미널의 선택 색과 같다', (tester) async {
+    await pumpPane(
+      tester,
+      _pane,
+      client: FakeDesktopClient(),
+      store: FakeConnectionStore(),
+    );
+
+    final view = tester.widget<xterm.TerminalView>(
+      find.byType(xterm.TerminalView),
+    );
+
+    // src/lib/terminalMouseSelection.ts의 selectionBackground "#3b82f680"
+    expect(view.theme.selection, const Color(0x803B82F6));
+  });
+
+  testWidgets('터미널이 비활성으로 바뀌면 떠 있던 버튼 줄을 내린다', (tester) async {
+    final client = FakeDesktopClient();
+    final store = FakeConnectionStore();
+    await pumpPane(tester, _pane, client: client, store: store);
+    client.openedPanes[_pane.id]!.add('alpha beta gamma');
+    await tester.pumpAndSettle();
+    await longPressTerminalCell(tester, 7, 0);
+    expect(find.widgetWithText(TextButton, '복사'), findsOneWidget);
+
+    await pumpPane(
+      tester,
+      _pane,
+      client: client,
+      store: store,
+      isActive: false,
+    );
+
+    expect(find.text('복사'), findsNothing);
+    expect(find.text('붙여넣기'), findsNothing);
+  });
+
+  testWidgets('다른 pane으로 바뀌면 이전 pane의 버튼 줄이 남지 않는다', (tester) async {
+    final client = FakeDesktopClient();
+    final store = FakeConnectionStore();
+    await pumpPane(tester, _pane, client: client, store: store);
+    client.openedPanes[_pane.id]!.add('alpha beta gamma');
+    await tester.pumpAndSettle();
+    await longPressTerminalCell(tester, 7, 0);
+    expect(find.widgetWithText(TextButton, '복사'), findsOneWidget);
+
+    await pumpPane(
+      tester,
+      const MirrorPane(
+        id: '%20',
+        tabId: '@10',
+        tabName: 'kanvibe',
+        command: 'claude',
+        left: 0,
+        top: 0,
+        width: 80,
+        height: 24,
+      ),
+      client: client,
+      store: store,
+    );
+
+    expect(find.text('복사'), findsNothing);
+    expect(find.text('붙여넣기'), findsNothing);
+  });
+
+  testWidgets('터미널 밖을 누르면 버튼 줄만 내리고 선택은 유지한다', (tester) async {
+    final client = FakeDesktopClient();
+    await pumpPane(
+      tester,
+      _pane,
+      client: client,
+      store: FakeConnectionStore(),
+      screenInsets: const EdgeInsets.only(top: 40),
+    );
+    client.openedPanes[_pane.id]!.add('alpha beta gamma');
+    await tester.pumpAndSettle();
+    await longPressTerminalCell(tester, 7, 0);
+    expect(find.widgetWithText(TextButton, '복사'), findsOneWidget);
+
+    await tester.tapAt(const Offset(10, 10));
+    await tester.pumpAndSettle();
+
+    expect(find.text('복사'), findsNothing);
+    expect(selectedTerminalText(tester), 'beta');
+    expect(find.byKey(_endHandleKey), findsOneWidget);
   });
 
   testWidgets('손가락을 이동했다 원래 위치로 돌아와도 키보드를 열지 않는다', (tester) async {
@@ -1019,6 +1649,74 @@ void main() {
           .fontSize,
       14,
     );
+  });
+
+  testWidgets('준비 중 화면을 떠나면 취소하고 늦은 stream도 닫는다', (tester) async {
+    final client = DeferredPaneClient();
+    await pumpPane(
+      tester,
+      _pane,
+      client: client,
+      store: FakeConnectionStore(),
+      canResize: true,
+    );
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+    expect(client.cancelledOpenings, [0]);
+    await client.finishOpening(0);
+    await tester.pumpAndSettle();
+    expect(client.closedPanes, [_pane.id]);
+    expect(client.resizedPanes, isEmpty);
+  });
+
+  testWidgets('준비 중 background가 되면 이전 결과를 닫고 복귀 연결만 사용한다', (tester) async {
+    final client = DeferredPaneClient();
+    await pumpPane(
+      tester,
+      _pane,
+      client: client,
+      store: FakeConnectionStore(),
+      canResize: true,
+    );
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pump();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+    expect(client.cancelledOpenings, [0]);
+    expect(client.openings, hasLength(2));
+    await client.finishOpening(0);
+    await tester.pumpAndSettle();
+    expect(client.resizedPanes, isEmpty);
+    await client.finishOpening(1);
+    await tester.pumpAndSettle();
+    expect(client.closedPanes, [_pane.id]);
+    expect(client.resizedPanes[_pane.id], hasLength(1));
+  });
+
+  testWidgets('준비 중15초가 지나면 늦은 결과를 닫고 재시도할 수 있다', (tester) async {
+    final client = DeferredPaneClient();
+    await pumpPane(
+      tester,
+      _pane,
+      client: client,
+      store: FakeConnectionStore(),
+      canResize: true,
+    );
+    await tester.pump(const Duration(seconds: 15));
+    expect(client.cancelledOpenings, [0]);
+    expect(find.textContaining('터미널 응답이 없습니다'), findsOneWidget);
+    await client.finishOpening(0);
+    await tester.pumpAndSettle();
+    expect(client.closedPanes, [_pane.id]);
+    expect(client.resizedPanes, isEmpty);
+    await tester.tap(find.text('다시 연결'));
+    await tester.pumpAndSettle();
+    await client.finishOpening(1);
+    await tester.pumpAndSettle();
+    client.openedPanes[_pane.id]!.add('new-frame');
+    await tester.pumpAndSettle();
+    expect(find.textContaining('터미널 응답이 없습니다'), findsNothing);
+    expect(mountedTerminal(tester).buffer.getText(), contains('new-frame'));
   });
 
   testWidgets('앱이 배경으로 가면 연결을 닫고 돌아올 때 현재 크기를 다시 보낸다', (tester) async {

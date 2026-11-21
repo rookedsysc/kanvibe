@@ -21,7 +21,7 @@ vi.mock("next-intl", () => ({
     if (namespace === "settings" && key === "worktreeTasksRegistered") {
       return `${values?.count} worktree tasks`;
     }
-    return key;
+    return values ? `${key}:${JSON.stringify(values)}` : key;
   },
 }));
 
@@ -35,6 +35,14 @@ vi.mock("@/desktop/renderer/components/BoardCommandProvider", () => ({
   useBoardCommands: () => ({
     registerShortcutBlocker: boardCommandMocks.registerShortcutBlocker,
   }),
+}));
+
+const toastMocks = vi.hoisted(() => ({
+  showActionStatus: vi.fn(),
+}));
+
+vi.mock("@/desktop/renderer/components/ActionStatusToast", () => ({
+  showActionStatus: (...args: unknown[]) => toastMocks.showActionStatus(...args),
 }));
 
 vi.mock("@/desktop/renderer/actions/project", () => ({
@@ -286,5 +294,122 @@ describe("ProjectRegistryDialog", () => {
     fireEvent.keyDown(window, { key: "Escape" });
 
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+  it("프로젝트를 삭제하는 동안 스캔 버튼은 그대로 두고 대상 행에 삭제 중을 보인다", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    let resolveDelete: (value: boolean) => void = () => {};
+    projectActionMocks.deleteProject.mockReturnValueOnce(new Promise((resolve) => {
+      resolveDelete = resolve;
+    }));
+
+    render(
+      <ProjectRegistryDialog
+        isOpen
+        onClose={vi.fn()}
+        projects={[createProject(), createProject({ id: "project-2", name: "other" })]}
+        sshHosts={[]}
+      />,
+    );
+
+    try {
+      fireEvent.click(screen.getAllByRole("button", { name: "deleteProject" })[0]);
+
+      expect(await screen.findByRole("button", { name: "deletingProject" })).toBeTruthy();
+      expect(screen.getByRole("button", { name: "scanButton" })).toBeTruthy();
+      expect((screen.getByRole("button", { name: "deleteProject" }) as HTMLButtonElement).disabled).toBe(true);
+
+      resolveDelete(true);
+      await waitFor(() => {
+        expect(screen.queryByRole("button", { name: "deletingProject" })).toBeNull();
+      });
+    } finally {
+      confirmSpy.mockRestore();
+    }
+  });
+
+  it("프로젝트 삭제가 실패하면 그 행에 사유를 남기고 다시 시도로 같은 프로젝트를 다시 지운다", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    projectActionMocks.deleteProject
+      .mockRejectedValueOnce(new Error("db locked"))
+      .mockResolvedValueOnce(true);
+
+    render(
+      <ProjectRegistryDialog
+        isOpen
+        onClose={vi.fn()}
+        projects={[createProject()]}
+        sshHosts={[]}
+      />,
+    );
+
+    try {
+      fireEvent.click(screen.getByRole("button", { name: "deleteProject" }));
+
+      expect((await screen.findByRole("alert")).textContent).toContain('deleteProjectFailed:{"reason":"db locked"}');
+
+      fireEvent.click(screen.getByRole("button", { name: "retry" }));
+
+      await waitFor(() => {
+        expect(projectActionMocks.deleteProject).toHaveBeenCalledTimes(2);
+      });
+      expect(projectActionMocks.deleteProject).toHaveBeenLastCalledWith("project-1");
+      await waitFor(() => {
+        expect(screen.queryByRole("alert")).toBeNull();
+      });
+    } finally {
+      confirmSpy.mockRestore();
+    }
+  });
+
+  it("스캔 요청이 실패하면 사유와 다시 시도를 보인다", async () => {
+    projectActionMocks.scanAndRegisterProjects.mockRejectedValueOnce(new Error("ssh unreachable"));
+
+    render(
+      <ProjectRegistryDialog
+        isOpen
+        onClose={vi.fn()}
+        projects={[]}
+        sshHosts={[]}
+      />,
+    );
+
+    fireEvent.submit(screen.getByTestId("project-registry-form"));
+
+    expect((await screen.findByRole("alert")).textContent).toContain('scanFailed:{"reason":"ssh unreachable"}');
+    expect(screen.getByRole("button", { name: "retry" })).toBeTruthy();
+  });
+
+  it("삭제 중 대화상자를 닫은 뒤 실패하면 토스트로 알린다", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    let rejectDelete: (error: Error) => void = () => {};
+    projectActionMocks.deleteProject.mockReturnValueOnce(new Promise((_, reject) => {
+      rejectDelete = reject;
+    }));
+
+    const { unmount } = render(
+      <ProjectRegistryDialog
+        isOpen
+        onClose={vi.fn()}
+        projects={[createProject()]}
+        sshHosts={[]}
+      />,
+    );
+
+    try {
+      fireEvent.click(screen.getByRole("button", { name: "deleteProject" }));
+      await screen.findByRole("button", { name: "deletingProject" });
+      unmount();
+
+      rejectDelete(new Error("db locked"));
+
+      await waitFor(() => {
+        expect(toastMocks.showActionStatus).toHaveBeenCalledWith({
+          kind: "failure",
+          message: 'deleteProjectFailed:{"reason":"db locked"}',
+        });
+      });
+    } finally {
+      confirmSpy.mockRestore();
+    }
   });
 });

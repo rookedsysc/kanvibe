@@ -146,8 +146,25 @@ void main() {
     await client.markAllNotificationsRead(connection);
   });
 
+  test('태스크 알림 읽음은 태스크 ID를 인코딩한 body 없는 인증 POST를 사용한다', () async {
+    final client = DesktopClient(
+      httpClient: MockClient((request) async {
+        expect(request.method, 'POST');
+        expect(
+          request.url.toString(),
+          'http://localhost:9736/api/mobile/tasks/task%2F1/notifications/read',
+        );
+        expect(request.body, isEmpty);
+        expect(request.headers['authorization'], 'Bearer t');
+        return http.Response('{"success":true,"count":2}', 200);
+      }),
+    );
+    addTearDown(client.close);
+    await client.markTaskNotificationsRead(connection, 'task/1');
+  });
+
   for (final status in [401, 500]) {
-    for (final operation in ['list', 'read', 'read-all']) {
+    for (final operation in ['list', 'read', 'read-all', 'read-task']) {
       test('알림 $operation의 $status HTML 응답도 상태 코드를 보존한다', () async {
         final client = DesktopClient(
           httpClient: MockClient(
@@ -158,6 +175,7 @@ void main() {
         final Future<Object?> request = switch (operation) {
           'list' => client.fetchNotifications(connection),
           'read' => client.markNotificationRead(connection, 'notice/1'),
+          'read-task' => client.markTaskNotificationsRead(connection, 'task/1'),
           _ => client.markAllNotificationsRead(connection),
         };
         await expectLater(

@@ -1,15 +1,19 @@
 import path from "path";
-import { ensureHerdrRemoteMachine, ensureHerdrSession, getHerdrWorkspaceId, getHerdrClientSocketPath } from "@/lib/herdr";
+import { ensureHerdrRemoteMachine, ensureHerdrSession, getHerdrClientSocketPath, handoffHerdrRemoteServer, HerdrServerHandoffRequiredError, readHerdrClientTabBarPosition } from "@/lib/herdr";
 import { existsSync } from "fs";
 import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { randomUUID } from "crypto";
 import { createHerdrClientProxy } from "@/lib/herdrClientProxy";
+import { broadcastHerdrMachineRegistrationFailed, broadcastHerdrServerHandoffRequired } from "@/lib/boardNotifier";
+import { getRemoteHostConnection } from "@/lib/remoteHostConnection";
+import type { RemoteHostPty } from "@/lib/remoteHostPtyConnection";
 import { SessionType } from "@/entities/KanbanTask";
 import { PaneLayoutType } from "@/entities/PaneLayoutConfig";
 import { execSync } from "child_process";
 import type { WebSocket } from "ws";
 import { Terminal as HeadlessTerminal } from "@xterm/headless";
+import { isDimHintEmptyComposer } from "@/lib/aiSessions/paneChatCodexDisplay";
 import { SerializeAddon } from "@xterm/addon-serialize";
 import { buildSSHArgs, getKanvibeSSHConnectionHealthOptions, hasLocalX11Display } from "@/lib/sshConfig";
 import {
@@ -29,13 +33,15 @@ import {
 } from "@/lib/worktree";
 import { createLocalShellEnvironment } from "@/lib/shellEnvironment";
 import type { TerminalTab } from "@/desktop/shared/terminalTabs";
+import { HERDR_SERVER_REPLACED_CLOSE_REASON } from "@/desktop/shared/terminalConnection";
 
 /**
  * 활성 터미널 세션을 관리하는 레지스트리.
  * 이 모듈이 PTY의 유일한 소유자다. 탭 조작도 여기 있는 PTY를 통해서만 이뤄진다.
  */
 interface TerminalEntry {
-  pty: import("node-pty").IPty;
+  pty: Pick<import("node-pty").IPty, "pid" | "process" | "cols" | "rows" | "write" | "resize" | "kill" | "onData" | "onExit"> | RemoteHostPty;
+  remotePty?: RemoteHostPty;
   clients: Set<WebSocket>;
   sessionType: SessionType;
   sessionName: string;
@@ -46,6 +52,10 @@ interface TerminalEntry {
   /** terminal 세션에만 있다. 멀티플렉서 세션은 멀티플렉서가 화면을 들고 있다 */
   screen?: TerminalScreen;
   herdrClient?: Awaited<ReturnType<typeof prepareHerdrTaskClient>>;
+  /** 원격 Herdr 세션에만 있다. 서버를 교체할 때 그 서버에 붙은 화면을 찾는 데 쓴다 */
+  sshHost?: string;
+  /** 서버 교체로 닫는 화면에 보낼 사유. 있으면 화면은 오류 대신 다시 연결한다 */
+  closeReason?: string;
 }
 
 /**
@@ -59,10 +69,15 @@ interface TerminalScreen {
 }
 
 const activeTerminals = new Map<string, TerminalEntry>();
+/** WebSocket 규격의 "서버 재시작" 닫힘 코드. 서버 교체로 닫는 화면에 사유와 함께 보낸다 */
+const SERVICE_RESTART_CLOSE_CODE = 1012;
+/** 원격 Herdr 서버 교체가 끝나기를 기다리는 약속. 그 사이 다시 여는 화면은 교체가 끝난 뒤 새 서버에 붙는다 */
+const herdrServerHandoffs = new Map<string, Promise<void>>();
 
 /** 크기를 받지 못한 PTY가 쓰는 기본 크기. 미러가 아직 없는 PTY의 크기를 미리 알릴 때도 같은 값을 쓴다 */
 const DEFAULT_TERMINAL_COLS = 120;
 const DEFAULT_TERMINAL_ROWS = 30;
+const HERDR_TAB_BAR_ROWS = 1;
 
 /**
  * tmux와 zellij는 태스크당 PTY 하나를 멀티플렉서에 붙이고 탭은 멀티플렉서 안에 있다.
@@ -127,6 +142,46 @@ export function listLocalTerminalTabs(taskId: string): TerminalTab[] {
   return toTerminalTabs(getTabState(taskId));
 }
 
+/** 앱 메모리에서 사라진 원격 탭을 daemon의 현재 소유 세션 목록으로 복원한다. */
+export async function listRemoteTerminalTabs(taskId: string, sshHost: string, sessionName: string): Promise<TerminalTab[]> {
+  if (localTerminalTabs.has(taskId)) return listLocalTerminalTabs(taskId);
+  const connection = await getRemoteHostConnection(sshHost);
+  if (!connection) return listLocalTerminalTabs(taskId);
+  const sessions = await connection.listPtySessions();
+  if (!localTerminalTabs.has(taskId)) {
+    const tabs: { id: string; name: string }[] = [];
+    for (const session of sessions) {
+      let key: unknown;
+      try { key = JSON.parse(session.key); } catch { continue; }
+      if (!Array.isArray(key) || key[1] !== SessionType.TERMINAL || key[2] !== sessionName || typeof key[0] !== "string" || !key[0].startsWith(`${taskId}#`)) continue;
+      const id = key[0].slice(taskId.length + 1);
+      if (!tabs.some(tab => tab.id === id)) tabs.push({ id, name: getDefaultTabName() });
+    }
+    if (tabs.length) {
+      const nextTabNumber = Math.max(0, ...tabs.map(tab => Number(tab.id.slice(taskId.length + 1))).filter(Number.isSafeInteger)) + 1;
+      localTerminalTabs.set(taskId, { tabs, activeTabId: tabs[0].id, nextTabNumber });
+    }
+  }
+  return listLocalTerminalTabs(taskId);
+}
+
+/** attach가 끊긴 탭도 소유 session ID로 닫는다. 조회/close 실패를 성공으로 보고하지 않는다. */
+export async function closeRemoteTerminalTab(taskId: string, tabId: string, sshHost: string, sessionName: string): Promise<number> {
+  await listRemoteTerminalTabs(taskId, sshHost, sessionName);
+  const entry = activeTerminals.get(buildTerminalKey(taskId, tabId));
+  const connection = await getRemoteHostConnection(sshHost);
+  if (connection) {
+    if (entry?.remotePty) await connection.closePtySession(entry.remotePty.sessionId);
+    else {
+      const key = JSON.stringify([buildTerminalKey(taskId, tabId), SessionType.TERMINAL, sessionName]);
+      const session = (await connection.listPtySessions()).find(session => session.key === key);
+      if (session) await connection.closePtySession(session.sessionId);
+    }
+    destroyTerminal(buildTerminalKey(taskId, tabId), "remote-close-acknowledged");
+  }
+  return closeLocalTerminalTab(taskId, tabId);
+}
+
 export function getLocalTerminalTabProcess(taskId: string, tabId: string): string | null {
   return activeTerminals.get(buildTerminalKey(taskId, tabId))?.pty.process || null;
 }
@@ -156,7 +211,7 @@ export function closeLocalTerminalTab(taskId: string, tabId: string): number {
     return state.tabs.length;
   }
 
-  destroyTerminal(buildTerminalKey(taskId, tabId), "close-terminal-tab");
+  destroyTerminal(buildTerminalKey(taskId, tabId), "close-terminal-tab", true);
   state.tabs.splice(closedIndex, 1);
 
   if (state.tabs.length === 0) {
@@ -196,7 +251,7 @@ export function moveLocalTerminalTab(taskId: string, tabId: string, targetIndex:
   state.tabs.splice(targetIndex, 0, movedTab);
 }
 
-/** 앱 종료 경로. terminal 세션은 KanVibe가 소유하므로 남겨두면 고아 프로세스가 된다 */
+/** 앱 종료 경로. 원격 PTY는 daemon 소유이므로 detach하고, 로컬 PTY만 종료한다. */
 export function killAllTerminalSessions(): void {
   for (const terminalKey of [...activeTerminals.keys()]) {
     destroyTerminal(terminalKey, "app-quit");
@@ -245,7 +300,7 @@ function releaseTerminalClient(terminalKey: string, ws: WebSocket, triggerLabel:
 }
 
 /** PTY를 죽이고 붙어 있던 클라이언트를 모두 닫는다 */
-function destroyTerminal(terminalKey: string, triggerLabel?: string): void {
+function destroyTerminal(terminalKey: string, triggerLabel?: string, closeOwnedSession = false): void {
   const entry = activeTerminals.get(terminalKey);
   if (!entry) {
     debugLog("destroyTerminal 호출 (entry 없음)", { terminalKey, triggerLabel });
@@ -262,6 +317,7 @@ function destroyTerminal(terminalKey: string, triggerLabel?: string): void {
   activeTerminals.delete(terminalKey);
 
   try {
+    if (closeOwnedSession) entry.remotePty?.closeSession();
     entry.pty.kill();
   } catch {
     // 이미 종료된 경우 무시
@@ -269,7 +325,8 @@ function destroyTerminal(terminalKey: string, triggerLabel?: string): void {
 
   for (const client of entry.clients) {
     if (client.readyState === client.OPEN) {
-      client.close();
+      if (entry.closeReason) client.close(SERVICE_RESTART_CLOSE_CODE, entry.closeReason);
+      else client.close();
     }
   }
   entry.clients.clear();
@@ -298,25 +355,37 @@ function registerTerminalEntry(
   activeTerminals.set(terminalKey, entry);
 
   let firstDataLogged = false;
+  const registeredAt = Date.now();
   entry.pty.onData((data) => {
     if (!firstDataLogged) {
       firstDataLogged = true;
       debugLog(`${debugLabel} PTY 첫 데이터 수신`, { terminalKey, sample: data.slice(0, 200) });
+      // 원격은 PTY를 띄운 뒤에도 SSH 인증과 세션 attach가 남아 있어, 준비 시간과 따로 잰다.
+      if (debugLabel === "Remote") {
+        console.log("[터미널] 원격 PTY 첫 출력", { terminalKey, sinceSpawnMs: Date.now() - registeredAt });
+      }
     }
-    entry.screen?.terminal.write(data);
+    let rendered: Promise<void> | undefined;
+    if (entry.screen) {
+      const screen = entry.screen;
+      if (entry.remotePty) rendered = new Promise<void>(resolve => screen.terminal.write(data, resolve));
+      else screen.terminal.write(data);
+    }
     for (const client of entry.clients) {
       if (client.readyState === client.OPEN) {
+        if (client.bufferedAmount > 8 * 1024 * 1024) { client.close(1013, "Terminal output backpressure limit"); continue; }
         client.send(data);
       }
     }
+    return rendered;
   });
 
-  entry.pty.onExit(({ exitCode, signal }) => {
+  entry.pty.onExit(({ exitCode, signal, ...status }) => {
     if (activeTerminals.get(terminalKey) !== entry) return;
     debugLog(`${debugLabel} PTY onExit`, { terminalKey, exitCode, signal });
     destroyTerminal(terminalKey, `${debugLabel}-pty-exit`);
-    /** 셸이 스스로 끝난 탭은 목록에서도 사라져야 사용자가 죽은 탭을 클릭하지 않는다 */
-    if (entry.tabId) {
+    /** 셸이 스스로 끝난 탭은 목록에서도 사라져야 사용자가 죽은 탭을 클릭하지 않는다. 서버 교체로 끊긴 탭은 다시 연결되므로 남긴다 */
+    if (entry.tabId && !entry.closeReason && !("detached" in status && status.detached)) {
       removeClosedTab(entry.taskId, entry.tabId);
     }
   });
@@ -538,43 +607,80 @@ interface LocalPtySpawnPlan {
   cwd: string;
 }
 
-async function prepareHerdrTaskClient(sessionName: string, sshHost?: string): Promise<{
+async function prepareHerdrTaskClient(sessionName: string, workspaceId: string | null, sshHost?: string): Promise<{
   proxy: Awaited<ReturnType<typeof createHerdrClientProxy>>;
   workspaceId: string;
   forwardingArgs: string[];
   clientSocketPath: string;
+  tabBarPosition: "top" | "bottom" | null;
+  sshHost?: string;
+  hostTransport?: boolean;
   close(): Promise<void>;
 }> {
-  const workspaceId = await getHerdrWorkspaceId(sessionName, sshHost);
   if (!workspaceId) throw new Error("공유 Herdr Space를 찾을 수 없습니다.");
+  // 탭 바 위치는 소켓 경로나 프록시와 무관하고 실패해도 null을 돌려주므로, 원격 왕복이 겹치도록 먼저 시작한다.
+  const tabBarPositionRead = readHerdrClientTabBarPosition(sshHost);
   const serverSocketPath = await getHerdrClientSocketPath(sessionName, sshHost);
-  const forwardingDirectory = sshHost ? await mkdtemp(path.join(tmpdir(), "kvhf-")) : null;
-  const upstream = forwardingDirectory ? path.join(forwardingDirectory, "upstream") : serverSocketPath;
+  const hostConnection = sshHost ? await getRemoteHostConnection(sshHost) : null;
+  const hostForward = hostConnection ? await hostConnection.forwardSocket(serverSocketPath) : null;
+  const forwardingDirectory = sshHost && !hostForward ? await mkdtemp(path.join(tmpdir(), "kvhf-")) : null;
+  const upstream = hostForward?.socketPath ?? (forwardingDirectory ? path.join(forwardingDirectory, "upstream") : serverSocketPath);
   try {
     const proxy = await createHerdrClientProxy(upstream, workspaceId);
+    const tabBarPosition = await tabBarPositionRead;
     const remoteProxyPath = `/tmp/kvhc-${randomUUID()}.sock`;
     return {
       proxy,
       workspaceId,
-      clientSocketPath: sshHost ? remoteProxyPath : proxy.socketPath,
-      forwardingArgs: sshHost ? [
+      tabBarPosition,
+      sshHost,
+      hostTransport: Boolean(hostForward),
+      clientSocketPath: sshHost && !hostForward ? remoteProxyPath : proxy.socketPath,
+      forwardingArgs: sshHost && !hostForward ? [
         "-o", "ExitOnForwardFailure=yes", "-o", "StreamLocalBindUnlink=yes",
         "-o", "ControlMaster=no", "-o", "ControlPath=none",
         "-L", `${upstream}:${serverSocketPath}`, "-R", `${remoteProxyPath}:${proxy.socketPath}`,
       ] : [],
       close: async () => {
         await proxy.close();
+        await hostForward?.close();
         if (forwardingDirectory) await rm(forwardingDirectory, { recursive: true, force: true });
       },
     };
   } catch (error) {
+    await hostForward?.close();
     if (forwardingDirectory) await rm(forwardingDirectory, { recursive: true, force: true });
     throw error;
   }
 }
 
+export function getHerdrTaskActivePaneId(taskId: string): string | null {
+  return [...activeTerminals.values()].find((entry) => entry.taskId === taskId && entry.herdrClient)?.herdrClient?.proxy.getActivePaneId() ?? null;
+}
+
+export async function getHerdrTaskSurfaceBounds(taskId: string): Promise<{ left: number; top: number; width: number; height: number } | null> {
+  const entry = [...activeTerminals.values()].find((terminal) => terminal.taskId === taskId && terminal.herdrClient);
+  const client = entry?.herdrClient;
+  if (!entry || !client || !client.tabBarPosition || await readHerdrClientTabBarPosition(client.sshHost) !== client.tabBarPosition) return null;
+  const surface = client.proxy.getSurfaceSize();
+  if (!surface) return null;
+  const left = entry.pty.cols - surface.cols;
+  const tabRows = entry.pty.rows - surface.rows;
+  if (left < 0 || (tabRows !== 0 && tabRows !== HERDR_TAB_BAR_ROWS)) return null;
+  return { left, top: client.tabBarPosition === "top" ? tabRows : 0, width: surface.cols, height: surface.rows };
+}
+
 export function getHerdrTaskActiveTabId(taskId: string): string | null {
   return [...activeTerminals.values()].find((entry) => entry.taskId === taskId && entry.herdrClient)?.herdrClient?.proxy.getActiveTabId() ?? null;
+}
+
+export async function focusHerdrTaskPane(taskId: string, paneId: string): Promise<void> {
+  const clients = [...activeTerminals.values()].filter((entry) => entry.taskId === taskId && entry.herdrClient);
+  if (clients.length === 0) throw new Error("Herdr task 클라이언트가 연결되지 않았습니다.");
+  for (const entry of clients) {
+    if (!paneId.startsWith(`${entry.herdrClient!.workspaceId}:`)) throw new Error("다른 Space의 pane을 선택할 수 없습니다.");
+  }
+  await Promise.all(clients.map((entry) => entry.herdrClient!.proxy.request("pane.focus", { pane_id: paneId })));
 }
 
 export async function focusHerdrTaskTab(taskId: string, tabId: string): Promise<void> {
@@ -683,9 +789,10 @@ async function spawnLocalSession(
    * terminal: 멀티플렉서가 없으므로 준비할 세션도 없다.
    */
   let zellijNeedsCreation = false;
+  let herdrWorkspaceId: string | null = null;
 
   if (sessionType === SessionType.HERDR) {
-    await ensureHerdrSession(sessionName, cwd || process.env.HOME || "/", tmuxPaneLayout);
+    herdrWorkspaceId = await ensureHerdrSession(sessionName, cwd || process.env.HOME || "/", tmuxPaneLayout);
     if (ws.readyState !== ws.OPEN) return;
   }
 
@@ -732,7 +839,7 @@ async function spawnLocalSession(
   }
 
   const herdrClient = sessionType === SessionType.HERDR && parseHerdrSessionTarget(sessionName).workspaceKey
-    ? await prepareHerdrTaskClient(sessionName) : undefined;
+    ? await prepareHerdrTaskClient(sessionName, herdrWorkspaceId) : undefined;
   if (ws.readyState !== ws.OPEN) {
     await herdrClient?.close();
     return;
@@ -812,6 +919,59 @@ export async function attachRemoteSession(
   );
 }
 
+function buildHerdrServerKey(sshHost: string, herdrSession: string): string {
+  return JSON.stringify([sshHost, herdrSession]);
+}
+
+/**
+ * 원격 Herdr 서버를 로컬 Herdr의 machine으로 등록한다. 터미널 연결을 막지 않도록 백그라운드에서 돈다.
+ * 서버가 이전 방식으로 떠 있으면 교체 여부를 사용자에게 묻도록 화면에 알리고, 그 밖의 실패는 원인과 함께 알린다.
+ */
+async function registerHerdrRemoteMachine(herdrSession: string, sshHost: string): Promise<void> {
+  try {
+    await ensureHerdrRemoteMachine(herdrSession, sshHost);
+  } catch (error) {
+    if (error instanceof HerdrServerHandoffRequiredError) {
+      broadcastHerdrServerHandoffRequired({ sshHost, herdrSession });
+      return;
+    }
+    console.warn(`[kanvibe] Herdr machine 등록 실패 (${sshHost}/${herdrSession}):`, error);
+    broadcastHerdrMachineRegistrationFailed({ sshHost, herdrSession, reason: readHerdrMachineFailureReason(error) });
+  }
+}
+
+/**
+ * 사용자가 승인한 원격 Herdr 서버 교체를 실행한다. pane 프로세스는 Herdr live handoff로 유지된다.
+ * 교체 중에는 그 서버에 붙은 Herdr client가 끊기므로, 붙어 있던 화면은 다시 연결하라는 사유로 닫고 새 연결은 교체가 끝날 때까지 기다리게 한다.
+ * 교체가 끝나면 machine 등록을 이어서 진행한다.
+ */
+export function replaceHerdrRemoteServer(sshHost: string, herdrSession: string): Promise<void> {
+  const serverKey = buildHerdrServerKey(sshHost, herdrSession);
+  const running = herdrServerHandoffs.get(serverKey);
+  if (running) return running.catch(() => {});
+  const connectedTerminalKeys = [...activeTerminals].filter(([, entry]) => entry.sshHost === sshHost
+    && parseHerdrSessionTarget(entry.sessionName).serverName === herdrSession).map(([terminalKey]) => terminalKey);
+  for (const terminalKey of connectedTerminalKeys) {
+    activeTerminals.get(terminalKey)!.closeReason = HERDR_SERVER_REPLACED_CLOSE_REASON;
+  }
+  const handoff = handoffHerdrRemoteServer(herdrSession, sshHost).finally(() => {
+    for (const terminalKey of connectedTerminalKeys) destroyTerminal(terminalKey, "herdr-server-replaced");
+    herdrServerHandoffs.delete(serverKey);
+  });
+  herdrServerHandoffs.set(serverKey, handoff);
+  return handoff.then(() => registerHerdrRemoteMachine(herdrSession, sshHost), (error: unknown) => {
+    console.warn(`[kanvibe] Herdr 서버 교체 실패 (${sshHost}/${herdrSession}):`, error);
+    broadcastHerdrMachineRegistrationFailed({ sshHost, herdrSession, reason: readHerdrMachineFailureReason(error) });
+  });
+}
+
+/** Herdr CLI는 거부 사유를 stderr 마지막 줄에 쓰므로 그 줄을 사용자에게 보여 주고, stderr가 없으면 오류 메시지로 대신한다 */
+function readHerdrMachineFailureReason(error: unknown): string {
+  const stderr = String((error as { stderr?: unknown } | null)?.stderr ?? "");
+  const lastStderrLine = stderr.split("\n").map((line) => line.trim()).filter(Boolean).at(-1);
+  return lastStderrLine ?? (error instanceof Error ? error.message : String(error));
+}
+
 /** 원격 세션의 ssh PTY를 새로 띄우고 첫 클라이언트를 붙인다 */
 async function spawnRemoteSession(
   taskId: string,
@@ -830,12 +990,26 @@ async function spawnRemoteSession(
   const initialRows = rows ?? DEFAULT_TERMINAL_ROWS;
   const terminalEnvironment = createLocalShellEnvironment();
   const terminalKey = buildTerminalKey(taskId, tabId);
+  let herdrWorkspaceId: string | null = null;
+  if (sessionType !== SessionType.HERDR) {
+    const connection = await getRemoteHostConnection(sshHost);
+    if (connection) {
+      const remotePty = await connection.openPty({
+        key: JSON.stringify([terminalKey, sessionType, sessionName]),
+        command: buildRemoteAttachCommand(sessionType, sessionName, worktreePath, tmuxPaneLayout),
+        cols: initialCols, rows: initialRows,
+      });
+      if (ws.readyState !== ws.OPEN) { remotePty.kill(); return; }
+      registerTerminalEntry(terminalKey, { pty: remotePty, remotePty, clients: new Set(), sessionType, sessionName, taskId, tabId }, ws, "Host");
+      return;
+    }
+  }
   if (sessionType === SessionType.HERDR) {
-    await ensureHerdrSession(sessionName, worktreePath || "~", tmuxPaneLayout, sshHost);
+    const pendingServerHandoff = herdrServerHandoffs.get(buildHerdrServerKey(sshHost, parseHerdrSessionTarget(sessionName).serverName));
+    if (pendingServerHandoff) await pendingServerHandoff.catch(() => {});
+    herdrWorkspaceId = await ensureHerdrSession(sessionName, worktreePath || "~", tmuxPaneLayout, sshHost);
     if (ws.readyState !== ws.OPEN) return;
-    void ensureHerdrRemoteMachine(sessionName, sshHost).catch((error: unknown) => {
-      console.warn(`[kanvibe] Herdr machine 등록 실패 (${sshHost}/${parseHerdrSessionTarget(sessionName).serverName}):`, error);
-    });
+    void registerHerdrRemoteMachine(parseHerdrSessionTarget(sessionName).serverName, sshHost);
   }
 
 
@@ -867,7 +1041,7 @@ async function spawnRemoteSession(
   }
 
   const herdrClient = sessionType === SessionType.HERDR && parseHerdrSessionTarget(sessionName).workspaceKey
-    ? await prepareHerdrTaskClient(sessionName, sshHost) : undefined;
+    ? await prepareHerdrTaskClient(sessionName, herdrWorkspaceId, sshHost) : undefined;
   if (ws.readyState !== ws.OPEN) {
     await herdrClient?.close();
     return;
@@ -880,7 +1054,8 @@ async function spawnRemoteSession(
   }
   let ptyProcess: import("node-pty").IPty;
   try {
-    ptyProcess = pty.spawn("ssh", args, {
+    const localHerdrClient = herdrClient?.hostTransport;
+    ptyProcess = pty.spawn(localHerdrClient ? resolveLoginShell() : "ssh", localHerdrClient ? ["-c", buildHerdrClientCommand(sessionName, herdrClient.clientSocketPath)] : args, {
       name: "xterm-256color",
       cols: initialCols,
       rows: initialRows,
@@ -899,7 +1074,10 @@ async function spawnRemoteSession(
 
   registerTerminalEntry(
     terminalKey,
-    { pty: ptyProcess, clients: new Set([ws]), sessionType, sessionName, taskId, tabId, herdrClient },
+    {
+      pty: ptyProcess, clients: new Set([ws]), sessionType, sessionName, taskId, tabId, herdrClient,
+      ...(sessionType === SessionType.HERDR ? { sshHost } : {}),
+    },
     ws,
     "Remote",
   );
@@ -932,8 +1110,7 @@ function buildRemoteAttachCommand(
 
 /**
  * 멀티플렉서 없이 원격 로그인 셸만 띄운다.
- * 이 셸은 SSH 연결에 매여 있어 연결이 끊기면 실행 중이던 작업도 함께 사라진다.
- * 원격에서 작업을 살려두려면 tmux나 zellij 세션을 골라야 한다.
+ * host transport에서는 daemon이 이 셸의 PTY를 소유하고 재attach할 수 있다.
  */
 function buildRemotePlainShellCommand(worktreePath?: string | null): string {
   const launchLoginShell = 'exec "${SHELL:-/bin/sh}" -l';
@@ -1124,6 +1301,19 @@ export function attachClientToTerminalTab(taskId: string, tabId: string, ws: Web
   });
   attachClientToEntry(terminalKey, entry, ws);
   return screenUntilNow;
+}
+
+export function readTaskTerminalAttachment(taskId: string): { pid: number; sessionType: SessionType; sessionName: string } | null {
+  const entry = activeTerminals.get(buildTerminalKey(taskId, null));
+  return entry ? { pid: entry.pty.pid, sessionType: entry.sessionType, sessionName: entry.sessionName } : null;
+}
+
+export function readLocalTerminalTabSnapshot(taskId: string, tabId: string): { pid: number; screen: string; inputLine: string | null; cursorColumn: number | null; cursorRow: number | null; viewportLines: string[]; viewportColumns: number | null; inputIsPlaceholder: boolean } | null {
+  const entry = activeTerminals.get(buildTerminalKey(taskId, tabId));
+  if (!entry || entry.sessionType !== SessionType.TERMINAL) return null;
+  const buffer = entry.screen?.terminal.buffer.active;
+  const viewportLines = buffer ? Array.from({ length: entry.screen!.terminal.rows }, (_, row) => buffer.getLine(buffer.baseY + row)?.translateToString(true) ?? "") : [];
+  return { pid: entry.pty.pid, screen: viewportLines.join("\n").trimEnd(), inputLine: buffer?.getLine(buffer.baseY + buffer.cursorY)?.translateToString(true) ?? null, cursorColumn: buffer?.cursorX ?? null, cursorRow: buffer?.cursorY ?? null, viewportLines, viewportColumns: entry.screen?.terminal.cols ?? null, inputIsPlaceholder: !!buffer && isDimHintEmptyComposer(buffer.getLine(buffer.baseY + buffer.cursorY), buffer.cursorX) };
 }
 
 /**

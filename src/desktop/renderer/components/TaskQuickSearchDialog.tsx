@@ -23,6 +23,7 @@ import {
   useHasBoardShortcutBlocker,
 } from "@/desktop/renderer/components/BoardCommandProvider";
 import { useShortcutBindings } from "@/desktop/renderer/utils/shortcutBindings";
+import InlineLoadError from "@/components/InlineLoadError";
 
 interface TaskQuickSearchDialogProps {
   shortcut?: string;
@@ -217,6 +218,9 @@ export default function TaskQuickSearchDialog({
   const [tasks, setTasks] = useState<SearchableTask[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
+  /** 조회 실패를 빈 결과와 구분한다. 실패를 결과 없음으로 보이면 찾는 task가 없다고 오해한다 */
+  const [loadFailureReason, setLoadFailureReason] = useState<string | null>(null);
+  const [reloadSignal, setReloadSignal] = useState(0);
   const shortcutPlatform = getCurrentShortcutPlatform();
   const shortcutBindings = useShortcutBindings();
   const createTaskShortcut = shortcutBindings.createTask;
@@ -231,6 +235,7 @@ export default function TaskQuickSearchDialog({
     setQuery("");
     setSelectedIndex(0);
     setIsLoading(true);
+    setLoadFailureReason(null);
     setIsOpen(true);
   }, []);
 
@@ -292,6 +297,11 @@ export default function TaskQuickSearchDialog({
           setTasks(nextTasks);
         }
       })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          setLoadFailureReason(error instanceof Error ? error.message : String(error));
+        }
+      })
       .finally(() => {
         if (!cancelled) {
           setIsLoading(false);
@@ -301,7 +311,13 @@ export default function TaskQuickSearchDialog({
     return () => {
       cancelled = true;
     };
-  }, [isOpen]);
+  }, [isOpen, reloadSignal]);
+
+  const retryLoadTasks = useCallback(() => {
+    setLoadFailureReason(null);
+    setIsLoading(true);
+    setReloadSignal((count) => count + 1);
+  }, []);
 
   useEffect(() => {
     boardCommands.setTaskQuickSearchOpen(isOpen);
@@ -459,6 +475,12 @@ export default function TaskQuickSearchDialog({
         <div className="max-h-[420px] overflow-y-auto">
           {isLoading ? (
             <div className="px-4 py-6 text-sm text-text-muted">{tc("loading")}</div>
+          ) : loadFailureReason !== null ? (
+            <InlineLoadError
+              className="m-4"
+              message={tc("loadFailed", { reason: loadFailureReason })}
+              onRetry={retryLoadTasks}
+            />
           ) : results.length === 0 ? (
             <div className="px-4 py-6 text-sm text-text-muted">{t("empty")}</div>
           ) : (

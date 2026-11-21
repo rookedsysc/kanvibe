@@ -25,4 +25,4 @@ appId: ${APP_ID}
     timeout: 10000
 - takeScreenshot: 01-거절된-연결-코드
 - assertVisible: "데스크탑에 연결"
-- assertNotVisible: "KanVibe"
+- assertNotVisible: "Todo"

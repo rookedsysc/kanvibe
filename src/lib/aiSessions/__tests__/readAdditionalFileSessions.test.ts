@@ -60,6 +60,50 @@ describe("additional file session readers", () => {
     for (const name of ["HERMES_HOME", "PI_CODING_AGENT_DIR", "OMP_CODING_AGENT_DIR", "PRIME_AGENT_SESSION_DIR", "PRIME_AGENT_CODING_AGENT_SESSION_DIR", "PRIME_AGENT_CODING_AGENT_DIR", "COPILOT_HOME", "GROK_HOME", "OPENCLAW_STATE_DIR", "DEVIN_HOME", "CLINE_SESSION_DATA_DIR", "KIMI_CODE_HOME", "XDG_DATA_HOME", "JCODE_HOME", "KIRO_HOME"]) vi.stubEnv(name, "");
     host.home = await mkdtemp(path.join(tmpdir(), "kanvibe-extra-history-")); });
   afterEach(async () => { await rm(host.home, { recursive: true, force: true }); vi.unstubAllEnvs(); });
+  it.each([true, false])("keeps an existing Hermes detail when no messages match, sourceRef=%s", async (withSourceRef) => {
+    const fixture = fixtures.find((entry) => entry.provider === "hermes")!;
+    const file = await put(fixture.file, fixture.value);
+    const context = { worktreePath: cwd, repoPath: cwd };
+    const sourceRef = withSourceRef ? file : undefined;
+    const existing = await readAdditionalFileSessionDetail(context, "hermes", "h", sourceRef);
+    expect(existing?.messages.map((message) => message.fullText)).toEqual([answer, user]);
+    const empty = await readAdditionalFileSessionDetail({ ...context, query: "zqx-no-message-match", roles: ["assistant"] }, "hermes", "h", sourceRef, "20", 1);
+    expect(empty).not.toBeNull();
+    expect(empty).toMatchObject({ sessionId: "h", provider: "hermes", matchedPath: cwd, sourceRef: file, messages: [], nextCursor: null });
+    expect(empty?.title).toBe(existing?.title);
+  });
+  it("retains list query filtering and session/workspace/source guards for empty detail searches", async () => {
+    const fixture = fixtures.find((entry) => entry.provider === "hermes")!;
+    const file = await put(fixture.file, fixture.value);
+    const context = { worktreePath: cwd, repoPath: cwd, query: "zqx-no-message-match" };
+    const listing = (await readAdditionalFileSessions(context)).find((result) => result.provider === "hermes");
+    expect(listing).toMatchObject({ available: true, sessions: [], sessionCount: 0 });
+    expect(await readAdditionalFileSessionDetail(context, "hermes", "missing", file)).toBeNull();
+    expect(await readAdditionalFileSessionDetail({ ...context, worktreePath: "/unrelated-worktree" }, "hermes", "h", file)).toBeNull();
+    const outside = await put("session_outside.json", fixture.value);
+    expect(await readAdditionalFileSessionDetail(context, "hermes", "h", outside)).toBeNull();
+  });
+  it("applies message query and role filtering before reverse-order detail pagination", async () => {
+    const file = await put(".hermes/sessions/session_filtered.json", {
+      session_id: "filtered", cwd,
+      messages: [
+        { role: "user", content: "needle user" },
+        { role: "assistant", content: "needle first assistant" },
+        { role: "tool", content: "needle tool" },
+        { role: "assistant", content: "needle second assistant" },
+        { role: "assistant", content: "unrelated assistant" },
+      ],
+    });
+    const context = { worktreePath: cwd, repoPath: cwd, query: "NeEdLe", roles: ["assistant" as const] };
+    const first = await readAdditionalFileSessionDetail(context, "hermes", "filtered", file, null, 1);
+    expect(first?.messages.map((message) => message.fullText)).toEqual(["needle second assistant"]);
+    expect(first?.nextCursor).toBe("1");
+    const second = await readAdditionalFileSessionDetail(context, "hermes", "filtered", file, first!.nextCursor, 1);
+    expect(second?.messages.map((message) => message.fullText)).toEqual(["needle first assistant"]);
+    expect(second?.nextCursor).toBeNull();
+    const excluded = await readAdditionalFileSessionDetail({ ...context, query: "needle tool" }, "hermes", "filtered", file);
+    expect(excluded).toMatchObject({ messages: [], nextCursor: null });
+  });
   for (const fixture of fixtures) {
     it(`reads ${fixture.provider} list, content, pagination and worktree isolation`, async () => {
       const file = await put(fixture.file, fixture.value, fixture.lines);

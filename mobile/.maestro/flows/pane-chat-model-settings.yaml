@@ -1,0 +1,189 @@
+# pane 채팅의 모델 설정 선택창과 플로팅 채팅 버튼을 기기에서 검증한다.
+#
+# 격리 데스크탑 fixture(`qa/mobile/lib/prepareChatHistoryDesktop.cjs --pane-chat`)가 띄운 가짜 CLI를 쓴다.
+# 첫 pane은 Codex(옵션이 없는 fixture-deep 모델로 시작), 둘째 pane은 Claude다.
+appId: ${APP_ID}
+---
+- launchApp:
+    clearState: true
+- setOrientation: PORTRAIT
+- extendedWaitUntil:
+    visible: "데스크탑에 연결"
+    timeout: 90000
+- runScript:
+    file: ../scripts/issue-dev-pairing-code.js
+- tapOn: "데스크탑 주소"
+- eraseText: 30
+- inputText: "10.0.2.2"
+- tapOn: "포트"
+- eraseText: 5
+- inputText: ${DESKTOP_PORT}
+- tapOn: "연결 코드"
+- inputText: ${output.pairingCode}
+- scrollUntilVisible:
+    element: "연결"
+    direction: DOWN
+    timeout: 60000
+- tapOn: "연결"
+- extendedWaitUntil:
+    visible: "(?s).*Chat History Fixture.*"
+    timeout: 40000
+- tapOn: "(?s).*Chat History Fixture.*"
+
+# 에이전트가 도는 pane에는 터미널 위에 채팅 버튼이 뜨고, 예전의 터미널·채팅 버튼 줄은 없다
+- extendedWaitUntil:
+    visible:
+      id: pane-chat-toggle
+    timeout: 30000
+- assertNotVisible:
+    id: pane-chat-mode
+- assertNotVisible:
+    id: pane-terminal-mode
+- takeScreenshot: floating-toggle-on-agent-pane
+- tapOn:
+    id: pane-chat-toggle
+- extendedWaitUntil:
+    visible:
+      id: pane-chat-input
+    timeout: 30000
+
+# 옵션이 없는 모델에는 슬라이더·번개·되돌리기가 없다
+- tapOn:
+    text: "^모델$"
+    enabled: true
+    retryTapIfNoChange: true
+- extendedWaitUntil:
+    visible:
+      id: pane-chat-model-settings
+    timeout: 30000
+- assertVisible: "(?s).*Fixture Deep.*"
+- assertNotVisible:
+    id: pane-chat-effort
+- assertNotVisible:
+    id: pane-chat-fast-mode
+- assertNotVisible:
+    id: pane-chat-effort-reset
+- takeScreenshot: model-without-options
+
+# 모델을 바꾸면 그 모델의 옵션이 나타난다
+- tapOn:
+    id: pane-chat-model-name
+- tapOn: "Fixture Fast"
+- extendedWaitUntil:
+    visible:
+      id: pane-chat-effort
+    timeout: 30000
+- assertVisible: "(?s).*Light.*"
+- assertVisible:
+    id: pane-chat-fast-mode
+- takeScreenshot: model-with-options
+
+# 슬라이더의 끝 칸을 누르면 가장 높은 단계가 되고, CLI가 실제로 그 값을 받는다
+- tapOn:
+    id: pane-chat-effort
+    point: "97%,50%"
+- extendedWaitUntil:
+    visible: "(?s).*High.*"
+    timeout: 30000
+- tapOn:
+    id: pane-chat-fast-mode
+- tapOn:
+    text: "^CLI$"
+    enabled: true
+    retryTapIfNoChange: true
+- extendedWaitUntil:
+    visible: "(?s).*effort: high · speed: fast.*"
+    timeout: 30000
+- takeScreenshot: cli-received-effort-and-fast
+- tapOn: "대화 보기"
+
+# 되돌리기는 그 모델의 기본 단계로 돌린다
+- tapOn:
+    id: pane-chat-effort-reset
+- extendedWaitUntil:
+    visible: "(?s).*Light.*"
+    timeout: 30000
+
+# 모델 설정을 접는다
+- tapOn:
+    text: "^모델$"
+    enabled: true
+
+# Claude pane은 고정 모델 목록에서 현재 모델과 effort를 읽어 보여 준다
+- tapOn:
+    id: "terminal-tab-${SECOND_PANE_ID}"
+- extendedWaitUntil:
+    visible:
+      id: pane-terminal
+    timeout: 30000
+- tapOn:
+    id: pane-chat-toggle
+- extendedWaitUntil:
+    visible:
+      id: pane-chat-input
+    timeout: 30000
+- tapOn:
+    text: "^모델$"
+    enabled: true
+    retryTapIfNoChange: true
+- extendedWaitUntil:
+    visible:
+      id: pane-chat-model-settings
+    timeout: 30000
+- assertVisible: "(?s).*Opus.*"
+- assertVisible: "(?s).*Medium.*"
+- assertVisible:
+    id: pane-chat-fast-mode
+- tapOn:
+    id: pane-chat-effort
+    point: "97%,50%"
+- extendedWaitUntil:
+    visible: "(?s).*Max.*"
+    timeout: 30000
+- takeScreenshot: claude-model-settings
+- tapOn:
+    text: "^CLI$"
+    enabled: true
+    retryTapIfNoChange: true
+- extendedWaitUntil:
+    visible: "(?s).*effort: max.*"
+    timeout: 30000
+- tapOn: "대화 보기"
+- tapOn:
+    id: pane-chat-toggle
+
+# 에이전트가 없는 새 탭에는 채팅 버튼이 뜨지 않는다
+- tapOn:
+    id: create-terminal-tab
+- extendedWaitUntil:
+    notVisible:
+      id: pane-chat-toggle
+    timeout: 30000
+- takeScreenshot: no-toggle-on-shell-pane
+
+# 대화 기록은 메뉴에서 그대로 열린다
+- tapOn:
+    id: task-more
+- tapOn: "대화 기록"
+- extendedWaitUntil:
+    visible: "(?s).*History QA session 24.*"
+    timeout: 30000
+- takeScreenshot: history-opens
+- back
+
+# 첫 pane으로 돌아오면 채팅이 켜진 채 남아 있고, 바꾼 모델로 실제 응답이 온다
+- tapOn:
+    id: "terminal-tab-${FIRST_PANE_ID}"
+- extendedWaitUntil:
+    visible:
+      id: pane-chat-input
+    timeout: 30000
+- tapOn:
+    id: pane-chat-input
+- inputText: ${PROMPT_A}
+- tapOn:
+    id: pane-chat-send
+- extendedWaitUntil:
+    visible: "(?s).*live-pane-a received on fixture-fast: ${PROMPT_A}.*"
+    timeout: 30000
+- takeScreenshot: response-on-switched-model

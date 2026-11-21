@@ -7,7 +7,7 @@
 # 확인창 버튼의 "삭제"는 정규식 전체 일치라 제목 "이 작업을 삭제하시겠습니까?"와 겹치지 않는다.
 appId: ${APP_ID}
 env:
-  DESKTOP_API_FROM_HOST: http://127.0.0.1:19736
+  DESKTOP_API_FROM_HOST: http://127.0.0.1:39736
   PROBE_API_FROM_HOST: http://127.0.0.1:19737
 ---
 - launchApp:

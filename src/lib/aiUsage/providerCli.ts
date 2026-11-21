@@ -207,20 +207,3 @@ export async function logoutThroughCli(
   const result = await runProviderCli(provider, accountRoot, logoutArgs);
   return result.exitCode === 0;
 }
-
-/**
- * 만료 임박한 토큰의 갱신을 CLI에 맡긴다.
- *
- * KanVibe는 벤더 자격증명 저장소에 직접 쓰지 않는다. macOS Keychain 항목은 Claude Code의 소유이고
- * 회전된 refresh 토큰을 KanVibe가 되쓰면 CLI 쪽 로그인이 깨질 수 있어서, 갱신은 소유자에게 맡기고
- * KanVibe는 갱신된 결과를 다시 읽기만 한다.
- *
- * 갱신이 실제로 일어났는지는 알 수 없으므로 돌려주는 값은 "다시 읽어 볼 가치가 있는가"다.
- */
-export async function refreshCredentialsThroughCli(
-  provider: AiUsageProvider,
-  accountRoot: string,
-): Promise<boolean> {
-  const status = await readProviderAuthStatus(provider, accountRoot);
-  return status?.isLoggedIn === true;
-}

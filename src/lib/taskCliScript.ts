@@ -86,10 +86,10 @@ read_target_rows() {
     return 0
   fi
 
-  grep -oE '"(url|taskId|token|clientId)"[[:space:]]*:[[:space:]]*"[^"]*"|"transport"[[:space:]]*:[[:space:]]*("[^"]*"|[^,}[:space:]]+)|[{}]' "\${KANVIBE_TARGETS_FILE}" 2>/dev/null \\
+  grep -oE '"(url|taskId|token|clientId|remoteHostNamespace)"[[:space:]]*:[[:space:]]*"[^"]*"|"transport"[[:space:]]*:[[:space:]]*("[^"]*"|[^,}[:space:]]+)|[{}]' "\${KANVIBE_TARGETS_FILE}" 2>/dev/null \\
     | awk '
-        function emit() { if (url ~ /^https?:\\/\\/[^[:space:]]+$/ && taskId != "") print url "\\t" taskId "\\t" (clientId == "" ? "_" : clientId) "\\t" (token == "" ? "_" : token) "\\t" transport }
-        function clear_target() { url = ""; taskId = ""; clientId = ""; token = ""; transport = "" }
+        function emit() { if (url ~ /^https?:\\/\\/[^[:space:]]+$/ && taskId != "") print url "\\t" taskId "\\t" (clientId == "" ? "_" : clientId) "\\t" (token == "" ? "_" : token) "\\t" transport "\\t" namespace }
+        function clear_target() { url = ""; taskId = ""; clientId = ""; token = ""; transport = ""; namespace = "" }
         $0 == "{" { clear_target(); next }
         $0 == "}" { emit(); clear_target(); next }
         {
@@ -99,6 +99,7 @@ read_target_rows() {
         key == "url" { url = value; sub(/\\/+$/, "", url); next }
         key == "taskId" { taskId = value; next }
         key == "clientId" { clientId = value; next }
+        key == "remoteHostNamespace" { namespace = value; next }
         key == "token" { token = value; next }
         key == "transport" { transport = (value == "" ? "invalid" : value); next }
         END { emit() }
@@ -137,18 +138,18 @@ ${buildShellHookTransportResolver()}
 
 # 로컬 loopback 이외의 등록은 터널 소켓으로만 보낸다.
 post_json() {
-  local url=$1 token=$2 path=$3 body=$4 client_id=$5 transport=$6 socket_path
+  local url=$1 token=$2 path=$3 body=$4 client_id=$5 transport=$6 namespace=$7 socket_path
   if kanvibe_hook_uses_local_http "\${url}" "\${transport}"; then
     send_json_request "\${url}" "\${token}" "\${path}" "\${body}"
     return $?
   fi
-  socket_path="$(kanvibe_hook_socket "\${client_id}")"
+  socket_path="$(kanvibe_hook_socket "\${client_id}" "\${namespace}")"
   if [ -z "\${socket_path}" ]; then
     RESPONSE_STATUS="000"
     RESPONSE_BODY="신뢰할 수 있는 SSH 터널 소켓에 연결할 수 없습니다"
     return "\${KANVIBE_CONNECTION_FAILED}"
   fi
-  send_json_request "\${url}" "\${token}" "\${path}" "\${body}" --unix-socket "\${socket_path}"
+  send_json_request "\${url}" "\${token}" "\${path}" "\${body}" --unix-socket "\${socket_path}" -H "x-kanvibe-client-id: \${client_id}"
 }
 
 # 성공 응답이면 0, 연결 자체가 안 되면 KANVIBE_CONNECTION_FAILED, 그 밖의 실패는 1을 돌려준다.
@@ -192,16 +193,16 @@ send_json_request() {
 # 생성·삭제는 client 한 곳에서만 실행되어야 하므로, 연결이 안 된 경우에만 다음 client로 넘어간다
 send_to_one_target() {
   local path=$1 fields=$2 target_url=$3
-  local url task_id client_id token transport request_status
+  local url task_id client_id token transport namespace request_status
   select_target_rows "\${target_url}"
 
-  while IFS=$'\\t' read -r url task_id client_id token transport; do
+  while IFS=$'\\t' read -r url task_id client_id token transport namespace; do
     if [ -z "\${token}" ] || [ "\${token}" = "_" ]; then
       printf 'kanvibe task: %s 의 CLI 토큰이 없습니다. KanVibe에서 hooks를 다시 설치하세요.\\n' "\${url}" >&2
       continue
     fi
 
-    post_json "\${url}" "\${token}" "\${path}" "{\\"contextTaskId\\":$(json_string "\${task_id}")\${fields}}" "\${client_id}" "\${transport}"
+    post_json "\${url}" "\${token}" "\${path}" "{\\"contextTaskId\\":$(json_string "\${task_id}")\${fields}}" "\${client_id}" "\${transport}" "\${namespace}"
     request_status=$?
 
     if [ "\${request_status}" -eq "\${KANVIBE_CONNECTION_FAILED}" ]; then
@@ -224,9 +225,9 @@ send_to_one_target() {
 # KanVibe client가 다른 client에 생성 등록·삭제를 전파할 때 쓰는 내부 명령. 결과를 client마다 한 줄씩 남긴다
 propagate_to_targets() {
   local path=$1 fields=$2 exclude_url="\${3%/}"
-  local url task_id client_id token transport message
+  local url task_id client_id token transport namespace message
 
-  while IFS=$'\\t' read -r url task_id client_id token transport; do
+  while IFS=$'\\t' read -r url task_id client_id token transport namespace; do
     if [ -z "\${url}" ] || [ "\${url}" = "\${exclude_url}" ]; then
       continue
     fi
@@ -235,7 +236,7 @@ propagate_to_targets() {
       RESPONSE_STATUS="000"
       RESPONSE_BODY="CLI 토큰이 없습니다"
     else
-      post_json "\${url}" "\${token}" "\${path}" "{\\"contextTaskId\\":$(json_string "\${task_id}")\${fields}}" "\${client_id}" "\${transport}"
+      post_json "\${url}" "\${token}" "\${path}" "{\\"contextTaskId\\":$(json_string "\${task_id}")\${fields}}" "\${client_id}" "\${transport}" "\${namespace}"
     fi
 
     message="$(printf '%s' "\${RESPONSE_BODY}" | tr '\\t\\r\\n' '   ' | cut -c1-300)"

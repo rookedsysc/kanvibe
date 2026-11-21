@@ -56,6 +56,7 @@ export default function HooksStatusDialog({
   onStatusesChange,
 }: HooksStatusDialogProps) {
   const t = useTranslations("taskDetail");
+  const tc = useTranslations("common");
   const [installingTools, setInstallingTools] = useState<HookToolKey[]>([]);
   const [expandedManualTool, setExpandedManualTool] = useState<HookToolKey | null>(null);
   const [localClaudeStatus, setLocalClaudeStatus] = useState(claudeStatus);
@@ -65,6 +66,7 @@ export default function HooksStatusDialog({
   const [message, setMessage] = useState<{
     type: "success" | "error";
     text: string;
+    retry?: () => void;
   } | null>(null);
   const onStatusesChangeRef = useRef(onStatusesChange);
 
@@ -195,6 +197,13 @@ export default function HooksStatusDialog({
       if (isSuccessfulInstallResult(result)) {
         await refreshAllHookStatuses().catch(() => undefined);
       }
+    } catch (error) {
+      // IPC가 끊기는 등 결과 객체 없이 실패해도 설치 중 표시만 사라지지 않게 사유와 다시 시도를 남긴다
+      setMessage({
+        type: "error",
+        text: getInstallFailureText(error instanceof Error ? error.message : String(error)),
+        retry: () => void runInstall(tool, install, applyResult),
+      });
     } finally {
       setInstallingTools((current) => current.filter((value) => value !== tool));
     }
@@ -310,11 +319,20 @@ export default function HooksStatusDialog({
         </div>
 
         {message ? (
-          <div className={`mb-4 rounded-lg border px-4 py-3 text-sm ${message.type === "success"
+          <div role={message.type === "error" ? "alert" : "status"} className={`mb-4 rounded-lg border px-4 py-3 text-sm ${message.type === "success"
             ? "border-status-done/20 bg-status-done/10 text-status-done"
             : "border-status-error/20 bg-status-error/10 text-status-error"
           }`}>
             {message.text}
+            {message.retry ? (
+              <button
+                type="button"
+                onClick={message.retry}
+                className="ml-2 rounded px-1.5 py-0.5 font-medium underline-offset-2 hover:underline focus-visible:outline focus-visible:outline-1 focus-visible:outline-border-brand"
+              >
+                {tc("retry")}
+              </button>
+            ) : null}
           </div>
         ) : null}
 

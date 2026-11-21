@@ -8,6 +8,8 @@ import 'package:http/testing.dart';
 import 'package:kanvibe_mobile/src/common/network/desktop_client.dart';
 import 'package:kanvibe_mobile/src/common/network/desktop_command.dart';
 import 'package:kanvibe_mobile/src/common/network/desktop_connection.dart';
+import 'package:kanvibe_mobile/src/common/network/pinned_http_client.dart';
+import 'package:kanvibe_mobile/src/common/network/pane_connection.dart';
 import 'package:kanvibe_mobile/src/features/task_create/domain/session_type.dart';
 import 'package:kanvibe_mobile/src/features/task_detail/domain/mirror_pane.dart';
 
@@ -23,6 +25,80 @@ DesktopClient clientReplying(int statusCode, String body) => DesktopClient(
 
 void main() {
   defineTlsPinningTests();
+  defineRemotePaneRouteTests();
+
+  test(
+    'compact board restores shared icons and retains legacy inline icons',
+    () async {
+      final client = DesktopClient(
+        httpClient: MockClient((request) async {
+          expect(request.url.queryParameters['iconFormat'], 'deduplicated');
+          expect(request.headers['authorization'], 'Bearer test-token');
+          return http.Response(
+            jsonEncode({
+              'board': {
+                'projects': [
+                  {'id': 'a', 'iconDataUrl': null, 'iconKey': '0'},
+                  {'id': 'b', 'iconDataUrl': null, 'iconKey': '0'},
+                  {'id': 'c', 'iconDataUrl': null, 'iconKey': null},
+                  {'id': 'legacy', 'iconDataUrl': 'data:legacy'},
+                ],
+                'projectIcons': {'0': 'data:shared'},
+              },
+            }),
+            200,
+          );
+        }),
+      );
+      addTearDown(client.close);
+      final board = await client.fetchBoard(_connection);
+      expect(
+        (board['projects'] as List).map((project) => project['iconDataUrl']),
+        ['data:shared', 'data:shared', null, 'data:legacy'],
+      );
+    },
+  );
+
+  test('board response from an old desktop remains readable', () async {
+    final client = clientReplying(
+      200,
+      '{"board":{"projects":[{"id":"a","iconDataUrl":"data:old"}]}}',
+    );
+    addTearDown(client.close);
+    final board = await client.fetchBoard(_connection);
+    expect((board['projects'] as List).single['iconDataUrl'], 'data:old');
+  });
+
+  test('targeted minimal surfaces request includes tabId and retains geometry marker', () async {
+    final client = DesktopClient(
+      httpClient: MockClient((request) async {
+        expect(request.url.queryParameters, {
+          'metadata': 'minimal',
+          'tabId': 'w1:t2',
+        });
+        expect(request.headers['authorization'], 'Bearer test-token');
+        return http.Response(
+          jsonEncode({
+            'surfaces': {
+              'geometryTabId': 'w1:t2',
+              'tabs': [
+                {'id': 'w1:t2', 'panes': []},
+              ],
+            },
+          }),
+          200,
+        );
+      }),
+    );
+    addTearDown(client.close);
+    final surfaces = await client.fetchSurfaces(
+      _connection,
+      'task-1',
+      minimal: true,
+      tabId: 'w1:t2',
+    );
+    expect(surfaces.geometryTabId, 'w1:t2');
+  });
 
   test('프로젝트 폴더 조회와 등록은 선택한 PC에 인증된 요청을 보낸다', () async {
     final client = DesktopClient(
@@ -326,7 +402,7 @@ void main() {
     await expectLater(client.fetchTask(_connection, 'task-1'), unauthorized);
   });
 
-  test('실제 WebSocket에서 크기는 binary, 입력은 text 프레임으로 전송한다', () async {
+  test('실제 WebSocket에서 크기와 휠은 binary, 입력은 text 프레임으로 전송한다', () async {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     addTearDown(() => server.close(force: true));
     final received = <dynamic>[];
@@ -336,7 +412,7 @@ void main() {
       final socket = await WebSocketTransformer.upgrade(request);
       socket.listen((event) {
         received.add(event);
-        if (received.length == 2) {
+        if (received.length == 3) {
           socket.add('terminal-output');
           messages.complete();
         }
@@ -344,7 +420,7 @@ void main() {
     });
     final client = DesktopClient();
     addTearDown(client.close);
-    final stream = client.openPaneStream(
+    final stream = await client.openPaneStream(
       DesktopConnection(
         host: '127.0.0.1',
         port: server.port,
@@ -356,6 +432,7 @@ void main() {
     addTearDown(stream.close);
     final output = stream.output.first;
     stream.resize(44, 70);
+    stream.scroll(isUp: false, column: 3, row: 7);
     const text = '{"type":"resize","cols":10,"rows":5}';
     stream.write(text);
     await messages.future.timeout(const Duration(seconds: 5));
@@ -364,6 +441,12 @@ void main() {
       'type': 'resize',
       'cols': 44,
       'rows': 70,
+    });
+    expect(jsonDecode(utf8.decode(received[1] as List<int>)), {
+      'type': 'scroll',
+      'direction': 'down',
+      'column': 3,
+      'row': 7,
     });
     expect(received.last, text);
     expect(await output, 'terminal-output');
@@ -846,6 +929,114 @@ Future<({SecurityContext context, String fingerprint})> createSelfSignedTls(
 }
 
 void defineTlsPinningTests() {
+  test('CA가 신뢰하는 인증서도 다른 지문이면 Bearer를 보내기 전에 거부한다', () async {
+    final directory = await Directory.systemTemp.createTemp(
+      'kanvibe-trusted-ca-',
+    );
+    addTearDown(() => directory.delete(recursive: true));
+    final ca = '${directory.path}/ca.pem';
+    final caKey = '${directory.path}/ca.key';
+    final cert = '${directory.path}/leaf.pem';
+    final key = '${directory.path}/leaf.key';
+    final csr = '${directory.path}/leaf.csr';
+    final extensions = '${directory.path}/leaf.ext';
+    await File(extensions).writeAsString(
+      'basicConstraints=critical,CA:FALSE\nsubjectAltName=IP:127.0.0.1\nkeyUsage=critical,digitalSignature,keyEncipherment\nextendedKeyUsage=serverAuth\n',
+    );
+    for (final arguments in [
+      [
+        'req',
+        '-x509',
+        '-newkey',
+        'rsa:2048',
+        '-nodes',
+        '-days',
+        '1',
+        '-subj',
+        '/CN=Fixture CA',
+        '-addext',
+        'basicConstraints=critical,CA:TRUE',
+        '-addext',
+        'keyUsage=critical,keyCertSign,cRLSign',
+        '-keyout',
+        caKey,
+        '-out',
+        ca,
+      ],
+      [
+        'req',
+        '-new',
+        '-newkey',
+        'rsa:2048',
+        '-nodes',
+        '-subj',
+        '/CN=127.0.0.1',
+        '-keyout',
+        key,
+        '-out',
+        csr,
+      ],
+      [
+        'x509',
+        '-req',
+        '-in',
+        csr,
+        '-CA',
+        ca,
+        '-CAkey',
+        caKey,
+        '-set_serial',
+        '1',
+        '-days',
+        '1',
+        '-extfile',
+        extensions,
+        '-out',
+        cert,
+      ],
+    ]) {
+      final result = await Process.run('openssl', arguments);
+      expect(result.exitCode, 0, reason: '${result.stderr}');
+    }
+    // 이 테스트 isolate의 trust store에만 fixture CA를 넣어 callback 없는 정상 CA 검증을 재현한다.
+    SecurityContext.defaultContext.setTrustedCertificates(ca);
+    final context = SecurityContext()
+      ..useCertificateChain(cert)
+      ..usePrivateKey(key);
+    final server = await HttpServer.bindSecure(
+      InternetAddress.loopbackIPv4,
+      0,
+      context,
+    );
+    addTearDown(() => server.close(force: true));
+    final requests = <String?>[];
+    server.listen((request) async {
+      requests.add(request.headers.value('authorization'));
+      request.response.write('trusted');
+      await request.response.close();
+    });
+    var badCertificateWasCalled = false;
+    final ordinary = HttpClient()
+      ..badCertificateCallback = (_, _, _) {
+        badCertificateWasCalled = true;
+        return false;
+      };
+    addTearDown(() => ordinary.close(force: true));
+    final url = Uri.https('127.0.0.1:${server.port}', '/probe');
+    final ordinaryRequest = await ordinary.getUrl(url);
+    await (await ordinaryRequest.close()).drain<void>();
+    expect(badCertificateWasCalled, isFalse);
+
+    final pinned = createPinnedHttpClient('a' * 64);
+    addTearDown(() => pinned.close(force: true));
+    await expectLater(() async {
+      final request = await pinned.getUrl(url);
+      request.headers.set('authorization', 'Bearer secret-capability');
+      await request.close();
+    }(), throwsA(isA<HandshakeException>()));
+    expect(requests, [null]);
+  });
+
   test('페어링은 TLS로 보내고 그때 본 인증서 지문을 돌려준다', () async {
     final tls = await createSelfSignedTls('desktop');
     final server = await HttpServer.bindSecure(
@@ -958,5 +1149,387 @@ void defineTlsPinningTests() {
     });
     expect(legacy?.isEncrypted, isFalse);
     expect(legacy?.buildHttpUri('/x').scheme, 'http');
+  });
+}
+
+class _PaneRouteFixture {
+  _PaneRouteFixture(this.a, this.b, this.connection, this.descriptor);
+
+  final HttpServer a;
+  final HttpServer b;
+  final DesktopConnection connection;
+  final Map<String, dynamic> descriptor;
+  final sockets = <WebSocket>[];
+  final metadataAuthorizations = <String?>[];
+  final directAuthorizations = <String?>[];
+  final relayRequests = <Uri>[];
+  final directInputs = <dynamic>[];
+  final relayInputs = <dynamic>[];
+  final metadataReceived = Completer<void>();
+  Future<void>? metadataGate;
+  Future<void>? directHandshakeGate;
+  int metadataStatus = 200;
+
+  Future<void> close() async {
+    for (final socket in sockets) {
+      await socket.close();
+    }
+    await a.close(force: true);
+    await b.close(force: true);
+  }
+}
+
+Future<_PaneRouteFixture> _createPaneRouteFixture() async {
+  final aTls = await createSelfSignedTls('paired-desktop');
+  final bTls = await createSelfSignedTls('remote-terminal');
+  final a = await HttpServer.bindSecure(
+    InternetAddress.loopbackIPv4,
+    0,
+    aTls.context,
+  );
+  final b = await HttpServer.bindSecure(
+    InternetAddress.loopbackIPv4,
+    0,
+    bTls.context,
+  );
+  final fixture = _PaneRouteFixture(
+    a,
+    b,
+    DesktopConnection(
+      host: '127.0.0.1',
+      port: a.port,
+      token: 'paired-a-token',
+      certificateFingerprint: aTls.fingerprint,
+    ),
+    {
+      'version': 1,
+      'grantId': 'grant-1',
+      'direct': {
+        'host': '127.0.0.1',
+        'port': b.port,
+        'path': '/stream/grant-1',
+        'token': 'a' * 64,
+        'certificateFingerprint': bTls.fingerprint,
+      },
+      'expiresAt': DateTime.now().millisecondsSinceEpoch + 60000,
+    },
+  );
+  a.listen((request) async {
+    if (request.method == 'POST' &&
+        request.uri.pathSegments.join('/') ==
+            'api/mobile/tasks/task-1/panes/%19/connection') {
+      fixture.metadataAuthorizations.add(
+        request.headers.value('authorization'),
+      );
+      if (!fixture.metadataReceived.isCompleted) {
+        fixture.metadataReceived.complete();
+      }
+      await request.drain<void>();
+      await fixture.metadataGate;
+      request.response.statusCode = fixture.metadataStatus;
+      request.response.headers.contentType = ContentType.json;
+      request.response.write(
+        jsonEncode({'success': true, 'connection': fixture.descriptor}),
+      );
+      await request.response.close();
+      return;
+    }
+    if (request.uri.path == '/api/mobile/stream') {
+      fixture.relayRequests.add(request.uri);
+      final socket = await WebSocketTransformer.upgrade(request);
+      fixture.sockets.add(socket);
+      socket.add('relay-output');
+      socket.listen(fixture.relayInputs.add);
+      return;
+    }
+    request.response.statusCode = 404;
+    await request.response.close();
+  });
+  b.listen((request) async {
+    fixture.directAuthorizations.add(request.headers.value('authorization'));
+    await fixture.directHandshakeGate;
+    WebSocket socket;
+    try {
+      socket = await WebSocketTransformer.upgrade(request);
+    } on HttpException {
+      return; // 취소된 handshake가 뒤늦게 완료되는 fixture 경로다.
+    }
+    fixture.sockets.add(socket);
+    socket.add('direct-output');
+    socket.listen(fixture.directInputs.add);
+  });
+  addTearDown(fixture.close);
+  return fixture;
+}
+
+void defineRemotePaneRouteTests() {
+  test('descriptor는 폰 시계와 무관하게 서버의 만료 값을 유지한다', () async {
+    final fixture = await _createPaneRouteFixture();
+    fixture.descriptor['expiresAt'] = 1;
+    expect(PaneConnection.fromJson(fixture.descriptor).expiresAt, 1);
+  });
+
+  for (final invalid in <String, Object?>{
+    'version': 2,
+    'grantId': '../other',
+    'expiresAt': double.infinity,
+    'direct': {'host': 'https://injected', 'port': 80},
+  }.entries) {
+    test('잘못된 descriptor ${invalid.key}는 연결 전에 거부한다', () async {
+      final fixture = await _createPaneRouteFixture();
+      fixture.descriptor[invalid.key] = invalid.value;
+      if (invalid.value == double.infinity) {
+        expect(
+          () => PaneConnection.fromJson(fixture.descriptor),
+          throwsFormatException,
+        );
+        return;
+      }
+      final client = DesktopClient();
+      addTearDown(client.close);
+      await expectLater(
+        client.openPaneStream(fixture.connection, 'task-1', '%19'),
+        throwsFormatException,
+      );
+      expect(fixture.directAuthorizations, isEmpty);
+      expect(fixture.relayRequests, isEmpty);
+    });
+  }
+
+  test('기존 A의404와405는 grant 없는 기존 stream으로 연결한다', () async {
+    for (final status in [404, 405]) {
+      final fixture = await _createPaneRouteFixture();
+      fixture.metadataStatus = status;
+      final client = DesktopClient();
+      addTearDown(client.close);
+      final stream = await client.openPaneStream(
+        fixture.connection,
+        'task-1',
+        '%19',
+      );
+      addTearDown(stream.close);
+      expect(await stream.output.first, 'relay-output');
+      expect(
+        fixture.relayRequests.single.queryParameters.containsKey('grantId'),
+        isFalse,
+      );
+    }
+  });
+
+  test('A metadata 취소는 요청만 중단하고 공유 HTTP client는 유지한다', () async {
+    final fixture = await _createPaneRouteFixture();
+    final gate = Completer<void>();
+    fixture.metadataGate = gate.future;
+    final cancellation = Completer<void>();
+    final client = DesktopClient();
+    addTearDown(client.close);
+    final opening = client.openPaneStream(
+      fixture.connection,
+      'task-1',
+      '%19',
+      cancelled: cancellation.future,
+    );
+    await fixture.metadataReceived.future.timeout(const Duration(seconds: 2));
+    cancellation.complete();
+    await expectLater(opening, throwsA(isA<http.RequestAbortedException>()));
+    gate.complete();
+    await expectLater(
+      client.fetchProjectDirectories(fixture.connection, '~'),
+      throwsA(isA<DesktopRequestException>()),
+    );
+    expect(fixture.directAuthorizations, isEmpty);
+    expect(fixture.relayRequests, isEmpty);
+  });
+
+  test('늦게 끝나는 직접 handshake는 닫고 relay 하나만 선택한다', () async {
+    final fixture = await _createPaneRouteFixture();
+    final gate = Completer<void>();
+    fixture.directHandshakeGate = gate.future;
+    final client = DesktopClient();
+    addTearDown(client.close);
+    final stream = await client.openPaneStream(
+      fixture.connection,
+      'task-1',
+      '%19',
+    );
+    addTearDown(stream.close);
+    expect(await stream.output.first, 'relay-output');
+    gate.complete();
+    await Future<void>.delayed(const Duration(milliseconds: 30));
+    expect(fixture.relayRequests, hasLength(1));
+    expect(fixture.directInputs, isEmpty);
+  });
+
+  test('큰 Unicode 붙여넣기는1MiB 이하 text frame으로 모두 전송한다', () {
+    final chunks = <String>[];
+    final stream = PaneStream(
+      output: const Stream.empty(),
+      onWrite: chunks.add,
+      onResize: (_, _) {},
+      onRefreshHistory: () {},
+      onClose: () async {},
+      readCloseCode: () => null,
+    );
+    final input = '가😀\u0000' * 160000;
+    stream.write(input);
+    expect(chunks.length, greaterThan(1));
+    expect(
+      chunks.every((chunk) => utf8.encode(chunk).length <= 1024 * 1024),
+      isTrue,
+    );
+    expect(chunks.join(), input);
+  });
+
+  test('인증된 A가 준 B 지문과 capability로 직접 연결하고 paired token은 전달하지 않는다', () async {
+    final fixture = await _createPaneRouteFixture();
+    final client = DesktopClient();
+    addTearDown(client.close);
+
+    final stream = await client.openPaneStream(
+      fixture.connection,
+      'task-1',
+      '%19',
+    );
+    addTearDown(stream.close);
+
+    expect(await stream.output.first, 'direct-output');
+    expect(fixture.metadataAuthorizations, ['Bearer paired-a-token']);
+    expect(fixture.directAuthorizations, ['Bearer ${'a' * 64}']);
+    expect(fixture.relayRequests, isEmpty);
+  });
+
+  test('B 지문이 다르면 capability를 보내지 않고 인증된 A relay로만 연결한다', () async {
+    final fixture = await _createPaneRouteFixture();
+    (fixture.descriptor['direct']
+            as Map<String, dynamic>)['certificateFingerprint'] =
+        'b' * 64;
+    final client = DesktopClient();
+    addTearDown(client.close);
+
+    final stream = await client.openPaneStream(
+      fixture.connection,
+      'task-1',
+      '%19',
+    );
+    addTearDown(stream.close);
+
+    expect(await stream.output.first, 'relay-output');
+    expect(fixture.directAuthorizations, isEmpty);
+    expect(fixture.relayRequests.single.queryParameters['grantId'], 'grant-1');
+  });
+
+  test('직접 연결이 입력 후 끊겨도 키를 A relay로 재전송하지 않는다', () async {
+    final fixture = await _createPaneRouteFixture();
+    final client = DesktopClient();
+    addTearDown(client.close);
+    final stream = await client.openPaneStream(
+      fixture.connection,
+      'task-1',
+      '%19',
+    );
+    addTearDown(stream.close);
+    final output = <String>[];
+    final ended = Completer<void>();
+    stream.output.listen(output.add, onDone: ended.complete);
+    stream.write('one-key');
+    for (var tick = 0; tick < 100 && fixture.directInputs.isEmpty; tick += 1) {
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+    }
+    expect(fixture.directInputs, ['one-key']);
+    expect(output, contains('direct-output'));
+
+    await fixture.sockets.last.close(1001, 'network-lost');
+    await ended.future.timeout(const Duration(seconds: 2));
+
+    expect(fixture.relayInputs, isEmpty);
+    expect(fixture.relayRequests, isEmpty);
+    expect(fixture.metadataAuthorizations, hasLength(1));
+  });
+
+  test('B가 접근 불가하면 같은 grant를 고정된 A stream 경로로 relay한다', () async {
+    final fixture = await _createPaneRouteFixture();
+    final refused = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+    final refusedPort = refused.port;
+    await refused.close();
+    (fixture.descriptor['direct'] as Map<String, dynamic>)['port'] =
+        refusedPort;
+    final client = DesktopClient();
+    addTearDown(client.close);
+
+    final stream = await client.openPaneStream(
+      fixture.connection,
+      'task-1',
+      '%19',
+    );
+    addTearDown(stream.close);
+
+    expect(await stream.output.first, 'relay-output');
+    expect(fixture.relayRequests.single.queryParameters, {
+      'taskId': 'task-1',
+      'paneId': '%19',
+      'grantId': 'grant-1',
+    });
+    expect(fixture.directAuthorizations, isEmpty);
+  });
+
+  test('직접 연결 권한을 발급하지 않는 세션은 준비 요청 없이 A stream으로 바로 연결한다', () async {
+    final fixture = await _createPaneRouteFixture();
+    final client = DesktopClient();
+    addTearDown(client.close);
+
+    final stream = await client.openPaneStream(
+      fixture.connection,
+      'task-1',
+      '%19',
+      canPrepareDirectConnection: false,
+    );
+    addTearDown(stream.close);
+
+    expect(await stream.output.first, 'relay-output');
+    expect(fixture.metadataAuthorizations, isEmpty);
+    expect(fixture.relayRequests.single.queryParameters, {
+      'taskId': 'task-1',
+      'paneId': '%19',
+    });
+  });
+
+  test('닿지 않았던 B는 5분 동안 직접 연결을 다시 시도하지 않고 그 뒤에 다시 시도한다', () async {
+    final fixture = await _createPaneRouteFixture();
+    final unreachable = await ServerSocket.bind(
+      InternetAddress.loopbackIPv4,
+      0,
+    );
+    addTearDown(unreachable.close);
+    var directAttempts = 0;
+    unreachable.listen((socket) {
+      directAttempts += 1;
+      socket.destroy();
+    });
+    (fixture.descriptor['direct'] as Map<String, dynamic>)['port'] =
+        unreachable.port;
+    var now = DateTime(2026, 11, 13, 9);
+    final client = DesktopClient(readNow: () => now);
+    addTearDown(client.close);
+    Future<void> openAndClose() async {
+      final stream = await client.openPaneStream(
+        fixture.connection,
+        'task-1',
+        '%19',
+      );
+      expect(await stream.output.first, 'relay-output');
+      await stream.close();
+    }
+
+    await openAndClose();
+    expect(directAttempts, 1);
+
+    now = now.add(const Duration(minutes: 4, seconds: 59));
+    await openAndClose();
+    expect(directAttempts, 1);
+    expect(fixture.relayRequests.last.queryParameters['grantId'], 'grant-1');
+
+    now = now.add(const Duration(seconds: 1));
+    await openAndClose();
+    expect(directAttempts, 2);
   });
 }

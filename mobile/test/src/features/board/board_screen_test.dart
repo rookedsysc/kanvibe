@@ -2,11 +2,16 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:kanvibe_mobile/src/features/notifications/application/notification_inbox_controller.dart';
+import 'package:kanvibe_mobile/src/common/network/desktop_client.dart';
 import 'package:kanvibe_mobile/src/common/network/desktop_command.dart';
+import 'package:kanvibe_mobile/src/common/providers.dart';
 import 'package:kanvibe_mobile/src/features/board/presentation/board_screen.dart';
 import 'package:kanvibe_mobile/src/features/connection/presentation/desktop_connections_screen.dart';
 
 import '../../../support/fake_desktop.dart';
+import '../../../support/fake_notification_inbox.dart';
 
 Map<String, dynamic> boardWith({
   List<Map<String, dynamic>> progress = const [],
@@ -26,6 +31,247 @@ Map<String, dynamic> boardWith({
 };
 
 void main() {
+  for (final size in [const Size(320, 844), phoneSize, tabletSize]) {
+    testWidgets('변경량이 있는 카드의 배지는 제목 옆에, PR은 오른쪽 아래에 둔다: $size', (tester) async {
+      await tester.binding.setSurfaceSize(size);
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final client = FakeDesktopClient(
+        board: {
+          'projects': [],
+          'tasks': {
+            'todo': [
+              {
+                'id': 'layout-task',
+                'title': '레이아웃 확인',
+                'status': 'todo',
+                'agentType': 'claude',
+                'branchName': 'feat/long-branch-name-for-wrapping',
+                'prUrl': 'https://github.com/example/repo/pull/1',
+              },
+            ],
+            'progress': [],
+            'pending': [],
+            'review': [],
+            'done': [],
+          },
+        },
+      );
+      client.onJsonRequest = (method, segments, query, body) async => {
+        if (segments.join('/') == 'diff-stats')
+          'stats': {
+            'layout-task': {'fileCount': 3, 'additions': 12, 'deletions': 4},
+          },
+      };
+      await tester.pumpWidget(
+        wrapWithApp(const BoardScreen(), client: client, size: size),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('3 파일  +12 −4'), findsOneWidget);
+      final title = tester.getRect(find.text('레이아웃 확인'));
+      final badge = tester.getRect(find.text('claude'));
+      final branch = tester.getRect(
+        find.text('feat/long-branch-name-for-wrapping'),
+      );
+      final pr = tester.getRect(find.text('PR'));
+      final card = tester.getRect(
+        find
+            .ancestor(of: find.text('레이아웃 확인'), matching: find.byType(InkWell))
+            .first,
+      );
+      expect(badge.top - title.bottom, lessThanOrEqualTo(16));
+      expect(pr.top, greaterThanOrEqualTo(branch.bottom));
+      expect(card.right - pr.right, lessThanOrEqualTo(32));
+      final prButton = find.ancestor(
+        of: find.text('PR'),
+        matching: find.byType(TextButton),
+      );
+      expect(tester.getSize(prButton).height, 32);
+      expect(card.bottom - pr.bottom, lessThanOrEqualTo(16));
+      final summary = tester.getRect(find.text('3 파일  +12 −4'));
+      expect(summary.left - card.left, lessThanOrEqualTo(16));
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  for (final size in [phoneSize, tabletSize]) {
+    testWidgets('태스크별 미읽음 알림 수를 표시한다: $size', (tester) async {
+      await tester.binding.setSurfaceSize(size);
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final client = InboxDesktopClient(
+        board: boardWith(
+          progress: [
+            {'id': 't2', 'title': '알림 없는 태스크', 'status': 'progress'},
+          ],
+        ),
+      );
+      client.notificationsByConnection['127.0.0.1:9736'] = [
+        inboxNotice(taskId: 't1'),
+        inboxNotice(id: 'n2', taskId: 't1'),
+        inboxNotice(id: 'read', taskId: 't1', isRead: true),
+        inboxNotice(id: 'read-t2', taskId: 't2', isRead: true),
+        inboxNotice(id: 'no-task', taskId: null),
+        inboxNotice(id: 'missing-task', taskId: 'missing'),
+      ];
+      await tester.pumpWidget(
+        wrapWithApp(const BoardScreen(), client: client, size: size),
+      );
+      await tester.pumpAndSettle();
+
+      final indicator = find.byKey(const ValueKey('task-unread-t1'));
+      expect(indicator, findsOneWidget);
+      expect(
+        find.descendant(of: indicator, matching: find.text('2')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const ValueKey('task-unread-t2')), findsNothing);
+      expect(
+        tester.widget<Semantics>(indicator).properties.label,
+        '읽지 않은 알림 2개',
+      );
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('알림 갱신과 개별·전체 읽음 처리가 태스크 배지에 반영된다', (tester) async {
+    await tester.binding.setSurfaceSize(phoneSize);
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final client = InboxDesktopClient(board: boardWith());
+    client.notificationsByConnection['127.0.0.1:9736'] = [
+      inboxNotice(taskId: 't1'),
+    ];
+    await tester.pumpWidget(
+      wrapWithApp(const BoardScreen(), client: client, size: phoneSize),
+    );
+    await tester.pumpAndSettle();
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(BoardScreen)),
+    );
+    final indicator = find.byKey(const ValueKey('task-unread-t1'));
+    expect(
+      find.descendant(of: indicator, matching: find.text('1')),
+      findsOneWidget,
+    );
+
+    client.notificationsByConnection['127.0.0.1:9736']!.add(
+      inboxNotice(id: 'n2', taskId: 't1'),
+    );
+    container.invalidate(notificationInboxProvider);
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(of: indicator, matching: find.text('2')),
+      findsOneWidget,
+    );
+
+    await container.read(notificationInboxProvider.notifier).markRead('n1');
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(of: indicator, matching: find.text('1')),
+      findsOneWidget,
+    );
+    await container.read(notificationInboxProvider.notifier).markAllRead();
+    await tester.pumpAndSettle();
+    expect(indicator, findsNothing);
+  });
+
+  testWidgets('알림 조회 실패가 태스크 목록을 가리지 않는다', (tester) async {
+    await tester.binding.setSurfaceSize(phoneSize);
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final client = InboxDesktopClient(board: boardWith());
+    client.onFetch = (_) async => throw StateError('알림 조회 실패');
+    await tester.pumpWidget(
+      wrapWithApp(const BoardScreen(), client: client, size: phoneSize),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('할 일 하나'), findsOneWidget);
+    expect(find.byKey(const ValueKey('task-unread-t1')), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('당겨서 새로고침은 보드를 다시 받아 올 때까지 끝나지 않는다', (tester) async {
+    await tester.binding.setSurfaceSize(phoneSize);
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final client = FakeDesktopClient(board: boardWith());
+    await tester.pumpWidget(
+      wrapWithApp(const BoardScreen(), client: client, size: phoneSize),
+    );
+    await tester.pumpAndSettle();
+
+    final heldBoard = Completer<Map<String, dynamic>>();
+    client.onFetchBoard = () => heldBoard.future;
+    var isRefreshDone = false;
+    unawaited(
+      tester
+          .state<RefreshIndicatorState>(find.byType(RefreshIndicator))
+          .show()
+          .then((_) => isRefreshDone = true),
+    );
+    for (var frame = 0; frame < 10; frame++) {
+      await tester.pump(const Duration(milliseconds: 300));
+    }
+
+    expect(isRefreshDone, isFalse);
+    expect(find.byType(RefreshProgressIndicator), findsOneWidget);
+
+    heldBoard.complete(boardWith());
+    await tester.pumpAndSettle();
+
+    expect(isRefreshDone, isTrue);
+    expect(find.text('할 일 하나'), findsOneWidget);
+  });
+
+  testWidgets('새로고침이 실패하면 이전 카드를 그대로 두고 다시 시도를 안내한다', (tester) async {
+    await tester.binding.setSurfaceSize(phoneSize);
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final client = FakeDesktopClient(board: boardWith());
+    await tester.pumpWidget(
+      wrapWithApp(const BoardScreen(), client: client, size: phoneSize),
+    );
+    await tester.pumpAndSettle();
+
+    client.boardError = const DesktopRequestException(503);
+    unawaited(
+      tester.state<RefreshIndicatorState>(find.byType(RefreshIndicator)).show(),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('할 일 하나'), findsOneWidget);
+    expect(find.text('보드를 새로 고치지 못했습니다. 이전 내용을 보여 줍니다.'), findsOneWidget);
+
+    client.boardError = null;
+    final callsBeforeRetry = client.boardCalls.length;
+    await tester.tap(find.widgetWithText(SnackBarAction, '다시 시도'));
+    await tester.pumpAndSettle();
+
+    expect(client.boardCalls.length, callsBeforeRetry + 1);
+  });
+
+  testWidgets('당겨서 새로고침이 아닌 갱신이 실패해도 이전 카드 위에 갱신 실패를 알리고 다시 시도할 수 있다', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(phoneSize);
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final client = FakeDesktopClient(board: boardWith());
+    await tester.pumpWidget(
+      wrapWithApp(const BoardScreen(), client: client, size: phoneSize),
+    );
+    await tester.pumpAndSettle();
+
+    // 삭제·생성 뒤처럼 화면 밖에서 보드를 다시 읽다 실패한 경우
+    client.boardError = const DesktopRequestException(503);
+    ProviderScope.containerOf(tester.element(find.byType(BoardScreen)))
+        .invalidate(boardProvider);
+    await tester.pumpAndSettle();
+
+    expect(find.text('할 일 하나'), findsOneWidget);
+    expect(find.text('최신 보드를 불러오지 못해 이전 내용을 보여 줍니다.'), findsOneWidget);
+
+    client.boardError = null;
+    await tester.tap(find.widgetWithText(TextButton, '다시 시도'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('최신 보드를 불러오지 못해 이전 내용을 보여 줍니다.'), findsNothing);
+  });
+
   testWidgets('홈 상단은 알림과 더보기로 줄이고 등록과 새로고침을 메뉴에 둔다', (tester) async {
     await tester.binding.setSurfaceSize(phoneSize);
     final client = FakeDesktopClient(board: boardWith());
@@ -81,8 +327,10 @@ void main() {
       findsNothing,
       reason: '칸반은 구획 목록을 쓰지 않는다',
     );
-    final board = tester.widget<ListView>(find.byType(ListView).first);
-    expect(board.scrollDirection, Axis.horizontal, reason: '칸반은 옆으로 밀어 본다');
+    final todo = tester.getTopLeft(find.text('Todo'));
+    final progress = tester.getTopLeft(find.text('Progress'));
+    expect(progress.dx, greaterThan(todo.dx));
+    expect(progress.dy, todo.dy, reason: '상태 칸 머리글은 같은 행에 있다');
   });
 
   testWidgets('태스크 제목과 프로젝트 이름이 함께 보인다', (tester) async {
@@ -241,12 +489,14 @@ void main() {
       await tester.longPress(find.text('할 일 하나'));
       await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(TextButton, '삭제'));
-      await tester.pumpAndSettle();
+      // 삭제 중 표시가 계속 움직이므로 settle 대신 화면 전환 시간만큼 넘긴다
+      await tester.pump(const Duration(seconds: 1));
 
       (board['tasks'] as Map<String, dynamic>)['todo'] =
           <Map<String, dynamic>>[];
       await tester.tap(find.byTooltip('보드 메뉴'));
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
       await tester.tap(find.text('새로고침'));
       await tester.pumpAndSettle();
       expect(find.text('할 일 하나'), findsNothing);
@@ -259,6 +509,48 @@ void main() {
         find.text('다른 데스크탑 2곳에는 아직 남아 있습니다. 그 데스크탑이 켜지면 직접 삭제해 주세요.'),
         findsOneWidget,
       );
+    });
+
+    testWidgets('응답을 기다리는 카드는 삭제 중으로 보이고 다시 길게 눌러도 또 지우지 않는다', (tester) async {
+      await tester.binding.setSurfaceSize(phoneSize);
+      final pending = Completer<Map<String, dynamic>>();
+      final client = _DelayedDeletionClient(
+        board: boardWith(),
+        pending: pending,
+      );
+      await tester.pumpWidget(
+        wrapWithApp(const BoardScreen(), client: client, size: phoneSize),
+      );
+      await tester.pumpAndSettle();
+      await tester.longPress(find.text('할 일 하나'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(TextButton, '삭제'));
+      await tester.pump();
+
+      // 카드는 찾기 스크롤용 GlobalKey로 감싸여 있어, 제목을 품은 카드 탭 영역으로 찾는다
+      final card = find
+          .ancestor(of: find.text('할 일 하나'), matching: find.byType(InkWell))
+          .first;
+      expect(
+        find.descendant(of: card, matching: find.text('삭제하는 중…')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: card,
+          matching: find.byType(LinearProgressIndicator),
+        ),
+        findsOneWidget,
+      );
+
+      await tester.longPress(find.text('할 일 하나'));
+      await tester.pump();
+      expect(find.text('이 작업을 삭제하시겠습니까?'), findsNothing);
+      expect(client.deleteRequestCount, 1);
+
+      pending.complete({'ok': true, 'failedPeerCount': 0});
+      await tester.pumpAndSettle();
+      expect(find.text('삭제하는 중…'), findsNothing);
     });
 
     testWidgets('커밋하지 않은 변경이 있으면 강제 삭제를 다시 묻고 확인하면 강제로 보낸다', (tester) async {
@@ -375,13 +667,17 @@ class _DelayedDeletionClient extends FakeDesktopClient {
   _DelayedDeletionClient({required super.board, required this.pending});
 
   final Completer<Map<String, dynamic>> pending;
+  int deleteRequestCount = 0;
 
   @override
   Future<Map<String, dynamic>> runCommand(
     connection,
     DesktopCommand command, {
     Duration? timeout,
-  }) => pending.future;
+  }) {
+    deleteRequestCount++;
+    return pending.future;
+  }
 }
 
 class _UnreachableDesktopClient extends FakeDesktopClient {

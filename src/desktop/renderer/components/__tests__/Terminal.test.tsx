@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Terminal from "../Terminal";
+import { HERDR_SERVER_REPLACED_CLOSE_REASON } from "@/desktop/shared/terminalConnection";
 
 function createDeferred<T>() {
   let resolve!: (value: T) => void;
@@ -26,7 +27,11 @@ const {
   mockDisposeMacShiftSelectionPatch,
   mockFit,
   translations,
+  mockShowActionStatus,
+  mockDismissActionStatus,
 } = vi.hoisted(() => ({
+  mockShowActionStatus: vi.fn(() => "image-status"),
+  mockDismissActionStatus: vi.fn(),
   mockOpenTerminal: vi.fn(),
   mockFocusTerminal: vi.fn(),
   mockOnTerminalData: vi.fn(),
@@ -112,6 +117,11 @@ function createTextClipboardData() {
 
 vi.mock("next-intl", () => ({
   useTranslations: () => translations.current,
+}));
+
+vi.mock("@/desktop/renderer/components/ActionStatusToast", () => ({
+  showActionStatus: mockShowActionStatus,
+  dismissActionStatus: mockDismissActionStatus,
 }));
 
 vi.mock("@xterm/xterm", () => ({
@@ -201,6 +211,37 @@ describe("Desktop Terminal", () => {
     await act(async () => { pending.resolve({ ok: true }); });
     expect(screen.queryByRole("status")).toBeNull();
     expect(container.firstElementChild?.getAttribute("aria-busy")).toBe("false");
+  });
+
+  it("채팅 pane 복귀는 키보드만 차단하고 터미널 프로토콜 응답을 유지한다", async () => {
+    const invoke = vi.fn(async (_namespace: string, method: string) => method === "focusPaneChatTerminal" ? { success: true } : method === "getPaneChatModes" ? {} : method === "getPaneChatLayout"
+      ? { activePaneId: "tab-chat", panes: [{ id: "tab-chat", tabId: "tab-chat", bounds: null }] }
+      : { taskId: "chat-task", paneId: "tab-chat", provider: null, targetToken: null, canSend: false, inputState: "unknown", screen: "", transcript: { status: "unavailable", messages: [], nextCursor: null }, modelPicker: { supported: false } });
+    window.kanvibeDesktop!.invoke = invoke;
+    const onHistory = vi.fn();
+    const view = render(<Terminal taskId="chat-task" tabId="tab-chat" onHistory={onHistory} />);
+    await waitFor(() => expect(screen.queryByRole("status")).toBeNull());
+    await act(async () => { window.dispatchEvent(new Event("kanvibe:toggle-pane-chat")); });
+    await screen.findByTestId("pane-chat");
+    const terminal = latestXtermInstance!;
+    view.rerender(<Terminal taskId="chat-task" tabId="tab-chat" onHistory={onHistory} isHidden />);
+    view.rerender(<Terminal taskId="chat-task" tabId="tab-chat" onHistory={onHistory} />);
+    await waitFor(() => expect(screen.getByTestId("pane-chat").parentElement!.style.display).toBe("flex"));
+    mockTerminalFocus.mockClear();
+    act(() => { window.dispatchEvent(new Event("kanvibe:request-terminal-focus")); });
+    expect(mockTerminalFocus).not.toHaveBeenCalled();
+    const onData = terminal.onData.mock.calls[0][0] as (bytes: string) => void;
+    onData("\x1b[2;3R");
+    expect(mockWriteTerminal).toHaveBeenCalledWith("chat-task", "tab-chat", "\x1b[2;3R");
+    const keyHandler = terminal.attachCustomKeyEventHandler.mock.calls[0][0] as (event: KeyboardEvent) => boolean;
+    expect(keyHandler(new KeyboardEvent("keydown", { key: "x" }))).toBe(false);
+    const paste = new Event("paste", { bubbles: true, cancelable: true });
+    act(() => { (terminal.open.mock.calls[0][0] as HTMLElement).dispatchEvent(paste); });
+    expect(paste.defaultPrevented).toBe(true);
+    await act(async () => { fireEvent.click(screen.getAllByRole("button", { name: "terminal" })[0]); });
+    expect(keyHandler(new KeyboardEvent("keydown", { key: "x" }))).toBe(true);
+    onData("terminal typing");
+    expect(mockWriteTerminal).toHaveBeenCalledWith("chat-task", "tab-chat", "terminal typing");
   });
 
   it("언어가 바뀌어도 연결과 스크롤백을 유지하며 화면 문구만 바꾼다", async () => {
@@ -467,6 +508,87 @@ describe("Desktop Terminal", () => {
     expect(mockWriteTerminal).not.toHaveBeenCalled();
   });
 
+  it("원격으로 이미지를 보내는 동안 진행 알림을 띄우고 끝나면 지운다", async () => {
+    // Given
+    const transfer = createDeferred<{ ok: boolean; remotePath?: string }>();
+    mockPasteImageToRemoteTerminal.mockReturnValueOnce(transfer.promise);
+    render(<Terminal taskId="task-1" isRemote />);
+    await waitFor(() => {
+      expect(mockOpenTerminal).toHaveBeenCalledWith("task-1", null, 80, 24);
+    });
+    const target = latestXtermInstance!.open.mock.calls[0][0] as HTMLElement;
+
+    // When
+    dispatchPasteEvent(target, createImageClipboardData());
+
+    // Then
+    await waitFor(() => {
+      expect(mockShowActionStatus).toHaveBeenCalledWith({ kind: "progress", message: "imagePasteSending" });
+    });
+    transfer.resolve({ ok: true, remotePath: "/tmp/a.png" });
+    await waitFor(() => {
+      expect(mockDismissActionStatus).toHaveBeenCalledWith("image-status");
+    });
+  });
+
+  it("이미지 전송 요청이 던지면 실패 알림의 다시 시도로 같은 이미지를 다시 보낸다", async () => {
+    // Given
+    mockPasteImageToRemoteTerminal
+      .mockRejectedValueOnce(new Error("scp failed"))
+      .mockResolvedValueOnce({ ok: true, remotePath: "/tmp/retry.png" });
+    render(<Terminal taskId="task-1" isRemote />);
+    await waitFor(() => {
+      expect(mockOpenTerminal).toHaveBeenCalledWith("task-1", null, 80, 24);
+    });
+    const target = latestXtermInstance!.open.mock.calls[0][0] as HTMLElement;
+
+    // When
+    dispatchPasteEvent(target, createImageClipboardData());
+
+    // Then
+    await waitFor(() => {
+      expect(mockShowActionStatus).toHaveBeenCalledWith(expect.objectContaining({
+        kind: "failure",
+        message: "imagePasteFailed",
+        action: expect.objectContaining({ label: "imagePasteRetry" }),
+      }));
+    });
+    const failureInput = mockShowActionStatus.mock.calls
+      .map((call) => (call as unknown[])[0] as { kind: string; action?: { onAction: () => void } })
+      .find((input) => input.kind === "failure");
+    failureInput!.action!.onAction();
+
+    await waitFor(() => {
+      expect(mockWriteTerminal).toHaveBeenCalledWith("task-1", null, "/tmp/retry.png");
+    });
+    expect(mockPasteImageToRemoteTerminal).toHaveBeenNthCalledWith(2, "task-1", "data:image/png;base64,ZmFrZQ==");
+  });
+
+  it("이미지 두 장을 연달아 붙여넣으면 먼저 붙인 이미지의 경로를 먼저 쓴다", async () => {
+    // Given
+    const firstTransfer = createDeferred<{ ok: boolean; remotePath?: string }>();
+    mockPasteImageToRemoteTerminal
+      .mockReturnValueOnce(firstTransfer.promise)
+      .mockResolvedValueOnce({ ok: true, remotePath: "/tmp/second.png" });
+    render(<Terminal taskId="task-1" isRemote />);
+    await waitFor(() => {
+      expect(mockOpenTerminal).toHaveBeenCalledWith("task-1", null, 80, 24);
+    });
+    const target = latestXtermInstance!.open.mock.calls[0][0] as HTMLElement;
+
+    // When
+    dispatchPasteEvent(target, createImageClipboardData());
+    dispatchPasteEvent(target, createImageClipboardData());
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    firstTransfer.resolve({ ok: true, remotePath: "/tmp/first.png" });
+
+    // Then
+    await waitFor(() => {
+      expect(mockWriteTerminal).toHaveBeenCalledTimes(2);
+    });
+    expect(mockWriteTerminal.mock.calls.map((call) => call[2])).toEqual(["/tmp/first.png", "/tmp/second.png"]);
+  });
+
   it("클립보드에 이미지가 없는 텍스트 붙여넣기는 원격 세션이어도 그대로 흘려보낸다", async () => {
     // Given
     render(<Terminal taskId="task-1" isRemote />);
@@ -634,6 +756,23 @@ describe("Desktop Terminal", () => {
     expect(event.defaultPrevented).toBe(false);
     expect(mockReadClipboardImage).not.toHaveBeenCalled();
   });
+  it("원격 Herdr 서버 교체로 닫히면 오류를 그리지 않고 새 서버에 다시 연결한다", async () => {
+    // Given: 연결된 터미널
+    let closeListener!: (event: { taskId: string; tabId: string | null; reason: string | null }) => void;
+    mockOnTerminalClose.mockImplementation((listener) => { closeListener = listener; return vi.fn(); });
+    render(<Terminal taskId="handoff" />);
+    await waitFor(() => expect(mockOpenTerminal).toHaveBeenCalledTimes(1));
+    const replacedTerminal = latestXtermInstance!;
+
+    // When: main이 서버 교체 사유로 연결을 닫는다
+    await act(async () => { closeListener({ taskId: "handoff", tabId: null, reason: HERDR_SERVER_REPLACED_CLOSE_REASON }); });
+
+    // Then
+    await waitFor(() => expect(mockOpenTerminal).toHaveBeenCalledTimes(2));
+    expect(replacedTerminal.writeln).not.toHaveBeenCalled();
+    expect(replacedTerminal.dispose).toHaveBeenCalledTimes(1);
+  });
+
   it("disposes all resources when unmounted while openTerminal is pending", async () => {
     const pending = createDeferred<{ ok: boolean }>();
     mockOpenTerminal.mockReturnValue(pending.promise);

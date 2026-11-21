@@ -9,13 +9,17 @@ import 'package:web_socket_channel/io.dart';
 import '../../features/board/domain/task_status.dart';
 import '../../features/project_registry/data/project_scan_result.dart';
 import '../../features/chat_history/domain/chat_history.dart';
+import '../../features/chat_history/domain/task_file.dart';
 import '../../features/notifications/domain/inbox_notification.dart';
 import '../../features/notifications/domain/notification_settings.dart';
+import '../../features/pane_chat/domain/pane_chat.dart';
 import '../../features/task_create/domain/session_type.dart';
 import '../../features/task_detail/domain/mirror_pane.dart';
 import 'desktop_command.dart';
 import 'desktop_connection.dart';
 import 'pinned_http_client.dart';
+import 'pane_connection.dart';
+import 'header_close_retry_client.dart';
 
 /// 페어링 결과. 인증서 지문은 다음 요청부터 고정할 값이다
 class PairingResult {
@@ -33,11 +37,22 @@ class PairingResult {
 /// 페어링만 토큰 없이 호출하고 나머지는 전부 토큰을 실어 보낸다.
 /// 데스크탑의 `/api/hooks/*`는 hook 전용이라 TLS 포트에는 없고, 이 클라이언트도 그쪽을 부르지 않는다.
 class DesktopClient {
-  DesktopClient({http.Client? httpClient}) : _injectedHttpClient = httpClient;
+  DesktopClient({http.Client? httpClient, DateTime Function()? readNow})
+    : _injectedHttpClient = httpClient == null
+          ? null
+          : HeaderCloseRetryClient(httpClient),
+      _readNow = readNow ?? DateTime.now;
+
+  final DateTime Function() _readNow;
+
+  /// 직접 연결이 닿지 않았던 B 주소와 그때의 시각. 그 동안에는 기다리지 않고 A의 중계로 간다
+  final Map<String, DateTime> _unreachableDirectHosts = {};
 
   /// 테스트가 넣는 클라이언트. 있으면 연결과 무관하게 이것을 쓴다
   final http.Client? _injectedHttpClient;
-  late final http.Client _legacyPlaintextClient = http.Client();
+  late final http.Client _legacyPlaintextClient = HeaderCloseRetryClient(
+    http.Client(),
+  );
 
   /// 지문마다 클라이언트를 재사용해 요청마다 TLS 핸드셰이크를 하지 않는다
   final Map<String, http.Client> _pinnedClients = {};
@@ -54,7 +69,8 @@ class DesktopClient {
     if (fingerprint == null) return _legacyPlaintextClient;
     return _pinnedClients.putIfAbsent(
       fingerprint,
-      () => IOClient(createPinnedHttpClient(fingerprint)),
+      () =>
+          HeaderCloseRetryClient(IOClient(createPinnedHttpClient(fingerprint))),
     );
   }
 
@@ -73,6 +89,9 @@ class DesktopClient {
   static const _createTaskTimeout = Duration(seconds: 60);
 
   static const _createTerminalTabTimeout = Duration(seconds: 30);
+
+  /// 꺼져 있던 세션은 데스크탑이 띄운 뒤에 탭 목록을 돌려준다. 조회 한도로 재면 뜨는 중인 세션을 실패로 보여 준다
+  static const _fetchSurfacesTimeout = Duration(seconds: 30);
 
   /// 세션 종류 변경은 데스크탑이 hooks를 깔고 새 세션을 연결한 뒤 이전 세션까지 닫아야 끝난다
   static const _changeSessionTypeTimeout = Duration(seconds: 30);
@@ -138,7 +157,9 @@ class DesktopClient {
   Future<Map<String, dynamic>> fetchBoard(DesktopConnection connection) async {
     final response = await _clientFor(connection)
         .get(
-          connection.buildHttpUri('/api/mobile/board'),
+          connection.buildHttpUri('/api/mobile/board', {
+            'iconFormat': 'deduplicated',
+          }),
           headers: connection.authorizationHeaders,
         )
         .timeout(_requestTimeout);
@@ -147,8 +168,22 @@ class DesktopClient {
       throw DesktopRequestException(response.statusCode);
     }
 
-    return (jsonDecode(response.body) as Map<String, dynamic>)['board']
-        as Map<String, dynamic>;
+    final board =
+        (jsonDecode(response.body) as Map<String, dynamic>)['board']
+            as Map<String, dynamic>;
+    final icons = board['projectIcons'];
+    final projects = board['projects'];
+    if (icons is Map<String, dynamic> && projects is List) {
+      board['projects'] = [
+        for (final project in projects)
+          if (project is Map<String, dynamic> &&
+              icons[project['iconKey']] is String)
+            {...project, 'iconDataUrl': icons[project['iconKey']]}
+          else
+            project,
+      ];
+    }
+    return board;
   }
 
   Future<ChatHistoryPage> fetchChatHistory(
@@ -185,11 +220,19 @@ class DesktopClient {
     String taskId,
     ChatSession session, {
     String? cursor,
+    String? query,
+    Set<String> roles = const {},
   }) async {
     final response = await _clientFor(connection)
         .get(
           connection
-              .buildHttpUri('', {'cursor': ?cursor, 'limit': '20'})
+              .buildHttpUri('', {
+                'cursor': ?cursor,
+                'limit': '20',
+                if (roles.isNotEmpty) 'roles': roles.join(','),
+                if (query != null && query.trim().isNotEmpty)
+                  'query': query.trim(),
+              })
               .replace(
                 pathSegments: [
                   'api',
@@ -210,6 +253,303 @@ class DesktopClient {
     return ChatMessagePage.fromJson(
       (jsonDecode(response.body) as Map<String, dynamic>)['detail']
           as Map<String, dynamic>,
+    );
+  }
+
+  // Foreground-process inspection and exact transcript lookup can each outlast a normal board request.
+  static const _paneChatTimeout = Duration(seconds: 30);
+
+  /// [includeScreen]이 false면 대화 기록을 보여 줄 수 있는 동안 데스크탑이 CLI 화면을 읽지 않는다
+  Future<PaneChatSnapshot> fetchPaneChat(
+    DesktopConnection connection,
+    PaneChatTarget target, {
+    bool includeScreen = true,
+  }) async {
+    final body = await _getPaneChat(connection, target, {
+      if (!includeScreen) 'wantsScreen': 'false',
+    });
+    return _readPaneChatSnapshot(body, target);
+  }
+
+  /// pane에서 돌고 있는 에이전트 CLI의 이름만 묻는다. 화면과 대화 기록은 받지 않는다
+  Future<String?> fetchPaneAgentProvider(
+    DesktopConnection connection,
+    PaneChatTarget target,
+  ) async {
+    final body = await _getPaneChat(connection, target, {'detail': 'agent'});
+    // 이름만 답하는 조회를 모르는 데스크탑은 스냅샷 전체를 돌려주므로 그 안의 이름을 쓴다
+    if (body.containsKey('provider')) return body['provider'] as String?;
+    return _readPaneChatSnapshot(body, target).provider;
+  }
+
+  Future<Map<String, dynamic>> _getPaneChat(
+    DesktopConnection connection,
+    PaneChatTarget target,
+    Map<String, String> extraQueryParameters,
+  ) async {
+    final response = await _clientFor(connection)
+        .get(
+          connection
+              .buildHttpUri('/')
+              .replace(
+                pathSegments: [
+                  'api',
+                  'mobile',
+                  'tasks',
+                  target.taskId,
+                  'pane-chat',
+                ],
+                queryParameters: {
+                  'paneId': target.paneId,
+                  ...extraQueryParameters,
+                },
+              ),
+          headers: connection.authorizationHeaders,
+        )
+        .timeout(_paneChatTimeout);
+    if (response.statusCode != 200) {
+      throw DesktopRequestException(
+        response.statusCode,
+        message: _readErrorMessage(response.body),
+      );
+    }
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  PaneChatSnapshot _readPaneChatSnapshot(
+    Map<String, dynamic> body,
+    PaneChatTarget target,
+  ) {
+    final snapshot = PaneChatSnapshot.fromJson(
+      body['snapshot'] as Map<String, dynamic>,
+    );
+    if (snapshot.taskId != target.taskId ||
+        (snapshot.paneId != null && snapshot.paneId != target.paneId)) {
+      throw const FormatException('선택한 pane과 응답의 대상이 다릅니다.');
+    }
+    return snapshot;
+  }
+
+  Future<void> sendPaneChatAction(
+    DesktopConnection connection,
+    String taskId,
+    String targetToken,
+    PaneChatAction action, {
+    String? text,
+    PaneChatKey? key,
+    List<String>? attachmentIds,
+    String? requestId,
+    Map<String, Object?>? modelSettingChange,
+  }) async {
+    final response = await _clientFor(connection)
+        .post(
+          connection
+              .buildHttpUri('/')
+              .replace(
+                pathSegments: [
+                  'api',
+                  'mobile',
+                  'tasks',
+                  taskId,
+                  'pane-chat',
+                  action.path,
+                ],
+              ),
+          headers: {
+            ...connection.authorizationHeaders,
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({
+            'targetToken': targetToken,
+            if (action == PaneChatAction.prompt) 'text': text,
+            if (action == PaneChatAction.key) 'key': key?.name,
+            'attachmentIds': ?attachmentIds,
+            'requestId': ?requestId,
+            'change': ?modelSettingChange,
+          }),
+        )
+        .timeout(_paneChatTimeout);
+    if (response.statusCode != 200) {
+      throw DesktopRequestException(
+        response.statusCode,
+        message: _readErrorMessage(response.body),
+      );
+    }
+    if ((jsonDecode(response.body) as Map<String, dynamic>)['success'] !=
+        true) {
+      throw const FormatException('CLI가 동작을 수락하지 않았습니다.');
+    }
+  }
+
+  Uri _paneComposerUri(
+    DesktopConnection connection,
+    String taskId,
+    String part, [
+    Map<String, String>? query,
+  ]) => connection
+      .buildHttpUri('/')
+      .replace(
+        pathSegments: ['api', 'mobile', 'tasks', taskId, 'pane-chat', part],
+        queryParameters: query,
+      );
+
+  Map<String, dynamic> _composerBody(http.Response response) {
+    if (response.statusCode != 200) {
+      throw DesktopRequestException(
+        response.statusCode,
+        message: _readErrorMessage(response.body),
+      );
+    }
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    if (body['success'] != true) throw const FormatException('요청을 완료하지 못했습니다.');
+    return body;
+  }
+
+  Future<String> stagePaneChatAttachment(
+    DesktopConnection connection,
+    String taskId,
+    String targetToken, {
+    required String name,
+    required String mimeType,
+    required List<int> bytes,
+  }) async {
+    final response = await _clientFor(connection)
+        .post(
+          _paneComposerUri(connection, taskId, 'attachments'),
+          headers: {
+            ...connection.authorizationHeaders,
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({
+            'targetToken': targetToken,
+            'attachment': {
+              'name': name,
+              'mimeType': mimeType,
+              'dataUrl': 'data:$mimeType;base64,${base64Encode(bytes)}',
+            },
+          }),
+        )
+        .timeout(_paneChatTimeout);
+    return (_composerBody(response)['attachment'] as Map<String, dynamic>)['id']
+        as String;
+  }
+
+  Future<void> removePaneChatAttachment(
+    DesktopConnection connection,
+    String taskId,
+    String targetToken,
+    String id,
+  ) async {
+    final response = await _clientFor(connection)
+        .delete(
+          _paneComposerUri(connection, taskId, 'attachments'),
+          headers: {
+            ...connection.authorizationHeaders,
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({'targetToken': targetToken, 'id': id}),
+        )
+        .timeout(_paneChatTimeout);
+    _composerBody(response);
+  }
+
+  /// [limit]을 주면 데스크톱이 그 개수까지 돌려준다. 구버전 데스크톱은 무시하고 기본 개수만 준 뒤 더 있다고 알린다
+  Future<({List<PaneChatSuggestion> items, bool isTruncated})>
+  getPaneChatSuggestions(
+    DesktopConnection connection,
+    String taskId,
+    String targetToken,
+    String kind,
+    String query, {
+    int? limit,
+  }) async {
+    final response = await _clientFor(connection)
+        .get(
+          _paneComposerUri(connection, taskId, 'suggestions', {
+            'targetToken': targetToken,
+            'kind': kind,
+            'query': query,
+            if (limit != null) 'limit': '$limit',
+          }),
+          headers: connection.authorizationHeaders,
+        )
+        .timeout(_paneChatTimeout);
+    final body = _composerBody(response);
+    if (body['targetToken'] != targetToken) {
+      throw const FormatException('CLI 대상이 변경되었습니다.');
+    }
+    final items = (body['items'] as List)
+        .map(
+          (item) => PaneChatSuggestion.fromJson(item as Map<String, dynamic>),
+        )
+        .toList();
+    return (items: items, isTruncated: body['truncated'] == true);
+  }
+
+  Future<List<int>> fetchChatAttachment(
+    DesktopConnection connection,
+    String taskId,
+    String provider,
+    String sessionId,
+    String attachmentId,
+  ) async {
+    final uri = connection
+        .buildHttpUri('/')
+        .replace(
+          pathSegments: [
+            'api',
+            'mobile',
+            'tasks',
+            taskId,
+            'ai-sessions',
+            provider,
+            sessionId,
+            'attachments',
+            attachmentId,
+          ],
+        );
+    final response = await _clientFor(connection)
+        .get(uri, headers: connection.authorizationHeaders)
+        .timeout(_paneChatTimeout);
+    final attachment =
+        _composerBody(response)['attachment'] as Map<String, dynamic>;
+    final data = UriData.parse(attachment['dataUrl'] as String);
+    if (!data.mimeType.startsWith('image/')) {
+      throw const FormatException('이미지 형식이 아닙니다.');
+    }
+    final bytes = data.contentAsBytes();
+    if (bytes.length > 10 * 1024 * 1024) {
+      throw const FormatException('이미지가 너무 큽니다.');
+    }
+    return bytes;
+  }
+
+  /// 대화에 나온 파일의 본문을 읽는다. 경로는 AI가 기록한 그대로 보내고, 태스크 폴더 안인지는 데스크탑이 판정한다.
+  ///
+  /// 이 경로가 없는 오래된 데스크탑도 404로 답하므로 [TaskFileFailure.notFound]는 두 경우를 함께 뜻한다.
+  Future<TaskFile> fetchTaskFile(
+    DesktopConnection connection,
+    String taskId,
+    String path,
+  ) async {
+    final uri = connection
+        .buildHttpUri('/')
+        .replace(
+          pathSegments: ['api', 'mobile', 'tasks', taskId, 'workspace-file'],
+          queryParameters: {'path': path},
+        );
+    final response = await _clientFor(connection)
+        .get(uri, headers: connection.authorizationHeaders)
+        .timeout(_paneChatTimeout);
+    final failure = switch (response.statusCode) {
+      400 => TaskFileFailure.outsideTaskFolder,
+      404 => TaskFileFailure.notFound,
+      413 => TaskFileFailure.tooLarge,
+      _ => null,
+    };
+    if (failure != null) throw TaskFileException(failure);
+    return TaskFile.fromJson(
+      _composerBody(response)['file'] as Map<String, dynamic>,
     );
   }
 
@@ -312,6 +652,31 @@ class DesktopClient {
           connection.buildHttpUri('/api/mobile/notifications/read-all'),
           headers: connection.authorizationHeaders,
         )
+        .timeout(_requestTimeout);
+    if (response.statusCode != 200) {
+      throw DesktopRequestException(response.statusCode);
+    }
+  }
+
+  /// 태스크 상세를 보고 있을 때 데스크탑과 같은 경로로 그 태스크의 알림을 읽음 처리한다.
+  Future<void> markTaskNotificationsRead(
+    DesktopConnection connection,
+    String taskId,
+  ) async {
+    final uri = connection
+        .buildHttpUri('/api/mobile/tasks')
+        .replace(
+          pathSegments: [
+            'api',
+            'mobile',
+            'tasks',
+            taskId,
+            'notifications',
+            'read',
+          ],
+        );
+    final response = await _clientFor(connection)
+        .post(uri, headers: connection.authorizationHeaders)
         .timeout(_requestTimeout);
     if (response.statusCode != 200) {
       throw DesktopRequestException(response.statusCode);
@@ -421,16 +786,19 @@ class DesktopClient {
   /// 태스크의 탭과 pane 목록
   Future<TaskSurfaces> fetchSurfaces(
     DesktopConnection connection,
-    String taskId,
-  ) async {
+    String taskId, {
+    bool minimal = false,
+    String? tabId,
+  }) async {
     final response = await _clientFor(connection)
         .get(
           connection.buildHttpUri(
             '/api/mobile/tasks/${Uri.encodeComponent(taskId)}/surfaces',
+            minimal ? {'metadata': 'minimal', 'tabId': ?tabId} : null,
           ),
           headers: connection.authorizationHeaders,
         )
-        .timeout(_requestTimeout);
+        .timeout(_fetchSurfacesTimeout);
 
     /// 200도 409도 아니면 본문이 JSON이라는 보장이 없다. 상태를 먼저 걸러야
     /// 앞단이 끼워 넣은 HTML 오류 페이지가 [FormatException]으로 둔갑하지 않는다
@@ -550,6 +918,7 @@ class DesktopClient {
     String? baseBranch,
     String? description,
     String? priority,
+    String? sessionType,
   }) async {
     final response = await _clientFor(connection)
         .post(
@@ -564,6 +933,7 @@ class DesktopClient {
             'baseBranch': baseBranch,
             'description': description,
             'priority': priority,
+            'sessionType': ?sessionType,
           }),
         )
         .timeout(_createTaskTimeout);
@@ -670,40 +1040,219 @@ class DesktopClient {
     }
   }
 
-  /// pane 하나를 구독한다. 첫 프레임은 현재 화면이고 그 뒤로는 바뀌는 부분만 온다
-  PaneStream openPaneStream(
+  /// 직접 경로는 쓰기 전에만 선택한다. 연결이 끊긴 뒤 보낸 키를 재전송하지 않는다.
+  Future<PaneStream> openPaneStream(
     DesktopConnection connection,
     String taskId,
-    String paneId,
-  ) {
-    final channel = IOWebSocketChannel.connect(
+    String paneId, {
+    Future<void>? cancelled,
+    bool canPrepareDirectConnection = true,
+  }) async {
+    final cancellation = Completer<void>();
+    cancelled?.then((_) {
+      if (!cancellation.isCompleted) cancellation.complete();
+    });
+    final grant = connection.isEncrypted && canPrepareDirectConnection
+        ? await _preparePaneConnection(connection, taskId, paneId, cancellation)
+        : null;
+    if (cancellation.isCompleted) throw http.RequestAbortedException();
+    if (grant != null && !_isDirectHostUnreachable(grant.directUri.host)) {
+      try {
+        return await _connectPaneStream(
+          grant.directUri,
+          {'Authorization': 'Bearer ${grant.token}'},
+          grant.certificateFingerprint,
+          cancellation.future,
+          _directPaneConnectTimeout,
+        );
+      } catch (_) {
+        if (cancellation.isCompleted) throw http.RequestAbortedException();
+        // 직접 TCP 경로가 막혀도 같은 권한을 A의 인증된 고정 relay 경로로 전달할 수 있다.
+        _unreachableDirectHosts[grant.directUri.host] = _readNow();
+      }
+    }
+    return _connectPaneStream(
       connection.buildWebSocketUri('/api/mobile/stream', {
         'taskId': taskId,
         'paneId': paneId,
+        if (grant != null) 'grantId': grant.grantId,
       }),
-      headers: connection.authorizationHeaders,
-      customClient: _webSocketClientFor(connection),
+      connection.authorizationHeaders,
+      connection.certificateFingerprint,
+      cancellation.future,
+      _requestTimeout,
     );
+  }
 
+  // 기존 첫 화면 제한15초 안에 relay를 시도할 여유를 남긴다.
+  static const _directPaneConnectTimeout = Duration(seconds: 2);
+
+  /// 닿지 않는 B는 대개 NAT나 방화벽 뒤라 곧바로 다시 닿지 않는다. 그 동안 터미널을 열 때마다 직접 연결을 기다리지 않는다.
+  /// 네트워크를 옮긴 뒤에는 다시 닿을 수 있어 영영 포기하지는 않는다.
+  static const _directHostRetryInterval = Duration(minutes: 5);
+
+  bool _isDirectHostUnreachable(String host) {
+    final failedAt = _unreachableDirectHosts[host];
+    if (failedAt == null) return false;
+    if (_readNow().difference(failedAt) < _directHostRetryInterval) return true;
+    _unreachableDirectHosts.remove(host);
+    return false;
+  }
+
+  Future<PaneConnection?> _preparePaneConnection(
+    DesktopConnection connection,
+    String taskId,
+    String paneId,
+    Completer<void> cancellation,
+  ) async {
+    final uri = connection
+        .buildHttpUri('/')
+        .replace(
+          pathSegments: [
+            'api',
+            'mobile',
+            'tasks',
+            taskId,
+            'panes',
+            paneId,
+            'connection',
+          ],
+        );
+    final request = http.AbortableRequest(
+      'POST',
+      uri,
+      abortTrigger: cancellation.future,
+    )..headers.addAll(connection.authorizationHeaders);
+    final response =
+        await _awaitPaneSetup(
+          _clientFor(connection).send(request).then(http.Response.fromStream),
+          cancellation.future,
+        ).timeout(
+          _requestTimeout,
+          onTimeout: () {
+            if (!cancellation.isCompleted) cancellation.complete();
+            throw TimeoutException('Terminal connection preparation timed out');
+          },
+        );
+    if (response.statusCode == 404 || response.statusCode == 405) return null;
+    if (response.statusCode != 200) {
+      throw DesktopRequestException(
+        response.statusCode,
+        message: _readErrorMessage(response.body),
+      );
+    }
+    final body = jsonDecode(response.body);
+    if (body is! Map<String, dynamic> ||
+        body['success'] != true ||
+        !body.containsKey('connection')) {
+      throw const FormatException('터미널 연결 응답이 올바르지 않습니다.');
+    }
+    return body['connection'] == null
+        ? null
+        : PaneConnection.fromJson(body['connection']);
+  }
+
+  Future<PaneStream> _connectPaneStream(
+    Uri uri,
+    Map<String, String> headers,
+    String? fingerprint,
+    Future<void> cancelled,
+    Duration timeout,
+  ) async {
+    final attemptClosed = Completer<void>();
+    final client = fingerprint == null
+        ? HttpClient()
+        : createPinnedHttpClient(fingerprint, cancelled: attemptClosed.future);
+    final channel = IOWebSocketChannel.connect(
+      uri,
+      headers: headers,
+      customClient: client,
+    );
+    var closed = false;
+    void close() {
+      if (closed) return;
+      closed = true;
+      attemptClosed.complete();
+      client.close(force: true);
+      unawaited(channel.sink.close().catchError((_) {}));
+    }
+
+    cancelled.then((_) => close());
+    try {
+      await _awaitPaneSetup(channel.ready, cancelled).timeout(timeout);
+      if (closed) throw http.RequestAbortedException();
+    } catch (_) {
+      // Future.timeout는 실제 소켓을 취소하지 않으므로 늦은 handshake도 이 시도와 함께 닫는다.
+      close();
+      unawaited(channel.stream.drain<void>().catchError((_) {}));
+      rethrow;
+    }
     return PaneStream(
-      output: channel.stream.map((event) => event.toString()),
-      onWrite: channel.sink.add,
-      onResize: (cols, rows) => channel.sink.add(
-        utf8.encode(jsonEncode({'type': 'resize', 'cols': cols, 'rows': rows})),
-      ),
-      onClose: channel.sink.close,
+      output: channel.stream
+          .map((event) => event.toString())
+          .transform(
+            StreamTransformer<String, String>.fromHandlers(
+              handleDone: (sink) {
+                close();
+                sink.close();
+              },
+            ),
+          ),
+      onWrite: (input) {
+        if (!closed) channel.sink.add(input);
+      },
+      onResize: (cols, rows) {
+        if (!closed) {
+          channel.sink.add(
+            utf8.encode(
+              jsonEncode({'type': 'resize', 'cols': cols, 'rows': rows}),
+            ),
+          );
+        }
+      },
+      onRefreshHistory: () {
+        if (!closed) {
+          channel.sink.add(
+            utf8.encode(jsonEncode({'type': 'refresh-history'})),
+          );
+        }
+      },
+      onScroll: (isUp, column, row) {
+        if (!closed) {
+          channel.sink.add(
+            utf8.encode(
+              jsonEncode({
+                'type': 'scroll',
+                'direction': isUp ? 'up' : 'down',
+                'column': column,
+                'row': row,
+              }),
+            ),
+          );
+        }
+      },
+      onClose: () async {
+        close();
+      },
       readCloseCode: () => channel.closeCode,
     );
   }
 
+  Future<T> _awaitPaneSetup<T>(Future<T> operation, Future<void> cancelled) =>
+      Future.any([
+        operation,
+        cancelled.then<T>((_) => throw http.RequestAbortedException()),
+      ]);
+
   /// 터미널 화면과 관계없이 hook 상태 변경을 받는다.
   DesktopEventStream openEventStream(DesktopConnection connection) {
+    final socketClient = _webSocketClientFor(connection);
     final channel = IOWebSocketChannel.connect(
       connection.buildWebSocketUri('/api/mobile/events', const {}),
       headers: connection.authorizationHeaders,
       pingInterval: const Duration(seconds: 25),
       connectTimeout: _requestTimeout,
-      customClient: _webSocketClientFor(connection),
+      customClient: socketClient,
     );
     // handshake 실패는 events에도 전달된다. 별도 ready Future의 중복 오류만 소비한다.
     channel.ready.ignore();
@@ -715,6 +1264,8 @@ class DesktopClient {
       if (identical(_commandChannels[connection.id], commandChannel)) {
         _commandChannels.remove(connection.id);
       }
+      // 소켓마다 만든 클라이언트라 닫지 않으면 다시 연결할 때마다 하나씩 남는다.
+      socketClient?.close(force: true);
     }
 
     // command-result는 요청한 쪽에만 돌려주고 나머지 이벤트만 구독자에게 흘린다
@@ -765,6 +1316,84 @@ class DesktopClient {
       command,
       requestId: 'cmd-${_nextRequestNumber++}',
       timeout: timeout ?? command.timeout,
+    );
+  }
+
+  Future<Map<String, dynamic>> requestJson(
+    DesktopConnection connection,
+    String method,
+    List<String> segments, {
+    Map<String, String>? query,
+    Map<String, dynamic>? body,
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
+    if (!const {'GET', 'POST', 'PATCH', 'PUT', 'DELETE'}.contains(method) ||
+        segments.any((segment) => segment.isEmpty || segment == '..')) {
+      throw ArgumentError('잘못된 모바일 요청입니다.');
+    }
+    final uri = connection
+        .buildHttpUri('')
+        .replace(
+          pathSegments: ['api', 'mobile', ...segments],
+          queryParameters: query,
+        );
+    final request = http.Request(method, uri)
+      ..headers.addAll(connection.authorizationHeaders);
+    if (body != null) {
+      request.headers['Content-Type'] = 'application/json';
+      request.body = jsonEncode(body);
+    }
+    final response = await http.Response.fromStream(
+      await _clientFor(connection).send(request).timeout(timeout),
+    ).timeout(timeout);
+    Map<String, dynamic>? payload;
+    try {
+      payload =
+          jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+    } on FormatException {
+      throw DesktopRequestException(
+        response.statusCode,
+        message: '데스크탑 응답을 읽지 못했습니다.',
+      );
+    }
+    if (response.statusCode < 200 ||
+        response.statusCode >= 300 ||
+        payload['success'] == false) {
+      throw DesktopRequestException(
+        response.statusCode,
+        message: payload['error'] is String ? payload['error'] as String : null,
+      );
+    }
+    return payload;
+  }
+
+  PaneStream openAuthenticatedTerminal(
+    DesktopConnection connection,
+    List<String> segments,
+  ) {
+    final uri = connection
+        .buildWebSocketUri('', const {})
+        .replace(
+          pathSegments: ['api', 'mobile', ...segments],
+          queryParameters: const {'cols': '80', 'rows': '24'},
+        );
+    final channel = IOWebSocketChannel.connect(
+      uri,
+      headers: connection.authorizationHeaders,
+      customClient: _webSocketClientFor(connection),
+      connectTimeout: _requestTimeout,
+    );
+    return PaneStream(
+      output: channel.stream.map((raw) => raw.toString()),
+      onWrite: (data) =>
+          channel.sink.add(jsonEncode({'type': 'input', 'data': data})),
+      onResize: (cols, rows) => channel.sink.add(
+        jsonEncode({'type': 'resize', 'cols': cols, 'rows': rows}),
+      ),
+      // 로그인 터미널은 데스크탑이 다시 보내 줄 지난 출력이 없다
+      onRefreshHistory: () {},
+      onClose: () => channel.sink.close(),
+      readCloseCode: () => channel.closeCode,
     );
   }
 
@@ -893,6 +1522,8 @@ class PaneStream {
     required this.output,
     required this.onWrite,
     required this.onResize,
+    required this.onRefreshHistory,
+    this.onScroll = _ignoreScroll,
     required this.onClose,
     required this.readCloseCode,
   });
@@ -905,14 +1536,50 @@ class PaneStream {
 
   final void Function(int cols, int rows) onResize;
 
+  /// 화면 프레임만 받는 세션의 지난 출력을 최신으로 다시 보내 달라고 요청한다
+  final void Function() onRefreshHistory;
+
+  /// 휠 한 칸을 멀티플렉서에 넘긴다. 멀티플렉서가 pane 모드를 보고 휠 보고·화살표 키·자체 스크롤백 중 하나로 처리한다
+  final void Function(bool isUp, int column, int row) onScroll;
+
+  /// 멀티플렉서를 거치지 않는 로그인 터미널처럼 휠을 넘길 곳이 없는 스트림의 기본값
+  static void _ignoreScroll(bool isUp, int column, int row) {}
+
   final Future<void> Function() onClose;
 
   /// 소켓이 왜 닫혔는지. 서버가 나눠 보낸 사유를 위젯이 읽을 유일한 통로다
   final int? Function() readCloseCode;
 
-  void write(String input) => onWrite(input);
+  // B의 WebSocket frame 제한과 맞추되 Unicode 문자를 프레임 사이에서 자르지 않는다.
+  static const _maxInputBytes = 1024 * 1024;
+
+  void refreshHistory() => onRefreshHistory();
+
+  void write(String input) {
+    if (utf8.encode(input).length <= _maxInputBytes) {
+      onWrite(input);
+      return;
+    }
+    final chunk = StringBuffer();
+    var bytes = 0;
+    for (final rune in input.runes) {
+      final character = String.fromCharCode(rune);
+      final size = utf8.encode(character).length;
+      if (bytes + size > _maxInputBytes) {
+        onWrite(chunk.toString());
+        chunk.clear();
+        bytes = 0;
+      }
+      chunk.write(character);
+      bytes += size;
+    }
+    if (chunk.isNotEmpty) onWrite(chunk.toString());
+  }
 
   void resize(int cols, int rows) => onResize(cols, rows);
+
+  void scroll({required bool isUp, required int column, required int row}) =>
+      onScroll(isUp, column, row);
 
   Future<void> close() => onClose();
 }

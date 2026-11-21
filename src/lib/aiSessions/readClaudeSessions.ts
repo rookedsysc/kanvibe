@@ -1,4 +1,6 @@
 import path from "path";
+import { extractMessageAttachments } from "./messageAttachments";
+import { summarizeClaudeToolUse, withToolCall } from "./messageFiles";
 import {
   createReaderResult,
   createSessionDetail,
@@ -11,6 +13,7 @@ import {
   makePreviewMessage,
   paginateItems,
   pickLiveSessionFiles,
+  readAppendedJsonLines,
   readJsonLines,
   readJsonLinesHead,
   readJsonLinesTail,
@@ -30,6 +33,8 @@ import type {
   AgentCallNode,
   AggregatedAiMessage,
   AggregatedAiSession,
+  AiMessageAttachment,
+  AiMessageFile,
   AiMessageRole,
   AiSessionDetailReaderResult,
   AiSessionReaderContext,
@@ -47,6 +52,9 @@ interface ClaudeProjectEvent {
   timestamp?: string;
   sessionId?: string;
   cwd?: string;
+  imagePasteIds?: number[];
+  isMeta?: boolean;
+  turnCompanion?: boolean;
   message?: {
     role?: string;
     content?: unknown;
@@ -56,6 +64,71 @@ interface ClaudeProjectEvent {
 interface ClaudeSessionAccumulator {
   session: AggregatedAiSession;
   hasQueryMatch: boolean;
+}
+
+/** Claude가 입력란에서 접어 보여 준 붙여넣기를 기록할 때 두르는 표시. 여닫는 표시에 같은 id가 붙는다 */
+const PASTED_CONTENT_WRAPPER = /<pasted_content id="([^"]*)">\n?([\s\S]*?)\n?<\/pasted_content id="\1">/g;
+/** Claude가 `!`로 시작한 셸 명령을 명령만 따로 남기는 모양 */
+const SHELL_COMMAND_RECORD = /^<bash-input>([\s\S]*)<\/bash-input>$/;
+
+/** Claude가 사용자 글에 두른 표시를 걷어, 사용자가 보낸 글로 되돌린다 */
+function restoreClaudeSentText(recordedText: string): string {
+  return recordedText.replace(PASTED_CONTENT_WRAPPER, "$2").replace(SHELL_COMMAND_RECORD, "!$1").trim();
+}
+
+function getClaudeMessageText(event: ClaudeProjectEvent): string {
+  const text = extractPlainText(event.message?.content);
+  const withoutImageMarkers = event.imagePasteIds?.length ? text.replace(/^(?:\[Image #\d+\]\s*)+/, "") : text;
+  return event.message?.role === "user" ? restoreClaudeSentText(withoutImageMarkers) : withoutImageMarkers;
+}
+
+interface ClaudeEventMessage {
+  role: AiMessageRole;
+  text: string;
+  attachments: AiMessageAttachment[];
+  toolName?: string;
+  files?: AiMessageFile[];
+}
+
+/**
+ * 기록 한 줄을 화면에 보일 메시지들로 나눈다.
+ *
+ * 줄 전체의 글은 지금까지처럼 메시지 하나가 되고, assistant 줄의 `thinking`과 `tool_use` 조각은 각각
+ * 따로 메시지가 된다. 조각이 적힌 순서가 곧 일어난 순서라서, 글 메시지는 첫 `text` 조각 자리에 둔다.
+ */
+function extractClaudeEventMessages(event: ClaudeProjectEvent, sourceRef: string): ClaudeEventMessage[] {
+  const entryMessage: ClaudeEventMessage = {
+    role: resolveClaudeRole(event),
+    text: getClaudeMessageText(event),
+    attachments: extractMessageAttachments(event.message?.content, sourceRef),
+  };
+  const content = event.message?.content;
+  if (event.message?.role !== "assistant" || !Array.isArray(content)) return [entryMessage];
+
+  const messages: ClaudeEventMessage[] = [];
+  for (const part of content as Array<Record<string, unknown> | null>) {
+    if (part?.type === "text" && !messages.includes(entryMessage)) {
+      messages.push(entryMessage);
+    }
+    if (part?.type === "thinking" && typeof part.thinking === "string" && part.thinking.trim()) {
+      messages.push({ role: "reasoning", text: part.thinking, attachments: [] });
+    }
+    const toolCall = summarizeClaudeToolUse(part);
+    if (toolCall) {
+      messages.push({ role: "tool", text: toolCall.summary, attachments: [], toolName: toolCall.toolName, files: toolCall.files });
+    }
+  }
+  return messages.includes(entryMessage) ? messages : [...messages, entryMessage];
+}
+
+function isClaudeImageCompanion(event: ClaudeProjectEvent): boolean {
+  return event.isMeta === true && event.turnCompanion === true
+    && /^\[Image: source: /.test(extractPlainText(event.message?.content));
+}
+
+/** Claude Code가 대화 파일에 함께 남기는 API 요청 로그. 요청에 실어 보낸 메시지의 사본이라 role은 있어도 대화의 한 줄이 아니다 */
+function isClaudeApiRequestLog(event: ClaudeProjectEvent): boolean {
+  return event.type === "api-request-blob";
 }
 
 export async function readClaudeSessions(context: AiSessionReaderContext): Promise<AiSessionReaderResult> {
@@ -83,6 +156,66 @@ export async function readClaudeSessions(context: AiSessionReaderContext): Promi
   });
 }
 
+/** 한 기록 파일에서 한 대화가 남긴 메시지와, 그 파일의 이벤트를 어디까지 읽어 만들었는지 */
+interface ClaudeSessionTranscript {
+  readEventCount: number;
+  isSessionInScope: boolean;
+  title: string | null;
+  matchedPath: string | null;
+  /** 파일에 적힌 순서 */
+  messages: AggregatedAiMessage[];
+  /** messages를 최신순으로 정렬해 둔 것. 메시지가 늘면 버리고 다음에 다시 만든다 */
+  newestFirstMessages: AggregatedAiMessage[] | null;
+}
+
+/** 검색어처럼 조건이 계속 바뀌는 조회가 한 파일에 결과를 끝없이 쌓지 않도록 조건 수를 제한한다 */
+const MAX_TRANSCRIPTS_PER_EVENT_LIST = 8;
+/** 이벤트 배열이 살아 있는 동안만 그 배열로 만든 메시지를 기억한다. 파일을 처음부터 다시 읽으면 배열이 바뀌어 함께 버려진다 */
+const claudeSessionTranscripts = new WeakMap<unknown[], Map<string, ClaudeSessionTranscript>>();
+
+/**
+ * 이벤트 배열에서 한 대화의 메시지를 만든다. 같은 배열을 같은 조건으로 다시 받으면 지난번에 읽은 곳 뒤로 붙은 이벤트만 읽어,
+ * 긴 대화를 보는 동안 매번 전체를 다시 만들지 않는다.
+ */
+function readClaudeSessionTranscript(events: unknown[], filePath: string, sessionId: string, context: AiSessionReaderContext): ClaudeSessionTranscript {
+  const transcripts = claudeSessionTranscripts.get(events) ?? new Map<string, ClaudeSessionTranscript>();
+  claudeSessionTranscripts.set(events, transcripts);
+  const conditions = JSON.stringify([filePath, sessionId, context]);
+  const transcript = transcripts.get(conditions) ?? { readEventCount: 0, isSessionInScope: false, title: null, matchedPath: null, messages: [], newestFirstMessages: null };
+  if (!transcripts.has(conditions) && transcripts.size >= MAX_TRANSCRIPTS_PER_EVENT_LIST) transcripts.delete(transcripts.keys().next().value!);
+  transcripts.set(conditions, transcript);
+
+  for (; transcript.readEventCount < events.length; transcript.readEventCount += 1) {
+    const event = events[transcript.readEventCount] as ClaudeProjectEvent;
+    if (event.sessionId !== sessionId) continue;
+    if (typeof event.cwd === "string") transcript.isSessionInScope = determineMatchScope(event.cwd, context) !== null;
+    if (!transcript.isSessionInScope) continue;
+    if (isClaudeImageCompanion(event) || isClaudeApiRequestLog(event)) continue;
+    if (!transcript.matchedPath && typeof event.cwd === "string") transcript.matchedPath = event.cwd;
+
+    for (const { role, text, attachments, toolName, files } of extractClaudeEventMessages(event, filePath)) {
+      if (context.roles && context.roles.length > 0 && !context.roles.includes(role)) {
+        continue;
+      }
+
+      if (context.query && ![text, ...attachments.map(attachment => attachment.name)].join("\n").toLowerCase().includes(context.query.toLowerCase())) {
+        continue;
+      }
+
+      if (role === "user" && text && !transcript.title) {
+        transcript.title = truncateText(text, 80);
+      }
+
+      const previewMessage = makePreviewMessage(role, event.timestamp, text, attachments);
+      if (previewMessage) {
+        transcript.messages.push(withToolCall(previewMessage, { toolName, files }));
+        transcript.newestFirstMessages = null;
+      }
+    }
+  }
+  return transcript;
+}
+
 export async function readClaudeSessionDetail(
   context: AiSessionReaderContext,
   sessionId: string,
@@ -95,48 +228,34 @@ export async function readClaudeSessionDetail(
 
   let title: string | null = null;
   let matchedPath: string | null = null;
-  const messages: AggregatedAiMessage[] = [];
+  let resolvedSourceRef = sourceRef ?? null;
+  const transcripts: ClaudeSessionTranscript[] = [];
 
   for (const filePath of projectFiles) {
-    const events = await getCachedOrParse(filePath, () => readJsonLines(filePath, context.sshHost), context.sshHost);
-    for (const rawEvent of events) {
-      const event = rawEvent as ClaudeProjectEvent;
-      if (event.sessionId !== sessionId) continue;
-      if (typeof event.cwd === "string" && !determineMatchScope(event.cwd, context)) continue;
-      if (!matchedPath && typeof event.cwd === "string") {
-        matchedPath = event.cwd;
-      }
-
-      const role = resolveClaudeRole(event);
-      if (context.roles && context.roles.length > 0 && !context.roles.includes(role)) {
-        continue;
-      }
-
-      const text = extractPlainText(event.message?.content);
-      if (context.query && text && !text.toLowerCase().includes(context.query.toLowerCase())) {
-        continue;
-      }
-
-      if (role === "user" && text && !title) {
-        title = truncateText(text, 80);
-      }
-
-      const previewMessage = makePreviewMessage(role, event.timestamp, text);
-      if (previewMessage) {
-        messages.push(previewMessage);
-      }
+    // 호출자가 짚어 준 대화 파일은 되풀이해 읽히므로 붙은 줄만 이어 읽는다. 여러 파일을 훑는 조회는 한 번씩만 읽고 지나간다.
+    const readEvents = () => sourceRef && !context.sshHost ? readAppendedJsonLines(filePath) : readJsonLines(filePath, context.sshHost);
+    const events = await getCachedOrParse(filePath, readEvents, context.sshHost);
+    const transcript = readClaudeSessionTranscript(events, filePath, sessionId, context);
+    transcripts.push(transcript);
+    title ??= transcript.title;
+    if (!matchedPath && transcript.matchedPath) {
+      matchedPath = transcript.matchedPath;
+      resolvedSourceRef = filePath;
     }
   }
 
-  if (!matchedPath && messages.length === 0) return null;
+  if (!matchedPath && transcripts.every((transcript) => transcript.messages.length === 0)) return null;
 
-  const paginated = paginateItems(sortMessagesDescending(messages), cursor, limit);
+  const newestFirstMessages = transcripts.length === 1
+    ? transcripts[0].newestFirstMessages ??= sortMessagesDescending(transcripts[0].messages)
+    : sortMessagesDescending(transcripts.flatMap((transcript) => transcript.messages));
+  const paginated = paginateItems(newestFirstMessages, cursor, limit);
   return createSessionDetail({
     sessionId,
     provider: "claude",
     title,
     matchedPath,
-    sourceRef: sourceRef ?? null,
+    sourceRef: resolvedSourceRef,
     messages: paginated.items,
     nextCursor: paginated.nextCursor,
   });
@@ -191,9 +310,10 @@ async function parseClaudeSessionFromFile(
 function findLatestClaudeConversationTimestamp(events: unknown[]): string | null {
   for (let index = events.length - 1; index >= 0; index -= 1) {
     const event = events[index] as ClaudeProjectEvent;
+    if (isClaudeImageCompanion(event)) continue;
     const role = resolveClaudeRole(event);
     if (role !== "user" && role !== "assistant") continue;
-    if (!extractPlainText(event.message?.content)) continue;
+    if (!extractPlainText(event.message?.content) && !extractMessageAttachments(event.message?.content, "").length) continue;
 
     const timestamp = toIsoString(event.timestamp);
     if (timestamp) return timestamp;
@@ -249,27 +369,31 @@ function consumeClaudeListEvent(
   context: AiSessionReaderContext,
   sourceRef: string
 ): void {
+  if (isClaudeImageCompanion(event)) return;
   const sessionId = typeof event.sessionId === "string" ? event.sessionId : null;
   const cwd = typeof event.cwd === "string" ? event.cwd : null;
   const matchScope = determineMatchScope(cwd, context);
   if (!sessionId || !cwd || !matchScope) return;
 
   const role = resolveClaudeRole(event);
-  const text = extractPlainText(event.message?.content);
+  const text = getClaudeMessageText(event);
+  const attachments = extractMessageAttachments(event.message?.content, sourceRef);
+  const prompt = text || attachments.map(attachment => attachment.name).join(", ");
+  const hasContent = Boolean(prompt);
 
   const accumulator = getOrCreateClaudeSession(sessions, sessionId, cwd, matchScope, event.timestamp, sourceRef);
 
-  if (role === "user" && text && !accumulator.session.firstUserPrompt) {
-    accumulator.session.firstUserPrompt = text;
-    accumulator.session.title = truncateText(text, 80);
+  if (role === "user" && prompt && !accumulator.session.firstUserPrompt) {
+    accumulator.session.firstUserPrompt = prompt;
+    accumulator.session.title = truncateText(prompt, 80);
   }
 
-  if (text) {
+  if (hasContent) {
     accumulator.session.messageCount += 1;
   }
 
   const normalizedTimestamp = toIsoString(event.timestamp);
-  if (normalizedTimestamp && text && (role === "user" || role === "assistant")) {
+  if (normalizedTimestamp && hasContent && (role === "user" || role === "assistant")) {
     accumulator.session.updatedAt = normalizedTimestamp;
   }
 
@@ -378,6 +502,7 @@ function findLatestRoleText(events: unknown[], role: "assistant" | "user"): stri
   for (let index = events.length - 1; index >= 0; index -= 1) {
     const event = events[index] as ClaudeProjectEvent;
     if (event?.message?.role !== role) continue;
+    if (isClaudeImageCompanion(event)) continue;
 
     const text = extractPlainText(event.message.content);
     if (text) {
@@ -429,7 +554,8 @@ function matchesClaudeQuery(query: string | undefined, ...values: Array<string |
 function resolveClaudeRole(event: ClaudeProjectEvent): AiMessageRole {
   if (hasClaudeContentPartType(event.message?.content, "tool_result")) return "tool";
   if (event.message?.role === "system" || event.type === "system") return "system";
-  if (event.message?.role === "user") return "user";
+  // isMeta가 붙은 사용자 줄은 사용자가 친 글이 아니라 CLI가 끼워 넣은 문맥(명령 안내문, 스킬 본문)이다
+  if (event.message?.role === "user") return event.isMeta === true ? "system" : "user";
   if (event.message?.role === "assistant") return "assistant";
   if (event.type === "progress") return "tool";
   return "unknown";

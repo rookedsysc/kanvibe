@@ -1,4 +1,7 @@
 import { useEffect, useState } from "react";
+import { useTranslations } from "next-intl";
+import InlineLoadError from "@/components/InlineLoadError";
+import RouteRefreshFailureBanner from "@/desktop/renderer/components/RouteRefreshFailureBanner";
 import ProjectSettings from "@/components/ProjectSettings";
 import {
   getBackgroundSyncSettings,
@@ -12,8 +15,7 @@ import {
 import { getAllProjects, getAvailableHosts } from "@/desktop/renderer/actions/project";
 import { useRouter } from "@/desktop/renderer/navigation";
 import { useRefreshSignal } from "@/desktop/renderer/utils/refresh";
-import { INITIAL_DESKTOP_LOAD_TIMEOUT_MS, logDesktopInitialLoadTimeout } from "@/desktop/renderer/utils/loadingTimeout";
-import { SessionType } from "@/entities/KanbanTask";
+import { useRouteLoadStatus } from "@/desktop/renderer/utils/loadingTimeout";
 
 interface SettingsData {
   projects: Awaited<ReturnType<typeof getAllProjects>>;
@@ -26,23 +28,12 @@ interface SettingsData {
   backgroundSyncSettings: Awaited<ReturnType<typeof getBackgroundSyncSettings>>;
 }
 
-function createEmptySettingsData(): SettingsData {
-  return {
-    projects: [],
-    sshHosts: [],
-    sidebarDefaultCollapsed: false,
-    notificationSettings: { isEnabled: true, enabledStatuses: ["progress", "pending", "review"] },
-    defaultSessionType: SessionType.HERDR,
-    vimModeEnabled: true,
-    themePreference: "system",
-    backgroundSyncSettings: { isEnabled: false, intervalMs: 10 * 60_000 },
-  };
-}
-
 export default function SettingsRoute() {
   const router = useRouter();
   const refreshSignal = useRefreshSignal(["all", "settings"]);
   const [data, setData] = useState<SettingsData | null>(null);
+  const tc = useTranslations("common");
+  const { isLoadDelayed, loadFailureReason, retrySignal, beginLoad, retryLoad } = useRouteLoadStatus();
 
   useEffect(() => {
     document.title = "Settings";
@@ -50,12 +41,7 @@ export default function SettingsRoute() {
 
   useEffect(() => {
     let cancelled = false;
-    const loadingTimeout = window.setTimeout(() => {
-      if (!cancelled) {
-        logDesktopInitialLoadTimeout("settings");
-        setData((currentData) => currentData ?? createEmptySettingsData());
-      }
-    }, INITIAL_DESKTOP_LOAD_TIMEOUT_MS);
+    const loadAttempt = beginLoad("settings");
 
     Promise.all([
       getAllProjects(),
@@ -67,8 +53,8 @@ export default function SettingsRoute() {
       getThemePreference(),
       getBackgroundSyncSettings(),
     ]).then(([projects, sshHosts, sidebarDefaultCollapsed, notificationSettings, defaultSessionType, vimModeEnabled, themePreference, backgroundSyncSettings]) => {
-      window.clearTimeout(loadingTimeout);
       if (!cancelled) {
+        loadAttempt.succeed();
         setData({
           projects,
           sshHosts,
@@ -81,45 +67,64 @@ export default function SettingsRoute() {
         });
       }
     }).catch((error) => {
-      window.clearTimeout(loadingTimeout);
       console.error("Failed to load settings route data:", error);
       if (!cancelled) {
-        setData((currentData) => currentData ?? createEmptySettingsData());
+        loadAttempt.fail(error);
       }
     });
 
     return () => {
       cancelled = true;
-      window.clearTimeout(loadingTimeout);
+      loadAttempt.cancel();
     };
-  }, [refreshSignal]);
+  }, [beginLoad, refreshSignal, retrySignal]);
 
   if (!data) {
-    return <div className="min-h-screen flex items-center justify-center bg-bg-page text-text-muted">Loading...</div>;
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-3 bg-bg-page px-4 text-text-muted">
+        {loadFailureReason ? (
+          <InlineLoadError
+            className="w-full max-w-md"
+            message={tc("loadFailed", { reason: loadFailureReason })}
+            onRetry={retryLoad}
+          />
+        ) : (
+          <>
+            <span>Loading...</span>
+            {isLoadDelayed ? <p role="status" className="text-xs">{tc("loadDelayed")}</p> : null}
+          </>
+        )}
+      </div>
+    );
   }
 
   return (
-    <ProjectSettings
-      isOpen
-      variant="page"
-      onClose={() => router.back()}
-      projects={data.projects}
-      sshHosts={data.sshHosts}
-      sidebarDefaultCollapsed={data.sidebarDefaultCollapsed}
-      defaultSessionType={data.defaultSessionType}
-      vimModeEnabled={data.vimModeEnabled}
-      themePreference={data.themePreference}
-      onDefaultSessionTypeChange={(sessionType) => {
-        setData((currentData) => currentData ? { ...currentData, defaultSessionType: sessionType } : currentData);
-      }}
-      onThemePreferenceChange={(themePreference) => {
-        setData((currentData) => currentData ? { ...currentData, themePreference } : currentData);
-      }}
-      onVimModeEnabledChange={(vimModeEnabled) => {
-        setData((currentData) => currentData ? { ...currentData, vimModeEnabled } : currentData);
-      }}
-      notificationSettings={data.notificationSettings}
-      backgroundSyncSettings={data.backgroundSyncSettings}
-    />
+    <>
+      {loadFailureReason ? (
+        <RouteRefreshFailureBanner reason={loadFailureReason} onRetry={retryLoad} />
+      ) : null}
+      <ProjectSettings
+        isOpen
+        variant="page"
+        onClose={() => router.back()}
+        projects={data.projects}
+        sshHosts={data.sshHosts}
+        sidebarDefaultCollapsed={data.sidebarDefaultCollapsed}
+        defaultSessionType={data.defaultSessionType}
+        vimModeEnabled={data.vimModeEnabled}
+        themePreference={data.themePreference}
+        onDefaultSessionTypeChange={(sessionType) => {
+          setData((currentData) => currentData ? { ...currentData, defaultSessionType: sessionType } : currentData);
+        }}
+        onThemePreferenceChange={(themePreference) => {
+          setData((currentData) => currentData ? { ...currentData, themePreference } : currentData);
+        }}
+        onVimModeEnabledChange={(vimModeEnabled) => {
+          setData((currentData) => currentData ? { ...currentData, vimModeEnabled } : currentData);
+        }}
+        notificationSettings={data.notificationSettings}
+        backgroundSyncSettings={data.backgroundSyncSettings}
+      />
+    </>
   );
 }

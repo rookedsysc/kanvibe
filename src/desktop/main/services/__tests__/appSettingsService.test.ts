@@ -168,11 +168,11 @@ describe("단축키 재배정 설정", () => {
     const { DEFAULT_SHORTCUT_BINDINGS } = await import("@/desktop/shared/shortcutBindings");
 
     // When
-    await setShortcutBindings({ ...DEFAULT_SHORTCUT_BINDINGS, createTask: "Mod+Shift+J" });
+    await setShortcutBindings({ ...DEFAULT_SHORTCUT_BINDINGS, createTask: "Mod+Shift+Y" });
 
     // Then
     expect(JSON.parse(storedSettings.get(SHORTCUT_BINDINGS_KEY) ?? "{}")).toEqual({
-      createTask: "Mod+Shift+J",
+      createTask: "Mod+Shift+Y",
     });
   });
 

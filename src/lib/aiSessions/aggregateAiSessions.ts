@@ -1,6 +1,6 @@
 import { readAdditionalFileSessions, readAdditionalFileSessionDetail } from "@/lib/aiSessions/readAdditionalFileSessions";
 import { readSqliteAgentSessions, readSqliteAgentSessionDetail } from "@/lib/aiSessions/readSqliteAgentSessions";
-import { isSSHTransportError } from "@/lib/gitOperations";
+import { isSSHConnectionError } from "@/lib/gitOperations";
 import { createAggregationResult, createReaderResult, paginateItems, sortSessionsDescending, toSourceStatus } from "@/lib/aiSessions/shared";
 import { readClaudeSessionDetail, readClaudeSessions } from "@/lib/aiSessions/readClaudeSessions";
 import { readCodexSessionDetail, readCodexSessions } from "@/lib/aiSessions/readCodexSessions";
@@ -43,7 +43,7 @@ async function readReaderSafely(
   try {
     return await reader(context);
   } catch (error) {
-    if (context.sshHost && isSSHTransportError(error)) {
+    if (context.sshHost && isSSHConnectionError(error)) {
       return createReaderResult(provider, {
         available: false,
         sessionCount: 0,

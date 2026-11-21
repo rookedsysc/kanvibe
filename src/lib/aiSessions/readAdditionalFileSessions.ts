@@ -148,7 +148,8 @@ export async function readAdditionalFileSessionDetail(
   if (!source) return null;
   if (sourceRef && !await allowedSource(sourceRef, source, context)) return null;
   const files = sourceRef ? [sourceRef] : await discoverSource(source, context);
-  const scope = createScope(home, context);
+  // 메시지 검색 결과가 비어도 세션 식별과 작업 경로 검증은 유지한다.
+  const scope = createScope(home, { ...context, query: undefined });
   for (const file of files) {
     try {
       if (!await allowedSource(file, source, context)) continue;
