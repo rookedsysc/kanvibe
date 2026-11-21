@@ -1372,6 +1372,15 @@ export function resizeTaskTerminalViewport(taskId: string, cols: number, rows: n
   resizeTerminalEntry(entry, cols, rows);
 }
 
+/** 데스크탑에 붙은 Zellij 클라이언트에 입력을 넣는다. 모바일 휠을 Zellij가 실제 마우스 입력으로 받게 할 때 쓴다 */
+export function writeTaskTerminalInput(taskId: string, input: string): void {
+  const entry = activeTerminals.get(buildTerminalKey(taskId, null));
+  if (entry?.sessionType !== SessionType.ZELLIJ) {
+    throw new Error("Zellij 터미널 세션이 실행 중이지 않습니다.");
+  }
+  entry.pty.write(input);
+}
+
 export function releaseTaskTerminalViewport(taskId: string, cols: number, rows: number): void {
   const entry = activeTerminals.get(buildTerminalKey(taskId, null));
   if (entry?.sessionType !== SessionType.ZELLIJ) return;

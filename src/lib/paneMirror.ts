@@ -1,5 +1,5 @@
 import { buildHerdrCommand, quoteForPosixShell } from "@/lib/worktree";
-import { MAX_MIRROR_LINES, type TerminalCursorPosition } from "@/lib/remoteTerminalProtocol";
+import { MAX_MIRROR_LINES, type MouseReportEncoding, type TerminalCursorPosition } from "@/lib/remoteTerminalProtocol";
 export { buildScreenRedraw, type TerminalCursorPosition } from "@/lib/remoteTerminalProtocol";
 
 /**
@@ -176,6 +176,67 @@ export function parseTmuxPaneState(output: string): { cursor: TerminalCursorPosi
   return { cursor: { x: Number(x), y: Number(y), paneHeight: Number(paneHeight) }, restoreSequences };
 }
 
+/** tmux 기본 휠 바인딩이 갈림길로 쓰는 pane 상태와, 휠을 넘길 때 맞춰야 할 마우스 보고 인코딩을 읽는다 */
+export function buildTmuxWheelStateCommand(paneId: string): string {
+  return `tmux display-message -p -t ${quoteForPosixShell(paneId)} '#{pane_in_mode} #{alternate_on} #{mouse_any_flag} #{mouse_sgr_flag} #{mouse_utf8_flag}'`;
+}
+
+export interface TmuxWheelState {
+  isInCopyMode: boolean;
+  isAlternateScreen: boolean;
+  isMouseReporting: boolean;
+  encoding: MouseReportEncoding;
+}
+
+export function parseTmuxWheelState(output: string): TmuxWheelState | null {
+  const match = output.trim().match(/^([01]) ([01]) ([01]) ([01]) ([01])$/);
+  if (!match) return null;
+  const [, inMode, alternate, mouseAny, sgr, utf8] = match;
+  return {
+    isInCopyMode: inMode === "1",
+    isAlternateScreen: alternate === "1",
+    isMouseReporting: mouseAny === "1",
+    encoding: sgr === "1" ? "sgr" : utf8 === "1" ? "utf8" : "normal",
+  };
+}
+
+/** tmux 기본 copy-mode 표의 휠 바인딩(`send-keys -X -N 5 scroll-up`)과 같은 폭으로 움직인다 */
+const TMUX_COPY_MODE_WHEEL_LINES = 5;
+
+export function buildTmuxCopyModeWheelCommand(paneId: string, direction: "up" | "down"): string {
+  return `tmux send-keys -X -N ${TMUX_COPY_MODE_WHEEL_LINES} -t ${quoteForPosixShell(paneId)} scroll-${direction}`;
+}
+
+/** 휠로 들어간 copy-mode는 `-e` 덕분에 맨 아래로 내려오면 스스로 끝난다 */
+export function buildTmuxEnterWheelCopyModeCommand(paneId: string): string {
+  return `tmux copy-mode -e -t ${quoteForPosixShell(paneId)}`;
+}
+
+/** copy-mode가 얼마나 올라가 있는지 읽는다. copy-mode가 아니면 첫 값이 0이다 */
+export function buildTmuxCopyModeViewCommand(paneId: string): string {
+  return `tmux display-message -p -t ${quoteForPosixShell(paneId)} '#{pane_in_mode} #{scroll_position} #{pane_height}'`;
+}
+
+export interface TmuxCopyModeView {
+  scrollPosition: number;
+  paneHeight: number;
+}
+
+export function parseTmuxCopyModeView(output: string): TmuxCopyModeView | null {
+  const match = output.trim().match(/^1 (\d+) (\d+)$/);
+  if (!match) return null;
+  return { scrollPosition: Number(match[1]), paneHeight: Number(match[2]) };
+}
+
+/**
+ * copy-mode가 보여 주는 줄 범위를 뜬다. `pipe-pane`은 프로그램 출력만 전하므로 이 화면은 따로 떠서 모바일에 보내야 한다.
+ * `capture-pane -M`은 tmux 3.8에서 copy-mode의 스크롤 위치를 반영하지 않아, 올라간 줄 수만큼 범위를 옮겨 뜬다.
+ */
+export function buildTmuxCaptureCopyModeViewCommand(paneId: string, view: TmuxCopyModeView): string {
+  const lastLine = view.paneHeight - 1 - view.scrollPosition;
+  return `tmux capture-pane -pe -S -${view.scrollPosition} -E ${lastLine} -t ${quoteForPosixShell(paneId)}`;
+}
+
 /**
  * pane의 현재 화면을 ANSI를 살린 채로 한 번 떠 온다.
  * 스트림은 구독 시점 이후만 흘러오므로 첫 화면은 이 스냅샷으로 채워야 빈 터미널이 보이지 않는다.
@@ -259,6 +320,8 @@ export interface ZellijViewportState {
   viewportRows: number;
   displayCols: number;
   displayRows: number;
+  /** 클라이언트 화면에서 pane 글자 영역이 시작하는 칸(0부터). 휠 보고의 좌표를 이 기준으로 옮긴다. 목록이 알려 주지 않으면 비어 있다 */
+  contentOrigin?: { left: number; top: number };
   floating?: { left: number; top: number };
 }
 
@@ -292,11 +355,13 @@ export function parseZellijViewportState(output: string, paneId: string): Zellij
       displayCols: tab.display_area_columns, displayRows: tab.display_area_rows,
     };
     if (!Object.values(state).every((size) => Number.isInteger(size) && size > 0)) return null;
+    const hasContentOrigin = [pane.pane_content_x, pane.pane_content_y].every((position) => Number.isInteger(position) && position >= 0);
+    const contentOrigin = hasContentOrigin ? { contentOrigin: { left: pane.pane_content_x, top: pane.pane_content_y } } : {};
     if (pane.is_floating === true) {
       if (![pane.pane_x, pane.pane_y].every((position) => Number.isInteger(position) && position >= 0)) return null;
-      return { ...state, tabId: String(tab.tab_id), floating: { left: pane.pane_x, top: pane.pane_y } };
+      return { ...state, ...contentOrigin, tabId: String(tab.tab_id), floating: { left: pane.pane_x, top: pane.pane_y } };
     }
-    return { ...state, tabId: String(tab.tab_id) };
+    return { ...state, ...contentOrigin, tabId: String(tab.tab_id) };
   } catch {
     return null;
   }
@@ -372,6 +437,13 @@ export function buildZellijDumpPaneCommand(sessionName: string, paneId: string):
   const session = quoteForPosixShell(sessionName);
   // 원격 전송량과 exec 버퍼를 제한하되 dump 실패를 tail의 성공으로 덮지 않는다.
   return `kanvibe_mobile_dump=$(zellij --session ${session} action dump-screen -p ${quoteForPosixShell(paneId)} -a --full) && printf '%s\\n' "$kanvibe_mobile_dump" | tail -n ${MAX_MIRROR_LINES}`;
+}
+
+/**
+ * pane에 지금 보이는 화면만 떠 온다. 스크롤백 없이 떠야 Zellij가 휠로 올려 둔 위치가 모바일에 그대로 보인다.
+ */
+export function buildZellijDumpViewportCommand(sessionName: string, paneId: string): string {
+  return `zellij --session ${quoteForPosixShell(sessionName)} action dump-screen -p ${quoteForPosixShell(paneId)} -a`;
 }
 
 /**

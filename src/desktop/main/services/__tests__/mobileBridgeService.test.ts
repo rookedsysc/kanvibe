@@ -237,7 +237,7 @@ describe("모바일 화면 크기", () => {
         pane_content_columns: geometry.cols - 2, pane_content_rows: geometry.rows - 2,
       })) : (multipleTabs ? [1, 2] : [1]).map((id) => {
         const size = multipleTabs ? tabSizes.get(id - 1)! : { cols, rows };
-        return { id, is_plugin: false, tab_id: id - 1, pane_x: 0, pane_y: 1,
+        return { id, is_plugin: false, tab_id: id - 1, pane_x: 0, pane_y: 1, pane_content_x: 0, pane_content_y: 2,
           pane_columns: Math.floor(size.cols / 2), pane_rows: size.rows - 2,
           pane_content_columns: Math.floor(size.cols / 2) - 1, pane_content_rows: size.rows - 3 };
       });
@@ -393,6 +393,101 @@ describe("모바일 화면 크기", () => {
     await viewport.release();
     expect(executedCommands().some((command) => command.includes("select-layout") && command.includes("layout-original"))).toBe(true);
     expect(executedCommands().some((command) => command.includes("window-size") && command.includes("-u"))).toBe(true);
+  });
+
+  /** tmux 기본 휠 바인딩의 갈림길: copy-mode, 대체 화면, 마우스 보고, SGR, UTF-8 */
+  const stubTmuxWheel = (states: string[], views: string[] = []) => {
+    stubTmuxMirror();
+    const remainingStates = [...states];
+    const remainingViews = [...views];
+    execGitMock.mockImplementation(async (command) => {
+      if (command.includes("list-panes")) return MIRROR_PANE_LINE;
+      if (command.includes("window_layout")) return "80\t24\tlayout-original\n";
+      if (command.includes("window_width")) return "80 24 80 24";
+      if (command.includes("#{scroll_position}")) return remainingViews.shift() ?? "0  24";
+      if (command.includes("#{pane_in_mode}")) return remainingStates.shift() ?? "";
+      if (command.includes("capture-pane") && command.includes(" -E ")) return "copy-mode-screen";
+      if (command.includes("capture-pane")) return "program-screen\n43 69";
+      return "";
+    });
+  };
+  const wheelCommands = () => executedCommands().filter((command) => /send-keys|copy-mode|capture-pane/.test(command));
+
+  it("tmux에서 마우스 보고를 켜지 않은 대체 화면 프로그램에는 휠을 버리고 화살표 키도 보내지 않는다", async () => {
+    stubTmuxWheel(["0 1 0 0 0"]);
+    const viewport = await claimPaneViewport("task-1", "%19");
+
+    expect(await viewport.scroll({ type: "scroll", direction: "up", column: 4, row: 2 })).toBeNull();
+    expect(wheelCommands()).toEqual([]);
+    await viewport.release();
+  });
+
+  it.each([
+    ["SGR", "0 1 1 1 0", "\x1b[<64;5;3M"],
+    ["UTF-8", "0 1 1 0 1", "\x1b[M`%#"],
+    ["기본", "0 0 1 0 0", "\x1b[M`%#"],
+  ])("tmux에서 마우스 보고를 켠 프로그램에는 %s 인코딩 휠 보고를 넘긴다", async (_name, state, report) => {
+    stubTmuxWheel([state]);
+    const viewport = await claimPaneViewport("task-1", "%19");
+
+    expect(await viewport.scroll({ type: "scroll", direction: "up", column: 4, row: 2 })).toBeNull();
+    expect(wheelCommands()).toEqual([`tmux send-keys -t '%19' -l -- '${report}'`]);
+    await viewport.release();
+  });
+
+  it("tmux 일반 화면에서 위로 굴리면 copy-mode로 들어가 그 화면을 돌려주고 아래로 굴리면 아무것도 하지 않는다", async () => {
+    stubTmuxWheel(["0 0 0 0 0", "0 0 0 0 0"], ["1 0 24"]);
+    const viewport = await claimPaneViewport("task-1", "%19");
+
+    expect(await viewport.scroll({ type: "scroll", direction: "up", column: 0, row: 0 })).toBe(buildScreenRedraw("copy-mode-screen", null));
+    expect(wheelCommands()).toEqual(["tmux copy-mode -e -t '%19'", "tmux capture-pane -pe -S -0 -E 23 -t '%19'"]);
+    expect(await viewport.scroll({ type: "scroll", direction: "down", column: 0, row: 0 })).toBeNull();
+    expect(wheelCommands()).toHaveLength(2);
+    await viewport.release();
+  });
+
+  it("tmux copy-mode에서는 기본 바인딩 폭만큼 움직이고 맨 아래로 나오면 프로그램 화면을 다시 보낸다", async () => {
+    stubTmuxWheel(["1 0 0 0 0", "1 0 0 0 0"], ["1 5 24", "0  24"]);
+    const viewport = await claimPaneViewport("task-1", "%19");
+
+    expect(await viewport.scroll({ type: "scroll", direction: "up", column: 0, row: 0 })).toBe(buildScreenRedraw("copy-mode-screen", null));
+    expect(wheelCommands()).toContain("tmux capture-pane -pe -S -5 -E 18 -t '%19'");
+    const leftCopyMode = await viewport.scroll({ type: "scroll", direction: "down", column: 0, row: 0 });
+
+    expect(wheelCommands().filter((command) => command.includes("send-keys"))).toEqual([
+      "tmux send-keys -X -N 5 -t '%19' scroll-up",
+      "tmux send-keys -X -N 5 -t '%19' scroll-down",
+    ]);
+    expect(leftCopyMode).toContain("program-screen");
+    expect(leftCopyMode).not.toContain("copy-mode-screen");
+    await viewport.release();
+  });
+
+  it("Zellij 휠은 데스크탑 클라이언트에 pane 글자 영역 기준 SGR 휠로 넣고 바뀐 화면을 돌려준다", async () => {
+    stubZellijViewport();
+    const viewport = await claimPaneViewport("zellij-viewport", "terminal_1");
+    await viewport.resize(44, 70);
+    spawnedPtys[0].write.mockClear();
+
+    const screen = await viewport.scroll({ type: "scroll", direction: "up", column: 4, row: 2 });
+    await viewport.scroll({ type: "scroll", direction: "down", column: 0, row: 0 });
+
+    expect(spawnedPtys[0].write.mock.calls).toEqual([["\x1b[<64;5;5M"], ["\x1b[<65;1;3M"]]);
+    expect(screen).toContain("zellij resized screen");
+    expect(screen).toContain("\x1b[?1049h");
+    expect(executedCommands().filter((command) => command.includes("go-to-tab-by-id")).length).toBeGreaterThanOrEqual(3);
+    await viewport.release();
+  });
+
+  it("Zellij pane 목록이 글자 영역 위치를 알려 주지 않으면 엉뚱한 칸에 휠을 넣지 않는다", async () => {
+    stubZellijViewport(true);
+    const viewport = await claimPaneViewport("zellij-viewport", "terminal_1");
+    await viewport.resize(44, 70);
+    spawnedPtys[0].write.mockClear();
+
+    expect(await viewport.scroll({ type: "scroll", direction: "up", column: 4, row: 2 })).toBeNull();
+    expect(spawnedPtys[0].write).not.toHaveBeenCalled();
+    await viewport.release();
   });
 
   it("일반 터미널도 최신 모바일 크기를 쓰고 퇴장하면 남은 모바일과 PC 크기로 돌아간다", async () => {
@@ -1939,7 +2034,9 @@ describe("첫 화면 스냅샷", () => {
 
     const unsubscribe = await subscribeToPane("task-zj-screen", "terminal_1", (chunk) => receivedChunks.push(chunk), () => {});
 
-    expect(receivedChunks[0]).toBe("\x1b[H\x1b[2J\x1b[3J$ ls\r\nREADME.md");
+    // 휠을 Zellij에 넘기도록 대체 화면에 두고, Zellij가 휠로 올려 둔 위치가 보이게 스크롤백 없이 보이는 화면만 뜬다
+    expect(receivedChunks[0]).toBe("\x1b[H\x1b[2J\x1b[3J\x1b[?1049h\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1005l\x1b[?1006l\x1b[H\x1b[2J\x1b[3J$ ls\r\nREADME.md");
+    expect(executedCommands()).toContain("zellij --session 'kanvibe-zj' action dump-screen -p 'terminal_1' -a");
     unsubscribe();
   });
 });

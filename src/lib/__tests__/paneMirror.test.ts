@@ -23,6 +23,10 @@ import {
   buildTmuxPaneStreamCommand,
   buildTmuxSendKeysCommand,
   buildZellijDumpPaneCommand,
+  buildZellijDumpViewportCommand,
+  parseTmuxWheelState,
+  parseTmuxCopyModeView,
+  buildTmuxCaptureCopyModeViewCommand,
   buildZellijListMirrorPanesCommand,
   buildZellijReadViewportCommand,
   buildZellijSelectTabCommand,
@@ -33,7 +37,7 @@ import {
   parseZellijMirrorPaneList,
   parseZellijViewportState,
 } from "@/lib/paneMirror";
-import { buildHerdrScreenRedraw, buildHerdrScrollControlRecord, parseTerminalScrollRequest } from "@/lib/remoteTerminalProtocol";
+import { buildWheelDelegatedScreenRedraw, buildHerdrScrollControlRecord, buildMouseWheelReport, parseTerminalScrollRequest } from "@/lib/remoteTerminalProtocol";
 
 const INJECTION_PANE_ID = "%1'; rm -rf /; '";
 
@@ -64,6 +68,12 @@ describe("Zellij viewport geometry", () => {
 
   it.each(["bad json", "[]", JSON.stringify([[pane], []]), JSON.stringify([[{ ...pane, pane_content_rows: 0 }], [tab]])])("불완전한 geometry는 크기 변경에 쓰지 않는다: %s", (output) => {
     expect(parseZellijViewportState(output, "terminal_7")).toBeNull();
+  });
+
+  it("휠 좌표를 옮길 pane 글자 영역의 시작 칸을 함께 읽고, 목록에 없으면 비워 둔다", () => {
+    const placed = { ...pane, pane_content_x: 61, pane_content_y: 2 };
+    expect(parseZellijViewportState(JSON.stringify([[placed], [tab]]), "terminal_7")?.contentOrigin).toEqual({ left: 61, top: 2 });
+    expect(parseZellijViewportState(JSON.stringify([[pane], [tab]]), "terminal_7")?.contentOrigin).toBeUndefined();
   });
 
   it("다른 pane의 geometry를 대신 쓰지 않는다", () => {
@@ -281,6 +291,12 @@ describe("zellij pane 명령", () => {
     );
   });
 
+  it("모바일 화면은 스크롤백 없이 지금 보이는 화면만 떠서 Zellij가 휠로 올려 둔 위치를 보여 준다", () => {
+    expect(buildZellijDumpViewportCommand("kanvibe-task", "terminal_1")).toBe(
+      "zellij --session 'kanvibe-task' action dump-screen -p 'terminal_1' -a",
+    );
+  });
+
   it("입력은 UTF-8 바이트 십진수로 펼쳐 보낸다", () => {
     expect(buildZellijWritePaneCommand("kanvibe-task", "terminal_1", "hi\n")).toBe(
       "zellij --session 'kanvibe-task' action write -p 'terminal_1' 104 105 10",
@@ -421,11 +437,50 @@ describe("Herdr observe 레코드", () => {
   });
 });
 
+describe("tmux 휠 갈림길", () => {
+  it("copy-mode, 대체 화면, 마우스 보고와 그 인코딩을 읽는다", () => {
+    expect(parseTmuxWheelState("1 0 1 1 0\n")).toEqual({ isInCopyMode: true, isAlternateScreen: false, isMouseReporting: true, encoding: "sgr" });
+    expect(parseTmuxWheelState("0 1 0 0 1")).toEqual({ isInCopyMode: false, isAlternateScreen: true, isMouseReporting: false, encoding: "utf8" });
+  });
+
+  it.each(["", "no server running", "0 1 0 0"])("읽지 못한 상태로는 휠을 보내지 않는다: %s", (output) => {
+    expect(parseTmuxWheelState(output)).toBeNull();
+  });
+});
+
+describe("tmux copy-mode 화면", () => {
+  it("올라간 줄 수만큼 범위를 옮겨 copy-mode가 보여 주는 줄을 뜬다", () => {
+    const view = parseTmuxCopyModeView("1 10 24\n");
+    expect(view).toEqual({ scrollPosition: 10, paneHeight: 24 });
+    expect(buildTmuxCaptureCopyModeViewCommand("%3", view!)).toBe("tmux capture-pane -pe -S -10 -E 13 -t '%3'");
+  });
+
+  it("copy-mode가 끝났으면 copy-mode 화면을 뜨지 않는다", () => {
+    expect(parseTmuxCopyModeView("0  24")).toBeNull();
+  });
+});
+
+describe("휠 마우스 보고", () => {
+  it.each([
+    ["sgr", "up", "\x1b[<64;5;3M"],
+    ["sgr", "down", "\x1b[<65;5;3M"],
+    ["utf8", "up", "\x1b[M`%#"],
+    ["normal", "down", "\x1b[Ma%#"],
+  ] as const)("%s 인코딩 %s 휠은 0부터 센 칸을 1부터 실어 보낸다", (encoding, direction, report) => {
+    expect(buildMouseWheelReport(direction, 4, 2, encoding)).toBe(report);
+  });
+
+  it("기본 인코딩이 실을 수 없는 먼 칸은 만들지 않고, UTF-8 인코딩은 실어 보낸다", () => {
+    expect(buildMouseWheelReport("up", 230, 0, "normal")).toBeNull();
+    expect(buildMouseWheelReport("up", 230, 0, "utf8")).toBe(`\x1b[M\`${String.fromCharCode(263)}!`);
+  });
+});
+
 describe("Herdr 모바일 스크롤", () => {
   const RESET_MOUSE = "\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1005l\x1b[?1006l";
 
   it("어떤 프로그램이 돌든 모바일을 대체 화면에 두고 마우스 보고는 꺼서 손가락 스크롤이 휠로만 나가게 한다", () => {
-    expect(buildHerdrScreenRedraw("a\nb")).toBe(`\x1b[H\x1b[2J\x1b[3J\x1b[?1049h${RESET_MOUSE}\x1b[H\x1b[2J\x1b[3Ja\r\nb`);
+    expect(buildWheelDelegatedScreenRedraw("a\nb")).toBe(`\x1b[H\x1b[2J\x1b[3J\x1b[?1049h${RESET_MOUSE}\x1b[H\x1b[2J\x1b[3Ja\r\nb`);
   });
 
   it("휠 한 칸을 Herdr가 pane 모드를 보고 처리하는 terminal.scroll 한 줄로 바꾼다", () => {
