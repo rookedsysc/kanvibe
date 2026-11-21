@@ -772,8 +772,9 @@ function buildTmuxSessionCleanupCommand(
 function buildZellijSessionCleanupCommand(sessionName: string, verifyCleanup: boolean): string {
   const target = quoteForPosixShell(sessionName);
   const commands = [
-    `zellij kill-sessions ${target} 2>/dev/null || true`,
-    `zellij delete-session ${target} 2>/dev/null || true`,
+    `zellij kill-session ${target} 2>/dev/null || true`,
+    /** kill-session은 비동기로 끝나므로 바로 뒤의 delete-session이 아직 실행 중이라며 거절한다. --force가 남은 세션까지 지운다 */
+    `zellij delete-session --force ${target} 2>/dev/null || true`,
   ];
 
   if (!verifyCleanup) {
@@ -783,7 +784,7 @@ function buildZellijSessionCleanupCommand(sessionName: string, verifyCleanup: bo
   return [
     "command -v zellij >/dev/null 2>&1 || exit 1",
     ...commands,
-    `if zellij list-sessions 2>/dev/null | awk '{ if ($1 == "EXITED:") print $2; else print $1 }' | grep -Fx -- ${target} >/dev/null; then exit 1; fi`,
+    `if zellij list-sessions 2>/dev/null | awk '{ gsub(/\\033\\[[0-9;]*m/, "") } { if ($1 == "EXITED:") print $2; else print $1 }' | grep -Fx -- ${target} >/dev/null; then exit 1; fi`,
   ].join("; ");
 }
 

@@ -627,7 +627,7 @@ describe("removeSessionOnly", () => {
 
     // Then
     expect(mockExecGit).toHaveBeenCalledWith(
-      "zellij kill-sessions 'feat-branch' 2>/dev/null || true; zellij delete-session 'feat-branch' 2>/dev/null || true",
+      "zellij kill-session 'feat-branch' 2>/dev/null || true; zellij delete-session --force 'feat-branch' 2>/dev/null || true",
       undefined,
     );
   });
@@ -642,7 +642,7 @@ describe("removeSessionOnly", () => {
 
     // Then
     expect(mockExecGit).toHaveBeenCalledWith(
-      "zellij kill-sessions 'feat-branch' 2>/dev/null || true; zellij delete-session 'feat-branch' 2>/dev/null || true",
+      "zellij kill-session 'feat-branch' 2>/dev/null || true; zellij delete-session --force 'feat-branch' 2>/dev/null || true",
       "remote-host",
     );
   });
@@ -658,11 +658,52 @@ describe("removeSessionOnly", () => {
     // Then
     const command = mockExecGit.mock.calls[0][0] as string;
     expect(command).toContain("command -v zellij >/dev/null 2>&1");
-    expect(command).toContain("zellij kill-sessions 'feat-branch'");
-    expect(command).toContain("zellij delete-session 'feat-branch'");
+    expect(command).toContain("zellij kill-session 'feat-branch'");
+    expect(command).toContain("zellij delete-session --force 'feat-branch'");
     expect(command).toContain("zellij list-sessions");
     expect(command).toContain("grep -Fx -- 'feat-branch'");
     expect(mockExecGit).toHaveBeenCalledWith(command, "remote-host");
+  });
+
+  describe("zellij 정리 명령을 셸에서 돌리면", () => {
+    /**
+     * zellij 0.46의 실측 동작을 흉내 낸다. 모르는 하위 명령은 rc 2로 거절하고, 실행 중인 세션은 --force 없이는
+     * 지우지 않으며, 파이프로 받아도 세션 이름에 색을 입혀 목록을 내보낸다. 남은 세션 여부는 상태 파일로 본다.
+     */
+    async function runZellijCleanup(options: { canRemoveSession: boolean }): Promise<{ status: number | null; isSessionLeft: boolean }> {
+      const { removeSessionOnly } = await import("@/lib/worktree");
+      const { spawnSync } = await import("child_process");
+      const { mkdtempSync, existsSync, writeFileSync } = await import("fs");
+      const { tmpdir } = await import("os");
+      const { join } = await import("path");
+      mockExecGit.mockResolvedValue("");
+      await removeSessionOnly(SessionType.ZELLIJ, "feat-branch", null, { throwOnError: true });
+      const cleanupCommand = mockExecGit.mock.calls[0][0] as string;
+      const sessionStateFile = join(mkdtempSync(join(tmpdir(), "kanvibe-zellij-")), "alive");
+      writeFileSync(sessionStateFile, "");
+      const removeSession = options.canRemoveSession ? `rm -f "$state"` : ":";
+      const fakeZellij = [
+        `state=${JSON.stringify(sessionStateFile)}`,
+        `zellij() { case "$1" in`,
+        `  kill-session) ${removeSession} ;;`,
+        `  delete-session) if [ "$2" = "--force" ]; then ${removeSession}; elif [ -e "$state" ]; then return 1; fi ;;`,
+        `  list-sessions) if [ -e "$state" ]; then printf '\\033[32;1mfeat-branch\\033[m [Created \\033[35;1m0s\\033[m ago] \\n'; fi ;;`,
+        `  *) return 2 ;;`,
+        `esac; }`,
+        `command() { return 0; }`,
+      ].join("\n");
+
+      const { status } = spawnSync("sh", ["-c", `${fakeZellij}\n${cleanupCommand}`]);
+      return { status, isSessionLeft: existsSync(sessionStateFile) };
+    }
+
+    it("실행 중인 세션을 지우고 정리 확인을 통과한다", async () => {
+      expect(await runZellijCleanup({ canRemoveSession: true })).toEqual({ status: 0, isSessionLeft: false });
+    });
+
+    it("색이 입혀진 이름으로 세션이 남아 있으면 정리 실패로 본다", async () => {
+      expect(await runZellijCleanup({ canRemoveSession: false })).toEqual({ status: 1, isSessionLeft: true });
+    });
   });
 
   it("should verify tmux cleanup by exact session name when cleanup errors must be surfaced", async () => {
