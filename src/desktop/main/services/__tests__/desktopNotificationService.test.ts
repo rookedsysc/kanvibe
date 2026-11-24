@@ -52,6 +52,67 @@ describe("desktopNotificationService", () => {
     mocks.isNotificationSupported.mockReturnValue(true);
   });
 
+  it("SSH 연결 실패와 daemon 거부에 서로 다른 복구 방법을 표시한다", async () => {
+    mocks.getNotificationSettings.mockResolvedValue({ isEnabled: true, enabledStatuses: [] });
+    mocks.createNotification.mockImplementation(async (payload) => ({ created: true, notification: payload }));
+    const { deliverBoardEventNotification } = await import("../desktopNotificationService");
+    const options = { onNotificationsChanged: vi.fn() };
+
+    await deliverBoardEventNotification({
+      type: "hook-tunnel-failed", kind: "ssh", sshHost: "dev-vm", reason: "Operation timed out",
+    }, "ko", options);
+    await deliverBoardEventNotification({
+      type: "hook-tunnel-failed", kind: "client-in-use", sshHost: "dev-vm",
+      reason: "A desktop with this client ID is already connected",
+    }, "ko", options);
+
+    expect(mocks.createNotification).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      title: expect.stringContaining("SSH 연결 실패"),
+      body: expect.stringMatching(/VPN.*\nOperation timed out/),
+    }));
+    expect(mocks.createNotification).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      title: expect.stringContaining("KanVibe 연결 거부"),
+      body: expect.stringMatching(/기존 데스크톱.*\nA desktop with this client ID is already connected/),
+    }));
+    expect(notificationInstances).toHaveLength(2);
+  });
+
+  it("OS 알림이 꺼져 있어도 daemon 거부 사유를 앱 알림함에 보관한다", async () => {
+    mocks.getNotificationSettings.mockResolvedValue({ isEnabled: false, enabledStatuses: [] });
+    mocks.createNotification.mockResolvedValue({ created: true, notification: { id: "tunnel-failure" } });
+    const { deliverBoardEventNotification } = await import("../desktopNotificationService");
+    const onNotificationsChanged = vi.fn();
+
+    await deliverBoardEventNotification({
+      type: "hook-tunnel-failed", kind: "handshake", sshHost: "dev-vm", reason: "Host hello buildHash mismatch",
+    }, "en", { onNotificationsChanged });
+
+    expect(mocks.createNotification).toHaveBeenCalledWith(expect.objectContaining({
+      title: "dev-vm — KanVibe handshake failed",
+      body: expect.stringContaining("Host hello buildHash mismatch"),
+    }));
+    expect(onNotificationsChanged).toHaveBeenCalledOnce();
+    expect(notificationInstances).toHaveLength(0);
+  });
+
+  it("응답 없는 연결을 교체하면 복구 사유를 앱 알림함에 남긴다", async () => {
+    mocks.getNotificationSettings.mockResolvedValue({ isEnabled: true, enabledStatuses: [] });
+    mocks.createNotification.mockResolvedValue({ created: true, notification: { id: "tunnel-recovered" } });
+    const { deliverBoardEventNotification } = await import("../desktopNotificationService");
+    const onNotificationsChanged = vi.fn();
+
+    await deliverBoardEventNotification({
+      type: "hook-tunnel-recovered", sshHost: "dev-vm",
+    }, "ko", { onNotificationsChanged });
+
+    expect(mocks.createNotification).toHaveBeenCalledWith(expect.objectContaining({
+      title: "dev-vm — Hook 터널 복구",
+      body: expect.stringContaining("응답이 없어"),
+    }));
+    expect(onNotificationsChanged).toHaveBeenCalledOnce();
+    expect(notificationInstances).toHaveLength(0);
+  });
+
   it("이미 생성된 알림은 처리 완료로 간주해 브라우저 fallback을 막는다", async () => {
     mocks.createNotification.mockResolvedValue({
       created: false,

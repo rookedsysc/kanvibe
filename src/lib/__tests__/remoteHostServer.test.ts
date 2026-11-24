@@ -129,8 +129,55 @@ describe("remote host provider", () => {
   });
   it("rejects duplicate live client IDs without replacing the first desktop", async () => {
     await start(); const first = await client(); const original = await first.next("ready");
-    const second = await client(); expect((await second.next("error")).error).toBeTruthy();
+    const second = await client();
+    const response = second.next("error");
+    await Promise.race([
+      first.next("ping").then(({ id }) => first.send({ type: "pong", id })),
+      response.then(() => { throw new Error("The daemon rejected the duplicate without checking the first desktop"); }),
+    ]);
+    await expect(response).resolves.toMatchObject({
+      code: "client-already-connected",
+      error: expect.stringContaining("already connected"),
+    });
     first.send({ type: "status", id: "identity" }); expect((await first.next("status")).instanceId).toBe(original.instanceId);
+  });
+  it("replaces an unresponsive desktop once when several new connections share its client ID", async () => {
+    await start();
+    const original = await client();
+    const ready = await original.next("ready");
+    const originalClosed = once(original.socket, "close");
+
+    const pendingHook = post("client-one").catch((error: Error) => error);
+    await original.next("hook.request");
+    const replacements = [await client(), await client()];
+    const results = await Promise.all(replacements.map((replacement) => Promise.race([
+      replacement.next("ready"),
+      replacement.next("error"),
+    ])));
+
+    expect(results).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: "ready", instanceId: ready.instanceId, replacedStalePeer: true }),
+      expect.objectContaining({ type: "error", code: "client-already-connected" }),
+    ]));
+    await originalClosed;
+    await expect(pendingHook).resolves.toEqual({ status: 503, body: "Desktop disconnected; request not replayed" });
+    const active = replacements[results.findIndex((record) => record.type === "ready")];
+    const newHook = post("client-one");
+    const request = await active.next("hook.request");
+    active.send({ type: "hook.response", id: request.id, status: 202, headers: {}, body: "" });
+    await expect(newHook).resolves.toEqual({ status: 202, body: "" });
+  });
+  it("preserves the original desktop when the waiting replacement disconnects", async () => {
+    await start();
+    const original = await client();
+    await original.next("ready");
+    const cancelled = await client();
+    await original.next("ping");
+    cancelled.socket.destroy();
+    await new Promise((resolve) => setTimeout(resolve, 2_100));
+
+    original.send({ type: "status", id: "original-status" });
+    await expect(original.next("status")).resolves.toMatchObject({ id: "original-status" });
   });
   it("strips server environment from user commands", async () => {
     const original = process.env.KANVIBE_PROVIDER_SECRET;

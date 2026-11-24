@@ -180,6 +180,40 @@ describe("hookTunnelService", () => {
     await waitForSpawnCount(3);
   });
 
+  it("재시도에서 SSH 실패 사유가 바뀔 때만 로그와 알림 이벤트를 남긴다", async () => {
+    const { subscribeToBoardEvents } = await import("@/lib/boardNotifier");
+    const onEvent = vi.fn();
+    const unsubscribe = subscribeToBoardEvents(onEvent);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const timeout = "ssh: connect to host host-a port 22: Operation timed out";
+    const refused = "ssh: connect to host host-a port 22: Connection refused";
+    try {
+      service.startHookTunnels(() => () => undefined);
+      await waitForSpawnCount(1);
+      sshProcesses[0].stderr.emit("data", timeout);
+      sshProcesses[0].emit("close", 255);
+
+      await vi.advanceTimersByTimeAsync(5_000);
+      await waitForSpawnCount(2);
+      sshProcesses[1].stderr.emit("data", timeout);
+      sshProcesses[1].emit("close", 255);
+
+      await vi.advanceTimersByTimeAsync(10_000);
+      await waitForSpawnCount(3);
+      sshProcesses[2].stderr.emit("data", refused);
+      sshProcesses[2].emit("close", 255);
+
+      expect(warn).toHaveBeenCalledTimes(2);
+      expect(onEvent.mock.calls).toEqual([
+        [{ type: "hook-tunnel-failed", sshHost: "host-a", kind: "ssh", reason: timeout }],
+        [{ type: "hook-tunnel-failed", sshHost: "host-a", kind: "ssh", reason: refused }],
+      ]);
+    } finally {
+      unsubscribe();
+      warn.mockRestore();
+    }
+  });
+
   it("준비 명령이 실패해도 앱은 멈추지 않고 다시 시도한다", async () => {
     // Given
     vi.spyOn(console, "warn").mockImplementation(() => undefined);
@@ -211,17 +245,25 @@ describe("hookTunnelService", () => {
   });
 
   it("잠자기에서 깨면 살아 있어 보이는 연결을 끊고 곧바로 다시 잇는다", async () => {
+    const { subscribeToBoardEvents } = await import("@/lib/boardNotifier");
+    const onEvent = vi.fn();
+    const unsubscribe = subscribeToBoardEvents(onEvent);
     // Given
     service.startHookTunnels(() => () => undefined);
-    await waitForSpawnCount(1);
+    try {
+      await waitForSpawnCount(1);
 
-    // When
-    service.reconnectHookTunnels();
+      // When
+      service.reconnectHookTunnels();
 
-    // Then
-    expect(sshProcesses[0].kill).toHaveBeenCalled();
-    await vi.advanceTimersByTimeAsync(5_000);
-    await waitForSpawnCount(2);
+      // Then
+      expect(sshProcesses[0].kill).toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(5_000);
+      await waitForSpawnCount(2);
+      expect(onEvent).not.toHaveBeenCalled();
+    } finally {
+      unsubscribe();
+    }
   });
 
   it("중지하면 터널을 닫고 다시 연결하지 않는다", async () => {

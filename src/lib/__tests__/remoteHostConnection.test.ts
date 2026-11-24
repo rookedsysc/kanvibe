@@ -11,7 +11,7 @@ import { connectHostProcess, type HostProcess } from "@/lib/remoteHostConnection
 const owned: Array<() => void> = [];
 afterEach(() => { for (const close of owned.splice(0)) close(); });
 
-function fixture() {
+function fixture(handshake = { type: "ready", version: 1, namespace: "qa-client", buildHash: "a", pid: 123, instanceId: "server", capabilities: ["exec", "socket", "hooks"] } as HostRecord) {
   const child = Object.assign(new EventEmitter(), {
     stdin: new PassThrough(), stdout: new PassThrough(), stderr: new PassThrough(),
     kill: () => { child.emit("close", 0); return true; },
@@ -19,7 +19,7 @@ function fixture() {
   const records: HostRecord[] = [];
   const decode = createHostRecordDecoder((r) => {
     records.push(r);
-    if (r.type === "hello") child.stdout.write(encodeHostRecord({ type: "ready", version: 1, namespace: "qa-client", buildHash: "a", pid: 123, instanceId: "server", capabilities: ["exec", "socket", "hooks"] }));
+    if (r.type === "hello") child.stdout.write(encodeHostRecord(handshake));
   });
   let boot = "";
   child.stdin.on("data", (b: Buffer) => {
@@ -34,6 +34,48 @@ function fixture() {
 }
 
 describe("host connection", () => {
+  it("returns the daemon's exact rejection reason", async () => {
+    const reason = "A desktop with this client ID is already connected";
+    const { ready } = fixture({ type: "error", error: reason, code: "client-already-connected" });
+
+    await expect(ready).rejects.toMatchObject({ kind: "handshake", code: "client-already-connected", message: reason });
+  });
+
+  it.each([
+    ["version", 2],
+    ["namespace", "dev"],
+    ["buildHash", "old-build"],
+    ["capabilities", ["exec"]],
+  ])("reports a mismatched ready field (%s)", async (field, value) => {
+    const { ready } = fixture({
+      type: "ready", version: 1, namespace: "qa-client", buildHash: "a", pid: 123, instanceId: "server",
+      capabilities: ["exec", "socket", "hooks"],
+      [field]: value,
+    });
+
+    await expect(ready).rejects.toMatchObject({ kind: "handshake", message: expect.stringContaining(field) });
+  });
+
+  it("classifies an SSH exit before bootstrap and keeps its stderr", async () => {
+    const child = Object.assign(new EventEmitter(), {
+      stdin: new PassThrough(), stdout: new PassThrough(), stderr: new PassThrough(), kill: () => true,
+    });
+    const ready = connectHostProcess(child, { source: "bundle", hash: "a", namespace: "qa-client", clientId: "client" });
+    child.stderr.write("ssh: connect to host example port 22: Operation timed out\n");
+    child.emit("close", 255);
+
+    await expect(ready).rejects.toMatchObject({ kind: "ssh", message: expect.stringContaining("Operation timed out") });
+  });
+
+  it("answers the daemon's liveness probe with the same request ID", async () => {
+    const { ready, records, send } = fixture();
+    await ready;
+
+    send({ type: "ping", id: "fixture-probe" });
+
+    expect(records).toContainEqual({ type: "pong", id: "fixture-probe" });
+  });
+
   it("correlates concurrent commands and preserves Unicode split across chunks", async () => {
     const f = fixture(); const c = await f.ready;
     const a = c!.execute("first"), b = c!.execute("second");
