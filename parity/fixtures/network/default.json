@@ -1,0 +1,43 @@
+{
+  "description": "앱이 바깥으로 내보내는 HTTP 요청에 돌려줄 고정 응답. 표에 없는 바깥 주소는 모두 즉시 실패한다. urlPrefix로 앞부분을 맞춘다.",
+  "responses": [
+    {
+      "urlPrefix": "https://api.github.com/repos/rookedsysc/kanvibe/releases",
+      "status": 200,
+      "body": []
+    },
+    {
+      "urlPrefix": "https://api.anthropic.com/api/oauth/usage",
+      "status": 200,
+      "body": {
+        "five_hour": {
+          "utilization": 42,
+          "resets_at": "2026-01-15T05:00:00Z"
+        },
+        "seven_day": {
+          "utilization": 18,
+          "resets_at": "2026-01-20T00:00:00Z"
+        }
+      }
+    },
+    {
+      "urlPrefix": "https://chatgpt.com/backend-api/wham/usage",
+      "status": 200,
+      "body": {
+        "plan_type": "plus",
+        "rate_limit": {
+          "primary_window": {
+            "used_percent": 35,
+            "limit_window_seconds": 18000,
+            "reset_at": 1768453200
+          },
+          "secondary_window": {
+            "used_percent": 61,
+            "limit_window_seconds": 604800,
+            "reset_at": 1768867200
+          }
+        }
+      }
+    }
+  ]
+}

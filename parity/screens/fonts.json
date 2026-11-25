@@ -1,0 +1,109 @@
+{
+  "description": "스크린샷 기준 이미지에서 앱이 볼 수 있는 글꼴 파일 전체와 렌더링 옵션. capture.py가 이 목록만 담은 FONTCONFIG_FILE을 앱 프로세스에 넘긴다. 근거는 fonts.md.",
+  "files": [
+    {
+      "path": "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf"
+    },
+    {
+      "path": "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf"
+    },
+    {
+      "path": "/usr/share/fonts/truetype/noto/NotoSans-Italic.ttf"
+    },
+    {
+      "path": "/usr/share/fonts/truetype/noto/NotoSans-BoldItalic.ttf"
+    },
+    {
+      "path": "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf"
+    },
+    {
+      "path": "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf"
+    },
+    {
+      "path": "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Oblique.ttf"
+    },
+    {
+      "path": "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-BoldOblique.ttf"
+    },
+    {
+      "path": "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+    },
+    {
+      "path": "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+    },
+    {
+      "path": "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"
+    },
+    {
+      "path": "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc"
+    },
+    {
+      "path": "/usr/share/fonts/truetype/noto/NotoSansSymbols-Regular.ttf"
+    },
+    {
+      "path": "/usr/share/fonts/truetype/noto/NotoSansSymbols2-Regular.ttf"
+    },
+    {
+      "path": "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf"
+    }
+  ],
+  "aliases": {
+    "sans-serif": [
+      "Noto Sans",
+      "Noto Sans CJK KR",
+      "Noto Sans Symbols",
+      "Noto Sans Symbols2",
+      "DejaVu Sans"
+    ],
+    "sans": [
+      "Noto Sans",
+      "Noto Sans CJK KR",
+      "Noto Sans Symbols",
+      "Noto Sans Symbols2",
+      "DejaVu Sans"
+    ],
+    "system-ui": [
+      "Noto Sans",
+      "Noto Sans CJK KR",
+      "Noto Sans Symbols",
+      "Noto Sans Symbols2",
+      "DejaVu Sans"
+    ],
+    "serif": [
+      "Noto Sans",
+      "Noto Sans CJK KR",
+      "DejaVu Sans"
+    ],
+    "monospace": [
+      "DejaVu Sans Mono",
+      "Noto Sans Mono CJK KR",
+      "Noto Sans Symbols",
+      "Noto Sans Symbols2"
+    ],
+    "mono": [
+      "DejaVu Sans Mono",
+      "Noto Sans Mono CJK KR",
+      "Noto Sans Symbols",
+      "Noto Sans Symbols2"
+    ],
+    "emoji": [
+      "Noto Color Emoji"
+    ]
+  },
+  "rendering": {
+    "antialias": true,
+    "hinting": true,
+    "hintstyle": "hintslight",
+    "rgba": "none",
+    "lcdfilter": "lcdnone",
+    "autohint": false
+  },
+  "fallback_order": [
+    "Noto Sans",
+    "Noto Sans CJK KR",
+    "Noto Sans Symbols",
+    "Noto Sans Symbols2",
+    "DejaVu Sans",
+    "Noto Color Emoji"
+  ]
+}

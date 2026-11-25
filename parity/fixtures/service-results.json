@@ -1,0 +1,11 @@
+{
+  "description": "fault 단계의 mode: result가 value_ref로 가리키는 서비스 응답 값. 무작위 값(페어링 코드)이나 계정 소유물(기기 목록)처럼 fixture 파일로 고정할 수 없는 응답만 둔다.",
+  "values": {
+    "mobile_pairing": {"code": "482913", "expiresAt": 1768446300000},
+    "mobile_pairing_code": "482913",
+    "paired_devices": [
+      {"deviceId": "parity-device-1", "deviceName": "Pixel 9", "pairedAt": "2026-01-14T09:00:00.000Z"},
+      {"deviceId": "parity-device-2", "deviceName": "iPhone 17", "pairedAt": "2026-01-10T12:30:00.000Z"}
+    ]
+  }
+}
