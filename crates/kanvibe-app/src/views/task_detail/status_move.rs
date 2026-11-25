@@ -17,7 +17,7 @@ pub struct SharedKanbanService {
 
 impl Global for SharedKanbanService {}
 
-const KANBAN_SERVICE_NOT_COMPOSED: &str = "보드 서비스가 아직 앱에 조립되지 않았습니다.";
+pub const KANBAN_SERVICE_NOT_COMPOSED: &str = "보드 서비스가 아직 앱에 조립되지 않았습니다.";
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct StatusMoveState {

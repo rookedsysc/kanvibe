@@ -7,12 +7,10 @@ use gpui_kit::{
 };
 
 use super::TaskDetailView;
-use super::status_move::SharedKanbanService;
+use super::status_move::{KANBAN_SERVICE_NOT_COMPOSED, SharedKanbanService};
 use crate::components::TailwindText;
 use crate::qa::targets::{QaTargetDescription, qa_target_layer};
 use crate::theme::{ThemeTokens, radius, spacing, text_scale};
-
-const KANBAN_SERVICE_NOT_COMPOSED: &str = "보드 서비스가 아직 앱에 조립되지 않았습니다.";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AutoConnectState {

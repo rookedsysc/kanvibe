@@ -6,6 +6,7 @@
 mod auto_connect;
 mod chrome;
 pub mod data;
+mod description_edit;
 mod dock;
 mod icons;
 pub mod layout_state;
@@ -80,6 +81,8 @@ pub struct TaskDetailView {
     is_closing_tab: bool,
     _tab_close: Option<Task<()>>,
     status_move: status_move::StatusMoveState,
+    description_edit: Option<description_edit::DescriptionEdit>,
+    _description_save: Option<Task<()>>,
     auto_connect: auto_connect::AutoConnectState,
     _auto_connect: Option<Task<()>>,
     _status_move: Option<Task<()>>,
@@ -117,6 +120,8 @@ impl TaskDetailView {
             is_closing_tab: false,
             _tab_close: None,
             status_move: status_move::StatusMoveState::default(),
+            description_edit: None,
+            _description_save: None,
             auto_connect: auto_connect::AutoConnectState::Connecting,
             _auto_connect: None,
             _status_move: None,
@@ -399,7 +404,9 @@ impl Render for TaskDetailView {
                     if event.keystroke.key != "escape" {
                         return;
                     }
-                    if view.cancel_tab_rename(window, cx) {
+                    if view.cancel_tab_rename(window, cx)
+                        || view.cancel_description_edit(window, cx)
+                    {
                         cx.stop_propagation();
                     } else if view.layout.visible_panel(view.has_task()).is_some() {
                         view.close_panel(window, cx);

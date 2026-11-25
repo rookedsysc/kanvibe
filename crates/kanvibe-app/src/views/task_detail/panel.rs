@@ -83,7 +83,8 @@ impl TaskDetailView {
         };
         let body: AnyElement = match panel {
             DetailPanel::Overview => {
-                render_overview(theme, snapshot, &self.translator).into_any_element()
+                let description = self.render_description(theme, &snapshot.task, cx);
+                render_overview(theme, snapshot, &self.translator, description).into_any_element()
             }
             DetailPanel::Status => self.render_status_panel(theme, snapshot, cx),
             DetailPanel::LiveSessions | DetailPanel::Usage => div().into_any_element(),
@@ -91,6 +92,7 @@ impl TaskDetailView {
         let close_label = self.common.translate("close");
         div()
             .id("task-detail-panel")
+            .occlude()
             .absolute()
             .top(spacing(3.0))
             .bottom(spacing(3.0))
@@ -267,12 +269,13 @@ fn render_overview(
     theme: &ThemeTokens,
     snapshot: &TaskDetailSnapshot,
     translator: &Translator,
+    description: AnyElement,
 ) -> impl IntoElement {
     div()
         .flex()
         .flex_col()
         .gap(spacing(3.0))
-        .child(render_title_card(theme, &snapshot.task, translator))
+        .child(render_title_card(theme, &snapshot.task, description))
         .child(render_info_card(theme, snapshot, translator))
 }
 
@@ -291,29 +294,9 @@ fn status_badge_colors(theme: &ThemeTokens, status: TaskStatus) -> (Rgba, Rgba) 
 fn render_title_card(
     theme: &ThemeTokens,
     task: &KanbanTask,
-    translator: &Translator,
+    description: AnyElement,
 ) -> impl IntoElement {
     let (badge_background, badge_text) = status_badge_colors(theme, task.status);
-    let description: AnyElement = match task.description.as_deref() {
-        Some(description) => div()
-            .relative()
-            .text_scale(text_scale::SM)
-            .line_height(px(22.75))
-            .text_color(theme.text.secondary)
-            .child(description.to_string())
-            .child(qa_target_layer(QaTargetDescription {
-                role: "button",
-                name: description.to_string().into(),
-                text: description.to_string().into(),
-            }))
-            .into_any_element(),
-        None => div()
-            .text_scale(text_scale::SM)
-            .italic()
-            .text_color(theme.text.muted)
-            .child(translator.translate("addDescription"))
-            .into_any_element(),
-    };
     card(theme)
         .p(spacing(5.0))
         .child(
