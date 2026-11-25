@@ -1,0 +1,23 @@
+---
+config:
+  theme: base
+  themeVariables:
+    primaryColor: '#BB2528'
+    primaryTextColor: '#ffffff'
+    primaryBorderColor: '#7C0000'
+    lineColor: '#F8B229'
+    secondaryColor: '#006100'
+    tertiaryColor: '#fff4dd'
+---
+gantt
+    title Sprint board
+    dateFormat YYYY-MM-DD
+    axisFormat %m/%d
+    todayMarker off
+    section Design
+    Spec done         :done, des1, 2024-03-01, 3d
+    Review active     :active, des2, after des1, 4d
+    section Build
+    Critical path     :crit, b1, 2024-03-06, 5d
+    Plain task        :b2, after b1, 3d
+    Release           :milestone, m1, 2024-03-15, 0d

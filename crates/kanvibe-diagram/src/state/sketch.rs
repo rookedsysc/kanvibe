@@ -8,7 +8,7 @@ use crate::flowchart::{FlowNode, FlowRender};
 use crate::rough::{self, FillStyle, RoughOptions, RoughSet, Segment};
 use crate::scene::{Color, Point, SceneItem};
 
-use super::shapes::{StateColors, push_cluster_label};
+use super::shapes::push_cluster_label;
 
 const START_DIAMETER: f64 = 14.0;
 /// choice 마름모 한 변(노드 크기도 이 값으로 고정된다)
@@ -221,7 +221,7 @@ fn paint_titled(
 ) {
     let seed = flow.style.sketch_seed.unwrap_or_default();
     let palette = render.palette;
-    let colors = StateColors::for_theme(palette.theme);
+    let (composite_inner, composite_alt_inner) = (palette.cluster_fill, palette.cluster_stroke);
     let x = frame.center.x - frame.width / 2.0;
     let y = frame.center.y - frame.height / 2.0;
     let outer = RoughOptions {
@@ -237,9 +237,9 @@ fn paint_titled(
     let label_height = flow.label.height;
     let inner = RoughOptions {
         fill: Some(if is_alt {
-            colors.composite_alt_inner
+            composite_alt_inner
         } else {
-            colors.composite_inner
+            composite_inner
         }),
         fill_style: if is_alt {
             FillStyle::Hachure

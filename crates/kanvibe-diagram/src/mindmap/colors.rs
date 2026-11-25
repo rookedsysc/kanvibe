@@ -2,6 +2,7 @@
 
 use crate::scene::Color;
 use crate::theme::{Theme, hsl};
+use crate::theme_variables::ThemeVariables;
 
 /// 라이트 테마 `cScale1..11`의 색상(채도 100%, 밝기 76.27%). 0번 가지만 밝기 73.53%다
 const LIGHT_SECTION_HUES: [f64; 11] = [
@@ -34,6 +35,37 @@ pub(crate) struct SectionColors {
 }
 
 impl SectionColors {
+    /// mindmap styles.ts: 루트는 `git0`·`gitBranchLabel0`, `N`번 가지는 `cScale(N+1)`·`cScaleLabel(N+1)`이고 밑줄은
+    /// `cScaleInv(N+1)`이다. `useGradient`와 `mainBkg`가 있으면 그라데이션 규칙이 밑줄을 `stroke-width: 0`으로 지운다
+    pub(crate) fn for_node_with_variables(
+        theme: Theme,
+        section: Option<usize>,
+        variables: &ThemeVariables,
+    ) -> Self {
+        let mut colors = Self::for_node(theme, section);
+        let Some(section) = section else {
+            variables.read_color("git0", &mut colors.fill);
+            variables.read_color("gitBranchLabel0", &mut colors.text);
+            return colors;
+        };
+        let scale = section + 1;
+        variables.read_color(&format!("cScale{scale}"), &mut colors.fill);
+        variables.read_color(&format!("cScaleLabel{scale}"), &mut colors.text);
+        // 테마 변수가 비어 있으면(테스트용 기본값) 앱 테마 기본값의 밑줄을 그대로 둔다
+        if variables.text("mainBkg").is_none() {
+            return colors;
+        }
+        let has_gradient = variables.flag("useGradient") && variables.flag("mainBkg");
+        colors.line = if has_gradient {
+            None
+        } else {
+            variables
+                .color(&format!("cScaleInv{scale}"))
+                .or(colors.line)
+        };
+        colors
+    }
+
     /// 루트(`section-root`)면 `None`, 나머지는 가지 번호
     pub(crate) fn for_node(theme: Theme, section: Option<usize>) -> Self {
         match (theme, section) {

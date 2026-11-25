@@ -95,7 +95,8 @@ pub fn render(definition: &str, context: &RenderContext) -> Result<Scene, Diagra
     let heights = measure_rows(fonts, &timeline.sections, &timeline.periods);
     let mut canvas = TimelineCanvas {
         fonts,
-        colors: TimelineColors::for_theme(context.palette.theme),
+        colors: TimelineColors::for_theme(context.palette.theme)
+            .with_theme_variables(&context.theme_variables),
         scene: Scene::default(),
         bounds: Bounds::EMPTY,
     };

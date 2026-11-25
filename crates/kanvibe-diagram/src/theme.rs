@@ -46,6 +46,10 @@ pub struct Palette {
     /// 간선 라벨 바탕: 바깥 div(labelBkg)와 안쪽 문단(p) 두 겹
     pub edge_label_outer: Color,
     pub edge_label_inner: Color,
+    /// 노드 테두리와 보통 굵기 간선의 굵기(flowchart styles.ts `strokeWidth ?? 1`)
+    pub stroke_width: f64,
+    /// `themeCSS`가 간선 경로에만 준 색. 화살촉 표식은 `line`을 그대로 쓴다
+    pub link_stroke: Option<Color>,
     pub pie: PiePalette,
 }
 
@@ -81,6 +85,8 @@ fn light_palette() -> Palette {
         cluster_text: Color::rgb(0x33, 0x33, 0x33),
         edge_label_outer: Color::rgba(232, 232, 232, 0.5),
         edge_label_inner: Color::rgba(232, 232, 232, 0.8),
+        stroke_width: 1.0,
+        link_stroke: None,
         pie: light_pie_palette(),
     }
 }
@@ -99,6 +105,8 @@ fn dark_palette() -> Palette {
         cluster_text: Color::rgb(0xF9, 0xFF, 0xFE),
         edge_label_outer: Color::rgba(88, 88, 88, 0.5),
         edge_label_inner: hsl(0.0, 0.0, 34.411_764_705_9),
+        stroke_width: 1.0,
+        link_stroke: None,
         pie: dark_pie_palette(),
     }
 }

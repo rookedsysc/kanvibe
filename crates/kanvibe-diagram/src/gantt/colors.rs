@@ -2,6 +2,7 @@
 
 use crate::scene::Color;
 use crate::theme::{Theme, hsl};
+use crate::theme_variables::ThemeVariables;
 
 /// `.section{opacity:0.2}`
 const SECTION_OPACITY: f32 = 0.2;
@@ -68,6 +69,68 @@ impl GanttColors {
             Theme::Dark => dark(),
         }
     }
+
+    /// gantt styles.js가 읽는 테마 변수. 줄 바탕은 `.section` 불투명도 0.2, 눈금 글자는 `.grid .tick` 0.8을 곱한다.
+    /// 막대 밖 글자는 `.taskTextOutsideN`(taskTextOutsideColor)이 `.taskTextOutsideRight`보다 뒤에 와서 이긴다
+    pub fn with_theme_variables(mut self, variables: &ThemeVariables) -> Self {
+        let color = |key: &str| variables.color(key);
+        if let Some(title) = first_color(variables, &["titleColor", "textColor"]) {
+            self.title = title;
+        }
+        variables.read_color("titleColor", &mut self.section_title);
+        if let Some(text) = color("textColor") {
+            self.tick_text = faded(text, TICK_OPACITY);
+        }
+        let row_keys = [
+            "sectionBkgColor",
+            "altSectionBkgColor",
+            "sectionBkgColor2",
+            "altSectionBkgColor",
+        ];
+        for (row, key) in self.section_rows.iter_mut().zip(row_keys) {
+            if let Some(fill) = color(key) {
+                *row = faded(fill, SECTION_OPACITY);
+            }
+        }
+        variables.read_color("excludeBkgColor", &mut self.exclude);
+        variables.read_color("todayLineColor", &mut self.today);
+        let bars = [
+            (&mut self.task, "taskBkgColor", "taskBorderColor"),
+            (
+                &mut self.active,
+                "activeTaskBkgColor",
+                "activeTaskBorderColor",
+            ),
+            (&mut self.done, "doneTaskBkgColor", "doneTaskBorderColor"),
+            (&mut self.crit, "critBkgColor", "critBorderColor"),
+            (
+                &mut self.active_crit,
+                "activeTaskBkgColor",
+                "critBorderColor",
+            ),
+            (&mut self.done_crit, "doneTaskBkgColor", "critBorderColor"),
+        ];
+        for (bar, fill_key, stroke_key) in bars {
+            variables.read_color(fill_key, &mut bar.fill);
+            variables.read_color(stroke_key, &mut bar.stroke);
+        }
+        variables.read_color("taskTextColor", &mut self.text_inside);
+        variables.read_color("taskTextDarkColor", &mut self.text_tagged);
+        variables.read_color("taskTextOutsideColor", &mut self.text_outside);
+        variables.read_color("taskTextOutsideColor", &mut self.text_done_outside);
+        variables.read_color("taskTextClickableColor", &mut self.text_clickable);
+        variables.read_color("vertLineColor", &mut self.vert_line);
+        self
+    }
+}
+
+/// JS `a || b`: 처음으로 비지 않은 변수의 색
+fn first_color(variables: &ThemeVariables, keys: &[&str]) -> Option<Color> {
+    let text = keys
+        .iter()
+        .filter_map(|key| variables.text(key))
+        .find(|text| !text.is_empty())?;
+    crate::theme_variables::parse_theme_color(&text)
 }
 
 fn light() -> GanttColors {

@@ -171,7 +171,10 @@ pub fn draw_node(render: &FlowRender, group: &mut Group, flow: &FlowNode, center
     let fill = flow.style.fill.unwrap_or(render.palette.node_fill);
     let stroke = StrokeStyle {
         color: flow.style.stroke.unwrap_or(render.palette.node_stroke),
-        width: flow.style.stroke_width.unwrap_or(1.0),
+        width: flow
+            .style
+            .stroke_width
+            .unwrap_or(render.palette.stroke_width),
         dash: flow.style.dash.clone(),
     };
     for outline in &geometry.outlines {
@@ -266,7 +269,7 @@ fn edge_stroke(render: &FlowRender, edge: &FlowEdge) -> Option<StrokeStyle> {
     let width = match edge.stroke {
         Stroke::Invisible => return None,
         Stroke::Thick => 3.5,
-        _ => 1.0,
+        _ => render.palette.stroke_width,
     };
     let dash = if !edge.style.dash.is_empty() {
         edge.style.dash.clone()
@@ -277,8 +280,13 @@ fn edge_stroke(render: &FlowRender, edge: &FlowEdge) -> Option<StrokeStyle> {
             _ => Vec::new(),
         }
     };
+    let color = edge
+        .style
+        .stroke
+        .or(render.palette.link_stroke)
+        .unwrap_or(render.palette.line);
     Some(StrokeStyle {
-        color: edge.style.stroke.unwrap_or(render.palette.line),
+        color,
         width: edge.style.stroke_width.unwrap_or(width),
         dash,
     })
@@ -296,7 +304,7 @@ pub fn draw_edge(
         group.bounds.include_path(&commands);
         return commands;
     };
-    let color = stroke.color;
+    let color = edge.style.stroke.unwrap_or(render.palette.line);
     let drawn = match edge.style.sketch_seed {
         Some(seed) => sketched_edge(&commands, seed),
         None => commands.clone(),

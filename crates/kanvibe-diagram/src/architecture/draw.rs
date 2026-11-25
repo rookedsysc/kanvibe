@@ -17,6 +17,7 @@ use crate::label::{SVG_LINE_HEIGHT_EM, measure_svg_label};
 use crate::scene::{Color, PathCommand, Point, Rotation, Scene, StrokeStyle, TextItem, polygon};
 use crate::text::{FontBook, FontWeight};
 use crate::theme::{Theme, hsl};
+use crate::theme_variables::ThemeVariables;
 
 /// 라벨 글자 크기는 CSS(16px)를 물려받는다
 const FONT_SIZE: f64 = 16.0;
@@ -37,22 +38,50 @@ const BEND_LABEL_DEGREES: f64 = 45.0;
 struct ArchitecturePalette {
     text: Color,
     edge: Color,
+    arrow: Color,
     group_border: Color,
+    edge_width: f64,
+    group_border_width: f64,
 }
 
 fn palette_for(theme: Theme) -> ArchitecturePalette {
-    match theme {
-        Theme::Light => ArchitecturePalette {
-            text: Color::rgb(0x33, 0x33, 0x33),
-            edge: Color::rgb(0x33, 0x33, 0x33),
-            group_border: hsl(240.0, 60.0, 86.274_509_803_9),
-        },
-        Theme::Dark => ArchitecturePalette {
-            text: Color::rgb(0xCC, 0xCC, 0xCC),
-            edge: Color::rgb(211, 211, 211),
-            group_border: Color::rgb(0xCC, 0xCC, 0xCC),
-        },
+    let (text, edge, group_border) = match theme {
+        Theme::Light => (
+            Color::rgb(0x33, 0x33, 0x33),
+            Color::rgb(0x33, 0x33, 0x33),
+            hsl(240.0, 60.0, 86.274_509_803_9),
+        ),
+        Theme::Dark => (
+            Color::rgb(0xCC, 0xCC, 0xCC),
+            Color::rgb(211, 211, 211),
+            Color::rgb(0xCC, 0xCC, 0xCC),
+        ),
+    };
+    ArchitecturePalette {
+        text,
+        edge,
+        arrow: edge,
+        group_border,
+        edge_width: EDGE_WIDTH,
+        group_border_width: GROUP_BORDER_WIDTH,
     }
+}
+
+/// architectureStyles.ts: `.edge`는 `archEdgeColor`·`archEdgeWidth`, `.arrow`는 `archEdgeArrowColor`, 그룹 테두리는
+/// `archGroupBorderColor`·`archGroupBorderWidth`이고 라벨 글자는 루트 `fill`(`textColor`)을 물려받는다
+fn palette_with_variables(theme: Theme, variables: &ThemeVariables) -> ArchitecturePalette {
+    let mut palette = palette_for(theme);
+    variables.read_color("textColor", &mut palette.text);
+    variables.read_color("archEdgeColor", &mut palette.edge);
+    variables.read_color("archEdgeArrowColor", &mut palette.arrow);
+    variables.read_color("archGroupBorderColor", &mut palette.group_border);
+    if let Some(width) = variables.css_length("archEdgeWidth") {
+        palette.edge_width = width;
+    }
+    if let Some(width) = variables.css_length("archGroupBorderWidth") {
+        palette.group_border_width = width;
+    }
+    palette
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -84,7 +113,7 @@ pub(crate) fn draw(
         scene: Scene::default(),
         bounds: Bounds::EMPTY,
         fonts: context.fonts,
-        palette: palette_for(context.palette.theme),
+        palette: palette_with_variables(context.palette.theme, &context.theme_variables),
         config: graph.config,
     };
     let edges = architecture.edges.iter().zip(&graph.edges);
@@ -227,7 +256,7 @@ impl Canvas<'_> {
     fn group_stroke(&self) -> StrokeStyle {
         StrokeStyle {
             color: self.palette.group_border,
-            width: GROUP_BORDER_WIDTH,
+            width: self.palette.group_border_width,
             dash: vec![GROUP_DASH, GROUP_DASH],
         }
     }
@@ -360,7 +389,7 @@ impl Canvas<'_> {
         ];
         let stroke = StrokeStyle {
             color: self.palette.edge,
-            width: EDGE_WIDTH,
+            width: self.palette.edge_width,
             dash: Vec::new(),
         };
         self.scene.push_path(commands, None, Some(stroke));
@@ -396,7 +425,7 @@ impl Canvas<'_> {
             self.include(Bounds::around((point.x, point.y), 0.0, 0.0));
         }
         self.scene
-            .push_path(polygon(&points), Some(self.palette.edge), None);
+            .push_path(polygon(&points), Some(self.palette.arrow), None);
     }
 
     /// 간선 라벨: 가로 간선은 가운데 점에, 세로 간선은 −90° 돌려서, 꺾인 간선은 ±45° 돌려서 쓴다

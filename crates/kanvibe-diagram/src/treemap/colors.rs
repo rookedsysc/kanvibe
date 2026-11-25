@@ -4,6 +4,7 @@
 
 use crate::scene::Color;
 use crate::theme::{DARK_SCALE, LIGHT_SCALE_HUES, Theme, hsl, lighten};
+use crate::theme_variables::ThemeVariables;
 
 const SCALE_SIZE: usize = 12;
 
@@ -40,6 +41,17 @@ impl TreemapColors {
 
     pub fn label(&self, index: usize) -> Color {
         self.labels[index % SCALE_SIZE]
+    }
+
+    /// treemap 렌더러가 읽는 `cScale*`·`cScalePeer*`·`cScaleLabel*`와 styles.ts 제목 색(`titleColor`)
+    pub fn with_theme_variables(mut self, variables: &ThemeVariables) -> Self {
+        for index in 0..SCALE_SIZE {
+            variables.read_color(&format!("cScale{index}"), &mut self.fills[index]);
+            variables.read_color(&format!("cScalePeer{index}"), &mut self.peers[index]);
+            variables.read_color(&format!("cScaleLabel{index}"), &mut self.labels[index]);
+        }
+        variables.read_color("titleColor", &mut self.title);
+        self
     }
 }
 

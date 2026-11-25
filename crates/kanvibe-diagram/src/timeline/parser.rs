@@ -21,7 +21,8 @@ pub struct Timeline {
 }
 
 pub fn parse(definition: &str) -> Result<Timeline, DiagramError> {
-    let mut lines = definition
+    let body = crate::directive::diagram_body(definition);
+    let mut lines = body
         .lines()
         .map(str::trim)
         .filter(|line| !line.is_empty() && !line.starts_with('%') && !line.starts_with('#'));

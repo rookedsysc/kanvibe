@@ -17,6 +17,7 @@ use crate::flowchart::{ElementStyle, FlowEdge, FlowNode, FlowRender};
 use crate::label::{FONT_SIZE, measure_label};
 use crate::scene::{Color, PathCommand, Point, Scene};
 use crate::theme::{Palette, Theme, hsl};
+use crate::theme_variables::ThemeVariables;
 use crate::{DiagramError, LabelMode, RenderContext};
 
 /// requirement 설정이 없어 dagre 기본 간격을 쓴다
@@ -56,14 +57,18 @@ pub fn render(definition: &str, context: &RenderContext) -> Result<Scene, Diagra
             crate::MAX_EDGES
         )));
     }
-    let palette = requirement_palette(context.palette, context.label_mode);
+    let palette = requirement_palette(
+        context.palette,
+        context.label_mode,
+        &context.theme_variables,
+    );
     let render = FlowRender {
         fonts: context.fonts,
         palette: &palette,
     };
     let graph = UnifiedGraph {
         direction: diagram.direction,
-        nodes: box_nodes(&diagram, context),
+        nodes: box_nodes(&diagram, context, &palette),
         edges: relation_edges(&diagram, context)?,
         node_spacing: NODE_SPACING,
         rank_spacing: RANK_SPACING,
@@ -72,40 +77,79 @@ pub fn render(definition: &str, context: &RenderContext) -> Result<Scene, Diagra
             .map(|text| DiagramTitle {
                 text,
                 font_size: FONT_SIZE,
-                color: context.palette.text,
+                color: root_text_color(context),
             }),
     };
     Ok(render_unified(&render, graph))
 }
 
-/// requirementDiagram 스타일의 간선 라벨 바탕(labelBkg와 `.edgeLabel .label rect`)
-fn requirement_palette(base: &Palette, mode: LabelMode) -> Palette {
-    let background = match base.theme {
+/// requirement styles.js와 requirementBox(userNodeOverrides)의 색. 상자는 mainBkg·nodeBorder, 글자는
+/// `.label text,span`(nodeTextColor || textColor), 관계선과 표식은 relationColor, 간선 라벨 바탕은
+/// labelBkg(`requirementEdgeLabelBackground ?? edgeLabelBackground`)와 `.edgeLabel .label rect`(edgeLabelBackground)다
+fn requirement_palette(base: &Palette, mode: LabelMode, variables: &ThemeVariables) -> Palette {
+    let mut background = match base.theme {
         Theme::Light => Color::rgba(232, 232, 232, 0.8),
         Theme::Dark => hsl(0.0, 0.0, 34.411_764_705_9),
     };
+    variables.read_color("edgeLabelBackground", &mut background);
     let mut palette = base.clone();
     palette.edge_label_outer = background;
+    variables.read_color(
+        "requirementEdgeLabelBackground",
+        &mut palette.edge_label_outer,
+    );
     palette.edge_label_inner = edge_label_background(background, mode);
+    variables.read_color("mainBkg", &mut palette.node_fill);
+    variables.read_color("nodeBorder", &mut palette.node_stroke);
+    variables.read_color("relationColor", &mut palette.line);
+    if let Some(color) = first_color(variables, &["nodeTextColor", "textColor"]) {
+        palette.text = color;
+    }
     palette
 }
 
-/// RequirementDB.getData: 요구사항 다음 요소 순서
-fn box_nodes(diagram: &RequirementDiagram, context: &RenderContext) -> Vec<FlowNode> {
-    let requirements = diagram
-        .requirements
+/// 앞머리 제목은 뿌리 `fill: textColor`를 물려받는다
+fn root_text_color(context: &RenderContext) -> Color {
+    context
+        .theme_variables
+        .color("textColor")
+        .unwrap_or(context.palette.text)
+}
+
+/// JS `a || b`: 처음으로 비지 않은 변수의 색
+fn first_color(variables: &ThemeVariables, keys: &[&str]) -> Option<Color> {
+    let text = keys
         .iter()
-        .map(|requirement| requirement_node(requirement, &box_style(context, &requirement.style)));
+        .filter_map(|key| variables.text(key))
+        .find(|text| !text.is_empty())?;
+    crate::theme_variables::parse_theme_color(&text)
+}
+
+/// RequirementDB.getData: 요구사항 다음 요소 순서
+fn box_nodes(
+    diagram: &RequirementDiagram,
+    context: &RenderContext,
+    palette: &Palette,
+) -> Vec<FlowNode> {
+    let requirements = diagram.requirements.iter().map(|requirement| {
+        requirement_node(
+            requirement,
+            &box_style(context, palette, &requirement.style),
+        )
+    });
     let elements = diagram
         .elements
         .iter()
-        .map(|element| element_node(element, &box_style(context, &element.style)));
+        .map(|element| element_node(element, &box_style(context, palette, &element.style)));
     requirements.chain(elements).collect()
 }
 
 /// 테마 색 위에 노드의 스타일 선언(userNodeOverrides·labelStyles)을 덮는다
-fn box_style<'a>(context: &RenderContext<'a>, assignment: &StyleAssignment) -> BoxStyle<'a> {
-    let palette = context.palette;
+fn box_style<'a>(
+    context: &RenderContext<'a>,
+    palette: &Palette,
+    assignment: &StyleAssignment,
+) -> BoxStyle<'a> {
     let user = ElementStyle::from_declarations(assignment.declarations.iter());
     BoxStyle {
         fonts: context.fonts,
@@ -124,13 +168,19 @@ fn is_known(diagram: &RequirementDiagram, name: &str) -> bool {
         || diagram.elements.iter().any(|node| node.name == name)
 }
 
-/// SVG 글자 라벨은 `.edgeLabel .label text{fill}`(라이트 검정, 다크 lightgrey)을 쓴다
+/// SVG 글자 라벨은 `.edgeLabel .label text { fill: relationLabelColor }`(라이트 검정, 다크 lightgrey)을 쓴다
 fn edge_text_color(context: &RenderContext) -> Option<Color> {
-    match (context.label_mode, context.palette.theme) {
-        (LabelMode::Html, _) => None,
-        (LabelMode::SvgText, Theme::Light) => Some(Color::rgb(0, 0, 0)),
-        (LabelMode::SvgText, Theme::Dark) => Some(Color::rgb(211, 211, 211)),
-    }
+    let fallback = match (context.label_mode, context.palette.theme) {
+        (LabelMode::Html, _) => return None,
+        (LabelMode::SvgText, Theme::Light) => Color::rgb(0, 0, 0),
+        (LabelMode::SvgText, Theme::Dark) => Color::rgb(211, 211, 211),
+    };
+    Some(
+        context
+            .theme_variables
+            .color("relationLabelColor")
+            .unwrap_or(fallback),
+    )
 }
 
 fn relation_edges(

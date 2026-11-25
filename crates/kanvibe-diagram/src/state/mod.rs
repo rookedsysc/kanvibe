@@ -10,7 +10,7 @@ mod shapes;
 mod sketch;
 
 use self::graph::{GraphEdge, GraphNode, StateShape, build_graph};
-use self::shapes::{NeoLook, ROUGH_STROKE_WIDTH, STATE_PADDING, StateColors};
+use self::shapes::{NeoLook, ROUGH_STROKE_WIDTH, STATE_PADDING, StateColors, first_color};
 use crate::er::unified::{DiagramTitle, UnifiedGraph, render_unified};
 use crate::flowchart::parser::{ArrowType, Direction, Stroke};
 use crate::flowchart::render::ClusterPainter;
@@ -19,6 +19,7 @@ use crate::label::{LabelBox, measure_label};
 use crate::rough::RoughSet;
 use crate::scene::{Color, Point, Scene, SceneItem};
 use crate::theme::Palette;
+use crate::theme_variables::ThemeVariables;
 use crate::{DiagramError, LabelMode, RenderContext};
 
 /// state.nodeSpacing·rankSpacing 기본값
@@ -37,14 +38,17 @@ pub fn render(definition: &str, context: &RenderContext) -> Result<Scene, Diagra
         )));
     }
     let config = crate::directive::read_config(definition);
-    let palette = state_palette(context.palette, context.label_mode);
+    let variables = &context.theme_variables;
+    let colors = StateColors::for_theme(context.palette.theme).with_theme_variables(variables);
+    let palette = state_palette(context.palette, context.label_mode, variables, &colors);
     let is_neo = config.tree.get("look").and_then(|look| look.as_str()) == Some("neo");
     let styler = StateStyler {
         render: FlowRender {
             fonts: context.fonts,
             palette: &palette,
         },
-        colors: StateColors::for_theme(palette.theme),
+        colors,
+        edge_label_color: edge_label_color(variables, context.label_mode),
         mode: context.label_mode,
         neo: is_neo.then(|| NeoLook::for_theme(palette.theme)),
         sketch_seed: hand_drawn_seed(&config),
@@ -75,21 +79,47 @@ pub fn render(definition: &str, context: &RenderContext) -> Result<Scene, Diagra
     Ok(render_unified(&styler.render, unified))
 }
 
-/// 간선 라벨 바탕색. HTML 라벨은 labelBkg 규칙이 없어 문단(p) 한 겹이고, SVG 글자 라벨의 바탕 사각형은
-/// `.edgeLabel .label rect`(mainBkg, opacity 0.5)다
-fn state_palette(base: &Palette, mode: LabelMode) -> Palette {
+/// state styles.js의 색. 상태 상자는 `stateBkg || mainBkg`·`stateBorder || nodeBorder`, 전이는 `transitionColor`,
+/// SVG 글자는 뿌리의 `fill: textColor`를 물려받는다. 간선 라벨 바탕은 HTML 라벨이면 labelBkg 규칙이 없어 문단(p) 한 겹이고,
+/// SVG 글자 라벨의 바탕 사각형은 `.edgeLabel .label rect`(labelBackgroundColor, opacity 0.5)다
+fn state_palette(
+    base: &Palette,
+    mode: LabelMode,
+    variables: &ThemeVariables,
+    colors: &StateColors,
+) -> Palette {
     let mut palette = base.clone();
+    if let Some(color) = first_color(variables, &["stateBkg", "mainBkg"]) {
+        palette.node_fill = color;
+    }
+    if let Some(color) = first_color(variables, &["stateBorder", "nodeBorder"]) {
+        palette.node_stroke = color;
+    }
+    variables.read_color("transitionColor", &mut palette.line);
+    variables.read_color("textColor", &mut palette.text);
     palette.edge_label_outer = Color::rgba(0, 0, 0, 0.0);
     if mode == LabelMode::SvgText {
         palette.edge_label_inner = palette.node_fill;
+        variables.read_color("labelBackgroundColor", &mut palette.edge_label_inner);
     }
+    colors.carry_in_palette(&mut palette, mode);
     palette
+}
+
+/// SVG 글자 간선 라벨: `.edgeLabel .label text { fill: transitionLabelColor || tertiaryTextColor }`. HTML 라벨은 바꾸지 않는다
+fn edge_label_color(variables: &ThemeVariables, mode: LabelMode) -> Option<Color> {
+    if mode != LabelMode::SvgText {
+        return None;
+    }
+    first_color(variables, &["transitionLabelColor", "tertiaryTextColor"])
 }
 
 /// 상태 노드·간선을 flowchart 파이프라인의 노드·간선으로 옷 입힌다
 struct StateStyler<'a> {
     render: FlowRender<'a>,
     colors: StateColors,
+    /// SVG 글자 간선 라벨 색(없으면 flowchart처럼 palette.text)
+    edge_label_color: Option<Color>,
     mode: LabelMode,
     /// `look: neo`면 테두리·그림자·화살촉을 바꾼다
     neo: Option<NeoLook>,
@@ -138,6 +168,7 @@ impl StateStyler<'_> {
             minlen: 1,
             style: ElementStyle {
                 sketch_seed: self.sketch_seed,
+                text_color: self.edge_label_color,
                 ..ElementStyle::default()
             },
         }
@@ -197,7 +228,7 @@ impl StateStyler<'_> {
     fn sketch_colors(&self) -> sketch::SketchColors {
         let palette = self.render.palette;
         sketch::SketchColors {
-            line: palette.line,
+            line: self.colors.line,
             fill: palette.node_fill,
             border: palette.node_stroke,
             end_inner: self.colors.end_inner,
@@ -323,6 +354,7 @@ impl StateStyler<'_> {
         if node.shape == StateShape::Composite {
             flow.label = self.measure(node.label());
             flow.style.text_color = Some(self.label_color());
+            flow.style.fill = Some(self.colors.composite_title);
         }
     }
 
@@ -339,7 +371,7 @@ impl StateStyler<'_> {
                 flow.decorations = vec![shapes::end_inner_circle(colors.end_inner)];
                 (
                     shapes::end_geometry(),
-                    paint_style(palette.node_fill, palette.line, 2.0),
+                    paint_style(palette.node_fill, colors.line, 2.0),
                 )
             }
             StateShape::Choice => (
@@ -348,7 +380,7 @@ impl StateStyler<'_> {
             ),
             StateShape::Fork | StateShape::Join => (
                 shapes::bar_geometry(node.layout_dir == Direction::LeftRight),
-                paint_style(palette.line, palette.line, ROUGH_STROKE_WIDTH),
+                paint_style(colors.line, colors.line, ROUGH_STROKE_WIDTH),
             ),
             _ => {
                 flow.label = self.measure(node.label());

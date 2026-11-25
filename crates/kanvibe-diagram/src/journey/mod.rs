@@ -50,7 +50,8 @@ struct JourneyCanvas<'a> {
 
 pub fn render(definition: &str, context: &RenderContext) -> Result<Scene, DiagramError> {
     let journey = parser::parse(definition)?;
-    let colors = JourneyColors::for_theme(context.palette.theme);
+    let colors = JourneyColors::for_theme(context.palette.theme)
+        .with_theme_variables(&context.theme_variables);
     let actors = journey
         .actors()
         .into_iter()

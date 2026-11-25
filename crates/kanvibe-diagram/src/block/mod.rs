@@ -18,6 +18,8 @@ use crate::flowchart::ElementStyle;
 use crate::label::{LINE_HEIGHT, LabelBox, LabelLine, label_lines, measure_svg_label};
 use crate::scene::Scene;
 use crate::text::{FontBook, FontWeight};
+use crate::theme::Palette;
+use crate::theme_variables::{ThemeVariables, parse_theme_color};
 use crate::{DiagramError, LabelMode, RenderContext};
 
 const FONT_SIZE: f64 = 16.0;
@@ -405,6 +407,13 @@ pub(crate) fn measure_block_label(fonts: &FontBook, label: &str, mode: LabelMode
 
 pub fn render(definition: &str, context: &RenderContext) -> Result<Scene, DiagramError> {
     let mut diagram = parse_diagram(definition)?;
+    let palette = block_palette(context.palette, &context.theme_variables);
+    let context = &RenderContext {
+        fonts: context.fonts,
+        palette: &palette,
+        label_mode: context.label_mode,
+        theme_variables: context.theme_variables.clone(),
+    };
     let painter = BlockPainter::new(context);
     painter.measure_blocks(&mut diagram.blocks, ROOT);
     layout::set_block_sizes(&mut diagram.blocks, ROOT, 0.0, 0.0);
@@ -417,6 +426,29 @@ pub fn render(definition: &str, context: &RenderContext) -> Result<Scene, Diagra
     scene.height = max_y - min_y + VIEW_MARGIN * 2.0;
     scene.translate(VIEW_MARGIN - min_x, VIEW_MARGIN - min_y);
     Ok(scene)
+}
+
+/// block styles.ts의 색. 블록은 mainBkg·nodeBorder, 묶음 블록은 clusterBkg·clusterBorder를 흐리게, SVG 글자는
+/// `.label text`(nodeTextColor || textColor), 선은 lineColor, 간선 라벨 바탕은 edgeLabelBackground다. HTML 라벨의 `p`는
+/// 뒤에 오는 `.cluster span,p` 규칙 때문에 titleColor가 된다
+fn block_palette(base: &Palette, variables: &ThemeVariables) -> Palette {
+    let mut palette = base.clone();
+    variables.read_color("mainBkg", &mut palette.node_fill);
+    variables.read_color("nodeBorder", &mut palette.node_stroke);
+    variables.read_color("clusterBkg", &mut palette.cluster_fill);
+    variables.read_color("clusterBorder", &mut palette.cluster_stroke);
+    variables.read_color("titleColor", &mut palette.cluster_text);
+    variables.read_color("lineColor", &mut palette.line);
+    variables.read_color("edgeLabelBackground", &mut palette.edge_label_inner);
+    if let Some(text) = ["nodeTextColor", "textColor"]
+        .iter()
+        .filter_map(|key| variables.text(key))
+        .find(|text| !text.is_empty())
+        .and_then(|text| parse_theme_color(&text))
+    {
+        palette.text = text;
+    }
+    palette
 }
 
 /// 블록의 `style` 선언과 classDef 선언을 합친다. classDef는 `!important`라서 `style`보다 이긴다

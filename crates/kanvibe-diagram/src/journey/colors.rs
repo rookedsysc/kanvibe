@@ -2,6 +2,7 @@
 
 use crate::scene::Color;
 use crate::theme::{Theme, hsl};
+use crate::theme_variables::ThemeVariables;
 
 /// journey 설정 `actorColours`
 const ACTOR_COLORS: [Color; 6] = [
@@ -54,6 +55,24 @@ impl JourneyColors {
             face_stroke: Color::rgb(0x99, 0x99, 0x99),
             feature: Color::rgb(0x66, 0x66, 0x66),
         }
+    }
+
+    /// user-journey styles.js: 글자·선·제목은 textColor(뿌리 `fill`도 같다), 상자 바탕은 `fillType0`이 있을 때 `fillTypeN`
+    pub fn with_theme_variables(mut self, variables: &ThemeVariables) -> Self {
+        if let Some(text) = variables.color("textColor") {
+            self.legend = text;
+            self.label = text;
+            self.title = text;
+            self.mouth_fill = text;
+            self.line = text;
+            self.arrow_head = text;
+        }
+        if variables.flag("fillType0") {
+            for (index, fill) in self.section_fills.iter_mut().enumerate() {
+                variables.read_color(&format!("fillType{index}"), fill);
+            }
+        }
+        self
     }
 
     pub fn section_fill(&self, section_number: usize) -> Color {

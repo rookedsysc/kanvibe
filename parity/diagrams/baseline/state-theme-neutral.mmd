@@ -1,0 +1,31 @@
+---
+config:
+  theme: neutral
+---
+stateDiagram-v2
+    direction LR
+    classDef hot fill:#f96,stroke:#333
+    [*] --> Idle
+    Idle --> Busy : go
+    state "Long description" as Busy
+    Busy : first line
+    Busy : second line
+    state Parallel {
+        [*] --> A
+        A --> B
+        --
+        [*] --> C
+        C --> [*]
+    }
+    Busy --> Parallel
+    state Gate <<choice>>
+    Parallel --> Gate
+    Gate --> Idle : retry
+    Gate --> Out:::hot
+    state Bar <<join>>
+    Out --> Bar
+    Bar --> [*]
+    note left of Idle
+        waiting for
+        input
+    end note

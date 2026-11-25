@@ -13,13 +13,14 @@ use std::rc::Rc;
 
 use self::clusters::{ClusterContext, adjust_clusters_and_edges};
 use self::layout::{Level, LevelEdge, LevelNode, LevelPainter, render_level};
-use self::parser::{ArrowType, Direction, Flowchart, Stroke, Vertex};
+use self::parser::{ArrowType, Direction, Flowchart, NodeShape, Stroke, Vertex};
 use self::render::ClusterPainter;
 use self::shapes::{NodeGeometry, node_geometry};
 use crate::label::{LabelBox, measure_label};
 use crate::scene::{Color, Scene, SceneItem};
 use crate::text::FontBook;
 use crate::theme::Palette;
+use crate::theme_css::ThemeCss;
 use crate::theme_variables::ThemeVariables;
 use crate::{DiagramError, LabelMode, RenderContext};
 
@@ -140,12 +141,14 @@ pub fn render(definition: &str, context: &RenderContext) -> Result<Scene, Diagra
         fonts,
         palette: &palette,
     };
-    let (nodes, edges) = build_layout_data(&chart, fonts, context.label_mode);
+    let (mut nodes, edges) = build_layout_data(&chart, fonts, context.label_mode);
+    apply_node_theme_css(&mut nodes, &chart, context.theme_variables.theme_css());
     Ok(render_layout(&render, chart.direction, nodes, edges))
 }
 
 /// flowchart styles.ts가 읽는 테마 변수로 기본 색을 덮는다. 라벨 글자는 `nodeTextColor || textColor`이고,
-/// HTML 간선 라벨 바깥 바탕은 `fade(edgeLabelBackground, 0.5)`(알파만 0.5로 바꾼 색)다
+/// HTML 간선 라벨 바깥 바탕은 `fade(edgeLabelBackground, 0.5)`(알파만 0.5로 바꾼 색)다. 그 위에 같은 선택자로 쓴
+/// `themeCSS` 선언을 얹는다
 fn flowchart_palette(base: &Palette, variables: &ThemeVariables) -> Palette {
     let mut palette = base.clone();
     variables.read_color("mainBkg", &mut palette.node_fill);
@@ -167,7 +170,58 @@ fn flowchart_palette(base: &Palette, variables: &ThemeVariables) -> Palette {
             ..background
         };
     }
+    variables.read_number("strokeWidth", &mut palette.stroke_width);
+    apply_theme_css(&mut palette, variables.theme_css());
     palette
+}
+
+/// 노드와 간선 라벨 글자는 `.label text`, 묶음 제목은 `.cluster-label text`, 간선 라벨 바탕은 `.edgeLabel rect` 안에 있다
+fn apply_theme_css(palette: &mut Palette, css: &ThemeCss) {
+    if css.is_empty() {
+        return;
+    }
+    let read = |selectors: &[&str], property: &str, target: &mut Color| {
+        if let Some(color) = css.color(selectors, property) {
+            *target = color;
+        }
+    };
+    read(&[".label text"], "fill", &mut palette.text);
+    read(&[".cluster rect"], "fill", &mut palette.cluster_fill);
+    read(&[".cluster rect"], "stroke", &mut palette.cluster_stroke);
+    read(
+        &[".cluster-label text", ".cluster text"],
+        "fill",
+        &mut palette.cluster_text,
+    );
+    read(&[".edgeLabel rect"], "fill", &mut palette.edge_label_inner);
+    palette.link_stroke = css
+        .color(&[".flowchart-link", ".edgePath .path"], "stroke")
+        .or(palette.link_stroke);
+}
+
+/// `themeCSS`의 `.node rect`·`.node polygon` 등을 노드 모양이 그리는 SVG 요소에 맞춰 얹는다. `style`·`classDef`는
+/// 요소의 인라인·`!important` 스타일이라 그대로 이긴다
+fn apply_node_theme_css(nodes: &mut [FlowNode], chart: &Flowchart, css: &ThemeCss) {
+    if css.is_empty() {
+        return;
+    }
+    for node in nodes.iter_mut() {
+        let Some(vertex) = chart.vertices.iter().find(|vertex| vertex.id == node.id) else {
+            continue;
+        };
+        let selector = match vertex.shape {
+            NodeShape::Rect | NodeShape::Rounded => ".node rect",
+            NodeShape::Circle | NodeShape::DoubleCircle => ".node circle",
+            NodeShape::Stadium | NodeShape::Cylinder => ".node path",
+            _ => ".node polygon",
+        };
+        if node.style.fill.is_none() {
+            node.style.fill = css.color(&[selector], "fill");
+        }
+        if node.style.stroke.is_none() {
+            node.style.stroke = css.color(&[selector], "stroke");
+        }
+    }
 }
 
 /// 노드·간선 목록을 단계별 dagre로 배치해 그리고 diagramPadding을 둘러 장면으로 만든다(통합 렌더러 공용)

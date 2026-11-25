@@ -155,13 +155,21 @@ const NAMED_COLORS: [(&str, u32); 148] = [
     ("yellowgreen", 0x9ACD32),
 ];
 
+/// CSS 이름 색의 0xRRGGBB 값. `name`은 소문자여야 한다
+pub(crate) fn named_color(name: &str) -> Option<u32> {
+    NAMED_COLORS
+        .iter()
+        .find(|(candidate, _)| *candidate == name)
+        .map(|(_, value)| *value)
+}
+
 /// 채움색 글을 색으로 바꾼다. `transparent`는 채우지 않는다
 pub(crate) fn parse_css_color(text: &str) -> Option<Color> {
     let lower = text.trim().to_ascii_lowercase();
     if lower == "transparent" {
         return Some(Color::rgba(0, 0, 0, 0.0));
     }
-    if let Some((_, value)) = NAMED_COLORS.iter().find(|(name, _)| *name == lower) {
+    if let Some(value) = named_color(&lower) {
         let channel = |shift: u32| ((value >> shift) & 0xFF) as u8;
         return Some(Color::rgb(channel(16), channel(8), channel(0)));
     }

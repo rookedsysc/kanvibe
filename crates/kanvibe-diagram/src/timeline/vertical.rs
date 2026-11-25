@@ -48,7 +48,8 @@ pub(super) fn render(timeline: &Timeline, context: &RenderContext) -> Scene {
     let heights = measure(fonts, timeline);
     let mut canvas = TimelineCanvas {
         fonts,
-        colors: super::colors::TimelineColors::for_theme(context.palette.theme),
+        colors: super::colors::TimelineColors::for_theme(context.palette.theme)
+            .with_theme_variables(&context.theme_variables),
         scene: Scene::default(),
         bounds: Bounds::EMPTY,
     };

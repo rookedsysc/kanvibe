@@ -127,7 +127,8 @@ pub fn render(definition: &str, context: &RenderContext) -> Result<Scene, Diagra
     let mut canvas = TreemapCanvas {
         fonts: context.fonts,
         config,
-        colors: TreemapColors::for_theme(context.palette.theme),
+        colors: TreemapColors::for_theme(context.palette.theme)
+            .with_theme_variables(&context.theme_variables),
         styles: read_class_styles(&document.classes),
         fill_scale: OrdinalScale::default(),
         label_scale: OrdinalScale::default(),

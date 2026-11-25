@@ -10,6 +10,7 @@ mod parse;
 use crate::scene::{Color, PathCommand, Point, Rotation, Scene, StrokeStyle, TextItem, polygon};
 use crate::text::{FontBook, FontWeight};
 use crate::theme::Theme;
+use crate::theme_variables::ThemeVariables;
 use crate::{DiagramError, RenderContext};
 
 use config::ChartConfig;
@@ -22,54 +23,84 @@ const ASCENT_EM: f64 = 1.069;
 /// Noto Sans x-height(1em 기준). `dominant-baseline: middle`은 x-height의 절반만큼 내린다
 const X_HEIGHT_RATIO: f64 = 0.536;
 
-/// 기준 SVG에서 읽은 사분면 차트 색
+/// 사분면 차트 색(quadrantDb `setThemeConfig`가 읽는 `quadrant*` 테마 변수)
 struct QuadrantPalette {
     quadrant_fills: [Color; 4],
     quadrant_text_fills: [Color; 4],
-    /// 제목·축·점 라벨(quadrant1TextFill)
-    primary_text: Color,
-    border: Color,
-    /// `quadrantPointFill`이 `hsl(…, NaN%)`로 무효라 SVG 루트의 `fill`을 물려받는다
+    title: Color,
+    x_axis_text: Color,
+    y_axis_text: Color,
+    point_text: Color,
+    external_border: Color,
+    internal_border: Color,
+    /// 기본 테마의 `quadrantPointFill`은 `hsl(…, NaN%)`로 무효라 SVG 루트의 `fill`(`textColor`)을 물려받는다
     point_fill: Color,
 }
 
+/// 앱 테마 기본값(기준 SVG에서 읽은 값). 테마 변수가 비었거나 색으로 읽히지 않을 때 쓴다
 fn palette_for(theme: Theme) -> QuadrantPalette {
-    match theme {
-        Theme::Light => QuadrantPalette {
-            quadrant_fills: [
-                Color::rgb(0xEC, 0xEC, 0xFF),
-                Color::rgb(0xF1, 0xF1, 0xFF),
-                Color::rgb(0xF6, 0xF6, 0xFF),
-                Color::rgb(0xFB, 0xFB, 0xFF),
-            ],
-            quadrant_text_fills: [
-                Color::rgb(0x13, 0x13, 0x00),
-                Color::rgb(0x0E, 0x0E, 0x00),
-                Color::rgb(0x09, 0x09, 0x00),
-                Color::rgb(0x04, 0x04, 0x00),
-            ],
-            primary_text: Color::rgb(0x13, 0x13, 0x00),
-            border: Color::rgb(199, 199, 241),
-            point_fill: Color::rgb(0x33, 0x33, 0x33),
-        },
-        Theme::Dark => QuadrantPalette {
-            quadrant_fills: [
-                Color::rgb(0x1F, 0x20, 0x20),
-                Color::rgb(0x24, 0x25, 0x25),
-                Color::rgb(0x29, 0x2A, 0x2A),
-                Color::rgb(0x2E, 0x2F, 0x2F),
-            ],
-            quadrant_text_fills: [
-                Color::rgb(0xE0, 0xDF, 0xDF),
-                Color::rgb(0xDB, 0xDA, 0xDA),
-                Color::rgb(0xD6, 0xD5, 0xD5),
-                Color::rgb(0xD1, 0xD0, 0xD0),
-            ],
-            primary_text: Color::rgb(0xE0, 0xDF, 0xDF),
-            border: Color::rgb(204, 204, 204),
-            point_fill: Color::rgb(0xCC, 0xCC, 0xCC),
-        },
+    let (fills, text_fills, border, root_fill) = match theme {
+        Theme::Light => (
+            [0xECECFF, 0xF1F1FF, 0xF6F6FF, 0xFBFBFF],
+            [0x131300, 0x0E0E00, 0x090900, 0x040400],
+            Color::rgb(199, 199, 241),
+            Color::rgb(0x33, 0x33, 0x33),
+        ),
+        Theme::Dark => (
+            [0x1F2020, 0x242525, 0x292A2A, 0x2E2F2F],
+            [0xE0DFDF, 0xDBDADA, 0xD6D5D5, 0xD1D0D0],
+            Color::rgb(204, 204, 204),
+            Color::rgb(0xCC, 0xCC, 0xCC),
+        ),
+    };
+    let primary_text = hex(text_fills[0]);
+    QuadrantPalette {
+        quadrant_fills: fills.map(hex),
+        quadrant_text_fills: text_fills.map(hex),
+        title: primary_text,
+        x_axis_text: primary_text,
+        y_axis_text: primary_text,
+        point_text: primary_text,
+        external_border: border,
+        internal_border: border,
+        point_fill: root_fill,
     }
+}
+
+fn hex(value: u32) -> Color {
+    Color::rgb((value >> 16) as u8, (value >> 8) as u8, value as u8)
+}
+
+/// quadrantDb `getQuadrantData`가 넘기는 테마 변수로 색을 덮는다. 색으로 읽히지 않는 값(기본 테마의 점 색)은
+/// SVG 속성이 무시되어 루트 `fill: textColor`를 물려받는다
+fn palette_with_variables(theme: Theme, variables: &ThemeVariables) -> QuadrantPalette {
+    let mut palette = palette_for(theme);
+    for index in 0..4 {
+        let number = index + 1;
+        variables.read_color(
+            &format!("quadrant{number}Fill"),
+            &mut palette.quadrant_fills[index],
+        );
+        variables.read_color(
+            &format!("quadrant{number}TextFill"),
+            &mut palette.quadrant_text_fills[index],
+        );
+    }
+    variables.read_color("quadrantTitleFill", &mut palette.title);
+    variables.read_color("quadrantXAxisTextFill", &mut palette.x_axis_text);
+    variables.read_color("quadrantYAxisTextFill", &mut palette.y_axis_text);
+    variables.read_color("quadrantPointTextFill", &mut palette.point_text);
+    variables.read_color(
+        "quadrantExternalBorderStrokeFill",
+        &mut palette.external_border,
+    );
+    variables.read_color(
+        "quadrantInternalBorderStrokeFill",
+        &mut palette.internal_border,
+    );
+    variables.read_color("textColor", &mut palette.point_fill);
+    variables.read_color("quadrantPointFill", &mut palette.point_fill);
+    palette
 }
 
 /// 사분면 영역(calculateSpace의 quadrantSpace)
@@ -101,7 +132,7 @@ struct ChartText<'a> {
 
 pub fn render(definition: &str, context: &RenderContext) -> Result<Scene, DiagramError> {
     let chart = parse::parse(definition)?;
-    let colors = palette_for(context.palette.theme);
+    let colors = palette_with_variables(context.palette.theme, &context.theme_variables);
     let layout = ChartLayout::new(&chart);
     let config = &chart.config;
     let mut scene = Scene {
@@ -111,22 +142,16 @@ pub fn render(definition: &str, context: &RenderContext) -> Result<Scene, Diagra
         items: Vec::new(),
     };
     draw_quadrants(&mut scene, context.fonts, &chart, &layout, &colors);
-    draw_borders(&mut scene, &layout.space, config, colors.border);
+    draw_borders(&mut scene, &layout.space, config, &colors);
     draw_points(&mut scene, context.fonts, &chart, &layout.space, &colors);
-    draw_axis_labels(
-        &mut scene,
-        context.fonts,
-        &chart,
-        &layout,
-        colors.primary_text,
-    );
+    draw_axis_labels(&mut scene, context.fonts, &chart, &layout, &colors);
     if layout.has_title {
         let title = ChartText {
             text: &chart.title,
             x: config.chart_width / 2.0,
             y: config.title_padding,
             font_size: config.title_font_size,
-            color: colors.primary_text,
+            color: colors.title,
             vertical: VerticalAnchor::Top,
             is_centered: true,
             degrees: 0.0,
@@ -248,21 +273,41 @@ fn draw_quadrants(
 }
 
 /// 바깥 테두리 네 줄(기본 굵기 2)과 가운데 십자(기본 굵기 1)
-fn draw_borders(scene: &mut Scene, space: &QuadrantSpace, config: &ChartConfig, color: Color) {
+fn draw_borders(
+    scene: &mut Scene,
+    space: &QuadrantSpace,
+    config: &ChartConfig,
+    colors: &QuadrantPalette,
+) {
     let (external, internal) = (config.external_border_width, config.internal_border_width);
     let half = external / 2.0;
     let (left, top) = (space.left, space.top);
     let (right, bottom) = (left + space.width, top + space.height);
     let (middle_x, middle_y) = (left + space.width / 2.0, top + space.height / 2.0);
+    let (outer, inner) = (colors.external_border, colors.internal_border);
     let lines = [
-        (left - half, top, right + half, top, external),
-        (right, top + half, right, bottom - half, external),
-        (left - half, bottom, right + half, bottom, external),
-        (left, top + half, left, bottom - half, external),
-        (middle_x, top + half, middle_x, bottom - half, internal),
-        (left + half, middle_y, right - half, middle_y, internal),
+        (left - half, top, right + half, top, external, outer),
+        (right, top + half, right, bottom - half, external, outer),
+        (left - half, bottom, right + half, bottom, external, outer),
+        (left, top + half, left, bottom - half, external, outer),
+        (
+            middle_x,
+            top + half,
+            middle_x,
+            bottom - half,
+            internal,
+            inner,
+        ),
+        (
+            left + half,
+            middle_y,
+            right - half,
+            middle_y,
+            internal,
+            inner,
+        ),
     ];
-    for (x1, y1, x2, y2, width) in lines {
+    for (x1, y1, x2, y2, width, color) in lines {
         let commands = vec![
             PathCommand::MoveTo(Point::new(x1, y1)),
             PathCommand::LineTo(Point::new(x2, y2)),
@@ -295,7 +340,7 @@ fn draw_points(
             x,
             y: y + chart.config.point_text_padding,
             font_size: chart.config.point_label_font_size,
-            color: colors.primary_text,
+            color: colors.point_text,
             vertical: VerticalAnchor::Top,
             is_centered: true,
             degrees: 0.0,
@@ -333,15 +378,15 @@ fn draw_axis_labels(
     fonts: &FontBook,
     chart: &QuadrantChart,
     layout: &ChartLayout,
-    color: Color,
+    colors: &QuadrantPalette,
 ) {
     if layout.has_x_axis {
-        for label in x_axis_labels(chart, layout, color) {
+        for label in x_axis_labels(chart, layout, colors.x_axis_text) {
             push_chart_text(scene, fonts, &label);
         }
     }
     if layout.has_y_axis {
-        for label in y_axis_labels(chart, &layout.space, color) {
+        for label in y_axis_labels(chart, &layout.space, colors.y_axis_text) {
             push_chart_text(scene, fonts, &label);
         }
     }

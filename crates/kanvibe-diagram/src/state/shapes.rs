@@ -14,6 +14,7 @@ use crate::scene::{
 };
 use crate::text::FontBook;
 use crate::theme::{Palette, Theme, hsl};
+use crate::theme_variables::ThemeVariables;
 
 /// 상태 상자 padding(dataFetcher의 nodeData.padding)
 pub const STATE_PADDING: f64 = 8.0;
@@ -63,10 +64,14 @@ pub struct StateColors {
     /// HTML 라벨의 `.nodeLabel`·`.cluster-label` 색
     pub html_label: Color,
     pub start: Color,
+    /// 끝 원 테두리와 fork·join 막대(`lineColor`)
+    pub line: Color,
     pub end_inner: Color,
     pub note_fill: Color,
     pub note_stroke: Color,
     pub note_text: Color,
+    /// 복합 상태 바깥 상자(`.statediagram-cluster rect`의 compositeTitleBackground)
+    pub composite_title: Color,
     pub composite_inner: Color,
     pub composite_alt_inner: Color,
     pub divider_fill: Color,
@@ -78,10 +83,12 @@ impl StateColors {
             Theme::Light => Self {
                 html_label: Color::rgb(0x13, 0x13, 0x00),
                 start: Color::rgb(0x33, 0x33, 0x33),
+                line: Color::rgb(0x33, 0x33, 0x33),
                 end_inner: Color::rgb(0x93, 0x70, 0xDB),
                 note_fill: Color::rgb(0xFF, 0xF5, 0xAD),
                 note_stroke: Color::rgb(0xAA, 0xAA, 0x33),
                 note_text: Color::rgb(0, 0, 0),
+                composite_title: Color::rgb(0xEC, 0xEC, 0xFF),
                 composite_inner: Color::rgb(255, 255, 255),
                 composite_alt_inner: Color::rgb(0xF0, 0xF0, 0xF0),
                 divider_fill: Color::rgb(0xF0, 0xF0, 0xF0),
@@ -89,15 +96,63 @@ impl StateColors {
             Theme::Dark => Self {
                 html_label: Color::rgb(0xE0, 0xDF, 0xDF),
                 start: Color::rgb(0xF4, 0xF4, 0xF4),
+                line: Color::rgb(211, 211, 211),
                 end_inner: Color::rgb(0xCC, 0xCC, 0xCC),
                 note_fill: hsl(180.0, 1.587_301_587_3, 28.352_941_176_5),
                 note_stroke: hsl(180.0, 0.0, 18.352_941_176_5),
                 note_text: Color::rgb(184, 182, 182),
+                composite_title: Color::rgb(0x1F, 0x20, 0x20),
                 composite_inner: Color::rgb(0x33, 0x33, 0x33),
                 composite_alt_inner: Color::rgb(0x55, 0x55, 0x55),
                 divider_fill: Color::rgb(0x55, 0x55, 0x55),
             },
         }
+    }
+
+    /// state styles.js와 모양 함수(stateStart·stateEnd·forkJoin·note)가 읽는 테마 변수
+    pub fn with_theme_variables(mut self, variables: &ThemeVariables) -> Self {
+        variables.read_color("stateLabelColor", &mut self.html_label);
+        variables.read_color("specialStateColor", &mut self.start);
+        variables.read_color("lineColor", &mut self.line);
+        // stateEnd 안쪽 원은 `stateBorder ?? nodeBorder`. sanitizeDirective가 stateBorder를 지워 nodeBorder가 된다
+        if let Some(color) = first_color(variables, &["stateBorder", "nodeBorder"]) {
+            self.end_inner = color;
+        }
+        variables.read_color("noteBkgColor", &mut self.note_fill);
+        variables.read_color("noteBorderColor", &mut self.note_stroke);
+        variables.read_color("noteTextColor", &mut self.note_text);
+        variables.read_color("compositeTitleBackground", &mut self.composite_title);
+        if let Some(color) = first_color(variables, &["compositeBackground", "background"]) {
+            self.composite_inner = color;
+        }
+        // `altBackground ? altBackground : "#efefef"`
+        let alt_background = match variables.text("altBackground") {
+            Some(text) if text.is_empty() => Some(Color::rgb(0xEF, 0xEF, 0xEF)),
+            Some(text) => crate::theme_variables::parse_theme_color(&text),
+            None => None,
+        };
+        if let Some(color) = alt_background {
+            self.composite_alt_inner = color;
+            self.divider_fill = color;
+        }
+        self
+    }
+
+    /// 복합 상태 그리기 함수는 [`FlowRender`]만 받는다. 상태 다이어그램은 flowchart 클러스터 색을 쓰지 않으므로
+    /// 테마 변수로 정한 안쪽 상자 색을 그 자리에 실어 보낸다([`Self::from_palette`]가 되읽는다)
+    pub fn carry_in_palette(&self, palette: &mut Palette, mode: LabelMode) {
+        palette.cluster_fill = self.composite_inner;
+        palette.cluster_stroke = self.composite_alt_inner;
+        palette.cluster_text = self.label(palette, mode);
+    }
+
+    /// [`Self::carry_in_palette`]로 실은 색
+    fn from_palette(palette: &Palette) -> (Color, Color, Color) {
+        (
+            palette.cluster_fill,
+            palette.cluster_stroke,
+            palette.cluster_text,
+        )
     }
 
     /// 상태·클러스터 라벨 색. SVG 글자 라벨은 루트의 `fill`(palette.text)을 물려받는다
@@ -367,8 +422,8 @@ fn paint_titled_cluster(
     frame: &BoundaryBox,
     is_alt: bool,
 ) {
-    let colors = StateColors::for_theme(render.palette.theme);
     let palette = render.palette;
+    let (composite_inner, composite_alt_inner, _) = StateColors::from_palette(palette);
     let x = frame.center.x - frame.width / 2.0;
     let y = frame.center.y - frame.height / 2.0;
     let stroke = solid(flow.style.stroke.unwrap_or(palette.node_stroke), 1.0);
@@ -379,9 +434,9 @@ fn paint_titled_cluster(
     let inner_y = y + label.height + 2.0;
     let inner_height = frame.height - label.height - 6.0;
     let inner_fill = if is_alt {
-        colors.composite_alt_inner
+        composite_alt_inner
     } else {
-        colors.composite_inner
+        composite_inner
     };
     let inner = ((x, inner_y, frame.width, inner_height), 0.0);
     push_neo_rect(group, inner, inner_fill, stroke, &flow.style);
@@ -396,16 +451,13 @@ pub fn push_cluster_label(
     frame: &BoundaryBox,
     y: f64,
 ) {
-    let colors = StateColors::for_theme(render.palette.theme);
+    let (_, _, label_color) = StateColors::from_palette(render.palette);
     let label = &flow.label;
     let label_top = match label.mode {
         LabelMode::Html => y + 1.0,
         LabelMode::SvgText => y - 2.0,
     };
-    let color = flow
-        .style
-        .text_color
-        .unwrap_or(colors.label(render.palette, label.mode));
+    let color = flow.style.text_color.unwrap_or(label_color);
     let left = frame.center.x - label.width / 2.0;
     push_label(render, group, label, left, label_top, color);
 }
@@ -417,7 +469,7 @@ pub fn paint_divider(
     _flow: &FlowNode,
     frame: &BoundaryBox,
 ) {
-    let colors = StateColors::for_theme(render.palette.theme);
+    let (_, divider_fill, _) = StateColors::from_palette(render.palette);
     let x = frame.center.x - frame.width / 2.0;
     let y = frame.center.y - frame.height / 2.0;
     let stroke = StrokeStyle {
@@ -428,7 +480,7 @@ pub fn paint_divider(
     push_rect(
         group,
         (x, y, frame.width, frame.height),
-        colors.divider_fill,
+        divider_fill,
         stroke,
         0.0,
     );
@@ -444,4 +496,13 @@ pub fn paint_note_group(
     let x = frame.center.x - frame.width / 2.0;
     let y = frame.center.y - frame.height / 2.0;
     group.bounds.include_rect(x, y, frame.width, frame.height);
+}
+
+/// JS `a || b || …`: 처음으로 비지 않은 변수의 색
+pub(super) fn first_color(variables: &ThemeVariables, keys: &[&str]) -> Option<Color> {
+    let text = keys
+        .iter()
+        .filter_map(|key| variables.text(key))
+        .find(|text| !text.is_empty())?;
+    crate::theme_variables::parse_theme_color(&text)
 }

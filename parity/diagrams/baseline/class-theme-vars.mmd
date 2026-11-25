@@ -1,0 +1,16 @@
+%%{init: {"themeVariables": {"mainBkg": "#fde68a", "nodeBorder": "#b45309", "classText": "#7c2d12", "lineColor": "#dc2626", "noteBkgColor": "#dbeafe", "noteBorderColor": "#1d4ed8", "noteTextColor": "#1e3a8a", "edgeLabelBackground": "#fce7f3", "textColor": "#065f46", "titleColor": "#4c1d95"}}}%%
+classDiagram
+    direction LR
+    class Shape {
+        <<abstract>>
+        +area()* double
+        +count()$ int
+    }
+    class Empty
+    Shape <|-- Circle
+    Circle --> Circle : self
+    Circle ..|> Drawable
+    Shape "1" o-- "*" Point : vertices
+    Circle --() Printable
+    note for Circle "round<br>shape"
+    note "free note"

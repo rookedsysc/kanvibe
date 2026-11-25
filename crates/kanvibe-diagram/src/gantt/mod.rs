@@ -123,7 +123,8 @@ fn render_at(definition: &str, context: &RenderContext, today: i64) -> Result<Sc
     let layout = GanttLayout {
         fonts: context.fonts,
         document: &document,
-        colors: GanttColors::for_theme(context.palette.theme),
+        colors: GanttColors::for_theme(context.palette.theme)
+            .with_theme_variables(&context.theme_variables),
         categories,
         category_rows,
         task_count: tasks.len(),

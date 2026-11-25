@@ -13,6 +13,7 @@ mod parser;
 use crate::scene::{Color, PathCommand, Point, Rotation, Scene, StrokeStyle, TextItem, ellipse};
 use crate::text::{FontBook, FontWeight};
 use crate::theme::Theme;
+use crate::theme_variables::ThemeVariables;
 use crate::{DiagramError, RenderContext, directive};
 
 use parser::WardleyMap;
@@ -26,7 +27,8 @@ const DESCENT_EM: f64 = 0.293;
 const REGULAR_X_HEIGHT_EM: f64 = 0.536;
 const BOLD_X_HEIGHT_EM: f64 = 0.547;
 
-/// getTheme()이 테마 변수에서 고른 색
+/// getTheme()이 테마 변수에서 고른 색. 렌더러가 요소 속성으로 넣고, 기준 SVG에서 styles.ts 규칙은 이 색을 바꾸지 않는다
+/// (설명 동그라미·상자는 `annotationFill`이 아니라 속성의 흰색이 보인다)
 #[derive(Clone, Copy)]
 struct WardleyColors {
     background: Color,
@@ -34,6 +36,7 @@ struct WardleyColors {
     axis_text: Color,
     component_fill: Color,
     component_stroke: Color,
+    component_label: Color,
     link: Color,
     evolution: Color,
 }
@@ -41,26 +44,55 @@ struct WardleyColors {
 impl WardleyColors {
     fn for_theme(theme: Theme) -> Self {
         let light_grey = Color::rgb(211, 211, 211);
-        match theme {
-            Theme::Light => Self {
-                background: Color::rgb(255, 255, 255),
-                axis: Color::rgb(0x33, 0x33, 0x33),
-                axis_text: Color::rgb(0x13, 0x13, 0x00),
-                component_fill: Color::rgb(255, 255, 255),
-                component_stroke: Color::rgb(0x33, 0x33, 0x33),
-                link: Color::rgb(0x33, 0x33, 0x33),
-                evolution: Color::rgb(0xDC, 0x35, 0x45),
-            },
-            Theme::Dark => Self {
-                background: Color::rgb(0x33, 0x33, 0x33),
-                axis: light_grey,
-                axis_text: Color::rgb(0xE0, 0xDF, 0xDF),
-                component_fill: Color::rgb(0x1F, 0x20, 0x20),
-                component_stroke: light_grey,
-                link: light_grey,
-                evolution: Color::rgb(0xFF, 0x6B, 0x6B),
-            },
+        let (background, axis, axis_text, component_fill, evolution) = match theme {
+            Theme::Light => (
+                Color::rgb(255, 255, 255),
+                Color::rgb(0x33, 0x33, 0x33),
+                Color::rgb(0x13, 0x13, 0x00),
+                Color::rgb(255, 255, 255),
+                Color::rgb(0xDC, 0x35, 0x45),
+            ),
+            Theme::Dark => (
+                Color::rgb(0x33, 0x33, 0x33),
+                light_grey,
+                Color::rgb(0xE0, 0xDF, 0xDF),
+                Color::rgb(0x1F, 0x20, 0x20),
+                Color::rgb(0xFF, 0x6B, 0x6B),
+            ),
+        };
+        Self {
+            background,
+            axis,
+            axis_text,
+            component_fill,
+            component_stroke: axis,
+            component_label: axis_text,
+            link: axis,
+            evolution,
         }
+    }
+
+    /// wardleyRenderer.ts `getTheme`: `themeVariables.wardley.*`가 없으면 `background`·`primaryTextColor`로 물러난다
+    fn read(theme: Theme, variables: &ThemeVariables) -> Self {
+        let mut colors = Self::for_theme(theme);
+        variables.read_color("background", &mut colors.background);
+        for target in [&mut colors.axis_text, &mut colors.component_label] {
+            variables.read_color("primaryTextColor", target);
+        }
+        let wardley = variables.section("wardley");
+        for (key, target) in [
+            ("backgroundColor", &mut colors.background),
+            ("axisColor", &mut colors.axis),
+            ("axisTextColor", &mut colors.axis_text),
+            ("componentFill", &mut colors.component_fill),
+            ("componentStroke", &mut colors.component_stroke),
+            ("componentLabelColor", &mut colors.component_label),
+            ("linkStroke", &mut colors.link),
+            ("evolutionStroke", &mut colors.evolution),
+        ] {
+            wardley.read_color(key, target);
+        }
+        colors
     }
 }
 
@@ -213,7 +245,7 @@ pub fn render(definition: &str, context: &RenderContext) -> Result<Scene, Diagra
     let frame = Frame { width, height };
     let mut painter = Painter {
         fonts: context.fonts,
-        colors: WardleyColors::for_theme(context.palette.theme),
+        colors: WardleyColors::read(context.palette.theme, &context.theme_variables),
         scene: Scene {
             width,
             height,

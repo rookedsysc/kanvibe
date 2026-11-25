@@ -1,8 +1,9 @@
 //! parity/diagrams/baseline/*.mmd를 모바일 경로(폭 800, 라이트·다크)로 그려 비교용 PNG를 남긴다.
 //!
 //! `cargo run -p kanvibe-diagram --example render_parity -- <출력 디렉터리> [id ...]`
-//! 모바일 경로(HTML 라벨, `themeVariables` 막음)는 `<id>--<theme>.png`, 데스크톱 경로(SVG 글자 라벨, `themeVariables` 씀)는
-//! `<id>--desktop--<theme>.png`로 남긴다.
+//! 모바일 경로(HTML 라벨, `themeVariables` 막음)는 모바일 계약의 JPEG를 거쳐 `<id>--<theme>.png`, 데스크톱 경로(SVG 글자
+//! 라벨, `themeVariables` 씀)는 손실 없이 `<id>--desktop--<theme>.png`로 남긴다. 기준 이미지도 같은 방식으로 찍는다
+//! (모바일은 TS 워커 JPEG, 데스크톱은 같은 프레임의 PNG).
 //! 출력은 `parity/tools/screens/diff.py --dirs parity/diagrams/baseline <출력 디렉터리>`로 비교한다.
 
 use std::path::{Path, PathBuf};
@@ -71,14 +72,25 @@ fn render_source(
         let background = Palette::for_theme(theme).page_background;
         let (pixmap, layout) =
             raster::rasterize_mobile(&scene, fonts, background, PARITY_WIDTH).ok_or("픽스맵")?;
-        std::fs::write(
-            out_dir.join(format!("{id}--{name}.png")),
-            raster::encode_png(&pixmap)?,
-        )?;
+        let png = match policy {
+            ThemeVariablesPolicy::Ignore => jpeg_round_trip(&pixmap)?,
+            ThemeVariablesPolicy::Apply => raster::encode_png(&pixmap)?,
+        };
+        std::fs::write(out_dir.join(format!("{id}--{name}.png")), png)?;
         println!(
             "{id}--{name}: {PARITY_WIDTH}x{} natural {}",
             layout.image_height, layout.natural_width
         );
     }
     Ok(())
+}
+
+/// 모바일 계약이 실제로 보내는 JPEG(`raster::encode_jpeg`)를 한 번 거친 그림. 기준 이미지도 TS 워커의 JPEG라
+/// JPEG끼리 견준다
+fn jpeg_round_trip(pixmap: &tiny_skia::Pixmap) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    let jpeg = raster::encode_jpeg(pixmap)?;
+    let decoded = image::load_from_memory_with_format(&jpeg, image::ImageFormat::Jpeg)?.to_rgb8();
+    let mut png = Vec::new();
+    decoded.write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)?;
+    Ok(png)
 }

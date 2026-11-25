@@ -9,6 +9,7 @@ use crate::directive::{diagram_body, read_config};
 use crate::scene::{Color, Point, Scene, StrokeStyle, TextItem, polygon};
 use crate::text::{FontBook, FontWeight};
 use crate::theme::Theme;
+use crate::theme_variables::ThemeVariables;
 use crate::{DiagramError, RenderContext};
 
 /// Noto Sans x-height(1em 기준). `dominant-baseline: middle`은 기준선을 x-height 절반만큼 내린다
@@ -207,25 +208,58 @@ fn resolve_block(statement: BlockStatement, next_bit: u64) -> Result<PacketBlock
     })
 }
 
-/// packet/styles.ts 기본값. dark 테마는 themeVariables.packet이 글자·테두리·채움을 바꾼다
+/// packet/styles.ts: `cleanAndMerge(기본값, themeVariables.packet)`. 기본값은 검정 글자·테두리와 `#efefef` 채움이고,
+/// dark·forest 테마만 `packet` 묶음을 둔다
 struct PacketColors {
-    text: Color,
+    start_byte: Color,
+    end_byte: Color,
+    label: Color,
+    title: Color,
     block_fill: Color,
     block_stroke: Color,
+    block_stroke_width: f64,
 }
 
-fn colors_for(theme: Theme) -> PacketColors {
-    match theme {
-        Theme::Light => PacketColors {
-            text: Color::rgb(0, 0, 0),
+impl PacketColors {
+    fn defaults() -> Self {
+        let black = Color::rgb(0, 0, 0);
+        Self {
+            start_byte: black,
+            end_byte: black,
+            label: black,
+            title: black,
             block_fill: Color::rgb(0xEF, 0xEF, 0xEF),
-            block_stroke: Color::rgb(0, 0, 0),
-        },
-        Theme::Dark => PacketColors {
-            text: Color::rgb(0xE0, 0xDF, 0xDF),
-            block_fill: Color::rgb(0x33, 0x33, 0x33),
-            block_stroke: Color::rgb(0xE0, 0xDF, 0xDF),
-        },
+            block_stroke: black,
+            block_stroke_width: 1.0,
+        }
+    }
+
+    /// 테마 변수가 비어 있으면(테스트용 기본값) 앱 테마의 `packet` 묶음 값을 쓴다
+    fn read(theme: Theme, variables: &ThemeVariables) -> Self {
+        let mut colors = Self::defaults();
+        if variables.text("primaryColor").is_none() && theme == Theme::Dark {
+            let text = Color::rgb(0xE0, 0xDF, 0xDF);
+            colors = Self {
+                start_byte: text,
+                end_byte: text,
+                label: text,
+                title: text,
+                block_fill: Color::rgb(0x33, 0x33, 0x33),
+                block_stroke: text,
+                ..colors
+            };
+        }
+        let packet = variables.section("packet");
+        packet.read_color("startByteColor", &mut colors.start_byte);
+        packet.read_color("endByteColor", &mut colors.end_byte);
+        packet.read_color("labelColor", &mut colors.label);
+        packet.read_color("titleColor", &mut colors.title);
+        packet.read_color("blockFillColor", &mut colors.block_fill);
+        packet.read_color("blockStrokeColor", &mut colors.block_stroke);
+        if let Some(width) = packet.css_length("blockStrokeWidth") {
+            colors.block_stroke_width = width;
+        }
+        colors
     }
 }
 
@@ -236,7 +270,7 @@ pub fn render(definition: &str, context: &RenderContext) -> Result<Scene, Diagra
     if packet.title.is_none() {
         packet.title = tree.title;
     }
-    let colors = colors_for(context.palette.theme);
+    let colors = PacketColors::read(context.palette.theme, &context.theme_variables);
     let total_row_height = config.row_height + config.padding_y;
     let has_title = packet
         .title
@@ -261,7 +295,12 @@ pub fn render(definition: &str, context: &RenderContext) -> Result<Scene, Diagra
     }
     if let Some(title) = packet.title.filter(|title| !title.is_empty()) {
         let center = Point::new(width / 2.0, height - total_row_height / 2.0);
-        let text = painter.anchored_text(title, center, TITLE_FONT_SIZE, TextAnchor::Middle);
+        let text = painter.anchored_text(
+            title,
+            center,
+            (TITLE_FONT_SIZE, colors.title),
+            TextAnchor::Middle,
+        );
         scene.push_text(middle_baseline(text));
     }
     Ok(scene)
@@ -302,7 +341,7 @@ impl WordPainter<'_> {
             ];
             let stroke = StrokeStyle {
                 color: self.colors.block_stroke,
-                width: 1.0,
+                width: self.colors.block_stroke_width,
                 dash: Vec::new(),
             };
             scene.push_path(
@@ -314,7 +353,7 @@ impl WordPainter<'_> {
             let label = self.anchored_text(
                 block.label.clone(),
                 center,
-                LABEL_FONT_SIZE,
+                (LABEL_FONT_SIZE, self.colors.label),
                 TextAnchor::Middle,
             );
             scene.push_text(middle_baseline(label));
@@ -335,15 +374,18 @@ impl WordPainter<'_> {
         if block.start == block.end {
             let center = Point::new(x + width / 2.0, baseline);
             let text = block.start.to_string();
-            scene.push_text(self.anchored_text(text, center, BYTE_FONT_SIZE, TextAnchor::Middle));
+            let byte = (BYTE_FONT_SIZE, self.colors.start_byte);
+            scene.push_text(self.anchored_text(text, center, byte, TextAnchor::Middle));
             return;
         }
         let start = block.start.to_string();
         let start_point = Point::new(x, baseline);
-        scene.push_text(self.anchored_text(start, start_point, BYTE_FONT_SIZE, TextAnchor::Start));
+        let start_byte = (BYTE_FONT_SIZE, self.colors.start_byte);
+        scene.push_text(self.anchored_text(start, start_point, start_byte, TextAnchor::Start));
         let end = block.end.to_string();
         let end_point = Point::new(x + width, baseline);
-        scene.push_text(self.anchored_text(end, end_point, BYTE_FONT_SIZE, TextAnchor::End));
+        let end_byte = (BYTE_FONT_SIZE, self.colors.end_byte);
+        scene.push_text(self.anchored_text(end, end_point, end_byte, TextAnchor::End));
     }
 
     /// `text-anchor`에 맞춰 글자 왼쪽을 정한다. `point.y`는 기준선이다
@@ -351,7 +393,7 @@ impl WordPainter<'_> {
         &self,
         text: String,
         point: Point,
-        font_size: f64,
+        (font_size, color): (f64, Color),
         anchor: TextAnchor,
     ) -> TextItem {
         let advance = self
@@ -369,7 +411,7 @@ impl WordPainter<'_> {
             baseline: point.y,
             font_size,
             weight: FontWeight::Regular,
-            color: self.colors.text,
+            color,
             rotation: None,
         }
     }

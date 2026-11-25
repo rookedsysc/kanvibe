@@ -27,6 +27,7 @@ mod ishikawa;
 mod journey;
 mod kanban;
 pub mod label;
+pub mod mermaid_theme;
 mod mindmap;
 mod packet;
 mod pie;
@@ -43,6 +44,7 @@ pub mod service;
 mod state;
 pub mod text;
 pub mod theme;
+pub mod theme_css;
 pub mod theme_variables;
 mod timeline;
 mod tree_view;
@@ -81,7 +83,7 @@ pub struct RenderContext<'a> {
     pub fonts: &'a FontBook,
     pub palette: &'a Palette,
     pub label_mode: LabelMode,
-    /// 정의가 덮은 테마 변수. [`ThemeVariablesPolicy::Ignore`]로 그리면 비어 있다
+    /// Mermaid가 다이어그램에 넘기는 `config.themeVariables`. [`ThemeVariablesPolicy::Ignore`]면 앱 테마 기본값이다
     pub theme_variables: ThemeVariables,
 }
 
@@ -179,8 +181,11 @@ pub fn render_scene(
     fonts: &FontBook,
 ) -> Result<Scene, DiagramError> {
     let palette = Palette::for_theme(theme);
-    let theme_variables =
-        ThemeVariables::read(&directive::read_config(definition), theme_variables_policy);
+    let theme_variables = ThemeVariables::read(
+        &directive::read_config(definition),
+        theme_variables_policy,
+        theme,
+    )?;
     let context = RenderContext {
         fonts,
         palette: &palette,

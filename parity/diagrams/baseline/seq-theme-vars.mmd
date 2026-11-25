@@ -1,0 +1,20 @@
+%%{init: {"themeVariables": {"actorBkg": "#fde68a", "actorBorder": "#b45309", "actorTextColor": "#7c2d12", "actorLineColor": "#2563eb", "signalColor": "#dc2626", "signalTextColor": "#065f46", "noteBkgColor": "#dbeafe", "noteBorderColor": "#1d4ed8", "noteTextColor": "#1e3a8a", "labelBoxBkgColor": "#fce7f3", "labelBoxBorderColor": "#be185d", "labelTextColor": "#831843", "loopTextColor": "#4c1d95", "activationBkgColor": "#bbf7d0", "activationBorderColor": "#15803d", "sequenceNumberColor": "#fef08a"}}}%%
+sequenceDiagram
+    autonumber
+    participant M as Mobile
+    participant D as Desktop
+    actor U as User
+    U->>M: Open chat
+    M->>D: POST /api/mobile/diagrams/render
+    activate D
+    D-->>M: JPEG image
+    deactivate D
+    Note right of D: cached for reuse
+    alt syntax error
+        D--xM: 422
+    else ok
+        M-)U: Show diagram
+    end
+    loop every message
+        M->>M: Split mermaid blocks
+    end

@@ -1,0 +1,23 @@
+---
+config:
+  theme: base
+  themeVariables:
+    primaryColor: '#BB2528'
+    primaryTextColor: '#ffffff'
+    primaryBorderColor: '#7C0000'
+    lineColor: '#F8B229'
+    secondaryColor: '#006100'
+    tertiaryColor: '#fff4dd'
+---
+erDiagram
+    PROJECT ||--o{ TASK : contains
+    TASK ||--o{ NOTIFICATION : emits
+    PROJECT {
+        string id PK
+        string name
+    }
+    TASK {
+        string id PK
+        string project_id FK
+        string status
+    }

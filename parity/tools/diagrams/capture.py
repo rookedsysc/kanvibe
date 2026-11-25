@@ -6,7 +6,7 @@ JPEG를 받고, 픽셀 비교용 PNG(<id>--<theme>.png)와 좌표 확인용 SVG(
 데스크톱 화면(AiSessionMessageContent)은 워커와 다른 설정으로 `mermaid.initialize`를 부른다: `htmlLabels: false`(SVG 글자
 라벨)를 주고 `secure` 목록을 바꾸지 않아 정의의 `themeVariables`·`theme`·`themeCSS`가 먹는다. 그래서 빌드된 워커 번들의
 initialize 인자만 데스크톱 설정으로 바꾼 사본을 임시 앱에 두고 `<id>--desktop--<theme>`를 그 사본으로 찍는다.
-크기 맞춤과 JPEG 캡처는 모바일 경로와 같다.
+크기 맞춤과 프레임 캡처는 모바일 경로와 같지만, 데스크톱 화면에는 JPEG 단계가 없어 같은 프레임을 손실 없는 PNG로 받는다.
 Electron은 xvfb-run 아래에서 격리된 KANVIBE_APP_DATA_DIR·HOME·FONTCONFIG_FILE을 받은 자식 프로세스로만 돈다.
 필요한 것: xvfb-run, 저장소 node_modules(Electron), `pnpm build` 산출물(build/), Pillow.
 """
@@ -87,13 +87,15 @@ def prepare_build_dir(build_dir: Path) -> None:
     (renderer_dir / "diagram-worker.desktop.html").write_text(desktop_document, encoding="utf-8")
 
 
-def build_entries(only: set[str] | None, width: int) -> list[dict]:
+def build_entries(only: set[str] | None, width: int, configurations: tuple[str, ...]) -> list[dict]:
     entries = []
     for source in sorted(BASELINE_DIR.glob("*.mmd")):
         if only and source.stem not in only:
             continue
         definition = source.read_text(encoding="utf-8").strip()
         for configuration, entry_id in (("mobile", source.stem), ("desktop", f"{source.stem}--desktop")):
+            if configuration not in configurations:
+                continue
             entries.extend(
                 {"id": entry_id, "configuration": configuration, "definition": definition, "theme": theme, "width": width}
                 for theme in THEMES
@@ -117,13 +119,13 @@ def isolated_env(work_dir: Path, fontconfig_path: Path) -> dict:
 
 
 def convert_outputs(out_dir: Path) -> list[dict]:
-    """JPEG는 모바일이 받는 원본이고, 비교 도구가 PNG만 읽으므로 손실 없이 PNG로 옮긴다."""
+    """모바일 JPEG는 모바일이 받는 원본이고 데스크톱은 손실 없는 PNG다. 비교 도구가 PNG만 읽으므로 그대로 PNG로 옮긴다."""
     results = json.loads((out_dir / "results.json").read_text(encoding="utf-8"))
     for result in results:
         stem = f"{result['id']}--{result['theme']}"
-        jpeg = out_dir / f"{stem}.jpg"
-        if jpeg.exists():
-            with Image.open(jpeg) as image:
+        captured = next((out_dir / f"{stem}.{extension}" for extension in ("png", "jpg") if (out_dir / f"{stem}.{extension}").exists()), None)
+        if captured is not None:
+            with Image.open(captured) as image:
                 result["height"] = image.height
                 image.convert("RGB").save(BASELINE_DIR / f"{stem}.png")
         svg = out_dir / f"{stem}.svg"
@@ -137,6 +139,8 @@ def main() -> int:
     parser.add_argument("--only", help="쉼표로 구분한 다이어그램 id")
     parser.add_argument("--width", type=int, default=DEFAULT_WIDTH)
     parser.add_argument("--work-dir", default="/tmp/kanvibe-diagram-parity")
+    parser.add_argument("--configuration", choices=("mobile", "desktop", "both"), default="both",
+                        help="찍을 경로(모바일 JPEG, 데스크톱 PNG, 둘 다)")
     args = parser.parse_args()
 
     work_dir = Path(args.work_dir)
@@ -144,7 +148,8 @@ def main() -> int:
     shutil.rmtree(out_dir, ignore_errors=True)
     out_dir.mkdir(parents=True)
     only = set(args.only.split(",")) if args.only else None
-    entries = build_entries(only, args.width)
+    configurations = ("mobile", "desktop") if args.configuration == "both" else (args.configuration,)
+    entries = build_entries(only, args.width, configurations)
     job_path = work_dir / "job.json"
     job_path.write_text(json.dumps({"repoRoot": str(REPO_ROOT), "outDir": str(out_dir), "entries": entries}), encoding="utf-8")
 

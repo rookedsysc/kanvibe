@@ -1,0 +1,12 @@
+%%{init: {"themeVariables": {"archEdgeColor": "#dc2626", "archEdgeArrowColor": "#b45309", "archEdgeWidth": "5", "archGroupBorderColor": "#2563eb", "archGroupBorderWidth": "4px", "textColor": "#065f46"}}}%%
+architecture-beta
+    group api(cloud)[API]
+
+    service db(database)[Database] in api
+    service disk1(disk)[Storage] in api
+    service disk2(disk)[Storage] in api
+    service server(server)[Server] in api
+
+    db:L -- R:server
+    disk1:T -- B:server
+    disk2:T -- B:db

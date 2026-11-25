@@ -109,6 +109,9 @@ struct RowBox {
 
 struct TreePainter<'a> {
     context: &'a RenderContext<'a>,
+    /// treeView styles.ts: `themeVariables.treeView`의 `labelColor`·`lineColor`(기본 검정)
+    label_color: Color,
+    line_color: Color,
     scene: Scene,
     total_height: f64,
     total_width: f64,
@@ -145,7 +148,7 @@ impl TreePainter<'_> {
             baseline: y + height / 2.0 + X_HEIGHT_RATIO * FONT_SIZE / 2.0,
             font_size: FONT_SIZE,
             weight: FontWeight::Regular,
-            color: INK,
+            color: self.label_color,
             rotation: None,
         });
         let middle = y + height / 2.0;
@@ -164,7 +167,7 @@ impl TreePainter<'_> {
 
     fn push_line(&mut self, from: Point, to: Point) {
         let stroke = StrokeStyle {
-            color: INK,
+            color: self.line_color,
             width: LINE_THICKNESS,
             dash: Vec::new(),
         };
@@ -178,8 +181,14 @@ impl TreePainter<'_> {
 
 pub fn render(definition: &str, context: &RenderContext) -> Result<Scene, DiagramError> {
     let root = parse(definition)?;
+    let styles = context.theme_variables.section("treeView");
+    let (mut label_color, mut line_color) = (INK, INK);
+    styles.read_color("labelColor", &mut label_color);
+    styles.read_color("lineColor", &mut line_color);
     let mut painter = TreePainter {
         context,
+        label_color,
+        line_color,
         scene: Scene::default(),
         total_height: 0.0,
         total_width: 0.0,

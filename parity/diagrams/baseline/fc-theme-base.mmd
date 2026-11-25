@@ -1,0 +1,20 @@
+---
+config:
+  theme: base
+  themeVariables:
+    primaryColor: '#BB2528'
+    primaryTextColor: '#ffffff'
+    primaryBorderColor: '#7C0000'
+    lineColor: '#F8B229'
+    secondaryColor: '#006100'
+    tertiaryColor: '#fff4dd'
+---
+flowchart TD
+  subgraph client [Mobile client]
+    UI[Chat view] --> Req[Render request]
+  end
+  subgraph desktop [Desktop]
+    Route[HTTP route] --> Worker[Diagram worker]
+  end
+  Req --> Route
+  Worker --> UI

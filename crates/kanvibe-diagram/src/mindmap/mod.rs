@@ -176,7 +176,11 @@ fn draw_edges(
 ) {
     for &(parent, child) in edges {
         let (start, end) = edge_endpoints(placed[parent].center, placed[child].center);
-        let colors = SectionColors::for_node(context.palette.theme, nodes[child].section);
+        let colors = SectionColors::for_node_with_variables(
+            context.palette.theme,
+            nodes[child].section,
+            &context.theme_variables,
+        );
         let stroke = StrokeStyle {
             color: colors.fill,
             width: edge_width(nodes[parent].level + 1),
@@ -188,7 +192,11 @@ fn draw_edges(
 }
 
 fn draw_node(scene: &mut Scene, node: &MindmapNode, placed: &PlacedNode, context: &RenderContext) {
-    let colors = SectionColors::for_node(context.palette.theme, node.section);
+    let colors = SectionColors::for_node_with_variables(
+        context.palette.theme,
+        node.section,
+        &context.theme_variables,
+    );
     let center = placed.center;
     let outline = offset_commands(&placed.geometry.outline, center);
     scene.push_path(outline, Some(colors.fill), None);

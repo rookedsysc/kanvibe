@@ -34,7 +34,8 @@ const SECTION_COUNT: usize = 11;
 pub(crate) fn parse(definition: &str) -> Result<Vec<MindmapNode>, DiagramError> {
     let mut nodes: Vec<MindmapNode> = Vec::new();
     let mut base_level: usize = 0;
-    let mut lines = definition.lines().filter(|line| !is_skipped(line));
+    let body = crate::directive::diagram_body(definition);
+    let mut lines = body.lines().filter(|line| !is_skipped(line));
     let header = lines.next().unwrap_or_default();
     if header.trim() != "mindmap" {
         return Err(DiagramError::Syntax("mindmap 머리줄".to_string()));

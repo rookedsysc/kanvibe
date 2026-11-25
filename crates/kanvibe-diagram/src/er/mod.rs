@@ -16,8 +16,10 @@ use self::unified::{DiagramTitle, UnifiedGraph, render_unified, rough_pen};
 use crate::flowchart::parser::Stroke;
 use crate::flowchart::{ElementStyle, FlowEdge, FlowNode, FlowRender};
 use crate::label::{FONT_SIZE, LabelBox, measure_label, measure_label_with_font_size};
+use crate::mermaid_theme::khroma::fade_text;
 use crate::scene::{Color, Scene};
 use crate::theme::{Palette, Theme, hsl};
+use crate::theme_variables::{ThemeVariables, parse_theme_color};
 use crate::{DiagramError, LabelMode, RenderContext};
 
 const NODE_SPACING: f64 = 140.0;
@@ -33,14 +35,18 @@ pub fn render(definition: &str, context: &RenderContext) -> Result<Scene, Diagra
             crate::MAX_EDGES
         )));
     }
-    let palette = er_palette(context.palette, context.label_mode);
+    let palette = er_palette(
+        context.palette,
+        context.label_mode,
+        &context.theme_variables,
+    );
     let render = FlowRender {
         fonts: context.fonts,
         palette: &palette,
     };
     let graph = UnifiedGraph {
         direction: diagram.direction,
-        nodes: entity_nodes(&diagram, context),
+        nodes: entity_nodes(&diagram, context, &palette),
         edges: relationship_edges(&diagram, context),
         node_spacing: NODE_SPACING,
         rank_spacing: RANK_SPACING,
@@ -49,26 +55,55 @@ pub fn render(definition: &str, context: &RenderContext) -> Result<Scene, Diagra
             .map(|text| DiagramTitle {
                 text,
                 font_size: FONT_SIZE,
-                color: context.palette.text,
+                color: palette.text,
             }),
     };
     Ok(render_unified(&render, graph))
 }
 
-/// erDiagram 스타일에서 flowchart 기본과 다른 색: 간선 라벨 바탕(labelBkg, SVG 글자 라벨 사각형)
-fn er_palette(base: &Palette, mode: LabelMode) -> Palette {
+/// er styles.ts의 색. 상자는 `.entityBox`·`.node rect`(mainBkg·nodeBorder), 관계선은 lineColor, 간선 라벨 바탕은
+/// labelBkg(`fade(tertiaryColor, 0.5)`)와 `.edgeLabel .label rect`(edgeLabelBackground)다. SVG 글자는 뿌리 `fill: textColor`를,
+/// HTML 라벨은 `.label { color: nodeTextColor || textColor }`를 따른다
+fn er_palette(base: &Palette, mode: LabelMode, variables: &ThemeVariables) -> Palette {
     let mut palette = base.clone();
     palette.edge_label_outer = match base.theme {
         Theme::Light => Color::rgba(249, 255, 236, 0.5),
         Theme::Dark => Color::rgba(32, 31, 31, 0.5),
     };
-    palette.edge_label_inner = unified::edge_label_background(base.edge_label_inner, mode);
+    if let Some(color) = variables
+        .text("tertiaryColor")
+        .and_then(|tertiary| fade_text(&tertiary, 0.5).ok())
+        .and_then(|faded| parse_theme_color(&faded))
+    {
+        palette.edge_label_outer = color;
+    }
+    variables.read_color("edgeLabelBackground", &mut palette.edge_label_inner);
+    palette.edge_label_inner = unified::edge_label_background(palette.edge_label_inner, mode);
+    variables.read_color("mainBkg", &mut palette.node_fill);
+    variables.read_color("nodeBorder", &mut palette.node_stroke);
+    variables.read_color("lineColor", &mut palette.line);
+    let text_keys: &[&str] = match mode {
+        LabelMode::Html => &["nodeTextColor", "textColor"],
+        LabelMode::SvgText => &["textColor"],
+    };
+    if let Some(color) = text_keys
+        .iter()
+        .filter_map(|key| variables.text(key))
+        .find(|text| !text.is_empty())
+        .and_then(|text| parse_theme_color(&text))
+    {
+        palette.text = color;
+    }
     palette
 }
 
-/// 테마 색 위에 엔티티의 classDef·style 선언을 덮는다. 짝수 줄 상자도 사용자 채움색을 받는다
-fn entity_colors(palette: &Palette, style: &ElementStyle) -> EntityColors {
-    let (row_odd, row_even) = match palette.theme {
+/// 테마 색 위에 엔티티의 classDef·style 선언을 덮는다. 줄 상자는 rowOdd·rowEven이고 짝수 줄도 사용자 채움색을 받는다
+fn entity_colors(
+    palette: &Palette,
+    variables: &ThemeVariables,
+    style: &ElementStyle,
+) -> EntityColors {
+    let (mut row_odd, mut row_even) = match palette.theme {
         Theme::Light => (
             hsl(240.0, 100.0, 100.0),
             hsl(240.0, 100.0, 97.274_509_803_9),
@@ -78,6 +113,8 @@ fn entity_colors(palette: &Palette, style: &ElementStyle) -> EntityColors {
             hsl(180.0, 1.587_301_587_3, 2.352_941_176_5),
         ),
     };
+    variables.read_color("rowOdd", &mut row_odd);
+    variables.read_color("rowEven", &mut row_even);
     EntityColors {
         fill: style.fill.unwrap_or(palette.node_fill),
         border: rough_pen(
@@ -100,14 +137,14 @@ fn entity_id(diagram: &ErDiagram, name: &str) -> String {
     format!("entity-{name}-{index}")
 }
 
-fn entity_nodes(diagram: &ErDiagram, context: &RenderContext) -> Vec<FlowNode> {
+fn entity_nodes(diagram: &ErDiagram, context: &RenderContext, palette: &Palette) -> Vec<FlowNode> {
     diagram
         .entities
         .iter()
         .map(|entity| {
             let declarations = diagram.entity_declarations(entity);
             let user_style = ElementStyle::from_declarations(declarations.iter());
-            let colors = entity_colors(context.palette, &user_style);
+            let colors = entity_colors(palette, &context.theme_variables, &user_style);
             let style = EntityStyle {
                 fonts: context.fonts,
                 mode: context.label_mode,

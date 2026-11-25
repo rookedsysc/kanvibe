@@ -13,10 +13,34 @@ const LEGEND_SPACING: f64 = 4.0;
 const TEXT_POSITION: f64 = 0.75;
 /// 원판 반지름(450 / 2 - 40)
 const RADIUS: f64 = HEIGHT / 2.0 - MARGIN;
-const OUTER_STROKE_WIDTH: f64 = 2.0;
-const SLICE_OPACITY: f32 = 0.7;
-const TITLE_SIZE: f64 = 25.0;
-const SECTION_TEXT_SIZE: f64 = 17.0;
+
+/// pieStyles.ts가 테마 변수에서 읽는 굵기·투명도·글자 크기. 기본값은 테마의 `pieOuterStrokeWidth` 등과 같다
+struct PieSizes {
+    outer_stroke_width: f64,
+    slice_stroke_width: f64,
+    slice_opacity: f32,
+    title: f64,
+    section_text: f64,
+    legend_text: f64,
+}
+
+impl PieSizes {
+    fn read(variables: &ThemeVariables) -> Self {
+        let length = |key: &str, fallback: f64| variables.css_length(key).unwrap_or(fallback);
+        Self {
+            // pieRenderer.ts: `parseFontSize(pieOuterStrokeWidth) ?? 2`가 원판 반지름에도 들어간다
+            outer_stroke_width: length("pieOuterStrokeWidth", 2.0),
+            slice_stroke_width: length("pieStrokeWidth", 2.0),
+            slice_opacity: variables
+                .number("pieOpacity")
+                .unwrap_or(0.7)
+                .clamp(0.0, 1.0) as f32,
+            title: length("pieTitleTextSize", 25.0),
+            section_text: length("pieSectionTextSize", 17.0),
+            legend_text: length("pieLegendTextSize", 17.0),
+        }
+    }
+}
 
 struct PieChart {
     title: Option<String>,
@@ -25,7 +49,8 @@ struct PieChart {
 }
 
 fn parse(definition: &str) -> Result<PieChart, DiagramError> {
-    let mut lines = definition
+    let body = crate::directive::diagram_body(definition);
+    let mut lines = body
         .lines()
         .map(str::trim)
         .filter(|line| !line.is_empty() && !line.starts_with("%%"));
@@ -135,16 +160,17 @@ pub fn render(definition: &str, context: &RenderContext) -> Result<Scene, Diagra
     let (fonts, palette) = (context.fonts, context.palette);
     let chart = parse(definition)?;
     let colors = &pie_palette(&palette.pie, &context.theme_variables);
+    let sizes = &PieSizes::read(&context.theme_variables);
     let mut scene = Scene {
         is_start_aligned: false,
         width: 0.0,
         height: HEIGHT,
         items: Vec::new(),
     };
-    let outer_radius = RADIUS + OUTER_STROKE_WIDTH / 2.0;
+    let outer_radius = RADIUS + sizes.outer_stroke_width / 2.0;
     let outer_stroke = StrokeStyle {
         color: colors.outer_stroke,
-        width: OUTER_STROKE_WIDTH,
+        width: sizes.outer_stroke_width,
         dash: Vec::new(),
     };
     scene.push_path(
@@ -153,9 +179,15 @@ pub fn render(definition: &str, context: &RenderContext) -> Result<Scene, Diagra
         Some(outer_stroke),
     );
     let color_of = |index: usize| colors.slices[index % colors.slices.len()];
-    draw_slices(&mut scene, fonts, &chart, colors, &color_of);
-    let title_width = draw_title(&mut scene, fonts, &chart, colors.title);
-    let legend_width = draw_legend(&mut scene, fonts, &chart, colors.legend_text, &color_of);
+    draw_slices(&mut scene, fonts, &chart, colors, sizes, &color_of);
+    let title_width = draw_title(&mut scene, fonts, &chart, colors.title, sizes.title);
+    let legend_width = draw_legend(
+        &mut scene,
+        fonts,
+        &chart,
+        (colors.legend_text, sizes.legend_text),
+        &color_of,
+    );
     let chart_and_legend = HEIGHT + MARGIN + LEGEND_RECT_SIZE + LEGEND_SPACING + legend_width;
     let title_left = HEIGHT / 2.0 - title_width / 2.0;
     let title_right = HEIGHT / 2.0 + title_width / 2.0;
@@ -185,6 +217,7 @@ fn draw_slices(
     fonts: &FontBook,
     chart: &PieChart,
     colors: &PiePalette,
+    sizes: &PieSizes,
     color_of: &dyn Fn(usize) -> Color,
 ) {
     let total: f64 = chart.sections.iter().map(|(_, value)| value).sum();
@@ -192,10 +225,10 @@ fn draw_slices(
     let shown_total: f64 = shown.iter().map(|(_, value)| value).sum();
     let stroke = StrokeStyle {
         color: Color {
-            alpha: SLICE_OPACITY,
+            alpha: sizes.slice_opacity,
             ..colors.stroke
         },
-        width: 2.0,
+        width: sizes.slice_stroke_width,
         dash: Vec::new(),
     };
     let mut angle = 0.0;
@@ -208,7 +241,7 @@ fn draw_slices(
             PathCommand::Close,
         ]);
         let fill = Color {
-            alpha: SLICE_OPACITY,
+            alpha: sizes.slice_opacity,
             ..color_of(*index)
         };
         scene.push_path(commands, Some(fill), Some(stroke.clone()));
@@ -221,7 +254,7 @@ fn draw_slices(
             text,
             x,
             y,
-            SECTION_TEXT_SIZE,
+            sizes.section_text,
             colors.section_text,
         ));
     }
@@ -251,19 +284,25 @@ fn slice_label(percent: f64, middle_angle: f64) -> Option<(String, f64, f64)> {
     ))
 }
 
-fn draw_title(scene: &mut Scene, fonts: &FontBook, chart: &PieChart, color: Color) -> f64 {
+fn draw_title(
+    scene: &mut Scene,
+    fonts: &FontBook,
+    chart: &PieChart,
+    color: Color,
+    font_size: f64,
+) -> f64 {
     let Some(title) = chart.title.clone().filter(|title| !title.is_empty()) else {
         return 0.0;
     };
     let width = fonts
-        .shape_line(&title, TITLE_SIZE, FontWeight::Regular)
+        .shape_line(&title, font_size, FontWeight::Regular)
         .width;
     scene.push_text(centered_text(
         fonts,
         title,
         0.0,
         -(HEIGHT - 50.0) / 2.0,
-        TITLE_SIZE,
+        font_size,
         color,
     ));
     width
@@ -273,7 +312,7 @@ fn draw_legend(
     scene: &mut Scene,
     fonts: &FontBook,
     chart: &PieChart,
-    text_color: Color,
+    (text_color, font_size): (Color, f64),
     color_of: &dyn Fn(usize) -> Color,
 ) -> f64 {
     let row_height = LEGEND_RECT_SIZE + LEGEND_SPACING;
@@ -302,12 +341,12 @@ fn draw_legend(
         } else {
             label.clone()
         };
-        longest = longest.max(fonts.measure_line(&text, SECTION_TEXT_SIZE, FontWeight::Regular));
+        longest = longest.max(fonts.measure_line(&text, font_size, FontWeight::Regular));
         scene.push_text(TextItem {
             text,
             x: x + LEGEND_RECT_SIZE + LEGEND_SPACING,
             baseline: y + LEGEND_RECT_SIZE - LEGEND_SPACING,
-            font_size: SECTION_TEXT_SIZE,
+            font_size,
             weight: FontWeight::Regular,
             color: text_color,
             rotation: None,

@@ -11,7 +11,6 @@ const MERGE_INNER_RADIUS: f64 = 6.0;
 const REVERSE_CROSS_HALF: f64 = 5.0;
 const REVERSE_CROSS_WIDTH: f64 = 3.0;
 const CHERRY_MARK_RADIUS: f64 = 2.75;
-const LABEL_FONT_SIZE: f64 = 10.0;
 const LABEL_DEGREES: f64 = -45.0;
 const TAG_DEGREES: f64 = 45.0;
 /// 라벨·태그 바탕 여백(PX, PY)
@@ -223,8 +222,9 @@ fn draw_commit_label(
     layout: &GraphLayout,
     is_rotated: bool,
 ) {
-    let width = canvas.text_width(&commit.id, LABEL_FONT_SIZE);
-    let metrics = canvas.fonts.primary_metrics(LABEL_FONT_SIZE);
+    let font_size = canvas.colors.commit_label_font_size;
+    let width = canvas.text_width(&commit.id, font_size);
+    let metrics = canvas.fonts.primary_metrics(font_size);
     let height = metrics.ascent + metrics.descent;
     let is_vertical = layout.direction.is_vertical();
     let geometry = label_geometry(width, height, place, is_vertical);
@@ -243,7 +243,7 @@ fn draw_commit_label(
         &commit.id,
         geometry.text_left,
         geometry.baseline,
-        LABEL_FONT_SIZE,
+        font_size,
         color,
     );
     let text_box = canvas.text_box(&item);
@@ -307,10 +307,12 @@ fn draw_tags(canvas: &mut Canvas, commit: &Commit, place: CommitPlace, layout: &
     let tags: Vec<&String> = commit.tags.iter().rev().collect();
     let widths: Vec<f64> = tags
         .iter()
-        .map(|tag| canvas.text_width(tag, LABEL_FONT_SIZE))
+        .map(|tag| canvas.text_width(tag, canvas.colors.tag_label_font_size))
         .collect();
     let max_width = widths.iter().copied().fold(0.0, f64::max);
-    let metrics = canvas.fonts.primary_metrics(LABEL_FONT_SIZE);
+    let metrics = canvas
+        .fonts
+        .primary_metrics(canvas.colors.tag_label_font_size);
     let half_height = (metrics.ascent + metrics.descent) / 2.0;
     for (index, (tag, width)) in tags.into_iter().zip(widths).enumerate() {
         let shape = TagShape {
@@ -385,7 +387,7 @@ fn draw_horizontal_tag(
         tag,
         along - width / 2.0,
         y - 16.0 - shape.offset,
-        LABEL_FONT_SIZE,
+        canvas.colors.tag_label_font_size,
         color,
     );
 }
@@ -405,7 +407,8 @@ fn draw_vertical_tag(canvas: &mut Canvas, tag: &str, place: CommitPlace, shape: 
         ..shape_transform
     };
     let color = canvas.colors.tag_text;
-    let item = canvas.text_item(tag, x + 5.0, origin + 3.0, LABEL_FONT_SIZE, color);
+    let font_size = canvas.colors.tag_label_font_size;
+    let item = canvas.text_item(tag, x + 5.0, origin + 3.0, font_size, color);
     let text_box = canvas.text_box(&item);
     canvas.include_transformed(text_box, text_transform);
     canvas.scene.push_text(text_transform.text(item));

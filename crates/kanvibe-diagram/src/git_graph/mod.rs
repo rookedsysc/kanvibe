@@ -12,6 +12,7 @@ mod parse;
 use crate::scene::{Color, PathCommand, Point, Scene, StrokeStyle, TextItem, rounded_rect};
 use crate::text::{FontBook, FontWeight};
 use crate::theme::{Theme, hsl};
+use crate::theme_variables::ThemeVariables;
 use crate::{DiagramError, RenderContext};
 
 use layout::{
@@ -24,6 +25,8 @@ const DIAGRAM_PADDING: f64 = 8.0;
 const TITLE_TOP_MARGIN: f64 = 25.0;
 const TITLE_FONT_SIZE: f64 = 18.0;
 const ARROW_WIDTH: f64 = 8.0;
+/// `commitLabelFontSize`·`tagLabelFontSize` 기본값
+const LABEL_FONT_SIZE: f64 = 10.0;
 const BRANCH_LABEL_RADIUS: f64 = 4.0;
 const ROTATED_BRANCH_LABEL_SHIFT: f64 = 30.0;
 /// 브랜치·화살표·커밋 색 수(THEME_COLOR_LIMIT)
@@ -51,6 +54,62 @@ pub(crate) struct GitPalette {
     primary: Color,
     /// 체리픽 원 안의 표시
     cherry_mark: Color,
+    /// `.branch`의 `strokeWidth`
+    branch_line_width: f64,
+    /// `.commit-label`·`.tag-label`의 `commitLabelFontSize`·`tagLabelFontSize`
+    commit_label_font_size: f64,
+    tag_label_font_size: f64,
+}
+
+impl GitPalette {
+    /// git styles.js `normalTheme`과 공통 규칙(neo·redux 테마의 `genColor` 갈래는 옮기지 않았다). 체리픽 표시는
+    /// 렌더러가 Mermaid 테마 이름이 `dark`일 때만 검정으로 칠한다
+    fn read(theme: Theme, variables: &ThemeVariables) -> Self {
+        let mut palette = palette_for(theme);
+        for index in 0..COLOR_COUNT {
+            variables.read_color(&format!("git{index}"), &mut palette.branch[index]);
+            variables.read_color(&format!("gitInv{index}"), &mut palette.highlight[index]);
+            variables.read_color(
+                &format!("gitBranchLabel{index}"),
+                &mut palette.branch_text[index],
+            );
+        }
+        let line_key = if variables.text("commitLineColor").is_some() {
+            "commitLineColor"
+        } else {
+            "lineColor"
+        };
+        variables.read_color(line_key, &mut palette.branch_line);
+        variables.read_color("commitLabelColor", &mut palette.commit_label_text);
+        if let Some(background) = variables.color("commitLabelBackground") {
+            palette.commit_label_background = Color {
+                alpha: background.alpha * 0.5,
+                ..background
+            };
+        }
+        variables.read_color("tagLabelColor", &mut palette.tag_text);
+        variables.read_color("tagLabelBackground", &mut palette.tag_background);
+        variables.read_color("tagLabelBorder", &mut palette.tag_border);
+        variables.read_color("textColor", &mut palette.text);
+        variables.read_color("primaryColor", &mut palette.primary);
+        if variables.text("primaryColor").is_some() {
+            // dark 테마에만 있는 변수로 Mermaid 테마 이름이 `dark`인지 가린다(정의는 이 열쇠를 넣을 수 없다)
+            let is_dark_theme = variables.text("mainContrastColor").is_some();
+            palette.cherry_mark = if is_dark_theme {
+                Color::rgb(0, 0, 0)
+            } else {
+                Color::rgb(255, 255, 255)
+            };
+        }
+        variables.read_number("strokeWidth", &mut palette.branch_line_width);
+        if let Some(size) = variables.css_length("commitLabelFontSize") {
+            palette.commit_label_font_size = size;
+        }
+        if let Some(size) = variables.css_length("tagLabelFontSize") {
+            palette.tag_label_font_size = size;
+        }
+        palette
+    }
 }
 
 fn rgb_css(value: &str) -> Color {
@@ -98,6 +157,9 @@ fn light_palette() -> GitPalette {
         text: Color::rgb(0x33, 0x33, 0x33),
         primary: Color::rgb(0xEC, 0xEC, 0xFF),
         cherry_mark: white,
+        branch_line_width: 1.0,
+        commit_label_font_size: LABEL_FONT_SIZE,
+        tag_label_font_size: LABEL_FONT_SIZE,
     }
 }
 
@@ -141,6 +203,9 @@ fn dark_palette() -> GitPalette {
         text: Color::rgb(0xCC, 0xCC, 0xCC),
         primary: Color::rgb(0x1F, 0x20, 0x20),
         cherry_mark: Color::rgb(0, 0, 0),
+        branch_line_width: 1.0,
+        commit_label_font_size: LABEL_FONT_SIZE,
+        tag_label_font_size: LABEL_FONT_SIZE,
     }
 }
 
@@ -257,7 +322,7 @@ pub fn render(definition: &str, context: &RenderContext) -> Result<Scene, Diagra
         scene: Scene::default(),
         bounds: Bounds::new(),
         fonts,
-        colors: palette_for(context.palette.theme),
+        colors: GitPalette::read(context.palette.theme, &context.theme_variables),
     };
     if graph.options.show_branches {
         draw_branches(&mut canvas, &graph, &mut layout);
@@ -312,7 +377,7 @@ fn draw_branches(canvas: &mut Canvas, graph: &GitGraph, layout: &mut GraphLayout
         };
         let stroke = StrokeStyle {
             color: canvas.colors.branch_line,
-            width: 1.0,
+            width: canvas.colors.branch_line_width,
             dash: vec![2.0, 2.0],
         };
         let line = vec![PathCommand::MoveTo(start), PathCommand::LineTo(end)];

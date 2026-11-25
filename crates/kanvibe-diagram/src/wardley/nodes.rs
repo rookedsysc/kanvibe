@@ -139,7 +139,7 @@ fn draw_label(painter: &mut Painter, node: &MapNode, position: Point) {
         weight: FontWeight::Regular,
         anchor: Anchor::Start,
         baseline: Baseline::Alphabetic,
-        color: painter.colors.axis_text,
+        color: painter.colors.component_label,
     };
     let at = Point::new(position.x + offset_x, position.y + offset_y);
     painter.text(&node.label, at, style, None);

@@ -267,6 +267,23 @@ fn label_spots(
     spots
 }
 
+/// sankey styles.js: 글자는 `textColor`(기본 이름표는 루트 `fill`), 윤곽은 `mainBkg || background || #fff`
+fn label_colors(context: &RenderContext) -> (Color, Color) {
+    let variables = &context.theme_variables;
+    let mut text = context.palette.text;
+    variables.read_color("textColor", &mut text);
+    let mut outline = context.palette.node_fill;
+    let outline_key = ["mainBkg", "background"]
+        .into_iter()
+        .find(|key| variables.text(key).is_some_and(|value| !value.is_empty()));
+    match outline_key {
+        Some(key) => variables.read_color(key, &mut outline),
+        None if variables.text("textColor").is_some() => outline = Color::rgb(255, 255, 255),
+        None => {}
+    }
+    (text, outline)
+}
+
 /// 이름표를 그린다. `outlined`면 배경색 4px 둥근 윤곽(`paint-order: stroke`)을 깐 글자를 먼저 모두 두고 그 위에
 /// 앞 글자를 다시 둔다
 fn draw_labels(
@@ -278,13 +295,14 @@ fn draw_labels(
 ) {
     let fonts = context.fonts;
     let metrics = fonts.primary_metrics(LABEL_FONT_SIZE);
+    let (text_color, outline_color) = label_colors(context);
     let label = |spot: &LabelSpot| TextItem {
         text: spot.text.clone(),
         x: spot.x,
         baseline: spot.baseline,
         font_size: LABEL_FONT_SIZE,
         weight: FontWeight::Regular,
-        color: context.palette.text,
+        color: text_color,
         rotation: None,
     };
     for spot in spots {
@@ -299,7 +317,7 @@ fn draw_labels(
         if is_outlined {
             scene.items.push(SceneItem::TextStroke(TextStrokeItem {
                 text: label(spot),
-                color: context.palette.node_fill,
+                color: outline_color,
                 width: OUTLINE_WIDTH,
                 is_round_join: true,
             }));

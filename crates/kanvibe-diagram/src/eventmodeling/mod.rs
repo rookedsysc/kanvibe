@@ -14,6 +14,7 @@ use crate::scene::{
 };
 use crate::text::{FontBook, FontWeight, snap_layout_unit};
 use crate::theme::{Theme, hsl};
+use crate::theme_variables::ThemeVariables;
 use crate::{DiagramError, RenderContext, directive};
 
 use content::{BoxContent, TEXT_MAX_WIDTH};
@@ -29,30 +30,71 @@ const BOX_TEXT_COLOR: Color = Color::rgb(0, 0, 0);
 const CODE_LINE_HEIGHT: f64 = 19.0;
 const CODE_ASCENT: f64 = 15.0;
 
-/// 레인·관계선·요소 종류별 상자 색(테마 변수 `em*`)
+/// 레인·관계선·요소 종류별 상자 색(테마 변수 `em*`). styles.js가 비어 있어 렌더러가 넣는 속성 색이 그대로 보인다
 struct ModelColors {
     lane_fill: Color,
     lane_stroke: Color,
     relation: Color,
+    arrowhead: Color,
     lane_text: Color,
+    /// [`EntityType`] 순서(UI, 처리기, 읽기 모델, 명령, 사건)의 (채움, 테두리)
+    entities: [(Color, Color); 5],
 }
+
+const ENTITY_TYPES: [EntityType; 5] = [
+    EntityType::Ui,
+    EntityType::Processor,
+    EntityType::ReadModel,
+    EntityType::Command,
+    EntityType::Event,
+];
 
 impl ModelColors {
     fn for_theme(theme: Theme, lane_text: Color) -> Self {
-        match theme {
-            Theme::Light => Self {
-                lane_fill: Color::rgb(250, 250, 250),
-                lane_stroke: Color::rgb(240, 240, 240),
-                relation: Color::rgb(0x33, 0x33, 0x33),
-                lane_text,
-            },
-            Theme::Dark => Self {
-                lane_fill: hsl(0.0, 0.0, 25.0),
-                lane_stroke: hsl(0.0, 0.0, 32.0),
-                relation: Color::rgb(211, 211, 211),
-                lane_text,
-            },
+        let (lane_fill, lane_stroke, relation) = match theme {
+            Theme::Light => (
+                Color::rgb(250, 250, 250),
+                Color::rgb(240, 240, 240),
+                Color::rgb(0x33, 0x33, 0x33),
+            ),
+            Theme::Dark => (
+                hsl(0.0, 0.0, 25.0),
+                hsl(0.0, 0.0, 32.0),
+                Color::rgb(211, 211, 211),
+            ),
+        };
+        Self {
+            lane_fill,
+            lane_stroke,
+            relation,
+            arrowhead: relation,
+            lane_text,
+            entities: ENTITY_TYPES.map(|entity_type| entity_colors(theme, entity_type)),
         }
+    }
+
+    /// db.ts `calculateEntityVisualProps`와 renderer.ts가 읽는 `em*` 변수. 레인 이름은 루트 `fill`(`textColor`)이다
+    fn read(theme: Theme, lane_text: Color, variables: &ThemeVariables) -> Self {
+        let mut colors = Self::for_theme(theme, lane_text);
+        variables.read_color("emSwimlaneBackgroundOdd", &mut colors.lane_fill);
+        variables.read_color("emSwimlaneBackgroundStroke", &mut colors.lane_stroke);
+        variables.read_color("emRelationStroke", &mut colors.relation);
+        variables.read_color("emArrowhead", &mut colors.arrowhead);
+        variables.read_color("textColor", &mut colors.lane_text);
+        let keys = ["Ui", "Processor", "ReadModel", "Command", "Event"];
+        for ((fill, stroke), key) in colors.entities.iter_mut().zip(keys) {
+            variables.read_color(&format!("em{key}Fill"), fill);
+            variables.read_color(&format!("em{key}Stroke"), stroke);
+        }
+        colors
+    }
+
+    fn entity(&self, entity_type: EntityType) -> (Color, Color) {
+        let index = ENTITY_TYPES
+            .iter()
+            .position(|candidate| *candidate == entity_type)
+            .unwrap_or(0);
+        self.entities[index]
     }
 }
 
@@ -99,8 +141,11 @@ pub fn render(definition: &str, context: &RenderContext) -> Result<Scene, Diagra
         .map(|content| (content.width, content.height))
         .collect();
     let layout = ModelLayout::new(&model.frames, &sizes);
-    let theme = context.palette.theme;
-    let colors = ModelColors::for_theme(theme, context.palette.text);
+    let colors = ModelColors::read(
+        context.palette.theme,
+        context.palette.text,
+        &context.theme_variables,
+    );
     let lane_width = layout.max_right + SWIMLANE_PADDING;
     let mut scene = Scene {
         width: lane_width + VIEWBOX_PADDING * 2.0,
@@ -109,7 +154,7 @@ pub fn render(definition: &str, context: &RenderContext) -> Result<Scene, Diagra
     };
     draw_swimlanes(&mut scene, &layout, &colors, lane_width);
     for (frame_box, content) in layout.boxes.iter().zip(&contents) {
-        draw_box(&mut scene, &layout, frame_box, theme);
+        draw_box(&mut scene, &layout, frame_box, &colors);
         let top = layout.swimlanes[frame_box.swimlane].y + SWIMLANE_PADDING + BOX_PADDING;
         let area = ContentArea {
             left: frame_box.x + BOX_PADDING,
@@ -120,7 +165,7 @@ pub fn render(definition: &str, context: &RenderContext) -> Result<Scene, Diagra
         draw_box_text(&mut scene, context.fonts, &area, content);
     }
     for (source, target) in &layout.relations {
-        draw_relation(&mut scene, &layout, *source, *target, colors.relation);
+        draw_relation(&mut scene, &layout, (*source, *target), &colors);
     }
     scene.translate(VIEWBOX_PADDING, VIEWBOX_PADDING);
     Ok(scene)
@@ -147,9 +192,14 @@ fn draw_swimlanes(scene: &mut Scene, layout: &ModelLayout, colors: &ModelColors,
     }
 }
 
-fn draw_box(scene: &mut Scene, layout: &ModelLayout, frame_box: &layout::FrameBox, theme: Theme) {
+fn draw_box(
+    scene: &mut Scene,
+    layout: &ModelLayout,
+    frame_box: &layout::FrameBox,
+    colors: &ModelColors,
+) {
     let top = layout.swimlanes[frame_box.swimlane].y + SWIMLANE_PADDING;
-    let (fill, stroke) = entity_colors(theme, frame_box.entity_type);
+    let (fill, stroke) = colors.entity(frame_box.entity_type);
     let outline = rounded_rect(
         frame_box.x,
         top,
@@ -242,9 +292,8 @@ fn wrap_code_line(fonts: &FontBook, line: &str, width: f64) -> Vec<String> {
 fn draw_relation(
     scene: &mut Scene,
     layout: &ModelLayout,
-    source: usize,
-    target: usize,
-    color: Color,
+    (source, target): (usize, usize),
+    colors: &ModelColors,
 ) {
     let (from_box, to_box) = (&layout.boxes[source], &layout.boxes[target]);
     let from_top = layout.swimlanes[from_box.swimlane].y + SWIMLANE_PADDING;
@@ -267,7 +316,7 @@ fn draw_relation(
         },
     );
     let stroke = StrokeStyle {
-        color,
+        color: colors.relation,
         width: 1.0,
         dash: Vec::new(),
     };
@@ -276,7 +325,7 @@ fn draw_relation(
         None,
         Some(stroke),
     );
-    draw_arrowhead(scene, from, to, color);
+    draw_arrowhead(scene, from, to, colors.arrowhead);
 }
 
 /// 관계선 끝 화살촉: markerWidth 10·markerHeight 7, refX 10·refY 3.5 삼각형(선 굵기 1배)

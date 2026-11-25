@@ -91,11 +91,18 @@ impl Canvas<'_> {
 pub fn render(definition: &str, context: &RenderContext) -> Result<Scene, DiagramError> {
     let root = parser::parse(&directive::diagram_body(definition))?;
     let palette = context.palette;
+    // ishikawaStyles.ts: 선·화살촉은 `lineColor`, 머리·라벨 상자는 `mainBkg`, 글자는 `textColor`
+    let variables = &context.theme_variables;
+    let (mut line_color, mut fill_color, mut text_color) =
+        (palette.line, palette.node_fill, palette.text);
+    variables.read_color("lineColor", &mut line_color);
+    variables.read_color("mainBkg", &mut fill_color);
+    variables.read_color("textColor", &mut text_color);
     let mut canvas = Canvas {
         fonts: context.fonts,
-        line_color: palette.line,
-        fill_color: palette.node_fill,
-        text_color: palette.text,
+        line_color,
+        fill_color,
+        text_color,
         items: Vec::new(),
         bounds: Bounds::EMPTY,
         pair_text_left: f64::INFINITY,

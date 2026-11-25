@@ -28,7 +28,8 @@ use crate::flowchart::{ElementStyle, FlowEdge, FlowNode, FlowRender, render_layo
 use crate::label::{FONT_SIZE, LabelBox, LabelLine, measure_label};
 use crate::scene::{Color, Scene};
 use crate::text::FontWeight;
-use crate::theme::{Theme, hsl};
+use crate::theme::{Palette, Theme, hsl};
+use crate::theme_variables::ThemeVariables;
 use crate::{DiagramError, RenderContext};
 
 /// namespace 묶음 padding(config.class.padding ?? 16)
@@ -81,6 +82,31 @@ impl ClassColors {
     }
 }
 
+impl ClassColors {
+    /// class styles.js가 읽는 테마 변수. 다중성 라벨은 공용 styles의 뿌리 `fill: textColor`를 물려받는다
+    fn with_theme_variables(mut self, variables: &ThemeVariables) -> Self {
+        variables.read_color("mainBkg", &mut self.node_fill);
+        variables.read_color("nodeBorder", &mut self.node_stroke);
+        variables.read_color("classText", &mut self.class_text);
+        variables.read_color("lineColor", &mut self.line);
+        variables.read_color("mainBkg", &mut self.label_background);
+        variables.read_color("textColor", &mut self.root_text);
+        variables.read_color("noteBkgColor", &mut self.note_fill);
+        variables.read_color("noteBorderColor", &mut self.note_stroke);
+        variables.read_color("noteTextColor", &mut self.note_text);
+        self
+    }
+}
+
+/// namespace 묶음은 flowchart 클러스터 그리기를 쓰고 class styles.js의 `.cluster rect`·`.cluster-label text`를 따른다
+fn class_palette(base: &Palette, variables: &ThemeVariables) -> Palette {
+    let mut palette = base.clone();
+    variables.read_color("clusterBkg", &mut palette.cluster_fill);
+    variables.read_color("clusterBorder", &mut palette.cluster_stroke);
+    variables.read_color("titleColor", &mut palette.cluster_text);
+    palette
+}
+
 pub fn render(definition: &str, context: &RenderContext) -> Result<Scene, DiagramError> {
     let diagram = parser::parse(definition)?;
     if diagram.relations.len() + diagram.notes.len() > crate::MAX_EDGES {
@@ -89,14 +115,16 @@ pub fn render(definition: &str, context: &RenderContext) -> Result<Scene, Diagra
             crate::MAX_EDGES
         )));
     }
-    let colors = ClassColors::for_theme(context.palette.theme);
+    let colors = ClassColors::for_theme(context.palette.theme)
+        .with_theme_variables(&context.theme_variables);
+    let palette = class_palette(context.palette, &context.theme_variables);
     let drawings = node_drawings(&diagram, context);
     let nodes = layout_nodes(&diagram, context, &drawings);
     let (flow_edges, relations) = build_edges(&diagram, context);
     let painter = ClassPainter {
         flow: FlowRender {
             fonts: context.fonts,
-            palette: context.palette,
+            palette: &palette,
         },
         edges: EdgePainter {
             fonts: context.fonts,

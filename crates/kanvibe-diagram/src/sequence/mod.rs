@@ -20,6 +20,7 @@ mod participants;
 
 use crate::scene::{Color, Scene};
 use crate::theme::{Theme, hsl};
+use crate::theme_variables::ThemeVariables;
 use crate::{DiagramError, RenderContext};
 
 /// 기준 SVG `<style>`의 시퀀스 다이어그램 색
@@ -28,6 +29,8 @@ struct SequenceColors {
     actor_fill: Color,
     actor_stroke: Color,
     actor_text: Color,
+    /// 생명선(`.actor-line`)
+    actor_line: Color,
     message_line: Color,
     message_text: Color,
     /// SVG 뿌리의 `fill`. CSS가 없는 표식(비동기·반쪽 화살촉)·중앙 연결 동그라미·제목·묶음 제목이 물려받는다
@@ -40,8 +43,13 @@ struct SequenceColors {
     number_text: Color,
     label_box_fill: Color,
     label_box_stroke: Color,
+    /// 묶음 이름표 글자(`.labelText`)
+    block_label_text: Color,
+    /// 묶음 제목·구역 제목(`.loopText`·`.sectionTitle`)
     block_text: Color,
     block_line: Color,
+    /// box 묶음 테두리(`g rect.rect`)
+    group_stroke: Color,
     note_fill: Color,
     note_stroke: Color,
     note_text: Color,
@@ -66,6 +74,7 @@ impl SequenceColors {
             actor_fill: lavender,
             actor_stroke: purple,
             actor_text: black,
+            actor_line: purple,
             message_line: charcoal,
             message_text: charcoal,
             root_fill: charcoal,
@@ -75,8 +84,10 @@ impl SequenceColors {
             number_text: Color::rgb(255, 255, 255),
             label_box_fill: lavender,
             label_box_stroke: purple,
+            block_label_text: black,
             block_text: black,
             block_line: purple,
+            group_stroke: purple,
             note_fill: Color::rgb(0xFF, 0xF5, 0xAD),
             note_stroke: Color::rgb(0xAA, 0xAA, 0x33),
             note_text: black,
@@ -94,6 +105,7 @@ impl SequenceColors {
             actor_fill: slate,
             actor_stroke: silver,
             actor_text: light_grey,
+            actor_line: silver,
             message_line: light_grey,
             message_text: light_grey,
             root_fill: silver,
@@ -103,14 +115,46 @@ impl SequenceColors {
             number_text: Color::rgb(0, 0, 0),
             label_box_fill: slate,
             label_box_stroke: silver,
+            block_label_text: light_grey,
             block_text: light_grey,
             block_line: silver,
+            group_stroke: silver,
             note_fill,
             note_stroke: hsl(180.0, 0.0, 18.352_941_176_5),
             note_text: Color::rgb(184, 182, 182),
             activation_fill: note_fill,
             activation_stroke: silver,
         }
+    }
+
+    /// sequence styles.js와 공용 styles(`& { fill: textColor }`)가 읽는 테마 변수
+    fn with_theme_variables(mut self, variables: &ThemeVariables) -> Self {
+        let pairs: [(&str, &mut Color); 20] = [
+            ("actorBkg", &mut self.actor_fill),
+            ("actorBorder", &mut self.actor_stroke),
+            ("actorTextColor", &mut self.actor_text),
+            ("actorLineColor", &mut self.actor_line),
+            ("signalColor", &mut self.message_line),
+            ("signalTextColor", &mut self.message_text),
+            ("textColor", &mut self.root_fill),
+            ("signalColor", &mut self.number_fill),
+            ("sequenceNumberColor", &mut self.number_text),
+            ("labelBoxBkgColor", &mut self.label_box_fill),
+            ("labelBoxBorderColor", &mut self.label_box_stroke),
+            ("labelTextColor", &mut self.block_label_text),
+            ("loopTextColor", &mut self.block_text),
+            ("labelBoxBorderColor", &mut self.block_line),
+            ("nodeBorder", &mut self.group_stroke),
+            ("noteBkgColor", &mut self.note_fill),
+            ("noteBorderColor", &mut self.note_stroke),
+            ("noteTextColor", &mut self.note_text),
+            ("activationBkgColor", &mut self.activation_fill),
+            ("activationBorderColor", &mut self.activation_stroke),
+        ];
+        for (key, target) in pairs {
+            variables.read_color(key, target);
+        }
+        self
     }
 }
 
@@ -119,7 +163,8 @@ pub fn render(definition: &str, context: &RenderContext) -> Result<Scene, Diagra
     let document = parser::parse(definition)?;
     participants::check_menu_anchors(&document)?;
     let layout = layout::layout(&document, context.fonts, &settings);
-    let colors = SequenceColors::for_theme(context.palette.theme);
+    let colors = SequenceColors::for_theme(context.palette.theme)
+        .with_theme_variables(&context.theme_variables);
     Ok(draw::draw(
         &document,
         &layout,

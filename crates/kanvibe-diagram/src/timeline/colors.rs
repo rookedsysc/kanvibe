@@ -3,6 +3,7 @@
 
 use crate::scene::Color;
 use crate::theme::{Theme, hsl};
+use crate::theme_variables::ThemeVariables;
 
 /// 구역 색 개수(THEME_COLOR_LIMIT 12 → 구역 번호 −1..=10)
 pub const SECTION_COLOR_COUNT: usize = 12;
@@ -54,6 +55,20 @@ impl TimelineColors {
             Theme::Light => light(),
             Theme::Dark => dark(),
         }
+    }
+
+    /// timeline styles.js `genSections`: 구역 `i − 1`은 `cScale{i}`·`cScaleLabel{i}`·`cScaleInv{i}`(밑줄)이고, 반복마다
+    /// 다시 쓰는 `.lineWrapper line`은 마지막 `cScaleLabel11`이 남는다. 제목·화살촉은 루트 `fill`(`textColor`)이다
+    pub fn with_theme_variables(mut self, variables: &ThemeVariables) -> Self {
+        for (index, section) in self.sections.iter_mut().enumerate() {
+            variables.read_color(&format!("cScale{index}"), &mut section.fill);
+            variables.read_color(&format!("cScaleLabel{index}"), &mut section.text);
+            variables.read_color(&format!("cScaleInv{index}"), &mut section.line);
+        }
+        let last = SECTION_COLOR_COUNT - 1;
+        variables.read_color(&format!("cScaleLabel{last}"), &mut self.connector);
+        variables.read_color("textColor", &mut self.title);
+        self
     }
 
     /// drawNode의 구역 번호(`번호 % 12 − 1`, −1..=10)에 맞는 색

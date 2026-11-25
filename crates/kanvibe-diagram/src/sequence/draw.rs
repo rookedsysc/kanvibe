@@ -218,7 +218,7 @@ fn draw_lifeline(
     scene.push_path(
         line(Point::new(center, top), Point::new(center, bottom)),
         None,
-        stroke(colors.actor_stroke, LIFELINE_WIDTH, &[]),
+        stroke(colors.actor_line, LIFELINE_WIDTH, &[]),
     );
 }
 
@@ -274,7 +274,7 @@ fn draw_group(
     scene.push_path(
         rounded_rect(x, y, width, height, 0.0),
         fill,
-        stroke(colors.actor_stroke, 1.0, &[]),
+        stroke(colors.group_stroke, 1.0, &[]),
     );
     let Some(title) = &group.title else {
         return;
@@ -544,7 +544,7 @@ fn draw_block_label(
         js_round(x + width / 2.0),
         middle_baseline(text_y, 0.0),
         FONT_SIZE,
-        colors.block_text,
+        colors.block_label_text,
     ));
 }
 

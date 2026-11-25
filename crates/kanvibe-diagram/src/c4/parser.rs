@@ -125,7 +125,8 @@ struct ParseState {
 }
 
 pub(crate) fn parse(definition: &str) -> Result<C4Diagram, DiagramError> {
-    let mut lines = definition
+    let body = crate::directive::diagram_body(definition);
+    let mut lines = body
         .lines()
         .map(str::trim)
         .filter(|line| !line.is_empty() && !line.starts_with("%%"));

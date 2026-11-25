@@ -5,12 +5,14 @@
 mod parser;
 
 use crate::label::{FONT_SIZE, LINE_HEIGHT, LabelBox, measure_html_label, measure_svg_label};
+use crate::mermaid_theme::khroma;
 use crate::scene::{
     Color, PathCommand, Point, Scene, SceneItem, StrokeStyle, TextItem, TextStrokeItem,
     rounded_rect,
 };
 use crate::text::{FontBook, FontWeight, snap_layout_unit};
 use crate::theme::{DARK_SCALE, LIGHT_SCALE_HUES, Theme, hsl, lighten};
+use crate::theme_variables::{ThemeVariables, parse_theme_color};
 use crate::{DiagramError, LabelMode, RenderContext};
 use parser::{KanbanCard, KanbanColumn};
 
@@ -30,48 +32,91 @@ const PRIORITY_BAR_WIDTH: f64 = 4.0;
 /// `.section-N` 색 규칙이 있는 마지막 열 번호(THEME_COLOR_LIMIT 12 → −1..=10)
 const LAST_STYLED_SECTION: usize = 10;
 
-/// 기본·dark 테마의 kanban 색
+/// kanban styles.ts 색. `.section-N`(N = 0..=10) 규칙은 `cScale(N+1)`·`cScaleLabel(N+1)`을 쓴다
 struct KanbanColors {
-    theme: Theme,
     card_fill: Color,
     card_stroke: Color,
     text: Color,
+    /// `.section-N rect`의 칠과 테두리
+    section_fills: [Color; LAST_STYLED_SECTION + 1],
+    /// SVG 글자 열 제목에만 걸리는 `.section-N text`
+    section_texts: [Color; LAST_STYLED_SECTION + 1],
 }
 
 impl KanbanColors {
     fn for_context(context: &RenderContext) -> Self {
+        let mut colors = Self::for_theme(context);
+        colors.read_theme_variables(&context.theme_variables);
+        colors
+    }
+
+    /// 앱 테마 기본값(테마 변수가 비었거나 색으로 읽히지 않을 때)
+    fn for_theme(context: &RenderContext) -> Self {
         let theme = context.palette.theme;
+        let section_fills = std::array::from_fn(|section| match theme {
+            Theme::Light => hsl(LIGHT_SCALE_HUES[section + 1], 100.0, 86.274_509_803_9),
+            Theme::Dark => lighten(DARK_SCALE[section + 1], 10.0),
+        });
+        let section_texts = std::array::from_fn(|section| match theme {
+            Theme::Light if section + 1 == 3 => Color::rgb(255, 255, 255),
+            Theme::Light => Color::rgb(0, 0, 0),
+            Theme::Dark => Color::rgb(211, 211, 211),
+        });
         Self {
-            theme,
             card_fill: match theme {
                 Theme::Light => Color::rgb(255, 255, 255),
                 Theme::Dark => Color::rgb(0x33, 0x33, 0x33),
             },
             card_stroke: context.palette.node_stroke,
             text: context.palette.text,
+            section_fills,
+            section_texts,
         }
     }
 
-    /// `.section-N rect`의 칠과 테두리: `cScale(N+1)`을 10% 밝힌 색. 규칙이 없는 열은 `None`
+    /// 카드는 `.node rect`(`background`·`nodeBorder`), 글자는 `.label`(`textColor`)이다. 열 칠은 `darkMode`면
+    /// `darken(cScale, 10)`, 아니면 `lighten(cScale, 10)`
+    fn read_theme_variables(&mut self, variables: &ThemeVariables) {
+        variables.read_color("background", &mut self.card_fill);
+        variables.read_color("nodeBorder", &mut self.card_stroke);
+        variables.read_color("textColor", &mut self.text);
+        let is_dark_mode = variables.flag("darkMode");
+        for section in 0..=LAST_STYLED_SECTION {
+            let scale = section + 1;
+            if let Some(fill) = variables
+                .text(&format!("cScale{scale}"))
+                .and_then(|color| adjust_section_color(&color, is_dark_mode))
+            {
+                self.section_fills[section] = fill;
+            }
+            variables.read_color(
+                &format!("cScaleLabel{scale}"),
+                &mut self.section_texts[section],
+            );
+        }
+    }
+
+    /// 규칙이 없는 열은 `None`
     fn section_fill(&self, section: usize) -> Option<Color> {
-        if section > LAST_STYLED_SECTION {
-            return None;
-        }
-        Some(match self.theme {
-            Theme::Light => hsl(LIGHT_SCALE_HUES[section + 1], 100.0, 86.274_509_803_9),
-            Theme::Dark => lighten(DARK_SCALE[section + 1], 10.0),
-        })
+        self.section_fills.get(section).copied()
     }
 
-    /// SVG 글자 열 제목에만 걸리는 `.section-N text`(`cScaleLabel(N+1)`)
     fn section_svg_text(&self, section: usize) -> Color {
-        match self.theme {
-            _ if section > LAST_STYLED_SECTION => self.text,
-            Theme::Light if section + 1 == 3 => Color::rgb(255, 255, 255),
-            Theme::Light => Color::rgb(0, 0, 0),
-            Theme::Dark => Color::rgb(211, 211, 211),
-        }
+        self.section_texts
+            .get(section)
+            .copied()
+            .unwrap_or(self.text)
     }
+}
+
+/// styles.ts `adjuster(color, 10)`
+fn adjust_section_color(color: &str, is_dark_mode: bool) -> Option<Color> {
+    let adjusted = if is_dark_mode {
+        khroma::darken_text(color, 10.0)
+    } else {
+        khroma::lighten_text(color, 10.0)
+    };
+    parse_theme_color(&adjusted.ok()?)
 }
 
 /// SVG getBBox와 같은 축 정렬 경계
