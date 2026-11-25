@@ -121,6 +121,8 @@ pub fn split_desktop_launch_arguments(
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DesktopLaunchPlan {
     pub mode: LaunchMode,
+    /// 이 바이너리가 어떻게 빌드됐는지. 자동 QA는 `mode`에서 설치된 앱으로 보지 않으므로 배포 바이너리 여부는 여기서 읽는다
+    pub build: AppBuild,
     /// 없으면 DB 없이 뜬다(자동 QA가 데이터 디렉터리를 주지 않은 화면 캡처)
     pub data_dir: Option<PathBuf>,
     pub hook_port: u16,
@@ -165,12 +167,18 @@ impl DesktopLaunchPlan {
             data_dir.is_some() && (!is_automated_qa || arguments.requested_hook_port.is_some());
         Ok(Self {
             mode,
+            build,
             data_dir,
             hook_port,
             should_start_server,
             platform_app_data,
             arguments,
         })
+    }
+
+    /// TS `SHOULD_USE_SOURCE_MODULES && !app.isPackaged`: 배포 바이너리는 자동 QA로 띄워도 개발용 페어링 경로를 열지 않는다
+    pub fn is_dev_pairing_route_enabled(&self) -> bool {
+        self.build != AppBuild::Packaged && is_dev_pairing_route_enabled(&self.mode)
     }
 
     fn development_database_request(&self, data_dir: &Path) -> DevelopmentDatabaseRequest {
@@ -306,7 +314,7 @@ pub(crate) fn plan_server(
         hook_port: plan.hook_port,
         tls_directory: data_dir.join("mobile-tls"),
         route_options: RouteOptions {
-            is_dev_pairing_route_enabled: is_dev_pairing_route_enabled(&plan.mode),
+            is_dev_pairing_route_enabled: plan.is_dev_pairing_route_enabled(),
         },
     };
     process.pending_server = Some((remote, listen));
@@ -457,6 +465,24 @@ mod tests {
         plan_for_build(AppBuild::current(), line, environment)
     }
 
+    #[test]
+    fn automated_qa_opens_the_dev_pairing_route_only_on_source_builds() {
+        let line = format!("{HARNESS} --data-dir /d --kanvibe-hook-port 41234");
+        for (build, is_expected_open) in [
+            (AppBuild::SourceDebug, true),
+            (AppBuild::SourceRelease, true),
+            (AppBuild::Packaged, false),
+        ] {
+            let plan = plan_for_build(build, &line, &[]).unwrap();
+
+            assert_eq!(
+                plan.is_dev_pairing_route_enabled(),
+                is_expected_open,
+                "{build:?}"
+            );
+        }
+    }
+
     fn plan_for_build(
         build: AppBuild,
         line: &str,
@@ -551,7 +577,7 @@ mod tests {
                 "{case}"
             );
             assert_eq!(
-                is_dev_pairing_route_enabled(&plan.mode),
+                plan.is_dev_pairing_route_enabled(),
                 is_pairing_route_enabled,
                 "{case}"
             );

@@ -344,6 +344,14 @@ fn quick_search_lists_done_tasks_with_their_project_name() {
         TaskStatus::Done,
         with_branch(&project, "feat/done-search", None),
     );
+    // TS 테스트처럼 두 task의 시각을 같게 둔다. 저장 시각은 초 단위라, 두 insert 사이에 초가 바뀌면 순서가 달라진다
+    fixture
+        .database()
+        .connection()
+        .execute_batch(
+            "UPDATE kanban_tasks SET created_at = '2026-05-02 00:00:00', updated_at = '2026-05-02 00:00:00'",
+        )
+        .unwrap();
 
     let searchable = fixture.service.get_searchable_tasks().unwrap();
 

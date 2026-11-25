@@ -34,7 +34,7 @@ from urllib.parse import parse_qs, urlparse
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_APP = REPO_ROOT / "target/release/kanvibe"
 # 자동 QA 실행 스위치. 앱에서 이름이 바뀌면 여기 한 곳만 고친다
-AUTOMATED_QA_FLAG = "--qa"
+AUTOMATED_QA_FLAG = "--qa-harness"
 # `kanvibe-server` `MOBILE_TLS_PORT_OFFSET`: 모바일 TLS 포트는 hook 포트 + 10이다
 MOBILE_TLS_PORT_OFFSET = 10
 SCREEN_SIZE = (1440, 960)
