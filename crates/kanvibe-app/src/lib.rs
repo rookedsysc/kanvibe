@@ -41,6 +41,7 @@ use crate::desktop_process::{DesktopLaunchPlan, prepare_desktop_process};
 use crate::notifications::ForegroundNotificationPresenter;
 use crate::qa::faults::FaultRegistry;
 use crate::qa::options::LaunchOptions;
+use crate::qa::perf_markers::mark_startup_phase;
 use crate::qa::targets::QaTargetRegistry;
 use crate::qa::{AppClock, NetworkResponseTable, QaRuntime};
 use crate::services::AppServices;
@@ -70,7 +71,9 @@ fn init_app_with_desktop(
     cx: &mut App,
 ) -> anyhow::Result<()> {
     gpui_kit::init(cx);
+    mark_startup_phase("gpui_kit_init");
     fonts::register_bundled_fonts(cx)?;
+    mark_startup_phase("fonts_registered");
     // 기준 이미지는 그레이스케일 안티에일리어싱(fontconfig rgba none)으로 찍혔다
     cx.set_text_rendering_mode(TextRenderingMode::Grayscale);
 
@@ -93,6 +96,7 @@ fn init_app_with_desktop(
         )?),
         _ => None,
     };
+    mark_startup_phase("desktop_process_prepared");
     let runtime = match data_dir.as_deref() {
         Some(data_dir) => Some(open_runtime(
             &RuntimeInputs {
@@ -110,6 +114,7 @@ fn init_app_with_desktop(
         )?),
         None => None,
     };
+    mark_startup_phase("runtime_opened");
     let board_subscription = runtime
         .as_ref()
         .map(|runtime| relay_board_events(runtime, sender));
@@ -136,6 +141,7 @@ fn init_app_with_desktop(
         cx.set_global(prepared.process);
     }
 
+    mark_startup_phase("services_built");
     let is_system_light = cx.window_appearance() == WindowAppearance::Light
         || cx.window_appearance() == WindowAppearance::VibrantLight;
     cx.set_global(ThemeTokens::for_mode(
@@ -153,6 +159,7 @@ fn init_app_with_desktop(
     notifications::reload_notification_center(cx);
     shortcuts::install_shortcut_dispatch(cx).detach();
     notifications::install_notification_click_routing(cx);
+    mark_startup_phase("app_globals_ready");
     Ok(())
 }
 

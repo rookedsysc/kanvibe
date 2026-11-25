@@ -4,7 +4,8 @@ use kanvibe_app::desktop_process::{DesktopLaunchPlan, split_desktop_launch_argum
 use kanvibe_app::qa::control::start_control_server;
 use kanvibe_app::qa::options::{LaunchOptions, parse_launch_options};
 use kanvibe_app::qa::perf_markers::{
-    install_perf_markers, require_qa_for_perf_markers, split_perf_markers_switch,
+    enable_startup_timeline, install_perf_markers, mark_startup_phase, require_qa_for_perf_markers,
+    split_perf_markers_switch,
 };
 use kanvibe_process::shell_environment::current_user_home_directory;
 
@@ -32,11 +33,16 @@ fn main() {
         }
     };
 
+    if is_perf_markers_enabled {
+        enable_startup_timeline();
+        mark_startup_phase("main");
+    }
     let exit_code = std::rc::Rc::new(std::cell::Cell::new(0));
     let failed_exit_code = exit_code.clone();
     desktop_application()
         .with_assets(KanvibeAssets::new())
         .run(move |cx| {
+            mark_startup_phase("platform_ready");
             if let Err(error) = start_app(&launch, &plan, is_perf_markers_enabled, cx) {
                 eprintln!("kanvibe: {error:#}");
                 failed_exit_code.set(1);
@@ -74,6 +80,7 @@ fn start_app(
 ) -> anyhow::Result<()> {
     kanvibe_app::init_desktop_app(launch, plan, cx)?;
     let window_handle = open_app_window(&launch.initial_route, launch.window_size, cx)?;
+    mark_startup_phase("window_opened");
     if is_perf_markers_enabled {
         install_perf_markers(window_handle, cx)?;
     }
@@ -85,6 +92,7 @@ fn start_app(
         start_control_server(socket_path, cx)?;
     }
     kanvibe_app::start_runtime_services(cx);
+    mark_startup_phase("runtime_services_started");
     cx.activate(true);
     Ok(())
 }

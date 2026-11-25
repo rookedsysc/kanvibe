@@ -13,7 +13,7 @@ use std::sync::Arc;
 
 use futures::StreamExt as _;
 use futures::channel::mpsc::unbounded;
-use gpui_kit::{App, AsyncApp, Global};
+use gpui_kit::{App, AppContext as _, AsyncApp, Global};
 use kanvibe_process::shell_environment::ShellEnvironment;
 use kanvibe_runtime::development_database::{
     DevelopmentDatabaseOutcome, DevelopmentDatabaseRequest, INSTALLED_APP_DATA_DIRECTORY_NAME,
@@ -31,6 +31,7 @@ use kanvibe_server::server::RouteOptions;
 use serde_json::json;
 
 use crate::qa::options::LaunchOptions;
+use crate::qa::perf_markers::mark_startup_phase;
 use crate::services::AppServices;
 
 const DATA_SOURCE_SWITCH: &str = "data-source";
@@ -320,14 +321,14 @@ pub fn start_desktop_process(cx: &mut App) {
     };
     runtime.start();
     let services = cx.global::<AppServices>().desktop_services().cloned();
-    let server = start_pending_server(services, cx);
-    if let Some(server) = &server {
-        watch_system_wake(server, cx);
-        watch_termination_signal(server, cx);
-    }
-    cx.on_app_quit(move |_| {
-        // TS `before-quit`: 서버(터널·리스너), 푸시, sync 예약, pane 미러·원격 agent, PTY 순서로 닫는다
-        match &server {
+    start_pending_server(services, cx);
+    cx.on_app_quit(move |cx| {
+        // TS `before-quit`: 서버(터널·리스너), 푸시, sync 예약, pane 미러·원격 agent, PTY 순서로 닫는다.
+        // 서버가 아직 뜨는 중이면 런타임만 닫는다
+        let server = cx
+            .try_global::<DesktopProcess>()
+            .and_then(|process| process.running_server.clone());
+        match server {
             Some(server) => server.stop(),
             None => runtime.shutdown(),
         }
@@ -336,29 +337,50 @@ pub fn start_desktop_process(cx: &mut App) {
     .detach();
 }
 
-fn start_pending_server(
-    services: Option<Arc<DesktopServices>>,
-    cx: &mut App,
-) -> Option<Arc<InProcessServer>> {
-    let process = cx.try_global::<DesktopProcess>()?;
+/// 서버 시작(tokio 런타임, 처음 실행이면 모바일 TLS RSA 키 생성, 리스너, hook 터널)은 수십~수백 ms가 걸린다.
+/// 전경 스레드에서 하면 첫 화면이 그만큼 늦으므로 백그라운드 스레드에서 띄우고, 다 뜨면 전경에서 등록한다
+/// (TS도 렌더러가 첫 화면을 그리는 동안 main 프로세스에서 서버를 띄웠다)
+fn start_pending_server(services: Option<Arc<DesktopServices>>, cx: &mut App) {
+    let Some(process) = cx.try_global::<DesktopProcess>() else {
+        return;
+    };
     let diagnostics = Arc::clone(&process.diagnostics);
-    let services = services?;
-    let (remote, listen) = cx.global_mut::<DesktopProcess>().pending_server.take()?;
-    match InProcessServer::start(services, remote, &listen) {
+    let Some(services) = services else {
+        return;
+    };
+    let Some((remote, listen)) = cx.global_mut::<DesktopProcess>().pending_server.take() else {
+        return;
+    };
+    let starting =
+        cx.background_spawn(async move { InProcessServer::start(services, remote, &listen) });
+    cx.spawn(async move |cx: &mut AsyncApp| {
+        let started = starting.await;
+        cx.update(|cx| register_started_server(started, &diagnostics, cx));
+    })
+    .detach();
+}
+
+fn register_started_server(
+    started: Result<InProcessServer, String>,
+    diagnostics: &DesktopDiagnostics,
+    cx: &mut App,
+) {
+    match started {
         Ok(server) => {
             let server = Arc::new(server);
             diagnostics.log(
                 "main:hook-server-listening",
                 json!({ "address": server.plaintext_address().to_string(), "tls": server.tls_address().map(|address| address.to_string()) }),
             );
-            cx.global_mut::<DesktopProcess>().running_server = Some(Arc::clone(&server));
-            Some(server)
+            watch_system_wake(&server, cx);
+            watch_termination_signal(&server, cx);
+            cx.global_mut::<DesktopProcess>().running_server = Some(server);
+            mark_startup_phase("hook_server_registered");
         }
         Err(error) => {
             // TS도 리스너 오류를 기록만 하고 hook 서버 없이 화면을 계속 띄웠다
             eprintln!("[kanvibe] {error}");
             diagnostics.log("main:hook-server-failed", json!({ "error": error }));
-            None
         }
     }
 }

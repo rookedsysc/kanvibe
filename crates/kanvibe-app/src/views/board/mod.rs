@@ -50,6 +50,7 @@ use crate::components::TailwindText;
 use crate::components::notification_center::NotificationCenterButton;
 use crate::components::toast::ToastKind;
 use crate::notifications::NotificationCenter;
+use crate::qa::perf_markers::mark_startup_phase;
 use crate::theme::{ThemeTokens, radius, spacing, text_scale};
 use crate::views::ScreenContext;
 use board_model::{BoardFilters, DonePagination, ProjectCatalog, TaskDeletionState, TaskMoveState};
@@ -61,6 +62,9 @@ use text_field::{BoardTextField, TextFieldEvent};
 
 /// 첫 조회가 이 시간보다 오래 걸리면 지연 안내를 띄운다(TS `INITIAL_DESKTOP_LOAD_TIMEOUT_MS`)
 const LOAD_DELAY_NOTICE_AFTER: Duration = Duration::from_millis(5_000);
+
+/// 화면을 만들 때 첫 조회를 기다리는 최대 시간. 이 안에 끝나면 첫 프레임에 카드를 그린다(60Hz 한 프레임)
+const FIRST_LOAD_WAIT: Duration = Duration::from_millis(16);
 
 /// 첫 조회 진행(TS `useRouteLoadStatus`)
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -291,7 +295,7 @@ impl BoardView {
         };
         MotionPreference::ensure_loaded(cx);
         view.subscribe_to_app_events(cx);
-        view.begin_load(cx);
+        view.begin_first_load(cx);
         view
     }
 
@@ -463,13 +467,53 @@ impl BoardView {
         self.screen.route.locale
     }
 
+    /// 화면을 만들 때의 첫 조회. 조회는 백그라운드에서 돌고, 한 프레임 안에 끝나면 그 결과로 첫 프레임을 그린다.
+    /// 첫 프레임을 빈 보드로 그린 뒤 다음 프레임에 카드를 다시 그리면 그 사이 프레임 하나만큼 첫 화면이 늦기 때문이다.
+    /// 더 오래 걸리면(고장 주입 지연·멈춤 포함) 지금처럼 로딩 화면을 먼저 그리고 결과를 기다린다
+    fn begin_first_load(&mut self, cx: &mut Context<Self>) {
+        let load = self.start_snapshot_load(cx);
+        match cx
+            .foreground_executor()
+            .block_with_timeout(FIRST_LOAD_WAIT, load)
+        {
+            Ok(result) => {
+                mark_startup_phase("board_data_loaded");
+                self.finish_load(result, cx)
+            }
+            Err(load) => {
+                let load = async move {
+                    let result = load.await;
+                    mark_startup_phase("board_data_loaded");
+                    result
+                };
+                self.await_load(load, cx)
+            }
+        }
+    }
+
     /// 보드 데이터를 (다시) 읽는다. 이미 데이터가 있으면 화면은 그대로 두고 실패만 배너로 알린다
     fn begin_load(&mut self, cx: &mut Context<Self>) {
-        self.load_status = RouteLoadStatus::default();
-        let load = match &self.services {
+        let load = self.start_snapshot_load(cx);
+        self.await_load(load, cx);
+    }
+
+    fn start_snapshot_load(
+        &self,
+        cx: &Context<Self>,
+    ) -> Task<Result<BoardSnapshot, BoardServiceFailure>> {
+        match &self.services {
             Some(services) => services.load_snapshot(cx),
             None => Task::ready(Ok(BoardSnapshot::empty())),
-        };
+        }
+    }
+
+    /// 조회가 끝나면 화면에 반영하고, 오래 걸리면 지연 안내를 띄운다
+    fn await_load(
+        &mut self,
+        load: impl Future<Output = Result<BoardSnapshot, BoardServiceFailure>> + 'static,
+        cx: &mut Context<Self>,
+    ) {
+        self.load_status = RouteLoadStatus::default();
         let delay_timer = cx.background_executor().timer(LOAD_DELAY_NOTICE_AFTER);
         self._load_delay_timer = cx.spawn(async move |this, cx| {
             delay_timer.await;
