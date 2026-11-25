@@ -29,6 +29,13 @@ interface ExecuteOptions {
   remoteStdinResponder?: { marker: string; respond: (payload: string) => Promise<string> };
 }
 export type HostHookHandler = (request: HostRecord) => Promise<{ status: number; headers: Record<string, string>; body: string }>;
+
+export class RemoteHostConnectionError extends Error {
+  constructor(readonly kind: "ssh" | "handshake" | "setup", message: string, readonly code?: string) {
+    super(message);
+  }
+}
+
 const MAX_PENDING = 128;
 const START_TIMEOUT_MS = 15_000;
 const DEFAULT_TIMEOUT_MS = 45_000;
@@ -135,7 +142,14 @@ export function connectHostProcess(child: HostProcess, bootstrap: Bootstrap): Pr
     let expectedPtyHash: string | undefined;
     let stderr = "";
     const connection = new HostConnection(child);
-    const timer = setTimeout(() => fail(new Error("Host bootstrap timed out")), START_TIMEOUT_MS);
+    const stageError = (message: string) => new RemoteHostConnectionError(
+      stage === "bootstrap" ? "ssh" : stage === "bridge" ? "setup" : "handshake",
+      message,
+    );
+    const timer = setTimeout(() => {
+      const operation = stage === "framed" ? "Host handshake" : stage === "bridge" ? "Host bootstrap" : "SSH startup";
+      fail(stageError(`${operation} timed out${stderr.trim() ? `: ${stderr.trim()}` : ""}`));
+    }, START_TIMEOUT_MS);
     const fail = (error: Error) => {
       clearTimeout(timer);
       if (!settled) { settled = true; reject(error); }
@@ -143,11 +157,35 @@ export function connectHostProcess(child: HostProcess, bootstrap: Bootstrap): Pr
     };
     child.stderr.on("data", (chunk: Buffer) => { stderr = (stderr + chunk.toString()).slice(-4096); });
     const decode = createHostRecordDecoder((record) => {
-      if (!settled) {
-        if (record.type !== "ready" || record.version !== HOST_PROTOCOL_VERSION || record.namespace !== bootstrap.namespace || record.buildHash !== bootstrap.hash || typeof record.instanceId !== "string" || !Number.isSafeInteger(record.pid) || !Array.isArray(record.capabilities) || !["exec", "socket", "hooks"].every((capability) => (record.capabilities as unknown[]).includes(capability))) throw new Error("Host handshake mismatch");
-        if (expectedPtyHash && (record.ptyArtifactHash !== expectedPtyHash || !(record.capabilities as unknown[]).includes("pty"))) throw new Error("Host PTY artifact handshake mismatch");
-        settled = true; clearTimeout(timer); connection.instanceId = record.instanceId; connection.remotePid = record.pid as number; resolve(connection);
-      } else connection.receive(record);
+      if (settled) {
+        connection.receive(record);
+        return;
+      }
+      if (record.type === "error") {
+        throw new RemoteHostConnectionError(
+          "handshake",
+          typeof record.error === "string" ? record.error : "Host daemon rejected the handshake",
+          typeof record.code === "string" ? record.code : undefined,
+        );
+      }
+      if (record.type !== "ready") throw new Error(`Expected host ready record, received ${record.type}`);
+      if (record.version !== HOST_PROTOCOL_VERSION) throw new Error("Host ready version mismatch");
+      if (record.namespace !== bootstrap.namespace) throw new Error("Host ready namespace mismatch");
+      if (record.buildHash !== bootstrap.hash) throw new Error("Host ready buildHash mismatch");
+      if (typeof record.instanceId !== "string") throw new Error("Invalid host ready instanceId");
+      if (typeof record.pid !== "number" || !Number.isSafeInteger(record.pid)) throw new Error("Invalid host ready pid");
+      const capabilities = record.capabilities;
+      if (!Array.isArray(capabilities)) throw new Error("Invalid host ready capabilities");
+      const requiredCapabilities = expectedPtyHash ? ["exec", "socket", "hooks", "pty"] : ["exec", "socket", "hooks"];
+      const missingCapabilities = requiredCapabilities.filter((capability) => !capabilities.includes(capability));
+      if (missingCapabilities.length) throw new Error(`Host ready capabilities missing: ${missingCapabilities.join(", ")}`);
+      if (expectedPtyHash && record.ptyArtifactHash !== expectedPtyHash) throw new Error("Host ready ptyArtifactHash mismatch");
+      settled = true;
+      clearTimeout(timer);
+      connection.instanceId = record.instanceId;
+      connection.remotePid = record.pid;
+      connection.replacedStalePeer = record.replacedStalePeer === true;
+      resolve(connection);
     });
     child.stdout.on("data", (chunk: Buffer) => {
       try {
@@ -179,17 +217,23 @@ export function connectHostProcess(child: HostProcess, bootstrap: Bootstrap): Pr
           } else throw new Error("Invalid host bootstrap sequence");
         }
         if (stage === "framed" && preamble.length) { const rest = preamble; preamble = Buffer.alloc(0); decode(rest); }
-      } catch (error) { fail(error instanceof Error ? error : new Error(String(error))); }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        fail(error instanceof RemoteHostConnectionError ? error : new RemoteHostConnectionError(
+          stage === "framed" ? "handshake" : "setup", message,
+        ));
+      }
     });
-    child.once("error", fail);
-    child.once("close", () => fail(new Error(`SSH host disconnected; command outcome may be unknown${stderr ? `: ${stderr}` : ""}`)));
-    child.stdin.on("error", fail);
+    child.once("error", (error) => fail(stageError(error.message)));
+    child.once("close", () => fail(stageError(`SSH host disconnected during startup${stderr.trim() ? `: ${stderr.trim()}` : ""}`)));
+    child.stdin.on("error", (error) => fail(stageError(error.message)));
   });
 }
 
 export class HostConnection extends EventEmitter {
   instanceId = "";
   remotePid = 0;
+  replacedStalePeer = false;
   private closed = false;
   private receivers = new Map<string, (record: HostRecord) => void>();
   private hookHandler?: HostHookHandler;
@@ -230,6 +274,11 @@ export class HostConnection extends EventEmitter {
   }
 
   receive(record: HostRecord): void {
+    if (record.type === "ping" && typeof record.id === "string") {
+      try { this.send({ type: "pong", id: record.id }); }
+      catch { this.close(); }
+      return;
+    }
     if (record.type === "hook.request") {
       void this.answerHook(record);
       return;

@@ -2,6 +2,7 @@ export const HOST_PROTOCOL_VERSION = 1;
 export const HOST_RECORD_BYTES = 1024 * 1024;
 export const HOST_CHUNK_BYTES = 32 * 1024;
 export const HOST_BUFFER_BYTES = 8 * 1024 * 1024;
+export const HOST_CLIENT_ALREADY_CONNECTED = "client-already-connected";
 
 export interface HostRecord { type: string; id?: string; [key: string]: unknown }
 

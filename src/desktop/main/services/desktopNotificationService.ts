@@ -6,6 +6,7 @@ import { getNotificationSettings } from "@/desktop/main/services/appSettingsServ
 import {
   buildBackgroundSyncReviewNotification,
   buildHookStatusTargetMissingNotification,
+  buildHookTunnelNotification,
   buildTaskStatusNotification,
 } from "@/desktop/shared/taskNotifications";
 
@@ -80,6 +81,17 @@ export async function deliverBoardEventNotification(
   }
 
   const settings = await getNotificationSettings();
+  if (payload.type === "hook-tunnel-failed" || payload.type === "hook-tunnel-recovered") {
+    const notification = buildHookTunnelNotification({ ...payload, locale });
+    if (payload.type === "hook-tunnel-failed" && settings.isEnabled) {
+      return deliverDesktopNotification(notification, options);
+    }
+
+    const { created } = await createNotification(notification);
+    if (created) options.onNotificationsChanged?.();
+    return true;
+  }
+
   if (!settings.isEnabled) {
     return false;
   }

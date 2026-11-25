@@ -31,6 +31,12 @@ export interface TaskHookInstallFailedPayload {
   error: string;
 }
 
+export interface HookTunnelFailedPayload {
+  sshHost: string;
+  kind: "ssh" | "handshake" | "client-in-use" | "setup";
+  reason: string;
+}
+
 /** 원격 Herdr 서버를 로컬 Herdr의 SSH machine으로 저장하지 못했다. herdrSession은 원격에서 확인 명령에 넘길 세션 이름이다 */
 export interface HerdrMachineRegistrationFailedPayload {
   sshHost: string;
@@ -102,6 +108,8 @@ export type BoardEventPayload =
   | ({ type: "task-status-changed" } & TaskStatusChangedPayload)
   | ({ type: "hook-status-target-missing" } & HookStatusTargetMissingPayload)
   | ({ type: "task-hook-install-failed" } & TaskHookInstallFailedPayload)
+  | ({ type: "hook-tunnel-failed" } & HookTunnelFailedPayload)
+  | { type: "hook-tunnel-recovered"; sshHost: string }
   | ({ type: "task-session-changed" } & TaskSessionChangedPayload)
   | ({ type: "task-peer-deletion-failed" } & TaskPeerDeletionFailedPayload)
   | ({ type: "herdr-machine-registration-failed" } & HerdrMachineRegistrationFailedPayload)
@@ -151,6 +159,14 @@ export function broadcastHookStatusTargetMissing(payload: HookStatusTargetMissin
 /** 새 태스크 생성 후 hooks 자동 설치가 실패하면 렌더러에 안내를 브로드캐스트한다 */
 export function broadcastTaskHookInstallFailed(payload: TaskHookInstallFailedPayload) {
   emitBoardEvent({ type: "task-hook-install-failed", ...payload });
+}
+
+export function broadcastHookTunnelFailed(payload: HookTunnelFailedPayload) {
+  emitBoardEvent({ type: "hook-tunnel-failed", ...payload });
+}
+
+export function broadcastHookTunnelRecovered(sshHost: string) {
+  emitBoardEvent({ type: "hook-tunnel-recovered", sshHost });
 }
 
 /** 원격 Herdr 서버의 machine 등록이 실패하면 렌더러에 원인과 확인 방법을 알린다 */

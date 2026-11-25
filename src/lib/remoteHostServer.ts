@@ -10,7 +10,7 @@ import { createLocalShellEnvironment } from "./shellEnvironment";
 import { RemoteHostPtyRegistry } from "./remoteHostPty";
 import {
   buildHostSocketPaths, createHostRecordDecoder, decodeHostBytes, encodeHostRecord,
-  HOST_BUFFER_BYTES, HOST_CHUNK_BYTES, HOST_PROTOCOL_VERSION, HOST_RECORD_BYTES, isValidHostNamespace, type HostRecord,
+  HOST_BUFFER_BYTES, HOST_CHUNK_BYTES, HOST_CLIENT_ALREADY_CONNECTED, HOST_PROTOCOL_VERSION, HOST_RECORD_BYTES, isValidHostNamespace, type HostRecord,
 } from "./remoteHostProtocol";
 
 const MAX_ACTIVE_REQUESTS = 128;
@@ -20,6 +20,7 @@ const MAX_COMMAND_TEXT_BYTES = HOST_RECORD_BYTES / 2;
 const MAX_COMMAND_TIMEOUT_MS = 24 * 60 * 60_000;
 const HOOK_RESPONSE_TIMEOUT_MS = 120_000;
 const HELLO_TIMEOUT_MS = 10_000;
+const PEER_PROBE_TIMEOUT_MS = 2_000;
 const PREVIOUS_DAEMON_STOP_TIMEOUT_MS = 8_000;
 const HOOK_PATHS = new Set(["/api/hooks/status", "/api/cli/tasks", "/api/cli/tasks/delete", "/api/cli/tasks/register", "/api/cli/tasks/list", "/api/cli/tasks/session"]);
 const HOOK_READ_PATHS = new Set(["/api/hooks/health", "/api/install/hooks.sh"]);
@@ -109,6 +110,26 @@ interface Peer {
   clientId: string;
   send: (record: HostRecord) => boolean;
   hooks: Map<string, { response: http.ServerResponse; timer: NodeJS.Timeout }>;
+  probe?: { id: string; response: Promise<boolean>; finish: (responded: boolean) => void };
+}
+
+function probePeer(peer: Peer): Promise<boolean> {
+  if (peer.socket.destroyed) return Promise.resolve(false);
+  if (peer.probe) return peer.probe.response;
+
+  const id = randomUUID();
+  let finish!: (responded: boolean) => void;
+  const response = new Promise<boolean>((resolve) => {
+    const timer = setTimeout(() => finish(false), PEER_PROBE_TIMEOUT_MS);
+    finish = (responded) => {
+      clearTimeout(timer);
+      peer.probe = undefined;
+      resolve(responded);
+    };
+  });
+  peer.probe = { id, response, finish };
+  peer.send({ type: "ping", id });
+  return response;
 }
 
 function attachPeer(socket: Socket, options: RemoteHostServerOptions, peers: Map<string, Peer>, identity: HostRecord, ptys: RemoteHostPtyRegistry, stop: () => void): void {
@@ -132,11 +153,14 @@ function attachPeer(socket: Socket, options: RemoteHostServerOptions, peers: Map
     commands.forEach(killCommand); forwards.forEach((forward) => forward.destroy());
     socket.off("drain", resumeStreams); streamResumers.clear();
     if (peer && peers.get(peer.clientId) === peer) peers.delete(peer.clientId);
+    peer?.probe?.finish(false);
     if (peer) ptys.detach(peer);
     peer?.hooks.forEach(({ response, timer }) => { clearTimeout(timer); response.writeHead(503).end("Desktop disconnected; request not replayed"); });
   });
-  const fail = (error: unknown) => {
-    send({ type: "error", error: error instanceof Error ? error.message : "Invalid host request" }); socket.end();
+  const fail = (error: unknown, code?: string) => {
+    if (socket.destroyed || socket.writableEnded) return;
+    send({ type: "error", error: error instanceof Error ? error.message : "Invalid host request", ...(code ? { code } : {}) });
+    socket.end();
   };
   const openCommand = (record: HostRecord, id: string) => {
     if (commands.has(id) || forwards.has(id) || commands.size + forwards.size >= MAX_ACTIVE_REQUESTS) throw new Error("Host request capacity exceeded or duplicate id");
@@ -182,15 +206,45 @@ function attachPeer(socket: Socket, options: RemoteHostServerOptions, peers: Map
     forward.on("close", () => { streamResumers.delete(resume); forwards.delete(id); send({ type: "socket.close", id }); });
     if (socket.destroyed || forward.destroyed) forward.destroy(); else forward.connect(record.path);
   };
+  let helloReceived = false;
+  const acceptPeer = async (clientId: string) => {
+    const previous = peers.get(clientId);
+    const responded = previous ? await probePeer(previous) : false;
+    if (socket.destroyed || socket.readableEnded || socket.writableEnded) return;
+
+    // Another handshake may have claimed this client ID while both were waiting for the same probe.
+    const current = peers.get(clientId);
+    if (current && (current !== previous || (responded && !current.socket.destroyed))) {
+      fail(new Error("A desktop with this client ID is already connected"), HOST_CLIENT_ALREADY_CONNECTED);
+      return;
+    }
+
+    const replacedStalePeer = Boolean(previous && !previous.socket.destroyed);
+    previous?.socket.destroy();
+    peer = { socket, clientId, send, hooks: new Map() };
+    peers.set(clientId, peer);
+    clearTimeout(helloTimer);
+    send(replacedStalePeer ? { ...identity, replacedStalePeer: true } : identity);
+  };
   const receive = (record: HostRecord) => {
+    if (socket.destroyed || socket.writableEnded) return;
     if (!peer) {
-      if (record.type !== "hello" || record.version !== HOST_PROTOCOL_VERSION || record.namespace !== options.namespace || record.role !== "desktop" || record.buildHash !== options.buildHash || typeof record.clientId !== "string" || !/^[A-Za-z0-9-]{1,128}$/.test(record.clientId) || peers.has(record.clientId)) throw new Error("Host handshake namespace, role, version, build or client mismatch");
-      peer = { socket, clientId: record.clientId, send, hooks: new Map() }; peers.set(peer.clientId, peer); clearTimeout(helloTimer);
-      send(identity); return;
+      if (helloReceived || record.type !== "hello") throw new Error("Expected a single host hello record");
+      if (record.version !== HOST_PROTOCOL_VERSION) throw new Error("Host hello version mismatch");
+      if (record.namespace !== options.namespace) throw new Error("Host hello namespace mismatch");
+      if (record.role !== "desktop") throw new Error("Host hello role mismatch");
+      if (record.buildHash !== options.buildHash) throw new Error("Host hello buildHash mismatch");
+      if (typeof record.clientId !== "string" || !/^[A-Za-z0-9-]{1,128}$/.test(record.clientId)) throw new Error("Invalid host hello clientId");
+      helloReceived = true;
+      void acceptPeer(record.clientId).catch(fail);
+      return;
     }
     const id = record.id;
     if (typeof id !== "string" || !/^[A-Za-z0-9-]{1,128}$/.test(id)) throw new Error("Invalid host request id");
     switch (record.type) {
+      case "pong":
+        if (peer.probe?.id === id) peer.probe.finish(true);
+        break;
       case "pty.open": case "pty.list": case "pty.input": case "pty.resize": case "pty.ack": case "pty.detach": case "pty.close":
         try { ptys.receive(peer, record); }
         catch (error) { ptys.receive(peer, { type: "pty.detach", id }); send({ type: "pty.error", id, error: error instanceof Error ? error.message : "Invalid PTY request" }); }

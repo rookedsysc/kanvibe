@@ -101,18 +101,19 @@ diff 서비스에는 전역 또는 호스트별 갱신 대기열과 동시 실�
 
 | 내부 응답 | 관측할 내용 |
 | --- | --- |
-| 접속 시 `ready` | protocol version, namespace, instance ID, PID, UID, build hash, 기능 목록 |
+| 접속 시 `ready` | protocol version, namespace, instance ID, PID, UID, build hash, 기능 목록. 응답 없는 기존 연결을 교체했다면 `replacedStalePeer` 포함 |
+| 중복 접속 시 `ping`과 `pong` | 기존 데스크톱이 같은 요청 ID로 응답하는지 확인 |
 | `status` 응답 | `ready`와 같은 식별 정보 |
 | `pty.list` 응답 | 해당 client가 소유한 session ID·key·PID |
 | `stop` 요청 | 해당 daemon 중지. daemon 소유 PTY 모두에 영향 |
 
-서버 응답과 오류 로그를 통해 조사하며, 전용 상태 표시 UI가 있다고 가정하지 않습니다.
+Hook 터널의 로그와 앱 알림함은 SSH 연결 실패, daemon 핸드셰이크 실패, 동일 client ID의 연결 거부를 구분합니다. daemon이 보낸 사유와 확인할 항목을 표시하며, 연속 재시도에서 같은 사유는 한 번만 표시합니다.
 
 원격 서버는 Node18 이상을 요구합니다. 로컬 desktop의 `node-pty@1.1.0` 의존성은 유지하고, 원격 전용 파일은 고정된 `node-pty@1.2.0-beta.14`에서 빌드합니다. 빌드 시 공식 npm archive의 SHA-512를 확인하고 파일별 SHA-256 manifest를 만듭니다. 원격에는 해당 OS·CPU 파일만 보내며 사용자 호스트에서 npm 설치·컴파일을 하지 않습니다.
 
 원격 시작 전 OS·CPU·Node-API 버전과 파일 hash·경로·소유권을 검사하고 native 모듈을 실제로 로딩합니다. Node-API 조건을 만족해도 libc나 시스템 요구사항 때문에 로딩이 실패할 수 있습니다. beta 버전을 자동 추종하지 않으며 버전을 바꾸면 native·입력 ACK 경계를 다시 검증해야 합니다.
 
-서버 build가 현재 앱과 다르면 bootstrap이 기존 daemon을 내리고 현재 앱의 build로 새 daemon을 시작합니다. namespace마다 rpc 소켓이 하나뿐이라, 이전 build daemon을 그대로 두면 새 앱의 연결이 `Host handshake mismatch`로 거부되고 그 원격 호스트의 명령 실행·도구 설치·hook tunnel이 모두 막히기 때문입니다. 인증·host key·daemon protocol·무결성 오류를 기존 SSH PTY로 조용히 우회하지는 않습니다.
+서버 build가 현재 앱과 다르면 bootstrap이 기존 daemon을 내리고 현재 앱의 build로 새 daemon을 시작합니다. namespace마다 rpc 소켓이 하나뿐이라, 이전 build daemon을 그대로 두면 build hash 검사가 새 앱의 연결을 거부하고 그 원격 호스트의 명령 실행·도구 설치·hook tunnel이 모두 막힙니다. 인증·host key·daemon protocol·무결성 오류를 기존 SSH PTY로 조용히 우회하지는 않습니다.
 
 교체는 다음 조건을 모두 확인한 daemon에만 `SIGTERM`을 보냅니다.
 
@@ -123,7 +124,9 @@ diff 서비스에는 전역 또는 호스트별 갱신 대기열과 동시 실�
 
 교체되는 daemon이 소유한 일반 terminal PTY는 종료되고, 실행 중인 명령도 연결 종료의 영향을 받습니다. tmux·zellij·Herdr 서버는 daemon과 수명이 별개라 유지됩니다. 같은 namespace에 build가 다른 앱 둘이 번갈아 접속하면 접속할 때마다 상대 daemon을 교체하므로, 개발 checkout 여러 개를 함께 쓸 때는 같은 build로 맞춥니다.
 
-같은 build끼리는 기존 daemon을 그대로 공유합니다. 되돌릴 때도 이전 앱 빌드로 접속하면 같은 방식으로 교체됩니다. hook 보관 파일을 쓰던 빌드로 되돌리는 경우는 아래 절을 먼저 확인합니다.
+같은 build끼리는 기존 daemon을 그대로 공유합니다. 같은 client ID가 다시 연결되면 daemon은 기존 데스크톱에 ping을 보냅니다. 2초 안에 응답이 오면 새 접속을 거부합니다. 응답이 없고 새 접속이 여전히 대기 중이면 기존 연결만 닫고 새 접속을 받습니다. Hook 터널 로그와 앱 알림함에 복구 사유를 남깁니다.
+
+이전 앱 빌드로 되돌리면 bootstrap의 build 비교와 daemon 교체가 같은 방식으로 동작합니다. hook 보관 파일을 쓰던 빌드로 되돌리는 경우는 아래 절을 먼저 확인합니다.
 
 ### hook 보관 파일을 쓰던 빌드에서 올라올 때
 

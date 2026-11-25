@@ -4,13 +4,14 @@ import http, { type RequestListener } from "node:http";
 import path from "node:path";
 import { IsNull, Not } from "typeorm";
 import { getOrCreateHookClientId } from "@/desktop/main/services/appSettingsService";
+import { broadcastHookTunnelFailed, broadcastHookTunnelRecovered, type HookTunnelFailedPayload } from "@/lib/boardNotifier";
 import { execGit } from "@/lib/gitOperations";
 import { buildHookSocketFileName, buildRemoteHookSocketPrepareCommand } from "@/lib/hookSocketPath";
 import { getProjectRepository, getTaskRepository } from "@/lib/database";
 import { createLocalShellEnvironment } from "@/lib/shellEnvironment";
 import { buildSSHArgs, parseSSHConfig, type SSHHostConfig } from "@/lib/sshConfig";
-import { configureRemoteHostTransport, getRemoteHostConnection, getRemoteHostEndpointKey, getRemoteHostNamespace, stopRemoteHostConnections, type HostConnection } from "@/lib/remoteHostConnection";
-import { decodeHostBytes, HOST_RECORD_BYTES, type HostRecord } from "@/lib/remoteHostProtocol";
+import { configureRemoteHostTransport, getRemoteHostConnection, getRemoteHostEndpointKey, getRemoteHostNamespace, RemoteHostConnectionError, stopRemoteHostConnections, type HostConnection } from "@/lib/remoteHostConnection";
+import { decodeHostBytes, HOST_CLIENT_ALREADY_CONNECTED, HOST_RECORD_BYTES, type HostRecord } from "@/lib/remoteHostProtocol";
 
 /**
  * 원격 호스트의 hook·CLI가 평문 포트 대신 SSH 안으로 데스크탑에 돌아오도록 호스트별 `ssh -R` 터널을 유지한다.
@@ -47,10 +48,12 @@ interface HookTunnel {
   localServer: http.Server;
   localSocketPath: string;
   sshProcess: ChildProcess | null;
+  sshReconnectRequested?: boolean;
   hostConnection?: HostConnection;
   reconnectTimer: NodeJS.Timeout | null;
   reconnectDelayMs: number;
   isClosed: boolean;
+  lastFailure?: Pick<HookTunnelFailedPayload, "kind" | "reason">;
 }
 
 const tunnelsByEndpoint = new Map<string, HookTunnel>();
@@ -101,6 +104,7 @@ async function connectHookTunnel(tunnel: HookTunnel): Promise<void> {
   if (tunnel.isClosed) return;
   if (hostConnection) {
     tunnel.hostConnection = hostConnection;
+    tunnel.lastFailure = undefined;
     hostConnection.setHookHandler((record) => forwardHostHookRequest(tunnel, record));
     void import("@/desktop/main/services/kanvibeTaskStateService").then(({ refreshHostTaskStatuses }) => (
       refreshHostTaskStatuses(tunnel.sshHosts, () => !tunnel.isClosed && tunnel.hostConnection === hostConnection)
@@ -111,6 +115,10 @@ async function connectHookTunnel(tunnel: HookTunnel): Promise<void> {
         if (!tunnel.isClosed) startHookTunnelConnection(tunnel);
       }
     });
+    if (hostConnection.replacedStalePeer) {
+      console.info(`[kanvibe] Hook tunnel to ${tunnel.connectHost} reconnected after replacing an unresponsive desktop connection`);
+      broadcastHookTunnelRecovered(tunnel.connectHost);
+    }
     return;
   }
   const clientId = await getOrCreateHookClientId();
@@ -144,7 +152,7 @@ async function connectHookTunnel(tunnel: HookTunnel): Promise<void> {
   const startedAt = Date.now();
   let lastErrorOutput = "";
   sshProcess.stderr?.on("data", (chunk) => {
-    lastErrorOutput = String(chunk).trim().slice(-300);
+    lastErrorOutput = (lastErrorOutput + String(chunk)).slice(-4096);
   });
   sshProcess.stdin?.on("error", () => undefined);
   sshProcess.once("error", (error) => {
@@ -157,10 +165,15 @@ async function connectHookTunnel(tunnel: HookTunnel): Promise<void> {
     if (tunnel.isClosed) {
       return;
     }
+    const reconnectRequested = tunnel.sshReconnectRequested;
+    tunnel.sshReconnectRequested = false;
     if (Date.now() - startedAt >= TUNNEL_STABLE_AFTER_MS) {
       tunnel.reconnectDelayMs = TUNNEL_RECONNECT_MIN_DELAY_MS;
+      tunnel.lastFailure = undefined;
     }
-    console.warn(`[kanvibe] Hook tunnel to ${tunnel.connectHost} closed (exit ${exitCode}): ${lastErrorOutput}`);
+    if (!reconnectRequested) {
+      reportHookTunnelFailure(tunnel, "ssh", lastErrorOutput.trim() || `SSH tunnel closed (exit ${exitCode})`);
+    }
     scheduleHookTunnelReconnect(tunnel);
   });
 }
@@ -198,9 +211,19 @@ function scheduleHookTunnelReconnect(tunnel: HookTunnel): void {
   tunnel.reconnectTimer.unref();
 }
 
+function reportHookTunnelFailure(tunnel: HookTunnel, kind: HookTunnelFailedPayload["kind"], reason: string): void {
+  if (tunnel.isClosed || (tunnel.lastFailure?.kind === kind && tunnel.lastFailure.reason === reason)) return;
+  tunnel.lastFailure = { kind, reason };
+  console.warn(`[kanvibe] Hook tunnel to ${tunnel.connectHost} failed (${kind}):`, reason);
+  broadcastHookTunnelFailed({ sshHost: tunnel.connectHost, kind, reason });
+}
+
 function startHookTunnelConnection(tunnel: HookTunnel): void {
   connectHookTunnel(tunnel).catch((error) => {
-    console.warn(`[kanvibe] Hook tunnel to ${tunnel.connectHost} failed:`, error instanceof Error ? error.message : error);
+    const kind = error instanceof RemoteHostConnectionError
+      ? error.code === HOST_CLIENT_ALREADY_CONNECTED ? "client-in-use" : error.kind
+      : "setup";
+    reportHookTunnelFailure(tunnel, kind, error instanceof Error ? error.message : String(error));
     scheduleHookTunnelReconnect(tunnel);
   });
 }
@@ -344,6 +367,7 @@ export function reconnectHookTunnels(): void {
     if (tunnel.hostConnection) {
       tunnel.hostConnection.close();
     } else if (tunnel.sshProcess) {
+      tunnel.sshReconnectRequested = true;
       tunnel.sshProcess.kill();
     } else if (tunnel.reconnectTimer) {
       clearTimeout(tunnel.reconnectTimer);
