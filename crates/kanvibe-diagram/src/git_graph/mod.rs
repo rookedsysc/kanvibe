@@ -479,6 +479,7 @@ mod tests {
             fonts: &fonts,
             palette: &palette,
             label_mode: LabelMode::Html,
+            theme_variables: Default::default(),
         };
         let definition = "gitGraph\n commit\n commit\n branch develop\n checkout develop\n commit\n commit\n checkout main\n merge develop\n commit\n branch feature\n commit tag: \"v1\"\n checkout main\n commit";
         let scene = render(definition, &context).unwrap();

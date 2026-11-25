@@ -87,6 +87,7 @@ mod tests {
             fonts: &fonts,
             palette: &palette,
             label_mode: LabelMode::Html,
+            theme_variables: Default::default(),
         };
         render(definition, &context)
     }

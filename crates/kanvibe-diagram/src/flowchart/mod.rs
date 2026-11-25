@@ -20,6 +20,7 @@ use crate::label::{LabelBox, measure_label};
 use crate::scene::{Color, Scene, SceneItem};
 use crate::text::FontBook;
 use crate::theme::Palette;
+use crate::theme_variables::ThemeVariables;
 use crate::{DiagramError, LabelMode, RenderContext};
 
 /// 노드·subgraph 패딩(flowchart.padding 기본 15, subgraph는 8)
@@ -134,12 +135,39 @@ pub fn render(definition: &str, context: &RenderContext) -> Result<Scene, Diagra
             crate::MAX_EDGES
         )));
     }
+    let palette = flowchart_palette(context.palette, &context.theme_variables);
     let render = FlowRender {
         fonts,
-        palette: context.palette,
+        palette: &palette,
     };
     let (nodes, edges) = build_layout_data(&chart, fonts, context.label_mode);
     Ok(render_layout(&render, chart.direction, nodes, edges))
+}
+
+/// flowchart styles.ts가 읽는 테마 변수로 기본 색을 덮는다. 라벨 글자는 `nodeTextColor || textColor`이고,
+/// HTML 간선 라벨 바깥 바탕은 `fade(edgeLabelBackground, 0.5)`(알파만 0.5로 바꾼 색)다
+fn flowchart_palette(base: &Palette, variables: &ThemeVariables) -> Palette {
+    let mut palette = base.clone();
+    variables.read_color("mainBkg", &mut palette.node_fill);
+    variables.read_color("nodeBorder", &mut palette.node_stroke);
+    if let Some(color) = variables
+        .color("nodeTextColor")
+        .or_else(|| variables.color("textColor"))
+    {
+        palette.text = color;
+    }
+    variables.read_color("lineColor", &mut palette.line);
+    variables.read_color("clusterBkg", &mut palette.cluster_fill);
+    variables.read_color("clusterBorder", &mut palette.cluster_stroke);
+    variables.read_color("titleColor", &mut palette.cluster_text);
+    if let Some(background) = variables.color("edgeLabelBackground") {
+        palette.edge_label_inner = background;
+        palette.edge_label_outer = Color {
+            alpha: 0.5,
+            ..background
+        };
+    }
+    palette
 }
 
 /// 노드·간선 목록을 단계별 dagre로 배치해 그리고 diagramPadding을 둘러 장면으로 만든다(통합 렌더러 공용)

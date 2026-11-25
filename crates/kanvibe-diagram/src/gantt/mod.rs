@@ -696,6 +696,7 @@ mod tests {
             fonts: &fonts,
             palette: &palette,
             label_mode: crate::LabelMode::SvgText,
+            theme_variables: Default::default(),
         };
         render(definition, &context).unwrap()
     }
@@ -751,6 +752,7 @@ mod tests {
             fonts: &fonts,
             palette: &palette,
             label_mode: crate::LabelMode::SvgText,
+            theme_variables: Default::default(),
         };
         // 1월 1일 ~ 1월 27일(26일, 634px)의 한가운데인 1월 14일 0시
         let definition = "gantt\ndateFormat YYYY-MM-DD\nsection A\nOne :a1, 2024-01-01, 10d\n\

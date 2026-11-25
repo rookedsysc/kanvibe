@@ -5,6 +5,7 @@
  * capture.py가 만든 임시 앱 디렉터리(build·electron은 저장소로 가는 링크)에서 이 파일을 main으로 실행한다.
  * 모바일 경로와 똑같이 빌드된 renderDiagramInDesktop()을 불러 JPEG를 받고, 같은 diagram-worker.html을
  * 보조 창에 한 번 더 띄워 Mermaid가 만든 SVG 원문을 받아 둔다. SVG는 네이티브 렌더러의 좌표를 맞출 때 쓴다.
+ * 항목의 configuration(mobile·desktop)에 맞는 워커 문서를 그리기 전마다 diagram-worker.html 자리에 놓는다.
  */
 const fs = require("node:fs");
 const path = require("node:path");
@@ -34,6 +35,12 @@ function captureSvg(input) {
   });
 }
 
+/** capture.py가 만든 설정별 워커 문서(diagram-worker.mobile.html·diagram-worker.desktop.html)를 고른다 */
+function useWorkerConfiguration(configuration) {
+  const rendererRoot = path.join(app.getAppPath(), "build", "renderer");
+  fs.copyFileSync(path.join(rendererRoot, `diagram-worker.${configuration}.html`), path.join(rendererRoot, "diagram-worker.html"));
+}
+
 // 다이어그램 창을 닫을 때마다 앱이 끝나지 않게 한다
 app.on("window-all-closed", () => {});
 
@@ -44,6 +51,7 @@ async function run() {
   for (const entry of job.entries) {
     const input = { definition: entry.definition, theme: entry.theme, width: entry.width };
     const result = { id: entry.id, theme: entry.theme, width: entry.width };
+    useWorkerConfiguration(entry.configuration);
     try {
       const rendered = await worker.renderDiagramInDesktop(input);
       fs.writeFileSync(path.join(job.outDir, `${entry.id}--${entry.theme}.jpg`), rendered.encoded);

@@ -48,7 +48,8 @@ pub fn render(definition: &str, context: &RenderContext) -> Result<Scene, Diagra
     }
     let config = RadarConfig::read(&directives);
     let frame = RadarFrame {
-        style: RadarStyle::for_theme(context.palette.theme),
+        style: RadarStyle::for_theme(context.palette.theme)
+            .with_theme_variables(&context.theme_variables),
         center: Point::new(
             config.margin_left + config.width / 2.0,
             config.margin_top + config.height / 2.0,
@@ -270,6 +271,7 @@ mod tests {
             fonts: &fonts,
             palette: &palette,
             label_mode: LabelMode::Html,
+            theme_variables: Default::default(),
         };
         let scene = render(
             "radar-beta\naxis a, b, c\ncurve x{1, 2, 3}\nticks 2\nshowLegend false",

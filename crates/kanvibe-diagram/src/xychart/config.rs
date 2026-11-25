@@ -1,12 +1,13 @@
 //! xychart 설정(`config.xyChart`, defaultConfig.xyChart)과 테마 색(themeVariables.xyChart 기본값).
 //!
-//! 앞머리 `config`나 `init` 지시문에서 형이 맞는 값만 기본값을 덮는다. 색은 테마 기본값만 쓴다(TS 모바일 워커가
-//! `themeVariables`를 `secure`로 막는다).
+//! 앞머리 `config`나 `init` 지시문에서 형이 맞는 값만 기본값을 덮는다. 색은 테마 기본값에 정의가 덮은
+//! `themeVariables.xyChart`(데스크톱 경로만, TS 모바일 워커는 `secure`로 막는다)를 겹친다.
 
 use crate::chart_config::ConfigSection;
 use crate::directive::DiagramConfig;
 use crate::scene::Color;
 use crate::theme::Theme;
+use crate::theme_variables::{ThemeVariables, parse_theme_color};
 
 /// x축·y축 설정(XYChartAxisConfig)
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -110,13 +111,43 @@ impl ChartConfig {
     }
 }
 
-/// themeVariables.xyChart 기본값. TS 워커는 `themeVariables`를 `secure`로 막아 정의에서 바꿀 수 없다
+/// 축 하나의 색(xAxis*Color·yAxis*Color)
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct AxisColors {
+    pub title: Color,
+    pub label: Color,
+    pub tick: Color,
+    pub line: Color,
+}
+
+impl AxisColors {
+    fn uniform(color: Color) -> Self {
+        Self {
+            title: color,
+            label: color,
+            tick: color,
+            line: color,
+        }
+    }
+
+    /// `prefix`는 `xAxis`나 `yAxis`
+    fn read(&mut self, variables: &ThemeVariables, prefix: &str) {
+        variables.read_color(&format!("{prefix}TitleColor"), &mut self.title);
+        variables.read_color(&format!("{prefix}LabelColor"), &mut self.label);
+        variables.read_color(&format!("{prefix}TickColor"), &mut self.tick);
+        variables.read_color(&format!("{prefix}LineColor"), &mut self.line);
+    }
+}
+
+/// themeVariables.xyChart. 기본값은 모두 테마의 primaryTextColor이고, 데스크톱 경로는 정의가 덮은 값을 겹친다
 #[derive(Clone, Debug, PartialEq)]
 pub struct ChartColors {
     pub background: Color,
-    /// 제목·축·데이터 라벨 글자와 선(primaryTextColor)
-    pub text: Color,
-    pub plots: [Color; 10],
+    pub title: Color,
+    pub data_label: Color,
+    pub x_axis: AxisColors,
+    pub y_axis: AxisColors,
+    pub plots: Vec<Color>,
 }
 
 fn hex(value: u32) -> Color {
@@ -143,11 +174,32 @@ impl ChartColors {
                 ],
             ),
         };
+        let text = hex(text);
         Self {
             background: hex(background),
-            text: hex(text),
-            plots: plots.map(hex),
+            title: text,
+            data_label: text,
+            x_axis: AxisColors::uniform(text),
+            y_axis: AxisColors::uniform(text),
+            plots: plots.map(hex).to_vec(),
         }
+    }
+
+    /// `themeVariables.xyChart`(getChartDefaultThemeConfig). `plotColorPalette`는 쉼표로 나눈 색 목록이다
+    pub fn with_theme_variables(mut self, variables: &ThemeVariables) -> Self {
+        let chart = variables.section("xyChart");
+        chart.read_color("backgroundColor", &mut self.background);
+        chart.read_color("titleColor", &mut self.title);
+        chart.read_color("dataLabelColor", &mut self.data_label);
+        self.x_axis.read(&chart, "xAxis");
+        self.y_axis.read(&chart, "yAxis");
+        if let Some(palette) = chart.text("plotColorPalette") {
+            let plots: Vec<Color> = palette.split(',').filter_map(parse_theme_color).collect();
+            if !plots.is_empty() {
+                self.plots = plots;
+            }
+        }
+        self
     }
 
     /// getPlotColorFromPalette

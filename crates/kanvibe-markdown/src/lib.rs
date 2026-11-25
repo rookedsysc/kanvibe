@@ -76,7 +76,8 @@ pub fn code_block(language: Option<String>, code: String) -> CodeBlock {
 }
 
 /// Mermaid 조각을 그린다. 데스크톱은 앱 테마가 라이트면 Mermaid `default`, 아니면 `dark` 테마를 쓰고,
-/// TS 데스크톱 렌더러의 `htmlLabels: false`처럼 라벨을 SVG 글자로 잰다
+/// TS 데스크톱 렌더러의 `htmlLabels: false`처럼 라벨을 SVG 글자로 잰다. 그 렌더러는 `secure`를 바꾸지 않아
+/// 정의의 `themeVariables`가 먹는다
 pub fn render_mermaid(
     definition: &str,
     theme: Theme,
@@ -86,6 +87,7 @@ pub fn render_mermaid(
         definition,
         theme,
         kanvibe_diagram::LabelMode::SvgText,
+        kanvibe_diagram::theme_variables::ThemeVariablesPolicy::Apply,
         fonts,
     )
 }

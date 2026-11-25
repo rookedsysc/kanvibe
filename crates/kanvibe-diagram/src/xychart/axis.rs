@@ -8,7 +8,7 @@ use crate::chart_text::{AnchoredText, BaselineAnchor, TextAnchor, push_anchored_
 use crate::scene::{Color, PathCommand, Point, Scene, StrokeStyle};
 use crate::text::{FontBook, FontWeight};
 
-use super::config::AxisConfig;
+use super::config::{AxisColors, AxisConfig};
 use super::parser::{AxisScale, format_number};
 use super::ticks::linear_ticks;
 
@@ -55,11 +55,16 @@ pub struct ChartAxis {
     show_axis_line: bool,
     config: AxisConfig,
     /// 제목·라벨·눈금·선 색
-    color: Color,
+    colors: AxisColors,
 }
 
 impl ChartAxis {
-    pub fn new(data: AxisScale, position: AxisPosition, config: AxisConfig, color: Color) -> Self {
+    pub fn new(
+        data: AxisScale,
+        position: AxisPosition,
+        config: AxisConfig,
+        colors: AxisColors,
+    ) -> Self {
         Self {
             data,
             position,
@@ -72,7 +77,7 @@ impl ChartAxis {
             show_tick: false,
             show_axis_line: false,
             config,
-            color,
+            colors,
         }
     }
 
@@ -273,11 +278,17 @@ impl ChartAxis {
     }
 
     fn push_axis_line(&self, scene: &mut Scene, from: Point, to: Point) {
-        push_line(scene, from, to, self.color, self.config.axis_line_width);
+        push_line(
+            scene,
+            from,
+            to,
+            self.colors.line,
+            self.config.axis_line_width,
+        );
     }
 
     fn push_tick(&self, scene: &mut Scene, from: Point, to: Point) {
-        push_line(scene, from, to, self.color, self.config.tick_width);
+        push_line(scene, from, to, self.colors.tick, self.config.tick_width);
     }
 
     fn label_text<'a>(&self, text: &'a str, anchor: Point) -> AnchoredText<'a> {
@@ -292,7 +303,7 @@ impl ChartAxis {
             x: anchor.x,
             y: anchor.y,
             font_size: self.config.label_font_size,
-            color: self.color,
+            color: self.colors.label,
             anchor: text_anchor,
             baseline,
             degrees: 0.0,
@@ -431,7 +442,7 @@ impl ChartAxis {
             x: anchor.x,
             y: anchor.y,
             font_size: self.config.title_font_size,
-            color: self.color,
+            color: self.colors.title,
             anchor: TextAnchor::Middle,
             baseline: BaselineAnchor::TextBeforeEdge,
             degrees,

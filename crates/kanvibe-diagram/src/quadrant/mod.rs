@@ -498,6 +498,7 @@ mod tests {
             fonts: &fonts,
             palette: &palette,
             label_mode: LabelMode::SvgText,
+            theme_variables: Default::default(),
         };
         let scene = render(
             "quadrantChart\n y-axis Low --> High\n quadrant-1 Q1\n P: [0.5, 0.5]",

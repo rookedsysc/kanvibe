@@ -1,0 +1,6 @@
+%%{init: {"themeVariables": {"primaryColor": "#ff0000", "nodeBorder": "#b45309", "textColor": "#1e3a8a", "lineColor": "#dc2626", "edgeLabelBackground": "#bfdbfe"}}}%%
+flowchart LR
+  A[Checkout] -->|compile| B(Test)
+  B --> C{Deploy?}
+  C -->|yes| D[Release]
+  C -.->|no| A

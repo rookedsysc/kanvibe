@@ -1,7 +1,8 @@
 //! parity/diagrams/baseline/*.mmd를 모바일 경로(폭 800, 라이트·다크)로 그려 비교용 PNG를 남긴다.
 //!
 //! `cargo run -p kanvibe-diagram --example render_parity -- <출력 디렉터리> [id ...]`
-//! 모바일 경로(HTML 라벨)는 `<id>--<theme>.png`, 데스크톱 경로(SVG 글자 라벨)는 `<id>--desktop--<theme>.png`로 남긴다.
+//! 모바일 경로(HTML 라벨, `themeVariables` 막음)는 `<id>--<theme>.png`, 데스크톱 경로(SVG 글자 라벨, `themeVariables` 씀)는
+//! `<id>--desktop--<theme>.png`로 남긴다.
 //! 출력은 `parity/tools/screens/diff.py --dirs parity/diagrams/baseline <출력 디렉터리>`로 비교한다.
 
 use std::path::{Path, PathBuf};
@@ -10,6 +11,7 @@ use kanvibe_diagram::LabelMode;
 use kanvibe_diagram::raster;
 use kanvibe_diagram::text::FontBook;
 use kanvibe_diagram::theme::{Palette, Theme};
+use kanvibe_diagram::theme_variables::ThemeVariablesPolicy;
 
 const PARITY_WIDTH: u32 = 800;
 
@@ -50,20 +52,22 @@ fn render_source(
     out_dir: &Path,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let definition = std::fs::read_to_string(source)?;
+    let (mobile, desktop) = (ThemeVariablesPolicy::Ignore, ThemeVariablesPolicy::Apply);
     let variants = [
-        (LabelMode::Html, Theme::Light, "light"),
-        (LabelMode::Html, Theme::Dark, "dark"),
-        (LabelMode::SvgText, Theme::Light, "desktop--light"),
-        (LabelMode::SvgText, Theme::Dark, "desktop--dark"),
+        (LabelMode::Html, mobile, Theme::Light, "light"),
+        (LabelMode::Html, mobile, Theme::Dark, "dark"),
+        (LabelMode::SvgText, desktop, Theme::Light, "desktop--light"),
+        (LabelMode::SvgText, desktop, Theme::Dark, "desktop--dark"),
     ];
-    for (mode, theme, name) in variants {
-        let scene = match kanvibe_diagram::render_scene(definition.trim(), theme, mode, fonts) {
-            Ok(scene) => scene,
-            Err(error) => {
-                println!("{id}--{name}: {error}");
-                continue;
-            }
-        };
+    for (mode, policy, theme, name) in variants {
+        let scene =
+            match kanvibe_diagram::render_scene(definition.trim(), theme, mode, policy, fonts) {
+                Ok(scene) => scene,
+                Err(error) => {
+                    println!("{id}--{name}: {error}");
+                    continue;
+                }
+            };
         let background = Palette::for_theme(theme).page_background;
         let (pixmap, layout) =
             raster::rasterize_mobile(&scene, fonts, background, PARITY_WIDTH).ok_or("픽스맵")?;

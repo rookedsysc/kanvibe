@@ -189,7 +189,14 @@ mod tests {
     fn 스타일_선언으로_테두리_굵기와_채움을_바꾸고_제목을_더한다() {
         let fonts = bundled_fonts();
         let source = include_str!("../../../../parity/diagrams/baseline/requirement-styles.mmd");
-        let scene = render_scene(source, Theme::Light, LabelMode::Html, &fonts).unwrap();
+        let scene = render_scene(
+            source,
+            Theme::Light,
+            LabelMode::Html,
+            crate::theme_variables::ThemeVariablesPolicy::Ignore,
+            &fonts,
+        )
+        .unwrap();
         // requirement-styles 기준 SVG viewBox: 0 -50 170.40625 436
         assert!((scene.width - 170.406_25).abs() < 0.01, "{}", scene.width);
         assert!((scene.height - 436.0).abs() < 0.01, "{}", scene.height);

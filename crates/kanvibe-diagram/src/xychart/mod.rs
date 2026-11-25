@@ -54,7 +54,8 @@ pub fn render(definition: &str, context: &RenderContext) -> Result<Scene, Diagra
     let config = ChartConfig::read(&directives);
     let input = ChartInput {
         is_horizontal: chart.header_orientation.unwrap_or(config.is_horizontal),
-        colors: ChartColors::for_theme(context.palette.theme),
+        colors: ChartColors::for_theme(context.palette.theme)
+            .with_theme_variables(&context.theme_variables),
         chart,
         config,
     };
@@ -101,7 +102,7 @@ fn draw_background_and_title(
         x: width / 2.0,
         y: title_height / 2.0,
         font_size: input.config.title_font_size,
-        color: input.colors.text,
+        color: input.colors.title,
         anchor: TextAnchor::Middle,
         baseline: BaselineAnchor::Middle,
         degrees: 0.0,
@@ -133,8 +134,8 @@ impl ChartLayout {
         let mut layout = Self {
             title_height: title_height(input, fonts),
             plot: Bounds::default(),
-            x_axis: ChartAxis::new(x_data, x_position, config.x_axis, colors.text),
-            y_axis: ChartAxis::new(y_data, y_position, config.y_axis, colors.text),
+            x_axis: ChartAxis::new(x_data, x_position, config.x_axis, colors.x_axis),
+            y_axis: ChartAxis::new(y_data, y_position, config.y_axis, colors.y_axis),
         };
         if input.is_horizontal {
             layout.place_horizontal(fonts, config);
@@ -291,7 +292,7 @@ fn draw_bars(
         let style = data_label::DataLabelStyle {
             is_horizontal: input.is_horizontal,
             is_outside: input.config.show_data_label_outside_bar,
-            color: input.colors.text,
+            color: input.colors.data_label,
         };
         data_label::draw_data_labels(scene, fonts, &bars, &labels, &style);
     }

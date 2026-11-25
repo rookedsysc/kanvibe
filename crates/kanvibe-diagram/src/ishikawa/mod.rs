@@ -183,7 +183,14 @@ mod tests {
 
     fn render_light(definition: &str) -> Scene {
         let fonts = bundled_fonts();
-        crate::render_scene(definition, Theme::Light, LabelMode::Html, &fonts).unwrap()
+        crate::render_scene(
+            definition,
+            Theme::Light,
+            LabelMode::Html,
+            crate::theme_variables::ThemeVariablesPolicy::Ignore,
+            &fonts,
+        )
+        .unwrap()
     }
 
     #[test]

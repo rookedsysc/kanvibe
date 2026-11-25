@@ -263,6 +263,7 @@ mod tests {
             fonts: &fonts,
             palette: &palette,
             label_mode: LabelMode::Html,
+            theme_variables: Default::default(),
         };
         let definition = "C4Context\n  title System Context\n  Person(user, \"User\", \"A KanVibe user\")\n  System(app, \"KanVibe\", \"Task board with terminals\")\n  Rel(user, app, \"Uses\")\n";
         let diagram = parser::parse(definition).unwrap();

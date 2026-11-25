@@ -286,7 +286,14 @@ mod tests {
     fn 시드를_준_손그림_다이어그램이_기준_svg_viewbox와_같다() {
         let fonts = bundled_fonts();
         let source = include_str!("../../../../parity/diagrams/baseline/state-look-handdrawn.mmd");
-        let scene = render_scene(source, Theme::Light, LabelMode::Html, &fonts).unwrap();
+        let scene = render_scene(
+            source,
+            Theme::Light,
+            LabelMode::Html,
+            crate::theme_variables::ThemeVariablesPolicy::Ignore,
+            &fonts,
+        )
+        .unwrap();
         // 기준 SVG viewBox: -0.13153076171875 0.0988302230834961 74.14773559570312 397.78594970703125
         assert!((scene.width - 74.147_735).abs() < 0.001, "{}", scene.width);
         assert!(
@@ -301,7 +308,14 @@ mod tests {
         let fonts = bundled_fonts();
         let source =
             include_str!("../../../../parity/diagrams/baseline/state-look-handdrawn-shapes.mmd");
-        let scene = render_scene(source, Theme::Light, LabelMode::Html, &fonts).unwrap();
+        let scene = render_scene(
+            source,
+            Theme::Light,
+            LabelMode::Html,
+            crate::theme_variables::ThemeVariablesPolicy::Ignore,
+            &fonts,
+        )
+        .unwrap();
         // 기준 PNG를 만든 렌더의 naturalWidth(viewBox 폭 올림)가 562다
         assert_eq!(scene.width.ceil(), 562.0, "{}", scene.width);
     }

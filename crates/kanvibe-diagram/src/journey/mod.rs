@@ -402,6 +402,7 @@ mod tests {
             fonts: &fonts,
             palette: &palette,
             label_mode: crate::LabelMode::Html,
+            theme_variables: Default::default(),
         };
         let definition = "journey\ntitle Day\nsection A\nTea: 5: Me\nWork: 1: Me, Cat\n";
         let scene = render(definition, &context).unwrap();

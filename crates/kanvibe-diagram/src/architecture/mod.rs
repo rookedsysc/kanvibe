@@ -315,6 +315,7 @@ mod tests {
             fonts: &fonts,
             palette: &palette,
             label_mode: LabelMode::SvgText,
+            theme_variables: Default::default(),
         };
         // 기준 SVG viewBox: 기본 예제 446.8271484375 × 462.922607421875, 아이콘 예제는 아래 라벨이 높이를 정한다
         let scene = render(&baseline_definition("basic"), &context).unwrap();

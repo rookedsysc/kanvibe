@@ -1,0 +1,14 @@
+---
+config:
+  themeVariables:
+    mainBkg: "#fde68a"
+    nodeTextColor: "#7f1d1d"
+    clusterBkg: "#dcfce7"
+    clusterBorder: "#15803d"
+    titleColor: "#1d4ed8"
+---
+flowchart TD
+  subgraph desktop [Desktop renderer]
+    Route[Chat message] --> Worker[Mermaid render]
+  end
+  Worker --> Done[Diagram shown]

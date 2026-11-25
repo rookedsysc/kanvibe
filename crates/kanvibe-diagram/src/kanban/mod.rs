@@ -421,6 +421,7 @@ mod tests {
             fonts: &fonts,
             palette: &palette,
             label_mode: mode,
+            theme_variables: Default::default(),
         };
         let canvas = KanbanCanvas {
             fonts: &fonts,
@@ -462,6 +463,7 @@ mod tests {
             fonts: &fonts,
             palette: &palette,
             label_mode: LabelMode::Html,
+            theme_variables: Default::default(),
         };
         let colors = KanbanColors::for_context(&context);
         assert_eq!(

@@ -232,6 +232,7 @@ mod tests {
             fonts: &fonts,
             palette: &palette,
             label_mode: LabelMode::Html,
+            theme_variables: Default::default(),
         };
         let definition = "treeView-beta\n\"docs\"\n  \"build\"\n  \"make.bat\"\n  \"source\"\n    \"conf.py\"\n    \"index.rst\"\n\"src\"\n  \"main.rs\"";
         let scene = render(definition, &context).unwrap();

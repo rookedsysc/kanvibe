@@ -1,11 +1,13 @@
 //! radar 설정(`config.radar`, defaultConfig.radar)과 테마 색·굵기(themeVariables.radar·cScale0..11 기본값).
 //!
-//! 앞머리 `config`나 `init` 지시문에서 형이 맞는 값만 기본값을 덮는다. 색과 굵기는 테마 기본값만 쓴다.
+//! 앞머리 `config`나 `init` 지시문에서 형이 맞는 값만 기본값을 덮는다. 색과 굵기는 테마 기본값에 정의가 덮은
+//! `themeVariables`(데스크톱 경로만)를 겹친다.
 
 use crate::chart_config::ConfigSection;
 use crate::directive::DiagramConfig;
 use crate::scene::Color;
 use crate::theme::{Theme, hsl};
+use crate::theme_variables::ThemeVariables;
 
 /// defaultConfig.radar
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -124,6 +126,31 @@ impl RadarStyle {
             legend_font_size: 12.0,
             curves,
         }
+    }
+
+    /// radar styles.ts: 곡선은 `cScale0..11`, 선·글자 크기·투명도는 `themeVariables.radar`, 글자는 문서 `fill`(`textColor`)
+    pub fn with_theme_variables(mut self, variables: &ThemeVariables) -> Self {
+        variables.read_color("textColor", &mut self.text);
+        for (index, curve) in self.curves.iter_mut().enumerate() {
+            variables.read_color(&format!("cScale{index}"), curve);
+        }
+        let radar = variables.section("radar");
+        radar.read_color("axisColor", &mut self.axis);
+        radar.read_number("axisStrokeWidth", &mut self.axis_stroke_width);
+        radar.read_number("axisLabelFontSize", &mut self.axis_label_font_size);
+        radar.read_number("curveStrokeWidth", &mut self.curve_stroke_width);
+        radar.read_color("graticuleColor", &mut self.graticule);
+        radar.read_number("graticuleStrokeWidth", &mut self.graticule_stroke_width);
+        radar.read_number("legendFontSize", &mut self.legend_font_size);
+        for (key, target) in [
+            ("curveOpacity", &mut self.curve_opacity),
+            ("graticuleOpacity", &mut self.graticule_opacity),
+        ] {
+            if let Some(opacity) = radar.number(key) {
+                *target = opacity as f32;
+            }
+        }
+        self
     }
 
     pub fn curve(&self, index: usize) -> Color {

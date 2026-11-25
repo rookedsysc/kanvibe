@@ -178,7 +178,14 @@ mod tests {
     fn 클래스_스타일과_앞머리_제목을_기준_svg대로_그린다() {
         let fonts = bundled_fonts();
         let source = include_str!("../../../../parity/diagrams/baseline/er-styles.mmd");
-        let scene = render_scene(source, Theme::Light, LabelMode::Html, &fonts).unwrap();
+        let scene = render_scene(
+            source,
+            Theme::Light,
+            LabelMode::Html,
+            crate::theme_variables::ThemeVariablesPolicy::Ignore,
+            &fonts,
+        )
+        .unwrap();
         // er-styles 기준 SVG viewBox: 0 -50 152.765625 521.5
         assert!((scene.width - 152.765_625).abs() < 0.01, "{}", scene.width);
         assert!((scene.height - 521.5).abs() < 0.01, "{}", scene.height);

@@ -3,6 +3,7 @@
 use crate::scene::{Color, PathCommand, Point, Scene, StrokeStyle, TextItem, polygon};
 use crate::text::{FontBook, FontWeight};
 use crate::theme::PiePalette;
+use crate::theme_variables::ThemeVariables;
 use crate::{DiagramError, RenderContext};
 
 const HEIGHT: f64 = 450.0;
@@ -133,7 +134,7 @@ fn centered_text(
 pub fn render(definition: &str, context: &RenderContext) -> Result<Scene, DiagramError> {
     let (fonts, palette) = (context.fonts, context.palette);
     let chart = parse(definition)?;
-    let colors = &palette.pie;
+    let colors = &pie_palette(&palette.pie, &context.theme_variables);
     let mut scene = Scene {
         is_start_aligned: false,
         width: 0.0,
@@ -162,6 +163,20 @@ pub fn render(definition: &str, context: &RenderContext) -> Result<Scene, Diagra
     scene.width = chart_and_legend.max(title_right) - view_x;
     scene.translate(HEIGHT / 2.0 - view_x, HEIGHT / 2.0);
     Ok(scene)
+}
+
+/// pieStyles.ts·pieRenderer.ts가 읽는 테마 변수(`pie1`..`pie12`, `pie*Color`)로 기본 색을 덮는다
+fn pie_palette(base: &PiePalette, variables: &ThemeVariables) -> PiePalette {
+    let mut colors = base.clone();
+    for (index, slice) in colors.slices.iter_mut().enumerate() {
+        variables.read_color(&format!("pie{}", index + 1), slice);
+    }
+    variables.read_color("pieStrokeColor", &mut colors.stroke);
+    variables.read_color("pieOuterStrokeColor", &mut colors.outer_stroke);
+    variables.read_color("pieTitleTextColor", &mut colors.title);
+    variables.read_color("pieSectionTextColor", &mut colors.section_text);
+    variables.read_color("pieLegendTextColor", &mut colors.legend_text);
+    colors
 }
 
 /// createPieArcs: 1% 미만 조각은 그리지 않고, 남은 조각끼리 각을 나눈다. 글자는 반올림해 0%면 뺀다

@@ -1,8 +1,7 @@
 //! 차트형 다이어그램(xychart·radar·venn)이 `config.<종류>`에서 값을 읽는 방식.
 //!
 //! Mermaid `cleanAndMerge`처럼 형이 맞는 값만 기본값을 덮는다. 숫자 자리에 글자가 오는 식으로 형이 어긋나면
-//! 무시한다. `themeVariables`는 읽지 않는다: TS 모바일 워커(diagramWorker/main.ts)가 `theme`·`themeVariables`·
-//! `themeCSS`를 `secure`로 막아 정의의 앞머리·지시문으로 바꿀 수 없기 때문이다.
+//! 무시한다. `themeVariables`는 여기서 읽지 않고 [`crate::theme_variables`]가 부르는 쪽 설정에 따라 읽는다.
 
 use serde_json::{Map, Value};
 

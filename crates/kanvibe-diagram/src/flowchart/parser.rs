@@ -131,7 +131,9 @@ fn syntax(message: impl Into<String>) -> DiagramError {
 }
 
 pub fn parse(definition: &str) -> Result<Flowchart, DiagramError> {
-    let mut lines = definition.lines().map(strip_comment);
+    // 앞머리(`---` … `---`)의 설정은 directive가 읽으므로 본문만 읽는다
+    let body = crate::directive::diagram_body(definition);
+    let mut lines = body.lines().map(strip_comment);
     let header = lines
         .by_ref()
         .find(|line| !line.trim().is_empty())

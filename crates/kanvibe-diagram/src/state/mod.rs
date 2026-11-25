@@ -434,8 +434,14 @@ mod tests {
         let fonts = bundled_fonts();
         let source = "stateDiagram-v2\n[*] --> Still\nStill --> Moving\nMoving --> Still\n\
                       Moving --> Crash\nCrash --> [*]";
-        let scene =
-            crate::render_scene(source, Theme::Light, LabelMode::Html, &fonts).expect("scene");
+        let scene = crate::render_scene(
+            source,
+            Theme::Light,
+            LabelMode::Html,
+            crate::theme_variables::ThemeVariablesPolicy::Ignore,
+            &fonts,
+        )
+        .expect("scene");
         // state-v1 기준 SVG viewBox: 87.859375 × 364
         assert!((scene.width - 87.859_375).abs() < 0.01, "{}", scene.width);
         assert!((scene.height - 364.0).abs() < 0.01, "{}", scene.height);
@@ -450,7 +456,14 @@ mod tests {
                       P --> G\nG --> Out:::hot\nstate J <<join>>\nOut --> J\nJ --> [*]\n\
                       note left of Idle\nwaiting\nend note";
         for mode in [LabelMode::Html, LabelMode::SvgText] {
-            let scene = crate::render_scene(source, Theme::Dark, mode, &fonts).expect("scene");
+            let scene = crate::render_scene(
+                source,
+                Theme::Dark,
+                mode,
+                crate::theme_variables::ThemeVariablesPolicy::Ignore,
+                &fonts,
+            )
+            .expect("scene");
             assert!(scene.width > 500.0 && scene.height > 200.0, "{mode:?}");
         }
     }
@@ -459,8 +472,14 @@ mod tests {
     fn 앞머리_제목을_그림_위에_두고_떠_있는_메모와_클릭은_그리지_않는다() {
         let fonts = bundled_fonts();
         let source = include_str!("../../../../parity/diagrams/baseline/state-notes-title.mmd");
-        let scene =
-            crate::render_scene(source, Theme::Light, LabelMode::Html, &fonts).expect("scene");
+        let scene = crate::render_scene(
+            source,
+            Theme::Light,
+            LabelMode::Html,
+            crate::theme_variables::ThemeVariablesPolicy::Ignore,
+            &fonts,
+        )
+        .expect("scene");
         // state-notes-title 기준 SVG viewBox: 0 -52 157.546875 350
         assert!((scene.width - 157.546_875).abs() < 0.01, "{}", scene.width);
         assert!((scene.height - 350.0).abs() < 0.01, "{}", scene.height);

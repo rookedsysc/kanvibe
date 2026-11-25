@@ -43,6 +43,7 @@ pub mod service;
 mod state;
 pub mod text;
 pub mod theme;
+pub mod theme_variables;
 mod timeline;
 mod tree_view;
 mod treemap;
@@ -54,6 +55,7 @@ mod xychart;
 use scene::Scene;
 use text::FontBook;
 use theme::{Palette, Theme};
+use theme_variables::{ThemeVariables, ThemeVariablesPolicy};
 
 /// Mermaid `maxEdges`
 pub const MAX_EDGES: usize = 500;
@@ -79,6 +81,8 @@ pub struct RenderContext<'a> {
     pub fonts: &'a FontBook,
     pub palette: &'a Palette,
     pub label_mode: LabelMode,
+    /// 정의가 덮은 테마 변수. [`ThemeVariablesPolicy::Ignore`]로 그리면 비어 있다
+    pub theme_variables: ThemeVariables,
 }
 
 /// 다이어그램 종류. 정의의 첫 문장으로 정한다
@@ -165,18 +169,23 @@ pub fn detect_kind(definition: &str) -> Result<DiagramKind, DiagramError> {
     }
 }
 
-/// 정의를 테마와 라벨 방식에 맞는 장면으로 만든다
+/// 정의를 테마와 라벨 방식에 맞는 장면으로 만든다. `theme_variables_policy`는 정의의 `themeVariables`를 쓸지 정한다
+/// (데스크톱 화면은 쓰고 모바일 워커는 막는다)
 pub fn render_scene(
     definition: &str,
     theme: Theme,
     label_mode: LabelMode,
+    theme_variables_policy: ThemeVariablesPolicy,
     fonts: &FontBook,
 ) -> Result<Scene, DiagramError> {
     let palette = Palette::for_theme(theme);
+    let theme_variables =
+        ThemeVariables::read(&directive::read_config(definition), theme_variables_policy);
     let context = RenderContext {
         fonts,
         palette: &palette,
         label_mode,
+        theme_variables,
     };
     match detect_kind(definition)? {
         DiagramKind::Flowchart => flowchart::render(definition, &context),

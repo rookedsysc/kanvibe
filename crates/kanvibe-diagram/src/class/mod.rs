@@ -298,7 +298,14 @@ mod tests {
         let source = "classDiagram\n direction LR\n class Shape {\n <<abstract>>\n +area()* double\n }\n class Empty\n Shape <|-- Circle\n Circle --> Circle : self\n Circle ..|> Drawable\n Shape \"1\" o-- \"*\" Point : vertices\n Circle --() Printable\n note for Circle \"round<br>shape\"\n note \"free note\"";
         let fonts = bundled_fonts();
         for mode in [LabelMode::Html, LabelMode::SvgText] {
-            let scene = render_scene(source, Theme::Dark, mode, &fonts).expect("render");
+            let scene = render_scene(
+                source,
+                Theme::Dark,
+                mode,
+                crate::theme_variables::ThemeVariablesPolicy::Ignore,
+                &fonts,
+            )
+            .expect("render");
             assert!(scene.width > 300.0 && scene.height > 100.0, "{mode:?}");
             assert!(scene.width.is_finite() && scene.height.is_finite());
         }

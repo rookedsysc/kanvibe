@@ -156,7 +156,7 @@ const NAMED_COLORS: [(&str, u32); 148] = [
 ];
 
 /// 채움색 글을 색으로 바꾼다. `transparent`는 채우지 않는다
-pub(super) fn parse_css_color(text: &str) -> Option<Color> {
+pub(crate) fn parse_css_color(text: &str) -> Option<Color> {
     let lower = text.trim().to_ascii_lowercase();
     if lower == "transparent" {
         return Some(Color::rgba(0, 0, 0, 0.0));

@@ -7,7 +7,7 @@ mod actor_layout;
 mod arrows;
 mod bounds;
 mod config;
-mod css_color;
+pub(crate) mod css_color;
 mod document;
 mod draw;
 mod layout;
@@ -141,7 +141,14 @@ mod tests {
     fn 여러_줄_글과_겹친_블록을_그린다() {
         let fonts = bundled_fonts();
         let definition = "sequenceDiagram\nautonumber 10 5\nparticipant A as Client<br/>App\nactor B as Operator\nparticipant C\nA->>B: first line<br>second line\nNote over B: single over<br/>two lines\nloop retry until done\nB-)C: poll\nopt has work\nC--)B: job\nB->>B: process\nend\nend\nautonumber off\nC-->>A: result\nNote right of C: right of last";
-        let scene = render_scene(definition, Theme::Dark, LabelMode::Html, &fonts).unwrap();
+        let scene = render_scene(
+            definition,
+            Theme::Dark,
+            LabelMode::Html,
+            crate::theme_variables::ThemeVariablesPolicy::Ignore,
+            &fonts,
+        )
+        .unwrap();
         let texts: Vec<&str> = scene
             .items
             .iter()
@@ -160,8 +167,22 @@ mod tests {
     fn 라벨_방식과_상관없이_같은_장면이다() {
         let fonts = bundled_fonts();
         let definition = "sequenceDiagram\nA->>B: hi\nNote left of A: n";
-        let html = render_scene(definition, Theme::Light, LabelMode::Html, &fonts).unwrap();
-        let svg = render_scene(definition, Theme::Light, LabelMode::SvgText, &fonts).unwrap();
+        let html = render_scene(
+            definition,
+            Theme::Light,
+            LabelMode::Html,
+            crate::theme_variables::ThemeVariablesPolicy::Ignore,
+            &fonts,
+        )
+        .unwrap();
+        let svg = render_scene(
+            definition,
+            Theme::Light,
+            LabelMode::SvgText,
+            crate::theme_variables::ThemeVariablesPolicy::Ignore,
+            &fonts,
+        )
+        .unwrap();
         assert_eq!(html, svg);
     }
 
@@ -169,7 +190,14 @@ mod tests {
     fn 앞머리_설정의_감싸기와_글_맞춤을_따른다() {
         let fonts = bundled_fonts();
         let source = include_str!("../../../../parity/diagrams/baseline/seq-config-front.mmd");
-        let scene = render_scene(source, Theme::Light, LabelMode::Html, &fonts).unwrap();
+        let scene = render_scene(
+            source,
+            Theme::Light,
+            LabelMode::Html,
+            crate::theme_variables::ThemeVariablesPolicy::Ignore,
+            &fonts,
+        )
+        .unwrap();
         let text_at = |wanted: &str| {
             scene.items.iter().find_map(|item| match item {
                 SceneItem::Text(text) if text.text == wanted => Some(text.x),
@@ -191,9 +219,24 @@ mod tests {
     fn 그림_모양_참여자에_링크_메뉴를_붙이면_mermaid처럼_실패한다() {
         let fonts = bundled_fonts();
         let invalid = "sequenceDiagram\nparticipant B@{ \"type\": \"boundary\" } as Gateway\nlink B: Runbook @ https://runbook.example.com\nB->>B: x";
-        let result = render_scene(invalid, Theme::Light, LabelMode::Html, &fonts);
+        let result = render_scene(
+            invalid,
+            Theme::Light,
+            LabelMode::Html,
+            crate::theme_variables::ThemeVariablesPolicy::Ignore,
+            &fonts,
+        );
         assert!(matches!(result, Err(DiagramError::Syntax(_))), "{result:?}");
         let valid = "sequenceDiagram\nparticipant B@{ \"type\": \"database\" } as Store\nlink B: Runbook @ https://runbook.example.com\nB->>B: x";
-        assert!(render_scene(valid, Theme::Light, LabelMode::Html, &fonts).is_ok());
+        assert!(
+            render_scene(
+                valid,
+                Theme::Light,
+                LabelMode::Html,
+                crate::theme_variables::ThemeVariablesPolicy::Ignore,
+                &fonts
+            )
+            .is_ok()
+        );
     }
 }

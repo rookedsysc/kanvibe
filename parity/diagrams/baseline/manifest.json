@@ -1247,6 +1247,70 @@
     "success": true,
     "height": 1143
   },
+  "fc-theme-variables-lr--dark": {
+    "id": "fc-theme-variables-lr",
+    "theme": "dark",
+    "width": 800,
+    "naturalWidth": 673,
+    "success": true,
+    "height": 175
+  },
+  "fc-theme-variables-lr--desktop--dark": {
+    "id": "fc-theme-variables-lr--desktop",
+    "theme": "dark",
+    "width": 800,
+    "naturalWidth": 679,
+    "success": true,
+    "height": 171
+  },
+  "fc-theme-variables-lr--desktop--light": {
+    "id": "fc-theme-variables-lr--desktop",
+    "theme": "light",
+    "width": 800,
+    "naturalWidth": 679,
+    "success": true,
+    "height": 171
+  },
+  "fc-theme-variables-lr--light": {
+    "id": "fc-theme-variables-lr",
+    "theme": "light",
+    "width": 800,
+    "naturalWidth": 673,
+    "success": true,
+    "height": 175
+  },
+  "fc-theme-variables-subgraph-td--dark": {
+    "id": "fc-theme-variables-subgraph-td",
+    "theme": "dark",
+    "width": 800,
+    "naturalWidth": 269,
+    "success": true,
+    "height": 972
+  },
+  "fc-theme-variables-subgraph-td--desktop--dark": {
+    "id": "fc-theme-variables-subgraph-td--desktop",
+    "theme": "dark",
+    "width": 800,
+    "naturalWidth": 270,
+    "success": true,
+    "height": 956
+  },
+  "fc-theme-variables-subgraph-td--desktop--light": {
+    "id": "fc-theme-variables-subgraph-td--desktop",
+    "theme": "light",
+    "width": 800,
+    "naturalWidth": 270,
+    "success": true,
+    "height": 956
+  },
+  "fc-theme-variables-subgraph-td--light": {
+    "id": "fc-theme-variables-subgraph-td",
+    "theme": "light",
+    "width": 800,
+    "naturalWidth": 269,
+    "success": true,
+    "height": 972
+  },
   "gantt-basic--dark": {
     "id": "gantt-basic",
     "theme": "dark",
@@ -2270,6 +2334,38 @@
     "naturalWidth": 589,
     "success": true,
     "height": 615
+  },
+  "pie-theme-variables--dark": {
+    "id": "pie-theme-variables",
+    "theme": "dark",
+    "width": 800,
+    "naturalWidth": 588,
+    "success": true,
+    "height": 616
+  },
+  "pie-theme-variables--desktop--dark": {
+    "id": "pie-theme-variables--desktop",
+    "theme": "dark",
+    "width": 800,
+    "naturalWidth": 588,
+    "success": true,
+    "height": 616
+  },
+  "pie-theme-variables--desktop--light": {
+    "id": "pie-theme-variables--desktop",
+    "theme": "light",
+    "width": 800,
+    "naturalWidth": 588,
+    "success": true,
+    "height": 616
+  },
+  "pie-theme-variables--light": {
+    "id": "pie-theme-variables",
+    "theme": "light",
+    "width": 800,
+    "naturalWidth": 588,
+    "success": true,
+    "height": 616
   },
   "quadrant-basic--dark": {
     "id": "quadrant-basic",

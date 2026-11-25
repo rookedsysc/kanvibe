@@ -64,7 +64,8 @@ pub fn render(definition: &str, context: &RenderContext) -> Result<Scene, Diagra
             .unwrap_or_default();
     }
     let config = VennConfig::read(&directives);
-    let colors = VennPalette::for_theme(context.palette.theme);
+    let colors = VennPalette::for_theme(context.palette.theme)
+        .with_theme_variables(&context.theme_variables);
     let scale = config.width / REFERENCE_WIDTH;
     let title_height = if chart.title.is_empty() {
         0.0

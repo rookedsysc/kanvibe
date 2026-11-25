@@ -3,8 +3,10 @@
 
 parity/diagrams/baseline/<id>.mmd 마다 light·dark 두 테마로 빌드된 renderDiagramInDesktop()을 불러
 JPEG를 받고, 픽셀 비교용 PNG(<id>--<theme>.png)와 좌표 확인용 SVG(<id>--<theme>.svg)를 남긴다.
-데스크톱 화면(AiSessionMessageContent)은 `htmlLabels: false`(SVG 글자 라벨)로 그리므로, 같은 워커에 같은 설정을
-init 지시문으로 넘겨 `<id>--desktop--<theme>`도 함께 남긴다. 설정 키가 같고 `secure` 목록에 없어 initialize와 같게 먹는다.
+데스크톱 화면(AiSessionMessageContent)은 워커와 다른 설정으로 `mermaid.initialize`를 부른다: `htmlLabels: false`(SVG 글자
+라벨)를 주고 `secure` 목록을 바꾸지 않아 정의의 `themeVariables`·`theme`·`themeCSS`가 먹는다. 그래서 빌드된 워커 번들의
+initialize 인자만 데스크톱 설정으로 바꾼 사본을 임시 앱에 두고 `<id>--desktop--<theme>`를 그 사본으로 찍는다.
+크기 맞춤과 JPEG 캡처는 모바일 경로와 같다.
 Electron은 xvfb-run 아래에서 격리된 KANVIBE_APP_DATA_DIR·HOME·FONTCONFIG_FILE을 받은 자식 프로세스로만 돈다.
 필요한 것: xvfb-run, 저장소 node_modules(Electron), `pnpm build` 산출물(build/), Pillow.
 """
@@ -13,6 +15,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -28,8 +31,13 @@ from fontconfig import write_pinned_fontconfig  # noqa: E402
 
 DEFAULT_WIDTH = 800
 THEMES = ("light", "dark")
-# 데스크톱 렌더러의 mermaid.initialize({ htmlLabels: false })와 같은 설정
-DESKTOP_DIRECTIVE = '%%{init: {"htmlLabels": false}}%%'
+WORKER_DOCUMENT = "diagram-worker.html"
+# 워커 번들의 mermaid.initialize 호출. 축소된 변수 이름(Mermaid 객체, 테마 인자)을 함께 잡는다
+WORKER_INITIALIZE = re.compile(
+    r'(\w+)\.initialize\(\{startOnLoad:!1,securityLevel:"strict",theme:(\w+)==="dark"\?"dark":"default",[^{}]*?secure:\[[^\]]*\]\}\)'
+)
+# AiSessionMessageContent의 mermaidApi.initialize 인자와 같은 설정(라이트 앱 테마는 default, 나머지는 dark)
+DESKTOP_INITIALIZE = r'\1.initialize({securityLevel:"strict",startOnLoad:!1,htmlLabels:!1,theme:\2==="dark"?"dark":"default"})'
 
 
 def prepare_app_dir(work_dir: Path) -> Path:
@@ -38,7 +46,7 @@ def prepare_app_dir(work_dir: Path) -> Path:
     if app_dir.exists():
         shutil.rmtree(app_dir)
     app_dir.mkdir(parents=True)
-    (app_dir / "build").symlink_to(REPO_ROOT / "build")
+    prepare_build_dir(app_dir / "build")
     (app_dir / "electron").symlink_to(REPO_ROOT / "electron")
     for name in ("driver.cjs", "svg-preload.cjs"):
         shutil.copy(DRIVER_DIR / name, app_dir / name)
@@ -46,14 +54,37 @@ def prepare_app_dir(work_dir: Path) -> Path:
     return app_dir
 
 
-def with_desktop_directive(definition: str) -> str:
-    """YAML 앞머리는 정의 맨 앞에 있어야 하므로 지시문을 그 뒤에 넣는다."""
-    lines = definition.split("\n")
-    if lines[0].strip() == "---":
-        closing = next((index for index in range(1, len(lines)) if lines[index].strip() == "---"), None)
-        if closing is not None:
-            return "\n".join([*lines[: closing + 1], DESKTOP_DIRECTIVE, *lines[closing + 1 :]])
-    return f"{DESKTOP_DIRECTIVE}\n{definition}"
+def link_children(source: Path, target: Path, skip: set[str]) -> None:
+    target.mkdir(parents=True)
+    for child in source.iterdir():
+        if child.name not in skip:
+            (target / child.name).symlink_to(child)
+
+
+def prepare_build_dir(build_dir: Path) -> None:
+    """저장소 build/를 링크로 비추되, 워커 문서와 그 번들은 설정별 사본을 둔다.
+
+    driver.cjs가 그리기 전마다 `renderer/diagram-worker.<configuration>.html`을 `diagram-worker.html`로 옮겨 놓는다.
+    """
+    source_renderer = REPO_ROOT / "build" / "renderer"
+    link_children(REPO_ROOT / "build", build_dir, {"renderer"})
+    renderer_dir = build_dir / "renderer"
+    link_children(source_renderer, renderer_dir, {"assets", WORKER_DOCUMENT})
+    link_children(source_renderer / "assets", renderer_dir / "assets", set())
+    document = (source_renderer / WORKER_DOCUMENT).read_text(encoding="utf-8")
+    script_match = re.search(r'src="\./assets/(diagramWorker-[^"]+\.js)"', document)
+    if script_match is None:
+        raise SystemExit("diagram-worker.html에서 워커 번들을 찾지 못했습니다")
+    mobile_script = script_match.group(1)
+    desktop_script = mobile_script.replace("diagramWorker-", "diagramWorkerDesktop-")
+    bundle = (source_renderer / "assets" / mobile_script).read_text(encoding="utf-8")
+    desktop_bundle, replaced = WORKER_INITIALIZE.subn(DESKTOP_INITIALIZE, bundle)
+    if replaced != 1:
+        raise SystemExit(f"워커 번들의 mermaid.initialize 호출을 하나로 찾지 못했습니다({replaced}개)")
+    (renderer_dir / "assets" / desktop_script).write_text(desktop_bundle, encoding="utf-8")
+    (renderer_dir / "diagram-worker.mobile.html").write_text(document, encoding="utf-8")
+    desktop_document = document.replace(f"./assets/{mobile_script}", f"./assets/{desktop_script}")
+    (renderer_dir / "diagram-worker.desktop.html").write_text(desktop_document, encoding="utf-8")
 
 
 def build_entries(only: set[str] | None, width: int) -> list[dict]:
@@ -62,12 +93,11 @@ def build_entries(only: set[str] | None, width: int) -> list[dict]:
         if only and source.stem not in only:
             continue
         definition = source.read_text(encoding="utf-8").strip()
-        entries.extend({"id": source.stem, "definition": definition, "theme": theme, "width": width} for theme in THEMES)
-        desktop_definition = with_desktop_directive(definition)
-        entries.extend(
-            {"id": f"{source.stem}--desktop", "definition": desktop_definition, "theme": theme, "width": width}
-            for theme in THEMES
-        )
+        for configuration, entry_id in (("mobile", source.stem), ("desktop", f"{source.stem}--desktop")):
+            entries.extend(
+                {"id": entry_id, "configuration": configuration, "definition": definition, "theme": theme, "width": width}
+                for theme in THEMES
+            )
     return entries
 
 

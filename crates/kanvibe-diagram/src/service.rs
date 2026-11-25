@@ -72,6 +72,8 @@ impl DiagramRasterizer for NativeRasterizer {
             &input.definition,
             input.theme,
             crate::LabelMode::Html,
+            // TS 워커의 `secure`가 `themeVariables`를 막는다
+            crate::theme_variables::ThemeVariablesPolicy::Ignore,
             &self.fonts,
         )
         .map_err(|_| MobileDiagramError::new(422, SYNTAX_MESSAGE))?;

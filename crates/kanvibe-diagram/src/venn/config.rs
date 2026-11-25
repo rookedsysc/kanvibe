@@ -1,13 +1,15 @@
 //! venn 설정(`config.venn`, defaultConfig.venn)과 테마 색(themeVariables venn1..8 등 기본값).
 //!
 //! 그림 크기는 글자·선 배율(폭 ÷ 1600)도 정한다. `padding`은 원 배치(venn.js 기본 15)가 아니라 글자 상자
-//! 배치에만 쓰인다. 색은 테마 기본값(venn1..8, vennTitleTextColor, vennSetTextColor)만 쓰고(TS 모바일 워커가
-//! `themeVariables`를 `secure`로 막는다), 원 라벨은 어두운 테마(`background` #333)에서 밝히고 밝은 테마에서 어둡게 한다.
+//! 배치에만 쓰인다. 색은 테마 기본값(venn1..8, vennTitleTextColor, vennSetTextColor)에 정의가 덮은 `themeVariables`
+//! (데스크톱 경로만, TS 모바일 워커는 `secure`로 막는다)를 겹치고, 원 라벨은 어두운 `background`(다크 테마 #333)에서
+//! 밝히고 밝은 배경에서 어둡게 한다.
 
 use crate::chart_config::ConfigSection;
 use crate::directive::DiagramConfig;
 use crate::scene::Color;
 use crate::theme::{Theme, hsl};
+use crate::theme_variables::ThemeVariables;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct VennConfig {
@@ -89,6 +91,34 @@ impl VennPalette {
             is_dark: theme == Theme::Dark,
         }
     }
+
+    /// vennRenderer.ts가 읽는 `venn1..8`·`vennTitleTextColor`·`vennSetTextColor`·`background`
+    pub fn with_theme_variables(mut self, variables: &ThemeVariables) -> Self {
+        for (index, set) in self.sets.iter_mut().enumerate() {
+            variables.read_color(&format!("venn{}", index + 1), set);
+        }
+        variables.read_color("vennTitleTextColor", &mut self.title);
+        variables.read_color("vennSetTextColor", &mut self.set_text);
+        if let Some(background) = variables.color("background") {
+            self.is_dark = !is_light(background);
+        }
+        self
+    }
+}
+
+/// khroma `isLight`: WCAG 상대 휘도가 0.5 이상이면 밝다
+fn is_light(color: Color) -> bool {
+    let linear = |channel: u8| {
+        let value = f64::from(channel) / 255.0;
+        if value <= 0.039_28 {
+            value / 12.92
+        } else {
+            ((value + 0.055) / 1.055).powf(2.4)
+        }
+    };
+    let luminance =
+        0.2126 * linear(color.red) + 0.7152 * linear(color.green) + 0.0722 * linear(color.blue);
+    luminance >= 0.5
 }
 
 /// khroma `lighten`·`darken`: HSL 밝기를 `delta`(백분율)만큼 바꾼다
