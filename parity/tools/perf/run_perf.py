@@ -21,12 +21,17 @@
   다음 프레임 시작)까지. PTY·tmux 왕복이 들어 있고 fixture tmux 세션을 쓴다.
 모든 시각은 유닉스 epoch ns(CLOCK_REALTIME)다. 앱과 하네스가 같은 시계를 읽으므로 측정 중 시계 조정이 없으면 차이가 맞다.
 
+캐시: 기본은 콜드다. 세션마다 새 XDG_CACHE_HOME(Mesa 셰이더 캐시 등)과 새 fontconfig 캐시를 쓴다. `--warm-cache`면
+실행 전체가 격리 작업 디렉터리 안의 캐시 디렉터리 하나(XDG_CACHE_HOME, 고정 fontconfig 설정과 그 캐시)를 함께 쓰고,
+워밍업 회(최소 1회)가 그 캐시를 채운 뒤 본 측정을 한다. fixture(DB·HOME·설정)는 두 모드 모두 세션마다 새로 만든다.
+
 부하 확인: 1분 load average가 2를 넘으면(다른 빌드가 돌고 있으면) 본 측정을 거부한다. `--smoke`는 하네스 동작만 확인한다.
 
 예:
   python3 parity/tools/perf/run_perf.py --smoke                  # 1회, 짧은 대기, 하네스 확인용
   python3 parity/tools/perf/run_perf.py --runs 10                # 본 측정(조용한 머신에서)
-결과: qa-results/roky-harness/perf/<UTC 시각>-<smoke|full>/result.json, report.md, logs/
+  python3 parity/tools/perf/run_perf.py --runs 10 --warm-cache   # 캐시를 채운 상태의 본 측정
+결과: qa-results/roky-harness/perf/<UTC 시각>-<smoke|full>[-warm]/result.json, report.md, logs/
 """
 from __future__ import annotations
 
@@ -74,6 +79,8 @@ class Settings:
     idle_s: float
     key_count: int
     rust_app: Path
+    # 세션 사이에 이어 쓰는 캐시 디렉터리. None이면 세션마다 새 캐시(콜드)
+    warm_cache_dir: Path | None
 
 
 @dataclass
@@ -138,12 +145,24 @@ def rust_command(app: Path, fixture: dict, route: str, hook_port: int) -> list[s
     ]
 
 
+def pinned_fontconfig_path(session_dir: Path, warm_cache_dir: Path | None) -> Path:
+    """웜 캐시면 고정 글꼴 설정을 한 번만 만들어 이어 쓴다. 다시 만들면 글꼴 디렉터리가 바뀌어 fontconfig 캐시가 무효가 된다"""
+    if warm_cache_dir is None:
+        return capture.write_pinned_fontconfig(session_dir / "fontconfig")
+    shared_config_path = warm_cache_dir / "fontconfig" / "fonts.conf"
+    if shared_config_path.exists():
+        return shared_config_path
+    return capture.write_pinned_fontconfig(shared_config_path.parent)
+
+
 def launch_app(route: str, session_dir: Path, settings: Settings, fixture_overrides: dict) -> LaunchedApp:
     fixture_root = session_dir / "fixture"
     fixture = capture.build_fixture(fixture_root, "full", {"theme_preference": "dark", **fixture_overrides})
-    fontconfig_path = capture.write_pinned_fontconfig(session_dir / "fontconfig")
+    fontconfig_path = pinned_fontconfig_path(session_dir, settings.warm_cache_dir)
     display = free_display()
     environment = capture.build_app_environment(fixture, fixture_root, display, fontconfig_path)
+    if settings.warm_cache_dir is not None:
+        environment["XDG_CACHE_HOME"] = str(settings.warm_cache_dir / "xdg-cache")
     hook_port = free_hook_port()
     command = rust_command(settings.rust_app, fixture, route, hook_port)
     logs_dir = session_dir / "logs"
@@ -364,6 +383,7 @@ def write_markdown(report: dict, path: Path) -> None:
         f"# KanVibe 성능 측정 ({meta['mode']})", "",
         f"- 시각: {meta['started_at']}, 커밋: `{meta['commit']}`, 머신: {meta['machine']}",
         f"- load average 시작/끝: {meta['load_average_start']} / {meta['load_average_end']}",
+        f"- 캐시: {meta['cache']}",
         f"- 회수: {meta['runs']}회(워밍업 {meta['warmup']}회 제외), settle {meta['settle_s']}s, 유휴 {meta['idle_s']}s, 키 {meta['key_count']}개/회",
         "- 방법: `parity/tools/perf/run_perf.py` 머리말. GPU 없는 VM(lavapipe)이면 같은 머신 상대 비교만 뜻이 있다.",
         "", "| 지표 | 중앙값 | p90 |", "|---|---|---|",
@@ -403,11 +423,15 @@ def main() -> int:
     parser.add_argument("--keys", type=int, default=10, help="세션마다 넣는 키 수")
     parser.add_argument("--rust-app", type=Path, default=DEFAULT_RUST_APP)
     parser.add_argument("--smoke", action="store_true", help="1회, 짧은 대기. 하네스 동작 확인용이라 수치는 쓰지 않는다")
+    parser.add_argument("--warm-cache", action="store_true",
+                        help="세션 사이에 XDG_CACHE_HOME·fontconfig 캐시를 이어 쓰고 워밍업 회로 채운 뒤 잰다(기본은 세션마다 새 캐시)")
     parser.add_argument("--force", action="store_true", help="load average가 높아도 본 측정을 한다(수치를 믿을 수 없다)")
     args = parser.parse_args()
 
     if args.smoke:
         args.runs, args.warmup, args.settle, args.idle, args.keys = 1, 0, 2.0, 5.0, 3
+    if args.warm_cache:
+        args.warmup = max(args.warmup, 1)
     load_average = os.getloadavg()
     if not args.smoke and not args.force and load_average[0] > MAX_LOAD_AVERAGE:
         print(f"load average {load_average[0]:.2f} > {MAX_LOAD_AVERAGE}: 다른 작업이 끝난 뒤 다시 재거나 --smoke로 확인한다",
@@ -416,19 +440,21 @@ def main() -> int:
     if not args.rust_app.exists():
         print(f"app binary not found: {args.rust_app}", file=sys.stderr)
         return 2
-    settings = Settings(args.runs, args.warmup, args.settle, args.idle, args.keys, args.rust_app.resolve())
     started_at = datetime.now(timezone.utc)
     mode = "smoke" if args.smoke else "full"
-    output_dir = OUTPUT_ROOT / f"{started_at.strftime('%Y%m%dT%H%M%SZ')}-{mode}"
+    cache_suffix = "-warm" if args.warm_cache else ""
+    output_dir = OUTPUT_ROOT / f"{started_at.strftime('%Y%m%dT%H%M%SZ')}-{mode}{cache_suffix}"
     output_dir.mkdir(parents=True, exist_ok=True)
     work_root = Path(tempfile.mkdtemp(prefix="kanvibe-perf-"))
+    warm_cache_dir = work_root / "warm-cache" if args.warm_cache else None
+    settings = Settings(args.runs, args.warmup, args.settle, args.idle, args.keys, args.rust_app.resolve(), warm_cache_dir)
     try:
         sessions = run_all(settings, output_dir, work_root)
     finally:
         shutil.rmtree(work_root, ignore_errors=True)
     commit = subprocess.run(["git", "-C", str(REPO_ROOT), "rev-parse", "--short", "HEAD"], capture_output=True, text=True).stdout.strip()
     report = {
-        "meta": {"mode": mode, "started_at": started_at.isoformat(), "commit": commit, "machine": machine_description(),
+        "meta": {"mode": mode, "cache": "warm" if warm_cache_dir else "cold", "started_at": started_at.isoformat(), "commit": commit, "machine": machine_description(),
                  "load_average_start": [round(value, 2) for value in load_average],
                  "load_average_end": [round(value, 2) for value in os.getloadavg()],
                  "runs": settings.runs, "warmup": settings.warmup, "settle_s": settings.settle_s,
