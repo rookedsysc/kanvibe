@@ -25,8 +25,6 @@ fn open_services(fixture: &RuntimeFixture) -> DesktopServices {
             home_directory: PathBuf::from(fixture.home()),
             mobile_tls_port: 0,
             push_relay: None,
-            remote_grants: None,
-            diagram_renderer: None,
         },
     )
 }

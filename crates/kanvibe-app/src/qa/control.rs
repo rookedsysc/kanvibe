@@ -266,8 +266,11 @@ fn after_next_frame(
 ) {
     let result = window_handle.update(cx, |_, window, _| {
         window.refresh();
+        // 프레임 콜백은 창 update 안에서 불리므로, 같은 창을 다시 update하는 동작은 그 update가 끝난 뒤로 미룬다
         window.on_next_frame(move |_, cx| {
-            let _ = reply.send(act(cx));
+            cx.defer(move |cx| {
+                let _ = reply.send(act(cx));
+            });
         });
     });
     if let Err(error) = result {

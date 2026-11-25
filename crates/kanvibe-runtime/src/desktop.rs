@@ -34,6 +34,7 @@ pub(crate) fn build_desktop(
         notifications: NotificationForwarding::new(
             notification_service,
             config.notification_callbacks.clone(),
+            Arc::clone(&config.notification_locale),
         ),
         release_update: Arc::new(ReleaseUpdateService::new(
             release_feed_client(config),

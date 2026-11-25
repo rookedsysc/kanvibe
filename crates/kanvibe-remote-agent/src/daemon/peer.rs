@@ -25,6 +25,8 @@ use crate::protocol::{
 };
 
 const HELLO_TIMEOUT: Duration = Duration::from_secs(10);
+/// `stopped`를 쓰고 닫을 때 상대가 읽지 않으면 더 기다리지 않는다
+const STOPPED_WRITE_TIMEOUT: Duration = Duration::from_secs(2);
 pub(super) const MAX_ACTIVE_REQUESTS: usize = 128;
 pub(super) const MAX_HOOK_BYTES: usize = 512 * 1024;
 
@@ -164,6 +166,8 @@ impl Connection {
             }
             "stop" => {
                 peer.send(record_from(json!({ "type": "stopped", "id": id })));
+                // 주 스레드가 곧바로 close()로 큐를 버리므로, TS처럼 stopped가 소켓에 쓰인 뒤에 멈춘다
+                self.outbox.wait_until_written(STOPPED_WRITE_TIMEOUT);
                 self.shared.request_stop();
                 Ok(())
             }

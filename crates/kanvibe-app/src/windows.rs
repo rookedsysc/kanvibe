@@ -2,9 +2,11 @@
 //! 같은 작업을 이미 보여 주는 창이 있으면 그 창을 앞으로 가져온다(CLAUDE.md Task Navigation).
 
 use std::collections::HashMap;
+use std::sync::{Arc, PoisonError, RwLock};
 
 use gpui_kit::{AnyWindowHandle, App, Global, WeakEntity, WindowId};
 use kanvibe_domain::i18n::Locale;
+use kanvibe_domain::task_notifications::notification_locale;
 
 use crate::app_window::{AppWindow, open_app_window};
 use crate::routes::task_detail_href;
@@ -16,34 +18,95 @@ struct RegisteredWindow {
     handle: AnyWindowHandle,
     view: WeakEntity<AppWindow>,
     current_path: String,
+    /// 창을 연 순서. 가장 먼저 연 창이 TS `mainWindow`다
+    opened_order: u64,
+}
+
+/// 알림 문구 locale을 고를 창 경로의 locale(TS `getDesktopNotificationLocale`). 런타임 스레드가 보드 이벤트마다 읽는다.
+/// 창이 없거나 경로에 locale 자리가 없으면 `None`이라 런타임이 시스템 locale(TS `app.getLocale()`)을 쓴다
+#[derive(Clone, Default)]
+pub struct WindowNotificationLocale(Arc<RwLock<Option<String>>>);
+
+impl WindowNotificationLocale {
+    pub fn current(&self) -> Option<String> {
+        self.0
+            .read()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+    }
+
+    fn replace(&self, locale: Option<String>) {
+        *self.0.write().unwrap_or_else(PoisonError::into_inner) = locale;
+    }
+}
+
+/// `#/<locale>/...`의 첫 자리를 TS `normalizeNotificationLocale`로 줄인다
+pub fn notification_locale_for_path(path: &str) -> Option<String> {
+    let segment = path
+        .trim_start_matches('/')
+        .split(['/', '?', '#'])
+        .next()
+        .filter(|segment| !segment.is_empty())?;
+    Some(notification_locale(segment).as_str().to_string())
 }
 
 #[derive(Default)]
 pub struct WindowRegistry {
     windows: HashMap<WindowId, RegisteredWindow>,
+    next_opened_order: u64,
+    notification_locale: WindowNotificationLocale,
 }
 
 impl Global for WindowRegistry {}
 
 impl WindowRegistry {
+    /// 런타임 알림 locale과 같은 칸을 쓰는 목록
+    pub fn with_notification_locale(notification_locale: WindowNotificationLocale) -> Self {
+        Self {
+            notification_locale,
+            ..Self::default()
+        }
+    }
+
     pub fn record(
         &mut self,
         handle: AnyWindowHandle,
         view: WeakEntity<AppWindow>,
         current_path: &str,
     ) {
+        let opened_order = match self.windows.get(&handle.window_id()) {
+            Some(window) => window.opened_order,
+            None => {
+                self.next_opened_order += 1;
+                self.next_opened_order
+            }
+        };
         self.windows.insert(
             handle.window_id(),
             RegisteredWindow {
                 handle,
                 view,
                 current_path: current_path.to_string(),
+                opened_order,
             },
         );
+        self.refresh_notification_locale();
     }
 
     pub fn forget(&mut self, window_id: WindowId) {
         self.windows.remove(&window_id);
+        self.refresh_notification_locale();
+    }
+
+    /// 가장 먼저 연 창(TS `mainWindow`, 닫혔으면 남은 창 가운데 가장 먼저 연 창)의 경로 locale
+    fn refresh_notification_locale(&self) {
+        let main_window_path = self
+            .windows
+            .values()
+            .min_by_key(|window| window.opened_order)
+            .map(|window| window.current_path.as_str());
+        self.notification_locale
+            .replace(main_window_path.and_then(notification_locale_for_path));
     }
 
     pub fn current_path(&self, window_id: WindowId) -> Option<&str> {
@@ -153,4 +216,26 @@ fn open_new_window(href: &str, cx: &mut App) -> TaskNavigationOutcome {
         eprintln!("[kanvibe] failed to open task window: {error:#}");
     }
     TaskNavigationOutcome::OpenedNewWindow
+}
+
+#[cfg(test)]
+mod tests {
+    use super::notification_locale_for_path;
+
+    #[test]
+    fn notification_locale_comes_from_the_first_route_segment() {
+        assert_eq!(
+            notification_locale_for_path("/en/task/t1").as_deref(),
+            Some("en")
+        );
+        assert_eq!(
+            notification_locale_for_path("/zh?x=1").as_deref(),
+            Some("zh")
+        );
+        assert_eq!(
+            notification_locale_for_path("/fr/settings").as_deref(),
+            Some("ko")
+        );
+        assert_eq!(notification_locale_for_path("/"), None);
+    }
 }

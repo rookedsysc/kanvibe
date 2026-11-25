@@ -4125,8 +4125,10 @@ dependencies = [
  "kanvibe-diagram",
  "kanvibe-domain",
  "kanvibe-markdown",
+ "kanvibe-mobile",
  "kanvibe-process",
  "kanvibe-runtime",
+ "kanvibe-server",
  "kanvibe-services",
  "kanvibe-terminal",
  "serde",
@@ -4297,11 +4299,13 @@ dependencies = [
  "kanvibe-process",
  "kanvibe-services",
  "kanvibe-terminal",
+ "rusqlite",
  "serde",
  "serde_json",
  "sha2 0.10.9",
  "tempfile",
  "thiserror 2.0.21",
+ "uuid",
 ]
 
 [[package]]
@@ -4320,6 +4324,7 @@ dependencies = [
  "hyper-util",
  "kanvibe-ai",
  "kanvibe-db",
+ "kanvibe-diagram",
  "kanvibe-domain",
  "kanvibe-mobile",
  "kanvibe-pane-mirror",

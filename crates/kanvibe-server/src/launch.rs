@@ -62,6 +62,32 @@ fn parse_requested_hook_port(requested: &str) -> Result<u16, LaunchError> {
     is_valid.then_some(port as u16).ok_or_else(invalid)
 }
 
+/// 원격 daemon·agent namespace(TS `startHookServer`의 `remoteHostNamespace`). 설치된 앱은 `prod`, 소스 개발 실행은
+/// `dev`, 나머지(QA 실행)는 데이터 디렉터리마다 따로 뜨도록 `qa-<sha256(userData) 앞 16자>`다
+pub fn resolve_remote_host_namespace(mode: &LaunchMode, app_data_directory: &Path) -> String {
+    if mode.is_packaged && !mode.is_manual_qa {
+        return "prod".to_string();
+    }
+    if mode.is_dev_run && !mode.is_manual_qa {
+        return "dev".to_string();
+    }
+    qa_remote_host_namespace(app_data_directory)
+}
+
+/// TS `qa-${sha256(userData).slice(0, 16)}`
+pub fn qa_remote_host_namespace(app_data_directory: &Path) -> String {
+    use sha2::Digest;
+    let digest = hex::encode(sha2::Sha256::digest(
+        app_data_directory.to_string_lossy().as_bytes(),
+    ));
+    format!("qa-{}", &digest[..16])
+}
+
+/// 소스 개발 실행에서만 여는 `/api/mobile/dev/pairing-code`(TS `IS_DEV_PAIRING_ROUTE_ENABLED`)
+pub fn is_dev_pairing_route_enabled(mode: &LaunchMode) -> bool {
+    mode.is_dev_run && !mode.is_packaged
+}
+
 /// 공백뿐인 값은 없는 것으로 본다
 pub fn requested_app_data_directory(mode: &LaunchMode) -> Option<String> {
     let trimmed = mode.requested_app_data_dir.as_deref()?.trim();
@@ -243,6 +269,22 @@ mod tests {
             ..dev()
         };
         assert_eq!(resolve_hook_server_port(&mode), Ok(41234));
+    }
+
+    #[test]
+    fn remote_namespace_separates_installed_dev_and_qa_runs() {
+        let packaged = LaunchMode {
+            is_packaged: true,
+            ..LaunchMode::default()
+        };
+        let data = Path::new("/tmp/kanvibe-qa-data");
+        assert_eq!(resolve_remote_host_namespace(&packaged, data), "prod");
+        assert_eq!(resolve_remote_host_namespace(&dev(), data), "dev");
+        let qa = resolve_remote_host_namespace(&LaunchMode::default(), data);
+        assert_eq!(qa, qa_remote_host_namespace(data));
+        assert!(qa.starts_with("qa-") && qa.len() == 19, "{qa}");
+        assert!(is_dev_pairing_route_enabled(&dev()));
+        assert!(!is_dev_pairing_route_enabled(&packaged));
     }
 
     // parity: TS-electron-runtimeEnvironment-24c13f

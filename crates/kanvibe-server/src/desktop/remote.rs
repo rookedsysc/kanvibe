@@ -1,7 +1,8 @@
 //! 원격 SSH 호스트 daemon 연결 풀, hook 터널(`ssh -R`과 daemon hook 재생), 원격 터미널 agent를 서버 조립에 잇는다
 //! (TS `electron/main.js`·`electron/hookServer.js`의 `startHookTunnels`·`stopHookTunnels`, `remoteTerminalService`).
 //!
-//! 런타임은 서버보다 먼저 만들어지므로 연결 풀과 hook 경로(namespace·터널)는 런타임 앞에서 만들고, 터널 서비스는
+//! 런타임은 서버보다 먼저 만들어지므로 연결 풀, hook 경로(namespace·터널), 원격 터미널 agent 권한은 런타임 앞에서
+//! 시작 환경 스냅샷만으로 만들어 [`RemoteHostWiring::wire_runtime`]으로 `RuntimeConfig`에 넣고, 터널 서비스는
 //! hook 포트를 잡은 뒤에 시작해 hook 경로에 늦게 묶는다. 포트를 얻지 못한 인스턴스가 터널을 열면 먼저 뜬 인스턴스의
 //! 원격 소켓을 지우기 때문이다. 자식 ssh에는 `create_local_shell_environment`로 좁힌 환경만 넘긴다.
 
@@ -27,7 +28,8 @@ use kanvibe_remote_host::ssh_transport::{SystemEffectiveSshConfig, SystemHostTra
 use kanvibe_remote_host::terminal_agent_seam::{
     RustRemoteTerminalAgentBundle, SelfSignedCertificateIssuer, UploadingRemoteTerminalAgentSpawner,
 };
-use kanvibe_runtime::{DesktopRuntime, RemoteHookRouting};
+use kanvibe_runtime::{DesktopRuntime, RemoteHookRouting, RuntimeConfig};
+use kanvibe_terminal::environment::TerminalHostEnvironment;
 use kanvibe_terminal::remote_terminal_service::{
     RemoteTerminalService, RemoteTerminalServiceDependencies, SystemRemoteTerminalAgentSpawner,
 };
@@ -53,9 +55,9 @@ pub struct RemoteHostWiringConfig {
 pub struct RemoteHostWiring {
     namespace: String,
     environment: ShellEnvironment,
-    binaries: Arc<AgentBinaryCatalog>,
     pool: Arc<RemoteHostConnectionPool>,
     routing: Arc<LateBoundHookRouting>,
+    terminal_agents: Arc<RemoteTerminalService>,
 }
 
 impl RemoteHostWiring {
@@ -64,6 +66,7 @@ impl RemoteHostWiring {
             Some(directory) => AgentBinaryCatalog::from_directory(directory)?,
             None => AgentBinaryCatalog::default(),
         });
+        let terminal_agents = build_terminal_agents(&config, &binaries);
         let environment = narrow_environment(config.base_environment, &config.home_directory);
         let pool = RemoteHostConnectionPool::new(RemoteHostConnectionPoolDependencies {
             ssh_hosts: Arc::new(SshConfigReader::new(&config.home_directory)),
@@ -78,10 +81,18 @@ impl RemoteHostWiring {
         Ok(Self {
             namespace: config.namespace,
             environment,
-            binaries,
             pool,
             routing,
+            terminal_agents,
         })
+    }
+
+    /// 런타임을 만들기 전에 원격 daemon 연결, hook 경로, 원격 터미널 agent 권한을 설정에 넣는다.
+    /// agent 권한은 런타임 pane 미러가 쓰고, 런타임 `shutdown()`이 미러를 멈출 때 agent도 함께 내린다
+    pub fn wire_runtime(&self, config: &mut RuntimeConfig) {
+        config.remote_host_connections = self.host_connections();
+        config.remote_hook_routing = self.hook_routing();
+        config.remote_pane_grants = self.remote_grants();
     }
 
     pub fn pool(&self) -> &Arc<RemoteHostConnectionPool> {
@@ -98,25 +109,9 @@ impl RemoteHostWiring {
         self.routing.clone()
     }
 
-    /// `DesktopServerConfig.remote_grants`에 넣는 원격 터미널 서비스. agent는 Rust 바이너리 loader로 띄운다
-    pub fn remote_grants(&self, runtime: &DesktopRuntime) -> Arc<dyn RemotePaneGrants> {
-        let ssh_spawner = Arc::new(SystemRemoteTerminalAgentSpawner::new(Arc::clone(
-            runtime.terminal_environment(),
-        )));
-        Arc::new(RemoteTerminalService::new(
-            RemoteTerminalServiceDependencies {
-                ssh_hosts: Arc::clone(runtime.ssh_config()),
-                agent_bundle: Arc::new(RustRemoteTerminalAgentBundle::new(
-                    Arc::clone(&self.binaries),
-                    &self.namespace,
-                )),
-                certificate_issuer: Arc::new(SelfSignedCertificateIssuer),
-                agent_spawner: Arc::new(UploadingRemoteTerminalAgentSpawner::new(
-                    ssh_spawner,
-                    Arc::clone(&self.binaries),
-                )),
-            },
-        ))
+    /// `RuntimeConfig.remote_pane_grants`에 넣는 원격 터미널 서비스. agent는 Rust 바이너리 loader로 띄운다
+    pub fn remote_grants(&self) -> Arc<dyn RemotePaneGrants> {
+        self.terminal_agents.clone()
     }
 
     /// hook 포트를 잡은 뒤에 부른다(TS `logListenerLifecycle`의 listening 콜백). 돌려준 핸들을 멈추거나 놓으면 터널이 닫힌다
@@ -134,6 +129,14 @@ impl RemoteHostWiring {
             service,
             routing: Arc::clone(&self.routing),
         })
+    }
+
+    /// 시작한 터널이 있으면 끊긴 연결을 곧바로 다시 잇는다(TS `reconnectHookTunnels`)
+    pub fn reconnect_hook_tunnels(&self) {
+        let tunnels = self.routing.tunnels.read().unwrap().clone();
+        if let Some(tunnels) = tunnels {
+            tunnels.reconnect_hook_tunnels();
+        }
     }
 
     fn hook_tunnel_dependencies(
@@ -164,6 +167,35 @@ impl RemoteHostWiring {
             )),
         }
     }
+}
+
+/// 런타임 터미널 환경과 같은 스냅샷·홈으로 agent용 ssh 환경과 `~/.ssh/config` 읽기를 만든다
+fn build_terminal_agents(
+    config: &RemoteHostWiringConfig,
+    binaries: &Arc<AgentBinaryCatalog>,
+) -> Arc<RemoteTerminalService> {
+    let mut parent_environment = config.base_environment.clone();
+    parent_environment.insert("HOME".into(), config.home_directory.clone());
+    let terminal_environment = Arc::new(TerminalHostEnvironment::from_parent_environment(
+        &parent_environment,
+        ShellPlatform::current(),
+        &config.home_directory,
+    ));
+    let ssh_spawner = Arc::new(SystemRemoteTerminalAgentSpawner::new(terminal_environment));
+    Arc::new(RemoteTerminalService::new(
+        RemoteTerminalServiceDependencies {
+            ssh_hosts: Arc::new(SshConfigReader::new(&config.home_directory)),
+            agent_bundle: Arc::new(RustRemoteTerminalAgentBundle::new(
+                Arc::clone(binaries),
+                &config.namespace,
+            )),
+            certificate_issuer: Arc::new(SelfSignedCertificateIssuer),
+            agent_spawner: Arc::new(UploadingRemoteTerminalAgentSpawner::new(
+                ssh_spawner,
+                Arc::clone(binaries),
+            )),
+        },
+    ))
 }
 
 /// 런타임과 같은 방식으로 좁힌다: `HOME`을 설정한 홈으로 맞춘 뒤 서버 런타임 값과 KanVibe 내부 값을 걷어 낸다

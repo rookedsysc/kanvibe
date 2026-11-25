@@ -14,7 +14,9 @@ use kanvibe_db::{Database, DatabaseLocation};
 use kanvibe_domain::platform::ShortcutPlatform;
 use kanvibe_domain::shortcuts::bindings::ShortcutBindings;
 use kanvibe_domain::task::TASK_STATUS_ORDER;
+use kanvibe_mobile::devices::MobileDevices;
 use kanvibe_runtime::DesktopRuntime;
+use kanvibe_server::desktop::DesktopServices;
 
 use crate::qa::AppClock;
 use crate::qa::faults::{FaultOutcome, FaultRegistry};
@@ -56,6 +58,8 @@ pub struct BoardHeaderSnapshot {
 pub struct AppServices {
     /// `--data-dir`로 연 런타임. 없으면 DB 없이 뜬 실행이다
     runtime: Option<Arc<DesktopRuntime>>,
+    /// 런타임 위의 모바일 업무 계층(기기·페어링·LAN 평문 설정·푸시). 프로세스 안 서버가 같은 인스턴스를 쓴다
+    desktop_services: Option<Arc<DesktopServices>>,
     faults: Option<Arc<FaultRegistry>>,
     pub clock: AppClock,
     pub shortcut_platform: ShortcutPlatform,
@@ -75,10 +79,29 @@ impl AppServices {
     ) -> Self {
         Self {
             runtime,
+            desktop_services: None,
             faults,
             clock,
             shortcut_platform,
         }
+    }
+
+    /// 런타임과 같은 인스턴스로 만든 모바일 업무 계층을 단다
+    pub fn with_desktop_services(mut self, desktop_services: Arc<DesktopServices>) -> Self {
+        self.desktop_services = Some(desktop_services);
+        self
+    }
+
+    /// 모바일 서버가 쓰는 업무 계층. 데이터 디렉터리 없이 뜬 실행이면 `None`이다
+    pub fn desktop_services(&self) -> Option<&Arc<DesktopServices>> {
+        self.desktop_services.as_ref()
+    }
+
+    /// 페어링 코드·기기 목록·기기 해제(설정 화면 모바일 연결). 서버가 띄운 페어링과 같은 인스턴스다
+    pub fn mobile_devices(&self) -> Option<&Arc<MobileDevices>> {
+        self.desktop_services
+            .as_ref()
+            .map(|desktop_services| &desktop_services.devices)
     }
 
     /// 앱 데이터 디렉터리의 `kanvibe.db`를 연다

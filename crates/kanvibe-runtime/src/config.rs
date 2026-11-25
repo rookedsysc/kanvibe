@@ -14,7 +14,9 @@ use kanvibe_terminal::terminal_registry::{RemoteHostConnection, RemoteHostConnec
 
 use crate::clock::AppClock;
 use crate::diagram::DiagramFontFiles;
-use crate::notifications::SilentNotificationPresenter;
+use crate::notifications::{
+    NotificationLocaleSource, SilentNotificationPresenter, system_notification_locale,
+};
 use crate::pane_chat::NoRemotePaneGrants;
 use crate::qa_network::NetworkResponseTable;
 
@@ -75,6 +77,9 @@ pub struct RuntimeConfig {
     pub notification_presenter: Arc<dyn DesktopNotificationPresenter>,
     /// 알림 목록이 바뀌었을 때와 OS 알림을 눌렀을 때 화면이 할 일
     pub notification_callbacks: NotificationDeliveryCallbacks,
+    /// 알림 문구 locale. 기본값은 시작 환경 스냅샷의 시스템 locale(TS `app.getLocale()`)이다.
+    /// 앱은 앞에 있는 창 경로의 locale을 먼저 보도록 바꾼다
+    pub notification_locale: NotificationLocaleSource,
     /// 다이어그램 렌더러가 첫 요청 때 읽을 글꼴. 기본값은 빈 목록이라 렌더가 실패한다
     pub diagram_font_files: DiagramFontFiles,
     /// 릴리스 확인이 비교할 지금 앱 버전
@@ -89,6 +94,7 @@ impl RuntimeConfig {
         base_environment: ShellEnvironment,
     ) -> Self {
         let app_data_directory = app_data_directory.into();
+        let system_locale = system_notification_locale(&base_environment);
         Self {
             database_location: DatabaseLocation::in_app_data_directory(&app_data_directory, None),
             app_data_directory,
@@ -103,6 +109,7 @@ impl RuntimeConfig {
             qa_network_responses: None,
             notification_presenter: Arc::new(SilentNotificationPresenter),
             notification_callbacks: NotificationDeliveryCallbacks::default(),
+            notification_locale: Arc::new(move || system_locale.clone()),
             diagram_font_files: Arc::new(Vec::new),
             app_version: env!("CARGO_PKG_VERSION").to_string(),
         }

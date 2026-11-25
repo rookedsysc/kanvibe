@@ -22,6 +22,8 @@ kanvibe-ai.workspace = true
 kanvibe-services.workspace = true
 kanvibe-terminal.workspace = true
 kanvibe-runtime.workspace = true
+kanvibe-server.workspace = true
+kanvibe-mobile.workspace = true
 kanvibe-markdown.workspace = true
 kanvibe-diagram.workspace = true
 # 화면 목록의 locale 정렬(TS `localeCompare`)

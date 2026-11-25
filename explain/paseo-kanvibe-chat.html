@@ -1,0 +1,1769 @@
+<!doctype html>
+<!-- 생성 파일입니다. 직접 고치면 다음 빌드가 덮어씁니다. 글은 paseo-kanvibe-chat/content.md 에서 고치고 explain-me-skill 의 build_explain_page.py 로 다시 만듭니다. -->
+<html lang="ko" data-reading="prd">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Paseo와 KanVibe의 Chat UI는 어떻게 동작하는가</title>
+<style>
+  /* 색은 모두 이 변수로 쓴다. 그림의 SVG도 같은 변수를 읽으므로 테마와 인쇄에서 함께 바뀐다. */
+  :root {
+    color-scheme: light dark;
+    --bg: light-dark(#ffffff, #121212);
+    --surface: light-dark(#f9f9f9, #1f1f1f);
+    --ink: light-dark(#242424, #dedede);
+    --ink-strong: light-dark(#242424, #f5f5f5);
+    --muted: light-dark(#6b6b6b, #a8a8a8);
+    --line: light-dark(#e5e5e5, #363636);
+    --accent: light-dark(#1a8917, #5cbf59);
+    --accent-soft: light-dark(#ebf5ea, #1d3320);
+    --link: light-dark(#242424, #f5f5f5);
+    --caution: light-dark(#b4460b, #ffa56b);
+    --caution-soft: light-dark(#fff3e8, #38261a);
+    --literal: light-dark(#1b64da, #84b8ff);
+    --literal-soft: light-dark(#e8f3ff, #1b2c47);
+    --free: light-dark(#02754a, #4fd6a2);
+    --free-soft: light-dark(#e5f7ef, #12332a);
+    --tok-keyword: light-dark(#ad1871, #f08bc4);
+    --tok-string: light-dark(#02754a, #5fd3a5);
+    --tok-comment: light-dark(#616b79, #a3a3ad);
+    --tok-type: light-dark(#1a5ccb, #84b8ff);
+    --tok-decorator: light-dark(#b4460b, #ffa56b);
+    --tok-number: light-dark(#8f5000, #fbbf24);
+    --diff-add: light-dark(#d9f5e7, #12382c);
+    --diff-del: light-dark(#fde4e4, #43201f);
+    --diff-meta: light-dark(#e8f3ff, #1b2c47);
+    --dim: 0.22;
+    --radius: 4px;
+    --column: 680px;
+    --toc-width: 200px;
+    --toc-gap: 48px;
+    /* 본문은 세리프, 제목과 화면 조작 요소는 산세리프다. 외부 글꼴 파일 없이 운영체제에 있는 글꼴만 쓴다.
+       본문의 영문과 숫자는 세리프로, 한글은 산세리프로 그린다. 세리프 한글 글꼴은 자간이 넓고 획이 고르지 않아 긴 설명을 읽기 어렵다.
+       Charter 를 Georgia 앞에 두는 이유는 Georgia 의 숫자가 높낮이가 다른 모양이라 3.2, 10개 같은 기술 수치가 어긋나 보이기 때문이다. */
+    --font: "Helvetica Neue", Helvetica, Arial, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif;
+    --font-serif: Charter, Georgia, Cambria, "Times New Roman", Times, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", serif;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --body-size: 20px;
+    --body-leading: 32px;
+    --block-gap: 34px;
+    --h1-size: 42px;
+    --h1-leading: 52px;
+    --h2-size: 24px;
+    --h2-leading: 30px;
+    --h3-size: 20px;
+    --h3-leading: 24px;
+  }
+  /* 좁은 화면은 본문과 제목을 한 단계 줄인다. */
+  @media (max-width: 727px) {
+    :root { --body-size: 18px; --body-leading: 28px; --block-gap: 20px; --h1-size: 32px; --h1-leading: 38px; --h2-size: 20px; --h2-leading: 24px; --h3-size: 16px; --h3-leading: 20px; }
+  }
+  :root[data-theme="light"] { color-scheme: light; }
+  :root[data-theme="dark"] { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html { scroll-padding-top: 24px; -webkit-text-size-adjust: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font-serif); font-size: var(--body-size); line-height: var(--body-leading); letter-spacing: -0.003em; word-break: keep-all; overflow-wrap: anywhere; }
+  main { max-width: calc(var(--column) + 48px); margin: 0 auto; padding: 24px 24px 120px; }
+  h1, h2, h3, dt { color: var(--ink-strong); font-family: var(--font); }
+  h1 { font-size: var(--h1-size); font-weight: 700; line-height: var(--h1-leading); letter-spacing: -0.011em; margin: 40px 0 16px; }
+  h2 { font-size: var(--h2-size); font-weight: 600; line-height: var(--h2-leading); letter-spacing: -0.016em; margin: calc(var(--block-gap) + 4px) 0 12px; }
+  h3 { font-size: var(--h3-size); font-weight: 600; line-height: var(--h3-leading); margin: var(--block-gap) 0 8px; }
+  p, ul, ol { margin: 0 0 var(--block-gap); }
+  li { margin: 14px 0; }
+  ul, ol { padding-left: 30px; }
+  a { color: var(--link); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+  code { font-family: var(--mono); font-size: 0.8em; letter-spacing: 0; background: var(--surface); border-radius: var(--radius); padding: 3px 4px; }
+  :not(pre) > code { overflow-wrap: anywhere; word-break: break-word; }
+  pre { background: var(--surface); border-radius: var(--radius); padding: 32px; margin: 0 0 var(--block-gap); overflow-x: auto; font-size: 16px; line-height: normal; letter-spacing: 0; word-break: normal; overflow-wrap: normal; }
+  pre code { border: 0; padding: 0; font-size: inherit; }
+  .table-scroll { overflow-x: auto; margin: 0 0 var(--block-gap); }
+  table { width: 100%; border-collapse: collapse; font-family: var(--font); font-size: 0.8125rem; line-height: 1.6; }
+  th, td { border-bottom: 1px solid var(--line); padding: 10px 12px; text-align: left; vertical-align: top; }
+  thead th { background: var(--surface); color: var(--ink-strong); font-weight: 600; }
+  tbody th { color: var(--ink-strong); font-weight: 600; }
+
+  .page-actions { display: flex; justify-content: flex-end; gap: 8px; }
+  .page-actions button, .step-controls button { min-height: 44px; padding: 0 16px; background: none; color: var(--ink); border: 1px solid var(--line); border-radius: 999px; font: 400 14px/20px var(--font); cursor: pointer; transition: border-color 0.15s; }
+  .page-actions button:hover, .step-controls button:hover { border-color: var(--ink); }
+  .reader { color: var(--muted); font-family: var(--font); font-size: 16px; line-height: 24px; margin: 0 0 40px; }
+  /* 요약은 본문 인용처럼 왼쪽 세로줄로 묶는다. */
+  .summary { box-shadow: inset 3px 0 0 0 var(--ink-strong); padding: 0 0 0 23px; margin: 0 0 40px; }
+  .summary .one-line { color: var(--ink-strong); font-family: var(--font); font-size: var(--h2-size); font-weight: 600; line-height: var(--h2-leading); margin: 0 0 12px; }
+  .summary ul { margin: 0; }
+
+  /* 목차: 좁은 화면에서는 요약 아래에 가로로 나열하고, 넓은 화면에서는 본문 왼쪽에 고정한다.
+     지금 읽는 절의 항목은 스크립트가 aria-current 를 달고, 색과 함께 굵기와 테두리(넓은 화면은 왼쪽 세로줄)로도 구분한다. */
+  .toc { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 var(--block-gap); font-family: var(--font); font-size: 14px; line-height: 20px; letter-spacing: 0; }
+  .toc a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 16px; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; text-decoration: none; transition: color 0.15s, border-color 0.15s; }
+  .toc a:hover { color: var(--ink-strong); }
+  .toc a[aria-current] { color: var(--ink-strong); border-color: var(--ink-strong); font-weight: 600; }
+  @media (min-width: 1100px) {
+    main { width: calc(var(--column) + 48px); max-width: none; margin-left: calc((100vw - var(--column) - var(--toc-width) - var(--toc-gap)) / 2 + var(--toc-width) + var(--toc-gap) - 24px); margin-right: 0; }
+    .toc { position: fixed; top: 48px; left: calc((100vw - var(--column) - var(--toc-width) - var(--toc-gap)) / 2); width: var(--toc-width); max-height: calc(100vh - 96px); overflow-y: auto; flex-direction: column; flex-wrap: nowrap; gap: 0; margin: 0; }
+    .toc a { display: block; min-height: 0; padding: 6px 12px; border: 0; border-radius: 0; box-shadow: inset 1px 0 0 0 var(--line); }
+    .toc a[aria-current] { box-shadow: inset 3px 0 0 0 var(--ink-strong); }
+    .toc a.toc-sub { padding-left: 24px; font-size: 13px; }
+  }
+
+  /* 다이어그램: diagram-design 출력이나 직접 그린 SVG가 figure 안에 inline으로 들어간다. */
+  figure.diagram { margin: 0 0 var(--block-gap); background: var(--surface); border-radius: var(--radius); padding: 24px; overflow-x: auto; }
+  figure.diagram svg { display: block; max-width: 100%; height: auto; margin: 0 auto; }
+  figure.diagram figcaption { color: var(--muted); font-family: var(--font); font-size: 14px; line-height: 20px; text-align: center; margin-top: 12px; }
+
+  /* 단계 강조: data-step 값이 같은 SVG 요소와 단계 목록 항목을 함께 강조한다. */
+  [data-flow] [data-step] { transition: opacity 0.2s; cursor: pointer; }
+  [data-flow].is-stepping [data-step]:not(.is-active) { opacity: var(--dim); }
+  [data-flow] .steps li.is-active { background: var(--accent-soft); }
+  [data-flow] svg .is-active { filter: drop-shadow(0 0 4px var(--accent)); }
+  .steps { list-style: none; padding: 0; margin: 16px 0 24px; }
+  .steps li { padding: 12px 16px 12px 56px; margin: 4px 0; position: relative; border-radius: var(--radius); transition: background-color 0.15s; }
+  .steps li:hover { background: var(--surface); }
+  .steps li::before { content: attr(data-step); position: absolute; left: 16px; top: 13px; width: 26px; height: 26px; border-radius: 50%; background: var(--link); color: var(--bg); font: 600 13px/1 var(--font); display: grid; place-items: center; }
+  .step-controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .step-controls .step-status { color: var(--muted); font-family: var(--font); font-size: 14px; margin-left: 4px; }
+
+  /* 코드 블록: pre 의 data-lang 이 언어 라벨이 되고, 강조 스크립트가 tok-* 와 줄 클래스를 붙인다. */
+  pre[data-lang]::before { content: attr(data-lang); display: block; position: sticky; left: 0; width: max-content; margin-bottom: 8px; color: var(--muted); font: 600 0.75rem var(--font); }
+  pre code[class*="language-"] { display: inline-block; min-width: 100%; background: none; }
+  .code-line { display: block; white-space: pre; }
+  .line-add { background: var(--diff-add); }
+  .line-del { background: var(--diff-del); }
+  .line-meta { background: var(--diff-meta); }
+  .tok-keyword { color: var(--tok-keyword); }
+  .tok-string { color: var(--tok-string); }
+  .tok-comment { color: var(--tok-comment); font-style: italic; }
+  .tok-type { color: var(--tok-type); }
+  .tok-decorator { color: var(--tok-decorator); }
+  .tok-number { color: var(--tok-number); }
+
+  /* 용어: 본문의 모든 등장을 a.term 으로 용어 설명 항목에 연결한다. 점선 밑줄이라 모든 등장을 감싸도 문단이 덮이지 않는다. */
+  a.term { color: inherit; text-decoration: underline dotted var(--accent); scroll-margin-top: 30vh; }
+  /* 용어 항목의 참조 링크로 도착한 용어와 그 줄을 강조한다. */
+  a.term:target { background: var(--accent-soft); outline: 2px solid var(--accent); border-radius: 3px; }
+  p:has(> a.term:target), li:has(> a.term:target), td:has(> a.term:target) { background: var(--accent-soft); border-radius: 6px; transition: background-color 0.3s; }
+  /* 참조 목록이 길면 항목이 화면을 덮지 않도록 상자 안에서 스크롤한다. */
+  .glossary .term-uses { max-height: 9.5em; overflow-y: auto; font-size: 0.875rem; margin: 0; }
+  .glossary .term-uses .field { display: block; }
+  .glossary .term-uses a { display: block; padding: 2px 0; }
+  .term-tip { position: absolute; z-index: 10; max-width: min(340px, calc(100vw - 16px)); background: var(--ink-strong); color: var(--bg); border-radius: var(--radius); padding: 10px 14px; font-family: var(--font); font-size: 14px; line-height: 20px; pointer-events: none; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2); }
+  .glossary { margin: 0; }
+  .glossary .term-entry { border-top: 1px solid var(--line); padding: 24px 12px; margin: 0 -12px; }
+  .glossary .term-entry:target { background: var(--accent-soft); border-radius: var(--radius); }
+  .glossary dt { font-weight: 700; font-size: 1.125rem; margin-bottom: 6px; }
+  .glossary dd { margin: 0; }
+  .glossary p { margin: 0 0 8px; }
+  .glossary .field { color: var(--muted); font-family: var(--font); font-size: 0.8em; font-weight: 600; margin-right: 4px; }
+
+  /* PRD 레코드의 추적 필드: 독자용 줄글 뒤에 접어 두고, 검토할 때만 펼친다. */
+  .prd-record-fields { margin: 8px 0 16px; font-size: 0.9375rem; }
+  .prd-record-fields > summary { cursor: pointer; color: var(--muted); font-family: var(--font); font-size: 0.875rem; font-weight: 600; }
+
+  /* 번역/해석 모드: 원문, 직역, 의역을 라벨과 색으로 함께 구분한다. */
+  .parallel .unit { background: var(--surface); border-radius: var(--radius); margin: 16px 0; overflow: hidden; }
+  .parallel .layers { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .parallel .layer { padding: 12px 16px 16px; font-size: 0.9375rem; }
+  .parallel .label { display: block; font-size: 0.8125rem; font-weight: 700; margin-bottom: 4px; }
+  .parallel .src .label { color: var(--muted); }
+  .parallel .source-text { margin: 0; white-space: pre-wrap; }
+  .parallel .literal { background: var(--literal-soft); }
+  .parallel .literal .label { color: var(--literal); }
+  .parallel .free { background: var(--free-soft); }
+  .parallel .free .label { color: var(--free); }
+  .parallel .unit-no { color: var(--muted); font-size: 0.8125rem; font-weight: 600; font-variant-numeric: tabular-nums; padding: 10px 16px 6px; }
+  .parallel .note { padding: 12px 16px; font-size: 0.9375rem; }
+  .parallel .note .kind { font-weight: 700; color: var(--caution); margin-right: 4px; }
+  @media (max-width: 720px) {
+    .parallel .layers { grid-template-columns: minmax(0, 1fr); }
+  }
+
+  .pitfall { background: var(--caution-soft); padding: 16px 20px; margin: 12px 0; border-radius: var(--radius); }
+  .unverified { color: var(--caution); font-weight: 700; font-size: 0.875rem; }
+  .back-link { font-size: 0.8125rem; font-weight: 400; margin-left: 6px; white-space: nowrap; }
+
+  @media (prefers-reduced-motion: no-preference) {
+    html { scroll-behavior: smooth; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; }
+  }
+
+  /* PDF 출력: 화면 테마와 무관하게 밝은 색으로 내보내고, 화면 조작용 요소를 뺀다. */
+  @media print {
+    :root, :root[data-theme="dark"] { color-scheme: light; }
+    @page { margin: 14mm; }
+    body { font-size: 11pt; line-height: 1.6; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    main { width: auto; max-width: none; margin: 0; padding: 0; }
+    .page-actions, .toc, .step-controls, .term-tip, .term-uses { display: none !important; }
+    /* :not 을 빼면 화면용 흐림 규칙보다 특이도가 낮아 흐림이 남는다. */
+    [data-flow].is-stepping [data-step]:not(.is-active) { opacity: 1; }
+    [data-flow] svg .is-active { filter: none; }
+    [data-flow] .steps li.is-active { background: none; }
+    pre, figure.diagram, .table-scroll { overflow: visible; }
+    pre, pre code, .code-line { white-space: pre-wrap; overflow-wrap: anywhere; }
+    pre code { display: block; }
+    table { font-size: 9pt; }
+    figure.diagram, tr, .pitfall, .term-entry, .steps li, .unit { break-inside: avoid; }
+    h2, h3 { break-after: avoid; margin-top: 28px; }
+  }
+/* 모든 설명 HTML의 읽기 화면이다. 제품 목업은 대상 서비스의 디자인을 따른다. */
+:root {
+  --bg: light-dark(#f1f1f5, #17171c);
+  --panel: light-dark(#ffffff, #22222a);
+  --surface: light-dark(#f6f6f8, #2c2c34);
+  --ink: light-dark(#34333a, #e4e4e7);
+  --ink-strong: light-dark(#101014, #fafafa);
+  --muted: light-dark(#5a5860, #b0aeb8);
+  --line: light-dark(#e4e4ea, #41414b);
+  --accent: light-dark(#242428, #ededf0);
+  --accent-soft: light-dark(#eaeaef, #363640);
+  --link: light-dark(#1d4fb8, #9abaff);
+  --radius: 12px;
+  --font: "Noto Sans KR", -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", "Segoe UI", Roboto, sans-serif;
+  --page-gutter: clamp(20px, 2.2vw, 44px);
+  --page-max: 1840px;
+  --toc-width: clamp(240px, 16vw, 280px);
+  --toc-space: var(--toc-width);
+  --toc-gap: clamp(24px, 2.2vw, 40px);
+  --toc-control-ink: light-dark(#09090b, #f5f5f5);
+  --toc-control-hover: color-mix(in srgb, var(--toc-control-ink) 7%, var(--bg));
+}
+
+:root[data-toc-collapsed="true"] {
+  --toc-space: 44px;
+}
+
+/* CMS 기획 참고 문서의 회색 캔버스·흰 패널·조밀한 정보 위계를 읽기 화면에 적용한다. */
+@media screen {
+  body { font: 16px/1.75 var(--font); letter-spacing: normal; }
+  h1 { font-size: clamp(1.5rem, 1.1rem + 1.5vw, 2rem); font-weight: 700; line-height: 1.4; letter-spacing: -0.02em; margin: 20px 0 8px; }
+  h2 { font-size: 1.5rem; font-weight: 700; line-height: 1.4; letter-spacing: -0.01em; margin: 0 0 20px; }
+  h3 { font-size: 1.125rem; line-height: 1.5; margin: 32px 0 12px; }
+  p, ul, ol { margin: 0 0 16px; }
+  li { margin: 6px 0; }
+  ul, ol { padding-left: 1.4em; }
+  code { font-size: 0.875em; border-radius: 4px; padding: 2px 5px; }
+  pre { padding: 16px 20px; margin: 16px 0 20px; font-size: 0.875rem; line-height: 1.6; }
+  .table-scroll { margin: 16px 0 20px; }
+  table { font-size: 0.875rem; }
+  main > header, main > section, .summary { padding: clamp(20px, 2.2vw, 32px); background: var(--panel); border-radius: var(--radius); }
+  main > header { margin-bottom: 20px; }
+  main > section { margin: 20px 0; }
+  main > section > h2 { padding-bottom: 16px; border-bottom: 2px solid var(--ink-strong); }
+  main > section > :last-child { margin-bottom: 0; }
+  .page-actions button { padding: 0 14px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); font: 500 14px/1.6 var(--font); }
+  .page-actions button:hover { background: var(--accent-soft); }
+  .reader { font-size: 0.875rem; line-height: 1.6; margin-bottom: 0; }
+  .summary { margin: 0 0 20px; box-shadow: none; }
+  .summary .one-line { font-size: 1.125rem; font-weight: 700; line-height: 1.6; }
+  figure.diagram { margin: 20px 0 24px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+  figure.diagram figcaption { font-size: 0.875rem; line-height: 1.6; text-align: left; }
+}
+
+body > main {
+  width: 100%;
+  max-width: var(--page-max);
+  min-width: 0;
+  margin: 0 auto;
+  padding: 24px var(--page-gutter) 96px;
+}
+
+main > header .reader,
+main > section > p,
+main > section > ul,
+main > section > ol,
+.summary .one-line,
+.summary ul {
+  max-width: 86ch;
+}
+
+main > section,
+.table-scroll,
+figure.diagram {
+  min-width: 0;
+}
+
+.table-scroll table {
+  min-width: 0;
+}
+
+.table-scroll:has(thead tr > :nth-child(4)) table {
+  min-width: 760px;
+}
+
+.table-scroll th:first-child,
+.table-scroll td:first-child {
+  min-width: 88px;
+}
+
+.table-scroll-hint {
+  margin: 12px 0 4px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.table-scroll-hint[hidden] {
+  display: none;
+}
+
+.table-scroll-hint:not([hidden]) + .table-scroll {
+  margin-top: 4px;
+}
+
+.table-scroll.is-overflowing tr > :first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  width: 128px;
+  max-width: 128px;
+  background: var(--panel);
+  box-shadow: 1px 0 var(--line);
+}
+
+.table-scroll.is-overflowing thead tr > :first-child {
+  z-index: 2;
+  background: var(--surface);
+}
+
+.table-scroll[tabindex="0"]:focus-visible {
+  outline: 2px solid var(--toc-control-ink);
+  outline-offset: 2px;
+}
+
+figure.diagram {
+  max-width: 880px;
+  padding: 20px;
+}
+
+figure.diagram svg {
+  width: min(100%, 840px);
+}
+
+figure.diagram svg.geohash-grid {
+  width: min(100%, 560px);
+}
+
+.toc a {
+  flex-shrink: 0;
+  border: 0;
+  border-radius: 8px;
+  box-shadow: none;
+  font-weight: 400;
+}
+
+.toc a[hidden] {
+  display: none !important;
+}
+
+.toc a.toc-sub {
+  padding-left: calc(12px + var(--toc-depth, 1) * 12px);
+}
+
+.toc-toggle {
+  display: none;
+}
+
+.desktop-toc {
+  display: none;
+}
+
+.desktop-toc-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 44px;
+  margin-bottom: 12px;
+  padding: 0 8px 12px 12px;
+  border-bottom: 1px solid var(--line);
+  flex-shrink: 0;
+}
+
+.desktop-toc-title {
+  color: var(--ink-strong);
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.toc-collapse {
+  display: inline-flex;
+  flex: 0 0 44px;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: color-mix(in srgb, var(--toc-control-ink) 65%, var(--bg));
+  cursor: pointer;
+}
+
+.toc-collapse:hover,
+.toc-collapse:active,
+.toc-collapse:focus-visible,
+.toc-toggle:hover,
+.toc-toggle:active,
+.toc-toggle:focus-visible,
+.toc-close:hover,
+.toc-close:focus-visible {
+  color: var(--toc-control-ink);
+  background: var(--toc-control-hover);
+}
+
+.toc-collapse:focus-visible,
+.toc-toggle:focus-visible,
+.toc-close:focus-visible {
+  outline: 2px solid var(--toc-control-ink);
+  outline-offset: 2px;
+}
+
+.toc-resize-handle {
+  position: absolute;
+  top: 0;
+  right: -12px;
+  bottom: 0;
+  width: 18px;
+  border-radius: 6px;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.toc-resize-handle::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 8px;
+  width: 1px;
+  background: var(--line);
+}
+
+.toc-resize-handle::after {
+  content: "";
+  position: absolute;
+  top: calc(50% - 16px);
+  left: 7px;
+  width: 3px;
+  height: 32px;
+  border-radius: 3px;
+  background: var(--muted);
+}
+
+.toc-resize-handle:hover,
+.toc-resize-handle:focus-visible {
+  background: transparent;
+  outline: none;
+}
+
+.toc-resize-handle:hover::before,
+.toc-resize-handle:focus-visible::before,
+html.toc-resizing .toc-resize-handle::before {
+  left: 7px;
+  width: 3px;
+  background: var(--toc-control-ink);
+}
+
+.toc-resize-handle:hover::after,
+.toc-resize-handle:focus-visible::after,
+html.toc-resizing .toc-resize-handle::after {
+  background: var(--toc-control-ink);
+}
+
+html.toc-resizing,
+html.toc-resizing * {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+
+html.toc-resizing iframe {
+  pointer-events: none;
+}
+
+.toc-dialog {
+  position: fixed;
+  inset: auto max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) auto;
+  width: min(440px, calc(100vw - 32px));
+  max-width: calc(100vw - 32px);
+  max-height: min(76dvh, 680px);
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  box-shadow: 0 16px 56px #0003;
+}
+
+.toc-dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+.toc-dialog::backdrop {
+  background: #0006;
+}
+
+.toc-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.toc-dialog-header h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.toc-close {
+  min-width: 52px;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.toc-dialog .toc {
+  --toc-link-ink: var(--ink);
+  position: static;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  gap: 4px;
+  width: 100%;
+  min-height: 0;
+  max-height: none;
+  margin: 0;
+  padding: 12px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.toc-dialog .toc a {
+  display: flex;
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding: 10px 12px;
+  line-height: 1.5;
+  background-color: transparent;
+}
+
+.toc-dialog .toc a.toc-sub {
+  padding-left: calc(12px + var(--toc-depth, 1) * 12px);
+}
+
+.toc a[aria-current="location"] {
+  color: var(--toc-link-ink, var(--muted));
+  border: 0;
+  border-radius: 8px;
+  box-shadow: none;
+  font-weight: 400;
+  background: var(--accent-soft);
+}
+
+html.toc-modal-open {
+  overflow: hidden;
+}
+
+@media (min-width: 1100px) {
+  body > main {
+    padding-left: calc(var(--page-gutter) + var(--toc-space) + var(--toc-gap));
+  }
+
+  .toc {
+    top: 32px;
+    left: max(var(--page-gutter), calc((100vw - var(--page-max)) / 2 + var(--page-gutter)));
+    width: var(--toc-width);
+    max-height: calc(100vh - 64px);
+  }
+
+  .desktop-toc {
+    position: fixed;
+    top: 24px;
+    left: max(var(--page-gutter), calc((100vw - var(--page-max)) / 2 + var(--page-gutter)));
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    width: var(--toc-space);
+    height: calc(100dvh - 48px);
+    padding: 12px 0;
+    border-radius: var(--radius);
+    background: var(--panel);
+  }
+
+  .desktop-toc .toc {
+    position: static;
+    flex: 1 1 auto;
+    width: 100%;
+    min-height: 0;
+    max-height: none;
+    margin: 0;
+    padding: 0 4px;
+    gap: 2px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+  }
+
+  .desktop-toc .toc a {
+    min-height: 40px;
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
+
+  :root[data-toc-collapsed="true"] .desktop-toc {
+    height: auto;
+    padding: 0;
+  }
+
+  :root[data-toc-collapsed="true"] .desktop-toc-header {
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+
+  :root[data-toc-collapsed="true"] .desktop-toc .toc,
+  :root[data-toc-collapsed="true"] .desktop-toc-title,
+  :root[data-toc-collapsed="true"] .toc-resize-handle {
+    display: none;
+  }
+}
+
+@media (max-width: 1099px) {
+  main > header .page-actions {
+    padding-top: env(safe-area-inset-top);
+    padding-right: calc(56px + env(safe-area-inset-right));
+  }
+
+  .toc-toggle {
+    position: fixed;
+    top: calc(24px + env(safe-area-inset-top));
+    right: calc(var(--page-gutter) + env(safe-area-inset-right));
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--bg);
+    color: var(--toc-control-ink);
+    box-shadow: 0 2px 12px #0001;
+    font: inherit;
+    cursor: pointer;
+  }
+
+  .toc {
+    max-height: 200px;
+    overflow-y: auto;
+    gap: 6px;
+    padding: 4px;
+    margin: 0 -4px 24px;
+    scrollbar-gutter: stable;
+  }
+
+  .toc a {
+    padding: 0 10px;
+  }
+}
+
+@media (max-width: 520px) {
+  .summary {
+    padding: 20px;
+  }
+
+  figure.diagram {
+    padding: 16px;
+  }
+}
+
+@media print {
+  :root { --bg: #fff; --panel: #fff; }
+  .table-scroll-hint {
+    display: none;
+  }
+
+  .table-scroll.is-overflowing tr > :first-child {
+    position: static;
+    width: auto;
+    max-width: none;
+    box-shadow: none;
+  }
+
+  .table-scroll table {
+    min-width: 0 !important;
+  }
+
+  html.toc-modal-open {
+    overflow: visible;
+  }
+
+  .toc-toggle,
+  .toc-dialog,
+  .desktop-toc {
+    display: none !important;
+  }
+
+  body > main {
+    width: auto;
+    max-width: none;
+    margin: 0;
+    padding: 0;
+  }
+}
+
+
+.playbook { border:1px solid var(--line); border-radius:8px; background:var(--surface); padding:20px; margin-bottom:24px; }
+.playbook-inputs,.playbook-controls { display:flex; gap:12px; flex-wrap:wrap; align-items:center; margin-bottom:20px; }
+.playbook-controls { gap:8px; }
+.playbook-inputs label,.playbook-controls label { display:flex; gap:8px; align-items:center; }
+.playbook input,.playbook select,.playbook button { min-height:44px; max-width:100%; padding:8px 12px; border:1px solid var(--line); border-radius:6px; background:var(--panel); color:var(--ink); font:inherit; }
+.playbook button:disabled,.playbook input:disabled { cursor:default; opacity:.45; }
+.playbook input:not([type="range"]) { width:180px; min-width:0; }
+.playbook input[type="range"] { width:150px; padding:0; border:0; accent-color:var(--link); }
+.playbook-tabs { display:flex; gap:4px; flex-wrap:wrap; width:fit-content; max-width:100%; padding:4px; margin-bottom:16px; border-radius:8px; background:var(--accent-soft); }
+.playbook-tabs button { border-color:transparent; background:transparent; }
+.playbook-tabs [aria-selected="true"] { color:var(--ink-strong); background:var(--panel); border-color:var(--line); font-weight:700; }
+.playbook-panels { display:grid; grid-template-columns:minmax(230px,.9fr) minmax(0,1.1fr); gap:24px; }
+.playbook-panels>div { min-width:0; }
+.playbook-sequence { list-style:none; padding:0; max-width:720px; }
+.playbook-sequence li { margin:8px 0; }
+.playbook-sequence button { width:100%; padding:14px 16px; text-align:left; }
+.playbook-sequence button[aria-current="step"] { background:var(--accent-soft); border-color:var(--link); }
+.playbook-note { font-size:14px; color:var(--muted); }
+.playbook-state .table-scroll table { min-width:420px; }
+.playbook-state h4 { margin:16px 0 8px; font:600 16px/1.5 var(--font); }
+.playbook-state pre { font:13px/1.6 var(--mono); padding:16px; white-space:pre; overflow-wrap:normal; overflow-x:auto; }
+.playbook-screen { margin:16px 0; width:180px; max-width:100%; min-height:240px; padding:18px; border:1px solid var(--line); border-radius:22px; background:var(--surface); }
+.playbook-screen strong { display:block; margin:20px 0 12px; }
+.playbook [data-panel="screen"] { white-space:pre-wrap; overflow-wrap:anywhere; font:14px/1.6 var(--font); }
+.toc-sub { overflow-wrap:normal; }
+@media(max-width:760px) { .playbook-panels { grid-template-columns:1fr; } .playbook { padding:14px; } .playbook-tabs { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media print { .playbook-controls,.playbook-inputs,.playbook-tabs { display:none!important; } .playbook-panels { display:block; } .playbook-sequence { break-inside:auto; } }
+
+.toc-dialog .toc { flex-direction: column; flex-wrap: nowrap; }
+.table-scroll tr > :first-child { overflow-wrap: normal; word-break: normal; }
+
+.api-contract { min-width: 0; }
+.api-operation { margin-block: 16px; border: 1px solid var(--line, #c9cdd1); border-radius: 6px; padding: 12px 16px; scroll-margin-top: 24px; }
+.api-operation > summary { cursor: pointer; min-height: 44px; overflow-wrap: anywhere; }
+.api-operation > summary:focus-visible { outline: 2px solid currentColor; outline-offset: 4px; }
+.api-field { margin-block: 16px; min-width: 0; }
+.api-contract tr[data-api-target] { cursor: pointer; }
+.api-contract tr[data-api-target]:hover { background: var(--surface, #f4f4f4); }
+@media print { .api-operation { break-inside: avoid; } }
+
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="page-actions">
+      <button type="button" id="print-button">PDF로 출력</button>
+      <button type="button" id="theme-toggle">테마 전환</button>
+    </div>
+    <h1>Paseo와 KanVibe의 Chat UI는 어떻게 동작하는가</h1>
+    <p class="reader term-no-link">독자: 개발 경험은 있지만 두 앱의 채팅 내부 구조는 처음 보는 사람</p>
+  </header>
+<section class="summary" id="summary"><p class="one-line">Paseo는 <a class="term" id="use-daemon-1" href="#term-daemon">데몬</a>이 관리하는 에이전트와 대화한다. KanVibe의 <a class="term" id="use-pane-chat-1" href="#term-pane-chat">Pane Chat</a>은 이미 열린 <a class="term" id="use-pane-1" href="#term-pane">터미널 pane</a>에 연결한다.</p><ul>
+<li>Paseo는 <code>agentId</code>로 프롬프트를 보낸다. <a class="term" id="use-daemon-2" href="#term-daemon">데몬</a>이 에이전트 이벤트를 <a class="term" id="use-timeline-1" href="#term-timeline">타임라인</a>으로 전달한다.</li>
+<li>KanVibe는 pane의 실행 프로세스와 대화 기록을 연결한다. 입력은 CLI 또는 확인된 Codex 스레드에 보내고, 답변은 연결한 기록에서 읽는다.</li>
+<li>KanVibe의 대화 기록 화면은 별도 조회 화면이다. 현재 GPUI 작업 브랜치에서 연결된 화면도 이 대화 기록 화면이다.</li>
+</ul>
+</section>
+<nav class="toc" aria-label="목차"><a href="#structure">구조</a><a href="#flow">흐름</a><a href="#detail">상세 설명</a><a class="toc-sub" href="#kanvibe-gpui">현재 KanVibe GPUI</a><a href="#glossary">용어 설명</a><a href="#sources">출처</a></nav>
+<section id="structure"><h2>구조</h2>
+<p>같은 Claude Code를 써도 채팅이 붙는 대상이 다르다. Paseo 앱은 <a class="term" id="use-daemon-3" href="#term-daemon">데몬</a>과 통신한다. KanVibe의 <a class="term" id="use-pane-chat-2" href="#term-pane-chat">Pane Chat</a>은 <a class="term" id="use-pane-2" href="#term-pane">터미널 pane</a>과 <a class="term" id="use-provider-transcript-1" href="#term-provider-transcript">공급자 기록</a>을 함께 사용한다. 공급자는 Claude Code나 Codex처럼 프롬프트를 받아 실행하는 도구다. CLI는 터미널에서 실행하는 명령줄 프로그램이다.</p>
+<figure class="diagram"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 768 368" role="img" aria-labelledby="dg1-title dg1-desc" style="min-width:768px">
+<title id="dg1-title">Paseo와 KanVibe의 채팅 연결 구조</title>
+<desc id="dg1-desc">Paseo 앱은 데몬을 통해 공급자 연결과 통신한다. KanVibe 앱은 Pane Chat 서비스를 통해 터미널 pane에 입력하고 공급자 기록을 읽는다.</desc>
+<defs>
+<marker id="dg1-arrow" viewBox="0 0 10 10" markerWidth="7" markerHeight="7" refX="9" refY="5" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="var(--muted, #555f69)"/></marker>
+<marker id="dg1-live" viewBox="0 0 10 10" markerWidth="7" markerHeight="7" refX="9" refY="5" orient="auto"><path d="M 0 0 L 10 5 L 0 10" fill="none" stroke="var(--accent, #276433)" stroke-width="1.6"/></marker>
+</defs>
+<g transform="scale(0.83478261)">
+<rect x="12" y="12" width="896" height="170" rx="8" fill="none" stroke="var(--line, #bbc2c8)" stroke-width="1" stroke-dasharray="5 4"/>
+<rect x="12" y="204" width="896" height="220" rx="8" fill="none" stroke="var(--line, #bbc2c8)" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="32" y="44" fill="var(--ink, #242424)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="22" font-weight="700" text-anchor="start">Paseo</text>
+<text x="32" y="236" fill="var(--ink, #242424)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="22" font-weight="700" text-anchor="start">KanVibe</text>
+<rect x="36" y="76" width="160" height="60" rx="6" fill="var(--bg, #ffffff)" stroke="var(--line, #bbc2c8)" stroke-width="1"/>
+<text x="116" y="101" fill="var(--ink, #242424)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="18" font-weight="700" text-anchor="middle">채팅 앱</text>
+<text x="116" y="123" fill="var(--muted, #555f69)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="14" font-weight="400" text-anchor="middle">데스크톱 / 모바일</text>
+<rect x="362" y="76" width="164" height="60" rx="6" fill="var(--accent-soft, #ebf5ea)" stroke="var(--accent, #276433)" stroke-width="1"/>
+<text x="444" y="101" fill="var(--ink, #242424)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="18" font-weight="700" text-anchor="middle">데몬</text>
+<text x="444" y="123" fill="var(--muted, #555f69)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="14" font-weight="400" text-anchor="middle">에이전트 관리</text>
+<rect x="724" y="76" width="160" height="60" rx="6" fill="var(--bg, #ffffff)" stroke="var(--line, #bbc2c8)" stroke-width="1"/>
+<text x="804" y="101" fill="var(--ink, #242424)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="18" font-weight="700" text-anchor="middle">공급자 연결</text>
+<text x="804" y="123" fill="var(--muted, #555f69)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="14" font-weight="400" text-anchor="middle">Claude Agent SDK 등</text>
+<line x1="196" y1="92" x2="362" y2="92" stroke="var(--muted, #555f69)" stroke-width="1.6" marker-end="url(#dg1-arrow)"/>
+<text x="279" y="84" fill="var(--muted, #555f69)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="16" font-weight="500" text-anchor="middle">프롬프트 + ID</text>
+<line x1="362" y1="124" x2="196" y2="124" stroke="var(--accent, #276433)" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#dg1-live)"/>
+<text x="279" y="116" fill="var(--accent, #276433)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="16" font-weight="500" text-anchor="middle">이벤트 / 기록</text>
+<line x1="526" y1="92" x2="724" y2="92" stroke="var(--muted, #555f69)" stroke-width="1.6" marker-end="url(#dg1-arrow)"/>
+<text x="625" y="84" fill="var(--muted, #555f69)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="16" font-weight="500" text-anchor="middle">프롬프트 전달</text>
+<line x1="724" y1="124" x2="526" y2="124" stroke="var(--muted, #555f69)" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#dg1-arrow)"/>
+<text x="625" y="116" fill="var(--muted, #555f69)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="16" font-weight="500" text-anchor="middle">공급자 이벤트</text>
+<rect x="36" y="268" width="160" height="60" rx="6" fill="var(--bg, #ffffff)" stroke="var(--line, #bbc2c8)" stroke-width="1"/>
+<text x="116" y="293" fill="var(--ink, #242424)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="18" font-weight="700" text-anchor="middle">Pane Chat</text>
+<text x="116" y="315" fill="var(--muted, #555f69)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="14" font-weight="400" text-anchor="middle">Electron / 모바일</text>
+<rect x="362" y="268" width="164" height="60" rx="6" fill="var(--accent-soft, #ebf5ea)" stroke="var(--accent, #276433)" stroke-width="1"/>
+<text x="444" y="293" fill="var(--ink, #242424)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="18" font-weight="700" text-anchor="middle">Pane Chat 서비스</text>
+<text x="444" y="315" fill="var(--muted, #555f69)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="14" font-weight="400" text-anchor="middle">대상 재확인</text>
+<rect x="724" y="268" width="160" height="60" rx="6" fill="var(--bg, #ffffff)" stroke="var(--line, #bbc2c8)" stroke-width="1"/>
+<text x="804" y="293" fill="var(--ink, #242424)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="18" font-weight="700" text-anchor="middle">터미널 pane</text>
+<text x="804" y="315" fill="var(--muted, #555f69)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="14" font-weight="400" text-anchor="middle">CLI / Codex 스레드</text>
+<rect x="724" y="352" width="160" height="44" rx="6" fill="var(--bg, #ffffff)" stroke="var(--line, #bbc2c8)" stroke-width="1"/>
+<text x="804" y="381" fill="var(--ink, #242424)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="18" font-weight="700" text-anchor="middle">공급자 기록</text>
+<line x1="196" y1="284" x2="362" y2="284" stroke="var(--muted, #555f69)" stroke-width="1.6" marker-end="url(#dg1-arrow)"/>
+<text x="279" y="276" fill="var(--muted, #555f69)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="16" font-weight="500" text-anchor="middle">프롬프트 + 토큰</text>
+<line x1="362" y1="316" x2="196" y2="316" stroke="var(--accent, #276433)" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#dg1-live)"/>
+<text x="279" y="308" fill="var(--accent, #276433)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="16" font-weight="500" text-anchor="middle">메시지 / 상태</text>
+<line x1="526" y1="284" x2="724" y2="284" stroke="var(--muted, #555f69)" stroke-width="1.6" marker-end="url(#dg1-arrow)"/>
+<text x="625" y="276" fill="var(--muted, #555f69)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="16" font-weight="500" text-anchor="middle">입력 또는 스레드 호출</text>
+<line x1="724" y1="316" x2="526" y2="316" stroke="var(--muted, #555f69)" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#dg1-arrow)"/>
+<text x="625" y="308" fill="var(--muted, #555f69)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="16" font-weight="500" text-anchor="middle">화면 / 프로세스 상태</text>
+<line x1="804" y1="328" x2="804" y2="352" stroke="var(--muted, #555f69)" stroke-width="1.5" marker-end="url(#dg1-arrow)"/>
+<text x="822" y="347" fill="var(--muted, #555f69)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="14" font-weight="400" text-anchor="start">기록 저장</text>
+<path d="M 724 374 H 444 V 330" fill="none" stroke="var(--muted, #555f69)" stroke-width="1.5" marker-end="url(#dg1-arrow)"/>
+<text x="596" y="366" fill="var(--muted, #555f69)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="16" font-weight="400" text-anchor="middle">연결된 대화 읽기</text>
+</g>
+</svg><figcaption>Paseo는 <a class="term" id="use-daemon-4" href="#term-daemon">데몬</a>을 통해 입력과 응답을 교환한다. KanVibe는 <a class="term" id="use-pane-3" href="#term-pane">터미널 pane</a>의 실행 대상과 <a class="term" id="use-provider-transcript-2" href="#term-provider-transcript">공급자 기록</a>을 대조한다.</figcaption></figure>
+<div class="table-scroll"><table>
+<thead>
+<tr>
+<th>화면에서 하는 일</th>
+<th>Paseo</th>
+<th>KanVibe</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th scope="row">대화 열기</th>
+<td><a class="term" id="use-daemon-5" href="#term-daemon">데몬</a>에 등록된 에이전트를 연다.</td>
+<td><a class="term" id="use-pane-chat-3" href="#term-pane-chat">Pane Chat</a>은 태스크의 <a class="term" id="use-pane-4" href="#term-pane">터미널 pane</a>에 붙는다. 대화 기록 화면에서는 기록 목록에서 세션을 고른다.</td>
+</tr>
+<tr>
+<th scope="row">보내기</th>
+<td><a class="term" id="use-daemon-6" href="#term-daemon">데몬</a>에 <code>agentId</code>, 메시지 ID, 프롬프트를 보낸다.</td>
+<td>현재 대상의 <code>targetToken</code>을 보낸다. 서비스가 그 대상으로 보낼 수 있는지 재확인한다.</td>
+</tr>
+<tr>
+<th scope="row">답변 표시</th>
+<td><a class="term" id="use-daemon-7" href="#term-daemon">데몬</a>이 보낸 텍스트 변화, 도구 이벤트와 <a class="term" id="use-timeline-2" href="#term-timeline">타임라인</a> 항목을 표시한다.</td>
+<td>서비스가 <a class="term" id="use-provider-transcript-3" href="#term-provider-transcript">공급자 기록</a>을 다시 읽어 메시지로 표시한다. 터미널 화면도 읽어서 CLI 선택창과 입력 상태를 확인한다.</td>
+</tr>
+<tr>
+<th scope="row">이전 기록과 복구</th>
+<td>같은 에이전트 채팅에서 과거 턴을 읽는다. 실시간 이벤트가 빠졌으면 <a class="term" id="use-daemon-8" href="#term-daemon">데몬</a> <a class="term" id="use-timeline-3" href="#term-timeline">타임라인</a>을 다시 조회한다.</td>
+<td><a class="term" id="use-pane-chat-4" href="#term-pane-chat">Pane Chat</a>은 연결된 대화의 이전 메시지를 조회한다. 대화 기록 화면은 여러 공급자의 세션을 검색한다.</td>
+</tr>
+</tbody>
+</table></div>
+</section>
+<section id="flow"><h2>흐름</h2>
+<p>두 화면에서 &quot;테스트 실행해줘&quot;를 보낸다고 가정한다. 각 그림의 번호를 누르면 해당 단계가 강조된다.</p>
+<div data-flow><figure class="diagram"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 768 464" role="img" aria-labelledby="dg2-title dg2-desc" style="min-width:768px">
+<title id="dg2-title">Paseo에서 메시지 보내기와 복구</title>
+<desc id="dg2-desc">앱이 데몬에 에이전트 ID를 보낸다. 데몬이 공급자에 프롬프트를 전달하고 이벤트를 앱에 보낸다. 이벤트가 빠지면 앱이 타임라인을 조회한다.</desc>
+<defs>
+<marker id="dg2-arrow" viewBox="0 0 10 10" markerWidth="7" markerHeight="7" refX="9" refY="5" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="var(--muted, #555f69)"/></marker>
+<marker id="dg2-live" viewBox="0 0 10 10" markerWidth="7" markerHeight="7" refX="9" refY="5" orient="auto"><path d="M 0 0 L 10 5 L 0 10" fill="none" stroke="var(--accent, #276433)" stroke-width="1.6"/></marker>
+</defs>
+<g transform="scale(0.83478261)">
+<text x="24" y="32" fill="var(--ink, #242424)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="22" font-weight="700" text-anchor="start">Paseo에서 메시지 보내기와 복구</text>
+<rect x="28" y="52" width="192" height="44" rx="6" fill="var(--bg, #ffffff)" stroke="var(--line, #bbc2c8)" stroke-width="1"/>
+<text x="124" y="81" fill="var(--ink, #242424)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="18" font-weight="700" text-anchor="middle">채팅 앱</text>
+<line x1="124" y1="96" x2="124" y2="530" stroke="var(--line, #bbc2c8)" stroke-width="1.2" stroke-dasharray="4 4"/>
+<rect x="252" y="52" width="192" height="60" rx="6" fill="var(--accent-soft, #ebf5ea)" stroke="var(--accent, #276433)" stroke-width="1"/>
+<text x="348" y="77" fill="var(--ink, #242424)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="18" font-weight="700" text-anchor="middle">데몬</text>
+<text x="348" y="99" fill="var(--muted, #555f69)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="14" font-weight="400" text-anchor="middle">전송 / 타임라인</text>
+<line x1="348" y1="112" x2="348" y2="530" stroke="var(--line, #bbc2c8)" stroke-width="1.2" stroke-dasharray="4 4"/>
+<rect x="476" y="52" width="192" height="44" rx="6" fill="var(--bg, #ffffff)" stroke="var(--line, #bbc2c8)" stroke-width="1"/>
+<text x="572" y="81" fill="var(--ink, #242424)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="18" font-weight="700" text-anchor="middle">공급자 연결</text>
+<line x1="572" y1="96" x2="572" y2="530" stroke="var(--line, #bbc2c8)" stroke-width="1.2" stroke-dasharray="4 4"/>
+<g data-step="1">
+<rect x="10" y="121" width="900" height="32" rx="6" fill="var(--surface, #f5f5f5)" stroke="none" stroke-width="1"/>
+<circle cx="28" cy="137" r="12" fill="var(--accent, #276433)"/>
+<text x="28" y="142" fill="var(--bg, #ffffff)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="14" font-weight="700" text-anchor="middle">1</text>
+<text x="48" y="143" fill="var(--ink, #242424)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="17" font-weight="700" text-anchor="start">채팅에서 전송</text>
+<line x1="124" y1="188" x2="348" y2="188" stroke="var(--muted, #555f69)" stroke-width="1.6" marker-end="url(#dg2-arrow)"/>
+<text x="236" y="180" fill="var(--muted, #555f69)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="16" font-weight="500" text-anchor="middle">에이전트 ID + 프롬프트</text>
+</g>
+<g data-step="2">
+<rect x="10" y="197" width="900" height="32" rx="6" fill="var(--surface, #f5f5f5)" stroke="none" stroke-width="1"/>
+<circle cx="28" cy="213" r="12" fill="var(--accent, #276433)"/>
+<text x="28" y="218" fill="var(--bg, #ffffff)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="14" font-weight="700" text-anchor="middle">2</text>
+<text x="48" y="219" fill="var(--ink, #242424)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="17" font-weight="700" text-anchor="start">공급자에 전달하고 전송 결과를 회신</text>
+<line x1="348" y1="264" x2="572" y2="264" stroke="var(--muted, #555f69)" stroke-width="1.6" marker-end="url(#dg2-arrow)"/>
+<text x="460" y="256" fill="var(--muted, #555f69)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="16" font-weight="500" text-anchor="middle">공급자에 프롬프트 전달</text>
+<line x1="348" y1="300" x2="124" y2="300" stroke="var(--muted, #555f69)" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#dg2-arrow)"/>
+<text x="236" y="292" fill="var(--muted, #555f69)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="16" font-weight="500" text-anchor="middle">수락 또는 거절</text>
+</g>
+<g data-step="3">
+<rect x="10" y="309" width="900" height="32" rx="6" fill="var(--surface, #f5f5f5)" stroke="none" stroke-width="1"/>
+<circle cx="28" cy="325" r="12" fill="var(--accent, #276433)"/>
+<text x="28" y="330" fill="var(--bg, #ffffff)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="14" font-weight="700" text-anchor="middle">3</text>
+<text x="48" y="331" fill="var(--ink, #242424)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="17" font-weight="700" text-anchor="start">답변이 들어오는 동안 화면 갱신</text>
+<line x1="572" y1="376" x2="348" y2="376" stroke="var(--accent, #276433)" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#dg2-live)"/>
+<text x="460" y="368" fill="var(--accent, #276433)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="16" font-weight="500" text-anchor="middle">텍스트 조각 / 도구 이벤트</text>
+<line x1="348" y1="412" x2="124" y2="412" stroke="var(--accent, #276433)" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#dg2-live)"/>
+<text x="236" y="404" fill="var(--accent, #276433)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="16" font-weight="500" text-anchor="middle">순번이 붙은 에이전트 이벤트</text>
+</g>
+<g data-step="4">
+<rect x="10" y="421" width="900" height="32" rx="6" fill="var(--surface, #f5f5f5)" stroke="none" stroke-width="1"/>
+<circle cx="28" cy="437" r="12" fill="var(--accent, #276433)"/>
+<text x="28" y="442" fill="var(--bg, #ffffff)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="14" font-weight="700" text-anchor="middle">4</text>
+<text x="48" y="443" fill="var(--ink, #242424)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="17" font-weight="700" text-anchor="start">이벤트를 놓쳤으면 이어서 조회</text>
+<line x1="124" y1="488" x2="348" y2="488" stroke="var(--muted, #555f69)" stroke-width="1.6" marker-end="url(#dg2-arrow)"/>
+<text x="236" y="480" fill="var(--muted, #555f69)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="16" font-weight="500" text-anchor="middle">마지막 순번 이후 조회</text>
+<line x1="348" y1="524" x2="124" y2="524" stroke="var(--muted, #555f69)" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#dg2-arrow)"/>
+<text x="236" y="516" fill="var(--muted, #555f69)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="16" font-weight="500" text-anchor="middle">완성된 타임라인 항목</text>
+</g>
+</g>
+</svg><figcaption>Paseo 앱은 에이전트에 프롬프트를 보내고 같은 에이전트의 이벤트를 받는다.</figcaption></figure>
+<div class="step-controls"><button type="button" data-step-prev>이전 단계</button><button type="button" data-step-next>다음 단계</button><button type="button" data-step-reset>전체 보기</button><span class="step-status" aria-live="polite"></span></div><ol class="steps">
+<li data-step="1">채팅 앱이 <code>agentId</code>와 메시지 ID를 <a class="term" id="use-daemon-9" href="#term-daemon">데몬</a>에 보낸다. <a href="#paseo-send">Paseo의 전송 대상</a></li>
+<li data-step="2"><a class="term" id="use-daemon-10" href="#term-daemon">데몬</a>이 공급자 연결을 통해 프롬프트를 실행한다. 채팅 앱에 수락이나 거절을 알린다. <a href="#paseo-send">Paseo의 전송 결과</a></li>
+<li data-step="3"><a class="term" id="use-daemon-11" href="#term-daemon">데몬</a>이 공급자 이벤트를 기록한다. 채팅 앱에 변경을 보내면 앱이 답변과 도구 행을 갱신한다. <a href="#paseo-read">Paseo의 답변 표시</a></li>
+<li data-step="4">실시간 이벤트가 빠졌으면 채팅 앱이 마지막 순번 이후의 <a class="term" id="use-timeline-4" href="#term-timeline">타임라인</a>을 가져온다. <a href="#paseo-recover">Paseo의 기록 복구</a></li>
+</ol>
+</div>
+<div data-flow><figure class="diagram"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 768 552" role="img" aria-labelledby="dg3-title dg3-desc" style="min-width:768px">
+<title id="dg3-title">KanVibe에서 메시지 보내기와 표시</title>
+<desc id="dg3-desc">Pane Chat 서비스가 pane과 공급자 기록을 연결한다. 대상이 바뀌면 거절한다. 유효하면 CLI 또는 Codex 스레드로 보내고 연결된 기록을 다시 읽어 표시한다.</desc>
+<defs>
+<marker id="dg3-arrow" viewBox="0 0 10 10" markerWidth="7" markerHeight="7" refX="9" refY="5" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="var(--muted, #555f69)"/></marker>
+<marker id="dg3-live" viewBox="0 0 10 10" markerWidth="7" markerHeight="7" refX="9" refY="5" orient="auto"><path d="M 0 0 L 10 5 L 0 10" fill="none" stroke="var(--accent, #276433)" stroke-width="1.6"/></marker>
+</defs>
+<g transform="scale(0.83478261)">
+<text x="24" y="32" fill="var(--ink, #242424)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="22" font-weight="700" text-anchor="start">KanVibe에서 메시지 보내기와 표시</text>
+<rect x="28" y="52" width="192" height="44" rx="6" fill="var(--bg, #ffffff)" stroke="var(--line, #bbc2c8)" stroke-width="1"/>
+<text x="124" y="81" fill="var(--ink, #242424)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="18" font-weight="700" text-anchor="middle">Pane Chat</text>
+<line x1="124" y1="96" x2="124" y2="638" stroke="var(--line, #bbc2c8)" stroke-width="1.2" stroke-dasharray="4 4"/>
+<rect x="252" y="52" width="192" height="60" rx="6" fill="var(--accent-soft, #ebf5ea)" stroke="var(--accent, #276433)" stroke-width="1"/>
+<text x="348" y="77" fill="var(--ink, #242424)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="18" font-weight="700" text-anchor="middle">Pane Chat 서비스</text>
+<text x="348" y="99" fill="var(--muted, #555f69)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="14" font-weight="400" text-anchor="middle">전송 / 기록 조회</text>
+<line x1="348" y1="112" x2="348" y2="638" stroke="var(--line, #bbc2c8)" stroke-width="1.2" stroke-dasharray="4 4"/>
+<rect x="476" y="52" width="192" height="60" rx="6" fill="var(--bg, #ffffff)" stroke="var(--line, #bbc2c8)" stroke-width="1"/>
+<text x="572" y="77" fill="var(--ink, #242424)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="18" font-weight="700" text-anchor="middle">터미널 pane</text>
+<text x="572" y="99" fill="var(--muted, #555f69)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="14" font-weight="400" text-anchor="middle">CLI / Codex 스레드</text>
+<line x1="572" y1="112" x2="572" y2="638" stroke="var(--line, #bbc2c8)" stroke-width="1.2" stroke-dasharray="4 4"/>
+<rect x="700" y="52" width="192" height="44" rx="6" fill="var(--bg, #ffffff)" stroke="var(--line, #bbc2c8)" stroke-width="1"/>
+<text x="796" y="81" fill="var(--ink, #242424)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="18" font-weight="700" text-anchor="middle">공급자 기록</text>
+<line x1="796" y1="96" x2="796" y2="638" stroke="var(--line, #bbc2c8)" stroke-width="1.2" stroke-dasharray="4 4"/>
+<g data-step="1">
+<rect x="10" y="121" width="900" height="32" rx="6" fill="var(--surface, #f5f5f5)" stroke="none" stroke-width="1"/>
+<circle cx="28" cy="137" r="12" fill="var(--accent, #276433)"/>
+<text x="28" y="142" fill="var(--bg, #ffffff)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="14" font-weight="700" text-anchor="middle">1</text>
+<text x="48" y="143" fill="var(--ink, #242424)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="17" font-weight="700" text-anchor="start">pane이 연 대화를 확인</text>
+<line x1="348" y1="188" x2="572" y2="188" stroke="var(--muted, #555f69)" stroke-width="1.6" marker-end="url(#dg3-arrow)"/>
+<text x="460" y="180" fill="var(--muted, #555f69)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="16" font-weight="500" text-anchor="middle">화면 / 프로세스 확인</text>
+<line x1="348" y1="224" x2="796" y2="224" stroke="var(--muted, #555f69)" stroke-width="1.6" marker-end="url(#dg3-arrow)"/>
+<text x="572" y="216" fill="var(--muted, #555f69)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="16" font-weight="500" text-anchor="middle">해당 대화의 기록 조회</text>
+<line x1="348" y1="260" x2="124" y2="260" stroke="var(--muted, #555f69)" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#dg3-arrow)"/>
+<text x="236" y="252" fill="var(--muted, #555f69)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="16" font-weight="500" text-anchor="middle">기록 + 대상 토큰</text>
+</g>
+<g data-step="2">
+<rect x="10" y="269" width="900" height="32" rx="6" fill="var(--surface, #f5f5f5)" stroke="none" stroke-width="1"/>
+<circle cx="28" cy="285" r="12" fill="var(--accent, #276433)"/>
+<text x="28" y="290" fill="var(--bg, #ffffff)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="14" font-weight="700" text-anchor="middle">2</text>
+<text x="48" y="291" fill="var(--ink, #242424)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="17" font-weight="700" text-anchor="start">전송 직전에 대상을 재확인</text>
+<line x1="124" y1="336" x2="348" y2="336" stroke="var(--muted, #555f69)" stroke-width="1.6" marker-end="url(#dg3-arrow)"/>
+<text x="236" y="328" fill="var(--muted, #555f69)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="16" font-weight="500" text-anchor="middle">대상 토큰 + 프롬프트</text>
+<line x1="348" y1="372" x2="124" y2="372" stroke="var(--muted, #555f69)" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#dg3-arrow)"/>
+<text x="236" y="364" fill="var(--muted, #555f69)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="16" font-weight="500" text-anchor="middle">대상이 바뀌었으면 거절</text>
+</g>
+<g data-step="3">
+<rect x="10" y="381" width="900" height="32" rx="6" fill="var(--surface, #f5f5f5)" stroke="none" stroke-width="1"/>
+<circle cx="28" cy="397" r="12" fill="var(--accent, #276433)"/>
+<text x="28" y="402" fill="var(--bg, #ffffff)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="14" font-weight="700" text-anchor="middle">3</text>
+<text x="48" y="403" fill="var(--ink, #242424)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="17" font-weight="700" text-anchor="start">대상이 같으면 실행 중인 대화에 전달</text>
+<line x1="348" y1="448" x2="572" y2="448" stroke="var(--muted, #555f69)" stroke-width="1.6" marker-end="url(#dg3-arrow)"/>
+<text x="460" y="440" fill="var(--muted, #555f69)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="16" font-weight="500" text-anchor="middle">붙여넣기 + Enter</text>
+<line x1="348" y1="484" x2="572" y2="484" stroke="var(--muted, #555f69)" stroke-width="1.6" marker-end="url(#dg3-arrow)"/>
+<text x="460" y="476" fill="var(--muted, #555f69)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="16" font-weight="500" text-anchor="middle">확인된 Codex 스레드 호출</text>
+</g>
+<g data-step="4">
+<rect x="10" y="493" width="900" height="32" rx="6" fill="var(--surface, #f5f5f5)" stroke="none" stroke-width="1"/>
+<circle cx="28" cy="509" r="12" fill="var(--accent, #276433)"/>
+<text x="28" y="514" fill="var(--bg, #ffffff)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="14" font-weight="700" text-anchor="middle">4</text>
+<text x="48" y="515" fill="var(--ink, #242424)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="17" font-weight="700" text-anchor="start">연결된 기록에서 답변 표시</text>
+<line x1="348" y1="560" x2="796" y2="560" stroke="var(--muted, #555f69)" stroke-width="1.6" marker-end="url(#dg3-arrow)"/>
+<text x="572" y="552" fill="var(--muted, #555f69)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="16" font-weight="500" text-anchor="middle">최신 대화 기록 재조회</text>
+<line x1="796" y1="596" x2="348" y2="596" stroke="var(--muted, #555f69)" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#dg3-arrow)"/>
+<text x="572" y="588" fill="var(--muted, #555f69)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="16" font-weight="500" text-anchor="middle">기록에 추가된 메시지</text>
+<line x1="348" y1="632" x2="124" y2="632" stroke="var(--accent, #276433)" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#dg3-live)"/>
+<text x="236" y="624" fill="var(--accent, #276433)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="16" font-weight="500" text-anchor="middle">새 메시지 / 상태</text>
+</g>
+</g>
+</svg><figcaption>KanVibe <a class="term" id="use-pane-chat-5" href="#term-pane-chat">Pane Chat</a>은 pane에 연결할 때 확인한 대상에 입력을 보낸다. 답변은 <a class="term" id="use-provider-transcript-4" href="#term-provider-transcript">공급자 기록</a>에서 가져온다.</figcaption></figure>
+<div class="step-controls"><button type="button" data-step-prev>이전 단계</button><button type="button" data-step-next>다음 단계</button><button type="button" data-step-reset>전체 보기</button><span class="step-status" aria-live="polite"></span></div><ol class="steps">
+<li data-step="1"><a class="term" id="use-pane-chat-6" href="#term-pane-chat">Pane Chat</a> 서비스가 <a class="term" id="use-pane-5" href="#term-pane">터미널 pane</a>의 실행 프로세스와 대화 기록을 연결한다. <a href="#kanvibe-bind">KanVibe의 세션 연결</a></li>
+<li data-step="2"><a class="term" id="use-pane-chat-7" href="#term-pane-chat">Pane Chat</a> 서비스가 <code>targetToken</code>으로 전송 대상을 다시 확인한다. 대상이 바뀌면 요청을 거절한다. <a href="#kanvibe-send">KanVibe의 전송 확인</a></li>
+<li data-step="3">대상이 맞으면 서비스가 터미널에 붙여넣기와 Enter를 보낸다. 조건을 충족한 Codex 입력은 스레드 API로 보낸다. <a href="#kanvibe-send">KanVibe의 전송 경로</a></li>
+<li data-step="4"><a class="term" id="use-pane-chat-8" href="#term-pane-chat">Pane Chat</a> 서비스가 <a class="term" id="use-provider-transcript-5" href="#term-provider-transcript">공급자 기록</a>을 다시 읽는다. 채팅 UI가 변경된 메시지를 표시한다. <a href="#kanvibe-read">KanVibe의 답변 표시</a></li>
+</ol>
+</div>
+</section>
+<section id="detail"><h2>상세 설명</h2>
+<h3 id="paseo-send">Paseo는 무엇을 기준으로 전송하는가 <a class="back-link" href="#flow">흐름도로</a></h3>
+<p>Paseo의 전송 대상은 <a class="term" id="use-daemon-12" href="#term-daemon">데몬</a>이 관리하는 에이전트다. <a class="term" id="use-agent-id-1" href="#term-agent-id">에이전트 ID</a>는 그 실행 대상을 지정한다. 채팅 앱의 <code>dispatchComposerAgentMessage</code>는 메시지 ID를 만든다. 앱은 사용자 메시지를 먼저 표시하고 <code>send_agent_message_request</code>를 보낸다. <a class="term" id="use-daemon-13" href="#term-daemon">데몬</a>은 <code>agentId</code>를 해석하고 <code>sendPromptToAgent</code>로 공급자에 프롬프트를 넘긴다. 예를 들어 Claude 연결은 Claude Agent SDK를 사용한다. 앱은 <a class="term" id="use-daemon-14" href="#term-daemon">데몬</a>의 수락 또는 거절 응답을 받아 사용자 메시지의 전송 상태를 정리한다. 수락 응답과 답변 완료는 시점이 다르다.</p>
+<h3 id="paseo-read">Paseo의 답변은 언제 화면에 나타나는가 <a class="back-link" href="#flow">흐름도로</a></h3>
+<p>Paseo는 공급자 이벤트를 받는 동안 답변을 갱신한다. <a class="term" id="use-daemon-15" href="#term-daemon">데몬</a>은 이벤트에 순번을 붙이고 <code>agent_stream</code>으로 보낸다. <a class="term" id="use-timeline-5" href="#term-timeline">타임라인</a>은 연속으로 들어오는 답변 조각을 하나의 답변 행에 합친다. 같은 도구 호출의 시작과 완료도 한 항목의 상태로 합친다. 채팅 앱은 저장된 기록과 진행 중인 최신 항목을 한 화면에 배치한다. 사용자 입력, AI 답변, 추론, 도구 실행은 각각에 맞는 행으로 표시한다.</p>
+<h3 id="paseo-recover">Paseo는 연결이 끊겨도 어떻게 이어서 읽는가 <a class="back-link" href="#flow">흐름도로</a></h3>
+<p>Paseo 앱은 마지막으로 받은 <a class="term" id="use-timeline-6" href="#term-timeline">타임라인</a> 위치를 <a class="term" id="use-daemon-16" href="#term-daemon">데몬</a>과 대조한다. 위치에는 <a class="term" id="use-timeline-7" href="#term-timeline">타임라인</a> 세대를 나타내는 <code>epoch</code>와 순번 <code>seq</code>가 들어간다. <a class="term" id="use-daemon-17" href="#term-daemon">데몬</a>이 이미 최신이라고 응답하면 앱은 저장된 내용을 계속 표시한다. 누락된 항목이 있으면 앱은 <code>fetch_agent_timeline_request</code>로 이후 항목을 조회한다. 더 최신인 페이지가 남아 있으면 다음 페이지도 가져온다. 이전 대화는 같은 화면에서 과거 방향으로 읽을 수 있다. <a class="term" id="use-daemon-18" href="#term-daemon">데몬</a>이 에이전트를 재개할 때는 공급자가 보존한 기록으로 <a class="term" id="use-timeline-8" href="#term-timeline">타임라인</a>을 다시 만든다.</p>
+<h3 id="kanvibe-bind">KanVibe는 어떤 대화가 pane에 열려 있는지 어떻게 아는가 <a class="back-link" href="#flow">흐름도로</a></h3>
+<p><a class="term" id="use-pane-chat-9" href="#term-pane-chat">Pane Chat</a>은 <a class="term" id="use-pane-6" href="#term-pane">터미널 pane</a>의 현재 실행 프로세스를 조사하고 그 프로세스가 연 대화 기록을 찾는다. Claude Code에서는 프로세스의 세션 정보나 이미 확인한 연결이 근거가 될 수 있다. Codex에서는 화면에 표시된 스레드 ID로 그 스레드의 기록을 찾는 경로도 있다. 같은 작업 폴더에 여러 기록이 있더라도 기록의 최신 시각만으로 전송 대상을 고르지 않는다.</p>
+<p>정확한 기록을 연결할 수 있으면 서비스가 <a class="term" id="use-target-token-1" href="#term-target-token">대상 토큰</a>인 <code>targetToken</code>을 발급한다. 서비스는 전송 직전에 pane, 프로세스, 대화의 일치 여부를 확인한다. 연결에 실패하면 전송을 비활성화한다. 읽을 수 있는 CLI 화면이 있으면 화면 내용을 대신 표시할 수 있다.</p>
+<h3 id="kanvibe-send">KanVibe는 항상 터미널에 타이핑하는가 <a class="back-link" href="#flow">흐름도로</a></h3>
+<p>KanVibe에는 터미널 입력과 Codex 스레드 API의 두 전송 경로가 있다.</p>
+<ul>
+<li>터미널 입력 경로는 준비된 입력란에 프롬프트를 붙여넣고 Enter를 따로 보낸다. Claude Code에서는 Enter 직전에 해당 입력란에 붙여넣은 내용이 남아 있는지 확인한다.</li>
+<li>Codex 화면 연동이 활성화되어 있고 대화가 확인되면 일반 프롬프트를 해당 스레드의 Codex app-server API로 보낸다. 내장 슬래시 명령은 터미널 입력 경로를 쓴다.</li>
+</ul>
+<p>pane에서 다른 대화로 이동하면 이전에 받은 <code>targetToken</code>으로 보낸 요청은 대상 변경으로 거절될 수 있다. 쓰기 시도 뒤 결과가 불명확한 경우도 서비스가 별도로 다룬다. 그래서 전송 오류가 표시됐다는 사실만으로 CLI에 입력이 도달했는지 판단할 수 없다.</p>
+<h3 id="kanvibe-read">KanVibe는 무엇을 읽어 말풍선을 만드는가 <a class="back-link" href="#flow">흐름도로</a></h3>
+<p><a class="term" id="use-pane-chat-10" href="#term-pane-chat">Pane Chat</a>은 <a class="term" id="use-provider-transcript-6" href="#term-provider-transcript">공급자 기록</a>에서 프롬프트와 답변을 읽는다. 터미널 화면은 선택창이나 입력란처럼 현재 CLI 상태를 판별하는 데 쓴다. 예를 들어 Claude의 질문 선택창이 뜨면 <a class="term" id="use-pane-chat-11" href="#term-pane-chat">Pane Chat</a>은 화면을 해석해 선택지를 보여 줄 수 있다.</p>
+<p>Electron 서비스는 구독 중에 기록을 주기적으로 다시 읽는다. 로컬 기록 파일을 감시할 수 있으면 변경 알림도 이용한다. 모바일은 호스트에서 받은 <code>pane-chat-rows</code>를 적용한다. 순서가 어긋나면 모바일 컨트롤러가 <a class="term" id="use-snapshot-1" href="#term-snapshot">스냅샷</a>을 다시 요청한다. 따라서 KanVibe의 화면도 실행 중에 갱신된다. 답변의 표시 시점은 공급자가 읽을 수 있는 기록을 남기는 시점에도 영향을 받는다.</p>
+<h3 id="kanvibe-gpui">현재 KanVibe GPUI에서 어떤 화면이 열리는가</h3>
+<p>현재 <code>perf/rust-gpui</code> 작업 브랜치에서 대화 기록을 열면 <code>InlineAiChatView</code>가 첫 기록 목록을 조회한다. 왼쪽에서 공급자나 검색어로 세션을 찾고, 오른쪽에서 선택한 세션의 메시지를 읽는다. 터미널로 돌아가면 GPUI는 해당 기록 뷰를 버린다.</p>
+<p>같은 브랜치의 GPUI 터미널에는 <a class="term" id="use-pane-chat-12" href="#term-pane-chat">Pane Chat</a> 전환 버튼을 그리는 코드가 있다. 이 버튼에는 채팅 화면을 여는 클릭 핸들러가 연결되어 있지 않다. Rust 호스트에는 <a class="term" id="use-pane-chat-13" href="#term-pane-chat">Pane Chat</a> 서비스를 호출하는 경로가 있다. 위의 실시간 <a class="term" id="use-pane-chat-14" href="#term-pane-chat">Pane Chat</a> 화면 설명은 Electron과 Flutter 모바일의 실제 진입점, 그리고 해당 호스트 서비스 코드에 근거한다.</p>
+</section>
+<section id="glossary"><h2>용어 설명</h2>
+<dl class="glossary">
+<div class="term-entry" id="term-daemon" data-aliases="데몬|daemon"><dt>데몬(daemon)</dt><dd><p class="def">데몬은 호스트에서 실행되는 Paseo 서버 프로세스다.</p><p><span class="field">존재 이유</span> 데스크톱과 모바일 앱이 같은 실행 대상을 제어할 수 있게 한다.</p><p><span class="field">구체 예</span> 데몬이 지정된 에이전트에 프롬프트를 전달한다.</p><p class="term-uses"><span class="field">참조 18곳</span><a href="#use-daemon-1">요약: Paseo는 데몬이 관리하는 에이전트와</a><a href="#use-daemon-2">요약: 프롬프트를 보낸다. 데몬이 에이전트 이벤트를</a><a href="#use-daemon-3">구조: Paseo 앱은 데몬과 통신한다. KanVibe의</a><a href="#use-daemon-4">구조: Paseo는 데몬을 통해 입력과</a><a href="#use-daemon-5">구조: 데몬에 등록된 에이전트를</a><a href="#use-daemon-6">구조: 데몬에 agentId, 메시지</a><a href="#use-daemon-7">구조: 데몬이 보낸 텍스트</a><a href="#use-daemon-8">구조: 이벤트가 빠졌으면 데몬 타임라인을 다시</a><a href="#use-daemon-9">흐름: 메시지 ID를 데몬에 보낸다. Paseo의</a><a href="#use-daemon-10">흐름: 데몬이 공급자 연결을</a><a href="#use-daemon-11">흐름: 데몬이 공급자 이벤트를</a><a href="#use-daemon-12">Paseo는 무엇을 기준으로 전송하는가: 전송 대상은 데몬이 관리하는 에이전트다.</a><a href="#use-daemon-13">Paseo는 무엇을 기준으로 전송하는가: send_agent_message_request를 보낸다. 데몬은 agentId를 해석하고</a><a href="#use-daemon-14">Paseo는 무엇을 기준으로 전송하는가: 사용한다. 앱은 데몬의 수락 또는</a><a href="#use-daemon-15">Paseo의 답변은 언제 화면에 나타나는가: 답변을 갱신한다. 데몬은 이벤트에 순번을</a><a href="#use-daemon-16">Paseo는 연결이 끊겨도 어떻게 이어서 읽는가: 타임라인 위치를 데몬과 대조한다. 위치에는</a><a href="#use-daemon-17">Paseo는 연결이 끊겨도 어떻게 이어서 읽는가: seq가 들어간다. 데몬이 이미 최신이라고</a><a href="#use-daemon-18">Paseo는 연결이 끊겨도 어떻게 이어서 읽는가: 수 있다. 데몬이 에이전트를 재개할</a></p></dd></div>
+<div class="term-entry" id="term-agent-id" data-aliases="에이전트 ID|agentId"><dt>에이전트 ID(agentId)</dt><dd><p class="def">에이전트 ID는 Paseo가 관리하는 실행 대상을 가리키는 값이다.</p><p><span class="field">존재 이유</span> 여러 에이전트 중 프롬프트를 받을 대상을 고른다.</p><p><span class="field">구체 예</span> Paseo 채팅 앱이 <code>send_agent_message_request</code>에 <code>agentId</code>를 넣는다.</p><p><span class="field">혼동 주의</span> Claude Code의 공급자 세션 ID는 별도 값이다.</p><p class="term-uses"><span class="field">참조 1곳</span><a href="#use-agent-id-1">Paseo는 무엇을 기준으로 전송하는가: 관리하는 에이전트다. 에이전트 ID는 그 실행</a></p></dd></div>
+<div class="term-entry" id="term-timeline" data-aliases="타임라인|timeline"><dt>타임라인(timeline)</dt><dd><p class="def">타임라인은 Paseo가 한 에이전트의 대화와 작업 이벤트를 순서대로 모은 데이터다.</p><p><span class="field">존재 이유</span> 앱이 새 응답을 표시하고 놓친 항목을 다시 읽을 수 있다.</p><p><span class="field">구체 예</span> 같은 도구 호출의 시작과 완료를 하나의 상태 항목에 반영한다.</p><p class="term-uses"><span class="field">참조 9곳</span><a href="#use-timeline-1">요약: 에이전트 이벤트를 타임라인으로 전달한다.</a><a href="#use-timeline-2">구조: 도구 이벤트와 타임라인 항목을 표시한다.</a><a href="#use-timeline-3">구조: 빠졌으면 데몬 타임라인을 다시 조회한다.</a><a href="#use-timeline-4">흐름: 순번 이후의 타임라인을 가져온다. Paseo의</a><a href="#use-timeline-5">Paseo의 답변은 언제 화면에 나타나는가: agent_stream으로 보낸다. 타임라인은 연속으로 들어오는</a><a href="#use-timeline-6">Paseo는 연결이 끊겨도 어떻게 이어서 읽는가: 마지막으로 받은 타임라인 위치를 데몬과</a><a href="#use-timeline-7">Paseo는 연결이 끊겨도 어떻게 이어서 읽는가: 대조한다. 위치에는 타임라인 세대를 나타내는</a><a href="#use-timeline-8">Paseo는 연결이 끊겨도 어떻게 이어서 읽는가: 보존한 기록으로 타임라인을 다시 만든다.</a><a href="#use-timeline-9">출처: 코드와 공식 타임라인 문서를 기준으로</a></p></dd></div>
+<div class="term-entry" id="term-pane-chat" data-aliases="Pane Chat"><dt>Pane Chat</dt><dd><p class="def">Pane Chat은 KanVibe에서 실행 중인 <a class="term" id="use-pane-7" href="#term-pane">터미널 pane</a>의 대화를 조작하는 화면이다.</p><p><span class="field">존재 이유</span> 터미널에서 열어 둔 CLI 대화를 채팅 화면에서 이어 간다.</p><p><span class="field">구체 예</span> Electron의 <a class="term" id="use-pane-8" href="#term-pane">터미널 pane</a> 위에 <code>PaneChatView</code>를 연다.</p><p><span class="field">혼동 주의</span> 대화 기록 화면은 저장된 세션을 찾아 읽는 화면이다.</p><p class="term-uses"><span class="field">참조 17곳</span><a href="#use-pane-chat-1">요약: 대화한다. KanVibe의 Pane Chat은 이미 열린</a><a href="#use-pane-chat-2">구조: 통신한다. KanVibe의 Pane Chat은 터미널 pane과</a><a href="#use-pane-chat-3">구조: Pane Chat은 태스크의 터미널</a><a href="#use-pane-chat-4">구조: Pane Chat은 연결된 대화의</a><a href="#use-pane-chat-5">흐름: KanVibe Pane Chat은 pane에 연결할</a><a href="#use-pane-chat-6">흐름: Pane Chat 서비스가 터미널</a><a href="#use-pane-chat-7">흐름: Pane Chat 서비스가 targetToken으로</a><a href="#use-pane-chat-8">흐름: Pane Chat 서비스가 공급자</a><a href="#use-pane-chat-9">KanVibe는 어떤 대화가 pane에 열려 있는지 어떻게 아는가: Pane Chat은 터미널 pane의</a><a href="#use-pane-chat-10">KanVibe는 무엇을 읽어 말풍선을 만드는가: Pane Chat은 공급자 기록에서</a><a href="#use-pane-chat-11">KanVibe는 무엇을 읽어 말풍선을 만드는가: 선택창이 뜨면 Pane Chat은 화면을 해석해</a><a href="#use-pane-chat-12">현재 KanVibe GPUI에서 어떤 화면이 열리는가: GPUI 터미널에는 Pane Chat 전환 버튼을</a><a href="#use-pane-chat-13">현재 KanVibe GPUI에서 어떤 화면이 열리는가: Rust 호스트에는 Pane Chat 서비스를 호출하는</a><a href="#use-pane-chat-14">현재 KanVibe GPUI에서 어떤 화면이 열리는가: 위의 실시간 Pane Chat 화면 설명은</a><a href="#use-pane-chat-15">용어 설명 터미널 pane: 그 pane에 Pane Chat을 붙일 수</a><a href="#use-pane-chat-16">용어 설명 대상 토큰: 구체 예 Pane Chat의 프롬프트 요청에</a><a href="#use-pane-chat-17">용어 설명 스냅샷: 시점에 읽은 Pane Chat의 상태다.</a></p></dd></div>
+<div class="term-entry" id="term-pane" data-aliases="터미널 pane|terminal pane"><dt>터미널 pane(terminal pane)</dt><dd><p class="def">터미널 pane은 실행 중인 CLI를 표시하고 키 입력을 전달하는 터미널 영역이다.</p><p><span class="field">존재 이유</span> 한 태스크에 터미널 영역이 여러 개여도 입력 대상을 지정할 수 있다.</p><p><span class="field">구체 예</span> Claude Code가 열린 pane을 선택하면 그 pane에 <a class="term" id="use-pane-chat-15" href="#term-pane-chat">Pane Chat</a>을 붙일 수 있다.</p><p class="term-uses"><span class="field">참조 8곳</span><a href="#use-pane-1">요약: 이미 열린 터미널 pane에 연결한다.</a><a href="#use-pane-2">구조: Pane Chat은 터미널 pane과 공급자 기록을</a><a href="#use-pane-3">구조: 교환한다. KanVibe는 터미널 pane의 실행 대상과</a><a href="#use-pane-4">구조: Chat은 태스크의 터미널 pane에 붙는다. 대화</a><a href="#use-pane-5">흐름: Chat 서비스가 터미널 pane의 실행 프로세스와</a><a href="#use-pane-6">KanVibe는 어떤 대화가 pane에 열려 있는지 어떻게 아는가: Pane Chat은 터미널 pane의 현재 실행</a><a href="#use-pane-7">용어 설명 Pane Chat: 실행 중인 터미널 pane의 대화를 조작하는</a><a href="#use-pane-8">용어 설명 Pane Chat: 예 Electron의 터미널 pane 위에 PaneChatView를</a></p></dd></div>
+<div class="term-entry" id="term-provider-transcript" data-aliases="공급자 기록|provider transcript"><dt>공급자 기록(provider transcript)</dt><dd><p class="def">공급자 기록은 에이전트 도구가 대화 내용을 파일이나 자체 저장소에 남긴 데이터다.</p><p><span class="field">존재 이유</span> 화면에 보이는 글자만으로 알 수 없는 메시지 역할과 순서를 읽을 수 있다.</p><p><span class="field">구체 예</span> Claude Code의 세션 기록은 JSON Lines 형식으로 저장된다.</p><p class="term-uses"><span class="field">참조 6곳</span><a href="#use-provider-transcript-1">구조: 터미널 pane과 공급자 기록을 함께 사용한다.</a><a href="#use-provider-transcript-2">구조: 실행 대상과 공급자 기록을 대조한다.</a><a href="#use-provider-transcript-3">구조: 서비스가 공급자 기록을 다시 읽어</a><a href="#use-provider-transcript-4">흐름: 보낸다. 답변은 공급자 기록에서 가져온다.</a><a href="#use-provider-transcript-5">흐름: Chat 서비스가 공급자 기록을 다시 읽는다.</a><a href="#use-provider-transcript-6">KanVibe는 무엇을 읽어 말풍선을 만드는가: Pane Chat은 공급자 기록에서 프롬프트와 답변을</a></p></dd></div>
+<div class="term-entry" id="term-target-token" data-aliases="대상 토큰|targetToken"><dt>대상 토큰(targetToken)</dt><dd><p class="def">대상 토큰은 KanVibe가 확인한 실행 대상과 대화를 가리키는 임시 값이다.</p><p><span class="field">존재 이유</span> 메시지를 작성하는 동안 pane이나 대화가 바뀌었으면 전송을 막을 수 있다.</p><p><span class="field">구체 예</span> <a class="term" id="use-pane-chat-16" href="#term-pane-chat">Pane Chat</a>의 프롬프트 요청에 <code>targetToken</code>을 넣는다.</p><p class="term-uses"><span class="field">참조 1곳</span><a href="#use-target-token-1">KanVibe는 어떤 대화가 pane에 열려 있는지 어떻게 아는가: 있으면 서비스가 대상 토큰인 targetToken을 발급한다.</a></p></dd></div>
+<div class="term-entry" id="term-snapshot" data-aliases="스냅샷|snapshot"><dt>스냅샷(snapshot)</dt><dd><p class="def">스냅샷은 KanVibe가 한 시점에 읽은 <a class="term" id="use-pane-chat-17" href="#term-pane-chat">Pane Chat</a>의 상태다.</p><p><span class="field">존재 이유</span> 앱은 처음 화면을 열 때 대화, 전송 가능 여부, CLI 입력 상태를 함께 받는다.</p><p><span class="field">구체 예</span> 모바일은 수신한 행의 순서가 어긋나면 새 스냅샷을 요청한다.</p><p class="term-uses"><span class="field">참조 1곳</span><a href="#use-snapshot-1">KanVibe는 무엇을 읽어 말풍선을 만드는가: 모바일 컨트롤러가 스냅샷을 다시 요청한다.</a></p></dd></div>
+</dl>
+</section>
+<section id="sources"><h2>출처</h2>
+<p>Paseo는 로컬 참조 체크아웃 <code>2a9395e2d1f</code>의 코드와 공식 <a class="term" id="use-timeline-9" href="#term-timeline">타임라인</a> 문서를 기준으로 삼았다. KanVibe는 현재 <code>perf/rust-gpui</code> 작업 브랜치의 소스를 기준으로 삼았다. 기준 커밋은 <code>f9f09ebcfdc</code>다. Electron과 모바일에 연결한 GitHub 파일은 작업 브랜치의 해당 파일과 내용이 같다. 이 비교는 소스에서 실행 경로를 추적한 결과다.</p>
+<ul>
+<li>Paseo의 입력과 수락 처리. <a href="https://github.com/getpaseo/paseo/blob/2a9395e2d1f7808e478ca4a0b323bf05c33aa45a/packages/app/src/composer/actions.ts#L203-L237">채팅 입력 액션</a>, <a href="https://github.com/getpaseo/paseo/blob/2a9395e2d1f7808e478ca4a0b323bf05c33aa45a/packages/server/src/server/session.ts#L8886-L8997">데몬의 전송 핸들러</a>.</li>
+<li>Paseo의 이벤트, 기록 복구와 UI 행. <a href="https://github.com/getpaseo/paseo/blob/2a9395e2d1f7808e478ca4a0b323bf05c33aa45a/docs/timeline-sync.md">공식 타임라인 문서</a>, <a href="https://github.com/getpaseo/paseo/blob/2a9395e2d1f7808e478ca4a0b323bf05c33aa45a/packages/app/src/agent-stream/view.tsx#L905-L945">채팅 행 렌더러</a>.</li>
+<li>KanVibe의 Electron 진입과 대상 확인. <a href="https://github.com/rookedsysc/kanvibe/blob/eba089449e671ffcb68b460d43313748a736a2dc/src/desktop/renderer/components/TerminalPaneChatLayer.tsx#L266-L284">터미널의 Pane Chat 레이어</a>, <a href="https://github.com/rookedsysc/kanvibe/blob/eba089449e671ffcb68b460d43313748a736a2dc/src/desktop/main/services/paneChatService.ts#L345-L413">대화 연결과 기록 읽기</a>, <a href="https://github.com/rookedsysc/kanvibe/blob/eba089449e671ffcb68b460d43313748a736a2dc/src/desktop/main/services/paneChatService.ts#L749-L807">두 전송 경로</a>.</li>
+<li>KanVibe의 기록 갱신. <a href="https://github.com/rookedsysc/kanvibe/blob/eba089449e671ffcb68b460d43313748a736a2dc/src/desktop/main/services/paneChatSubscriptionService.ts#L148-L202">Electron 구독 서비스</a>, <a href="https://github.com/rookedsysc/kanvibe/blob/eba089449e671ffcb68b460d43313748a736a2dc/mobile/lib/src/features/pane_chat/application/pane_chat_controller.dart#L244-L274">모바일 컨트롤러</a>.</li>
+<li>KanVibe Rust 호스트 전송 서비스. <code>crates/kanvibe-terminal/src/pane_chat/service/send.rs:207</code>.</li>
+<li>KanVibe GPUI의 대화 기록 진입과 터미널 버튼. 아래 경로는 로컬 작업 브랜치 기준이다. 대화 기록 뷰 생성 <code>crates/kanvibe-app/src/views/task_detail/mod.rs:366</code>, 기록 조회 <code>crates/kanvibe-app/src/views/task_detail/chat_view.rs:90</code>, 터미널 버튼 렌더러 <code>crates/kanvibe-app/src/views/task_detail/terminal/pane.rs:673</code>.</li>
+</ul>
+</section>
+</main>
+
+<script>
+function preservePrdReadingPosition(changeLayout) {
+  const link = document.querySelector('.toc a[aria-current="location"]');
+  const target = link && document.getElementById(link.hash.slice(1));
+  const heading = target && (target.matches("h2,h3") ? target : target.querySelector("h2,h3"));
+  const before = heading && scrollY > 0 ? heading.getBoundingClientRect().top : null;
+  changeLayout();
+  if (before !== null) window.scrollBy({top:heading.getBoundingClientRect().top - before,behavior:"instant"});
+}
+
+// 제품 PRD 읽기 화면의 목차 소유자는 이 함수 한 벌이다.
+function setupPrdNavigation(toc) {
+  "use strict";
+
+  const parents = [];
+  const entries = Array.from(toc.querySelectorAll('a[href^="#"]')).map((link) => {
+    const target = document.getElementById(link.hash.slice(1));
+    const heading = target.matches("h2, h3, h4, h5, h6") ? target : target.querySelector("h2, h3, h4, h5, h6") || target;
+    const level = Number(heading.tagName.slice(1));
+    while (parents.length && parents[parents.length - 1].level >= level) parents.pop();
+    const parent = parents[parents.length - 1] || null;
+    const entry = { link, heading, level, parent, depth: parent ? parent.depth + 1 : 0, hasChildren: false };
+    if (parent) parent.hasChildren = true;
+    link.style.setProperty("--toc-depth", entry.depth);
+    parents.push(entry);
+    return entry;
+  });
+  if (!entries.length) return;
+  const mobile = matchMedia("(max-width: 1099px)");
+  const home = document.createComment("목차의 데스크톱 위치");
+  toc.before(home);
+  toc.id = "reading-toc-list";
+  toc.setAttribute("aria-label", "Table of Content");
+  const sidebar = document.createElement("aside");
+  sidebar.id = "reading-toc-sidebar";
+  sidebar.className = "desktop-toc";
+  sidebar.setAttribute("aria-label", "문서 Table of Content");
+  sidebar.innerHTML = '<div class="desktop-toc-header"><span class="desktop-toc-title">Table of Content</span><button type="button" class="toc-collapse" aria-controls="reading-toc-list" aria-expanded="true" aria-label="Table of Content 접기" title="Table of Content 접기"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button></div>';
+  const collapseButton = sidebar.querySelector(".toc-collapse");
+  const resizeHandle = document.createElement("div");
+  resizeHandle.className = "toc-resize-handle";
+  resizeHandle.tabIndex = 0;
+  resizeHandle.setAttribute("role", "separator");
+  resizeHandle.setAttribute("aria-orientation", "vertical");
+  resizeHandle.setAttribute("aria-label", "Table of Content 너비 조절");
+  resizeHandle.setAttribute("aria-controls", "reading-toc-list");
+  resizeHandle.setAttribute("aria-valuemin", "240");
+  resizeHandle.setAttribute("aria-valuemax", "420");
+  resizeHandle.title = "드래그하거나 좌우 방향키로 너비 조절. 두 번 누르면 기본 너비";
+  sidebar.append(resizeHandle);
+  home.after(sidebar);
+  const toggle = document.createElement("button");
+  toggle.type = "button";
+  toggle.className = "toc-toggle";
+  toggle.setAttribute("aria-haspopup", "dialog");
+  toggle.setAttribute("aria-controls", "reading-toc-dialog");
+  toggle.setAttribute("aria-expanded", "false");
+  toggle.title = "Table of Content 열기";
+  toggle.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>';
+  const dialog = document.createElement("dialog");
+  dialog.id = "reading-toc-dialog";
+  dialog.className = "toc-dialog";
+  dialog.setAttribute("aria-labelledby", "reading-toc-title");
+  dialog.innerHTML = '<div class="toc-dialog-header"><h2 id="reading-toc-title">Table of Content</h2><button type="button" class="toc-close" aria-label="Table of Content 닫기">닫기</button></div>';
+  document.body.append(toggle, dialog);
+
+  let current = null;
+  let pinned = null;
+  let settleTimer = null;
+  let settling = false;
+  function pinHash() {
+    pinned = entries.find((entry) => entry.link.hash === location.hash) || null;
+    settling = true;
+    clearTimeout(settleTimer);
+    settleTimer = setTimeout(() => { settling = false; }, 150);
+    scheduleUpdate();
+  }
+  function releasePin(event) {
+    if (event.target.closest && event.target.closest(".desktop-toc, .toc-dialog, .toc-toggle")) return;
+    pinned = null;
+    settling = false;
+    clearTimeout(settleTimer);
+  }
+  ["wheel", "touchstart", "keydown", "mousedown"].forEach((type) => window.addEventListener(type, releasePin, { passive:true }));
+  let nextFocus = null;
+  let scheduled = false;
+  let sidebarCollapsed = false;
+  let dragging = null;
+
+  const keepReadingPosition = preservePrdReadingPosition;
+
+  function syncWidthValue() {
+    if (mobile.matches || sidebarCollapsed) return;
+    const width = Math.round(sidebar.getBoundingClientRect().width);
+    resizeHandle.setAttribute("aria-valuenow", String(width));
+    resizeHandle.setAttribute("aria-valuetext", width + "픽셀");
+  }
+
+  function setSidebarWidth(width) {
+    keepReadingPosition(function () {
+      document.documentElement.style.setProperty("--toc-width", Math.round(Math.max(240, Math.min(420, width))) + "px");
+    });
+    syncWidthValue();
+    scheduleUpdate();
+  }
+
+  function finishResize() {
+    const pointerId = dragging && dragging.pointerId;
+    dragging = null;
+    document.documentElement.classList.remove("toc-resizing");
+    if (pointerId != null && resizeHandle.hasPointerCapture(pointerId)) resizeHandle.releasePointerCapture(pointerId);
+  }
+
+  function revealCurrent() {
+    if (!current || (mobile.matches ? !dialog.open : sidebarCollapsed)) return;
+    const item = current.link.getBoundingClientRect();
+    const box = toc.getBoundingClientRect();
+    if (item.top < box.top + 8) toc.scrollTop += item.top - box.top - 8;
+    else if (item.bottom > box.bottom - 8) toc.scrollTop += item.bottom - box.bottom + 8;
+  }
+
+  function updateBranches() {
+    const expanded = new Set();
+    for (let entry = current; entry; entry = entry.parent) expanded.add(entry);
+    for (const entry of entries) {
+      entry.link.hidden = entry.parent !== null && !expanded.has(entry.parent);
+      if (entry.hasChildren) entry.link.setAttribute("aria-expanded", String(expanded.has(entry)));
+    }
+    const hiddenFocus = entries.find((entry) => entry.link === document.activeElement && entry.link.hidden);
+    if (hiddenFocus) current.link.focus({ preventScroll: true });
+  }
+
+  function updateCurrent() {
+    scheduled = false;
+    syncWidthValue();
+    const maxScroll = Math.max(0, document.documentElement.scrollHeight - innerHeight);
+    const tailLength = Math.min(innerHeight, maxScroll);
+    const baseLine = innerHeight * 0.25;
+    const tailProgress = tailLength > 0 ? Math.max(0, Math.min(1, (scrollY - (maxScroll - tailLength)) / tailLength)) : 0;
+    const readingLine = baseLine + tailProgress * (innerHeight - baseLine);
+    let entry = entries[0];
+    for (const candidate of entries) {
+      if (candidate.heading.getBoundingClientRect().top <= readingLine) entry = candidate;
+      else break;
+    }
+    if (scrollY + innerHeight >= document.documentElement.scrollHeight - 4) entry = entries[entries.length - 1];
+    if (pinned) entry = pinned;
+    if (entry === current) return;
+    if (current) current.link.removeAttribute("aria-current");
+    current = entry;
+    current.link.setAttribute("aria-current", "location");
+    toggle.setAttribute("aria-label", "Table of Content 열기, 현재 위치: " + current.link.textContent);
+    updateBranches();
+    revealCurrent();
+  }
+
+  function scheduleUpdate() {
+    if (scheduled) return;
+    scheduled = true;
+    requestAnimationFrame(updateCurrent);
+  }
+
+  function placeToc() {
+    finishResize();
+    if (dialog.open) dialog.close();
+    if (mobile.matches) dialog.append(toc);
+    else sidebar.insertBefore(toc, resizeHandle);
+    revealCurrent();
+    scheduleUpdate();
+  }
+
+  collapseButton.addEventListener("click", function () {
+    finishResize();
+    sidebarCollapsed = !sidebarCollapsed;
+    keepReadingPosition(function () {
+      document.documentElement.dataset.tocCollapsed = String(sidebarCollapsed);
+    });
+    collapseButton.setAttribute("aria-expanded", String(!sidebarCollapsed));
+    const action = sidebarCollapsed ? "Table of Content 펼치기" : "Table of Content 접기";
+    collapseButton.setAttribute("aria-label", action);
+    collapseButton.title = action;
+    revealCurrent();
+    scheduleUpdate();
+  });
+  resizeHandle.addEventListener("pointerdown", function (event) {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    resizeHandle.focus({ preventScroll: true });
+    dragging = { pointerId: event.pointerId, x: event.clientX, width: sidebar.getBoundingClientRect().width };
+    resizeHandle.setPointerCapture(event.pointerId);
+    document.documentElement.classList.add("toc-resizing");
+  });
+  resizeHandle.addEventListener("pointermove", function (event) {
+    if (dragging && event.pointerId === dragging.pointerId) setSidebarWidth(dragging.width + event.clientX - dragging.x);
+  });
+  resizeHandle.addEventListener("pointerup", finishResize);
+  resizeHandle.addEventListener("pointercancel", finishResize);
+  resizeHandle.addEventListener("lostpointercapture", finishResize);
+  resizeHandle.addEventListener("keydown", function (event) {
+    const width = sidebar.getBoundingClientRect().width;
+    const values = { ArrowLeft: width - 16, ArrowRight: width + 16, Home: 240, End: 420 };
+    if (!(event.key in values)) return;
+    event.preventDefault();
+    setSidebarWidth(values[event.key]);
+  });
+  resizeHandle.addEventListener("dblclick", function () {
+    keepReadingPosition(function () {
+      document.documentElement.style.removeProperty("--toc-width");
+    });
+    syncWidthValue();
+    scheduleUpdate();
+  });
+
+  toggle.addEventListener("click", function () {
+    dialog.showModal();
+    document.documentElement.classList.add("toc-modal-open");
+    toggle.setAttribute("aria-expanded", "true");
+    revealCurrent();
+    (current ? current.link : dialog.querySelector("button")).focus({ preventScroll: true });
+  });
+  dialog.querySelector(".toc-close").addEventListener("click", function () { dialog.close(); });
+  dialog.addEventListener("keydown", function (event) {
+    if (event.key !== "Tab") return;
+    const controls = Array.from(dialog.querySelectorAll("button, a[href]")).filter((control) => control.getClientRects().length > 0);
+    const first = controls[0];
+    const last = controls[controls.length - 1];
+    if (document.activeElement === (event.shiftKey ? first : last)) {
+      event.preventDefault();
+      (event.shiftKey ? last : first).focus();
+    }
+  });
+  dialog.addEventListener("click", function (event) {
+    if (event.target !== dialog) return;
+    const box = dialog.getBoundingClientRect();
+    if (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom) dialog.close();
+  });
+  dialog.addEventListener("close", function () {
+    document.documentElement.classList.remove("toc-modal-open");
+    toggle.setAttribute("aria-expanded", "false");
+    const target = nextFocus || (mobile.matches ? toggle : sidebarCollapsed ? collapseButton : current.link);
+    nextFocus = null;
+    target.focus({ preventScroll: true });
+  });
+  toc.addEventListener("click", function (event) {
+    const link = event.target.closest('a[href^="#"]');
+    if (!link) return;
+    pinned = entries.find((entry) => entry.link === link) || null;
+    settling = true;
+    clearTimeout(settleTimer);
+    settleTimer = setTimeout(() => { settling = false; }, 150);
+    scheduleUpdate();
+    if (!dialog.open) return;
+    nextFocus = entries.find((entry) => entry.link === link).heading;
+    nextFocus.tabIndex = -1;
+    dialog.close();
+  });
+  mobile.addEventListener("change", placeToc);
+  window.addEventListener("scroll", () => {
+    if (settling) { clearTimeout(settleTimer); settleTimer = setTimeout(() => { settling = false; }, 150); }
+    else pinned = null;
+    scheduleUpdate();
+  }, { passive: true });
+  window.addEventListener("resize", scheduleUpdate);
+  window.addEventListener("hashchange", pinHash);
+  window.addEventListener("blur", finishResize);
+  new ResizeObserver(scheduleUpdate).observe(document.querySelector("body > main"));
+  placeToc();
+  pinHash();
+  updateCurrent();
+}
+
+(function () {
+  "use strict";
+  document.querySelectorAll("main .table-scroll").forEach(function (container, index) {
+    const hint = document.createElement("p");
+    let suffix = index + 1;
+    do { hint.id = "table-scroll-help-" + suffix++; } while (document.getElementById(hint.id));
+    hint.className = "table-scroll-hint";
+    hint.textContent = "표를 좌우로 움직여 나머지 열을 확인하세요.";
+    hint.hidden = true;
+    container.before(hint);
+    let previous;
+    function update() {
+      const overflowing = container.scrollWidth > container.clientWidth + 1;
+      if (overflowing === previous) return;
+      previous = overflowing;
+      const previousBottom = container.getBoundingClientRect().bottom;
+      hint.hidden = !overflowing;
+      container.classList.toggle("is-overflowing", overflowing);
+      if (overflowing) {
+        container.tabIndex = 0;
+        container.setAttribute("role", "group");
+        container.setAttribute("aria-label", "가로 스크롤 표");
+        container.setAttribute("aria-describedby", hint.id);
+      } else {
+        ["tabindex", "role", "aria-label", "aria-describedby"].forEach(function (name) { container.removeAttribute(name); });
+      }
+      if (previousBottom <= 0) window.scrollBy({ top: container.getBoundingClientRect().bottom - previousBottom, behavior: "instant" });
+    }
+    new MutationObserver(update).observe(container, {childList:true,subtree:true,characterData:true});
+    new ResizeObserver(update).observe(container);
+    update();
+  });
+}());
+
+// 시나리오 원문에서 선택한 단계와 입력값을 모든 패널에 함께 적용한다.
+(function () {
+  "use strict";
+  document.querySelectorAll("[data-playbook]").forEach(function (player) {
+    const model = JSON.parse(player.querySelector(".playbook-source").textContent);
+    const inputs = { ...model.inputs };
+    let scenarioIndex = 0;
+    let stepIndex = 0;
+    let timer = null;
+    const inputArea = player.querySelector(".playbook-inputs");
+    const tablist = player.querySelector('[role="tablist"]');
+    const panel = player.querySelector('[role="tabpanel"]');
+    const tabs = model.scenarios.map(function (scenario, index) {
+      const tab = document.createElement("button");
+      tab.type = "button";
+      tab.id = model.anchor + "-tab-" + scenario.id;
+      tab.setAttribute("role", "tab");
+      tab.setAttribute("aria-controls", panel.id);
+      tab.textContent = scenario.title;
+      tab.addEventListener("click", () => selectScenario(index));
+      tab.addEventListener("keydown", function (event) {
+        if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+        event.preventDefault();
+        const next = event.key === "Home" ? 0 : event.key === "End" ? model.scenarios.length - 1
+          : (index + (event.key === "ArrowRight" ? 1 : -1) + model.scenarios.length) % model.scenarios.length;
+        selectScenario(next);
+        tabs[next].focus();
+      });
+      tablist.append(tab);
+      return tab;
+    });
+    Object.entries(inputs).forEach(function ([name, value]) {
+      const label = document.createElement("label");
+      const labels = model["input-labels"] || {};
+      label.textContent = (Object.prototype.hasOwnProperty.call(labels, name) ? labels[name] : name) + " ";
+      const input = document.createElement("input");
+      input.value = value;
+      input.maxLength = 500;
+      input.addEventListener("input", function () { inputs[name] = input.value; render(); });
+      label.append(input);
+      inputArea.append(label);
+    });
+    const play = player.querySelector('[data-action="play"]');
+    const stepRange = player.querySelector("[data-step-range]");
+    const speed = player.querySelector("[data-speed]");
+    const detail = player.querySelector("[data-playbook-detail]");
+    const sequence = player.querySelector(".playbook-sequence");
+
+    function substitute(value) {
+      if (typeof value === "string") return value.replace(/\{\{([^{}]+)\}\}/g, (_, key) => inputs[key]);
+      if (Array.isArray(value)) return value.map(substitute);
+      if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, substitute(item)]));
+      return value;
+    }
+    function renderStorage(value) {
+      const isRecord = (row) => row !== null && typeof row === "object" && !Array.isArray(row);
+      const rows = Array.isArray(value) && value.every(isRecord) ? value : isRecord(value) ? [value] : [{value}];
+      const columns = [...new Set(rows.flatMap(row => Object.keys(row)))];
+      const table = document.createElement("table");
+      table.setAttribute("aria-label", "현재 단계의 저장 상태 예시");
+      if (rows.length === 0) table.createCaption().textContent = "저장된 레코드 없음";
+      const head = table.createTHead().insertRow();
+      columns.forEach(function (key) {
+        const cell = document.createElement("th");
+        cell.scope = "col";
+        cell.textContent = key;
+        head.append(cell);
+      });
+      const body = table.createTBody();
+      rows.forEach(function (row) {
+        const tr = body.insertRow();
+        columns.forEach(function (key) {
+          const cell = tr.insertCell();
+          const item = Object.prototype.hasOwnProperty.call(row, key) ? row[key] : undefined;
+          cell.textContent = item === undefined ? "—" : typeof item === "string" ? item : JSON.stringify(item);
+        });
+      });
+      player.querySelector('[data-panel="storage"]').replaceChildren(table);
+    }
+    function stop() {
+      clearInterval(timer);
+      timer = null;
+      play.textContent = "재생";
+      play.setAttribute("aria-pressed", "false");
+    }
+    function render() {
+      preservePrdReadingPosition(function () {
+      const scenario = model.scenarios[scenarioIndex];
+      const selected = scenario.steps[stepIndex];
+      tabs.forEach(function (tab, index) {
+        tab.setAttribute("aria-selected", String(index === scenarioIndex));
+        tab.tabIndex = index === scenarioIndex ? 0 : -1;
+      });
+      panel.setAttribute("aria-labelledby", tabs[scenarioIndex].id);
+      sequence.replaceChildren();
+      scenario.steps.forEach(function (step, index) {
+        const row = document.createElement("li");
+        row.id = "playbook-" + scenario.id + "-" + (index + 1);
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = (index + 1) + ". " + step.title;
+        if (index === stepIndex) button.setAttribute("aria-current", "step");
+        button.addEventListener("click", () => selectStep(index));
+        row.append(button);
+        sequence.append(row);
+      });
+      stepRange.max = String(scenario.steps.length - 1);
+      stepRange.value = String(stepIndex);
+      stepRange.disabled = scenario.steps.length === 1;
+      stepRange.setAttribute("aria-valuetext", (stepIndex + 1) + " / " + scenario.steps.length + ": " + selected.title);
+      const screen = substitute(selected.screen);
+      player.querySelector('[data-panel="screen"]').textContent = typeof screen === "string" ? screen : JSON.stringify(screen, null, 2);
+      player.querySelector('[data-panel="payload"]').textContent = JSON.stringify({request:substitute(selected.request),response:substitute(selected.response)}, null, 2);
+      renderStorage(substitute(selected.storage));
+      player.querySelector("[data-screen-title]").textContent = selected.title;
+      player.querySelector("output").textContent = (stepIndex + 1) + " / " + scenario.steps.length;
+      player.querySelector('[data-action="first"]').disabled = stepIndex === 0;
+      player.querySelector('[data-action="previous"]').disabled = stepIndex === 0;
+      player.querySelector('[data-action="next"]').disabled = stepIndex === scenario.steps.length - 1;
+      detail.hidden = !selected.detail;
+      if (selected.detail) detail.href = "#" + selected.detail;
+      else detail.removeAttribute("href");
+      });
+    }
+    function selectStep(index) {
+      stop();
+      stepIndex = Math.max(0, Math.min(model.scenarios[scenarioIndex].steps.length - 1, index));
+      render();
+    }
+    function selectScenario(index) {
+      stop();
+      scenarioIndex = index;
+      stepIndex = 0;
+      render();
+    }
+    stepRange.addEventListener("input", () => selectStep(Number(stepRange.value)));
+    player.querySelector('[data-action="first"]').addEventListener("click", () => selectStep(0));
+    player.querySelector('[data-action="previous"]').addEventListener("click", () => selectStep(stepIndex - 1));
+    player.querySelector('[data-action="next"]').addEventListener("click", () => selectStep(stepIndex + 1));
+    play.addEventListener("click", function () {
+      if (timer) { stop(); return; }
+      const steps = model.scenarios[scenarioIndex].steps;
+      if (stepIndex === steps.length - 1) { stepIndex = 0; render(); }
+      if (steps.length === 1) return;
+      play.textContent = "일시정지";
+      play.setAttribute("aria-pressed", "true");
+      timer = setInterval(function () {
+        stepIndex += 1;
+        render();
+        if (stepIndex === steps.length - 1) stop();
+      }, Number(speed.value));
+    });
+    speed.addEventListener("change", stop);
+    detail.addEventListener("click", stop);
+    function route() {
+      const hash = decodeURIComponent(location.hash.slice(1));
+      if (hash !== model.anchor) stop();
+      for (const [index, scenario] of model.scenarios.entries()) {
+        const step = scenario.steps.findIndex((item, number) => hash === "playbook-" + scenario.id + "-" + (number + 1) || (item.aliases || []).includes(hash));
+        if (step < 0) continue;
+        selectScenario(index);
+        selectStep(step);
+        document.getElementById(model.anchor).scrollIntoView({ block:"start", behavior:"instant" });
+        break;
+      }
+    }
+    // 모든 본문 이동에서 재생을 멈추되 같은 재생기 복귀에는 상태를 초기화하지 않는다.
+    document.addEventListener("click", function (event) {
+      const link = event.target.closest('a[href^="#"]');
+      if (link && link.hash !== "#" + model.anchor) stop();
+    });
+    window.addEventListener("hashchange", route);
+    window.addEventListener("pagehide", stop);
+    render();
+    route();
+  });
+}());
+
+// API 표와 직접 링크는 같은 페이지의 상세를 열고, 접힌 부록 정본 링크도 보이게 한다.
+(function setupApiContractLinks() {
+  function revealTarget(hash, focus) {
+    if (!hash) return;
+    let id;
+    try { id = decodeURIComponent(hash.slice(1)); } catch (_) { return; }
+    const target = document.getElementById(id);
+    if (!target) return;
+    let parent = target.closest("details");
+    while (parent) { parent.open = true; parent = parent.parentElement.closest("details"); }
+    if (target.matches("details.api-operation")) target.open = true;
+    if (focus && target.matches("details.api-operation")) target.querySelector("summary").focus();
+  }
+  document.addEventListener("click", function (event) {
+    const link = event.target.closest('a[href^="#"]');
+    const row = event.target.closest("tr[data-api-target]");
+    if (link) revealTarget(link.hash, true);
+    else if (row && !event.target.closest("button,input,summary")) {
+      const summaryLink = row.querySelector('a[href="#' + row.dataset.apiTarget + '"]');
+      summaryLink.click();
+    }
+  });
+  window.addEventListener("hashchange", function () { revealTarget(location.hash, false); });
+  revealTarget(location.hash, false);
+})();
+
+</script>
+<script>
+  // 테마 토글은 시스템 설정 위에 사용자의 선택을 덮어쓴다.
+  (function () {
+    var root = document.documentElement;
+    var toggle = document.getElementById("theme-toggle");
+    toggle.addEventListener("click", function () {
+      var isDark = root.dataset.theme
+        ? root.dataset.theme === "dark"
+        : window.matchMedia("(prefers-color-scheme: dark)").matches;
+      root.dataset.theme = isDark ? "light" : "dark";
+    });
+  })();
+
+  // PDF 버튼은 브라우저의 인쇄 창을 연다. 인쇄 모양은 아래 @media print 가 정한다.
+  document.getElementById("print-button").addEventListener("click", function () { window.print(); });
+
+  // 목차에서 지금 읽고 있는 절의 항목에 aria-current 를 단다. 스크립트가 없으면 표시만 빠지고 목차 링크는 그대로 동작한다.
+  (function () {
+    var toc = document.querySelector(".toc");
+    if (!toc) return;
+    setupPrdNavigation(toc);
+  })();
+
+  // 용어 링크에 마우스를 올리거나 포커스하면 용어 설명 항목의 정의 문장을 말풍선으로 보여 준다.
+  (function () {
+    var tip = document.createElement("div");
+    tip.className = "term-tip";
+    tip.hidden = true;
+    document.body.appendChild(tip);
+
+    function showTip(event) {
+      var entry = document.querySelector(event.currentTarget.getAttribute("href"));
+      var definition = entry && entry.querySelector(".def");
+      if (!definition) return;
+      tip.textContent = definition.textContent;
+      tip.hidden = false;
+      var rect = event.currentTarget.getBoundingClientRect();
+      var left = Math.min(rect.left + window.scrollX, window.scrollX + document.documentElement.clientWidth - 356);
+      tip.style.left = Math.max(8, left) + "px";
+      tip.style.top = rect.bottom + window.scrollY + 6 + "px";
+    }
+    function hideTip() { tip.hidden = true; }
+
+    document.querySelectorAll("a.term").forEach(function (link) {
+      link.addEventListener("mouseenter", showTip);
+      link.addEventListener("focus", showTip);
+      link.addEventListener("mouseleave", hideTip);
+      link.addEventListener("blur", hideTip);
+    });
+  })();
+
+  // 흐름 블록마다 단계 강조를 따로 관리한다. 같은 data-step 값을 가진 그림 요소와 목록 항목이 함께 켜진다.
+  (function () {
+    document.querySelectorAll("[data-flow]").forEach(function (flow) {
+      var stepElements = flow.querySelectorAll("[data-step]");
+      var stepNumbers = Array.from(new Set(Array.from(stepElements, function (el) {
+        return Number(el.dataset.step);
+      }))).sort(function (a, b) { return a - b; });
+      var status = flow.querySelector(".step-status");
+      var activeIndex = -1;
+
+      function render() {
+        var activeStep = stepNumbers[activeIndex];
+        flow.classList.toggle("is-stepping", activeIndex >= 0);
+        stepElements.forEach(function (el) {
+          el.classList.toggle("is-active", Number(el.dataset.step) === activeStep);
+        });
+        if (status) {
+          status.textContent = activeIndex >= 0
+            ? activeStep + "단계 / 전체 " + stepNumbers.length + "단계"
+            : "전체 " + stepNumbers.length + "단계";
+        }
+      }
+      function moveTo(index) {
+        activeIndex = Math.max(-1, Math.min(stepNumbers.length - 1, index));
+        render();
+      }
+
+      stepElements.forEach(function (el) {
+        el.addEventListener("click", function () {
+          moveTo(stepNumbers.indexOf(Number(el.dataset.step)));
+        });
+      });
+      var prev = flow.querySelector("[data-step-prev]");
+      var next = flow.querySelector("[data-step-next]");
+      var reset = flow.querySelector("[data-step-reset]");
+      if (prev) prev.addEventListener("click", function () { moveTo(Math.max(0, activeIndex - 1)); });
+      if (next) next.addEventListener("click", function () { moveTo(activeIndex + 1); });
+      if (reset) reset.addEventListener("click", function () { moveTo(-1); });
+      render();
+    });
+  })();
+  // language-* 코드 블록에 구문 강조와 diff 줄 배경을 입힌다. 글자는 바꾸지 않고 span 으로 감싸기만 하므로 복사한 코드와 스크립트 없는 화면의 내용이 같다.
+  (function () {
+    var C_COMMENT = "/\\*[\\s\\S]*?\\*/|//[^\\n]*";
+    var HASH_COMMENT = "(?<![\\w$])#[^\\n]*";
+    var QUOTED = "'(?:\\\\.|[^'\\\\\\n])*'|\"(?:\\\\.|[^\"\\\\\\n])*\"";
+    var BACKTICK = "`(?:\\\\[\\s\\S]|[^`\\\\])*`";
+    var NUMBER = "\\b\\d[\\d_]*(?:\\.\\d+)?\\b";
+    var CAPITALIZED = "\\b[A-Z]\\w*\\b";
+    var JS_KEYWORDS = "import from export default const let var function class extends return if else for while do switch case break continue throw try catch finally new typeof instanceof in of this super null undefined true false async await yield delete void static get set";
+
+    function words(list) { return "\\b(?:" + list.split(" ").join("|") + ")\\b"; }
+
+    var CODE_GRAMMARS = {
+      typescript: { comment: C_COMMENT, string: QUOTED + "|" + BACKTICK, decorator: "@[\\w.]+", number: NUMBER,
+        keyword: words(JS_KEYWORDS + " interface type enum implements private public protected readonly abstract declare namespace as satisfies keyof"),
+        type: words("string number boolean void any unknown never object") + "|" + CAPITALIZED },
+      javascript: { comment: C_COMMENT, string: QUOTED + "|" + BACKTICK, decorator: "@[\\w.]+", number: NUMBER,
+        keyword: words(JS_KEYWORDS), type: CAPITALIZED },
+      python: { comment: HASH_COMMENT, string: "[rbfRBF]{0,2}(?:\"\"\"[\\s\\S]*?\"\"\"|'''[\\s\\S]*?'''|" + QUOTED + ")", decorator: "(?<![\\w)])@[\\w.]+", number: NUMBER,
+        keyword: words("import from as def class return if elif else for while in not and or is try except finally raise with lambda pass break continue yield async await global nonlocal None True False self"),
+        type: words("int str float bool bytes list dict set tuple object") + "|" + CAPITALIZED },
+      java: { comment: C_COMMENT, string: "\"\"\"[\\s\\S]*?\"\"\"|" + QUOTED, decorator: "@[\\w.]+", number: NUMBER,
+        keyword: words("package import public private protected static final abstract class interface enum record extends implements new return if else for while do switch case default break continue throw throws try catch finally this super null true false var void synchronized instanceof"),
+        type: words("int long short byte char float double boolean") + "|" + CAPITALIZED },
+      php: { comment: "/\\*[\\s\\S]*?\\*/|//[^\\n]*|#(?!\\[)[^\\n]*", string: QUOTED, decorator: "#\\[[^\\]\\n]*\\]|\\$\\w+", number: NUMBER,
+        keyword: words("namespace use class interface trait extends implements function fn public private protected static final abstract const return if else elseif foreach for while do switch case default break continue throw try catch finally new echo print isset empty array null true false as instanceof match"),
+        type: words("int float string bool void mixed self") + "|" + CAPITALIZED },
+      sql: { ignoreCase: true, comment: "--[^\\n]*|/\\*[\\s\\S]*?\\*/", string: "'(?:''|[^'])*'", number: NUMBER,
+        keyword: words("select from where join left right inner outer full cross on and or not in is null as group by order having limit offset insert into values update set delete create alter drop table index view primary key foreign references unique default distinct union all exists between like case when then else end with explain analyze begin commit rollback desc asc"),
+        type: words("int integer bigint smallint decimal numeric float double varchar char text boolean date datetime timestamp json jsonb uuid") },
+      bash: { comment: HASH_COMMENT, string: QUOTED, decorator: "\\$\\{[^}\\n]*\\}|\\$[\\w@#?*!-]", number: NUMBER,
+        keyword: words("if then else elif fi for while until do done case esac in function return exit local export readonly set unset source") },
+      json: { string: "\"(?:\\\\.|[^\"\\\\\\n])*\"(?!\\s*:)", type: "\"(?:\\\\.|[^\"\\\\\\n])*\"", keyword: words("true false null"), number: "-?\\b\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?\\b" },
+      yaml: { comment: HASH_COMMENT, string: QUOTED, type: "[\\w.-]+(?=:(?:\\s|$))", keyword: words("true false null yes no on off"), number: NUMBER }
+    };
+    // 앞선 분류가 먼저 걸린다. 주석과 문자열 안의 단어가 키워드로 칠해지지 않게 하는 순서다.
+    var TOKEN_KINDS = ["comment", "string", "decorator", "keyword", "type", "number"];
+
+    function compileGrammar(grammar) {
+      var kinds = TOKEN_KINDS.filter(function (kind) { return grammar[kind]; });
+      var groups = kinds.map(function (kind) { return "(" + grammar[kind] + ")"; });
+      return { kinds: kinds, pattern: new RegExp(groups.join("|"), grammar.ignoreCase ? "gmi" : "gm") };
+    }
+
+    function appendHighlighted(parent, text, compiled) {
+      var position = 0;
+      var match;
+      compiled.pattern.lastIndex = 0;
+      while ((match = compiled.pattern.exec(text)) !== null) {
+        var kindIndex = match.slice(1).findIndex(function (group) { return group !== undefined; });
+        parent.appendChild(document.createTextNode(text.slice(position, match.index)));
+        var token = document.createElement("span");
+        token.className = "tok-" + compiled.kinds[kindIndex];
+        token.textContent = match[0];
+        parent.appendChild(token);
+        position = match.index + match[0].length;
+      }
+      parent.appendChild(document.createTextNode(text.slice(position)));
+    }
+
+    function readDiffLineClass(line) {
+      if (/^(?:\+\+\+|---|@@)/.test(line)) return "code-line line-meta";
+      if (line.charAt(0) === "+") return "code-line line-add";
+      if (line.charAt(0) === "-") return "code-line line-del";
+      return "code-line";
+    }
+
+    function renderDiff(code, compiled) {
+      var lines = code.textContent.split("\n");
+      code.textContent = "";
+      lines.forEach(function (line, index) {
+        var lineElement = document.createElement("span");
+        lineElement.className = readDiffLineClass(line);
+        if (compiled) appendHighlighted(lineElement, line, compiled);
+        else lineElement.textContent = line;
+        if (index < lines.length - 1) lineElement.appendChild(document.createTextNode("\n"));
+        code.appendChild(lineElement);
+      });
+    }
+
+    document.querySelectorAll('pre code[class*="language-"]').forEach(function (code) {
+      var languageMatch = /(?:^|\s)language-(diff(?:-|(?=\s|$)))?([\w-]*)/.exec(code.className);
+      if (!languageMatch) return;
+      var grammar = CODE_GRAMMARS[languageMatch[2]];
+      var compiled = grammar ? compileGrammar(grammar) : null;
+      if (languageMatch[1]) { renderDiff(code, compiled); return; }
+      if (!compiled) return;
+      var source = code.textContent;
+      code.textContent = "";
+      appendHighlighted(code, source, compiled);
+    });
+  })();
+</script>
+</body>
+</html>

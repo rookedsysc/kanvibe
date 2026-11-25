@@ -100,6 +100,43 @@ fn starting_twice_delivers_each_board_event_once_through_the_shared_bus() {
 }
 
 #[test]
+fn notification_text_follows_the_locale_source_at_each_event() {
+    let fixture = RuntimeFixture::new();
+    let current_locale = Arc::new(Mutex::new("en".to_string()));
+    let mut config = fixture.config();
+    let source = current_locale.clone();
+    config.notification_locale = Arc::new(move || source.lock().unwrap().clone());
+    let runtime = DesktopRuntime::new(config).unwrap();
+    runtime.start();
+
+    runtime.board_notifier().emit(review_status_event());
+    *current_locale.lock().unwrap() = "zh".to_string();
+    // 같은 상태 알림은 중복 제거되므로 다른 상태로 바꾼다
+    let mut done_event = review_status_event();
+    if let BoardEvent::TaskStatusChanged(payload) = &mut done_event {
+        payload.new_status = "progress".into();
+    }
+    runtime.board_notifier().emit(done_event);
+    runtime.shutdown();
+
+    let mut bodies: Vec<String> = runtime
+        .notification_store()
+        .list_notifications()
+        .unwrap()
+        .into_iter()
+        .map(|notification| notification.body)
+        .collect();
+    bodies.sort();
+    assert_eq!(
+        bodies,
+        [
+            "알림 확인: changed to review",
+            "알림 확인: 已变更为progress"
+        ]
+    );
+}
+
+#[test]
 fn qa_inputs_replace_the_network_and_the_clock() {
     let fixture = RuntimeFixture::new();
     let mut config = fixture.config();

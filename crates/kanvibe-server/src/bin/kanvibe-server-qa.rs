@@ -4,25 +4,27 @@
 //! (페어링 코드, hook 설치 표)을 0600 Unix 소켓의 오라클로 연다. `oracle`은 그 소켓에 한 번 묻고 JSON을 출력한다.
 //! 프로세스 환경은 시작할 때 한 번 읽어 자식 환경의 바탕으로만 넘기고 바꾸지 않는다.
 
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::Arc;
 
-use kanvibe_mobile::notifications::PushRelayConfig;
 use kanvibe_process::hooks::HookProviderFile;
-use kanvibe_runtime::{DesktopRuntime, RuntimeConfig};
-use kanvibe_server::desktop::hook_backend::DesktopHookBackend;
-use kanvibe_server::desktop::remote::{RemoteHostWiring, RemoteHostWiringConfig};
-use kanvibe_server::desktop::{DesktopServerConfig, DesktopServices, LanPlaintextRecorder};
-use kanvibe_server::qa_oracle::{OracleHandler, ask_oracle, serve_oracle_socket};
-use kanvibe_server::server::{
-    MOBILE_TLS_PORT_OFFSET, RouteOptions, ServerConfig, ServerState, start_server,
+use kanvibe_runtime::{DEFAULT_NOTIFICATION_LOCALE, DesktopRuntime, RuntimeConfig};
+use kanvibe_server::desktop::in_process::{
+    InProcessServer, InProcessServerListen, wait_for_termination_signal,
 };
+use kanvibe_server::desktop::remote::{RemoteHostWiring, RemoteHostWiringConfig};
+use kanvibe_server::desktop::{DesktopServerConfig, DesktopServices, push_relay_config};
+use kanvibe_server::launch::qa_remote_host_namespace;
+use kanvibe_server::qa_oracle::{OracleHandler, ask_oracle, serve_oracle_socket};
+use kanvibe_server::server::{MOBILE_TLS_PORT_OFFSET, RouteOptions};
 use serde_json::{Value, json};
-use sha2::{Digest, Sha256};
 
-const USAGE: &str = "usage: kanvibe-server-qa serve --data-dir <dir> --hook-port <port> --oracle-socket <path> [--agent-binaries <dir>]\n       kanvibe-server-qa oracle --socket <path> <name> <json-args>";
+/// 다이어그램 렌더러가 읽는 글꼴. 앱 번들 글꼴과 같은 파일이다
+const BUNDLED_DIAGRAM_FONT_DIRECTORY: &str =
+    concat!(env!("CARGO_MANIFEST_DIR"), "/../kanvibe-app/assets/fonts");
+
+const USAGE: &str = "usage: kanvibe-server-qa serve --data-dir <dir> --hook-port <port> --oracle-socket <path> [--agent-binaries <dir>] [--diagram-fonts <dir>]\n       kanvibe-server-qa oracle --socket <path> <name> <json-args>";
 
 struct ServeOptions {
     data_dir: PathBuf,
@@ -30,6 +32,8 @@ struct ServeOptions {
     oracle_socket: PathBuf,
     /// 원격 agent 바이너리 디렉터리. 없으면 빈 목록이라 원격 호스트는 순수 ssh 경로로 간다
     agent_binary_directory: Option<PathBuf>,
+    /// 다이어그램 글꼴 디렉터리(`*.ttf`, `*.otf`). 기본값은 앱 번들 글꼴 디렉터리다
+    diagram_font_directory: PathBuf,
 }
 
 fn main() -> ExitCode {
@@ -80,6 +84,10 @@ fn parse_serve_options(arguments: &[String]) -> Result<ServeOptions, String> {
         oracle_socket: PathBuf::from(option_value(arguments, "--oracle-socket")?),
         agent_binary_directory: optional_option_value(arguments, "--agent-binaries")?
             .map(PathBuf::from),
+        diagram_font_directory: PathBuf::from(
+            optional_option_value(arguments, "--diagram-fonts")?
+                .unwrap_or(BUNDLED_DIAGRAM_FONT_DIRECTORY),
+        ),
     })
 }
 
@@ -117,8 +125,11 @@ fn serve(options: ServeOptions) -> Result<(), String> {
         home_directory.clone(),
         environment.clone(),
     );
-    config.remote_host_connections = remote.host_connections();
-    config.remote_hook_routing = remote.hook_routing();
+    remote.wire_runtime(&mut config);
+    // 골든을 녹화한 TS 앱은 첫 창을 기본 경로(`/ko`)에 열어 두었고, 알림 문구는 그 창의 locale을 따랐다
+    config.notification_locale = Arc::new(|| DEFAULT_NOTIFICATION_LOCALE.to_string());
+    let font_directory = options.diagram_font_directory.clone();
+    config.diagram_font_files = Arc::new(move || read_font_files(&font_directory));
     let runtime = Arc::new(DesktopRuntime::new(config).map_err(|error| error.to_string())?);
     let services = Arc::new(DesktopServices::new(
         runtime.clone(),
@@ -126,94 +137,51 @@ fn serve(options: ServeOptions) -> Result<(), String> {
             home_directory: PathBuf::from(&home_directory),
             mobile_tls_port: options.hook_port + MOBILE_TLS_PORT_OFFSET,
             push_relay: push_relay_config(&environment),
-            remote_grants: Some(remote.remote_grants(&runtime)),
-            diagram_renderer: None,
         },
     ));
     runtime.start();
-    services.start();
-    let _board_notifications =
-        kanvibe_server::desktop::board_notifications::forward_board_event_notifications(
-            &runtime,
-            Arc::new(kanvibe_server::desktop::board_notifications::SilentNotificationPresenter),
-        );
     serve_oracle_socket(&options.oracle_socket, oracle_handler(&services))
         .map_err(|error| error.to_string())?;
-    let tokio_runtime = tokio::runtime::Runtime::new().map_err(|error| error.to_string())?;
-    tokio_runtime.block_on(run_server(&options, &services, &remote))?;
-    services.stop();
-    runtime.shutdown();
-    Ok(())
-}
-
-/// TS `qa-${sha256(userData).slice(0, 16)}`. 데이터 디렉터리마다 원격 daemon·agent가 따로 뜬다
-fn qa_remote_host_namespace(data_dir: &Path) -> String {
-    let digest = hex::encode(Sha256::digest(data_dir.to_string_lossy().as_bytes()));
-    format!("qa-{}", &digest[..16])
-}
-
-fn push_relay_config(
-    environment: &std::collections::BTreeMap<String, String>,
-) -> Option<PushRelayConfig> {
-    let relay_url = environment.get("KANVIBE_MOBILE_PUSH_RELAY_URL")?.clone();
-    let relay_token = environment.get("KANVIBE_MOBILE_PUSH_RELAY_TOKEN")?.clone();
-    Some(PushRelayConfig {
-        relay_url,
-        relay_token,
-    })
-}
-
-async fn run_server(
-    options: &ServeOptions,
-    services: &Arc<DesktopServices>,
-    remote: &RemoteHostWiring,
-) -> Result<(), String> {
-    let now_ms = kanvibe_ai::javascript::now_ms() as i64;
-    let bind_host: IpAddr = services
-        .lan_usage
-        .resolve_hook_server_bind_host(now_ms)
-        .parse()
-        .unwrap_or(IpAddr::V4(Ipv4Addr::LOCALHOST));
-    let mut state = ServerState::new(
-        services.clone(),
-        Arc::new(DesktopHookBackend::new(services.runtime.clone())),
-        RouteOptions::default(),
-    );
-    state.lan_usage = Some(Arc::new(LanPlaintextRecorder(services.lan_usage.clone())));
-    let config = ServerConfig {
-        plaintext_address: SocketAddr::new(bind_host, options.hook_port),
-        tls_address: SocketAddr::new(
-            IpAddr::V4(Ipv4Addr::UNSPECIFIED),
-            options.hook_port + MOBILE_TLS_PORT_OFFSET,
-        ),
-        tls_directory: options.data_dir.join("mobile-tls"),
-    };
-    let server = start_server(&config, state)
-        .await
-        .map_err(|error| error.to_string())?;
+    let server = InProcessServer::start(
+        services,
+        remote,
+        &InProcessServerListen {
+            hook_port: options.hook_port,
+            tls_directory: options.data_dir.join("mobile-tls"),
+            route_options: RouteOptions::default(),
+        },
+    )?;
     eprintln!(
         "[kanvibe-server-qa] listening on {} (tls {:?})",
-        server.plaintext_address, server.tls_address
+        server.plaintext_address(),
+        server.tls_address()
     );
-    // 포트를 잡은 뒤에만 터널을 연다. 먼저 뜬 인스턴스의 원격 소켓을 지우지 않기 위해서다
-    let hook_tunnels = remote.start_hook_tunnels(&services.runtime, server.tunnel_server())?;
-    wait_for_termination().await;
-    hook_tunnels.stop();
-    server.shutdown();
+    server.block_on(wait_for_termination_signal());
+    server.stop();
     Ok(())
 }
 
-async fn wait_for_termination() {
-    let Ok(mut terminate) =
-        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-    else {
-        let _ = tokio::signal::ctrl_c().await;
-        return;
+/// 글꼴 디렉터리의 `*.ttf`·`*.otf`를 이름순으로 읽는다. 읽지 못한 파일은 건너뛴다
+fn read_font_files(directory: &Path) -> Vec<Vec<u8>> {
+    let Ok(entries) = std::fs::read_dir(directory) else {
+        eprintln!(
+            "[kanvibe-server-qa] diagram font directory missing: {}",
+            directory.display()
+        );
+        return Vec::new();
     };
-    tokio::select! {
-        _ = terminate.recv() => {}
-        _ = tokio::signal::ctrl_c() => {}
-    }
+    let mut font_paths: Vec<PathBuf> = entries
+        .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+        .filter(|path| {
+            path.extension()
+                .is_some_and(|extension| extension == "ttf" || extension == "otf")
+        })
+        .collect();
+    font_paths.sort();
+    font_paths
+        .iter()
+        .filter_map(|path| std::fs::read(path).ok())
+        .collect()
 }
 
 fn oracle_handler(services: &Arc<DesktopServices>) -> OracleHandler {

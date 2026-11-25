@@ -17,6 +17,7 @@ kanvibe-mobile.workspace = true
 kanvibe-pane-mirror.workspace = true
 kanvibe-remote-host.workspace = true
 kanvibe-runtime.workspace = true
+kanvibe-diagram.workspace = true
 rusqlite.workspace = true
 serde.workspace = true
 serde_json = { workspace = true, features = ["preserve_order"] }

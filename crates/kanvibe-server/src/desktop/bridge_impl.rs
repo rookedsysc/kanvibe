@@ -320,7 +320,7 @@ impl MobileBridge for DesktopServices {
     }
 
     fn render_mobile_diagram(&self, body: &Value) -> BridgeResult<Map<String, Value>> {
-        self.diagram.render(body)
+        crate::diagram::render_mobile_diagram(self.runtime.diagram_renderer().as_ref(), body)
     }
 
     fn get_mobile_running_agent_panes(&self) -> BridgeResult<Value> {

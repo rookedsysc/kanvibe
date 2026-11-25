@@ -9,6 +9,8 @@ mod board;
 mod clock;
 mod config;
 mod desktop;
+pub mod development_database;
+pub mod diagnostics;
 mod diagram;
 mod foundation;
 mod hooks;
@@ -23,7 +25,10 @@ pub use clock::AppClock;
 pub use config::{NoRemoteHookRouting, NoRemoteHostConnections, RemoteHookRouting, RuntimeConfig};
 pub use diagram::{DiagramFontFiles, SharedDiagramRenderer};
 pub use hooks::{DesktopHookClientRuntime, HookServerAddress, TaskCliTokens};
-pub use notifications::SilentNotificationPresenter;
+pub use notifications::{
+    DEFAULT_NOTIFICATION_LOCALE, NotificationLocaleSource, SilentNotificationPresenter,
+    system_notification_locale,
+};
 pub use pane_chat::NoRemotePaneGrants;
 pub use qa_network::{
     NetworkResponse, NetworkResponseTable, NetworkTableLoadError, TableHttpTransport,

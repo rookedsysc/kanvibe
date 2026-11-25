@@ -7,6 +7,7 @@
 use std::collections::VecDeque;
 use std::io::Write;
 use std::sync::{Arc, Condvar, Mutex};
+use std::time::Duration;
 
 use crate::protocol::{HOST_BUFFER_BYTES, HostRecord, HostWireError, encode_host_record};
 
@@ -30,6 +31,9 @@ pub type OutboxClosed = Box<dyn FnOnce() + Send>;
 struct OutboxState {
     queue: VecDeque<Vec<u8>>,
     queued_bytes: usize,
+    /// 지금까지 큐에 넣은 레코드 수와 그중 쓰기를 마친 수. [`RecordOutbox::wait_until_written`]이 비교한다
+    enqueued_count: u64,
+    written_count: u64,
     is_closing: bool,
     is_closed: bool,
 }
@@ -68,6 +72,7 @@ impl RecordOutbox {
             return Err(OutboxError::Backpressure);
         }
         state.queued_bytes += bytes.len();
+        state.enqueued_count += 1;
         state.queue.push_back(bytes);
         self.changed.notify_all();
         Ok(())
@@ -89,6 +94,22 @@ impl RecordOutbox {
             .changed
             .wait_while(state, |state| {
                 state.queued_bytes >= limit && !state.is_closed && !state.is_closing
+            })
+            .unwrap();
+    }
+
+    /// 이 호출 전에 넣은 레코드를 쓰기 스레드가 다 쓸 때까지 기다린다. 닫히거나 `timeout`이 지나면 그대로 돌아간다.
+    ///
+    /// TS `socket.write`는 커널 버퍼에 바로 쓰므로, 쓴 직후 `destroy()`해도 그 레코드는 상대에게 간다.
+    /// 이 큐는 쓰기 스레드가 따로 쓰므로, 곧바로 [`RecordOutbox::abort`]할 쪽은 먼저 이 함수로 기다려야 같은 보장이 생긴다.
+    /// 그 뒤로 계속 들어오는 레코드는 기다리지 않는다.
+    pub fn wait_until_written(&self, timeout: Duration) {
+        let state = self.state.lock().unwrap();
+        let target = state.enqueued_count;
+        let _state = self
+            .changed
+            .wait_timeout_while(state, timeout, |state| {
+                state.written_count < target && !state.is_closed
             })
             .unwrap();
     }
@@ -117,6 +138,7 @@ impl RecordOutbox {
                 .is_ok();
             let mut state = self.state.lock().unwrap();
             state.queued_bytes = state.queued_bytes.saturating_sub(bytes.len());
+            state.written_count += 1;
             self.changed.notify_all();
             if !is_written {
                 state.is_closed = true;
@@ -146,5 +168,80 @@ impl RecordOutbox {
         }
         // 큐에서 꺼낸 바이트도 쓰기가 끝날 때까지 queued_bytes에 남겨 상한 계산에 넣는다
         state.queue.pop_front()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::Write;
+    use std::sync::mpsc::{Receiver, channel};
+    use std::sync::{Arc, Mutex};
+    use std::time::{Duration, Instant};
+
+    use super::RecordOutbox;
+
+    /// 쓸 때마다 잠깐 멈추는 상대(부하가 걸린 머신에서 늦게 도는 쓰기 스레드)
+    struct SlowWriter {
+        written: Arc<Mutex<Vec<u8>>>,
+    }
+
+    impl Write for SlowWriter {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            std::thread::sleep(Duration::from_millis(100));
+            self.written.lock().unwrap().extend_from_slice(bytes);
+            Ok(bytes.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    /// 읽지 않는 상대. 신호를 받을 때까지 쓰기를 막는다
+    struct BlockedWriter {
+        release: Receiver<()>,
+    }
+
+    impl Write for BlockedWriter {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            let _ = self.release.recv();
+            Ok(bytes.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn records_sent_before_waiting_survive_an_immediate_abort() {
+        let written = Arc::new(Mutex::new(Vec::new()));
+        let writer = SlowWriter {
+            written: Arc::clone(&written),
+        };
+        let outbox = RecordOutbox::start(Box::new(writer), Box::new(|| {}));
+        outbox.send_bytes(b"pty.data|".to_vec()).unwrap();
+        outbox.send_bytes(b"stopped".to_vec()).unwrap();
+
+        outbox.wait_until_written(Duration::from_secs(5));
+        outbox.abort();
+
+        assert_eq!(written.lock().unwrap().as_slice(), b"pty.data|stopped");
+    }
+
+    #[test]
+    fn waiting_gives_up_when_the_peer_stops_reading() {
+        let (release, blocked) = channel();
+        let writer = BlockedWriter { release: blocked };
+        let outbox = RecordOutbox::start(Box::new(writer), Box::new(|| {}));
+        outbox.send_bytes(b"stopped".to_vec()).unwrap();
+        let started = Instant::now();
+
+        outbox.wait_until_written(Duration::from_millis(200));
+
+        assert!(started.elapsed() >= Duration::from_millis(200));
+        assert!(started.elapsed() < Duration::from_secs(5));
+        outbox.abort();
+        let _ = release.send(());
     }
 }

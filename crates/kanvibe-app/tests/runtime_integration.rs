@@ -122,3 +122,43 @@ fn service_errors_keep_the_ts_ipc_prefix() {
         "Error invoking remote method 'kanvibe:invoke': Error: database is locked"
     );
 }
+
+/// 상태 변경 알림이 런타임 저장소에 남긴 본문
+fn stored_status_bodies(cx: &mut TestAppContext) -> Vec<String> {
+    cx.update(|cx| {
+        let runtime = cx.global::<AppServices>().runtime().unwrap().clone();
+        runtime
+            .notification_store()
+            .list_notifications()
+            .unwrap()
+            .into_iter()
+            .map(|notification| notification.body)
+            .collect()
+    })
+}
+
+#[gpui::test]
+fn notification_text_follows_the_locale_of_the_first_window(cx: &mut TestAppContext) {
+    let data_dir = tempfile::tempdir().unwrap();
+    init_app(cx, data_dir.path().to_path_buf());
+    cx.update(|cx| {
+        let runtime = cx.global::<AppServices>().runtime().unwrap().clone();
+        runtime.start();
+    });
+    let _window = cx.add_window(|window, cx| AppWindow::new("/en", window, cx));
+    cx.run_until_parked();
+
+    emit_board_event(
+        cx,
+        BoardEvent::TaskStatusChanged(kanvibe_services::board_notifier::TaskStatusChangedPayload {
+            project_name: "sample-app".into(),
+            branch_name: "feat/notify".into(),
+            task_title: "Locale".into(),
+            description: None,
+            new_status: "review".into(),
+            task_id: "task-1".into(),
+        }),
+    );
+
+    assert_eq!(stored_status_bodies(cx), ["Locale: changed to review"]);
+}

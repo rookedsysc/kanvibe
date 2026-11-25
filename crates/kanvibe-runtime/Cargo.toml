@@ -18,6 +18,9 @@ kanvibe-diagram.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+# 개발 실행이 설치된 앱 DB를 온라인 백업으로 복사한다(TS better-sqlite3 `backup`)
+rusqlite = { workspace = true, features = ["backup"] }
+uuid.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
