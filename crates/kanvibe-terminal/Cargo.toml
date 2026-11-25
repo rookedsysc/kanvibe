@@ -1,0 +1,31 @@
+[package]
+name = "kanvibe-terminal"
+description = "PTY 레지스트리, VT 화면 스냅샷, tmux·zellij·herdr 연동, 터미널 탭·pane 레이아웃, pane chat 서비스"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+kanvibe-domain.workspace = true
+kanvibe-db.workspace = true
+rusqlite.workspace = true
+# 루트 workspace.dependencies에 아직 항목이 없어 경로로 받는다. 루트에 추가되면 `workspace = true`로 바꾼다
+kanvibe-process = { path = "../kanvibe-process" }
+kanvibe-ai = { path = "../kanvibe-ai" }
+serde.workspace = true
+# JS 객체처럼 키를 넣은 순서대로 다시 직렬화해야 JSON.stringify 결과와 같아진다
+serde_json = { workspace = true, features = ["preserve_order"] }
+thiserror.workspace = true
+uuid.workspace = true
+alacritty_terminal = { version = "0.26", default-features = false }
+portable-pty = "0.9"
+base64 = "0.22"
+hex = "0.4"
+libc = "0.2"
+regex = "1"
+sha2 = "0.10"
+notify = "8"
+
+[dev-dependencies]
+tempfile.workspace = true

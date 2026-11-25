@@ -7,3 +7,15 @@
   reason: "소켓이 node-pty 비동기 초기화 도중 닫히면 spawn하지 않는지 검증한다. Rust 모바일 로그인 브리지는 소켓 상태 확인과 spawn을 같은 잠금 안에서 동기로 처리해 그 초기화 틈이 없다."
 - id: TS-main-kanbanService-1b5bd6
   reason: "installTaskHooksImmediately에는 호출하는 곳이 없다(kanbanService 안팎, mobile·taskCli·projectService 모두 grep으로 확인했고 렌더러 IPC 목록에도 없다). Rust KanbanService에는 옮기지 않아 이 테스트가 검증하던 검증 포함 즉시 설치 경로가 없다."
+- id: TS-main-clipboardImageReadBridge-4bc53c
+  reason: "Electron main 소스 문자열에서 동기 IPC 채널이 clipboard.readImage()와 event.returnValue를 쓰는지 정규식으로 검사한다. AD-8에 따라 GPUI 뷰가 같은 프로세스에서 클립보드를 직접 읽어 IPC 채널 자체가 없다."
+- id: TS-main-clipboardImageReadBridge-fb9685
+  reason: "preload desktop bridge에 readClipboardImage가 노출됐는지 소스 문자열로 검사한다. AD-8로 preload·IPC 브리지가 사라져 노출할 대상이 없다."
+- id: TS-main-terminalClipboardBridge-1c51eb
+  reason: "Electron main IPC 핸들러가 clipboard.writeText를 부르는지 소스 문자열로 검사한다. AD-8로 터미널 뷰가 OSC 52 전달기(kanvibe-terminal osc52_clipboard)의 SystemClipboardWriter를 같은 프로세스에서 직접 부른다."
+- id: TS-main-terminalClipboardBridge-589aa2
+  reason: "preload desktop bridge에 클립보드 쓰기 채널이 노출됐는지 소스 문자열로 검사한다. AD-8로 preload·IPC 브리지가 없다."
+- id: TS-main-terminalPasteImageBridge-867b97
+  reason: "paste-image IPC 채널이 terminalBridge의 pasteImageToRemoteTerminal로 이어지는지 Electron main 소스 문자열로 검사한다. AD-8로 GPUI 뷰가 kanvibe-terminal terminal_bridge의 원격 이미지 붙여넣기를 직접 부른다."
+- id: TS-main-terminalPasteImageBridge-65a86b
+  reason: "preload desktop bridge에 pasteImageToRemoteTerminal이 노출됐는지 소스 문자열로 검사한다. AD-8로 preload·IPC 브리지가 없다."
