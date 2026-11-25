@@ -628,9 +628,17 @@ impl EditorHarness {
         &self,
         cx: &'a mut TestAppContext,
     ) -> (Entity<DiffFileEditor>, &'a mut VisualTestContext) {
+        self.open_with(cx, "original")
+    }
+
+    fn open_with<'a>(
+        &self,
+        cx: &'a mut TestAppContext,
+        content: &'static str,
+    ) -> (Entity<DiffFileEditor>, &'a mut VisualTestContext) {
         let handler = self.handler();
         cx.add_window_view(move |_, cx| {
-            DiffFileEditor::new("original", "src/a.ts", Locale::Ko, handler, cx)
+            DiffFileEditor::new(content, "src/a.ts", Locale::Ko, handler, cx)
         })
     }
 }
@@ -885,4 +893,230 @@ fn undo_shortcut_reverts_typing_in_the_editor(cx: &mut TestAppContext) {
 
     assert!(is_shown(cx, "original"));
     assert!(!is_shown(cx, "edited original"));
+}
+
+/// 편집기 줄을 눌러 그 줄에 커서를 둔다
+fn click_code_line(cx: &mut VisualTestContext, text: &str, click_count: usize) {
+    let bounds = find(cx, TargetQuery::ExactText(text.into()))
+        .unwrap_or_else(|| panic!("{text} must be on screen"));
+    for count in 1..=click_count {
+        cx.simulate_event(gpui_kit::MouseDownEvent {
+            position: bounds.center(),
+            modifiers: Modifiers::none(),
+            button: gpui_kit::MouseButton::Left,
+            click_count: count,
+            first_mouse: false,
+        });
+        cx.simulate_event(gpui_kit::MouseUpEvent {
+            position: bounds.center(),
+            modifiers: Modifiers::none(),
+            button: gpui_kit::MouseButton::Left,
+            click_count: count,
+        });
+    }
+    cx.run_until_parked();
+}
+
+fn find_status(cx: &mut VisualTestContext) -> Option<String> {
+    let query = serde_json::from_value(serde_json::json!({ "role": "status" })).unwrap();
+    find(cx, query)?;
+    let mut labels = vec!["No results".to_string()];
+    for total in 1..=5 {
+        labels.extend((1..=total).map(|current| format!("{current} of {total}")));
+    }
+    labels.into_iter().find(|label| is_shown(cx, label))
+}
+
+const FIND_SAMPLE: &str = "card one\ncards two\nCARD three";
+
+#[gpui::test]
+fn find_counts_matches_moves_with_enter_and_closes_with_escape(cx: &mut TestAppContext) {
+    init(cx);
+    let harness = EditorHarness::new();
+    let (_, cx) = harness.open_with(cx, FIND_SAMPLE);
+    click_code_line(cx, "card one", 1);
+
+    cx.simulate_keystrokes("ctrl-home ctrl-f");
+    cx.simulate_input("card");
+    assert_eq!(find_status(cx).as_deref(), Some("1 of 3"));
+    cx.simulate_keystrokes("enter");
+    assert_eq!(find_status(cx).as_deref(), Some("2 of 3"));
+    cx.simulate_keystrokes("shift-enter shift-f3");
+    assert_eq!(find_status(cx).as_deref(), Some("3 of 3"));
+
+    cx.simulate_keystrokes("escape");
+    assert!(find_status(cx).is_none());
+    cx.simulate_input("X");
+    assert!(
+        is_shown_containing(cx, "X"),
+        "focus returns to the editor after Escape"
+    );
+}
+
+#[gpui::test]
+fn find_toggles_match_case_whole_word_and_regex(cx: &mut TestAppContext) {
+    init(cx);
+    let harness = EditorHarness::new();
+    let (_, cx) = harness.open_with(cx, FIND_SAMPLE);
+    click_code_line(cx, "card one", 1);
+    cx.simulate_keystrokes("ctrl-home ctrl-f");
+    cx.simulate_input("card");
+
+    assert_eq!(find_status(cx).as_deref(), Some("1 of 3"));
+    cx.simulate_keystrokes("alt-c");
+    assert_eq!(find_status(cx).as_deref(), Some("1 of 2"));
+    cx.simulate_keystrokes("alt-w");
+    assert_eq!(find_status(cx).as_deref(), Some("1 of 1"));
+    cx.simulate_keystrokes("alt-w alt-r");
+    cx.simulate_keystrokes("ctrl-a");
+    cx.simulate_input("c[a-z]+s");
+    assert_eq!(find_status(cx).as_deref(), Some("1 of 1"));
+    cx.simulate_input("(");
+    assert_eq!(find_status(cx).as_deref(), Some("No results"));
+}
+
+#[gpui::test]
+fn replace_all_rewrites_every_match_in_one_undo_step(cx: &mut TestAppContext) {
+    init(cx);
+    let harness = EditorHarness::new();
+    let (_, cx) = harness.open_with(cx, "a = card;\nb = card;");
+    click_code_line(cx, "a = card;", 1);
+
+    cx.simulate_keystrokes("ctrl-home ctrl-h");
+    cx.simulate_keystrokes("tab");
+    cx.simulate_input("card");
+    cx.simulate_keystrokes("tab");
+    cx.simulate_input("deck");
+    cx.simulate_keystrokes("ctrl-alt-enter");
+    assert!(is_shown(cx, "a = deck;") && is_shown(cx, "b = deck;"));
+
+    cx.simulate_keystrokes("escape ctrl-z");
+    assert!(is_shown(cx, "a = card;") && is_shown(cx, "b = card;"));
+}
+
+#[gpui::test]
+fn the_diff_viewer_finds_in_the_clicked_side_without_replace(cx: &mut TestAppContext) {
+    init(cx);
+    let source = FakeDiffSource::new(|call| match call {
+        Call::Original(..) => Some(Ok("old line".into())),
+        _ => Some(Ok("new line\nnew tail".into())),
+    });
+    let (_, cx) = open_page(cx, "task", files_ab(), source);
+    click_code_line(cx, "new line", 1);
+
+    cx.simulate_keystrokes("ctrl-f");
+    cx.simulate_input("new");
+
+    assert_eq!(find_status(cx).as_deref(), Some("1 of 2"));
+    assert!(
+        find(
+            cx,
+            serde_json::from_value(serde_json::json!({ "role": "textbox", "name": "Replace" }))
+                .unwrap()
+        )
+        .is_none()
+    );
+}
+
+const FOLD_SAMPLE: &str = "function a() {\n  first();\n  second();\n}\nend";
+
+#[gpui::test]
+fn folding_shortcuts_hide_and_show_a_block(cx: &mut TestAppContext) {
+    init(cx);
+    let harness = EditorHarness::new();
+    let (_, cx) = harness.open_with(cx, FOLD_SAMPLE);
+    click_code_line(cx, "  first();", 1);
+
+    cx.simulate_keystrokes("ctrl-shift-[");
+    assert!(!is_shown(cx, "  first();") && is_shown(cx, "}"));
+    cx.simulate_keystrokes("ctrl-shift-]");
+    assert!(is_shown(cx, "  first();") && is_shown(cx, "  second();"));
+}
+
+#[gpui::test]
+fn the_folding_control_next_to_the_line_number_toggles_the_block(cx: &mut TestAppContext) {
+    init(cx);
+    let harness = EditorHarness::new();
+    let (_, cx) = harness.open_with(cx, FOLD_SAMPLE);
+    let header = find(cx, TargetQuery::ExactText("function a() {".into())).expect("header line");
+    let control = gpui_kit::point(header.origin.x - gpui_kit::px(8.0), header.center().y);
+
+    cx.simulate_click(control, Modifiers::none());
+    assert!(!is_shown(cx, "  second();"));
+    cx.simulate_click(control, Modifiers::none());
+    assert!(is_shown(cx, "  second();"));
+}
+
+#[gpui::test]
+fn brackets_auto_close_type_over_and_delete_as_a_pair(cx: &mut TestAppContext) {
+    init(cx);
+    let harness = EditorHarness::new();
+    let (_, cx) = harness.open_with(cx, "");
+    click_code_line(cx, "", 1);
+
+    cx.simulate_input("f(");
+    assert!(is_shown(cx, "f()"));
+    cx.simulate_input("x)");
+    assert!(is_shown(cx, "f(x)"));
+    cx.simulate_input(" [");
+    cx.simulate_keystrokes("backspace");
+    assert!(is_shown(cx, "f(x) "));
+}
+
+#[gpui::test]
+fn typing_a_bracket_over_a_selection_surrounds_it(cx: &mut TestAppContext) {
+    init(cx);
+    let harness = EditorHarness::new();
+    let (_, cx) = harness.open_with(cx, "value");
+    click_code_line(cx, "value", 2);
+
+    cx.simulate_input("\"");
+
+    assert!(is_shown(cx, "\"value\""));
+}
+
+#[gpui::test]
+fn word_shortcuts_move_select_and_delete_by_word(cx: &mut TestAppContext) {
+    init(cx);
+    let harness = EditorHarness::new();
+    let (_, cx) = harness.open_with(cx, "return cards.length;");
+    click_code_line(cx, "return cards.length;", 1);
+
+    cx.simulate_keystrokes("end ctrl-left ctrl-left ctrl-backspace");
+    assert!(is_shown(cx, "return cardslength;"));
+    cx.simulate_keystrokes("ctrl-shift-right");
+    cx.simulate_input("size");
+    assert!(is_shown(cx, "return cardssize;"));
+    cx.simulate_keystrokes("ctrl-delete");
+    assert!(is_shown(cx, "return cardssize"));
+}
+
+#[gpui::test]
+fn double_click_selects_a_word_and_triple_click_a_line(cx: &mut TestAppContext) {
+    init(cx);
+    let harness = EditorHarness::new();
+    let (_, cx) = harness.open_with(cx, "alpha beta\nsecond");
+    let first = find(cx, TargetQuery::ExactText("alpha beta".into())).expect("first line");
+    let on_alpha = gpui_kit::point(first.origin.x + gpui_kit::px(10.0), first.center().y);
+    cx.simulate_event(gpui_kit::MouseDownEvent {
+        position: on_alpha,
+        modifiers: Modifiers::none(),
+        button: gpui_kit::MouseButton::Left,
+        click_count: 2,
+        first_mouse: false,
+    });
+    cx.simulate_event(gpui_kit::MouseUpEvent {
+        position: on_alpha,
+        modifiers: Modifiers::none(),
+        button: gpui_kit::MouseButton::Left,
+        click_count: 2,
+    });
+
+    cx.simulate_input("A");
+    assert!(is_shown(cx, "A beta"));
+
+    click_code_line(cx, "second", 3);
+    cx.simulate_input("Z");
+    assert!(is_shown(cx, "Z"));
+    assert!(!is_shown(cx, "second"));
 }

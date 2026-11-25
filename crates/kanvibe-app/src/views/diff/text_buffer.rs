@@ -3,7 +3,9 @@
 
 use std::ops::Range;
 
+use super::auto_closing::bracket_around;
 use super::line_diff::TextPoint;
+use super::word_boundary::{next_word_end, previous_word_start, word_range_at};
 
 const DEFAULT_INDENT_WIDTH: usize = 4;
 
@@ -119,14 +121,20 @@ impl TextBuffer {
             EditKind::Other
         };
         self.record_undo(kind);
-        let start = self.delete_selection();
-        let inserted: Vec<&str> = text.split('\n').collect();
+        self.delete_selection();
+        self.insert_raw(text);
+        self.finish_edit();
+    }
+
+    /// 커서 자리에 글자를 넣고 커서를 그 뒤로 옮긴다. 실행 취소 기록은 부르는 쪽이 맡는다
+    fn insert_raw(&mut self, text: &str) {
+        let start = self.cursor;
         let line = &self.lines[start.line];
         let (head, tail) = (
             line[..start.column].to_string(),
             line[start.column..].to_string(),
         );
-        let mut new_lines: Vec<String> = inserted.iter().map(|part| part.to_string()).collect();
+        let mut new_lines: Vec<String> = text.split('\n').map(str::to_string).collect();
         new_lines[0] = head + &new_lines[0];
         let last_index = new_lines.len() - 1;
         let cursor_column = new_lines[last_index].len();
@@ -136,17 +144,176 @@ impl TextBuffer {
             line: start.line + last_index,
             column: cursor_column,
         };
-        self.finish_edit();
     }
 
-    /// Enter. 지금 줄의 들여쓰기를 이어 간다(Monaco `autoIndent`의 기본 동작)
+    /// Enter. 지금 줄의 들여쓰기를 이어 가고, 여는 괄호 뒤면 한 단계 더 들인다. `{|}` 사이면 닫는 괄호를 다음 줄로 내린다
+    /// (Monaco `autoIndent: full`과 괄호 `onEnterRules`)
     pub fn insert_newline(&mut self) {
         let line = &self.lines[self.cursor.line];
         let indentation: String = line
             .chars()
             .take_while(|c| *c == ' ' || *c == '\t')
             .collect();
-        self.insert_text(&format!("\n{indentation}"));
+        let (is_after_open, is_before_close) = bracket_around(line, self.cursor.column);
+        if !is_after_open || self.selection().is_some() {
+            self.insert_text(&format!("\n{indentation}"));
+            return;
+        }
+        let inner = format!("{indentation}{}", self.indent_unit);
+        if !is_before_close {
+            self.insert_text(&format!("\n{inner}"));
+            return;
+        }
+        self.insert_text(&format!("\n{inner}\n{indentation}"));
+        self.cursor = TextPoint {
+            line: self.cursor.line - 1,
+            column: inner.len(),
+        };
+        self.anchor = self.cursor;
+    }
+
+    /// 자동 닫기: 여는 글자와 닫는 글자를 넣고 커서를 사이에 둔다
+    pub fn insert_pair(&mut self, open: char, close: char) {
+        self.insert_text(&format!("{open}{close}"));
+        self.cursor.column -= close.len_utf8();
+        self.anchor = self.cursor;
+    }
+
+    /// 자동 감싸기: 선택을 여는·닫는 글자로 감싸고 안쪽 글자를 다시 고른다
+    pub fn surround_selection(&mut self, open: char, close: char) {
+        let Some((start, end)) = self.selection() else {
+            return;
+        };
+        let selected = self.selected_text().unwrap_or_default();
+        self.insert_text(&format!("{open}{selected}{close}"));
+        let inner_start = TextPoint {
+            line: start.line,
+            column: start.column + open.len_utf8(),
+        };
+        let inner_end = if start.line == end.line {
+            TextPoint {
+                line: end.line,
+                column: end.column + open.len_utf8(),
+            }
+        } else {
+            end
+        };
+        self.anchor = inner_start;
+        self.cursor = inner_end;
+    }
+
+    /// 커서 앞뒤 글자를 한 번에 지운다(자동으로 넣은 빈 쌍 지우기)
+    pub fn delete_surrounding_pair(&mut self) {
+        let start = self.step_left(self.cursor);
+        let end = self.step_right(self.cursor);
+        self.record_undo(EditKind::Other);
+        self.anchor = start;
+        self.cursor = end;
+        self.delete_selection();
+        self.finish_edit();
+    }
+
+    /// 단어 단위 이동. 줄 처음·끝에서는 이웃 줄로 넘어간다
+    pub fn move_word(&mut self, is_forward: bool, is_extending: bool) {
+        let target = self.word_target(is_forward);
+        self.set_cursor(target, is_extending);
+    }
+
+    /// Ctrl+Backspace·Ctrl+Delete(macOS Alt). 선택이 있으면 선택을 지운다
+    pub fn delete_word(&mut self, is_forward: bool) {
+        if self.selection().is_none() {
+            let target = self.word_target(is_forward);
+            if target == self.cursor {
+                return;
+            }
+            self.anchor = target;
+        }
+        self.record_undo(EditKind::Other);
+        self.delete_selection();
+        self.finish_edit();
+    }
+
+    fn word_target(&self, is_forward: bool) -> TextPoint {
+        let line = &self.lines[self.cursor.line];
+        let column = self.cursor.column;
+        let is_at_edge = if is_forward {
+            line[column..].trim().is_empty() && column == line.len()
+        } else {
+            column == 0
+        };
+        if is_at_edge {
+            return if is_forward {
+                self.step_right(self.cursor)
+            } else {
+                self.step_left(self.cursor)
+            };
+        }
+        let column = if is_forward {
+            next_word_end(line, column)
+        } else {
+            previous_word_start(line, column)
+        };
+        TextPoint {
+            line: self.cursor.line,
+            column,
+        }
+    }
+
+    /// 두 번 누르기: 누른 자리의 단어를 고른다
+    pub fn select_word_at(&mut self, point: TextPoint) {
+        let point = self.clamp(point);
+        let range = word_range_at(&self.lines[point.line], point.column);
+        self.anchor = TextPoint {
+            line: point.line,
+            column: range.start,
+        };
+        self.cursor = TextPoint {
+            line: point.line,
+            column: range.end,
+        };
+        self.preferred_column = None;
+    }
+
+    /// 세 번 누르기: 줄 전체를 줄바꿈까지 고른다
+    pub fn select_line(&mut self, line: usize) {
+        let line = line.min(self.lines.len() - 1);
+        self.anchor = TextPoint { line, column: 0 };
+        self.cursor = if line + 1 < self.lines.len() {
+            TextPoint {
+                line: line + 1,
+                column: 0,
+            }
+        } else {
+            TextPoint {
+                line,
+                column: self.lines[line].len(),
+            }
+        };
+        self.preferred_column = None;
+    }
+
+    /// 선택을 문서 위치 둘로 바꾼다(찾기 결과 고르기)
+    pub fn select_range(&mut self, start: TextPoint, end: TextPoint) {
+        self.anchor = self.clamp(start);
+        self.cursor = self.clamp(end);
+        self.preferred_column = None;
+    }
+
+    /// 찾아 바꾸기. 여러 곳을 한 번의 실행 취소로 되돌린다. 범위는 뒤에서부터 바꿔 앞 범위의 위치가 흔들리지 않게 한다
+    pub fn replace_ranges(&mut self, ranges: &[(TextPoint, TextPoint)], replacement: &str) {
+        if ranges.is_empty() {
+            return;
+        }
+        self.record_undo(EditKind::Other);
+        let mut sorted = ranges.to_vec();
+        sorted.sort();
+        for (start, end) in sorted.into_iter().rev() {
+            self.anchor = start;
+            self.cursor = end;
+            self.delete_selection();
+            self.insert_raw(replacement);
+        }
+        self.finish_edit();
     }
 
     pub fn insert_indent(&mut self) {
@@ -195,14 +362,14 @@ impl TextBuffer {
         self.set_cursor(target, is_extending);
     }
 
-    pub fn move_vertically(&mut self, line_delta: isize, is_extending: bool) {
+    /// 위아래 이동의 목표 줄로 간다. 줄 안 글자 수는 처음 움직이기 시작한 자리를 지킨다(접힌 줄을 건너뛸 때도 쓴다)
+    pub fn move_to_line(&mut self, target_line: usize, is_extending: bool) {
         let column_chars = self.preferred_column.unwrap_or_else(|| {
             self.lines[self.cursor.line][..self.cursor.column]
                 .chars()
                 .count()
         });
-        let last_line = self.lines.len() as isize - 1;
-        let target_line = (self.cursor.line as isize + line_delta).clamp(0, last_line) as usize;
+        let target_line = target_line.min(self.lines.len() - 1);
         let target_column = byte_index_for_char(&self.lines[target_line], column_chars);
         self.set_cursor(
             TextPoint {
@@ -493,6 +660,58 @@ mod tests {
         buffer.insert_indent();
 
         assert_eq!(buffer.lines()[2], "    ");
+    }
+
+    #[test]
+    fn enter_between_braces_opens_an_indented_line() {
+        let mut buffer = TextBuffer::new("  f() {}\n");
+        buffer.set_cursor(point(0, 7), false);
+
+        buffer.insert_newline();
+
+        assert_eq!(buffer.text(), "  f() {\n    \n  }\n");
+        assert_eq!(buffer.cursor(), point(1, 4));
+    }
+
+    #[test]
+    fn word_moves_and_deletes_cross_line_edges() {
+        let mut buffer = TextBuffer::new("let a = b;\nnext");
+        buffer.set_cursor(point(0, 10), false);
+
+        buffer.delete_word(false);
+        assert_eq!(buffer.lines()[0], "let a = b");
+        buffer.move_word(true, false);
+        assert_eq!(buffer.cursor(), point(1, 0));
+        buffer.move_word(false, true);
+        assert_eq!(buffer.selection(), Some((point(0, 9), point(1, 0))));
+    }
+
+    #[test]
+    fn pairs_surround_and_replacements_are_single_undo_steps() {
+        let mut buffer = TextBuffer::new("ab ab");
+        buffer.set_cursor(point(0, 0), false);
+        buffer.set_cursor(point(0, 2), true);
+        buffer.surround_selection('(', ')');
+        assert_eq!(buffer.text(), "(ab) ab");
+        assert_eq!(buffer.selected_text().as_deref(), Some("ab"));
+
+        buffer.replace_ranges(
+            &[(point(0, 1), point(0, 3)), (point(0, 5), point(0, 7))],
+            "xyz",
+        );
+        assert_eq!(buffer.text(), "(xyz) xyz");
+        buffer.undo();
+        assert_eq!(buffer.text(), "(ab) ab");
+    }
+
+    #[test]
+    fn multi_click_selects_a_word_or_a_whole_line() {
+        let mut buffer = TextBuffer::new("count(cards)\nnext");
+
+        buffer.select_word_at(point(0, 2));
+        assert_eq!(buffer.selected_text().as_deref(), Some("count"));
+        buffer.select_line(0);
+        assert_eq!(buffer.selected_text().as_deref(), Some("count(cards)\n"));
     }
 
     #[test]

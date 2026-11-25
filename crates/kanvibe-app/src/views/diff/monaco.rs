@@ -11,8 +11,9 @@ use gpui_kit::{
 };
 
 use super::line_diff::TextPoint;
+use super::search::FindMatch;
 use super::syntax::{Token, TokenKind, token_color};
-use crate::fonts::mono_font;
+use crate::fonts::{mono_font, sans_font};
 
 pub const LINE_HEIGHT: f32 = 18.0;
 pub const FONT_SIZE: f32 = 13.0;
@@ -23,6 +24,8 @@ pub const SCROLLBAR_WIDTH: f32 = 14.0;
 /// GPUI는 줄 높이 18 안의 13px 글자 기준선을 반 픽셀 아래(13.5 → 14)로 반올림하고 Chromium은 반 행간을 내림해 13에 둔다.
 /// 기준선이 정수 위치에 오도록 반 픽셀 올려 Chromium과 같은 행에 그린다
 const TEXT_BASELINE_SHIFT: f32 = -0.5;
+/// 줄 번호와 본문 사이 접기 단추 칸 폭
+pub const FOLDING_CONTROL_WIDTH: f32 = 16.0;
 /// Monaco `lineNumbersMinChars`
 const MIN_LINE_NUMBER_DIGITS: usize = 5;
 
@@ -69,6 +72,21 @@ pub mod palette {
     pub fn cursor() -> Rgba {
         rgb(0x000000)
     }
+    /// `editor.findMatchBackground`
+    pub fn find_match() -> Rgba {
+        rgb(0xA8AC94)
+    }
+    pub fn fold_placeholder() -> Rgba {
+        rgb(0x808080)
+    }
+    /// `editorGutter.foldingControlForeground`(icon.foreground)
+    pub fn fold_control() -> Rgba {
+        rgb(0x424242)
+    }
+    /// `editor.findMatchHighlightBackground`(#EA5C0055)
+    pub const FIND_MATCH_HIGHLIGHT: Rgba = rgba(234, 92, 0, 85.0 / 255.0);
+    /// `editor.foldBackground`(선택색 30%)
+    pub const FOLD_BACKGROUND: Rgba = rgba(173, 214, 255, 0.3);
     /// `diffEditor.insertedLineBackground`
     pub const INSERTED_LINE: Rgba = rgba(155, 185, 85, 0.2);
     /// `diffEditor.removedLineBackground`
@@ -295,6 +313,12 @@ pub struct MonacoPane {
     pub scroll_y: f32,
     /// 스크롤한 직후에만 막대를 보인다(Monaco 스크롤바는 움직임이 멈추면 사라진다)
     pub is_scrollbar_visible: bool,
+    /// 찾기 결과(`editor.findMatchHighlightBackground`)와 지금 결과(`editor.findMatchBackground`)
+    pub find_highlights: Rc<Vec<FindMatch>>,
+    pub current_find_match: Option<FindMatch>,
+    /// 접을 수 있는 줄과 접혔는지. 비교 모드 편집기는 비어 있다(diff 편집기는 접기를 끈다)
+    pub fold_markers: Rc<Vec<(usize, bool)>>,
+    pub are_fold_controls_visible: bool,
 }
 
 impl MonacoPane {
@@ -486,16 +510,118 @@ impl RowPainter<'_> {
             }
             self.paint_indent_guides(line, window);
             self.paint_decoration_backgrounds(decoration, &shaped, window);
+            if self.is_collapsed_fold(line) {
+                self.paint_rect(
+                    window,
+                    self.left() + self.pane.content_left(),
+                    self.top,
+                    self.right(),
+                    LINE_HEIGHT,
+                    palette::FOLD_BACKGROUND,
+                );
+            }
+            self.paint_find_highlights(line, &shaped, window);
             self.paint_selection(line, &shaped, window);
             self.paint_bracket_boxes(line, &shaped, window);
             let origin = point(px(self.text_origin_x()), px(self.top + TEXT_BASELINE_SHIFT));
             let _ = shaped.paint(origin, px(LINE_HEIGHT), TextAlign::Left, None, window, cx);
+            if self.is_collapsed_fold(line) {
+                self.paint_fold_placeholder(&shaped, window, cx);
+            }
             self.paint_caret(line, &shaped, window);
         });
         self.paint_line_number(line, window, cx);
+        self.paint_fold_control(line, window, cx);
         if let Some(marker) = decoration.marker {
             self.paint_gutter_marker(marker, window);
         }
+    }
+
+    fn is_collapsed_fold(&self, line: usize) -> bool {
+        self.pane.fold_markers.contains(&(line, true))
+    }
+
+    /// 다른 결과는 반투명 주황, 지금 결과는 회녹색으로 글자 뒤를 칠한다
+    fn paint_find_highlights(
+        &self,
+        line: usize,
+        shaped: &gpui_kit::ShapedLine,
+        window: &mut Window,
+    ) {
+        let current = self
+            .pane
+            .current_find_match
+            .as_ref()
+            .filter(|found| found.line == line);
+        for found in self
+            .pane
+            .find_highlights
+            .iter()
+            .filter(|found| found.line == line)
+        {
+            let color = if Some(found) == current {
+                palette::find_match()
+            } else {
+                palette::FIND_MATCH_HIGHLIGHT
+            };
+            let start =
+                (self.text_origin_x() + f32::from(shaped.x_for_index(found.range.start))).round();
+            let end =
+                (self.text_origin_x() + f32::from(shaped.x_for_index(found.range.end))).round();
+            self.paint_rect(window, start, self.top, end - start, LINE_HEIGHT, color);
+        }
+    }
+
+    /// 접힌 줄 끝의 `⋯`(`editor.foldPlaceholderForeground`, 앞 여백 0.2em)
+    fn paint_fold_placeholder(
+        &self,
+        shaped: &gpui_kit::ShapedLine,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        let x = self.text_origin_x() + f32::from(shaped.width) + FONT_SIZE * 0.2;
+        let label = paint_label(
+            "⋯",
+            mono_font(400),
+            FONT_SIZE,
+            palette::fold_placeholder(),
+            window,
+        );
+        let _ = label.paint(
+            point(px(x), px(self.top + TEXT_BASELINE_SHIFT)),
+            px(LINE_HEIGHT),
+            TextAlign::Left,
+            None,
+            window,
+            cx,
+        );
+    }
+
+    /// 접기 단추: 접힌 범위는 늘 `›`, 펼친 범위는 줄 번호 칸에 포인터가 있을 때만 `⌄`
+    fn paint_fold_control(&self, line: usize, window: &mut Window, cx: &mut App) {
+        let Some((_, is_collapsed)) = self
+            .pane
+            .fold_markers
+            .iter()
+            .find(|(start, _)| *start == line)
+        else {
+            return;
+        };
+        if !is_collapsed && !self.pane.are_fold_controls_visible {
+            return;
+        }
+        let glyph = if *is_collapsed { "›" } else { "⌄" };
+        let label = paint_label(glyph, sans_font(400), 14.0, palette::fold_control(), window);
+        let control_left = self.left() + self.pane.content_left() - FOLDING_CONTROL_WIDTH;
+        let x = control_left + (FOLDING_CONTROL_WIDTH - f32::from(label.width)) / 2.0;
+        let _ = label.paint(
+            point(px(x), px(self.top)),
+            px(LINE_HEIGHT),
+            TextAlign::Left,
+            None,
+            window,
+            cx,
+        );
     }
 
     /// 현재 줄 테두리(위·아래·왼쪽 2px). 오른쪽 변은 편집기 밖으로 밀려 보이지 않는다
@@ -769,6 +895,27 @@ fn current_row_index(pane: &MonacoPane, line: usize) -> Option<usize> {
     pane.rows
         .iter()
         .position(|row| matches!(row, PaneRow::Text { line: row_line, .. } if *row_line == line))
+}
+
+/// 한 색 한 글꼴 글자 한 줄
+fn paint_label(
+    text: &'static str,
+    font: gpui_kit::Font,
+    font_size: f32,
+    color: Rgba,
+    window: &mut Window,
+) -> gpui_kit::ShapedLine {
+    let run = TextRun {
+        len: text.len(),
+        font,
+        color: color.into(),
+        background_color: None,
+        underline: None,
+        strikethrough: None,
+    };
+    window
+        .text_system()
+        .shape_line(SharedString::from(text), px(font_size), &[run], None)
 }
 
 /// 클릭 위치를 문서 위치로 바꾼다. 빗금 칸이나 문서 밖은 가장 가까운 줄로 붙인다

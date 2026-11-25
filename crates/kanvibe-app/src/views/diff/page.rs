@@ -297,7 +297,7 @@ impl DiffPage {
             let file_path = self.content.file_path.clone()?;
             let model =
                 SideBySideModel::new(&self.content.original, &self.content.modified, &file_path);
-            self.viewer = Some(cx.new(|_| DiffViewer::new(model)));
+            self.viewer = Some(cx.new(|cx| DiffViewer::new(model, cx)));
         }
         self.viewer.clone()
     }

@@ -2,20 +2,26 @@
 //! `Mod+S`와 저장 버튼은 같은 저장 경로를 쓰고, 저장 중에는 어느 쪽으로도 다시 보내지 않는다.
 //! 저장 실패 사유는 다시 저장할 때까지 남긴다. 저장 중 더 편집했으면 저장이 끝나도 미저장 표시를 지우지 않는다.
 
+mod find;
+mod keyboard;
+mod mouse;
+
 use std::cell::Cell;
 use std::ops::Range;
 use std::rc::Rc;
 use std::time::Duration;
 
 use gpui_kit::{
-    App, Bounds, ClipboardItem, Context, ElementInputHandler, Entity, EntityInputHandler,
-    FocusHandle, InteractiveElement, IntoElement, KeyDownEvent, MouseButton, MouseDownEvent,
-    MouseMoveEvent, ParentElement, Pixels, Render, Rgba, ScrollEvent, StatefulInteractiveElement,
-    Styled, Task, UTF16Selection, Window, canvas, div, point, prelude::FluentBuilder, px, size,
+    App, Bounds, Context, ElementInputHandler, Entity, EntityInputHandler, FocusHandle,
+    InteractiveElement, IntoElement, MouseButton, ParentElement, Pixels, Render, Rgba, ScrollEvent,
+    StatefulInteractiveElement, Styled, Task, UTF16Selection, Window, canvas, div, point,
+    prelude::FluentBuilder, px, size,
 };
 use kanvibe_domain::i18n::{Locale, Translator};
-use kanvibe_domain::shortcuts::key_event::match_shortcut_event;
+use kanvibe_domain::platform::ShortcutPlatform;
 
+use super::find_session::FindSession;
+use super::folding::{FoldRange, FoldState, compute_fold_ranges, innermost_range_at};
 use super::line_diff::TextPoint;
 use super::monaco::{
     CHARACTER_WIDTH, GutterLayout, LINE_HEIGHT, MonacoPane, PaneDocument, PaneRow,
@@ -24,11 +30,9 @@ use super::monaco::{
 use super::syntax::{Language, detect_language, matching_bracket_pair, tokenize_document};
 use super::text_baseline::{TextFamily, aligned_text, chromium_text};
 use super::text_buffer::TextBuffer;
-use super::viewer::SCROLLBAR_FADE_AFTER;
 use crate::components::fade;
 use crate::qa::targets::{QaTargetDescription, qa_target_layer};
 use crate::services::AppServices;
-use crate::shortcuts::shortcut_event_from_keystroke;
 use crate::theme::{ThemeTokens, radius, spacing, text_scale};
 use crate::views::TailwindText;
 
@@ -76,6 +80,16 @@ pub struct DiffFileEditor {
     _caret_blink: Option<Task<()>>,
     is_scrollbar_visible: bool,
     _scrollbar_fade: Option<Task<()>>,
+    platform: ShortcutPlatform,
+    find: Option<FindSession>,
+    fold_ranges: Rc<Vec<FoldRange>>,
+    fold_state: FoldState,
+    /// 접힌 줄을 뺀, 화면에 그리는 줄 번호들
+    visible_lines: Rc<Vec<usize>>,
+    /// 줄 번호 칸 위에 포인터가 있으면 접기 단추를 보인다(Monaco `showFoldingControls: mouseover`)
+    is_gutter_hovered: bool,
+    /// 자동 닫기로 넣은 닫는 글자 자리. 그 글자 위를 칠 때 지나가고 빈 쌍은 Backspace로 함께 지운다
+    auto_closed: Vec<TextPoint>,
 }
 
 impl DiffFileEditor {
@@ -89,6 +103,9 @@ impl DiffFileEditor {
         let language = detect_language(file_path);
         let buffer = TextBuffer::new(content);
         let document = Rc::new(build_document(&buffer, language));
+        let fold_ranges = compute_fold_ranges(buffer.lines(), document.indent_size);
+        let visible_lines = (0..buffer.lines().len()).collect();
+        let platform = cx.global::<AppServices>().shortcut_platform;
         Self {
             file_path: file_path.to_string(),
             locale,
@@ -112,6 +129,13 @@ impl DiffFileEditor {
             _caret_blink: None,
             is_scrollbar_visible: false,
             _scrollbar_fade: None,
+            platform,
+            find: None,
+            fold_ranges: Rc::new(fold_ranges),
+            fold_state: FoldState::default(),
+            visible_lines: Rc::new(visible_lines),
+            is_gutter_hovered: false,
+            auto_closed: Vec::new(),
         }
     }
 
@@ -168,12 +192,86 @@ impl DiffFileEditor {
 
     fn after_cursor_move(&mut self, cx: &mut Context<Self>) {
         if self.document_revision != self.buffer.revision() {
-            self.document = Rc::new(build_document(&self.buffer, self.language));
-            self.document_revision = self.buffer.revision();
+            self.rebuild_document(cx);
         }
+        self.reveal_cursor_line();
         self.restart_caret_blink(cx);
         self.scroll_caret_into_view();
         cx.notify();
+    }
+
+    /// 내용이 바뀌었다: 강조·접기 범위·찾기 결과를 새 내용으로 다시 만든다
+    fn rebuild_document(&mut self, cx: &mut Context<Self>) {
+        self.document = Rc::new(build_document(&self.buffer, self.language));
+        self.document_revision = self.buffer.revision();
+        let ranges = compute_fold_ranges(self.buffer.lines(), self.document.indent_size);
+        self.fold_state.retain_valid(&ranges);
+        self.fold_ranges = Rc::new(ranges);
+        self.refresh_visible_lines();
+        self.recompute_find(cx);
+    }
+
+    fn refresh_visible_lines(&mut self) {
+        self.visible_lines = Rc::new(
+            self.fold_state
+                .visible_lines(&self.fold_ranges, self.buffer.lines().len()),
+        );
+    }
+
+    /// 커서가 접힌 범위 안으로 들어가면 그 범위를 편다(Monaco도 숨은 줄에 커서를 두지 않는다)
+    fn reveal_cursor_line(&mut self) {
+        let line = self.buffer.cursor().line;
+        let mut has_changed = false;
+        while let Some(range) = self.fold_state.hidden_by(&self.fold_ranges, line) {
+            self.fold_state.expand(range.start);
+            has_changed = true;
+        }
+        if has_changed {
+            self.refresh_visible_lines();
+        }
+    }
+
+    /// Ctrl+Shift+[ / ]: 커서 줄을 감싼 가장 안쪽 범위를 접거나 편다
+    fn fold_at_cursor(&mut self, should_fold: bool) {
+        let line = self.buffer.cursor().line;
+        let target = if should_fold {
+            innermost_range_at(&self.fold_ranges, line)
+                .filter(|range| !self.fold_state.is_collapsed(range.start))
+        } else {
+            self.fold_ranges
+                .iter()
+                .filter(|range| {
+                    range.start <= line
+                        && line <= range.end
+                        && self.fold_state.is_collapsed(range.start)
+                })
+                .max_by_key(|range| range.start)
+                .copied()
+        };
+        let Some(range) = target else {
+            return;
+        };
+        if should_fold {
+            self.fold_state.collapse(range.start);
+            self.buffer.set_cursor(
+                TextPoint {
+                    line: range.start,
+                    column: self.buffer.lines()[range.start].len(),
+                },
+                false,
+            );
+        } else {
+            self.fold_state.expand(range.start);
+        }
+        self.refresh_visible_lines();
+    }
+
+    fn cursor_row(&self) -> usize {
+        let line = self.buffer.cursor().line;
+        self.visible_lines
+            .iter()
+            .position(|visible| *visible == line)
+            .unwrap_or(0)
     }
 
     fn restart_caret_blink(&mut self, cx: &mut Context<Self>) {
@@ -197,7 +295,7 @@ impl DiffFileEditor {
             return;
         };
         let caret = self.buffer.cursor();
-        let caret_top = caret.line as f32 * LINE_HEIGHT;
+        let caret_top = self.cursor_row() as f32 * LINE_HEIGHT;
         let viewport_height = f32::from(bounds.size.height);
         if caret_top < self.scroll_y {
             self.scroll_y = caret_top;
@@ -222,30 +320,43 @@ impl DiffFileEditor {
         GutterLayout::EDITOR.content_left(self.document.lines.len())
     }
 
+    /// 커서를 둘러싼 괄호 쌍(Monaco `matchBrackets`)
+    fn bracket_boxes(&self, caret: TextPoint) -> Vec<TextPoint> {
+        let Some((open, close)) =
+            matching_bracket_pair(&self.document.tokens, (caret.line, caret.column))
+        else {
+            return Vec::new();
+        };
+        vec![
+            TextPoint {
+                line: open.0,
+                column: open.1,
+            },
+            TextPoint {
+                line: close.0,
+                column: close.1,
+            },
+        ]
+    }
+
+    fn fold_markers(&self) -> Vec<(usize, bool)> {
+        self.fold_ranges
+            .iter()
+            .map(|range| (range.start, self.fold_state.is_collapsed(range.start)))
+            .collect()
+    }
+
     fn pane(&self, window: &Window) -> MonacoPane {
         let caret = self.buffer.cursor();
         let is_focused = self.focus_handle.is_focused(window) && window.is_window_active();
-        let bracket_boxes =
-            matching_bracket_pair(&self.document.tokens, (caret.line, caret.column))
-                .map(|(open, close)| {
-                    vec![
-                        TextPoint {
-                            line: open.0,
-                            column: open.1,
-                        },
-                        TextPoint {
-                            line: close.0,
-                            column: close.1,
-                        },
-                    ]
-                })
-                .unwrap_or_default();
+        let bracket_boxes = self.bracket_boxes(caret);
         MonacoPane {
             document: Rc::clone(&self.document),
             rows: Rc::new(
-                (0..self.document.lines.len())
+                self.visible_lines
+                    .iter()
                     .map(|line| PaneRow::Text {
-                        line,
+                        line: *line,
                         decoration: Default::default(),
                     })
                     .collect(),
@@ -260,6 +371,19 @@ impl DiffFileEditor {
             scroll_x: self.scroll_x,
             scroll_y: self.scroll_y,
             is_scrollbar_visible: self.is_scrollbar_visible,
+            find_highlights: Rc::new(
+                self.find
+                    .as_ref()
+                    .map(|session| session.matches.clone())
+                    .unwrap_or_default(),
+            ),
+            current_find_match: self
+                .find
+                .as_ref()
+                .and_then(FindSession::current_match)
+                .cloned(),
+            fold_markers: Rc::new(self.fold_markers()),
+            are_fold_controls_visible: self.is_gutter_hovered,
         }
     }
 }
@@ -268,171 +392,6 @@ fn build_document(buffer: &TextBuffer, language: Language) -> PaneDocument {
     let lines = buffer.lines().to_vec();
     let tokens = tokenize_document(&lines, language);
     PaneDocument::new(lines, tokens)
-}
-
-/// 키보드 입력. 글자 입력은 입력기(`EntityInputHandler`)로 흘려보내고 편집·이동 키만 여기서 처리한다
-impl DiffFileEditor {
-    fn handle_key_down(
-        &mut self,
-        event: &KeyDownEvent,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        if self.handle_shortcut(event, window, cx) || self.handle_editing_key(event, cx) {
-            cx.stop_propagation();
-        }
-    }
-
-    fn handle_shortcut(
-        &mut self,
-        event: &KeyDownEvent,
-        _: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> bool {
-        let platform = cx.global::<AppServices>().shortcut_platform;
-        let shortcut = shortcut_event_from_keystroke(&event.keystroke);
-        let matches = |notation: &str| match_shortcut_event(&shortcut, notation, platform);
-        if matches("Mod+S") {
-            self.save(cx);
-        } else if matches("Mod+Z") {
-            self.apply_history(true, cx);
-        } else if matches("Mod+Shift+Z") || matches("Mod+Y") {
-            self.apply_history(false, cx);
-        } else if matches("Mod+A") {
-            self.buffer.select_all();
-            cx.notify();
-        } else if matches("Mod+C") || matches("Mod+X") {
-            self.copy_selection(matches("Mod+X"), cx);
-        } else if matches("Mod+V") {
-            if let Some(text) = cx.read_from_clipboard().and_then(|item| item.text()) {
-                self.buffer.insert_text(&text);
-                self.after_edit(cx);
-            }
-        } else {
-            return false;
-        }
-        true
-    }
-
-    fn apply_history(&mut self, is_undo: bool, cx: &mut Context<Self>) {
-        let has_changed = if is_undo {
-            self.buffer.undo()
-        } else {
-            self.buffer.redo()
-        };
-        if has_changed {
-            self.after_edit(cx);
-        }
-    }
-
-    fn copy_selection(&mut self, is_cut: bool, cx: &mut Context<Self>) {
-        let Some(text) = self.buffer.selected_text() else {
-            return;
-        };
-        cx.write_to_clipboard(ClipboardItem::new_string(text));
-        if is_cut {
-            self.buffer.delete_backward();
-            self.after_edit(cx);
-        }
-    }
-
-    fn handle_editing_key(&mut self, event: &KeyDownEvent, cx: &mut Context<Self>) -> bool {
-        let modifiers = event.keystroke.modifiers;
-        if modifiers.control || modifiers.platform || modifiers.alt {
-            return false;
-        }
-        let is_extending = modifiers.shift;
-        let page_lines = self
-            .surface_bounds
-            .get()
-            .map_or(20.0, |bounds| f32::from(bounds.size.height) / LINE_HEIGHT)
-            as isize;
-        match event.keystroke.key.as_str() {
-            "left" => self.buffer.move_horizontally(false, is_extending),
-            "right" => self.buffer.move_horizontally(true, is_extending),
-            "up" => self.buffer.move_vertically(-1, is_extending),
-            "down" => self.buffer.move_vertically(1, is_extending),
-            "pageup" => self.buffer.move_vertically(-page_lines, is_extending),
-            "pagedown" => self.buffer.move_vertically(page_lines, is_extending),
-            "home" => self.buffer.move_to_line_start(is_extending),
-            "end" => self.buffer.move_to_line_end(is_extending),
-            "backspace" | "delete" | "enter" | "tab" => {
-                return self.handle_edit_key(event.keystroke.key.as_str(), cx);
-            }
-            _ => return false,
-        }
-        self.after_cursor_move(cx);
-        true
-    }
-
-    fn handle_edit_key(&mut self, key: &str, cx: &mut Context<Self>) -> bool {
-        match key {
-            "backspace" => self.buffer.delete_backward(),
-            "delete" => self.buffer.delete_forward(),
-            "enter" => self.buffer.insert_newline(),
-            _ => self.buffer.insert_indent(),
-        }
-        self.after_edit(cx);
-        true
-    }
-}
-
-/// 마우스: 누르면 커서, 끌면 선택, 휠은 스크롤
-impl DiffFileEditor {
-    fn handle_mouse_down(
-        &mut self,
-        event: &MouseDownEvent,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        window.focus(&self.focus_handle, cx);
-        let Some(bounds) = self.surface_bounds.get() else {
-            return;
-        };
-        let pane = self.pane(window);
-        let target = hit_test(&pane, bounds, event.position, window);
-        self.buffer.set_cursor(target, event.modifiers.shift);
-        self.is_selecting = true;
-        self.after_cursor_move(cx);
-    }
-
-    fn handle_mouse_move(
-        &mut self,
-        event: &MouseMoveEvent,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        if !self.is_selecting || event.pressed_button != Some(MouseButton::Left) {
-            self.is_selecting = false;
-            return;
-        }
-        let Some(bounds) = self.surface_bounds.get() else {
-            return;
-        };
-        let pane = self.pane(window);
-        let target = hit_test(&pane, bounds, event.position, window);
-        self.buffer.set_cursor(target, true);
-        cx.notify();
-    }
-
-    fn handle_scroll(&mut self, event: &ScrollEvent, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(bounds) = self.surface_bounds.get() else {
-            return;
-        };
-        let delta = event.delta.pixel_delta(px(LINE_HEIGHT));
-        let (max_x, max_y) = self.pane(window).scroll_limits(bounds);
-        self.scroll_y = (self.scroll_y - f32::from(delta.y)).clamp(0.0, max_y);
-        self.scroll_x = (self.scroll_x - f32::from(delta.x)).clamp(0.0, max_x);
-        self.is_scrollbar_visible = true;
-        self._scrollbar_fade = Some(cx.spawn(async move |this, cx| {
-            cx.background_executor().timer(SCROLLBAR_FADE_AFTER).await;
-            let _ = this.update(cx, |this, cx| {
-                this.is_scrollbar_visible = false;
-                cx.notify();
-            });
-        }));
-        cx.notify();
-    }
 }
 
 impl EntityInputHandler for DiffFileEditor {
@@ -482,11 +441,18 @@ impl EntityInputHandler for DiffFileEditor {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let mut characters = text.chars();
+        let single_character = characters.next().filter(|_| characters.next().is_none());
+        if let (None, None, Some(typed)) = (&range, &self.marked_range, single_character) {
+            self.type_character(typed, cx);
+            return;
+        }
         if let Some(range) = range.or_else(|| self.marked_range.clone()) {
             self.buffer.select_utf16_range(range);
         }
         self.marked_range = None;
         self.buffer.insert_text(text);
+        self.auto_closed.clear();
         self.after_edit(cx);
     }
 
@@ -524,7 +490,8 @@ impl EntityInputHandler for DiffFileEditor {
             .count() as f32
             * CHARACTER_WIDTH;
         let x = element_bounds.origin.x + px(self.pane_gutter_width() + caret_x - self.scroll_x);
-        let y = element_bounds.origin.y + px(caret.line as f32 * LINE_HEIGHT - self.scroll_y);
+        let y =
+            element_bounds.origin.y + px(self.cursor_row() as f32 * LINE_HEIGHT - self.scroll_y);
         Some(Bounds::new(point(x, y), size(px(2.0), px(LINE_HEIGHT))))
     }
 
@@ -683,8 +650,10 @@ impl DiffFileEditor {
             .on_scroll(cx.listener(|this, event: &ScrollEvent, window, cx| {
                 this.handle_scroll(event, window, cx)
             }))
+            .relative()
             .child(surface)
             .child(self.render_line_targets())
+            .children(self.find.as_ref().map(|session| session.widget.clone()))
     }
 
     /// 재생 드라이버가 코드 줄을 글자로 찾아 누를 수 있게 보이는 줄의 위치를 남긴다
@@ -697,16 +666,16 @@ impl DiffFileEditor {
         let line_count = (viewport_height / LINE_HEIGHT).ceil() as usize + 1;
         let content_left = self.pane_gutter_width();
         let targets = self
-            .document
-            .lines
+            .visible_lines
             .iter()
             .enumerate()
             .skip(first_line)
             .take(line_count)
-            .map(|(line, text)| {
+            .map(|(row, line)| {
+                let text = &self.document.lines[*line];
                 div()
                     .absolute()
-                    .top(px(line as f32 * LINE_HEIGHT - self.scroll_y))
+                    .top(px(row as f32 * LINE_HEIGHT - self.scroll_y))
                     .left(px(content_left - self.scroll_x))
                     .w(px(text.chars().count() as f32 * CHARACTER_WIDTH))
                     .h(px(LINE_HEIGHT))
@@ -738,5 +707,43 @@ impl Render for DiffFileEditor {
                     .flex()
                     .child(self.render_surface(window, cx)),
             )
+    }
+}
+
+#[cfg(test)]
+mod caret_tests {
+    use gpui_kit::{TestAppContext, gpui};
+
+    use super::*;
+    use crate::qa::options::{DEFAULT_WINDOW_SIZE, LaunchOptions};
+
+    /// Monaco는 편집기가 포커스를 잃으면(창이 비활성이면 함께) 커서를 그리지 않는다
+    #[gpui::test]
+    fn the_caret_is_drawn_only_while_the_focused_editor_window_is_active(cx: &mut TestAppContext) {
+        let launch = LaunchOptions {
+            data_dir: None,
+            initial_route: "/ko".into(),
+            window_size: DEFAULT_WINDOW_SIZE,
+            qa: None,
+        };
+        cx.update(|cx| crate::init_app(&launch, cx).expect("app init"));
+        let save_handler: SaveHandler = Rc::new(|_, _| Task::ready(Ok(())));
+        let (editor, cx) = cx.add_window_view(move |_, cx| {
+            DiffFileEditor::new("text", "a.ts", Locale::Ko, save_handler, cx)
+        });
+        let has_caret = |cx: &mut gpui_kit::VisualTestContext| {
+            editor.update_in(cx, |editor, window, _| editor.pane(window).caret.is_some())
+        };
+
+        assert!(!has_caret(cx));
+        let focus_handle = cx.update(|_, cx| editor.read(cx).focus_handle.clone());
+        cx.update(|window, cx| {
+            window.activate_window();
+            focus_handle.focus(window, cx);
+        });
+        cx.run_until_parked();
+        assert!(has_caret(cx));
+        cx.deactivate_window();
+        assert!(!has_caret(cx));
     }
 }

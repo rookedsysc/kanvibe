@@ -6,17 +6,24 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use gpui_kit::{
-    Bounds, Context, InteractiveElement, IntoElement, ParentElement, Pixels, Render, ScrollEvent,
-    Styled, Task, Window, canvas, div, point, px, size,
+    AppContext, Bounds, Context, FocusHandle, InteractiveElement, IntoElement, KeyDownEvent,
+    MouseButton, MouseDownEvent, ParentElement, Pixels, Render, ScrollEvent, Styled, Task, Window,
+    canvas, div, point, px, size,
 };
 
-use super::line_diff::{LineChange, TextSpan, compute_line_changes};
+use super::find_session::{FindSession, new_session};
+use super::find_widget::{FindEvent, FindWidget};
+use super::line_diff::{LineChange, TextPoint, TextSpan, compute_line_changes};
 use super::monaco::{
     CHARACTER_WIDTH, GutterLayout, GutterMarker, LINE_HEIGHT, LineDecoration, MonacoPane,
     PaneDocument, PaneRow, TextFill, paint_pane, palette,
 };
 use super::syntax::{detect_language, tokenize_document};
 use crate::qa::targets::{QaTargetDescription, qa_target_layer};
+use crate::services::AppServices;
+use crate::shortcuts::shortcut_event_from_keystroke;
+use kanvibe_domain::platform::ShortcutPlatform;
+use kanvibe_domain::shortcuts::key_event::match_shortcut_event;
 
 /// 비교 결과 한 벌. 두 편집기의 칸 수는 언제나 같다
 pub struct SideBySideModel {
@@ -187,6 +194,17 @@ pub struct DiffViewer {
     last_bounds: Rc<Cell<Option<Bounds<Pixels>>>>,
     is_scrollbar_visible: bool,
     _scrollbar_fade: Option<Task<()>>,
+    focus_handle: FocusHandle,
+    /// 마지막으로 누른 편집기. 찾기는 이 편집기에서 연다(Monaco diff 편집기는 두 편집기가 따로 찾는다)
+    active_side: Side,
+    find: Option<(Side, FindSession)>,
+    platform: ShortcutPlatform,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Side {
+    Original,
+    Modified,
 }
 
 /// 스크롤이 멈춘 뒤 막대를 숨기기까지(Monaco 스크롤바 fade 시간)
@@ -205,8 +223,12 @@ fn split_bounds(bounds: Bounds<Pixels>) -> (Bounds<Pixels>, Bounds<Pixels>) {
 }
 
 impl DiffViewer {
-    pub fn new(model: SideBySideModel) -> Self {
+    pub fn new(model: SideBySideModel, cx: &mut Context<Self>) -> Self {
         Self {
+            focus_handle: cx.focus_handle(),
+            active_side: Side::Modified,
+            find: None,
+            platform: cx.global::<AppServices>().shortcut_platform,
             model,
             scroll_x: 0.0,
             scroll_y: 0.0,
@@ -265,6 +287,17 @@ impl DiffViewer {
             scroll_x: self.scroll_x,
             scroll_y: self.scroll_y,
             is_scrollbar_visible: self.is_scrollbar_visible,
+            find_highlights: Rc::new(
+                self.find_for(is_original)
+                    .map(|session| session.matches.clone())
+                    .unwrap_or_default(),
+            ),
+            current_find_match: self
+                .find_for(is_original)
+                .and_then(FindSession::current_match)
+                .cloned(),
+            fold_markers: Rc::default(),
+            are_fold_controls_visible: false,
         }
     }
 
@@ -303,6 +336,167 @@ impl DiffViewer {
     }
 }
 
+/// 찾기(읽기 전용이라 바꾸기 없음): `Mod+F`로 열고, Enter·F3로 다음, Escape로 닫는다
+impl DiffViewer {
+    fn find_for(&self, is_original: bool) -> Option<&FindSession> {
+        let side = if is_original {
+            Side::Original
+        } else {
+            Side::Modified
+        };
+        self.find
+            .as_ref()
+            .filter(|(find_side, _)| *find_side == side)
+            .map(|(_, session)| session)
+    }
+
+    fn side_document(&self, side: Side) -> (&Rc<PaneDocument>, &Rc<Vec<PaneRow>>) {
+        match side {
+            Side::Original => (&self.model.original, &self.model.original_rows),
+            Side::Modified => (&self.model.modified, &self.model.modified_rows),
+        }
+    }
+
+    fn handle_mouse_down(
+        &mut self,
+        event: &MouseDownEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        window.focus(&self.focus_handle, cx);
+        if let Some(bounds) = self.last_bounds.get() {
+            let (_, modified_bounds) = split_bounds(bounds);
+            self.active_side = if event.position.x >= modified_bounds.origin.x {
+                Side::Modified
+            } else {
+                Side::Original
+            };
+        }
+    }
+
+    fn handle_key_down(
+        &mut self,
+        event: &KeyDownEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let shortcut = shortcut_event_from_keystroke(&event.keystroke);
+        let is_mac = self.platform == ShortcutPlatform::Mac;
+        let matches = |notation: &str| match_shortcut_event(&shortcut, notation, self.platform);
+        if matches("Mod+F") {
+            self.open_find(window, cx);
+        } else if matches("F3") || (is_mac && matches("Meta+G")) {
+            self.step_find(true, cx);
+        } else if matches("Shift+F3") || (is_mac && matches("Meta+Shift+G")) {
+            self.step_find(false, cx);
+        } else if matches("Escape") && self.find.is_some() {
+            self.close_find(window, cx);
+        } else {
+            return;
+        }
+        cx.stop_propagation();
+    }
+
+    fn open_find(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let side = self.active_side;
+        if let Some((find_side, session)) = &self.find
+            && *find_side == side
+        {
+            let widget = session.widget.clone();
+            widget.update(cx, |widget, cx| widget.reopen(None, false, window, cx));
+            return;
+        }
+        let platform = self.platform;
+        let widget = cx.new(|cx| FindWidget::new("", false, platform, cx));
+        let subscription =
+            cx.subscribe_in(&widget, window, |this, _, event: &FindEvent, window, cx| {
+                this.handle_find_event(*event, window, cx)
+            });
+        self.find = Some((side, new_session(widget.clone(), subscription)));
+        widget.update(cx, |widget, cx| widget.reopen(None, false, window, cx));
+        cx.notify();
+    }
+
+    fn handle_find_event(&mut self, event: FindEvent, window: &mut Window, cx: &mut Context<Self>) {
+        match event {
+            FindEvent::Changed => self.recompute_find(cx),
+            FindEvent::Next | FindEvent::Previous => self.step_find(event == FindEvent::Next, cx),
+            FindEvent::Close => self.close_find(window, cx),
+            FindEvent::ReplaceOne | FindEvent::ReplaceAll => {}
+        }
+    }
+
+    fn recompute_find(&mut self, cx: &mut Context<Self>) {
+        let Some((side, _)) = self.find.as_ref().map(|(side, _)| (*side, ())) else {
+            return;
+        };
+        let lines = self.side_document(side).0.lines.clone();
+        if let Some((_, session)) = &mut self.find {
+            session.recompute(&lines, None, TextPoint { line: 0, column: 0 }, cx);
+        }
+        self.reveal_current_match();
+        cx.notify();
+    }
+
+    fn step_find(&mut self, is_forward: bool, cx: &mut Context<Self>) {
+        if let Some((_, session)) = &mut self.find {
+            session.step(is_forward, cx);
+        }
+        self.reveal_current_match();
+        cx.notify();
+    }
+
+    /// 지금 결과가 보이지 않으면 그 줄을 가운데로 스크롤한다(Monaco `revealRangeInCenterIfOutsideViewport`)
+    fn reveal_current_match(&mut self) {
+        let Some((side, session)) = &self.find else {
+            return;
+        };
+        let (Some(found), Some(bounds)) = (session.current_match(), self.last_bounds.get()) else {
+            return;
+        };
+        let rows = self.side_document(*side).1;
+        let Some(row) = rows
+            .iter()
+            .position(|row| matches!(row, PaneRow::Text { line, .. } if *line == found.line))
+        else {
+            return;
+        };
+        let viewport_height = f32::from(bounds.size.height);
+        let row_top = row as f32 * LINE_HEIGHT;
+        if row_top < self.scroll_y || row_top + LINE_HEIGHT > self.scroll_y + viewport_height {
+            let max_y = (rows.len() as f32 * LINE_HEIGHT - viewport_height).max(0.0);
+            self.scroll_y = (row_top - viewport_height / 2.0).clamp(0.0, max_y);
+        }
+    }
+
+    fn close_find(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.find = None;
+        window.focus(&self.focus_handle, cx);
+        cx.notify();
+    }
+
+    /// 찾기 위젯은 찾는 편집기 영역의 오른쪽 위에 붙는다
+    fn render_find_widget(&self) -> Option<impl IntoElement> {
+        let (side, session) = self.find.as_ref()?;
+        let bounds = self.last_bounds.get()?;
+        let (original_bounds, modified_bounds) = split_bounds(bounds);
+        let side_bounds = if *side == Side::Original {
+            original_bounds
+        } else {
+            modified_bounds
+        };
+        Some(
+            div()
+                .absolute()
+                .top_0()
+                .left(side_bounds.origin.x - bounds.origin.x)
+                .w(side_bounds.size.width)
+                .h_full()
+                .child(session.widget.clone()),
+        )
+    }
+}
+
 impl Render for DiffViewer {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let (original, modified) = (self.pane(true), self.pane(false));
@@ -336,6 +530,9 @@ impl Render for DiffViewer {
         .size_full();
         div()
             .id("diff-viewer")
+            .track_focus(&self.focus_handle)
+            .on_key_down(cx.listener(Self::handle_key_down))
+            .on_mouse_down(MouseButton::Left, cx.listener(Self::handle_mouse_down))
             .relative()
             .size_full()
             .overflow_hidden()
@@ -344,6 +541,7 @@ impl Render for DiffViewer {
             )
             .child(surface)
             .children(targets)
+            .children(self.render_find_widget())
     }
 }
 
