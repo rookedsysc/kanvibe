@@ -1,74 +1,738 @@
-//! `/:locale` 보드 화면. AppSettings `board_view_mode`에 따라 칸반(`kanban`)이나 워크스페이스(TS `TaskWorkspaceRoute`)를
-//! 그린다. 워크스페이스 뷰는 M7에서 이 디렉터리에 더한다. 지금은 칸반 헤더·스켈레톤만 있다.
+//! `/:locale` 보드 화면. AppSettings `board_view_mode`에 따라 칸반(TS `BoardRoute`·`Board`)이나
+//! 워크스페이스(TS `TaskWorkspaceRoute`)를 그린다.
 
+mod actions;
+mod adapters;
+mod board_model;
+mod column;
+mod context_menu;
+mod create_task;
+mod dialogs;
+mod done_confirm;
+mod header;
+mod header_popovers;
+mod icons;
 pub mod kanban;
+mod keyboard;
+mod notification_center;
+mod registry;
+mod services;
+mod task_card;
+mod task_filters;
+mod text_field;
+mod workspace;
 
-use gpui_kit::{AnyElement, Context, IntoElement, Render, Task, Window};
+use std::cell::RefCell;
+use std::collections::{HashMap, HashSet};
+use std::rc::Rc;
+use std::sync::Arc;
+use std::time::Duration;
 
+use gpui_kit::{
+    AnyElement, AppContext, Bounds, Context, Entity, FocusHandle, InteractiveElement, IntoElement,
+    ParentElement, Pixels, Point, Render, ScrollHandle, StatefulInteractiveElement, Styled,
+    Subscription, Task, Window, div, px,
+};
+use kanvibe_domain::board_sort::BoardSortPreference;
+use kanvibe_domain::i18n::{Locale, Translator};
+use kanvibe_domain::notifications::AppNotification;
+use kanvibe_domain::task::{SessionType, TaskStatus};
+use kanvibe_domain::task_diff_stats::TaskDiffStats;
+use kanvibe_services::kanban::TasksByStatus;
+
+use crate::components::TailwindText;
 use crate::notifications::NotificationCenter;
-use crate::services::{AppServices, BoardHeaderSnapshot, ServiceResult};
-use crate::theme::ThemeTokens;
+use crate::theme::{ThemeTokens, radius, spacing, text_scale};
 use crate::views::ScreenContext;
-use kanban::{BoardHeaderModel, TaskKindFilter, render_board_skeleton, render_loaded_board};
+use board_model::{BoardFilters, DonePagination, ProjectCatalog, TaskDeletionState, TaskMoveState};
+pub use services::{BoardServiceFailure, BoardSnapshot, BoardViewMode};
+use services::{BoardServices, board_services};
+pub use task_filters::TaskKindFilter;
+use text_field::{BoardTextField, TextFieldEvent};
 
-/// 보드 데이터 조회 상태(`useRouteLoadStatus`의 로딩·성공·실패)
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum BoardLoadState {
-    Loading,
-    Loaded(BoardHeaderSnapshot),
-    Failed(String),
+/// 보드 카드 변경 집계를 다시 읽는 주기(TS `BOARD_DIFF_STATS_POLL_INTERVAL_MS`)
+const DIFF_STATS_POLL_INTERVAL: Duration = Duration::from_millis(5_000);
+
+/// 첫 조회가 이 시간보다 오래 걸리면 지연 안내를 띄운다(TS `INITIAL_DESKTOP_LOAD_TIMEOUT_MS`)
+const LOAD_DELAY_NOTICE_AFTER: Duration = Duration::from_millis(5_000);
+
+/// 첫 조회 진행(TS `useRouteLoadStatus`)
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct RouteLoadStatus {
+    is_delayed: bool,
+    failure_reason: Option<String>,
+}
+
+/// 칸반이 받은 데이터와 그 위의 화면 상태
+pub(crate) struct KanbanBoard {
+    tasks: TasksByStatus,
+    done: DonePagination,
+    ssh_hosts: Vec<String>,
+    catalog: ProjectCatalog,
+    is_done_alert_dismissed: bool,
+    default_session_type: SessionType,
+    is_vim_mode_enabled: bool,
+    sort_preference: BoardSortPreference,
+    diff_stats: std::collections::BTreeMap<String, TaskDiffStats>,
+    notifications: Vec<AppNotification>,
+}
+
+impl KanbanBoard {
+    fn from_snapshot(snapshot: BoardSnapshot) -> Self {
+        let first_page_size = snapshot.tasks.done.len();
+        Self {
+            done: DonePagination::new(snapshot.done_total, first_page_size),
+            tasks: snapshot.tasks,
+            ssh_hosts: snapshot.ssh_hosts,
+            catalog: ProjectCatalog::new(snapshot.projects),
+            is_done_alert_dismissed: snapshot.is_done_alert_dismissed,
+            default_session_type: snapshot.default_session_type,
+            is_vim_mode_enabled: snapshot.is_vim_mode_enabled,
+            sort_preference: snapshot.sort_preference,
+            diff_stats: snapshot.diff_stats_by_task_id,
+            notifications: snapshot.notifications,
+        }
+    }
+
+    /// 새로 받은 데이터로 바꾼다. 진행 중이던 Done 더 보기는 버린다
+    fn replace_with(&mut self, snapshot: BoardSnapshot) {
+        let first_page_size = snapshot.tasks.done.len();
+        self.done.reset(snapshot.done_total, first_page_size);
+        self.tasks = snapshot.tasks;
+        self.ssh_hosts = snapshot.ssh_hosts;
+        self.catalog = ProjectCatalog::new(snapshot.projects);
+        self.is_done_alert_dismissed = snapshot.is_done_alert_dismissed;
+        self.default_session_type = snapshot.default_session_type;
+        self.is_vim_mode_enabled = snapshot.is_vim_mode_enabled;
+        self.sort_preference = snapshot.sort_preference;
+        self.diff_stats = snapshot.diff_stats_by_task_id;
+        self.notifications = snapshot.notifications;
+    }
+
+    fn unread_count_by_task(&self) -> HashMap<String, usize> {
+        let mut counts = HashMap::new();
+        for notification in self.notifications.iter().filter(|item| !item.is_read) {
+            if let Some(task_id) = &notification.task_id {
+                *counts.entry(task_id.clone()).or_insert(0) += 1;
+            }
+        }
+        counts
+    }
+}
+
+/// 우클릭 메뉴가 열린 카드와 위치
+#[derive(Debug, Clone)]
+pub(crate) struct OpenContextMenu {
+    task_id: String,
+    position: Point<Pixels>,
+    is_status_list_open: bool,
+    highlighted_index: usize,
+}
+
+/// 보드 동작 결과 알림(TS `showActionStatus`). 성공은 5초 뒤 사라지고 실패는 닫을 때까지 남는다
+#[derive(Clone)]
+pub(crate) struct BoardToast {
+    id: usize,
+    kind: crate::components::toast::ToastKind,
+    message: String,
+    /// 열기 같은 후속 동작: (글자, 열 작업 ID)
+    open_task_id: Option<String>,
+}
+
+const SUCCESS_TOAST_DURATION: Duration = Duration::from_millis(5_000);
+
+/// 헤더에서 열린 팝오버
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum HeaderPopover {
+    ProjectFilter,
+    DesktopFilter,
+    Sort,
 }
 
 pub struct BoardView {
     screen: ScreenContext,
-    load_state: BoardLoadState,
+    services: Option<Arc<BoardServices>>,
+    view_mode: BoardViewMode,
+    load_status: RouteLoadStatus,
+    board: Option<KanbanBoard>,
+    filters: BoardFilters,
+    deletion_states: HashMap<String, TaskDeletionState>,
+    move_states: HashMap<String, TaskMoveState>,
+    deleting_task_ids: HashSet<String>,
+    saving_move_task_ids: HashSet<String>,
+    context_menu: Option<OpenContextMenu>,
+    pending_done_move: Option<(String, TaskStatus)>,
+    is_done_dont_ask_checked: bool,
+    open_popover: Option<HeaderPopover>,
+    popover_highlight: usize,
+    is_popover_keyboard_navigated: bool,
+    popover_focus: FocusHandle,
+    project_search: Entity<BoardTextField>,
+    menu_focus: FocusHandle,
+    dialog_focus: FocusHandle,
+    card_focus: HashMap<String, FocusHandle>,
+    card_bounds: Rc<RefCell<HashMap<String, Bounds<Pixels>>>>,
+    board_focus: FocusHandle,
+    page_scroll: ScrollHandle,
+    has_claimed_focus: bool,
+    pending_delete_sequence: Option<(String, std::time::Instant)>,
+    find_bar: keyboard::FindBarState,
+    find_field: Entity<BoardTextField>,
+    find_highlight_task_id: Option<String>,
+    notification_panel: notification_center::NotificationPanelState,
+    workspace: workspace::WorkspaceState,
+    workspace_search: Entity<BoardTextField>,
+    workspace_scroll: ScrollHandle,
+    workspace_list_focus: FocusHandle,
+    workspace_terminal_focus: FocusHandle,
+    notification_focus: FocusHandle,
+    toasts: Vec<BoardToast>,
+    is_registry_open: bool,
+    registry_search: Entity<BoardTextField>,
+    registry_path: Entity<BoardTextField>,
+    create_task: Option<Entity<create_task::CreateTaskModal>>,
+    /// 만드는 중에 닫은 모달. 결과를 받을 때까지 붙잡아 둔다
+    background_create_tasks: Vec<Entity<create_task::CreateTaskModal>>,
+    create_task_subscriptions: Vec<Subscription>,
+    next_toast_id: usize,
     _board_load: Task<()>,
+    _load_delay_timer: Task<()>,
+    _diff_stats_poll: Task<()>,
+    _subscriptions: Vec<Subscription>,
 }
 
 impl BoardView {
     pub fn new(screen: ScreenContext, cx: &mut Context<Self>) -> Self {
-        let load = cx.global::<AppServices>().load_board_header(cx);
-        let board_load = cx.spawn(async move |this, cx| {
-            let result: ServiceResult<BoardHeaderSnapshot> = load.await;
+        let services = board_services(cx);
+        let view_mode = services
+            .as_ref()
+            .map(|services| services.board_view_mode())
+            .unwrap_or(BoardViewMode::Kanban);
+        let filters = BoardFilters {
+            task_kind: TaskKindFilter::parse(query_value(
+                &screen.route.search,
+                TaskKindFilter::QUERY_KEY,
+            )),
+            ..BoardFilters::default()
+        };
+        let (project_search, find_field, workspace_search) =
+            Self::create_text_fields(screen.route.locale, cx);
+        let (registry_search, registry_path) =
+            Self::create_registry_fields(screen.route.locale, cx);
+        let mut view = Self {
+            screen,
+            services,
+            view_mode,
+            load_status: RouteLoadStatus::default(),
+            board: None,
+            filters,
+            deletion_states: HashMap::new(),
+            move_states: HashMap::new(),
+            deleting_task_ids: HashSet::new(),
+            saving_move_task_ids: HashSet::new(),
+            context_menu: None,
+            pending_done_move: None,
+            is_done_dont_ask_checked: false,
+            open_popover: None,
+            popover_highlight: 0,
+            is_popover_keyboard_navigated: false,
+            popover_focus: cx.focus_handle(),
+            project_search,
+            menu_focus: cx.focus_handle(),
+            dialog_focus: cx.focus_handle(),
+            card_focus: HashMap::new(),
+            card_bounds: Rc::default(),
+            board_focus: cx.focus_handle(),
+            page_scroll: ScrollHandle::new(),
+            has_claimed_focus: false,
+            pending_delete_sequence: None,
+            find_bar: keyboard::FindBarState::default(),
+            find_field,
+            find_highlight_task_id: None,
+            notification_panel: Default::default(),
+            workspace: Default::default(),
+            workspace_search,
+            workspace_scroll: ScrollHandle::new(),
+            workspace_list_focus: cx.focus_handle(),
+            workspace_terminal_focus: cx.focus_handle(),
+            notification_focus: cx.focus_handle(),
+            toasts: Vec::new(),
+            is_registry_open: false,
+            registry_search,
+            registry_path,
+            create_task: None,
+            background_create_tasks: Vec::new(),
+            create_task_subscriptions: Vec::new(),
+            next_toast_id: 0,
+            _board_load: Task::ready(()),
+            _load_delay_timer: Task::ready(()),
+            _diff_stats_poll: Task::ready(()),
+            _subscriptions: Vec::new(),
+        };
+        view.begin_load(cx);
+        view
+    }
+
+    /// 프로젝트 필터 검색칸과 찾기 바 입력칸
+    fn create_text_fields(
+        locale: Locale,
+        cx: &mut Context<Self>,
+    ) -> (
+        Entity<BoardTextField>,
+        Entity<BoardTextField>,
+        Entity<BoardTextField>,
+    ) {
+        let theme = *cx.global::<ThemeTokens>();
+        let colors = [theme.text.primary, theme.text.muted, theme.text.primary];
+        let project_placeholder = Translator::new(locale, "task").translate("projectSearch");
+        let find_placeholder = Translator::new(locale, "board.pageFind").translate("placeholder");
+        let project_search = cx.new(|cx| BoardTextField::new(project_placeholder, colors, cx));
+        let find_field = cx.new(|cx| BoardTextField::new(find_placeholder, colors, cx));
+        let workspace_placeholder =
+            Translator::new(locale, "workspace").translate("searchPlaceholder");
+        let workspace_search = cx.new(|cx| BoardTextField::new(workspace_placeholder, colors, cx));
+        (project_search, find_field, workspace_search)
+    }
+
+    /// 창 루트가 쥔 포커스를 보드로 가져온다. 그래야 앱 단축키 동작이 보드까지 내려온다.
+    /// 보드가 사라질 때(다른 경로로 이동) 포커스가 허공에 남지 않도록 가져오기 전 포커스로 돌려준다
+    fn claim_initial_focus(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.has_claimed_focus {
+            return;
+        }
+        self.has_claimed_focus = true;
+        let previous_focus = window.focused(cx);
+        self.board_focus.focus(window, cx);
+        let Some(previous_focus) = previous_focus else {
+            return;
+        };
+        cx.on_release_in(window, move |this, window, cx| {
+            let is_focus_inside_board = this.board_focus.contains_focused(window, cx)
+                || this.board_focus.is_focused(window);
+            if window.focused(cx).is_none() || is_focus_inside_board {
+                previous_focus.focus(window, cx);
+            }
+        })
+        .detach();
+    }
+
+    /// 프로젝트 등록 대화상자의 검색칸과 스캔 경로(기본 `~/`)
+    fn create_registry_fields(
+        locale: Locale,
+        cx: &mut Context<Self>,
+    ) -> (Entity<BoardTextField>, Entity<BoardTextField>) {
+        let theme = *cx.global::<ThemeTokens>();
+        let colors = [theme.text.primary, theme.text.muted, theme.text.primary];
+        let placeholder = Translator::new(locale, "settings").translate("projectSearchPlaceholder");
+        let search = cx.new(|cx| BoardTextField::new(placeholder, colors, cx));
+        let path = cx.new(|cx| {
+            let mut field = BoardTextField::new("", colors, cx);
+            field.set_text("~/", cx);
+            field
+        });
+        (search, path)
+    }
+
+    /// 입력칸 이벤트는 창이 있어야 포커스를 옮길 수 있어 첫 렌더에서 구독한다
+    fn subscribe_text_fields(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if !self._subscriptions.is_empty() {
+            return;
+        }
+        let project_search = self.project_search.clone();
+        let find_field = self.find_field.clone();
+        let workspace_search = self.workspace_search.clone();
+        self._subscriptions = vec![
+            cx.subscribe_in(
+                &workspace_search,
+                window,
+                |this: &mut Self, _, event: &TextFieldEvent, _, cx| {
+                    if matches!(event, TextFieldEvent::Changed(_)) {
+                        this.workspace.hidden_selection_id =
+                            this.workspace.selected_task_id.clone();
+                        cx.notify();
+                    }
+                },
+            ),
+            cx.subscribe_in(
+                &project_search,
+                window,
+                |this: &mut Self, _, event: &TextFieldEvent, window, cx| match event {
+                    TextFieldEvent::Changed(_) => {
+                        this.popover_highlight = 0;
+                        cx.notify();
+                    }
+                    TextFieldEvent::Submitted { .. } => {
+                        this.handle_project_filter_key("enter", window, cx)
+                    }
+                    TextFieldEvent::Escaped => this.handle_project_filter_key("escape", window, cx),
+                    TextFieldEvent::NavigationKey(key) => {
+                        this.handle_project_filter_key(key, window, cx)
+                    }
+                },
+            ),
+            cx.subscribe_in(
+                &find_field,
+                window,
+                |this: &mut Self, _, event: &TextFieldEvent, window, cx| {
+                    this.handle_find_field_event(event, window, cx)
+                },
+            ),
+        ];
+    }
+
+    pub fn view_mode(&self) -> BoardViewMode {
+        self.view_mode
+    }
+
+    fn locale(&self) -> Locale {
+        self.screen.route.locale
+    }
+
+    /// 보드 데이터를 (다시) 읽는다. 이미 데이터가 있으면 화면은 그대로 두고 실패만 배너로 알린다
+    fn begin_load(&mut self, cx: &mut Context<Self>) {
+        self.load_status = RouteLoadStatus::default();
+        let load = match &self.services {
+            Some(services) => services.load_snapshot(cx),
+            None => Task::ready(Ok(BoardSnapshot::empty())),
+        };
+        let delay_timer = cx.background_executor().timer(LOAD_DELAY_NOTICE_AFTER);
+        self._load_delay_timer = cx.spawn(async move |this, cx| {
+            delay_timer.await;
             let _ = this.update(cx, |this, cx| {
-                this.load_state = match result {
-                    Ok(snapshot) => BoardLoadState::Loaded(snapshot),
-                    Err(failure) => BoardLoadState::Failed(failure.reason),
-                };
-                cx.notify();
+                if this.board.is_none() && this.load_status.failure_reason.is_none() {
+                    this.load_status.is_delayed = true;
+                    cx.notify();
+                }
             });
         });
-        Self {
-            screen,
-            load_state: BoardLoadState::Loading,
-            _board_load: board_load,
-        }
+        self._board_load = cx.spawn(async move |this, cx| {
+            let result = load.await;
+            let _ = this.update(cx, |this, cx| this.finish_load(result, cx));
+        });
     }
+
+    fn finish_load(
+        &mut self,
+        result: Result<BoardSnapshot, BoardServiceFailure>,
+        cx: &mut Context<Self>,
+    ) {
+        self._load_delay_timer = Task::ready(());
+        match result {
+            Ok(snapshot) => {
+                self.load_status = RouteLoadStatus::default();
+                sync_notification_center(&snapshot.notifications, cx);
+                match &mut self.board {
+                    Some(board) => board.replace_with(snapshot),
+                    None => {
+                        self.notification_panel.is_unread_only =
+                            snapshot.is_notification_unread_only;
+                        self.board = Some(KanbanBoard::from_snapshot(snapshot));
+                        self.start_diff_stats_poll(cx);
+                    }
+                }
+            }
+            Err(failure) => {
+                self.load_status = RouteLoadStatus {
+                    is_delayed: false,
+                    failure_reason: Some(failure.reason),
+                };
+            }
+        }
+        cx.notify();
+    }
+
+    /// 진행 중 카드의 변경 집계를 주기마다 다시 읽는다. 보드가 사라지면 함께 멈춘다
+    fn start_diff_stats_poll(&mut self, cx: &mut Context<Self>) {
+        let Some(services) = self.services.clone() else {
+            return;
+        };
+        self._diff_stats_poll = cx.spawn(async move |this, cx| {
+            loop {
+                cx.background_executor()
+                    .timer(DIFF_STATS_POLL_INTERVAL)
+                    .await;
+                let Ok(load) = this.update(cx, |this, cx| {
+                    let task_ids =
+                        board_model::task_ids_to_refresh_diff_stats(&this.displayed_tasks());
+                    services.load_diff_stats(task_ids, cx)
+                }) else {
+                    return;
+                };
+                let Ok(stats) = load.await else {
+                    continue;
+                };
+                let _ = this.update(cx, |this, cx| {
+                    if let Some(board) = this.board.as_mut()
+                        && board.diff_stats != stats
+                    {
+                        board.diff_stats = stats;
+                        cx.notify();
+                    }
+                });
+            }
+        });
+    }
+
+    /// 보드 이벤트(다른 창·hook·sync의 변경)를 받으면 다시 읽는다
+    pub fn refresh(&mut self, cx: &mut Context<Self>) {
+        self.begin_load(cx);
+    }
+
+    fn retry_load(&mut self, cx: &mut Context<Self>) {
+        self.begin_load(cx);
+        cx.notify();
+    }
+}
+
+impl BoardView {
+    /// 화면을 덮는 층의 크기. 칸반은 페이지 스크롤바 홈을 덮지 않는다(Chromium의 `fixed inset-0`이 스크롤바를 빼는 것과 같다)
+    pub(super) fn overlay_viewport(&self, window: &Window) -> gpui_kit::Size<Pixels> {
+        let viewport = window.viewport_size();
+        if self.view_mode == BoardViewMode::Workspace || self.board.is_none() {
+            return viewport;
+        }
+        gpui_kit::size(
+            viewport.width - crate::components::scroll_area::PAGE_SCROLLBAR_WIDTH,
+            viewport.height,
+        )
+    }
+
+    pub(super) fn show_failure_toast(&mut self, message: String, cx: &mut Context<Self>) {
+        self.push_toast(
+            crate::components::toast::ToastKind::Failure,
+            message,
+            None,
+            cx,
+        );
+    }
+
+    pub(super) fn push_toast(
+        &mut self,
+        kind: crate::components::toast::ToastKind,
+        message: String,
+        open_task_id: Option<String>,
+        cx: &mut Context<Self>,
+    ) {
+        let id = self.next_toast_id;
+        self.next_toast_id += 1;
+        self.toasts.push(BoardToast {
+            id,
+            kind,
+            message,
+            open_task_id,
+        });
+        if kind == crate::components::toast::ToastKind::Success {
+            let timer = cx.background_executor().timer(SUCCESS_TOAST_DURATION);
+            cx.spawn(async move |this, cx| {
+                timer.await;
+                let _ = this.update(cx, |this, cx| this.dismiss_toast(id, cx));
+            })
+            .detach();
+        }
+        cx.notify();
+    }
+
+    fn dismiss_toast(&mut self, id: usize, cx: &mut Context<Self>) {
+        self.toasts.retain(|toast| toast.id != id);
+        cx.notify();
+    }
+
+    fn render_toasts(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
+        if self.toasts.is_empty() {
+            return None;
+        }
+        let labels = Translator::new(self.locale(), "common");
+        let close_label = labels.translate("close");
+        let open_label = labels.translate("open");
+        let locale = self.locale();
+        let toasts: Vec<crate::components::toast::Toast> = self
+            .toasts
+            .clone()
+            .into_iter()
+            .map(|toast| {
+                let id = toast.id;
+                let view = cx.entity().downgrade();
+                let mut element = crate::components::toast::Toast::new(
+                    gpui_kit::SharedString::from(format!("board-toast-{id}")),
+                    toast.kind,
+                    toast.message.clone(),
+                    close_label.clone(),
+                )
+                .on_dismiss(move |_, _, cx| {
+                    let _ = view.update(cx, |this, cx| this.dismiss_toast(id, cx));
+                });
+                if let Some(task_id) = toast.open_task_id.clone() {
+                    element = element.action(open_label.clone(), move |_, window, cx| {
+                        let request = crate::windows::TaskNavigationRequest {
+                            origin_window: Some(window.window_handle().window_id()),
+                            should_open_new_window: false,
+                        };
+                        crate::windows::navigate_to_task_detail(&task_id, locale, request, cx);
+                    });
+                }
+                element
+            })
+            .collect();
+        Some(
+            crate::components::toast::toast_stack(self.overlay_viewport(window), toasts)
+                .into_any_element(),
+        )
+    }
+}
+
+/// 앱 알림 센터 배지가 보드와 같은 목록을 보게 한다
+fn sync_notification_center(notifications: &[AppNotification], cx: &mut Context<BoardView>) {
+    if cx.has_global::<NotificationCenter>() {
+        cx.global_mut::<NotificationCenter>()
+            .replace_all(notifications.to_vec());
+    }
+}
+
+/// `?a=1&b=2`에서 값 하나를 꺼낸다
+fn query_value<'a>(search: &'a str, key: &str) -> Option<&'a str> {
+    search
+        .split('&')
+        .filter_map(|pair| pair.split_once('='))
+        .find(|(name, _)| *name == key)
+        .map(|(_, value)| value)
+}
+
+/// TS `InlineLoadError`: 실패 사유와 다시 시도
+pub(crate) fn inline_load_error(
+    theme: &ThemeTokens,
+    locale: Locale,
+    message: String,
+    retry_id: &'static str,
+    on_retry: impl Fn(&gpui_kit::ClickEvent, &mut Window, &mut gpui_kit::App) + 'static,
+) -> gpui_kit::Div {
+    let retry_label = Translator::new(locale, "common").translate("retry");
+    let error_color = theme.status.error;
+    div()
+        .flex()
+        .items_start()
+        .justify_between()
+        .gap(spacing(3.0))
+        .rounded(radius::MD)
+        .border_1()
+        .border_color(crate::components::fade(error_color, 0.2))
+        .bg(theme.background.page)
+        .px(spacing(3.0))
+        .py(spacing(2.0))
+        .text_scale(text_scale::XS)
+        .text_color(error_color)
+        .relative()
+        .child(crate::qa::targets::qa_target_layer(
+            crate::qa::targets::QaTargetDescription {
+                role: "alert",
+                name: message.clone().into(),
+                text: message.clone().into(),
+            },
+        ))
+        .child(div().min_w_0().flex_1().child(message))
+        .child(
+            div()
+                .id(retry_id)
+                .relative()
+                .flex_none()
+                .rounded(radius::BASE)
+                .px(px(6.0))
+                .py(px(2.0))
+                .css_weight(500)
+                .cursor_pointer()
+                .on_click(on_retry)
+                .child(retry_label.clone())
+                .child(crate::qa::targets::qa_target_layer(
+                    crate::qa::targets::QaTargetDescription {
+                        role: "button",
+                        name: retry_label.clone().into(),
+                        text: retry_label.into(),
+                    },
+                )),
+        )
 }
 
 impl Render for BoardView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.subscribe_text_fields(window, cx);
+        self.claim_initial_focus(window, cx);
         let theme = *cx.global::<ThemeTokens>();
         let viewport = window.viewport_size();
-        let board: AnyElement = match &self.load_state {
-            BoardLoadState::Loaded(snapshot) => {
-                let model = BoardHeaderModel {
-                    locale: self.screen.route.locale,
-                    task_kind_filter: TaskKindFilter::All,
-                    selected_project_names: Vec::new(),
-                    sort_active_count: snapshot.sort_active_count,
-                    unread_notification_count: cx
-                        .try_global::<NotificationCenter>()
-                        .map(NotificationCenter::unread_count)
-                        .unwrap_or(0),
-                };
-                render_loaded_board(&theme, &model, snapshot.status_counts, viewport)
-                    .into_any_element()
-            }
-            BoardLoadState::Loading | BoardLoadState::Failed(_) => {
-                render_board_skeleton(&theme, f32::from(viewport.height)).into_any_element()
-            }
+        let is_workspace = self.view_mode == BoardViewMode::Workspace;
+        let content: AnyElement = if self.board.is_some() && is_workspace {
+            self.render_workspace(window, cx).into_any_element()
+        } else if self.board.is_some() {
+            self.render_kanban(window, cx).into_any_element()
+        } else if let Some(reason) = self.load_status.failure_reason.clone() {
+            self.render_initial_failure(&theme, reason, cx)
+                .into_any_element()
+        } else if is_workspace {
+            self.render_workspace_loading(&theme).into_any_element()
+        } else {
+            kanban::render_board_skeleton(
+                &theme,
+                f32::from(viewport.height),
+                self.load_status
+                    .is_delayed
+                    .then(|| Translator::new(self.locale(), "common").translate("loadDelayed")),
+            )
+            .into_any_element()
         };
-        board
+        let toasts = self.render_toasts(window, cx);
+        let root = div()
+            .id("board-route")
+            .key_context(keyboard::BOARD_KEY_CONTEXT)
+            .track_focus(&self.board_focus)
+            .size_full()
+            .child(content)
+            .children(toasts);
+        self.register_board_actions(root, cx)
+    }
+}
+
+impl BoardView {
+    /// 워크스페이스는 스켈레톤 없이 빈 화면에서 지연 안내만 띄운다
+    fn render_workspace_loading(&self, theme: &ThemeTokens) -> impl IntoElement + use<> {
+        let notice = self.load_status.is_delayed.then(|| {
+            let text = Translator::new(self.locale(), "common").translate("loadDelayed");
+            div()
+                .relative()
+                .text_scale(text_scale::XS)
+                .text_color(theme.text.muted)
+                .child(text.clone())
+                .child(header::qa_text_layer("status", &text))
+        });
+        div()
+            .size_full()
+            .flex()
+            .items_center()
+            .justify_center()
+            .bg(theme.background.page)
+            .px(spacing(4.0))
+            .children(notice)
+    }
+
+    fn render_initial_failure(
+        &self,
+        theme: &ThemeTokens,
+        reason: String,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement + use<> {
+        let message = Translator::new(self.locale(), "common")
+            .translate_with("loadFailed", &[("reason", &reason)]);
+        let retry = cx.listener(|this, _, _, cx| this.retry_load(cx));
+        div()
+            .size_full()
+            .flex()
+            .items_center()
+            .justify_center()
+            .bg(theme.background.page)
+            .px(spacing(4.0))
+            .child(div().w_full().max_w(px(448.0)).child(inline_load_error(
+                theme,
+                self.locale(),
+                message,
+                "board-load-retry",
+                retry,
+            )))
     }
 }

@@ -9,3 +9,7 @@
   reason: "IPC 오류 문자열에서 사유를 읽지 못하면 unreadable로 바꾸던 파싱 분기다. Rust 서비스는 원격 명령 실패를 바로 `Unreadable`로 돌려주므로 화면 쪽 문자열 파싱이 없다(계획 AD-8). 동작은 TS-main-diffService-fa41c2 매핑 테스트가 검증한다."
 - id: TS-components-ProjectSettings-9f23e3
   reason: "ProjectSettings variant=\"modal\"(우상단 모달)의 Escape 닫기를 검증한다. 모달 변형은 부르는 곳이 없는 dead code라 옮기지 않았고(계획 Scope 삭제 목록), Rust 설정 화면은 page 변형(SettingsView)만 있어 Escape로 닫을 패널이 없다."
+- id: TS-renderer-useUnreadNotificationCountByTask-952640
+  reason: "React가 같은 객체를 받으면 리렌더를 건너뛰도록 집계 객체의 참조를 유지하는지 보는 테스트다. GPUI 보드는 렌더마다 알림 목록에서 작업별 미읽음 수를 다시 세고 메모 참조 비교가 없다. 작업별 집계 자체는 board_view unread_counts_are_per_task_and_skip_read_ones가 확인한다."
+- id: TS-renderer-useTaskDiffStats-2980f2
+  reason: "호출자가 렌더마다 새 배열을 넘겨도 useEffect 의존성이 같은 목록이면 다시 조회하지 않는지 보는 React 훅 의존성 테스트다. Rust 보드는 렌더와 무관한 5초 주기 루프가 그 시점의 목록으로 한 번 조회하므로 렌더가 조회를 일으키지 않는다."
