@@ -41,6 +41,7 @@ fn init_app(cx: &mut TestAppContext, data_dir: PathBuf, is_qa: bool) -> Arc<Data
             network_responses_path: None,
             faults_path: None,
             control_socket_path: None,
+            platform_override: None,
         }),
     };
     cx.update(|cx| {
