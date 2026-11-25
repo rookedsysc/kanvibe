@@ -1,6 +1,7 @@
 //! 새 작업 모달(TS `CreateTaskModal` + `BranchSearchInput` + `PrioritySelector` + `ProjectBranchesStatusNotice`).
 //! 프로젝트를 고르면 브랜치 목록을 읽고 기본 브랜치를 베이스로 채운다. 만들면 서비스가 worktree·세션까지 준비하고,
-//! 끝나면 만든 작업 상세로 간다. 만드는 동안 닫으면 결과를 토스트로 알린다(부모 보드가 받는다).
+//! 끝나면 만든 작업 상세로 간다. 만드는 동안 닫으면 결과를 토스트로 알린다(띄운 화면이 받는다).
+//! 보드와 작업 상세(새 작업 단축키)가 함께 띄우므로 공용 부품에 둔다.
 
 use std::sync::Arc;
 
@@ -15,13 +16,12 @@ use kanvibe_domain::task::{SessionType, TaskPriority};
 use kanvibe_process::project_search::{fuzzy_match, matches_project_search};
 use kanvibe_services::kanban::CreateTaskInput;
 
-use super::header::{qa_button_layer, qa_text_layer};
-use super::services::{BoardServiceFailure, BoardServices};
-use super::text_field::{BoardTextField, TextFieldEvent};
 use crate::components::popover::POPOVER_LAYER_PRIORITY;
 use crate::components::{TailwindText, box_shadows, fade};
-use crate::qa::targets::{QaTargetDescription, qa_target_layer};
+use crate::qa::targets::{QaTargetDescription, qa_button_layer, qa_target_layer, qa_text_layer};
 use crate::theme::{ThemeTokens, radius, spacing, text_scale};
+use crate::views::board::services::{BoardServiceFailure, BoardServices};
+use crate::views::board::text_field::{BoardTextField, TextFieldEvent};
 
 /// 모달이 부모에게 알리는 일
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -221,6 +221,14 @@ impl CreateTaskModal {
     /// 지금 고른 베이스 브랜치
     pub fn base_branch(&self) -> &str {
         &self.base_branch
+    }
+
+    pub fn selected_project_id(&self) -> Option<&str> {
+        self.selected_project_id.as_deref()
+    }
+
+    pub fn session_type(&self) -> SessionType {
+        self.session_type
     }
 
     pub fn is_submitting(&self) -> bool {
@@ -742,11 +750,15 @@ impl CreateTaskModal {
                     })
                     .child(selected.clone().unwrap_or(placeholder.clone())),
             )
-            .child(div().ml_auto().child(super::icons::board_icon(
-                super::icons::BoardIcon::ChevronDown,
-                theme.text.muted,
-                12.0,
-            )))
+            .child(
+                div()
+                    .ml_auto()
+                    .child(crate::views::board::icons::board_icon(
+                        crate::views::board::icons::BoardIcon::ChevronDown,
+                        theme.text.muted,
+                        12.0,
+                    )),
+            )
             .child(qa_button_layer(
                 &placeholder,
                 &selected.unwrap_or(placeholder.clone()),
@@ -868,7 +880,7 @@ impl CreateTaskModal {
                     .into_any_element()
             }),
             BranchesState::Failed(reason) => Some(
-                super::inline_load_error(
+                crate::views::board::inline_load_error(
                     theme,
                     self.locale,
                     common.translate_with("loadFailed", &[("reason", reason)]),
@@ -1129,11 +1141,15 @@ impl CreateTaskModal {
                                 "combobox",
                                 session_type_label(self.session_type),
                             ))
-                            .child(div().ml_auto().child(super::icons::board_icon(
-                                super::icons::BoardIcon::ChevronDown,
-                                theme.text.primary,
-                                14.0,
-                            ))),
+                            .child(
+                                div()
+                                    .ml_auto()
+                                    .child(crate::views::board::icons::board_icon(
+                                        crate::views::board::icons::BoardIcon::ChevronDown,
+                                        theme.text.primary,
+                                        14.0,
+                                    )),
+                            ),
                     )
                     .children(options),
             )

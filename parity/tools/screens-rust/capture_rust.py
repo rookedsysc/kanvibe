@@ -166,6 +166,8 @@ def capture_state(args: argparse.Namespace, state: dict, output_path: Path) -> N
     fixture_root = work_root / "fixture"
     overrides = {"theme_preference": state["theme"], **{k: str(v) for k, v in (state.get("settings") or {}).items()}}
     fixture = capture.build_fixture(fixture_root, state.get("fixture", "full"), overrides, state.get("fixture_extras") or [])
+    # TS 캡처(capture.py)처럼 단계 안의 {fixture_root}는 이 실행의 fixture 경로로 바꾼다(가짜 CLI 실행 명령 등)
+    state = json.loads(json.dumps(state, ensure_ascii=False).replace("{fixture_root}", str(fixture_root)))
     fontconfig_path = capture.write_pinned_fontconfig(work_root / "fontconfig")
     environment = capture.build_app_environment(fixture, fixture_root, args.display, fontconfig_path)
     environment.update(dict(item.split("=", 1) for item in args.app_env))

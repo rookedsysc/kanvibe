@@ -16,7 +16,7 @@ use kanvibe_domain::i18n::Translator;
 
 use super::TaskDetailView;
 use super::ai_provider_icon::ai_provider_icon;
-use super::ai_reader::load_live_sessions;
+use super::session_queries::load_live_sessions;
 use super::tabs::TabCommand;
 use crate::components::{TailwindText, fade};
 use crate::qa::options::parse_iso_utc_ms;

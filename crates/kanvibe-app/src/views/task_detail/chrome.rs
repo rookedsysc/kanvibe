@@ -1,17 +1,17 @@
-//! 터미널 위 띠(TS `bg-terminal-chrome` 줄): 프로젝트 색 작업 배지, 탭 바(또는 세션 이름), 알림 버튼.
+//! 터미널 위 띠(TS `bg-terminal-chrome` 줄): 프로젝트 색 작업 배지, 탭 바(또는 세션 이름). 알림 버튼은 공용 알림 센터를 쓴다.
 
 use gpui_kit::{
-    AnyElement, App, InteractiveElement, IntoElement, ParentElement, Rgba,
-    StatefulInteractiveElement, Styled, Window, div, px,
+    AnyElement, InteractiveElement, IntoElement, ParentElement, Rgba, StatefulInteractiveElement,
+    Styled, div, px,
 };
 use kanvibe_process::project_color::{compute_project_color, readable_text_color};
 
 use super::data::TaskDetailSnapshot;
-use crate::components::icon::{IconName, icon};
+use crate::components::TailwindText;
 use crate::components::tooltip::text_tooltip;
-use crate::components::{TailwindText, fade};
 use crate::qa::targets::{QaTargetDescription, qa_target_layer};
-use crate::theme::{ThemeTokens, radius, spacing, text_scale};
+use crate::text_baseline::{TextFamily, baseline_lift};
+use crate::theme::{radius, spacing, text_scale};
 
 /// 배지에 그릴 프로젝트 표시 값(TS `taskContextProject`)
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -25,18 +25,21 @@ pub struct TaskContextProject {
 
 impl TaskContextProject {
     pub fn of(snapshot: &TaskDetailSnapshot) -> Option<Self> {
-        let project = snapshot.project.as_ref()?;
+        snapshot.project.as_ref().map(Self::from_project)
+    }
+
+    fn from_project(project: &kanvibe_domain::project::Project) -> Self {
         let background_color = project
             .color
             .clone()
             .filter(|color| !color.is_empty())
             .unwrap_or_else(|| compute_project_color(&project.name).to_string());
-        Some(Self {
+        Self {
             name: project.name.clone(),
             icon_data_url: project.icon_data_url.clone(),
             text_color: readable_text_color(&background_color).to_string(),
             background_color,
-        })
+        }
     }
 }
 
@@ -64,13 +67,7 @@ pub fn render_task_context(
     project: Option<&TaskContextProject>,
     task_title: &str,
 ) -> impl IntoElement {
-    let (background, text) = match project {
-        Some(project) => (
-            css_hex(&project.background_color),
-            css_hex(&project.text_color),
-        ),
-        None => (gpui_kit::rgb(0x16a34a), gpui_kit::rgb(0xffffff)),
-    };
+    let (background, text) = badge_colors(project);
     let mut pill = div()
         .id("terminal-task-context")
         .flex()
@@ -86,24 +83,61 @@ pub fn render_task_context(
         .css_weight(600)
         .bg(background)
         .text_color(text)
-        .tooltip(text_tooltip(task_context_title(project, task_title)));
+        .relative()
+        .tooltip(text_tooltip(task_context_title(project, task_title)))
+        .child(qa_target_layer(QaTargetDescription {
+            role: "group",
+            name: task_context_title(project, task_title).into(),
+            text: task_title.to_string().into(),
+        }));
     if let Some(project) = project {
-        pill = pill
-            .children(render_project_icon(
-                &project.name,
-                project.icon_data_url.as_deref(),
-                Some(&project.text_color),
-            ))
-            .child(
-                div()
-                    .flex_none()
-                    .max_w(px(128.0))
-                    .truncate()
-                    .child(project.name.clone()),
-            )
-            .child(div().flex_none().opacity(0.5).child("|"));
+        pill = pill.children(render_project_prefix(project));
     }
-    pill.child(div().min_w_0().truncate().child(task_title.to_string()))
+    pill.child(lifted_text(task_title).min_w_0().truncate())
+}
+
+/// 프로젝트 아이콘, 이름(`max-w-32 truncate`), 구분선(`opacity-50`)
+fn render_project_prefix(project: &TaskContextProject) -> Vec<AnyElement> {
+    let mut prefix: Vec<AnyElement> = render_project_icon(
+        &project.name,
+        project.icon_data_url.as_deref(),
+        Some(&project.text_color),
+    )
+    .into_iter()
+    .collect();
+    prefix.push(
+        lifted_text(&project.name)
+            .flex_none()
+            .max_w(px(128.0))
+            .truncate()
+            .into_any_element(),
+    );
+    prefix.push(lifted_text("|").flex_none().opacity(0.5).into_any_element());
+    prefix
+}
+
+/// 기준선을 Chromium 행으로 올린 배지 글자 한 덩이
+fn lifted_text(text: &str) -> gpui_kit::Div {
+    div()
+        .relative()
+        .top(chromium_lift(text))
+        .child(text.to_string())
+}
+
+/// 배지 글자(`text-xs`)를 Chromium 기준선 행으로 올리는 거리
+fn chromium_lift(text: &str) -> gpui_kit::Pixels {
+    px(-baseline_lift(text, text_scale::XS, TextFamily::Sans))
+}
+
+/// 배지 배경·글자색. 프로젝트가 없으면 `bg-green-600 text-white`
+fn badge_colors(project: Option<&TaskContextProject>) -> (Rgba, Rgba) {
+    match project {
+        Some(project) => (
+            css_hex(&project.background_color),
+            css_hex(&project.text_color),
+        ),
+        None => (gpui_kit::rgb(0x16a34a), gpui_kit::rgb(0xffffff)),
+    }
 }
 
 /// TS `ProjectIcon`. GitHub 아이콘이 있으면 그 그림, 없으면 색 위 첫 글자 칩, 색도 없으면 그리지 않는다
@@ -146,51 +180,6 @@ pub fn project_initial(project_name: &str) -> Option<String> {
     project_name.trim().chars().next().map(String::from)
 }
 
-/// 알림 버튼(`relative rounded-md p-1.5 text-terminal-text hover:text-white hover:bg-white/10`)
-pub fn render_notification_button(
-    theme: &ThemeTokens,
-    label: String,
-    unread_count: usize,
-    on_click: impl Fn(&mut Window, &mut App) + 'static,
-) -> impl IntoElement {
-    div()
-        .id("terminal-notification-button")
-        .relative()
-        .rounded(radius::MD)
-        .p(spacing(1.5))
-        .cursor_pointer()
-        .text_color(theme.terminal.text)
-        .hover(|style| style.bg(fade(gpui_kit::rgb(0xffffff), 0.1)))
-        .tooltip(text_tooltip(label.clone()))
-        .on_click(move |_, window, cx| on_click(window, cx))
-        .child(icon(IconName::Bell, px(20.0)).text_color(theme.terminal.text))
-        .children(
-            crate::notifications::unread_badge_label(unread_count).map(|badge| {
-                div()
-                    .absolute()
-                    .top(px(-4.0))
-                    .right(px(-4.0))
-                    .min_w(px(16.0))
-                    .h(px(16.0))
-                    .px(spacing(1.0))
-                    .rounded_full()
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .bg(theme.brand.primary)
-                    .text_size(px(10.0))
-                    .css_weight(600)
-                    .text_color(gpui_kit::rgb(0xffffff))
-                    .child(badge)
-            }),
-        )
-        .child(qa_target_layer(QaTargetDescription {
-            role: "button",
-            name: label.into(),
-            text: String::new().into(),
-        }))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -230,5 +219,49 @@ mod tests {
             "kanvibe-demo | 보드 필터 추가"
         );
         assert_eq!(task_context_title(None, "보드 필터 추가"), "보드 필터 추가");
+    }
+
+    fn project(color: Option<&str>) -> kanvibe_domain::project::Project {
+        kanvibe_domain::project::Project {
+            id: "project-1".into(),
+            name: "kanvibe".into(),
+            repo_path: "/repo".into(),
+            default_branch: "main".into(),
+            ssh_host: None,
+            is_worktree: false,
+            color: color.map(str::to_string),
+            icon_data_url: None,
+            created_at: String::new(),
+        }
+    }
+
+    // parity: TS-renderer-TaskDetailRoute-cf0648
+    #[test]
+    fn badge_uses_the_project_color_and_inverts_the_initial_chip() {
+        let badge = TaskContextProject::from_project(&project(Some("#86EFAC")));
+        assert_eq!(css_hex(&badge.background_color), gpui_kit::rgb(0x86efac));
+        assert_eq!(css_hex(&badge.text_color), gpui_kit::rgb(0x111827));
+        // 첫 글자 칩은 배지 글자색으로 칠해 배지 배경과 겹치지 않는다
+        assert!(render_project_icon(&badge.name, None, Some(&badge.text_color)).is_some());
+    }
+
+    // parity: TS-renderer-TaskDetailRoute-7ce018
+    #[test]
+    fn badge_without_a_project_color_uses_the_name_hash_color() {
+        let badge = TaskContextProject::from_project(&project(None));
+        assert_eq!(css_hex(&badge.background_color), gpui_kit::rgb(0x5eead4));
+    }
+
+    // parity: TS-renderer-TaskDetailRoute-d84407
+    #[test]
+    fn task_without_a_project_shows_only_its_title_on_the_green_badge() {
+        assert_eq!(
+            task_context_title(None, "fix tab task name"),
+            "fix tab task name"
+        );
+        assert_eq!(
+            badge_colors(None),
+            (gpui_kit::rgb(0x16a34a), gpui_kit::rgb(0xffffff))
+        );
     }
 }

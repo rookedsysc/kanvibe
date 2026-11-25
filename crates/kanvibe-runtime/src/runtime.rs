@@ -16,6 +16,7 @@ use kanvibe_domain::platform::ShortcutPlatform;
 use kanvibe_pane_mirror::{PaneChatRuntime, PaneMirror};
 use kanvibe_process::exec::ShellCommandRunner;
 use kanvibe_process::exec::system::SystemShellCommandRunner;
+use kanvibe_process::github_cli_dependency::GitHubCliDependency;
 use kanvibe_process::hooks::install_bundle::HookInstallScripts;
 use kanvibe_process::hooks::installer::KanvibeHooksInstaller;
 use kanvibe_process::host_file_access::HostFileAccess;
@@ -297,6 +298,11 @@ impl DesktopRuntime {
 
     pub fn session_dependency(&self) -> &Arc<SessionDependencyService> {
         &self.board.session_dependency
+    }
+
+    /// `gh` 설치 확인·설치. 원격 작업의 PR을 찾기 전에 쓴다
+    pub fn github_cli_dependency(&self) -> &Arc<GitHubCliDependency> {
+        &self.board.github_cli_dependency
     }
 }
 

@@ -15,8 +15,8 @@ use kanvibe_domain::i18n::Translator;
 
 use super::TaskDetailView;
 use super::ai_provider_icon::ai_provider_icon;
-use super::ai_reader::load_agent_call_graph;
 use super::live_sessions::{live_session_title, mix_transparent, small_button};
+use super::session_queries::load_agent_call_graph;
 use crate::components::TailwindText;
 use crate::qa::options::parse_iso_utc_ms;
 use crate::theme::{ThemeTokens, radius, spacing, text_scale};

@@ -7,12 +7,15 @@
 pub mod badge;
 pub mod button;
 pub mod context_menu;
+pub mod create_task;
 pub mod dialog;
 pub mod icon;
 pub mod notification_center;
 pub mod popover;
 pub mod scroll_area;
 pub mod segmented_control;
+pub mod spinner;
+pub mod terminal_view;
 pub mod toast;
 pub mod tooltip;
 

@@ -52,12 +52,7 @@ pub fn render_connection_overlay(
         }
         TerminalConnection::Failed(message) => Some(
             overlay
-                .child(
-                    div()
-                        .text_scale(text_scale::SM)
-                        .text_color(theme.status.error)
-                        .child(message.clone()),
-                )
+                .child(failure_message(&theme, message.clone()))
                 .child(retry_button(
                     &theme,
                     translator.translate("terminalRetry"),
@@ -68,8 +63,23 @@ pub fn render_connection_overlay(
     }
 }
 
+/// `role="alert"` 연결 실패 사유
+fn failure_message(theme: &ThemeTokens, message: String) -> impl IntoElement {
+    div()
+        .relative()
+        .text_scale(text_scale::SM)
+        .text_color(theme.status.error)
+        .child(message.clone())
+        .child(qa_target_layer(QaTargetDescription {
+            role: "alert",
+            name: message.clone().into(),
+            text: message.into(),
+        }))
+}
+
 fn connecting_status(theme: &ThemeTokens, label: String) -> impl IntoElement {
     div()
+        .relative()
         .flex()
         .items_center()
         .gap(spacing(2.0))
@@ -82,7 +92,12 @@ fn connecting_status(theme: &ThemeTokens, label: String) -> impl IntoElement {
                 .border_2()
                 .border_color(theme.text.muted),
         )
-        .child(label)
+        .child(label.clone())
+        .child(qa_target_layer(QaTargetDescription {
+            role: "status",
+            name: label.clone().into(),
+            text: label.into(),
+        }))
 }
 
 fn retry_button(
@@ -111,7 +126,7 @@ fn retry_button(
         }))
 }
 
-/// 연결이 끝났거나 원격 이미지 전송이 실패한 사유. TS는 xterm에 빨간 줄로 썼다
+/// 연결이 끝났거나 원격 이미지 전송이 실패한 사유. TS는 xterm에 빨간 줄로 썼다(터미널 줄과 같은 대상으로 남긴다)
 pub fn render_closed_reason(reason: String) -> AnyElement {
     div()
         .absolute()
@@ -124,6 +139,11 @@ pub fn render_closed_reason(reason: String) -> AnyElement {
         .text_size(px(14.0))
         .text_color(gpui_kit::rgb(0xcc0000))
         .bg(gpui_kit::rgb(kanvibe_terminal::screen::TERMINAL_BACKGROUND))
-        .child(reason)
+        .child(reason.clone())
+        .child(qa_target_layer(QaTargetDescription {
+            role: "row",
+            name: reason.clone().into(),
+            text: reason.into(),
+        }))
         .into_any_element()
 }

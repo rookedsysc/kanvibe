@@ -7,15 +7,21 @@ use std::time::Duration;
 
 use gpui_kit::{AppContext, Context};
 use kanvibe_domain::terminal_tabs::TerminalTab;
-use kanvibe_terminal::terminal_tab_service::TerminalTabMutationResult;
+use kanvibe_terminal::terminal_tab_service::{TerminalTabListResult, TerminalTabMutationResult};
+use serde_json::Value;
 
 use super::TaskDetailView;
-use super::terminal::runtime::{TerminalRuntime, terminal_runtime};
+use super::data::desktop_runtime;
+use crate::qa::faults::FaultOutcome;
+use crate::services::{AppServices, apply_fault, format_service_error};
+use kanvibe_runtime::DesktopRuntime;
 
 const LOCAL_POLL_INTERVAL: Duration = Duration::from_millis(1_000);
 const REMOTE_POLL_INTERVAL: Duration = Duration::from_millis(3_000);
 /// TS가 목록 조회 예외에 쓰던 문구
 const TAB_LIST_READ_FAILED: &str = "터미널 탭 목록을 읽지 못했습니다.";
+/// TS IPC `terminalTabs.listTerminalTabs`
+pub const LIST_TABS_SERVICE: &str = "terminalTabs.listTerminalTabs";
 
 /// 탭 명령 하나
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -27,6 +33,23 @@ pub enum TabCommand {
 }
 
 impl TabCommand {
+    /// TS IPC 이름과 인자(QA 고장 주입 판정용)
+    fn service_call(&self, task_id: &str) -> (&'static str, serde_json::Value) {
+        use serde_json::json;
+        match self {
+            Self::Create => ("terminalTabs.createTerminalTab", json!([task_id])),
+            Self::Select(tab_id) => ("terminalTabs.selectTerminalTab", json!([task_id, tab_id])),
+            Self::Rename(tab_id, name) => (
+                "terminalTabs.renameTerminalTab",
+                json!([task_id, tab_id, name]),
+            ),
+            Self::Move(tab_id, target_index) => (
+                "terminalTabs.moveTerminalTab",
+                json!([task_id, tab_id, target_index]),
+            ),
+        }
+    }
+
     /// 처리 중 표시를 받을 탭. 추가는 아직 탭이 없다
     pub fn tab_id(&self) -> Option<&str> {
         match self {
@@ -107,7 +130,13 @@ impl TaskDetailView {
         self._tab_poll = Some(cx.spawn(async move |this, cx| {
             loop {
                 cx.background_executor().timer(interval).await;
-                let is_alive = this.update(cx, |view, cx| view.refresh_tabs(cx)).is_ok();
+                let is_alive = this
+                    .update(cx, |view, cx| {
+                        if view.should_poll_tabs {
+                            view.poll_tabs(cx)
+                        }
+                    })
+                    .is_ok();
                 if !is_alive {
                     return;
                 }
@@ -117,41 +146,69 @@ impl TaskDetailView {
 
     /// 읽는 중이면 겹쳐 보내지 않고, 끝난 뒤 한 번 더 읽도록 예약한다(TS `queued`)
     pub(super) fn refresh_tabs(&mut self, cx: &mut Context<Self>) {
+        self.read_tabs(true, cx);
+    }
+
+    /// 주기 조회. 읽는 중이면 이번 차례를 건너뛰고 다시 읽기를 예약하지 않는다(TS `refresh(false)`)
+    pub(super) fn poll_tabs(&mut self, cx: &mut Context<Self>) {
+        self.read_tabs(false, cx);
+    }
+
+    fn read_tabs(&mut self, should_queue_if_busy: bool, cx: &mut Context<Self>) {
         if self._tab_refresh.is_some() {
-            self.is_tab_refresh_queued = true;
+            self.is_tab_refresh_queued |= should_queue_if_busy;
             return;
         }
-        let Some(runtime) = terminal_runtime(cx) else {
+        let Some(runtime) = desktop_runtime(cx) else {
             return;
         };
         let task_id = self.task_id.clone();
-        let read = cx.background_spawn(async move { runtime.tabs.list_terminal_tabs(&task_id) });
+        let fault = tab_service_fault(LIST_TABS_SERVICE, &serde_json::json!([task_id]), cx);
+        let executor = cx.background_executor().clone();
+        let read = cx.background_spawn(async move {
+            if let FaultOutcome::Result(value) = &fault {
+                return Ok(list_result_from_fault_value(value));
+            }
+            apply_fault(fault, &executor)
+                .await
+                .map_err(|failure| failure.reason)?;
+            runtime
+                .terminal_tab_service()
+                .list_terminal_tabs(&task_id)
+                .map_err(|error| error.to_string())
+        });
         self._tab_refresh = Some(cx.spawn(async move |this, cx| {
             let result = read.await;
-            let _ = this.update(cx, |view, cx| {
-                view._tab_refresh = None;
-                let tabs = &mut view.terminal_tabs;
-                match result {
-                    Ok(list) => {
-                        tabs.tabs = if list.is_ok { list.tabs } else { Vec::new() };
-                        tabs.error = if list.is_ok { None } else { list.error };
-                    }
-                    Err(error) => {
-                        tabs.tabs = Vec::new();
-                        tabs.error = Some(match error.to_string().is_empty() {
-                            true => TAB_LIST_READ_FAILED.to_string(),
-                            false => error.to_string(),
-                        });
-                    }
-                }
-                tabs.is_list_loaded = true;
-                view.sync_terminal_tab_pane(cx);
-                if std::mem::take(&mut view.is_tab_refresh_queued) {
-                    view.refresh_tabs(cx);
-                }
-                cx.notify();
-            });
+            let _ = this.update(cx, |view, cx| view.finish_tab_read(result, cx));
         }));
+    }
+
+    fn finish_tab_read(
+        &mut self,
+        result: Result<TerminalTabListResult, String>,
+        cx: &mut Context<Self>,
+    ) {
+        self._tab_refresh = None;
+        let tabs = &mut self.terminal_tabs;
+        match result {
+            Ok(list) => {
+                tabs.tabs = if list.is_ok { list.tabs } else { Vec::new() };
+                tabs.error = if list.is_ok { None } else { list.error };
+            }
+            Err(reason) => {
+                tabs.tabs = Vec::new();
+                tabs.error = Some(match reason.is_empty() {
+                    true => TAB_LIST_READ_FAILED.to_string(),
+                    false => format_service_error(&reason),
+                });
+            }
+        }
+        tabs.is_list_loaded = true;
+        self.sync_terminal_tab_pane(cx);
+        if std::mem::take(&mut self.is_tab_refresh_queued) {
+            self.refresh_tabs(cx);
+        }
+        cx.notify();
     }
 
     /// 탭 명령을 보낸다. 처리 중이면 새 명령은 받지 않는다(TS `useTrackedAction`)
@@ -159,7 +216,7 @@ impl TaskDetailView {
         if self.terminal_tabs.pending.is_some() {
             return;
         }
-        let Some(runtime) = terminal_runtime(cx) else {
+        let Some(runtime) = desktop_runtime(cx) else {
             return;
         };
         if let TabCommand::Select(tab_id) = &command {
@@ -169,8 +226,18 @@ impl TaskDetailView {
         self.terminal_tabs.action_error = None;
         let task_id = self.task_id.clone();
         let sent = command.clone();
-        let mutation =
-            cx.background_spawn(async move { send_tab_command(&runtime, &task_id, &sent) });
+        let (service, arguments) = command.service_call(&task_id);
+        let fault = tab_service_fault(service, &arguments, cx);
+        let executor = cx.background_executor().clone();
+        let mutation = cx.background_spawn(async move {
+            if let FaultOutcome::Result(value) = &fault {
+                return Ok(mutation_result_from_fault_value(value));
+            }
+            apply_fault(fault, &executor)
+                .await
+                .map_err(|failure| failure.reason)?;
+            send_tab_command(&runtime, &task_id, &sent)
+        });
         self._tab_command = Some(cx.spawn(async move |this, cx| {
             let result = mutation.await;
             let _ = this.update(cx, |view, cx| view.finish_tab_command(command, result, cx));
@@ -188,7 +255,7 @@ impl TaskDetailView {
         let failure = match result {
             Ok(mutation) if mutation.is_ok => None,
             Ok(mutation) => Some(mutation.error.unwrap_or_default()),
-            Err(error) => Some(error),
+            Err(error) => Some(format_service_error(&error)),
         };
         match failure {
             Some(reason) => {
@@ -209,12 +276,51 @@ impl TaskDetailView {
     }
 }
 
+/// QA 모드 고장 주입 판정
+fn tab_service_fault(
+    service: &str,
+    arguments: &Value,
+    cx: &Context<TaskDetailView>,
+) -> FaultOutcome {
+    cx.global::<AppServices>()
+        .check_fault(service, &arguments.to_string())
+}
+
+/// QA 고장 주입 값(TS `{ ok, tabs, error }`)을 목록 결과로 바꾼다
+fn list_result_from_fault_value(value: &Value) -> TerminalTabListResult {
+    let tabs = value
+        .get("tabs")
+        .cloned()
+        .and_then(|tabs| serde_json::from_value::<Vec<TerminalTab>>(tabs).ok())
+        .unwrap_or_default();
+    TerminalTabListResult {
+        is_ok: value.get("ok").and_then(Value::as_bool) == Some(true),
+        tabs,
+        error: value
+            .get("error")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+    }
+}
+
+/// QA 고장 주입 값(TS `{ ok, error, shouldCloseWindow }`)을 명령 결과로 바꾼다
+fn mutation_result_from_fault_value(value: &Value) -> TerminalTabMutationResult {
+    TerminalTabMutationResult {
+        is_ok: value.get("ok").and_then(Value::as_bool) == Some(true),
+        should_close_window: value.get("shouldCloseWindow").and_then(Value::as_bool),
+        error: value
+            .get("error")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+    }
+}
+
 fn send_tab_command(
-    runtime: &Arc<TerminalRuntime>,
+    runtime: &Arc<DesktopRuntime>,
     task_id: &str,
     command: &TabCommand,
 ) -> Result<TerminalTabMutationResult, String> {
-    let tabs = &runtime.tabs;
+    let tabs = runtime.terminal_tab_service();
     let result = match command {
         TabCommand::Create => tabs.create_terminal_tab(task_id),
         TabCommand::Select(tab_id) => tabs.select_terminal_tab(task_id, tab_id),

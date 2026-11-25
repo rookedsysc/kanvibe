@@ -3,25 +3,29 @@
 //! 파일마다 상태를 새로 만들어, 새 파일을 읽기 전에 이전 파일 내용이 새 파일 모양으로 그려지지 않게 한다.
 //! Markdown·TeX는 그린 모양과 원문을 오가고, 나머지는 원문만 보인다. 복사는 보이는 모양과 상관없이 파일 원문 전체다.
 
+mod document_view;
+
 use gpui_kit::{
     AnyElement, ClipboardItem, Context, InteractiveElement, IntoElement, ParentElement,
-    SharedString, StatefulInteractiveElement, Styled, Task, div, px,
+    SharedString, StatefulInteractiveElement, Styled, Task, Window, div, px,
 };
 use kanvibe_ai::types::AiMessageRole;
 use kanvibe_services::diff::TaskWorkspaceFileFailure;
 
-use super::ai_reader::read_workspace_file;
 use super::chat_view::InlineAiChatView;
-use super::message_content::render_message;
+use super::message_content::selectable_text::SelectableRichText;
+use super::message_content::{COPY_FEEDBACK_DURATION, highlighted_code_spans, render_message};
+use super::session_queries::read_workspace_file;
 use crate::components::{TailwindText, box_shadows};
 use crate::qa::targets::{QaTargetDescription, qa_target_layer};
 use crate::theme::{ThemeTokens, radius, spacing, text_scale};
+use document_view::{DocumentPreview, HtmlRender, render_document};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PreviewKind {
     Markdown,
     Latex,
-    /// HTML·SVG. GPUI에는 격리된 문서 틀이 없어 원문만 보인다
+    /// HTML·SVG. HTML은 격리한 WebView, SVG는 앱 안에서 그린다
     Document,
     Source,
 }
@@ -38,7 +42,10 @@ pub struct FilePreviewState {
     pub failure: Option<TaskWorkspaceFileFailure>,
     pub mode: PreviewMode,
     pub is_copied: bool,
+    /// 그린 문서(HTML·SVG). 원문 보기로 바꾸면 버린다
+    document: Option<DocumentPreview>,
     _read: Option<Task<()>>,
+    _copy_feedback: Option<Task<()>>,
 }
 
 fn file_extension(path: &str) -> String {
@@ -60,7 +67,7 @@ pub fn preview_kind(path: &str) -> PreviewKind {
 
 /// 보기 전환은 그려 볼 수 있는 종류에만 둔다
 pub fn has_view_toggle(kind: PreviewKind) -> bool {
-    matches!(kind, PreviewKind::Markdown | PreviewKind::Latex)
+    kind != PreviewKind::Source
 }
 
 /// TeX 문서를 수식 블록만 남긴 Markdown으로 바꾼다(주석·문서 머리 제거, 수식 환경은 `$$`)
@@ -128,7 +135,9 @@ impl FilePreviewState {
             failure: None,
             mode: PreviewMode::Rendered,
             is_copied: false,
+            document: None,
             _read: None,
+            _copy_feedback: None,
         }
     }
 
@@ -174,6 +183,82 @@ impl InlineAiChatView {
                 }
             });
         }));
+    }
+
+    /// 그린 문서가 필요하면 만들고, HTML WebView는 다른 곳이 키 입력을 가져가면 숨긴다(네이티브 창이 GPUI 대화상자를 가린다)
+    pub(super) fn prepare_document_preview(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        // dock 패널이 떠 있지 않고, 키 입력이 이 화면 안이나 이 화면을 품은 상위(작업 상세)에 있을 때만 보인다.
+        // 대화상자처럼 옆 갈래가 키 입력을 가져가도 숨긴다
+        let is_conversation_active = !self.is_covered_by_panel
+            && match window.focused(cx) {
+                None => true,
+                Some(focused) => {
+                    focused.contains(&self.focus_handle, window)
+                        || self.focus_handle.contains(&focused, window)
+                }
+            };
+        let Some(preview) = self.file_preview.as_mut() else {
+            return;
+        };
+        let wants_document = preview.content.is_some()
+            && preview.shows_rendered()
+            && preview_kind(&preview.path) == PreviewKind::Document;
+        if !wants_document {
+            preview.document = None;
+            return;
+        }
+        if preview.document.is_none() {
+            let document = self.open_document(window, cx);
+            if let Some(preview) = self.file_preview.as_mut() {
+                preview.document = document;
+            }
+        }
+        let webview = match self
+            .file_preview
+            .as_ref()
+            .and_then(|preview| preview.document.as_ref())
+        {
+            Some(DocumentPreview::Html(HtmlRender::Ready(webview))) => webview.clone(),
+            _ => return,
+        };
+        webview.update(cx, |webview, _| {
+            if webview.visible() != is_conversation_active {
+                let _ = webview.set_visible(is_conversation_active);
+            }
+        });
+    }
+
+    fn open_document(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<DocumentPreview> {
+        let preview = self.file_preview.as_ref()?;
+        let content = preview.content.clone()?;
+        if file_extension(&preview.path) != "svg" {
+            return Some(DocumentPreview::open_html(&content, window, cx));
+        }
+        let path = preview.path.clone();
+        Some(DocumentPreview::start_svg(
+            content,
+            window.scale_factor(),
+            cx,
+            move |view: &mut Self, render| {
+                let Some(preview) = view
+                    .file_preview
+                    .as_mut()
+                    .filter(|preview| preview.path == path)
+                else {
+                    return;
+                };
+                if let Some(DocumentPreview::Svg {
+                    render: current, ..
+                }) = preview.document.as_mut()
+                {
+                    *current = render;
+                }
+            },
+        ))
     }
 
     pub(super) fn close_file_preview(&mut self, cx: &mut Context<Self>) {
@@ -322,12 +407,32 @@ impl InlineAiChatView {
         button
             .on_click(cx.listener(move |view, _, _, cx| {
                 cx.write_to_clipboard(ClipboardItem::new_string(content.clone()));
-                if let Some(preview) = view.file_preview.as_mut() {
-                    preview.is_copied = true;
-                }
-                cx.notify();
+                view.show_copy_feedback(cx);
             }))
             .into_any_element()
+    }
+
+    /// `복사됨`을 1.5초 보이고 `복사`로 돌아간다
+    fn show_copy_feedback(&mut self, cx: &mut Context<Self>) {
+        let Some(preview) = self.file_preview.as_mut() else {
+            return;
+        };
+        preview.is_copied = true;
+        let path = preview.path.clone();
+        preview._copy_feedback = Some(cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(COPY_FEEDBACK_DURATION).await;
+            let _ = this.update(cx, |view, cx| {
+                if let Some(preview) = view
+                    .file_preview
+                    .as_mut()
+                    .filter(|preview| preview.path == path)
+                {
+                    preview.is_copied = false;
+                    cx.notify();
+                }
+            });
+        }));
+        cx.notify();
     }
 
     fn render_preview_body(
@@ -355,31 +460,10 @@ impl InlineAiChatView {
                 .into_any_element();
         };
         if preview.shows_rendered() {
-            let markdown = match preview_kind(&preview.path) {
-                PreviewKind::Latex => latex_preview_markdown(content),
-                _ => content.to_string(),
-            };
-            let rendered = render_message(&markdown, AiMessageRole::Assistant, theme, cx);
-            return body
-                .child(
-                    div()
-                        .p(spacing(4.0))
-                        .text_color(theme.text.primary)
-                        .child(rendered),
-                )
-                .into_any_element();
+            return render_rendered_preview(body, preview, content, theme);
         }
         body.bg(theme.background.page)
-            .child(
-                div()
-                    .p(spacing(4.0))
-                    .text_scale(text_scale::XS)
-                    .line_height(px(20.0))
-                    .font(crate::fonts::mono_font(400))
-                    .text_color(theme.text.primary)
-                    .whitespace_nowrap()
-                    .child(content.to_string()),
-            )
+            .child(render_source_view(&preview.path, content, theme))
             .into_any_element()
     }
 
@@ -404,6 +488,56 @@ impl InlineAiChatView {
         )
         .child(div().mt(spacing(3.0)).flex().child(retry))
     }
+}
+
+/// 그린 모양: 문서는 틀 가득, Markdown·TeX는 `p-4` 본문
+fn render_rendered_preview(
+    body: gpui_kit::Stateful<gpui_kit::Div>,
+    preview: &FilePreviewState,
+    content: &str,
+    theme: &ThemeTokens,
+) -> AnyElement {
+    let kind = preview_kind(&preview.path);
+    if kind == PreviewKind::Document {
+        let document = preview.document.as_ref().map(render_document);
+        return div()
+            .min_h_0()
+            .flex_1()
+            .children(document)
+            .into_any_element();
+    }
+    let markdown = match kind {
+        PreviewKind::Latex => latex_preview_markdown(content),
+        _ => content.to_string(),
+    };
+    let rendered = render_message("file-preview", &markdown, AiMessageRole::Assistant, theme);
+    body.child(
+        div()
+            .p(spacing(4.0))
+            .text_color(theme.text.primary)
+            .child(rendered),
+    )
+    .into_any_element()
+}
+
+/// 원문 보기(`kv-chat-code p-4 font-mono text-xs leading-5`). 확장자를 highlight.js가 알면 색을 입힌다
+fn render_source_view(path: &str, content: &str, theme: &ThemeTokens) -> AnyElement {
+    let extension = file_extension(path);
+    let language = (!extension.is_empty()).then_some(extension);
+    let code = kanvibe_markdown::code_block(language, content.to_string());
+    div()
+        .id("ai-chat-file-source")
+        .overflow_x_scroll()
+        .p(spacing(4.0))
+        .text_scale(text_scale::XS)
+        .line_height(px(20.0))
+        .whitespace_nowrap()
+        .child(SelectableRichText::new(
+            "file-preview/source",
+            highlighted_code_spans(&code, theme),
+            theme.brand.muted.into(),
+        ))
+        .into_any_element()
 }
 
 /// 불러오는 중·실패 안내(`p-4 text-sm`)
@@ -515,6 +649,25 @@ mod tests {
         let mut preview = FilePreviewState::new("/repo/a.ts".into());
         preview.finish(Err(TaskWorkspaceFileFailure::NotFound));
         assert_eq!(preview.failure, Some(TaskWorkspaceFileFailure::NotFound));
+    }
+
+    // parity: TS-renderer-AiChatFilePreview-efd9ab
+    #[test]
+    fn redrawing_the_same_file_keeps_its_highlighted_code() {
+        let theme = ThemeTokens::for_mode(crate::theme::ThemeMode::Dark);
+        let spans = |content: &str| {
+            let code = kanvibe_markdown::code_block(Some("ts".into()), content.to_string());
+            highlighted_code_spans(&code, &theme)
+        };
+        let first = spans("const total = 3;");
+        let keyword: gpui_kit::Hsla = theme.syntax.keyword.into();
+        assert_eq!(&first.text[..5], "const");
+        assert_eq!(first.runs[0].len, 5);
+        assert_eq!(first.runs[0].color, keyword);
+        // 다시 그려도 같은 id(`file-preview/source`)의 같은 글자 구간이라 고른 글자와 색이 그대로다
+        let second = spans("const total = 3;");
+        assert_eq!(first.text, second.text);
+        assert_eq!(first.runs, second.runs);
     }
 
     // parity: TS-renderer-AiChatFilePreview-a42a5d

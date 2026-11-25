@@ -61,11 +61,11 @@ pub struct PaletteItem {
     pub is_disabled: bool,
 }
 
-/// TS `commands`: sync, (옮길 카드가 있으면) 열 이동, 보기 전환
+/// TS `commands`: sync, (옮길 작업이 있으면) 열 이동, 보기 전환. `move_statuses`는 옮길 수 있는 상태다
 pub fn palette_items(
     locale: Locale,
     is_sync_busy: bool,
-    has_move_target: bool,
+    move_statuses: &[TaskStatus],
 ) -> Vec<PaletteItem> {
     let labels = Translator::new(locale, "commandPalette");
     let columns = Translator::new(locale, "board.columns");
@@ -79,17 +79,15 @@ pub fn palette_items(
         }),
         is_disabled: is_sync_busy,
     }];
-    if has_move_target {
-        items.extend(TASK_STATUS_ORDER.into_iter().map(|status| PaletteItem {
-            command: PaletteCommand::Move(status),
-            label: format!("move {}", status.as_str()),
-            description: labels.translate_with(
-                "moveToStatusLabel",
-                &[("status", &columns.translate(status.as_str()))],
-            ),
-            is_disabled: false,
-        }));
-    }
+    items.extend(move_statuses.iter().map(|&status| PaletteItem {
+        command: PaletteCommand::Move(status),
+        label: format!("move {}", status.as_str()),
+        description: labels.translate_with(
+            "moveToStatusLabel",
+            &[("status", &columns.translate(status.as_str()))],
+        ),
+        is_disabled: false,
+    }));
     items.push(PaletteItem {
         command: PaletteCommand::View(BoardViewMode::Kanban),
         label: "view kanban".into(),
@@ -121,11 +119,27 @@ pub fn filter_palette_items(items: Vec<PaletteItem>, query: &str) -> Vec<Palette
         .collect()
 }
 
-/// 열린 팔레트. `move_task_id`는 열 때 포커스돼 있던 카드다
+/// 열린 팔레트. `move_task_id`는 열 때 포커스돼 있던 카드나 열려 있던 작업 상세의 작업이다
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(super) struct CommandPaletteState {
     pub selected_index: usize,
     pub move_task_id: Option<String>,
+    /// 작업 상세가 이동 대상이면 그 작업의 지금 상태. 그 상태로 옮기는 명령은 빼고, 이동은 작업 상세가 한다
+    /// (TS `hasActiveTaskContext`·`activeTaskCurrentStatus`)
+    pub active_task_status: Option<TaskStatus>,
+}
+
+impl CommandPaletteState {
+    /// 옮길 수 있는 상태. 작업 상세는 지금 상태를 빼고, 보드 카드는 모든 상태다
+    fn move_statuses(&self) -> Vec<TaskStatus> {
+        if self.move_task_id.is_none() {
+            return Vec::new();
+        }
+        TASK_STATUS_ORDER
+            .into_iter()
+            .filter(|status| Some(*status) != self.active_task_status)
+            .collect()
+    }
 }
 
 impl LocaleShell {
@@ -141,7 +155,7 @@ impl LocaleShell {
         let items = palette_items(
             self.locale,
             self.background_sync.read(cx).state().is_running(),
-            state.move_task_id.is_some(),
+            &state.move_statuses(),
         );
         filter_palette_items(items, self.palette_field.read(cx).text())
     }
@@ -151,13 +165,21 @@ impl LocaleShell {
         if self.has_open_overlay(cx) || self.has_board_blocker(cx) {
             return;
         }
-        let move_task_id = self
+        let active_task = self
+            .task_detail()
+            .and_then(|detail| detail.read(cx).palette_move_target());
+        let focused_card = self
             .board()
             .and_then(|board| board.read(cx).focused_card(window));
+        let (move_task_id, active_task_status) = match active_task {
+            Some((task_id, status)) => (Some(task_id), Some(status)),
+            None => (focused_card, None),
+        };
         self.remember_focus(window, cx);
         self.command_palette = Some(CommandPaletteState {
             selected_index: 0,
             move_task_id,
+            active_task_status,
         });
         self.palette_field
             .update(cx, |field, cx| field.set_text("", cx));
@@ -218,10 +240,20 @@ impl LocaleShell {
             .command_palette
             .as_ref()
             .and_then(|state| state.move_task_id.clone());
+        let is_active_task_move = self
+            .command_palette
+            .as_ref()
+            .is_some_and(|state| state.active_task_status.is_some());
         match item.command {
             PaletteCommand::Sync => {
                 self.background_sync.update(cx, |sync, cx| sync.start(cx));
                 self.close_command_palette(window, cx);
+            }
+            PaletteCommand::Move(status) if is_active_task_move => {
+                self.close_command_palette(window, cx);
+                if let Some(detail) = self.task_detail() {
+                    detail.update(cx, |detail, cx| detail.move_status_from_palette(status, cx));
+                }
             }
             PaletteCommand::Move(status) => {
                 self.close_command_palette(window, cx);
@@ -467,10 +499,10 @@ mod tests {
 
     #[test]
     fn move_commands_appear_only_with_a_focused_card() {
-        let without = palette_items(Locale::Ko, false, false);
+        let without = palette_items(Locale::Ko, false, &[]);
         let labels: Vec<&str> = without.iter().map(|item| item.label.as_str()).collect();
         assert_eq!(labels, ["sync", "view kanban", "view workspace"]);
-        let with = palette_items(Locale::Ko, false, true);
+        let with = palette_items(Locale::Ko, false, &TASK_STATUS_ORDER);
         assert_eq!(with.len(), 8);
         assert_eq!(with[1].label, "move todo");
         assert_eq!(with[1].description, "Todo 상태로 이동");
@@ -478,20 +510,32 @@ mod tests {
 
     #[test]
     fn filter_matches_command_and_description_case_insensitively() {
-        let items = palette_items(Locale::Ko, false, true);
+        let items = palette_items(Locale::Ko, false, &TASK_STATUS_ORDER);
         let filtered = filter_palette_items(items, "MOVE review");
         assert_eq!(filtered.len(), 1);
         assert_eq!(
             filtered[0].command,
             PaletteCommand::Move(TaskStatus::Review)
         );
-        let none = filter_palette_items(palette_items(Locale::Ko, false, false), "zzz");
+        let none = filter_palette_items(palette_items(Locale::Ko, false, &[]), "zzz");
         assert!(none.is_empty());
     }
 
     #[test]
+    fn an_open_task_detail_offers_every_status_but_its_own() {
+        let state = CommandPaletteState {
+            selected_index: 0,
+            move_task_id: Some("task-1".into()),
+            active_task_status: Some(TaskStatus::Todo),
+        };
+        let statuses = state.move_statuses();
+        assert_eq!(statuses.len(), TASK_STATUS_ORDER.len() - 1);
+        assert!(!statuses.contains(&TaskStatus::Todo));
+    }
+
+    #[test]
     fn sync_is_disabled_while_running() {
-        let items = palette_items(Locale::Ko, true, false);
+        let items = palette_items(Locale::Ko, true, &[]);
         assert!(items[0].is_disabled);
         assert_eq!(items[0].description, "동기화하는 중…");
     }

@@ -1,6 +1,7 @@
 //! 창 하나의 루트 뷰. 경로 히스토리를 들고 현재 경로의 화면을 그리며, 창 전역 단축키 동작을 받는다.
 //! TS `App.tsx`의 `HashRouter` + `LocaleShell`에 해당한다.
 
+use gpui_kit::base::TextSelectionLayer;
 use gpui_kit::{
     AnyView, AnyWindowHandle, App, AppContext, Bounds, Context, Entity, FocusHandle,
     InteractiveElement, IntoElement, KeyContext, ParentElement, Render, Styled, Window,
@@ -27,6 +28,7 @@ use crate::theme::{CANVAS_BACKGROUND, ThemeTokens, text_scale};
 use crate::views::board::BoardView;
 use crate::views::boot::{BootSkeletonView, HeldRouteView, lazy_route_bundle};
 use crate::views::locale_shell::LocaleShell;
+use crate::views::task_detail::TaskDetailView;
 use crate::views::window_controls::window_controls_overlay;
 use crate::views::{ScreenContext, WindowNavigator, build_screen_view};
 use crate::windows::WindowRegistry;
@@ -126,8 +128,16 @@ impl AppWindow {
             .downcast::<BoardView>()
             .ok()
             .map(|board| board.downgrade());
-        self.locale_shell
-            .update(cx, |shell, _| shell.set_board(board));
+        let task_detail = self
+            .screen
+            .clone()
+            .downcast::<TaskDetailView>()
+            .ok()
+            .map(|detail| detail.downgrade());
+        self.locale_shell.update(cx, |shell, _| {
+            shell.set_board(board);
+            shell.set_task_detail(task_detail);
+        });
     }
 
     /// 이 창의 전역 덮개
@@ -356,6 +366,8 @@ impl Render for AppWindow {
             .text_size(text_scale::BODY.font_size)
             .line_height(text_scale::BODY.line_height)
             .text_color(theme.text.primary)
+            // 창 단위 글자 선택(대화 본문·pane 채팅 메시지 등 여러 화면이 함께 쓴다). 루트의 첫 자식이어야 한다
+            .child(TextSelectionLayer)
             .child(self.screen.clone())
             .children((!self.is_first_frame_held).then(|| self.locale_shell.clone()))
             .children(linux_window_controls())

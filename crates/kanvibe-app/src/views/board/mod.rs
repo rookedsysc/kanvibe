@@ -5,7 +5,6 @@ mod actions;
 mod board_model;
 mod column;
 mod context_menu;
-mod create_task;
 mod dialogs;
 mod done_confirm;
 mod folder_search;
@@ -42,6 +41,7 @@ use kanvibe_domain::task_diff_stats::TaskDiffStats;
 use kanvibe_services::kanban::TasksByStatus;
 
 use crate::app_events::{AppEvents, NotificationsChanged, RefreshScope, subscribe_to_refresh};
+use crate::board_focus_target::consume_board_focus_task;
 use crate::components::TailwindText;
 use crate::components::notification_center::NotificationCenterButton;
 use crate::components::toast::ToastKind;
@@ -167,6 +167,8 @@ pub struct BoardView {
     board_focus: FocusHandle,
     page_scroll: ScrollHandle,
     has_claimed_focus: bool,
+    /// 작업 상세에서 돌아왔을 때 포커스를 줄 카드(TS `initialFocusTaskId`). 그 카드가 그려지면 한 번 준다
+    initial_focus_task_id: Option<String>,
     pending_delete_sequence: Option<(String, std::time::Instant)>,
     find_bar: keyboard::FindBarState,
     find_field: Entity<BoardTextField>,
@@ -181,9 +183,9 @@ pub struct BoardView {
     registry_search: Entity<BoardTextField>,
     registry_path: Entity<BoardTextField>,
     registry: registry_actions::RegistryState,
-    create_task: Option<Entity<create_task::CreateTaskModal>>,
+    create_task: Option<Entity<crate::components::create_task::CreateTaskModal>>,
     /// 만드는 중에 닫은 모달. 결과를 받을 때까지 붙잡아 둔다
-    background_create_tasks: Vec<Entity<create_task::CreateTaskModal>>,
+    background_create_tasks: Vec<Entity<crate::components::create_task::CreateTaskModal>>,
     create_task_subscriptions: Vec<Subscription>,
     _board_load: Task<()>,
     _load_delay_timer: Task<()>,
@@ -243,6 +245,7 @@ impl BoardView {
             board_focus: cx.focus_handle(),
             page_scroll: ScrollHandle::new(),
             has_claimed_focus: false,
+            initial_focus_task_id: None,
             pending_delete_sequence: None,
             find_bar: keyboard::FindBarState::default(),
             find_field,
@@ -321,6 +324,18 @@ impl BoardView {
         (project_search, find_field, workspace_search)
     }
 
+    /// 돌아온 작업의 카드가 이번에 그려졌으면 그 카드에 포커스를 준다. 보이지 않는 작업이면 계속 기다린다
+    fn apply_initial_card_focus(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(task_id) = self.initial_focus_task_id.as_deref() else {
+            return;
+        };
+        let Some(handle) = self.card_focus.get(task_id).cloned() else {
+            return;
+        };
+        self.initial_focus_task_id = None;
+        handle.focus(window, cx);
+    }
+
     /// 창 루트가 쥔 포커스를 보드로 가져온다. 그래야 앱 단축키 동작이 보드까지 내려온다.
     /// 보드가 사라질 때(다른 경로로 이동) 포커스가 허공에 남지 않도록 가져오기 전 포커스로 돌려준다
     fn claim_initial_focus(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -328,6 +343,8 @@ impl BoardView {
             return;
         }
         self.has_claimed_focus = true;
+        self.initial_focus_task_id =
+            consume_board_focus_task(window.window_handle().window_id(), cx);
         let previous_focus = window.focused(cx);
         self.board_focus.focus(window, cx);
         let Some(previous_focus) = previous_focus else {
@@ -648,6 +665,7 @@ impl Render for BoardView {
             )
             .into_any_element()
         };
+        self.apply_initial_card_focus(window, cx);
         let root = div()
             .id("board-route")
             .key_context(keyboard::BOARD_KEY_CONTEXT)

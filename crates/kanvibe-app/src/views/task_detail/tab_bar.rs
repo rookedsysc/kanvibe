@@ -291,6 +291,11 @@ fn render_new_tab_button(
 ) -> impl IntoElement {
     let label = translator.translate("newTerminalTab");
     let is_disabled = tabs.pending.is_some();
+    // 추가를 기다리는 동안 `+` 대신 진행 표시를 보인다(TS `aria-busy`)
+    let glyph = match tabs.pending {
+        Some(TabCommand::Create) => "…",
+        _ => "+",
+    };
     let mut button = div()
         .id("terminal-tab-new")
         .relative()
@@ -300,14 +305,11 @@ fn render_new_tab_button(
         .py(spacing(1.0))
         .text_scale(text_scale::XS)
         .text_color(theme.terminal.text)
-        .child(match tabs.pending {
-            Some(TabCommand::Create) => "…",
-            _ => "+",
-        })
+        .child(glyph)
         .child(qa_target_layer(QaTargetDescription {
             role: "button",
             name: label.into(),
-            text: "+".into(),
+            text: glyph.into(),
         }));
     if is_disabled {
         button = button.opacity(0.6);
@@ -338,11 +340,10 @@ fn render_tab_action_error(
             .gap(spacing(1.5))
             .text_scale(text_scale::PX_11)
             .text_color(theme.status.error)
-            .child(
-                div().max_w(px(256.0)).truncate().child(
-                    translator.translate_with("terminalTabActionFailed", &[("reason", reason)]),
-                ),
-            )
+            .child(render_tab_action_message(translator.translate_with(
+                "terminalTabActionFailed",
+                &[("reason", reason)],
+            )))
             .child(
                 div()
                     .id("terminal-tab-retry")
@@ -363,6 +364,20 @@ fn render_tab_action_error(
             )
             .into_any_element(),
     )
+}
+
+/// `max-w-64 truncate` 실패 사유(TS `role="alert"`)
+fn render_tab_action_message(message: String) -> impl IntoElement {
+    div()
+        .relative()
+        .max_w(px(256.0))
+        .truncate()
+        .child(message.clone())
+        .child(qa_target_layer(QaTargetDescription {
+            role: "alert",
+            name: message.clone().into(),
+            text: message.into(),
+        }))
 }
 
 /// 앱 컨텍스트가 필요 없는 확인 질문 문구(TS `terminalTabCloseConfirm`)

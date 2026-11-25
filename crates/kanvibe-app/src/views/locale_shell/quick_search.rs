@@ -339,13 +339,19 @@ impl LocaleShell {
         let (Some(project_id), Some(branch_name)) = (task.project_id, task.branch_name) else {
             return;
         };
+        let defaults = Some((branch_name, project_id));
+        if let Some(detail) = self.task_detail() {
+            self.close_quick_search(window, cx);
+            detail.update(cx, |detail, cx| {
+                detail.open_create_task(defaults, window, cx)
+            });
+            return;
+        }
         let Some(board) = self.board() else {
             return;
         };
         self.close_quick_search(window, cx);
-        board.update(cx, |board, cx| {
-            board.open_create_task(Some((branch_name, project_id)), window, cx)
-        });
+        board.update(cx, |board, cx| board.open_create_task(defaults, window, cx));
     }
 
     pub(super) fn render_quick_search(

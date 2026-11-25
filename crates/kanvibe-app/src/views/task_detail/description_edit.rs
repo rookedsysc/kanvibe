@@ -1,25 +1,26 @@
 //! 타이틀 카드의 설명 인라인 편집(TS `TaskDetailTitleCard`). 설명을 누르면 편집으로 바뀌고,
 //! Enter는 저장, Shift+Enter는 줄바꿈, Esc는 취소다. 저장 중에는 한 번만 보내고 실패하면 편집을 연 채 사유를 남긴다.
 
-use gpui_kit::base::input::{InputEvent, Textarea, TextareaState};
+use gpui_kit::base::input::{Enter, InputEditorStyle, Position, Textarea, TextareaState};
 use gpui_kit::{
     AnyElement, AppContext, Context, Entity, InteractiveElement, IntoElement, ParentElement,
-    SharedString, StatefulInteractiveElement, Styled, Subscription, Window, div, px,
+    SharedString, StatefulInteractiveElement, Styled, Window, div, px,
 };
 use kanvibe_domain::task::KanbanTask;
 use kanvibe_services::kanban::TaskUpdate;
 
 use super::TaskDetailView;
-use super::status_move::{KANBAN_SERVICE_NOT_COMPOSED, SharedKanbanService};
-use crate::components::TailwindText;
+use super::status_move::{KANBAN_SERVICE_UNAVAILABLE, kanban_service};
+use super::usage_cards::visible_text;
+use crate::components::{TailwindText, fade};
 use crate::qa::targets::{QaTargetDescription, qa_target_layer};
 use crate::theme::{ThemeTokens, radius, spacing, text_scale};
+use crate::views::settings::service_call::{call_service, failure};
 
 pub struct DescriptionEdit {
     input: Entity<TextareaState>,
     is_saving: bool,
     error: Option<String>,
-    _events: Subscription,
 }
 
 /// 저장할 값. `None`이면 바뀐 것이 없어 보내지 않고 편집만 닫는다. 공백뿐이면 설명을 지운다(`Some(None)`)
@@ -72,25 +73,36 @@ impl TaskDetailView {
             .snapshot()
             .and_then(|snapshot| snapshot.task.description.clone())
             .unwrap_or_default();
+        // TS처럼 커서를 끝에 두고 편집 칸에 포커스한다
+        let end = Position {
+            line: current.matches('\n').count() as u32,
+            character: u32::MAX,
+        };
         let input = cx.new(|cx| {
             let mut state =
                 TextareaState::new(window, cx).default_value(SharedString::from(current));
             state.set_auto_grow(4, 4, cx);
             state
         });
-        input.update(cx, |state, cx| state.focus(window, cx));
-        let events = cx.subscribe_in(&input, window, |view, _, event, window, cx| {
-            if let InputEvent::PressEnter { shift: false, .. } = event {
-                view.save_description(window, cx);
-            }
-        });
+        input.update(cx, |state, cx| state.set_cursor_position(end, window, cx));
         self.description_edit = Some(DescriptionEdit {
             input,
             is_saving: false,
             error: None,
-            _events: events,
         });
         cx.notify();
+    }
+
+    /// 설명 편집 칸이 입력 포커스를 가졌는지. 화면은 그릴 때 포커스가 자기 안에 없으면 터미널 쪽으로 되돌리는데,
+    /// 막 연 편집 칸은 아직 한 번도 그려지지 않아 화면 안으로 판정되지 않는다
+    pub(super) fn is_description_editor_focused(
+        &self,
+        window: &Window,
+        cx: &gpui_kit::App,
+    ) -> bool {
+        self.description_edit.as_ref().is_some_and(|edit| {
+            gpui_kit::Focusable::focus_handle(edit.input.read(cx), cx).is_focused(window)
+        })
     }
 
     /// 저장 중에는 취소하지 않는다
@@ -128,32 +140,25 @@ impl TaskDetailView {
             self.cancel_description_edit(window, cx);
             return;
         };
-        let service = cx
-            .try_global::<SharedKanbanService>()
-            .and_then(|shared| shared.service.clone());
         let Some(edit) = self.description_edit.as_mut() else {
-            return;
-        };
-        let Some(service) = service else {
-            edit.error = Some(KANBAN_SERVICE_NOT_COMPOSED.to_string());
-            cx.notify();
             return;
         };
         edit.is_saving = true;
         edit.error = None;
+        let service = kanban_service(cx);
         let task_id = self.task_id.clone();
-        let update = TaskUpdate {
-            title: None,
-            description: Some(description),
-            priority: None,
-        };
-        let save = cx.background_spawn(async move {
-            service
-                .update_task(&task_id, &update)
-                .map_err(|error| error.to_string())
+        let arguments = serde_json::json!([task_id, { "description": description }]).to_string();
+        let save = call_service(cx, "kanban.updateTask", arguments, move || {
+            let service = service.ok_or_else(|| failure(KANBAN_SERVICE_UNAVAILABLE))?;
+            let update = TaskUpdate {
+                title: None,
+                description: Some(description),
+                priority: None,
+            };
+            service.update_task(&task_id, &update).map_err(failure)
         });
         self._description_save = Some(cx.spawn(async move |this, cx| {
-            let result = save.await;
+            let result = save.await.map_err(|failure| failure.display_message());
             let _ = this.update(cx, |view, cx| view.finish_description_save(result, cx));
         }));
         cx.notify();
@@ -166,12 +171,8 @@ impl TaskDetailView {
     ) {
         match result {
             Ok(updated) => {
-                if let (Some(updated), super::DetailLoad::Loaded(snapshot)) =
-                    (updated, &mut self.load)
-                {
-                    snapshot.task = updated;
-                }
                 self.description_edit = None;
+                self.apply_saved_task(updated, cx);
             }
             Err(reason) => {
                 if let Some(edit) = self.description_edit.as_mut() {
@@ -189,64 +190,100 @@ impl TaskDetailView {
         edit: &DescriptionEdit,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let cancel_label = self.common.translate("cancel");
+        let error = edit.error.as_ref().map(|reason| {
+            visible_text(
+                self.common
+                    .translate_with("saveFailed", &[("reason", reason)]),
+                text_scale::XS,
+            )
+            .mt(spacing(2.0))
+            .text_color(theme.status.error)
+        });
+        div()
+            .flex()
+            .flex_col()
+            .child(self.render_description_textarea(theme, edit, cx))
+            .child(self.render_description_actions(theme, edit, cx))
+            .children(error)
+            .into_any_element()
+    }
+
+    /// `rows=4 text-sm leading-relaxed bg-bg-page border rounded-md p-2`, 포커스 테두리는 강조색
+    fn render_description_textarea(
+        &self,
+        theme: &ThemeTokens,
+        edit: &DescriptionEdit,
+        cx: &mut Context<Self>,
+    ) -> gpui_kit::Div {
+        let editor_style = InputEditorStyle {
+            foreground: theme.text.primary.into(),
+            muted_foreground: fade(theme.text.primary, 0.5).into(),
+            background: theme.background.page.into(),
+            border: theme.brand.primary.into(),
+            selection: theme.brand.muted.into(),
+            caret: theme.text.primary.into(),
+            ..InputEditorStyle::default()
+        };
+        edit.input
+            .update(cx, |input, _| input.set_editor_style(editor_style));
+        div()
+            .relative()
+            .w_full()
+            .rounded(radius::MD)
+            .border_1()
+            .border_color(theme.brand.primary)
+            .bg(theme.background.page)
+            .p(spacing(2.0))
+            .text_scale(text_scale::SM)
+            // `leading-relaxed`
+            .line_height(px(22.75))
+            .text_color(theme.text.primary)
+            // Enter·Mod+Enter는 줄을 바꾸지 않고 저장하고(TS `preventDefault`), Shift+Enter만 줄을 바꾼다.
+            // 편집 칸보다 먼저 받아야 줄바꿈이 들어가지 않는다
+            .capture_action(cx.listener(|view, action: &Enter, window, cx| {
+                if !action.shift {
+                    cx.stop_propagation();
+                    view.save_description(window, cx);
+                }
+            }))
+            .child(Textarea::new(&edit.input))
+            .child(qa_target_layer(QaTargetDescription {
+                role: "textbox",
+                name: SharedString::default(),
+                text: edit.input.read(cx).value().to_string().into(),
+            }))
+    }
+
+    /// 취소·저장 버튼 줄(`flex justify-end gap-2 mt-2`). 저장 중에는 저장 버튼이 `saving` 문구를 보인다
+    fn render_description_actions(
+        &self,
+        theme: &ThemeTokens,
+        edit: &DescriptionEdit,
+        cx: &mut Context<Self>,
+    ) -> gpui_kit::Div {
         let save_label = match edit.is_saving {
             true => self.common.translate("saving"),
             false => self.common.translate("save"),
         };
+        let cancel = editor_button(
+            theme,
+            "description-cancel",
+            self.common.translate("cancel"),
+            false,
+            edit.is_saving,
+        )
+        .on_click(cx.listener(|view, _, window, cx| {
+            view.cancel_description_edit(window, cx);
+        }));
+        let save = editor_button(theme, "description-save", save_label, true, edit.is_saving)
+            .on_click(cx.listener(|view, _, window, cx| view.save_description(window, cx)));
         div()
+            .mt(spacing(2.0))
             .flex()
-            .flex_col()
-            .child(
-                div()
-                    .w_full()
-                    .rounded(radius::MD)
-                    .border_1()
-                    .border_color(theme.brand.primary)
-                    .bg(theme.background.page)
-                    .p(spacing(2.0))
-                    .text_scale(text_scale::SM)
-                    .text_color(theme.text.primary)
-                    .child(Textarea::new(&edit.input)),
-            )
-            .child(
-                div()
-                    .mt(spacing(2.0))
-                    .flex()
-                    .justify_end()
-                    .gap(spacing(2.0))
-                    .child(
-                        editor_button(
-                            theme,
-                            "description-cancel",
-                            cancel_label,
-                            false,
-                            edit.is_saving,
-                        )
-                        .on_click(cx.listener(|view, _, window, cx| {
-                            view.cancel_description_edit(window, cx);
-                        })),
-                    )
-                    .child(
-                        editor_button(theme, "description-save", save_label, true, edit.is_saving)
-                            .on_click(
-                                cx.listener(|view, _, window, cx| {
-                                    view.save_description(window, cx)
-                                }),
-                            ),
-                    ),
-            )
-            .children(edit.error.as_ref().map(|reason| {
-                div()
-                    .mt(spacing(2.0))
-                    .text_scale(text_scale::XS)
-                    .text_color(theme.status.error)
-                    .child(
-                        self.common
-                            .translate_with("saveFailed", &[("reason", reason)]),
-                    )
-            }))
-            .into_any_element()
+            .justify_end()
+            .gap(spacing(2.0))
+            .child(cancel)
+            .child(save)
     }
 }
 

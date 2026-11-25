@@ -3,6 +3,8 @@
 //! 도구·추론 메시지는 접힌 상태로 두고 머리줄을 눌러 펼친다. 사용자 요청은 쓴 그대로, 나머지는 본문 그리기로 보인다.
 //! 메시지마다 원문 전체를 복사하는 버튼과 시각을 붙이고, AI가 만들거나 고친 파일은 미리보기를 여는 카드로 보인다.
 
+mod attachment;
+
 use gpui_kit::{
     AnyElement, ClipboardItem, Context, InteractiveElement, IntoElement, ParentElement,
     SharedString, StatefulInteractiveElement, Styled, div, px,
@@ -16,9 +18,11 @@ use super::chat_history::TranscriptRow;
 use super::chat_view::InlineAiChatView;
 use super::message_content::render_message;
 use crate::components::TailwindText;
-use crate::qa::options::parse_iso_utc_ms;
+use crate::locale_format::format_time_two_digit_hm;
 use crate::qa::targets::{QaTargetDescription, qa_target_layer};
 use crate::theme::{ThemeTokens, radius, spacing, text_scale};
+use crate::views::settings::local_time::LocalDateTime;
+use attachment::{AttachmentContext, AttachmentLabels, ChatAttachment};
 
 /// 메시지 모양
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -87,18 +91,15 @@ pub fn meta_name(
     }
 }
 
-/// `toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"})`(en-US, UTC): `02:45 AM`
+/// `toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"})`: en-US는 `02:45 AM`
 pub fn message_time(timestamp: Option<&str>) -> Option<String> {
-    let epoch_ms = parse_iso_utc_ms(timestamp?)?;
-    let minutes_of_day = epoch_ms.div_euclid(60_000).rem_euclid(24 * 60);
-    let (hour, minute) = (minutes_of_day / 60, minutes_of_day % 60);
-    let (display_hour, period) = match hour {
-        0 => (12, "AM"),
-        1..=11 => (hour, "AM"),
-        12 => (12, "PM"),
-        _ => (hour - 12, "PM"),
-    };
-    Some(format!("{display_hour:02}:{minute:02} {period}"))
+    let epoch_ms = kanvibe_ai::javascript::parse_date_ms(timestamp?)?;
+    format_time_two_digit_hm(LocalDateTime::from_epoch_ms(epoch_ms)?)
+}
+
+/// 원문이 있을 때만 메시지 복사 버튼을 둔다(그림만 있는 메시지에는 빈 복사가 없다)
+pub fn has_copy_action(message: &AggregatedAiMessage) -> bool {
+    !message_text(message).is_empty()
 }
 
 /// 미리보기를 열 수 있는 화면에서만 카드를 그린다
@@ -150,9 +151,11 @@ impl InlineAiChatView {
                 let disclosure = self.render_disclosure(theme, row, summary, first_line, meta, cx);
                 div().child(disclosure).children(cards).into_any_element()
             }
-            MessageShape::UserBubble => render_user_bubble(theme, message, cards, meta),
+            MessageShape::UserBubble => {
+                render_user_bubble(theme, self.render_message_body(theme, row), cards, meta)
+            }
             MessageShape::Body => {
-                let body = render_message(message_text(message), message.role, theme, cx);
+                let body = self.render_message_body(theme, row);
                 div()
                     .min_w_0()
                     .w_full()
@@ -166,6 +169,41 @@ impl InlineAiChatView {
                     .into_any_element()
             }
         }
+    }
+
+    /// 본문(원문이 있을 때만)과 첨부. TS는 원문 없는 그림 메시지에 본문을 그리지 않는다
+    fn render_message_body(&self, theme: &ThemeTokens, row: &TranscriptRow<'_>) -> AnyElement {
+        let message = row.message;
+        let text = message_text(message);
+        let content =
+            (!text.is_empty()).then(|| render_message(&row.key, text, message.role, theme));
+        let context = self
+            .state
+            .selected_session()
+            .map(|session| AttachmentContext {
+                task_id: self.task_id.clone(),
+                provider: session.provider,
+                session_id: session.id.clone(),
+                source_ref: session.source_ref.clone(),
+            });
+        let labels = AttachmentLabels::from_translator(&self.translator);
+        let attachments =
+            message
+                .attachment_list()
+                .iter()
+                .enumerate()
+                .map(|(index, attachment)| ChatAttachment {
+                    key: format!("{}:{index}", row.key),
+                    attachment: attachment.clone(),
+                    context: context.clone(),
+                    labels: labels.clone(),
+                    theme: *theme,
+                });
+        div()
+            .min_w_0()
+            .children(content)
+            .children(attachments)
+            .into_any_element()
     }
 
     /// 접힌 도구·추론 줄. 펼치면 본문과 메타 줄이 머리줄 아래에 붙는다
@@ -189,7 +227,7 @@ impl InlineAiChatView {
             .py(spacing(2.0))
             .child(header);
         if is_open {
-            let body = render_message(message_text(row.message), row.message.role, theme, cx);
+            let body = self.render_message_body(theme, row);
             frame = frame.child(
                 div()
                     .mt(spacing(2.0))
@@ -205,7 +243,8 @@ impl InlineAiChatView {
         frame.into_any_element()
     }
 
-    /// `<summary>`: 펼침 표시, 도구 이름, 본문 첫 줄, 펼치기/접기
+    /// `<summary>`: 펼침 표시, 도구 이름, 본문 첫 줄, 펼치기/접기.
+    /// `inline-block align-bottom` 첫 줄 조각 때문에 TS 줄 상자가 1px 커서 아래 여백을 1px 더 둔다
     fn render_disclosure_header(
         &self,
         theme: &ThemeTokens,
@@ -226,18 +265,13 @@ impl InlineAiChatView {
             .relative()
             .flex()
             .items_center()
-            .py(spacing(3.0))
+            .pt(spacing(3.0))
+            .pb(px(13.0))
             .text_scale(text_scale::XS)
             .css_weight(500)
             .text_color(theme.text.secondary)
             .cursor_pointer()
-            .child(
-                div()
-                    .flex_none()
-                    .w(px(12.0))
-                    .text_size(px(8.0))
-                    .child(if is_open { "▼" } else { "▶" }),
-            )
+            .child(disclosure_marker(is_open))
             .child(div().flex_none().child(summary.clone()))
             .child(
                 div()
@@ -267,7 +301,8 @@ impl InlineAiChatView {
         let message = row.message;
         let name = meta_name(&self.translator, message.role, provider);
         let text = message_text(message).to_string();
-        let copy = (!text.is_empty()).then(|| self.render_copy_message(theme, &row.key, text, cx));
+        let copy =
+            has_copy_action(message).then(|| self.render_copy_message(theme, &row.key, text, cx));
         div()
             .mt(spacing(1.0))
             .flex()
@@ -347,6 +382,15 @@ impl InlineAiChatView {
     }
 }
 
+/// 접힘 삼각형(`<details>` 표시)
+fn disclosure_marker(is_open: bool) -> impl IntoElement {
+    div()
+        .flex_none()
+        .w(px(12.0))
+        .text_size(px(8.0))
+        .child(if is_open { "▼" } else { "▶" })
+}
+
 /// AI가 바꾼 파일 카드: 파일 이름과 바뀐 방식
 fn render_file_card(
     theme: &ThemeTokens,
@@ -396,7 +440,7 @@ fn render_file_card(
 /// 오른쪽 말풍선. 사용자 요청은 해석하지 않고 줄바꿈까지 쓴 그대로 보인다
 fn render_user_bubble(
     theme: &ThemeTokens,
-    message: &AggregatedAiMessage,
+    body: AnyElement,
     cards: Option<AnyElement>,
     meta: AnyElement,
 ) -> AnyElement {
@@ -413,7 +457,7 @@ fn render_user_bubble(
         .text_scale(text_scale::SM)
         .line_height(px(24.0))
         .text_color(theme.text.primary)
-        .child(message_text(message).to_string())
+        .child(body)
         .children(cards)
         .child(meta);
     div()
@@ -465,10 +509,8 @@ mod tests {
         );
         message.full_text = "Full original answer".into();
         assert_eq!(message_text(&message), "Full original answer");
-        assert_eq!(
-            message_time(message.timestamp.as_deref()).as_deref(),
-            Some("03:00 AM")
-        );
+        // 표기는 시스템 locale·시간대를 따른다(`locale_format`이 en-US 모양을 따로 확인한다)
+        assert!(message_time(message.timestamp.as_deref()).is_some());
         assert_eq!(message_time(None), None);
     }
 

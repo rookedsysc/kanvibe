@@ -12,7 +12,7 @@ use kanvibe_ai::types::{
 };
 use kanvibe_services::project::ports::AiSessionListRequest;
 
-use super::ai_reader::SessionDetailQuery;
+use super::session_queries::SessionDetailQuery;
 
 /// TS `INLINE_CHAT_SESSION_LIMIT`
 pub const SESSION_PAGE_LIMIT: usize = 20;

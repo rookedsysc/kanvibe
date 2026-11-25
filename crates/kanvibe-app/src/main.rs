@@ -34,7 +34,7 @@ fn main() {
 
     let exit_code = std::rc::Rc::new(std::cell::Cell::new(0));
     let failed_exit_code = exit_code.clone();
-    gpui_kit::application()
+    desktop_application()
         .with_assets(KanvibeAssets::new())
         .run(move |cx| {
             if let Err(error) = start_app(&launch, &plan, is_perf_markers_enabled, cx) {
@@ -44,6 +44,26 @@ fn main() {
             }
         });
     std::process::exit(exit_code.get());
+}
+
+/// TS(Electron 32)는 Linux에서 Wayland 세션이어도 기본으로 X11(XWayland)로 떴다. HTML 미리보기 WebView(WebKitGTK)도
+/// X11 창에서만 붙으므로 X 디스플레이가 있으면 X11만 허용한다. 환경 값은 읽기만 하고 바꾸지 않는다
+#[cfg(target_os = "linux")]
+fn desktop_application() -> gpui_kit::Application {
+    use gpui_kit::{GraphicalEnvironment, WindowingModes};
+    let has_x11_display = GraphicalEnvironment::detect()
+        .x11_display
+        .is_some_and(|display| !display.is_empty());
+    let allowed_modes = match has_x11_display {
+        true => WindowingModes::X11 | WindowingModes::HEADLESS,
+        false => WindowingModes::all(),
+    };
+    gpui_kit::platform::linux(allowed_modes)
+}
+
+#[cfg(not(target_os = "linux"))]
+fn desktop_application() -> gpui_kit::Application {
+    gpui_kit::application()
 }
 
 fn start_app(

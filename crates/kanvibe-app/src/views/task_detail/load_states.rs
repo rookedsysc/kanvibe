@@ -31,11 +31,19 @@ pub fn render_loading(
     is_delayed: bool,
 ) -> impl IntoElement {
     centered_page(theme)
-        .child("Loading...")
-        .children(is_delayed.then(|| {
+        .child(
             div()
+                .relative()
+                .child("Loading...")
+                .child(status_target("Loading...".to_string())),
+        )
+        .children(is_delayed.then(|| {
+            let notice = common.translate("loadDelayed");
+            div()
+                .relative()
                 .text_scale(text_scale::XS)
-                .child(common.translate("loadDelayed"))
+                .child(notice.clone())
+                .child(status_target(notice))
         }))
 }
 
@@ -78,7 +86,17 @@ pub fn render_inline_load_error(
         .py(spacing(2.0))
         .text_scale(text_scale::XS)
         .text_color(theme.status.error)
-        .child(div().min_w_0().child(message));
+        .child(
+            div()
+                .relative()
+                .min_w_0()
+                .child(message.clone())
+                .child(qa_target_layer(QaTargetDescription {
+                    role: "alert",
+                    name: message.clone().into(),
+                    text: message.into(),
+                })),
+        );
     let retry = div()
         .id("inline-load-error-retry")
         .relative()
@@ -105,6 +123,16 @@ impl InlineLoadError {
 
     pub fn max_w(mut self, width: gpui_kit::Pixels) -> Self {
         self.container = self.container.max_w(width);
+        self
+    }
+
+    pub fn w(mut self, width: gpui_kit::Pixels) -> Self {
+        self.container = self.container.w(width);
+        self
+    }
+
+    pub fn shadow(mut self, shadows: Vec<gpui_kit::BoxShadow>) -> Self {
+        self.container = self.container.shadow(shadows);
         self
     }
 
@@ -138,11 +166,10 @@ pub fn render_not_found(
                 .flex_col()
                 .items_center()
                 .gap(spacing(4.0))
-                .child(
-                    div()
-                        .text_color(theme.text.muted)
-                        .child(translator.translate("taskNotFound")),
-                )
+                .child(not_found_message(
+                    theme,
+                    translator.translate("taskNotFound"),
+                ))
                 .child(
                     div()
                         .id("task-not-found-back")
@@ -216,39 +243,69 @@ pub fn render_terminal_loader(
             .into_any_element();
     }
     if !tabs.is_list_loaded {
+        let loading = common.translate("loading");
         return frame
             .child(
                 div()
+                    .relative()
                     .text_scale(text_scale::XS)
                     .text_color(theme.terminal.text)
                     .opacity(0.7)
-                    .child(common.translate("loading")),
+                    .child(loading.clone())
+                    .child(status_target(loading)),
             )
             .into_any_element();
     }
-    let label = translator.translate("newTerminalTab");
     frame
-        .child(
-            div()
-                .id("terminal-loader-new-tab")
-                .relative()
-                .rounded(radius::MD)
-                .border_1()
-                .border_color(fade(gpui_kit::rgb(0xffffff), 0.1))
-                .px(spacing(3.0))
-                .py(spacing(1.5))
-                .text_scale(text_scale::XS)
-                .text_color(theme.terminal.text)
-                .cursor_pointer()
-                .child(label.clone())
-                .child(qa_target_layer(QaTargetDescription {
-                    role: "button",
-                    name: label.clone().into(),
-                    text: label.into(),
-                }))
-                .on_click(cx.listener(|view, _, _, cx| {
-                    view.run_tab_command(super::tabs::TabCommand::Create, cx)
-                })),
-        )
+        .child(new_tab_button(
+            theme,
+            translator.translate("newTerminalTab"),
+            cx,
+        ))
         .into_any_element()
+}
+
+/// 탭이 하나도 없을 때의 `rounded-md border border-white/10 px-3 py-1.5 text-xs` 새 탭 버튼
+fn new_tab_button(
+    theme: &ThemeTokens,
+    label: String,
+    cx: &mut Context<TaskDetailView>,
+) -> impl IntoElement {
+    div()
+        .id("terminal-loader-new-tab")
+        .relative()
+        .rounded(radius::MD)
+        .border_1()
+        .border_color(fade(gpui_kit::rgb(0xffffff), 0.1))
+        .px(spacing(3.0))
+        .py(spacing(1.5))
+        .text_scale(text_scale::XS)
+        .text_color(theme.terminal.text)
+        .cursor_pointer()
+        .child(label.clone())
+        .child(qa_target_layer(QaTargetDescription {
+            role: "button",
+            name: label.clone().into(),
+            text: label.into(),
+        }))
+        .on_click(
+            cx.listener(|view, _, _, cx| view.run_tab_command(super::tabs::TabCommand::Create, cx)),
+        )
+}
+
+fn not_found_message(theme: &ThemeTokens, message: String) -> impl IntoElement {
+    div()
+        .relative()
+        .text_color(theme.text.muted)
+        .child(message.clone())
+        .child(status_target(message))
+}
+
+/// TS `role="status"` 문구를 재생 드라이버와 시험이 찾을 수 있게 남긴다
+fn status_target(text: String) -> impl IntoElement {
+    qa_target_layer(QaTargetDescription {
+        role: "status",
+        name: text.clone().into(),
+        text: text.into(),
+    })
 }

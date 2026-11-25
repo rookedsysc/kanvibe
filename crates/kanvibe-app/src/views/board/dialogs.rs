@@ -5,7 +5,9 @@ use gpui_kit::{AnyElement, AppContext, Context, Entity, IntoElement, Window};
 
 use super::BoardView;
 use super::board_model::find_task;
-use super::create_task::{CreateTaskDefaults, CreateTaskEvent, CreateTaskModal, CreateTaskMode};
+use crate::components::create_task::{
+    CreateTaskDefaults, CreateTaskEvent, CreateTaskModal, CreateTaskMode,
+};
 use crate::components::dialog::modal_layer;
 use crate::components::toast::ToastKind;
 use crate::theme::ThemeTokens;

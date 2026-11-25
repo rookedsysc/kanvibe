@@ -29,6 +29,7 @@ use crate::theme::ThemeTokens;
 use crate::views::WindowNavigator;
 use crate::views::board::BoardView;
 use crate::views::board::text_field::{BoardTextField, TextFieldEvent};
+use crate::views::task_detail::TaskDetailView;
 use crate::windows::{TaskNavigationRequest, navigate_to_task_detail};
 use background_sync::{BackgroundSyncStore, background_sync_store};
 pub use command_palette::{PaletteCommand, PaletteItem};
@@ -54,6 +55,8 @@ pub struct LocaleShell {
     navigator: WindowNavigator,
     /// 지금 화면이 보드면 그 뷰. TS `registerBoardHandlers`로 등록되던 처리기의 주인이다
     board: Option<WeakEntity<BoardView>>,
+    /// 지금 화면이 작업 상세면 그 뷰. 팔레트 이동 대상·새 작업 모달을 맡는다
+    task_detail: Option<WeakEntity<TaskDetailView>>,
     /// 덮개를 열 때 포커스가 있던 곳. 닫으면 돌려준다(TS `requestActiveTerminalFocusAfterUiSettles`)
     return_focus: Option<FocusHandle>,
     palette_field: Entity<BoardTextField>,
@@ -89,6 +92,7 @@ impl LocaleShell {
             window_handle: window.window_handle(),
             navigator,
             board: None,
+            task_detail: None,
             return_focus: None,
             palette_field,
             quick_search_field,
@@ -158,6 +162,15 @@ impl LocaleShell {
 
     fn board(&self) -> Option<Entity<BoardView>> {
         self.board.as_ref().and_then(WeakEntity::upgrade)
+    }
+
+    /// 창 루트가 화면을 바꿀 때 부른다. 작업 상세면 팔레트 이동과 새 작업 모달을 그 화면이 맡는다
+    pub fn set_task_detail(&mut self, task_detail: Option<WeakEntity<TaskDetailView>>) {
+        self.task_detail = task_detail;
+    }
+
+    fn task_detail(&self) -> Option<Entity<TaskDetailView>> {
+        self.task_detail.as_ref().and_then(WeakEntity::upgrade)
     }
 
     /// 전역 덮개(팔레트·빠른 검색·릴리스·sync 검토)가 열려 있는지. 열려 있으면 보드 단축키를 쓰지 않는다

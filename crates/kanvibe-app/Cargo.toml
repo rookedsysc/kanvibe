@@ -26,6 +26,10 @@ kanvibe-server.workspace = true
 kanvibe-mobile.workspace = true
 kanvibe-markdown.workspace = true
 kanvibe-diagram.workspace = true
+# 대화 기록 파일 미리보기: SVG는 gpui-pre와 같은 resvg로 그리고, HTML은 스크립트만 허용한 WebView(TS `iframe sandbox`)로 보인다
+resvg = "0.46"
+gpui-webview = "0.11.0"
+wry = { package = "lb-wry", version = "0.53.3" }
 # 화면 목록의 locale 정렬(TS `localeCompare`)
 icu_collator = "2"
 icu_locale_core = "2"

@@ -4,29 +4,39 @@
 //! dock·탭·사용량 단축키는 앱 키 가로채기가 터미널보다 먼저 이 화면의 동작으로 보낸다(`shortcuts.rs`).
 
 mod ai_provider_icon;
-mod ai_reader;
 mod auto_connect;
 mod call_graph;
 mod chat_history;
 mod chat_message;
 mod chat_view;
 mod chrome;
+mod create_task;
 pub mod data;
+mod delete_task;
 mod description_edit;
 mod dock;
+mod dock_commands;
+mod editors;
 mod file_preview;
+mod hooks_status;
 mod icons;
 pub mod layout_state;
 mod live_sessions;
 mod load_states;
 mod message_content;
+mod overview;
+pub mod pane_chat;
 mod panel;
 mod project_icon;
+mod refresh;
+mod session_queries;
 mod status_move;
 mod tab_bar;
 mod tab_close;
 mod tabs;
-pub mod terminal;
+mod usage_cards;
+mod usage_panel;
+mod window_activation;
 
 use std::time::Duration;
 
@@ -37,18 +47,20 @@ use gpui_kit::{
 use kanvibe_domain::i18n::Translator;
 use kanvibe_domain::task::SessionType;
 
+use crate::components::notification_center::{NotificationCenterButton, NotificationPanelClosed};
+use crate::components::spinner::is_spinner_animated;
+use crate::components::terminal_view::{TerminalPane, TerminalPaneEvent, TerminalTarget};
 use crate::components::{TailwindText, box_shadows};
 use crate::shortcuts::{
-    OpenTaskDetailDockItem, RunTerminalTabCommand, ShortcutState, TASK_DETAIL_KEY_CONTEXT,
-    ToggleTaskDetailUsage,
+    OpenCreateTask, OpenTaskDetailDockItem, RunTerminalTabCommand, ShortcutState,
+    TASK_DETAIL_KEY_CONTEXT, ToggleNotificationCenter, ToggleTaskDetailUsage, ToggleTerminalChat,
 };
 use crate::theme::{ThemeTokens, radius, spacing};
 use crate::views::ScreenContext;
-use chrome::{TaskContextProject, render_notification_button, render_task_context};
+use chrome::{TaskContextProject, render_task_context};
 use data::{TaskDetailSnapshot, load_task_detail};
 use dock::{DockAction, DockModel, render_dock};
 use layout_state::{DetailPanel, DockBusyState, DockCommand, LayoutState, MainView, dock_entry_at};
-use terminal::{TerminalPane, TerminalTarget};
 
 /// TS `INITIAL_DESKTOP_LOAD_TIMEOUT_MS`. 첫 조회가 이보다 길면 지연 안내를 띄운다
 const INITIAL_LOAD_TIMEOUT: Duration = Duration::from_millis(5_000);
@@ -73,6 +85,10 @@ pub struct TaskDetailView {
     layout: LayoutState,
     busy: DockBusyState,
     terminal: Option<Entity<TerminalPane>>,
+    /// 비활성 탭의 터미널. 연결과 스크롤백을 지키려고 숨긴 채 둔다
+    hidden_terminals: Vec<Entity<TerminalPane>>,
+    /// 숨긴 탭 터미널의 pane 채팅 층. TS는 탭마다 `TerminalPaneChatLayer`를 따로 두고 탭을 바꿔도 내리지 않았다
+    hidden_pane_chats: Vec<(TerminalTarget, Entity<pane_chat::PaneChatLayer>)>,
     terminal_tabs: tabs::TerminalTabsState,
     /// 이름을 바꾸는 중인 탭과 입력
     tab_rename: Option<(String, Entity<gpui_kit::base::input::InputState>)>,
@@ -87,6 +103,8 @@ pub struct TaskDetailView {
     _tab_command: Option<Task<()>>,
     _tab_rename_events: Option<gpui_kit::Subscription>,
     _terminal_events: Option<gpui_kit::Subscription>,
+    /// 터미널 칸 크기가 바뀌면 전환 버튼 자리도 다시 그린다
+    _terminal_redraw: Option<gpui_kit::Subscription>,
     is_closing_tab: bool,
     _tab_close: Option<Task<()>>,
     status_move: status_move::StatusMoveState,
@@ -97,8 +115,41 @@ pub struct TaskDetailView {
     _status_move: Option<Task<()>>,
     _status_confirm: Option<Task<()>>,
     live_sessions: live_sessions::LiveSessionsState,
+    _refresh_signal: Option<gpui_kit::Subscription>,
+    /// 터미널 위 띠의 알림 센터(TS `NotificationCenterButton`)
+    notification_center: Entity<NotificationCenterButton>,
+    _notification_panel_closed: gpui_kit::Subscription,
+    /// 알림 패널이 닫혀 다음 그리기에서 터미널로 입력 포커스를 돌려야 한다
+    should_refocus_terminal: bool,
+    _automatic_pr_lookup: Option<Task<()>>,
+    /// `gh` 설치 확인을 이미 거친 자동 PR 조회의 작업. 보드 갱신으로 다시 도는 조회는 확인·질문을 되풀이하지 않는다
+    automatic_pr_lookup_task_id: Option<String>,
+    /// 새 작업 단축키로 연 생성 모달(TS `isCreateTaskModalOpen`)
+    create_task: Option<Entity<crate::components::create_task::CreateTaskModal>>,
+    /// 만드는 도중 닫혀 결과를 기다리는 모달
+    background_create_tasks: Vec<Entity<crate::components::create_task::CreateTaskModal>>,
+    create_task_subscriptions: Vec<gpui_kit::Subscription>,
+    _window_activation: Option<gpui_kit::Subscription>,
+    /// 이 화면이 그려지는 창. 백그라운드 작업이 확인 대화상자를 띄울 때 쓴다
+    window_handle: Option<gpui_kit::AnyWindowHandle>,
+    is_window_active: bool,
+    /// 지금 창 활성 구간에서 이 작업의 알림을 이미 읽음 처리했는지
+    has_marked_notifications_read: bool,
+    /// 터미널이 보이고 창이 활성이라 탭 목록을 주기적으로 읽는 중인지
+    should_poll_tabs: bool,
     /// AI 대화 기록 화면. 메인 영역을 기록으로 바꿨을 때만 있다
     chat_view: Option<Entity<chat_view::InlineAiChatView>>,
+    /// AI 사용량 패널. 사용량 패널이 보이는 동안만 있다
+    usage_panel: Option<Entity<usage_panel::AiUsagePanel>>,
+    /// 상태 패널의 hooks 카드. 패널을 닫아도 읽은 상태를 남긴다
+    hooks_card: Option<Entity<hooks_status::HooksStatusCard>>,
+    delete_task: delete_task::DeleteTaskState,
+    _delete_task: Option<Task<()>>,
+    /// 작업 정보 카드 편집기와 변경 파일 조회
+    editors: editors::EditorState,
+    /// 터미널 위 pane 채팅 층. 터미널 뷰와 함께 만들고 버린다
+    pane_chat: Option<Entity<pane_chat::PaneChatLayer>>,
+    _pane_chat_events: Option<gpui_kit::Subscription>,
 }
 
 impl TaskDetailView {
@@ -108,6 +159,16 @@ impl TaskDetailView {
             _ => String::new(),
         };
         let locale = screen.route.locale;
+        let navigator = screen.navigator.clone();
+        let notification_center =
+            cx.new(|cx| NotificationCenterButton::new(locale, navigator, cx).for_terminal_chrome());
+        let notification_panel_closed = cx.subscribe(
+            &notification_center,
+            |view, _, _: &NotificationPanelClosed, cx| {
+                view.should_refocus_terminal = true;
+                cx.notify();
+            },
+        );
         let mut view = Self {
             screen,
             task_id,
@@ -116,6 +177,8 @@ impl TaskDetailView {
             layout: LayoutState::default(),
             busy: DockBusyState::default(),
             terminal: None,
+            hidden_terminals: Vec::new(),
+            hidden_pane_chats: Vec::new(),
             terminal_tabs: tabs::TerminalTabsState::default(),
             tab_rename: None,
             focus_handle: cx.focus_handle(),
@@ -129,6 +192,7 @@ impl TaskDetailView {
             _tab_command: None,
             _tab_rename_events: None,
             _terminal_events: None,
+            _terminal_redraw: None,
             is_closing_tab: false,
             _tab_close: None,
             status_move: status_move::StatusMoveState::default(),
@@ -139,8 +203,30 @@ impl TaskDetailView {
             _status_move: None,
             _status_confirm: None,
             live_sessions: live_sessions::LiveSessionsState::default(),
+            _refresh_signal: None,
+            notification_center,
+            _notification_panel_closed: notification_panel_closed,
+            should_refocus_terminal: false,
+            _automatic_pr_lookup: None,
+            automatic_pr_lookup_task_id: None,
+            create_task: None,
+            background_create_tasks: Vec::new(),
+            create_task_subscriptions: Vec::new(),
+            _window_activation: None,
+            window_handle: None,
+            is_window_active: false,
+            has_marked_notifications_read: false,
+            should_poll_tabs: false,
             chat_view: None,
+            usage_panel: None,
+            hooks_card: None,
+            delete_task: delete_task::DeleteTaskState::default(),
+            _delete_task: None,
+            editors: editors::EditorState::default(),
+            pane_chat: None,
+            _pane_chat_events: None,
         };
+        view.subscribe_to_refresh_signal(cx);
         view.begin_load(cx);
         view
     }
@@ -170,11 +256,14 @@ impl TaskDetailView {
     ) {
         self._delay_task = None;
         match result {
-            Ok(Some(snapshot)) => self.apply_snapshot(snapshot, cx),
+            Ok(Some(snapshot)) => {
+                self.apply_snapshot(snapshot, cx);
+                self.look_up_pull_request_automatically(cx);
+            }
             Ok(None) => self.load = DetailLoad::NotFound,
             Err(failure) => match self.load {
-                DetailLoad::Loaded(_) => self.refresh_failure = Some(failure.reason),
-                _ => self.load = DetailLoad::Failed(failure.reason),
+                DetailLoad::Loaded(_) => self.refresh_failure = Some(failure.display_message()),
+                _ => self.load = DetailLoad::Failed(failure.display_message()),
             },
         }
         cx.notify();
@@ -204,12 +293,18 @@ impl TaskDetailView {
         self.load = DetailLoad::Loaded(Box::new(snapshot));
         if is_session_changed {
             self.terminal = None;
+            self.clear_hidden_terminals();
             self.terminal_tabs = tabs::TerminalTabsState::default();
+            // 이전 세션의 늦은 탭 목록 응답이 새 세션 목록을 덮지 않게 버린다
+            self._tab_refresh = None;
+            self.is_tab_refresh_queued = false;
             if session_key.is_some() {
                 self.start_tab_polling(is_multiplexer, is_remote, cx);
             }
         }
         self.sync_terminal_tab_pane(cx);
+        self.mark_task_notifications_read(cx);
+        self.sync_tab_polling(cx);
         let needs_auto_connect = self
             .snapshot()
             .is_some_and(|snapshot| !snapshot.has_terminal() && snapshot.task.project_id.is_some());
@@ -218,11 +313,12 @@ impl TaskDetailView {
         }
     }
 
-    /// 터미널 뷰를 지금 세션에 맞춘다. 멀티플렉서는 작업당 PTY 하나, terminal 세션은 활성 탭마다 PTY 하나다.
+    /// 터미널 뷰를 지금 세션에 맞춘다. 멀티플렉서는 작업당 PTY 하나, terminal 세션은 탭마다 PTY 하나다.
     /// terminal 세션은 탭 목록을 받기 전에 PTY를 만들지 않는다(버려질 PTY를 만들지 않게)
     fn sync_terminal_tab_pane(&mut self, cx: &mut Context<Self>) {
         let Some(snapshot) = self.snapshot().filter(|snapshot| snapshot.has_terminal()) else {
             self.terminal = None;
+            self.clear_hidden_terminals();
             return;
         };
         let tab_id = match snapshot.task.session_type {
@@ -230,6 +326,7 @@ impl TaskDetailView {
                 Some(tab) => Some(tab.id.clone()),
                 None => {
                     self.terminal = None;
+                    self.clear_hidden_terminals();
                     return;
                 }
             },
@@ -245,13 +342,85 @@ impl TaskDetailView {
             .as_ref()
             .is_some_and(|terminal| terminal.read(cx).target() == &target);
         if !is_current {
-            let translator = self.translator;
-            let terminal = cx.new(|cx| TerminalPane::new(target, translator, cx));
-            self._terminal_events =
-                Some(cx.subscribe(&terminal, |view, _, event, cx| match event {
-                    terminal::TerminalPaneEvent::Connected => view.refresh_tabs(cx),
-                }));
-            self.terminal = Some(terminal);
+            self.switch_terminal_pane(target, cx);
+        }
+        self.drop_closed_tab_terminals(cx);
+    }
+
+    /// 비활성 탭 터미널은 버리지 않고 숨긴다. 다시 고르면 같은 연결과 스크롤백, 같은 pane 채팅 층을 그대로 보인다
+    /// (TS `TerminalLoader`가 탭마다 `Terminal`과 그 `TerminalPaneChatLayer`를 숨긴 채 두었다)
+    fn switch_terminal_pane(&mut self, target: TerminalTarget, cx: &mut Context<Self>) {
+        if let Some(previous) = self.terminal.take() {
+            let previous_target = previous.read(cx).target().clone();
+            previous.update(cx, |pane, cx| pane.set_hidden(true, cx));
+            self.hidden_terminals.push(previous);
+            if let Some(layer) = self.pane_chat.take() {
+                self.hidden_pane_chats.push((previous_target, layer));
+            }
+        }
+        let kept_chat = self
+            .hidden_pane_chats
+            .iter()
+            .position(|(chat_target, _)| chat_target == &target)
+            .map(|index| self.hidden_pane_chats.remove(index).1);
+        self.pane_chat = Some(match kept_chat {
+            Some(layer) => layer,
+            None => self.new_pane_chat_layer(&target, cx),
+        });
+        self._pane_chat_events = None;
+        let kept = self
+            .hidden_terminals
+            .iter()
+            .position(|terminal| terminal.read(cx).target() == &target)
+            .map(|index| self.hidden_terminals.remove(index));
+        let terminal = match kept {
+            Some(terminal) => terminal,
+            None => {
+                let translator = self.translator;
+                cx.new(|cx| TerminalPane::new(target, translator, cx))
+            }
+        };
+        let is_history = self.layout.main_view == MainView::History;
+        terminal.update(cx, |pane, cx| pane.set_hidden(is_history, cx));
+        self._terminal_redraw = Some(cx.observe(&terminal, |_, _, cx| cx.notify()));
+        self._terminal_events = Some(cx.subscribe(&terminal, |view, _, event, cx| match event {
+            TerminalPaneEvent::Connected => view.refresh_tabs(cx),
+        }));
+        self.terminal = Some(terminal);
+    }
+
+    /// 목록에서 사라진 탭과 다른 작업·세션의 숨긴 터미널을 닫는다
+    fn drop_closed_tab_terminals(&mut self, cx: &mut Context<Self>) {
+        let Some(active) = self
+            .terminal
+            .as_ref()
+            .map(|terminal| terminal.read(cx).target().clone())
+        else {
+            self.clear_hidden_terminals();
+            return;
+        };
+        let tabs = &self.terminal_tabs.tabs;
+        let is_kept = |target: &TerminalTarget| {
+            target.task_id == active.task_id
+                && target.tab_id.as_deref().is_some_and(|tab_id| {
+                    active.tab_id.is_some() && tabs.iter().any(|tab| tab.id == tab_id)
+                })
+        };
+        self.hidden_terminals
+            .retain(|terminal| is_kept(terminal.read(cx).target()));
+        self.hidden_pane_chats.retain(|(target, _)| is_kept(target));
+    }
+
+    fn clear_hidden_terminals(&mut self) {
+        self.hidden_terminals.clear();
+        self.hidden_pane_chats.clear();
+    }
+
+    /// 메인 영역이 채팅 기록이면 활성 터미널도 숨긴다. 연결은 그대로 두고 입력 포커스·재연결 예약만 멈춘다
+    fn sync_terminal_visibility(&mut self, cx: &mut Context<Self>) {
+        let is_hidden = self.layout.main_view == MainView::History;
+        if let Some(terminal) = self.terminal.clone() {
+            terminal.update(cx, |pane, cx| pane.set_hidden(is_hidden, cx));
         }
     }
 
@@ -278,6 +447,7 @@ impl TaskDetailView {
     /// 터미널 쪽으로 입력 포커스를 돌린다(TS `requestActiveTerminalFocusAfterUiSettles`)
     fn focus_terminal(&self, window: &mut Window, cx: &mut App) {
         match self.terminal.as_ref() {
+            Some(_) if self.is_pane_chat_focused(cx) => self.focus_pane_chat(window, cx),
             Some(terminal) if self.layout.main_view == MainView::Terminal => {
                 let focus_handle = terminal.read(cx).focus_handle(cx);
                 window.focus(&focus_handle, cx);
@@ -299,8 +469,8 @@ impl TaskDetailView {
                 self.layout.toggle_history();
                 self.sync_chat_view(window, cx);
             }
-            DockCommand::OpenPullRequest => self.open_pull_request(cx),
-            DockCommand::OpenInVsCode => self.open_in_vscode(cx),
+            DockCommand::OpenPullRequest => self.open_pull_request(window, cx),
+            DockCommand::OpenInVsCode => self.open_in_vscode(window, cx),
         }
         if self.layout.visible_panel(has_task).is_none() {
             self.focus_terminal(window, cx);
@@ -342,17 +512,6 @@ impl TaskDetailView {
         }
     }
 
-    fn open_pull_request(&mut self, cx: &mut Context<Self>) {
-        if let Some(pr_url) = self
-            .snapshot()
-            .and_then(|snapshot| snapshot.task.pr_url.clone())
-        {
-            cx.open_url(&pr_url);
-        }
-    }
-
-    fn open_in_vscode(&mut self, _cx: &mut Context<Self>) {}
-
     fn close_panel(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.layout.visible_panel(self.has_task()).is_none() {
             return;
@@ -366,6 +525,8 @@ impl TaskDetailView {
 impl TaskDetailView {
     /// 기록 화면으로 바꾸면 대화 기록 뷰를 새로 만들어 첫 쪽을 읽고, 터미널로 돌아가면 버린다
     fn sync_chat_view(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.sync_terminal_visibility(cx);
+        self.sync_tab_polling(cx);
         match self.layout.main_view {
             MainView::History if self.chat_view.is_none() => {
                 let task_id = self.task_id.clone();
@@ -436,6 +597,7 @@ impl Focusable for TaskDetailView {
 impl Render for TaskDetailView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = *cx.global::<ThemeTokens>();
+        self.observe_window_activation(window, cx);
         // 처음 그릴 때와 터미널 뷰가 바뀐 뒤에는 포커스가 창 루트에 남아 dock 단축키가 이 화면에 닿지 않는다.
         // 포커스가 이 화면 밖에 있으면 터미널(없으면 화면 자체)로 옮긴다(TS `requestActiveTerminalFocusAfterUiSettles`)
         let terminal_has_focus = self
@@ -443,7 +605,19 @@ impl Render for TaskDetailView {
             .as_ref()
             .is_some_and(|terminal| terminal.read(cx).focus_handle(cx).is_focused(window));
         let is_loaded = matches!(self.load, DetailLoad::Loaded(_));
-        if is_loaded && !self.focus_handle.contains_focused(window, cx) && !terminal_has_focus {
+        // 방금 연 입력란(탭 이름 바꾸기·설명 편집·새 작업 모달)은 아직 그려지지 않아 화면 안 포커스로 잡히지 않으므로 빼앗지 않는다
+        let has_pending_input = self.tab_rename.is_some()
+            || self.description_edit.is_some()
+            || self.create_task.is_some();
+        if is_loaded
+            && !has_pending_input
+            && !self.focus_handle.contains_focused(window, cx)
+            && !terminal_has_focus
+            && !self.is_description_editor_focused(window, cx)
+        {
+            self.focus_terminal(window, cx);
+        }
+        if std::mem::take(&mut self.should_refocus_terminal) {
             self.focus_terminal(window, cx);
         }
         let body: AnyElement = match &self.load {
@@ -472,8 +646,20 @@ impl Render for TaskDetailView {
                     view.activate_dock_position(action.position, window, cx)
                 }),
             )
+            .on_action(
+                cx.listener(|view, _: &ToggleNotificationCenter, window, cx| {
+                    view.notification_center
+                        .update(cx, |center, cx| center.toggle_by_keyboard(window, cx))
+                }),
+            )
+            .on_action(cx.listener(|view, _: &OpenCreateTask, window, cx| {
+                view.open_create_task(None, window, cx)
+            }))
             .on_action(cx.listener(|view, _: &ToggleTaskDetailUsage, window, cx| {
                 view.run_dock_command(DockCommand::TogglePanel(DetailPanel::Usage), window, cx)
+            }))
+            .on_action(cx.listener(|view, _: &ToggleTerminalChat, window, cx| {
+                view.toggle_pane_chat(window, cx)
             }))
             .on_action(
                 cx.listener(|view, action: &RunTerminalTabCommand, window, cx| {
@@ -511,8 +697,18 @@ impl TaskDetailView {
             return div().into_any_element();
         };
         let visible_panel = self.layout.visible_panel(true);
+        if let Some(chat_view) = self.chat_view.as_ref() {
+            chat_view.update(cx, |view, _| {
+                view.is_covered_by_panel = visible_panel.is_some()
+            });
+        }
         self.sync_live_session_polling(visible_panel == Some(DetailPanel::LiveSessions), cx);
-        let panel = visible_panel.map(|panel| self.render_panel(theme, panel, &snapshot, cx));
+        self.sync_usage_panel(visible_panel == Some(DetailPanel::Usage), window, cx);
+        self.sync_hooks_card(visible_panel == Some(DetailPanel::Status), cx);
+        self.sync_diff_polling(visible_panel == Some(DetailPanel::Overview), cx);
+        let viewport = window.viewport_size();
+        let panel =
+            visible_panel.map(|panel| self.render_panel(theme, panel, &snapshot, viewport, cx));
         div()
             .relative()
             .size_full()
@@ -530,6 +726,8 @@ impl TaskDetailView {
                     .child(self.render_main(theme, &snapshot, window, cx)),
             )
             .children(panel)
+            .children(self.render_refresh_failure_banner(theme, window.viewport_size().width, cx))
+            .children(self.render_create_task(theme, window))
             .into_any_element()
     }
 
@@ -550,6 +748,7 @@ impl TaskDetailView {
             platform: shortcut_state.platform,
             translator: &self.translator,
             needs_mac_header_offset: cfg!(target_os = "macos"),
+            is_spinner_animated: is_spinner_animated(cx),
         };
         let entity = cx.entity().downgrade();
         render_dock(theme, &model, move |action, window, cx| {
@@ -562,9 +761,10 @@ impl TaskDetailView {
         &mut self,
         theme: &ThemeTokens,
         snapshot: &TaskDetailSnapshot,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
+        self.sync_pane_chat_layer(window, cx);
         if self.layout.main_view == MainView::History {
             return self.render_history_main(theme, cx);
         }
@@ -585,12 +785,7 @@ impl TaskDetailView {
             .bg(theme.terminal.chrome)
             .child(render_task_context(project.as_ref(), &snapshot.task.title))
             .child(self.render_tabs_or_session_name(theme, snapshot, cx))
-            .child(render_notification_button(
-                theme,
-                self.common.translate("notifications"),
-                0,
-                |_, _| {},
-            ));
+            .child(self.notification_center.clone());
         let entity = cx.entity().downgrade();
         div()
             .flex_1()
@@ -646,7 +841,23 @@ impl TaskDetailView {
     /// terminal 세션 탭 목록을 기다리는 중·실패·빈 목록이면 그 안내, 아니면 터미널 뷰(TS `TerminalLoader`)
     fn render_terminal_area(&self, theme: &ThemeTokens, cx: &mut Context<Self>) -> AnyElement {
         match self.terminal.clone() {
-            Some(terminal) => terminal.into_any_element(),
+            Some(terminal) => {
+                let pane_chat = self.pane_chat.clone();
+                div()
+                    .relative()
+                    .size_full()
+                    .on_mouse_down(gpui_kit::MouseButton::Left, move |_, window, cx| {
+                        if let Some(layer) = pane_chat.as_ref() {
+                            layer.update(cx, |layer, cx| {
+                                layer.handle_terminal_pointer_down(window, cx)
+                            });
+                        }
+                    })
+                    .child(terminal)
+                    .child(pane_chat::terminal_screen_target())
+                    .children(self.pane_chat.clone())
+                    .into_any_element()
+            }
             None => load_states::render_terminal_loader(
                 theme,
                 &self.translator,

@@ -13,6 +13,7 @@ use kanvibe_domain::task_detail_dock::{TaskDetailDockItemId, resolve_task_detail
 
 use super::icons::{DetailIcon, detail_icon};
 use super::layout_state::DockEntry;
+use crate::components::spinner::spinner_ring;
 use crate::components::tooltip::text_tooltip;
 use crate::components::{box_shadows, fade};
 use crate::qa::targets::{QaTargetDescription, qa_target_layer};
@@ -31,6 +32,8 @@ pub struct DockModel<'a> {
     pub translator: &'a Translator,
     /// macOS 신호등 버튼 자리(`pt-10`)
     pub needs_mac_header_offset: bool,
+    /// 기다리는 자리의 고리를 돌릴지(QA 재생은 멈춘다)
+    pub is_spinner_animated: bool,
 }
 
 /// 눌렀을 때 화면이 할 일
@@ -157,7 +160,11 @@ fn dock_button(
         .cursor_pointer()
         .tooltip(text_tooltip(title))
         .child(qa_target_layer(QaTargetDescription {
-            role: "button",
+            // PR 링크는 TS에서 `<a href>`였다
+            role: match look {
+                DockButtonLook::PullRequestLink => "link",
+                _ => "button",
+            },
             name: label.to_string().into(),
             text: String::new().into(),
         }));
@@ -174,6 +181,7 @@ fn dock_button(
     }
 }
 
+/// 외부 명령을 기다리는 자리는 아이콘 대신 도는 고리(`h-[17px] w-[17px] … motion-safe:animate-spin`)를 보인다
 fn render_dock_entry(
     theme: &ThemeTokens,
     entry: &DockEntry,
@@ -192,7 +200,10 @@ fn render_dock_entry(
         DockButtonLook::Plain => theme.text.muted,
     };
     let content: AnyElement = match entry.is_busy {
-        true => busy_ring(color).into_any_element(),
+        true => div()
+            .size(px(ICON_SIZE))
+            .child(spinner_ring(color, model.is_spinner_animated))
+            .into_any_element(),
         false => detail_icon(dock_icon_kind(entry.id), color, px(ICON_SIZE)).into_any_element(),
     };
     let title = dock_entry_title(entry, model);
@@ -215,24 +226,6 @@ fn dock_element_id(id: TaskDetailDockItemId) -> &'static str {
         TaskDetailDockItemId::LiveSessions => "dock-live-sessions",
         TaskDetailDockItemId::Vscode => "dock-vscode",
     }
-}
-
-/// 외부 명령을 기다리는 자리의 진행 표시(`h-[17px] w-[17px] rounded-full border-2 border-current border-t-transparent`)
-fn busy_ring(color: Rgba) -> impl IntoElement {
-    div()
-        .size(px(ICON_SIZE))
-        .rounded_full()
-        .border_2()
-        .border_color(color)
-        .child(
-            div()
-                .absolute()
-                .top(px(-2.0))
-                .left(px(4.0))
-                .w(px(9.0))
-                .h(px(4.0))
-                .bg(gpui_kit::transparent_black()),
-        )
 }
 
 fn render_usage_button(

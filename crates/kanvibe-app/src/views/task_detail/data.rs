@@ -5,18 +5,22 @@
 //! 고장 주입 판정을 먼저 거친다.
 
 use std::sync::Arc;
-use std::time::Duration;
 
-use gpui_kit::{App, AppContext, BackgroundExecutor, Task};
+use gpui_kit::{App, AppContext, Task};
 use kanvibe_db::Database;
 use kanvibe_db::app_settings_service::AppSettingsService;
 use kanvibe_db::repositories::{projects, tasks};
 use kanvibe_domain::platform::ShortcutPlatform;
 use kanvibe_domain::project::Project;
 use kanvibe_domain::task::{KanbanTask, SessionType};
+use kanvibe_runtime::DesktopRuntime;
 
-use crate::qa::faults::FaultOutcome;
-use crate::services::{AppServices, ServiceFailure, ServiceResult};
+use crate::services::{AppServices, ServiceFailure, ServiceResult, apply_fault};
+
+/// 앱 프로세스의 런타임. 데이터 디렉터리 없이 뜬 실행이면 `None`이다
+pub fn desktop_runtime(cx: &App) -> Option<Arc<DesktopRuntime>> {
+    cx.global::<AppServices>().runtime().map(Arc::clone)
+}
 
 /// TS IPC `kanban.getTaskById`
 pub const GET_TASK_BY_ID_SERVICE: &str = "kanban.getTaskById";
@@ -26,6 +30,8 @@ pub const GET_TASK_BY_ID_SERVICE: &str = "kanban.getTaskById";
 pub struct TaskDetailSnapshot {
     pub task: KanbanTask,
     pub project: Option<Project>,
+    /// 새 작업 모달이 고를 수 있는 프로젝트(TS `state.projects`)
+    pub projects: Vec<Project>,
     pub sidebar_default_collapsed: bool,
     pub default_session_type: SessionType,
     pub done_alert_dismissed: bool,
@@ -61,10 +67,7 @@ pub fn load_task_detail(
     let database = services.database().cloned();
     let platform = services.shortcut_platform;
     let arguments = serde_json::to_string(&[task_id]).unwrap_or_default();
-    let fault = services
-        .faults()
-        .map(|faults| faults.check(GET_TASK_BY_ID_SERVICE, &arguments))
-        .unwrap_or(FaultOutcome::Proceed);
+    let fault = services.check_fault(GET_TASK_BY_ID_SERVICE, &arguments);
     let executor = cx.background_executor().clone();
     let task_id = task_id.to_string();
     cx.background_spawn(async move {
@@ -74,24 +77,6 @@ pub fn load_task_detail(
         };
         read_snapshot(&database, platform, &task_id)
     })
-}
-
-/// 고장 판정 결과대로 기다리거나 실패한다(`services.rs`의 같은 판정과 같은 규칙)
-pub async fn apply_fault(fault: FaultOutcome, executor: &BackgroundExecutor) -> ServiceResult<()> {
-    match fault {
-        FaultOutcome::Proceed | FaultOutcome::Result(_) => Ok(()),
-        FaultOutcome::Hang => std::future::pending().await,
-        FaultOutcome::Delay(wait) => {
-            executor.timer(wait).await;
-            Ok(())
-        }
-        FaultOutcome::Fail { message, after } => {
-            if after > Duration::ZERO {
-                executor.timer(after).await;
-            }
-            Err(ServiceFailure { reason: message })
-        }
-    }
 }
 
 fn failure(error: kanvibe_db::DatabaseError) -> ServiceFailure {
@@ -114,6 +99,8 @@ fn read_snapshot(
             .flatten(),
         None => None,
     };
+    // 목록을 읽지 못해도 작업 화면은 열고, 새 작업 모달만 빈 목록으로 연다
+    let all_projects = projects::list_projects(&database.connection()).unwrap_or_default();
     let settings = AppSettingsService::new(database, platform);
     // TS는 설정 조회가 실패하면 기본값(펼침)으로 계속한다
     let sidebar_default_collapsed = settings.get_sidebar_default_collapsed().unwrap_or(false);
@@ -125,6 +112,7 @@ fn read_snapshot(
         done_alert_dismissed: settings.get_done_alert_dismissed().unwrap_or(false),
         task,
         project,
+        projects: all_projects,
         sidebar_default_collapsed,
         base_branch_task_id,
     }))

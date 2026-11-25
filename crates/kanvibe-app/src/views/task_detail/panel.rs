@@ -2,16 +2,15 @@
 //! 작업 정보는 `TaskDetailTitleCard`·`TaskDetailInfoCard`, 상태는 상태 이동 버튼·`DoneStatusButton`·삭제·hook 카드다.
 
 use gpui_kit::{
-    AnyElement, Context, InteractiveElement, IntoElement, ParentElement, Rgba,
+    AnyElement, ClickEvent, Context, InteractiveElement, IntoElement, ParentElement, Pixels, Size,
     StatefulInteractiveElement, Styled, div, px,
 };
-use kanvibe_domain::i18n::Translator;
-use kanvibe_domain::task::{KanbanTask, TaskPriority, TaskStatus};
+use kanvibe_domain::task::{KanbanTask, TaskStatus};
 
 use super::TaskDetailView;
-use super::chrome::css_hex;
 use super::data::TaskDetailSnapshot;
 use super::layout_state::DetailPanel;
+use super::load_states::render_inline_load_error;
 use crate::components::{TailwindText, box_shadows, fade};
 use crate::qa::targets::{QaTargetDescription, qa_target_layer};
 use crate::theme::{ThemeTokens, radius, spacing, text_scale};
@@ -53,26 +52,13 @@ pub fn should_confirm_done(task: &KanbanTask, is_done_alert_dismissed: bool) -> 
     has_cleanable_resources && !is_done_alert_dismissed
 }
 
-/// `new Date(value).toLocaleDateString()`(en-US, UTC): `M/D/YYYY`
-pub fn locale_date(value: &str) -> String {
-    let date = value.get(..10).unwrap_or(value);
-    let mut parts = date.split('-');
-    match (parts.next(), parts.next(), parts.next()) {
-        (Some(year), Some(month), Some(day)) => {
-            let month: u32 = month.parse().unwrap_or(0);
-            let day: u32 = day.parse().unwrap_or(0);
-            format!("{month}/{day}/{year}")
-        }
-        _ => value.to_string(),
-    }
-}
-
 impl TaskDetailView {
     pub(super) fn render_panel(
         &self,
         theme: &ThemeTokens,
         panel: DetailPanel,
         snapshot: &TaskDetailSnapshot,
+        viewport: Size<Pixels>,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let title = match panel {
@@ -82,15 +68,14 @@ impl TaskDetailView {
             DetailPanel::Usage => self.translator.translate("aiUsage.title"),
         };
         let body: AnyElement = match panel {
-            DetailPanel::Overview => {
-                let description = self.render_description(theme, &snapshot.task, cx);
-                render_overview(theme, snapshot, &self.translator, description).into_any_element()
-            }
+            DetailPanel::Overview => self.render_overview(theme, snapshot, viewport, cx),
             DetailPanel::Status => self.render_status_panel(theme, snapshot, cx),
             DetailPanel::LiveSessions => self.render_live_sessions_body(theme, cx),
-            DetailPanel::Usage => div().into_any_element(),
+            DetailPanel::Usage => match self.usage_panel.clone() {
+                Some(usage_panel) => usage_panel.into_any_element(),
+                None => div().into_any_element(),
+            },
         };
-        let close_label = self.common.translate("close");
         div()
             .id("task-detail-panel")
             .occlude()
@@ -106,49 +91,54 @@ impl TaskDetailView {
             .bg(fade(theme.background.surface, 0.95))
             .shadow(box_shadows(&theme.shadow.lg))
             .p(spacing(3.0))
-            .child(
-                div()
-                    .mb(spacing(3.0))
-                    .flex()
-                    .items_center()
-                    .justify_between()
-                    .border_b_1()
-                    .border_color(theme.border.subtle)
-                    .pb(spacing(2.0))
-                    .child(
-                        div()
-                            .relative()
-                            .text_scale(text_scale::XS)
-                            .css_weight(600)
-                            .text_color(theme.text.muted)
-                            .child(title.to_uppercase())
-                            .child(qa_target_layer(QaTargetDescription {
-                                role: "heading",
-                                name: title.clone().into(),
-                                text: title.into(),
-                            })),
-                    )
-                    .child(
-                        div()
-                            .id("task-detail-panel-close")
-                            .relative()
-                            .rounded(radius::MD)
-                            .p(spacing(1.0))
-                            .text_color(theme.text.muted)
-                            .cursor_pointer()
-                            .child("×")
-                            .child(qa_target_layer(QaTargetDescription {
-                                role: "button",
-                                name: close_label.into(),
-                                text: "×".into(),
-                            }))
-                            .on_click(
-                                cx.listener(|view, _, window, cx| view.close_panel(window, cx)),
-                            ),
-                    ),
-            )
+            .child(self.render_panel_header(theme, title, cx))
             .child(body)
             .into_any_element()
+    }
+
+    /// 패널 머리(`mb-3 flex items-center justify-between border-b pb-2`): 대문자 제목과 닫기 버튼
+    fn render_panel_header(
+        &self,
+        theme: &ThemeTokens,
+        title: String,
+        cx: &mut Context<Self>,
+    ) -> gpui_kit::Div {
+        let close_label = self.common.translate("close");
+        let heading = div()
+            .relative()
+            .text_scale(text_scale::XS)
+            .css_weight(600)
+            .text_color(theme.text.muted)
+            .child(title.to_uppercase())
+            .child(qa_target_layer(QaTargetDescription {
+                role: "heading",
+                name: title.clone().into(),
+                text: title.into(),
+            }));
+        let close = div()
+            .id("task-detail-panel-close")
+            .relative()
+            .rounded(radius::MD)
+            .p(spacing(1.0))
+            .text_color(theme.text.muted)
+            .cursor_pointer()
+            .child("×")
+            .child(qa_target_layer(QaTargetDescription {
+                role: "button",
+                name: close_label.into(),
+                text: "×".into(),
+            }))
+            .on_click(cx.listener(|view, _, window, cx| view.close_panel(window, cx)));
+        div()
+            .mb(spacing(3.0))
+            .flex()
+            .items_center()
+            .justify_between()
+            .border_b_1()
+            .border_color(theme.border.subtle)
+            .pb(spacing(2.0))
+            .child(heading)
+            .child(close)
     }
 
     fn render_status_panel(
@@ -168,7 +158,6 @@ impl TaskDetailView {
             };
             buttons = buttons.child(self.render_status_button(theme, status, label, snapshot, cx));
         }
-        let delete_label = self.translator.translate("delete");
         div()
             .flex()
             .flex_col()
@@ -177,37 +166,33 @@ impl TaskDetailView {
                 card(theme)
                     .p(spacing(4.0))
                     .child(buttons)
-                    .children(self.status_move.error.as_ref().map(|reason| {
-                        div()
-                            .mt(spacing(3.0))
-                            .text_scale(text_scale::XS)
-                            .text_color(theme.status.error)
-                            .child(
-                                self.translator
-                                    .translate_with("statusChangeFailed", &[("reason", reason)]),
-                            )
-                    }))
+                    .children(self.render_status_move_failure(theme, cx))
                     .child(
                         div()
                             .mt(spacing(3.0))
                             .border_t_1()
                             .border_color(theme.border.subtle)
                             .pt(spacing(3.0))
-                            .child(
-                                div().w_auto().flex().child(
-                                    div()
-                                        .rounded(radius::MD)
-                                        .px(spacing(3.0))
-                                        .py(spacing(1.5))
-                                        .text_scale(text_scale::XS)
-                                        .bg(gpui_kit::rgb(0xfef2f2))
-                                        .text_color(gpui_kit::rgb(0xef4444))
-                                        .child(delete_label),
-                                ),
-                            ),
+                            .child(self.render_delete_task(theme, cx)),
                     ),
             )
+            .children(self.hooks_card.clone())
             .into_any_element()
+    }
+
+    /// TS `InlineLoadError className="mt-3"`: 사유와 같은 상태로 다시 옮기는 다시 시도
+    fn render_status_move_failure(
+        &self,
+        theme: &ThemeTokens,
+        cx: &mut Context<Self>,
+    ) -> Option<gpui_kit::Div> {
+        let failed = self.status_move.failure.as_ref()?;
+        let message = self
+            .translator
+            .translate_with("statusChangeFailed", &[("reason", &failed.reason)]);
+        let alert = render_inline_load_error(theme, message, self.common.translate("retry"))
+            .on_click_retry(cx.listener(|view, _: &ClickEvent, _, cx| view.retry_status_move(cx)));
+        Some(div().mt(spacing(3.0)).child(alert))
     }
 
     fn render_status_button(
@@ -256,306 +241,13 @@ impl TaskDetailView {
     }
 }
 
-fn card(theme: &ThemeTokens) -> gpui_kit::Div {
+pub fn card(theme: &ThemeTokens) -> gpui_kit::Div {
     div()
         .rounded(radius::LG)
         .border_1()
         .border_color(theme.border.default)
         .bg(theme.background.surface)
         .shadow(box_shadows(&theme.shadow.sm))
-}
-
-/// 작업 정보 패널: 타이틀 카드 + 정보 카드(`space-y-3`)
-fn render_overview(
-    theme: &ThemeTokens,
-    snapshot: &TaskDetailSnapshot,
-    translator: &Translator,
-    description: AnyElement,
-) -> impl IntoElement {
-    div()
-        .flex()
-        .flex_col()
-        .gap(spacing(3.0))
-        .child(render_title_card(theme, &snapshot.task, description))
-        .child(render_info_card(theme, snapshot, translator))
-}
-
-fn status_badge_colors(theme: &ThemeTokens, status: TaskStatus) -> (Rgba, Rgba) {
-    // Tailwind 기본 팔레트 `bg-gray-100`·`bg-yellow-50`·`bg-purple-50`·`bg-blue-50`·`bg-green-50`
-    match status {
-        TaskStatus::Todo => (gpui_kit::rgb(0xf3f4f6), theme.status.todo),
-        TaskStatus::Progress => (gpui_kit::rgb(0xfefce8), theme.status.progress),
-        TaskStatus::Pending => (gpui_kit::rgb(0xfaf5ff), theme.status.pending),
-        TaskStatus::Review => (gpui_kit::rgb(0xeff6ff), theme.status.review),
-        TaskStatus::Done => (gpui_kit::rgb(0xf0fdf4), theme.status.done),
-    }
-}
-
-/// `TaskDetailTitleCard`: 상태 배지, 제목, 같은 프로젝트 작업 보기 버튼, 설명(없으면 `addDescription`)
-fn render_title_card(
-    theme: &ThemeTokens,
-    task: &KanbanTask,
-    description: AnyElement,
-) -> impl IntoElement {
-    let (badge_background, badge_text) = status_badge_colors(theme, task.status);
-    card(theme)
-        .p(spacing(5.0))
-        .child(
-            div().mb(spacing(3.0)).flex().child(
-                div()
-                    .rounded_full()
-                    .px(spacing(2.5))
-                    .py(spacing(1.0))
-                    .text_scale(text_scale::XS)
-                    .css_weight(500)
-                    .bg(badge_background)
-                    .text_color(badge_text)
-                    .child(status_badge_label(task.status)),
-            ),
-        )
-        .child(
-            div()
-                .flex()
-                .items_center()
-                .justify_between()
-                .gap(spacing(2.0))
-                .child(
-                    div()
-                        .text_scale(text_scale::XL)
-                        .line_height(px(25.0))
-                        .css_weight(700)
-                        .text_color(theme.text.primary)
-                        .child(task.title.clone()),
-                )
-                .children(
-                    (task.branch_name.is_some() && task.project_id.is_some()).then(|| {
-                        div()
-                            .size(spacing(6.0))
-                            .flex_none()
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .rounded_full()
-                            .bg(theme.tag.project.background)
-                            .child(super::icons::detail_icon(
-                                super::icons::DetailIcon::ForwardChevron,
-                                gpui_kit::rgb(0xffffff),
-                                px(16.0),
-                            ))
-                    }),
-                ),
-        )
-        .child(div().mt(spacing(3.0)).child(description))
-}
-
-fn info_row(theme: &ThemeTokens, label: String, value: impl IntoElement) -> impl IntoElement {
-    div()
-        .flex()
-        .items_center()
-        .justify_between()
-        .gap(spacing(2.0))
-        .child(
-            div()
-                .text_scale(text_scale::XS)
-                .text_color(theme.text.muted)
-                .child(label),
-        )
-        .child(value)
-}
-
-fn pill(background: Rgba, text: Rgba, label: String) -> gpui_kit::Div {
-    div()
-        .rounded_full()
-        .px(spacing(2.0))
-        .py(spacing(0.5))
-        .text_scale(text_scale::XS)
-        .bg(background)
-        .text_color(text)
-        .child(label)
-}
-
-/// `TaskDetailInfoCard`(프로젝트·프로젝트 색·우선순위·에이전트·세션·SSH·생성/수정일)
-fn render_info_card(
-    theme: &ThemeTokens,
-    snapshot: &TaskDetailSnapshot,
-    translator: &Translator,
-) -> impl IntoElement {
-    let task = &snapshot.task;
-    let mut rows = div().flex().flex_col().gap(spacing(3.0));
-    if let Some(project) = snapshot.project.as_ref() {
-        let color = project.color.clone().unwrap_or_else(|| {
-            kanvibe_process::project_color::compute_project_color(&project.name).to_string()
-        });
-        rows = rows
-            .child(info_row(
-                theme,
-                translator.translate("project"),
-                div()
-                    .flex()
-                    .items_center()
-                    .gap(spacing(1.0))
-                    .child(
-                        pill(
-                            theme.tag.project.background,
-                            gpui_kit::rgb(0xffffff),
-                            project.name.clone(),
-                        )
-                        .css_weight(500),
-                    )
-                    .child(
-                        div()
-                            .size(spacing(5.0))
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .rounded_full()
-                            .bg(theme.tag.project.background)
-                            .child(super::icons::detail_icon(
-                                super::icons::DetailIcon::ForwardChevronBold,
-                                gpui_kit::rgb(0xffffff),
-                                px(10.0),
-                            )),
-                    ),
-            ))
-            .child(info_row(
-                theme,
-                translator.translate("projectColor"),
-                div()
-                    .size(spacing(6.0))
-                    .rounded_full()
-                    .border_2()
-                    .border_color(theme.border.default)
-                    .bg(css_hex(&color)),
-            ));
-    }
-    rows = rows.child(info_row(
-        theme,
-        translator.translate("priority"),
-        render_priority(theme, task.priority),
-    ));
-    if let Some(agent) = task.agent_type.as_ref() {
-        let colors = match agent.as_str() {
-            "claude" => theme.tag.claude,
-            "gemini" => theme.tag.gemini,
-            "codex" => theme.tag.codex,
-            _ => theme.tag.neutral,
-        };
-        rows = rows.child(info_row(
-            theme,
-            translator.translate("agent"),
-            pill(colors.background, colors.text, agent.clone()).css_weight(500),
-        ));
-    }
-    if let Some(session_type) = task.session_type {
-        rows = rows.child(info_row(
-            theme,
-            translator.translate("session"),
-            pill(
-                theme.tag.session.background,
-                theme.tag.session.text,
-                session_type.as_str().to_string(),
-            ),
-        ));
-    }
-    if let Some(ssh_host) = task.ssh_host.as_ref() {
-        rows = rows.child(info_row(
-            theme,
-            translator.translate("sshHost"),
-            pill(
-                theme.tag.ssh.background,
-                theme.tag.ssh.text,
-                ssh_host.clone(),
-            )
-            .mono(400),
-        ));
-    }
-    rows = rows.child(
-        div()
-            .mt(spacing(3.0))
-            .border_t_1()
-            .border_color(theme.border.subtle)
-            .pt(spacing(3.0))
-            .flex()
-            .flex_col()
-            .gap(spacing(2.0))
-            .child(info_row(
-                theme,
-                translator.translate("createdAt"),
-                date_text(theme, &task.created_at),
-            ))
-            .child(info_row(
-                theme,
-                translator.translate("updatedAt"),
-                date_text(theme, &task.updated_at),
-            )),
-    );
-    card(theme)
-        .p(spacing(5.0))
-        .child(
-            div()
-                .mb(spacing(4.0))
-                .text_scale(text_scale::XS)
-                .css_weight(600)
-                .text_color(theme.text.muted)
-                .child(translator.translate("info").to_uppercase()),
-        )
-        .child(rows)
-}
-
-fn date_text(theme: &ThemeTokens, value: &str) -> impl IntoElement {
-    div()
-        .text_scale(text_scale::XS)
-        .text_color(theme.text.secondary)
-        .child(locale_date(value))
-}
-
-/// `PrioritySelector`: 없음·!·!!·!!! 네 칸, 고른 칸에 brand 테두리
-fn render_priority(theme: &ThemeTokens, current: Option<TaskPriority>) -> impl IntoElement {
-    let options: [(Option<TaskPriority>, &str, Rgba, Rgba); 4] = [
-        (None, "없음", theme.background.page, theme.text.muted),
-        (
-            Some(TaskPriority::Low),
-            "!",
-            theme.priority.low.background,
-            theme.priority.low.text,
-        ),
-        (
-            Some(TaskPriority::Medium),
-            "!!",
-            theme.priority.medium.background,
-            theme.priority.medium.text,
-        ),
-        (
-            Some(TaskPriority::High),
-            "!!!",
-            theme.priority.high.background,
-            theme.priority.high.text,
-        ),
-    ];
-    div()
-        .flex()
-        .gap(spacing(1.5))
-        .children(
-            options
-                .into_iter()
-                .map(|(priority, label, background, text)| {
-                    let is_selected = priority == current;
-                    div()
-                        .rounded(radius::MD)
-                        .border_1()
-                        .border_color(if is_selected {
-                            theme.brand.primary
-                        } else {
-                            theme.border.default
-                        })
-                        .px(spacing(2.0))
-                        .py(spacing(0.5))
-                        .text_scale(text_scale::XS)
-                        .bg(background)
-                        .text_color(text)
-                        .child(label)
-                }),
-        )
 }
 
 #[cfg(test)]
@@ -617,9 +309,7 @@ mod tests {
     }
 
     #[test]
-    fn dates_render_like_en_us_locale_date_strings() {
-        assert_eq!(locale_date("2026-01-14 01:00:00"), "1/14/2026");
-        assert_eq!(locale_date("2026-01-15T02:55:00.000Z"), "1/15/2026");
+    fn status_badge_uses_the_status_name() {
         assert_eq!(status_badge_label(TaskStatus::Progress), "Progress");
     }
 }

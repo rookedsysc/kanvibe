@@ -29,6 +29,18 @@ pub enum DetailIcon {
     ForwardChevron,
     /// 정보 카드 프로젝트 바로가기(굵은 선) `M6 4L10 8L6 12`
     ForwardChevronBold,
+    /// Hugeicons `CheckmarkCircle02Icon`(hooks 전체 상태: 모두 설치)
+    CheckmarkCircle,
+    /// Hugeicons `Clock01Icon`(hooks 전체 상태: 일부 설치)
+    Clock,
+    /// Hugeicons `AlertCircleIcon`(hooks 전체 상태: 하나도 없음)
+    AlertCircle,
+    /// `TaskDiffStats` FileDiffIcon
+    FileDiff,
+    /// 같은 프로젝트 작업 모달 닫기 `M12 4L4 12M4 4L12 12`
+    Close,
+    /// 네이티브 select 화살표(굵은 아래 꺾쇠)
+    SelectChevron,
 }
 
 impl DetailIcon {
@@ -98,6 +110,37 @@ impl DetailIcon {
             Self::BackChevron => ("0 0 16 16", "1.5", r#"<path d="M10 12L6 8L10 4"/>"#),
             Self::ForwardChevron => ("0 0 16 16", "1.5", r#"<path d="M6 12L10 8L6 4"/>"#),
             Self::ForwardChevronBold => ("0 0 16 16", "2", r#"<path d="M6 4L10 8L6 12"/>"#),
+            Self::CheckmarkCircle => (
+                "0 0 24 24",
+                "2",
+                concat!(
+                    r#"<path d="M22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22C17.5228 22 22 17.5228 22 12Z"/>"#,
+                    r#"<path d="M8 12.5L10.5 15L16 9"/>"#,
+                ),
+            ),
+            Self::Clock => (
+                "0 0 24 24",
+                "2",
+                r#"<circle cx="12" cy="12" r="10"/><path d="M12 8V12L14 14"/>"#,
+            ),
+            Self::AlertCircle => (
+                "0 0 24 24",
+                "2",
+                concat!(
+                    r#"<circle cx="12" cy="12" r="10"/><path d="M12 8V12"/>"#,
+                    r#"<path d="M12.125 15.75H12M12.25 15.75C12.25 15.8881 12.1381 16 12 16C11.8619 16 11.75 15.8881 11.75 15.75C11.75 15.6119 11.8619 15.5 12 15.5C12.1381 15.5 12.25 15.6119 12.25 15.75Z"/>"#,
+                ),
+            ),
+            Self::Close => ("0 0 16 16", "1.5", r#"<path d="M12 4L4 12M4 4L12 12"/>"#),
+            Self::SelectChevron => ("0 0 16 16", "3.2", r#"<path d="M2.5 5L8 10.5L13.5 5"/>"#),
+            Self::FileDiff => (
+                "0 0 24 24",
+                "2",
+                concat!(
+                    r#"<circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/>"#,
+                    r#"<path d="M6 8.5v4c0 2 1.5 3.5 3.5 3.5H14"/><path d="M15 13l3 3-3 3"/>"#,
+                ),
+            ),
         }
     }
 

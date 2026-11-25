@@ -65,4 +65,6 @@ pane 레이아웃은 상태 없는 함수(`kanvibe_terminal::pane_layout_service
   QA 실행기는 골든을 녹화한 TS 앱의 첫 창(`/ko`)과 같게 `DEFAULT_NOTIFICATION_LOCALE`을 쓴다.
 - 모바일 다이어그램 라우트는 `runtime.diagram_renderer()`를 `kanvibe_server::diagram::render_mobile_diagram`으로 감싸 쓴다.
   글꼴은 `RuntimeConfig.diagram_font_files`(앱: 번들 글꼴, QA 실행기: `--diagram-fonts`, 기본 앱 번들 글꼴 디렉터리).
+  작업 상세 대화의 Mermaid 그림도 `runtime.diagram_renderer().fonts()`로 같은 글꼴 묶음을 쓴다.
+- 원격 작업의 PR 조회 전 `gh` 확인·설치는 `runtime.github_cli_dependency()`를 쓴다.
 - QA 실행이면 `RuntimeConfig.qa_network_responses`와 `clock`을 넣는다.

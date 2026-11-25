@@ -3,6 +3,7 @@
 pub mod app_events;
 pub mod app_window;
 pub mod assets;
+pub mod board_focus_target;
 pub mod components;
 pub mod desktop_process;
 pub mod fonts;

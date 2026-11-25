@@ -7,14 +7,15 @@
 //! TS 버튼: `relative rounded-md p-1.5 text-text-muted hover:bg-bg-page hover:text-text-primary`, 배지
 //! `absolute -right-1 -top-1 min-w-4 h-4 rounded-full bg-brand-primary px-1 text-[10px] font-semibold text-white`.
 //! 패널: `absolute right-0 z-50 mt-2 w-96 rounded-xl border border-border-default bg-bg-surface shadow-xl`.
+//! 작업 상세 터미널 위 띠에 둘 때는 `for_terminal_chrome`으로 TS `buttonClassName`(`text-terminal-text hover:text-white
+//! hover:bg-white/10`)과 `panelClassName`(`mt-3`)을 쓴다.
 
 use std::sync::Arc;
 
 use gpui_kit::{
-    AnyElement, AnyWindowHandle, App, Bounds, Context, Entity, FocusHandle, InteractiveElement,
-    IntoElement, KeyDownEvent, MouseButton, ParentElement, PathBuilder, Pixels, Render, Rgba,
-    SharedString, StatefulInteractiveElement, Styled, Subscription, Window, canvas, deferred, div,
-    point, px, svg,
+    AnyElement, AnyWindowHandle, App, Context, Entity, EventEmitter, FocusHandle,
+    InteractiveElement, IntoElement, KeyDownEvent, MouseButton, ParentElement, Render,
+    SharedString, StatefulInteractiveElement, Styled, Subscription, Window, deferred, div, px, svg,
 };
 use kanvibe_domain::i18n::{Locale, Translator};
 use kanvibe_domain::notifications::AppNotification;
@@ -25,6 +26,7 @@ use crate::app_events::{
 use crate::assets::icon_paths;
 use crate::components::dialog::modal_layer;
 use crate::components::popover::POPOVER_LAYER_PRIORITY;
+use crate::components::spinner::{is_spinner_animated, spinner_ring};
 use crate::components::toast::ToastKind;
 use crate::components::{FocusRing, TailwindText, fade};
 use crate::locale_format::format_date_time;
@@ -65,9 +67,15 @@ pub fn visible_notifications(
         .collect()
 }
 
+/// 열린 패널이 닫혔다. 띄운 화면이 입력 포커스를 제자리로 돌릴 때 쓴다
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct NotificationPanelClosed;
+
 pub struct NotificationCenterButton {
     locale: Locale,
     navigator: WindowNavigator,
+    /// 터미널 위 띠의 버튼(`text-terminal-text hover:text-white hover:bg-white/10`, 패널 `mt-3`)
+    is_terminal_chrome: bool,
     services: Option<Arc<BoardServices>>,
     background_sync: Entity<BackgroundSyncStore>,
     sync_review: Entity<BackgroundSyncReviewStore>,
@@ -115,6 +123,7 @@ impl NotificationCenterButton {
         Self {
             locale,
             navigator,
+            is_terminal_chrome: false,
             services: board_services(cx),
             background_sync,
             sync_review,
@@ -130,6 +139,11 @@ impl NotificationCenterButton {
             is_keyboard_opened: false,
             _subscriptions: subscriptions,
         }
+    }
+
+    pub fn for_terminal_chrome(mut self) -> Self {
+        self.is_terminal_chrome = true;
+        self
     }
 
     pub fn is_open(&self) -> bool {
@@ -168,6 +182,7 @@ impl NotificationCenterButton {
         if let Some(handle) = self.return_focus.take() {
             handle.focus(window, cx);
         }
+        cx.emit(NotificationPanelClosed);
         cx.notify();
     }
 
@@ -470,6 +485,8 @@ fn open_window_paths(cx: &App) -> Vec<(gpui_kit::WindowId, String)> {
         .collect()
 }
 
+impl EventEmitter<NotificationPanelClosed> for NotificationCenterButton {}
+
 impl Render for NotificationCenterButton {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = *cx.global::<ThemeTokens>();
@@ -495,7 +512,10 @@ impl NotificationCenterButton {
     ) -> impl IntoElement + use<> {
         let common = Translator::new(self.locale, "common");
         let label = common.translate("notifications");
-        let hover_background = theme.background.page;
+        let (icon_color, hover_background) = match self.is_terminal_chrome {
+            true => (theme.terminal.text, fade(gpui_kit::rgb(0xffffff), 0.1)),
+            false => (theme.text.muted, theme.background.page),
+        };
         let sync = self.background_sync.read(cx).state();
         let is_cleaning = self.sync_review.read(cx).is_cleaning();
         let indicator = if is_cleaning || sync.is_running() {
@@ -533,7 +553,7 @@ impl NotificationCenterButton {
                 svg()
                     .path(icon_paths::BELL)
                     .size(px(20.0))
-                    .text_color(theme.text.muted),
+                    .text_color(icon_color),
             )
             .child(qa_button_layer(&label, ""))
             .children(badge)
@@ -541,6 +561,10 @@ impl NotificationCenterButton {
 
     fn render_panel(&mut self, theme: &ThemeTokens, cx: &mut Context<Self>) -> AnyElement {
         let labels = Translator::new(self.locale, "common");
+        let panel_gap = match self.is_terminal_chrome {
+            true => spacing(3.0),
+            false => spacing(2.0),
+        };
         let all = self.all_notifications(cx);
         let unread_count = all.iter().filter(|item| !item.is_read).count();
         let visible = visible_notifications(&all, self.is_unread_only);
@@ -608,7 +632,7 @@ impl NotificationCenterButton {
             .on_mouse_down_out(cx.listener(|this, _, window, cx| this.close(window, cx)))
             .occlude()
             .relative()
-            .mt(spacing(2.0))
+            .mt(panel_gap)
             .w(px(PANEL_WIDTH))
             .overflow_hidden()
             .rounded(radius::XL)
@@ -784,7 +808,7 @@ impl NotificationCenterButton {
                 .mt(px(2.0))
                 .size(px(12.0))
                 .flex_none()
-                .child(spinner_ring(theme.text.muted, cx))
+                .child(spinner_ring(theme.text.muted, is_spinner_animated(cx)))
                 .into_any_element()
         } else {
             let dot_color = if notification.is_read {
@@ -1147,59 +1171,7 @@ fn sync_spinner(theme: &ThemeTokens, label: &str, cx: &App) -> impl IntoElement 
         .right(px(-4.0))
         .size(px(12.0))
         .child(qa_text_layer("status", label))
-        .child(spinner_ring(theme.brand.primary, cx))
-}
-
-/// 위쪽 테두리만 투명한 2px 고리. QA 재생(움직임 줄이기)이 아니면 1초에 한 바퀴 돈다
-fn spinner_ring(color: Rgba, cx: &App) -> impl IntoElement + use<> {
-    let is_animated = !cx.has_global::<crate::qa::QaRuntime>();
-    canvas(
-        |_, _, _| {},
-        move |bounds, _, window, _| {
-            let turn = if is_animated {
-                window.request_animation_frame();
-                spinner_turn()
-            } else {
-                0.0
-            };
-            paint_spinner_ring(bounds, turn, color, window);
-        },
-    )
-    .size_full()
-}
-
-/// 지금 회전 각(라디안, 1초에 한 바퀴)
-fn spinner_turn() -> f32 {
-    let elapsed = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default();
-    (elapsed.as_millis() % 1000) as f32 / 1000.0 * std::f32::consts::TAU
-}
-
-/// 2px 테두리 고리 가운데 위쪽 4분의 1(-135°~-45°)을 뺀 호
-fn paint_spinner_ring(bounds: Bounds<Pixels>, turn: f32, color: Rgba, window: &mut Window) {
-    let center = bounds.center();
-    let radius = f32::from(bounds.size.width) / 2.0 - 1.0;
-    let at = |angle: f32| {
-        let angle = angle + turn;
-        point(
-            center.x + px(radius * angle.cos()),
-            center.y + px(radius * angle.sin()),
-        )
-    };
-    let quarter = std::f32::consts::FRAC_PI_4;
-    let mut builder = PathBuilder::stroke(px(2.0));
-    builder.move_to(at(-quarter));
-    builder.arc_to(
-        point(px(radius), px(radius)),
-        px(0.0),
-        true,
-        true,
-        at(-3.0 * quarter),
-    );
-    if let Ok(path) = builder.build() {
-        window.paint_path(path, color);
-    }
+        .child(spinner_ring(theme.brand.primary, is_spinner_animated(cx)))
 }
 
 /// 동기화 실패 표시(TS `h-4 w-4 rounded-full bg-status-error text-[10px] font-semibold text-white` "!")

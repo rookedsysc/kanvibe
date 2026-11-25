@@ -5,6 +5,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use kanvibe_db::Database;
+use kanvibe_process::github_cli_dependency::GitHubCliDependency;
 use kanvibe_process::github_project_icon::{
     GitHubProjectIconResolver, IconHttpClient, UreqIconHttpClient,
 };
@@ -74,6 +75,8 @@ pub(crate) struct BoardParts {
     pub notification_store: Arc<NotificationStore>,
     pub background_task_sync: Arc<BackgroundTaskSync>,
     pub session_dependency: Arc<SessionDependencyService>,
+    /// 원격 PR 조회 전 `gh` 설치 확인·설치(TS `githubCliDependency` 서비스)
+    pub github_cli_dependency: Arc<GitHubCliDependency>,
 }
 
 /// 조립 재료. 보드 부분은 바닥·터미널·hook·AI 부분이 모두 생긴 뒤에 만든다
@@ -121,6 +124,7 @@ pub(crate) fn build_board(inputs: &BoardInputs<'_>) -> BoardParts {
             Arc::clone(&inputs.terminal.session_dependencies),
             task_terminal_sessions(inputs.terminal),
         )),
+        github_cli_dependency: Arc::new(GitHubCliDependency::new(Arc::clone(&foundation.runner))),
         kanban,
         project,
         task_target_propagation,
@@ -166,6 +170,7 @@ fn build_project(inputs: &BoardInputs<'_>) -> Arc<ProjectService> {
     let foundation = inputs.foundation;
     let references = inputs.references;
     let hooks = inputs.hooks;
+    let app_clock = inputs.config.clock;
     let icons = GitHubProjectIconSource::new(
         GitHubProjectIconResolver::new(icon_http_client(inputs.config)),
         Arc::clone(&foundation.runner),
@@ -194,7 +199,8 @@ fn build_project(inputs: &BoardInputs<'_>) -> Arc<ProjectService> {
         ai_sessions: Arc::new(LocalTaskAiSessionReader::new(
             inputs.ai.session_host.clone(),
             Arc::clone(&inputs.ai.running_agent_panes),
-            Arc::new(kanvibe_ai::javascript::now_ms),
+            // 실행 중 세션의 경과 시간은 앱 시계(QA 고정 시각)로 잰다
+            Arc::new(move || app_clock.now_ms() as f64),
         )),
     })
 }

@@ -3,38 +3,39 @@
 use std::cell::Cell;
 use std::rc::Rc;
 use std::sync::Arc;
-use std::time::Duration;
 
 use futures::StreamExt;
 use futures::channel::mpsc::UnboundedReceiver;
 use gpui_kit::{
-    App, AppContext, ClipboardItem, Context, FocusHandle, Focusable, InteractiveElement,
-    IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
-    ParentElement, Render, ScrollEvent, Styled, Task, Window, canvas, div,
+    App, ClipboardItem, Context, FocusHandle, Focusable, InteractiveElement, IntoElement,
+    KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement, Render,
+    ScrollEvent, Styled, Task, Window, canvas, div,
 };
 use kanvibe_domain::i18n::Translator;
 use kanvibe_domain::terminal_tabs::HERDR_SERVER_REPLACED_CLOSE_REASON;
+use kanvibe_runtime::DesktopRuntime;
 use kanvibe_terminal::mouse_selection::TerminalMousePress;
 use kanvibe_terminal::osc52_clipboard::{
     Osc52Body, Osc52SequenceScanner, read_osc52_clipboard_text,
 };
 use kanvibe_terminal::screen::{ScreenInputModes, TerminalScreen};
 
-use super::image_paste::{clipboard_image, image_data_url};
+use super::image_paste::ImagePasteToast;
 use super::input::{KeyEncodingModes, encode_keystroke, encode_paste};
 use super::mouse::{
     GridPoint, GridSelection, build_mouse_button_report, build_wheel_input, is_selection_press,
     word_bounds,
 };
 use super::paint::{GridLayout, GridPaintState, measure_cell_size, paint_screen};
-use super::runtime::{TerminalRuntime, TerminalWindowEvent, ViewTerminalWindow, terminal_runtime};
 use super::status::{TerminalConnection, render_connection_overlay};
+use super::transport::{BridgeTransport, TerminalTransport};
+use super::window::{TerminalWindowEvent, ViewTerminalWindow, open_terminal_window};
 use crate::shortcuts::TERMINAL_KEY_CONTEXT;
 
+/// xterm FitAddon이 칸 수를 셀 때 폭에서 빼는 스크롤 막대 자리(`ViewportConstants.DEFAULT_SCROLL_BAR_WIDTH`)
+const XTERM_SCROLL_BAR_WIDTH: f32 = 14.0;
 /// TS 터미널이 연결이 끝났을 때 화면에 남기던 기본 문구
 const CONNECTION_CLOSED_MESSAGE: &str = "연결이 종료되었습니다.";
-/// TS가 이미지 전송 실패 사유가 비었을 때 쓰던 문구
-const IMAGE_TRANSFER_FAILED: &str = "이미지 전송 실패";
 
 /// 터미널 뷰가 붙을 대상
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -54,48 +55,79 @@ pub enum TerminalPaneEvent {
 impl gpui_kit::EventEmitter<TerminalPaneEvent> for TerminalPane {}
 
 pub struct TerminalPane {
-    target: TerminalTarget,
-    runtime: Option<Arc<TerminalRuntime>>,
-    window: Option<Arc<ViewTerminalWindow>>,
-    connection: TerminalConnection,
+    pub(super) target: TerminalTarget,
+    /// 레지스트리 화면을 읽을 런타임. 입출력은 `transport`로 한다
+    runtime: Option<Arc<DesktopRuntime>>,
+    pub(super) transport: Option<Arc<dyn TerminalTransport>>,
+    pub(super) window: Option<Arc<ViewTerminalWindow>>,
+    pub(super) connection: TerminalConnection,
     /// 연결이 끝난 뒤 남길 사유(TS는 xterm에 빨간 줄로 썼다)
-    closed_reason: Option<String>,
+    pub(super) closed_reason: Option<String>,
     /// 마지막 그리기의 칸 크기와 자리. 마우스 좌표를 칸으로 바꿀 때 쓴다
     layout: Rc<Cell<Option<GridLayout>>>,
     /// PTY에 마지막으로 알린 크기
-    reported_size: Option<(u16, u16)>,
+    pub(super) reported_size: Option<(u16, u16)>,
     focus_handle: FocusHandle,
     marked_text: Option<String>,
     selection: Option<GridSelection>,
     is_selecting: bool,
     reporting_button: Option<u8>,
     osc52: Osc52SequenceScanner,
-    is_mac_platform: bool,
-    has_retried_after_cooldown: bool,
-    translator: Translator,
+    pub(super) is_mac_platform: bool,
+    pub(super) has_retried_after_cooldown: bool,
+    /// 비활성 탭이거나 메인 영역이 채팅 기록이라 가려져 있다
+    pub(super) is_hidden: bool,
+    pub(super) translator: Translator,
+    /// 원격 이미지 전송 진행·실패 알림
+    pub(super) image_toasts: Vec<ImagePasteToast>,
+    pub(super) next_toast_id: u64,
     /// 원격 이미지 경로 쓰기 줄. 앞 이미지의 경로를 먼저 쓴다
-    image_write_queue: Option<Task<()>>,
+    pub(super) image_write_queue: Option<Task<()>>,
     _event_task: Option<Task<()>>,
-    _open_task: Option<Task<()>>,
+    pub(super) _open_task: Option<Task<()>>,
+    /// 쿨다운 뒤 다시 열기 예약. 가려지거나 다시 연결하면 버린다
+    pub(super) _cooldown_wait: Option<Task<()>>,
+    _window_activation: Option<gpui_kit::Subscription>,
 }
 
 impl TerminalPane {
+    /// 런타임 브리지로 붙는 터미널. 데이터 디렉터리 없이 뜬 실행이면 연결 실패를 보인다
     pub fn new(target: TerminalTarget, translator: Translator, cx: &mut Context<Self>) -> Self {
-        let runtime = terminal_runtime(cx);
-        let (window, event_task) = match runtime.as_ref() {
-            Some(runtime) => {
-                let (window, receiver) = runtime.open_window();
+        let transport = cx
+            .global::<crate::services::AppServices>()
+            .runtime()
+            .map(|runtime| {
+                Arc::new(BridgeTransport(Arc::clone(runtime))) as Arc<dyn TerminalTransport>
+            });
+        Self::with_transport(target, translator, transport, cx)
+    }
+
+    /// 입출력 길을 정해 만든다. 화면은 늘 런타임 레지스트리에서 읽는다
+    pub fn with_transport(
+        target: TerminalTarget,
+        translator: Translator,
+        transport: Option<Arc<dyn TerminalTransport>>,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let runtime = cx
+            .global::<crate::services::AppServices>()
+            .runtime()
+            .map(Arc::clone);
+        let (window, event_task) = match transport.as_ref() {
+            Some(_) => {
+                let (window, receiver) = open_terminal_window();
                 (Some(window), Some(spawn_event_loop(receiver, cx)))
             }
             None => (None, None),
         };
-        let connection = match runtime {
+        let connection = match transport {
             Some(_) => TerminalConnection::Connecting,
             None => TerminalConnection::Failed(translator.translate("terminalConnectionFailed")),
         };
         Self {
             target,
             runtime,
+            transport,
             window,
             connection,
             closed_reason: None,
@@ -109,10 +141,15 @@ impl TerminalPane {
             osc52: Osc52SequenceScanner::default(),
             is_mac_platform: cfg!(target_os = "macos"),
             has_retried_after_cooldown: false,
+            is_hidden: false,
             translator,
+            image_toasts: Vec::new(),
+            next_toast_id: 0,
             image_write_queue: None,
             _event_task: event_task,
             _open_task: None,
+            _cooldown_wait: None,
+            _window_activation: None,
         }
     }
 
@@ -122,27 +159,22 @@ impl TerminalPane {
 
     /// PTY 입력. 브리지가 창·탭 클라이언트를 찾아 보낸다
     pub fn write_input(&self, data: &str) {
-        let (Some(runtime), Some(window)) = (self.runtime.as_ref(), self.window.as_ref()) else {
+        let (Some(transport), Some(window)) = (self.transport.as_ref(), self.window.as_ref())
+        else {
             return;
         };
         if self.connection != TerminalConnection::Ready {
             return;
         }
-        runtime.bridge.write_terminal(
-            window.id(),
-            &self.target.task_id,
-            self.target.tab_id.as_deref(),
-            data,
-        );
+        transport.write(window.id(), &self.target, data);
     }
 
     /// 레지스트리 화면을 읽는다. 화면이 없으면(연결 전·종료 후) `None`
     pub fn read_screen<R>(&self, read: impl FnOnce(&TerminalScreen) -> R) -> Option<R> {
-        self.runtime.as_ref()?.registry.read_terminal_screen(
-            &self.target.task_id,
-            self.target.tab_id.as_deref(),
-            read,
-        )
+        self.runtime
+            .as_ref()?
+            .terminal_registry()
+            .read_terminal_screen(&self.target.task_id, self.target.tab_id.as_deref(), read)
     }
 
     fn input_modes(&self) -> ScreenInputModes {
@@ -150,103 +182,16 @@ impl TerminalPane {
             .unwrap_or_default()
     }
 
-    /// 처음 칸 수를 알게 되면 연결하고, 그 뒤에는 크기만 알린다
-    fn apply_grid_size(&mut self, columns: u16, rows: u16, cx: &mut Context<Self>) {
-        if self.reported_size == Some((columns, rows)) {
+    /// 창이 다시 앞으로 오면 크기를 다시 알린다(TS `focus` 이벤트의 `scheduleTerminalSync`)
+    fn observe_window_activation(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self._window_activation.is_some() {
             return;
         }
-        let is_first_size = self.reported_size.is_none();
-        self.reported_size = Some((columns, rows));
-        if is_first_size {
-            self.open(cx);
-            return;
-        }
-        if let (Some(runtime), Some(window)) = (self.runtime.as_ref(), self.window.as_ref()) {
-            runtime.bridge.resize_terminal(
-                window.id(),
-                &self.target.task_id,
-                self.target.tab_id.as_deref(),
-                columns,
-                rows,
-            );
-        }
-    }
-
-    fn open(&mut self, cx: &mut Context<Self>) {
-        let (Some(runtime), Some(window), Some((columns, rows))) = (
-            self.runtime.clone(),
-            self.window.clone(),
-            self.reported_size,
-        ) else {
-            return;
-        };
-        let target = self.target.clone();
-        let open = cx.background_spawn(async move {
-            runtime.bridge.open_terminal(
-                window,
-                &target.task_id,
-                target.tab_id.as_deref(),
-                columns,
-                rows,
-            )
-        });
-        self._open_task = Some(cx.spawn(async move |this, cx| {
-            let result = open.await;
-            let _ = this.update(cx, |pane, cx| pane.finish_open(result, cx));
-        }));
-    }
-
-    fn finish_open(
-        &mut self,
-        result: kanvibe_terminal::terminal_bridge::TerminalOpenResult,
-        cx: &mut Context<Self>,
-    ) {
-        match result {
-            Ok(()) => {
-                self.connection = TerminalConnection::Ready;
-                self.closed_reason = None;
-                cx.emit(TerminalPaneEvent::Connected);
+        self._window_activation = Some(cx.observe_window_activation(window, |pane, window, _| {
+            if window.is_window_active() && !pane.is_hidden {
+                pane.reassert_size();
             }
-            Err(error) => match error.retry_after_ms {
-                Some(wait) if !self.has_retried_after_cooldown => {
-                    self.schedule_cooldown_retry(Duration::from_millis(u64::from(wait.get())), cx);
-                }
-                _ => {
-                    let message = match error.message.is_empty() {
-                        true => self.translator.translate("terminalConnectionFailed"),
-                        false => error.message,
-                    };
-                    self.connection = TerminalConnection::Failed(message);
-                }
-            },
-        }
-        cx.notify();
-    }
-
-    /// 전송 쿨다운 힌트가 오면 한 번만 기다렸다가 다시 연다
-    fn schedule_cooldown_retry(&mut self, wait: Duration, cx: &mut Context<Self>) {
-        self.has_retried_after_cooldown = true;
-        self.connection = TerminalConnection::Reconnecting;
-        self._open_task = Some(cx.spawn(async move |this, cx| {
-            cx.background_executor().timer(wait).await;
-            let _ = this.update(cx, |pane, cx| pane.open(cx));
         }));
-    }
-
-    /// 다시 연결 버튼과 Herdr 서버 교체 뒤 재연결
-    pub fn reconnect(&mut self, cx: &mut Context<Self>) {
-        if let (Some(runtime), Some(window)) = (self.runtime.as_ref(), self.window.as_ref()) {
-            runtime.bridge.close_terminal(
-                window.id(),
-                &self.target.task_id,
-                self.target.tab_id.as_deref(),
-            );
-        }
-        self.connection = TerminalConnection::Connecting;
-        self.closed_reason = None;
-        self.has_retried_after_cooldown = false;
-        self.open(cx);
-        cx.notify();
     }
 
     fn handle_window_event(&mut self, event: TerminalWindowEvent, cx: &mut Context<Self>) {
@@ -306,7 +251,7 @@ impl TerminalPane {
     fn prepare_for_input(&mut self, cx: &mut Context<Self>) {
         self.selection = None;
         if let Some(runtime) = self.runtime.as_ref() {
-            runtime.registry.update_terminal_screen_view(
+            runtime.terminal_registry().update_terminal_screen_view(
                 &self.target.task_id,
                 self.target.tab_id.as_deref(),
                 TerminalScreen::scroll_display_to_bottom,
@@ -315,23 +260,26 @@ impl TerminalPane {
         cx.notify();
     }
 
-    /// 복사(`Mod+C`·Linux `Ctrl+Shift+C`)와 붙여넣기(`Mod+V`·Linux `Ctrl+Shift+V`)
+    /// 복사(`Mod+C`·Linux `Ctrl+Shift+C`)와 붙여넣기(`Mod+V`·Linux `Ctrl+Shift+V`·`Shift+Insert`).
+    /// 원격 세션은 `Ctrl+V`·`Ctrl+Shift+V`·`Shift+Insert`에 클립보드 이미지가 있으면 이미지를 보낸다
     fn handle_clipboard_shortcut(
         &mut self,
         keystroke: &gpui_kit::Keystroke,
         cx: &mut Context<Self>,
     ) -> bool {
+        if is_image_paste_chord(keystroke) && self.try_paste_remote_image(cx) {
+            return true;
+        }
         let modifiers = &keystroke.modifiers;
         let is_clipboard_chord = match self.is_mac_platform {
             true => modifiers.platform && !modifiers.control && !modifiers.alt,
             false => modifiers.control && modifiers.shift && !modifiers.alt,
         };
-        if !is_clipboard_chord {
-            return false;
-        }
+        let is_shift_insert = !self.is_mac_platform && is_shift_insert(keystroke);
         match keystroke.key.as_str() {
-            "c" => self.copy_selection(cx),
-            "v" => self.paste_from_clipboard(cx),
+            "c" if is_clipboard_chord => self.copy_selection(cx),
+            "v" if is_clipboard_chord => self.paste_from_clipboard(cx),
+            "insert" if is_shift_insert => self.paste_from_clipboard(cx),
             _ => return false,
         }
         true
@@ -352,51 +300,35 @@ impl TerminalPane {
 
     /// 붙여넣기. 원격 세션에서 클립보드에 이미지가 있으면 scp로 보내고 원격 경로를 쓴다
     pub fn paste_from_clipboard(&mut self, cx: &mut Context<Self>) {
-        let Some(item) = cx.read_from_clipboard() else {
+        if self.try_paste_remote_image(cx) {
+            return;
+        }
+        let Some(text) = cx.read_from_clipboard().and_then(|item| item.text()) else {
             return;
         };
-        if self.target.is_remote
-            && let Some(image) = clipboard_image(&item)
-        {
-            self.send_image_to_remote(image_data_url(&image), cx);
-            return;
-        }
-        if let Some(text) = item.text() {
-            let modes = self.input_modes();
-            self.prepare_for_input(cx);
-            self.write_input(&encode_paste(&text, modes.is_bracketed_paste));
-        }
+        let modes = self.input_modes();
+        self.prepare_for_input(cx);
+        self.write_input(&encode_paste(&text, modes.is_bracketed_paste));
     }
+}
 
-    /// 전송은 바로 시작하되, 경로 쓰기는 붙여넣은 순서대로 한 줄로 세운다
-    fn send_image_to_remote(&mut self, image_data_url: String, cx: &mut Context<Self>) {
-        let Some(runtime) = self.runtime.clone() else {
-            return;
-        };
-        let task_id = self.target.task_id.clone();
-        let transfer = cx.background_spawn(async move {
-            runtime
-                .bridge
-                .paste_image_to_remote_terminal(&task_id, &image_data_url)
-        });
-        let previous_write = self.image_write_queue.take();
-        self.image_write_queue = Some(cx.spawn(async move |this, cx| {
-            if let Some(previous_write) = previous_write {
-                previous_write.await;
-            }
-            let result: Result<String, String> = transfer.await;
-            let _ = this.update(cx, |pane, cx| match result {
-                Ok(remote_path) => pane.write_input(&remote_path),
-                Err(error) => {
-                    pane.closed_reason = Some(match error.is_empty() {
-                        true => IMAGE_TRANSFER_FAILED.to_string(),
-                        false => error,
-                    });
-                    cx.notify();
-                }
-            });
-        }));
-    }
+/// TS `attachCustomKeyEventHandler`가 이미지 붙여넣기로 본 조합: `Ctrl+V`, `Ctrl+Shift+V`, `Shift+Insert`
+fn is_image_paste_chord(keystroke: &gpui_kit::Keystroke) -> bool {
+    let modifiers = &keystroke.modifiers;
+    let is_ctrl_v = modifiers.control
+        && !modifiers.platform
+        && !modifiers.alt
+        && keystroke.key.eq_ignore_ascii_case("v");
+    is_ctrl_v || is_shift_insert(keystroke)
+}
+
+fn is_shift_insert(keystroke: &gpui_kit::Keystroke) -> bool {
+    let modifiers = &keystroke.modifiers;
+    modifiers.shift
+        && !modifiers.control
+        && !modifiers.platform
+        && !modifiers.alt
+        && keystroke.key == "insert"
 }
 
 fn spawn_event_loop(
@@ -453,13 +385,9 @@ fn selection_text(screen: &TerminalScreen, selection: GridSelection, columns: us
 
 impl Drop for TerminalPane {
     fn drop(&mut self) {
-        if let (Some(runtime), Some(window)) = (self.runtime.as_ref(), self.window.as_ref()) {
+        if let (Some(transport), Some(window)) = (self.transport.as_ref(), self.window.as_ref()) {
             window.mark_destroyed();
-            runtime.bridge.close_terminal(
-                window.id(),
-                &self.target.task_id,
-                self.target.tab_id.as_deref(),
-            );
+            transport.close(window.id(), &self.target);
         }
     }
 }
@@ -558,6 +486,13 @@ impl TerminalPane {
         })
     }
 
+    /// X11 중간 클릭 붙여넣기 관례. 원격 세션에서 클립보드 이미지가 있을 때만 가로챈다
+    fn handle_middle_mouse_down(&mut self, cx: &mut Context<Self>) {
+        if self.try_paste_remote_image(cx) {
+            cx.stop_propagation();
+        }
+    }
+
     fn handle_mouse_move(&mut self, event: &MouseMoveEvent, cx: &mut Context<Self>) {
         if !self.is_selecting || event.pressed_button != Some(MouseButton::Left) {
             return;
@@ -607,7 +542,7 @@ impl TerminalPane {
 
     fn scroll_history(&self, lines: i32) {
         if let Some(runtime) = self.runtime.as_ref() {
-            runtime.registry.update_terminal_screen_view(
+            runtime.terminal_registry().update_terminal_screen_view(
                 &self.target.task_id,
                 self.target.tab_id.as_deref(),
                 |screen| screen.scroll_display(lines),
@@ -618,6 +553,7 @@ impl TerminalPane {
 
 impl Render for TerminalPane {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.observe_window_activation(window, cx);
         let entity = cx.entity();
         let layout_slot = Rc::clone(&self.layout);
         let paint_inputs = PaintInputs {
@@ -647,6 +583,10 @@ impl Render for TerminalPane {
                 MouseButton::Left,
                 cx.listener(|pane, event, window, cx| pane.handle_mouse_down(event, window, cx)),
             )
+            .on_mouse_down(
+                MouseButton::Middle,
+                cx.listener(|pane, _, _, cx| pane.handle_middle_mouse_down(cx)),
+            )
             .on_mouse_move(cx.listener(|pane, event, _, cx| pane.handle_mouse_move(event, cx)))
             .on_mouse_up(
                 MouseButton::Left,
@@ -655,7 +595,6 @@ impl Render for TerminalPane {
             .on_scroll(cx.listener(|pane, event, _, cx| pane.handle_scroll(event, cx)))
             .child(grid)
             .children(self.render_qa_row_targets(cx))
-            .children(self.render_pane_chat_toggle(cx))
             .children(
                 self.closed_reason
                     .clone()
@@ -666,58 +605,18 @@ impl Render for TerminalPane {
                 &self.translator,
                 cx,
             ))
+            .children(self.render_image_toasts(window, cx))
     }
 }
 
 impl TerminalPane {
-    /// 현재 pane 위 오른쪽 위 `터미널/채팅 전환` 버튼(TS `pane-chat-toggle`: `absolute right-2 top-1 h-9 rounded-md bg-bg-surface px-2 text-xs`).
-    /// 화면 칸 영역의 오른쪽 끝에 붙는다
-    fn render_pane_chat_toggle(&self, cx: &App) -> Option<gpui_kit::AnyElement> {
+    /// 화면 칸 영역의 폭. 연결되어 한 번 그려진 뒤에만 있다. 화면이 칸 영역 오른쪽 끝에 붙는 버튼을 놓을 때 쓴다
+    pub fn grid_width(&self) -> Option<gpui_kit::Pixels> {
         if self.connection != TerminalConnection::Ready {
             return None;
         }
         let layout = self.layout.get()?;
-        let theme = *cx.global::<crate::theme::ThemeTokens>();
-        let label = self.translator.translate("paneChat.toggle");
-        let grid_right = layout.cell_size.width * f32::from(layout.columns);
-        Some(
-            div()
-                .absolute()
-                .top(gpui_kit::px(0.0))
-                .left(gpui_kit::px(0.0))
-                .w(grid_right)
-                .child(
-                    div()
-                        .id("pane-chat-toggle")
-                        .absolute()
-                        .right(crate::theme::spacing(2.0))
-                        .top(crate::theme::spacing(1.0))
-                        .h(crate::theme::spacing(9.0))
-                        .flex()
-                        .items_center()
-                        .gap(crate::theme::spacing(1.0))
-                        .rounded(crate::theme::radius::MD)
-                        .bg(theme.background.surface)
-                        .px(crate::theme::spacing(2.0))
-                        .text_size(crate::theme::text_scale::XS.font_size)
-                        .line_height(crate::theme::text_scale::XS.line_height)
-                        .text_color(theme.text.primary)
-                        .child(super::super::icons::detail_icon(
-                            super::super::icons::DetailIcon::Chatting,
-                            theme.text.primary,
-                            gpui_kit::px(16.0),
-                        ))
-                        .child(label.clone())
-                        .child(crate::qa::targets::qa_target_layer(
-                            crate::qa::targets::QaTargetDescription {
-                                role: "button",
-                                name: label.into(),
-                                text: String::new().into(),
-                            },
-                        )),
-                )
-                .into_any_element(),
-        )
+        Some(layout.cell_size.width * f32::from(layout.columns))
     }
 
     /// QA 재생 드라이버가 터미널 글을 찾을 수 있게 줄마다 보이는 글을 대상으로 남긴다(xterm DOM 렌더러의 줄 요소 자리)
@@ -764,8 +663,10 @@ fn prepaint_grid(
     cx: &mut App,
 ) -> GridLayout {
     let cell_size = measure_cell_size(window);
-    let columns = (f32::from(bounds.size.width) / f32::from(cell_size.width)).floor();
-    let rows = (f32::from(bounds.size.height) / f32::from(cell_size.height)).floor();
+    // xterm FitAddon처럼 CSS 폭·높이를 정수로 자르고, 폭에서는 스크롤 막대 자리를 먼저 뺀다
+    let available_width = f32::from(bounds.size.width).trunc() - XTERM_SCROLL_BAR_WIDTH;
+    let columns = (available_width / f32::from(cell_size.width)).floor();
+    let rows = (f32::from(bounds.size.height).trunc() / f32::from(cell_size.height)).floor();
     let layout = GridLayout {
         origin: bounds.origin,
         cell_size,
@@ -788,7 +689,7 @@ fn prepaint_grid(
 
 /// 그리기에 필요한 값. 렌더 시점에 복사해 두어 그리는 동안 뷰를 빌리지 않는다
 struct PaintInputs {
-    runtime: Option<Arc<TerminalRuntime>>,
+    runtime: Option<Arc<DesktopRuntime>>,
     target: TerminalTarget,
     selection: Option<GridSelection>,
     is_focused: bool,
@@ -812,7 +713,7 @@ impl PaintInputs {
             marked_text: self.marked_text.as_deref(),
         };
         if let Some(runtime) = self.runtime.as_ref() {
-            runtime.registry.read_terminal_screen(
+            runtime.terminal_registry().read_terminal_screen(
                 &self.target.task_id,
                 self.target.tab_id.as_deref(),
                 |screen| paint_screen(screen, &state, window, cx),
