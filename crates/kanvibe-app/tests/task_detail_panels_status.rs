@@ -92,3 +92,109 @@ fn moving_to_done_stays_on_the_detail_screen(cx: &mut TestAppContext) {
     // 보드로 가지 않고 같은 상태 패널에 남아 다음 이동 버튼을 보인다
     assert!(detail.has_role_name("button", "Todo"));
 }
+
+// ───────────── Done 보존 안내(TS `DoneStatusButton`) ─────────────
+
+const DONE_ALERT_TITLE: &str = "Done 이동 경고";
+
+/// 브랜치가 있는(정리할 자원이 있는) Progress 작업을 열고 상태 패널을 연다
+fn open_branch_task_status_panel(cx: &mut TestAppContext) -> (Detail, String) {
+    let dir = temp_dir();
+    let database = init_app(cx, dir.keep());
+    let task = task(&database, "브랜치 작업", |task| {
+        task.status = TaskStatus::Progress;
+        task.branch_name = Some("feat/done".into());
+    });
+    let mut detail = open_detail(cx, &task.id);
+    detail.keys("ctrl-2");
+    (detail, task.id)
+}
+
+// parity: TS-components-DoneStatusButton-81c925
+#[gpui::test]
+fn the_done_button_shows_its_label(cx: &mut TestAppContext) {
+    let (mut detail, _) = open_status_panel(cx);
+
+    assert!(detail.has_role_name("button", "Done"));
+}
+
+// parity: TS-components-DoneStatusButton-97f909
+#[gpui::test]
+fn confirming_the_notice_closes_it_and_moves_to_done(cx: &mut TestAppContext) {
+    let (mut detail, task_id) = open_branch_task_status_panel(cx);
+    detail.click_role("button", "Done");
+    assert!(detail.has_text(DONE_ALERT_TITLE));
+    assert_eq!(stored_status(&mut detail, &task_id), TaskStatus::Progress);
+
+    detail.click_role("button", "이동");
+
+    assert!(!detail.has_text(DONE_ALERT_TITLE));
+    assert_eq!(stored_status(&mut detail, &task_id), TaskStatus::Done);
+}
+
+// parity: TS-components-DoneStatusButton-12a194
+#[gpui::test]
+fn cancelling_the_notice_closes_it_without_moving(cx: &mut TestAppContext) {
+    let (mut detail, task_id) = open_branch_task_status_panel(cx);
+    detail.click_role("button", "Done");
+
+    detail.click_role("button", "취소");
+
+    assert!(!detail.has_text(DONE_ALERT_TITLE));
+    assert_eq!(stored_status(&mut detail, &task_id), TaskStatus::Progress);
+    assert!(detail.has_role_name("button", "Done"));
+}
+
+#[gpui::test]
+fn escape_closes_the_notice_without_moving(cx: &mut TestAppContext) {
+    let (mut detail, task_id) = open_branch_task_status_panel(cx);
+    detail.click_role("button", "Done");
+
+    detail.keys("escape");
+
+    assert!(!detail.has_text(DONE_ALERT_TITLE));
+    assert_eq!(stored_status(&mut detail, &task_id), TaskStatus::Progress);
+}
+
+#[gpui::test]
+fn dont_ask_again_saves_the_dismissal_before_moving(cx: &mut TestAppContext) {
+    let (mut detail, task_id) = open_branch_task_status_panel(cx);
+    detail.click_role("button", "Done");
+
+    detail.click_text("다시 묻지 않기");
+    detail.click_role("button", "이동");
+
+    assert_eq!(stored_status(&mut detail, &task_id), TaskStatus::Done);
+    let database = detail.database();
+    let stored = kanvibe_db::repositories::app_settings::find_app_setting(
+        &database.connection(),
+        "done_alert_dismissed",
+    )
+    .unwrap();
+    assert_eq!(stored.map(|setting| setting.value).as_deref(), Some("true"));
+}
+
+// parity: TS-components-DoneStatusButton-be2579
+#[gpui::test]
+fn a_task_without_resources_moves_to_done_without_the_notice(cx: &mut TestAppContext) {
+    let (mut detail, task_id) = open_status_panel(cx);
+
+    detail.click_role("button", "Done");
+
+    assert!(!detail.has_text(DONE_ALERT_TITLE));
+    assert_eq!(stored_status(&mut detail, &task_id), TaskStatus::Done);
+}
+
+// parity: TS-components-DoneStatusButton-fddd9f
+#[gpui::test]
+fn the_done_button_is_blocked_while_another_move_is_pending(cx: &mut TestAppContext) {
+    let (mut detail, task_id) = open_status_panel(cx);
+    detail.delay(UPDATE_STATUS, 1_000);
+    detail.click_role("button", "Review");
+
+    detail.click_role("button", "Done");
+    assert!(!detail.has_text(DONE_ALERT_TITLE));
+
+    detail.advance_clock(Duration::from_millis(1_000));
+    assert_eq!(stored_status(&mut detail, &task_id), TaskStatus::Review);
+}

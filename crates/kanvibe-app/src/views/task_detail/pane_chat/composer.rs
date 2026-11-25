@@ -57,12 +57,18 @@ impl ComposerState {
     ) -> Self {
         let placeholder = SharedString::from(translator.translate("paneChat.placeholder"));
         let textarea = cx.new(|cx| {
+            // 우클릭 메뉴는 채팅 칸이 연다(`text_menu`). 입력란 기본 메뉴는 macOS에서 두 번째 메뉴를 띄운다
             TextareaState::new(window, cx)
                 .placeholder(placeholder)
                 .submit_on_enter(true)
+                .context_menu(false)
         });
         let search_placeholder = SharedString::from(translator.translate("paneChat.searchSkills"));
-        let skill_search = cx.new(|cx| InputState::new(window, cx).placeholder(search_placeholder));
+        let skill_search = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder(search_placeholder)
+                .context_menu(false)
+        });
         let subscriptions = subscribe_inputs(&textarea, &skill_search, window, cx);
         Self {
             textarea,

@@ -97,9 +97,7 @@
   reason: "바로가기 링크의 Tailwind 클래스 이름(`bg-tag-project-bg`)을 DOM에서 확인하는 테스트다. Rust 바로가기는 테마 토큰 `tag.project.background`로만 칠하며 클래스 개념이 없다. 보이는 색은 SCR-TASK-05(다크·라이트) 픽셀 비교가 확인한다."
 - id: TS-renderer-PaneChatView-c6a8ed
   reason: "DOM 포함 관계(`transcript.parentElement.contains(jumpToLatest)`)와 jsdom 스크롤 속성 조작을 검사한다. GPUI에서 '최신으로 이동' 버튼은 render_transcript_area가 대화 영역 컨테이너의 자식으로만 그리고 선택 카드는 그 형제로 그리므로 카드 안에 들어갈 수 없다. GPUI ScrollHandle은 테스트에서 scrollHeight·scroll 이벤트를 꾸밀 수 없어 같은 검사를 만들 수 없다."
-- id: TS-renderer-TerminalPaneChatLayer-268b71
-  reason: "Electron 렌더러가 `window.kanvibeDesktop.showTextContextMenu`로 main 프로세스의 OS 글자 메뉴를 요청하는 다리를 검사한다. GPUI 앱에는 렌더러·main 경계가 없고, 채팅 입력란(gpui-base InputState/TextareaState)이 자기 편집 메뉴를 직접 띄우므로 요청할 대상 API가 없다."
 - id: TS-renderer-TerminalPaneChatLayer-635c58
-  reason: "채팅 밖 터미널 영역 우클릭에서 Electron OS 글자 메뉴 요청을 보내지 않는지 검사한다. GPUI에는 그 요청 다리가 없고 터미널 뷰가 우클릭을 직접 처리하므로 검사할 호출이 없다."
+  reason: "채팅 밖 터미널 영역 우클릭에서 Electron OS 글자 메뉴 요청을 보내지 않는지 검사한다. Rust 글자 메뉴는 pane 채팅 화면(PaneChatView)의 뿌리 요소에만 걸려 있어(views/task_detail/pane_chat/text_menu.rs) 터미널 칸은 그 요소 밖이고, 터미널 칸의 우클릭은 터미널 뷰(components/terminal_view/pane.rs)가 직접 처리한다. 막을 요청 다리가 없다."
 - id: TS-renderer-TaskDetailRoute-0617bb
-  reason: "BoardCommandProvider.registerShortcutBlocker로 등록한 차단기(TaskDetailShortcutBlocker)가 pane 전환 단축키(키보드·Electron main 전달)를 막는지 검사한다. Rust 작업 상세에는 차단기를 등록하는 대화상자가 없다(e6bc9a와 같은 이유). 작업 상세가 띄우는 확인 창은 window.prompt(OS 모달)라 그동안 키 입력이 창에 오지 않고, 단축키 녹화 중인 창은 shortcuts.rs가 명령으로 해석하지 않는다."
+  reason: "BoardCommandProvider.registerShortcutBlocker로 등록한 차단기(TaskDetailShortcutBlocker)가 pane 전환 단축키(키보드·Electron main 전달)를 막는지 검사한다. Rust 작업 상세에는 차단기를 등록하는 대화상자가 없다(e6bc9a와 같은 이유). 작업 상세의 나머지 확인 창은 window.prompt(OS 모달)라 그동안 키 입력이 창에 오지 않고, 창 안에 그리는 Done 보존 안내는 TS DoneConfirmDialog처럼 차단기를 등록하지 않는다. 단축키 녹화 중인 창은 shortcuts.rs가 명령으로 해석하지 않는다."

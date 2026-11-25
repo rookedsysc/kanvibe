@@ -4,7 +4,7 @@
 use gpui_kit::base::TextSelectionLayer;
 use gpui_kit::{
     AnyView, AnyWindowHandle, App, AppContext, Bounds, Context, Entity, FocusHandle,
-    InteractiveElement, IntoElement, KeyContext, ParentElement, Render, Styled, Window,
+    InteractiveElement, IntoElement, KeyContext, ParentElement, Pixels, Render, Styled, Window,
     WindowBounds, WindowDecorations, WindowOptions, deferred, div, point, px, size,
 };
 use kanvibe_domain::i18n::Locale;
@@ -65,19 +65,23 @@ pub fn open_app_window(
     } else {
         Bounds::centered(None, content_size, cx)
     };
-    let options = WindowOptions {
+    let initial_path = initial_path.to_string();
+    let (handle, _) = gpui_kit::open_window(app_window_options(bounds), cx, move |window, cx| {
+        cx.new(|cx| AppWindow::new(&initial_path, window, cx))
+    })?;
+    Ok(handle)
+}
+
+/// 앱 창 옵션(TS `createBrowserWindowOptions`). 앱이 최소 창 크기를 정하지 않아 창 관리자가 허용하는 만큼 줄일 수 있다
+fn app_window_options(bounds: Bounds<Pixels>) -> WindowOptions {
+    WindowOptions {
         window_bounds: Some(WindowBounds::Windowed(bounds)),
         titlebar: None,
         // 클라이언트 장식은 그림자·크기 조절용 여백을 창 안쪽에 두어 내용이 2px 밀린다. 장식은 창 관리자에 맡긴다
         window_decorations: Some(WindowDecorations::Server),
         app_id: Some("kanvibe".to_string()),
         ..Default::default()
-    };
-    let initial_path = initial_path.to_string();
-    let (handle, _) = gpui_kit::open_window(options, cx, move |window, cx| {
-        cx.new(|cx| AppWindow::new(&initial_path, window, cx))
-    })?;
-    Ok(handle)
+    }
 }
 
 impl AppWindow {
@@ -387,5 +391,15 @@ mod tests {
         assert!(is_bundle_held(&holds, "SettingsRoute"));
         assert!(!is_bundle_held(&holds, "ShortcutSettingsRoute"));
         assert!(!is_bundle_held(&LoadingHolds::default(), "SettingsRoute"));
+    }
+
+    // parity: TS-lib-mainWindowOptions-9f645c
+    #[test]
+    fn the_app_window_sets_no_minimum_size() {
+        let bounds = Bounds::new(point(px(0.0), px(0.0)), size(px(1280.0), px(800.0)));
+
+        let options = app_window_options(bounds);
+
+        assert_eq!(options.window_min_size, None);
     }
 }

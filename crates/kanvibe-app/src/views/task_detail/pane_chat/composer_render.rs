@@ -13,6 +13,7 @@ use kanvibe_domain::pane_chat::PaneChatSuggestion;
 use super::composer::{COMPOSER_MIN_HEIGHT, COMPOSER_RESIZE_STEP, CompletionKey, ComposerState};
 use super::drafts::{AttachmentError, AttachmentStatus, DraftAttachment};
 use super::suggestions::SuggestionResults;
+use super::text_menu::ChatTextField;
 use super::view::PaneChatView;
 use super::widgets::PaneChatButton;
 use crate::components::TailwindText;
@@ -291,7 +292,7 @@ impl PaneChatView {
                 self.composer
                     .suggestions
                     .is_skill_picker_open
-                    .then(|| self.render_skill_search(theme)),
+                    .then(|| self.render_skill_search(theme, cx)),
             )
             .children(self.render_suggestion_notes(theme, &results, cx))
             .child(
@@ -310,8 +311,14 @@ impl PaneChatView {
     }
 
     /// "스킬" 버튼으로 연 메뉴의 검색 입력란
-    fn render_skill_search(&self, theme: &ThemeTokens) -> AnyElement {
+    fn render_skill_search(&self, theme: &ThemeTokens, cx: &mut Context<Self>) -> AnyElement {
         div()
+            .on_mouse_down(
+                MouseButton::Right,
+                cx.listener(|view, event: &MouseDownEvent, _, cx| {
+                    view.open_text_menu_in_field(ChatTextField::SkillSearch, event.position, cx)
+                }),
+            )
             .mb(spacing(1.0))
             .min_h(px(44.0))
             .w_full()
@@ -409,6 +416,12 @@ impl PaneChatView {
             .update(cx, |state, _| state.set_editor_style(style));
         let placeholder = self.t("placeholder");
         div()
+            .on_mouse_down(
+                MouseButton::Right,
+                cx.listener(|view, event: &MouseDownEvent, _, cx| {
+                    view.open_text_menu_in_field(ChatTextField::Composer, event.position, cx)
+                }),
+            )
             .relative()
             .w_full()
             .min_w_0()

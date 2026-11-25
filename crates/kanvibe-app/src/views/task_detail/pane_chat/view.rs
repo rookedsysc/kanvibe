@@ -16,6 +16,7 @@ use super::preferences::PaneChatPreferences;
 use super::prompt_card::PromptCardState;
 use super::session::ChatSession;
 use super::transcript::TranscriptPages;
+use crate::components::text_context_menu::OpenTextMenu;
 
 /// 화면을 만들 때 넘기는 값
 pub struct PaneChatViewProps {
@@ -63,6 +64,9 @@ pub struct PaneChatView {
     pub(super) composer: ComposerState,
     pub(super) prompt_card: PromptCardState,
     pub(super) model_picker: Option<ModelPickerState>,
+    /// 채팅 칸 안에서 우클릭으로 연 글자 메뉴
+    pub(super) text_menu: Option<OpenTextMenu>,
+    pub(super) text_menu_focus: FocusHandle,
     is_reading: bool,
     _read: Option<Task<()>>,
     _poll_timer: Option<Task<()>>,
@@ -114,6 +118,8 @@ impl PaneChatView {
             composer,
             prompt_card: PromptCardState::default(),
             model_picker: None,
+            text_menu: None,
+            text_menu_focus: cx.focus_handle(),
             is_reading: false,
             _read: None,
             _poll_timer: None,

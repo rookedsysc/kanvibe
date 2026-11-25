@@ -1,5 +1,6 @@
-//! 세션 도구 설치 확인(TS `ensureSessionDependencyWithPrompt`). 새 작업·분기 모달(보드와 작업 상세가 함께 띄운다)이 Herdr 세션을 만들기 전에
-//! 그 호스트에 도구가 있는지 보고, 없으면 설치할지 묻는다. 거절하면 만들지 않고, 설치가 실패하면 사유로 멈춘다.
+//! 세션 도구 설치 확인(TS `ensureSessionDependencyWithPrompt`). 새 작업·분기 모달(보드와 작업 상세가 함께 띄운다), 작업 상세의
+//! 자동 연결과 세션 타입 편집이 세션을 만들거나 바꾸기 전에 그 호스트에 도구가 있는지 보고, 없으면 설치할지 묻는다.
+//! 거절하면 만들지 않고, 설치가 실패하면 사유로 멈춘다. 설치 질문 문구는 `gh` 설치 확인(TS `ensureGitHubCliWithPrompt`)도 함께 쓴다.
 
 use std::sync::Arc;
 
@@ -53,7 +54,11 @@ pub(crate) async fn ensure_session_dependency(
 }
 
 /// "{대상}에 {도구}이(가) 설치되어 있지 않습니다. 지금 설치하시겠습니까?"
-fn install_prompt(common: &Translator, status: &SessionDependencyCheck, tool_name: &str) -> String {
+pub(crate) fn install_prompt(
+    common: &Translator,
+    status: &SessionDependencyCheck,
+    tool_name: &str,
+) -> String {
     let target = if status.is_remote {
         let host = status.ssh_host.as_deref().unwrap_or("remote");
         common.translate_with("sessionDependency.remoteTarget", &[("host", host)])

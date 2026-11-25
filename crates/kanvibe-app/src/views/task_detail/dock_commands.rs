@@ -15,12 +15,14 @@ use kanvibe_process::editor::{SystemEditorProcessLauncher, open_task_in_vs_code}
 use serde_json::{Value, json};
 
 use super::TaskDetailView;
-use super::auto_connect::{call_service, dependency_status_from_value, install_prompt};
+use super::auto_connect::call_service;
 use super::data::{TaskDetailSnapshot, desktop_runtime};
+use crate::components::session_dependency_prompt::install_prompt;
 use crate::qa::QaRuntime;
 use crate::qa::faults::FaultOutcome;
 use crate::qa::prompts::confirm_action;
 use crate::services::{AppServices, apply_fault, format_service_error};
+use crate::views::board::services::SessionDependencyCheck;
 
 /// TS IPC `kanban.fetchAndSavePrUrl`
 pub const FETCH_PR_URL_SERVICE: &str = "kanban.fetchAndSavePrUrl";
@@ -242,7 +244,7 @@ async fn read_github_cli_status(
     ssh_host: &str,
     service: &'static str,
     cx: &mut AsyncApp,
-) -> Result<super::auto_connect::DependencyStatus, String> {
+) -> Result<SessionDependencyCheck, String> {
     let runtime = cx.update(|cx| desktop_runtime(cx));
     let host = ssh_host.to_string();
     let value = call_service(cx, service, json!([ssh_host]), move || {
@@ -257,7 +259,7 @@ async fn read_github_cli_status(
     })
     .await
     .map_err(|reason| format_service_error(&reason))?;
-    Ok(dependency_status_from_value(&value))
+    serde_json::from_value(value).map_err(|error| error.to_string())
 }
 
 /// `fetchAndSavePrUrl(taskId[, { isAutomatic }])`. 던진 실패는 TS IPC 오류 문구로 돌려준다

@@ -268,3 +268,21 @@ fn the_status_card_says_loading_while_statuses_are_read(cx: &mut TestAppContext)
     assert!(!detail.has_text("로딩 중..."));
     assert!(detail.has_role_name("button", "재설치 Gemini"));
 }
+
+// parity: TS-renderer-project-c87884
+#[gpui::test]
+fn installing_task_hooks_does_not_refresh_the_whole_app(cx: &mut TestAppContext) {
+    let mut detail = open_status_panel(cx, false, |detail| {
+        detail.substitute(STATUSES, missing_statuses())
+    });
+    detail.substitute(
+        INSTALL_CLAUDE,
+        json!({ "success": true, "status": { "installed": true } }),
+    );
+    let probe = detail.refresh_probe();
+
+    detail.click_role("button", "Hooks 설치 Claude");
+
+    assert!(detail.has_text("Hooks 설치 완료"));
+    assert_eq!(detail.refresh_count(&probe), 0);
+}

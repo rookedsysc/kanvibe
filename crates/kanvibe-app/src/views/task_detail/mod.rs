@@ -113,7 +113,9 @@ pub struct TaskDetailView {
     auto_connect: auto_connect::AutoConnectState,
     _auto_connect: Option<Task<()>>,
     _status_move: Option<Task<()>>,
-    _status_confirm: Option<Task<()>>,
+    /// 열린 Done 보존 안내(TS `DoneStatusButton`의 `isDialogOpen`)
+    done_confirm: Option<status_move::DoneConfirmState>,
+    done_confirm_focus: FocusHandle,
     live_sessions: live_sessions::LiveSessionsState,
     _refresh_signal: Option<gpui_kit::Subscription>,
     /// 터미널 위 띠의 알림 센터(TS `NotificationCenterButton`)
@@ -201,7 +203,8 @@ impl TaskDetailView {
             auto_connect: auto_connect::AutoConnectState::Connecting,
             _auto_connect: None,
             _status_move: None,
-            _status_confirm: None,
+            done_confirm: None,
+            done_confirm_focus: cx.focus_handle(),
             live_sessions: live_sessions::LiveSessionsState::default(),
             _refresh_signal: None,
             notification_center,
@@ -608,7 +611,8 @@ impl Render for TaskDetailView {
         // 방금 연 입력란(탭 이름 바꾸기·설명 편집·새 작업 모달)은 아직 그려지지 않아 화면 안 포커스로 잡히지 않으므로 빼앗지 않는다
         let has_pending_input = self.tab_rename.is_some()
             || self.description_edit.is_some()
-            || self.create_task.is_some();
+            || self.create_task.is_some()
+            || self.done_confirm.is_some();
         if is_loaded
             && !has_pending_input
             && !self.focus_handle.contains_focused(window, cx)
@@ -732,6 +736,7 @@ impl TaskDetailView {
             .children(panel)
             .children(self.render_refresh_failure_banner(theme, window.viewport_size().width, cx))
             .children(self.render_create_task(theme, window))
+            .children(self.render_done_confirm(theme, window, cx))
             .into_any_element()
     }
 

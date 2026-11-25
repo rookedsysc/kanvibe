@@ -199,6 +199,7 @@ mod tests {
         assert_eq!(shell_environment["LC_ALL"], "en_US.UTF-8");
     }
 
+    // parity: TS-main-runtimeEnvironment-c4a987
     #[test]
     fn mac_shells_get_homebrew_and_user_command_paths_without_duplicates() {
         let parent_environment = environment(&[

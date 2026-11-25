@@ -9,3 +9,39 @@
   reason: "xterm.js parser.registerOscHandler가 돌려준 disposable이 핸들러 등록을 해제하는지 검사한다. Rust OSC 52 전달기(Osc52ClipboardForwarder)는 터미널 뷰가 소유한 값이라 해제할 전역 등록이 없고, 뷰가 값을 버리면 함께 사라진다."
 - id: TS-lib-remoteHostPtyConnection-195e47
   reason: "onData 핸들러가 돌려준 Promise가 reject될 때 ACK 없이 detach하는지 검사한다. Rust PTY 출력 콜백(kanvibe_terminal::pty::PtyEventCallbacks::on_output)은 Fn(&str)로 실패를 돌려줄 수 없어 렌더 실패 경로가 없다. ACK를 렌더가 끝난 뒤에만 보내는 계약은 TS-lib-remoteHostPtyConnection-8a5337·347d50 테스트가 고정한다."
+- id: TS-lib-desktopDiagnostics-dcf0b4
+  reason: "JS에서 던진 값(unknown: Error·문자열·객체)을 로그 글자로 바꾸는 serializeErrorForLog를 검사한다. Rust 오류는 타입이 정해져 Display로 로그에 남고(`error.to_string()`), 패닉은 PanicHookInfo의 Display로 남는다. 패닉 문구가 진단 로그에 그대로 남는 것은 desktop_process tests startup_and_panics_are_written_to_the_diagnostics_log가 확인한다."
+- id: TS-lib-desktopDiagnostics-4f8953
+  reason: "preload와 렌더러가 React 부팅 전에 kanvibe:renderer-log IPC로 오류를 보내도록 연결됐는지 소스 문자열로 검사한다. AD-8로 preload·렌더러 프로세스와 그 IPC가 없고, GPUI 화면 코드의 패닉도 같은 프로세스의 패닉 훅(main:uncaught-exception)으로 진단 로그에 남는다."
+- id: TS-lib-electronBuilderConfig-c1c0e8
+  reason: "electron-builder.yml이 패키징 중 범위 없는 네이티브 재빌드(npmRebuild)를 끄는지 검사한다. Rust 패키징(packaging/linux/build-linux.sh, packaging/macos/build-macos.sh)은 cargo가 만든 실행 파일을 담을 뿐 node_modules와 네이티브 재빌드 단계가 없다."
+- id: TS-lib-electronBuilderConfig-47f196
+  reason: "앱 코드를 asar에 넣고 better-sqlite3 네이티브 파일만 풀어 두는지 검사한다. Rust 앱에는 asar가 없고, SQLite는 rusqlite `bundled` 기능으로 실행 파일에 정적으로 들어가(Cargo.toml workspace 의존성) 풀어 둘 네이티브 모듈이 없다."
+- id: TS-lib-ensureNativeRuntimeScript-81f1ee
+  reason: "scripts/ensure-native-runtime.cjs가 Node용 better-sqlite3 재빌드를 새 프로세스에서 확인하는지 검사한다. Rust는 SQLite를 rusqlite `bundled`로 빌드 때 링크해 Node·Electron ABI를 맞출 재빌드 단계가 없다."
+- id: TS-lib-ensureNativeRuntimeScript-021bce
+  reason: "Electron 네이티브 재빌드를 better-sqlite3로만 좁히는지 검사한다. Rust에는 Electron 네이티브 재빌드가 없다(81f1ee와 같은 이유)."
+- id: TS-lib-ensureNativeRuntimeScript-a2a525
+  reason: "Electron 검증 프로세스의 stderr를 잡아 ABI 불일치를 재빌드 신호로 쓰는지 검사한다. Rust에는 런타임별 ABI를 확인할 네이티브 모듈이 없다(81f1ee와 같은 이유)."
+- id: TS-lib-ensureNativeRuntimeScript-0fa867
+  reason: "네이티브 바인딩 파일이 없을 때를 복구 가능한 재빌드 실패로 다루는지 검사한다. rusqlite `bundled`는 빌드 때 실행 파일에 들어가 실행 중에 찾을 바인딩 파일이 없다."
+- id: TS-lib-ensureNativeRuntimeScript-b0cbf9
+  reason: "네이티브 모듈 로딩이 던지면 Electron 검증이 실패 코드로 끝나는지 검사한다. Rust에는 실행 중 네이티브 모듈 로딩이 없다(81f1ee와 같은 이유)."
+- id: TS-lib-packageScripts-969910
+  reason: "package.json의 rebuild:native:electron 스크립트가 소스 컴파일을 강제하지 않는지 검사한다. Rust 빌드는 cargo build 하나이고 Electron 네이티브 재빌드 스크립트가 없다."
+- id: TS-lib-packageScripts-d18b8a
+  reason: "모든 Electron QA 진입 스크립트(scripts/qa-electron*.sh)가 실행 준비(네이티브 모듈·빌드)를 스스로 보장하는지 검사한다. Rust QA 진입점(cargo xtask parity check, parity/tools/screens-rust/capture_rust.py)은 cargo가 빌드를 맡아 따로 보장할 Electron 준비 단계가 없다."
+- id: TS-lib-packageScripts-f1ccbf
+  reason: "qa 스크립트가 진입 스크립트에 맡긴 Electron 준비를 되풀이하지 않는지 검사한다. Rust QA에는 Electron 준비 단계가 없다(d18b8a와 같은 이유)."
+- id: TS-lib-packageScripts-14eccf
+  reason: "데스크톱 Vite 개발 서버를 polling watcher로 띄우는지 검사한다. GPUI 화면은 같은 프로세스에서 그려 Vite 개발 서버와 파일 감시가 없다."
+- id: TS-lib-postinstallScript-e71f53
+  reason: "pnpm postinstall이 Electron 네이티브 재빌드를 better-sqlite3로만 좁히는지 검사한다. Rust 빌드에는 postinstall 단계와 네이티브 재빌드가 없다(rusqlite `bundled`)."
+- id: TS-lib-runDesktopDevScript-64a0fe
+  reason: "run-desktop-dev가 선호 Vite 포트가 비어 있으면 그대로 쓰는지 검사한다. GPUI 앱은 렌더러를 개발 서버에서 받지 않아 고를 개발 서버 포트가 없다."
+- id: TS-lib-runDesktopDevScript-6e9d39
+  reason: "선호 Vite 포트를 다른 프로세스가 쓰면 빈 포트를 고르는지 검사한다. Rust 개발 실행(cargo run)에는 개발 서버 포트가 없다(64a0fe와 같은 이유)."
+- id: TS-lib-runDesktopDevScript-910405
+  reason: "Electron에 넘길 렌더러 주소를 확정한 포트로 만들고 Vite가 포트를 바꾸지 못하게 막는지 검사한다. GPUI 앱은 렌더러 주소를 불러오지 않는다(64a0fe와 같은 이유)."
+- id: TS-lib-runtimeImportSafety-147501
+  reason: "런타임 라이브러리 JS 코드에 별칭 경로를 쓴 동적 import가 없는지 소스로 검사한다(번들러가 풀지 못하는 경로). Rust 모듈은 컴파일 때 정적으로 연결돼 실행 중 동적 import가 없다."

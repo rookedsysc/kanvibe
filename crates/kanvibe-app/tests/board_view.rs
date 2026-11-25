@@ -2231,6 +2231,30 @@ fn palette_move_command_moves_the_focused_card(cx: &mut TestAppContext) {
     assert_eq!(moved.status, TaskStatus::Review);
 }
 
+// parity: TS-renderer-CommandPaletteDialog-86e241
+#[gpui::test]
+fn palette_review_row_moves_the_task_shown_in_the_detail_screen(cx: &mut TestAppContext) {
+    let dir = temp_dir();
+    let database = init_app(cx, dir.path().to_path_buf(), true);
+    let card = task(&database, "상세 작업", TaskStatus::Todo, |_| {});
+    let mut board = open_board(cx, "/ko");
+    let app_window = board.app_window.clone();
+    let detail_path = format!("/ko/task/{}", card.id);
+    board.cx.update(|_, cx| {
+        app_window.update(cx, |app_window, cx| app_window.navigate(&detail_path, cx))
+    });
+    board.draw();
+
+    board.dispatch(OpenCommandPalette);
+    board.click_text("move review");
+
+    assert!(!board.shell_read(|shell, _| shell.is_command_palette_open()));
+    let moved = find_task(&database.connection(), &card.id)
+        .unwrap()
+        .unwrap();
+    assert_eq!(moved.status, TaskStatus::Review);
+}
+
 // parity: TS-renderer-CommandPaletteDialog-56f289
 #[gpui::test]
 fn palette_offers_moves_for_the_board_focused_card(cx: &mut TestAppContext) {

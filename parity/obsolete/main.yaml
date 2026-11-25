@@ -35,3 +35,7 @@
   reason: "렌더러 프로세스가 죽으면 소유 숨은 창을 닫는지 검증한다. 렌더러 프로세스가 없다."
 - id: TS-main-mobileDiagramWorker-19e38c
   reason: "IPC 완료 신호를 main frame에서만 받는지 검증한다. 워커 IPC가 없다(AD-8, AD-9)."
+- id: TS-main-runtimeEnvironment-b3fdeb
+  reason: "패키지된 Electron 빌드가 app.asar 안으로 chdir하지 않고 resourcesPath를 작업 디렉터리로 쓰는지 소스 문자열로 검사한다. Rust 앱에는 asar 아카이브가 없고 프로세스 작업 디렉터리를 바꾸지 않는다(crates 안에 std::env::set_current_dir 호출이 없다)."
+- id: TS-main-textContextMenuBridge-820630
+  reason: "preload desktop bridge에 showTextContextMenu가 노출됐는지 소스 문자열로 검사한다. AD-8로 preload·IPC 브리지가 없고, pane 채팅 화면이 같은 프로세스에서 글자 메뉴를 직접 띄운다(components/text_context_menu.rs)."

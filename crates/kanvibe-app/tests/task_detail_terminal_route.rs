@@ -480,7 +480,7 @@ fn closing_the_info_panel_does_not_reload_the_task(cx: &mut TestAppContext) {
 
 // ───────────── 알림 읽음 ─────────────
 
-// parity: TS-renderer-TaskDetailRoute-80725c
+// parity: TS-renderer-TaskDetailRoute-80725c, TS-renderer-useMarkTaskNotificationsReadWhenFocused-0c00de
 #[gpui::test]
 fn opening_the_task_in_an_active_window_marks_its_notifications_read(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -509,7 +509,7 @@ fn an_inactive_window_does_not_mark_notifications_even_after_refresh(cx: &mut Te
     assert!(!is_notification_read(cx));
 }
 
-// parity: TS-renderer-TaskDetailRoute-8e48c8
+// parity: TS-renderer-TaskDetailRoute-8e48c8, TS-renderer-useMarkTaskNotificationsReadWhenFocused-596397
 #[gpui::test]
 fn an_inactive_window_marks_notifications_when_it_gets_focus(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -527,7 +527,52 @@ fn an_inactive_window_marks_notifications_when_it_gets_focus(cx: &mut TestAppCon
     assert!(is_notification_read(cx));
 }
 
-// parity: TS-renderer-TaskDetailRoute-8e5f59
+/// 작업을 읽기 전에 창을 뒤로 보낸 상세 화면. 작업은 100ms 뒤에 읽힌다
+fn detail_loaded_in_an_inactive_window(cx: &mut TestAppContext) -> Detail {
+    let database = init_app(cx, target_temp_dir().keep());
+    use_real_prompts_and_focus(cx);
+    let stored = task(&database, "task title", |_| {});
+    store_notification(&database, &stored.id);
+    add_fault(cx, delay("kanban.getTaskById", 100));
+    let mut detail = open_detail(cx, &stored.id);
+    detail.cx.deactivate_window();
+    detail.advance(Duration::from_millis(100));
+    detail
+}
+
+// parity: TS-renderer-useMarkTaskNotificationsReadWhenFocused-25cfea
+#[gpui::test]
+fn an_open_detail_in_an_inactive_window_leaves_notifications_unread(cx: &mut TestAppContext) {
+    let mut detail = detail_loaded_in_an_inactive_window(cx);
+    assert!(detail.has_containing("group", "task title"));
+    assert!(!is_notification_read(cx));
+}
+
+// parity: TS-renderer-useMarkTaskNotificationsReadWhenFocused-09222c
+#[gpui::test]
+fn redrawing_an_inactive_detail_leaves_notifications_unread(cx: &mut TestAppContext) {
+    let mut detail = detail_loaded_in_an_inactive_window(cx);
+    for _ in 0..3 {
+        detail.draw();
+    }
+    assert!(!is_notification_read(cx));
+}
+
+// parity: TS-renderer-useMarkTaskNotificationsReadWhenFocused-09f9ca
+#[gpui::test]
+fn notifications_wait_until_the_task_is_confirmed(cx: &mut TestAppContext) {
+    let dir = tempfile::tempdir().unwrap();
+    let database = init_app(cx, dir.path().to_path_buf());
+    let stored = task(&database, "task title", |_| {});
+    store_notification(&database, &stored.id);
+    add_fault(cx, delay("kanban.getTaskById", 100));
+    let mut detail = open_detail(cx, &stored.id);
+    assert!(!is_notification_read(cx));
+    detail.advance(Duration::from_millis(100));
+    assert!(is_notification_read(cx));
+}
+
+// parity: TS-renderer-TaskDetailRoute-8e5f59, TS-renderer-useMarkTaskNotificationsReadWhenFocused-31d85c
 #[gpui::test]
 fn a_failed_mark_read_keeps_the_detail_screen(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -668,6 +713,124 @@ fn pressing_pr_again_while_looking_up_starts_no_second_lookup(cx: &mut TestAppCo
     );
     detail.answer_prompt("OK");
     assert_eq!(detail.pending_prompt(), None);
+}
+
+// ───────────── 원격 PR 조회 전 gh 설치 확인 ─────────────
+
+const GH_STATUS: &str = "githubCliDependency.getGitHubCliStatus";
+const GH_INSTALL: &str = "githubCliDependency.installGitHubCli";
+const FOUND_PR: &str = "https://github.com/kanvibe/kanvibe/pull/165";
+
+fn gh_status(is_available: bool) -> Value {
+    json!({
+        "toolName": "gh", "sshHost": "remote-a", "isRemote": true,
+        "available": is_available, "blockedReason": null
+    })
+}
+
+/// 브랜치만 있고 PR 링크가 없는 작업. 조회하면 `FOUND_PR`을 찾는다
+fn pr_lookup_task(
+    cx: &mut TestAppContext,
+    database: &Database,
+    ssh_host: Option<&str>,
+) -> KanbanTask {
+    use_real_prompts_and_focus(cx);
+    clear_fault(cx, "kanban.fetchAndSavePrUrl");
+    add_fault(cx, result("kanban.fetchAndSavePrUrl", json!(FOUND_PR)));
+    task(database, "task title", |new_task| {
+        new_task.branch_name = Some("fix/wtf".into());
+        new_task.ssh_host = ssh_host.map(str::to_string);
+    })
+}
+
+// parity: TS-renderer-fetchPrUrlWithPrompt-a8feef
+#[gpui::test]
+fn declining_the_remote_gh_install_stops_the_pr_lookup(cx: &mut TestAppContext) {
+    let dir = tempfile::tempdir().unwrap();
+    let database = init_app(cx, dir.path().to_path_buf());
+    let stored = pr_lookup_task(cx, &database, Some("remote-a"));
+    add_fault(cx, result(GH_STATUS, gh_status(false)));
+    let mut detail = open_detail(cx, &stored.id);
+    assert!(detail.pending_prompt().unwrap_or_default().contains("gh"));
+    detail.answer_prompt("Cancel");
+    assert!(!detail.has("link", "PR"));
+    assert!(detail.has("button", "PR"));
+}
+
+// parity: TS-renderer-fetchPrUrlWithPrompt-a87904
+#[gpui::test]
+fn a_ready_remote_gh_continues_the_pr_lookup(cx: &mut TestAppContext) {
+    let dir = tempfile::tempdir().unwrap();
+    let database = init_app(cx, dir.path().to_path_buf());
+    let stored = pr_lookup_task(cx, &database, Some("remote-a"));
+    add_fault(cx, result(GH_STATUS, gh_status(false)));
+    add_fault(cx, result(GH_INSTALL, gh_status(true)));
+    let mut detail = open_detail(cx, &stored.id);
+    detail.answer_prompt("OK");
+    assert!(detail.has("link", "PR"));
+}
+
+// parity: TS-renderer-fetchPrUrlWithPrompt-61024a
+#[gpui::test]
+fn a_local_task_looks_up_the_pr_without_asking(cx: &mut TestAppContext) {
+    let dir = tempfile::tempdir().unwrap();
+    let database = init_app(cx, dir.path().to_path_buf());
+    let stored = pr_lookup_task(cx, &database, None);
+    add_fault(cx, failure(GH_STATUS, "gh status was read"));
+    let mut detail = open_detail(cx, &stored.id);
+    assert_eq!(detail.pending_prompt(), None);
+    assert!(detail.has("link", "PR"));
+}
+
+// parity: TS-renderer-githubCliDependencyPrompt-425764
+#[gpui::test]
+fn an_installed_remote_gh_passes_without_a_prompt(cx: &mut TestAppContext) {
+    let dir = tempfile::tempdir().unwrap();
+    let database = init_app(cx, dir.path().to_path_buf());
+    let stored = pr_lookup_task(cx, &database, Some("remote-a"));
+    add_fault(cx, result(GH_STATUS, gh_status(true)));
+    add_fault(cx, failure(GH_INSTALL, "gh was installed"));
+    let mut detail = open_detail(cx, &stored.id);
+    assert_eq!(detail.pending_prompt(), None);
+    assert!(detail.has("link", "PR"));
+}
+
+// parity: TS-renderer-githubCliDependencyPrompt-c2d118
+#[gpui::test]
+fn cancelling_the_gh_install_prompt_installs_nothing(cx: &mut TestAppContext) {
+    let dir = tempfile::tempdir().unwrap();
+    let database = init_app(cx, dir.path().to_path_buf());
+    let stored = pr_lookup_task(cx, &database, Some("remote-a"));
+    add_fault(cx, result(GH_STATUS, gh_status(false)));
+    add_fault(cx, failure(GH_INSTALL, "gh was installed"));
+    let mut detail = open_detail(cx, &stored.id);
+    detail.answer_prompt("Cancel");
+    // 직접 누른 조회는 실패를 알림으로 보인다. 설치가 돌았다면 조회 실패 알림이, 아니면 PR 없음 알림이 뜬다
+    detail.keys("ctrl-4");
+    assert!(detail.pending_prompt().unwrap_or_default().contains("gh"));
+    detail.answer_prompt("Cancel");
+    assert_eq!(
+        detail.pending_prompt().as_deref(),
+        Some("이 브랜치에 연결된 PR을 찾지 못했습니다.")
+    );
+    assert!(!detail.has("link", "PR"));
+}
+
+// parity: TS-renderer-githubCliDependencyPrompt-115c88
+#[gpui::test]
+fn confirming_the_gh_install_installs_on_that_host_then_passes(cx: &mut TestAppContext) {
+    let dir = tempfile::tempdir().unwrap();
+    let database = init_app(cx, dir.path().to_path_buf());
+    let stored = pr_lookup_task(cx, &database, Some("remote-a"));
+    add_fault(cx, result(GH_STATUS, gh_status(false)));
+    add_fault(
+        cx,
+        matching("[\"remote-a\"]", result(GH_INSTALL, gh_status(true))),
+    );
+    add_fault(cx, failure(GH_INSTALL, "installed on another host"));
+    let mut detail = open_detail(cx, &stored.id);
+    detail.answer_prompt("OK");
+    assert!(detail.has("link", "PR"));
 }
 
 // parity: TS-renderer-TaskDetailRoute-9234e1
@@ -1822,7 +1985,8 @@ fn a_thrown_dependency_check_shows_its_message_without_connecting(cx: &mut TestA
         failure("kanban.connectTerminalSession", "connect called"),
     );
     let mut detail = open_detail(cx, &stored.id);
-    assert!(detail.has("alert", "zellij 설치 실패"));
+    // 서비스 실패는 TS IPC 오류 문구에 감싸여 보인다(`format_service_error`)
+    assert!(detail.has_containing("alert", "zellij 설치 실패"));
     assert!(!detail.has_containing("alert", "connect called"));
 }
 

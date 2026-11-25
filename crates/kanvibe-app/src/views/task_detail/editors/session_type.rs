@@ -8,17 +8,18 @@ use gpui_kit::{
     SharedString, Stateful, StatefulInteractiveElement, Styled, WeakEntity, Window, anchored,
     deferred, div, point, px,
 };
-use kanvibe_domain::i18n::Translator;
+use kanvibe_domain::i18n::{Locale, Translator};
 use kanvibe_domain::task::{KanbanTask, SessionType};
 use serde::de::DeserializeOwned;
 
 use crate::components::TailwindText;
+use crate::components::session_dependency_prompt::ensure_session_dependency;
 use crate::qa::prompts::confirm_action;
 use crate::qa::targets::{QaTargetDescription, qa_target_layer};
 use crate::services::{ServiceFailure, ServiceResult};
 use crate::text_baseline::{TextFamily, aligned_text};
 use crate::theme::{ThemeTokens, radius, spacing, text_scale};
-use crate::views::settings::bulk_session_type::SessionDependencyStatus;
+use crate::views::board::services::board_services;
 use crate::views::settings::service_call::{call_service, failure};
 use crate::views::task_detail::TaskDetailView;
 use crate::views::task_detail::data::desktop_runtime;
@@ -69,7 +70,7 @@ struct ChangeRequest {
     next: SessionType,
     ssh_host: Option<String>,
     task_detail: Translator,
-    common: Translator,
+    locale: Locale,
 }
 
 impl TaskDetailView {
@@ -208,7 +209,7 @@ impl TaskDetailView {
             next,
             ssh_host: task.ssh_host.clone(),
             task_detail: self.translator,
-            common: self.common,
+            locale: self.screen.route.locale,
         };
         self.editors._session_type_change = Some(cx.spawn_in(window, async move |this, cx| {
             let result = change_session_type(&this, &request, cx).await;
@@ -294,7 +295,21 @@ async fn change_session_type(
     request: &ChangeRequest,
     cx: &mut AsyncWindowContext,
 ) -> Result<Option<Option<KanbanTask>>, ChangeFailure> {
-    if !ensure_session_dependency(view, request, cx).await? {
+    let Some(services) = cx.update(|_, cx| board_services(cx)).ok().flatten() else {
+        return Err(ChangeFailure::Message(
+            KANBAN_SERVICE_UNAVAILABLE.to_string(),
+        ));
+    };
+    let is_ready = ensure_session_dependency(
+        services,
+        request.next,
+        request.ssh_host.clone(),
+        request.locale,
+        cx,
+    )
+    .await
+    .map_err(ChangeFailure::Message)?;
+    if !is_ready {
         return Ok(None);
     }
     let task_id = request.task_id.clone();
@@ -334,100 +349,6 @@ async fn change_session_type(
     )
     .await?;
     Ok(Some(changed))
-}
-
-/// 설치할 도구가 없는 세션 종류는 확인 없이 통과한다. 설치를 거절하면 `false`, 설치가 끝나도 없으면 실패다
-async fn ensure_session_dependency(
-    view: &WeakEntity<TaskDetailView>,
-    request: &ChangeRequest,
-    cx: &mut AsyncWindowContext,
-) -> Result<bool, ChangeFailure> {
-    let status = read_dependency(request, DependencyStep::Check, cx).await?;
-    let Some(tool_name) = status.tool_name.clone().filter(|_| !status.available) else {
-        return Ok(true);
-    };
-    if !confirm(
-        view,
-        &install_prompt(&request.common, &status, &tool_name),
-        cx,
-    )
-    .await
-    {
-        return Ok(false);
-    }
-    let installed = read_dependency(request, DependencyStep::Install, cx).await?;
-    if installed.available {
-        return Ok(true);
-    }
-    let reason = installed
-        .blocked_reason
-        .unwrap_or_else(|| "unknown error".to_string());
-    Err(ChangeFailure::Message(request.common.translate_with(
-        "sessionDependency.installFailed",
-        &[("tool", &tool_name), ("error", &reason)],
-    )))
-}
-
-#[derive(Clone, Copy)]
-enum DependencyStep {
-    Check,
-    Install,
-}
-
-/// 새 세션 도구 상태를 읽거나, 설치한 뒤 다시 읽는다(TS IPC `sessionDependency.*`)
-async fn read_dependency(
-    request: &ChangeRequest,
-    step: DependencyStep,
-    cx: &mut AsyncWindowContext,
-) -> Result<SessionDependencyStatus, ChangeFailure> {
-    let arguments = serde_json::json!([request.next, request.ssh_host]);
-    let (next, host) = (request.next, request.ssh_host.clone());
-    let target = match step {
-        DependencyStep::Check => "sessionDependency.getSessionDependencyStatus",
-        DependencyStep::Install => "sessionDependency.installSessionDependency",
-    };
-    run_service(cx, target, arguments, move |runtime| {
-        let dependencies = runtime.session_dependency();
-        let status = match step {
-            DependencyStep::Check => {
-                dependencies.get_session_dependency_status(next, host.as_deref())
-            }
-            DependencyStep::Install => {
-                dependencies.install_session_dependency(next, host.as_deref())
-            }
-        };
-        as_response(&status.map_err(failure)?)
-    })
-    .await
-}
-
-/// "{대상}에 {도구}이(가) 설치되어 있지 않습니다. 지금 설치하시겠습니까?"
-fn install_prompt(
-    common: &Translator,
-    status: &SessionDependencyStatus,
-    tool_name: &str,
-) -> String {
-    let target = match status.is_remote {
-        true => {
-            let host = status
-                .ssh_host
-                .clone()
-                .unwrap_or_else(|| "remote".to_string());
-            common.translate_with("sessionDependency.remoteTarget", &[("host", &host)])
-        }
-        false => common.translate("sessionDependency.localTarget"),
-    };
-    common.translate_with(
-        "sessionDependency.installPrompt",
-        &[("tool", tool_name), ("target", &target)],
-    )
-}
-
-/// 서비스 응답을 TS IPC 응답 모양으로 옮긴다
-fn as_response<T: serde::Serialize, R: DeserializeOwned>(value: &T) -> ServiceResult<R> {
-    serde_json::to_value(value)
-        .and_then(serde_json::from_value)
-        .map_err(failure)
 }
 
 async fn run_service<T, F>(

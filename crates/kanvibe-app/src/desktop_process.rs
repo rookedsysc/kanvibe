@@ -464,6 +464,7 @@ mod tests {
         assert_eq!(plan.data_dir, Some(PathBuf::from("/d")));
     }
 
+    // parity: TS-root-launchElectron-468c59
     #[test]
     fn automated_qa_starts_the_server_only_on_a_launcher_port() {
         let fixed_now = "--qa --fixed-now 2026-01-15T03:00:00Z";
@@ -515,6 +516,53 @@ mod tests {
             Some(linux_agents.canonicalize().unwrap())
         );
         assert_eq!(source_build, None);
+    }
+
+    // parity: TS-root-launchElectron-e65446
+    #[test]
+    fn a_qa_data_directory_wins_over_inherited_production_paths() {
+        let inherited = [
+            ("KANVIBE_APP_DATA_DIR", "/production/app-data"),
+            ("KANVIBE_DB_PATH", "/production/kanvibe.db"),
+        ];
+
+        let qa = plan(
+            "--qa --fixed-now 2026-01-15T03:00:00Z --data-dir /fixture",
+            &inherited,
+        )
+        .unwrap();
+
+        // DB는 늘 데이터 디렉터리 안 `kanvibe.db`라 앱 데이터와 DB가 같은 fixture를 쓴다
+        assert_eq!(qa.data_dir, Some(PathBuf::from("/fixture")));
+    }
+
+    // parity: TS-lib-desktopDiagnostics-df0168
+    #[test]
+    fn startup_and_panics_are_written_to_the_diagnostics_log() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let plan = plan(
+            &format!(
+                "--qa --fixed-now 2026-01-15T03:00:00Z --data-dir {}",
+                data_dir.path().display()
+            ),
+            &[],
+        )
+        .unwrap();
+
+        let prepared = prepare_desktop_process(
+            &plan,
+            data_dir.path(),
+            &ShellEnvironment::new(),
+            "/home/user",
+        )
+        .unwrap();
+        let _ = std::panic::catch_unwind(|| panic!("native module failed"));
+
+        let log = std::fs::read_to_string(prepared.process.diagnostics().log_path()).unwrap();
+        assert!(log.contains("] main:startup "), "{log}");
+        assert!(log.contains(&format!(r#""hookServerPort":{}"#, plan.hook_port)));
+        assert!(log.contains("] main:uncaught-exception "), "{log}");
+        assert!(log.contains("native module failed"));
     }
 
     #[test]

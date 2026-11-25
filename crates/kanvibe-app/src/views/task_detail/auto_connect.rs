@@ -9,7 +9,7 @@ use gpui_kit::{
     AnyElement, AnyWindowHandle, AppContext, AsyncApp, Context, InteractiveElement, IntoElement,
     ParentElement, StatefulInteractiveElement, Styled, div,
 };
-use kanvibe_domain::i18n::{Locale, Translator};
+use kanvibe_domain::i18n::Locale;
 use kanvibe_domain::task::{KanbanTask, SessionType};
 use kanvibe_runtime::DesktopRuntime;
 use serde_json::{Value, json};
@@ -17,15 +17,14 @@ use serde_json::{Value, json};
 use super::TaskDetailView;
 use super::data::desktop_runtime;
 use crate::components::TailwindText;
+use crate::components::session_dependency_prompt::ensure_session_dependency;
 use crate::qa::faults::FaultOutcome;
-use crate::qa::prompts::confirm_action;
 use crate::qa::targets::{QaTargetDescription, qa_target_layer};
 use crate::services::{AppServices, apply_fault};
 use crate::theme::{ThemeTokens, radius, spacing, text_scale};
+use crate::views::board::services::board_services;
 
 /// TS IPC 이름
-const DEPENDENCY_STATUS_SERVICE: &str = "sessionDependency.getSessionDependencyStatus";
-const DEPENDENCY_INSTALL_SERVICE: &str = "sessionDependency.installSessionDependency";
 const CONNECT_SERVICE: &str = "kanban.connectTerminalSession";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -42,15 +41,6 @@ enum ConnectOutcome {
     Connected(Box<KanbanTask>),
     Declined,
     Failed(Option<String>),
-}
-
-/// TS `SessionDependencyStatus`·`GitHubCliStatus` 가운데 화면이 쓰는 값
-pub(super) struct DependencyStatus {
-    pub is_available: bool,
-    pub tool_name: Option<String>,
-    pub is_remote: bool,
-    pub ssh_host: Option<String>,
-    pub blocked_reason: Option<String>,
 }
 
 /// 백그라운드에서 서비스를 부를 때 필요한 것
@@ -111,7 +101,7 @@ impl TaskDetailView {
 
 /// 도구 확인 → (없으면 설치 확인·설치) → 세션 연결
 async fn connect_task_session(request: ConnectRequest, cx: &mut AsyncApp) -> ConnectOutcome {
-    match ensure_session_dependency(&request, cx).await {
+    match ensure_dependency(&request, cx).await {
         Ok(true) => {}
         Ok(false) => return ConnectOutcome::Declined,
         Err(message) => return ConnectOutcome::Failed(Some(message)),
@@ -136,63 +126,27 @@ async fn connect_task_session(request: ConnectRequest, cx: &mut AsyncApp) -> Con
     }
 }
 
-/// TS `ensureSessionDependencyWithPrompt`. 준비됐으면 `Ok(true)`, 설치를 거절하면 `Ok(false)`
-async fn ensure_session_dependency(
-    request: &ConnectRequest,
-    cx: &mut AsyncApp,
-) -> Result<bool, String> {
-    let status = read_dependency(request, DEPENDENCY_STATUS_SERVICE, cx).await?;
-    let Some(tool_name) = status.tool_name.clone().filter(|_| !status.is_available) else {
-        return Ok(true);
-    };
-    let common = Translator::new(request.locale, "common");
-    let prompt = install_prompt(&common, &status, &tool_name);
+/// 공용 설치 확인(`ensure_session_dependency`)을 이 작업 창에서 돌린다. 창이 없으면 물을 수 없어 거절로 본다
+async fn ensure_dependency(request: &ConnectRequest, cx: &mut AsyncApp) -> Result<bool, String> {
     let Some(window) = request.window else {
         return Ok(false);
     };
-    let answer = cx
+    let Some(services) = cx.update(|cx| board_services(cx)) else {
+        return Err(String::new());
+    };
+    let (session_type, ssh_host, locale) = (
+        request.session_type,
+        request.ssh_host.clone(),
+        request.locale,
+    );
+    let readiness = cx
         .update_window(window, |_, window, cx| {
-            confirm_action(&prompt, None, window, cx)
+            window.spawn(cx, async move |cx| {
+                ensure_session_dependency(services, session_type, ssh_host, locale, cx).await
+            })
         })
         .map_err(|error| error.to_string())?;
-    if !answer.await {
-        return Ok(false);
-    }
-    let installed = read_dependency(request, DEPENDENCY_INSTALL_SERVICE, cx).await?;
-    if installed.is_available {
-        return Ok(true);
-    }
-    let reason = installed
-        .blocked_reason
-        .unwrap_or_else(|| "unknown error".to_string());
-    Err(common.translate_with(
-        "sessionDependency.installFailed",
-        &[("tool", &tool_name), ("error", &reason)],
-    ))
-}
-
-async fn read_dependency(
-    request: &ConnectRequest,
-    service: &'static str,
-    cx: &mut AsyncApp,
-) -> Result<DependencyStatus, String> {
-    let arguments = json!([request.session_type.as_str(), request.ssh_host]);
-    let call = request.clone();
-    let value = call_service(cx, service, arguments, move || {
-        let runtime = call.runtime.as_ref().ok_or_else(String::new)?;
-        let dependencies = runtime.session_dependency();
-        let host = call.ssh_host.as_deref();
-        let status = match service {
-            DEPENDENCY_INSTALL_SERVICE => {
-                dependencies.install_session_dependency(call.session_type, host)
-            }
-            _ => dependencies.get_session_dependency_status(call.session_type, host),
-        };
-        let status = status.map_err(|error| error.message)?;
-        Ok(serde_json::to_value(status).unwrap_or(Value::Null))
-    })
-    .await?;
-    Ok(dependency_status_from_value(&value))
+    readiness.await
 }
 
 /// 고장 주입 판정 뒤 서비스를 백그라운드에서 부른다. `Result` 고장이면 그 값을 응답으로 쓴다
@@ -217,35 +171,6 @@ pub(super) async fn call_service(
         call()
     })
     .await
-}
-
-pub(super) fn dependency_status_from_value(value: &Value) -> DependencyStatus {
-    let text = |key: &str| value.get(key).and_then(Value::as_str).map(str::to_string);
-    DependencyStatus {
-        is_available: value.get("available").and_then(Value::as_bool) != Some(false),
-        tool_name: text("toolName"),
-        is_remote: value.get("isRemote").and_then(Value::as_bool) == Some(true),
-        ssh_host: text("sshHost"),
-        blocked_reason: text("blockedReason"),
-    }
-}
-
-pub(super) fn install_prompt(
-    common: &Translator,
-    status: &DependencyStatus,
-    tool_name: &str,
-) -> String {
-    let target = match status.is_remote {
-        true => {
-            let host = status.ssh_host.as_deref().unwrap_or("remote");
-            common.translate_with("sessionDependency.remoteTarget", &[("host", host)])
-        }
-        false => common.translate("sessionDependency.localTarget"),
-    };
-    common.translate_with(
-        "sessionDependency.installPrompt",
-        &[("tool", tool_name), ("target", &target)],
-    )
 }
 
 impl TaskDetailView {

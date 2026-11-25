@@ -271,6 +271,21 @@ mod tests {
         }
     }
 
+    // parity: TS-main-embeddedDocumentNavigation-767f25
+    #[test]
+    fn an_embedded_document_cannot_move_itself_to_another_address() {
+        // 앱 창 자체는 GPUI가 그려 이 규칙과 무관하고, 창 안에 넣은 문서만 처음 문서에 묶인다
+        assert!(is_allowed_navigation(INITIAL_DOCUMENT_URL));
+        for redirect in [
+            "https://attacker.example/login",
+            "http://localhost:9736/",
+            "kanvibe://task/1",
+            "javascript:location='https://example.com'",
+        ] {
+            assert!(!is_allowed_navigation(redirect), "{redirect}");
+        }
+    }
+
     #[test]
     fn sized_svgs_keep_their_size_and_unsized_ones_fit_the_frame() {
         let sized = rasterize_svg(

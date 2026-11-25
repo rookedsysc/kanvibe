@@ -9,6 +9,7 @@ pub mod button;
 pub mod context_menu;
 pub mod create_task;
 pub mod dialog;
+pub mod done_confirm;
 pub mod icon;
 pub mod notification_center;
 pub mod popover;
@@ -17,6 +18,7 @@ pub mod segmented_control;
 pub(crate) mod session_dependency_prompt;
 pub mod spinner;
 pub mod terminal_view;
+pub mod text_context_menu;
 pub mod toast;
 pub mod tooltip;
 

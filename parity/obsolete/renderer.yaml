@@ -37,3 +37,5 @@
   reason: "React 공용 훅의 실패 사유 보관과 마지막 인자로 다시 시도를 단독으로 보는 테스트다. Rust 화면은 실패 사유와 다시 시도를 동작마다 직접 들고 화면 시험으로 확인한다(failed_mark_all_read_shows_the_reason, failed_load_more_shows_the_reason_and_retry_requests_the_same_page)."
 - id: TS-renderer-useTrackedAction-be8a17
   reason: "React 공용 훅의 clearError 함수 호출을 보는 테스트다. Rust 화면에는 이 훅이 없고, 실패 사유는 다시 시도가 성공하면 그 화면 상태에서 지워진다(unreadable_notifications_show_the_reason_and_retry_loads_them)."
+- id: TS-renderer-textContextMenu-e064df
+  reason: "window.kanvibeDesktop 브리지가 없는 브라우저 실행에서 브라우저 기본 우클릭 메뉴를 막지 않는지 검사한다. Rust 앱은 늘 데스크톱 앱 하나로만 돌고 브리지 없는 브라우저 빌드가 없으며, 글자 메뉴는 pane 채팅 화면이 직접 그린다(components/text_context_menu.rs)."

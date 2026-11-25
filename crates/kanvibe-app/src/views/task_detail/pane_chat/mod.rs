@@ -22,6 +22,7 @@ mod prompt_card;
 mod render;
 pub mod session;
 pub mod suggestions;
+mod text_menu;
 mod toggle;
 mod transcript;
 mod view;

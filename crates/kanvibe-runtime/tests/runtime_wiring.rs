@@ -100,6 +100,31 @@ fn tmux_task_gets_worktree_session_and_signed_hook_target() {
     assert!(has_session.status.success(), "{has_session:?}");
 }
 
+// parity: TS-main-runtimeEnvironment-e208fe, TS-main-runtimeEnvironment-c26eaf
+#[test]
+fn the_launch_hook_port_reaches_installed_hooks_without_the_port_variable() {
+    let fixture = RuntimeFixture::new();
+    fixture.create_git_repository();
+    let process_port = std::env::var_os("PORT");
+    // 시작 환경 스냅샷에는 다른 값의 PORT(48123)가 있다. hook 포트는 실행 설정으로만 받는다
+    let runtime = fixture.open_runtime();
+    let project = register_sample_project(&runtime, &fixture);
+
+    let task = create_branch_task(&runtime, &project, "feat/port", SessionType::Terminal);
+
+    let own_target = read_own_target(task.worktree_path.as_deref().unwrap(), &task.id);
+    assert_ne!(fixture.hook_server_port, 48123);
+    assert_eq!(
+        own_target["url"],
+        format!("http://localhost:{}", fixture.hook_server_port)
+    );
+    assert_eq!(
+        runtime.hook_server_address().port(),
+        fixture.hook_server_port
+    );
+    assert_eq!(std::env::var_os("PORT"), process_port);
+}
+
 #[test]
 fn hook_status_update_is_accepted_only_with_the_task_token() {
     let fixture = RuntimeFixture::new();
@@ -187,6 +212,7 @@ fn task_cli_lists_and_creates_tasks_through_the_desktop_backend() {
     );
 }
 
+// parity: TS-main-runtimeEnvironment-08531a
 #[test]
 fn server_runtime_values_never_reach_child_processes() {
     let fixture = RuntimeFixture::new();

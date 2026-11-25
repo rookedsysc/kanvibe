@@ -2,8 +2,8 @@
 //! 선택 카드, 입력창 순서로 쌓는다. 선택 화면이 떠 있는 동안 입력창은 지우지 않고 가려 쓰던 글을 남긴다.
 
 use gpui_kit::{
-    AnyElement, Context, InteractiveElement, IntoElement, ParentElement, Render, ScrollEvent,
-    StatefulInteractiveElement, Styled, Window, canvas, div, px,
+    AnyElement, Context, InteractiveElement, IntoElement, MouseButton, ParentElement, Render,
+    ScrollEvent, StatefulInteractiveElement, Styled, Window, canvas, div, px,
 };
 use kanvibe_ai::message_instructions::is_ai_instruction_message;
 use kanvibe_ai::pane_chat::snapshot::PaneChatTranscriptStatus;
@@ -314,9 +314,14 @@ impl Render for PaneChatView {
         let is_new = self.is_new_conversation(cx);
         let section_height = self.composer.section_height.clone();
         let composer = self.render_composer(&theme, padding, window, cx);
+        let text_menu = self.render_text_menu(&theme, window, cx);
         div()
             .id("pane-chat")
             .track_focus(&self.focus_handle)
+            .on_mouse_down(
+                MouseButton::Right,
+                cx.listener(Self::open_text_menu_outside_fields),
+            )
             .relative()
             .flex()
             .flex_col()
@@ -351,6 +356,7 @@ impl Render for PaneChatView {
                     .child(composer)
             }))
             .children(is_new.then(|| div().flex_1()))
+            .children(text_menu)
     }
 }
 

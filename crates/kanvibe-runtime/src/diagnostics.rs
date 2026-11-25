@@ -365,6 +365,34 @@ mod tests {
         assert!(std::fs::metadata(&log_path).unwrap().len() < 1024);
     }
 
+    // parity: TS-lib-desktopDiagnostics-114bcb
+    #[test]
+    fn structured_events_go_to_the_app_log_path() {
+        let directory = tempfile::tempdir().unwrap();
+        let log_path = resolve_desktop_log_path(directory.path());
+        let diagnostics = DesktopDiagnostics::with_options(
+            log_path.clone(),
+            DiagnosticsLimits::default(),
+            Box::new(|| "2026-05-02T07:30:00.000Z".to_string()),
+            json!({ "pid": 1234, "platform": "darwin", "arch": "arm64" }),
+        );
+
+        diagnostics.log(
+            "main:startup",
+            json!({ "userDataPath": "/Users/me/KanVibe" }),
+        );
+
+        assert_eq!(
+            diagnostics.log_path(),
+            directory.path().join("logs").join("kanvibe-desktop.log")
+        );
+        let content = std::fs::read_to_string(&log_path).unwrap();
+        assert!(content.contains("[2026-05-02T07:30:00.000Z] main:startup"));
+        assert!(content.contains(r#""userDataPath":"/Users/me/KanVibe""#));
+        assert!(content.contains(r#""pid":1234"#));
+        assert!(content.contains(r#""platform":"darwin""#));
+    }
+
     #[test]
     fn lines_carry_the_timestamp_event_payload_and_process() {
         let (_directory, log_path) = temp_log_path();
