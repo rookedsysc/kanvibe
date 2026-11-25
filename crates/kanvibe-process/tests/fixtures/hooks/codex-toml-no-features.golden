@@ -1,0 +1,5 @@
+model = "gpt-5"
+approval = "never"
+
+[features]
+hooks = true

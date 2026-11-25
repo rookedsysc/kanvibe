@@ -1,0 +1,7 @@
+# Rust로 옮기지 않는 src/desktop/main/** TS 테스트. 각 이유는 Rust 쪽에 해당 경로가 없는 근거를 적는다.
+- id: TS-main-aiAccountLoginBridge-b332e0
+  reason: "`await import(\"node-pty\")`가 끝나기 전에 close가 도착하는 비동기 틈을 검증한다. kanvibe-ai의 데스크톱 로그인 브리지는 PTY 생성을 레지스트리 잠금 안에서 동기로 호출하므로(LoginTerminalSpawner::spawn) 모듈 로딩 대기 구간 자체가 없다."
+- id: TS-main-aiAccountLoginBridge-0e4edb
+  reason: "창의 대기 중인 open을 node-pty 동적 import 도중에 취소하는 경합을 검증한다. Rust 브리지는 open을 잠금 안에서 동기로 끝내 대기 중인 open 상태가 존재하지 않는다."
+- id: TS-main-mobileAiLoginBridge-812fe0
+  reason: "소켓이 node-pty 비동기 초기화 도중 닫히면 spawn하지 않는지 검증한다. Rust 모바일 로그인 브리지는 소켓 상태 확인과 spawn을 같은 잠금 안에서 동기로 처리해 그 초기화 틈이 없다."

@@ -1,0 +1,4 @@
+model = "gpt-5"
+[features]
+hooks = true
+fast_mode = true
