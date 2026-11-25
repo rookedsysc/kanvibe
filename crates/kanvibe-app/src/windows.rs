@@ -8,6 +8,9 @@ use kanvibe_domain::i18n::Locale;
 
 use crate::app_window::{AppWindow, open_app_window};
 use crate::routes::task_detail_href;
+use crate::window_open::{
+    WindowOpenAction, resolve_existing_navigation_target_window, resolve_window_open_action,
+};
 
 struct RegisteredWindow {
     handle: AnyWindowHandle,
@@ -49,12 +52,16 @@ impl WindowRegistry {
             .map(|window| window.current_path.as_str())
     }
 
-    /// 쿼리를 뺀 경로가 같은 창. 작업 상세 창 재사용 판정에 쓴다
-    fn find_window_showing(&self, path: &str) -> Option<(AnyWindowHandle, WeakEntity<AppWindow>)> {
+    /// 열린 창과 각 창의 현재 경로(`window_open` 규칙의 입력)
+    fn open_windows(&self) -> Vec<(WindowId, String)> {
         self.windows
-            .values()
-            .find(|window| strip_search(&window.current_path) == strip_search(path))
-            .map(|window| (window.handle, window.view.clone()))
+            .iter()
+            .map(|(window_id, window)| (*window_id, window.current_path.clone()))
+            .collect()
+    }
+
+    fn handle_for(&self, window_id: WindowId) -> Option<AnyWindowHandle> {
+        self.windows.get(&window_id).map(|window| window.handle)
     }
 
     pub fn view_for(&self, window_id: WindowId) -> Option<WeakEntity<AppWindow>> {
@@ -62,10 +69,6 @@ impl WindowRegistry {
             .get(&window_id)
             .map(|window| window.view.clone())
     }
-}
-
-fn strip_search(path: &str) -> &str {
-    path.split('?').next().unwrap_or(path)
 }
 
 /// 작업 상세 이동이 어떻게 끝났는지(호출부 테스트·로그용)
@@ -95,8 +98,11 @@ pub fn navigate_to_task_detail(
         return open_new_window(&href, cx);
     }
     let registry = cx.default_global::<WindowRegistry>();
-    if let Some((handle, _)) = registry.find_window_showing(&href) {
-        let _ = handle.update(cx, |_, window, _| window.activate_window());
+    let existing_window =
+        resolve_existing_navigation_target_window(&href, &registry.open_windows(), None)
+            .and_then(|window_id| registry.handle_for(window_id));
+    if let Some(handle) = existing_window {
+        activate(handle, cx);
         return TaskNavigationOutcome::FocusedExistingWindow;
     }
     let target_view = request
@@ -111,6 +117,35 @@ pub fn navigate_to_task_detail(
         }
         None => open_new_window(&href, cx),
     }
+}
+
+/// 화면 안 링크를 연다(TS `setWindowOpenHandler`). 앱 경로면 같은 경로 창을 앞으로 가져오거나 새 창을 열고,
+/// 앱 경로가 아니면 기본 브라우저로 연다. `origin_window`는 링크를 누른 창이고 같은 경로여도 다시 고르지 않는다
+pub fn open_href(
+    href: &str,
+    origin_window: Option<WindowId>,
+    cx: &mut App,
+) -> WindowOpenAction<WindowId> {
+    let registry = cx.default_global::<WindowRegistry>();
+    let action = resolve_window_open_action(href, &registry.open_windows(), origin_window);
+    match &action {
+        WindowOpenAction::External => cx.open_url(href),
+        WindowOpenAction::FocusExisting {
+            existing_window, ..
+        } => {
+            if let Some(handle) = cx.global::<WindowRegistry>().handle_for(*existing_window) {
+                activate(handle, cx);
+            }
+        }
+        WindowOpenAction::OpenInternal { route } => {
+            open_new_window(route, cx);
+        }
+    }
+    action
+}
+
+fn activate(handle: AnyWindowHandle, cx: &mut App) {
+    let _ = handle.update(cx, |_, window, _| window.activate_window());
 }
 
 fn open_new_window(href: &str, cx: &mut App) -> TaskNavigationOutcome {

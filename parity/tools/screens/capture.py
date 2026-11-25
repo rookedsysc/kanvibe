@@ -290,7 +290,8 @@ def main() -> None:
                 print(f"{image_id} run{run_index} ok {result['seconds']}s", flush=True)
             shutil.copyfile(run_paths[0], output_dir / f"{image_id}.png")
             if len(run_paths) >= 2:
-                comparison = compare_images(run_paths[0], run_paths[1])
+                # 같은 앱을 두 번 찍은 결정성 판정이라 색 허용치 없이 비교한다
+                comparison = compare_images(run_paths[0], run_paths[1], strict=True)
                 entry["determinism"] = {
                     "runs": len(run_paths),
                     "diff_pixels": comparison["diff_pixels"],

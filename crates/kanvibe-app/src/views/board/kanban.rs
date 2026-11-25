@@ -1,4 +1,4 @@
-//! 보드 화면의 헤더와 로딩 스켈레톤(`Board.tsx` 헤더, `BoardRoute.tsx`의 `BoardRouteSkeleton`).
+//! 칸반 보드의 헤더와 로딩 스켈레톤(`Board.tsx` 헤더, `BoardRoute.tsx`의 `BoardRouteSkeleton`).
 //! 칸반 열·카드 본체는 M7에서 채운다.
 
 use gpui_kit::{
@@ -8,11 +8,11 @@ use gpui_kit::{
 use kanvibe_domain::i18n::{Locale, Translator};
 
 use crate::assets::{icon_paths, image_paths};
+use crate::components::scroll_area::page_scrollbar;
 use crate::notifications::unread_badge_label;
 use crate::qa::targets::{QaTargetDescription, qa_target_layer};
 use crate::theme::{ThemeMode, ThemeTokens, radius, spacing, text_scale};
 use crate::views::TailwindText;
-use crate::views::page_scrollbar::page_scrollbar;
 
 /// 헤더 아래 칸반 영역 문서 높이 계산용 값. 스켈레톤 열 본문은 `min-h-[calc(100vh-132px)]`다
 const SKELETON_COLUMN_BODY_VIEWPORT_OFFSET: f32 = 132.0;
@@ -124,7 +124,7 @@ pub fn render_loaded_board(
     let document_height = board_document_height(BOARD_HEADER_HEIGHT, viewport_height);
     let columns = board_columns(theme, model.locale, status_counts, viewport_height);
     let content_width =
-        f32::from(viewport.width) - f32::from(crate::views::page_scrollbar::PAGE_SCROLLBAR_WIDTH);
+        f32::from(viewport.width) - f32::from(crate::components::scroll_area::PAGE_SCROLLBAR_WIDTH);
     div()
         .size_full()
         .flex()

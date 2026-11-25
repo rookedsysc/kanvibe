@@ -5,7 +5,11 @@
 //! 먼저 도는 `App::intercept_keystrokes`가 그 자리다. 그래서 dock·탭·사용량 단축키는 터미널 키 컨텍스트에
 //! 같은 조합의 바인딩이 있어도 앞선다. 사용자가 바꾼 조합은 AppSettings `shortcut_bindings`에서 읽는다.
 
-use gpui_kit::{Action, App, Global, Keystroke, KeystrokeEvent, Subscription, Window, actions};
+use std::collections::HashSet;
+
+use gpui_kit::{
+    Action, App, Global, Keystroke, KeystrokeEvent, Subscription, Window, WindowId, actions,
+};
 use kanvibe_domain::platform::ShortcutPlatform;
 use kanvibe_domain::shortcuts::bindings::{
     ShortcutBindings, ShortcutCommandId, resolve_terminal_tab_command,
@@ -14,6 +18,8 @@ use kanvibe_domain::shortcuts::key_event::{
     ModifierState, ShortcutKeyEvent, is_blocked_shortcut_event,
 };
 use kanvibe_domain::terminal_tabs::TerminalTabShortcutCommand;
+
+use crate::services::AppServices;
 
 actions!(
     kanvibe,
@@ -64,15 +70,43 @@ pub const TERMINAL_KEY_CONTEXT: &str = "Terminal";
 /// 작업 상세 화면이 거는 키 컨텍스트. TS가 URL로 하던 "작업 상세인가" 판정을 포커스 경로의 컨텍스트로 한다
 pub const TASK_DETAIL_KEY_CONTEXT: &str = "TaskDetail";
 
-/// 앱 전역 단축키 상태(AppSettings가 원천)
+/// 앱 전역 단축키 상태(AppSettings가 원천). 모든 창이 이 한 벌을 읽으므로 재배정은 열린 창 전부에 함께 적용된다
 pub struct ShortcutState {
     pub bindings: ShortcutBindings,
     pub platform: ShortcutPlatform,
-    /// 단축키 설정 화면이 조합을 녹화하는 중이면 명령으로 해석하지 않는다
-    pub is_capture_active: bool,
+    /// 단축키 설정 화면이 조합을 녹화하는 중인 창. 그 창의 입력은 명령으로 해석하지 않는다(TS는 webContents id 집합)
+    pub capturing_windows: HashSet<WindowId>,
 }
 
 impl Global for ShortcutState {}
+
+/// 단축키 설정 화면이 녹화를 시작할 때 부른다
+pub fn begin_shortcut_capture(window_id: WindowId, cx: &mut App) {
+    if cx.has_global::<ShortcutState>() {
+        cx.global_mut::<ShortcutState>()
+            .capturing_windows
+            .insert(window_id);
+    }
+}
+
+/// 녹화를 끝내거나, 녹화하던 창이 닫히거나 다른 경로로 바뀔 때 부른다.
+/// 표시가 남으면 그 창은 앱 단축키 가로채기를 통째로 잃는다
+pub fn end_shortcut_capture(window_id: WindowId, cx: &mut App) {
+    if cx.has_global::<ShortcutState>() {
+        cx.global_mut::<ShortcutState>()
+            .capturing_windows
+            .remove(&window_id);
+    }
+}
+
+/// 단축키 설정을 저장한 뒤 부른다. AppSettings `shortcut_bindings`를 다시 읽어 전역 상태를 바꾸고 열린 창을 모두 다시 그린다
+pub fn reload_shortcut_bindings(cx: &mut App) {
+    let bindings = cx.global::<AppServices>().shortcut_bindings();
+    if cx.has_global::<ShortcutState>() {
+        cx.global_mut::<ShortcutState>().bindings = bindings;
+    }
+    cx.refresh_windows();
+}
 
 /// 가로챈 입력을 어떻게 다룰지. TS `before-input-event` 분기를 그대로 옮겼다
 #[derive(Debug)]
@@ -198,7 +232,10 @@ fn handle_intercepted_keystroke(event: &KeystrokeEvent, window: &mut Window, cx:
         cx.stop_propagation();
         return;
     }
-    if state.is_capture_active {
+    if state
+        .capturing_windows
+        .contains(&window.window_handle().window_id())
+    {
         return;
     }
     let Some(command) = state

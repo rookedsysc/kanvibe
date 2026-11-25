@@ -1,9 +1,13 @@
-//! 페이지가 창보다 길 때 Chromium(Linux)이 그리는 기본 스크롤바를 옮겼다.
+//! 페이지·패널이 창보다 길 때 Chromium(Linux)이 그리는 기본 스크롤바를 옮겼다.
 //! `* { scrollbar-color: var(--color-border-strong) transparent }` 규칙이라 트랙은 투명하고 thumb·화살표만 border-strong 색이다.
 //! 폭 15px 홈을 항상 차지하므로 내용 폭이 그만큼 줄어든다.
+//!
+//! `page_scrollbar`는 문서 높이를 아는 화면(보드)이 직접 그리고, `scroll_area`는 `ScrollHandle`이 잰 높이로 그린다.
 
 use gpui_kit::{
-    App, Bounds, Hsla, IntoElement, Pixels, Styled, Window, canvas, fill, point, px, size,
+    AnyElement, App, Bounds, ElementId, Hsla, InteractiveElement, IntoElement, ParentElement,
+    Pixels, ScrollHandle, StatefulInteractiveElement, Styled, Window, canvas, div, fill, point, px,
+    size,
 };
 
 /// 스크롤바 홈 폭. 이 폭만큼 페이지 내용 폭이 줄어든다
@@ -38,6 +42,55 @@ pub fn page_scrollbar(content_height: f32, scroll_top: f32, color: Hsla) -> impl
     .w(PAGE_SCROLLBAR_WIDTH)
     .h_full()
     .flex_none()
+}
+
+/// 세로로 스크롤되는 영역과 그 오른쪽 스크롤바 홈(CSS `overflow-y: scroll`). 높이는 부모가 정한다.
+/// 스크롤 위치는 `handle`이 갖고, 스크롤바는 직전 레이아웃에서 잰 내용 높이로 그린다.
+pub fn scroll_area(
+    id: impl Into<ElementId>,
+    handle: &ScrollHandle,
+    color: Hsla,
+    content: impl IntoElement,
+) -> AnyElement {
+    let measured = handle.clone();
+    div()
+        .flex()
+        .size_full()
+        .min_h_0()
+        .child(
+            div()
+                .id(id)
+                .flex_1()
+                .min_w_0()
+                .h_full()
+                .overflow_y_scroll()
+                .track_scroll(handle)
+                .child(content),
+        )
+        .child(
+            canvas(
+                |_, _, _| {},
+                move |bounds, _, window: &mut Window, _: &mut App| {
+                    let viewport_height = f32::from(bounds.size.height);
+                    let max_scroll = f32::from(measured.max_offset().y);
+                    if max_scroll <= 0.0 {
+                        return;
+                    }
+                    let scroll_top = -f32::from(measured.offset().y);
+                    paint_page_scrollbar(
+                        bounds,
+                        viewport_height + max_scroll,
+                        scroll_top,
+                        color,
+                        window,
+                    );
+                },
+            )
+            .w(PAGE_SCROLLBAR_WIDTH)
+            .h_full()
+            .flex_none(),
+        )
+        .into_any_element()
 }
 
 fn paint_page_scrollbar(

@@ -1,19 +1,41 @@
 //! `NotFoundRoute`: 404 배지, 제목·설명, 뒤로가기 버튼을 화면 가운데 둔다.
 
 use gpui_kit::{
-    App, ClickEvent, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement,
-    Styled, Window, div, px,
+    App, ClickEvent, Context, InteractiveElement, IntoElement, ParentElement, Render,
+    StatefulInteractiveElement, Styled, Window, div, px,
 };
 use kanvibe_domain::i18n::{Locale, Translator};
 
 use crate::qa::targets::{QaTargetDescription, qa_target_layer};
 use crate::theme::{ThemeTokens, radius, spacing, text_scale};
-use crate::views::TailwindText;
+use crate::views::{ScreenContext, TailwindText};
 
 /// 번역하지 않는 배지 글자(TS도 하드코딩)
 const NOT_FOUND_BADGE: &str = "404";
 /// `max-w-md`
 const CONTENT_MAX_WIDTH: f32 = 448.0;
+
+/// `/:locale/*`에 맞는 경로가 없을 때. 뒤로가기는 창 히스토리를 한 칸 되돌린다
+pub struct NotFoundView {
+    screen: ScreenContext,
+}
+
+impl NotFoundView {
+    pub fn new(screen: ScreenContext, _cx: &mut Context<Self>) -> Self {
+        Self { screen }
+    }
+}
+
+impl Render for NotFoundView {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = *cx.global::<ThemeTokens>();
+        let navigator = self.screen.navigator.clone();
+        render_not_found(&theme, self.screen.route.locale, move |_, _, cx| {
+            navigator.go_back(cx)
+        })
+        .into_any_element()
+    }
+}
 
 pub fn render_not_found(
     theme: &ThemeTokens,

@@ -11,7 +11,7 @@ TS(Electron) 앱의 화면 상태 102개(이미지 130장)를 결정적으로 �
 | `parity/screens/baseline/` | 기준 이미지 `<ID>.png`, `<ID>--light.png`, `manifest.json`(실행별 결정성) | 유지 |
 | `parity/fixtures/` | DB 스키마, 데이터셋, 로컬 git 저장소, 격리 HOME, 가짜 CLI, 네트워크 응답 | 유지 |
 | `capture.py` | Xvfb 시작 → fixture 생성 → 드라이버 실행 → `ffmpeg -f x11grab` 캡처 → 결정성 비교 | 유지 |
-| `diff.py` | PNG 픽셀 차이 비율(Pillow, 없으면 순수 Python 디코더) | 유지 |
+| `diff.py` | PNG 픽셀 차이 비율. 기본은 pixelmatch YIQ 색 차이 허용치(0.1), `--strict`는 완전 일치. 두 비율을 함께 출력(Pillow, 없으면 순수 Python 디코더). 시험: `test_diff.py` | 유지 |
 | `fontconfig.py` | 앱 프로세스 전용 `FONTCONFIG_FILE` 생성 | 유지 |
 | `ts-driver/` | Electron + Playwright 드라이버와 main 프로세스 shim | **TS 제거 때 디렉터리째 삭제** |
 

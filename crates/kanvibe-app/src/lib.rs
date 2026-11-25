@@ -2,6 +2,7 @@
 
 pub mod app_window;
 pub mod assets;
+pub mod components;
 pub mod fonts;
 pub mod navigation;
 pub mod notifications;
@@ -11,6 +12,7 @@ pub mod services;
 pub mod shortcuts;
 pub mod theme;
 pub mod views;
+pub mod window_open;
 pub mod windows;
 
 use std::sync::Arc;
@@ -49,7 +51,7 @@ pub fn init_app(launch: &LaunchOptions, cx: &mut App) -> anyhow::Result<()> {
     cx.set_global(ShortcutState {
         bindings: services.shortcut_bindings(),
         platform: services.shortcut_platform,
-        is_capture_active: false,
+        capturing_windows: Default::default(),
     });
     cx.set_global(services);
     cx.set_global(WindowRegistry::default());

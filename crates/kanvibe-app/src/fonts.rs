@@ -1,7 +1,9 @@
-//! 기준 이미지와 같은 글꼴 파일을 번들해 등록하고, CSS 글꼴 지정에 해당하는 GPUI `Font`를 만든다.
+//! 기준 이미지와 같은 글꼴을 번들해 등록하고, CSS 글꼴 지정에 해당하는 GPUI `Font`를 만든다.
 //!
-//! 파일은 `parity/screens/fonts.json`이 고정한 바이트 그대로다(라이선스는 `assets/fonts/LICENSE-*.txt`).
-//! 기준 이미지에서 쓰이지 않은 Italic·CJK Bold·Noto Color Emoji는 넣지 않았다(`parity/screens/fonts.md` 조사).
+//! 파일은 `parity/tools/fonts/build_app_fonts.py`가 `parity/screens/fonts.json`의 원본에서 만든다(라이선스는
+//! `assets/fonts/LICENSE-*.txt`). gpui-pre-linux는 시스템 글꼴을 번들 글꼴보다 먼저 읽고, family 이름이 같으면
+//! 먼저 읽힌 시스템 얼굴을 고른다. 그래서 모든 번들 얼굴의 family 이름에 `KanVibe ` 접두어를 붙여 시스템 글꼴과
+//! 겹치지 않게 했고, 아래 대체 순서도 그 이름만 쓴다. 대체 순서 어디에도 없는 글자만 cosmic-text 자체 대체로 넘어간다.
 //!
 //! 앱 CSS가 요청한 `Inter`·`JetBrains Mono`는 기준 환경에 없어서 Chromium이 일반 이름(`sans-serif`, `monospace`)까지
 //! 내려갔다. 여기서는 그 결과 family와 글자별 대체 순서를 바로 지정한다.
@@ -10,37 +12,43 @@ use std::borrow::Cow;
 
 use gpui_kit::{App, Font, FontFallbacks, FontFeatures, FontStyle, FontWeight, SharedString};
 
-const BUNDLED_FONT_FILES: [&[u8]; 8] = [
-    include_bytes!("../assets/fonts/NotoSans-Regular.ttf"),
-    include_bytes!("../assets/fonts/NotoSans-Bold.ttf"),
-    include_bytes!("../assets/fonts/NotoSansCJK-Regular.ttc"),
-    include_bytes!("../assets/fonts/NotoSansSymbols-Regular.ttf"),
-    include_bytes!("../assets/fonts/NotoSansSymbols2-Regular.ttf"),
-    include_bytes!("../assets/fonts/DejaVuSans.ttf"),
-    include_bytes!("../assets/fonts/DejaVuSansMono.ttf"),
-    include_bytes!("../assets/fonts/DejaVuSansMono-Bold.ttf"),
+pub const BUNDLED_FONT_FILES: [&[u8]; 9] = [
+    include_bytes!("../assets/fonts/KanVibeNotoSans-Regular.ttf"),
+    include_bytes!("../assets/fonts/KanVibeNotoSans-Bold.ttf"),
+    include_bytes!("../assets/fonts/KanVibeNotoSansCJKkr-Regular.otf"),
+    include_bytes!("../assets/fonts/KanVibeNotoSansCJKkr-SyntheticBold.otf"),
+    include_bytes!("../assets/fonts/KanVibeNotoSansSymbols-Regular.ttf"),
+    include_bytes!("../assets/fonts/KanVibeNotoSansSymbols2-Regular.ttf"),
+    include_bytes!("../assets/fonts/KanVibeDejaVuSans.ttf"),
+    include_bytes!("../assets/fonts/KanVibeDejaVuSansMono.ttf"),
+    include_bytes!("../assets/fonts/KanVibeDejaVuSansMono-Bold.ttf"),
 ];
 
-/// `--font-sans`가 기준 환경에서 풀린 family
-pub const SANS_FAMILY: &str = "Noto Sans";
-/// `--font-mono`·터미널·Monaco가 기준 환경에서 풀린 family
-pub const MONO_FAMILY: &str = "DejaVu Sans Mono";
+/// `--font-sans`가 기준 환경에서 풀린 Noto Sans
+pub const SANS_FAMILY: &str = "KanVibe Noto Sans";
+/// `--font-mono`·터미널·Monaco가 기준 환경에서 풀린 DejaVu Sans Mono
+pub const MONO_FAMILY: &str = "KanVibe DejaVu Sans Mono";
+/// 한글을 그리는 Noto Sans CJK KR Regular
+pub const CJK_FAMILY: &str = "KanVibe Noto Sans CJK KR";
+/// Chromium이 굵은 한글을 그린 방식(Regular 윤곽선을 글자 크기 1/24만큼 FT_Outline_Embolden)을 미리 적용한 얼굴.
+/// 한글 블록·CJK 기호·전각 문자와 메시지 파일의 CJK 글자만 들어 있고, 나머지는 다음 대체 글꼴로 넘어간다.
+pub const CJK_SYNTHETIC_BOLD_FAMILY: &str = "KanVibe Noto Sans CJK KR Synthetic Bold";
+const SYMBOLS_FAMILY: &str = "KanVibe Noto Sans Symbols";
+/// GPUI는 'm' 글리프가 없는 얼굴을 대체 순서에서 빼므로 이 얼굴은 실제로는 건너뛴다(`load_family`의 'm' 검사)
+const SYMBOLS2_FAMILY: &str = "KanVibe Noto Sans Symbols2";
+const DEJAVU_SANS_FAMILY: &str = "KanVibe DejaVu Sans";
 
 /// fontconfig `sans-serif` 별칭의 나머지 순서. 한글이 CJK JP 얼굴로 그려지지 않게 KR을 먼저 둔다.
 const SANS_FALLBACKS: [&str; 4] = [
-    "Noto Sans CJK KR",
-    "Noto Sans Symbols",
-    "Noto Sans Symbols2",
-    "DejaVu Sans",
+    CJK_FAMILY,
+    SYMBOLS_FAMILY,
+    SYMBOLS2_FAMILY,
+    DEJAVU_SANS_FAMILY,
 ];
 /// fontconfig `monospace` 별칭의 나머지 순서. Mono CJK는 기준 환경에도 없어 Sans CJK KR로 떨어진다.
-const MONO_FALLBACKS: [&str; 3] = [
-    "Noto Sans CJK KR",
-    "Noto Sans Symbols",
-    "Noto Sans Symbols2",
-];
+const MONO_FALLBACKS: [&str; 3] = [CJK_FAMILY, SYMBOLS_FAMILY, SYMBOLS2_FAMILY];
 
-/// 번들 글꼴을 앱 텍스트 시스템에 올린다. 시스템 글꼴보다 먼저 이름이 맞는 번들 얼굴을 쓰게 하려면 창을 열기 전에 불러야 한다.
+/// 번들 글꼴을 앱 텍스트 시스템에 올린다. 창을 열기 전에 불러야 첫 레이아웃부터 번들 얼굴을 쓴다.
 pub fn register_bundled_fonts(cx: &App) -> anyhow::Result<()> {
     let font_files = BUNDLED_FONT_FILES
         .iter()
@@ -69,14 +77,25 @@ pub fn mono_font(css_weight: u16) -> Font {
     font_with_fallbacks(MONO_FAMILY, &MONO_FALLBACKS, css_weight)
 }
 
+/// 굵은 글씨면 CJK 자리 앞에 합성 bold 얼굴을 끼운다. 합성 bold에 없는 CJK 글자는 바로 뒤 Regular로 그린다.
+fn fallback_chain(fallbacks: &[&str], weight: FontWeight) -> Vec<String> {
+    let mut chain = Vec::with_capacity(fallbacks.len() + 1);
+    for family in fallbacks {
+        if *family == CJK_FAMILY && weight == FontWeight::BOLD {
+            chain.push(CJK_SYNTHETIC_BOLD_FAMILY.to_string());
+        }
+        chain.push((*family).to_string());
+    }
+    chain
+}
+
 fn font_with_fallbacks(family: &str, fallbacks: &[&str], css_weight: u16) -> Font {
+    let weight = resolve_css_weight(css_weight);
     Font {
         family: SharedString::from(family.to_string()),
         features: FontFeatures::default(),
-        fallbacks: Some(FontFallbacks::from_fonts(
-            fallbacks.iter().map(|name| name.to_string()).collect(),
-        )),
-        weight: resolve_css_weight(css_weight),
+        fallbacks: Some(FontFallbacks::from_fonts(fallback_chain(fallbacks, weight))),
+        weight,
         style: FontStyle::Normal,
     }
 }
@@ -99,6 +118,56 @@ mod tests {
         let fallbacks = font.fallbacks.expect("sans font must carry fallbacks");
 
         assert_eq!(font.family.as_ref(), SANS_FAMILY);
-        assert_eq!(fallbacks.fallback_list()[0], "Noto Sans CJK KR");
+        assert_eq!(fallbacks.fallback_list()[0], CJK_FAMILY);
+    }
+
+    #[test]
+    fn bold_text_draws_korean_with_the_synthetic_bold_face_first() {
+        for font in [sans_font(600), mono_font(700)] {
+            let fallbacks = font.fallbacks.expect("font must carry fallbacks");
+            assert_eq!(
+                &fallbacks.fallback_list()[..2],
+                [CJK_SYNTHETIC_BOLD_FAMILY, CJK_FAMILY]
+            );
+        }
+        let regular = sans_font(500)
+            .fallbacks
+            .expect("sans font must carry fallbacks");
+        assert!(
+            !regular
+                .fallback_list()
+                .iter()
+                .any(|family| family == CJK_SYNTHETIC_BOLD_FAMILY)
+        );
+    }
+
+    #[test]
+    fn every_family_the_app_names_is_bundled_under_a_kanvibe_name() {
+        for family in [SANS_FAMILY, MONO_FAMILY, CJK_SYNTHETIC_BOLD_FAMILY]
+            .into_iter()
+            .chain(SANS_FALLBACKS)
+            .chain(MONO_FALLBACKS)
+        {
+            assert!(family.starts_with("KanVibe "), "{family}");
+            let utf16_name: Vec<u8> = family.encode_utf16().flat_map(u16::to_be_bytes).collect();
+            assert!(
+                BUNDLED_FONT_FILES.iter().any(|bytes| name_table(bytes)
+                    .windows(utf16_name.len())
+                    .any(|window| window == utf16_name)),
+                "{family} is not the name of any bundled font"
+            );
+        }
+    }
+
+    /// sfnt 표 디렉터리에서 `name` 표 바이트를 찾는다
+    fn name_table(font: &[u8]) -> &[u8] {
+        let read_u32 =
+            |at: usize| u32::from_be_bytes(font[at..at + 4].try_into().unwrap()) as usize;
+        let table_count = u16::from_be_bytes([font[4], font[5]]) as usize;
+        (0..table_count)
+            .map(|index| 12 + 16 * index)
+            .find(|&entry| &font[entry..entry + 4] == b"name")
+            .map(|entry| &font[read_u32(entry + 8)..read_u32(entry + 8) + read_u32(entry + 12)])
+            .expect("bundled font has a name table")
     }
 }

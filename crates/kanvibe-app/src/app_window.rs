@@ -2,46 +2,35 @@
 //! TS `App.tsx`의 `HashRouter` + `LocaleShell`에 해당한다.
 
 use gpui_kit::{
-    AnyElement, AnyWindowHandle, App, AppContext, Bounds, Context, FocusHandle, InteractiveElement,
-    IntoElement, KeyContext, ParentElement, Render, Styled, Task, Window, WindowBounds,
+    AnyView, AnyWindowHandle, App, AppContext, Bounds, Context, FocusHandle, InteractiveElement,
+    IntoElement, KeyContext, ParentElement, Render, Styled, Window, WindowBounds,
     WindowDecorations, WindowOptions, div, point, px, size,
 };
 
 use crate::navigation::NavigationHistory;
-use crate::notifications::NotificationCenter;
 use crate::qa::targets::QaTargetRegistry;
 use crate::routes::AppRoute;
-use crate::services::{AppServices, BoardHeaderSnapshot, ServiceResult};
 use crate::shortcuts::{
-    NavigateBack, NavigateForward, RunTerminalTabCommand, TASK_DETAIL_KEY_CONTEXT,
+    NavigateBack, NavigateForward, OpenNewWindow, RunTerminalTabCommand, TASK_DETAIL_KEY_CONTEXT,
+    end_shortcut_capture,
 };
 
 /// 창 루트 키 컨텍스트
 pub const WINDOW_KEY_CONTEXT: &str = "KanvibeWindow";
+
 use crate::fonts::sans_font;
 use crate::theme::{CANVAS_BACKGROUND, ThemeTokens, text_scale};
-use crate::views::board::{
-    BoardHeaderModel, TaskKindFilter, render_board_skeleton, render_loaded_board,
-};
-use crate::views::not_found::render_not_found;
 use crate::views::window_controls::window_controls_overlay;
+use crate::views::{ScreenContext, WindowNavigator, build_screen_view};
 use crate::windows::WindowRegistry;
 use kanvibe_domain::terminal_tabs::TerminalTabShortcutCommand;
-
-/// 보드 데이터 조회 상태(`useRouteLoadStatus`의 로딩·성공·실패)
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum BoardLoadState {
-    Loading,
-    Loaded(BoardHeaderSnapshot),
-    Failed(String),
-}
 
 pub struct AppWindow {
     window_handle: AnyWindowHandle,
     history: NavigationHistory,
     focus_handle: FocusHandle,
-    board: BoardLoadState,
-    _board_load: Option<Task<()>>,
+    /// 현재 경로의 화면 뷰(`views::build_screen_view`). 경로가 바뀔 때마다 새로 만든다
+    screen: AnyView,
 }
 
 /// gpui-pre-linux 0.3.14 X11 `create_window`는 요청한 x에 2를 더해 창을 만든다(`x11/window.rs`).
@@ -83,16 +72,20 @@ impl AppWindow {
         let focus_handle = cx.focus_handle();
         focus_handle.focus(window, cx);
         let window_id = window.window_handle().window_id();
-        cx.on_release(move |_, cx| cx.default_global::<WindowRegistry>().forget(window_id))
-            .detach();
-        let mut app_window = Self {
+        cx.on_release(move |_, cx| {
+            cx.default_global::<WindowRegistry>().forget(window_id);
+            end_shortcut_capture(window_id, cx);
+        })
+        .detach();
+        let history = NavigationHistory::new(initial_path);
+        let screen = Self::build_screen(&history, cx);
+        let app_window = Self {
             window_handle: window.window_handle(),
-            history: NavigationHistory::new(initial_path),
+            history,
             focus_handle,
-            board: BoardLoadState::Loading,
-            _board_load: None,
+            screen,
         };
-        app_window.on_route_changed(cx);
+        app_window.record_current_path(cx);
         app_window
     }
 
@@ -117,34 +110,43 @@ impl AppWindow {
     }
 
     fn after_history_change(&mut self, cx: &mut Context<Self>) {
-        self.on_route_changed(cx);
+        // TS는 문서를 다시 불러오면(`did-navigate`) 그 창의 녹화 표시를 지웠다. 녹화하던 화면 뷰가 여기서 버려진다
+        end_shortcut_capture(self.window_handle.window_id(), cx);
+        self.screen = Self::build_screen(&self.history, cx);
+        self.record_current_path(cx);
         cx.notify();
     }
 
-    fn on_route_changed(&mut self, cx: &mut Context<Self>) {
-        let handle = self.window_handle;
-        let view = cx.entity().downgrade();
-        let current_path = self.history.current_path().to_string();
-        cx.default_global::<WindowRegistry>()
-            .record(handle, view, &current_path);
-        if self.history.current_route().route == AppRoute::Board {
-            self.start_board_load(cx);
-        }
+    fn build_screen(history: &NavigationHistory, cx: &mut Context<Self>) -> AnyView {
+        let screen = ScreenContext {
+            route: history.current_route(),
+            navigator: WindowNavigator::new(cx.entity().downgrade()),
+        };
+        build_screen_view(screen, cx)
     }
 
-    fn start_board_load(&mut self, cx: &mut Context<Self>) {
-        self.board = BoardLoadState::Loading;
-        let load = cx.global::<AppServices>().load_board_header(cx);
-        self._board_load = Some(cx.spawn(async move |this, cx| {
-            let result: ServiceResult<BoardHeaderSnapshot> = load.await;
-            let _ = this.update(cx, |this, cx| {
-                this.board = match result {
-                    Ok(snapshot) => BoardLoadState::Loaded(snapshot),
-                    Err(failure) => BoardLoadState::Failed(failure.reason),
-                };
-                cx.notify();
-            });
-        }));
+    fn record_current_path(&self, cx: &mut Context<Self>) {
+        let view = cx.entity().downgrade();
+        cx.default_global::<WindowRegistry>().record(
+            self.window_handle,
+            view,
+            self.history.current_path(),
+        );
+    }
+
+    /// 지금 경로로 새 창을 연다(TS main `createAppWindow(currentUrl)`)
+    fn handle_open_new_window(
+        &mut self,
+        _: &OpenNewWindow,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let current_path = self.history.current_path().to_string();
+        if let Err(error) =
+            open_app_window(&current_path, crate::qa::options::DEFAULT_WINDOW_SIZE, cx)
+        {
+            eprintln!("[kanvibe] failed to open a new window: {error:#}");
+        }
     }
 
     fn handle_navigate_back(&mut self, _: &NavigateBack, _: &mut Window, cx: &mut Context<Self>) {
@@ -186,47 +188,6 @@ impl AppWindow {
         }
         context
     }
-
-    fn render_route(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-        let theme = *cx.global::<ThemeTokens>();
-        let route = self.history.current_route();
-        let viewport = window.viewport_size();
-        match route.route {
-            AppRoute::Board => self.render_board(&theme, route.locale, viewport, cx),
-            _ => {
-                let back = cx.listener(|this, _, _, cx| this.go_back(cx));
-                render_not_found(&theme, route.locale, back).into_any_element()
-            }
-        }
-    }
-
-    fn render_board(
-        &self,
-        theme: &ThemeTokens,
-        locale: kanvibe_domain::i18n::Locale,
-        viewport: gpui_kit::Size<gpui_kit::Pixels>,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
-        match &self.board {
-            BoardLoadState::Loaded(snapshot) => {
-                let model = BoardHeaderModel {
-                    locale,
-                    task_kind_filter: TaskKindFilter::All,
-                    selected_project_names: Vec::new(),
-                    sort_active_count: snapshot.sort_active_count,
-                    unread_notification_count: cx
-                        .try_global::<NotificationCenter>()
-                        .map(NotificationCenter::unread_count)
-                        .unwrap_or(0),
-                };
-                render_loaded_board(theme, &model, snapshot.status_counts, viewport)
-                    .into_any_element()
-            }
-            BoardLoadState::Loading | BoardLoadState::Failed(_) => {
-                render_board_skeleton(theme, f32::from(viewport.height)).into_any_element()
-            }
-        }
-    }
 }
 
 /// TS 앱은 macOS에서 신호등 버튼(`hiddenInset`)을 쓰고 그 밖에서만 흰 조작 버튼을 겹쳤다
@@ -241,7 +202,6 @@ impl Render for AppWindow {
             cx.global_mut::<QaTargetRegistry>().begin_frame(window_id);
         }
         let theme = *cx.global::<ThemeTokens>();
-        let route_view = self.render_route(window, cx);
         div()
             .id("kanvibe-window")
             .key_context(self.key_context())
@@ -249,6 +209,7 @@ impl Render for AppWindow {
             .on_action(cx.listener(Self::handle_navigate_back))
             .on_action(cx.listener(Self::handle_navigate_forward))
             .on_action(cx.listener(Self::handle_terminal_tab_command))
+            .on_action(cx.listener(Self::handle_open_new_window))
             .relative()
             .size_full()
             .bg(CANVAS_BACKGROUND)
@@ -256,7 +217,7 @@ impl Render for AppWindow {
             .text_size(text_scale::BODY.font_size)
             .line_height(text_scale::BODY.line_height)
             .text_color(theme.text.primary)
-            .child(route_view)
+            .child(self.screen.clone())
             .children(linux_window_controls())
     }
 }

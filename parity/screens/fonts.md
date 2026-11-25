@@ -3,6 +3,10 @@
 기준 이미지는 `fonts.json`에 적힌 15개 파일만 보이는 fontconfig 설정(`FONTCONFIG_FILE`, 앱 프로세스 전용)으로 찍었다.
 GPUI 앱은 아래 표의 파일을 그대로 번들하고, 같은 글꼴 선택 순서와 렌더링 옵션을 써야 픽셀이 맞는다.
 
+GPUI 앱은 이 파일들을 바로 넣지 않고 `parity/tools/fonts/build_app_fonts.py`로 만든 파생본을 번들한다(`crates/kanvibe-app/assets/fonts/`).
+gpui-pre-linux가 시스템 글꼴을 먼저 읽고 이름이 같으면 시스템 얼굴을 고르기 때문에, family 이름에 `KanVibe ` 접두어를 붙여(name 표만 변경, TTC는 KR 얼굴만 추출)
+번들 얼굴만 선택되게 한다. 굵은 한글은 아래 "합성 bold" 설명대로 Regular 윤곽선을 미리 굵게 만든 `KanVibe Noto Sans CJK KR Synthetic Bold`로 그린다.
+
 ## 앱의 글꼴 지정과 실제로 고른 파일
 
 앱 CSS가 요청하는 글꼴은 이 머신에 없다. Chromium은 이름이 정확히 같은 글꼴만 받아들이므로 목록 끝의 일반 이름(generic family)까지 내려가고, 그 일반 이름을 fontconfig가 아래 파일로 풀었다.
@@ -19,7 +23,7 @@ GPUI 앱은 아래 표의 파일을 그대로 번들하고, 같은 글꼴 선택
 
 130장 전체 조사 결과(글리프 수, 쓰인 이미지 수): Noto Sans CJK KR Regular 41113자/122장, Noto Sans Regular 37604자/127장, DejaVu Sans Mono 17140자/63장, Noto Sans Bold 16721자/94장, DejaVu Sans Mono Bold 186자/7장(Monaco), Monaco 내장 `codicon` 웹 글꼴 25자/4장(`node_modules/monaco-editor`가 제공, 시스템 글꼴 아님), Noto Sans Symbols 10자/5장(`⌄`·`⌃` 등), Noto Sans Symbols2 2자/1장. DejaVu Sans, Noto Color Emoji, CJK Bold 파일은 쓰이지 않았다.
 
-**한글 굵은 글씨는 합성 bold다.** 조사에서 CJK는 Regular 얼굴만 나왔다. 굵은 한글 제목(`font-semibold`·`font-bold`)은 Chromium이 Regular 얼굴을 합성 굵게(fake bold) 그린 것이다. GPUI도 같은 방식으로 그려야 픽셀이 맞는다.
+**한글 굵은 글씨는 합성 bold다.** 조사에서 CJK는 Regular 얼굴만 나왔다. 굵은 한글 제목(`font-semibold`·`font-bold`)은 Chromium이 Regular 얼굴을 합성 굵게(fake bold) 그린 것이다. GPUI도 같은 방식으로 그려야 픽셀이 맞는다. GPUI 렌더러(swash)에는 합성 bold가 없으므로, Skia와 같은 `FT_Outline_Embolden`(세기 = 글자 크기/24, advance 그대로)을 글꼴 단위에서 미리 적용한 얼굴을 만든다. 힌트는 옮기지 않아 가로 획이 기준 이미지(hintslight)보다 덜 선명하다.
 
 font-weight 500·600은 파일이 없어 Chromium이 가까운 굵기(500→Regular, 600→Bold)를 쓴다. GPUI도 굵기 합성 없이 같은 파일을 골라야 한다.
 
