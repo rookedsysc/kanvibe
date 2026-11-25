@@ -1,0 +1,13 @@
+classDiagram
+    namespace Shapes {
+        class Triangle {
+            +area() double
+        }
+        class Square
+    }
+    namespace Io.Render {
+        class Canvas
+    }
+    Triangle --> Canvas : draws
+    Square --> Canvas
+    Square ..> Triangle

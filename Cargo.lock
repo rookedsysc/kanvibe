@@ -4177,7 +4177,9 @@ dependencies = [
 name = "kanvibe-markdown"
 version = "0.1.0"
 dependencies = [
+ "html5ever",
  "kanvibe-diagram",
+ "markup5ever_rcdom",
  "pulldown-cmark",
 ]
 

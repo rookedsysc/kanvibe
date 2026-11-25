@@ -142,6 +142,13 @@ pub struct PathItem {
     pub stroke: Option<StrokeStyle>,
 }
 
+/// 글자를 `center` 둘레로 `degrees`(시계 방향, SVG `rotate()`와 같은 부호)만큼 돌린다
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Rotation {
+    pub degrees: f64,
+    pub center: Point,
+}
+
 /// 한 줄 글자. `x`는 줄 왼쪽, `baseline`은 기준선 y다
 #[derive(Clone, Debug, PartialEq)]
 pub struct TextItem {
@@ -151,12 +158,25 @@ pub struct TextItem {
     pub font_size: f64,
     pub weight: FontWeight,
     pub color: Color,
+    /// 돌리지 않으면 `None`
+    pub rotation: Option<Rotation>,
+}
+
+/// 사각형 밖을 잘라 내고 그리는 묶음(크기를 줄인 foreignObject의 `overflow: hidden` 등)
+#[derive(Clone, Debug, PartialEq)]
+pub struct ClipItem {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+    pub items: Vec<SceneItem>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum SceneItem {
     Path(PathItem),
     Text(TextItem),
+    Clip(ClipItem),
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -165,6 +185,8 @@ pub struct Scene {
     pub width: f64,
     pub height: f64,
     pub items: Vec<SceneItem>,
+    /// SVG `preserveAspectRatio`가 `xMinYMin`이면 참(journey). 아니면 `xMidYMid`로 가운데 둔다
+    pub is_start_aligned: bool,
 }
 
 impl Scene {
@@ -187,16 +209,29 @@ impl Scene {
 
     /// 모든 좌표를 옮긴다(viewBox 원점을 0,0으로 맞출 때)
     pub fn translate(&mut self, dx: f64, dy: f64) {
-        for item in &mut self.items {
-            match item {
-                SceneItem::Path(path) => path
-                    .commands
-                    .iter_mut()
-                    .for_each(|command| translate_command(command, dx, dy)),
-                SceneItem::Text(text) => {
-                    text.x += dx;
-                    text.baseline += dy;
+        translate_items(&mut self.items, dx, dy);
+    }
+}
+
+fn translate_items(items: &mut [SceneItem], dx: f64, dy: f64) {
+    for item in items {
+        match item {
+            SceneItem::Path(path) => path
+                .commands
+                .iter_mut()
+                .for_each(|command| translate_command(command, dx, dy)),
+            SceneItem::Text(text) => {
+                text.x += dx;
+                text.baseline += dy;
+                if let Some(rotation) = &mut text.rotation {
+                    rotation.center.x += dx;
+                    rotation.center.y += dy;
                 }
+            }
+            SceneItem::Clip(clip) => {
+                clip.x += dx;
+                clip.y += dy;
+                translate_items(&mut clip.items, dx, dy);
             }
         }
     }

@@ -1,0 +1,9 @@
+%%{init: {'gitGraph': {'showBranches': false, 'rotateCommitLabel': false, 'mainBranchName': 'trunk'}}}%%
+gitGraph
+    commit id: "base"
+    branch feature
+    commit id: "work" tag: "R&D"
+    checkout trunk
+    commit id: "fix"
+    merge feature id: "join"
+    commit id: "ship"

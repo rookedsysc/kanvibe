@@ -8,4 +8,6 @@ publish.workspace = true
 
 [dependencies]
 kanvibe-diagram.workspace = true
+html5ever = "0.27"
+markup5ever_rcdom = "0.3"
 pulldown-cmark = { version = "0.13", default-features = false }

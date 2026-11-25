@@ -68,8 +68,13 @@ impl DiagramRasterizer for NativeRasterizer {
         &self,
         input: &MobileDiagramInput,
     ) -> Result<(Vec<u8>, Option<u32>), MobileDiagramError> {
-        let scene = crate::render_scene(&input.definition, input.theme, &self.fonts)
-            .map_err(|_| MobileDiagramError::new(422, SYNTAX_MESSAGE))?;
+        let scene = crate::render_scene(
+            &input.definition,
+            input.theme,
+            crate::LabelMode::Html,
+            &self.fonts,
+        )
+        .map_err(|_| MobileDiagramError::new(422, SYNTAX_MESSAGE))?;
         let palette = Palette::for_theme(input.theme);
         let (pixmap, layout) =
             raster::rasterize_mobile(&scene, &self.fonts, palette.page_background, input.width)

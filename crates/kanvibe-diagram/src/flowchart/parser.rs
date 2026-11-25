@@ -6,6 +6,7 @@
 
 use std::collections::HashMap;
 
+use super::render::CustomMarker;
 use crate::DiagramError;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -17,7 +18,7 @@ pub enum Direction {
 }
 
 impl Direction {
-    fn parse(value: &str) -> Option<Self> {
+    pub(crate) fn parse(value: &str) -> Option<Self> {
         match value {
             "TB" | "TD" => Some(Self::TopBottom),
             "BT" => Some(Self::BottomTop),
@@ -52,6 +53,10 @@ pub enum ArrowType {
     Point,
     Circle,
     Cross,
+    /// stateDiagram 전이 끝의 barb 화살표(flowchart 문법에는 없다)
+    Barb,
+    /// 다른 다이어그램이 정의한 표식(erDiagram 관계 차수, requirementDiagram 화살표 등)
+    Custom(&'static CustomMarker),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -60,6 +65,8 @@ pub enum Stroke {
     Thick,
     Dotted,
     Invisible,
+    /// stateDiagram 메모 간선의 `stroke-dasharray: 5`(flowchart 문법에는 없다)
+    Dashed,
 }
 
 #[derive(Clone, Debug)]

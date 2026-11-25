@@ -1,10 +1,12 @@
 //! parity/diagrams/baseline/*.mmd를 모바일 경로(폭 800, 라이트·다크)로 그려 비교용 PNG를 남긴다.
 //!
 //! `cargo run -p kanvibe-diagram --example render_parity -- <출력 디렉터리> [id ...]`
+//! 모바일 경로(HTML 라벨)는 `<id>--<theme>.png`, 데스크톱 경로(SVG 글자 라벨)는 `<id>--desktop--<theme>.png`로 남긴다.
 //! 출력은 `parity/tools/screens/diff.py --dirs parity/diagrams/baseline <출력 디렉터리>`로 비교한다.
 
 use std::path::{Path, PathBuf};
 
+use kanvibe_diagram::LabelMode;
 use kanvibe_diagram::raster;
 use kanvibe_diagram::text::FontBook;
 use kanvibe_diagram::theme::{Palette, Theme};
@@ -48,8 +50,14 @@ fn render_source(
     out_dir: &Path,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let definition = std::fs::read_to_string(source)?;
-    for (theme, name) in [(Theme::Light, "light"), (Theme::Dark, "dark")] {
-        let scene = match kanvibe_diagram::render_scene(definition.trim(), theme, fonts) {
+    let variants = [
+        (LabelMode::Html, Theme::Light, "light"),
+        (LabelMode::Html, Theme::Dark, "dark"),
+        (LabelMode::SvgText, Theme::Light, "desktop--light"),
+        (LabelMode::SvgText, Theme::Dark, "desktop--dark"),
+    ];
+    for (mode, theme, name) in variants {
+        let scene = match kanvibe_diagram::render_scene(definition.trim(), theme, mode, fonts) {
             Ok(scene) => scene,
             Err(error) => {
                 println!("{id}--{name}: {error}");

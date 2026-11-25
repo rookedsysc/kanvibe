@@ -1,9 +1,9 @@
 //! pie 다이어그램(pieRenderer.ts). 450×450 원판, 반지름 185, 조각 글자는 반지름 0.75 위치, 오른쪽 범례.
 
-use crate::DiagramError;
 use crate::scene::{Color, PathCommand, Point, Scene, StrokeStyle, TextItem, polygon};
 use crate::text::{FontBook, FontWeight};
-use crate::theme::{Palette, PiePalette};
+use crate::theme::PiePalette;
+use crate::{DiagramError, RenderContext};
 
 const HEIGHT: f64 = 450.0;
 const MARGIN: f64 = 40.0;
@@ -126,17 +126,16 @@ fn centered_text(
         font_size,
         weight: FontWeight::Regular,
         color,
+        rotation: None,
     }
 }
 
-pub fn render(
-    definition: &str,
-    fonts: &FontBook,
-    palette: &Palette,
-) -> Result<Scene, DiagramError> {
+pub fn render(definition: &str, context: &RenderContext) -> Result<Scene, DiagramError> {
+    let (fonts, palette) = (context.fonts, context.palette);
     let chart = parse(definition)?;
     let colors = &palette.pie;
     let mut scene = Scene {
+        is_start_aligned: false,
         width: 0.0,
         height: HEIGHT,
         items: Vec::new(),
@@ -296,6 +295,7 @@ fn draw_legend(
             font_size: SECTION_TEXT_SIZE,
             weight: FontWeight::Regular,
             color: text_color,
+            rotation: None,
         });
     }
     longest

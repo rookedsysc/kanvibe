@@ -1,0 +1,17 @@
+sequenceDiagram
+    autonumber 10 5
+    participant A as Client<br/>App
+    actor B as Operator
+    participant C
+    A->>B: first line<br>second line
+    Note over B: single over<br/>two lines
+    loop retry until done
+        B-)C: poll
+        opt has work
+            C--)B: job
+            B->>B: process
+        end
+    end
+    autonumber off
+    C-->>A: result
+    Note right of C: right of last

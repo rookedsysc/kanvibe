@@ -1,0 +1,12 @@
+classDiagram
+    class Warm:::hot {
+        +int degrees
+    }
+    class Cold
+    class Plain
+    cssClass "Cold" chill
+    classDef hot fill:#f96,stroke:#333,stroke-width:3px,color:#fff
+    classDef chill fill:#bbf,stroke:#06c,stroke-dasharray:5 5
+    style Plain fill:#efe,stroke:#393,color:#030
+    Warm --> Cold
+    Cold --> Plain

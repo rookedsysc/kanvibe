@@ -1,0 +1,17 @@
+requirementDiagram
+    functionalRequirement parent_req {
+    id: 1.1
+    text: "parent text"
+    risk: low
+    verifymethod: inspection
+    }
+    designConstraint child {
+    id: 2
+    }
+    element doc {
+    type: word
+    docref: reqs/doc
+    }
+    parent_req - contains -> child
+    child <- derives - doc
+    doc - traces -> parent_req

@@ -32,6 +32,8 @@ pub fn hsl(hue: f64, saturation: f64, lightness: f64) -> Color {
 
 #[derive(Clone, Debug)]
 pub struct Palette {
+    /// 다이어그램 종류별 색을 고를 때 쓴다
+    pub theme: Theme,
     /// 모바일 이미지 배경(diagram-worker body)
     pub page_background: Color,
     pub text: Color,
@@ -68,6 +70,7 @@ impl Palette {
 
 fn light_palette() -> Palette {
     Palette {
+        theme: Theme::Light,
         page_background: Color::rgb(255, 255, 255),
         text: Color::rgb(0x33, 0x33, 0x33),
         node_fill: Color::rgb(0xEC, 0xEC, 0xFF),
@@ -85,6 +88,7 @@ fn light_palette() -> Palette {
 fn dark_palette() -> Palette {
     let light_grey = Color::rgb(211, 211, 211);
     Palette {
+        theme: Theme::Dark,
         page_background: Color::rgb(0x11, 0x12, 0x16),
         text: Color::rgb(0xCC, 0xCC, 0xCC),
         node_fill: Color::rgb(0x1F, 0x20, 0x20),

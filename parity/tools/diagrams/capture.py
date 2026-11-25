@@ -3,6 +3,8 @@
 
 parity/diagrams/baseline/<id>.mmd 마다 light·dark 두 테마로 빌드된 renderDiagramInDesktop()을 불러
 JPEG를 받고, 픽셀 비교용 PNG(<id>--<theme>.png)와 좌표 확인용 SVG(<id>--<theme>.svg)를 남긴다.
+데스크톱 화면(AiSessionMessageContent)은 `htmlLabels: false`(SVG 글자 라벨)로 그리므로, 같은 워커에 같은 설정을
+init 지시문으로 넘겨 `<id>--desktop--<theme>`도 함께 남긴다. 설정 키가 같고 `secure` 목록에 없어 initialize와 같게 먹는다.
 Electron은 xvfb-run 아래에서 격리된 KANVIBE_APP_DATA_DIR·HOME·FONTCONFIG_FILE을 받은 자식 프로세스로만 돈다.
 필요한 것: xvfb-run, 저장소 node_modules(Electron), `pnpm build` 산출물(build/), Pillow.
 """
@@ -26,6 +28,8 @@ from fontconfig import write_pinned_fontconfig  # noqa: E402
 
 DEFAULT_WIDTH = 800
 THEMES = ("light", "dark")
+# 데스크톱 렌더러의 mermaid.initialize({ htmlLabels: false })와 같은 설정
+DESKTOP_DIRECTIVE = '%%{init: {"htmlLabels": false}}%%'
 
 
 def prepare_app_dir(work_dir: Path) -> Path:
@@ -42,6 +46,16 @@ def prepare_app_dir(work_dir: Path) -> Path:
     return app_dir
 
 
+def with_desktop_directive(definition: str) -> str:
+    """YAML 앞머리는 정의 맨 앞에 있어야 하므로 지시문을 그 뒤에 넣는다."""
+    lines = definition.split("\n")
+    if lines[0].strip() == "---":
+        closing = next((index for index in range(1, len(lines)) if lines[index].strip() == "---"), None)
+        if closing is not None:
+            return "\n".join([*lines[: closing + 1], DESKTOP_DIRECTIVE, *lines[closing + 1 :]])
+    return f"{DESKTOP_DIRECTIVE}\n{definition}"
+
+
 def build_entries(only: set[str] | None, width: int) -> list[dict]:
     entries = []
     for source in sorted(BASELINE_DIR.glob("*.mmd")):
@@ -49,6 +63,11 @@ def build_entries(only: set[str] | None, width: int) -> list[dict]:
             continue
         definition = source.read_text(encoding="utf-8").strip()
         entries.extend({"id": source.stem, "definition": definition, "theme": theme, "width": width} for theme in THEMES)
+        desktop_definition = with_desktop_directive(definition)
+        entries.extend(
+            {"id": f"{source.stem}--desktop", "definition": desktop_definition, "theme": theme, "width": width}
+            for theme in THEMES
+        )
     return entries
 
 

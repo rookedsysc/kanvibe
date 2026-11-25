@@ -2,10 +2,12 @@
 //! 폭 `width - 16`과 높이 2384px 중 작은 배율, 위아래 8px)로 그리고 PNG·JPEG로 인코딩한다.
 
 use tiny_skia::{
-    FillRule, LineCap, LineJoin, Paint, PathBuilder, Pixmap, Stroke, StrokeDash, Transform,
+    FillRule, LineCap, LineJoin, Mask, Paint, PathBuilder, Pixmap, PixmapPaint, Rect, Stroke,
+    StrokeDash, Transform,
 };
 
-use crate::scene::{Color, PathCommand, PathItem, Scene, SceneItem, TextItem};
+use crate::hinting::VerticalHinting;
+use crate::scene::{ClipItem, Color, PathCommand, PathItem, Rotation, Scene, SceneItem, TextItem};
 use crate::text::FontBook;
 
 /// 워커 body padding
@@ -46,14 +48,24 @@ pub struct MobileLayout {
 /// diagramWorker/main.ts의 배율·크기 계산
 pub fn mobile_layout(scene: &Scene, width: u32) -> MobileLayout {
     let content_width = f64::from(width) - PAGE_PADDING * 2.0;
-    let scale = (content_width / scene.width).min(MAX_DIAGRAM_HEIGHT / scene.height);
-    let actual_width = (scene.width * scale).floor().max(1.0);
-    let actual_height = (scene.height * scale).floor().max(1.0);
-    // preserveAspectRatio xMidYMid meet: viewBox를 실제 크기 안에 가운데 맞춘다
+    // 워커는 viewBox.baseVal(float32)로 배율과 내림을 계산하므로 784/w·w가 783.999…(783)로 떨어지기도 한다
+    let natural_width = f64::from(scene.width as f32);
+    let natural_height = f64::from(scene.height as f32);
+    let scale = (content_width / natural_width).min(MAX_DIAGRAM_HEIGHT / natural_height);
+    let actual_width = (natural_width * scale).floor().max(1.0);
+    let actual_height = (natural_height * scale).floor().max(1.0);
     let fit = (actual_width / scene.width).min(actual_height / scene.height);
-    let left = PAGE_PADDING + (content_width - actual_width) / 2.0;
-    let offset_x = left + (actual_width - scene.width * fit) / 2.0;
-    let offset_y = PAGE_PADDING + (actual_height - scene.height * fit) / 2.0;
+    // Chromium은 margin:auto로 가운데 둔 SVG 상자를 장치 픽셀에 맞춘다(남는 폭이 홀수면 0.5px 대신 1px)
+    let left = (PAGE_PADDING + (content_width - actual_width) / 2.0).round();
+    // preserveAspectRatio: 보통은 xMidYMid meet로 가운데, journey처럼 xMinYMin이면 왼쪽 위에 둔다
+    let (offset_x, offset_y) = if scene.is_start_aligned {
+        (left, PAGE_PADDING)
+    } else {
+        (
+            left + (actual_width - scene.width * fit) / 2.0,
+            PAGE_PADDING + (actual_height - scene.height * fit) / 2.0,
+        )
+    };
     let image_height = ((actual_height + PAGE_PADDING * 2.0).ceil() as u32).min(MAX_IMAGE_HEIGHT);
     MobileLayout {
         placement: Placement {
@@ -131,29 +143,57 @@ fn draw_path(pixmap: &mut Pixmap, item: &PathItem, transform: Transform) {
     pixmap.stroke_path(&path, &paint_for(style.color), &stroke, transform, None);
 }
 
-/// Noto Sans x-height(글꼴 단위 1000 기준)
-const X_HEIGHT_RATIO: f64 = 0.536;
-
-/// FreeType hintslight처럼 세로 방향만 맞춘다: 기준선을 장치 픽셀에 두고 x-height가 정수 픽셀이 되게
-/// 세로 배율을 고친다. 가로 글리프 위치는 부분 픽셀 그대로 둔다(맞추면 기준 이미지와 더 멀어진다)
-fn glyph_transform(item: &TextItem, glyph_x: f64, placement: Placement) -> Transform {
+/// 한글처럼 대체 얼굴로 넘어간 글리프는 FreeType CJK autofit이 라틴 청색 영역을 쓰지 않으므로 기준선만
+/// 장치 픽셀에 맞춘다. 가로 글리프 위치는 부분 픽셀 그대로 둔다(맞추면 기준 이미지와 더 멀어진다)
+fn fallback_glyph_transform(item: &TextItem, glyph_x: f64, placement: Placement) -> Transform {
     let baseline = (item.baseline * placement.scale + placement.offset_y).round();
     let origin_x = (item.x + glyph_x) * placement.scale + placement.offset_x;
-    let x_height = X_HEIGHT_RATIO * item.font_size * placement.scale;
-    let vertical = if x_height >= 1.0 {
-        x_height.round() / x_height
-    } else {
-        1.0
+    let scale = placement.scale as f32;
+    Transform::from_row(scale, 0.0, 0.0, scale, origin_x as f32, baseline as f32)
+}
+
+/// 라틴 글리프는 장치 크기로 키운 윤곽선에 autofit 세로 사상을 입힌 뒤 기준선(장치 픽셀)에 둔다
+fn draw_hinted_glyph(
+    pixmap: &mut Pixmap,
+    outline: &tiny_skia::Path,
+    paint: &Paint,
+    item: &TextItem,
+    glyph_x: f64,
+    placement: Placement,
+) {
+    let scale = placement.scale as f32;
+    let Some(device) = outline
+        .clone()
+        .transform(Transform::from_scale(scale, scale))
+    else {
+        return;
     };
-    let scale = placement.scale;
-    Transform::from_row(
-        scale as f32,
-        0.0,
-        0.0,
-        (scale * vertical) as f32,
-        origin_x as f32,
-        baseline as f32,
-    )
+    let hinting = VerticalHinting::for_size(item.font_size * placement.scale);
+    let Some(hinted) = hinting.apply(&device) else {
+        return;
+    };
+    let baseline = (item.baseline * placement.scale + placement.offset_y).round();
+    let origin_x = (item.x + glyph_x) * placement.scale + placement.offset_x;
+    let origin = Transform::from_translate(origin_x as f32, baseline as f32);
+    pixmap.fill_path(&hinted, paint, FillRule::Winding, origin, None);
+}
+
+/// 돌린 글자는 힌팅 없이 장면 좌표에서 돌린 뒤 배치한다
+fn rotated_glyph_transform(
+    item: &TextItem,
+    glyph_x: f64,
+    rotation: Rotation,
+    placement: Placement,
+) -> Transform {
+    let glyph_origin = Transform::from_translate((item.x + glyph_x) as f32, item.baseline as f32);
+    let turn = Transform::from_rotate_at(
+        rotation.degrees as f32,
+        rotation.center.x as f32,
+        rotation.center.y as f32,
+    );
+    glyph_origin
+        .post_concat(turn)
+        .post_concat(placement.transform())
 }
 
 fn draw_text(pixmap: &mut Pixmap, fonts: &FontBook, item: &TextItem, placement: Placement) {
@@ -163,25 +203,76 @@ fn draw_text(pixmap: &mut Pixmap, fonts: &FontBook, item: &TextItem, placement: 
         let Some(outline) = fonts.glyph_outline(glyph, item.font_size) else {
             continue;
         };
-        pixmap.fill_path(
-            &outline,
-            &paint,
-            FillRule::Winding,
-            glyph_transform(item, glyph.x, placement),
-            None,
-        );
+        let transform = match item.rotation {
+            Some(rotation) => rotated_glyph_transform(item, glyph.x, rotation, placement),
+            None if fonts.is_primary_face(glyph.face_index) => {
+                draw_hinted_glyph(pixmap, &outline, &paint, item, glyph.x, placement);
+                continue;
+            }
+            None => fallback_glyph_transform(item, glyph.x, placement),
+        };
+        pixmap.fill_path(&outline, &paint, FillRule::Winding, transform, None);
     }
 }
 
 /// 장면을 배치대로 이미 배경을 칠한 픽스맵 위에 그린다
 pub fn draw_scene(pixmap: &mut Pixmap, scene: &Scene, fonts: &FontBook, placement: Placement) {
+    draw_items(pixmap, &scene.items, fonts, placement);
+}
+
+fn draw_items(pixmap: &mut Pixmap, items: &[SceneItem], fonts: &FontBook, placement: Placement) {
     let transform = placement.transform();
-    for item in &scene.items {
+    for item in items {
         match item {
             SceneItem::Path(path) => draw_path(pixmap, path, transform),
             SceneItem::Text(text) => draw_text(pixmap, fonts, text, placement),
+            SceneItem::Clip(clip) => draw_clipped(pixmap, clip, fonts, placement),
         }
     }
+}
+
+/// 잘라 낼 사각형을 덮는 장치 픽셀 영역에 따로 그린 뒤, 사각형(가장자리는 부분 덮임) 밖을 지우고 합친다
+fn draw_clipped(pixmap: &mut Pixmap, clip: &ClipItem, fonts: &FontBook, placement: Placement) {
+    let device_x = clip.x * placement.scale + placement.offset_x;
+    let device_y = clip.y * placement.scale + placement.offset_y;
+    let (left, top) = (device_x.floor(), device_y.floor());
+    let right = (device_x + clip.width * placement.scale).ceil();
+    let bottom = (device_y + clip.height * placement.scale).ceil();
+    let (Some(mut layer), Some(mut mask)) = (
+        Pixmap::new((right - left) as u32, (bottom - top) as u32),
+        Mask::new((right - left) as u32, (bottom - top) as u32),
+    ) else {
+        return;
+    };
+    let local = Placement {
+        offset_x: placement.offset_x - left,
+        offset_y: placement.offset_y - top,
+        ..placement
+    };
+    draw_items(&mut layer, &clip.items, fonts, local);
+    let Some(rect) = Rect::from_xywh(
+        (device_x - left) as f32,
+        (device_y - top) as f32,
+        (clip.width * placement.scale) as f32,
+        (clip.height * placement.scale) as f32,
+    ) else {
+        return;
+    };
+    let mut builder = PathBuilder::new();
+    builder.push_rect(rect);
+    if let Some(path) = builder.finish() {
+        mask.fill_path(&path, FillRule::Winding, true, Transform::identity());
+    }
+    layer.apply_mask(&mask);
+    let paint = PixmapPaint::default();
+    pixmap.draw_pixmap(
+        left as i32,
+        top as i32,
+        layer.as_ref(),
+        &paint,
+        Transform::identity(),
+        None,
+    );
 }
 
 /// 모바일 이미지 크기의 픽스맵에 배경과 장면을 그린다

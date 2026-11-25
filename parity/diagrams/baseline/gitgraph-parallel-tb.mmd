@@ -1,0 +1,10 @@
+%%{init: {"gitGraph": {"parallelCommits": true, "rotateCommitLabel": false}}}%%
+gitGraph TB:
+    commit id: "root"
+    branch develop
+    commit id: "dev-a" tag: "rc"
+    commit id: "dev-b"
+    checkout main
+    commit id: "main-a"
+    merge develop id: "merge-1"
+    commit id: "tip"

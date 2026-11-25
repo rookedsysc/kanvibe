@@ -1,0 +1,22 @@
+stateDiagram-v2
+    [*] --> Idle
+    Idle --> Working : start
+    state Working {
+        [*] --> Fetch
+        Fetch --> Build
+        Build --> [*]
+    }
+    Working --> Check
+    state Check <<choice>>
+    Check --> Done : ok
+    Check --> Failed : error
+    state Split <<fork>>
+    state Merge <<join>>
+    Failed --> Split
+    Split --> RetryA
+    Split --> RetryB
+    RetryA --> Merge
+    RetryB --> Merge
+    Merge --> Idle
+    note right of Failed : retries twice
+    Done --> [*]

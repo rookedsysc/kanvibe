@@ -1,0 +1,12 @@
+classDiagram
+    class Model {
+        +__init__(self)
+        +**bold** name
+        +_hidden_ field
+        +snake_case_value
+        +maybe()* Result~T~
+        +shared()$ int
+    }
+    class View
+    Model --> View : *renders* **twice**
+    Model "0..*" -- "1" View

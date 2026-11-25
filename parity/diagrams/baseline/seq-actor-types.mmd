@@ -1,0 +1,17 @@
+sequenceDiagram
+    participant P as Plain
+    participant B@{ "type": "boundary" }
+    participant C@{ "type": "control" }
+    participant E@{ "type": "entity", "alias": "Order" }
+    participant D@{ "type": "database" }
+    participant L@{ "type": "collections" }
+    participant Q@{ "type": "queue" }
+    actor U as User
+    U->>P: request
+    P->>B: forward
+    B->>C: route
+    C->>E: load
+    E->>D: query
+    D-->>L: rows
+    L-)Q: enqueue
+    Q-->>U: done

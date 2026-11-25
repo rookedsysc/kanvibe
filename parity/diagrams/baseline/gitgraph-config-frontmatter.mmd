@@ -1,0 +1,19 @@
+---
+title: Parallel release
+config:
+  gitGraph:
+    showCommitLabel: false
+    mainBranchOrder: 2
+    parallelCommits: true
+---
+gitGraph
+    commit id: "A"
+    branch develop
+    commit id: "B"
+    commit id: "C"
+    checkout main
+    commit id: "D"
+    branch hotfix order: 1
+    commit id: "E"
+    checkout main
+    merge develop

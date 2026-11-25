@@ -1,0 +1,12 @@
+sequenceDiagram
+    autonumber
+    participant A
+    participant B
+    participant C
+    A->>()B: target
+    B()->>C: source
+    A()<<->>()C: both bidirectional
+    C/|-A: reverse half
+    C()/|-()A: reverse with circles
+    B<<->>A: bidirectional back
+    A-|\A: self half

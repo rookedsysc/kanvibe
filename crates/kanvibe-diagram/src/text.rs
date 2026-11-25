@@ -18,6 +18,10 @@ const LAYOUT_UNIT_SCALE: f64 = 64.0;
 pub enum FontWeight {
     Regular,
     Bold,
+    /// 보통 굵기의 이탤릭 얼굴(`font-style: italic`). 이탤릭 얼굴이 없는 family는 보통 얼굴을 쓴다
+    Italic,
+    /// 굵은 이탤릭 얼굴
+    BoldItalic,
 }
 
 #[derive(Clone)]
@@ -26,6 +30,7 @@ struct FontFace {
     index: u32,
     rank: usize,
     is_bold: bool,
+    is_italic: bool,
 }
 
 /// 글자별 대체 순서대로 쌓은 글꼴 묶음
@@ -55,6 +60,26 @@ pub struct ShapedLine {
 pub struct LineMetrics {
     pub ascent: f64,
     pub descent: f64,
+}
+
+/// SVG `<text>`가 `getBBox()`로 돌려주는 가로 범위(px, 글자 시작점 기준).
+///
+/// Chromium은 SVG 글자 상자를 글자 진행 폭과 글리프 잉크 상자의 합집합으로 잡는다. 잉크 상자는 Skia가 글리프를
+/// 그릴 때 쓰는 정수 픽셀 경계(왼쪽 내림, 오른쪽 올림)라서 'A'·'y'·'r'처럼 끝 글자 잉크가 진행 폭에 붙은 줄은
+/// 진행 폭보다 최대 1px 넓어진다. 진행 폭은 `tspan` 글자 노드마다 레이아웃 단위로 올림해 더한다
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct SvgTextExtent {
+    /// `getComputedTextLength()`와 같은 진행 폭
+    pub advance: f64,
+    pub left: f64,
+    pub right: f64,
+}
+
+impl SvgTextExtent {
+    /// `getBBox().width`
+    pub fn width(&self) -> f64 {
+        self.right - self.left
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -104,6 +129,7 @@ impl FontBook {
                     continue;
                 };
                 let is_bold = face.is_bold();
+                let is_italic = face.is_italic();
                 ranked.push((
                     rank,
                     FontFace {
@@ -111,11 +137,12 @@ impl FontBook {
                         index,
                         rank,
                         is_bold,
+                        is_italic,
                     },
                 ));
             }
         }
-        ranked.sort_by_key(|(rank, face)| (*rank, face.is_bold));
+        ranked.sort_by_key(|(rank, face)| (*rank, face.is_bold, face.is_italic));
         let has_sans = ranked.iter().any(|(rank, _)| *rank == 0);
         let has_cjk = ranked.iter().any(|(rank, _)| *rank == 1);
         if !has_sans || !has_cjk {
@@ -150,13 +177,18 @@ impl FontBook {
         Face::from_slice(&face.data, face.index)
     }
 
-    /// 굵기에 맞는 얼굴만 남긴 대체 순서. 굵은 얼굴이 없는 family는 보통 얼굴을 쓴다
+    /// 굵기·기울임에 맞는 얼굴만 남긴 대체 순서. 맞는 얼굴이 없는 family는 보통 얼굴을 쓴다
     fn candidates(&self, weight: FontWeight) -> Vec<usize> {
-        let wants_bold = weight == FontWeight::Bold;
+        let wants_bold = matches!(weight, FontWeight::Bold | FontWeight::BoldItalic);
+        let wants_italic = matches!(weight, FontWeight::Italic | FontWeight::BoldItalic);
         let mut chosen: Vec<usize> = Vec::new();
         for (index, face) in self.faces.iter().enumerate() {
             match chosen.last_mut() {
-                Some(last) if self.faces[*last].rank == face.rank && face.is_bold == wants_bold => {
+                Some(last)
+                    if self.faces[*last].rank == face.rank
+                        && face.is_bold == wants_bold
+                        && face.is_italic == wants_italic =>
+                {
                     *last = index
                 }
                 Some(last) if self.faces[*last].rank == face.rank => {}
@@ -234,6 +266,33 @@ impl FontBook {
         snap_layout_unit(self.shape_line(text, font_size, weight).width)
     }
 
+    /// 이어 붙은 글자 노드(`tspan`)들을 SVG 글자로 잰다. 글자 노드 하나짜리 `<text>`면 `runs`가 한 개다
+    pub fn measure_svg_runs(
+        &self,
+        runs: &[&str],
+        font_size: f64,
+        weight: FontWeight,
+    ) -> SvgTextExtent {
+        let mut extent = SvgTextExtent::default();
+        for run in runs {
+            let line = self.shape_line(run, font_size, weight);
+            for glyph in &line.glyphs {
+                let Some(bounds) = self
+                    .glyph_outline(glyph, font_size)
+                    .map(|path| path.bounds())
+                else {
+                    continue;
+                };
+                let origin = extent.advance + glyph.x;
+                extent.left = extent.left.min(origin + f64::from(bounds.left()).floor());
+                extent.right = extent.right.max(origin + f64::from(bounds.right()).ceil());
+            }
+            extent.advance += snap_layout_unit(line.width);
+        }
+        extent.right = extent.right.max(extent.advance);
+        extent
+    }
+
     /// 첫 얼굴(Noto Sans)의 세로 지표. 줄 높이가 고정이면 대체 글꼴은 줄 상자를 바꾸지 않는다
     pub fn primary_metrics(&self, font_size: f64) -> LineMetrics {
         let Some(face) = self.parse_face(0) else {
@@ -247,6 +306,11 @@ impl FontBook {
             ascent: (f64::from(face.ascender()) * scale).round(),
             descent: (f64::from(-face.descender()) * scale).round(),
         }
+    }
+
+    /// 글리프가 첫 얼굴(Noto Sans)의 것인지. 라틴 x-height 맞춤은 이 얼굴 글리프에만 쓴다
+    pub fn is_primary_face(&self, face_index: usize) -> bool {
+        self.faces[face_index].rank == 0
     }
 
     /// 글리프 윤곽선을 원점 기준 px 좌표(y는 아래로 증가)로 돌려준다
@@ -330,6 +394,26 @@ pub(crate) mod tests {
             10.234375
         );
         assert_eq!(fonts.measure_line("B", 16.0, FontWeight::Regular), 10.40625);
+    }
+
+    #[test]
+    fn svg_글자_상자는_끝_글자_잉크를_정수_픽셀로_넣는다() {
+        let fonts = bundled_fonts();
+        // fc-*--desktop 기준 SVG의 라벨 getBBox 폭
+        let single = fonts.measure_svg_runs(&["A"], 16.0, FontWeight::Regular);
+        assert_eq!(single.width(), 11.0);
+        let words = fonts.measure_svg_runs(
+            &["Istio", " gateway", " Service"],
+            16.0,
+            FontWeight::Regular,
+        );
+        assert_eq!(words.width(), 157.40625);
+        let overhang = fonts.measure_svg_runs(&["Start"], 16.0, FontWeight::Regular);
+        assert!(
+            (overhang.width() - 36.144_058).abs() < 0.02,
+            "{}",
+            overhang.width()
+        );
     }
 
     #[test]

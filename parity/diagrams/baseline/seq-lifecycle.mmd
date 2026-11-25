@@ -1,0 +1,14 @@
+sequenceDiagram
+    participant Alice
+    participant Bob
+    Alice->>Bob: Hello Bob
+    create participant Carl
+    Alice->>Carl: Hi Carl
+    create actor D as Donald
+    Carl->>D: Hi
+    Note over Carl,D: both created
+    destroy Carl
+    Alice-xCarl: We are too many
+    destroy Bob
+    Bob->>Alice: I agree
+    D-->>Alice: bye

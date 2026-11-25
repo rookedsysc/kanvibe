@@ -5,13 +5,14 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use super::clusters::{ClusterContext, find_non_cluster_child};
+use super::geometry::{BoundaryBox, is_coordinate_in_path};
 use super::geometry::{
     apply_line_offsets, curve_basis, cut_path_at_intersect, fix_corners, path_bounds,
     polyline_midpoint,
 };
 use super::parser::{ArrowType, Direction};
-use super::render::{Bounds, Group, draw_cluster, draw_edge, draw_edge_label, draw_node};
-use super::{FlowEdge, FlowNode, FlowRender};
+use super::render::{Bounds, Group};
+use super::{FlowEdge, FlowNode};
 use crate::dagre::{self, DagreInput, GraphConfig, LabelPos, LayoutEdge, LayoutNode, RankDir};
 use crate::graph::{EdgeKey, Graph};
 use crate::scene::{PathCommand, Point};
@@ -66,9 +67,49 @@ fn to_rankdir(direction: Direction) -> RankDir {
     }
 }
 
+/// recursiveRender가 그리는 요소별 그리기. flowchart는 [`super::FlowRender`]가, 같은 dagre 단계를 쓰는
+/// 다른 다이어그램(classDiagram 등)은 자기 모양으로 구현한다
+pub trait LevelPainter {
+    /// dagre 복합 노드로 남은 클러스터 상자를 그리고 간선 자르기에 쓸 경계를 돌려준다
+    fn draw_cluster(&self, group: &mut Group, flow: &FlowNode, node: &LevelNode) -> BoundaryBox;
+    /// 간선 하나와 그 라벨. `key`는 자기 간선 조각처럼 그래프 간선이 원래 간선과 다를 때 쓴다
+    fn draw_edge(
+        &self,
+        edges: &mut Group,
+        labels: &mut Group,
+        key: &EdgeKey,
+        edge: &FlowEdge,
+        route: &EdgeRoute,
+    );
+    fn draw_node(&self, group: &mut Group, flow: &FlowNode, center: Point);
+}
+
+/// insertEdge가 받는 점들: 노드 교점·클러스터 자르기를 마친 점, dagre가 준 점과 라벨 자리
+pub struct EdgeRoute<'a> {
+    pub points: Vec<Point>,
+    pub dagre_points: &'a [Point],
+    pub dagre_label: Option<Point>,
+    /// 클러스터 경계에서 잘렸는지(pointsHasChanged)
+    pub is_cut: bool,
+}
+
+impl EdgeRoute<'_> {
+    /// positionEdgeLabel: 점이 바뀌었으면(클러스터 자르기, 또는 가운데 점 좌표가 경로 문자열에 없으면)
+    /// 고친 점들과 그 가운데를, 아니면 dagre 점들과 dagre 라벨 자리를 쓴다
+    pub fn label_placement(&self, commands: &[PathCommand]) -> (&[Point], Point) {
+        let middle = self.points.get(self.points.len() / 2);
+        let is_changed =
+            self.is_cut || middle.is_some_and(|point| !is_coordinate_in_path(*point, commands));
+        match self.dagre_label {
+            Some(position) if !is_changed => (self.dagre_points, position),
+            _ => (&self.points, polyline_midpoint(&self.points)),
+        }
+    }
+}
+
 /// recursiveRender. `parent_cluster`는 떼어 낸 subgraph를 그릴 때 그 subgraph의 데이터다
 pub fn render_level(
-    render: &FlowRender,
+    render: &dyn LevelPainter,
     level: &mut Level,
     context: &mut ClusterContext,
     parent_cluster: Option<(&str, Rc<FlowNode>)>,
@@ -118,7 +159,7 @@ fn wrap_in_parent_cluster(level: &mut Level, cluster_id: &str, cluster_data: &Rc
 }
 
 fn render_cluster_node(
-    render: &FlowRender,
+    render: &dyn LevelPainter,
     level: &mut Level,
     context: &mut ClusterContext,
     v: &str,
@@ -167,10 +208,11 @@ fn dagre_input(level: &Level) -> DagreInput {
     }
     for key in level.graph.edges() {
         let edge = &level.graph.edge_by_key(&key).edge;
+        let (label_width, label_height) = edge.label_layout_size();
         let layout_edge = LayoutEdge {
             minlen: edge.minlen,
-            width: edge.label.width,
-            height: edge.label.height,
+            width: label_width,
+            height: label_height,
             labelpos: LabelPos::Center,
             ..LayoutEdge::default()
         };
@@ -226,7 +268,7 @@ fn nodes_by_hierarchy(graph: &Graph<LevelNode, LevelEdge>, nodes: Vec<String>) -
 }
 
 fn paint_level(
-    render: &FlowRender,
+    render: &dyn LevelPainter,
     level: &Level,
     context: &mut ClusterContext,
     nested: Vec<(String, Group)>,
@@ -243,7 +285,7 @@ fn paint_level(
 }
 
 /// dagre 복합 노드로 남은 클러스터 상자. Group.diff에는 노드 순서로 마지막 클러스터의 diff를 남긴다
-fn paint_clusters(render: &FlowRender, level: &Level, context: &mut ClusterContext) -> Group {
+fn paint_clusters(render: &dyn LevelPainter, level: &Level, context: &mut ClusterContext) -> Group {
     let mut clusters = Group::default();
     let mut cluster_diffs: HashMap<String, f64> = HashMap::new();
     for v in nodes_by_hierarchy(&level.graph, level.graph.children(None)) {
@@ -252,7 +294,7 @@ fn paint_clusters(render: &FlowRender, level: &Level, context: &mut ClusterConte
             continue;
         }
         let flow = node.node.clone().expect("cluster data");
-        let boundary = draw_cluster(render, &mut clusters, &flow, node);
+        let boundary = render.draw_cluster(&mut clusters, &flow, node);
         cluster_diffs.insert(v.clone(), clusters.diff);
         context.cluster_boxes.insert(v, boundary);
     }
@@ -265,24 +307,25 @@ fn paint_clusters(render: &FlowRender, level: &Level, context: &mut ClusterConte
     clusters
 }
 
-fn paint_edges(render: &FlowRender, level: &Level, context: &ClusterContext) -> (Group, Group) {
+fn paint_edges(
+    render: &dyn LevelPainter,
+    level: &Level,
+    context: &ClusterContext,
+) -> (Group, Group) {
     let mut edges = Group::default();
     let mut edge_labels = Group::default();
     for (key, points, label_position) in &level.edge_results {
         let label = level.graph.edge_by_key(key);
         let start = level.graph.node(&key.v);
         let end = level.graph.node(&key.w);
-        let (path_points, label_at) =
-            route_edge(context, label, start, end, points, *label_position);
-        draw_edge(render, &mut edges, &label.edge, &path_points);
-        if let Some(position) = label_at {
-            draw_edge_label(render, &mut edge_labels, &label.edge, position);
-        }
+        let mut route = route_edge(context, label, start, end, points);
+        route.dagre_label = *label_position;
+        render.draw_edge(&mut edges, &mut edge_labels, key, &label.edge, &route);
     }
     (edges, edge_labels)
 }
 
-fn paint_nodes(render: &FlowRender, level: &Level, nested: Vec<(String, Group)>) -> Group {
+fn paint_nodes(render: &dyn LevelPainter, level: &Level, nested: Vec<(String, Group)>) -> Group {
     let mut nodes = Group::default();
     let mut nested = nested.into_iter();
     for v in level.graph.nodes() {
@@ -298,7 +341,7 @@ fn paint_nodes(render: &FlowRender, level: &Level, nested: Vec<(String, Group)>)
         if level.graph.children(Some(&v)).is_empty()
             && let Some(flow) = &node.node
         {
-            draw_node(render, &mut nodes, flow, Point::new(node.x, node.y));
+            render.draw_node(&mut nodes, flow, Point::new(node.x, node.y));
         }
     }
     nodes
@@ -329,15 +372,14 @@ fn intersect_with_shapes(start: &LevelNode, end: &LevelNode, route: Vec<Point>) 
     inner
 }
 
-/// insertEdge의 점 처리: 노드 모양 교점, 클러스터 경계 자르기, 라벨 위치
-fn route_edge(
+/// insertEdge의 점 처리: 노드 모양 교점, 클러스터 경계 자르기
+fn route_edge<'a>(
     context: &ClusterContext,
     label: &LevelEdge,
     start: &LevelNode,
     end: &LevelNode,
-    points: &[Point],
-    label_position: Option<Point>,
-) -> (Vec<Point>, Option<Point>) {
+    points: &'a [Point],
+) -> EdgeRoute<'a> {
     let mut route = intersect_with_shapes(start, end, points.to_vec());
     let to_box = label
         .to_cluster
@@ -356,14 +398,12 @@ fn route_edge(
         route.reverse();
     }
     route.retain(|point| !point.y.is_nan());
-    let label_at = if label.edge.label.is_empty() {
-        None
-    } else if to_box.is_some() || from_box.is_some() {
-        Some(polyline_midpoint(&route))
-    } else {
-        label_position
-    };
-    (route, label_at)
+    EdgeRoute {
+        points: route,
+        dagre_points: points,
+        dagre_label: None,
+        is_cut: to_box.is_some() || from_box.is_some(),
+    }
 }
 
 /// 간선 경로: 모서리 보정 → 화살표 자리 보정 → curveBasis

@@ -1,0 +1,13 @@
+C4Container
+    title Container diagram for KanVibe
+    Person(user, "Developer", "Uses the board")
+    System_Boundary(kv, "KanVibe") {
+        Container(app, "Desktop App", "Rust, GPUI", "Kanban board UI")
+        ContainerDb(db, "Database", "SQLite", "Tasks and settings")
+        ContainerQueue(queue, "Hook Queue", "Channel", "Agent events")
+    }
+    Container_Ext(gh, "GitHub API", "REST")
+    Rel(user, app, "Uses")
+    Rel(app, db, "Reads/writes", "SQL")
+    BiRel(app, queue, "Events")
+    Rel_Back(gh, app, "Webhooks")

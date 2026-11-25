@@ -1,0 +1,9 @@
+C4Deployment
+    title Deployment
+    Deployment_Node(mac, "Developer Mac", "macOS 15") {
+        Deployment_Node(app, "KanVibe.app", "GPUI") {
+            Container(ui, "Board", "Rust")
+        }
+        ContainerDb(sqlite, "SQLite", "file")
+    }
+    Rel(ui, sqlite, "SQL")

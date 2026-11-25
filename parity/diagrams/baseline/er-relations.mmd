@@ -1,0 +1,9 @@
+erDiagram
+    CUSTOMER ||--o{ ORDER : places
+    ORDER ||--|{ LINE_ITEM : contains
+    CUSTOMER }|..|{ DELIVERY_ADDRESS : uses
+    PRODUCT |o--o| LINE_ITEM : "listed in"
+    CUSTOMER {
+        string name
+        string email UK "login id"
+    }

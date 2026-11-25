@@ -614,9 +614,87 @@ fn cubic_extrema(p0: Point, p1: Point, p2: Point, p3: Point) -> Vec<f64> {
     result
 }
 
+/// utils.isLabelCoordinateInPath: 경로 문자열의 소수를 반올림한 뒤 점의 반올림 좌표가 들어 있는지 본다
+pub fn is_coordinate_in_path(point: Point, commands: &[PathCommand]) -> bool {
+    let rounded = round_decimals(&svg_path_string(commands));
+    let js_round = |value: f64| (value + 0.5).floor() as i64;
+    rounded.contains(&js_round(point.x).to_string())
+        || rounded.contains(&js_round(point.y).to_string())
+}
+
+/// d3 path가 쓰는 `d` 문자열(소수 셋째 자리)
+fn svg_path_string(commands: &[PathCommand]) -> String {
+    let format = |point: &Point| format!("{},{}", format_number(point.x), format_number(point.y));
+    commands
+        .iter()
+        .map(|command| match command {
+            PathCommand::MoveTo(point) => format!("M{}", format(point)),
+            PathCommand::LineTo(point) => format!("L{}", format(point)),
+            PathCommand::QuadTo(control, point) => {
+                format!("Q{},{}", format(control), format(point))
+            }
+            PathCommand::CubicTo(first, second, point) => {
+                format!("C{},{},{}", format(first), format(second), format(point))
+            }
+            PathCommand::Close => "Z".to_string(),
+        })
+        .collect()
+}
+
+fn format_number(value: f64) -> String {
+    let rounded = (value * 1000.0).round() / 1000.0;
+    if rounded == 0.0 {
+        "0".to_string()
+    } else {
+        rounded.to_string()
+    }
+}
+
+/// `/(\d+\.\d+)/g`에 걸린 소수를 Math.round한 정수로 바꾼다
+fn round_decimals(data: &str) -> String {
+    let mut output = String::with_capacity(data.len());
+    let mut number = String::new();
+    for character in data.chars() {
+        if character.is_ascii_digit() || character == '.' {
+            number.push(character);
+            continue;
+        }
+        output.push_str(&round_number_token(&number));
+        number.clear();
+        output.push(character);
+    }
+    output.push_str(&round_number_token(&number));
+    output
+}
+
+fn round_number_token(token: &str) -> String {
+    match token.parse::<f64>() {
+        Ok(value) if token.contains('.') => ((value + 0.5).floor() as i64).to_string(),
+        _ => token.to_string(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn 경로_문자열의_소수를_반올림해_좌표를_찾는다() {
+        let commands = vec![
+            PathCommand::MoveTo(Point::new(182.796_875, 175.25)),
+            PathCommand::LineTo(Point::new(182.796_875, 208.0)),
+        ];
+        assert_eq!(svg_path_string(&commands), "M182.797,175.25L182.797,208");
+        assert_eq!(
+            round_decimals("M182.797,175.25L182.797,208"),
+            "M183,175L183,208"
+        );
+        assert!(is_coordinate_in_path(
+            Point::new(182.796_875, 183.0),
+            &commands
+        ));
+        assert!(!is_coordinate_in_path(Point::new(10.0, 30.0), &commands));
+    }
 
     #[test]
     fn 기준_svg와_같은_곡선을_만든다() {
