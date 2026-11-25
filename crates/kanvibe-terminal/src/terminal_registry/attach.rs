@@ -242,7 +242,14 @@ impl TerminalRegistry {
         if !client.is_open() {
             return None;
         }
-        let client_id = lock(&entry.output.sink).register(client, || self.allocate_client_id());
+        let client_id = {
+            let mut sink = lock(&entry.output.sink);
+            // 모바일이 먼저 연 멀티플렉서 세션에 데스크탑 뷰가 붙으면 그릴 화면을 그때 만든다(다음 다시 그리기부터 채워진다)
+            if sink.screen.is_none() && client.answers_terminal_queries() {
+                sink.screen = Some(TerminalScreen::new(entry.pty.columns(), entry.pty.rows()));
+            }
+            sink.register(client, || self.allocate_client_id())
+        };
         Some(TerminalAttachment {
             terminal_key: terminal_key.to_string(),
             entry_generation: entry.generation(),
@@ -259,8 +266,10 @@ impl TerminalRegistry {
         first_client: Option<&Arc<dyn TerminalClient>>,
     ) -> Arc<EntryOutput> {
         let generation = self.next_generation.fetch_add(1, Ordering::Relaxed);
-        let screen =
-            (session_type == SessionType::Terminal).then(|| TerminalScreen::new(columns, rows));
+        // 데스크탑 뷰는 이 화면을 그대로 그리므로 멀티플렉서 세션도 데스크탑이 처음 열면 화면을 둔다
+        let is_desktop_view = first_client.is_some_and(|client| client.answers_terminal_queries());
+        let screen = (session_type == SessionType::Terminal || is_desktop_view)
+            .then(|| TerminalScreen::new(columns, rows));
         let first_client = first_client.map(|client| RegisteredClient {
             client_id: self.allocate_client_id(),
             client: Arc::clone(client),
@@ -316,6 +325,7 @@ impl TerminalRegistry {
         debug_label: &'static str,
     ) -> Option<TerminalAttachment> {
         sync_screen_size(&entry);
+        entry.output.set_query_reply_writer(&entry.pty);
         let entry = Arc::new(entry);
         let attachment = {
             let mut state = self.lock_state();

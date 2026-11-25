@@ -5,12 +5,13 @@
 //! 입력란 줄과 커서, 셀의 dim 속성을 읽는다(Codex `/statusline` 예외 판정이 dim 정보에 기댄다).
 
 mod cells;
+mod events;
 mod serialize;
 #[cfg(test)]
 mod tests;
+mod view;
 
 use alacritty_terminal::Term;
-use alacritty_terminal::event::VoidListener;
 use alacritty_terminal::grid::{Dimensions, Grid};
 use alacritty_terminal::index::{Column, Line};
 use alacritty_terminal::term::cell::Cell;
@@ -18,7 +19,11 @@ use alacritty_terminal::term::{Config, TermMode};
 use alacritty_terminal::vte::ansi::Processor;
 use kanvibe_ai::pane_chat::codex_display::{TerminalCellRow, is_dim_hint_empty_composer};
 
-pub use cells::ScreenRow;
+pub use cells::{CellColor, ScreenRow};
+pub use events::{TERMINAL_BACKGROUND, TERMINAL_CURSOR, TERMINAL_FOREGROUND, default_color};
+pub use view::{ScreenCell, ScreenCursor, ScreenCursorShape, ScreenInputModes};
+
+use events::ScreenEvents;
 
 /// xterm.js 기본 스크롤백 줄 수. headless xterm을 옵션 없이 만들던 TS와 같은 양을 기억한다
 pub const SCROLLBACK_LINES: usize = 1000;
@@ -63,7 +68,9 @@ pub struct ScreenReading {
 }
 
 pub struct TerminalScreen {
-    term: Term<VoidListener>,
+    term: Term<ScreenEvents>,
+    /// 질의 응답이 쌓이는 자리. `term`이 같은 값을 복제해 쥐고 있다
+    events: ScreenEvents,
     parser: Processor,
     /// 대체 화면에 있는 동안 가려진 기본 화면. alacritty는 비활성 화면을 내주지 않아 진입 직전에 복사해 둔다
     primary_grid_while_alternate: Option<Grid<Cell>>,
@@ -77,8 +84,10 @@ impl TerminalScreen {
             scrolling_history: SCROLLBACK_LINES,
             ..Config::default()
         };
+        let events = ScreenEvents::new(columns, rows);
         Self {
-            term: Term::new(config, &screen_size(columns, rows), VoidListener),
+            term: Term::new(config, &screen_size(columns, rows), events.clone()),
+            events,
             parser: Processor::new(),
             primary_grid_while_alternate: None,
             recent_tail: Vec::new(),
@@ -100,6 +109,7 @@ impl TerminalScreen {
 
     pub fn resize(&mut self, columns: u16, rows: u16) {
         self.term.resize(screen_size(columns, rows));
+        self.events.set_size(columns, rows);
         self.primary_grid_while_alternate = None;
     }
 

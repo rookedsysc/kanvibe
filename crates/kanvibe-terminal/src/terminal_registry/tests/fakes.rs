@@ -83,6 +83,8 @@ impl OnceGate {
 
 pub struct FakeClient {
     is_open: AtomicBool,
+    /// 데스크탑 뷰처럼 터미널 질의에 답하는 클라이언트인지
+    answers_queries: AtomicBool,
     buffered_amount: AtomicUsize,
     pub sent: Mutex<Vec<String>>,
     pub closures: Mutex<Vec<Option<ClientClosure>>>,
@@ -92,6 +94,7 @@ impl FakeClient {
     pub fn new() -> Arc<Self> {
         Arc::new(Self {
             is_open: AtomicBool::new(true),
+            answers_queries: AtomicBool::new(false),
             buffered_amount: AtomicUsize::new(0),
             sent: Mutex::new(Vec::new()),
             closures: Mutex::new(Vec::new()),
@@ -100,6 +103,13 @@ impl FakeClient {
 
     pub fn set_open(&self, is_open: bool) {
         self.is_open.store(is_open, Ordering::SeqCst);
+    }
+
+    /// 데스크탑 창 클라이언트로 만든다
+    pub fn desktop_view() -> Arc<Self> {
+        let client = Self::new();
+        client.answers_queries.store(true, Ordering::SeqCst);
+        client
     }
 
     pub fn set_buffered_amount(&self, bytes: usize) {
@@ -131,6 +141,10 @@ impl TerminalClient for FakeClient {
     /// TS mock WebSocket처럼 닫혀도 상태는 그대로 두고 호출만 기록한다
     fn close(&self, closure: Option<ClientClosure>) {
         self.closures.lock().unwrap().push(closure);
+    }
+
+    fn answers_terminal_queries(&self) -> bool {
+        self.answers_queries.load(Ordering::SeqCst)
     }
 }
 

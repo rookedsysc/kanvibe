@@ -148,6 +148,11 @@ impl TerminalClient for WindowTerminalClient {
         0
     }
 
+    /// 데스크탑 창은 TS 렌더러 xterm.js 자리라 터미널 질의에 답한다
+    fn answers_terminal_queries(&self) -> bool {
+        true
+    }
+
     fn close(&self, closure: Option<ClientClosure>) {
         let attachment = {
             let mut state = self.state.lock().unwrap();

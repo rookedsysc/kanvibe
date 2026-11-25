@@ -32,7 +32,7 @@ use kanvibe_process::worktree::PaneLayoutSelection;
 
 use crate::environment::TerminalHostEnvironment;
 use crate::pty::PtySpawner;
-use crate::screen::ScreenReading;
+use crate::screen::{ScreenReading, TerminalScreen};
 use entry::{ActiveTerminals, TerminalEntry, lock};
 use flight::Flight;
 use herdr_client::HerdrTaskClient;
@@ -59,6 +59,11 @@ pub trait TerminalClient: Send + Sync {
     fn buffered_amount(&self) -> usize;
     /// `None`이면 사유 없이 닫는다(TS `ws.close()`)
     fn close(&self, closure: Option<ClientClosure>);
+    /// 터미널 질의(DA·DSR·크기·색)에 답하는 화면인지. TS에서 답하던 쪽은 렌더러 xterm.js였으므로 데스크탑 뷰만 참이다.
+    /// 참인 클라이언트가 붙어 있는 동안 레지스트리 화면이 응답을 PTY에 쓴다
+    fn answers_terminal_queries(&self) -> bool {
+        false
+    }
 }
 
 /// 레지스트리에 붙은 클라이언트 하나. 클라이언트 쪽 메시지와 닫힘을 이 값으로 레지스트리에 알린다
@@ -696,6 +701,31 @@ impl TerminalRegistry {
             client_id,
         };
         Some((attachment, screen_until_now))
+    }
+
+    /// 데스크탑 터미널 뷰가 그릴 화면을 읽는다. 출력 반영과 같은 잠금 안에서 읽으므로 반쯤 반영된 화면은 보이지 않는다.
+    /// 화면이 없으면(모바일만 붙은 멀티플렉서 세션) `None`이다
+    pub fn read_terminal_screen<R>(
+        &self,
+        task_id: &str,
+        tab_id: Option<&str>,
+        read: impl FnOnce(&TerminalScreen) -> R,
+    ) -> Option<R> {
+        let entry = self.active_entry(&build_terminal_key(task_id, tab_id))?;
+        let sink = lock(&entry.output.sink);
+        sink.screen.as_ref().map(read)
+    }
+
+    /// 화면의 보기 상태(스크롤백 위치, 셀 픽셀 크기)를 바꾼다. 화면 내용은 바꾸지 않는다
+    pub fn update_terminal_screen_view<R>(
+        &self,
+        task_id: &str,
+        tab_id: Option<&str>,
+        update: impl FnOnce(&mut TerminalScreen) -> R,
+    ) -> Option<R> {
+        let entry = self.active_entry(&build_terminal_key(task_id, tab_id))?;
+        let mut sink = lock(&entry.output.sink);
+        sink.screen.as_mut().map(update)
     }
 
     pub fn read_task_terminal_attachment(&self, task_id: &str) -> Option<TaskTerminalAttachment> {
