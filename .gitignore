@@ -65,3 +65,6 @@ next-env.d.ts
 
 # rust
 /target
+
+# python
+__pycache__/

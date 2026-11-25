@@ -5,3 +5,5 @@
   reason: "창의 대기 중인 open을 node-pty 동적 import 도중에 취소하는 경합을 검증한다. Rust 브리지는 open을 잠금 안에서 동기로 끝내 대기 중인 open 상태가 존재하지 않는다."
 - id: TS-main-mobileAiLoginBridge-812fe0
   reason: "소켓이 node-pty 비동기 초기화 도중 닫히면 spawn하지 않는지 검증한다. Rust 모바일 로그인 브리지는 소켓 상태 확인과 spawn을 같은 잠금 안에서 동기로 처리해 그 초기화 틈이 없다."
+- id: TS-main-kanbanService-1b5bd6
+  reason: "installTaskHooksImmediately에는 호출하는 곳이 없다(kanbanService 안팎, mobile·taskCli·projectService 모두 grep으로 확인했고 렌더러 IPC 목록에도 없다). Rust KanbanService에는 옮기지 않아 이 테스트가 검증하던 검증 포함 즉시 설치 경로가 없다."

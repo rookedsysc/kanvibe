@@ -1,0 +1,26 @@
+[package]
+name = "kanvibe-app"
+description = "KanVibe GPUI 데스크톱 앱: 테마, 라우터, 창 관리, 단축키 디스패치, 알림, QA 모드"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "kanvibe"
+path = "src/main.rs"
+
+[dependencies]
+# gpui-kit 0.11.0은 gpui-pre =0.3.14(zed@f126950 스냅샷)와 gpui-component 0.11.0을 함께 고정한다(계획 AD-2)
+gpui-kit = "0.11.0"
+anyhow = "1"
+futures = "0.3"
+kanvibe-domain.workspace = true
+kanvibe-db.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+gpui-kit = { version = "0.11.0", features = ["test-support"] }
+tempfile.workspace = true
