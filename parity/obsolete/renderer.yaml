@@ -1,3 +1,5 @@
 # Rust로 옮기지 않는 src/desktop/renderer/** TS 테스트.
 - id: TS-renderer-keyboardShortcut-37f0c0
   reason: "platform 인자 없이 Meta·Ctrl을 그대로 적던 옛 녹화 분기다. TS에서도 이 분기를 부르는 곳은 이 테스트뿐이고(ShortcutSettingsRoute는 항상 platform을 넘김) Rust capture_shortcut_from_event는 ShortcutPlatform을 필수 인자로 받는다. 옛 표기 저장값은 canonicalize 경로(TS-main-appSettingsService-f068f7 등)로 검증한다."
+- id: TS-components-ProjectSettings-9f23e3
+  reason: "ProjectSettings variant=\"modal\"(우상단 모달)의 Escape 닫기를 검증한다. 모달 변형은 부르는 곳이 없는 dead code라 옮기지 않았고(계획 Scope 삭제 목록), Rust 설정 화면은 page 변형(SettingsView)만 있어 Escape로 닫을 패널이 없다."
