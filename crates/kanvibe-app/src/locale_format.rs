@@ -186,7 +186,7 @@ mod tests {
         assert_eq!(locale_from_posix("POSIX"), None);
     }
 
-    /// parity/tools/locale/capture_intl.cjs로 받은 Electron 32(ICU 74.2, CLDR 44.1) 출력
+    /// Electron 32(ICU 74.2, CLDR 44.1)에서 받아 둔 출력. 받는 도구는 TS 코드와 함께 지웠다(커밋 a73f3498까지 capture_intl.cjs)
     const ELECTRON_INTL: &str = include_str!("../../../parity/fixtures/locale/electron-intl.json");
 
     const STYLES: [(&str, DateTimeStyle); 5] = [

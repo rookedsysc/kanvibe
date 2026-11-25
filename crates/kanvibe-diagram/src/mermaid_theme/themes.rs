@@ -1,6 +1,7 @@
 //! Mermaid 11.15 테마 클래스의 constructor·updateColors를 문장 단위로 옮긴 코드.
 //!
-//! parity/tools/diagrams/generate_mermaid_themes.cjs가 node_modules/mermaid/dist/mermaid.js에서 만든다. 손으로 고치지 않는다.
+//! Mermaid 11.15 번들(mermaid/dist/mermaid.js)에서 생성한 값이다. 생성기는 TS 코드와 함께 지웠으므로(커밋 a73f3498까지
+//! parity/tools/diagrams/generate_mermaid_themes.cjs) Mermaid 버전을 올릴 때는 그 생성기를 되살려 다시 만든다. 손으로 고치지 않는다.
 
 #![allow(clippy::all, clippy::pedantic, unused_braces)]
 

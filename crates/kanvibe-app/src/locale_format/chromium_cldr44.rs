@@ -3,7 +3,7 @@
 //! ICU4X 2.4에 실린 CLDR은 49라 ko가 `2026. 1. 15.` 대신 `2026/1/15`로 나온다. CLDR 44로 데이터를 다시 만들어도
 //! ICU4X는 ICU4C의 skeleton 패턴 생성기(`yMdjms` 등)가 아닌 의미 기반 필드 조합으로 패턴을 고르므로 같은 글자를
 //! 보장하지 못한다(zh는 날짜와 함께 적을 때만 시를 두 자리로 채운다). 그래서 세 언어는 Electron이 실제로 낸 패턴을 옮겨 적는다.
-//! 기준값은 parity/tools/locale/capture_intl.cjs로 받은 parity/fixtures/locale/electron-intl.json이다.
+//! 기준값은 parity/fixtures/locale/electron-intl.json이다. Electron 앱에서 받아 둔 값이고, 받는 도구는 TS 코드와 함께 지웠다(커밋 a73f3498까지 parity/tools/locale/capture_intl.cjs).
 
 use icu_locale_core::Locale;
 

@@ -1,6 +1,6 @@
 //! 성능 하네스(`parity/tools/perf/run_perf.py`)가 읽는 표식. `--qa --perf-markers`일 때만 켠다.
 //!
-//! 표식은 stdout 한 줄 `KANVIBE_PERF <이름> <유닉스 epoch ns>`다. TS 쪽 표식(`parity/tools/perf/ts_perf_preload.cjs`)과
+//! 표식은 stdout 한 줄 `KANVIBE_PERF <이름> <유닉스 epoch ns>`다. TS 앱을 재던 표식(커밋 a73f3498까지 `parity/tools/perf/ts_perf_preload.cjs`)과
 //! 같은 시점을 가리키도록, 화면 변화가 그려진 프레임의 "다음 프레임 시작"에서 쓴다. GPUI는 프레임 시작에서 next-frame
 //! 콜백을 부른 뒤 그 프레임을 그리므로, 콜백에서 보는 QA 대상 목록은 바로 앞 프레임이 그린 모습이다.
 //!

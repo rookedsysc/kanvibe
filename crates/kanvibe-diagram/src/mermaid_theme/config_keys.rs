@@ -1,6 +1,6 @@
 //! Mermaid 11.15 `configKeys`(기본 설정의 모든 열쇠 이름). `sanitizeDirective`는 이 목록에 없는 열쇠를 지운다.
 //!
-//! parity/tools/diagrams/generate_mermaid_themes.cjs가 만든다. 손으로 고치지 않는다.
+//! Mermaid 11.15 번들에서 생성한 값이다(생성기는 커밋 a73f3498까지 parity/tools/diagrams/generate_mermaid_themes.cjs). 손으로 고치지 않는다.
 
 /// 정렬된 열쇠 이름
 pub(crate) const CONFIG_KEYS: [&str; 655] = [

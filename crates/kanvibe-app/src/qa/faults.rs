@@ -1,5 +1,5 @@
 //! QA 모드 서비스 고장 주입. 대상 이름은 TS IPC `namespace.method`(예: `kanban.getTasksByStatus`)를 식별자로 쓴다.
-//! 판정 규칙은 TS 드라이버 shim(`parity/tools/screens/ts-driver/main-shim.cjs`의 `findFault`)과 같다.
+//! 판정 규칙은 TS 기준 화면을 찍던 드라이버 shim의 `findFault`와 같다(커밋 a73f3498까지 `parity/tools/screens/ts-driver/main-shim.cjs`).
 
 use std::collections::HashMap;
 use std::path::Path;

@@ -4,7 +4,7 @@
 //! 의미([`JsValue`]: `||`의 참·거짓, `??`, 글자 더하기)와 `calculate`가 있다. `calculate`는 덮을 값을 먼저 넣고
 //! updateColors로 파생 변수를 채운 뒤 덮을 값을 한 번 더 넣는다. 그래서 덮은 값에서 파생되는 변수도 그 값을 따른다.
 
-// 생성 코드라 rustfmt가 다시 줄을 맞추지 않게 둔다(parity/tools/diagrams/generate_mermaid_themes.cjs)
+// Mermaid 번들에서 생성한 코드라 rustfmt가 다시 줄을 맞추지 않게 둔다(생성기는 커밋 a73f3498까지 parity/tools/diagrams/generate_mermaid_themes.cjs)
 #[rustfmt::skip]
 mod config_keys;
 mod js_number;
@@ -299,7 +299,7 @@ fn apply_overrides(object: &mut ThemeObject, overrides: &[(String, JsValue)]) {
 mod tests {
     use super::*;
 
-    /// parity/tools/diagrams/dump_mermaid_theme_variables.mjs가 Mermaid 번들로 만든 골든 값
+    /// Mermaid 번들로 만든 골든 값(생성기는 커밋 a73f3498까지 parity/tools/diagrams/dump_mermaid_theme_variables.mjs)
     const GOLDEN: &str = include_str!("../../../../parity/diagrams/mermaid-theme-variables.json");
 
     /// 숫자는 정수·소수 표기와 상관없이 같은 값이면 같다
