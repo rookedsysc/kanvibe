@@ -285,6 +285,16 @@ mod tests {
         assert_eq!(layout.main_view, MainView::Terminal);
     }
 
+    // parity: TS-renderer-TaskDetailRoute-74b0c3
+    #[test]
+    fn dock_slot_three_switches_to_the_chat_history() {
+        let entries = loaded_layout(true).dock_entries(true, None, DockBusyState::default());
+        assert_eq!(
+            dock_entry_at(&entries, 3).unwrap().command(),
+            DockCommand::ToggleHistory
+        );
+    }
+
     #[test]
     fn busy_flags_mark_only_their_dock_entries() {
         let busy = DockBusyState {

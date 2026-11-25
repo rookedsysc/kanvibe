@@ -53,3 +53,15 @@
   reason: "HooksStatusDialog는 TS 앱에서 어느 화면도 띄우지 않는 모달 변형이다(작업 상세는 HooksStatusCard를 상태 패널에 직접 그린다). 계획 Scope의 삭제 대상(쓰이지 않는 CollapsibleSidebar·HooksStatusDialog·ProjectSettings 변형)이라 Rust에 대응 화면이 없다."
 - id: TS-components-HooksStatusDialog-ca220f
   reason: "HooksStatusDialog는 TS 앱에서 어느 화면도 띄우지 않는 모달 변형이다(작업 상세는 HooksStatusCard를 상태 패널에 직접 그린다). 계획 Scope의 삭제 대상(쓰이지 않는 CollapsibleSidebar·HooksStatusDialog·ProjectSettings 변형)이라 Rust에 대응 화면이 없다."
+- id: TS-renderer-AiChatTranscriptMessage-08f8e1
+  reason: "navigator.clipboard 쓰기가 거부될 때 메시지를 남기고 실패 문구를 보이는지 검사한다. Rust는 GPUI 플랫폼 클립보드(App::write_to_clipboard)로 바로 쓰며 이 호출은 실패를 돌려주지 않아 실패 분기 자체가 없다."
+- id: TS-renderer-AiChatTranscriptMessage-599001
+  reason: "Electron에서 브라우저 클립보드 권한과 무관하게 메인 프로세스(writeSystemClipboard)로 복사하는지 검사한다. Rust는 렌더러·메인 프로세스 구분 없이 GPUI 플랫폼 클립보드 한 경로만 있어 고를 경로가 없다."
+- id: TS-renderer-AiSessionMessageContent-0f680e
+  reason: "코드 블록 복사에서 navigator.clipboard 쓰기가 거부될 때의 실패 문구를 검사한다. Rust 코드 블록 복사는 실패를 돌려주지 않는 GPUI App::write_to_clipboard를 써 실패 분기가 없다."
+- id: TS-renderer-AiSessionMessageContent-b68949
+  reason: "데스크톱 코드 블록 복사가 브라우저 클립보드 대신 메인 프로세스 IPC로 가는지 검사한다. Rust에는 IPC 경계가 없고 GPUI 플랫폼 클립보드 한 경로만 있다."
+- id: TS-renderer-AiChatFilePreview-12f258
+  reason: "데스크톱 파일 미리보기 복사가 브라우저 클립보드 없이 메인 프로세스로 가는지 검사한다. Rust는 GPUI 플랫폼 클립보드 한 경로로만 복사한다."
+- id: TS-renderer-TaskDetailRoute-48548f
+  reason: "예전 AiSessionsDialog 진입점이 sidebar에 다시 나타나지 않는지 막는 회귀 테스트다. Rust에는 AiSessionsDialog가 없고 dock 항목은 공유 TaskDetailDockItemId 목록에서만 만들어 그 진입점이 생길 자리가 없다."

@@ -3,14 +3,23 @@
 //! 왼쪽 dock, dock 옆 360px 패널(작업 정보·상태·실행 중 세션·사용량), 메인 영역(터미널 또는 AI 대화 기록)으로 이뤄진다.
 //! dock·탭·사용량 단축키는 앱 키 가로채기가 터미널보다 먼저 이 화면의 동작으로 보낸다(`shortcuts.rs`).
 
+mod ai_provider_icon;
+mod ai_reader;
 mod auto_connect;
+mod call_graph;
+mod chat_history;
+mod chat_message;
+mod chat_view;
 mod chrome;
 pub mod data;
 mod description_edit;
 mod dock;
+mod file_preview;
 mod icons;
 pub mod layout_state;
+mod live_sessions;
 mod load_states;
+mod message_content;
 mod panel;
 mod project_icon;
 mod status_move;
@@ -23,7 +32,7 @@ use std::time::Duration;
 
 use gpui_kit::{
     AnyElement, App, AppContext, Context, Entity, FocusHandle, Focusable, InteractiveElement,
-    IntoElement, ParentElement, Render, Styled, Task, Window, div, px,
+    IntoElement, ParentElement, Render, StatefulInteractiveElement, Styled, Task, Window, div, px,
 };
 use kanvibe_domain::i18n::Translator;
 use kanvibe_domain::task::SessionType;
@@ -87,6 +96,9 @@ pub struct TaskDetailView {
     _auto_connect: Option<Task<()>>,
     _status_move: Option<Task<()>>,
     _status_confirm: Option<Task<()>>,
+    live_sessions: live_sessions::LiveSessionsState,
+    /// AI 대화 기록 화면. 메인 영역을 기록으로 바꿨을 때만 있다
+    chat_view: Option<Entity<chat_view::InlineAiChatView>>,
 }
 
 impl TaskDetailView {
@@ -126,6 +138,8 @@ impl TaskDetailView {
             _auto_connect: None,
             _status_move: None,
             _status_confirm: None,
+            live_sessions: live_sessions::LiveSessionsState::default(),
+            chat_view: None,
         };
         view.begin_load(cx);
         view
@@ -281,7 +295,10 @@ impl TaskDetailView {
         let has_task = self.has_task();
         match command {
             DockCommand::TogglePanel(panel) => self.layout.toggle_panel(panel, has_task),
-            DockCommand::ToggleHistory => self.layout.toggle_history(),
+            DockCommand::ToggleHistory => {
+                self.layout.toggle_history();
+                self.sync_chat_view(window, cx);
+            }
             DockCommand::OpenPullRequest => self.open_pull_request(cx),
             DockCommand::OpenInVsCode => self.open_in_vscode(cx),
         }
@@ -343,6 +360,70 @@ impl TaskDetailView {
         self.layout.close_panel();
         self.focus_terminal(window, cx);
         cx.notify();
+    }
+}
+
+impl TaskDetailView {
+    /// 기록 화면으로 바꾸면 대화 기록 뷰를 새로 만들어 첫 쪽을 읽고, 터미널로 돌아가면 버린다
+    fn sync_chat_view(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        match self.layout.main_view {
+            MainView::History if self.chat_view.is_none() => {
+                let task_id = self.task_id.clone();
+                let translator = self.translator;
+                self.chat_view =
+                    Some(cx.new(|cx| {
+                        chat_view::InlineAiChatView::new(task_id, translator, window, cx)
+                    }));
+            }
+            MainView::Terminal => self.chat_view = None,
+            MainView::History => {}
+        }
+    }
+
+    /// 기록 화면의 `← 터미널`
+    fn return_to_terminal(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.layout.main_view = MainView::Terminal;
+        self.sync_chat_view(window, cx);
+        self.focus_terminal(window, cx);
+        cx.notify();
+    }
+
+    fn render_history_main(&self, theme: &ThemeTokens, cx: &mut Context<Self>) -> AnyElement {
+        let Some(chat_view) = self.chat_view.clone() else {
+            return div().into_any_element();
+        };
+        let label = format!("← {}", self.translator.translate("terminal"));
+        div()
+            .flex()
+            .flex_col()
+            .flex_1()
+            .min_h_0()
+            .child(
+                div().flex().child(
+                    div()
+                        .id("task-detail-back-to-terminal")
+                        .relative()
+                        .rounded(radius::MD)
+                        .px(spacing(4.0))
+                        .py(spacing(2.0))
+                        .text_scale(crate::theme::text_scale::XS)
+                        .text_color(theme.text.brand)
+                        .cursor_pointer()
+                        .child(label.clone())
+                        .child(crate::qa::targets::qa_target_layer(
+                            crate::qa::targets::QaTargetDescription {
+                                role: "button",
+                                name: label.clone().into(),
+                                text: label.into(),
+                            },
+                        ))
+                        .on_click(
+                            cx.listener(|view, _, window, cx| view.return_to_terminal(window, cx)),
+                        ),
+                ),
+            )
+            .child(chat_view)
+            .into_any_element()
     }
 }
 
@@ -429,10 +510,9 @@ impl TaskDetailView {
         let Some(snapshot) = self.snapshot().cloned() else {
             return div().into_any_element();
         };
-        let panel = self
-            .layout
-            .visible_panel(true)
-            .map(|panel| self.render_panel(theme, panel, &snapshot, cx));
+        let visible_panel = self.layout.visible_panel(true);
+        self.sync_live_session_polling(visible_panel == Some(DetailPanel::LiveSessions), cx);
+        let panel = visible_panel.map(|panel| self.render_panel(theme, panel, &snapshot, cx));
         div()
             .relative()
             .size_full()
@@ -485,6 +565,9 @@ impl TaskDetailView {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
+        if self.layout.main_view == MainView::History {
+            return self.render_history_main(theme, cx);
+        }
         if !snapshot.has_terminal() {
             return match snapshot.task.project_id {
                 Some(_) => self.render_auto_connect(theme, cx),

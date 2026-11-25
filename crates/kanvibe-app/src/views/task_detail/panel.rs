@@ -87,7 +87,8 @@ impl TaskDetailView {
                 render_overview(theme, snapshot, &self.translator, description).into_any_element()
             }
             DetailPanel::Status => self.render_status_panel(theme, snapshot, cx),
-            DetailPanel::LiveSessions | DetailPanel::Usage => div().into_any_element(),
+            DetailPanel::LiveSessions => self.render_live_sessions_body(theme, cx),
+            DetailPanel::Usage => div().into_any_element(),
         };
         let close_label = self.common.translate("close");
         div()
