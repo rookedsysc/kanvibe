@@ -13,6 +13,12 @@ kanvibe-domain = { path = "crates/kanvibe-domain" }
 kanvibe-db = { path = "crates/kanvibe-db" }
 kanvibe-process = { path = "crates/kanvibe-process" }
 kanvibe-ai = { path = "crates/kanvibe-ai" }
+kanvibe-server = { path = "crates/kanvibe-server" }
+kanvibe-mobile = { path = "crates/kanvibe-mobile" }
+kanvibe-pane-mirror = { path = "crates/kanvibe-pane-mirror" }
+kanvibe-remote-host = { path = "crates/kanvibe-remote-host" }
+kanvibe-remote-agent = { path = "crates/kanvibe-remote-agent" }
+kanvibe-runtime = { path = "crates/kanvibe-runtime" }
 kanvibe-services = { path = "crates/kanvibe-services" }
 kanvibe-terminal = { path = "crates/kanvibe-terminal" }
 kanvibe-markdown = { path = "crates/kanvibe-markdown" }

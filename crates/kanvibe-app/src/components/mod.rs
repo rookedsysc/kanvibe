@@ -9,6 +9,7 @@ pub mod button;
 pub mod context_menu;
 pub mod dialog;
 pub mod icon;
+pub mod notification_center;
 pub mod popover;
 pub mod scroll_area;
 pub mod segmented_control;

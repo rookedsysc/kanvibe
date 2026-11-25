@@ -1,7 +1,8 @@
 //! 화면이 직접 부르는 서비스(계획 AD-8: 범용 IPC 없이 같은 프로세스 호출).
+//! 장기 서비스는 모두 [`DesktopRuntime`] 하나가 갖고, 화면은 [`AppServices::runtime`]으로 같은 인스턴스를 받는다.
 //! QA 모드에서는 모든 호출이 TS IPC 이름(`namespace.method`)으로 고장 주입 판정을 먼저 거친다.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -13,6 +14,7 @@ use kanvibe_db::{Database, DatabaseLocation};
 use kanvibe_domain::platform::ShortcutPlatform;
 use kanvibe_domain::shortcuts::bindings::ShortcutBindings;
 use kanvibe_domain::task::TASK_STATUS_ORDER;
+use kanvibe_runtime::DesktopRuntime;
 
 use crate::qa::AppClock;
 use crate::qa::faults::{FaultOutcome, FaultRegistry};
@@ -26,6 +28,22 @@ pub struct ServiceFailure {
 
 pub type ServiceResult<T> = Result<T, ServiceFailure>;
 
+/// TS 렌더러가 IPC로 부른 서비스가 실패했을 때 Electron이 붙이던 머리말. 화면 문구와 픽셀을 TS와 같게 둔다
+const IPC_ERROR_PREFIX: &str = "Error invoking remote method 'kanvibe:invoke': Error: ";
+
+/// 서비스 실패 사유를 화면에 보일 문구로 바꾸는 유일한 자리. 모든 화면이 이 함수를 거쳐야
+/// 머리말을 붙일지 정하는 판단이 한 곳에 남는다
+pub fn format_service_error(reason: &str) -> String {
+    format!("{IPC_ERROR_PREFIX}{reason}")
+}
+
+impl ServiceFailure {
+    /// 화면에 보일 문구(`format_service_error`)
+    pub fn display_message(&self) -> String {
+        format_service_error(&self.reason)
+    }
+}
+
 /// 보드 헤더와 열 머리가 그리는 데이터. 카드 본체는 M7에서 더한다
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BoardHeaderSnapshot {
@@ -36,9 +54,8 @@ pub struct BoardHeaderSnapshot {
 }
 
 pub struct AppServices {
-    database: Option<Arc<Database>>,
-    /// `--data-dir`로 받은 앱 데이터 디렉터리. 없으면 DB 없이 뜬 실행이다
-    data_dir: Option<PathBuf>,
+    /// `--data-dir`로 연 런타임. 없으면 DB 없이 뜬 실행이다
+    runtime: Option<Arc<DesktopRuntime>>,
     faults: Option<Arc<FaultRegistry>>,
     pub clock: AppClock,
     pub shortcut_platform: ShortcutPlatform,
@@ -51,17 +68,16 @@ pub const BOARD_TASKS_SERVICE: &str = "kanban.getTasksByStatus";
 
 impl AppServices {
     pub fn new(
-        database: Option<Arc<Database>>,
-        data_dir: Option<PathBuf>,
+        runtime: Option<Arc<DesktopRuntime>>,
         faults: Option<Arc<FaultRegistry>>,
         clock: AppClock,
+        shortcut_platform: ShortcutPlatform,
     ) -> Self {
         Self {
-            database,
-            data_dir,
+            runtime,
             faults,
             clock,
-            shortcut_platform: ShortcutPlatform::current(),
+            shortcut_platform,
         }
     }
 
@@ -71,12 +87,19 @@ impl AppServices {
         Ok(Arc::new(Database::open(&location)?))
     }
 
+    /// 앱 프로세스에 하나인 서비스 그래프. 데이터 디렉터리 없이 뜬 실행이면 `None`이다
+    pub fn runtime(&self) -> Option<&Arc<DesktopRuntime>> {
+        self.runtime.as_ref()
+    }
+
     pub fn database(&self) -> Option<&Arc<Database>> {
-        self.database.as_ref()
+        self.runtime.as_ref().map(|runtime| runtime.database())
     }
 
     pub fn data_dir(&self) -> Option<&Path> {
-        self.data_dir.as_deref()
+        self.runtime
+            .as_ref()
+            .map(|runtime| runtime.app_data_directory())
     }
 
     pub fn faults(&self) -> Option<&Arc<FaultRegistry>> {
@@ -84,8 +107,7 @@ impl AppServices {
     }
 
     fn settings(&self) -> Option<AppSettingsService<'_>> {
-        self.database
-            .as_deref()
+        self.database()
             .map(|database| AppSettingsService::new(database, self.shortcut_platform))
     }
 
@@ -109,7 +131,7 @@ impl AppServices {
 
     /// 보드 헤더 데이터를 백그라운드에서 읽는다
     pub fn load_board_header(&self, cx: &App) -> Task<ServiceResult<BoardHeaderSnapshot>> {
-        let database = self.database.clone();
+        let database = self.database().cloned();
         let platform = self.shortcut_platform;
         let fault = self.check_fault(BOARD_TASKS_SERVICE, "[]");
         let executor = cx.background_executor().clone();
@@ -119,7 +141,8 @@ impl AppServices {
         })
     }
 
-    fn check_fault(&self, target: &str, serialized_arguments: &str) -> FaultOutcome {
+    /// TS IPC 이름(`namespace.method`)과 JSON 인자로 고장 주입 판정을 한다. QA 모드가 아니면 늘 진행이다
+    pub fn check_fault(&self, target: &str, serialized_arguments: &str) -> FaultOutcome {
         self.faults
             .as_ref()
             .map(|faults| faults.check(target, serialized_arguments))
@@ -127,8 +150,8 @@ impl AppServices {
     }
 }
 
-/// 고장 판정 결과대로 기다리거나 실패한다. `Result`는 이 서비스가 값 대체를 지원하지 않아 그대로 진행한다
-async fn apply_fault(fault: FaultOutcome, executor: &BackgroundExecutor) -> ServiceResult<()> {
+/// 고장 판정 결과대로 기다리거나 실패한다. 값 대체(`Result`)는 받은 화면이 따로 쓰고 여기서는 그대로 진행한다
+pub async fn apply_fault(fault: FaultOutcome, executor: &BackgroundExecutor) -> ServiceResult<()> {
     match fault {
         FaultOutcome::Proceed | FaultOutcome::Result(_) => Ok(()),
         FaultOutcome::Hang => std::future::pending().await,

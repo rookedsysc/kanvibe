@@ -20,6 +20,14 @@ pub mod icon_paths {
     pub const CHEVRON_DOWN_SMALL: &str = "icons/kanvibe/chevron-down-small.svg";
 }
 
+/// AI provider 색 아이콘(TS `AiProviderIcon`, `@lobehub/icons-static-svg`). 색이 있어 `svg()`가 아니라 `img()`로 그린다
+pub mod provider_icon_paths {
+    pub const CLAUDE: &str = "icons/providers/claude-color.svg";
+    pub const CODEX: &str = "icons/providers/codex-color.svg";
+    pub const GEMINI: &str = "icons/providers/gemini-color.svg";
+    pub const OPENCODE: &str = "icons/providers/opencode.svg";
+}
+
 pub mod image_paths {
     /// 라이트 테마 로고(원본)
     pub const LOGO: &str = "branding/kanvibe-logo.png";
@@ -27,7 +35,7 @@ pub mod image_paths {
     pub const LOGO_INVERTED: &str = "branding/kanvibe-logo-inverted.png";
 }
 
-const BUNDLED_ASSETS: [(&str, &[u8]); 8] = [
+const BUNDLED_ASSETS: [(&str, &[u8]); 12] = [
     (
         icon_paths::FOLDER_PLUS,
         include_bytes!("../assets/icons/folder-plus.svg"),
@@ -48,6 +56,22 @@ const BUNDLED_ASSETS: [(&str, &[u8]); 8] = [
     (
         icon_paths::CHEVRON_DOWN_SMALL,
         include_bytes!("../assets/icons/chevron-down-small.svg"),
+    ),
+    (
+        provider_icon_paths::CLAUDE,
+        include_bytes!("../assets/icons/providers/claude-color.svg"),
+    ),
+    (
+        provider_icon_paths::CODEX,
+        include_bytes!("../assets/icons/providers/codex-color.svg"),
+    ),
+    (
+        provider_icon_paths::GEMINI,
+        include_bytes!("../assets/icons/providers/gemini-color.svg"),
+    ),
+    (
+        provider_icon_paths::OPENCODE,
+        include_bytes!("../assets/icons/providers/opencode.svg"),
     ),
     (
         image_paths::LOGO,

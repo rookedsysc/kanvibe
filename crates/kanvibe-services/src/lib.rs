@@ -10,14 +10,12 @@ pub mod board_notifier;
 pub mod desktop_notification;
 pub mod diff;
 pub mod error;
-pub mod git_ref;
 pub mod hook_status;
 pub mod kanban;
 pub mod notification_store;
 pub mod project;
 pub mod release_update;
 pub mod remote_image_paste;
-pub mod request_scope;
 pub mod session_dependency;
 pub mod terminal_ports;
 

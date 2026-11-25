@@ -7,9 +7,9 @@ use std::sync::{Arc, Mutex};
 use kanvibe_domain::background_sync::BackgroundTaskSyncStatus;
 use kanvibe_domain::notifications::{BackgroundSyncReviewPayload, TaskPrMergedDetectedPayload};
 use kanvibe_process::task_state_service::BoardUpdateNotifier;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TaskStatusChangedPayload {
     pub project_name: String,
@@ -21,7 +21,7 @@ pub struct TaskStatusChangedPayload {
 }
 
 /// hook이 가리킨 task를 찾지 못했다. 이유는 TS처럼 `task-not-found` 하나뿐이다
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HookStatusTargetMissingPayload {
     pub task_id: String,
@@ -29,19 +29,19 @@ pub struct HookStatusTargetMissingPayload {
     pub reason: HookStatusTargetMissingReason,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum HookStatusTargetMissingReason {
     TaskNotFound,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TaskSessionChangedPayload {
     pub task_id: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TaskHookInstallFailedPayload {
     pub task_id: String,
@@ -49,7 +49,7 @@ pub struct TaskHookInstallFailedPayload {
     pub error: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HerdrMachineRegistrationFailedPayload {
     pub ssh_host: String,
@@ -57,14 +57,14 @@ pub struct HerdrMachineRegistrationFailedPayload {
     pub reason: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HerdrServerHandoffRequiredPayload {
     pub ssh_host: String,
     pub herdr_session: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TaskPeerDeletionFailedPayload {
     pub task_id: String,
@@ -72,19 +72,19 @@ pub struct TaskPeerDeletionFailedPayload {
     pub failed_peer_urls: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TaskPrMergedDetectedBatchPayload {
     pub merged_pull_requests: Vec<TaskPrMergedDetectedPayload>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BackgroundSyncStatusChangedPayload {
     pub status: BackgroundTaskSyncStatus,
 }
 
 /// TS `BoardEventPayload` 합집합
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "kebab-case")]
 pub enum BoardEvent {
     BoardUpdated,

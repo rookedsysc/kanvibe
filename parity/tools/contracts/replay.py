@@ -8,6 +8,8 @@
     python3 parity/tools/contracts/replay.py --base-url http://127.0.0.1:39736 --oracle-cmd ./my-oracle
     # 재생기가 격리된 TS 앱을 새로 띄워 자기 검증
     python3 parity/tools/contracts/replay.py --launch-ts
+    # 재생기가 같은 격리 환경으로 Rust QA 서버를 새로 띄워 재생
+    python3 parity/tools/contracts/replay.py --launch-rust target/debug/kanvibe-server-qa
 """
 
 from __future__ import annotations
@@ -23,6 +25,7 @@ from urllib.parse import urlsplit
 
 from kvcontract.fixture import create_fixture
 from kvcontract.runner import Endpoints, OracleBackend, Runner
+from kvcontract.rustapp import RustApp
 from kvcontract.tsapp import REPO_ROOT, InspectorOracle, MOBILE_TLS_PORT_OFFSET, TsApp
 
 CONTRACTS_DIR = REPO_ROOT / "parity" / "contracts"
@@ -68,6 +71,7 @@ def main() -> int:
     target = parser.add_mutually_exclusive_group(required=True)
     target.add_argument("--base-url", help="plaintext hook listener, e.g. http://127.0.0.1:39736")
     target.add_argument("--launch-ts", action="store_true", help="launch a fresh isolated TS app and replay against it")
+    target.add_argument("--launch-rust", type=Path, metavar="BINARY", help="launch a fresh isolated `kanvibe-server-qa` and replay against it")
     parser.add_argument("--tls-url", help="mobile TLS listener (default: base-url port + 10, https)")
     oracle_group = parser.add_mutually_exclusive_group()
     oracle_group.add_argument("--oracle-cmd", help="command answering server oracles: <cmd> <name> <json-args> -> JSON on stdout")
@@ -83,12 +87,19 @@ def main() -> int:
     goldens = load_goldens(arguments.cases)
     if arguments.fixture_root and arguments.fixture_root.exists() and any(arguments.fixture_root.iterdir()):
         parser.error(f"--fixture-root {arguments.fixture_root} must be empty")
-    owns_fixture = arguments.fixture_root is None and not arguments.launch_ts
-    fixture_root = arguments.fixture_root or (None if arguments.launch_ts else Path(tempfile.mkdtemp(prefix="kanvibe-contract-fixture-")))
+    launches_app = arguments.launch_ts or arguments.launch_rust is not None
+    owns_fixture = arguments.fixture_root is None and not launches_app
+    fixture_root = arguments.fixture_root or (None if launches_app else Path(tempfile.mkdtemp(prefix="kanvibe-contract-fixture-")))
     app = None
     try:
         if arguments.launch_ts:
             app = TsApp(arguments.hook_port, arguments.inspector_port)
+            app.start()
+            endpoints = Endpoints(app.plain_url, app.tls_url)
+            oracle = OracleBackend(app.run_oracle)
+            fixture_root = app.run_dir / "fixture"
+        elif arguments.launch_rust:
+            app = RustApp(arguments.launch_rust, arguments.hook_port)
             app.start()
             endpoints = Endpoints(app.plain_url, app.tls_url)
             oracle = OracleBackend(app.run_oracle)

@@ -808,3 +808,139 @@ fn reconnect_refresh_preserves_a_newer_live_update_made_during_the_read() {
         Some("done")
     );
 }
+
+// ---- 다시 연결된 호스트의 현재 상태 스냅샷(TS hostStatusReconnect.test.ts) ----
+
+/// `host-a`만 다시 읽는다. 원격 명령은 `runner`가 답하고, 보드 알림 횟수를 돌려준다
+fn refresh_host_a(
+    fixture: &DatabaseFixture,
+    runner: Arc<ScriptedCommandRunner>,
+    is_current: &dyn Fn() -> bool,
+) -> usize {
+    let files = HostFileAccess::new(runner, "/home/local");
+    let store = HostKanvibeStateStore::new(&files);
+    let notifier = CountingNotifier::default();
+    let hosts = HashSet::from(["host-a".to_string()]);
+    TaskStatusSync::new(&fixture.database, &store, &notifier)
+        .refresh_host_task_statuses(&hosts, is_current)
+        .unwrap();
+    notifier.broadcasts.load(Ordering::SeqCst)
+}
+
+fn host_a_task(fixture: &DatabaseFixture) {
+    insert_task(
+        &fixture.database,
+        "one",
+        &[
+            ("ssh_host", Some("host-a")),
+            ("worktree_path", Some("/fixture/one")),
+        ],
+    );
+}
+
+// parity: TS-main-hostStatusReconnect-f36bd8
+#[test]
+fn reconnect_reads_only_the_current_snapshot_and_broadcasts_a_change_once() {
+    let fixture = database_fixture();
+    host_a_task(&fixture);
+    let runner = Arc::new(ScriptedCommandRunner::returning(
+        "{\"schemaVersion\":1,\"status\":\"review\"}",
+    ));
+
+    let broadcasts = refresh_host_a(&fixture, Arc::clone(&runner), &|| true);
+
+    let calls = runner.calls();
+    assert!(calls.iter().any(
+        |call| call.command.contains("/fixture/one/.kanvibe/status.json")
+            && call.ssh_host.as_deref() == Some("host-a")
+    ));
+    assert_eq!(
+        task_status(&fixture.database, "one").as_deref(),
+        Some("review")
+    );
+    assert_eq!(broadcasts, 1);
+}
+
+// parity: TS-main-hostStatusReconnect-a26a2a
+#[test]
+fn reconnect_does_not_overwrite_a_live_update_that_won_during_the_read() {
+    let fixture = database_fixture();
+    host_a_task(&fixture);
+    let database = Arc::clone(&fixture.database);
+    let runner = Arc::new(ScriptedCommandRunner::new(move |_| {
+        database
+            .connection()
+            .execute("UPDATE kanban_tasks SET status = 'done', updated_at = '2026-11-16 00:00:00.000' WHERE id = 'one'", [])
+            .unwrap();
+        Ok("{\"schemaVersion\":1,\"status\":\"review\"}".into())
+    }));
+
+    let broadcasts = refresh_host_a(&fixture, runner, &|| true);
+
+    assert_eq!(
+        task_status(&fixture.database, "one").as_deref(),
+        Some("done")
+    );
+    assert_eq!(broadcasts, 0);
+}
+
+// parity: TS-main-hostStatusReconnect-c41550
+#[test]
+fn reconnect_drops_a_snapshot_returned_after_the_connection_was_replaced() {
+    let fixture = database_fixture();
+    host_a_task(&fixture);
+    let is_current = Arc::new(std::sync::atomic::AtomicBool::new(true));
+    let replaced = Arc::clone(&is_current);
+    let runner = Arc::new(ScriptedCommandRunner::new(move |_| {
+        replaced.store(false, Ordering::SeqCst);
+        Ok("{\"schemaVersion\":1,\"status\":\"done\"}".into())
+    }));
+
+    let broadcasts = refresh_host_a(&fixture, runner, &|| is_current.load(Ordering::SeqCst));
+
+    assert_eq!(
+        task_status(&fixture.database, "one").as_deref(),
+        Some("progress")
+    );
+    assert_eq!(broadcasts, 0);
+}
+
+// parity: TS-main-hostStatusReconnect-46424a
+#[test]
+fn reconnect_ignores_other_hosts_and_tasks_without_an_execution_directory() {
+    let fixture = database_fixture();
+    insert_task(
+        &fixture.database,
+        "other",
+        &[
+            ("status", Some("todo")),
+            ("ssh_host", Some("host-b")),
+            ("worktree_path", Some("/other")),
+        ],
+    );
+    insert_task(
+        &fixture.database,
+        "missing",
+        &[
+            ("status", Some("todo")),
+            ("ssh_host", Some("host-a")),
+            ("worktree_path", None),
+        ],
+    );
+    let runner = Arc::new(ScriptedCommandRunner::returning(
+        "{\"schemaVersion\":1,\"status\":\"done\"}",
+    ));
+
+    let broadcasts = refresh_host_a(&fixture, Arc::clone(&runner), &|| true);
+
+    assert!(runner.calls().is_empty());
+    assert_eq!(
+        task_status(&fixture.database, "other").as_deref(),
+        Some("todo")
+    );
+    assert_eq!(
+        task_status(&fixture.database, "missing").as_deref(),
+        Some("todo")
+    );
+    assert_eq!(broadcasts, 0);
+}

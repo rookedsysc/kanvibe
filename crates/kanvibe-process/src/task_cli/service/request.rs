@@ -1,23 +1,12 @@
 //! task CLI 요청 본문(JSON 객체)의 필드 검증. 거절 메시지는 TS와 같은 한국어 문구다.
 
-use std::sync::LazyLock;
-
 use kanvibe_domain::task::{SessionType, TaskPriority};
-use regex::Regex;
 
 use super::TaskCliError;
 
 pub type RequestBody = serde_json::Map<String, serde_json::Value>;
 
-/// 네트워크에서 받은 브랜치 이름으로 받아들일 모양(TS `gitRef.isSafeGitRef`).
-/// 이 값은 셸 명령 문자열과 worktree 경로에 그대로 들어가므로, git이 받아 주는 이름 중 셸과 경로에 뜻이 없는 문자만 통과시킨다.
-static SAFE_GIT_REF_PATTERN: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new("^[A-Za-z0-9][A-Za-z0-9._/-]*$").expect("유효한 정규식"));
-
-// MERGE: lib/gitRef.ts를 옮기는 쪽이 생기면 그 함수로 바꾼다
-pub(super) fn is_safe_git_ref(value: &str) -> bool {
-    SAFE_GIT_REF_PATTERN.is_match(value) && !value.contains("..")
-}
+pub(super) use crate::git_ref::is_safe_git_ref;
 
 /// 없거나 null이면 `None`, 문자열이 아니면 400, 앞뒤 공백을 지운 빈 문자열도 `None`이다
 pub(super) fn read_optional_string_field(

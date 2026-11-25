@@ -4,7 +4,7 @@
 use gpui_kit::{
     AnyView, AnyWindowHandle, App, AppContext, Bounds, Context, FocusHandle, InteractiveElement,
     IntoElement, KeyContext, ParentElement, Render, Styled, Window, WindowBounds,
-    WindowDecorations, WindowOptions, div, point, px, size,
+    WindowDecorations, WindowOptions, deferred, div, point, px, size,
 };
 
 use crate::navigation::NavigationHistory;
@@ -18,6 +18,7 @@ use crate::shortcuts::{
 /// 창 루트 키 컨텍스트
 pub const WINDOW_KEY_CONTEXT: &str = "KanvibeWindow";
 
+use crate::components::dialog::MODAL_LAYER_PRIORITY;
 use crate::fonts::sans_font;
 use crate::theme::{CANVAS_BACKGROUND, ThemeTokens, text_scale};
 use crate::views::window_controls::window_controls_overlay;
@@ -109,12 +110,31 @@ impl AppWindow {
         self.after_history_change(cx);
     }
 
+    /// 화면을 다시 만들지 않고 지금 경로의 검색 문자열만 바꾼다(TS `navigate(..., { replace: true })`로 필터 쿼리를 고칠 때).
+    /// 화면은 이미 그 상태를 그리고 있으므로 경로 기록과 창 목록의 경로만 맞춘다
+    pub fn replace_search(&mut self, href: &str, cx: &mut Context<Self>) {
+        self.history.replace(href);
+        self.record_current_path(cx);
+    }
+
     fn after_history_change(&mut self, cx: &mut Context<Self>) {
         // TS는 문서를 다시 불러오면(`did-navigate`) 그 창의 녹화 표시를 지웠다. 녹화하던 화면 뷰가 여기서 버려진다
         end_shortcut_capture(self.window_handle.window_id(), cx);
         self.screen = Self::build_screen(&self.history, cx);
         self.record_current_path(cx);
+        self.reclaim_focus_after_navigation(cx);
         cx.notify();
+    }
+
+    /// 화면이 바뀌면 버려진 화면(터미널 등)이 쥐던 포커스가 남아 창 단축키가 막힌다. 루트가 포커스를 다시 잡고,
+    /// 새 화면이 자기 요소에 포커스를 주려면 첫 프레임에서 다시 가져간다. 이동은 창을 갱신하는 도중에 불리므로
+    /// 그 갱신이 끝난 뒤(`defer`)에 잡는다
+    fn reclaim_focus_after_navigation(&self, cx: &mut Context<Self>) {
+        let focus_handle = self.focus_handle.clone();
+        let window_handle = self.window_handle;
+        cx.defer(move |cx| {
+            let _ = window_handle.update(cx, |_, window, cx| focus_handle.focus(window, cx));
+        });
     }
 
     fn build_screen(history: &NavigationHistory, cx: &mut Context<Self>) -> AnyView {
@@ -190,9 +210,11 @@ impl AppWindow {
     }
 }
 
-/// TS 앱은 macOS에서 신호등 버튼(`hiddenInset`)을 쓰고 그 밖에서만 흰 조작 버튼을 겹쳤다
+/// TS 앱은 macOS에서 신호등 버튼(`hiddenInset`)을 쓰고 그 밖에서만 흰 조작 버튼을 겹쳤다. Electron 조작 버튼은
+/// 웹 문서 밖에 그려져 모달 배경보다도 위에 보였으므로, 모달보다 한 단계 위 층에 그린다
 fn linux_window_controls() -> Option<impl IntoElement> {
-    cfg!(not(target_os = "macos")).then(window_controls_overlay)
+    cfg!(not(target_os = "macos"))
+        .then(|| deferred(window_controls_overlay()).with_priority(MODAL_LAYER_PRIORITY + 1))
 }
 
 impl Render for AppWindow {

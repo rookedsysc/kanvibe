@@ -1,0 +1,30 @@
+[package]
+name = "kanvibe-mobile"
+description = "모바일 앱이 부르는 데스크톱 기능(페어링·기기 토큰, 보드·태스크, 알림·푸시 중계, 모바일 기능 서비스)의 HTTP 밖 업무 계층"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+kanvibe-domain.workspace = true
+kanvibe-db.workspace = true
+kanvibe-process.workspace = true
+kanvibe-ai.workspace = true
+# 루트 workspace.dependencies에 항목이 없어 경로로 받는다
+kanvibe-services = { path = "../kanvibe-services" }
+kanvibe-terminal = { path = "../kanvibe-terminal" }
+serde.workspace = true
+serde_json = { workspace = true, features = ["preserve_order"] }
+thiserror.workspace = true
+uuid.workspace = true
+base64 = "0.22"
+chrono = "0.4"
+getrandom = "0.3"
+hex = "0.4"
+libc = "0.2"
+sha2 = "0.10"
+ureq = "3"
+
+[dev-dependencies]
+tempfile.workspace = true

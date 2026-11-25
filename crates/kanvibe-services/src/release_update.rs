@@ -13,7 +13,8 @@ use kanvibe_domain::release_updates::{
 use serde::Serialize;
 use serde_json::Value;
 
-const KANVIBE_RELEASES_API_URL: &str = "https://api.github.com/repos/rookedsysc/kanvibe/releases";
+pub const KANVIBE_RELEASES_API_URL: &str =
+    "https://api.github.com/repos/rookedsysc/kanvibe/releases";
 const DEVELOPMENT_APP_VERSION: &str = "0.0.0";
 const RELEASE_UPDATE_CHECK_CACHE: Duration = Duration::from_secs(60 * 60);
 

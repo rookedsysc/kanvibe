@@ -1,0 +1,49 @@
+[package]
+name = "kanvibe-server"
+description = "hook·task CLI·모바일 HTTP/WebSocket/TLS 서버와 그 서버가 쓰는 서비스 조립"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+kanvibe-domain.workspace = true
+kanvibe-db.workspace = true
+kanvibe-process.workspace = true
+kanvibe-ai.workspace = true
+kanvibe-services.workspace = true
+kanvibe-terminal.workspace = true
+kanvibe-mobile.workspace = true
+kanvibe-pane-mirror.workspace = true
+kanvibe-remote-host.workspace = true
+kanvibe-runtime.workspace = true
+rusqlite.workspace = true
+serde.workspace = true
+serde_json = { workspace = true, features = ["preserve_order"] }
+thiserror.workspace = true
+uuid.workspace = true
+base64 = "0.22"
+bytes = "1"
+futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
+hex = "0.4"
+http = "1"
+http-body-util = "0.1"
+httparse = "1"
+hyper = { version = "1", features = ["http1", "server"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+rcgen = { version = "0.13", default-features = false, features = ["pem", "ring"] }
+rand = "0.8"
+rsa = "0.9"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+sha1 = "0.10"
+sha2 = "0.10"
+tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util", "sync", "time", "macros", "signal"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12", "logging"] }
+tokio-tungstenite = { version = "0.28", default-features = false }
+time = "0.3"
+url = "2"
+
+[dev-dependencies]
+hmac = "0.12"
+tempfile.workspace = true
+tokio-tungstenite = { version = "0.28", default-features = false, features = ["handshake"] }

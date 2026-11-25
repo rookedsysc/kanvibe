@@ -22,7 +22,7 @@ use crate::board_notifier::{
     BoardNotifier, HookStatusTargetMissingPayload, HookStatusTargetMissingReason,
     TaskStatusChangedPayload,
 };
-use crate::request_scope::{is_task_reachable_from_tunnel, parse_bearer_token};
+use kanvibe_process::request_scope::{is_task_reachable_from_tunnel, parse_bearer_token};
 
 const HOOK_AUTHENTICATION_FAILURE: &str =
     "hook 인증에 실패했습니다. KanVibe에서 이 task에 접속하면 hooks가 다시 설치됩니다.";

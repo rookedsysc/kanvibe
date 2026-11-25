@@ -17,6 +17,7 @@ use self::request::{
     read_git_ref_field, read_optional_string_field, read_priority_field,
     read_required_string_field, read_session_type_field,
 };
+use crate::request_scope::{is_task_reachable_from_tunnel, parse_bearer_token};
 use crate::task_target_propagation::PeerTargetResult;
 
 /// CLI 요청을 거절할 때 HTTP 응답 코드와 함께 돌려주는 오류(TS `TaskCliRequestError`), 또는 협력 서비스가 낸 오류
@@ -682,37 +683,4 @@ impl<'a> TaskCliService<'a> {
             .map_err(TaskCliError::Failed)?
             .ok_or_else(|| TaskCliError::request(not_found_message, 404))
     }
-}
-
-/// `Authorization: Bearer <token>`의 토큰(TS `mobilePairing.parseBearerToken`)
-// MERGE: 모바일 페어링(M4)이 옮겨지면 그쪽 함수로 바꾼다
-fn parse_bearer_token(authorization_header: Option<&str>) -> Option<&str> {
-    let header = authorization_header?;
-    let scheme_length = "Bearer".len();
-    let scheme = header.get(..scheme_length)?;
-    if !scheme.eq_ignore_ascii_case("Bearer") {
-        return None;
-    }
-    let rest = &header[scheme_length..];
-    let token = rest.trim_start_matches(char::is_whitespace);
-    let has_separator = token.len() < rest.len();
-    let is_single_token = !token.is_empty() && !token.contains(char::is_whitespace);
-    (has_separator && is_single_token).then_some(token)
-}
-
-/// 터널로 들어온 요청이면 task(없으면 프로젝트)의 호스트가 그 터널 호스트일 때만 받는다(TS `hookTunnelService.isTaskReachableFromTunnel`)
-// MERGE: hook 터널 서비스(M4)가 옮겨지면 그쪽 함수로 바꾼다
-fn is_task_reachable_from_tunnel(
-    task: &KanbanTask,
-    project: Option<&Project>,
-    source_ssh_hosts: Option<&HashSet<String>>,
-) -> bool {
-    let Some(source_ssh_hosts) = source_ssh_hosts else {
-        return true;
-    };
-    let task_host = task
-        .ssh_host
-        .as_ref()
-        .or_else(|| project.and_then(|project| project.ssh_host.as_ref()));
-    task_host.is_some_and(|host| source_ssh_hosts.contains(host))
 }

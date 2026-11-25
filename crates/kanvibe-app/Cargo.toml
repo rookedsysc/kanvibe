@@ -21,6 +21,12 @@ kanvibe-process.workspace = true
 kanvibe-ai.workspace = true
 kanvibe-services.workspace = true
 kanvibe-terminal.workspace = true
+kanvibe-runtime.workspace = true
+kanvibe-markdown.workspace = true
+kanvibe-diagram.workspace = true
+# 화면 목록의 locale 정렬(TS `localeCompare`)
+icu_collator = "2"
+icu_locale_core = "2"
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

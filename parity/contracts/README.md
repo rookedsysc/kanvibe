@@ -22,7 +22,13 @@ python3 parity/tools/contracts/replay.py --launch-ts
 
 # Replay against a server that is already running (for example the Rust server)
 python3 parity/tools/contracts/replay.py --base-url http://127.0.0.1:39736 --oracle-cmd ./rust-contract-oracle
+
+# Build the Rust QA server and replay against a fresh isolated instance of it
+cargo build -p kanvibe-server --bin kanvibe-server-qa
+python3 parity/tools/contracts/replay.py --launch-rust target/debug/kanvibe-server-qa
 ```
+
+`--launch-rust` starts `kanvibe-server-qa serve --data-dir <run>/appdata --hook-port <port> --oracle-socket <sock>` with the same narrow child environment as `--launch-ts` (`kvcontract/rustapp.py` reuses `build_child_environment`). The server wires the real services (`kanvibe-runtime`, `kanvibe-mobile`, `kanvibe-pane-mirror`) exactly as the app does. Its oracle command is `kanvibe-server-qa oracle --socket <sock> <name> '<json-args>'`; the socket is a 0600 Unix socket opened only by the QA runner, never a network port.
 
 Replay always needs a fresh server with an empty database. Cases build state in order (pair → register projects → create tasks → delete), so a second replay against the same server fails on duplicates.
 

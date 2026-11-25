@@ -12,13 +12,22 @@ use crate::error::ServiceResult;
 use crate::terminal_ports::TaskTerminalSessions;
 
 pub struct SessionDependencyService {
-    dependencies: SessionDependencies,
+    dependencies: Arc<SessionDependencies>,
     handoff_prompts: HerdrServerHandoffPrompts,
     terminal: Arc<dyn TaskTerminalSessions>,
 }
 
 impl SessionDependencyService {
     pub fn new(dependencies: SessionDependencies, terminal: Arc<dyn TaskTerminalSessions>) -> Self {
+        Self::with_shared_dependencies(Arc::new(dependencies), terminal)
+    }
+
+    /// 터미널 브리지와 같은 확인 캐시를 쓴다. 설정 화면의 설치 결과와 연결 경로의 차단 기록이 한 곳에 남아야
+    /// TS 모듈 전역 캐시처럼 두 경로가 같은 판정을 본다
+    pub fn with_shared_dependencies(
+        dependencies: Arc<SessionDependencies>,
+        terminal: Arc<dyn TaskTerminalSessions>,
+    ) -> Self {
         Self {
             dependencies,
             handoff_prompts: HerdrServerHandoffPrompts::default(),

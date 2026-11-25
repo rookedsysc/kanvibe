@@ -1,0 +1,26 @@
+[package]
+name = "kanvibe-runtime"
+description = "데스크톱 앱의 조립 지점. DB·명령 실행기·터미널·hook·보드·AI 서비스를 한 번 만들어 서버와 GPUI 앱이 함께 쓴다"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+kanvibe-domain.workspace = true
+kanvibe-db.workspace = true
+kanvibe-process.workspace = true
+kanvibe-ai.workspace = true
+kanvibe-services.workspace = true
+kanvibe-terminal.workspace = true
+kanvibe-pane-mirror.workspace = true
+kanvibe-diagram.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+hex = "0.4"
+hmac = "0.12"
+sha2 = "0.10"

@@ -1,5 +1,6 @@
 //! KanVibe GPUI 데스크톱 앱. Electron 렌더러(`src/desktop/renderer`)와 main 창 관리를 대신한다.
 
+pub mod app_events;
 pub mod app_window;
 pub mod assets;
 pub mod components;
@@ -10,15 +11,26 @@ pub mod qa;
 pub mod routes;
 pub mod services;
 pub mod shortcuts;
+pub mod text_baseline;
+pub mod text_collation;
 pub mod theme;
 pub mod views;
 pub mod window_open;
 pub mod windows;
 
+use std::path::Path;
 use std::sync::Arc;
 
+use futures::channel::mpsc::UnboundedSender;
 use gpui_kit::{App, TextRenderingMode, WindowAppearance};
+use kanvibe_process::hooks::endpoint::KANVIBE_HOOK_SERVER_PORT;
+use kanvibe_process::shell_environment::{ShellEnvironment, current_user_home_directory};
+use kanvibe_runtime::{DesktopRuntime, RuntimeConfig};
+use kanvibe_services::board_notifier::BoardEventSubscription;
+use kanvibe_services::desktop_notification::NotificationDeliveryCallbacks;
 
+use crate::app_events::{RuntimeEvent, install_app_events, runtime_event_channel};
+use crate::notifications::ForegroundNotificationPresenter;
 use crate::qa::faults::FaultRegistry;
 use crate::qa::options::LaunchOptions;
 use crate::qa::targets::QaTargetRegistry;
@@ -28,20 +40,29 @@ use crate::shortcuts::ShortcutState;
 use crate::theme::ThemeTokens;
 use crate::windows::WindowRegistry;
 
-/// 창을 열기 전 앱 전역을 준비한다. QA 입력은 모두 `launch`에서 오고 프로세스 환경은 건드리지 않는다.
+/// 창을 열기 전 앱 전역을 준비한다. QA 입력은 모두 `launch`에서 오고 프로세스 환경은 읽기만 한다.
 pub fn init_app(launch: &LaunchOptions, cx: &mut App) -> anyhow::Result<()> {
     gpui_kit::init(cx);
     fonts::register_bundled_fonts(cx)?;
     // 기준 이미지는 그레이스케일 안티에일리어싱(fontconfig rgba none)으로 찍혔다
     cx.set_text_rendering_mode(TextRenderingMode::Grayscale);
 
-    let database = launch
-        .data_dir
-        .as_deref()
-        .map(AppServices::open_database)
-        .transpose()?;
-    let (faults, clock) = install_qa_runtime(launch, cx)?;
-    let services = AppServices::new(database, launch.data_dir.clone(), faults, clock);
+    let (faults, clock, network_responses) = install_qa_runtime(launch, cx)?;
+    let (sender, receiver) = runtime_event_channel();
+    let runtime = match launch.data_dir.as_deref() {
+        Some(data_dir) => Some(open_runtime(
+            launch,
+            data_dir,
+            clock,
+            network_responses,
+            &sender,
+        )?),
+        None => None,
+    };
+    let board_subscription = runtime
+        .as_ref()
+        .map(|runtime| relay_board_events(runtime, sender));
+    let services = AppServices::new(runtime, faults, clock, launch.shortcut_platform());
 
     let is_system_light = cx.window_appearance() == WindowAppearance::Light
         || cx.window_appearance() == WindowAppearance::VibrantLight;
@@ -56,17 +77,78 @@ pub fn init_app(launch: &LaunchOptions, cx: &mut App) -> anyhow::Result<()> {
     cx.set_global(services);
     cx.set_global(WindowRegistry::default());
     cx.set_global(notifications::NotificationCenter::default());
+    install_app_events(receiver, board_subscription, cx);
+    notifications::reload_notification_center(cx);
     shortcuts::install_shortcut_dispatch(cx).detach();
     notifications::install_notification_click_routing(cx);
     Ok(())
 }
 
+/// 백그라운드 task sync와 보드 이벤트 알림 전달을 켠다. 앱 프로세스에서 첫 창을 연 뒤 한 번 부른다
+pub fn start_runtime_services(cx: &App) {
+    if let Some(runtime) = cx.global::<AppServices>().runtime() {
+        runtime.start();
+    }
+}
+
+/// 앱 프로세스의 서비스 그래프 하나. 자식 프로세스 환경은 런타임이 시작 스냅샷을 좁혀 만든다.
+/// hook 서버는 아직 앱이 띄우지 않으므로 설치할 hook 주소는 TS 패키지 기본 포트를 가리킨다
+fn open_runtime(
+    launch: &LaunchOptions,
+    data_dir: &Path,
+    clock: AppClock,
+    network_responses: Option<NetworkResponseTable>,
+    sender: &UnboundedSender<RuntimeEvent>,
+) -> anyhow::Result<Arc<DesktopRuntime>> {
+    let base_environment: ShellEnvironment = std::env::vars().collect();
+    let mut config = RuntimeConfig::new(
+        data_dir,
+        KANVIBE_HOOK_SERVER_PORT,
+        current_user_home_directory(),
+        base_environment,
+    );
+    config.shortcut_platform = launch.shortcut_platform();
+    config.clock = clock;
+    config.qa_network_responses = network_responses.map(Arc::new);
+    config.notification_presenter = Arc::new(ForegroundNotificationPresenter {
+        sender: sender.clone(),
+    });
+    let changed_sender = sender.clone();
+    config.notification_callbacks = NotificationDeliveryCallbacks {
+        on_notifications_changed: Some(Arc::new(move || {
+            let _ = changed_sender.unbounded_send(RuntimeEvent::NotificationsChanged);
+        })),
+        on_notification_click: None,
+    };
+    config.diagram_font_files = Arc::new(|| {
+        fonts::BUNDLED_FONT_FILES
+            .iter()
+            .map(|bytes| bytes.to_vec())
+            .collect()
+    });
+    Ok(Arc::new(DesktopRuntime::new(config)?))
+}
+
+/// 보드 이벤트를 전경 스레드의 이벤트 버스로 넘긴다
+fn relay_board_events(
+    runtime: &DesktopRuntime,
+    sender: UnboundedSender<RuntimeEvent>,
+) -> BoardEventSubscription {
+    runtime.board_notifier().subscribe(move |event| {
+        let _ = sender.unbounded_send(RuntimeEvent::Board(event.clone()));
+    })
+}
+
 fn install_qa_runtime(
     launch: &LaunchOptions,
     cx: &mut App,
-) -> anyhow::Result<(Option<Arc<FaultRegistry>>, AppClock)> {
+) -> anyhow::Result<(
+    Option<Arc<FaultRegistry>>,
+    AppClock,
+    Option<NetworkResponseTable>,
+)> {
     let Some(qa) = launch.qa.clone() else {
-        return Ok((None, AppClock::system()));
+        return Ok((None, AppClock::system(), None));
     };
     let faults = match qa.faults_path.as_deref() {
         Some(path) => FaultRegistry::load_file(path)?,
@@ -80,7 +162,7 @@ fn install_qa_runtime(
     cx.set_global(QaTargetRegistry::default());
     cx.set_global(QaRuntime {
         options: qa,
-        network_responses,
+        network_responses: network_responses.clone(),
     });
-    Ok((Some(Arc::new(faults)), clock))
+    Ok((Some(Arc::new(faults)), clock, Some(network_responses)))
 }

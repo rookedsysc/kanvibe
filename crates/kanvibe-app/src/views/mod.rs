@@ -46,6 +46,13 @@ impl WindowNavigator {
             .update(cx, |app_window, cx| app_window.navigate(href, cx));
     }
 
+    /// 화면을 다시 만들지 않고 지금 경로의 검색 문자열(필터 쿼리)만 바꾼다
+    pub fn replace_search(&self, href: &str, cx: &mut App) {
+        let _ = self
+            .app_window
+            .update(cx, |app_window, cx| app_window.replace_search(href, cx));
+    }
+
     pub fn go_back(&self, cx: &mut App) {
         let _ = self
             .app_window

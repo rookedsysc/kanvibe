@@ -35,6 +35,7 @@ fn start_app(
     {
         start_control_server(socket_path, cx)?;
     }
+    kanvibe_app::start_runtime_services(cx);
     cx.activate(true);
     Ok(())
 }

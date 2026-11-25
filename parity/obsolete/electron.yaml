@@ -1,0 +1,3 @@
+# Rust로 옮기지 않는 electron/** TS 테스트. 각 이유는 Rust 쪽에 해당 경로가 없는 근거를 적는다.
+- id: TS-electron-diagramWorkerWindows-a73ca8
+  reason: "Mermaid를 그리던 숨은 BrowserWindow(diagram worker)를 사용자 창 목록에서 빼는지 검사한다. AD-9로 다이어그램은 kanvibe-diagram이 같은 프로세스에서 네이티브로 그려 worker 창 자체가 없다."

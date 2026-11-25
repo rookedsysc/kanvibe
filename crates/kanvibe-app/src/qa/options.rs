@@ -2,6 +2,8 @@
 
 use std::path::PathBuf;
 
+use kanvibe_domain::platform::ShortcutPlatform;
+
 /// QA 모드(`--qa`)에서만 쓰는 결정성 장치
 #[derive(Debug, Clone, PartialEq)]
 pub struct QaOptions {
@@ -15,6 +17,8 @@ pub struct QaOptions {
     pub faults_path: Option<PathBuf>,
     /// 재생 드라이버가 명령을 보내는 Unix 소켓
     pub control_socket_path: Option<PathBuf>,
+    /// macOS 렌더러 배치를 재현하는 상태(`platform: mac`)에서 이 OS 대신 쓸 플랫폼
+    pub platform_override: Option<ShortcutPlatform>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -26,6 +30,16 @@ pub struct LaunchOptions {
     /// 첫 창의 크기(논리 px)
     pub window_size: (f32, f32),
     pub qa: Option<QaOptions>,
+}
+
+impl LaunchOptions {
+    /// 단축키 표와 화면 배치가 따를 플랫폼. QA가 바꾸지 않으면 이 OS다
+    pub fn shortcut_platform(&self) -> ShortcutPlatform {
+        self.qa
+            .as_ref()
+            .and_then(|qa| qa.platform_override)
+            .unwrap_or_else(ShortcutPlatform::current)
+    }
 }
 
 pub const DEFAULT_WINDOW_SIZE: (f32, f32) = (1600.0, 1000.0);
@@ -56,6 +70,7 @@ struct RawLaunchArguments {
     network_responses_path: Option<PathBuf>,
     faults_path: Option<PathBuf>,
     control_socket_path: Option<PathBuf>,
+    platform_override: Option<ShortcutPlatform>,
 }
 
 /// 실행 파일 이름을 뺀 인자 목록을 읽는다
@@ -97,6 +112,9 @@ fn apply_flag(
         "--network-responses" => raw.network_responses_path = Some(PathBuf::from(value)),
         "--faults" => raw.faults_path = Some(PathBuf::from(value)),
         "--control-socket" => raw.control_socket_path = Some(PathBuf::from(value)),
+        "--platform" => {
+            raw.platform_override = Some(parse_platform(&value).ok_or(invalid(&value))?)
+        }
         unknown => return Err(LaunchOptionsError::UnknownArgument(unknown.to_string())),
     }
     Ok(())
@@ -112,6 +130,7 @@ fn build_launch_options(raw: RawLaunchArguments) -> Result<LaunchOptions, Launch
             network_responses_path: raw.network_responses_path,
             faults_path: raw.faults_path,
             control_socket_path: raw.control_socket_path,
+            platform_override: raw.platform_override,
         })
     } else {
         reject_qa_only_flags(&raw)?;
@@ -133,10 +152,20 @@ fn reject_qa_only_flags(raw: &RawLaunchArguments) -> Result<(), LaunchOptionsErr
         ("--network-responses", raw.network_responses_path.is_some()),
         ("--faults", raw.faults_path.is_some()),
         ("--control-socket", raw.control_socket_path.is_some()),
+        ("--platform", raw.platform_override.is_some()),
     ];
     match qa_only_flags.into_iter().find(|(_, is_set)| *is_set) {
         Some((flag, _)) => Err(LaunchOptionsError::QaOnly(flag.to_string())),
         None => Ok(()),
+    }
+}
+
+/// states.yaml `platform` 값(`mac`, `linux`)
+fn parse_platform(value: &str) -> Option<ShortcutPlatform> {
+    match value {
+        "mac" => Some(ShortcutPlatform::Mac),
+        "linux" => Some(ShortcutPlatform::Linux),
+        _ => None,
     }
 }
 
@@ -217,6 +246,20 @@ mod tests {
         assert_eq!(qa.control_socket_path, Some(PathBuf::from("/s.sock")));
         assert_eq!(options.initial_route, "/ko/settings");
         assert_eq!(options.window_size, (1599.0, 999.0));
+    }
+
+    #[test]
+    fn qa_platform_override_changes_the_shortcut_platform_only_in_qa_mode() {
+        let options = parse_launch_options(arguments(
+            "--qa --fixed-now 2026-01-15T03:00:00Z --platform mac",
+        ))
+        .unwrap();
+
+        assert_eq!(options.shortcut_platform(), ShortcutPlatform::Mac);
+        assert_eq!(
+            parse_launch_options(arguments("--platform mac")),
+            Err(LaunchOptionsError::QaOnly("--platform".into()))
+        );
     }
 
     #[test]

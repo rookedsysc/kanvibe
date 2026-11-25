@@ -1,0 +1,26 @@
+[package]
+name = "kanvibe-remote-host"
+description = "SSH 원격 호스트 daemon의 데스크톱 쪽 연결(업로드·검증·프레이밍), 원격 PTY, hook 터널(ssh -R)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+kanvibe-domain.workspace = true
+kanvibe-db.workspace = true
+kanvibe-process.workspace = true
+kanvibe-remote-agent.workspace = true
+# 루트 workspace.dependencies에 항목이 없어 경로로 받는다
+kanvibe-terminal = { path = "../kanvibe-terminal" }
+serde_json = { workspace = true, features = ["preserve_order"] }
+uuid.workspace = true
+hex = "0.4"
+httparse = "1"
+libc = "0.2"
+# 원격 터미널 agent의 직접 연결용 자체 서명 인증서. OpenSSL 없이 ring만 쓴다
+rcgen = { version = "0.14", default-features = false, features = ["ring", "pem"] }
+sha2 = "0.10"
+# 로컬 포워딩 소켓을 두는 mkdtemp 디렉터리
+tempfile.workspace = true
+

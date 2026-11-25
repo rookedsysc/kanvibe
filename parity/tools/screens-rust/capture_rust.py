@@ -66,6 +66,30 @@ def resolve_fault(fault: dict) -> dict:
     return resolved
 
 
+def target_center(client: ControlClient, target) -> tuple[float, float, dict]:
+    """대상의 창 좌표 사각형과 가운데."""
+    bounds = client.send({"cmd": "bounds", "target": target})["bounds"]
+    return bounds["x"] + bounds["width"] / 2, bounds["y"] + bounds["height"] / 2, bounds
+
+
+def drag_hold(client: ControlClient, value: dict) -> None:
+    """TS 드라이버 `drag_hold`: 대상을 집어 4px 끌고 200ms 쉰 뒤 목표 위로 12단계에 걸쳐 옮기고 놓지 않는다."""
+    _, _, source = target_center(client, value["from"])
+    target_x, _, target = target_center(client, value["to"])
+    start_x = source["x"] + source["width"] / 2
+    start_y = source["y"] + min(20, source["height"] / 2)
+    client.send({"cmd": "mouse_move", "x": start_x, "y": start_y})
+    client.send({"cmd": "mouse_down"})
+    for step in (1, 2):
+        client.send({"cmd": "mouse_move", "x": start_x + 2 * step, "y": start_y + 2 * step})
+    time.sleep(0.2)
+    end_y = target["y"] + value["to"].get("offset_y", 40) if isinstance(value["to"], dict) else target["y"] + 40
+    from_x, from_y = start_x + 4, start_y + 4
+    for step in range(1, 13):
+        client.send({"cmd": "mouse_move", "x": from_x + (target_x - from_x) * step / 12,
+                     "y": from_y + (end_y - from_y) * step / 12})
+
+
 def run_step(client: ControlClient, step: dict) -> None:
     kind, value = next(iter(step.items()))
     if kind == "wait":
@@ -89,6 +113,19 @@ def run_step(client: ControlClient, step: dict) -> None:
         client.send({"cmd": "clear_fault", "target": value})
     elif kind == "navigate":
         client.send({"cmd": "navigate", "route": value})
+    elif kind == "mouse_move":
+        client.send({"cmd": "mouse_move", "x": value["x"], "y": value["y"]})
+    elif kind in ("mouse_down", "mouse_up"):
+        client.send({"cmd": kind})
+    elif kind == "board_event":
+        client.send({"cmd": "board_event", "event": value})
+    elif kind == "fill":
+        # Playwright `fill`처럼 입력란 값을 통째로 바꾼다: 눌러 포커스를 주고 모두 고른 뒤 새 값을 친다
+        client.send({"cmd": "click", "target": {k: v for k, v in value.items() if k != "value"}})
+        client.send({"cmd": "key", "keys": "Mod+A"})
+        client.send({"cmd": "type", "text": value["value"]})
+    elif kind == "drag_hold":
+        drag_hold(client, value)
     else:
         raise RuntimeError(f"step not supported by the Rust app yet: {kind}")
 
@@ -110,6 +147,7 @@ def app_command(args: argparse.Namespace, state: dict, fixture: dict, job_dir: P
         "--control-socket", str(job_dir / "control.sock"),
         "--route", state["route"],
         "--window-size", f"{width}x{height}",
+        *(["--platform", "mac"] if state.get("platform") == "mac" else []),
     ]
 
 
@@ -138,6 +176,10 @@ def capture_state(args: argparse.Namespace, state: dict, output_path: Path) -> N
         client.send({"cmd": "wait_idle"})
         for step in state.get("steps") or []:
             run_step(client, step)
+            # 다음 단계가 이번 단계로 바뀐 화면(새로 뜬 메뉴 항목 등)을 찾도록 프레임을 기다린다
+            client.send({"cmd": "wait_idle"})
+        if not state.get("keep_mouse"):
+            client.send({"cmd": "park_pointer"})
         time.sleep(state.get("settle_ms", 1500) / 1000)
         client.send({"cmd": "report_ready"})
         capture.grab_window(args.display, width, height, output_path)

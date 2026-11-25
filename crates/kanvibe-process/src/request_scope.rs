@@ -1,6 +1,6 @@
 //! 네트워크 요청이 어느 task를 건드릴 수 있는지 가르는 순수 판정.
 //! TS에서는 `mobilePairing.parseBearerToken`과 `hookTunnelService.isTaskReachableFromTunnel`에 있었다.
-//! 서버 crate(M4b)가 이 crate를 쓰므로 여기에 두고 서버가 같은 함수를 재사용한다.
+//! task CLI(이 crate), hook 상태 서비스(kanvibe-services), 서버 crate가 모두 이 함수를 쓰므로 가장 아래 crate인 여기에 둔다.
 
 use std::collections::HashSet;
 
