@@ -29,6 +29,8 @@ kanvibe-diagram.workspace = true
 # 화면 목록의 locale 정렬(TS `localeCompare`)
 icu_collator = "2"
 icu_locale_core = "2"
+# diff 찾기 위젯의 정규식(Monaco JS `RegExp` 의미: ECMAScript 문법·역참조·앞뒤 보기)
+regress = "0.12"
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

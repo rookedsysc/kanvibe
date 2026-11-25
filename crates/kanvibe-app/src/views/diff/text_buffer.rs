@@ -5,6 +5,8 @@ use std::ops::Range;
 
 use super::auto_closing::bracket_around;
 use super::line_diff::TextPoint;
+use super::syntax::Language;
+use super::typescript_config::{EnterAction, enter_action};
 use super::word_boundary::{next_word_end, previous_word_start, word_range_at};
 
 const DEFAULT_INDENT_WIDTH: usize = 4;
@@ -148,7 +150,15 @@ impl TextBuffer {
 
     /// Enter. 지금 줄의 들여쓰기를 이어 가고, 여는 괄호 뒤면 한 단계 더 들인다. `{|}` 사이면 닫는 괄호를 다음 줄로 내린다
     /// (Monaco `autoIndent: full`과 괄호 `onEnterRules`)
-    pub fn insert_newline(&mut self) {
+    /// TypeScript 계열은 문서 주석 규칙(`onEnterRules`)을 괄호 규칙보다 먼저 본다
+    pub fn insert_newline(&mut self, language: Language) {
+        let (start, end) = self.selection().unwrap_or((self.cursor, self.cursor));
+        let before = &self.lines[start.line][..start.column];
+        let after = &self.lines[end.line][end.column..];
+        if let Some(action) = enter_action(language, before, after) {
+            self.apply_enter_action(action, start);
+            return;
+        }
         let line = &self.lines[self.cursor.line];
         let indentation: String = line
             .chars()
@@ -172,10 +182,32 @@ impl TextBuffer {
         self.anchor = self.cursor;
     }
 
+    /// Monaco `TypeOperations._enter`: 새 줄 들여쓰기는 커서 줄의 앞 공백(커서까지, `removeText`만큼 덜어 냄)에 `appendText`를 붙인다.
+    /// `IndentOutdent`면 커서 뒤 글자를 원래 들여쓰기로 한 줄 더 내리고 커서는 가운데 줄 끝에 둔다
+    fn apply_enter_action(&mut self, action: EnterAction, start: TextPoint) {
+        let leading: String = self.lines[start.line][..start.column]
+            .chars()
+            .take_while(|character| matches!(character, ' ' | '\t'))
+            .collect();
+        let kept = leading.chars().count().saturating_sub(action.remove_text);
+        let indentation: String = leading.chars().take(kept).collect();
+        let inner = format!("{indentation}{}", action.append_text);
+        if !action.is_indent_outdent {
+            self.insert_text(&format!("\n{inner}"));
+            return;
+        }
+        self.insert_text(&format!("\n{inner}\n{indentation}"));
+        self.cursor = TextPoint {
+            line: self.cursor.line - 1,
+            column: inner.len(),
+        };
+        self.anchor = self.cursor;
+    }
+
     /// 자동 닫기: 여는 글자와 닫는 글자를 넣고 커서를 사이에 둔다
-    pub fn insert_pair(&mut self, open: char, close: char) {
+    pub fn insert_pair(&mut self, open: char, close: &str) {
         self.insert_text(&format!("{open}{close}"));
-        self.cursor.column -= close.len_utf8();
+        self.cursor.column -= close.len();
         self.anchor = self.cursor;
     }
 
@@ -299,19 +331,20 @@ impl TextBuffer {
         self.preferred_column = None;
     }
 
-    /// 찾아 바꾸기. 여러 곳을 한 번의 실행 취소로 되돌린다. 범위는 뒤에서부터 바꿔 앞 범위의 위치가 흔들리지 않게 한다
-    pub fn replace_ranges(&mut self, ranges: &[(TextPoint, TextPoint)], replacement: &str) {
-        if ranges.is_empty() {
+    /// 찾아 바꾸기. 범위마다 바꿀 글자가 따로 있고(정규식 `$1` 치환), 여러 곳을 한 번의 실행 취소로 되돌린다.
+    /// 범위는 뒤에서부터 바꿔 앞 범위의 위치가 흔들리지 않게 한다
+    pub fn replace_ranges(&mut self, replacements: &[(TextPoint, TextPoint, String)]) {
+        if replacements.is_empty() {
             return;
         }
         self.record_undo(EditKind::Other);
-        let mut sorted = ranges.to_vec();
+        let mut sorted = replacements.to_vec();
         sorted.sort();
-        for (start, end) in sorted.into_iter().rev() {
+        for (start, end, replacement) in sorted.into_iter().rev() {
             self.anchor = start;
             self.cursor = end;
             self.delete_selection();
-            self.insert_raw(replacement);
+            self.insert_raw(&replacement);
         }
         self.finish_edit();
     }
@@ -627,7 +660,7 @@ mod tests {
         buffer.set_cursor(point(0, 2), false);
         buffer.insert_text("c");
         buffer.insert_text("d");
-        buffer.insert_newline();
+        buffer.insert_newline(Language::TypeScript);
 
         assert!(buffer.undo());
         assert_eq!(buffer.text(), "abcd");
@@ -656,7 +689,7 @@ mod tests {
         let mut buffer = TextBuffer::new("{\n  a;\n}");
         buffer.set_cursor(point(1, 4), false);
 
-        buffer.insert_newline();
+        buffer.insert_newline(Language::TypeScript);
         buffer.insert_indent();
 
         assert_eq!(buffer.lines()[2], "    ");
@@ -667,7 +700,7 @@ mod tests {
         let mut buffer = TextBuffer::new("  f() {}\n");
         buffer.set_cursor(point(0, 7), false);
 
-        buffer.insert_newline();
+        buffer.insert_newline(Language::TypeScript);
 
         assert_eq!(buffer.text(), "  f() {\n    \n  }\n");
         assert_eq!(buffer.cursor(), point(1, 4));
@@ -695,11 +728,11 @@ mod tests {
         assert_eq!(buffer.text(), "(ab) ab");
         assert_eq!(buffer.selected_text().as_deref(), Some("ab"));
 
-        buffer.replace_ranges(
-            &[(point(0, 1), point(0, 3)), (point(0, 5), point(0, 7))],
-            "xyz",
-        );
-        assert_eq!(buffer.text(), "(xyz) xyz");
+        buffer.replace_ranges(&[
+            (point(0, 1), point(0, 3), "xyz".to_string()),
+            (point(0, 5), point(0, 7), "1\n2".to_string()),
+        ]);
+        assert_eq!(buffer.text(), "(xyz) 1\n2");
         buffer.undo();
         assert_eq!(buffer.text(), "(ab) ab");
     }
@@ -731,5 +764,29 @@ mod tests {
 
         assert_eq!(buffer.utf16_offset(point(1, 1)), 4);
         assert_eq!(buffer.point_for_utf16_offset(1), point(0, 3));
+    }
+
+    #[test]
+    fn enter_inside_a_doc_comment_continues_it_like_monaco_typescript() {
+        let mut buffer = TextBuffer::new("  /** */");
+        buffer.set_cursor(point(0, 5), false);
+
+        buffer.insert_newline(Language::TypeScript);
+        assert_eq!(buffer.text(), "  /**\n   * \n   */");
+        assert_eq!(buffer.cursor(), point(1, 5));
+
+        buffer.insert_text("Sum");
+        buffer.insert_newline(Language::TypeScript);
+        assert_eq!(buffer.lines()[2], "   * ");
+
+        let mut closing = TextBuffer::new("   */");
+        closing.set_cursor(point(0, 5), false);
+        closing.insert_newline(Language::TypeScript);
+        assert_eq!(closing.lines()[1], "  ");
+
+        let mut plain = TextBuffer::new("/**");
+        plain.set_cursor(point(0, 3), false);
+        plain.insert_newline(Language::Rust);
+        assert_eq!(plain.lines()[1], "");
     }
 }

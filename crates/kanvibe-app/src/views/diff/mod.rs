@@ -3,6 +3,7 @@
 //! 조회가 5초를 넘으면 지연 안내를, 실패하면 사유와 재시도를 보이고, 성공했는데 작업이 없을 때만 "작업 없음" 화면을 보인다.
 
 mod auto_closing;
+mod codicon;
 mod file_editor;
 mod file_tree;
 mod find_session;
@@ -12,11 +13,12 @@ mod icons;
 mod line_diff;
 mod monaco;
 mod page;
+mod replace_pattern;
 mod search;
 mod source;
 mod syntax;
-mod text_baseline;
 mod text_buffer;
+mod typescript_config;
 mod viewer;
 mod word_boundary;
 
@@ -37,13 +39,13 @@ use kanvibe_domain::task_diff_stats::DiffFile;
 use crate::components::{box_shadows, fade};
 use crate::qa::targets::{QaTargetDescription, qa_target_layer};
 use crate::routes::AppRoute;
+use crate::text_baseline::{TextFamily, aligned_text, chromium_text};
 use crate::theme::{ThemeTokens, radius, spacing, text_scale};
 use crate::views::{ScreenContext, TailwindText};
 use crate::windows::{TaskNavigationRequest, navigate_to_task_detail};
 use icons::{DiffIcon, diff_icon};
 use page::DiffPage;
 use source::{ServiceDiffSource, SharedDiffSource};
-use text_baseline::{TextFamily, aligned_text, chromium_text};
 
 /// TS `INITIAL_DESKTOP_LOAD_TIMEOUT_MS`
 const LOAD_DELAY_NOTICE_AFTER: Duration = Duration::from_millis(5000);

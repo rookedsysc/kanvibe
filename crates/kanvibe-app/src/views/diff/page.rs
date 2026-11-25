@@ -21,10 +21,10 @@ use super::file_tree::{
 };
 use super::icons::{DiffIcon, diff_icon};
 use super::source::SharedDiffSource;
-use super::text_baseline::{TextFamily, aligned_text, chromium_text};
 use super::viewer::{DiffViewer, SideBySideModel};
 use crate::components::{box_shadows, fade, focus_ring};
 use crate::qa::targets::{QaTargetDescription, qa_target_layer};
+use crate::text_baseline::{TextFamily, aligned_text, chromium_text};
 use crate::theme::{ThemeTokens, radius, spacing, text_scale};
 use crate::views::TailwindText;
 

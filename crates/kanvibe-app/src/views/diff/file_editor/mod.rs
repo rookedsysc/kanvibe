@@ -28,11 +28,11 @@ use super::monaco::{
     active_indent_guide, hit_test, paint_pane,
 };
 use super::syntax::{Language, detect_language, matching_bracket_pair, tokenize_document};
-use super::text_baseline::{TextFamily, aligned_text, chromium_text};
 use super::text_buffer::TextBuffer;
 use crate::components::fade;
 use crate::qa::targets::{QaTargetDescription, qa_target_layer};
 use crate::services::AppServices;
+use crate::text_baseline::{TextFamily, aligned_text, chromium_text};
 use crate::theme::{ThemeTokens, radius, spacing, text_scale};
 use crate::views::TailwindText;
 
@@ -103,7 +103,7 @@ impl DiffFileEditor {
         let language = detect_language(file_path);
         let buffer = TextBuffer::new(content);
         let document = Rc::new(build_document(&buffer, language));
-        let fold_ranges = compute_fold_ranges(buffer.lines(), document.indent_size);
+        let fold_ranges = compute_fold_ranges(buffer.lines(), document.indent_size, language);
         let visible_lines = (0..buffer.lines().len()).collect();
         let platform = cx.global::<AppServices>().shortcut_platform;
         Self {
@@ -204,7 +204,11 @@ impl DiffFileEditor {
     fn rebuild_document(&mut self, cx: &mut Context<Self>) {
         self.document = Rc::new(build_document(&self.buffer, self.language));
         self.document_revision = self.buffer.revision();
-        let ranges = compute_fold_ranges(self.buffer.lines(), self.document.indent_size);
+        let ranges = compute_fold_ranges(
+            self.buffer.lines(),
+            self.document.indent_size,
+            self.language,
+        );
         self.fold_state.retain_valid(&ranges);
         self.fold_ranges = Rc::new(ranges);
         self.refresh_visible_lines();

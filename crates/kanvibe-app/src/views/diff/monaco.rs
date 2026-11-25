@@ -541,34 +541,43 @@ impl RowPainter<'_> {
         self.pane.fold_markers.contains(&(line, true))
     }
 
-    /// 다른 결과는 반투명 주황, 지금 결과는 회녹색으로 글자 뒤를 칠한다
+    /// 다른 결과는 반투명 주황, 지금 결과는 회녹색으로 글자 뒤를 칠한다. 다음 줄로 이어지는 다른 결과는 줄 끝 뒤로 글자 한 칸을
+    /// 더 칠하고(`findMatch`만), 빈 결과처럼 글자 한 칸보다 좁으면 가운데를 지켜 한 칸 폭으로 넓힌다(Monaco `showIfCollapsed`)
     fn paint_find_highlights(
         &self,
         line: usize,
         shaped: &gpui_kit::ShapedLine,
         window: &mut Window,
     ) {
-        let current = self
-            .pane
-            .current_find_match
-            .as_ref()
-            .filter(|found| found.line == line);
-        for found in self
-            .pane
-            .find_highlights
-            .iter()
-            .filter(|found| found.line == line)
-        {
-            let color = if Some(found) == current {
+        let current = self.pane.current_find_match.as_ref();
+        for found in self.pane.find_highlights.iter() {
+            let Some((columns, continues)) =
+                find_highlight_columns(found, line, &self.pane.document.lines)
+            else {
+                continue;
+            };
+            let is_current = Some(found) == current;
+            let color = if is_current {
                 palette::find_match()
             } else {
                 palette::FIND_MATCH_HIGHLIGHT
             };
-            let start =
-                (self.text_origin_x() + f32::from(shaped.x_for_index(found.range.start))).round();
-            let end =
-                (self.text_origin_x() + f32::from(shaped.x_for_index(found.range.end))).round();
-            self.paint_rect(window, start, self.top, end - start, LINE_HEIGHT, color);
+            let start = f32::from(shaped.x_for_index(columns.start)).round();
+            let mut width = f32::from(shaped.x_for_index(columns.end)).round() - start;
+            if continues && !is_current {
+                width += CHARACTER_WIDTH;
+            }
+            let (left, width) = if width < CHARACTER_WIDTH {
+                let center = (start + width / 2.0).round();
+                (
+                    (center - CHARACTER_WIDTH / 2.0).round().max(0.0),
+                    CHARACTER_WIDTH,
+                )
+            } else {
+                (start, width)
+            };
+            let x = self.text_origin_x() + left;
+            self.paint_rect(window, x, self.top, width, LINE_HEIGHT, color);
         }
     }
 
@@ -953,4 +962,85 @@ pub fn widest_line_width(document: &PaneDocument) -> f32 {
         .max()
         .unwrap_or(0) as f32
         * CHARACTER_WIDTH
+}
+
+/// 찾은 결과가 `line` 줄에서 칠할 바이트 범위와, 그 칠이 다음 줄로 이어지는지.
+/// 다음 줄 첫 칸에서 끝나는 여러 줄 결과는 앞 줄 끝에서 끝난 것으로 본다(Monaco `DecorationsOverlay`)
+fn find_highlight_columns(
+    found: &FindMatch,
+    line: usize,
+    lines: &[String],
+) -> Option<(Range<usize>, bool)> {
+    let is_ending_at_line_start = found.end.column == 0 && found.end.line > found.start.line;
+    let end = if is_ending_at_line_start {
+        let previous_line = found.end.line - 1;
+        TextPoint {
+            line: previous_line,
+            column: lines[previous_line].len(),
+        }
+    } else {
+        found.end
+    };
+    if line < found.start.line || line > end.line {
+        return None;
+    }
+    let start_column = if line == found.start.line {
+        found.start.column
+    } else {
+        0
+    };
+    let end_column = if line == end.line {
+        end.column
+    } else {
+        lines[line].len()
+    };
+    Some((start_column..end_column, line < end.line))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn found(start: (usize, usize), end: (usize, usize)) -> FindMatch {
+        FindMatch {
+            start: TextPoint {
+                line: start.0,
+                column: start.1,
+            },
+            end: TextPoint {
+                line: end.0,
+                column: end.1,
+            },
+            captures: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn multiline_find_highlights_cover_each_line_and_continue_past_line_ends() {
+        let lines: Vec<String> = ["abcde", "fg", "hij"].map(str::to_string).to_vec();
+        let spanning = found((0, 3), (2, 1));
+
+        assert_eq!(
+            find_highlight_columns(&spanning, 0, &lines),
+            Some((3..5, true))
+        );
+        assert_eq!(
+            find_highlight_columns(&spanning, 1, &lines),
+            Some((0..2, true))
+        );
+        assert_eq!(
+            find_highlight_columns(&spanning, 2, &lines),
+            Some((0..1, false))
+        );
+        // 다음 줄 첫 칸에서 끝나면 그 줄은 칠하지 않고 앞 줄에서 끝난다
+        let ending_at_line_start = found((0, 3), (1, 0));
+        assert_eq!(
+            find_highlight_columns(&ending_at_line_start, 0, &lines),
+            Some((3..5, false))
+        );
+        assert_eq!(
+            find_highlight_columns(&ending_at_line_start, 1, &lines),
+            None
+        );
+    }
 }

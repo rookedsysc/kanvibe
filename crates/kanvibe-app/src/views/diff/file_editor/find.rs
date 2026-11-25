@@ -1,11 +1,12 @@
 //! 편집기의 찾기·바꾸기(Monaco `Mod+F`, Linux `Ctrl+H`·macOS `Cmd+Alt+F`). 현재 결과는 선택으로 보이고 화면 안으로 스크롤한다.
-//! 바꿀 글자는 정규식이어도 그대로 넣는다(Monaco의 `$1` 치환은 옮기지 않았다).
+//! 바꿀 글자는 정규식 모드에서 Monaco처럼 `$1`·`$&`·`$$` 등을 치환하고, 대소문자 보존 토글을 따른다(`replace_pattern`).
 
-use gpui_kit::{AppContext, Context, Window};
+use gpui_kit::{App, AppContext, Context, Entity, Window};
 
 use super::DiffFileEditor;
-use crate::views::diff::find_session::{FindSession, match_end, match_start, new_session};
+use crate::views::diff::find_session::{FindSession, new_session};
 use crate::views::diff::find_widget::{FindEvent, FindWidget, seed_query};
+use crate::views::diff::replace_pattern::ReplacePattern;
 
 impl DiffFileEditor {
     /// 위젯을 연다. 이미 열려 있으면 검색어를 새로 채우고 입력란으로 간다
@@ -93,8 +94,7 @@ impl DiffFileEditor {
             cx.notify();
             return;
         };
-        self.buffer
-            .select_range(match_start(&found), match_end(&found));
+        self.buffer.select_range(found.start, found.end);
         self.after_cursor_move(cx);
     }
 
@@ -103,12 +103,13 @@ impl DiffFileEditor {
         let Some(session) = &self.find else {
             return;
         };
-        let replacement = session.widget.read(cx).replacement();
         let Some(found) = session.current_match().cloned() else {
             return;
         };
+        let (pattern, is_preserving_case) = replace_pattern_of(&session.widget, cx);
+        let replacement = pattern.build(&found.captures, is_preserving_case);
         self.buffer
-            .replace_ranges(&[(match_start(&found), match_end(&found))], &replacement);
+            .replace_ranges(&[(found.start, found.end, replacement)]);
         self.after_edit(cx);
         self.select_current_match(cx);
     }
@@ -117,13 +118,16 @@ impl DiffFileEditor {
         let Some(session) = &self.find else {
             return;
         };
-        let replacement = session.widget.read(cx).replacement();
-        let ranges: Vec<_> = session
+        let (pattern, is_preserving_case) = replace_pattern_of(&session.widget, cx);
+        let replacements: Vec<_> = session
             .matches
             .iter()
-            .map(|found| (match_start(found), match_end(found)))
+            .map(|found| {
+                let replacement = pattern.build(&found.captures, is_preserving_case);
+                (found.start, found.end, replacement)
+            })
             .collect();
-        self.buffer.replace_ranges(&ranges, &replacement);
+        self.buffer.replace_ranges(&replacements);
         self.after_edit(cx);
     }
 
@@ -133,4 +137,11 @@ impl DiffFileEditor {
         window.focus(&self.focus_handle, cx);
         cx.notify();
     }
+}
+
+/// 위젯의 바꿀 글자·정규식 토글로 만든 치환 규칙과 대소문자 보존 여부
+fn replace_pattern_of(widget: &Entity<FindWidget>, cx: &App) -> (ReplacePattern, bool) {
+    let widget = widget.read(cx);
+    let pattern = ReplacePattern::new(&widget.replacement(), widget.options().is_regex);
+    (pattern, widget.is_preserving_case())
 }

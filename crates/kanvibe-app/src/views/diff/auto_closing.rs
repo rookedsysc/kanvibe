@@ -1,8 +1,10 @@
 //! 괄호·따옴표 자동 닫기와 감싸기(Monaco 기본값 `autoClosingBrackets`·`autoClosingQuotes`·`autoSurround`: `languageDefined`,
 //! `autoClosingOvertype`·`autoClosingDelete`: `auto`). 쌍은 Monaco TypeScript 언어 설정을 따른다.
-//! `/**` → ` */` 쌍은 문서 주석 템플릿이라 옮기지 않았다.
+//! TypeScript 계열의 `/**` → ` */` 쌍(`autoClosingComments: languageDefined`)도 닫는다. 이 쌍은 여러 글자라 Monaco처럼
+//! 지나가기·함께 지우기 대상이 아니다.
 
 use super::syntax::Language;
+use super::typescript_config::{DOC_COMMENT_OPEN, has_typescript_config};
 use super::word_boundary::is_word_boundary_character;
 
 /// 다음 글자가 이 중 하나이거나 줄 끝일 때만 닫는다(Monaco 기본 `autoCloseBefore`)
@@ -75,6 +77,8 @@ pub enum TypingAction {
     InsertPair {
         close: char,
     },
+    /// 문서 주석 `/**`를 마저 친 글자 뒤에 ` */`를 넣고 커서는 그 앞에 둔다
+    InsertDocCommentClose,
     /// 자동으로 넣은 닫는 글자 위를 지나간다
     Overtype,
     /// 선택을 감싼다
@@ -102,6 +106,9 @@ pub fn decide_typing(language: Language, typed: char, context: &TypingContext) -
     {
         return TypingAction::Overtype;
     }
+    if is_completing_doc_comment(language, typed, context) {
+        return TypingAction::InsertDocCommentClose;
+    }
     let Some(pair) = pairs.iter().find(|pair| pair.open == typed) else {
         return TypingAction::Insert;
     };
@@ -120,6 +127,17 @@ pub fn decide_typing(language: Language, typed: char, context: &TypingContext) -
         return TypingAction::Insert;
     }
     TypingAction::InsertPair { close: pair.close }
+}
+
+/// 이 글자로 `/**`가 완성되고, 선택이 없고, 문자열 밖이며, 뒤가 줄 끝이거나 `autoCloseBefore` 글자인지
+fn is_completing_doc_comment(language: Language, typed: char, context: &TypingContext) -> bool {
+    let before = &context.line[..context.column];
+    let next = context.line[context.column..].chars().next();
+    has_typescript_config(language)
+        && !context.has_selection
+        && format!("{before}{typed}").ends_with(DOC_COMMENT_OPEN)
+        && !context.tokens.is_in_string
+        && next.is_none_or(|next| AUTO_CLOSE_BEFORE.contains(next))
 }
 
 /// Backspace가 자동으로 넣은 빈 쌍(`(|)`)을 함께 지워야 하는지
@@ -235,5 +253,32 @@ mod tests {
             2,
             true
         ));
+    }
+
+    #[test]
+    fn completing_a_doc_comment_opener_adds_its_closer_in_typescript_only() {
+        assert_eq!(
+            decide_typing(Language::TypeScript, '*', &context("  /*", 4)),
+            TypingAction::InsertDocCommentClose
+        );
+        assert_eq!(
+            decide_typing(Language::TypeScript, '*', &context("/*x", 2)),
+            TypingAction::Insert
+        );
+        assert_eq!(
+            decide_typing(Language::Rust, '*', &context("/*", 2)),
+            TypingAction::Insert
+        );
+        let in_string = TypingContext {
+            tokens: TokenContext {
+                is_in_string: true,
+                is_in_comment: false,
+            },
+            ..context("'/*", 3)
+        };
+        assert_eq!(
+            decide_typing(Language::TypeScript, '*', &in_string),
+            TypingAction::Insert
+        );
     }
 }
