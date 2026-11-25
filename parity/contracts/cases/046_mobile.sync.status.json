@@ -1,0 +1,34 @@
+{
+  "seq": 46,
+  "id": "mobile.sync.status",
+  "group": "settings",
+  "route": "GET /api/mobile/sync/status",
+  "title": "idle background sync",
+  "transport": "http",
+  "request": {
+    "method": "GET",
+    "path": "/api/mobile/sync/status",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}"
+    }
+  },
+  "expect": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": true,
+      "status": {
+        "phase": "idle",
+        "isRunning": false,
+        "completedStages": 0,
+        "reviewNeeded": false,
+        "boardUpdated": false,
+        "error": null
+      }
+    }
+  }
+}

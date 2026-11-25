@@ -1,0 +1,30 @@
+{
+  "seq": 24,
+  "id": "mobile.tls.pinned-fingerprint",
+  "group": "pairing",
+  "route": "GET /api/mobile/tasks/search",
+  "title": "later TLS requests present the same certificate (pin stays valid)",
+  "transport": "http",
+  "request": {
+    "method": "GET",
+    "path": "/api/mobile/tasks/search",
+    "listener": "tls",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}"
+    }
+  },
+  "expect": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": true,
+      "tasks": []
+    },
+    "tls": {
+      "peer_certificate_sha256": "{{var:tls_fingerprint}}"
+    }
+  }
+}

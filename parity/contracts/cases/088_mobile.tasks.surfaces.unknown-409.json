@@ -1,0 +1,27 @@
+{
+  "seq": 88,
+  "id": "mobile.tasks.surfaces.unknown-409",
+  "group": "tasks",
+  "route": "GET /api/mobile/tasks/:taskId/surfaces",
+  "title": "unknown task",
+  "transport": "http",
+  "request": {
+    "method": "GET",
+    "path": "/api/mobile/tasks/00000000-0000-4000-8000-000000000000/surfaces",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}"
+    }
+  },
+  "expect": {
+    "status": 409,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": false,
+      "reason": "no-session"
+    }
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "seq": 184,
+  "id": "hook.status.case-insensitive",
+  "group": "hook-status",
+  "route": "POST /api/hooks/status",
+  "title": "status is lowercased; agentSession accepted",
+  "transport": "http",
+  "request": {
+    "method": "POST",
+    "path": "/api/hooks/status",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:task_token}}",
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "taskId": "{{var:task_id}}",
+      "status": "REVIEW",
+      "agentSession": {
+        "provider": "claude",
+        "hookPid": 4242,
+        "payloadBase64": "e30="
+      }
+    }
+  },
+  "expect": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": true,
+      "data": {
+        "id": "{{var:task_id}}",
+        "status": "review",
+        "branchName": "feat-a",
+        "projectName": "demo"
+      }
+    }
+  }
+}

@@ -1,0 +1,7 @@
+# Rust로 옮기지 않는 src/lib/** TS 테스트. 각 이유는 Rust 쪽에 해당 경로가 없는 근거를 적는다.
+- id: TS-lib-databaseMigrations-8142e8
+  reason: "TypeORM migration:revert(down)를 검증한다. Rust DB 계층에는 마이그레이션을 되돌리는 경로가 없고(앱·xtask 어디서도 down을 부르지 않음) up만 TS와 같은 SQL로 옮겼다."
+- id: TS-lib-databasePaths-625969
+  reason: "vitest.config.ts가 테스트 프로세스에 KANVIBE_APP_DATA_DIR·KANVIBE_DB_PATH를 주입했는지 검사한다. Rust 테스트는 DatabaseLocation을 tempdir 경로로 명시적으로 넘기고 프로세스 환경 변수를 읽지 않는다."
+- id: TS-lib-databasePaths-9ef005
+  reason: "KANVIBE_DESKTOP이 꺼진 tsx 스크립트·playwright가 KANVIBE_DB_PATH 환경 변수로 DB를 고르는 우선순위 규칙이다. Rust는 DB 경로를 DatabaseLocation 인자로만 받아 환경 변수 우선순위 자체가 없다."

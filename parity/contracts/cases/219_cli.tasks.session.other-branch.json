@@ -1,0 +1,41 @@
+{
+  "seq": 219,
+  "id": "cli.tasks.session.other-branch",
+  "group": "task-cli",
+  "route": "POST /api/cli/tasks/session",
+  "title": "prepare another task's session by branch",
+  "transport": "http",
+  "request": {
+    "method": "POST",
+    "path": "/api/cli/tasks/session",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:task_token}}",
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "contextTaskId": "{{var:task_id}}",
+      "branchName": "cli-b"
+    }
+  },
+  "expect": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": true,
+      "data": {
+        "id": "{{var:cli_task_id}}",
+        "branchName": "cli-b",
+        "sessionType": "tmux",
+        "sessionName": "demo-cli-b",
+        "sshHost": null,
+        "session": {
+          "isPrepared": true
+        }
+      }
+    }
+  }
+}

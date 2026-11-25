@@ -1,0 +1,27 @@
+{
+  "seq": 127,
+  "id": "mobile.ai-sessions.detail.unknown-404",
+  "group": "ai",
+  "route": "GET /api/mobile/tasks/:taskId/ai-sessions/:provider/:sessionId",
+  "title": "unknown conversation",
+  "transport": "http",
+  "request": {
+    "method": "GET",
+    "path": "/api/mobile/tasks/{{var:task_id}}/ai-sessions/claude/abc?roles=user,assistant",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}"
+    }
+  },
+  "expect": {
+    "status": 404,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": false,
+      "error": "없는 대화입니다"
+    }
+  }
+}

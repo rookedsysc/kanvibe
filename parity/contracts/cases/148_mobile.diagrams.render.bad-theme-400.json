@@ -1,0 +1,33 @@
+{
+  "seq": 148,
+  "id": "mobile.diagrams.render.bad-theme-400",
+  "group": "diagram",
+  "route": "POST /api/mobile/diagrams/render",
+  "title": "unknown theme",
+  "transport": "http",
+  "request": {
+    "method": "POST",
+    "path": "/api/mobile/diagrams/render",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}",
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "definition": "graph TD; A-->B",
+      "theme": "blue",
+      "width": 400
+    }
+  },
+  "expect": {
+    "status": 400,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": false,
+      "error": "잘못된 다이어그램 요청입니다"
+    }
+  }
+}

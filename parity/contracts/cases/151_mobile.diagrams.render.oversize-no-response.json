@@ -1,0 +1,25 @@
+{
+  "seq": 151,
+  "id": "mobile.diagrams.render.oversize-no-response",
+  "group": "diagram",
+  "route": "POST /api/mobile/diagrams/render",
+  "title": "body over 400 KiB",
+  "transport": "http",
+  "request": {
+    "method": "POST",
+    "path": "/api/mobile/diagrams/render",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}",
+      "Content-Type": "application/json"
+    },
+    "body_fill": {
+      "bytes": 413696,
+      "prefix": "{\"definition\":\"",
+      "suffix": "\",\"theme\":\"light\",\"width\":400}"
+    }
+  },
+  "expect": {
+    "outcome": "no-response"
+  }
+}

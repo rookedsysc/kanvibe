@@ -1,0 +1,27 @@
+{
+  "seq": 136,
+  "id": "mobile.ai.call-graph.bad-provider-400",
+  "group": "ai",
+  "route": "GET /api/mobile/tasks/:id/agent-call-graph",
+  "title": "unsupported provider",
+  "transport": "http",
+  "request": {
+    "method": "GET",
+    "path": "/api/mobile/tasks/{{var:task_id}}/agent-call-graph?provider=bard&sessionId=s1",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}"
+    }
+  },
+  "expect": {
+    "status": 400,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": false,
+      "error": "지원하지 않는 AI 제공자입니다"
+    }
+  }
+}

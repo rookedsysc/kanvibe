@@ -1,0 +1,27 @@
+{
+  "seq": 22,
+  "id": "mobile.unknown-route-404",
+  "group": "guard",
+  "route": "GUARD mobile unknown path",
+  "title": "authenticated but unknown mobile path",
+  "transport": "http",
+  "request": {
+    "method": "GET",
+    "path": "/api/mobile/does-not-exist",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}"
+    }
+  },
+  "expect": {
+    "status": 404,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": false,
+      "error": "Not found"
+    }
+  }
+}

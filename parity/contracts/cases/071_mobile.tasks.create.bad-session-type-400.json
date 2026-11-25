@@ -1,0 +1,33 @@
+{
+  "seq": 71,
+  "id": "mobile.tasks.create.bad-session-type-400",
+  "group": "tasks",
+  "route": "POST /api/mobile/tasks",
+  "title": "unknown session type",
+  "transport": "http",
+  "request": {
+    "method": "POST",
+    "path": "/api/mobile/tasks",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}",
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "projectId": "{{var:project_id}}",
+      "branchName": "feat-x",
+      "sessionType": "screen"
+    }
+  },
+  "expect": {
+    "status": 400,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": false,
+      "error": "세션 타입 값이 올바르지 않습니다"
+    }
+  }
+}

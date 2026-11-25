@@ -1,0 +1,27 @@
+{
+  "seq": 154,
+  "id": "mobile.pane-chat.agent",
+  "group": "pane-chat",
+  "route": "GET /api/mobile/tasks/:taskId/pane-chat",
+  "title": "detail=agent returns only the provider",
+  "transport": "http",
+  "request": {
+    "method": "GET",
+    "path": "/api/mobile/tasks/{{var:task_id}}/pane-chat?paneId=%250&detail=agent",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}"
+    }
+  },
+  "expect": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": true,
+      "provider": null
+    }
+  }
+}

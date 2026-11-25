@@ -1,0 +1,28 @@
+{
+  "seq": 76,
+  "id": "mobile.tasks.done.ok",
+  "group": "tasks",
+  "route": "GET /api/mobile/tasks/done",
+  "title": "done page",
+  "transport": "http",
+  "request": {
+    "method": "GET",
+    "path": "/api/mobile/tasks/done?offset=0&limit=5",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}"
+    }
+  },
+  "expect": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": true,
+      "tasks": [],
+      "doneTotal": 0
+    }
+  }
+}

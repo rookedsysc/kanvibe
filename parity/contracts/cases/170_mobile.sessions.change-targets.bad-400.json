@@ -1,0 +1,27 @@
+{
+  "seq": 170,
+  "id": "mobile.sessions.change-targets.bad-400",
+  "group": "sessions",
+  "route": "GET /api/mobile/sessions/change-targets",
+  "title": "sessionType required",
+  "transport": "http",
+  "request": {
+    "method": "GET",
+    "path": "/api/mobile/sessions/change-targets",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}"
+    }
+  },
+  "expect": {
+    "status": 400,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": false,
+      "error": "세션 종류 값이 올바르지 않습니다"
+    }
+  }
+}

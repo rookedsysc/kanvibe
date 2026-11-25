@@ -1,0 +1,33 @@
+{
+  "seq": 137,
+  "id": "mobile.ai.call-graph.ok",
+  "group": "ai",
+  "route": "GET /api/mobile/tasks/:id/agent-call-graph",
+  "title": "graph for an unknown session",
+  "transport": "http",
+  "request": {
+    "method": "GET",
+    "path": "/api/mobile/tasks/{{var:task_id}}/agent-call-graph?provider=claude&sessionId=s1",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}"
+    }
+  },
+  "expect": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": true,
+      "graph": {
+        "provider": "claude",
+        "sessionId": "s1",
+        "startedAt": null,
+        "readAt": "{{any:iso8601}}",
+        "roots": []
+      }
+    }
+  }
+}

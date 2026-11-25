@@ -1,0 +1,26 @@
+{
+  "seq": 205,
+  "id": "mobile.notifications.unsubscribe.ok",
+  "group": "notifications",
+  "route": "DELETE /api/mobile/notifications",
+  "title": "remove push subscription",
+  "transport": "http",
+  "request": {
+    "method": "DELETE",
+    "path": "/api/mobile/notifications",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}"
+    }
+  },
+  "expect": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": true
+    }
+  }
+}

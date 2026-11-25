@@ -1,0 +1,27 @@
+{
+  "seq": 77,
+  "id": "mobile.tasks.done.bad-limit-400",
+  "group": "tasks",
+  "route": "GET /api/mobile/tasks/done",
+  "title": "limit > 100",
+  "transport": "http",
+  "request": {
+    "method": "GET",
+    "path": "/api/mobile/tasks/done?limit=101",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}"
+    }
+  },
+  "expect": {
+    "status": 400,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": false,
+      "error": "페이지 값이 올바르지 않습니다"
+    }
+  }
+}

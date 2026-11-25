@@ -1,0 +1,37 @@
+{
+  "seq": 143,
+  "id": "mobile.ai.accounts.list-one",
+  "group": "ai",
+  "route": "GET /api/mobile/ai/accounts",
+  "title": "added account listed",
+  "transport": "http",
+  "request": {
+    "method": "GET",
+    "path": "/api/mobile/ai/accounts",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}"
+    }
+  },
+  "expect": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": true,
+      "accounts": [
+        {
+          "accountId": "{{var:ai_account_id}}",
+          "provider": "claude",
+          "accountName": "work",
+          "label": "work",
+          "isLoggedIn": false,
+          "planName": null,
+          "isRemovable": true
+        }
+      ]
+    }
+  }
+}

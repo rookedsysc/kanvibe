@@ -1,0 +1,31 @@
+{
+  "seq": 120,
+  "id": "mobile.files.put.nul-400",
+  "group": "workspace",
+  "route": "PUT /api/mobile/tasks/:id/files",
+  "title": "NUL byte rejected",
+  "transport": "http",
+  "request": {
+    "method": "PUT",
+    "path": "/api/mobile/tasks/{{var:task_id}}/files?path=notes/todo.txt",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}",
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "content": "bad\u0000content"
+    }
+  },
+  "expect": {
+    "status": 400,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": false,
+      "error": "저장할 파일 내용이 올바르지 않거나 너무 큽니다"
+    }
+  }
+}

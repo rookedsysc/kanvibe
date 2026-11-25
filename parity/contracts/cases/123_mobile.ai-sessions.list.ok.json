@@ -1,0 +1,185 @@
+{
+  "seq": 123,
+  "id": "mobile.ai-sessions.list.ok",
+  "group": "ai",
+  "route": "GET /api/mobile/tasks/:taskId/ai-sessions",
+  "title": "no AI CLI history in the isolated HOME",
+  "transport": "http",
+  "request": {
+    "method": "GET",
+    "path": "/api/mobile/tasks/{{var:task_id}}/ai-sessions",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}"
+    }
+  },
+  "expect": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": true,
+      "history": {
+        "isRemote": false,
+        "targetPath": "{{var:task_worktree}}",
+        "repoPath": "{{var:demo_repo}}",
+        "sessions": [],
+        "sources": [
+          {
+            "provider": "claude",
+            "available": false,
+            "sessionCount": 0,
+            "reason": "Claude Code directory not found"
+          },
+          {
+            "provider": "codex",
+            "available": false,
+            "sessionCount": 0,
+            "reason": "Codex sessions directory not found"
+          },
+          {
+            "provider": "opencode",
+            "available": false,
+            "sessionCount": 0,
+            "reason": "OpenCode database not found"
+          },
+          {
+            "provider": "gemini",
+            "available": false,
+            "sessionCount": 0,
+            "reason": "Gemini CLI directory not found"
+          },
+          {
+            "provider": "qoder",
+            "available": false,
+            "sessionCount": 0,
+            "reason": "Session directory not found"
+          },
+          {
+            "provider": "codebuddy",
+            "available": false,
+            "sessionCount": 0,
+            "reason": "Session directory not found"
+          },
+          {
+            "provider": "hermes",
+            "available": false,
+            "sessionCount": 0,
+            "reason": "Session directory not found"
+          },
+          {
+            "provider": "pi",
+            "available": false,
+            "sessionCount": 0,
+            "reason": "Session directory not found"
+          },
+          {
+            "provider": "omp",
+            "available": false,
+            "sessionCount": 0,
+            "reason": "Session directory not found"
+          },
+          {
+            "provider": "prime-agent",
+            "available": false,
+            "sessionCount": 0,
+            "reason": "Session directory not found"
+          },
+          {
+            "provider": "cursor",
+            "available": false,
+            "sessionCount": 0,
+            "reason": "Session directory not found"
+          },
+          {
+            "provider": "antigravity",
+            "available": false,
+            "sessionCount": 0,
+            "reason": "Session directory not found"
+          },
+          {
+            "provider": "rovo",
+            "available": false,
+            "sessionCount": 0,
+            "reason": "Session directory not found"
+          },
+          {
+            "provider": "copilot",
+            "available": false,
+            "sessionCount": 0,
+            "reason": "Session directory not found"
+          },
+          {
+            "provider": "grok",
+            "available": false,
+            "sessionCount": 0,
+            "reason": "Session directory not found"
+          },
+          {
+            "provider": "openclaw",
+            "available": false,
+            "sessionCount": 0,
+            "reason": "Session directory not found"
+          },
+          {
+            "provider": "devin",
+            "available": false,
+            "sessionCount": 0,
+            "reason": "Session directory not found"
+          },
+          {
+            "provider": "droid",
+            "available": false,
+            "sessionCount": 0,
+            "reason": "Session directory not found"
+          },
+          {
+            "provider": "cline",
+            "available": false,
+            "sessionCount": 0,
+            "reason": "Session directory not found"
+          },
+          {
+            "provider": "kimi",
+            "available": false,
+            "sessionCount": 0,
+            "reason": "Session directory not found"
+          },
+          {
+            "provider": "muse",
+            "available": false,
+            "sessionCount": 0,
+            "reason": "Session directory not found"
+          },
+          {
+            "provider": "jcode",
+            "available": false,
+            "sessionCount": 0,
+            "reason": "Session directory not found"
+          },
+          {
+            "provider": "kiro",
+            "available": false,
+            "sessionCount": 0,
+            "reason": "Session directory not found"
+          },
+          {
+            "provider": "opencode2",
+            "available": false,
+            "sessionCount": 0,
+            "reason": "Agent History database or schema not found"
+          },
+          {
+            "provider": "zcode",
+            "available": false,
+            "sessionCount": 0,
+            "reason": "Agent History database or schema not found"
+          }
+        ],
+        "nextCursor": null
+      }
+    }
+  }
+}

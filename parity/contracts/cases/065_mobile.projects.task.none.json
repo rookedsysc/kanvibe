@@ -1,0 +1,27 @@
+{
+  "seq": 65,
+  "id": "mobile.projects.task.none",
+  "group": "projects",
+  "route": "GET /api/mobile/projects/:id/task",
+  "title": "no task for that branch -> task:null",
+  "transport": "http",
+  "request": {
+    "method": "GET",
+    "path": "/api/mobile/projects/{{var:project_id}}/task?branch=nope",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}"
+    }
+  },
+  "expect": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": true,
+      "task": null
+    }
+  }
+}

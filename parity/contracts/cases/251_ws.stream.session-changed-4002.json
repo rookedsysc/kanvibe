@@ -1,0 +1,78 @@
+{
+  "seq": 251,
+  "id": "ws.stream.session-changed-4002",
+  "group": "ws",
+  "route": "WS /api/mobile/stream",
+  "title": "changing the task's session type closes the mirror with 4002 session-changed",
+  "transport": "ws",
+  "request": {
+    "path": "/api/mobile/stream?taskId={{var:task_id}}&paneId=%250",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}"
+    }
+  },
+  "steps": [
+    {
+      "op": "sleep",
+      "seconds": 1
+    },
+    {
+      "op": "http",
+      "request": {
+        "method": "PATCH",
+        "path": "/api/mobile/tasks/{{var:task_id}}/session-type",
+        "listener": "plain",
+        "headers": {
+          "Authorization": "Bearer {{var:pair_token}}",
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "sessionType": "terminal",
+          "shouldCloseExistingSession": true
+        }
+      }
+    },
+    {
+      "op": "expect_close",
+      "timeout": 15
+    }
+  ],
+  "expect": {
+    "handshake": {
+      "status": 101
+    },
+    "frames": [
+      {
+        "kind": "http",
+        "status": 200,
+        "body": {
+          "success": true,
+          "task": {
+            "id": "{{var:task_id}}",
+            "title": "feat-a",
+            "description": "updated description",
+            "status": "pending",
+            "branchName": "feat-a",
+            "worktreePath": "{{var:task_worktree}}",
+            "sessionType": "terminal",
+            "sessionName": "demo-feat-a",
+            "sshHost": null,
+            "agentType": null,
+            "projectId": "{{var:project_id}}",
+            "baseBranch": "main",
+            "prUrl": null,
+            "priority": "high",
+            "createdAt": "{{any:iso8601}}",
+            "updatedAt": "{{any:iso8601}}"
+          }
+        }
+      },
+      {
+        "kind": "close",
+        "code": 4002,
+        "reason": "session-changed"
+      }
+    ]
+  }
+}

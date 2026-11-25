@@ -1,0 +1,45 @@
+{
+  "seq": 227,
+  "id": "cli.tasks.delete.dirty-409",
+  "group": "task-cli",
+  "route": "POST /api/cli/tasks/delete",
+  "title": "dirty worktree refuses deletion without force",
+  "transport": "http",
+  "request": {
+    "method": "POST",
+    "path": "/api/cli/tasks/delete",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:task_token}}",
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "contextTaskId": "{{var:task_id}}",
+      "branchName": "existing-branch",
+      "confirmed": true
+    }
+  },
+  "oracles": [
+    {
+      "name": "write_file",
+      "args": {
+        "path": "{{var:demo_repo}}__worktrees/existing-branch/dirty.txt",
+        "content": "uncommitted\n"
+      }
+    }
+  ],
+  "setup": [
+    "writes an untracked file into the existing-branch worktree"
+  ],
+  "expect": {
+    "status": 409,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": false,
+      "error": "커밋하지 않은 변경이 있어 삭제하지 않았습니다: {{var:demo_repo}}__worktrees/existing-branch 그래도 지우려면 --force를 붙이세요."
+    }
+  }
+}

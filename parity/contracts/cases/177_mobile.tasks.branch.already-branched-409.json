@@ -1,0 +1,34 @@
+{
+  "seq": 177,
+  "id": "mobile.tasks.branch.already-branched-409",
+  "group": "sessions",
+  "route": "POST /api/mobile/tasks/:id/branch",
+  "title": "task already has a branch",
+  "transport": "http",
+  "request": {
+    "method": "POST",
+    "path": "/api/mobile/tasks/{{var:task_id}}/branch",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}",
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "projectId": "{{var:project_id}}",
+      "branchName": "feat-z",
+      "baseBranch": "main",
+      "sessionType": "tmux"
+    }
+  },
+  "expect": {
+    "status": 409,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": false,
+      "error": "이미 브랜치가 연결된 태스크입니다"
+    }
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "seq": 70,
+  "id": "mobile.tasks.create.bad-ref-400",
+  "group": "tasks",
+  "route": "POST /api/mobile/tasks",
+  "title": "unsafe git ref",
+  "transport": "http",
+  "request": {
+    "method": "POST",
+    "path": "/api/mobile/tasks",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}",
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "projectId": "{{var:project_id}}",
+      "branchName": "bad..ref"
+    }
+  },
+  "expect": {
+    "status": 400,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": false,
+      "error": "브랜치 이름에 쓸 수 없는 문자가 있습니다"
+    }
+  }
+}

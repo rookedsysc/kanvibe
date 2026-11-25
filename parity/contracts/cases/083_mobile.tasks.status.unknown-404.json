@@ -1,0 +1,31 @@
+{
+  "seq": 83,
+  "id": "mobile.tasks.status.unknown-404",
+  "group": "tasks",
+  "route": "PATCH /api/mobile/tasks/:taskId/status",
+  "title": "unknown task",
+  "transport": "http",
+  "request": {
+    "method": "PATCH",
+    "path": "/api/mobile/tasks/00000000-0000-4000-8000-000000000000/status",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}",
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "status": "review"
+    }
+  },
+  "expect": {
+    "status": 404,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": false,
+      "error": "없는 태스크입니다"
+    }
+  }
+}

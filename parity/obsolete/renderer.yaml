@@ -1,0 +1,3 @@
+# Rust로 옮기지 않는 src/desktop/renderer/** TS 테스트.
+- id: TS-renderer-keyboardShortcut-37f0c0
+  reason: "platform 인자 없이 Meta·Ctrl을 그대로 적던 옛 녹화 분기다. TS에서도 이 분기를 부르는 곳은 이 테스트뿐이고(ShortcutSettingsRoute는 항상 platform을 넘김) Rust capture_shortcut_from_event는 ShortcutPlatform을 필수 인자로 받는다. 옛 표기 저장값은 canonicalize 경로(TS-main-appSettingsService-f068f7 등)로 검증한다."

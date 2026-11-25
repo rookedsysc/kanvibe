@@ -1,0 +1,27 @@
+{
+  "seq": 48,
+  "id": "mobile.directories.missing-dir",
+  "group": "projects",
+  "route": "GET /api/mobile/directories",
+  "title": "path that does not exist",
+  "transport": "http",
+  "request": {
+    "method": "GET",
+    "path": "/api/mobile/directories?path={{var:fixture_root}}/missing",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}"
+    }
+  },
+  "expect": {
+    "status": 400,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": false,
+      "error": "폴더를 찾을 수 없습니다"
+    }
+  }
+}

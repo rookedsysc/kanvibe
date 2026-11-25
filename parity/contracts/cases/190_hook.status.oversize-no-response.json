@@ -1,0 +1,25 @@
+{
+  "seq": 190,
+  "id": "hook.status.oversize-no-response",
+  "group": "hook-status",
+  "route": "POST /api/hooks/status",
+  "title": "body over 64 KiB",
+  "transport": "http",
+  "request": {
+    "method": "POST",
+    "path": "/api/hooks/status",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:task_token}}",
+      "Content-Type": "application/json"
+    },
+    "body_fill": {
+      "bytes": 69632,
+      "prefix": "{\"x\":\"",
+      "suffix": "\"}"
+    }
+  },
+  "expect": {
+    "outcome": "no-response"
+  }
+}

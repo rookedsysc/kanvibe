@@ -1,0 +1,25 @@
+{
+  "seq": 2,
+  "id": "hook.health.query-string-404",
+  "group": "hook",
+  "route": "GET /api/hooks/health",
+  "title": "hook router matches the exact request.url, so a query string falls through to 404",
+  "transport": "http",
+  "request": {
+    "method": "GET",
+    "path": "/api/hooks/health?probe=1",
+    "listener": "plain",
+    "headers": {}
+  },
+  "expect": {
+    "status": 404,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": false,
+      "error": "Not found"
+    }
+  }
+}

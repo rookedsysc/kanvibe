@@ -1,0 +1,29 @@
+{
+  "seq": 47,
+  "id": "mobile.directories.ok",
+  "group": "projects",
+  "route": "GET /api/mobile/directories",
+  "title": "list subdirectories of an absolute path",
+  "transport": "http",
+  "request": {
+    "method": "GET",
+    "path": "/api/mobile/directories?path={{var:demo_scan_root}}",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}"
+    }
+  },
+  "expect": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": true,
+      "directories": [
+        "demo"
+      ]
+    }
+  }
+}

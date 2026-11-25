@@ -1,0 +1,27 @@
+{
+  "seq": 132,
+  "id": "mobile.ai.running-panes.ok",
+  "group": "ai",
+  "route": "GET /api/mobile/ai/running-panes",
+  "title": "no agent panes",
+  "transport": "http",
+  "request": {
+    "method": "GET",
+    "path": "/api/mobile/ai/running-panes",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}"
+    }
+  },
+  "expect": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": true,
+      "panes": []
+    }
+  }
+}

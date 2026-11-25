@@ -1,0 +1,31 @@
+{
+  "seq": 50,
+  "id": "mobile.projects.scan.missing-root-400",
+  "group": "projects",
+  "route": "POST /api/mobile/projects/scan",
+  "title": "blank rootPath",
+  "transport": "http",
+  "request": {
+    "method": "POST",
+    "path": "/api/mobile/projects/scan",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}",
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "rootPath": "  "
+    }
+  },
+  "expect": {
+    "status": 400,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": false,
+      "error": "폴더 경로가 필요합니다"
+    }
+  }
+}

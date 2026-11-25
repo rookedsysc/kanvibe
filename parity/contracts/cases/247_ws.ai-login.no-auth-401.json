@@ -1,0 +1,21 @@
+{
+  "seq": 247,
+  "id": "ws.ai-login.no-auth-401",
+  "group": "ws",
+  "route": "WS /api/mobile/ai/accounts/:accountId/login",
+  "title": "no token",
+  "transport": "ws",
+  "request": {
+    "path": "/api/mobile/ai/accounts/{{var:ai_account_id}}/login",
+    "listener": "plain",
+    "headers": {}
+  },
+  "steps": [],
+  "expect": {
+    "handshake": {
+      "status": 401,
+      "raw": "HTTP/1.1 401 Unauthorized\r\n\r\n"
+    },
+    "frames": []
+  }
+}

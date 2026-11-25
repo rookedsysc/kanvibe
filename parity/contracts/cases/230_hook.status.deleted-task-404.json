@@ -1,0 +1,33 @@
+{
+  "seq": 230,
+  "id": "hook.status.deleted-task-404",
+  "group": "hook-status",
+  "route": "POST /api/hooks/status",
+  "title": "valid HMAC token for a task that no longer exists",
+  "transport": "http",
+  "request": {
+    "method": "POST",
+    "path": "/api/hooks/status",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:cli_task_token}}",
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "taskId": "{{var:cli_task_id}}",
+      "status": "review"
+    }
+  },
+  "expect": {
+    "status": 404,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": false,
+      "error": "작업을 찾을 수 없습니다: {{var:cli_task_id}}",
+      "status": 404
+    }
+  }
+}

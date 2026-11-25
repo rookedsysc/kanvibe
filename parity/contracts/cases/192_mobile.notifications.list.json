@@ -1,0 +1,65 @@
+{
+  "seq": 192,
+  "id": "mobile.notifications.list",
+  "group": "notifications",
+  "route": "GET /api/mobile/notifications",
+  "title": "notification from the pending status change",
+  "transport": "http",
+  "request": {
+    "method": "GET",
+    "path": "/api/mobile/notifications",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}"
+    }
+  },
+  "capture": {
+    "notification_id": "body.notifications[0].id"
+  },
+  "expect": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": true,
+      "notifications": [
+        {
+          "id": "{{any:uuid}}",
+          "title": "demo — feat-a",
+          "body": "feat-a: review로 변경\nupdated description",
+          "taskId": "{{var:task_id}}",
+          "isRead": false,
+          "createdAt": "{{any:iso8601}}"
+        },
+        {
+          "id": "{{any:uuid}}",
+          "title": "demo — feat-a",
+          "body": "feat-a: progress로 변경\nupdated description",
+          "taskId": "{{var:task_id}}",
+          "isRead": false,
+          "createdAt": "{{any:iso8601}}"
+        },
+        {
+          "id": "{{any:uuid}}",
+          "title": "백그라운드 sync 검토 필요",
+          "body": "sync 실패 1건",
+          "taskId": null,
+          "isRead": false,
+          "createdAt": "{{any:iso8601}}",
+          "actionType": "background-sync-review"
+        },
+        {
+          "id": "{{any:uuid}}",
+          "title": "백그라운드 sync 검토 필요",
+          "body": "pull 실패 1건 / sync 실패 1건",
+          "taskId": null,
+          "isRead": false,
+          "createdAt": "{{any:iso8601}}",
+          "actionType": "background-sync-review"
+        }
+      ]
+    }
+  }
+}

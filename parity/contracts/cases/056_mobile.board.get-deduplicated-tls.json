@@ -1,0 +1,105 @@
+{
+  "seq": 56,
+  "id": "mobile.board.get-deduplicated-tls",
+  "group": "projects",
+  "route": "GET /api/mobile/board",
+  "title": "Flutter's board request: deduplicated icon format over TLS",
+  "transport": "http",
+  "request": {
+    "method": "GET",
+    "path": "/api/mobile/board?iconFormat=deduplicated",
+    "listener": "tls",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}"
+    }
+  },
+  "expect": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": true,
+      "board": {
+        "tasks": {
+          "todo": [
+            {
+              "id": "{{any:uuid}}",
+              "title": "main",
+              "description": null,
+              "status": "todo",
+              "branchName": "main",
+              "worktreePath": "{{var:scratch_repo}}",
+              "sessionType": "tmux",
+              "sessionName": "scratch-main",
+              "sshHost": null,
+              "agentType": null,
+              "projectId": "{{var:scratch_project_id}}",
+              "baseBranch": "main",
+              "prUrl": null,
+              "priority": null,
+              "createdAt": "{{any:iso8601}}",
+              "updatedAt": "{{any:iso8601}}"
+            },
+            {
+              "id": "{{var:main_task_id}}",
+              "title": "main",
+              "description": null,
+              "status": "todo",
+              "branchName": "main",
+              "worktreePath": "{{var:demo_repo}}",
+              "sessionType": "tmux",
+              "sessionName": "demo-main",
+              "sshHost": null,
+              "agentType": null,
+              "projectId": "{{var:project_id}}",
+              "baseBranch": "main",
+              "prUrl": null,
+              "priority": null,
+              "createdAt": "{{any:iso8601}}",
+              "updatedAt": "{{any:iso8601}}"
+            }
+          ],
+          "progress": [],
+          "pending": [],
+          "review": [],
+          "done": []
+        },
+        "doneTotal": 0,
+        "doneLimit": 20,
+        "projects": [
+          {
+            "id": "{{var:project_id}}",
+            "name": "demo",
+            "repoPath": "{{var:demo_repo}}",
+            "defaultBranch": "main",
+            "sshHost": null,
+            "isWorktree": false,
+            "color": "#C4B5FD",
+            "iconDataUrl": null,
+            "createdAt": "{{any:iso8601}}",
+            "iconKey": null
+          },
+          {
+            "id": "{{var:scratch_project_id}}",
+            "name": "scratch",
+            "repoPath": "{{var:scratch_repo}}",
+            "defaultBranch": "main",
+            "sshHost": null,
+            "isWorktree": false,
+            "color": "#86EFAC",
+            "iconDataUrl": null,
+            "createdAt": "{{any:iso8601}}",
+            "iconKey": null
+          }
+        ],
+        "projectIcons": {},
+        "defaultSessionType": "tmux"
+      }
+    },
+    "tls": {
+      "peer_certificate_sha256": "{{var:tls_fingerprint}}"
+    }
+  }
+}

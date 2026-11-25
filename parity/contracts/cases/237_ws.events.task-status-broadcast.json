@@ -1,0 +1,95 @@
+{
+  "seq": 237,
+  "id": "ws.events.task-status-broadcast",
+  "group": "ws",
+  "route": "WS /api/mobile/events",
+  "title": "hook status change is pushed to event sockets",
+  "transport": "ws",
+  "request": {
+    "path": "/api/mobile/events",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}"
+    }
+  },
+  "steps": [
+    {
+      "op": "recv"
+    },
+    {
+      "op": "http",
+      "request": {
+        "method": "POST",
+        "path": "/api/hooks/status",
+        "listener": "plain",
+        "headers": {
+          "Authorization": "Bearer {{var:task_token}}",
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "taskId": "{{var:task_id}}",
+          "status": "pending"
+        }
+      }
+    },
+    {
+      "op": "recv_until",
+      "where": {
+        "type": "task-status-changed"
+      },
+      "timeout": 10
+    },
+    {
+      "op": "close"
+    }
+  ],
+  "expect": {
+    "handshake": {
+      "status": 101
+    },
+    "frames": [
+      {
+        "kind": "text",
+        "json": {
+          "type": "connected",
+          "commands": [
+            "delete-task",
+            "remove-task-registration",
+            "get-tab-close-info",
+            "close-tab",
+            "start-session",
+            "set-pane-chat-subscription",
+            "get-pane-chat-modes",
+            "set-pane-chat-mode"
+          ]
+        }
+      },
+      {
+        "kind": "http",
+        "status": 200,
+        "body": {
+          "success": true,
+          "data": {
+            "id": "{{var:task_id}}",
+            "status": "pending",
+            "branchName": "feat-a",
+            "projectName": "demo"
+          }
+        }
+      },
+      {
+        "kind": "text",
+        "json": {
+          "type": "task-status-changed",
+          "eventId": "{{any:uuid}}",
+          "taskId": "{{var:task_id}}",
+          "title": "demo — feat-a",
+          "body": "feat-a: pending로 변경\nupdated description",
+          "status": "pending",
+          "createdAt": "{{any:iso8601}}",
+          "shouldNotify": true
+        }
+      }
+    ]
+  }
+}

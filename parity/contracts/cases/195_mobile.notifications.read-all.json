@@ -1,0 +1,26 @@
+{
+  "seq": 195,
+  "id": "mobile.notifications.read-all",
+  "group": "notifications",
+  "route": "POST /api/mobile/notifications/read-all",
+  "title": "mark all read",
+  "transport": "http",
+  "request": {
+    "method": "POST",
+    "path": "/api/mobile/notifications/read-all",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}"
+    }
+  },
+  "expect": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": true
+    }
+  }
+}

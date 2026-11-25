@@ -1,0 +1,23 @@
+{
+  "seq": 234,
+  "id": "ws.events.bad-token-401",
+  "group": "ws",
+  "route": "WS /api/mobile/events",
+  "title": "unknown device token",
+  "transport": "ws",
+  "request": {
+    "path": "/api/mobile/events",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer 0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  },
+  "steps": [],
+  "expect": {
+    "handshake": {
+      "status": 401,
+      "raw": "HTTP/1.1 401 Unauthorized\r\n\r\n"
+    },
+    "frames": []
+  }
+}

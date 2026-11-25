@@ -1,0 +1,33 @@
+{
+  "seq": 186,
+  "id": "hook.status.bad-status-400",
+  "group": "hook-status",
+  "route": "POST /api/hooks/status",
+  "title": "unknown status",
+  "transport": "http",
+  "request": {
+    "method": "POST",
+    "path": "/api/hooks/status",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:task_token}}",
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "taskId": "{{var:task_id}}",
+      "status": "bogus"
+    }
+  },
+  "expect": {
+    "status": 400,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": false,
+      "error": "유효하지 않은 상태입니다: bogus",
+      "status": 400
+    }
+  }
+}

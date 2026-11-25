@@ -1,0 +1,33 @@
+{
+  "seq": 187,
+  "id": "hook.status.bad-token-401",
+  "group": "hook-status",
+  "route": "POST /api/hooks/status",
+  "title": "token does not match HMAC(secret, taskId)",
+  "transport": "http",
+  "request": {
+    "method": "POST",
+    "path": "/api/hooks/status",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer 0000000000000000000000000000000000000000000000000000000000000000",
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "taskId": "{{var:task_id}}",
+      "status": "review"
+    }
+  },
+  "expect": {
+    "status": 401,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": false,
+      "error": "hook 인증에 실패했습니다. KanVibe에서 이 task에 접속하면 hooks가 다시 설치됩니다.",
+      "status": 401
+    }
+  }
+}

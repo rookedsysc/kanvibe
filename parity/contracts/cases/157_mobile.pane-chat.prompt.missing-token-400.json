@@ -1,0 +1,31 @@
+{
+  "seq": 157,
+  "id": "mobile.pane-chat.prompt.missing-token-400",
+  "group": "pane-chat",
+  "route": "POST /api/mobile/tasks/:taskId/pane-chat/prompt",
+  "title": "targetToken required",
+  "transport": "http",
+  "request": {
+    "method": "POST",
+    "path": "/api/mobile/tasks/{{var:task_id}}/pane-chat/prompt",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}",
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "text": "hi"
+    }
+  },
+  "expect": {
+    "status": 400,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": false,
+      "error": "CLI 대상 토큰이 필요합니다"
+    }
+  }
+}

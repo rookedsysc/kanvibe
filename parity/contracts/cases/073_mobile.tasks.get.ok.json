@@ -1,0 +1,71 @@
+{
+  "seq": 73,
+  "id": "mobile.tasks.get.ok",
+  "group": "tasks",
+  "route": "GET /api/mobile/tasks/:taskId",
+  "title": "task with projectName",
+  "transport": "http",
+  "request": {
+    "method": "GET",
+    "path": "/api/mobile/tasks/{{var:task_id}}",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}"
+    }
+  },
+  "oracles": [
+    {
+      "name": "read_json_file",
+      "args": {
+        "path": "{{var:task_worktree}}/.kanvibe/targets.json"
+      },
+      "save": {
+        "task_token": "targets[0].token",
+        "hook_client_id": "targets[0].clientId"
+      }
+    }
+  ],
+  "setup": [
+    "reads <worktree>/.kanvibe/targets.json written by the server to learn the HMAC task token"
+  ],
+  "expect": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": true,
+      "task": {
+        "id": "{{var:task_id}}",
+        "title": "feat-a",
+        "description": "contract task",
+        "status": "todo",
+        "branchName": "feat-a",
+        "worktreePath": "{{var:task_worktree}}",
+        "sessionType": "tmux",
+        "sessionName": "demo-feat-a",
+        "sshHost": null,
+        "agentType": null,
+        "projectId": "{{var:project_id}}",
+        "baseBranch": "main",
+        "prUrl": null,
+        "priority": "medium",
+        "createdAt": "{{any:iso8601}}",
+        "updatedAt": "{{any:iso8601}}",
+        "project": {
+          "id": "{{var:project_id}}",
+          "name": "demo",
+          "repoPath": "{{var:demo_repo}}",
+          "defaultBranch": "main",
+          "sshHost": null,
+          "isWorktree": false,
+          "color": "#112233",
+          "iconDataUrl": null,
+          "createdAt": "{{any:iso8601}}"
+        },
+        "projectName": "demo"
+      }
+    }
+  }
+}

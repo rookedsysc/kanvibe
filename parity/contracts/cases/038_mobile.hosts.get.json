@@ -1,0 +1,27 @@
+{
+  "seq": 38,
+  "id": "mobile.hosts.get",
+  "group": "settings",
+  "route": "GET /api/mobile/hosts",
+  "title": "no SSH hosts in the isolated HOME",
+  "transport": "http",
+  "request": {
+    "method": "GET",
+    "path": "/api/mobile/hosts",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}"
+    }
+  },
+  "expect": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": true,
+      "hosts": []
+    }
+  }
+}

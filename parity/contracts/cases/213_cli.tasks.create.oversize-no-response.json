@@ -1,0 +1,25 @@
+{
+  "seq": 213,
+  "id": "cli.tasks.create.oversize-no-response",
+  "group": "task-cli",
+  "route": "POST /api/cli/tasks",
+  "title": "body over 64 KiB on a CLI route",
+  "transport": "http",
+  "request": {
+    "method": "POST",
+    "path": "/api/cli/tasks",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:task_token}}",
+      "Content-Type": "application/json"
+    },
+    "body_fill": {
+      "bytes": 69632,
+      "prefix": "{\"x\":\"",
+      "suffix": "\"}"
+    }
+  },
+  "expect": {
+    "outcome": "no-response"
+  }
+}

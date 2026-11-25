@@ -1,0 +1,25 @@
+{
+  "seq": 5,
+  "id": "guard.unknown-path.plain-404",
+  "group": "guard",
+  "route": "GUARD unknown path",
+  "title": "unknown non-mobile path on plaintext",
+  "transport": "http",
+  "request": {
+    "method": "GET",
+    "path": "/api/unknown",
+    "listener": "plain",
+    "headers": {}
+  },
+  "expect": {
+    "status": 404,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": false,
+      "error": "Not found"
+    }
+  }
+}

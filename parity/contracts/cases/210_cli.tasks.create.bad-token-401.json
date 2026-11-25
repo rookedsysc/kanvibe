@@ -1,0 +1,33 @@
+{
+  "seq": 210,
+  "id": "cli.tasks.create.bad-token-401",
+  "group": "task-cli",
+  "route": "POST /api/cli/tasks",
+  "title": "wrong task token",
+  "transport": "http",
+  "request": {
+    "method": "POST",
+    "path": "/api/cli/tasks",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer 0000000000000000000000000000000000000000000000000000000000000000",
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "contextTaskId": "{{var:task_id}}",
+      "branchName": "cli-c",
+      "baseBranch": "main"
+    }
+  },
+  "expect": {
+    "status": 401,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": false,
+      "error": "task CLI 인증에 실패했습니다. KanVibe에서 hooks를 다시 설치하세요."
+    }
+  }
+}

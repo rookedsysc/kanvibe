@@ -1,0 +1,24 @@
+{
+  "seq": 1,
+  "id": "hook.health.ok",
+  "group": "hook",
+  "route": "GET /api/hooks/health",
+  "title": "health probe on plaintext loopback",
+  "transport": "http",
+  "request": {
+    "method": "GET",
+    "path": "/api/hooks/health",
+    "listener": "plain",
+    "headers": {}
+  },
+  "expect": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": true
+    }
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "seq": 156,
+  "id": "mobile.pane-chat.suggestions.bogus-token",
+  "group": "pane-chat",
+  "route": "GET /api/mobile/tasks/:taskId/pane-chat/suggestions",
+  "title": "stale target token",
+  "transport": "http",
+  "request": {
+    "method": "GET",
+    "path": "/api/mobile/tasks/{{var:task_id}}/pane-chat/suggestions?targetToken=bogus-token&kind=file&query=RE&limit=5",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}"
+    }
+  },
+  "expect": {
+    "status": 409,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": false,
+      "error": "CLI 대상이 변경되었습니다. 현재 pane을 다시 확인해 주세요.",
+      "reason": "target-changed"
+    }
+  }
+}

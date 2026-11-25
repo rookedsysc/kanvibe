@@ -1,0 +1,31 @@
+{
+  "seq": 21,
+  "id": "guard.origin.tls-403",
+  "group": "guard",
+  "route": "GUARD Origin",
+  "title": "Origin guard also applies on TLS, before auth",
+  "transport": "http",
+  "request": {
+    "method": "GET",
+    "path": "/api/mobile/board",
+    "listener": "tls",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}",
+      "Origin": "https://evil.example"
+    }
+  },
+  "expect": {
+    "status": 403,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": false,
+      "error": "브라우저 요청은 허용하지 않습니다"
+    },
+    "tls": {
+      "peer_certificate_sha256": "{{var:tls_fingerprint}}"
+    }
+  }
+}

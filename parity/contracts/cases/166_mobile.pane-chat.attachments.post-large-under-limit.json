@@ -1,0 +1,34 @@
+{
+  "seq": 166,
+  "id": "mobile.pane-chat.attachments.post-large-under-limit",
+  "group": "pane-chat",
+  "route": "POST /api/mobile/tasks/:taskId/pane-chat/attachments",
+  "title": "200 KiB attachment body passes the 14 MiB route limit",
+  "transport": "http",
+  "request": {
+    "method": "POST",
+    "path": "/api/mobile/tasks/{{var:task_id}}/pane-chat/attachments",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}",
+      "Content-Type": "application/json"
+    },
+    "body_fill": {
+      "bytes": 204800,
+      "prefix": "{\"targetToken\":\"bogus-token\",\"attachment\":{\"name\":\"a.txt\",\"mimeType\":\"text/plain\",\"dataUrl\":\"data:text/plain;base64,",
+      "suffix": "\"}}"
+    }
+  },
+  "expect": {
+    "status": 409,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": false,
+      "error": "CLI 대상이 변경되었습니다. 현재 pane을 다시 확인해 주세요.",
+      "reason": "target-changed"
+    }
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "seq": 30,
+  "id": "mobile.settings.patch-interval-400",
+  "group": "settings",
+  "route": "PATCH /api/mobile/settings",
+  "title": "interval below 1 minute",
+  "transport": "http",
+  "request": {
+    "method": "PATCH",
+    "path": "/api/mobile/settings",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}",
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "backgroundSync": {
+        "isEnabled": true,
+        "intervalMs": 1000
+      }
+    }
+  },
+  "expect": {
+    "status": 400,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": false,
+      "error": "동기화 주기는 1분에서 1440분 사이여야 합니다"
+    }
+  }
+}

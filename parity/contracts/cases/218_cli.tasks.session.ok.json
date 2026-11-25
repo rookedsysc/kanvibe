@@ -1,0 +1,40 @@
+{
+  "seq": 218,
+  "id": "cli.tasks.session.ok",
+  "group": "task-cli",
+  "route": "POST /api/cli/tasks/session",
+  "title": "prepare the context task's session",
+  "transport": "http",
+  "request": {
+    "method": "POST",
+    "path": "/api/cli/tasks/session",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:task_token}}",
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "contextTaskId": "{{var:task_id}}"
+    }
+  },
+  "expect": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": true,
+      "data": {
+        "id": "{{var:task_id}}",
+        "branchName": "feat-a",
+        "sessionType": "tmux",
+        "sessionName": "demo-feat-a",
+        "sshHost": null,
+        "session": {
+          "isPrepared": true
+        }
+      }
+    }
+  }
+}

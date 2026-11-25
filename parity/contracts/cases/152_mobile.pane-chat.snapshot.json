@@ -1,0 +1,49 @@
+{
+  "seq": 152,
+  "id": "mobile.pane-chat.snapshot",
+  "group": "pane-chat",
+  "route": "GET /api/mobile/tasks/:taskId/pane-chat",
+  "title": "snapshot for a pane without an agent (screen text depends on the shell prompt)",
+  "transport": "http",
+  "request": {
+    "method": "GET",
+    "path": "/api/mobile/tasks/{{var:task_id}}/pane-chat?paneId=%250&wantsScreen=false",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}"
+    }
+  },
+  "expect": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": true,
+      "snapshot": {
+        "taskId": "{{var:task_id}}",
+        "paneId": "%0",
+        "sessionType": "tmux",
+        "provider": null,
+        "targetToken": null,
+        "canSend": false,
+        "inputState": "unknown",
+        "agentActivity": "unknown",
+        "screen": "{{any:string}}",
+        "reason": "no-foreground-ai-cli",
+        "transcript": {
+          "status": "unavailable",
+          "reason": "exact-session-unavailable",
+          "sessionId": null,
+          "messages": [],
+          "nextCursor": null
+        },
+        "modelPicker": {
+          "supported": false,
+          "mode": "native-cli"
+        }
+      }
+    }
+  }
+}

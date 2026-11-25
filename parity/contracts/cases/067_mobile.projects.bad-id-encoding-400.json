@@ -1,0 +1,27 @@
+{
+  "seq": 67,
+  "id": "mobile.projects.bad-id-encoding-400",
+  "group": "projects",
+  "route": "GET /api/mobile/projects/:id/tasks",
+  "title": "undecodable path id on a feature route",
+  "transport": "http",
+  "request": {
+    "method": "GET",
+    "path": "/api/mobile/projects/%E0%A4%A/tasks",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}"
+    }
+  },
+  "expect": {
+    "status": 400,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": false,
+      "error": "잘못된 식별자입니다"
+    }
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "seq": 74,
+  "id": "mobile.tasks.get.unknown-404",
+  "group": "tasks",
+  "route": "GET /api/mobile/tasks/:taskId",
+  "title": "unknown task",
+  "transport": "http",
+  "request": {
+    "method": "GET",
+    "path": "/api/mobile/tasks/00000000-0000-4000-8000-000000000000",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}"
+    }
+  },
+  "expect": {
+    "status": 404,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": false,
+      "error": "없는 태스크입니다"
+    }
+  }
+}

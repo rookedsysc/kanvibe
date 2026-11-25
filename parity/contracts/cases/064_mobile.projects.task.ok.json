@@ -1,0 +1,55 @@
+{
+  "seq": 64,
+  "id": "mobile.projects.task.ok",
+  "group": "projects",
+  "route": "GET /api/mobile/projects/:id/task",
+  "title": "task by branch",
+  "transport": "http",
+  "request": {
+    "method": "GET",
+    "path": "/api/mobile/projects/{{var:project_id}}/task?branch=main",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}"
+    }
+  },
+  "expect": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": true,
+      "task": {
+        "id": "{{var:main_task_id}}",
+        "title": "main",
+        "description": null,
+        "status": "todo",
+        "branchName": "main",
+        "worktreePath": "{{var:demo_repo}}",
+        "sessionType": "tmux",
+        "sessionName": "demo-main",
+        "sshHost": null,
+        "agentType": null,
+        "projectId": "{{var:project_id}}",
+        "baseBranch": "main",
+        "prUrl": null,
+        "priority": null,
+        "createdAt": "{{any:iso8601}}",
+        "updatedAt": "{{any:iso8601}}",
+        "project": {
+          "id": "{{var:project_id}}",
+          "name": "demo",
+          "repoPath": "{{var:demo_repo}}",
+          "defaultBranch": "main",
+          "sshHost": null,
+          "isWorktree": false,
+          "color": "#112233",
+          "iconDataUrl": null,
+          "createdAt": "{{any:iso8601}}"
+        }
+      }
+    }
+  }
+}

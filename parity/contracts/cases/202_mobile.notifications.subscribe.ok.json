@@ -1,0 +1,32 @@
+{
+  "seq": 202,
+  "id": "mobile.notifications.subscribe.ok",
+  "group": "notifications",
+  "route": "PUT /api/mobile/notifications",
+  "title": "register push subscription",
+  "transport": "http",
+  "request": {
+    "method": "PUT",
+    "path": "/api/mobile/notifications",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}",
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "pushToken": "push-token-1",
+      "platform": "android",
+      "connectionId": "conn-1"
+    }
+  },
+  "expect": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": true
+    }
+  }
+}

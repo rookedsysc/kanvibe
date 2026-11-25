@@ -1,0 +1,29 @@
+{
+  "seq": 35,
+  "id": "mobile.notification-settings.patch-bad-json-400",
+  "group": "settings",
+  "route": "PATCH /api/mobile/notification-settings",
+  "title": "unparseable body",
+  "transport": "http",
+  "request": {
+    "method": "PATCH",
+    "path": "/api/mobile/notification-settings",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}",
+      "Content-Type": "application/json"
+    },
+    "body_text": "{"
+  },
+  "expect": {
+    "status": 400,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": false,
+      "error": "잘못된 요청입니다"
+    }
+  }
+}

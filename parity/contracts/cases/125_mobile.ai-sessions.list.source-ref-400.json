@@ -1,0 +1,27 @@
+{
+  "seq": 125,
+  "id": "mobile.ai-sessions.list.source-ref-400",
+  "group": "ai",
+  "route": "GET /api/mobile/tasks/:taskId/ai-sessions",
+  "title": "sourceRef is forbidden",
+  "transport": "http",
+  "request": {
+    "method": "GET",
+    "path": "/api/mobile/tasks/{{var:task_id}}/ai-sessions?sourceRef=x",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}"
+    }
+  },
+  "expect": {
+    "status": 400,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": false,
+      "error": "조회 값이 올바르지 않습니다"
+    }
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "seq": 135,
+  "id": "mobile.ai.call-graph.missing-400",
+  "group": "ai",
+  "route": "GET /api/mobile/tasks/:id/agent-call-graph",
+  "title": "provider and sessionId required",
+  "transport": "http",
+  "request": {
+    "method": "GET",
+    "path": "/api/mobile/tasks/{{var:task_id}}/agent-call-graph",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}"
+    }
+  },
+  "expect": {
+    "status": 400,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": false,
+      "error": "AI 제공자와 세션을 선택해 주세요"
+    }
+  }
+}

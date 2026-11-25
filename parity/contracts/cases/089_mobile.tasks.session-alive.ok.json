@@ -1,0 +1,27 @@
+{
+  "seq": 89,
+  "id": "mobile.tasks.session-alive.ok",
+  "group": "tasks",
+  "route": "GET /api/mobile/tasks/:taskId/session-alive",
+  "title": "session running after surfaces started it",
+  "transport": "http",
+  "request": {
+    "method": "GET",
+    "path": "/api/mobile/tasks/{{var:task_id}}/session-alive",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}"
+    }
+  },
+  "expect": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": true,
+      "isAlive": true
+    }
+  }
+}

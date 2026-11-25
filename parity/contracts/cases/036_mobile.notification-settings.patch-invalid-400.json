@@ -1,0 +1,34 @@
+{
+  "seq": 36,
+  "id": "mobile.notification-settings.patch-invalid-400",
+  "group": "settings",
+  "route": "PATCH /api/mobile/notification-settings",
+  "title": "invalid values",
+  "transport": "http",
+  "request": {
+    "method": "PATCH",
+    "path": "/api/mobile/notification-settings",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}",
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "isEnabled": "yes",
+      "enabledStatuses": [
+        "nope"
+      ]
+    }
+  },
+  "expect": {
+    "status": 400,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": false,
+      "error": "알림 상태 설정이 올바르지 않습니다."
+    }
+  }
+}

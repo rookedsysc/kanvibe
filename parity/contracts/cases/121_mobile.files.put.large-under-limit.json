@@ -1,0 +1,32 @@
+{
+  "seq": 121,
+  "id": "mobile.files.put.large-under-limit",
+  "group": "workspace",
+  "route": "PUT /api/mobile/tasks/:id/files",
+  "title": "200 KiB body passes the 6 MiB route limit (default 64 KiB would reset)",
+  "transport": "http",
+  "request": {
+    "method": "PUT",
+    "path": "/api/mobile/tasks/{{var:task_id}}/files?path=notes/todo.txt",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}",
+      "Content-Type": "application/json"
+    },
+    "body_fill": {
+      "bytes": 204800,
+      "prefix": "{\"content\":\"",
+      "suffix": "\"}"
+    }
+  },
+  "expect": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": true
+    }
+  }
+}

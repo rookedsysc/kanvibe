@@ -1,0 +1,33 @@
+{
+  "seq": 203,
+  "id": "mobile.notifications.subscribe.bad-400",
+  "group": "notifications",
+  "route": "PUT /api/mobile/notifications",
+  "title": "invalid push token",
+  "transport": "http",
+  "request": {
+    "method": "PUT",
+    "path": "/api/mobile/notifications",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}",
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "pushToken": "has space",
+      "platform": "android",
+      "connectionId": "c"
+    }
+  },
+  "expect": {
+    "status": 400,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": false,
+      "error": "알림 구독 값이 올바르지 않습니다"
+    }
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "seq": 33,
+  "id": "mobile.notification-settings.get",
+  "group": "settings",
+  "route": "GET /api/mobile/notification-settings",
+  "title": "notification settings defaults",
+  "transport": "http",
+  "request": {
+    "method": "GET",
+    "path": "/api/mobile/notification-settings",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}"
+    }
+  },
+  "expect": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": true,
+      "settings": {
+        "isEnabled": true,
+        "enabledStatuses": [
+          "progress",
+          "pending",
+          "review"
+        ]
+      }
+    }
+  }
+}

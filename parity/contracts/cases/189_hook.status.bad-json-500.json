@@ -1,0 +1,29 @@
+{
+  "seq": 189,
+  "id": "hook.status.bad-json-500",
+  "group": "hook-status",
+  "route": "POST /api/hooks/status",
+  "title": "bad JSON is a 500 whose error is the JS engine's parse message",
+  "transport": "http",
+  "request": {
+    "method": "POST",
+    "path": "/api/hooks/status",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:task_token}}",
+      "Content-Type": "application/json"
+    },
+    "body_text": "{"
+  },
+  "expect": {
+    "status": 500,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": false,
+      "error": "{{any:nonempty}}"
+    }
+  }
+}

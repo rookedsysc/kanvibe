@@ -1,0 +1,38 @@
+{
+  "seq": 41,
+  "id": "mobile.pane-layouts.put-wrong-pane-count-400",
+  "group": "settings",
+  "route": "PUT /api/mobile/pane-layouts",
+  "title": "pane count mismatch",
+  "transport": "http",
+  "request": {
+    "method": "PUT",
+    "path": "/api/mobile/pane-layouts",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}",
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "layoutType": "quad",
+      "isGlobal": true,
+      "panes": [
+        {
+          "position": 0,
+          "command": ""
+        }
+      ]
+    }
+  },
+  "expect": {
+    "status": 400,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": false,
+      "error": "레이아웃의 pane 수가 맞지 않습니다"
+    }
+  }
+}

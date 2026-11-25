@@ -1,0 +1,42 @@
+{
+  "seq": 52,
+  "id": "mobile.projects.scan.ok-demo",
+  "group": "projects",
+  "route": "POST /api/mobile/projects/scan",
+  "title": "register the demo repository (also creates its main-branch task)",
+  "transport": "http",
+  "request": {
+    "method": "POST",
+    "path": "/api/mobile/projects/scan",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}",
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "rootPath": "{{var:demo_scan_root}}"
+    }
+  },
+  "expect": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": true,
+      "result": {
+        "registered": [
+          "demo"
+        ],
+        "skipped": [],
+        "errors": [],
+        "worktreeTasks": [],
+        "registeredWorktrees": [],
+        "hooksSetup": [
+          "demo"
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "seq": 194,
+  "id": "mobile.notifications.read.unknown-404",
+  "group": "notifications",
+  "route": "PATCH /api/mobile/notifications/:id/read",
+  "title": "unknown notification",
+  "transport": "http",
+  "request": {
+    "method": "PATCH",
+    "path": "/api/mobile/notifications/00000000-0000-4000-8000-000000000000/read",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}"
+    }
+  },
+  "expect": {
+    "status": 404,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": false,
+      "error": "없는 알림입니다"
+    }
+  }
+}

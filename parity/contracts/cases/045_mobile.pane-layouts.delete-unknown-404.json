@@ -1,0 +1,27 @@
+{
+  "seq": 45,
+  "id": "mobile.pane-layouts.delete-unknown-404",
+  "group": "settings",
+  "route": "DELETE /api/mobile/pane-layouts/:id",
+  "title": "unknown layout",
+  "transport": "http",
+  "request": {
+    "method": "DELETE",
+    "path": "/api/mobile/pane-layouts/00000000-0000-4000-8000-000000000000",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}"
+    }
+  },
+  "expect": {
+    "status": 404,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": false,
+      "error": "없는 레이아웃입니다"
+    }
+  }
+}

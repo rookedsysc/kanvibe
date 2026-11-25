@@ -1,0 +1,27 @@
+{
+  "seq": 90,
+  "id": "mobile.tasks.session-alive.unknown",
+  "group": "tasks",
+  "route": "GET /api/mobile/tasks/:taskId/session-alive",
+  "title": "unknown task",
+  "transport": "http",
+  "request": {
+    "method": "GET",
+    "path": "/api/mobile/tasks/00000000-0000-4000-8000-000000000000/session-alive",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}"
+    }
+  },
+  "expect": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": true,
+      "isAlive": false
+    }
+  }
+}

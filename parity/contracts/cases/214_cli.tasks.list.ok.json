@@ -1,0 +1,65 @@
+{
+  "seq": 214,
+  "id": "cli.tasks.list.ok",
+  "group": "task-cli",
+  "route": "POST /api/cli/tasks/list",
+  "title": "tasks of the same project, createdAt ascending",
+  "transport": "http",
+  "request": {
+    "method": "POST",
+    "path": "/api/cli/tasks/list",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:task_token}}",
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "contextTaskId": "{{var:task_id}}"
+    }
+  },
+  "expect": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": true,
+      "data": [
+        {
+          "id": "{{var:main_task_id}}",
+          "title": "main",
+          "branchName": "main",
+          "status": "todo",
+          "priority": null,
+          "worktreePath": "{{var:demo_repo}}",
+          "sessionType": "tmux",
+          "sessionName": "demo-main",
+          "sshHost": null
+        },
+        {
+          "id": "{{var:task_id}}",
+          "title": "feat-a",
+          "branchName": "feat-a",
+          "status": "review",
+          "priority": "high",
+          "worktreePath": "{{var:task_worktree}}",
+          "sessionType": "tmux",
+          "sessionName": "demo-feat-a",
+          "sshHost": null
+        },
+        {
+          "id": "{{var:cli_task_id}}",
+          "title": "CLI B",
+          "branchName": "cli-b",
+          "status": "todo",
+          "priority": "low",
+          "worktreePath": "{{var:cli_task_worktree}}",
+          "sessionType": "tmux",
+          "sessionName": "demo-cli-b",
+          "sshHost": null
+        }
+      ]
+    }
+  }
+}

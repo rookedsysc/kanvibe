@@ -1,0 +1,33 @@
+{
+  "seq": 207,
+  "id": "cli.tasks.create.duplicate-409",
+  "group": "task-cli",
+  "route": "POST /api/cli/tasks",
+  "title": "same branch again",
+  "transport": "http",
+  "request": {
+    "method": "POST",
+    "path": "/api/cli/tasks",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:task_token}}",
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "contextTaskId": "{{var:task_id}}",
+      "branchName": "cli-b",
+      "baseBranch": "main"
+    }
+  },
+  "expect": {
+    "status": 409,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": false,
+      "error": "이미 같은 브랜치의 task가 있습니다: cli-b"
+    }
+  }
+}

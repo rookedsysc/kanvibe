@@ -1,0 +1,61 @@
+{
+  "seq": 144,
+  "id": "mobile.ai.usage.ok",
+  "group": "ai",
+  "route": "GET /api/mobile/ai/usage",
+  "title": "usage snapshot without credentials",
+  "transport": "http",
+  "request": {
+    "method": "GET",
+    "path": "/api/mobile/ai/usage",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}"
+    }
+  },
+  "expect": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": true,
+      "usage": {
+        "fetchedAt": "{{any:iso8601}}",
+        "accounts": [
+          {
+            "provider": "claude",
+            "accountId": "{{var:ai_account_id}}",
+            "label": "work",
+            "status": "unavailable",
+            "planName": null,
+            "reason": "missing-credentials",
+            "fetchedAt": "{{any:iso8601}}",
+            "windows": []
+          },
+          {
+            "provider": "codex",
+            "accountId": "{{any:hex64}}",
+            "label": "codex",
+            "status": "unavailable",
+            "planName": null,
+            "reason": "missing-credentials",
+            "fetchedAt": "{{any:iso8601}}",
+            "windows": []
+          },
+          {
+            "provider": "gemini",
+            "accountId": "{{any:hex64}}",
+            "label": "gemini",
+            "status": "unavailable",
+            "planName": null,
+            "reason": "missing-credentials",
+            "fetchedAt": "{{any:iso8601}}",
+            "windows": []
+          }
+        ]
+      }
+    }
+  }
+}

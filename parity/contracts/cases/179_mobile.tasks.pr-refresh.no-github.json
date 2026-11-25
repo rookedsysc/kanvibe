@@ -1,0 +1,27 @@
+{
+  "seq": 179,
+  "id": "mobile.tasks.pr-refresh.no-github",
+  "group": "sessions",
+  "route": "POST /api/mobile/tasks/:id/pr/refresh",
+  "title": "gh is unauthenticated in the isolated HOME",
+  "transport": "http",
+  "request": {
+    "method": "POST",
+    "path": "/api/mobile/tasks/{{var:task_id}}/pr/refresh",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}"
+    }
+  },
+  "expect": {
+    "status": 500,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": false,
+      "error": "서버 오류"
+    }
+  }
+}

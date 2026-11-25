@@ -1,0 +1,25 @@
+{
+  "seq": 168,
+  "id": "mobile.pane-chat.prompt.oversize-no-response",
+  "group": "pane-chat",
+  "route": "POST /api/mobile/tasks/:taskId/pane-chat/prompt",
+  "title": "non-attachment pane-chat body over 64 KiB",
+  "transport": "http",
+  "request": {
+    "method": "POST",
+    "path": "/api/mobile/tasks/{{var:task_id}}/pane-chat/prompt",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}",
+      "Content-Type": "application/json"
+    },
+    "body_fill": {
+      "bytes": 69632,
+      "prefix": "{\"targetToken\":\"bogus-token\",\"text\":\"",
+      "suffix": "\"}"
+    }
+  },
+  "expect": {
+    "outcome": "no-response"
+  }
+}

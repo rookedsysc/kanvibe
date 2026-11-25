@@ -1,0 +1,31 @@
+{
+  "seq": 176,
+  "id": "mobile.tasks.session-type.dependency-missing-409",
+  "group": "sessions",
+  "route": "PATCH /api/mobile/tasks/:taskId/session-type",
+  "title": "zellij is not installed in the contract environment",
+  "transport": "http",
+  "request": {
+    "method": "PATCH",
+    "path": "/api/mobile/tasks/{{var:task_id}}/session-type",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}",
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "sessionType": "zellij"
+    }
+  },
+  "expect": {
+    "status": 409,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": false,
+      "error": "zellij이(가) 설치되어 있지 않습니다. 데스크탑에서 설치한 뒤 다시 시도해 주세요."
+    }
+  }
+}

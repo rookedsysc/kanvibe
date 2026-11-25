@@ -1,0 +1,73 @@
+{
+  "seq": 253,
+  "id": "ws.events.delete-task",
+  "group": "ws",
+  "route": "WS /api/mobile/events",
+  "title": "delete-task command",
+  "transport": "ws",
+  "request": {
+    "path": "/api/mobile/events",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}"
+    }
+  },
+  "steps": [
+    {
+      "op": "recv"
+    },
+    {
+      "op": "send_text",
+      "json": {
+        "type": "command",
+        "requestId": "d1",
+        "command": "delete-task",
+        "taskId": "{{var:delete_task_id}}",
+        "isForced": true
+      }
+    },
+    {
+      "op": "recv_until",
+      "where": {
+        "type": "command-result",
+        "requestId": "d1"
+      },
+      "timeout": 60
+    },
+    {
+      "op": "close"
+    }
+  ],
+  "expect": {
+    "handshake": {
+      "status": 101
+    },
+    "frames": [
+      {
+        "kind": "text",
+        "json": {
+          "type": "connected",
+          "commands": [
+            "delete-task",
+            "remove-task-registration",
+            "get-tab-close-info",
+            "close-tab",
+            "start-session",
+            "set-pane-chat-subscription",
+            "get-pane-chat-modes",
+            "set-pane-chat-mode"
+          ]
+        }
+      },
+      {
+        "kind": "text",
+        "json": {
+          "type": "command-result",
+          "requestId": "d1",
+          "ok": true,
+          "failedPeerCount": 0
+        }
+      }
+    ]
+  }
+}

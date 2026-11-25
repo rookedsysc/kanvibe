@@ -1,0 +1,51 @@
+{
+  "seq": 87,
+  "id": "mobile.tasks.surfaces.minimal",
+  "group": "tasks",
+  "route": "GET /api/mobile/tasks/:taskId/surfaces",
+  "title": "minimal metadata for one tab",
+  "transport": "http",
+  "request": {
+    "method": "GET",
+    "path": "/api/mobile/tasks/{{var:task_id}}/surfaces?metadata=minimal&tabId=@0",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}"
+    }
+  },
+  "expect": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": true,
+      "surfaces": {
+        "taskId": "{{var:task_id}}",
+        "sessionType": "tmux",
+        "canResize": true,
+        "canRefreshHistory": false,
+        "canPrepareDirectConnection": false,
+        "tabs": [
+          {
+            "id": "@0",
+            "name": "{{regex:tmux|bash}}",
+            "panes": [
+              {
+                "id": "%0",
+                "tabId": "@0",
+                "tabName": "{{regex:tmux|bash}}",
+                "command": "bash",
+                "left": 0,
+                "top": 0,
+                "width": 120,
+                "height": 30
+              }
+            ]
+          }
+        ]
+      }
+    }
+  }
+}

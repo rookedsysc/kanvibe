@@ -1,0 +1,27 @@
+{
+  "seq": 103,
+  "id": "mobile.panes.connection.plaintext-null",
+  "group": "tasks",
+  "route": "POST /api/mobile/tasks/:taskId/panes/:paneId/connection",
+  "title": "plaintext listener never grants a direct connection (Cache-Control: no-store)",
+  "transport": "http",
+  "request": {
+    "method": "POST",
+    "path": "/api/mobile/tasks/{{var:task_id}}/panes/%250/connection",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}"
+    }
+  },
+  "expect": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": "no-store"
+    },
+    "body": {
+      "success": true,
+      "connection": null
+    }
+  }
+}

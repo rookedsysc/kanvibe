@@ -1,0 +1,37 @@
+{
+  "seq": 25,
+  "id": "mobile.settings.get-defaults",
+  "group": "settings",
+  "route": "GET /api/mobile/settings",
+  "title": "fresh defaults",
+  "transport": "http",
+  "request": {
+    "method": "GET",
+    "path": "/api/mobile/settings",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}"
+    }
+  },
+  "expect": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": true,
+      "settings": {
+        "defaultSessionType": "herdr",
+        "sortPreference": {
+          "keys": []
+        },
+        "doneAlertDismissed": false,
+        "backgroundSync": {
+          "isEnabled": false,
+          "intervalMs": 600000
+        }
+      }
+    }
+  }
+}

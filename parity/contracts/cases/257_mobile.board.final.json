@@ -1,0 +1,89 @@
+{
+  "seq": 257,
+  "id": "mobile.board.final",
+  "group": "projects",
+  "route": "GET /api/mobile/board",
+  "title": "board after all mutations",
+  "transport": "http",
+  "request": {
+    "method": "GET",
+    "path": "/api/mobile/board",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}"
+    }
+  },
+  "expect": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": true,
+      "board": {
+        "tasks": {
+          "todo": [
+            {
+              "id": "{{var:main_task_id}}",
+              "title": "main",
+              "description": null,
+              "status": "todo",
+              "branchName": "main",
+              "worktreePath": "{{var:demo_repo}}",
+              "sessionType": "tmux",
+              "sessionName": "demo-main",
+              "sshHost": null,
+              "agentType": null,
+              "projectId": "{{var:project_id}}",
+              "baseBranch": "main",
+              "prUrl": null,
+              "priority": null,
+              "createdAt": "{{any:iso8601}}",
+              "updatedAt": "{{any:iso8601}}"
+            }
+          ],
+          "progress": [],
+          "pending": [
+            {
+              "id": "{{var:task_id}}",
+              "title": "feat-a",
+              "description": "updated description",
+              "status": "pending",
+              "branchName": "feat-a",
+              "worktreePath": "{{var:task_worktree}}",
+              "sessionType": "terminal",
+              "sessionName": "demo-feat-a",
+              "sshHost": null,
+              "agentType": null,
+              "projectId": "{{var:project_id}}",
+              "baseBranch": "main",
+              "prUrl": null,
+              "priority": "high",
+              "createdAt": "{{any:iso8601}}",
+              "updatedAt": "{{any:iso8601}}"
+            }
+          ],
+          "review": [],
+          "done": []
+        },
+        "doneTotal": 0,
+        "doneLimit": 20,
+        "projects": [
+          {
+            "id": "{{var:project_id}}",
+            "name": "demo",
+            "repoPath": "{{var:demo_repo}}",
+            "defaultBranch": "main",
+            "sshHost": null,
+            "isWorktree": false,
+            "color": "#112233",
+            "iconDataUrl": null,
+            "createdAt": "{{any:iso8601}}"
+          }
+        ],
+        "defaultSessionType": "tmux"
+      }
+    }
+  }
+}

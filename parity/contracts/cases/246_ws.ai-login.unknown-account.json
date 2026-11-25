@@ -1,0 +1,42 @@
+{
+  "seq": 246,
+  "id": "ws.ai-login.unknown-account",
+  "group": "ws",
+  "route": "WS /api/mobile/ai/accounts/:accountId/login",
+  "title": "unknown account",
+  "transport": "ws",
+  "request": {
+    "path": "/api/mobile/ai/accounts/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/login",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}"
+    }
+  },
+  "steps": [
+    {
+      "op": "recv"
+    },
+    {
+      "op": "expect_close"
+    }
+  ],
+  "expect": {
+    "handshake": {
+      "status": 101
+    },
+    "frames": [
+      {
+        "kind": "text",
+        "json": {
+          "type": "error",
+          "error": "계정을 찾을 수 없습니다"
+        }
+      },
+      {
+        "kind": "close",
+        "code": 1011,
+        "reason": "login-open-failed"
+      }
+    ]
+  }
+}

@@ -62,3 +62,6 @@ next-env.d.ts
 # review-resolve-loop artifacts
 /.review-resolve-loop/
 /needs-user.md
+
+# rust
+/target

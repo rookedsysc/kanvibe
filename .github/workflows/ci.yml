@@ -34,3 +34,35 @@ jobs:
       # tsc와 vitest는 Node 해상도로 돌아 그 위반을 통과시키므로 빌드를 따로 게이트로 둔다.
       - name: Build
         run: pnpm build
+
+  rust:
+    name: Rust (fmt, clippy, test, release build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # GPUI 크레이트가 들어오면 링크에 필요한 시스템 라이브러리다. 지금 크레이트는 쓰지 않지만 job 정의를 한 번에 맞춰 둔다.
+      - name: Install system libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libfontconfig-dev libfreetype-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libvulkan-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: taiki-e/install-action@nextest
+
+      - name: Format
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Test
+        run: cargo nextest run --workspace
+
+      - name: Release build
+        run: cargo build --workspace --release

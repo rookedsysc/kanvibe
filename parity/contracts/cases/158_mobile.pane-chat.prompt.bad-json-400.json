@@ -1,0 +1,29 @@
+{
+  "seq": 158,
+  "id": "mobile.pane-chat.prompt.bad-json-400",
+  "group": "pane-chat",
+  "route": "POST /api/mobile/tasks/:taskId/pane-chat/prompt",
+  "title": "unparseable body",
+  "transport": "http",
+  "request": {
+    "method": "POST",
+    "path": "/api/mobile/tasks/{{var:task_id}}/pane-chat/prompt",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}",
+      "Content-Type": "application/json"
+    },
+    "body_text": "{"
+  },
+  "expect": {
+    "status": 400,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": false,
+      "error": "잘못된 요청입니다"
+    }
+  }
+}

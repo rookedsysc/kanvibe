@@ -1,0 +1,39 @@
+{
+  "seq": 229,
+  "id": "cli.tasks.delete.force-dirty",
+  "group": "task-cli",
+  "route": "POST /api/cli/tasks/delete",
+  "title": "force deletes a dirty worktree",
+  "transport": "http",
+  "request": {
+    "method": "POST",
+    "path": "/api/cli/tasks/delete",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:task_token}}",
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "contextTaskId": "{{var:task_id}}",
+      "branchName": "existing-branch",
+      "confirmed": true,
+      "force": true
+    }
+  },
+  "expect": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": true,
+      "data": {
+        "id": "{{var:registered_task_id}}",
+        "branchName": "existing-branch",
+        "deleted": true,
+        "peers": []
+      }
+    }
+  }
+}

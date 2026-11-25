@@ -1,0 +1,31 @@
+{
+  "seq": 101,
+  "id": "mobile.panes.shortcuts.unsupported-400",
+  "group": "tasks",
+  "route": "POST /api/mobile/tasks/:taskId/panes/:paneId/shortcuts",
+  "title": "unknown action",
+  "transport": "http",
+  "request": {
+    "method": "POST",
+    "path": "/api/mobile/tasks/{{var:task_id}}/panes/%250/shortcuts",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}",
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "action": "explode"
+    }
+  },
+  "expect": {
+    "status": 400,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": false,
+      "error": "지원하지 않는 단축키입니다"
+    }
+  }
+}

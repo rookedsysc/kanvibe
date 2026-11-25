@@ -1,0 +1,43 @@
+{
+  "seq": 53,
+  "id": "mobile.projects.scan.ok-scratch",
+  "group": "projects",
+  "route": "POST /api/mobile/projects/scan",
+  "title": "register a second repository",
+  "transport": "http",
+  "request": {
+    "method": "POST",
+    "path": "/api/mobile/projects/scan",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}",
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "rootPath": "{{var:scratch_scan_root}}"
+    }
+  },
+  "delay_before": 1.2,
+  "expect": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": true,
+      "result": {
+        "registered": [
+          "scratch"
+        ],
+        "skipped": [],
+        "errors": [],
+        "worktreeTasks": [],
+        "registeredWorktrees": [],
+        "hooksSetup": [
+          "scratch"
+        ]
+      }
+    }
+  }
+}

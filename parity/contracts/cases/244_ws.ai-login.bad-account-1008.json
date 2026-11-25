@@ -1,0 +1,42 @@
+{
+  "seq": 244,
+  "id": "ws.ai-login.bad-account-1008",
+  "group": "ws",
+  "route": "WS /api/mobile/ai/accounts/:accountId/login",
+  "title": "account id must be 64 hex",
+  "transport": "ws",
+  "request": {
+    "path": "/api/mobile/ai/accounts/not-hex/login",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}"
+    }
+  },
+  "steps": [
+    {
+      "op": "recv"
+    },
+    {
+      "op": "expect_close"
+    }
+  ],
+  "expect": {
+    "handshake": {
+      "status": 101
+    },
+    "frames": [
+      {
+        "kind": "text",
+        "json": {
+          "type": "error",
+          "error": "계정 또는 터미널 크기를 확인해 주세요"
+        }
+      },
+      {
+        "kind": "close",
+        "code": 1008,
+        "reason": "invalid-login-request"
+      }
+    ]
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "seq": 61,
+  "id": "mobile.projects.color.unknown-404",
+  "group": "projects",
+  "route": "PATCH /api/mobile/projects/:id/color",
+  "title": "unknown project",
+  "transport": "http",
+  "request": {
+    "method": "PATCH",
+    "path": "/api/mobile/projects/00000000-0000-4000-8000-000000000000/color",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}",
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "color": "#112233"
+    }
+  },
+  "expect": {
+    "status": 404,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": false,
+      "error": "없는 프로젝트입니다"
+    }
+  }
+}

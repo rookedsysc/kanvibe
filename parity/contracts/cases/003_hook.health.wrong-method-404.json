@@ -1,0 +1,25 @@
+{
+  "seq": 3,
+  "id": "hook.health.wrong-method-404",
+  "group": "hook",
+  "route": "GET /api/hooks/health",
+  "title": "POST on the health path is not routed",
+  "transport": "http",
+  "request": {
+    "method": "POST",
+    "path": "/api/hooks/health",
+    "listener": "plain",
+    "headers": {}
+  },
+  "expect": {
+    "status": 404,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": false,
+      "error": "Not found"
+    }
+  }
+}

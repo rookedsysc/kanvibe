@@ -1,0 +1,57 @@
+{
+  "seq": 206,
+  "id": "cli.tasks.create.ok",
+  "group": "task-cli",
+  "route": "POST /api/cli/tasks",
+  "title": "task CLI creates a task with a prepared session (201)",
+  "transport": "http",
+  "request": {
+    "method": "POST",
+    "path": "/api/cli/tasks",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:task_token}}",
+      "x-kanvibe-client-id": "{{var:hook_client_id}}",
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "contextTaskId": "{{var:task_id}}",
+      "branchName": "cli-b",
+      "baseBranch": "main",
+      "title": "CLI B",
+      "description": "from cli",
+      "priority": "low",
+      "sessionType": "tmux"
+    }
+  },
+  "capture": {
+    "cli_task_id": "body.data.id",
+    "cli_task_worktree": "body.data.worktreePath"
+  },
+  "delay_before": 1.2,
+  "expect": {
+    "status": 201,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": true,
+      "data": {
+        "id": "{{any:uuid}}",
+        "projectId": "{{var:project_id}}",
+        "branchName": "cli-b",
+        "baseBranch": "main",
+        "worktreePath": "{{var:demo_repo}}__worktrees/cli-b",
+        "sessionType": "tmux",
+        "sessionName": "demo-cli-b",
+        "sshHost": null,
+        "status": "todo",
+        "session": {
+          "isPrepared": true
+        },
+        "peers": []
+      }
+    }
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "seq": 13,
+  "id": "mobile.auth.malformed-401",
+  "group": "guard",
+  "route": "GUARD mobile auth",
+  "title": "non-Bearer scheme",
+  "transport": "http",
+  "request": {
+    "method": "GET",
+    "path": "/api/mobile/board",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Token abc"
+    }
+  },
+  "expect": {
+    "status": 401,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": false,
+      "error": "연결되지 않은 기기입니다"
+    }
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "seq": 138,
+  "id": "mobile.ai.accounts.list-empty",
+  "group": "ai",
+  "route": "GET /api/mobile/ai/accounts",
+  "title": "no CLI accounts in the isolated HOME",
+  "transport": "http",
+  "request": {
+    "method": "GET",
+    "path": "/api/mobile/ai/accounts",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}"
+    }
+  },
+  "expect": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": true,
+      "accounts": []
+    }
+  }
+}

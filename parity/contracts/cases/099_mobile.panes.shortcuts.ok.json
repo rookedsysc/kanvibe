@@ -1,0 +1,72 @@
+{
+  "seq": 99,
+  "id": "mobile.panes.shortcuts.ok",
+  "group": "tasks",
+  "route": "POST /api/mobile/tasks/:taskId/panes/:paneId/shortcuts",
+  "title": "tmux shortcut on pane %0",
+  "transport": "http",
+  "request": {
+    "method": "POST",
+    "path": "/api/mobile/tasks/{{var:task_id}}/panes/%250/shortcuts",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}",
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "action": "scroll-bottom"
+    }
+  },
+  "expect": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": true,
+      "surfaces": {
+        "taskId": "{{var:task_id}}",
+        "sessionType": "tmux",
+        "canResize": true,
+        "canRefreshHistory": false,
+        "canPrepareDirectConnection": false,
+        "tabs": [
+          {
+            "id": "@1",
+            "name": "{{regex:tmux|bash|logs}}",
+            "panes": [
+              {
+                "id": "%1",
+                "tabId": "@1",
+                "tabName": "{{regex:tmux|bash|logs}}",
+                "command": "bash",
+                "left": 0,
+                "top": 0,
+                "width": 80,
+                "height": 24
+              }
+            ]
+          },
+          {
+            "id": "@0",
+            "name": "{{regex:tmux|bash|logs}}",
+            "panes": [
+              {
+                "id": "%0",
+                "tabId": "@0",
+                "tabName": "{{regex:tmux|bash|logs}}",
+                "command": "bash",
+                "left": 0,
+                "top": 0,
+                "width": 120,
+                "height": 30
+              }
+            ]
+          }
+        ]
+      },
+      "screen": "{{any:string}}"
+    }
+  }
+}

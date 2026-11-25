@@ -1,0 +1,39 @@
+{
+  "seq": 183,
+  "id": "hook.status.ok",
+  "group": "hook-status",
+  "route": "POST /api/hooks/status",
+  "title": "shell hook status update with the HMAC task token",
+  "transport": "http",
+  "request": {
+    "method": "POST",
+    "path": "/api/hooks/status",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:task_token}}",
+      "x-kanvibe-client-id": "{{var:hook_client_id}}",
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "taskId": "{{var:task_id}}",
+      "status": "progress"
+    }
+  },
+  "delay_before": 1.1,
+  "expect": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": true,
+      "data": {
+        "id": "{{var:task_id}}",
+        "status": "progress",
+        "branchName": "feat-a",
+        "projectName": "demo"
+      }
+    }
+  }
+}

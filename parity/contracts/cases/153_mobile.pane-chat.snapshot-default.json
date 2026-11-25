@@ -1,0 +1,49 @@
+{
+  "seq": 153,
+  "id": "mobile.pane-chat.snapshot-default",
+  "group": "pane-chat",
+  "route": "GET /api/mobile/tasks/:taskId/pane-chat",
+  "title": "snapshot without paneId",
+  "transport": "http",
+  "request": {
+    "method": "GET",
+    "path": "/api/mobile/tasks/{{var:task_id}}/pane-chat",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}"
+    }
+  },
+  "expect": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": true,
+      "snapshot": {
+        "taskId": "{{var:task_id}}",
+        "paneId": null,
+        "sessionType": null,
+        "provider": null,
+        "targetToken": null,
+        "canSend": false,
+        "inputState": "unknown",
+        "agentActivity": "unknown",
+        "screen": "",
+        "reason": "pane-unavailable",
+        "transcript": {
+          "status": "unavailable",
+          "reason": "exact-session-unavailable",
+          "sessionId": null,
+          "messages": [],
+          "nextCursor": null
+        },
+        "modelPicker": {
+          "supported": false,
+          "mode": "native-cli"
+        }
+      }
+    }
+  }
+}

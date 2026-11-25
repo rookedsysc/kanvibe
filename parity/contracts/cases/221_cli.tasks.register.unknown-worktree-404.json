@@ -1,0 +1,32 @@
+{
+  "seq": 221,
+  "id": "cli.tasks.register.unknown-worktree-404",
+  "group": "task-cli",
+  "route": "POST /api/cli/tasks/register",
+  "title": "branch has no worktree yet",
+  "transport": "http",
+  "request": {
+    "method": "POST",
+    "path": "/api/cli/tasks/register",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:task_token}}",
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "contextTaskId": "{{var:task_id}}",
+      "branchName": "existing-branch"
+    }
+  },
+  "expect": {
+    "status": 404,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": false,
+      "error": "프로젝트에서 existing-branch 브랜치의 worktree를 찾지 못했습니다."
+    }
+  }
+}

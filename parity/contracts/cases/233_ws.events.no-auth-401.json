@@ -1,0 +1,21 @@
+{
+  "seq": 233,
+  "id": "ws.events.no-auth-401",
+  "group": "ws",
+  "route": "WS /api/mobile/events",
+  "title": "raw 'HTTP/1.1 401 Unauthorized' then close",
+  "transport": "ws",
+  "request": {
+    "path": "/api/mobile/events",
+    "listener": "plain",
+    "headers": {}
+  },
+  "steps": [],
+  "expect": {
+    "handshake": {
+      "status": 401,
+      "raw": "HTTP/1.1 401 Unauthorized\r\n\r\n"
+    },
+    "frames": []
+  }
+}

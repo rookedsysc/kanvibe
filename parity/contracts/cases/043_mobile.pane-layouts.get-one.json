@@ -1,0 +1,46 @@
+{
+  "seq": 43,
+  "id": "mobile.pane-layouts.get-one",
+  "group": "settings",
+  "route": "GET /api/mobile/pane-layouts",
+  "title": "saved layout listed",
+  "transport": "http",
+  "request": {
+    "method": "GET",
+    "path": "/api/mobile/pane-layouts",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}"
+    }
+  },
+  "expect": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": true,
+      "layouts": [
+        {
+          "id": "{{var:layout_id}}",
+          "layoutType": "horizontal_2",
+          "panes": [
+            {
+              "position": 0,
+              "command": ""
+            },
+            {
+              "position": 1,
+              "command": "git status"
+            }
+          ],
+          "projectId": null,
+          "isGlobal": true,
+          "createdAt": "{{any:iso8601}}",
+          "updatedAt": "{{any:iso8601}}"
+        }
+      ]
+    }
+  }
+}

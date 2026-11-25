@@ -1,0 +1,37 @@
+{
+  "seq": 147,
+  "id": "mobile.diagrams.render.ok",
+  "group": "diagram",
+  "route": "POST /api/mobile/diagrams/render",
+  "title": "render mermaid to an image (bytes and size vary by renderer)",
+  "transport": "http",
+  "request": {
+    "method": "POST",
+    "path": "/api/mobile/diagrams/render",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}",
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "definition": "graph TD; A-->B",
+      "theme": "light",
+      "width": 400
+    }
+  },
+  "expect": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": true,
+      "imageBase64": "{{any:base64}}",
+      "width": "{{any:int}}",
+      "height": "{{any:int}}",
+      "mimeType": "image/jpeg",
+      "naturalWidth": "{{any:int}}"
+    }
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "seq": 42,
+  "id": "mobile.pane-layouts.put-global-with-project-400",
+  "group": "settings",
+  "route": "PUT /api/mobile/pane-layouts",
+  "title": "global layout cannot name a project",
+  "transport": "http",
+  "request": {
+    "method": "PUT",
+    "path": "/api/mobile/pane-layouts",
+    "listener": "plain",
+    "headers": {
+      "Authorization": "Bearer {{var:pair_token}}",
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "layoutType": "single",
+      "isGlobal": true,
+      "projectId": "x",
+      "panes": [
+        {
+          "position": 0,
+          "command": ""
+        }
+      ]
+    }
+  },
+  "expect": {
+    "status": 400,
+    "headers": {
+      "content-type": "application/json",
+      "cache-control": null
+    },
+    "body": {
+      "success": false,
+      "error": "글로벌 설정에는 프로젝트를 지정할 수 없습니다"
+    }
+  }
+}
