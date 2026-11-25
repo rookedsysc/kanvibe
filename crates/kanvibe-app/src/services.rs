@@ -1,6 +1,7 @@
 //! 화면이 직접 부르는 서비스(계획 AD-8: 범용 IPC 없이 같은 프로세스 호출).
 //! QA 모드에서는 모든 호출이 TS IPC 이름(`namespace.method`)으로 고장 주입 판정을 먼저 거친다.
 
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -36,6 +37,8 @@ pub struct BoardHeaderSnapshot {
 
 pub struct AppServices {
     database: Option<Arc<Database>>,
+    /// `--data-dir`로 받은 앱 데이터 디렉터리. 없으면 DB 없이 뜬 실행이다
+    data_dir: Option<PathBuf>,
     faults: Option<Arc<FaultRegistry>>,
     pub clock: AppClock,
     pub shortcut_platform: ShortcutPlatform,
@@ -49,11 +52,13 @@ pub const BOARD_TASKS_SERVICE: &str = "kanban.getTasksByStatus";
 impl AppServices {
     pub fn new(
         database: Option<Arc<Database>>,
+        data_dir: Option<PathBuf>,
         faults: Option<Arc<FaultRegistry>>,
         clock: AppClock,
     ) -> Self {
         Self {
             database,
+            data_dir,
             faults,
             clock,
             shortcut_platform: ShortcutPlatform::current(),
@@ -61,9 +66,17 @@ impl AppServices {
     }
 
     /// 앱 데이터 디렉터리의 `kanvibe.db`를 연다
-    pub fn open_database(data_dir: &std::path::Path) -> anyhow::Result<Arc<Database>> {
+    pub fn open_database(data_dir: &Path) -> anyhow::Result<Arc<Database>> {
         let location = DatabaseLocation::in_app_data_directory(data_dir, None);
         Ok(Arc::new(Database::open(&location)?))
+    }
+
+    pub fn database(&self) -> Option<&Arc<Database>> {
+        self.database.as_ref()
+    }
+
+    pub fn data_dir(&self) -> Option<&Path> {
+        self.data_dir.as_deref()
     }
 
     pub fn faults(&self) -> Option<&Arc<FaultRegistry>> {

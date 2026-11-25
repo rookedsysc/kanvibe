@@ -41,7 +41,7 @@ pub fn init_app(launch: &LaunchOptions, cx: &mut App) -> anyhow::Result<()> {
         .map(AppServices::open_database)
         .transpose()?;
     let (faults, clock) = install_qa_runtime(launch, cx)?;
-    let services = AppServices::new(database, faults, clock);
+    let services = AppServices::new(database, launch.data_dir.clone(), faults, clock);
 
     let is_system_light = cx.window_appearance() == WindowAppearance::Light
         || cx.window_appearance() == WindowAppearance::VibrantLight;
