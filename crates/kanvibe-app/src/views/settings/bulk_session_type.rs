@@ -2,23 +2,25 @@
 //! 바꿀 대상 확인 → 몇 개를 바꿀지 확인 → 호스트마다 세션 도구 준비 → 켜진 세션을 닫을지 확인 → 변경 순서로 진행하고
 //! 단계마다 안내를 보인다. 진행 중에는 다시 적용할 수 없다.
 //!
-//! 작업 서비스(`KanbanService`)와 세션 도구 서비스는 앱이 오래 들고 있는 서비스라 화면이 만들지 않는다.
-//! 화면은 `SessionTypeBulkChanger` 뒤에서만 부르고, 앱이 실제 구현을 `install_session_type_bulk_changer`로 건다.
+//! 작업 서비스(`KanbanService`)와 세션 도구 서비스는 런타임(`DesktopRuntime`)이 가진 인스턴스를 쓴다.
+//! 화면은 `SessionTypeBulkChanger` 뒤에서만 부르고, 테스트는 같은 자리에 가짜 통로를 넘긴다.
 
 use std::sync::Arc;
 
 use futures::future::LocalBoxFuture;
 use gpui_kit::{
-    App, AppContext, AsyncApp, Context, Entity, Global, InteractiveElement, IntoElement,
-    ParentElement, Render, Styled, Subscription, Task, Window, div,
+    App, AppContext, AsyncApp, Context, Entity, InteractiveElement, IntoElement, ParentElement,
+    Render, Styled, Subscription, Task, Window, div,
 };
 use kanvibe_domain::i18n::{Locale, Translator};
 use kanvibe_domain::task::SessionType;
+use kanvibe_process::remote_session_dependency::SessionDependencyStatus as ProcessDependencyStatus;
+use kanvibe_runtime::DesktopRuntime;
 use serde::{Deserialize, Serialize};
 
 use crate::components::TailwindText;
-use crate::qa::QaRuntime;
-use crate::services::ServiceResult;
+use crate::qa::prompts::confirm_action;
+use crate::services::{AppServices, ServiceResult};
 use crate::theme::{ThemeTokens, radius, spacing, text_scale};
 use crate::views::settings::controls::{
     SETTING_LABEL_HEIGHT, chromium_center_offset, make_pressable, pressable, setting_label,
@@ -77,33 +79,97 @@ pub trait SessionTypeBulkChanger: Send + Sync {
     ) -> ServiceResult<SessionTypeChangeResult>;
 }
 
-struct SessionTypeBulkChangerHandle(Arc<dyn SessionTypeBulkChanger>);
-
-impl Global for SessionTypeBulkChangerHandle {}
-
-/// 앱이 작업 서비스를 만든 뒤 부른다
-pub fn install_session_type_bulk_changer(changer: Arc<dyn SessionTypeBulkChanger>, cx: &mut App) {
-    cx.set_global(SessionTypeBulkChangerHandle(changer));
-}
-
-fn session_type_bulk_changer(cx: &mut App) -> Arc<dyn SessionTypeBulkChanger> {
-    if !cx.has_global::<SessionTypeBulkChangerHandle>() {
-        cx.set_global(SessionTypeBulkChangerHandle(Arc::new(UnwiredBulkChanger)));
+/// 런타임의 작업 서비스와 세션 도구 서비스로 답하는 통로. 데이터 디렉터리 없이 뜬 실행이면 모든 호출이 실패한다
+fn runtime_bulk_changer(cx: &App) -> Arc<dyn SessionTypeBulkChanger> {
+    match cx.global::<AppServices>().runtime() {
+        Some(runtime) => Arc::new(RuntimeBulkChanger(runtime.clone())),
+        None => Arc::new(UnavailableBulkChanger),
     }
-    cx.global::<SessionTypeBulkChangerHandle>().0.clone()
 }
 
-/// 작업 서비스가 아직 걸리지 않은 앱. 모든 호출이 사유와 함께 실패한다
-struct UnwiredBulkChanger;
+struct RuntimeBulkChanger(Arc<DesktopRuntime>);
 
-const KANBAN_SERVICE_UNAVAILABLE: &str = "작업 서비스가 아직 연결되지 않았습니다";
+impl SessionTypeBulkChanger for RuntimeBulkChanger {
+    fn get_session_type_change_targets(
+        &self,
+        session_type: SessionType,
+    ) -> ServiceResult<SessionTypeChangeTargets> {
+        let targets = self
+            .0
+            .kanban()
+            .get_session_type_change_targets(session_type)
+            .map_err(failure)?;
+        Ok(SessionTypeChangeTargets {
+            task_count: targets.task_count,
+            live_session_count: targets.live_session_count,
+            ssh_hosts: targets.ssh_hosts,
+        })
+    }
 
-impl SessionTypeBulkChanger for UnwiredBulkChanger {
+    fn get_session_dependency_status(
+        &self,
+        session_type: SessionType,
+        ssh_host: Option<&str>,
+    ) -> ServiceResult<SessionDependencyStatus> {
+        self.0
+            .session_dependency()
+            .get_session_dependency_status(session_type, ssh_host)
+            .map(SessionDependencyStatus::from)
+            .map_err(failure)
+    }
+
+    fn install_session_dependency(
+        &self,
+        session_type: SessionType,
+        ssh_host: Option<&str>,
+    ) -> ServiceResult<SessionDependencyStatus> {
+        self.0
+            .session_dependency()
+            .install_session_dependency(session_type, ssh_host)
+            .map(SessionDependencyStatus::from)
+            .map_err(failure)
+    }
+
+    fn change_all_task_session_types(
+        &self,
+        session_type: SessionType,
+        should_close_existing_sessions: bool,
+    ) -> ServiceResult<SessionTypeChangeResult> {
+        let result = self
+            .0
+            .kanban()
+            .change_all_task_session_types(session_type, should_close_existing_sessions)
+            .map_err(failure)?;
+        Ok(SessionTypeChangeResult {
+            changed_count: result.changed_count,
+            failed_count: result.failed_count,
+        })
+    }
+}
+
+impl From<ProcessDependencyStatus> for SessionDependencyStatus {
+    fn from(status: ProcessDependencyStatus) -> Self {
+        Self {
+            available: status.is_available,
+            tool_name: status.tool_name.map(str::to_string),
+            is_remote: status.is_remote,
+            ssh_host: status.ssh_host,
+            blocked_reason: status.blocked_reason,
+        }
+    }
+}
+
+/// 데이터 디렉터리 없이 뜬 앱. 모든 호출이 사유와 함께 실패한다
+struct UnavailableBulkChanger;
+
+const DATABASE_UNAVAILABLE: &str = "데이터베이스가 열려 있지 않습니다";
+
+impl SessionTypeBulkChanger for UnavailableBulkChanger {
     fn get_session_type_change_targets(
         &self,
         _: SessionType,
     ) -> ServiceResult<SessionTypeChangeTargets> {
-        Err(failure(KANBAN_SERVICE_UNAVAILABLE))
+        Err(failure(DATABASE_UNAVAILABLE))
     }
 
     fn get_session_dependency_status(
@@ -111,7 +177,7 @@ impl SessionTypeBulkChanger for UnwiredBulkChanger {
         _: SessionType,
         _: Option<&str>,
     ) -> ServiceResult<SessionDependencyStatus> {
-        Err(failure(KANBAN_SERVICE_UNAVAILABLE))
+        Err(failure(DATABASE_UNAVAILABLE))
     }
 
     fn install_session_dependency(
@@ -119,7 +185,7 @@ impl SessionTypeBulkChanger for UnwiredBulkChanger {
         _: SessionType,
         _: Option<&str>,
     ) -> ServiceResult<SessionDependencyStatus> {
-        Err(failure(KANBAN_SERVICE_UNAVAILABLE))
+        Err(failure(DATABASE_UNAVAILABLE))
     }
 
     fn change_all_task_session_types(
@@ -127,7 +193,7 @@ impl SessionTypeBulkChanger for UnwiredBulkChanger {
         _: SessionType,
         _: bool,
     ) -> ServiceResult<SessionTypeChangeResult> {
-        Err(failure(KANBAN_SERVICE_UNAVAILABLE))
+        Err(failure(DATABASE_UNAVAILABLE))
     }
 }
 
@@ -166,22 +232,21 @@ pub async fn run_bulk_change(
         change_with_confirmations(&changer, session_type, locale, &confirm, &report_stage, cx)
             .await;
     report_stage(None, cx);
-    let settings = Translator::new(locale, "settings");
     match result {
         Ok(outcome) => outcome,
         Err(reason) => Some(BulkChangeOutcome {
-            message: reason.unwrap_or_else(|| settings.translate("bulkSessionTypeChangeFailed")),
+            message: reason,
             is_failure: true,
             can_retry: true,
         }),
     }
 }
 
-/// 실패 사유가 비어 있으면 일반 실패 문구를 쓴다(TS `error instanceof Error ? message : 기본 문구`)
-type BulkChangeError = Option<String>;
+/// 화면에 보일 실패 사유(TS `error.message`). 서비스 실패는 IPC 머리말을 붙인 문구다
+type BulkChangeError = String;
 
 fn as_bulk_error(failure: crate::services::ServiceFailure) -> BulkChangeError {
-    Some(failure.reason).filter(|reason| !reason.is_empty())
+    failure.display_message()
 }
 
 async fn change_with_confirmations(
@@ -363,10 +428,10 @@ async fn ensure_dependency(
     let reason = installed
         .blocked_reason
         .unwrap_or_else(|| "unknown error".to_string());
-    Err(Some(common.translate_with(
+    Err(common.translate_with(
         "sessionDependency.installFailed",
         &[("tool", &tool_name), ("error", &reason)],
-    )))
+    ))
 }
 
 async fn request_dependency(
@@ -403,28 +468,18 @@ fn install_prompt(
     )
 }
 
-/// 네이티브 확인 대화상자(`window.confirm`). QA 재생은 TS 드라이버처럼 모두 수락한다
-pub fn window_confirm_prompt(window: &mut Window, cx: &mut App) -> ConfirmPrompt {
-    let is_qa = cx.has_global::<QaRuntime>();
+/// 단계마다 띄우는 확인 대화상자(TS `window.confirm`). 공용 `confirm_action`을 거쳐 QA 재생에서는 모두 수락한다
+fn window_confirm_prompt(window: &mut Window, cx: &mut App) -> ConfirmPrompt {
     let window_handle = window.window_handle();
     let async_cx = cx.to_async();
     Box::new(move |message: String| {
         let mut async_cx = async_cx.clone();
         Box::pin(async move {
-            if is_qa {
-                return true;
-            }
             let answer = window_handle.update(&mut async_cx, |_, window, cx| {
-                window.prompt(
-                    gpui_kit::PromptLevel::Info,
-                    &message,
-                    None,
-                    &["확인", "취소"],
-                    cx,
-                )
+                confirm_action(&message, None, window, cx)
             });
             match answer {
-                Ok(receiver) => receiver.await == Ok(0),
+                Ok(confirmed) => confirmed.await,
                 Err(_) => false,
             }
         })
@@ -451,7 +506,7 @@ impl BulkSessionTypeChangeSettings {
             });
         Self {
             locale,
-            changer: session_type_bulk_changer(cx),
+            changer: runtime_bulk_changer(cx),
             session_type_select,
             stage: None,
             outcome: None,

@@ -11,7 +11,7 @@ use kanvibe_app::qa::targets::{QaTargetRegistry, TargetQuery};
 use kanvibe_app::services::{AppServices, ServiceFailure, ServiceResult};
 use kanvibe_app::views::settings::mobile_pairing::{
     MobileConnectionSettings, MobilePairingBridge, MobilePairingCode, MobilePairingSettings,
-    PairedMobileDevice, PairingAction, install_mobile_pairing_bridge,
+    PairedMobileDevice, PairingAction, format_paired_at,
 };
 use kanvibe_domain::i18n::Locale;
 use serde_json::json;
@@ -107,7 +107,7 @@ fn device(device_id: &str, name: &str) -> PairedMobileDevice {
     }
 }
 
-fn init_app(cx: &mut TestAppContext, bridge: Arc<FakeBridge>) {
+fn init_app(cx: &mut TestAppContext) {
     let launch = LaunchOptions {
         data_dir: None,
         initial_route: "/ko/settings".into(),
@@ -123,14 +123,15 @@ fn init_app(cx: &mut TestAppContext, bridge: Arc<FakeBridge>) {
     };
     cx.update(|cx| {
         kanvibe_app::init_app(&launch, cx).expect("app init");
-        install_mobile_pairing_bridge(bridge, cx);
     });
 }
 
 fn open_pairing(
     cx: &mut TestAppContext,
+    bridge: Arc<FakeBridge>,
 ) -> (Entity<MobilePairingSettings>, &mut VisualTestContext) {
-    let (view, cx) = cx.add_window_view(|_, cx| MobilePairingSettings::new(Locale::Ko, cx));
+    let (view, cx) =
+        cx.add_window_view(|_, cx| MobilePairingSettings::with_bridge(Locale::Ko, bridge, cx));
     cx.run_until_parked();
     (view, cx)
 }
@@ -161,8 +162,8 @@ fn close_window(cx: &mut VisualTestContext) {
 // parity: TS-components-MobilePairingSettings-bf49c9
 #[gpui::test]
 fn no_code_is_shown_before_issuing_one(cx: &mut TestAppContext) {
-    init_app(cx, Arc::new(FakeBridge::default()));
-    let (view, cx) = open_pairing(cx);
+    init_app(cx);
+    let (view, cx) = open_pairing(cx, Arc::new(FakeBridge::default()));
     draw(cx);
     assert!(view.read_with(cx, |view, _| view.state.code.is_none()));
     assert!(is_shown(
@@ -174,8 +175,8 @@ fn no_code_is_shown_before_issuing_one(cx: &mut TestAppContext) {
 // parity: TS-components-MobilePairingSettings-85c06d
 #[gpui::test]
 fn issuing_shows_the_code_to_type_in(cx: &mut TestAppContext) {
-    init_app(cx, Arc::new(FakeBridge::default()));
-    let (view, cx) = open_pairing(cx);
+    init_app(cx);
+    let (view, cx) = open_pairing(cx, Arc::new(FakeBridge::default()));
     view.update(cx, |view, cx| view.issue_code(cx));
     cx.run_until_parked();
     view.read_with(cx, |view, _| {
@@ -187,8 +188,8 @@ fn issuing_shows_the_code_to_type_in(cx: &mut TestAppContext) {
 // parity: TS-components-MobilePairingSettings-4ad086
 #[gpui::test]
 fn shown_code_turns_the_button_into_clear(cx: &mut TestAppContext) {
-    init_app(cx, Arc::new(FakeBridge::default()));
-    let (view, cx) = open_pairing(cx);
+    init_app(cx);
+    let (view, cx) = open_pairing(cx, Arc::new(FakeBridge::default()));
     view.update(cx, |view, cx| view.issue_code(cx));
     cx.run_until_parked();
     draw(cx);
@@ -206,8 +207,8 @@ fn shown_code_turns_the_button_into_clear(cx: &mut TestAppContext) {
 #[gpui::test]
 fn clearing_the_code_removes_it(cx: &mut TestAppContext) {
     let bridge = Arc::new(FakeBridge::default());
-    init_app(cx, bridge.clone());
-    let (view, cx) = open_pairing(cx);
+    init_app(cx);
+    let (view, cx) = open_pairing(cx, bridge.clone());
     view.update(cx, |view, cx| view.issue_code(cx));
     cx.run_until_parked();
     view.update(cx, |view, cx| view.clear_code(cx));
@@ -220,8 +221,8 @@ fn clearing_the_code_removes_it(cx: &mut TestAppContext) {
 #[gpui::test]
 fn code_discarded_by_the_desktop_disappears_before_expiry(cx: &mut TestAppContext) {
     let bridge = Arc::new(FakeBridge::default());
-    init_app(cx, bridge.clone());
-    let (view, cx) = open_pairing(cx);
+    init_app(cx);
+    let (view, cx) = open_pairing(cx, bridge.clone());
     view.update(cx, |view, cx| view.issue_code(cx));
     cx.run_until_parked();
     bridge.state.lock().unwrap().current_code = None;
@@ -234,8 +235,8 @@ fn code_discarded_by_the_desktop_disappears_before_expiry(cx: &mut TestAppContex
 #[gpui::test]
 fn shows_the_tls_port_and_saves_lan_plaintext(cx: &mut TestAppContext) {
     let bridge = Arc::new(FakeBridge::default());
-    init_app(cx, bridge.clone());
-    let (view, cx) = open_pairing(cx);
+    init_app(cx);
+    let (view, cx) = open_pairing(cx, bridge.clone());
     assert_eq!(
         view.read_with(cx, |view, _| view
             .state
@@ -260,8 +261,8 @@ fn shows_the_tls_port_and_saves_lan_plaintext(cx: &mut TestAppContext) {
 fn failed_lan_plaintext_save_explains_and_keeps_the_checkbox(cx: &mut TestAppContext) {
     let bridge = Arc::new(FakeBridge::default());
     bridge.state.lock().unwrap().is_lan_update_failing = true;
-    init_app(cx, bridge);
-    let (view, cx) = open_pairing(cx);
+    init_app(cx);
+    let (view, cx) = open_pairing(cx, bridge);
     view.update(cx, |view, cx| view.change_lan_plaintext_allowed(true, cx));
     cx.run_until_parked();
     view.read_with(cx, |view, _| {
@@ -281,8 +282,8 @@ fn failed_lan_plaintext_save_explains_and_keeps_the_checkbox(cx: &mut TestAppCon
 fn paired_devices_are_listed(cx: &mut TestAppContext) {
     let bridge = Arc::new(FakeBridge::default());
     bridge.state.lock().unwrap().devices = vec![device("d1", "Pixel 9"), device("d2", "iPhone 17")];
-    init_app(cx, bridge);
-    let (view, cx) = open_pairing(cx);
+    init_app(cx);
+    let (view, cx) = open_pairing(cx, bridge);
     draw(cx);
     let names = view.read_with(cx, |view, _| {
         view.state
@@ -303,8 +304,8 @@ fn paired_devices_are_listed(cx: &mut TestAppContext) {
 fn disconnecting_sends_the_device_id_and_rereads_the_list(cx: &mut TestAppContext) {
     let bridge = Arc::new(FakeBridge::default());
     bridge.state.lock().unwrap().devices = vec![device("d1", "Pixel 9"), device("d2", "iPhone 17")];
-    init_app(cx, bridge.clone());
-    let (view, cx) = open_pairing(cx);
+    init_app(cx);
+    let (view, cx) = open_pairing(cx, bridge.clone());
     let list_calls_before = bridge.state.lock().unwrap().list_calls;
     view.update(cx, |view, cx| view.disconnect_device("d1".into(), cx));
     cx.run_until_parked();
@@ -319,8 +320,8 @@ fn disconnecting_sends_the_device_id_and_rereads_the_list(cx: &mut TestAppContex
 #[gpui::test]
 fn leaving_without_a_code_does_not_call_the_desktop(cx: &mut TestAppContext) {
     let bridge = Arc::new(FakeBridge::default());
-    init_app(cx, bridge.clone());
-    let (_view, cx) = open_pairing(cx);
+    init_app(cx);
+    let (_view, cx) = open_pairing(cx, bridge.clone());
     close_window(cx);
     assert_eq!(bridge.state.lock().unwrap().stop_calls, 0);
 }
@@ -329,8 +330,8 @@ fn leaving_without_a_code_does_not_call_the_desktop(cx: &mut TestAppContext) {
 #[gpui::test]
 fn leaving_with_a_code_on_screen_withdraws_it(cx: &mut TestAppContext) {
     let bridge = Arc::new(FakeBridge::default());
-    init_app(cx, bridge.clone());
-    let (view, cx) = open_pairing(cx);
+    init_app(cx);
+    let (view, cx) = open_pairing(cx, bridge.clone());
     view.update(cx, |view, cx| view.issue_code(cx));
     cx.run_until_parked();
     drop(view);
@@ -343,8 +344,8 @@ fn leaving_with_a_code_on_screen_withdraws_it(cx: &mut TestAppContext) {
 fn unreadable_device_list_still_renders_the_settings(cx: &mut TestAppContext) {
     let bridge = Arc::new(FakeBridge::default());
     bridge.state.lock().unwrap().is_device_list_failing = true;
-    init_app(cx, bridge);
-    let (view, cx) = open_pairing(cx);
+    init_app(cx);
+    let (view, cx) = open_pairing(cx, bridge);
     draw(cx);
     assert!(view.read_with(cx, |view, _| view.state.is_device_list_unreadable));
     assert!(is_shown(
@@ -362,8 +363,8 @@ fn unreadable_device_list_still_renders_the_settings(cx: &mut TestAppContext) {
 fn unreadable_device_list_keeps_known_devices_and_can_reread(cx: &mut TestAppContext) {
     let bridge = Arc::new(FakeBridge::default());
     bridge.state.lock().unwrap().devices = vec![device("d1", "Pixel 9")];
-    init_app(cx, bridge.clone());
-    let (view, cx) = open_pairing(cx);
+    init_app(cx);
+    let (view, cx) = open_pairing(cx, bridge.clone());
     bridge.state.lock().unwrap().is_device_list_failing = true;
     view.update(cx, |view, cx| view.refresh_paired_devices(cx));
     cx.run_until_parked();
@@ -386,8 +387,8 @@ fn unreadable_device_list_keeps_known_devices_and_can_reread(cx: &mut TestAppCon
 fn failed_issue_explains_what_went_wrong(cx: &mut TestAppContext) {
     let bridge = Arc::new(FakeBridge::default());
     bridge.state.lock().unwrap().is_issue_failing = true;
-    init_app(cx, bridge);
-    let (view, cx) = open_pairing(cx);
+    init_app(cx);
+    let (view, cx) = open_pairing(cx, bridge);
     view.update(cx, |view, cx| view.issue_code(cx));
     cx.run_until_parked();
     view.read_with(cx, |view, _| {
@@ -404,8 +405,8 @@ fn failed_issue_explains_what_went_wrong(cx: &mut TestAppContext) {
 fn other_pairing_actions_wait_while_a_code_is_being_issued(cx: &mut TestAppContext) {
     let bridge = Arc::new(FakeBridge::default());
     bridge.state.lock().unwrap().devices = vec![device("d1", "Pixel 9")];
-    init_app(cx, bridge.clone());
-    let (view, cx) = open_pairing(cx);
+    init_app(cx);
+    let (view, cx) = open_pairing(cx, bridge.clone());
     let fault: ServiceFault = serde_json::from_value(
         json!({"target": "mobileBridge.startMobilePairing", "mode": "hang"}),
     )
@@ -426,4 +427,15 @@ fn other_pairing_actions_wait_while_a_code_is_being_issued(cx: &mut TestAppConte
         cx,
         json!({"role": "button", "name": "코드를 만드는 중…", "exact": true})
     ));
+}
+
+/// TS `new Date(pairedAt).toLocaleString()`은 시스템 시간대로 보인다. 오프셋 없는 시각은 현지 시각이므로
+/// 어느 시간대에서 돌려도 같은 벽시계 값이 나와야 한다(UTC로 읽던 구현은 UTC가 아닌 곳에서 시각이 바뀐다)
+#[test]
+fn paired_date_is_shown_in_local_time() {
+    assert_eq!(
+        format_paired_at("2026-01-14T21:05:09"),
+        "1/14/2026, 9:05:09 PM"
+    );
+    assert_eq!(format_paired_at("not a date"), "not a date");
 }

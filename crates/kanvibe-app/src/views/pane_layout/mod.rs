@@ -11,12 +11,13 @@ use std::collections::HashMap;
 
 use gpui_kit::{
     AnyElement, AppContext, Context, Entity, InteractiveElement, IntoElement, ParentElement,
-    Render, ScrollHandle, Styled, Task, Window, div, px,
+    Render, ScrollHandle, Styled, Subscription, Task, Window, div, px,
 };
 use kanvibe_domain::i18n::Translator;
 use kanvibe_domain::pane_layout::PaneLayoutConfig;
 use kanvibe_domain::project::Project;
 
+use crate::app_events::{RefreshScope, subscribe_to_refresh};
 use crate::components::{TailwindText, fade};
 use crate::services::ServiceResult;
 use crate::theme::{ThemeTokens, radius, spacing, text_scale};
@@ -65,6 +66,7 @@ pub struct PaneLayoutView {
     scroll_handle: ScrollHandle,
     _load: Option<Task<()>>,
     _timeout: Option<Task<()>>,
+    _refresh_subscription: Option<Subscription>,
 }
 
 impl PaneLayoutView {
@@ -79,6 +81,11 @@ impl PaneLayoutView {
             scroll_handle: ScrollHandle::new(),
             _load: None,
             _timeout: None,
+            _refresh_subscription: subscribe_to_refresh(
+                &[RefreshScope::PaneLayout],
+                cx,
+                Self::reload,
+            ),
         };
         view.reload(cx);
         view

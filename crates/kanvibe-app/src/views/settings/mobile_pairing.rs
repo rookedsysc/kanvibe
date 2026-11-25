@@ -1,21 +1,22 @@
 //! 모바일 앱 연결 설정(TS `MobilePairingSettings`). 코드는 화면에 떠 있는 동안에만 살아 있고 한 번 쓰면 사라지므로
 //! 화면을 벗어나면 거둔다. 한 번 연결한 기기는 여기서 직접 끊기 전까지 목록에 남는다.
 //!
-//! 페어링 서버(kanvibe-server)가 아직 없어서 화면은 `MobilePairingBridge` 뒤에서만 서버를 부른다. 서버가 생기면
-//! `install_mobile_pairing_bridge`로 실제 구현을 건다. 그 전에는 `UnwiredMobilePairingBridge`가 포트 안내와
-//! LAN 평문 설정만 AppSettings로 처리하고 코드 발급·기기 목록은 실패나 빈 목록으로 답한다.
+//! 기기 목록·페어링 코드는 프로세스 안 서버와 같은 kanvibe-mobile `MobileDevices` 인스턴스(`AppServices::mobile_devices`)가 갖는다.
+//! 화면은 `MobilePairingBridge` 뒤에서만 부르고, 테스트는 같은 자리에 가짜 통로를 넘긴다.
 
 use std::sync::Arc;
 use std::time::Duration;
 
 use gpui_kit::{
-    App, Context, Global, InteractiveElement, IntoElement, ParentElement, Render, Styled, Task,
-    Window, div, px,
+    App, Context, InteractiveElement, IntoElement, ParentElement, Render, Styled, Task, Window,
+    div, px,
 };
+use kanvibe_ai::javascript::parse_date_ms;
 use kanvibe_db::Database;
 use kanvibe_db::app_settings_service::AppSettingsService;
 use kanvibe_domain::i18n::{Locale, Translator};
 use kanvibe_domain::platform::ShortcutPlatform;
+use kanvibe_mobile::devices::MobileDevices;
 use kanvibe_process::hooks::endpoint::HookServerEndpoint;
 use serde::{Deserialize, Serialize};
 
@@ -26,6 +27,7 @@ use crate::views::settings::controls::{
     INLINE_TEXT_SM, inline_load_error, keyed_id, make_pressable, native_checkbox, pressable,
     section_heading,
 };
+use crate::views::settings::local_time::LocalDateTime;
 use crate::views::settings::service_call::{call_service, failure};
 
 /// 남은 시간을 1초마다 다시 그린다
@@ -44,7 +46,7 @@ pub struct MobilePairingCode {
 pub struct PairedMobileDevice {
     pub device_id: String,
     pub device_name: String,
-    /// ISO 8601 UTC 시각
+    /// ISO 8601 시각
     pub paired_at: String,
 }
 
@@ -67,80 +69,120 @@ pub trait MobilePairingBridge: Send + Sync {
     fn update_lan_plaintext_allowed(&self, is_allowed: bool) -> ServiceResult<()>;
 }
 
-/// 앱 전역에 하나 있는 페어링 통로. 처음 쓸 때 서버 없는 구현으로 만든다
-struct MobilePairingBridgeHandle(Arc<dyn MobilePairingBridge>);
-
-impl Global for MobilePairingBridgeHandle {}
-
-/// 실제 페어링 서버가 뜨면 부른다
-pub fn install_mobile_pairing_bridge(bridge: Arc<dyn MobilePairingBridge>, cx: &mut App) {
-    cx.set_global(MobilePairingBridgeHandle(bridge));
+/// 프로세스 안 서버의 기기 계층으로 답하는 통로. 데이터 디렉터리 없이 뜬 실행이면 모든 호출이 실패한다
+fn desktop_pairing_bridge(cx: &App) -> Arc<dyn MobilePairingBridge> {
+    let services = cx.global::<AppServices>();
+    let (Some(devices), Some(runtime)) = (services.mobile_devices(), services.runtime()) else {
+        return Arc::new(UnavailablePairingBridge);
+    };
+    Arc::new(DesktopPairingBridge {
+        devices: devices.clone(),
+        database: runtime.database().clone(),
+        platform: services.shortcut_platform,
+        endpoint: HookServerEndpoint::new(runtime.hook_server_address().port()),
+    })
 }
 
-fn mobile_pairing_bridge(cx: &mut App) -> Arc<dyn MobilePairingBridge> {
-    if !cx.has_global::<MobilePairingBridgeHandle>() {
-        let services = cx.global::<AppServices>();
-        let bridge = UnwiredMobilePairingBridge {
-            database: services.database().cloned(),
-            platform: services.shortcut_platform,
-        };
-        cx.set_global(MobilePairingBridgeHandle(Arc::new(bridge)));
-    }
-    cx.global::<MobilePairingBridgeHandle>().0.clone()
-}
-
-/// 페어링 서버가 없을 때의 통로. 포트는 기본 hook 포트 기준이고 LAN 평문 허용은 AppSettings에 저장한다
-pub struct UnwiredMobilePairingBridge {
-    database: Option<Arc<Database>>,
+/// 서버가 띄운 페어링과 같은 `MobileDevices` 인스턴스라, 여기서 해제한 기기의 소켓은 서버가 닫는다.
+/// 포트 안내는 hook 서버 포트 기준이고 LAN 평문 허용은 AppSettings에 저장한다(TS `mobileBridgeService`)
+struct DesktopPairingBridge {
+    devices: Arc<MobileDevices>,
+    database: Arc<Database>,
     platform: ShortcutPlatform,
+    endpoint: HookServerEndpoint,
 }
 
-const PAIRING_SERVER_UNAVAILABLE: &str = "모바일 연결 서버가 아직 실행되지 않았습니다";
-
-impl UnwiredMobilePairingBridge {
-    fn settings(&self) -> ServiceResult<AppSettingsService<'_>> {
-        self.database
-            .as_deref()
-            .map(|database| AppSettingsService::new(database, self.platform))
-            .ok_or_else(|| failure(PAIRING_SERVER_UNAVAILABLE))
+impl DesktopPairingBridge {
+    fn settings(&self) -> AppSettingsService<'_> {
+        AppSettingsService::new(&self.database, self.platform)
     }
 }
 
-impl MobilePairingBridge for UnwiredMobilePairingBridge {
+impl MobilePairingBridge for DesktopPairingBridge {
     fn start_mobile_pairing(&self) -> ServiceResult<MobilePairingCode> {
-        Err(failure(PAIRING_SERVER_UNAVAILABLE))
+        let issued = self.devices.start_mobile_pairing();
+        Ok(MobilePairingCode {
+            code: issued.code,
+            expires_at: issued.expires_at,
+        })
     }
 
     fn stop_mobile_pairing(&self) -> ServiceResult<()> {
+        self.devices.stop_mobile_pairing();
         Ok(())
     }
 
     fn read_mobile_pairing_code(&self) -> ServiceResult<Option<String>> {
-        Ok(None)
+        Ok(self.devices.read_mobile_pairing_code())
     }
 
     fn list_paired_mobile_devices(&self) -> ServiceResult<Vec<PairedMobileDevice>> {
-        Ok(Vec::new())
+        let devices = self.devices.list_paired_mobile_devices().map_err(failure)?;
+        Ok(devices
+            .into_iter()
+            .map(|device| PairedMobileDevice {
+                device_id: device.device_id,
+                device_name: device.device_name,
+                paired_at: device.paired_at,
+            })
+            .collect())
     }
 
-    fn unpair_mobile_device(&self, _: &str) -> ServiceResult<()> {
-        Err(failure(PAIRING_SERVER_UNAVAILABLE))
+    fn unpair_mobile_device(&self, device_id: &str) -> ServiceResult<()> {
+        self.devices
+            .unpair_mobile_device(device_id)
+            .map_err(failure)
     }
 
     fn read_mobile_connection_settings(&self) -> ServiceResult<MobileConnectionSettings> {
         Ok(MobileConnectionSettings {
-            mobile_tls_port: HookServerEndpoint::default().mobile_tls_port(),
+            mobile_tls_port: self.endpoint.mobile_tls_port(),
             is_lan_plaintext_allowed: self
-                .settings()?
+                .settings()
                 .get_lan_plaintext_allowed()
                 .map_err(failure)?,
         })
     }
 
     fn update_lan_plaintext_allowed(&self, is_allowed: bool) -> ServiceResult<()> {
-        self.settings()?
+        self.settings()
             .set_lan_plaintext_allowed(is_allowed)
             .map_err(failure)
+    }
+}
+
+/// 데이터 디렉터리 없이 뜬 앱. 서버가 없으므로 모든 호출이 사유와 함께 실패한다
+struct UnavailablePairingBridge;
+
+const DATABASE_UNAVAILABLE: &str = "데이터베이스가 열려 있지 않습니다";
+
+impl MobilePairingBridge for UnavailablePairingBridge {
+    fn start_mobile_pairing(&self) -> ServiceResult<MobilePairingCode> {
+        Err(failure(DATABASE_UNAVAILABLE))
+    }
+
+    fn stop_mobile_pairing(&self) -> ServiceResult<()> {
+        Err(failure(DATABASE_UNAVAILABLE))
+    }
+
+    fn read_mobile_pairing_code(&self) -> ServiceResult<Option<String>> {
+        Err(failure(DATABASE_UNAVAILABLE))
+    }
+
+    fn list_paired_mobile_devices(&self) -> ServiceResult<Vec<PairedMobileDevice>> {
+        Err(failure(DATABASE_UNAVAILABLE))
+    }
+
+    fn unpair_mobile_device(&self, _: &str) -> ServiceResult<()> {
+        Err(failure(DATABASE_UNAVAILABLE))
+    }
+
+    fn read_mobile_connection_settings(&self) -> ServiceResult<MobileConnectionSettings> {
+        Err(failure(DATABASE_UNAVAILABLE))
+    }
+
+    fn update_lan_plaintext_allowed(&self, _: bool) -> ServiceResult<()> {
+        Err(failure(DATABASE_UNAVAILABLE))
     }
 }
 
@@ -228,26 +270,18 @@ impl MobilePairingState {
     }
 }
 
-/// `new Date(iso).toLocaleString()`(en-US)의 `M/D/YYYY, h:mm:ss AM` 모양. 시각은 UTC로 읽는다
+/// `new Date(iso).toLocaleString()`. 현지 시간대의 `M/D/YYYY, h:mm:ss AM`(en-US) 모양이다
 pub fn format_paired_at(iso: &str) -> String {
-    let parse =
-        |range: std::ops::Range<usize>| iso.get(range).and_then(|part| part.parse::<u32>().ok());
-    let (Some(year), Some(month), Some(day), Some(hour), Some(minute), Some(second)) = (
-        parse(0..4),
-        parse(5..7),
-        parse(8..10),
-        parse(11..13),
-        parse(14..16),
-        parse(17..19),
-    ) else {
+    let Some(local) = parse_date_ms(iso).and_then(LocalDateTime::from_epoch_ms) else {
         return iso.to_string();
     };
-    let meridiem = if hour < 12 { "AM" } else { "PM" };
-    let hour12 = match hour % 12 {
-        0 => 12,
-        other => other,
-    };
-    format!("{month}/{day}/{year}, {hour12}:{minute:02}:{second:02} {meridiem}")
+    format!(
+        "{}/{}/{}, {}",
+        local.month,
+        local.day,
+        local.year,
+        local.twelve_hour_second()
+    )
 }
 
 pub struct MobilePairingSettings {
@@ -260,7 +294,16 @@ pub struct MobilePairingSettings {
 
 impl MobilePairingSettings {
     pub fn new(locale: Locale, cx: &mut Context<Self>) -> Self {
-        let bridge = mobile_pairing_bridge(cx);
+        let bridge = desktop_pairing_bridge(cx);
+        Self::with_bridge(locale, bridge, cx)
+    }
+
+    /// 페어링 통로를 정해 연다. 앱은 프로세스 안 서버 통로를, 테스트는 가짜 통로를 넘긴다
+    pub fn with_bridge(
+        locale: Locale,
+        bridge: Arc<dyn MobilePairingBridge>,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let mut settings = Self {
             locale,
             state: MobilePairingState::default(),

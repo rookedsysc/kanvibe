@@ -10,11 +10,12 @@ use gpui_kit::{
 };
 use kanvibe_domain::i18n::Translator;
 
-use crate::components::scroll_area::scroll_area;
+use crate::components::scroll_area::{PAGE_SCROLLBAR_WIDTH, scroll_area};
 use crate::components::{TailwindText, box_shadows, fade};
+use crate::text_baseline::{TextFamily, baseline_lift, chromium_text};
 use crate::theme::{ThemePreference, ThemeTokens, radius, spacing, text_scale};
 use crate::views::settings::controls::{
-    SETTING_LABEL_HEIGHT, SWITCH_HEIGHT, centered_message, chromium_center_offset,
+    SETTING_LABEL_HEIGHT, SWITCH_HEIGHT, baseline_text, centered_message, chromium_center_offset,
     inline_load_error, keyed_id, make_pressable, native_checkbox, navigation_row, pressable,
     scrollbar_color, section_heading, setting_label, toggle_switch,
 };
@@ -182,12 +183,14 @@ fn render_refresh_banner(
 ) -> Option<impl IntoElement> {
     let reason = view.load.failure_reason.clone()?;
     let common = view.translator("common");
-    let banner_width = BANNER_MAX_WIDTH.min(window_width - 32.0);
+    // `fixed`의 100%는 늘 자리를 차지하는 페이지 스크롤바 홈을 뺀 폭이다
+    let layout_width = window_width - f32::from(PAGE_SCROLLBAR_WIDTH);
+    let banner_width = BANNER_MAX_WIDTH.min(layout_width - 32.0);
     Some(
         div()
             .absolute()
             .top(spacing(3.0))
-            .left(px((window_width - banner_width) / 2.0))
+            .left(px((layout_width - banner_width) / 2.0))
             .w(px(banner_width))
             .child(
                 inline_load_error(
@@ -270,6 +273,13 @@ fn render_board_link(view: &SettingsView, theme: &ThemeTokens) -> impl IntoEleme
         }))
 }
 
+/// 좁은 창의 가로 nav 줄은 버튼 폭이 쌓이므로 Chromium처럼 소수 폭으로 잡는다. 한글 라벨 줄은 Chromium도 CJK 글꼴
+/// 지표로 줄 상자를 잡아 GPUI와 같은 행에 찍히므로(기준 이미지로 확인), `chromium_text`가 올리는 만큼 되돌려 폭만 맞춘다
+fn fractional_width_label(label: String) -> Div {
+    let lift = baseline_lift(&label, text_scale::SM, TextFamily::Sans);
+    div().relative().top(px(lift)).child(chromium_text(label))
+}
+
 /// `block shrink-0 rounded-md px-3 py-2 text-text-secondary hover:bg-bg-page hover:text-text-primary`
 fn render_nav_button(
     view: &SettingsView,
@@ -291,7 +301,7 @@ fn render_nav_button(
     .py(spacing(2.0))
     .text_color(theme.text.secondary)
     .hover(move |style| style.bg(hover_background).text_color(hover_text))
-    .child(label);
+    .child(fractional_width_label(label));
     let positions = view.section_positions.clone();
     make_pressable(
         button,
@@ -415,18 +425,14 @@ fn render_header(theme: &ThemeTokens, settings: &Translator) -> impl IntoElement
         .px(spacing(4.0))
         .py(spacing(4.0))
         .child(
-            div()
-                .text_scale(text_scale::SM)
+            baseline_text(settings.translate("title"), text_scale::SM)
                 .css_weight(600)
-                .text_color(theme.text.primary)
-                .child(settings.translate("title")),
+                .text_color(theme.text.primary),
         )
         .child(
-            div()
+            baseline_text(settings.translate("pageDescription"), text_scale::XS)
                 .mt(spacing(1.0))
-                .text_scale(text_scale::XS)
-                .text_color(theme.text.muted)
-                .child(settings.translate("pageDescription")),
+                .text_color(theme.text.muted),
         )
 }
 

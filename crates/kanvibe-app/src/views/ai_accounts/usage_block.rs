@@ -1,60 +1,37 @@
 //! 계정 행 안의 사용량 막대와 조회 상태 줄(TS `AiUsagePanel`의 `AccountUsageBlock showIdentity={false}`·`UsageStatusLine`),
-//! provider 아이콘(`AiProviderIcon`). 시각은 en-US 표기를 UTC로 읽는다.
+//! provider 아이콘(`AiProviderIcon`). 시각은 en-US 표기를 현지 시간대로 읽는다.
 
-use gpui_kit::{Div, ParentElement, Rgba, Styled, div, px, relative};
-use kanvibe_ai::javascript::{iso_string_from_ms, parse_date_ms};
+use gpui_kit::{Div, Img, ParentElement, Rgba, Styled, div, img, px, relative};
+use kanvibe_ai::javascript::parse_date_ms;
 use kanvibe_ai::usage::types::{
     AiUsageAccountResult, AiUsageFailureReason, AiUsageProvider, AiUsageWindow, AiUsageWindowKind,
 };
 use kanvibe_domain::i18n::Translator;
 
+use crate::assets::provider_icon_paths;
 use crate::components::TailwindText;
 use crate::theme::{ThemeTokens, radius, spacing, text_scale};
 use crate::views::ai_accounts::model::UsageState;
+use crate::views::settings::local_time::LocalDateTime;
 
 /// 이 위부터는 강조색이 아니라 심각도 색으로 알린다
 const HIGH_USAGE_PERCENT: f64 = 90.0;
 const ELEVATED_USAGE_PERCENT: f64 = 75.0;
 
-/// ISO 시각의 날짜·시각 조각(UTC)
-struct DateParts {
-    year: u32,
-    month: u32,
-    day: u32,
-    hour: u32,
-    minute: u32,
-}
-
-fn date_parts(epoch_ms: f64) -> Option<DateParts> {
-    let iso = iso_string_from_ms(epoch_ms)?;
-    let number = |range: std::ops::Range<usize>| iso.get(range)?.parse::<u32>().ok();
-    Some(DateParts {
-        year: number(0..4)?,
-        month: number(5..7)?,
-        day: number(8..10)?,
-        hour: number(11..13)?,
-        minute: number(14..16)?,
-    })
-}
-
-fn twelve_hour(parts: &DateParts) -> String {
-    let meridiem = if parts.hour < 12 { "AM" } else { "PM" };
-    let hour = match parts.hour % 12 {
-        0 => 12,
-        other => other,
-    };
-    format!("{hour}:{:02} {meridiem}", parts.minute)
-}
-
-/// 오늘이면 `5:00 AM`, 아니면 `1/20, 12:00 AM`(TS `formatResetTime`)
+/// 오늘이면 `5:00 AM`, 아니면 `1/20, 12:00 AM`(TS `formatResetTime`). 날짜와 시각은 현지 시간대로 읽는다
 pub fn format_reset_time(resets_at: &str, now_ms: i64) -> Option<String> {
-    let target = date_parts(parse_date_ms(resets_at)?)?;
-    let today = date_parts(now_ms as f64)?;
+    let target = LocalDateTime::from_epoch_ms(parse_date_ms(resets_at)?)?;
+    let today = LocalDateTime::from_epoch_ms(now_ms as f64)?;
     let is_today = (target.year, target.month, target.day) == (today.year, today.month, today.day);
     Some(if is_today {
-        twelve_hour(&target)
+        target.twelve_hour_minute()
     } else {
-        format!("{}/{}, {}", target.month, target.day, twelve_hour(&target))
+        format!(
+            "{}/{}, {}",
+            target.month,
+            target.day,
+            target.twelve_hour_minute()
+        )
     })
 }
 
@@ -200,30 +177,12 @@ pub fn usage_status_text(usage: &Translator, state: &UsageState, now_ms: i64) ->
     Some(usage.translate_with("updatedAt", &[("time", &time)]))
 }
 
-/// provider 아이콘(16px). 브랜드 그림이 앱 자산에 없어 글자 모양으로 대신한다
-pub fn render_provider_icon(theme: &ThemeTokens, provider: AiUsageProvider) -> Div {
-    let icon = div()
-        .flex()
-        .flex_none()
-        .items_center()
-        .justify_center()
-        .size(px(16.0));
-    match provider {
-        AiUsageProvider::Claude => icon
-            .text_size(px(16.0))
-            .line_height(px(16.0))
-            .text_color(theme.agent.claude)
-            .child("✳"),
-        AiUsageProvider::Codex => icon.rounded(radius::SM).bg(gpui_kit::white()).child(
-            div()
-                .size(px(10.0))
-                .rounded(radius::FULL)
-                .bg(theme.agent.gemini),
-        ),
-        AiUsageProvider::Gemini => icon
-            .text_size(px(16.0))
-            .line_height(px(16.0))
-            .text_color(theme.agent.gemini)
-            .child("✦"),
-    }
+/// provider 색 아이콘(16px, TS `AiProviderIcon size={16}`의 `block object-contain` 그림)
+pub fn render_provider_icon(provider: AiUsageProvider) -> Img {
+    let path = match provider {
+        AiUsageProvider::Claude => provider_icon_paths::CLAUDE,
+        AiUsageProvider::Codex => provider_icon_paths::CODEX,
+        AiUsageProvider::Gemini => provider_icon_paths::GEMINI,
+    };
+    img(path).flex_none().size(px(16.0))
 }

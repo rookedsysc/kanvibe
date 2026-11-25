@@ -8,6 +8,7 @@
 pub mod bulk_session_type;
 pub mod controls;
 pub mod form;
+pub mod local_time;
 pub mod mobile_pairing;
 pub mod route_load;
 pub mod service_call;
@@ -23,6 +24,7 @@ use gpui_kit::{
 };
 use kanvibe_domain::i18n::Translator;
 
+use crate::app_events::{RefreshScope, subscribe_to_refresh};
 use crate::services::ServiceResult;
 use crate::theme::{ThemePreference, ThemeTokens};
 use crate::views::ScreenContext;
@@ -67,6 +69,7 @@ pub struct SettingsView {
     section_positions: page::SectionPositions,
     _load_task: Option<Task<()>>,
     _requests: Vec<Task<()>>,
+    _refresh_subscription: Option<Subscription>,
 }
 
 impl SettingsView {
@@ -83,6 +86,11 @@ impl SettingsView {
             section_positions: page::SectionPositions::default(),
             _load_task: None,
             _requests: Vec::new(),
+            _refresh_subscription: subscribe_to_refresh(
+                &[RefreshScope::Settings],
+                cx,
+                Self::reload,
+            ),
         };
         view.reload(cx);
         view
@@ -91,6 +99,13 @@ impl SettingsView {
     /// 화면이 그리는 설정 값과 저장 상태. 첫 조회 전에는 `None`
     pub fn form(&self) -> Option<&SettingsForm> {
         self.loaded.as_ref().map(|loaded| &loaded.form)
+    }
+
+    /// 세션 타입 일괄 변경 행. 첫 조회 전에는 없다
+    pub fn bulk_session_type_change(&self) -> Option<Entity<BulkSessionTypeChangeSettings>> {
+        self.loaded
+            .as_ref()
+            .map(|loaded| loaded.bulk_change.clone())
     }
 
     pub fn load_status(&self) -> &RouteLoadStatus {
@@ -105,20 +120,26 @@ impl SettingsView {
         Translator::new(self.screen.route.locale, namespace)
     }
 
-    /// 화면 데이터를 (다시) 읽는다. 이미 데이터가 있으면 실패해도 지우지 않고 갱신 실패 배너만 보인다
+    /// 화면 데이터와 pane 채팅 설정을 (다시) 읽는다(TS 새로 고침 신호는 둘 다 다시 읽는다)
     pub fn reload(&mut self, cx: &mut Context<Self>) {
+        self.load_route_data(cx);
+        self.load_pane_chat_preference(cx);
+    }
+
+    /// 이미 데이터가 있으면 실패해도 지우지 않고 갱신 실패 배너만 보인다
+    fn load_route_data(&mut self, cx: &mut Context<Self>) {
         let attempt = self.load.begin(cx, |view: &mut Self| &mut view.load);
         let request = settings_store::load_settings_values(cx);
         self._load_task = Some(cx.spawn(async move |this, cx| {
             let result = request.await;
             let _ = this.update(cx, |this, cx| this.finish_load(attempt, result, cx));
         }));
-        self.load_pane_chat_preference(cx);
     }
 
+    /// 재시도는 화면 데이터만 다시 읽는다(TS `retryLoad`)
     pub fn retry_load(&mut self, cx: &mut Context<Self>) {
         self.load.clear_failure();
-        self.reload(cx);
+        self.load_route_data(cx);
         cx.notify();
     }
 
@@ -136,7 +157,7 @@ impl SettingsView {
                 self.load.succeed();
                 self.apply_loaded_values(values, cx);
             }
-            Err(failure) => self.load.fail(failure.reason),
+            Err(failure) => self.load.fail(failure.display_message()),
         }
         cx.notify();
     }
@@ -260,7 +281,11 @@ impl SettingsView {
         self.track(cx.spawn(async move |this, cx| {
             let result = request.await;
             let _ = this.update(cx, |this, cx| {
-                this.finish_save(pending, result.map_err(|failure| failure.reason), cx)
+                this.finish_save(
+                    pending,
+                    result.map_err(|failure| failure.display_message()),
+                    cx,
+                )
             });
         }));
         cx.notify();
@@ -318,7 +343,11 @@ impl SettingsView {
         self.track(cx.spawn(async move |this, cx| {
             let result = request.await;
             let _ = this.update(cx, |this, cx| {
-                this.finish_save(pending, result.map_err(|failure| failure.reason), cx);
+                this.finish_save(
+                    pending,
+                    result.map_err(|failure| failure.display_message()),
+                    cx,
+                );
                 let next = this
                     .loaded
                     .as_mut()

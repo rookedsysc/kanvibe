@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use gpui_kit::gpui;
 use gpui_kit::{Entity, TestAppContext, VisualTestContext, WeakEntity};
+use kanvibe_app::app_events::{RefreshScope, trigger_refresh};
 use kanvibe_app::qa::faults::ServiceFault;
 use kanvibe_app::qa::options::{DEFAULT_WINDOW_SIZE, LaunchOptions, QaOptions};
 use kanvibe_app::qa::targets::{QaTargetRegistry, TargetQuery};
@@ -160,7 +161,7 @@ fn failed_settings_load_shows_reason_and_retry_reloads(cx: &mut TestAppContext) 
     draw(cx);
     assert!(is_shown(
         cx,
-        json!({"text": "불러오지 못했습니다: database is locked"})
+        json!({"text": "불러오지 못했습니다: Error invoking remote method 'kanvibe:invoke': Error: database is locked"})
     ));
     assert!(is_shown(cx, json!({"role": "button", "name": "다시 시도"})));
     assert!(view.read_with(cx, |view, _| view.form().is_none()));
@@ -182,13 +183,14 @@ fn failed_refresh_keeps_loaded_settings_and_shows_the_banner(cx: &mut TestAppCon
         cx,
         json!({"target": "appSettings.*", "mode": "fail", "message": "database is locked"}),
     );
-    view.update(cx, |view, cx| view.reload(cx));
+    // 보드 갱신 같은 새로 고침 신호가 오면 다시 읽는다(TS `useRefreshSignal(["all", "settings"])`)
+    cx.update(|_, cx| trigger_refresh(RefreshScope::Settings, cx));
     cx.run_until_parked();
     draw(cx);
     assert!(view.read_with(cx, |view, _| view.form().is_some()));
     assert!(is_shown(
         cx,
-        json!({"text": "최신 데이터를 불러오지 못해 이전 데이터를 표시합니다: database is locked"})
+        json!({"text": "최신 데이터를 불러오지 못해 이전 데이터를 표시합니다: Error invoking remote method 'kanvibe:invoke': Error: database is locked"})
     ));
     assert!(is_shown(cx, json!({"text": "사이드바 기본 접기"})));
 }
@@ -392,12 +394,12 @@ fn failed_vim_mode_save_restores_the_value_and_offers_retry(cx: &mut TestAppCont
         assert_eq!(
             form.failure_for(SettingKey::VimMode)
                 .map(|failure| failure.reason.as_str()),
-            Some("database is locked")
+            Some("Error invoking remote method 'kanvibe:invoke': Error: database is locked")
         );
     });
     assert!(is_shown(
         cx,
-        json!({"text": "설정을 저장하지 못해 이전 값으로 되돌렸습니다: database is locked"})
+        json!({"text": "설정을 저장하지 못해 이전 값으로 되돌렸습니다: Error invoking remote method 'kanvibe:invoke': Error: database is locked"})
     ));
 
     clear_fault(cx, "appSettings.setVimModeEnabled");
@@ -481,4 +483,56 @@ fn settings_window_title_matches_the_ts_document_title(cx: &mut TestAppContext) 
     let _data_dir = init_app_with_database(cx);
     let (_view, cx) = open_settings(cx);
     assert_eq!(cx.window_title().as_deref(), Some("Settings"));
+}
+
+fn click(cx: &mut VisualTestContext, query: serde_json::Value) {
+    let query: TargetQuery = serde_json::from_value(query).expect("query");
+    let bounds = cx
+        .update(|window, cx| {
+            let window_id = window.window_handle().window_id();
+            cx.global::<QaTargetRegistry>().find(window_id, &query)
+        })
+        .unwrap_or_else(|| panic!("{query:?} not found"));
+    cx.simulate_click(bounds.center(), gpui_kit::Modifiers::default());
+}
+
+/// 일괄 변경은 런타임의 작업 서비스에 닿는다(SCR-SET-06 회귀: 전에는 연결되지 않은 자리 표시가 실패로 답했다).
+/// 빈 DB라 바꿀 작업이 없다는 안내로 끝난다
+#[gpui::test]
+fn bulk_session_type_change_asks_the_runtime_kanban_service(cx: &mut TestAppContext) {
+    let _data_dir = init_app_with_database(cx);
+    let (view, cx) = open_settings(cx);
+    click(cx, json!({"role": "button", "name": "적용"}));
+    cx.run_until_parked();
+    let bulk_change = view
+        .read_with(cx, |view, _| view.bulk_session_type_change())
+        .expect("loaded");
+    let outcome = bulk_change.read_with(cx, |bulk_change, _| bulk_change.outcome.clone());
+    assert_eq!(
+        outcome.map(|outcome| (outcome.message, outcome.is_failure)),
+        Some(("바꿀 작업이 없습니다.".to_string(), false))
+    );
+}
+
+/// 모바일 연결 코드는 프로세스 안 서버와 같은 기기 계층이 발급한다(전에는 서버가 없다는 실패로 답했다)
+#[gpui::test]
+fn pairing_code_comes_from_the_in_process_server(cx: &mut TestAppContext) {
+    let _data_dir = init_app_with_database(cx);
+    let (pairing, cx) = cx.add_window_view(|_, cx| {
+        kanvibe_app::views::settings::mobile_pairing::MobilePairingSettings::new(
+            kanvibe_domain::i18n::Locale::Ko,
+            cx,
+        )
+    });
+    cx.run_until_parked();
+    pairing.update(cx, |pairing, cx| pairing.issue_code(cx));
+    cx.run_until_parked();
+    let issued = pairing.read_with(cx, |pairing, _| pairing.state.code.clone());
+    let pending = cx.update(|_, cx| {
+        cx.global::<AppServices>()
+            .mobile_devices()
+            .and_then(|devices| devices.read_mobile_pairing_code())
+    });
+    assert!(issued.is_some());
+    assert_eq!(issued, pending);
 }

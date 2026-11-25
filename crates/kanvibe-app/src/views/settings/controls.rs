@@ -12,6 +12,7 @@ use gpui_kit::{
 use crate::components::scroll_area::scroll_area;
 use crate::components::{DISABLED_OPACITY, TailwindText, box_shadows, fade, focus_ring};
 use crate::qa::targets::{QaTargetDescription, qa_target_layer};
+use crate::text_baseline::{TextFamily, aligned_text};
 use crate::theme::{TextScale, ThemeMode, ThemeTokens, radius, spacing, text_scale};
 
 /// 블록 안 인라인 `<span class="text-sm">`. 글자는 14px지만 줄 상자는 부모(body) 줄 높이 21px를 따른다
@@ -85,13 +86,18 @@ pub fn visible_text(text: impl Into<SharedString>) -> Div {
         }))
 }
 
+/// 글자 크기를 정하고 기준선을 Chromium 행에 맞춘 글자(`text_baseline`). 한글이 섞인 줄은 GPUI가 1px 아래에 찍는다
+pub fn baseline_text(text: impl Into<SharedString>, scale: TextScale) -> Div {
+    div()
+        .text_scale(scale)
+        .child(aligned_text(text, scale, TextFamily::Sans))
+}
+
 /// `text-xs text-text-muted uppercase tracking-wide mb-3` 섹션 제목
 pub fn section_heading(theme: &ThemeTokens, text: impl Into<SharedString>) -> Div {
-    div()
+    baseline_text(text, text_scale::XS)
         .mb(spacing(3.0))
-        .text_scale(text_scale::XS)
         .text_color(theme.text.muted)
-        .child(text.into())
 }
 
 /// 설정 행 왼쪽의 제목(`text-sm text-text-primary`)과 설명(`text-xs text-text-muted mt-0.5`)
@@ -101,16 +107,19 @@ pub fn setting_label(theme: &ThemeTokens, title: String, description: String) ->
         .flex_col()
         .min_w_0()
         .child(
-            visible_text(title)
-                .text_scale(INLINE_TEXT_SM)
-                .text_color(theme.text.primary),
+            baseline_text(title.clone(), INLINE_TEXT_SM)
+                .relative()
+                .text_color(theme.text.primary)
+                .child(qa_target_layer(QaTargetDescription {
+                    role: "text",
+                    name: title.clone().into(),
+                    text: title.into(),
+                })),
         )
         .child(
-            div()
+            baseline_text(description, text_scale::XS)
                 .mt(px(2.0))
-                .text_scale(text_scale::XS)
-                .text_color(theme.text.muted)
-                .child(description),
+                .text_color(theme.text.muted),
         )
 }
 

@@ -56,6 +56,34 @@ impl UsageState {
     }
 }
 
+/// TS `AI_USAGE_REFRESH_INTERVAL_MS`: 사용량 자동 조회 주기
+pub const USAGE_REFRESH_INTERVAL_MS: i64 = 5 * 60 * 1000;
+
+/// 사용량 자동 조회 예약(TS `useAiUsage`의 `nextAutoLoad`·`refreshQueuedRef`·`useIsWindowActive`)
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct UsageRefreshSchedule {
+    /// 다음 자동 조회 시각(epoch ms). 처음에는 0이라 창이 앞에 오면 바로 읽는다
+    pub next_due_ms: i64,
+    /// 조회 중에 새로고침이 들어왔다
+    pub is_refresh_queued: bool,
+    pub is_window_active: bool,
+}
+
+impl UsageRefreshSchedule {
+    /// 결과가 만들어진 시각에서 주기를 센다. 같은 결과를 나눠 쓰는 창들이 같은 순간에 다시 조회하게 하려는 것이다.
+    /// 실패했거나 시계가 틀어져 이미 지났으면 지금부터 센다
+    pub fn set_next_due(&mut self, fetched_at_ms: Option<i64>, now_ms: i64) {
+        self.next_due_ms = fetched_at_ms
+            .map(|fetched_at| fetched_at + USAGE_REFRESH_INTERVAL_MS)
+            .filter(|due| *due > now_ms)
+            .unwrap_or(now_ms + USAGE_REFRESH_INTERVAL_MS);
+    }
+
+    pub fn wait_from(&self, now_ms: i64) -> std::time::Duration {
+        std::time::Duration::from_millis((self.next_due_ms - now_ms).max(0) as u64)
+    }
+}
+
 /// provider 카드 하나의 계정 추가 상태
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct AddAccountState {

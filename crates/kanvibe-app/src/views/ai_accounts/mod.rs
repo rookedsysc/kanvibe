@@ -20,10 +20,10 @@ use kanvibe_ai::usage::types::AiUsageProvider;
 use kanvibe_domain::i18n::Translator;
 
 use crate::components::TailwindText;
-use crate::services::AppServices;
+use crate::qa::prompts::confirm_action;
+use crate::services::{AppServices, ServiceResult};
 use crate::theme::{ThemeTokens, radius, spacing, text_scale};
 use crate::views::ScreenContext;
-use crate::views::settings::bulk_session_type::window_confirm_prompt;
 use crate::views::settings::controls::set_window_title_once;
 use crate::views::settings::controls::{
     centered_message, inline_load_error, make_pressable, overflow_scroll_area, pressable,
@@ -31,14 +31,12 @@ use crate::views::settings::controls::{
 };
 use crate::views::settings::service_call::call_service;
 use crate::views::settings::text_field::create_text_field;
-use backend::{AiAccountsBackend, ai_accounts_backend};
+use backend::{AiAccountsBackend, runtime_backend};
 use login_terminal::{AiAccountLoginTerminal, LoginExited};
-use model::{AiAccountsModel, provider_index, provider_title};
+use model::{AiAccountsModel, UsageRefreshSchedule, provider_index, provider_title};
 
 /// `max-w-2xl`
 const CONTENT_MAX_WIDTH: f32 = 672.0;
-/// TS `AI_USAGE_REFRESH_INTERVAL_MS`: 사용량 자동 조회 주기
-const USAGE_REFRESH_INTERVAL_MS: i64 = 5 * 60 * 1000;
 
 pub struct AiAccountsView {
     screen: ScreenContext,
@@ -50,6 +48,8 @@ pub struct AiAccountsView {
     name_inputs: Option<[Entity<InputState>; 3]>,
     login_terminal: Option<Entity<AiAccountLoginTerminal>>,
     scroll_handle: ScrollHandle,
+    usage_schedule: UsageRefreshSchedule,
+    _activation_subscription: Option<Subscription>,
     _input_subscriptions: Vec<Subscription>,
     _login_subscription: Option<Subscription>,
     _usage_timer: Option<Task<()>>,
@@ -58,7 +58,16 @@ pub struct AiAccountsView {
 
 impl AiAccountsView {
     pub fn new(screen: ScreenContext, cx: &mut Context<Self>) -> Self {
-        let backend = ai_accounts_backend(cx);
+        let backend = runtime_backend(cx);
+        Self::with_backend(screen, backend, cx)
+    }
+
+    /// 계정 서비스 통로를 정해 연다. 앱은 런타임 통로를, 테스트는 가짜 통로를 넘긴다
+    pub fn with_backend(
+        screen: ScreenContext,
+        backend: Arc<dyn AiAccountsBackend>,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let mut view = Self {
             screen,
             is_title_set: false,
@@ -67,6 +76,8 @@ impl AiAccountsView {
             name_inputs: None,
             login_terminal: None,
             scroll_handle: ScrollHandle::new(),
+            usage_schedule: UsageRefreshSchedule::default(),
+            _activation_subscription: None,
             _input_subscriptions: Vec::new(),
             _login_subscription: None,
             _usage_timer: None,
@@ -74,7 +85,6 @@ impl AiAccountsView {
         };
         view.load_accounts(cx);
         view.show_cached_usage(cx);
-        view.refresh_usage(true, cx);
         view
     }
 
@@ -101,7 +111,7 @@ impl AiAccountsView {
             let result = request.await;
             let _ = this.update(cx, |this, cx| {
                 this.model
-                    .finish_list(result.map_err(|failure| failure.reason));
+                    .finish_list(result.map_err(|failure| failure.display_message()));
                 cx.notify();
             });
         }));
@@ -124,13 +134,26 @@ impl AiAccountsView {
             }
         }));
     }
+}
 
-    /// 사용량을 다시 읽는다. 새로고침 버튼과 로그인 직후는 나눠 쓰는 결과로 답하지 않는다
-    pub fn refresh_usage(&mut self, can_reuse_recent_snapshot: bool, cx: &mut Context<Self>) {
+/// 사용량 조회(TS `useAiUsage`)
+impl AiAccountsView {
+    /// 새로고침 버튼과 계정 변경 뒤. 조회 중이면 끝난 뒤 한 번 더 읽는다(사람이 방금 바꾼 상태를 보려는 것이라
+    /// 나눠 쓰는 결과로 답하지 않는다)
+    pub fn refresh_usage(&mut self, cx: &mut Context<Self>) {
+        if self.model.usage.is_refreshing {
+            self.usage_schedule.is_refresh_queued = true;
+            return;
+        }
+        self.load_usage_snapshot(false, cx);
+    }
+
+    fn load_usage_snapshot(&mut self, can_reuse_recent_snapshot: bool, cx: &mut Context<Self>) {
         if self.model.usage.is_refreshing {
             return;
         }
         self.model.usage.is_refreshing = true;
+        self.usage_schedule.is_refresh_queued = false;
         let backend = self.backend.clone();
         let request = call_service(
             cx,
@@ -140,37 +163,64 @@ impl AiAccountsView {
         );
         self.track(cx.spawn(async move |this, cx| {
             let result = request.await;
-            let _ = this.update(cx, |this, cx| {
-                this.model
-                    .usage
-                    .finish_refresh(result.map_err(|failure| failure.reason));
-                this.schedule_usage_refresh(cx);
-                cx.notify();
-            });
+            let _ = this.update(cx, |this, cx| this.finish_usage_load(result, cx));
         }));
         cx.notify();
     }
 
-    /// 결과가 만들어진 시각에서 주기를 센다. 시계가 틀어져 이미 지났으면 지금부터 센다
-    fn schedule_usage_refresh(&mut self, cx: &mut Context<Self>) {
+    fn finish_usage_load(
+        &mut self,
+        result: ServiceResult<kanvibe_ai::usage::types::AiUsageSnapshot>,
+        cx: &mut Context<Self>,
+    ) {
         let now_ms = cx.global::<AppServices>().clock.now_ms();
+        self.model
+            .usage
+            .finish_refresh(result.map_err(|failure| failure.reason));
         let fetched_at_ms = self
             .model
             .usage
             .snapshot
             .as_ref()
+            .filter(|_| !self.model.usage.has_failed)
             .and_then(|snapshot| parse_date_ms(&snapshot.fetched_at))
             .map(|fetched_at| fetched_at as i64);
-        let due_ms = fetched_at_ms
-            .map(|fetched_at| fetched_at + USAGE_REFRESH_INTERVAL_MS)
-            .filter(|due| *due > now_ms)
-            .unwrap_or(now_ms + USAGE_REFRESH_INTERVAL_MS);
-        let wait = std::time::Duration::from_millis((due_ms - now_ms).max(0) as u64);
+        self.usage_schedule.set_next_due(fetched_at_ms, now_ms);
+        if self.usage_schedule.is_refresh_queued {
+            self.load_usage_snapshot(false, cx);
+        }
+        self.schedule_auto_load(cx);
+        cx.notify();
+    }
+
+    /// 창이 앞에 있는 동안만 다음 자동 조회를 예약한다. 볼 사람이 없는 동안 밀린 조회는 예약 시각이 이미 지나 있어
+    /// 창이 돌아오는 순간 바로 나간다
+    fn schedule_auto_load(&mut self, cx: &mut Context<Self>) {
+        if !self.usage_schedule.is_window_active {
+            self._usage_timer = None;
+            return;
+        }
+        let now_ms = cx.global::<AppServices>().clock.now_ms();
+        let wait = self.usage_schedule.wait_from(now_ms);
         let timer = cx.background_executor().timer(wait);
         self._usage_timer = Some(cx.spawn(async move |this, cx| {
             timer.await;
-            let _ = this.update(cx, |this, cx| this.refresh_usage(true, cx));
+            let _ = this.update(cx, |this, cx| this.load_usage_snapshot(true, cx));
         }));
+    }
+
+    /// 첫 render에서 창 활성 상태를 따라가기 시작한다(TS `useIsWindowActive`)
+    fn watch_window_activation(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self._activation_subscription.is_some() {
+            return;
+        }
+        self.usage_schedule.is_window_active = window.is_window_active();
+        self._activation_subscription =
+            Some(cx.observe_window_activation(window, |this, window, cx| {
+                this.usage_schedule.is_window_active = window.is_window_active();
+                this.schedule_auto_load(cx);
+            }));
+        self.schedule_auto_load(cx);
     }
 }
 
@@ -219,14 +269,14 @@ impl AiAccountsView {
                     let created = this.model.finish_add(
                         provider,
                         &name,
-                        result.map_err(|failure| failure.reason),
+                        result.map_err(|failure| failure.display_message()),
                     );
                     if let Some(account_root) = created {
                         if let Some(input) = &input {
                             input.update(cx, |input, cx| input.set_value("", window, cx));
                         }
                         this.load_accounts(cx);
-                        this.refresh_usage(false, cx);
+                        this.refresh_usage(cx);
                         this.open_login(provider, account_root, window, cx);
                     }
                     cx.notify();
@@ -284,7 +334,7 @@ impl AiAccountsView {
         self.login_terminal = None;
         self._login_subscription = None;
         self.load_accounts(cx);
-        self.refresh_usage(false, cx);
+        self.refresh_usage(cx);
     }
 
     fn confirm_remove(
@@ -296,9 +346,9 @@ impl AiAccountsView {
         let message = self
             .translator("aiAccounts")
             .translate_with("removeConfirm", &[("label", &account.label)]);
-        let confirm = window_confirm_prompt(window, cx);
+        let confirm = confirm_action(&message, None, window, cx);
         self.track(cx.spawn(async move |this, cx| {
-            if confirm(message).await {
+            if confirm.await {
                 let _ = this.update(cx, |this, cx| this.remove_account(account, cx));
             }
         }));
@@ -317,13 +367,16 @@ impl AiAccountsView {
             backend.remove_ai_account(target.provider, &target.account_root)
         });
         self.track(cx.spawn(async move |this, cx| {
-            let result = request.await.map(|_| ()).map_err(|failure| failure.reason);
+            let result = request
+                .await
+                .map(|_| ())
+                .map_err(|failure| failure.display_message());
             let _ = this.update(cx, |this, cx| {
                 let is_removed = result.is_ok();
                 this.model.finish_remove(account, result);
                 if is_removed {
                     this.load_accounts(cx);
-                    this.refresh_usage(false, cx);
+                    this.refresh_usage(cx);
                 }
                 cx.notify();
             });
@@ -335,6 +388,7 @@ impl AiAccountsView {
 impl Render for AiAccountsView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         set_window_title_once(&mut self.is_title_set, "AI Accounts", window);
+        self.watch_window_activation(window, cx);
         let theme = *cx.global::<ThemeTokens>();
         if self.model.accounts.is_none() {
             return self.render_first_load(&theme, cx).into_any_element();
@@ -550,7 +604,7 @@ impl AiAccountsView {
             ),
             theme,
             self.model.usage.is_refreshing,
-            cx.listener(|this, _, _, cx| this.refresh_usage(false, cx)),
+            cx.listener(|this, _, _, cx| this.refresh_usage(cx)),
         );
         div()
             .flex()
@@ -639,7 +693,7 @@ impl AiAccountsView {
                     .flex()
                     .items_center()
                     .gap(spacing(2.0))
-                    .child(usage_block::render_provider_icon(theme, provider))
+                    .child(usage_block::render_provider_icon(provider))
                     .child(
                         div()
                             .text_scale(text_scale::SM)
