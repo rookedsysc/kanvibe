@@ -8,6 +8,8 @@ use kanvibe_domain::project::Project;
 use kanvibe_domain::task::{KanbanTask, TASK_STATUS_ORDER, TaskPriority, TaskStatus};
 use kanvibe_services::kanban::TasksByStatus;
 
+use crate::text_collation::LocaleCollator;
+
 use super::task_filters::{
     BoardSortContext, ProjectDisplay, TaskKindFilter, build_project_display_map,
     build_project_filter_set, build_project_root_priority_map, is_on_desktops,
@@ -302,6 +304,7 @@ pub fn displayed_tasks(
     catalog: &ProjectCatalog,
     desktop_hosts: &[String],
     sort_preference: &BoardSortPreference,
+    collator: &LocaleCollator,
 ) -> TasksByStatus {
     let filter_set = build_project_filter_set(&filters.selected_project_ids, &catalog.projects);
     let active_desktops = pick_available_desktops(&filters.selected_desktops, desktop_hosts);
@@ -309,6 +312,7 @@ pub fn displayed_tasks(
     let context = BoardSortContext {
         root_priorities: &root_priorities,
         project_names: &catalog.names,
+        collator,
     };
     let is_visible = |task: &&KanbanTask| {
         let host = task.ssh_host.clone().or_else(|| {
@@ -408,6 +412,10 @@ mod tests {
     use crate::views::board::task_filters::tests::{project, task};
     use kanvibe_domain::board_sort::{BoardSortDirection, BoardSortField, BoardSortKey};
     use kanvibe_domain::task::SessionType;
+
+    fn korean_collator() -> LocaleCollator {
+        LocaleCollator::for_locale(kanvibe_domain::i18n::Locale::Ko)
+    }
 
     fn board(columns: &[(TaskStatus, &[&str])]) -> TasksByStatus {
         let mut tasks = TasksByStatus::default();
@@ -551,6 +559,7 @@ mod tests {
             &catalog,
             &[],
             &BoardSortPreference::default(),
+            &korean_collator(),
         );
         displayed.todo.into_iter().map(|task| task.id).collect()
     }
@@ -583,11 +592,18 @@ mod tests {
                 direction: BoardSortDirection::Asc,
             }],
         };
-        displayed_tasks(tasks, &BoardFilters::default(), catalog, &[], &preference)
-            .todo
-            .into_iter()
-            .map(|task| task.id)
-            .collect()
+        displayed_tasks(
+            tasks,
+            &BoardFilters::default(),
+            catalog,
+            &[],
+            &preference,
+            &korean_collator(),
+        )
+        .todo
+        .into_iter()
+        .map(|task| task.id)
+        .collect()
     }
 
     // parity: TS-components-Board-ea02ad
@@ -622,6 +638,7 @@ mod tests {
             &ProjectCatalog::default(),
             &[],
             &BoardSortPreference::default(),
+            &korean_collator(),
         );
         assert_eq!(ids(&displayed.todo), ["b", "a", "c"]);
     }

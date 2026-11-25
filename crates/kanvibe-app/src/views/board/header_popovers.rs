@@ -780,6 +780,7 @@ impl BoardView {
             &board.catalog,
             &hosts,
             &board.sort_preference,
+            &crate::text_collation::LocaleCollator::for_locale(self.locale()),
         )
     }
 

@@ -1,7 +1,7 @@
 //! 칸반 카드 동작: 이동(드래그·메뉴·커맨드), Done 이동 확인, 삭제, Done 더 보기, 상세 열기.
 //! TS `Board.tsx`처럼 화면을 먼저 바꾸고 저장하며, 저장 중에는 같은 카드의 요청을 다시 보내지 않는다.
 
-use gpui_kit::{Context, FocusHandle, Pixels, Point, PromptLevel, Window};
+use gpui_kit::{Context, FocusHandle, Pixels, Point, Window};
 use kanvibe_domain::i18n::Translator;
 use kanvibe_domain::task::TaskStatus;
 
@@ -11,23 +11,8 @@ use super::board_model::{
 };
 use super::task_filters::TaskKindFilter;
 use super::{BoardView, HeaderPopover, OpenContextMenu};
-use crate::qa::QaRuntime;
+use crate::qa::prompts::confirm_action;
 use crate::windows::{TaskNavigationRequest, navigate_to_task_detail};
-
-/// TS `window.confirm`. QA 재생(`--qa`)에서는 기준 이미지를 찍은 Playwright가 대화상자를 자동으로 받아들인 것과 같게
-/// 묻지 않고 받아들인다
-pub(super) fn confirm_action(
-    message: &str,
-    window: &mut Window,
-    cx: &mut gpui_kit::App,
-) -> gpui_kit::Task<bool> {
-    if cx.has_global::<QaRuntime>() {
-        return gpui_kit::Task::ready(true);
-    }
-    let answer = window.prompt(PromptLevel::Warning, message, None, &["OK", "Cancel"], cx);
-    cx.foreground_executor()
-        .spawn(async move { answer.await == Ok(0) })
-}
 
 impl BoardView {
     pub(super) fn card_focus_handle(
@@ -43,6 +28,7 @@ impl BoardView {
 
     pub(super) fn set_task_kind_filter(&mut self, filter: TaskKindFilter, cx: &mut Context<Self>) {
         self.filters.task_kind = filter;
+        self.sync_task_kind_query(filter, cx);
         cx.notify();
     }
 
@@ -277,7 +263,7 @@ impl BoardView {
         cx: &mut Context<Self>,
     ) {
         let message = Translator::new(self.locale(), "task").translate("deleteConfirm");
-        let answer = confirm_action(&message, window, cx);
+        let answer = confirm_action(&message, None, window, cx);
         cx.spawn(async move |this, cx| {
             if !answer.await {
                 return;

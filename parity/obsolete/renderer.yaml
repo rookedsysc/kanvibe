@@ -13,3 +13,17 @@
   reason: "React가 같은 객체를 받으면 리렌더를 건너뛰도록 집계 객체의 참조를 유지하는지 보는 테스트다. GPUI 보드는 렌더마다 알림 목록에서 작업별 미읽음 수를 다시 세고 메모 참조 비교가 없다. 작업별 집계 자체는 board_view unread_counts_are_per_task_and_skip_read_ones가 확인한다."
 - id: TS-renderer-useTaskDiffStats-2980f2
   reason: "호출자가 렌더마다 새 배열을 넘겨도 useEffect 의존성이 같은 목록이면 다시 조회하지 않는지 보는 React 훅 의존성 테스트다. Rust 보드는 렌더와 무관한 5초 주기 루프가 그 시점의 목록으로 한 번 조회하므로 렌더가 조회를 일으키지 않는다."
+- id: TS-renderer-BoardCommandProvider-1df816
+  reason: "Electron main이 before-input-event로 가로챈 새 작업 단축키를 IPC(onCreateTaskShortcut)로 렌더러에 다시 보내는 다리를 검증한다. GPUI 앱은 단축키를 OpenCreateTask 액션 하나로 보드에 바로 보내 다리 경로가 없다. 같은 동작은 board_view new_task_shortcut_opens_the_create_task_modal이 확인한다."
+- id: TS-renderer-BoardCommandProvider-1058fc
+  reason: "IPC 단축키 다리 이벤트를 blocker가 있을 때 무시하는지 보는 테스트다. GPUI에는 다리 이벤트가 없고 모든 단축키가 같은 액션 경로로 와서 has_shortcut_blocker 하나로 막는다(board_shortcuts_are_ignored_behind_a_blocker)."
+- id: TS-renderer-BoardCommandProvider-9df8b8
+  reason: "IPC(onCommandPaletteShortcut)로 온 팔레트 단축키를 여는지 보는 Electron 다리 테스트다. GPUI는 OpenCommandPalette 액션이 직접 와서 다리가 없다(palette_sync_command_runs_the_background_sync 등이 액션 경로를 쓴다)."
+- id: TS-renderer-BoardCommandProvider-2e0b9e
+  reason: "IPC로 온 알림 단축키를 알림 처리기에 넘기는 Electron 다리 테스트다. GPUI는 ToggleNotificationCenter 액션이 바로 보드에 온다(notification_shortcut_opens_only_the_notification_center)."
+- id: TS-renderer-BoardCommandProvider-6f7bf9
+  reason: "Chromium 페이지 새로 고침(Cmd/Ctrl+R)을 막는 테스트다. GPUI 창에는 페이지 새로 고침이 없어 막을 기본 동작이 없다."
+- id: TS-renderer-TaskQuickSearchDialog-6f6fde
+  reason: "상세로 이동할 때 xterm DOM에 포커스를 다시 주라고 requestActiveTerminalFocusAfterUiSettles를 부르는지 보는 테스트다. GPUI 작업 상세는 화면을 만들 때 터미널 FocusHandle에 포커스를 주므로 따로 보낼 포커스 요청이 없다."
+- id: TS-renderer-TaskQuickSearchDialog-276c97
+  reason: "저장된 단축키가 Ctrl+R이어도 Chromium 새로 고침 차단 규칙 때문에 열지 않는지 보는 테스트다. GPUI 창에는 페이지 새로 고침 단축키가 없어 막을 규칙이 없다."

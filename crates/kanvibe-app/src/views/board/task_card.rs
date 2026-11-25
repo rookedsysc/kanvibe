@@ -18,9 +18,11 @@ use kanvibe_process::project_color::readable_text_color;
 use super::BoardView;
 use super::board_model::{TaskDeletionState, TaskMoveState};
 use super::icons::{BoardIcon, board_icon};
+use super::keyboard::FindField;
 use super::task_filters::{ProjectDisplay, is_inherited_priority, resolve_effective_priority};
 use crate::components::{TailwindText, box_shadows, fade};
 use crate::qa::targets::{QaTargetDescription, qa_target_layer};
+use crate::text_baseline::{TextFamily, baseline_lift};
 use crate::theme::{ColorPair, ThemeTokens, radius, spacing, text_scale};
 
 /// 카드 그리기에 필요한 값
@@ -153,6 +155,38 @@ pub(super) fn project_marker(display: &ProjectDisplay, size: f32) -> AnyElement 
         .css_weight(700)
         .child(initial)
         .into_any_element()
+}
+
+/// 찾기 바가 고른 글자 구간을 선택 색으로 칠한다(TS `window.find`의 선택 강조)
+const FIND_SELECTION_BACKGROUND: u32 = 0x3390ff;
+
+impl BoardView {
+    fn find_highlighted(&self, task_id: &str, field: FindField, text: String) -> AnyElement {
+        let found = self
+            .find_match
+            .as_ref()
+            .filter(|found| found.task_id == task_id && found.field == field)
+            .filter(|found| text.get(found.range.clone()).is_some());
+        let Some(found) = found else {
+            return text.into_any_element();
+        };
+        let highlight = gpui_kit::HighlightStyle {
+            background_color: Some(gpui_kit::rgb(FIND_SELECTION_BACKGROUND).into()),
+            ..gpui_kit::HighlightStyle::default()
+        };
+        gpui_kit::StyledText::new(text)
+            .with_highlights(vec![(found.range.clone(), highlight)])
+            .into_any_element()
+    }
+}
+
+/// GPUI가 Chromium보다 글자를 아래에 찍는 만큼 글자 상자를 올린다(`text_baseline`). 배경 없는 글자 상자에만 쓴다
+fn baseline_offset(text: &str, font_size: f32, line_height: f32) -> gpui_kit::Pixels {
+    let scale = crate::theme::TextScale {
+        font_size: px(font_size),
+        line_height: px(line_height),
+    };
+    px(-baseline_lift(text, scale, TextFamily::Sans))
 }
 
 /// `inline-flex items-center rounded border border-border-subtle px-1.5 py-0.5 text-[10px]`
@@ -474,11 +508,13 @@ impl BoardView {
             .child(
                 div()
                     .truncate()
+                    .relative()
+                    .top(baseline_offset(&task.title, 13.0, 20.0))
                     .text_size(px(13.0))
                     .line_height(px(20.0))
                     .css_weight(500)
                     .text_color(theme.text.primary)
-                    .child(task.title.clone()),
+                    .child(self.find_highlighted(&task.id, FindField::Title, task.title.clone())),
             )
             .child(qa_target_layer(QaTargetDescription {
                 role: "link",
@@ -490,13 +526,16 @@ impl BoardView {
             .as_ref()
             .filter(|text| !text.is_empty())
             .map(|text| {
+                let first_line = text.lines().next().unwrap_or_default().to_string();
                 div()
                     .mt(px(2.0))
                     .truncate()
+                    .relative()
+                    .top(baseline_offset(&first_line, 11.0, 16.0))
                     .text_size(px(11.0))
                     .line_height(px(16.0))
                     .text_color(theme.text.muted)
-                    .child(text.lines().next().unwrap_or_default().to_string())
+                    .child(self.find_highlighted(&task.id, FindField::Description, first_line))
             });
         match input.project {
             Some(display) => {
@@ -516,11 +555,17 @@ impl BoardView {
                                 .child(
                                     div()
                                         .truncate()
+                                        .relative()
+                                        .top(baseline_offset(&display.name, 12.0, 16.0))
                                         .text_scale(text_scale::XS)
                                         .line_height(px(16.0))
                                         .css_weight(600)
                                         .text_color(color)
-                                        .child(display.name.clone()),
+                                        .child(self.find_highlighted(
+                                            &task.id,
+                                            FindField::ProjectName,
+                                            display.name.clone(),
+                                        )),
                                 )
                                 .children(unread),
                         )

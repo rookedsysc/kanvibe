@@ -218,6 +218,11 @@ impl CreateTaskModal {
         self.is_closed = true;
     }
 
+    /// 지금 고른 베이스 브랜치
+    pub fn base_branch(&self) -> &str {
+        &self.base_branch
+    }
+
     pub fn is_submitting(&self) -> bool {
         self.is_submitting
     }

@@ -456,7 +456,7 @@ impl BoardView {
             .rounded(radius::XL)
             .when_focus_ring(self.notification_panel.is_keyboard_opened, theme)
             .bg(theme.background.surface)
-            .child(self.render_background_sync_status(theme))
+            .child(self.render_background_sync_status(theme, cx))
             .child(self.render_notification_header(theme, &labels, unread_count, cx))
             .children(
                 self.notification_panel
@@ -497,57 +497,6 @@ impl BoardView {
                 .with_priority(POPOVER_LAYER_PRIORITY),
             )
             .into_any_element()
-    }
-
-    /// 백그라운드 동기화 상태 칸. 동기화 실행 루프는 앱 조립 지점이 맡으므로 여기서는 대기 상태를 보인다
-    fn render_background_sync_status(&self, theme: &ThemeTokens) -> impl IntoElement + use<> {
-        let labels = Translator::new(self.locale(), "common.backgroundSyncStatus");
-        let start_label = labels.translate("start");
-        div()
-            .border_b_1()
-            .border_color(theme.border.default)
-            .bg(fade(theme.brand.primary, 0.05))
-            .px(spacing(4.0))
-            .py(spacing(3.0))
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .justify_between()
-                    .gap(spacing(3.0))
-                    .child(
-                        div()
-                            .min_w_0()
-                            .child(
-                                div()
-                                    .text_scale(text_scale::SM)
-                                    .css_weight(600)
-                                    .text_color(theme.text.primary)
-                                    .child(labels.translate("title")),
-                            )
-                            .child(
-                                div()
-                                    .mt(spacing(1.0))
-                                    .text_scale(text_scale::XS)
-                                    .text_color(theme.text.secondary)
-                                    .child(labels.translate("idle")),
-                            ),
-                    )
-                    .child(
-                        div()
-                            .relative()
-                            .flex_none()
-                            .rounded(radius::MD)
-                            .border_1()
-                            .border_color(theme.border.default)
-                            .px(spacing(3.0))
-                            .py(spacing(2.0))
-                            .text_scale(text_scale::XS)
-                            .text_color(theme.text.primary)
-                            .child(start_label.clone())
-                            .child(qa_button_layer(&start_label, &start_label)),
-                    ),
-            )
     }
 
     fn render_notification_header(
@@ -765,7 +714,7 @@ impl BoardView {
 }
 
 /// Chromium 기본 포커스 링: 2px 링과 바깥 1px 테두리. 다크 화면은 흰 링, 라이트 화면은 주황 링이다
-trait FocusRing: Styled + Sized {
+pub(super) trait FocusRing: Styled + Sized {
     fn when_focus_ring(self, is_visible: bool, theme: &ThemeTokens) -> Self {
         if !is_visible {
             return self

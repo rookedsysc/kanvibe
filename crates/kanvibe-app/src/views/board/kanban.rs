@@ -24,6 +24,15 @@ const SKELETON_PRIMARY_BUTTON_ALPHA: f32 = 0.4;
 /// 스켈레톤 헤더 높이(py-3 + 32px 상자 + border-b)
 const SKELETON_HEADER_HEIGHT: f32 = 57.0;
 
+/// 열 영역(`main`). macOS 타이틀바 배치에서는 위 여백 없이 `px-6 pb-6`이다
+fn main_area(is_mac_titlebar_layout: bool) -> Div {
+    if is_mac_titlebar_layout {
+        div().px(spacing(6.0)).pb(spacing(6.0))
+    } else {
+        div().p(spacing(6.0))
+    }
+}
+
 /// 보드 문서 전체 높이(빈 열 기준). 스크롤바 thumb 길이를 Chromium과 같게 하려면 문서 높이가 같아야 한다.
 pub fn board_document_height(header_height: f32, viewport_height: f32) -> f32 {
     let column_body = viewport_height - SKELETON_COLUMN_BODY_VIEWPORT_OFFSET;
@@ -346,7 +355,7 @@ impl super::BoardView {
             .bg(theme.background.page)
             .child(header)
             .child(
-                div().p(spacing(6.0)).child(
+                main_area(super::header::is_mac_titlebar_layout(cx)).child(
                     div()
                         .flex()
                         .gap(spacing(3.0))

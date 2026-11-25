@@ -12,6 +12,17 @@ use crate::theme::ThemeTokens;
 use crate::windows::{TaskNavigationRequest, navigate_to_task_detail};
 
 impl BoardView {
+    /// 새 작업·브랜치 모달이 열려 있는지
+    pub fn is_create_task_open(&self) -> bool {
+        self.create_task.is_some()
+    }
+
+    /// 열린 새 작업 모달의 베이스 브랜치
+    pub fn create_task_base_branch(&self, cx: &gpui_kit::App) -> Option<String> {
+        let modal = self.create_task.as_ref()?;
+        Some(modal.read(cx).base_branch().to_string())
+    }
+
     pub(super) fn is_board_dialog_open(&self) -> bool {
         self.create_task.is_some() || self.is_registry_open
     }

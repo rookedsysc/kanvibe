@@ -20,7 +20,7 @@ use super::text_field::TextFieldEvent;
 use crate::components::{TailwindText, box_shadows};
 use crate::shortcuts::{
     OpenBoardPageFind, OpenCommandPalette, OpenCreateTask, OpenDesktopFilter, OpenProjectFilter,
-    ToggleNotificationCenter,
+    OpenTaskSearch, ToggleNotificationCenter,
 };
 use crate::theme::{ThemeTokens, radius, spacing, text_scale};
 use crate::windows::{TaskNavigationRequest, navigate_to_task_detail};
@@ -92,36 +92,100 @@ pub(super) struct FindBarState {
     pub current_match: Option<usize>,
 }
 
-/// 보이는 카드의 제목·설명·프로젝트 이름에서 찾는다(대소문자 없음)
-pub(super) fn find_matching_task_ids(view: &BoardView, query: &str) -> Vec<String> {
-    let query = query.trim().to_lowercase();
-    if query.is_empty() {
+/// 카드 안 찾을 글자 칸. 화면 순서(프로젝트 이름 → 제목 → 설명)대로 늘어놓는다
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FindField {
+    ProjectName,
+    Title,
+    Description,
+}
+
+/// 찾기 바가 고른 일치 하나(TS `window.find`가 선택하는 글자 구간)
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FindTextMatch {
+    pub task_id: String,
+    pub field: FindField,
+    /// 그 칸 글자의 바이트 구간
+    pub range: std::ops::Range<usize>,
+}
+
+/// 글자 안에서 검색어가 나오는 모든 구간(대소문자 없음, 겹치지 않게 앞에서부터)
+pub fn match_ranges(text: &str, query: &str) -> Vec<std::ops::Range<usize>> {
+    let needle: Vec<char> = query.chars().flat_map(char::to_lowercase).collect();
+    if needle.is_empty() {
         return Vec::new();
     }
+    let characters: Vec<(usize, char)> = text.char_indices().collect();
+    let mut ranges = Vec::new();
+    let mut start = 0;
+    while start + needle.len() <= characters.len() {
+        let is_match = needle.iter().enumerate().all(|(offset, expected)| {
+            characters[start + offset]
+                .1
+                .to_lowercase()
+                .eq(std::iter::once(*expected))
+        });
+        if !is_match {
+            start += 1;
+            continue;
+        }
+        let end_index = start + needle.len();
+        let end = characters
+            .get(end_index)
+            .map(|(byte, _)| *byte)
+            .unwrap_or(text.len());
+        ranges.push(characters[start].0..end);
+        start = end_index;
+    }
+    ranges
+}
+
+/// 카드 설명은 첫 줄만 보인다
+pub(super) fn displayed_description(task: &kanvibe_domain::task::KanbanTask) -> Option<String> {
+    task.description
+        .as_ref()
+        .filter(|text| !text.is_empty())
+        .map(|text| text.lines().next().unwrap_or_default().to_string())
+}
+
+/// 보이는 카드에서 검색어가 나오는 글자 구간을 화면 순서대로 모은다
+pub(super) fn find_text_matches(view: &BoardView, query: &str) -> Vec<FindTextMatch> {
     let Some(board) = &view.board else {
         return Vec::new();
     };
+    if query.is_empty() {
+        return Vec::new();
+    }
     let displayed = view.displayed_tasks();
-    TASK_STATUS_ORDER
+    let mut matches = Vec::new();
+    for task in TASK_STATUS_ORDER
         .into_iter()
         .flat_map(|status| super::board_model::column(&displayed, status).clone())
-        .filter(|task| {
-            let project_name = task
-                .project_id
-                .as_ref()
-                .and_then(|id| board.catalog.names.get(id))
-                .cloned()
-                .unwrap_or_default();
-            [
-                task.title.as_str(),
-                task.description.as_deref().unwrap_or_default(),
-                project_name.as_str(),
-            ]
-            .iter()
-            .any(|text| text.to_lowercase().contains(&query))
-        })
-        .map(|task| task.id)
-        .collect()
+    {
+        let project_name = task
+            .project_id
+            .as_ref()
+            .and_then(|id| board.catalog.displays.get(id))
+            .map(|display| display.name.clone());
+        let fields = [
+            (FindField::ProjectName, project_name),
+            (FindField::Title, Some(task.title.clone())),
+            (FindField::Description, displayed_description(&task)),
+        ];
+        for (field, text) in fields {
+            let Some(text) = text else { continue };
+            matches.extend(
+                match_ranges(&text, query)
+                    .into_iter()
+                    .map(|range| FindTextMatch {
+                        task_id: task.id.clone(),
+                        field,
+                        range,
+                    }),
+            );
+        }
+    }
+    matches
 }
 
 impl BoardView {
@@ -151,8 +215,20 @@ impl BoardView {
                     this.open_find_bar(window, cx)
                 }
             }))
+            .on_action(cx.listener(|this, _: &OpenCommandPalette, window, cx| {
+                if !this.has_shortcut_blocker() {
+                    this.open_command_palette(window, cx)
+                }
+            }))
+            .on_action(cx.listener(|this, _: &OpenTaskSearch, window, cx| {
+                this.toggle_quick_search(window, cx)
+            }))
             .on_action(cx.listener(|this, _: &OpenCreateTask, window, cx| {
-                this.open_create_task(None, window, cx)
+                if this.is_quick_search_open() {
+                    this.create_branch_todo_from_quick_search(window, cx)
+                } else if !this.has_shortcut_blocker() {
+                    this.open_create_task(None, window, cx)
+                }
             }))
             .on_key_down(cx.listener(Self::handle_board_key_down))
     }
@@ -162,9 +238,12 @@ impl BoardView {
         self.context_menu.is_some()
             || self.pending_done_move.is_some()
             || self.is_board_dialog_open()
+            || self.command_palette.is_some()
+            || self.is_quick_search_open()
+            || self.release_update_version().is_some()
     }
 
-    fn focused_card(&self, window: &Window) -> Option<String> {
+    pub(super) fn focused_card(&self, window: &Window) -> Option<String> {
         self.card_focus
             .iter()
             .find(|(_, handle)| handle.is_focused(window))
@@ -328,7 +407,7 @@ impl BoardView {
         if query.trim().is_empty() {
             return;
         }
-        let matches = find_matching_task_ids(self, &query);
+        let matches = find_text_matches(self, query.trim());
         if matches.is_empty() {
             self.find_bar.has_match = Some(false);
             self.find_bar.current_match = None;
@@ -344,9 +423,33 @@ impl BoardView {
         };
         self.find_bar.has_match = Some(true);
         self.find_bar.current_match = Some(next);
-        self.find_highlight_task_id = Some(matches[next].clone());
+        let found = matches[next].clone();
+        self.scroll_card_into_view(&found.task_id, window);
+        self.find_match = Some(found);
         cx.notify();
-        let _ = window;
+    }
+
+    /// 일치한 카드가 화면 밖이면 페이지를 굴려 보이게 한다(TS `window.find`의 스크롤)
+    fn scroll_card_into_view(&mut self, task_id: &str, window: &Window) {
+        let Some(bounds) = self.card_bounds.borrow().get(task_id).copied() else {
+            return;
+        };
+        let viewport_height = window.viewport_size().height;
+        let offset = self.page_scroll.offset();
+        let shift = if bounds.bottom() > viewport_height {
+            bounds.bottom() - viewport_height
+        } else if bounds.top() < px(0.0) {
+            bounds.top()
+        } else {
+            return;
+        };
+        self.page_scroll
+            .set_offset(point(offset.x, offset.y - shift));
+    }
+
+    /// 찾기 바가 고른 일치 구간
+    pub fn find_match(&self) -> Option<FindTextMatch> {
+        self.find_match.clone()
     }
 
     pub(super) fn handle_find_field_event(
@@ -359,7 +462,7 @@ impl BoardView {
             TextFieldEvent::Changed(_) => {
                 self.find_bar.has_match = None;
                 self.find_bar.current_match = None;
-                self.find_highlight_task_id = None;
+                self.find_match = None;
                 cx.notify();
             }
             TextFieldEvent::Submitted { is_shift_pressed } => {

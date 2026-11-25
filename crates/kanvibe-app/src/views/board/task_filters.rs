@@ -4,10 +4,10 @@
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
+use crate::text_collation::LocaleCollator;
 use kanvibe_domain::board_sort::{
     BoardSortDirection, BoardSortField, BoardSortKey, BoardSortPreference,
 };
-use kanvibe_domain::locale_order::compare_like_locale;
 use kanvibe_domain::project::Project;
 use kanvibe_domain::task::{KanbanTask, TaskPriority};
 use kanvibe_process::project_color::compute_project_color;
@@ -156,10 +156,11 @@ pub fn is_inherited_priority(
     task.priority.is_none() && resolve_effective_priority(task, root_priorities).is_some()
 }
 
-/// 정렬에 필요한 보드 상태. 글자 비교는 ICU 근사(`compare_like_locale`)라 언어별 콜레이션 차이(한자 병음·한국 한자음)는 따르지 않는다
+/// 정렬에 필요한 보드 상태. 제목·프로젝트 이름은 보고 있는 언어의 콜레이션(TS `localeCompare(locale)`)으로 비교한다
 pub struct BoardSortContext<'a> {
     pub root_priorities: &'a HashMap<String, TaskPriority>,
     pub project_names: &'a HashMap<String, String>,
+    pub collator: &'a LocaleCollator,
 }
 
 #[derive(Debug, PartialEq)]
@@ -201,14 +202,19 @@ fn read_sort_value<'a>(
     }
 }
 
-fn compare_sort_values(field: BoardSortField, left: &SortValue, right: &SortValue) -> Ordering {
+fn compare_sort_values(
+    field: BoardSortField,
+    left: &SortValue,
+    right: &SortValue,
+    collator: &LocaleCollator,
+) -> Ordering {
     match (left, right) {
         (SortValue::Number(left), SortValue::Number(right)) => left.cmp(right),
         (SortValue::Text(left), SortValue::Text(right)) => match field {
             BoardSortField::CreatedAt | BoardSortField::UpdatedAt => {
                 timestamp_key(left).cmp(&timestamp_key(right))
             }
-            _ => compare_like_locale(left, right),
+            _ => collator.compare(left, right),
         },
         _ => Ordering::Equal,
     }
@@ -229,7 +235,8 @@ fn compare_by_sort_keys(
             (None, Some(_)) => return Ordering::Greater,
             (Some(_), None) => return Ordering::Less,
             (Some(left_value), Some(right_value)) => {
-                let ordering = compare_sort_values(key.field, left_value, right_value);
+                let ordering =
+                    compare_sort_values(key.field, left_value, right_value, context.collator);
                 match key.direction {
                     BoardSortDirection::Asc => ordering,
                     BoardSortDirection::Desc => ordering.reverse(),
@@ -399,15 +406,47 @@ pub(crate) mod tests {
         }
     }
 
+    // parity: TS-renderer-boardTaskSort-9d579b
+    #[test]
+    fn title_sort_follows_the_collation_of_the_viewed_language() {
+        let mut lee = task("lee");
+        lee.title = "李".into();
+        let mut chen = task("chen");
+        chen.title = "陈".into();
+        let preference = BoardSortPreference {
+            keys: vec![kanvibe_domain::board_sort::BoardSortKey {
+                field: BoardSortField::Title,
+                direction: kanvibe_domain::board_sort::BoardSortDirection::Asc,
+            }],
+        };
+        let sort_in = |locale: kanvibe_domain::i18n::Locale| {
+            let (priorities, names) = (HashMap::new(), HashMap::new());
+            let collator = LocaleCollator::for_locale(locale);
+            let context = BoardSortContext {
+                root_priorities: &priorities,
+                project_names: &names,
+                collator: &collator,
+            };
+            sort_tasks_for_board(&[chen.clone(), lee.clone()], &preference, &context)
+                .into_iter()
+                .map(|task| task.id)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(sort_in(kanvibe_domain::i18n::Locale::Ko), ["lee", "chen"]);
+        assert_eq!(sort_in(kanvibe_domain::i18n::Locale::Zh), ["chen", "lee"]);
+    }
+
     fn sorted_ids(
         tasks: &[KanbanTask],
         preference: &BoardSortPreference,
         root_priorities: &HashMap<String, TaskPriority>,
     ) -> Vec<String> {
         let names = HashMap::new();
+        let collator = LocaleCollator::for_locale(kanvibe_domain::i18n::Locale::Ko);
         let context = BoardSortContext {
             root_priorities,
             project_names: &names,
+            collator: &collator,
         };
         sort_tasks_for_board(tasks, preference, &context)
             .into_iter()

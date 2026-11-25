@@ -23,6 +23,7 @@ use super::task_filters::{
     matches_task_kind_filter, sort_tasks_for_board,
 };
 use crate::components::{TailwindText, fade};
+use crate::text_collation::LocaleCollator;
 use crate::theme::{ThemeTokens, radius, spacing, text_scale};
 
 /// xterm 테마 배경(`Terminal.tsx` theme.background). 앱 테마 토큰이 아니라 터미널 고정색이다
@@ -52,6 +53,7 @@ pub(super) struct WorkspaceListQuery<'a> {
     pub task_kind: TaskKindFilter,
     pub selected_project_ids: &'a [String],
     pub sort_preference: &'a BoardSortPreference,
+    pub collator: &'a LocaleCollator,
     pub selected_task_id: Option<&'a str>,
     /// 필터를 바꾼 사용자가 숨긴 선택. 필터 밖 선택을 맨 위에 붙이지 않는다
     pub hidden_selection_id: Option<&'a str>,
@@ -88,6 +90,7 @@ pub(super) fn workspace_listed_tasks(
     let context = BoardSortContext {
         root_priorities: &roots,
         project_names: &catalog.names,
+        collator: query.collator,
     };
     let filtered: Vec<KanbanTask> = TASK_STATUS_ORDER
         .into_iter()
@@ -156,12 +159,14 @@ impl BoardView {
             return Vec::new();
         };
         let search = self.workspace_search.read(cx).text().to_string();
+        let collator = LocaleCollator::for_locale(self.locale());
         let query = WorkspaceListQuery {
             search: &search,
             statuses: &self.workspace.statuses,
             task_kind: self.filters.task_kind,
             selected_project_ids: &self.filters.selected_project_ids,
             sort_preference: &board.sort_preference,
+            collator: &collator,
             selected_task_id: self.workspace.selected_task_id.as_deref(),
             hidden_selection_id: self.workspace.hidden_selection_id.as_deref(),
         };
@@ -179,6 +184,11 @@ impl BoardView {
                 .as_ref()
                 .and_then(|board| initial_task_id(&board.tasks))
         });
+    }
+
+    /// 워크스페이스에서 고른 작업
+    pub fn selected_workspace_task_id(&self) -> Option<String> {
+        self.workspace.selected_task_id.clone()
     }
 
     /// 작업을 고른다. 세션이 없으면 기본 세션 타입으로 연결을 시작한다
@@ -838,12 +848,14 @@ mod tests {
     ) -> Vec<String> {
         let statuses = HashSet::new();
         let preference = BoardSortPreference::default();
+        let collator = LocaleCollator::for_locale(kanvibe_domain::i18n::Locale::Ko);
         let mut query = WorkspaceListQuery {
             search: "",
             statuses: &statuses,
             task_kind: TaskKindFilter::All,
             selected_project_ids: &[],
             sort_preference: &preference,
+            collator: &collator,
             selected_task_id: None,
             hidden_selection_id: None,
         };
@@ -910,12 +922,14 @@ mod tests {
         let statuses = HashSet::from([TaskStatus::Todo, TaskStatus::Done]);
         let ids = {
             let preference = BoardSortPreference::default();
+            let collator = LocaleCollator::for_locale(kanvibe_domain::i18n::Locale::Ko);
             let query = WorkspaceListQuery {
                 search: "",
                 statuses: &statuses,
                 task_kind: TaskKindFilter::All,
                 selected_project_ids: &[],
                 sort_preference: &preference,
+                collator: &collator,
                 selected_task_id: None,
                 hidden_selection_id: None,
             };
@@ -934,12 +948,14 @@ mod tests {
         let selected = ["demo".to_string()];
         let statuses = HashSet::new();
         let preference = BoardSortPreference::default();
+        let collator = LocaleCollator::for_locale(kanvibe_domain::i18n::Locale::Ko);
         let query = WorkspaceListQuery {
             search: "",
             statuses: &statuses,
             task_kind: TaskKindFilter::All,
             selected_project_ids: &selected,
             sort_preference: &preference,
+            collator: &collator,
             selected_task_id: None,
             hidden_selection_id: None,
         };
@@ -997,12 +1013,14 @@ mod tests {
             }],
         };
         let statuses = HashSet::new();
+        let collator = LocaleCollator::for_locale(kanvibe_domain::i18n::Locale::Ko);
         let query = WorkspaceListQuery {
             search: "",
             statuses: &statuses,
             task_kind: TaskKindFilter::All,
             selected_project_ids: &[],
             sort_preference: &preference,
+            collator: &collator,
             selected_task_id: None,
             hidden_selection_id: None,
         };
@@ -1026,12 +1044,14 @@ mod tests {
         let (tasks, catalog) = sample();
         let statuses = HashSet::new();
         let preference = BoardSortPreference::default();
+        let collator = LocaleCollator::for_locale(kanvibe_domain::i18n::Locale::Ko);
         let query = WorkspaceListQuery {
             search: "",
             statuses: &statuses,
             task_kind: TaskKindFilter::All,
             selected_project_ids: &[],
             sort_preference: &preference,
+            collator: &collator,
             selected_task_id: None,
             hidden_selection_id: None,
         };
