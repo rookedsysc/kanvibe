@@ -176,7 +176,7 @@ Android는 같은 빌드 설정을 네이티브 Firebase 리소스에도 반영�
 
 ```bash
 KANVIBE_MOBILE_PUSH_RELAY_URL=http://127.0.0.1:4890/notifications \
-KANVIBE_MOBILE_PUSH_RELAY_TOKEN='<relay-config-secret>' pnpm dev
+KANVIBE_MOBILE_PUSH_RELAY_TOKEN='<relay-config-secret>' cargo run -p kanvibe-app
 ```
 
 위 명령은 저장소 루트에서 실행한다. 외부 중계 서버는 HTTPS 주소를 사용한다. 푸시 토큰은 모바일이 페어링된 PC마다 인증 후 등록하고 갱신하며, PC 연결을 해제하면 해당 PC의 수신 정보도 함께 제거한다. 중계 요청은 페어링 인증 토큰을 포함하지 않는다.
