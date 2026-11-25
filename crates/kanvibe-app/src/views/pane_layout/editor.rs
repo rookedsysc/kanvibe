@@ -3,8 +3,8 @@
 
 use gpui_kit::base::input::{InputEvent, InputState};
 use gpui_kit::{
-    Context, Div, Entity, InteractiveElement, IntoElement, ParentElement, Render, Styled,
-    Subscription, Task, Window, div, px,
+    App, Context, Div, Entity, Focusable, InteractiveElement, IntoElement, ParentElement, Render,
+    Styled, Subscription, Task, Window, div, px,
 };
 use kanvibe_domain::i18n::{Locale, Translator};
 use kanvibe_domain::pane_layout::{PaneLayoutConfig, PaneLayoutType};
@@ -404,14 +404,38 @@ impl PaneLayoutEditor {
                     .border_color(theme.border.default)
                     .rounded(radius::MD)
                     .child(field)
-                    .child(crate::qa::targets::qa_target_layer(
-                        crate::qa::targets::QaTargetDescription {
-                            role: "textbox",
-                            name: self.translate(label_key).into(),
-                            text: "".into(),
-                        },
-                    )),
+                    .child(self.render_pane_field_qa_target(index, label_key, cx)),
             )
+    }
+
+    /// pane 입력란의 QA 대상. 접근성 이름은 라벨이고, QA `fill`이 입력란 값을 바꿀 수 있게 포커스와 채우기 동작을 붙인다
+    fn render_pane_field_qa_target(
+        &self,
+        index: usize,
+        label_key: &'static str,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement + use<> {
+        let input = self.inputs[index].clone();
+        let focus_handle = input.read(cx).focus_handle(cx);
+        crate::qa::targets::qa_target_layer_with(
+            crate::qa::targets::QaTargetDescription {
+                role: "textbox",
+                name: self.translate(label_key).into(),
+                text: "".into(),
+            },
+            crate::qa::targets::QaTargetBehavior {
+                placeholder: Some(self.translate("commandPlaceholder").into()),
+                selector: None,
+                focus_handle: Some(focus_handle),
+                fill: Some(std::rc::Rc::new(
+                    move |value: &str, window: &mut Window, cx: &mut App| {
+                        input.update(cx, |state, cx| {
+                            state.set_value(value.to_string(), window, cx)
+                        });
+                    },
+                )),
+            },
+        )
     }
 
     /// 프로젝트 설정을 지우고 전역 기본값으로(`text-status-error border border-status-error`)
