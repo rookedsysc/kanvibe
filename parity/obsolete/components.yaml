@@ -1,5 +1,5 @@
 # Rust로 옮기지 않는 src/components/** TS 테스트.
-- id: TS-components-Board-3953d6
+- id: TS-components-TaskCard-3953d6
   reason: "@hello-pangea/dnd가 링크 요소에 넣는 draggable 인라인 style과 프로젝트 테두리 색 style 객체가 합쳐지는지 보는 DOM 테스트다. GPUI 카드는 끌기를 on_drag로 걸고 테두리 색을 요소 스타일로 직접 정해 합칠 style 객체가 없다."
 - id: TS-components-Board-8fa749
   reason: "defaultSessionType prop이 바뀌면 Board 내부 state와 하위 모달 prop이 따라가는지 보는 React prop 동기화 테스트다. Rust 보드는 prop을 받지 않고 보드 데이터를 다시 읽을 때 AppSettings default_session_type을 함께 읽어 새 모달에 넘긴다."
