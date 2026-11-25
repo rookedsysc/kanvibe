@@ -1,15 +1,17 @@
 ---
 name: kanvibe-release-deploy
-description: "Use this skill whenever releasing or deploying KanVibe desktop and mobile from a clean, up-to-date `dev` checkout: ask only for the target version and release-note approval, then let the AI update package versions, run `pnpm run deploy` and the Android APK/AAB and iOS IPA release builds, publish the DMG GitHub release, update the Homebrew cask, create the release PR, and auto-merge the release/promotion PRs when checks pass. Always use it for KanVibe release versions, DMG uploads, or Homebrew cask checksum updates."
+description: "Use this skill whenever releasing or deploying KanVibe desktop and mobile from a clean, up-to-date `dev` checkout: ask only for the target version and release-note approval, then let the AI update the Cargo workspace version, run `packaging/macos/build-macos.sh` and the Android APK/AAB and iOS IPA release builds, publish the DMG GitHub release, update the Homebrew cask, create the release PR, and auto-merge the release/promotion PRs when checks pass. Always use it for KanVibe release versions, DMG uploads, or Homebrew cask checksum updates."
 ---
 
 # KanVibe Release Deploy
 
 ## Overview
 
-This skill coordinates the KanVibe desktop and mobile release workflow from version selection to DMG publication, Homebrew cask update, release PR creation, and automatic merge. It is intentionally release-operator focused and may only be invoked from a clean, up-to-date local `dev` checkout: read and report the current `package.json` version, ask the user for the target release version, update the package version, run the `pnpm run deploy` DMG build, **launch the built app and confirm it actually starts**, build Android APK/AAB and iOS IPA artifacts from the same release source (step 3.6), get explicit approval for the release notes, upload the exact DMG artifact to the `rookedsysc/kanvibe` GitHub release, update the separate Homebrew cask repository with the same version and SHA-256, create the KanVibe release PR, then merge the release and promotion PRs automatically once checks and review-thread gates pass.
+This skill coordinates the KanVibe desktop and mobile release workflow from version selection to DMG publication, Homebrew cask update, release PR creation, and automatic merge. It is intentionally release-operator focused and may only be invoked from a clean, up-to-date local `dev` checkout: read and report the current Cargo workspace version (root `Cargo.toml` `[workspace.package]`), ask the user for the target release version, update the workspace version, run the `packaging/macos/build-macos.sh` DMG build, **launch the built app and confirm it actually starts**, build Android APK/AAB and iOS IPA artifacts from the same release source (step 3.6), get explicit approval for the release notes, upload the exact DMG artifact to the `rookedsysc/kanvibe` GitHub release, update the separate Homebrew cask repository with the same version and SHA-256, create the KanVibe release PR, then merge the release and promotion PRs automatically once checks and review-thread gates pass.
 
 The smoke test in step 3.5 is not optional. Signing, notarization, stapling, and checksum verification all pass on a bundle whose app cannot start, and shipping one of those is how KanVibe 1.0.4 reached users.
+
+The desktop app is a Rust + GPUI Cargo workspace (`crates/*`). The Electron/TypeScript desktop, the root `package.json`, electron-builder, and the `pnpm run deploy` script no longer exist; desktop packaging lives in `packaging/`. The mobile app (`mobile/`, Flutter) is unchanged.
 
 The only routine user gates are target-version selection and release-note approval. After those are approved, do not ask for additional confirmation for build, release publication, cask update, PR creation, auto-merge enablement, or merge completion unless a blocker or branch-policy violation appears.
 
@@ -20,8 +22,8 @@ Before touching the cask, read `references/homebrew-cask-repository.md`. The cas
 Use this skill when the user asks to:
 
 - deploy or release KanVibe desktop;
-- run `pnpm run deploy` for KanVibe release packaging;
-- bump the KanVibe package version for a release;
+- run `packaging/macos/build-macos.sh` for KanVibe release packaging;
+- bump the KanVibe Cargo workspace version for a release;
 - create release notes or a GitHub release that includes `dist/KanVibe-<version>.dmg`;
 - create and merge the KanVibe release PR or pinned main-promotion PR after a desktop release;
 - update the KanVibe Homebrew cask version or checksum;
@@ -35,14 +37,15 @@ Do not use this skill for docs-site deploys, Linux-only package checks, routine 
 - Keep the mobile marketing version equal to the target desktop version and increment the committed mobile build number once per release. Build retries reuse that number. All artifacts must use the same release source; source changes after a build require rebuilding affected artifacts before tagging.
 
 - The GitHub release tag is the raw package version, for example `1.0.2`, not `v1.0.2`.
-- The DMG filename is `KanVibe-<version>.dmg` because `electron-builder.yml` sets `dmg.artifactName: "KanVibe-${version}.${ext}"`.
+- The desktop version has one source: `version` in the root `Cargo.toml` `[workspace.package]` table. Every crate inherits it (`version.workspace = true`), the app reads it through `env!("CARGO_PKG_VERSION")`, and `packaging/macos/build-macos.sh` reads it from `cargo metadata` (package `kanvibe-app`) and writes it into `Info.plist` (`CFBundleShortVersionString` and `CFBundleVersion` from `packaging/macos/Info.plist.in`). The workspace members' entries in `Cargo.lock` carry the same version and must be refreshed with it.
+- The DMG filename is `KanVibe-<version>.dmg` because `packaging/macos/build-macos.sh` writes `dist/KanVibe-$version.dmg`.
 - The cask URL expects the same raw version tag: `https://github.com/rookedsysc/kanvibe/releases/download/#{version}/KanVibe-#{version}.dmg`.
-- Use the SHA-256 of the final DMG produced after the version bump and `pnpm run deploy`, not an earlier artifact.
-- `pnpm run deploy` is the release build command for this workflow. It runs `scripts/dist-deploy.cjs`, which builds the DMG, codesigns, notarizes, staples, verifies the packaged dependencies, and prints the SHA-256.
-- `pnpm run deploy` performs macOS signing/notarization, so it must run on macOS with Apple signing tools configured. Do not fabricate build, notarization, or checksum output from Linux.
-- **A signed, notarized, correctly-checksummed DMG can still be an app that cannot start.** Signing and notarization say nothing about whether the bundle contains the dependencies it needs. Never publish without launching the built app (step 3.5).
-- **Never add a `packageManager` field to `package.json`.** electron-builder resolves the package manager from that field before anything else, which selects a dependency collector that drops transitive dependencies from `app.asar` and ships an app that crashes on startup. Pin the pnpm version through `pnpm/action-setup`'s `version` input in CI instead.
-- Run the release under **pnpm 10**. Because there is no `packageManager` pin, corepack may resolve pnpm 11, which ignores `pnpm.onlyBuiltDependencies` and skips every native build script. Verify with `pnpm --version` during preflight.
+- Use the SHA-256 of the final DMG produced after the version bump and `packaging/macos/build-macos.sh`, not an earlier artifact.
+- `packaging/macos/build-macos.sh` (no arguments) is the release build command for this workflow. It builds the release `kanvibe` binary for the host architecture, builds the four remote-agent binaries through `packaging/build-remote-agents.sh`, assembles `dist/mac/KanVibe.app`, signs it with Hardened Runtime, creates and signs the DMG, notarizes and staples it, and prints the SHA-256.
+- `packaging/macos/build-macos.sh` performs macOS signing/notarization and exits on any other OS, so it must run on macOS with Apple signing tools configured. Do not fabricate build, notarization, or checksum output from Linux.
+- **Never publish a DMG built with `--unsigned`.** That flag skips signing, notarization, and stapling; it exists only for local checks without credentials.
+- **A signed, notarized, correctly-checksummed DMG can still be an app that cannot start.** Signing and notarization say nothing about whether the bundle contains what it needs or whether the binary starts. Never publish without launching the built app (step 3.5).
+- The release `Cargo.lock` must already match the bumped `Cargo.toml` before the build. `build-macos.sh` runs `cargo build` without `--locked`, so a stale lock is silently rewritten during the build and the built source no longer matches the release commit.
 - Invoke this skill only from a clean, up-to-date local `dev` checkout. Stop on `main`, feature branches, existing release branches, detached HEADs, dirty worktrees, or a local `dev` HEAD that differs from `origin/dev`.
 - The release source is always `origin/dev`. Do not accept, infer, or ask about alternate source branches for this workflow.
 - The user's target-version selection and release-note approval authorize the remaining release actions. After those two gates, the AI should continue through release publication, cask update, release PR creation, auto-merge enablement, and pinned release-branch promotion to `main` without asking for another confirmation.
@@ -71,31 +74,45 @@ if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/dev)" ]; then
   exit 1
 fi
 git status --short --branch
-node -p "process.version"
-CURRENT_VERSION=$(node -p "require('./package.json').version")
+
+# Rust toolchain. There is no rust-toolchain file; CI builds with stable, and the workspace uses edition 2024.
+cargo --version
+rustc --version
+CURRENT_VERSION=$(cargo metadata --no-deps --format-version 1 --manifest-path Cargo.toml \
+  | python3 -c 'import json,sys; print(next(p["version"] for p in json.load(sys.stdin)["packages"] if p["name"] == "kanvibe-app"))')
 printf 'Current KanVibe version: %s\n' "$CURRENT_VERSION"
 
-# The release build must run under pnpm 10; pnpm 11 ignores pnpm.onlyBuiltDependencies
-# and silently skips every native build script.
-PNPM_VERSION=$(pnpm --version)
-printf 'pnpm: %s\n' "$PNPM_VERSION"
-case "$PNPM_VERSION" in
-  10.*) ;;
-  *) echo "Release build requires pnpm 10; found ${PNPM_VERSION}." >&2; exit 1 ;;
-esac
+# packaging/build-remote-agents.sh needs all four rustup targets. On macOS the two Linux targets are
+# cross-built with cargo-zigbuild; without it the build fails (the release must not pass --allow-missing).
+INSTALLED_TARGETS=$(rustup target list --installed)
+for RUST_TARGET in x86_64-unknown-linux-musl aarch64-unknown-linux-musl x86_64-apple-darwin aarch64-apple-darwin; do
+  printf '%s\n' "$INSTALLED_TARGETS" | grep -qx "$RUST_TARGET" \
+    || { echo "Missing rustup target: $RUST_TARGET (rustup target add $RUST_TARGET)" >&2; exit 1; }
+done
+command -v cargo-zigbuild >/dev/null || { echo "cargo-zigbuild is required to cross-build the Linux remote agents." >&2; exit 1; }
 
-# package.json must NOT carry a packageManager field: it forces electron-builder into a
-# dependency collector that drops transitive dependencies from app.asar.
-if node -p "require('./package.json').packageManager" | grep -qv undefined; then
-  echo "package.json has a packageManager field; remove it before releasing." >&2
-  exit 1
-fi
+# build-macos.sh signing inputs. It reads CSC_NAME, APPLE_API_KEY, APPLE_API_KEY_ID, and APPLE_API_ISSUER from the
+# environment or, when unset, from .env at the root of the checkout it runs in. Print key names only, never values.
+for CREDENTIAL_KEY in CSC_NAME APPLE_API_KEY APPLE_API_KEY_ID APPLE_API_ISSUER; do
+  if [ -n "$(printenv "$CREDENTIAL_KEY")" ] \
+    || { [ -f .env ] && grep -qE "^[[:space:]]*(export[[:space:]]+)?${CREDENTIAL_KEY}[[:space:]]*=" .env; }; then
+    printf 'credential present: %s\n' "$CREDENTIAL_KEY"
+  else
+    echo "Missing credential: $CREDENTIAL_KEY (environment or .env)" >&2
+    exit 1
+  fi
+done
+security find-identity -v -p codesigning
+xcrun --find notarytool
+xcrun --find stapler
 
 gh auth status
 gh release list --limit 5 --repo rookedsysc/kanvibe
 ```
 
-If `pnpm --version` is not 10.x, do not silently continue and do not add a `packageManager` field to fix it. Install or select pnpm 10 for this shell, then rerun preflight.
+`security find-identity -v -p codesigning` must list a `Developer ID Application` identity whose name exactly matches `CSC_NAME`; `build-macos.sh` refuses to start otherwise. `APPLE_API_KEY` is the path to the App Store Connect `.p8` key (a leading `~/` is expanded by the script). `.env` is gitignored, so it exists only in the checkout where the operator created it — the release worktree created below starts without one (see step 3).
+
+If a toolchain item is missing, install it for this host and rerun preflight. Do not pass `--allow-missing` to `build-remote-agents.sh` or edit the packaging scripts to get past a missing target.
 
 After printing the current version, ask the user which version to release before editing files:
 
@@ -107,8 +124,8 @@ Only proceed after the user supplies the target version. If the original user pr
 
 Validate these before proceeding:
 
-1. The target version is a plain `x.y.z` value such as `1.0.2`; do not include a leading `v` or any prerelease/build suffix (for example `1.0.3-beta.1`). The desktop update checker (`src/desktop/shared/releaseUpdates.ts`) only parses `^v?\d+\.\d+\.\d+$`, so a prerelease tag would be invisible to in-app updates.
-2. The target version is different from the current `package.json` version unless the user explicitly wants to rebuild the same version.
+1. The target version is a plain `x.y.z` value such as `1.0.2`; do not include a leading `v` or any prerelease/build suffix (for example `1.0.3-beta.1`). The desktop update checker (`parse_release_version` in `crates/kanvibe-domain/src/release_updates.rs`) accepts only an optional `v` plus three all-digit parts, so a prerelease tag would be invisible to in-app updates.
+2. The target version is different from the current Cargo workspace version unless the user explicitly wants to rebuild the same version.
 3. Work from a clean local `dev` checkout before creating the release branch. If the current branch is not `dev`, stop and tell the user to rerun the skill from `dev`; do not silently proceed from `main`, a feature branch, or an existing release branch.
 4. Confirm local `dev` matches `origin/dev` after `git fetch`/`git pull --ff-only`. The release source is always `origin/dev`; do not ask about or honor alternate source branches in this workflow.
 5. The active GitHub account can create releases in `rookedsysc/kanvibe`.
@@ -118,7 +135,7 @@ Validate these before proceeding:
 uname -s
 ```
 
-If the required host/tooling is unavailable, stop and report the blocker. Do not fake `pnpm run deploy`, DMG, notarization, or checksum output.
+If the required host/tooling is unavailable, stop and report the blocker. Do not fake `packaging/macos/build-macos.sh`, DMG, notarization, or checksum output.
 
 After the target version is selected, create a dedicated release branch from the current `origin/dev` SHA. Do not use an existing release branch as the invocation point; reuse an existing release branch only after the `dev` preflight passes and only when it is the same release version with no unrelated files. This keeps the release PR narrow and prevents dirty local feature work from leaking into the release.
 
@@ -138,226 +155,214 @@ git status --short --branch
 
 If the release worktree path or branch already exists, re-read its status and PR state before reusing it. Reuse only when it is the same release version and contains no unrelated files.
 
-## 2. Update `package.json` Version
+## 2. Update the Cargo Workspace Version
 
-After the user chooses the target version, update `package.json` before running the build. Use a deterministic script instead of manually editing JSON punctuation.
+After the user chooses the target version, update the root `Cargo.toml` `[workspace.package]` `version` and refresh `Cargo.lock` before running the build. Use a deterministic script instead of editing by hand.
 
-The same script also keeps the tracked `package-lock.json` in sync, because its top-level `version` and root `packages[""].version` fields otherwise keep advertising the previous release and npm-based install/packaging paths would see conflicting metadata. The format check rejects prerelease/build suffixes so the published tag always matches the desktop update checker.
+The desktop version has exactly one place to edit. Every crate (and `xtask`) uses `version.workspace = true`, the app reads `env!("CARGO_PKG_VERSION")`, and `packaging/macos/build-macos.sh` takes the version from `cargo metadata` and substitutes it into `packaging/macos/Info.plist.in`, so none of those files change. `Cargo.lock` does change: it has one `version = "..."` line per workspace member, and `cargo update --workspace` rewrites exactly those entries without touching third-party packages.
 
-Both files contain several `"version"` lines, and only three of them belong to the release. The replacement therefore anchors on **whole-line exact matches** and, inside `package-lock.json`, on the `packages[""]` block boundary. It never matches substrings and never treats indentation as optional.
-
-Every anchor is resolved in memory before the first `writeFileSync`, so a failed anchor leaves both files untouched. That ordering matters: a partial bump would leave `package.json` on the new version while `package-lock.json` stayed on the old one, and the `already at ${version}` guard would then reject the retry until someone manually ran `git checkout -- package.json`.
+The `Cargo.toml` replacement anchors on a **whole-line exact match** inside the `[workspace.package]` table. It never matches substrings and never looks outside that table, so a dependency entry or a future `[workspace.dependencies.<name>]` sub-table carrying the same version string cannot be rewritten. The npm-era bump script lost three releases to anchors that were looser than this; the rule stays.
 
 ```bash
 TARGET_VERSION="<version supplied by user>"
-node -e '
-const fs = require("node:fs");
-const version = process.argv[1];
-if (!/^\d+\.\d+\.\d+$/.test(version)) {
-  throw new Error(`Invalid release version (expected plain x.y.z, no v/prerelease): ${version}`);
-}
+if ! printf '%s\n' "$TARGET_VERSION" | grep -qxE '[0-9]+\.[0-9]+\.[0-9]+'; then
+  echo "Invalid release version (expected plain x.y.z, no v/prerelease): $TARGET_VERSION" >&2
+  exit 1
+fi
+CURRENT_VERSION=$(cargo metadata --no-deps --format-version 1 --manifest-path Cargo.toml \
+  | python3 -c 'import json,sys; print(next(p["version"] for p in json.load(sys.stdin)["packages"] if p["name"] == "kanvibe-app"))')
+if [ "$CURRENT_VERSION" = "$TARGET_VERSION" ]; then
+  echo "Cargo workspace is already at ${TARGET_VERSION}; pick a different target version" >&2
+  exit 1
+fi
 
-const current = JSON.parse(fs.readFileSync("package.json", "utf8")).version;
-if (current === version) {
-  throw new Error(`package.json is already at ${version}; pick a different target version`);
-}
+python3 - "$CURRENT_VERSION" "$TARGET_VERSION" <<'PY'
+import sys
 
-const rootNeedle = `  "version": "${current}",`;
-const rootReplacement = `  "version": "${version}",`;
+current, target = sys.argv[1], sys.argv[2]
+with open("Cargo.toml", encoding="utf-8") as manifest:
+    lines = manifest.read().split("\n")
 
-const findExactlyOneLine = (label, lines, needle) => {
-  const matches = lines.reduce((indexes, line, index) => (line === needle ? [...indexes, index] : indexes), []);
-  if (matches.length !== 1) {
-    throw new Error(`${label}: expected exactly 1 line matching ${JSON.stringify(needle)}, got ${matches.length}`);
-  }
-  return matches[0];
-};
+if lines.count("[workspace.package]") != 1:
+    raise SystemExit("Cargo.toml: expected exactly one [workspace.package] table")
+table_start = lines.index("[workspace.package]")
+table_end = next((index for index in range(table_start + 1, len(lines)) if lines[index].startswith("[")), len(lines))
+needle = f'version = "{current}"'
+matches = [index for index in range(table_start + 1, table_end) if lines[index] == needle]
+if len(matches) != 1:
+    raise SystemExit(f"Cargo.toml [workspace.package]: expected exactly 1 line {needle!r}, got {len(matches)}")
+lines[matches[0]] = f'version = "{target}"'
 
-// package.json: the release version is the only two-space-indented version line.
-// devEngines.packageManager.version is indented deeper and must survive untouched.
-const packageLines = fs.readFileSync("package.json", "utf8").split("\n");
-packageLines[findExactlyOneLine("package.json top-level version", packageLines, rootNeedle)] = rootReplacement;
+with open("Cargo.toml", "w", encoding="utf-8") as manifest:
+    manifest.write("\n".join(lines))
+PY
 
-const hasLock = fs.existsSync("package-lock.json");
-let lockLines = null;
-if (hasLock) {
-  lockLines = fs.readFileSync("package-lock.json", "utf8").split("\n");
-  lockLines[findExactlyOneLine("package-lock.json top-level version", lockLines, rootNeedle)] = rootReplacement;
+# Refresh only the workspace members' lock entries. On failure, restore both files so a retry starts clean;
+# otherwise the "already at" guard above would refuse the rerun.
+if ! cargo update --workspace; then
+  git checkout -- Cargo.toml Cargo.lock
+  exit 1
+fi
 
-  // packages[""] is the root package block. Its six-space version line is textually identical
-  // to the one in every dependency that happens to sit on the same version, so scan only
-  // between the block opener and its closing brace.
-  const blockStart = lockLines.indexOf(`    "": {`);
-  if (blockStart === -1) {
-    throw new Error("package-lock.json: packages[\"\"] block opener not found");
-  }
-  const innerNeedle = `      "version": "${current}",`;
-  let innerIndex = -1;
-  for (let i = blockStart + 1; i < lockLines.length; i++) {
-    if (lockLines[i] === "    },") break;
-    if (lockLines[i] === innerNeedle) {
-      innerIndex = i;
-      break;
-    }
-  }
-  if (innerIndex === -1) {
-    throw new Error("package-lock.json: packages[\"\"].version line not found inside the root package block");
-  }
-  lockLines[innerIndex] = `      "version": "${version}",`;
-}
-
-// Every anchor is resolved by this point, so the writes happen together or not at all.
-// Writing package.json before the lock anchors were checked used to leave a half-bumped
-// tree on a lock failure, and the "already at" guard above then refused the retry.
-fs.writeFileSync("package.json", packageLines.join("\n"));
-if (hasLock) {
-  fs.writeFileSync("package-lock.json", lockLines.join("\n"));
-}
-' "$TARGET_VERSION"
-
-node -p "require('./package.json').version"
-node -p "require('./package.json').devEngines.packageManager.version"
-test -f package-lock.json && node -e 'const lock = require("./package-lock.json"); console.log(lock.version, lock.packages[""].version);'
-git diff --numstat -- package.json package-lock.json
+cargo metadata --locked --format-version 1 >/dev/null
+cargo metadata --no-deps --format-version 1 --manifest-path Cargo.toml \
+  | python3 -c 'import json,sys; packages = json.load(sys.stdin)["packages"]; print(len(packages), sorted({p["version"] for p in packages}))'
+git diff --numstat -- Cargo.toml Cargo.lock
+git diff -U0 -- Cargo.lock | grep -E '^[-+]' | grep -vE '^(\+\+\+|---) ' \
+  | grep -vxE "[-+]version = \"(${CURRENT_VERSION//./\\.}|${TARGET_VERSION//./\\.})\"" \
+  && { echo "Cargo.lock changed more than workspace version lines" >&2; exit 1; }
+git status --short
 ```
 
 The bump is correct only when all four hold:
 
-1. `package.json` version and both `package-lock.json` versions print the user-selected target version. Re-reading them through `require` also proves the files still parse as JSON.
-2. `devEngines.packageManager.version` still prints the pnpm pin, not the release version.
-3. `git diff --numstat` reports `1 1 package.json` and `2 2 package-lock.json`. Any other count means the edit escaped its anchors.
+1. `cargo metadata --locked` succeeds, which proves `Cargo.lock` already matches the bumped manifest and the build will not rewrite it.
+2. The `--no-deps` line prints the workspace member count `N` and a single version set equal to the target version, for example `16 ['1.6.1']`.
+3. `git diff --numstat` reports `1 1 Cargo.toml` and `N N Cargo.lock` with the same `N`, and the last `grep` pipeline prints nothing: every changed `Cargo.lock` line is a workspace member's `version` line. Any other count means the edit escaped its anchor or `cargo update` resolved more than the workspace.
 4. Nothing else appears in `git status` at this stage; step 3.6 subsequently changes only the `mobile/pubspec.yaml` version line.
 
-Commit the version bump (including `package-lock.json`) with the release changes or ensure the release tag targets a commit that already contains the updated files.
-
-### Why the anchors look like this
-
-Three earlier approaches were tried and discarded. Do not reintroduce them.
-
-| Approach | Used in | Defect |
-| --- | --- | --- |
-| `JSON.parse` → `JSON.stringify` round-trip | up to 1.0.8 | Reserializes the whole file, so unrelated lines land in the release diff. |
-| `^(\s*)"version": "\d+\.\d+\.\d+"` regex | 1.0.8 | `\s*` also matches the deeper indentation of `devEngines.packageManager.version`, which rewrites the **pnpm pin** to the release version. |
-| `text.split(<literal indented needle>)` | 1.1.0 | `split` has no concept of line boundaries. A six-space dependency line *contains* the two-space needle as a substring, so the anchor is not isolated. |
-
-The third defect stayed invisible in 1.1.0 only by luck: the then-current version `1.0.10` happened to match no dependency. In 1.2.0 the current version was `1.1.0`, a common value that twenty dependencies in `package-lock.json` also carried, and the two-space needle matched 22 places. The safety of that anchor depended on how rare the current version string happened to be — which is not a property a release procedure may rely on.
+Commit the version bump (`Cargo.toml` and `Cargo.lock`) with the release changes or ensure the release tag targets a commit that already contains the updated files.
 
 ## 3. Build the Versioned DMG
 
-KanVibe requires Node 24.x. If `node -p "process.version"` is not v24, switch to Node 24 with the local toolchain available on that Mac before running the release build.
+The build uses the active Rust toolchain on that Mac (CI uses stable; the workspace needs edition 2024 support) and the four rustup targets and `cargo-zigbuild` checked in preflight.
+
+`build-macos.sh` reads the signing credentials from the environment or from `.env` at the root of the checkout it runs in, which is the release worktree. `.env` is gitignored, so a freshly created release worktree has none. Either place the operator's existing `.env` at the release worktree root (it stays untracked, and the release diff check below only looks at tracked files), or pass the four keys to this one command only. Do not export them into the interactive shell and never print their values.
 
 Run the release build command after the version bump:
 
 ```bash
-pnpm install --frozen-lockfile
-pnpm run deploy
+packaging/macos/build-macos.sh
 ```
 
-Expected artifact for version `1.0.2`:
+The script runs, in order: `cargo build --release -p kanvibe-app --bin kanvibe` (host architecture only), `packaging/build-remote-agents.sh --out <tmp>/agents` (Linux-x86_64, Linux-aarch64, Darwin-x86_64, Darwin-arm64), `.app` assembly with `shasum -a 256 -c SHA256SUMS`, codesign of the Darwin agents and the app (`--options runtime`, `packaging/macos/entitlements.plist`), `codesign --verify --deep --strict --verbose=2`, `hdiutil create`, DMG codesign, `xcrun notarytool submit --wait`, `xcrun stapler staple`, `xcrun stapler validate`, and finally `[kanvibe] DMG sha256:` followed by the hash. Each step is echoed as `[kanvibe] $ <command>`; the script exits on the first failure.
+
+Expected artifacts for version `1.0.2`:
 
 ```text
 dist/KanVibe-1.0.2.dmg
+dist/mac/KanVibe.app
 ```
 
-For any version, derive and verify the artifact path from `package.json`:
+For any version, derive and verify the artifact path from the Cargo workspace:
 
 ```bash
-VERSION=$(node -p "require('./package.json').version")
+VERSION=$(cargo metadata --no-deps --format-version 1 --manifest-path Cargo.toml \
+  | python3 -c 'import json,sys; print(next(p["version"] for p in json.load(sys.stdin)["packages"] if p["name"] == "kanvibe-app"))')
 DMG="dist/KanVibe-${VERSION}.dmg"
 test -f "$DMG"
 shasum -a 256 "$DMG"
+git status --short
 ```
 
-Keep the checksum from this final DMG for the cask update. If you rebuild for any reason, the checksum changes — always re-hash the artifact you are actually publishing.
+Keep the checksum from this final DMG for the cask update. If you rebuild for any reason, the checksum changes — always re-hash the artifact you are actually publishing. `git status --short` must still show only the step 2 version files; a `Cargo.lock` change here means step 2 did not refresh the lock.
 
-`scripts/dist-deploy.cjs` prints the dependency-collection mode and a packaging guard result. Both lines must appear and must look like this:
+Read these lines in the build output and keep them for the final report:
 
-```text
-• searching for node modules  pm=npm  searchDir=/Users/<user>/Documents/kanvibe/kanvibe
-[kanvibe] packaged node_modules verified: 278 packages
-```
+- `codesign --verify` reporting the app as valid on disk and satisfying its Designated Requirement;
+- `notarytool submit --wait` ending with `status: Accepted`;
+- `stapler validate` succeeding on the DMG;
+- the `SHA256SUMS` listing printed by `build-remote-agents.sh`, which must name all four `kanvibe-remote-agent-<OS>-<arch>` files. The Darwin hashes in that listing are pre-signing; `build-macos.sh` rewrites `SHA256SUMS` inside the bundle after signing, so verify the bundle copy in step 3.5, not this listing.
 
-If the collector reports `pm=pnpm`, the build is wrong even though it will succeed: that collector silently omits transitive dependencies. Check that `package.json` has no `packageManager` field and that the deploy script is invoking electron-builder directly, then rebuild. The guard aborts the deploy when required modules are missing, but treat `pm=pnpm` itself as a failure signal.
+The DMG contains one architecture: the host's. `cargo build` runs without `--target`, so a build on Apple Silicon ships an arm64 `kanvibe` only. Report the architecture from step 3.5 in the release notes.
 
 ### Notarization blocked by an Apple agreement
 
-When `pnpm run deploy` fails with `HTTP status code: 403. A required agreement is missing or has expired`, this is an Apple account state problem, not a build problem. Do not rebuild to retry — check the credential cheaply instead:
+When `xcrun notarytool submit` inside `build-macos.sh` fails with `HTTP status code: 403. A required agreement is missing or has expired`, this is an Apple account state problem, not a build problem. Do not rebuild to retry — check the credential cheaply instead, supplying the same values the script read (environment or `.env`) to this command only:
 
 ```bash
 xcrun notarytool history --key "$APPLE_API_KEY" --key-id "$APPLE_API_KEY_ID" --issuer "$APPLE_API_ISSUER"
 ```
 
-If a previous release notarized successfully with the same key and team, the configuration is fine and only the agreement changed. The Account Holder must accept the pending agreement at developer.apple.com, and propagation to the notary service takes a few minutes. Poll the command above and resume the build once it returns history.
+If a previous release notarized successfully with the same key and team, the configuration is fine and only the agreement changed. The Account Holder must accept the pending agreement at developer.apple.com, and propagation to the notary service takes a few minutes. Poll the command above and rerun `packaging/macos/build-macos.sh` once it returns history.
+
+When notarization returns a status other than `Accepted`, read Apple's verdict for that submission before changing anything:
+
+```bash
+xcrun notarytool log <submission-id> --key "$APPLE_API_KEY" --key-id "$APPLE_API_KEY_ID" --issuer "$APPLE_API_ISSUER"
+```
 
 ## 3.5. Smoke-Test the Built App (hard gate)
 
-**Do not publish a release without this step.** Code signing, notarization, stapling, and checksum verification all pass on a bundle whose app cannot start. KanVibe 1.0.4 shipped exactly that way: the DMG was signed, notarized, stapled, and its checksum matched, but `app.asar` was missing seven transitive dependencies and the app died on launch with `Cannot find module 'ms'`.
+**Do not publish a release without this step.** Code signing, notarization, stapling, and checksum verification all pass on a bundle whose app cannot start. KanVibe 1.0.4 shipped exactly that way: the DMG was signed, notarized, stapled, and its checksum matched, but the app died on launch. The Rust bundle has no `app.asar`, but the same class of failure remains: a binary that panics at startup, a database migration that fails on an empty data directory, a hook server that never binds, or missing remote-agent binaries all survive signing.
 
-Mount the DMG you are about to publish, copy the app out, launch it against a throwaway data directory, and read that run's own diagnostics log:
+The checks mirror `parity/tools/app-launch/check_release_launch.py`, the Linux release-launch check used by `packaging/linux/build-linux.sh --verify` (Xvfb/xdotool, Linux only). On the release Mac, mount the DMG you are about to publish, copy the app out, check its contents, launch it against a throwaway data directory and port, and read that run's own diagnostics log:
 
 ```bash
-VERSION=$(node -p "require('./package.json').version")
-SMOKE_DATA=$(mktemp -d /tmp/kanvibe-smoke-XXXXXX)
+VERSION=$(cargo metadata --no-deps --format-version 1 --manifest-path Cargo.toml \
+  | python3 -c 'import json,sys; print(next(p["version"] for p in json.load(sys.stdin)["packages"] if p["name"] == "kanvibe-app"))')
+DMG="dist/KanVibe-${VERSION}.dmg"
+SMOKE_ROOT=$(mktemp -d /tmp/kanvibe-smoke-XXXXXX)
+SMOKE_MOUNT="$SMOKE_ROOT/mount"
+SMOKE_APP="$SMOKE_ROOT/KanVibe.app"
+SMOKE_DATA="$SMOKE_ROOT/appdata"
 LOG="$SMOKE_DATA/logs/kanvibe-desktop.log"
+# The installed app owns 9736 (hook) and 9746 (mobile TLS = hook + 10). Use a free pair.
+SMOKE_PORT=39736
+if lsof -nP -iTCP:"$SMOKE_PORT" -sTCP:LISTEN || lsof -nP -iTCP:"$((SMOKE_PORT + 10))" -sTCP:LISTEN; then
+  echo "smoke port $SMOKE_PORT or $((SMOKE_PORT + 10)) is in use; pick another SMOKE_PORT" >&2
+  exit 1
+fi
 
-hdiutil attach "dist/KanVibe-${VERSION}.dmg" -nobrowse -readonly -quiet
-MOUNT="/Volumes/KanVibe ${VERSION}-arm64"
-spctl -a -t exec -vv "$MOUNT/KanVibe.app"
-rm -rf /tmp/KanVibe-smoke.app
-cp -R "$MOUNT/KanVibe.app" /tmp/KanVibe-smoke.app
-hdiutil detach "$MOUNT" -quiet
+xcrun stapler validate "$DMG"
+mkdir "$SMOKE_MOUNT"
+hdiutil attach "$DMG" -nobrowse -readonly -mountpoint "$SMOKE_MOUNT" -quiet
+spctl -a -t exec -vv "$SMOKE_MOUNT/KanVibe.app"
+cp -R "$SMOKE_MOUNT/KanVibe.app" "$SMOKE_APP"
+hdiutil detach "$SMOKE_MOUNT" -quiet
 
-open -n --env "KANVIBE_APP_DATA_DIR=$SMOKE_DATA" -a /tmp/KanVibe-smoke.app
+# Bundle contents: version, architecture, signature, and the four remote agents with matching hashes.
+/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$SMOKE_APP/Contents/Info.plist"
+file "$SMOKE_APP/Contents/MacOS/kanvibe"
+codesign --verify --deep --strict --verbose=2 "$SMOKE_APP"
+ls "$SMOKE_APP/Contents/Resources/remote-agents"
+(cd "$SMOKE_APP/Contents/Resources/remote-agents" && shasum -a 256 -c SHA256SUMS)
+
+open -n -a "$SMOKE_APP" --stdout "$SMOKE_ROOT/app-output.log" --stderr "$SMOKE_ROOT/app-output.log" \
+  --args --data-dir "$SMOKE_DATA" --kanvibe-hook-port "$SMOKE_PORT"
 sleep 15
 
-pgrep -f "KanVibe-smoke.app/Contents/MacOS/KanVibe" >/dev/null || { echo "app exited during startup" >&2; exit 1; }
+pgrep -f "$SMOKE_APP/Contents/MacOS/kanvibe" >/dev/null || { echo "app exited during startup" >&2; exit 1; }
+curl -s -o /dev/null -w 'hook health: %{http_code}\n' "http://127.0.0.1:${SMOKE_PORT}/api/hooks/health"
+sqlite3 "$SMOKE_DATA/kanvibe.db" "SELECT COUNT(*) FROM migrations"
+sqlite3 "$SMOKE_DATA/kanvibe.db" \
+  "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('projects', 'kanban_tasks', 'app_settings', 'migrations') ORDER BY name"
 wc -l "$LOG"
-grep -icE "cannot find module|MODULE_NOT_FOUND|unhandled rejection" "$LOG"
-grep -c "invoke-succeeded" "$LOG"
+grep -cF 'main:startup' "$LOG"
+grep -cF 'main:hook-server-listening' "$LOG"
+grep -cE 'main:uncaught-exception|main:hook-server-failed|main:development-database-failed' "$LOG"
 
-pkill -f "KanVibe-smoke.app"
-rm -rf /tmp/KanVibe-smoke.app "$SMOKE_DATA"
+# SIGTERM takes the app's normal quit path (server, remote agents, PTYs are shut down).
+pkill -TERM -f "$SMOKE_APP/Contents/MacOS/kanvibe"
+for _ in $(seq 20); do
+  pgrep -f "$SMOKE_APP/Contents/MacOS/kanvibe" >/dev/null || break
+  sleep 1
+done
+pgrep -f "$SMOKE_APP/Contents/MacOS/kanvibe" >/dev/null && { echo "app did not exit on SIGTERM" >&2; exit 1; }
+curl -s -o /dev/null -w 'hook health after quit: %{http_code}\n' "http://127.0.0.1:${SMOKE_PORT}/api/hooks/health"
+
+rm -rf "$SMOKE_ROOT"
 ```
 
-The release may proceed only when all four hold:
+The release may proceed only when all of these hold:
 
-1. `spctl -a -t exec` reports `accepted` and `source=Notarized Developer ID`.
-2. The process is still alive after the sleep.
-3. The module-error count is `0`.
-4. The `invoke-succeeded` count is greater than zero, which proves the database and IPC layer actually came up rather than the window merely opening.
+1. `stapler validate` succeeds on the DMG, and `spctl -a -t exec` reports `accepted` and `source=Notarized Developer ID` for the app.
+2. `CFBundleShortVersionString` prints the target version, `file` reports the expected architecture, `codesign --verify` passes, `remote-agents/` holds `kanvibe-remote-agent-Linux-x86_64`, `-Linux-aarch64`, `-Darwin-x86_64`, `-Darwin-arm64` plus `SHA256SUMS`, and `shasum -c` reports `OK` for all four.
+3. The process is still alive after the sleep.
+4. `hook health` prints `200`, which proves the in-process hook server bound the smoke port.
+5. The `migrations` count is at least 17 (the same floor `check_release_launch.py` uses) and all four core tables are listed, which proves the empty data directory was migrated.
+6. `main:startup` and `main:hook-server-listening` counts are each greater than zero, and the error-event count is `0`.
+7. The app exits within 20 seconds of SIGTERM and `hook health after quit` prints `000`.
 
-Read the counts from `$LOG` inside `$SMOKE_DATA`, never from `~/Library/Application Support/kanvibe`. Do not delete the user's log to get a clean read.
+Read the log from `$LOG` inside `$SMOKE_DATA`, never from `~/Library/Application Support/kanvibe`. Do not delete the user's log to get a clean read. If the smoke test fails, keep `$SMOKE_ROOT` (do not run the final `rm -rf`) so `app-output.log` and the diagnostics log stay available for diagnosis.
 
 ### Why the smoke run is isolated
 
-`electron/main.js` calls `applyAppDataDirectoryOverride(app, process.env)` at module load, well before `app.whenReady()`. That helper (`electron/runtimeEnvironment.js`) turns `KANVIBE_APP_DATA_DIR` into `app.setPath("userData", ...)`, and the diagnostics log path is derived from `userData` (`electron/diagnostics.js`), so the smoke run's database **and** its log both follow the temporary directory. The user's installed instance, its data, and its existing log are left alone — during the 1.2.0 smoke the verdict came from a 43-line isolated log while `/Applications/KanVibe.app` kept running untouched.
+The release binary resolves its data directory in `DesktopLaunchPlan::resolve` (`crates/kanvibe-app/src/desktop_process.rs`) through `resolve_app_data_directory` (`crates/kanvibe-server/src/launch.rs`): a `--data-dir` argument wins over the installed location, and the database (`<data-dir>/kanvibe.db`), the mobile TLS certificate (`<data-dir>/mobile-tls/`), and the diagnostics log (`<data-dir>/logs/kanvibe-desktop.log`, from `resolve_desktop_log_path`) all follow it. `--kanvibe-hook-port` overrides the packaged default `9736` through `resolve_hook_server_port`. Without both arguments, the smoke copy would open the user's real `~/Library/Application Support/kanvibe` database and collide with the installed app on `9736`.
 
-`open --env` applies the variable to the launched app only and does not touch the shell, so this stays inside the repository's runtime-environment safety rules. `open -n` is required: without it macOS just focuses an already-running instance instead of starting the copy under test.
+The Rust app does **not** read `KANVIBE_APP_DATA_DIR`; the Electron-era `open --env KANVIBE_APP_DATA_DIR=...` launch would silently run against the user's real data. Pass `--data-dir` through `open --args`, which reaches the launched app only and does not touch the shell, so this stays inside the repository's runtime-environment safety rules. `open -n` is required: without it macOS just focuses an already-running instance instead of starting the copy under test.
 
-If the smoke test fails, stop. Do not publish, do not update the cask, and do not open PRs. Diagnose the bundle first; `app.asar` contents can be listed from its header:
-
-```bash
-# Run this twice: once for the candidate bundle, once for a build known to be good.
-ASAR_PATH="dist/mac-arm64/KanVibe.app/Contents/Resources/app.asar"
-# ASAR_PATH="/Applications/KanVibe.app/Contents/Resources/app.asar"
-node -e '
-const fs=require("fs");
-const p=process.argv[1] || "dist/mac-arm64/KanVibe.app/Contents/Resources/app.asar";
-const fd=fs.openSync(p,"r");
-const b=Buffer.alloc(16); fs.readSync(fd,b,0,16,0);
-const hb=Buffer.alloc(b.readUInt32LE(12)); fs.readSync(fd,hb,0,hb.length,16);
-const h=JSON.parse(hb.toString("utf8").replace(/\0+$/,""));
-fs.closeSync(fd);
-const entries=Object.entries(h.files.node_modules.files);
-const expanded=entries.reduce((n,[name,entry])=>n+(name.startsWith("@")?Object.keys(entry.files??{}).length:1),0);
-console.log(`${entries.length} top-level entries (scopes counted once)`);
-console.log(`${expanded} packages with scopes expanded  <-- matches the build guard`);
-' "$ASAR_PATH"
-```
-
-The two numbers are both correct and they are not interchangeable. The build guard line `packaged node_modules verified: N packages` comes from `readAsarNodeModuleNames()` in `scripts/dist-deploy.cjs`, which expands `@scope/name` into one entry per scoped package, so it always reports the larger number. Counting the top-level keys instead reports the smaller one. Reading the smaller number as if it were the guard's makes a healthy build look like the 1.0.4 dependency-loss failure.
-
-Do not judge either number against a remembered absolute value; package counts move whenever dependencies change. Judge by comparison: rerun the same snippet with `ASAR_PATH` pointed at a build known to be good — the installed `/Applications/KanVibe.app/Contents/Resources/app.asar` is the convenient one — and compare it with the candidate bundle. The `||` fallback rather than `??` is deliberate, because an unset `ASAR_PATH` still passes an empty-string argument that `??` would accept as a path.
+If the smoke test fails, stop. Do not publish, do not update the cask, and do not open PRs. Diagnose from `$SMOKE_ROOT/app-output.log` (stdout/stderr, including the `[kanvibe] Desktop diagnostics log:` line and any panic message) and `$LOG` (`main:uncaught-exception` carries the panic text). If `remote-agents/` is incomplete, rerun `packaging/build-remote-agents.sh --out <dir>` on the release Mac and read which platform it reports under `missing platforms:`.
 
 ## 3.6 Build Android and iOS Release Artifacts
 
@@ -420,7 +425,10 @@ Draft release notes in a temporary markdown file. Match the existing release-not
 
 - The version was updated from `1.0.1` to `1.0.2` before building.
 - The DMG artifact is `KanVibe-1.0.2.dmg`.
+- The app is built for Apple Silicon (arm64).
 ```
+
+State the architecture that `file` reported in step 3.5; the DMG contains only the build host's architecture.
 
 ### Review release notes with the user before publishing
 
@@ -440,7 +448,8 @@ Create the release with the DMG asset only after the user approves the notes. Us
 After release-note approval, commit and push the release branch before deriving the tag target. The target SHA must already exist in GitHub, and the visible release PR diff must stay limited to the version bump files. If extra files appear, stop and report the blocker instead of tagging or merging.
 
 ```bash
-VERSION=$(node -p "require('./package.json').version")
+VERSION=$(cargo metadata --no-deps --format-version 1 --manifest-path Cargo.toml \
+  | python3 -c 'import json,sys; print(next(p["version"] for p in json.load(sys.stdin)["packages"] if p["name"] == "kanvibe-app"))')
 DMG="dist/KanVibe-${VERSION}.dmg"
 RELEASE_NOTES="/tmp/kanvibe-release-${VERSION}.md"
 BASE_BRANCH="dev"
@@ -449,34 +458,27 @@ RELEASE_BRANCH="${RELEASE_BRANCH:-release/${VERSION}}"
 # Verify the release branch diff is only the expected version bump against the required dev base.
 git fetch origin --prune
 git diff --name-status "origin/${BASE_BRANCH}"
-node -e '
-const { execSync } = require("node:child_process");
-const baseBranch = process.argv[1];
-const allowed = new Set(["package.json", "package-lock.json", "mobile/pubspec.yaml"]);
-const files = execSync(`git diff --name-only origin/${baseBranch}`, { encoding: "utf8" })
-  .trim()
-  .split(/\n/)
-  .filter(Boolean);
-const unexpected = files.filter((file) => !allowed.has(file));
-if (unexpected.length > 0) {
-  throw new Error(`Unexpected release PR files: ${unexpected.join(", ")}`);
-}
-' "$BASE_BRANCH"
+UNEXPECTED_FILES=$(git diff --name-only "origin/${BASE_BRANCH}" | grep -vxE 'Cargo\.toml|Cargo\.lock|mobile/pubspec\.yaml' || true)
+if [ -n "$UNEXPECTED_FILES" ]; then
+  echo "Unexpected release PR files:" >&2
+  printf '%s\n' "$UNEXPECTED_FILES" >&2
+  exit 1
+fi
 
-git add package.json package-lock.json mobile/pubspec.yaml
+git add Cargo.toml Cargo.lock mobile/pubspec.yaml
 if ! git diff --cached --quiet; then
   git commit -m "chore(release): publish KanVibe ${VERSION}"
 fi
 git push -u origin "$RELEASE_BRANCH"
 
 # Fail fast if the committed release branch does not contain the selected version.
-if ! git diff --quiet -- package.json package-lock.json mobile/pubspec.yaml || ! git diff --cached --quiet -- package.json package-lock.json mobile/pubspec.yaml; then
+if ! git diff --quiet -- Cargo.toml Cargo.lock mobile/pubspec.yaml || ! git diff --cached --quiet -- Cargo.toml Cargo.lock mobile/pubspec.yaml; then
   echo "Release version files have uncommitted changes; commit the version bump before tagging the release." >&2
   exit 1
 fi
-HEAD_VERSION=$(git show HEAD:package.json | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).version")
-if [ "$HEAD_VERSION" != "$VERSION" ]; then
-  echo "HEAD package.json version ($HEAD_VERSION) does not match target ($VERSION); commit the bump onto the release commit first." >&2
+# Step 2 already proved this is the only such line in the [workspace.package] table.
+if ! git show HEAD:Cargo.toml | grep -qx "version = \"${VERSION}\""; then
+  echo "HEAD Cargo.toml does not carry workspace version ${VERSION}; commit the bump onto the release commit first." >&2
   exit 1
 fi
 TARGET_SHA=$(git rev-parse HEAD)
@@ -516,7 +518,8 @@ Read `references/homebrew-cask-repository.md` first and use its local repository
 Compute the checksum from the exact DMG uploaded to the release:
 
 ```bash
-VERSION=$(node -p "require('./package.json').version")
+VERSION=$(cargo metadata --no-deps --format-version 1 --manifest-path Cargo.toml \
+  | python3 -c 'import json,sys; print(next(p["version"] for p in json.load(sys.stdin)["packages"] if p["name"] == "kanvibe-app"))')
 DMG="dist/KanVibe-${VERSION}.dmg"
 SHA256=$(shasum -a 256 "$DMG" | cut -d ' ' -f 1)
 printf '%s\n' "$SHA256"
@@ -575,7 +578,8 @@ Stop and report a blocker only if checks fail, a PR has active unresolved review
 Create or reuse the release PR from `release/<version>` to `dev`. Write a concise English PR body with Summary, Test Plan, GitHub release URL, DMG asset path, SHA-256, and Homebrew cask commit/status.
 
 ```bash
-VERSION=$(node -p "require('./package.json').version")
+VERSION=$(cargo metadata --no-deps --format-version 1 --manifest-path Cargo.toml \
+  | python3 -c 'import json,sys; print(next(p["version"] for p in json.load(sys.stdin)["packages"] if p["name"] == "kanvibe-app"))')
 RELEASE_BRANCH="${RELEASE_BRANCH:-release/${VERSION}}"
 BASE_BRANCH="dev"
 RELEASE_PR_BODY="/tmp/kanvibe-release-pr-${VERSION}.md"
@@ -597,7 +601,7 @@ RELEASE_HEAD_SHA=$(gh pr view "$RELEASE_PR" --repo rookedsysc/kanvibe --json hea
 printf 'Release PR head SHA: %s\n' "$RELEASE_HEAD_SHA"
 ```
 
-Verify the release PR file list before merging. It should contain only `package.json`, `package-lock.json`, and the single version-line change in `mobile/pubspec.yaml`. If a release-specific file is intentionally added, name it in the PR body and final handoff; otherwise stop.
+Verify the release PR file list before merging. It should contain only `Cargo.toml` (the `[workspace.package]` version line), `Cargo.lock` (workspace member version lines), and the single version-line change in `mobile/pubspec.yaml`. If a release-specific file is intentionally added, name it in the PR body and final handoff; otherwise stop.
 
 This file-scope check applies **only to the release PR into `dev`**. The promotion PR into `main` legitimately carries every commit that `main` is behind by, so a large diff there is expected and is not a blocker.
 
@@ -718,8 +722,7 @@ PROMOTION_STATE=$(gh pr view "$PROMOTION_PR" --repo rookedsysc/kanvibe --json st
 printf 'Promotion PR state: %s\n' "$PROMOTION_STATE"
 
 git fetch origin main
-MAIN_VERSION=$(git show origin/main:package.json | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).version")
-test "$MAIN_VERSION" = "$VERSION"
+git show origin/main:Cargo.toml | grep -qx "version = \"${VERSION}\""
 
 # Clean up the release branch only after the main promotion is merged and the release commit's
 # workflow runs have reached a conclusion. Deleting the branch cancels runs still in progress,
@@ -741,11 +744,11 @@ fi
 Before reporting success, collect real output for:
 
 - dev-only preflight evidence: current branch `dev`, clean status, and local `HEAD` matching `origin/dev` before the release branch was cut;
-- `pnpm --version` showing 10.x and `package.json` carrying no `packageManager` field;
+- `cargo --version`/`rustc --version`, the four installed rustup targets, `cargo-zigbuild` presence, the four credential keys reported present (names only), and the matching `security find-identity` identity;
 - current version printed before the bump and the user-selected target version;
-- `git diff --numstat -- package.json package-lock.json` showing `1 1 package.json` and `2 2 package-lock.json`, plus `devEngines.packageManager.version` still on the pnpm pin;
-- `pnpm run deploy` completion, including the `pm=npm` collector line and the `packaged node_modules verified: N packages` guard line;
-- **smoke-test evidence from step 3.5**: `spctl` verdict, process alive after launch, module-error count `0`, and a non-zero `invoke-succeeded` count;
+- `cargo metadata --locked` succeeding after the bump, the workspace member count with a single target version, and `git diff --numstat -- Cargo.toml Cargo.lock` showing `1 1 Cargo.toml` and `N N Cargo.lock` with only workspace `version` lines changed;
+- `packaging/macos/build-macos.sh` completion, including `codesign --verify` passing, `notarytool` `status: Accepted`, `stapler validate` succeeding, and the four remote agents in the `SHA256SUMS` listing;
+- **smoke-test evidence from step 3.5**: `stapler`/`spctl` verdicts, bundle version and architecture, remote-agent `shasum -c` result, process alive after launch, hook health `200`, migration count and core tables, `main:startup`/`main:hook-server-listening` counts with error-event count `0`, and the clean SIGTERM exit;
 - `test -f dist/KanVibe-<version>.dmg` and `shasum -a 256`;
 - **mobile build evidence from step 3.6**: FVM/toolchain versions, `analyze`/`test`/APK/AAB/IPA command exit statuses, Android release signing configuration, exported iOS signing/version metadata, and nonempty APK/AAB/IPA paths with SHA-256;
 - `mobile/pubspec.yaml` diff containing only the target version and incremented build number, committed in the same release source as the desktop bump;
@@ -757,7 +760,7 @@ Before reporting success, collect real output for:
 - release PR URL, file list, check result, unresolved review-thread count, and merge or auto-merge result into `dev`;
 - the release commit's workflow conclusion from `gh run list --commit <sha>`, collected after the merge because a pending check does not hold it;
 - promotion PR URL, check result, unresolved review-thread count, and merge or auto-merge result into `main`;
-- `git show origin/main:package.json` confirming `main` now contains the release version, or the exact blocker if auto-merge is still pending.
+- `git show origin/main:Cargo.toml` confirming `main` now carries the release workspace version, or the exact blocker if auto-merge is still pending.
 
 Final handoff format:
 
@@ -772,8 +775,8 @@ Final handoff format:
 - Android: <APK/AAB paths, version/build number, signing result, SHA-256>
 - iOS: <archive/IPA paths, exported version/build number, signing result, SHA-256>
 - Mobile build verification: <analyze/test/build command exit statuses; device QA only if run>
-- Packaging guard: <collector mode + verified package count>
-- Smoke test: <app alive / module errors / invoke-succeeded count>
+- Bundle check: <architecture / codesign verify / notarization status / remote agents 4 + SHA256SUMS OK>
+- Smoke test: <app alive / hook health / migrations / startup+listening log counts / error events / SIGTERM exit>
 - GitHub release: <release URL>
 - Homebrew cask: <commit SHA or branch/status>
 - Release PR: <URL> → <merged/auto-merge/blocker>
@@ -787,9 +790,9 @@ Final handoff format:
 
 ## Common Pitfalls
 
-1. **Skipping the version question.** Always report the current package version and ask the user what version to release unless the prompt already contains the exact target version.
-2. **Running a stale version build.** Update `package.json` before `pnpm run deploy`, then derive the DMG path from the updated version.
-3. **Running on Linux and pretending success.** `pnpm run deploy` requires macOS codesign, notarytool, and stapler, so stop honestly when the host is not Darwin.
+1. **Skipping the version question.** Always report the current Cargo workspace version and ask the user what version to release unless the prompt already contains the exact target version.
+2. **Running a stale version build.** Update the `[workspace.package]` version and refresh `Cargo.lock` before `packaging/macos/build-macos.sh`, then derive the DMG path from the updated version.
+3. **Running on Linux and pretending success.** `packaging/macos/build-macos.sh` requires macOS codesign, hdiutil, notarytool, and stapler and exits on any other OS, so stop honestly when the host is not Darwin. `packaging/linux/build-linux.sh` builds Linux tarball/.deb bundles, not the DMG this release publishes.
 4. **Using a `v` tag.** The cask URL uses the raw version as the release tag. `v1.0.2` will break the current cask URL.
 5. **Checksum from the wrong file.** Always hash the final DMG produced after the version bump and release build.
 6. **Editing the cask before the release asset exists.** Homebrew fetch/audit can fail if the GitHub release asset is missing or still uploading.
@@ -800,12 +803,15 @@ Final handoff format:
 11. **Auto-merging through blockers.** Automatic merge is allowed only after checks pass or auto-merge is enabled from a pending state, active unresolved review threads are zero, GitHub reports the PR mergeable, and the PR file list matches the expected release scope.
 12. **Promoting moving `dev`.** Do not create the `main` promotion PR with `--head dev`; use the pinned release branch/SHA so commits that land on `dev` after the DMG build cannot ride along into `main`.
 13. **Starting from a non-`dev` checkout.** This workflow is dev-only at invocation. Stop instead of switching branches, inferring a different source, or running directly from `main`, feature branches, release branches, or detached HEADs.
-14. **Invoking the build as `pnpm deploy`.** `deploy` is a reserved pnpm command (workspace deploy), so `pnpm deploy` fails with `ERR_PNPM_CANNOT_DEPLOY` and never runs the release script. Always invoke the release build as `pnpm run deploy`.
-15. **Treating signing and notarization as proof the app works.** They verify provenance, not completeness. KanVibe 1.0.4 was signed, notarized, stapled, and checksum-matched, and still could not start because `app.asar` was missing seven transitive dependencies. Step 3.5 is the only check that catches this class of failure.
-16. **Adding a `packageManager` field to `package.json`.** electron-builder reads it before lock files and before the environment, which selects a dependency collector that drops transitive dependencies in this repository's hoisted layout. This is what broke 1.0.4. Pin pnpm through CI's `pnpm/action-setup` `version` input instead.
-17. **Ignoring the `pm=` collector line.** The build succeeds either way, so `pm=pnpm` is easy to scroll past. It means the artifact is probably incomplete — treat it as a failure, not a detail.
+14. **Publishing an `--unsigned` build.** `packaging/macos/build-macos.sh --unsigned` produces a DMG with the same name but no signature, notarization, or stapled ticket. It is for local checks only; the release build takes no arguments.
+15. **Treating signing and notarization as proof the app works.** They verify provenance, not completeness. KanVibe 1.0.4 was signed, notarized, stapled, and checksum-matched, and still could not start. Step 3.5 is the only check that catches this class of failure.
+16. **Leaving `Cargo.lock` stale after the bump.** `build-macos.sh` runs `cargo build` without `--locked`, so the build rewrites a stale lock instead of failing. The DMG is then built from a tree that differs from the release commit, and an uncommitted `Cargo.lock` shows up after the build. Run `cargo update --workspace` in step 2 and prove it with `cargo metadata --locked`.
+17. **Getting past a missing remote agent with `--allow-missing`.** `build-remote-agents.sh` fails unless all four platforms build, and `build-macos.sh` calls it without `--allow-missing` on purpose. The two Linux agents need the musl rustup targets and `cargo-zigbuild` on the Mac; install them instead of weakening the build. A bundle without an agent cannot drive remote hosts of that platform.
 18. **Rebuilding to retry an Apple agreement 403.** The failure is account state, not build state. Re-check with `xcrun notarytool history` and, if an earlier release succeeded with the same key, wait for propagation rather than spending build cycles.
-19. **Launching the app by executing its binary directly.** Use `open -a`. Running `KanVibe.app/Contents/MacOS/KanVibe` as a child of the terminal makes macOS attribute the app's file-access prompt to the terminal process; a denial there revokes `~/Documents` access for the whole process tree and blocks the rest of the release.
+19. **Launching the app by executing its binary directly.** Use `open -n -a <app> --args ...`. Running `KanVibe.app/Contents/MacOS/kanvibe` as a child of the terminal makes macOS attribute the app's file-access prompt to the terminal process; a denial there revokes `~/Documents` access for the whole process tree and blocks the rest of the release.
 20. **Blocking on the promotion PR's diff size.** The file-scope guard belongs to the release PR into `dev`. The promotion PR into `main` carries every commit `main` is behind by, so a wide diff there is normal.
-21. **Misreading DMG verification signals.** `spctl -a -t open` on the DMG reports `rejected / no usable signature` and the app inside reports "does not have a ticket stapled" even for a correct release — the ticket is stapled to the DMG, and the disk image itself is not Developer ID signed. Judge with `xcrun stapler validate <dmg>` and `spctl -a -t exec` on the app.
+21. **Misreading DMG verification signals.** `build-macos.sh` notarizes and staples the DMG only, so the app inside reports "does not have a ticket stapled" even for a correct release. Judge with `xcrun stapler validate <dmg>` and `spctl -a -t exec` on the app, as step 3.5 does.
 22. **Shipping only the DMG after a mobile build fails.** Android APK/AAB and signed iOS IPA builds are required before publication. Missing signing configuration is a blocker; debug-signed Android output, unsigned iOS output, and stale artifacts are not successful release builds.
+23. **Smoke-testing with the Electron-era launch.** The Rust app ignores `KANVIBE_APP_DATA_DIR`, so `open --env KANVIBE_APP_DATA_DIR=...` runs the candidate against the user's real `~/Library/Application Support/kanvibe` data and the installed app's port `9736`. Isolate with `--args --data-dir <tmp> --kanvibe-hook-port <free port>`.
+24. **Assuming the DMG is universal.** `build-macos.sh` builds `kanvibe` for the host architecture only. Read the `file` output from step 3.5 and say which architecture the release supports instead of implying both.
+25. **Building in a release worktree without credentials.** `.env` is gitignored, so the new release worktree has none and `build-macos.sh` stops with `missing credential: CSC_NAME`. Provide the keys as described in step 3; never commit `.env` or export the keys into the interactive shell.
