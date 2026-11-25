@@ -201,3 +201,55 @@ fn resize_reflows_and_keeps_serializing() {
 
     assert_round_trip(&screen);
 }
+
+#[test]
+fn view_cells_expose_colors_and_attributes_without_changing_the_snapshot() {
+    let mut screen = TerminalScreen::new(20, 4);
+    screen.write(b"\x1b[2;4;7;38;2;1;2;3;48;5;200mA\x1b[0m\xed\x95\x9c");
+    let before = screen.serialize();
+
+    let cells = screen.visible_cells(0).unwrap();
+    assert_eq!(cells[0].text, "A");
+    assert!(cells[0].is_dim && cells[0].is_underline && cells[0].is_inverse);
+    assert_eq!(cells[0].fg, super::CellColor::Rgb(1, 2, 3));
+    assert_eq!(cells[0].bg, super::CellColor::Palette(200));
+    assert_eq!((cells[1].text.as_str(), cells[1].width), ("한", 2));
+    assert_eq!(cells[2].width, 0);
+    assert_eq!(screen.cursor().column, 3);
+    assert_eq!(screen.serialize(), before);
+}
+
+#[test]
+fn query_replies_are_collected_once_and_size_queries_use_the_screen_size() {
+    let mut screen = TerminalScreen::new(80, 24);
+    screen.write(b"\x1b[5n\x1b[18t");
+
+    assert_eq!(
+        screen.take_query_replies(),
+        ["\x1b[0n".to_string(), "\x1b[8;24;80t".to_string()]
+    );
+    assert!(screen.take_query_replies().is_empty());
+}
+
+#[test]
+fn input_modes_follow_the_program_requests() {
+    let mut screen = TerminalScreen::new(80, 24);
+    screen.write(b"\x1b[?1h\x1b[?2004h\x1b[?1000h\x1b[?1006h\x1b[?1049h");
+
+    let modes = screen.input_modes();
+    assert!(modes.is_application_cursor && modes.is_bracketed_paste);
+    assert!(modes.is_mouse_reporting && modes.is_sgr_mouse && modes.is_alternate_screen);
+}
+
+#[test]
+fn scrolling_the_view_shows_history_and_hides_the_cursor() {
+    let mut screen = TerminalScreen::new(10, 2);
+    screen.write(b"one\r\ntwo\r\nthree");
+    screen.scroll_display(1);
+
+    assert_eq!(screen.display_offset(), 1);
+    assert_eq!(screen.visible_cells(0).unwrap()[0].text, "o");
+    assert!(!screen.cursor().is_visible);
+    screen.scroll_display_to_bottom();
+    assert_eq!(screen.visible_cells(1).unwrap()[0].text, "t");
+}

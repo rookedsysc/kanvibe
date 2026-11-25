@@ -16,7 +16,7 @@ const VISIBLE_ON_BLANK: Flags = Flags::INVERSE
 
 /// xterm 색 모드와 값. 팔레트 0~15를 `31`로 썼든 `38;5;1`로 썼든 직렬화 결과가 같아 하나로 본다
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum CellColor {
+pub enum CellColor {
     Default,
     Palette(u8),
     Rgb(u8, u8, u8),

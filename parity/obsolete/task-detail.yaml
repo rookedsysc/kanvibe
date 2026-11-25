@@ -1,0 +1,55 @@
+# 작업 상세(views/task_detail) 담당 TS 테스트 가운데 Rust로 옮기지 않는 것.
+- id: TS-components-HooksStatusDialog-9e74c9
+  reason: "HooksStatusDialog는 TS 앱에서 어느 화면도 띄우지 않는 모달 변형이다(작업 상세는 HooksStatusCard를 상태 패널에 직접 그린다). 계획 Scope의 삭제 대상(쓰이지 않는 CollapsibleSidebar·HooksStatusDialog·ProjectSettings 변형)이라 Rust에 대응 화면이 없다."
+- id: TS-components-HooksStatusDialog-03b955
+  reason: "HooksStatusDialog는 TS 앱에서 어느 화면도 띄우지 않는 모달 변형이다(작업 상세는 HooksStatusCard를 상태 패널에 직접 그린다). 계획 Scope의 삭제 대상(쓰이지 않는 CollapsibleSidebar·HooksStatusDialog·ProjectSettings 변형)이라 Rust에 대응 화면이 없다."
+- id: TS-components-HooksStatusDialog-6250fb
+  reason: "HooksStatusDialog는 TS 앱에서 어느 화면도 띄우지 않는 모달 변형이다(작업 상세는 HooksStatusCard를 상태 패널에 직접 그린다). 계획 Scope의 삭제 대상(쓰이지 않는 CollapsibleSidebar·HooksStatusDialog·ProjectSettings 변형)이라 Rust에 대응 화면이 없다."
+- id: TS-components-HooksStatusDialog-d5f48d
+  reason: "HooksStatusDialog는 TS 앱에서 어느 화면도 띄우지 않는 모달 변형이다(작업 상세는 HooksStatusCard를 상태 패널에 직접 그린다). 계획 Scope의 삭제 대상(쓰이지 않는 CollapsibleSidebar·HooksStatusDialog·ProjectSettings 변형)이라 Rust에 대응 화면이 없다."
+- id: TS-components-HooksStatusDialog-cf8ed4
+  reason: "HooksStatusDialog는 TS 앱에서 어느 화면도 띄우지 않는 모달 변형이다(작업 상세는 HooksStatusCard를 상태 패널에 직접 그린다). 계획 Scope의 삭제 대상(쓰이지 않는 CollapsibleSidebar·HooksStatusDialog·ProjectSettings 변형)이라 Rust에 대응 화면이 없다."
+- id: TS-components-HooksStatusDialog-9fc541
+  reason: "HooksStatusDialog는 TS 앱에서 어느 화면도 띄우지 않는 모달 변형이다(작업 상세는 HooksStatusCard를 상태 패널에 직접 그린다). 계획 Scope의 삭제 대상(쓰이지 않는 CollapsibleSidebar·HooksStatusDialog·ProjectSettings 변형)이라 Rust에 대응 화면이 없다."
+- id: TS-components-HooksStatusDialog-ac675e
+  reason: "HooksStatusDialog는 TS 앱에서 어느 화면도 띄우지 않는 모달 변형이다(작업 상세는 HooksStatusCard를 상태 패널에 직접 그린다). 계획 Scope의 삭제 대상(쓰이지 않는 CollapsibleSidebar·HooksStatusDialog·ProjectSettings 변형)이라 Rust에 대응 화면이 없다."
+- id: TS-components-HooksStatusDialog-0f9ff8
+  reason: "HooksStatusDialog는 TS 앱에서 어느 화면도 띄우지 않는 모달 변형이다(작업 상세는 HooksStatusCard를 상태 패널에 직접 그린다). 계획 Scope의 삭제 대상(쓰이지 않는 CollapsibleSidebar·HooksStatusDialog·ProjectSettings 변형)이라 Rust에 대응 화면이 없다."
+- id: TS-components-HooksStatusDialog-601b99
+  reason: "HooksStatusDialog는 TS 앱에서 어느 화면도 띄우지 않는 모달 변형이다(작업 상세는 HooksStatusCard를 상태 패널에 직접 그린다). 계획 Scope의 삭제 대상(쓰이지 않는 CollapsibleSidebar·HooksStatusDialog·ProjectSettings 변형)이라 Rust에 대응 화면이 없다."
+- id: TS-components-HooksStatusDialog-a046e5
+  reason: "HooksStatusDialog는 TS 앱에서 어느 화면도 띄우지 않는 모달 변형이다(작업 상세는 HooksStatusCard를 상태 패널에 직접 그린다). 계획 Scope의 삭제 대상(쓰이지 않는 CollapsibleSidebar·HooksStatusDialog·ProjectSettings 변형)이라 Rust에 대응 화면이 없다."
+- id: TS-components-HooksStatusDialog-1b4ff0
+  reason: "HooksStatusDialog는 TS 앱에서 어느 화면도 띄우지 않는 모달 변형이다(작업 상세는 HooksStatusCard를 상태 패널에 직접 그린다). 계획 Scope의 삭제 대상(쓰이지 않는 CollapsibleSidebar·HooksStatusDialog·ProjectSettings 변형)이라 Rust에 대응 화면이 없다."
+- id: TS-components-HooksStatusDialog-c64f42
+  reason: "HooksStatusDialog는 TS 앱에서 어느 화면도 띄우지 않는 모달 변형이다(작업 상세는 HooksStatusCard를 상태 패널에 직접 그린다). 계획 Scope의 삭제 대상(쓰이지 않는 CollapsibleSidebar·HooksStatusDialog·ProjectSettings 변형)이라 Rust에 대응 화면이 없다."
+- id: TS-components-HooksStatusDialog-e3cf93
+  reason: "HooksStatusDialog는 TS 앱에서 어느 화면도 띄우지 않는 모달 변형이다(작업 상세는 HooksStatusCard를 상태 패널에 직접 그린다). 계획 Scope의 삭제 대상(쓰이지 않는 CollapsibleSidebar·HooksStatusDialog·ProjectSettings 변형)이라 Rust에 대응 화면이 없다."
+- id: TS-components-HooksStatusDialog-24eee5
+  reason: "HooksStatusDialog는 TS 앱에서 어느 화면도 띄우지 않는 모달 변형이다(작업 상세는 HooksStatusCard를 상태 패널에 직접 그린다). 계획 Scope의 삭제 대상(쓰이지 않는 CollapsibleSidebar·HooksStatusDialog·ProjectSettings 변형)이라 Rust에 대응 화면이 없다."
+- id: TS-components-HooksStatusDialog-d22aea
+  reason: "HooksStatusDialog는 TS 앱에서 어느 화면도 띄우지 않는 모달 변형이다(작업 상세는 HooksStatusCard를 상태 패널에 직접 그린다). 계획 Scope의 삭제 대상(쓰이지 않는 CollapsibleSidebar·HooksStatusDialog·ProjectSettings 변형)이라 Rust에 대응 화면이 없다."
+- id: TS-components-HooksStatusDialog-cc13c9
+  reason: "HooksStatusDialog는 TS 앱에서 어느 화면도 띄우지 않는 모달 변형이다(작업 상세는 HooksStatusCard를 상태 패널에 직접 그린다). 계획 Scope의 삭제 대상(쓰이지 않는 CollapsibleSidebar·HooksStatusDialog·ProjectSettings 변형)이라 Rust에 대응 화면이 없다."
+- id: TS-components-HooksStatusDialog-6d096d
+  reason: "HooksStatusDialog는 TS 앱에서 어느 화면도 띄우지 않는 모달 변형이다(작업 상세는 HooksStatusCard를 상태 패널에 직접 그린다). 계획 Scope의 삭제 대상(쓰이지 않는 CollapsibleSidebar·HooksStatusDialog·ProjectSettings 변형)이라 Rust에 대응 화면이 없다."
+- id: TS-components-HooksStatusDialog-a2b876
+  reason: "HooksStatusDialog는 TS 앱에서 어느 화면도 띄우지 않는 모달 변형이다(작업 상세는 HooksStatusCard를 상태 패널에 직접 그린다). 계획 Scope의 삭제 대상(쓰이지 않는 CollapsibleSidebar·HooksStatusDialog·ProjectSettings 변형)이라 Rust에 대응 화면이 없다."
+- id: TS-components-HooksStatusDialog-a727e0
+  reason: "HooksStatusDialog는 TS 앱에서 어느 화면도 띄우지 않는 모달 변형이다(작업 상세는 HooksStatusCard를 상태 패널에 직접 그린다). 계획 Scope의 삭제 대상(쓰이지 않는 CollapsibleSidebar·HooksStatusDialog·ProjectSettings 변형)이라 Rust에 대응 화면이 없다."
+- id: TS-components-HooksStatusDialog-8f880a
+  reason: "HooksStatusDialog는 TS 앱에서 어느 화면도 띄우지 않는 모달 변형이다(작업 상세는 HooksStatusCard를 상태 패널에 직접 그린다). 계획 Scope의 삭제 대상(쓰이지 않는 CollapsibleSidebar·HooksStatusDialog·ProjectSettings 변형)이라 Rust에 대응 화면이 없다."
+- id: TS-components-HooksStatusDialog-beb0f1
+  reason: "HooksStatusDialog는 TS 앱에서 어느 화면도 띄우지 않는 모달 변형이다(작업 상세는 HooksStatusCard를 상태 패널에 직접 그린다). 계획 Scope의 삭제 대상(쓰이지 않는 CollapsibleSidebar·HooksStatusDialog·ProjectSettings 변형)이라 Rust에 대응 화면이 없다."
+- id: TS-components-HooksStatusDialog-707aaa
+  reason: "HooksStatusDialog는 TS 앱에서 어느 화면도 띄우지 않는 모달 변형이다(작업 상세는 HooksStatusCard를 상태 패널에 직접 그린다). 계획 Scope의 삭제 대상(쓰이지 않는 CollapsibleSidebar·HooksStatusDialog·ProjectSettings 변형)이라 Rust에 대응 화면이 없다."
+- id: TS-components-HooksStatusDialog-4366f3
+  reason: "HooksStatusDialog는 TS 앱에서 어느 화면도 띄우지 않는 모달 변형이다(작업 상세는 HooksStatusCard를 상태 패널에 직접 그린다). 계획 Scope의 삭제 대상(쓰이지 않는 CollapsibleSidebar·HooksStatusDialog·ProjectSettings 변형)이라 Rust에 대응 화면이 없다."
+- id: TS-components-HooksStatusDialog-38b69d
+  reason: "HooksStatusDialog는 TS 앱에서 어느 화면도 띄우지 않는 모달 변형이다(작업 상세는 HooksStatusCard를 상태 패널에 직접 그린다). 계획 Scope의 삭제 대상(쓰이지 않는 CollapsibleSidebar·HooksStatusDialog·ProjectSettings 변형)이라 Rust에 대응 화면이 없다."
+- id: TS-components-HooksStatusDialog-7173c6
+  reason: "HooksStatusDialog는 TS 앱에서 어느 화면도 띄우지 않는 모달 변형이다(작업 상세는 HooksStatusCard를 상태 패널에 직접 그린다). 계획 Scope의 삭제 대상(쓰이지 않는 CollapsibleSidebar·HooksStatusDialog·ProjectSettings 변형)이라 Rust에 대응 화면이 없다."
+- id: TS-components-HooksStatusDialog-eeba02
+  reason: "HooksStatusDialog는 TS 앱에서 어느 화면도 띄우지 않는 모달 변형이다(작업 상세는 HooksStatusCard를 상태 패널에 직접 그린다). 계획 Scope의 삭제 대상(쓰이지 않는 CollapsibleSidebar·HooksStatusDialog·ProjectSettings 변형)이라 Rust에 대응 화면이 없다."
+- id: TS-components-HooksStatusDialog-ca220f
+  reason: "HooksStatusDialog는 TS 앱에서 어느 화면도 띄우지 않는 모달 변형이다(작업 상세는 HooksStatusCard를 상태 패널에 직접 그린다). 계획 Scope의 삭제 대상(쓰이지 않는 CollapsibleSidebar·HooksStatusDialog·ProjectSettings 변형)이라 Rust에 대응 화면이 없다."

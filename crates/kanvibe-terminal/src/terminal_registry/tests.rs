@@ -9,6 +9,7 @@ mod lifecycle;
 mod local_tmux;
 mod local_zellij;
 mod preparation;
+mod query_replies;
 mod remote_host;
 mod remote_ssh;
 mod tabs;

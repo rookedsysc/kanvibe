@@ -1,6 +1,6 @@
 //! 레지스트리에 올라간 PTY 하나와, PTY 읽기 스레드가 출력을 흘려 보내는 자리.
 
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError, Weak};
 
 use kanvibe_domain::task::SessionType;
 
@@ -28,6 +28,17 @@ pub(super) struct OutputSink {
     /// terminal 세션에만 있다. 멀티플렉서 세션은 멀티플렉서가 화면을 들고 있다
     pub screen: Option<TerminalScreen>,
     pub clients: Vec<RegisteredClient>,
+    /// PTY가 레지스트리에 오르기 전에 나온 질의 응답. 오르는 순간 PTY에 쓴다
+    pub pending_query_replies: Vec<String>,
+}
+
+impl OutputSink {
+    /// 데스크탑 뷰(xterm.js 자리)가 붙어 있는지. 모바일만 붙어 있으면 질의에 답하지 않는다
+    pub fn has_query_answering_client(&self) -> bool {
+        self.clients.iter().any(|registered| {
+            registered.client.is_open() && registered.client.answers_terminal_queries()
+        })
+    }
 }
 
 impl OutputSink {
@@ -65,6 +76,8 @@ pub(super) struct EntryOutput {
     pub generation: u64,
     pub sink: Mutex<OutputSink>,
     exit_watch: Mutex<ExitWatch>,
+    /// 질의 응답을 쓸 PTY. PTY 콜백이 이 값을 쥐므로 순환을 만들지 않게 약한 참조로 둔다
+    query_reply_writer: Mutex<Option<Weak<dyn PtyProcess>>>,
 }
 
 impl EntryOutput {
@@ -78,8 +91,10 @@ impl EntryOutput {
             sink: Mutex::new(OutputSink {
                 screen,
                 clients: first_client.into_iter().collect(),
+                pending_query_replies: Vec::new(),
             }),
             exit_watch: Mutex::new(ExitWatch::default()),
+            query_reply_writer: Mutex::new(None),
         })
     }
 
@@ -88,8 +103,15 @@ impl EntryOutput {
         let mut overloaded_clients = Vec::new();
         {
             let mut sink = lock(&self.sink);
-            if let Some(screen) = sink.screen.as_mut() {
-                screen.write(data.as_bytes());
+            let replies = match sink.screen.as_mut() {
+                Some(screen) => {
+                    screen.write(data.as_bytes());
+                    screen.take_query_replies()
+                }
+                None => Vec::new(),
+            };
+            if !replies.is_empty() && sink.has_query_answering_client() {
+                sink.pending_query_replies.extend(replies);
             }
             for registered in sink
                 .clients
@@ -108,6 +130,27 @@ impl EntryOutput {
                 code: BACKPRESSURE_CLOSE_CODE,
                 reason: BACKPRESSURE_CLOSE_REASON.to_string(),
             }));
+        }
+        self.flush_query_replies();
+    }
+
+    /// 질의 응답을 쓸 PTY를 정하고, 그 전에 쌓인 응답을 쓴다
+    pub fn set_query_reply_writer(&self, pty: &Arc<dyn PtyProcess>) {
+        *lock(&self.query_reply_writer) = Some(Arc::downgrade(pty));
+        self.flush_query_replies();
+    }
+
+    /// 쌓인 질의 응답을 PTY에 쓴다. PTY가 아직 없으면 남겨 둔다
+    fn flush_query_replies(&self) {
+        let Some(pty) = lock(&self.query_reply_writer)
+            .as_ref()
+            .and_then(Weak::upgrade)
+        else {
+            return;
+        };
+        let replies = std::mem::take(&mut lock(&self.sink).pending_query_replies);
+        for reply in replies {
+            let _ = pty.write(&reply);
         }
     }
 
