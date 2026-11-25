@@ -33,6 +33,14 @@ jobs:
         run: pnpm install --frozen-lockfile
         working-directory: docs-site
 
+      # docs-site에는 시험 러너 의존성이 없다(전에는 저장소 루트 vitest가 돌렸다). 러너를 버전 고정으로 받아 돌리고,
+      # .jsx 컴포넌트를 React 자동 JSX 런타임으로 변환하는 설정만 임시 파일로 준다.
+      - name: Unit tests
+        working-directory: docs-site
+        run: |
+          printf '%s\n' "export default { root: process.cwd(), esbuild: { jsx: 'automatic' } }" > "$RUNNER_TEMP/vitest.config.mjs"
+          pnpm dlx vitest@4.0.18 run --config "$RUNNER_TEMP/vitest.config.mjs" lib/__tests__
+
       - name: Build
         run: pnpm build
         working-directory: docs-site

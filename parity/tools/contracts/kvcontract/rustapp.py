@@ -1,6 +1,6 @@
-"""Rust 서버의 QA 실행기(`kanvibe-server-qa`)를 TS 앱과 같은 격리 환경에서 띄운다.
+"""Rust 서버의 QA 실행기(`kanvibe-server-qa`)를 골든을 녹화할 때와 같은 격리 환경에서 띄운다.
 
-TS 앱을 띄우는 `tsapp.TsApp`과 같은 자식 env(`build_child_environment`)를 쓰므로 PATH·HOME·tmux 소켓이 골든을 녹화할 때와 같다.
+`child_environment.build_child_environment`로 자식 env를 만들므로 PATH·HOME·tmux 소켓이 골든을 녹화할 때와 같다.
 오라클(`issue_pairing_code`, `issue_hook_install_ticket`)은 같은 실행 파일의 `oracle` 하위 명령으로 실행기의 Unix 소켓에 묻는다.
 """
 
@@ -15,7 +15,7 @@ import tempfile
 import time
 from pathlib import Path
 
-from .tsapp import DEFAULT_CHILD_PATH, MOBILE_TLS_PORT_OFFSET, build_child_environment, is_port_free
+from .child_environment import DEFAULT_CHILD_PATH, MOBILE_TLS_PORT_OFFSET, build_child_environment, is_port_free
 
 
 class RustApp:

@@ -1,22 +1,15 @@
 # dependencies
-/node_modules
 /docs-site/node_modules
-/.pnp
-.pnp.*
-.yarn/*
-!.yarn/patches
-!.yarn/plugins
-!.yarn/releases
-!.yarn/versions
+# TS 앱을 지우기 전 checkout이 남긴 산출물. 브랜치를 옮겨도 로컬에 남아 있어 계속 무시한다
+/node_modules
+/build
+*.tsbuildinfo
 
 # testing
-/coverage
 /qa-output
 
 # next.js
-/.next/
 /docs-site/.next/
-/out/
 /docs-site/out/
 
 # cloudflare
@@ -24,38 +17,25 @@
 /docs-site/.wrangler/
 
 # production
-/build
 /dist
-/playwright-report
-/test-results
 
 # misc
 .DS_Store
 *.pem
-.kanvibe.pid
-/logs
 /.kanvibe/
 /.tooling/
 /.omc/
 /.codex/hooks/
-/resources/database/app.seed.db
 /.serena/
 
 # debug
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
 .pnpm-debug.log*
 
 # env files
 .env
 .env*.local
 
-# vercel
-.vercel
-
-# typescript
-*.tsbuildinfo
+# next.js (docs-site가 빌드 때 만든다)
 next-env.d.ts
 /.claude/plan
 

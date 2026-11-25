@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """GPUI(Rust) 앱을 states.yaml 상태로 띄워 TS 기준 이미지와 같은 방법으로 찍고 비교한다.
 
-TS 드라이버(`parity/tools/screens/ts-driver`)와 같은 Xvfb 화면 크기·`ffmpeg -f x11grab` 명령·fixture 생성기·고정 글꼴 설정을
+기준 이미지를 찍은 TS 드라이버와 같은 Xvfb 화면 크기·`ffmpeg -f x11grab` 명령·fixture 생성기·고정 글꼴 설정을
 `parity/tools/screens/capture.py`에서 가져다 쓴다. 앱은 `kanvibe --qa`로 띄우고, 단계는 QA 제어 소켓(한 줄 JSON)으로 보낸다.
 앱에 넘기는 결정성 입력(고정 시각, 네트워크 응답 표, 고장 목록, 소켓 경로)은 모두 실행 인자이고, 환경은 capture.py가 만드는
 격리 환경을 앱 프로세스에만 준다.
@@ -23,12 +23,12 @@ from pathlib import Path
 TOOLS_DIR = Path(__file__).resolve().parents[1] / "screens"
 sys.path.insert(0, str(TOOLS_DIR))
 
-import capture  # noqa: E402  (fixture·Xvfb·x11grab·글꼴 설정을 TS 캡처와 공유한다)
+import capture  # noqa: E402  (fixture·Xvfb·x11grab·글꼴 설정을 기준 이미지 캡처와 같게 쓴다)
 from diff import compare_images  # noqa: E402
 
 REPO_ROOT = TOOLS_DIR.parents[2]
 DEFAULT_ROOT = Path("/tmp/kanvibe-parity-rust")
-# TS 기준 캡처(:93)와 동시에 돌 수 있도록 다른 화면 번호를 쓴다
+# 기준 이미지 캡처가 쓰던 화면 번호(:93)와 겹치지 않게 둔다
 DEFAULT_DISPLAY = 94
 # 기준 이미지의 Electron 창 내용은 Xvfb 화면보다 오른쪽·아래가 1px 작다(마지막 열·행이 검은 루트 창).
 # 같은 픽셀을 얻으려면 GPUI 창도 그 크기로 연다.
@@ -166,7 +166,7 @@ def capture_state(args: argparse.Namespace, state: dict, output_path: Path) -> N
     fixture_root = work_root / "fixture"
     overrides = {"theme_preference": state["theme"], **{k: str(v) for k, v in (state.get("settings") or {}).items()}}
     fixture = capture.build_fixture(fixture_root, state.get("fixture", "full"), overrides, state.get("fixture_extras") or [])
-    # TS 캡처(capture.py)처럼 단계 안의 {fixture_root}는 이 실행의 fixture 경로로 바꾼다(가짜 CLI 실행 명령 등)
+    # 기준 이미지 캡처처럼 단계 안의 {fixture_root}는 이 실행의 fixture 경로로 바꾼다(가짜 CLI 실행 명령 등)
     state = json.loads(json.dumps(state, ensure_ascii=False).replace("{fixture_root}", str(fixture_root)))
     fontconfig_path = capture.write_pinned_fontconfig(work_root / "fontconfig")
     environment = capture.build_app_environment(fixture, fixture_root, args.display, fontconfig_path)

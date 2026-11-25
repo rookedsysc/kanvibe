@@ -1,4 +1,4 @@
-"""골든 기대값의 플레이스홀더 문법과 비교·정규화 규칙.
+"""골든 기대값의 플레이스홀더 문법과 비교 규칙.
 
 README의 "Volatile-field rules"가 이 파일의 규칙을 사람 말로 옮긴 것이다. 둘이 어긋나면 이 파일이 기준이다.
 """
@@ -17,10 +17,6 @@ HEX64 = re.compile(r"^[0-9a-f]{64}$")
 HEX = re.compile(r"^[0-9a-f]+$")
 DIGITS = re.compile(r"^\d+$")
 BASE64 = re.compile(r"^[A-Za-z0-9+/]+={0,2}$")
-
-# epoch 밀리초 정수로 보는 하한(2001-09-09). 이보다 큰 정수가 시각 이름의 키에 있으면 변동값이다
-EPOCH_MS_FLOOR = 1_000_000_000_000
-TIMESTAMP_KEY = re.compile(r"(At|Ms|_at|Time|time)$")
 
 
 def _type_check(kind: str, actual: Any) -> bool:
@@ -129,70 +125,6 @@ def match(expected: Any, actual: Any, variables: dict[str, Any], path: str = "$"
     if expected != actual:
         return [f"{path}: expected {expected!r}, got {actual!r}"]
     return []
-
-
-class Normalizer:
-    """녹화한 실제 응답을 결정적으로 비교할 수 있는 기대 패턴으로 바꾼다.
-
-    적용 순서: 경로별 지정(volatile) → 변수 값 치환 → 타입 기반 변동값 규칙. 자세한 규칙은 README에 있다.
-    """
-
-    MIN_SUBSTITUTION_LENGTH = 8
-
-    def __init__(self, variables: dict[str, Any], substitutable: list[str]):
-        self.variables = variables
-        self.substitutable = substitutable
-
-    def _variable_pairs(self):
-        for name in self.substitutable:
-            value = self.variables.get(name)
-            if isinstance(value, str) and len(value) >= self.MIN_SUBSTITUTION_LENGTH:
-                yield name, value
-
-    def normalize(self, value: Any, volatile: dict[str, str] | None = None, path: str = "$", key: str | None = None) -> Any:
-        volatile = volatile or {}
-        if path in volatile:
-            return volatile[path]
-        wildcard = re.sub(r"\[\d+\]", "[*]", path)
-        if wildcard in volatile:
-            return volatile[wildcard]
-        if isinstance(value, dict):
-            return {self._normalize_key(child_key): self.normalize(child, volatile, f"{path}.{child_key}", child_key)
-                    for child_key, child in value.items()}
-        if isinstance(value, list):
-            return [self.normalize(child, volatile, f"{path}[{index}]", key) for index, child in enumerate(value)]
-        if isinstance(value, str):
-            return self._normalize_string(value)
-        if isinstance(value, int) and not isinstance(value, bool):
-            if key and TIMESTAMP_KEY.search(key) and value >= EPOCH_MS_FLOOR:
-                return "{{any:int}}"
-        return value
-
-    def _normalize_key(self, key: str) -> str:
-        """객체 키는 변수 값과 정확히 같을 때만 {{var:x}}로 바꾼다. 타입 매처는 키 자리에 쓰지 않는다"""
-        for name, variable_value in self._variable_pairs():
-            if key == variable_value:
-                return f"{{{{var:{name}}}}}"
-        return key
-
-    def _normalize_string(self, value: str) -> str:
-        for name, variable_value in self._variable_pairs():
-            if value == variable_value:
-                return f"{{{{var:{name}}}}}"
-        substituted = value
-        for name, variable_value in sorted(self._variable_pairs(), key=lambda pair: -len(pair[1])):
-            if variable_value in substituted:
-                substituted = substituted.replace(variable_value, f"{{{{var:{name}}}}}")
-        if substituted != value:
-            # 치환한 문자열에 원래 '{{'가 있었다면 템플릿과 헷갈리므로 원문 비교로 되돌릴 수 없다. 서버 응답에는 그런 값이 없다
-            return substituted
-        if ISO_8601.match(value):
-            return "{{any:iso8601}}"
-        if UUID.match(value):
-            return "{{any:uuid}}"
-        if HEX64.match(value):
-            return "{{any:hex64}}"
-        return value
 
 
 def extract(document: Any, selector: str) -> Any:

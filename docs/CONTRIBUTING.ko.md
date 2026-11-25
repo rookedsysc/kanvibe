@@ -10,9 +10,11 @@ KanVibe에 관심을 가져주셔서 감사합니다! 이 가이드가 시작하
 
 ### 사전 요구사항
 
-- Node.js 24.x (`.nvmrc` 참조)
-- pnpm
+- Rust stable과 `rustfmt`, `clippy` (edition 2024)
+- [cargo-nextest](https://nexte.st/)
 - Herdr, tmux 또는 zellij (터미널 기능용)
+- Linux에서만: GPUI와 WebKitGTK 개발 패키지. Ubuntu 예:
+  `pkg-config libfontconfig-dev libfreetype-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libvulkan-dev libwebkit2gtk-4.1-dev`
 
 ### 시작하기
 
@@ -21,28 +23,24 @@ KanVibe에 관심을 가져주셔서 감사합니다! 이 가이드가 시작하
 git clone https://github.com/rookedsysc/kanvibe.git
 cd kanvibe
 
-# 환경변수 복사
-cp .env.example .env
-
-# 의존성 설치
-pnpm install
-
-# 내장 데이터베이스 준비
-pnpm db:prepare
-
-# 개발 서버 시작
-pnpm dev
+# 소스로 데스크톱 앱 실행 (디버그 빌드, 개발 DB)
+cargo run -p kanvibe-app
 ```
 
-브라우저에서 `http://localhost:4885` 접속.
+디버그 빌드는 개발 데이터 디렉터리와 hook 포트 `19736`을 씁니다. [개발·QA 데이터베이스](./README.ko.md)를 참고하세요.
 
 ### 릴리스 빌드
 
 ```bash
-pnpm dist
+# Linux: dist/에 tarball과 .deb (--verify는 풀어 낸 번들을 한 번 실행해 확인,
+# --allow-missing-agents는 이 머신에서 빌드할 수 없는 원격 agent 대상을 건너뜀)
+packaging/linux/build-linux.sh --verify
+
+# macOS: 서명·공증한 KanVibe.app과 dist/KanVibe-${version}.dmg
+packaging/macos/build-macos.sh
 ```
 
-이 명령은 renderer 번들을 빌드하고, 데스크톱 main process를 `build/main`으로 컴파일하고, 번들 seed DB를 생성한 뒤 Electron Builder로 macOS DMG를 패키징합니다.
+버전은 루트 `Cargo.toml`의 `workspace.package.version`에서 읽습니다. `build-macos.sh`는 서명 자격 증명을 환경 변수나 `.env.example`에 적힌 키에서 읽고, `--unsigned`는 자격 증명 없이 로컬 확인용으로 빌드합니다.
 
 - macOS 산출물: `dist/KanVibe-${version}.dmg`
 - Homebrew cask: `Casks/kanvibe.rb` 갱신
@@ -55,25 +53,27 @@ pnpm dist
 
 1. **모든 체크가 통과해야 합니다:**
    ```bash
-   pnpm build    # 빌드 성공
-   pnpm check    # 타입 체크 통과
-   pnpm test     # 테스트 통과
+   cargo fmt --all --check                                  # 포맷
+   cargo clippy --workspace --all-targets -- -D warnings    # 린트
+   cargo nextest run --workspace                            # 테스트
+   cargo xtask parity check                                 # TS 동등성 장부
+   cargo build --workspace --release                        # 릴리스 빌드
    ```
 
 2. **동작하는 스크린샷 또는 GIF를 첨부하세요.** 기능 동작을 시각적으로 증명하지 않은 PR은 머지되지 않습니다.
 
 3. **기존 코드 스타일을 따르세요.** 프로젝트에서 사용하는 규칙:
-   - TypeScript strict 모드
-   - Tailwind CSS v4 + 디자인 토큰 (CSS 변수)
-   - next-intl로 모든 사용자 텍스트 처리
-   - 내장 SQLite + TypeORM 데이터 접근
+   - `crates/` 아래 Rust workspace (계층별 crate: `kanvibe-domain`, `kanvibe-db`, `kanvibe-services`, `kanvibe-app`, ...)
+   - 의미 기반 테마 토큰(`crates/kanvibe-app/src/theme.rs`)을 쓰는 GPUI 뷰
+   - 모든 사용자 텍스트는 `messages/*.json`
+   - `rusqlite`로 접근하는 내장 SQLite (`kanvibe-db`)
 
 ### PR 프로세스
 
 1. 저장소를 Fork
 2. `main`에서 feature 브랜치 생성
 3. 변경 사항 작성
-4. 모든 체크 실행 (`pnpm build && pnpm check && pnpm test`)
+4. 모든 체크 실행 (위 참고)
 5. [Conventional Commits](https://www.conventionalcommits.org/) 형식으로 커밋
 6. Push 후 Pull Request 생성
 7. 동작하는 기능의 스크린샷/GIF 첨부
@@ -95,20 +95,16 @@ refactor(scope): 코드 구조 개선
 
 1. `messages/ko.json`에 키/값 추가
 2. `messages/en.json`과 `messages/zh.json`에 번역 추가
-3. 컴포넌트에서 `useTranslations` 또는 `getTranslations`로 `t("key")` 사용
+3. 뷰에서는 `kanvibe_domain::i18n`(`Translator::translate` 또는 `translate`)으로 읽기
 
 ---
 
 ## 데이터베이스 변경
 
-KanVibe는 내장 SQLite 데이터베이스를 사용합니다. 엔티티 구조를 바꿀 때는 SQLite 부트스트랩 스키마도 함께 갱신해야 합니다:
+KanVibe는 내장 SQLite 데이터베이스(`crates/kanvibe-db`)를 사용합니다. 테이블 구조를 바꿀 때는:
 
-```bash
-# 번들 seed DB 다시 생성
-pnpm db:prepare
-```
-
-`src/lib/sqliteSchema.ts`와 TypeORM 엔티티를 항상 같이 맞춰 주세요.
+1. `crates/kanvibe-db/src/migrations/mod.rs`의 `MIGRATIONS`에 마이그레이션 추가
+2. 옛 DB도 같은 스키마에 이르도록 `crates/kanvibe-db/src/schema/`의 멱등 스키마 복구 갱신
 
 ---
 

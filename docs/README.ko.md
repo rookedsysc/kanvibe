@@ -195,7 +195,7 @@ brew untap rookedsysc/kanvibe
 
 ### 터미널 세션 (Herdr / tmux / zellij)
 - **Herdr**, **tmux**, **zellij** 모두 터미널 멀티플렉서로 지원
-- xterm.js와 WebSocket 기반 브라우저 터미널 스트리밍
+- 태스크 세션에 붙는 앱 내장 네이티브 터미널(alacritty_terminal)
 - `~/.ssh/config`를 읽는 SSH 원격 터미널 지원
 - 비대화형 원격 SSH 명령은 `~/.kanvibe` 아래의 앱 전용 ControlMaster 소켓 풀을 재사용하며 host별 동시성을 사용 가능한 CPU 코어 수의 4배까지 제한합니다
 - 원격 터미널 attach는 SSH에서 Herdr/tmux/zellij를 직접 실행하며, 로컬 `DISPLAY`, 원격 `X11Forwarding`, `xauth`가 준비된 경우에만 trusted X11 forwarding(`ssh -Y`)을 요청합니다
@@ -400,7 +400,7 @@ bash .kanvibe/task.sh delete --yes --branch feat/old-thing
 브라우저에서 GitHub 스타일의 diff 뷰어로 코드 변경사항을 바로 확인할 수 있습니다. 태스크 상세 페이지의 **Diff** 뱃지를 클릭하면 base 브랜치 대비 변경된 모든 파일을 확인할 수 있습니다.
 
 - 변경 파일 수가 표시되는 파일 트리 사이드바
-- Monaco Editor 기반 인라인 diff 뷰어
+- 찾기/바꾸기, 접기, 구문 강조를 지원하는 인라인 diff 뷰어
 - 브라우저에서 바로 수정 가능한 에딧 모드
 - 체크박스로 확인한 파일 추적
 
@@ -411,7 +411,7 @@ bash .kanvibe/task.sh delete --yes --branch feat/old-thing
 
 ### 국제화 (i18n)
 - 지원 언어: 한국어(ko), 영어(en), 중국어(zh)
-- next-intl 기반
+- 메시지는 `messages/{ko,en,zh}.json`에 있고 앱 바이너리에 포함
 
 ---
 
@@ -419,14 +419,15 @@ bash .kanvibe/task.sh delete --yes --branch feat/old-thing
 
 | 카테고리 | 기술 |
 |----------|------|
-| Frontend/Backend | Next.js 16 (App Router) + React 19 + TypeScript |
-| Database | SQLite + TypeORM + better-sqlite3 |
-| Styling | Tailwind CSS v4 |
-| Terminal | xterm.js + WebSocket + node-pty |
+| Desktop app | Rust workspace (`crates/`) + GPUI (`gpui-kit`) |
+| Database | SQLite + rusqlite (`kanvibe-db`) |
+| Hook / mobile server | hyper + rustls, 앱 프로세스 안에서 실행 (`kanvibe-server`) |
+| Terminal | alacritty_terminal + portable-pty (`kanvibe-terminal`) |
+| Markdown / Mermaid | 네이티브 렌더러 (`kanvibe-markdown`, `kanvibe-diagram`) |
+| HTML preview | gpui-webview (macOS WKWebView, Linux WebKitGTK) |
 | SSH | system ssh binary |
-| Drag & Drop | @hello-pangea/dnd |
-| i18n | next-intl |
-| Desktop Packaging | Electron + Electron Builder |
+| i18n | `messages/*.json` (`kanvibe-domain` i18n) |
+| Desktop Packaging | `packaging/linux/build-linux.sh` (tarball, .deb), `packaging/macos/build-macos.sh` (.app, DMG) |
 | Mobile | Flutter + xterm.dart |
 
 ---

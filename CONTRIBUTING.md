@@ -10,9 +10,11 @@ Thank you for your interest in contributing to KanVibe! This guide will help you
 
 ### Prerequisites
 
-- Node.js 24.x (see `.nvmrc`)
-- pnpm
+- Rust stable with `rustfmt` and `clippy` (edition 2024)
+- [cargo-nextest](https://nexte.st/)
 - Herdr, tmux, or zellij (for terminal features)
+- Linux only: the GPUI and WebKitGTK development packages, for example on Ubuntu:
+  `pkg-config libfontconfig-dev libfreetype-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libvulkan-dev libwebkit2gtk-4.1-dev`
 
 ### Getting Started
 
@@ -21,28 +23,24 @@ Thank you for your interest in contributing to KanVibe! This guide will help you
 git clone https://github.com/rookedsysc/kanvibe.git
 cd kanvibe
 
-# Copy environment variables
-cp .env.example .env
-
-# Install dependencies
-pnpm install
-
-# Prepare embedded database
-pnpm db:prepare
-
-# Start development server
-pnpm dev
+# Start the desktop app from source (debug build, development database)
+cargo run -p kanvibe-app
 ```
 
-Open `http://localhost:4885` in your browser.
+A debug build uses the development data directory and hook port `19736`. See [Development and QA databases](./README.md#development-and-qa-databases).
 
 ### Release Build
 
 ```bash
-pnpm dist
+# Linux: tarball and .deb in dist/ (--verify launches the unpacked bundle once;
+# --allow-missing-agents skips remote-agent targets this machine cannot build)
+packaging/linux/build-linux.sh --verify
+
+# macOS: signed and notarized KanVibe.app and dist/KanVibe-${version}.dmg
+packaging/macos/build-macos.sh
 ```
 
-This builds the renderer bundle, compiles the desktop main process into `build/main`, generates the bundled seed database, and packages the macOS DMG through Electron Builder.
+The version comes from `workspace.package.version` in the root `Cargo.toml`. `build-macos.sh` reads the signing credentials from the environment or from the keys listed in `.env.example`; `--unsigned` builds without them for local checks.
 
 - macOS output: `dist/KanVibe-${version}.dmg`
 - Homebrew cask: update `Casks/kanvibe.rb`
@@ -55,25 +53,27 @@ This builds the renderer bundle, compiles the desktop main process into `build/m
 
 1. **All checks must pass:**
    ```bash
-   pnpm build    # Build must succeed
-   pnpm check    # Type check must pass
-   pnpm test     # Tests must pass
+   cargo fmt --all --check                                  # Formatting
+   cargo clippy --workspace --all-targets -- -D warnings    # Lints
+   cargo nextest run --workspace                            # Tests
+   cargo xtask parity check                                 # TS parity ledger
+   cargo build --workspace --release                        # Release build
    ```
 
 2. **Include a working screenshot or GIF** demonstrating your change. PRs without visual proof of functionality will not be merged.
 
 3. **Follow the existing code style.** The project uses:
-   - TypeScript strict mode
-   - Tailwind CSS v4 with design tokens (CSS variables)
-   - next-intl for all user-facing strings
-   - Embedded SQLite + TypeORM data access
+   - A Rust workspace under `crates/` (one crate per layer: `kanvibe-domain`, `kanvibe-db`, `kanvibe-services`, `kanvibe-app`, ...)
+   - GPUI views with semantic theme tokens (`crates/kanvibe-app/src/theme.rs`)
+   - `messages/*.json` for all user-facing strings
+   - Embedded SQLite through `rusqlite` (`kanvibe-db`)
 
 ### PR Process
 
 1. Fork the repository
 2. Create a feature branch from `main`
 3. Make your changes
-4. Run all checks (`pnpm build && pnpm check && pnpm test`)
+4. Run all checks (see above)
 5. Commit with [Conventional Commits](https://www.conventionalcommits.org/) format
 6. Push and create a Pull Request
 7. Attach a screenshot/GIF of the working feature
@@ -95,20 +95,16 @@ All user-facing strings must be translated. When adding or modifying UI text:
 
 1. Add the key/value to `messages/ko.json`
 2. Add translations to `messages/en.json` and `messages/zh.json`
-3. Use `t("key")` in components via `useTranslations` or `getTranslations`
+3. Read the text in views through `kanvibe_domain::i18n` (`Translator::translate` or `translate`)
 
 ---
 
 ## Database Changes
 
-KanVibe uses an embedded SQLite database. When you change entity structure, update the SQLite bootstrap schema as well:
+KanVibe uses an embedded SQLite database (`crates/kanvibe-db`). When you change the table structure:
 
-```bash
-# Rebuild the bundled seed database
-pnpm db:prepare
-```
-
-Keep `src/lib/sqliteSchema.ts` and the TypeORM entities in sync.
+1. Add a migration to `MIGRATIONS` in `crates/kanvibe-db/src/migrations/mod.rs`
+2. Update the idempotent schema repair in `crates/kanvibe-db/src/schema/` so older databases reach the same schema
 
 ---
 

@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
-# macOS 릴리스: KanVibe.app과 dist/KanVibe-<ver>.dmg를 만들고 서명·공증한다(scripts/dist-deploy.cjs와 같은 순서).
+# macOS 릴리스: KanVibe.app과 dist/KanVibe-<ver>.dmg를 만들고 서명·공증한다(TS 시절 dist-deploy 스크립트와 같은 순서).
 #
 # 순서: macOS·자격 증명·도구 확인 → 서명 identity 확인 → 릴리스 빌드(호스트 아키텍처) → 원격 agent 네 플랫폼 빌드 →
 # .app 조립 → Darwin agent 서명과 SHA256SUMS 재작성 → 앱 서명(Hardened Runtime, entitlements.plist) →
 # codesign --verify --deep --strict → DMG(KanVibe-<ver>.dmg) 만들고 서명 → notarytool submit --wait → stapler staple·validate →
 # DMG sha256 출력(Homebrew cask `rookedsysc/homebrew-kanvibe`의 sha256에 쓴다).
 #
-# 자격 증명은 환경 변수로만 받는다. 설정돼 있지 않으면 저장소 루트 .env(커밋 금지, dist-deploy.cjs와 같은 파일)에서
+# 자격 증명은 환경 변수로만 받는다. 설정돼 있지 않으면 저장소 루트 .env(커밋 금지, 예시는 .env.example)에서
 # 아래 네 키만 읽는다. .env를 셸로 실행하지 않는다.
 #   CSC_NAME           codesign identity 이름(예: "Developer ID Application: ...")
 #   APPLE_API_KEY      App Store Connect API 키(.p8) 경로. ~/로 시작해도 된다
 #   APPLE_API_KEY_ID   키 ID
 #   APPLE_API_ISSUER   issuer ID
 # 원격 agent의 Linux 바이너리는 macOS에서 cargo-zigbuild로 교차 빌드한다(없으면 실패한다).
-# 버전은 Cargo(kanvibe-app)에서 읽는다. 릴리스 전에 workspace 버전을 package.json 버전과 맞춰야 이름이 이어진다.
+# 버전은 Cargo workspace(kanvibe-app)에서 읽는다. 릴리스 버전은 루트 Cargo.toml의 workspace.package.version에서 올린다.
 #
 # 사용: packaging/macos/build-macos.sh [--unsigned]
 #   --unsigned: 서명·공증 없이 .app과 DMG만 만든다(자격 증명 없는 로컬 확인용, 배포 금지)

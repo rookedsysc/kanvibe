@@ -1,4 +1,4 @@
-"""골든 케이스를 순서대로 실행한다. 녹화(record)와 재생(replay)이 같은 실행 경로를 쓴다.
+"""골든 케이스를 순서대로 실행해 기대값과 비교한다(재생).
 
 케이스는 앞 케이스가 만든 상태(페어링 토큰, 프로젝트, 태스크)에 기대므로 seq 순서대로 실행하고,
 `capture`로 응답에서 뽑은 값을 변수에 넣어 뒤 케이스의 `{{var:x}}` 자리에 채운다.
@@ -20,7 +20,7 @@ from urllib.parse import urlsplit
 
 from . import wsclient
 from .fixture import run_fixture_git
-from .matching import Normalizer, extract, interpolate, match
+from .matching import extract, interpolate, match
 
 RECORDED_HEADERS = ("content-type", "cache-control")
 DEFAULT_HTTP_TIMEOUT = 60.0
@@ -234,7 +234,7 @@ def execute_tls_certificate(endpoints: Endpoints) -> dict:
 
 
 class OracleBackend:
-    """서버마다 다른 '시험용 값 얻기'를 감싼다. TS 앱은 inspector, 다른 서버는 명령이나 dev 경로"""
+    """서버마다 다른 '시험용 값 얻기'를 감싼다. Rust QA 서버는 `oracle` 하위 명령, 그 밖의 서버는 --oracle-cmd 명령"""
 
     def __init__(self, server_oracle: Callable[[str, dict], Any] | None):
         self.server_oracle = server_oracle
@@ -260,7 +260,7 @@ class OracleBackend:
                 time.sleep(0.2)
             return json.loads(path.read_text())
         if self.server_oracle is None:
-            raise RuntimeError(f"oracle {kind} needs a server oracle backend (--oracle-cmd or --ts-inspector-port)")
+            raise RuntimeError(f"oracle {kind} needs a server oracle backend (--oracle-cmd or --launch-rust)")
         return self.server_oracle(kind, interpolate(oracle.get("args", {}), variables))
 
 
@@ -296,16 +296,6 @@ class Runner:
             return execute_ws(self.endpoints, request, interpolate(case.get("steps", []), self.variables))
         return execute_http(self.endpoints, request)
 
-    def record(self, case: dict, substitutable: list[str]) -> dict:
-        observed = self.execute(case)
-        capture_errors = self._apply_captures(case, observed)
-        if capture_errors:
-            raise RuntimeError(f"{case['id']}: {capture_errors}; observed={json.dumps(observed, ensure_ascii=False)[:2000]}")
-        expect = Normalizer(self.variables, substitutable).normalize(_without_detail(observed), case.get("volatile", {}))
-        golden = {key: value for key, value in case.items() if key not in ("volatile",)}
-        golden["expect"] = expect
-        return golden
-
     def replay(self, golden: dict) -> CaseResult:
         try:
             observed = self.execute(golden)
@@ -323,14 +313,3 @@ def _without_detail(observed: Any) -> Any:
     if isinstance(observed, list):
         return [_without_detail(item) for item in observed]
     return observed
-
-
-def wait_for_socket(host: str, port: int, timeout: float) -> bool:
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        try:
-            with socket.create_connection((host, port), timeout=1):
-                return True
-        except OSError:
-            time.sleep(0.3)
-    return False
