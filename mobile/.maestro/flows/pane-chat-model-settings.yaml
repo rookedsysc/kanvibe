@@ -1,6 +1,6 @@
 # pane 채팅의 모델 설정 선택창과 플로팅 채팅 버튼을 기기에서 검증한다.
 #
-# 격리 데스크탑 fixture(`qa/mobile/lib/prepareChatHistoryDesktop.cjs --pane-chat`)가 띄운 가짜 CLI를 쓴다.
+# 격리 데스크탑 fixture(`python3 qa/mobile/prepare_chat_history_desktop.py --run-dir <새 폴더> --pane-chat`. `maestro test -e`로 fixture.json의 `maestroEnv`를 넘긴다)가 띄운 가짜 CLI를 쓴다.
 # 첫 pane은 Codex(옵션이 없는 fixture-deep 모델로 시작), 둘째 pane은 Claude다.
 appId: ${APP_ID}
 ---

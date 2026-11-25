@@ -35,6 +35,7 @@ use kanvibe_server::desktop::{DesktopServerConfig, DesktopServices, push_relay_c
 use kanvibe_server::server::MOBILE_TLS_PORT_OFFSET;
 use kanvibe_services::board_notifier::BoardEventSubscription;
 use kanvibe_services::desktop_notification::NotificationDeliveryCallbacks;
+use kanvibe_services::notification_store::NotificationChangeSubscription;
 
 use crate::app_events::{RuntimeEvent, install_app_events, runtime_event_channel};
 use crate::desktop_process::{DesktopLaunchPlan, prepare_desktop_process};
@@ -115,6 +116,9 @@ fn init_app_with_desktop(
         None => None,
     };
     mark_startup_phase("runtime_opened");
+    let notification_subscription = runtime
+        .as_ref()
+        .map(|runtime| relay_notification_changes(runtime, sender.clone()));
     let board_subscription = runtime
         .as_ref()
         .map(|runtime| relay_board_events(runtime, sender));
@@ -155,7 +159,7 @@ fn init_app_with_desktop(
     cx.set_global(services);
     cx.set_global(WindowRegistry::with_notification_locale(window_locale));
     cx.set_global(notifications::NotificationCenter::default());
-    install_app_events(receiver, board_subscription, cx);
+    install_app_events(receiver, board_subscription, notification_subscription, cx);
     notifications::reload_notification_center(cx);
     shortcuts::install_shortcut_dispatch(cx).detach();
     notifications::install_notification_click_routing(cx);
@@ -213,11 +217,9 @@ fn open_runtime(
     config.notification_presenter = Arc::new(ForegroundNotificationPresenter {
         sender: sender.clone(),
     });
-    let changed_sender = sender.clone();
+    // 알림 목록 변경은 저장소 구독(`relay_notification_changes`)이 모든 쓰기에서 전한다. 여기서 또 보내면 두 번 다시 읽는다
     config.notification_callbacks = NotificationDeliveryCallbacks {
-        on_notifications_changed: Some(Arc::new(move || {
-            let _ = changed_sender.unbounded_send(RuntimeEvent::NotificationsChanged);
-        })),
+        on_notifications_changed: None,
         on_notification_click: None,
     };
     config.diagram_font_files = Arc::new(|| {
@@ -227,6 +229,19 @@ fn open_runtime(
             .collect()
     });
     Ok(Arc::new(DesktopRuntime::new(config)?))
+}
+
+/// 알림 저장소가 바뀔 때마다(데스크톱 전달·클릭, 모바일 읽음 처리 등 쓰기 주체와 상관없이) 전경에 알린다.
+/// TS main은 `subscribeToNotificationChanges(broadcastNotificationsChanged)`로 모든 쓰기를 renderer에 보냈다
+fn relay_notification_changes(
+    runtime: &DesktopRuntime,
+    sender: UnboundedSender<RuntimeEvent>,
+) -> NotificationChangeSubscription {
+    runtime
+        .notification_store()
+        .subscribe_to_notification_changes(move || {
+            let _ = sender.unbounded_send(RuntimeEvent::NotificationsChanged);
+        })
 }
 
 /// 보드 이벤트를 전경 스레드의 이벤트 버스로 넘긴다

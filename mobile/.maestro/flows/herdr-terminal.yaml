@@ -1,5 +1,5 @@
 # Herdr 세션을 기기에서 만들어 입력하고, 손가락 스크롤과 pane 단축키를 확인한다.
-# `qa/mobile/lib/prepareQaDesktop.cjs --default-session-type herdr`로 띄운 격리 데스크탑과, 데스크탑이 찾을 수 있는 herdr가 필요하다.
+# `python3 qa/mobile/prepare_qa_desktop.py --run-dir <새 폴더> --default-session-type herdr`로 띄운 격리 Rust 데스크탑과, fixture를 띄운 셸의 PATH에서 찾을 수 있는 herdr가 필요하다.
 appId: ${APP_ID}
 env:
   DESKTOP_API_FROM_HOST: http://127.0.0.1:39736

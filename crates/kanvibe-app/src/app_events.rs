@@ -13,6 +13,7 @@ use gpui_kit::{
 use kanvibe_domain::notifications::AppNotification;
 use kanvibe_services::board_notifier::{BoardEvent, BoardEventSubscription};
 use kanvibe_services::desktop_notification::NotificationClick;
+use kanvibe_services::notification_store::NotificationChangeSubscription;
 
 /// TS `BOARD_REFRESH_DEBOUNCE_MS`
 const BOARD_REFRESH_DEBOUNCE: Duration = Duration::from_millis(250);
@@ -106,9 +107,10 @@ pub fn runtime_event_channel() -> (
     unbounded()
 }
 
-/// 보드 이벤트 구독. 앱이 끝날 때까지 쥔다
+/// 보드 이벤트·알림 저장소 구독. 앱이 끝날 때까지 쥔다
 struct BoardEventRelay {
     _subscription: Option<BoardEventSubscription>,
+    _notification_subscription: Option<NotificationChangeSubscription>,
 }
 
 impl Global for BoardEventRelay {}
@@ -117,12 +119,14 @@ impl Global for BoardEventRelay {}
 pub fn install_app_events(
     receiver: UnboundedReceiver<RuntimeEvent>,
     board_subscription: Option<BoardEventSubscription>,
+    notification_subscription: Option<NotificationChangeSubscription>,
     cx: &mut App,
 ) {
     let bus = cx.new(|_| AppEventBus::default());
     cx.set_global(AppEvents(bus));
     cx.set_global(BoardEventRelay {
         _subscription: board_subscription,
+        _notification_subscription: notification_subscription,
     });
     cx.spawn(async move |cx: &mut AsyncApp| {
         let mut receiver = receiver;

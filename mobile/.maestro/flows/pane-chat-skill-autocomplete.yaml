@@ -1,6 +1,6 @@
 # 채팅 입력창의 skill 메뉴가 목록을 한 번 받아 두고, 이어지는 글자 입력을 기기에서 거르는지 본다.
 #
-# 준비: node qa/mobile/lib/prepareChatHistoryDesktop.cjs --run-dir <새 폴더> --live-cli
+# 준비: python3 qa/mobile/prepare_chat_history_desktop.py --run-dir <새 폴더> --live-cli
 # 그 준비 단계가 격리된 HOME에 qa-plan, qa-release, qa-review 세 skill을 심어 둔다.
 appId: ${APP_ID}
 env:

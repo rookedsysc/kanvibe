@@ -91,6 +91,43 @@ fn notification_center_lists_what_the_runtime_store_holds(cx: &mut TestAppContex
     assert_eq!(unread_count, 1);
 }
 
+// TS `electron/main.js` `subscribeToNotificationChanges(broadcastNotificationsChanged)`: 모바일이 읽음 처리한 것도
+// 데스크톱 알림 목록에 바로 반영된다
+#[gpui::test]
+fn notification_center_follows_store_writes_from_other_writers(cx: &mut TestAppContext) {
+    let data_dir = tempfile::tempdir().unwrap();
+    init_app(cx, data_dir.path().to_path_buf());
+    let store = cx.update(|cx| {
+        cx.global::<AppServices>()
+            .runtime()
+            .unwrap()
+            .notification_store()
+            .clone()
+    });
+
+    let created = store
+        .create_notification(&DesktopNotificationPayload {
+            title: "모바일 읽음".into(),
+            body: "모바일에서 읽을 알림".into(),
+            task_id: None,
+            locale: "ko".into(),
+            relative_path: None,
+            dedupe_key: None,
+            action: None,
+        })
+        .unwrap();
+    cx.run_until_parked();
+    let unread_after_create = cx.update(|cx| cx.global::<NotificationCenter>().unread_count());
+    store
+        .mark_notification_read(&created.notification.id)
+        .unwrap();
+    cx.run_until_parked();
+    let unread_after_read = cx.update(|cx| cx.global::<NotificationCenter>().unread_count());
+
+    assert_eq!(unread_after_create, 1);
+    assert_eq!(unread_after_read, 0);
+}
+
 #[gpui::test]
 fn route_change_takes_focus_back_from_the_previous_screen(cx: &mut TestAppContext) {
     let data_dir = tempfile::tempdir().unwrap();

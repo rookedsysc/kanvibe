@@ -83,9 +83,10 @@ pub fn qa_remote_host_namespace(app_data_directory: &Path) -> String {
     format!("qa-{}", &digest[..16])
 }
 
-/// 소스 개발 실행에서만 여는 `/api/mobile/dev/pairing-code`(TS `IS_DEV_PAIRING_ROUTE_ENABLED`)
+/// 소스 개발 실행과 자동 QA 실행에서만 여는 `/api/mobile/dev/pairing-code`(TS `IS_DEV_PAIRING_ROUTE_ENABLED`).
+/// TS 자동 QA(모바일 E2E fixture 포함)는 늘 소스(`KANVIBE_RENDERER_URL`)로 띄웠으므로 그 실행에도 이 경로가 열려 있었다
 pub fn is_dev_pairing_route_enabled(mode: &LaunchMode) -> bool {
-    mode.is_dev_run && !mode.is_packaged
+    (mode.is_dev_run || mode.is_automated_qa) && !mode.is_packaged
 }
 
 /// 공백뿐인 값은 없는 것으로 본다
@@ -285,6 +286,23 @@ mod tests {
         assert!(qa.starts_with("qa-") && qa.len() == 19, "{qa}");
         assert!(is_dev_pairing_route_enabled(&dev()));
         assert!(!is_dev_pairing_route_enabled(&packaged));
+    }
+
+    #[test]
+    fn automated_qa_opens_the_dev_pairing_route_like_the_ts_source_launch() {
+        let automated_qa = LaunchMode {
+            is_automated_qa: true,
+            requested_app_data_dir: Some("/tmp/kanvibe-qa-data".into()),
+            ..LaunchMode::default()
+        };
+        let manual_qa = LaunchMode {
+            is_manual_qa: true,
+            ..LaunchMode::default()
+        };
+
+        assert!(is_dev_pairing_route_enabled(&automated_qa));
+        assert!(!is_dev_pairing_route_enabled(&manual_qa));
+        assert!(!is_dev_pairing_route_enabled(&LaunchMode::default()));
     }
 
     // parity: TS-electron-runtimeEnvironment-24c13f
