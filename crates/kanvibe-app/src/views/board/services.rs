@@ -17,7 +17,7 @@ use kanvibe_services::kanban::{CreateTaskInput, SearchableTask, TasksByStatus};
 use kanvibe_services::project::ScanResult;
 
 use crate::qa::faults::{FaultOutcome, FaultRegistry};
-use crate::services::{AppServices, apply_fault, format_service_error};
+use crate::services::{AppServices, apply_fault, format_service_error_for};
 
 /// 보드 화면 서비스 호출 실패. `reason`은 TS가 화면에 보이던 IPC 오류 문구 그대로이며
 /// `common.loadFailed`·`task.deleteFailed` 같은 문구에 그대로 들어간다
@@ -35,14 +35,9 @@ impl BoardServiceFailure {
         }
     }
 
-    /// 서비스가 낸 사유를 TS 렌더러가 받던 문구로 감싼다. 전용 IPC 채널(`kanvibe:*`)로 부르던 알림 동작은
-    /// Electron이 그 채널 이름을 머리말에 넣었고, 나머지는 공용 `format_service_error`와 같다
+    /// 서비스가 낸 사유를 TS 렌더러가 받던 문구로 감싼다(`format_service_error_for`)
     fn from_service(target: &str, reason: &str) -> Self {
-        let message = match target.strip_prefix("kanvibe:") {
-            Some(_) => format!("Error invoking remote method '{target}': Error: {reason}"),
-            None => format_service_error(reason),
-        };
-        Self::new(message)
+        Self::new(format_service_error_for(target, reason))
     }
 }
 
@@ -130,7 +125,7 @@ pub struct BoardServices {
 
 /// 보드 서비스를 돌려준다. 데이터 디렉터리 없이 뜬 앱이면 `None`이다
 pub fn board_services(cx: &App) -> Option<Arc<BoardServices>> {
-    let app_services = cx.global::<AppServices>();
+    let app_services = cx.try_global::<AppServices>()?;
     let runtime = app_services.runtime()?.clone();
     Some(Arc::new(BoardServices {
         runtime,

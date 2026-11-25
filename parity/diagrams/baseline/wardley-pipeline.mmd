@@ -1,0 +1,23 @@
+wardley-beta
+title Platform Strategy
+size [800, 500]
+evolution Uncharted -> Emerging -> Good / Product -> Utility
+anchor User [0.95, 0.50]
+component Website [0.80, 0.45] label [10, -5]
+component Payments [0.60, 0.70] (buy)
+component Search [0.62, 0.30] (build) inertia
+component Hosting [0.30, 0.85] (outsource)
+component Analytics [0.45, 0.55] (market)
+component Data Store [0.20, 0.40]
+pipeline Data Store {
+  component Files [0.25]
+  component Database [0.55]
+  component Cloud Storage [0.80]
+}
+User -> Website
+Website +'checkout'> Payments
+Website -> Search
+Search -.-> Data Store
+Website +> Analytics
+Payments +<> Hosting
+Analytics -> Hosting; uses

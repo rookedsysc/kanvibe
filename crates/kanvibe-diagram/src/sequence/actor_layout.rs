@@ -1,16 +1,12 @@
 //! 참여자 자리: 왼쪽부터 늘어놓기(addActorRenderingData), 생성·소멸 메시지에 맞춘 상자 자리
 //! (adjustCreatedDestroyedData), 아래 거울 참여자, 참여자 묶음 상자, 팝업 메뉴 크기(drawActorsPopup).
 
-use super::bounds::BOX_MARGIN;
 use super::document::SequenceMessage;
 use super::layout::{LayoutPass, PlacedGroup};
 use super::measure::text_size;
 use super::models::MessageModel;
 use super::participants::{FIGURE_HALF_WIDTH, drawn_height};
-use super::{BOX_TEXT_MARGIN, NOTE_MARGIN, WRAP_PADDING};
 
-/// 묶음 상자는 참여자 영역보다 좌우로 2·boxMargin 넓다
-const GROUP_PADDING: f64 = BOX_MARGIN * 2.0;
 /// 팝업 메뉴 첫 항목 위치와 항목 간격
 const MENU_FIRST_LINK: f64 = 20.0;
 const MENU_LINK_GAP: f64 = 30.0;
@@ -20,7 +16,7 @@ impl LayoutPass<'_> {
     pub(super) fn place_actors(&mut self, group_title_height: f64) {
         let participants = &self.document.participants;
         if !self.groups.is_empty() {
-            self.bounds.bump(BOX_MARGIN);
+            self.bounds.bump(self.config.box_margin);
             if self.groups.iter().any(|group| group.title.is_some()) {
                 self.bounds.bump(group_title_height);
             }
@@ -31,7 +27,7 @@ impl LayoutPass<'_> {
             let group = participant.group;
             if let Some(previous) = previous_group.filter(|previous| Some(*previous) != group) {
                 self.group_order.push(previous);
-                previous_margin += BOX_MARGIN + self.groups[previous].margin;
+                previous_margin += self.config.box_margin + self.groups[previous].margin;
             }
             if let Some(current) = group.filter(|current| Some(*current) != previous_group) {
                 self.groups[current].x = previous_width + previous_margin;
@@ -56,7 +52,7 @@ impl LayoutPass<'_> {
                 let group_box = &mut self.groups[current];
                 group_box.width = previous_width + group_box.margin - group_box.x;
             }
-            previous_margin = self.actors[index].margin();
+            previous_margin = self.actors[index].margin(self.config);
             previous_group = group;
         }
         self.group_order.extend(previous_group);
@@ -92,14 +88,18 @@ impl LayoutPass<'_> {
             self.actors[message.to].start_y = line_y - self.actors[message.to].height / 2.0;
             message.to
         } else if document.destroyed.get(&message.from) == Some(&index) {
-            let adjustment = half_width(self, message.from, 0.0);
-            self.shorten_sender(message, model, adjustment, span);
+            if self.config.should_mirror_actors {
+                let adjustment = half_width(self, message.from, 0.0);
+                self.shorten_sender(message, model, adjustment, span);
+            }
             self.actors[message.from].stop_y =
                 Some(line_y - self.actors[message.from].height / 2.0);
             message.from
         } else if document.destroyed.get(&message.to) == Some(&index) {
-            let adjustment = half_width(self, message.to, 3.0);
-            self.shorten_receiver(message, model, adjustment, span);
+            if self.config.should_mirror_actors {
+                let adjustment = half_width(self, message.to, 3.0);
+                self.shorten_receiver(message, model, adjustment, span);
+            }
             self.actors[message.to].stop_y = Some(line_y - self.actors[message.to].height / 2.0);
             message.to
         } else {
@@ -117,7 +117,7 @@ impl LayoutPass<'_> {
         (start_y, stop_y): (f64, f64),
     ) {
         let receiver = &self.actors[message.to];
-        let bottom = stop_y + receiver.height / 2.0 + NOTE_MARGIN;
+        let bottom = stop_y + receiver.height / 2.0 + self.config.note_margin;
         if receiver.x < self.actors[message.from].x {
             self.bounds
                 .insert(model.stop_x - adjustment, start_y, model.start_x, bottom);
@@ -138,7 +138,7 @@ impl LayoutPass<'_> {
         (start_y, stop_y): (f64, f64),
     ) {
         let sender = &self.actors[message.from];
-        let bottom = stop_y + sender.height / 2.0 + NOTE_MARGIN;
+        let bottom = stop_y + sender.height / 2.0 + self.config.note_margin;
         if sender.x < self.actors[message.to].x {
             self.bounds
                 .insert(model.start_x - adjustment, start_y, model.stop_x, bottom);
@@ -152,42 +152,45 @@ impl LayoutPass<'_> {
 
     /// 아래쪽 거울 참여자(mirrorActors). 소멸한 참여자는 이미 정한 자리에 남는다
     pub(super) fn place_footer(&mut self) {
-        if self.actors.is_empty() {
+        if self.actors.is_empty() || !self.config.should_mirror_actors {
             return;
         }
-        self.bounds.bump(BOX_MARGIN * 2.0);
+        let box_margin = self.config.box_margin;
+        self.bounds.bump(box_margin * 2.0);
         let footer_y = self.bounds.vertical_pos;
         let mut tallest: f64 = 0.0;
         for (participant, actor) in self.document.participants.iter().zip(&mut self.actors) {
             actor.stop_y.get_or_insert(footer_y);
             tallest = tallest.max(drawn_height(participant.kind, actor));
         }
-        self.bounds.bump(tallest + BOX_MARGIN);
+        self.bounds.bump(tallest + box_margin);
     }
 
     /// 묶음 상자는 그림 맨 위에서 아래 참여자 아래까지 덮는다
     pub(super) fn place_groups(&mut self) {
         let bottom = self.bounds.vertical_pos;
+        // 묶음 상자는 참여자 영역보다 좌우로 2·boxMargin 넓다
+        let group_padding = self.config.box_margin * 2.0;
         for index in self.group_order.clone() {
             let group = &self.groups[index];
             let (x, width) = (group.x, group.width);
             self.bounds.insert(x, 0.0, x + width, bottom);
-            let start_x = x - GROUP_PADDING;
-            let start_y = -GROUP_PADDING * 0.25;
+            let start_x = x - group_padding;
+            let start_y = -group_padding * 0.25;
             let source = &self.document.groups[index];
             self.placed_groups.push(PlacedGroup {
                 start_x,
                 start_y,
-                stop_x: start_x + width + 2.0 * GROUP_PADDING,
-                stop_y: start_y + bottom + GROUP_PADDING * 0.75,
+                stop_x: start_x + width + 2.0 * group_padding,
+                stop_y: start_y + bottom + group_padding * 0.75,
                 fill: source.fill.clone(),
                 title: group.title.clone(),
                 title_center_x: x + width / 2.0,
-                title_center_y: BOX_TEXT_MARGIN + self.group_title_height() / 2.0,
+                title_center_y: self.config.box_text_margin + self.group_title_height() / 2.0,
             });
         }
         if !self.groups.is_empty() {
-            self.bounds.bump(BOX_MARGIN);
+            self.bounds.bump(self.config.box_margin);
         }
     }
 
@@ -202,6 +205,7 @@ impl LayoutPass<'_> {
     /// 숨은 팝업 메뉴(링크가 있는 참여자, 늘 상자 모양이다)의 오른쪽 끝과 높이
     pub(super) fn popup_menu_extent(&self) -> (f64, f64) {
         let participants = self.document.participants.iter().zip(&self.actors);
+        let label_padding = 2.0 * (self.config.wrap_padding + self.config.box_margin);
         let mut extent: (f64, f64) = (0.0, 0.0);
         for (participant, actor) in participants {
             if participant.link_labels.is_empty() {
@@ -210,7 +214,7 @@ impl LayoutPass<'_> {
             let widest_label = participant
                 .link_labels
                 .iter()
-                .map(|label| text_size(self.fonts, label).width + 2.0 * (WRAP_PADDING + BOX_MARGIN))
+                .map(|label| text_size(self.fonts, label).width + label_padding)
                 .fold(0.0, f64::max);
             let menu_width = actor.width.max(widest_label);
             let link_count = participant.link_labels.len() as f64;

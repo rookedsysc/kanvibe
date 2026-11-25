@@ -19,6 +19,17 @@ pub struct QaOptions {
     pub control_socket_path: Option<PathBuf>,
     /// macOS 렌더러 배치를 재현하는 상태(`platform: mac`)에서 이 OS 대신 쓸 플랫폼
     pub platform_override: Option<ShortcutPlatform>,
+    /// 화면 코드가 돌기 전 모습을 붙잡아 두는 재생 장치
+    pub loading_holds: LoadingHolds,
+}
+
+/// TS 드라이버의 `disable_javascript`·`hold_requests`에 해당한다
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct LoadingHolds {
+    /// 첫 프레임(`index.html` 정적 스켈레톤)에서 멈춘다(`--hold-first-frame`)
+    pub is_first_frame_held: bool,
+    /// 이 JS 정규식에 맞는 lazy 라우트 번들 URL은 끝나지 않는다(`--hold-request`, 여러 번 줄 수 있다)
+    pub held_request_patterns: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -71,6 +82,7 @@ struct RawLaunchArguments {
     faults_path: Option<PathBuf>,
     control_socket_path: Option<PathBuf>,
     platform_override: Option<ShortcutPlatform>,
+    loading_holds: LoadingHolds,
 }
 
 /// 실행 파일 이름을 뺀 인자 목록을 읽는다
@@ -82,6 +94,10 @@ pub fn parse_launch_options(
     while let Some(flag) = arguments.next() {
         if flag == "--qa" {
             raw.is_qa = true;
+            continue;
+        }
+        if flag == "--hold-first-frame" {
+            raw.loading_holds.is_first_frame_held = true;
             continue;
         }
         let value = arguments
@@ -112,6 +128,7 @@ fn apply_flag(
         "--network-responses" => raw.network_responses_path = Some(PathBuf::from(value)),
         "--faults" => raw.faults_path = Some(PathBuf::from(value)),
         "--control-socket" => raw.control_socket_path = Some(PathBuf::from(value)),
+        "--hold-request" => raw.loading_holds.held_request_patterns.push(value),
         "--platform" => {
             raw.platform_override = Some(parse_platform(&value).ok_or(invalid(&value))?)
         }
@@ -131,6 +148,7 @@ fn build_launch_options(raw: RawLaunchArguments) -> Result<LaunchOptions, Launch
             faults_path: raw.faults_path,
             control_socket_path: raw.control_socket_path,
             platform_override: raw.platform_override,
+            loading_holds: raw.loading_holds,
         })
     } else {
         reject_qa_only_flags(&raw)?;
@@ -153,6 +171,11 @@ fn reject_qa_only_flags(raw: &RawLaunchArguments) -> Result<(), LaunchOptionsErr
         ("--faults", raw.faults_path.is_some()),
         ("--control-socket", raw.control_socket_path.is_some()),
         ("--platform", raw.platform_override.is_some()),
+        ("--hold-first-frame", raw.loading_holds.is_first_frame_held),
+        (
+            "--hold-request",
+            !raw.loading_holds.held_request_patterns.is_empty(),
+        ),
     ];
     match qa_only_flags.into_iter().find(|(_, is_set)| *is_set) {
         Some((flag, _)) => Err(LaunchOptionsError::QaOnly(flag.to_string())),
@@ -246,6 +269,25 @@ mod tests {
         assert_eq!(qa.control_socket_path, Some(PathBuf::from("/s.sock")));
         assert_eq!(options.initial_route, "/ko/settings");
         assert_eq!(options.window_size, (1599.0, 999.0));
+    }
+
+    #[test]
+    fn loading_holds_are_read_only_in_qa_mode() {
+        let options = parse_launch_options(arguments(
+            "--qa --fixed-now 2026-01-15T03:00:00Z --hold-first-frame \
+             --hold-request /SettingsRoute-[^/]*\\.js$ --hold-request /DiffRoute-",
+        ))
+        .unwrap();
+        let holds = options.qa.expect("qa options").loading_holds;
+        assert!(holds.is_first_frame_held);
+        assert_eq!(
+            holds.held_request_patterns,
+            ["/SettingsRoute-[^/]*\\.js$", "/DiffRoute-"]
+        );
+        assert_eq!(
+            parse_launch_options(arguments("--hold-first-frame")),
+            Err(LaunchOptionsError::QaOnly("--hold-first-frame".into()))
+        );
     }
 
     #[test]

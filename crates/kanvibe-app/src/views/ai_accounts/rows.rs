@@ -1,14 +1,16 @@
 //! 계정 행(TS `AccountRow`)과 계정 추가 줄(TS `AddAccountForm`).
 
+use gpui_kit::base::input::InputState;
 use gpui_kit::{
-    AnyElement, Context, InteractiveElement, IntoElement, ParentElement, Styled, div, px,
+    AnyElement, App, Context, Entity, Focusable, InteractiveElement, IntoElement, ParentElement,
+    Styled, div, px,
 };
 use kanvibe_ai::accounts::account_service::AiAccountSummary;
 use kanvibe_ai::usage::types::AiUsageProvider;
 use kanvibe_domain::i18n::Translator;
 
 use crate::components::TailwindText;
-use crate::qa::targets::{QaTargetDescription, qa_target_layer};
+use crate::qa::targets::qa_text_input_layer;
 use crate::services::AppServices;
 use crate::theme::{ThemeTokens, radius, spacing, text_scale};
 use crate::views::ai_accounts::model::{mutation_outcome_key, provider_index};
@@ -229,7 +231,7 @@ impl AiAccountsView {
                     .flex()
                     .items_center()
                     .gap(spacing(2.0))
-                    .child(render_name_field(theme, field, placeholder))
+                    .child(render_name_field(theme, field, &input, placeholder, cx))
                     .child(self.render_add_button(theme, provider, has_name, cx)),
             )
             .children(self.render_add_feedback(theme, provider, cx))
@@ -304,12 +306,16 @@ fn render_plan_badge(theme: &ThemeTokens, plan: String) -> impl IntoElement {
         .child(plan.to_uppercase())
 }
 
-/// 계정 이름 입력란. 재생 드라이버가 자리 표시 글자로 찾는다
+/// 계정 이름 입력란. 재생 드라이버가 자리 표시 글자로 찾아 포커스를 주거나 값을 바꾼다
 fn render_name_field(
     theme: &ThemeTokens,
     field: impl IntoElement,
+    input: &Entity<InputState>,
     placeholder: String,
+    cx: &App,
 ) -> impl IntoElement {
+    let focus_handle = input.read(cx).focus_handle(cx);
+    let fill_target = input.downgrade();
     div()
         .relative()
         .min_w_0()
@@ -322,9 +328,13 @@ fn render_name_field(
         .py(spacing(1.0))
         .text_scale(text_scale::XS)
         .child(field)
-        .child(qa_target_layer(QaTargetDescription {
-            role: "textbox",
-            name: placeholder.into(),
-            text: "".into(),
-        }))
+        .child(qa_text_input_layer(
+            placeholder,
+            focus_handle,
+            move |value, window, cx| {
+                let _ = fill_target.update(cx, |input, cx| {
+                    input.set_value(value.to_string(), window, cx)
+                });
+            },
+        ))
 }

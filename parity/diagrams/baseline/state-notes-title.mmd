@@ -1,0 +1,11 @@
+---
+title: Order states
+---
+stateDiagram-v2
+    [*] --> Draft
+    Draft --> Paid : pay
+    note "floating hint" as N1
+    N1 --> Paid
+    click Draft "https://example.com/draft" "Draft docs"
+    click Paid href "https://example.com/paid"
+    Paid --> [*]

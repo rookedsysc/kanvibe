@@ -4,6 +4,7 @@
 //! 동시 영역은 `docTranslator`가 divider 상태로 묶는다. `[*]`는 감싼 문서 id에 `_start`·`_end`를 붙여 바꾼다.
 
 use crate::DiagramError;
+use crate::directive::diagram_body;
 use crate::flowchart::parser::Direction;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -75,7 +76,8 @@ struct OpenDocument {
 
 /// 정의를 해석하고 `docTranslator`까지 마친 최상위 문서를 돌려준다
 pub fn parse(definition: &str) -> Result<Vec<Statement>, DiagramError> {
-    let mut lines = definition
+    let body = diagram_body(definition);
+    let mut lines = body
         .lines()
         .map(str::trim)
         .filter(|line| !line.is_empty() && !line.starts_with("%%"));

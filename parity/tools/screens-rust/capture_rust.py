@@ -120,10 +120,16 @@ def run_step(client: ControlClient, step: dict) -> None:
     elif kind == "board_event":
         client.send({"cmd": "board_event", "event": value})
     elif kind == "fill":
-        # Playwright `fill`처럼 입력란 값을 통째로 바꾼다: 눌러 포커스를 주고 모두 고른 뒤 새 값을 친다
-        client.send({"cmd": "click", "target": {k: v for k, v in value.items() if k != "value"}})
-        client.send({"cmd": "key", "keys": "Mod+A"})
-        client.send({"cmd": "type", "text": value["value"]})
+        # Playwright `fill`: 입력란에 포커스를 주고 값을 통째로 바꾼다(키를 치지 않는다)
+        client.send({"cmd": "fill", "target": {k: v for k, v in value.items() if k != "value"},
+                     "value": value["value"]})
+    elif kind == "focus":
+        client.send({"cmd": "focus", "target": value})
+    elif kind == "scroll_into_view":
+        client.send({"cmd": "scroll_into_view", "target": value})
+    elif kind == "main_send":
+        # Electron main이 창에 보내던 메시지(`webContents.send(channel, payload)`)
+        client.send({"cmd": "main_send", "channel": value["channel"], "payload": value["payload"]})
     elif kind == "drag_hold":
         drag_hold(client, value)
     else:
@@ -148,6 +154,10 @@ def app_command(args: argparse.Namespace, state: dict, fixture: dict, job_dir: P
         "--route", state["route"],
         "--window-size", f"{width}x{height}",
         *(["--platform", "mac"] if state.get("platform") == "mac" else []),
+        # TS 드라이버 `disable_javascript`: 화면 코드가 돌기 전 정적 스켈레톤에서 멈춘다
+        *(["--hold-first-frame"] if state.get("disable_javascript") else []),
+        # TS 드라이버 `hold_requests`: 정규식에 맞는 lazy 라우트 번들을 끝내지 않는다
+        *[argument for pattern in state.get("hold_requests") or [] for argument in ("--hold-request", pattern)],
     ]
 
 
@@ -174,6 +184,8 @@ def capture_state(args: argparse.Namespace, state: dict, output_path: Path) -> N
                                stdout=app_log, stderr=subprocess.STDOUT)
         client = ControlClient(job_dir / "control.sock")
         client.send({"cmd": "wait_idle"})
+        # TS 기준 이미지는 Playwright가 포커스를 준 창에서 찍었다. 창 관리자가 없는 Xvfb에서는 앱이 직접 포커스를 잡는다
+        client.send({"cmd": "activate_window"})
         for step in state.get("steps") or []:
             run_step(client, step)
             # 다음 단계가 이번 단계로 바뀐 화면(새로 뜬 메뉴 항목 등)을 찾도록 프레임을 기다린다

@@ -20,7 +20,7 @@ use super::text_field::TextFieldEvent;
 use crate::components::{TailwindText, box_shadows};
 use crate::shortcuts::{
     OpenBoardPageFind, OpenCommandPalette, OpenCreateTask, OpenDesktopFilter, OpenProjectFilter,
-    OpenTaskSearch, ToggleNotificationCenter,
+    ToggleNotificationCenter,
 };
 use crate::theme::{ThemeTokens, radius, spacing, text_scale};
 use crate::windows::{TaskNavigationRequest, navigate_to_task_detail};
@@ -197,7 +197,8 @@ impl BoardView {
         element
             .on_action(
                 cx.listener(|this, _: &ToggleNotificationCenter, window, cx| {
-                    this.toggle_notification_center_by_keyboard(window, cx)
+                    this.notification_center
+                        .update(cx, |center, cx| center.toggle_by_keyboard(window, cx))
                 }),
             )
             .on_action(cx.listener(|this, _: &OpenProjectFilter, window, cx| {
@@ -211,39 +212,36 @@ impl BoardView {
                 }
             }))
             .on_action(cx.listener(|this, _: &OpenBoardPageFind, window, cx| {
-                if !this.has_shortcut_blocker() {
+                if !this.has_shortcut_blocker(cx) {
                     this.open_find_bar(window, cx)
                 }
             }))
-            .on_action(cx.listener(|this, _: &OpenCommandPalette, window, cx| {
-                if !this.has_shortcut_blocker() {
-                    this.open_command_palette(window, cx)
-                }
-            }))
-            .on_action(cx.listener(|this, _: &OpenTaskSearch, window, cx| {
-                this.toggle_quick_search(window, cx)
-            }))
             .on_action(cx.listener(|this, _: &OpenCreateTask, window, cx| {
-                if this.is_quick_search_open() {
-                    this.create_branch_todo_from_quick_search(window, cx)
-                } else if !this.has_shortcut_blocker() {
+                if !this.has_shortcut_blocker(cx) {
                     this.open_create_task(None, window, cx)
                 }
             }))
             .on_key_down(cx.listener(Self::handle_board_key_down))
     }
 
-    /// 대화상자·메뉴가 열려 있으면 보드 키를 쓰지 않는다
-    pub(super) fn has_shortcut_blocker(&self) -> bool {
+    /// 보드의 대화상자·메뉴가 열려 있는지(TS `registerShortcutBlocker`)
+    pub(crate) fn has_board_blocker(&self) -> bool {
         self.context_menu.is_some()
             || self.pending_done_move.is_some()
             || self.is_board_dialog_open()
-            || self.command_palette.is_some()
-            || self.is_quick_search_open()
-            || self.release_update_version().is_some()
     }
 
-    pub(super) fn focused_card(&self, window: &Window) -> Option<String> {
+    /// 보드 대화상자나 창의 전역 덮개(팔레트·빠른 검색·릴리스·sync 검토)가 열려 있으면 보드 키를 쓰지 않는다
+    pub(super) fn has_shortcut_blocker(&self, cx: &gpui_kit::App) -> bool {
+        self.has_board_blocker()
+            || self
+                .screen
+                .navigator
+                .locale_shell(cx)
+                .is_some_and(|shell| shell.read(cx).has_open_overlay(cx))
+    }
+
+    pub(crate) fn focused_card(&self, window: &Window) -> Option<String> {
         self.card_focus
             .iter()
             .find(|(_, handle)| handle.is_focused(window))
@@ -256,7 +254,7 @@ impl BoardView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.board.is_none() || self.has_shortcut_blocker() {
+        if self.board.is_none() || self.has_shortcut_blocker(cx) {
             return;
         }
         let focused_card = self.focused_card(window);

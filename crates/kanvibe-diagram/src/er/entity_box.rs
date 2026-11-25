@@ -9,7 +9,7 @@ use crate::LabelMode;
 use crate::flowchart::FlowNode;
 use crate::flowchart::shapes::{Intersect, NodeGeometry};
 use crate::label::{LabelBox, measure_label};
-use crate::scene::{Color, Point, SceneItem, rounded_rect};
+use crate::scene::{Color, Point, SceneItem, StrokeStyle, rounded_rect};
 use crate::text::{FontBook, FontWeight};
 
 /// er.diagramPadding(20)·er.entityPadding(15)에 1.25를 곱한 값(htmlLabels 설정이 최상위에 없어 두 방식 모두 곱한다)
@@ -19,10 +19,11 @@ const TEXT_PADDING: f64 = 18.75;
 const RECT_PADDING: f64 = 20.0;
 const MIN_ENTITY_WIDTH: f64 = 100.0;
 
-/// 엔티티 상자 색(테마별)
+/// 엔티티 상자 색(테마 기본에 classDef·style을 덮은 값)
 pub struct EntityColors {
     pub fill: Color,
-    pub border: Color,
+    /// 바깥 상자·줄 상자·구분선 테두리(사용자 stroke 선언은 모든 경로에 먹는다)
+    pub border: StrokeStyle,
     pub row_odd: Color,
     pub row_even: Color,
     pub text: Color,
@@ -195,7 +196,7 @@ impl EntityTable {
         let colors = style.colors;
         let (x, y) = (-self.width / 2.0, -self.height / 2.0);
         let mut items: Vec<SceneItem> =
-            rough_rect(x, y, self.width, self.height, colors.fill, colors.border).into();
+            rough_rect(x, y, self.width, self.height, colors.fill, &colors.border).into();
         for (index, row) in self.rows.iter().enumerate() {
             let is_even = (index + 1) % 2 == 0 && row.offset != 0.0;
             let fill = if is_even {
@@ -210,11 +211,11 @@ impl EntityTable {
                 self.width,
                 row.height,
                 fill,
-                colors.border,
+                &colors.border,
             ));
         }
         items.extend(self.text_items(style));
-        items.extend(self.dividers(colors.border));
+        items.extend(self.dividers(&colors.border));
         items
     }
 
@@ -239,7 +240,7 @@ impl EntityTable {
     }
 
     /// 이름 줄 아래 가로선(원본은 두 번 그린다)과 열 사이 세로선
-    fn dividers(&self, border: Color) -> Vec<SceneItem> {
+    fn dividers(&self, border: &StrokeStyle) -> Vec<SceneItem> {
         let (x, y) = (-self.width / 2.0, -self.height / 2.0);
         let top = y + self.name_height();
         let bottom = y + self.height;

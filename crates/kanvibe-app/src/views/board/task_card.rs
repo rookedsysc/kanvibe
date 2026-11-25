@@ -21,7 +21,9 @@ use super::icons::{BoardIcon, board_icon};
 use super::keyboard::FindField;
 use super::task_filters::{ProjectDisplay, is_inherited_priority, resolve_effective_priority};
 use crate::components::{TailwindText, box_shadows, fade};
-use crate::qa::targets::{QaTargetDescription, qa_target_layer};
+use crate::qa::targets::{
+    QaTargetBehavior, QaTargetDescription, qa_target_layer, qa_target_layer_with,
+};
 use crate::text_baseline::{TextFamily, baseline_lift};
 use crate::theme::{ColorPair, ThemeTokens, radius, spacing, text_scale};
 
@@ -432,6 +434,28 @@ fn request_progress(theme: &ThemeTokens, label: String) -> impl IntoElement {
         .child(badge_label_layer("status", &label, &label))
 }
 
+/// 카드 전체(TS `data-kanban-task-card`·`data-kanban-status` 속성이 붙은 `tabIndex` 요소). 재생 드라이버가 선택자로 찾아 포커스를 준다
+fn card_qa_target(task: &KanbanTask, focus_handle: gpui_kit::FocusHandle) -> impl IntoElement {
+    qa_target_layer_with(
+        QaTargetDescription {
+            role: "article",
+            name: task.title.clone().into(),
+            text: gpui_kit::SharedString::default(),
+        },
+        QaTargetBehavior {
+            selector: Some(
+                format!(
+                    "[data-kanban-task-card='true'][data-kanban-status='{}']",
+                    task.status.as_str()
+                )
+                .into(),
+            ),
+            focus_handle: Some(focus_handle),
+            ..QaTargetBehavior::default()
+        },
+    )
+}
+
 impl BoardView {
     pub(super) fn render_task_card(
         &mut self,
@@ -465,7 +489,8 @@ impl BoardView {
             .py(spacing(2.0))
             .cursor_pointer()
             .when_base_project(is_base_project(task))
-            .children(self.task_card_content(theme, &input));
+            .children(self.task_card_content(theme, &input))
+            .child(card_qa_target(task, focus_handle.clone()));
         if is_focused {
             card = card
                 .border_color(theme.border.brand)

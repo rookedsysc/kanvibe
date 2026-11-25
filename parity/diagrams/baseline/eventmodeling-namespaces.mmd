@@ -1,0 +1,9 @@
+eventmodeling
+tf 01 ui Shop.Catalog
+tf 02 cmd Orders.PlaceOrder
+tf 03 evt Orders.OrderPlaced
+tf 04 pcr Shipping.Fulfilment ->> 03
+tf 05 cmd Shipping.ShipOrder
+tf 06 evt Shipping.OrderShipped
+rf 07 evt Orders.OrderArchived
+tf 08 rmo Orders.OrderStatus ->> 03 ->> 06

@@ -19,6 +19,11 @@ use crate::latex::{self, LatexSpan};
 
 pub const PLACEHOLDER_START: char = '\u{E000}';
 pub const PLACEHOLDER_END: char = '\u{E001}';
+/// 수식 자리표시자를 감싸는 문장 부호. marked는 강조 구분자(`**` 등)가 열고 닫히는지 정할 때 수식 토큰 바깥 글자
+/// (`$`·`\`·`)`·`]`)를 문장 부호로 본다. 사용자 영역 문자는 pulldown-cmark에게 글자라서 `a**$x$**b`가 굵게가
+/// 되므로, 수식 자리표시자는 양 끝을 유니코드 문장 부호로 감싸 marked처럼 `**`를 글자로 남긴다
+pub const LATEX_PLACEHOLDER_OPEN: char = '\u{2E28}';
+pub const LATEX_PLACEHOLDER_CLOSE: char = '\u{2E29}';
 
 /// 자리표시자 하나가 가리키는 marked 토큰
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -194,7 +199,7 @@ pub fn substitute(markdown: &str, options: Options, has_latex: bool) -> Substitu
                 continue;
             };
             text.push_str(&markdown[cursor..index]);
-            text.push_str(&placeholder(spans.len()));
+            text.push_str(&placeholder(spans.len(), &span));
             spans.push(span);
             index += length;
             cursor = index;
@@ -204,11 +209,19 @@ pub fn substitute(markdown: &str, options: Options, has_latex: bool) -> Substitu
     Substituted { text, spans }
 }
 
-pub fn placeholder(index: usize) -> String {
-    format!("{PLACEHOLDER_START}{index}{PLACEHOLDER_END}")
+/// 자동 링크는 글자로, 수식은 양 끝이 문장 부호인 글자로 보이는 자리표시자
+pub fn placeholder(index: usize, span: &InlineSpan) -> String {
+    let core = format!("{PLACEHOLDER_START}{index}{PLACEHOLDER_END}");
+    match span {
+        InlineSpan::Latex(_) => {
+            format!("{LATEX_PLACEHOLDER_OPEN}{core}{LATEX_PLACEHOLDER_CLOSE}")
+        }
+        InlineSpan::Autolink(_) => core,
+    }
 }
 
-/// 글자 조각을 일반 글자와 자리표시자 번호로 나눈다
+/// 글자 조각을 일반 글자와 자리표시자 번호로 나눈다. 수식 자리표시자를 감싼 문장 부호는 양쪽이 다 있을 때만
+/// 자리표시자의 일부로 보고 뺀다
 pub fn split_placeholders(text: &str) -> Vec<Result<&str, usize>> {
     let mut parts = Vec::new();
     let mut rest = text;
@@ -220,11 +233,20 @@ pub fn split_placeholders(text: &str) -> Vec<Result<&str, usize>> {
         let Ok(number) = body[..end].parse::<usize>() else {
             break;
         };
-        if start > 0 {
-            parts.push(Ok(&rest[..start]));
+        let mut before = &rest[..start];
+        let mut after = &body[end + PLACEHOLDER_END.len_utf8()..];
+        if let (Some(trimmed_before), Some(trimmed_after)) = (
+            before.strip_suffix(LATEX_PLACEHOLDER_OPEN),
+            after.strip_prefix(LATEX_PLACEHOLDER_CLOSE),
+        ) {
+            before = trimmed_before;
+            after = trimmed_after;
+        }
+        if !before.is_empty() {
+            parts.push(Ok(before));
         }
         parts.push(Err(number));
-        rest = &body[end + PLACEHOLDER_END.len_utf8()..];
+        rest = after;
     }
     if !rest.is_empty() {
         parts.push(Ok(rest));

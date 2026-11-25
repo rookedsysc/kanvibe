@@ -1,11 +1,30 @@
 //! requirementDiagram 정의 파서. Mermaid requirementDiagram.jison의 문장과 RequirementDB의 저장 순서를 따른다.
 //!
 //! 지원: `direction`, 요구사항 여섯 종류(`id`·`text`·`risk`·`verifymethod`), `element`(`type`·`docref`),
-//! 관계 일곱 종류(`a - rel -> b`, `a <- rel - b`), 따옴표 값, `accTitle`·`accDescr`, `%%` 주석.
-//! `classDef`·`class`·`style`·`:::`는 문법 오류로 돌려 원문 표시로 넘긴다.
+//! 관계 일곱 종류(`a - rel -> b`, `a <- rel - b`), 따옴표 값, `accTitle`·`accDescr`, `%%` 주석,
+//! `classDef`·`class`·`style`, 블록 머리와 홀로 쓴 `이름:::클래스`.
+
+use std::collections::HashMap;
 
 use crate::DiagramError;
+use crate::directive::diagram_body;
 use crate::flowchart::parser::Direction;
+
+/// 노드에 붙은 클래스와 쌓인 스타일 선언(RequirementDB의 classes·cssStyles)
+#[derive(Clone, Debug, PartialEq)]
+pub struct StyleAssignment {
+    pub classes: Vec<String>,
+    pub declarations: Vec<String>,
+}
+
+impl Default for StyleAssignment {
+    fn default() -> Self {
+        Self {
+            classes: vec!["default".to_string()],
+            declarations: Vec::new(),
+        }
+    }
+}
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Requirement {
@@ -16,6 +35,7 @@ pub struct Requirement {
     pub text: String,
     pub risk: String,
     pub verify_method: String,
+    pub style: StyleAssignment,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -23,6 +43,7 @@ pub struct Element {
     pub name: String,
     pub element_type: String,
     pub doc_ref: String,
+    pub style: StyleAssignment,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -77,6 +98,63 @@ pub struct RequirementDiagram {
     pub requirements: Vec<Requirement>,
     pub elements: Vec<Element>,
     pub relations: Vec<Relation>,
+    /// `classDef` 이름 → 선언 목록
+    pub class_styles: HashMap<String, Vec<String>>,
+}
+
+impl RequirementDiagram {
+    /// 요구사항을 먼저, 없으면 요소를 찾는다
+    fn style_mut(&mut self, name: &str) -> Option<&mut StyleAssignment> {
+        let requirement = self.requirements.iter_mut().find(|node| node.name == name);
+        match requirement {
+            Some(node) => Some(&mut node.style),
+            None => self
+                .elements
+                .iter_mut()
+                .find(|node| node.name == name)
+                .map(|node| &mut node.style),
+        }
+    }
+
+    /// RequirementDB.setClass: 클래스를 붙이고 그때까지 정의된 선언을 바로 쌓는다
+    fn set_class(&mut self, ids: &[String], class_names: &[String]) {
+        for id in ids {
+            for class_name in class_names {
+                let defined = self
+                    .class_styles
+                    .get(class_name)
+                    .cloned()
+                    .unwrap_or_default();
+                if let Some(style) = self.style_mut(id) {
+                    style.classes.push(class_name.clone());
+                    style.declarations.extend(defined);
+                }
+            }
+        }
+    }
+
+    /// RequirementDB.defineClass: 이미 그 클래스를 단 노드에도 선언을 쌓는다
+    fn define_class(&mut self, ids: &[String], declarations: &[String]) {
+        for id in ids {
+            let styles = self.class_styles.entry(id.clone()).or_default();
+            styles.extend(declarations.iter().cloned());
+            let nodes = self.requirements.iter_mut().map(|node| &mut node.style);
+            let nodes = nodes.chain(self.elements.iter_mut().map(|node| &mut node.style));
+            for style in nodes.filter(|style| style.classes.contains(id)) {
+                style.declarations.extend(declarations.iter().cloned());
+            }
+        }
+    }
+
+    /// RequirementDB.setCssStyle: 없는 노드를 만나면 거기서 멈춘다
+    fn set_css_style(&mut self, ids: &[String], declarations: &[String]) {
+        for id in ids {
+            let Some(style) = self.style_mut(id) else {
+                return;
+            };
+            style.declarations.extend(declarations.iter().cloned());
+        }
+    }
 }
 
 pub fn parse(definition: &str) -> Result<RequirementDiagram, DiagramError> {
@@ -85,8 +163,10 @@ pub fn parse(definition: &str) -> Result<RequirementDiagram, DiagramError> {
         requirements: Vec::new(),
         elements: Vec::new(),
         relations: Vec::new(),
+        class_styles: HashMap::new(),
     };
-    let lines: Vec<&str> = definition
+    let body = diagram_body(definition);
+    let lines: Vec<&str> = body
         .lines()
         .map(|line| line.split("%%").next().unwrap_or("").trim())
         .collect();
@@ -126,8 +206,9 @@ fn parse_statement(
         diagram.direction = direction;
         return Ok(index + 1);
     }
-    if matches!(keyword, "classDef" | "class" | "style") || line.contains(":::") {
-        return Err(syntax_error(line));
+    if matches!(keyword, "classDef" | "class" | "style") {
+        parse_style_statement(diagram, keyword, line)?;
+        return Ok(index + 1);
     }
     if let Some(kind) = requirement_kind(keyword) {
         return parse_requirement(diagram, lines, index, kind);
@@ -135,9 +216,41 @@ fn parse_statement(
     if keyword.eq_ignore_ascii_case("element") {
         return parse_element(diagram, lines, index);
     }
+    if let Some((name, classes)) = line.split_once(":::") {
+        diagram.set_class(&[value_text(name)], &split_list(classes));
+        return Ok(index + 1);
+    }
     let relation = parse_relation(line).ok_or_else(|| syntax_error(line))?;
     diagram.relations.push(relation);
     Ok(index + 1)
+}
+
+/// `classDef 이름들 선언`, `class 노드들 클래스들`, `style 노드들 선언`
+fn parse_style_statement(
+    diagram: &mut RequirementDiagram,
+    keyword: &str,
+    line: &str,
+) -> Result<(), DiagramError> {
+    let rest = line[keyword.len()..].trim();
+    let (ids, values) = rest
+        .split_once(char::is_whitespace)
+        .ok_or_else(|| syntax_error(line))?;
+    let ids = split_list(ids);
+    let values = split_list(values);
+    match keyword {
+        "classDef" => diagram.define_class(&ids, &values),
+        "class" => diagram.set_class(&ids, &values),
+        _ => diagram.set_css_style(&ids, &values),
+    }
+    Ok(())
+}
+
+/// 쉼표로 나눈 목록(빈 칸은 버린다)
+fn split_list(text: &str) -> Vec<String> {
+    text.split(',')
+        .map(|part| part.trim().to_string())
+        .filter(|part| !part.is_empty())
+        .collect()
 }
 
 fn skip_description(lines: &[&str], index: usize) -> usize {
@@ -177,17 +290,20 @@ fn requirement_kind(keyword: &str) -> Option<&'static str> {
     Some(kind)
 }
 
-/// `<종류> <이름> {` 머리 줄의 이름
-fn block_name(line: &str) -> Result<String, DiagramError> {
+/// `<종류> <이름>[:::클래스들] {` 머리 줄의 이름과 클래스
+fn block_name(line: &str) -> Result<(String, Vec<String>), DiagramError> {
     let rest = line
         .split_once(char::is_whitespace)
         .map(|(_, rest)| rest)
         .ok_or_else(|| syntax_error(line))?;
-    let name = rest
+    let head = rest
         .trim()
         .strip_suffix('{')
         .ok_or_else(|| syntax_error(line))?;
-    Ok(value_text(name))
+    match head.split_once(":::") {
+        Some((name, classes)) => Ok((value_text(name), split_list(classes))),
+        None => Ok((value_text(head), Vec::new())),
+    }
 }
 
 /// 따옴표 값은 안쪽 글자, 아니면 앞뒤 공백을 뺀 글자
@@ -225,10 +341,10 @@ fn parse_requirement(
     index: usize,
     kind: &str,
 ) -> Result<usize, DiagramError> {
-    let name = block_name(lines[index])?;
+    let (name, classes) = block_name(lines[index])?;
     let (fields, next) = block_fields(lines, index)?;
     let mut requirement = Requirement {
-        name,
+        name: name.clone(),
         kind: kind.to_string(),
         ..Requirement::default()
     };
@@ -251,6 +367,7 @@ fn parse_requirement(
     {
         diagram.requirements.push(requirement);
     }
+    diagram.set_class(&[name], &classes);
     Ok(next)
 }
 
@@ -268,10 +385,10 @@ fn parse_element(
     lines: &[&str],
     index: usize,
 ) -> Result<usize, DiagramError> {
-    let name = block_name(lines[index])?;
+    let (name, classes) = block_name(lines[index])?;
     let (fields, next) = block_fields(lines, index)?;
     let mut element = Element {
-        name,
+        name: name.clone(),
         ..Element::default()
     };
     for (key, value) in fields {
@@ -288,6 +405,7 @@ fn parse_element(
     {
         diagram.elements.push(element);
     }
+    diagram.set_class(&[name], &classes);
     Ok(next)
 }
 
@@ -330,6 +448,25 @@ mod tests {
         assert_eq!(diagram.relations[1].kind, RelationKind::Contains);
         assert_eq!(diagram.relations[1].source, "test_entity");
         assert_eq!(diagram.relations[1].target, "test_req");
+    }
+
+    #[test]
+    fn 클래스와_스타일_선언을_순서대로_쌓는다() {
+        let diagram = parse(
+            "---\ntitle: T\n---\nrequirementDiagram\n  classDef early stroke:#111\n  requirement r:::early {\n  id: 1\n  }\n  element e {\n  type: doc\n  }\n  e:::late\n  classDef late fill:#fd8,color:#900\n  class r late\n  style e,r stroke-width:3px",
+        )
+        .unwrap();
+        let requirement = &diagram.requirements[0].style;
+        assert_eq!(requirement.classes, ["default", "early", "late"]);
+        assert_eq!(
+            requirement.declarations,
+            ["stroke:#111", "fill:#fd8", "color:#900", "stroke-width:3px"]
+        );
+        let element = &diagram.elements[0].style;
+        assert_eq!(
+            element.declarations,
+            ["fill:#fd8", "color:#900", "stroke-width:3px"]
+        );
     }
 
     #[test]

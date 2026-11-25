@@ -1,0 +1,26 @@
+---
+config:
+  xyChart:
+    width: 600
+    height: 400
+    showDataLabel: true
+    titleFontSize: 24
+    xAxis:
+      labelFontSize: 12
+      showTick: false
+    yAxis:
+      showTitle: false
+      axisLineWidth: 4
+  themeVariables:
+    xyChart:
+      plotColorPalette: "#6366f1, #f59e0b"
+      titleColor: "#b91c1c"
+      backgroundColor: "#fefce8"
+      yAxisLabelColor: "#2563eb"
+---
+xychart-beta
+    title "Quarterly sales"
+    x-axis [Q1, Q2, Q3, Q4]
+    y-axis "Units" 0 --> 120
+    bar [45, 80, 62, 110]
+    line [40, 70, 75, 100]

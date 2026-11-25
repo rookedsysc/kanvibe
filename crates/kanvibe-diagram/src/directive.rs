@@ -39,6 +39,11 @@ pub fn read_config(definition: &str) -> DiagramConfig {
         if let Some(tree) = front.get("config").filter(|value| value.is_object()) {
             config.tree = tree.clone();
         }
+        // processFrontmatter는 앞머리 `displayMode`를 `gantt.displayMode` 설정으로 옮긴다
+        if let Some(display_mode) = front.get("displayMode").and_then(scalar_text) {
+            let gantt = serde_json::json!({ "gantt": { "displayMode": display_mode } });
+            merge_deep(&mut config.tree, gantt);
+        }
     }
     if let Some(directives) = read_init_directives(body) {
         merge_deep(&mut config.tree, directives);

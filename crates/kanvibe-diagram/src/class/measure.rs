@@ -60,6 +60,7 @@ pub fn measure_text(
         text: text.to_string(),
         is_strong: false,
         is_emphasis: false,
+        is_strong_innermost: false,
     };
     measure_spans(fonts, &[span], font_size, weight, mode)
 }
@@ -87,7 +88,7 @@ fn span_weight(base: FontWeight, span: &StyledSpan) -> FontWeight {
     }
 }
 
-fn measure_spans(
+pub fn measure_spans(
     fonts: &FontBook,
     spans: &[StyledSpan],
     font_size: f64,
@@ -124,7 +125,7 @@ fn measure_spans(
     }
 }
 
-/// 잴 조각: HTML은 강조 조각 그대로, SVG 글자는 낱말 tspan(`+String`, ` name`)
+/// 잴 조각: HTML은 강조 조각 그대로, SVG 글자는 낱말 tspan(`+String`, ` name`)이고 겹친 강조는 안쪽 것만 남는다
 fn pieces(spans: &[StyledSpan], base: FontWeight, mode: LabelMode) -> Vec<(String, FontWeight)> {
     if mode == LabelMode::Html {
         return spans
@@ -133,14 +134,14 @@ fn pieces(spans: &[StyledSpan], base: FontWeight, mode: LabelMode) -> Vec<(Strin
             .collect();
     }
     let mut words = Vec::new();
-    for span in spans {
+    for span in spans.iter().map(StyledSpan::innermost_only) {
         for word in span.text.split(' ').filter(|word| !word.is_empty()) {
             let text = if words.is_empty() {
                 word.to_string()
             } else {
                 format!(" {word}")
             };
-            words.push((text, span_weight(base, span)));
+            words.push((text, span_weight(base, &span)));
         }
     }
     words

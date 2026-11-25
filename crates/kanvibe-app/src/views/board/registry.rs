@@ -538,11 +538,13 @@ impl BoardView {
             font_weight: Some(gpui_kit::FontWeight::BOLD),
             ..gpui_kit::HighlightStyle::default()
         };
-        let ranges: Vec<_> =
-            super::quick_search::highlighted_byte_ranges(&found.path, &found.matched_indices)
-                .into_iter()
-                .map(|range| (range, highlight))
-                .collect();
+        let ranges: Vec<_> = crate::views::locale_shell::highlighted_byte_ranges(
+            &found.path,
+            &found.matched_indices,
+        )
+        .into_iter()
+        .map(|range| (range, highlight))
+        .collect();
         let selected_background = crate::components::fade(theme.brand.primary, 0.1);
         let row = div()
             .id(("registry-folder", index))

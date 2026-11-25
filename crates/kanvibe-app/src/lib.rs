@@ -6,6 +6,7 @@ pub mod assets;
 pub mod components;
 pub mod desktop_process;
 pub mod fonts;
+pub mod locale_format;
 pub mod navigation;
 pub mod notifications;
 pub mod qa;

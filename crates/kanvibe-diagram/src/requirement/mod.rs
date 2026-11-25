@@ -1,17 +1,20 @@
 //! requirementDiagram 다이어그램(Mermaid 11 requirementRenderer: dagre 레이아웃, requirementBox 모양).
 //!
 //! `contains`는 시작 쪽 원+십자 표식의 실선, 나머지 관계는 끝 쪽 열린 화살표의 10,7 점선으로 그린다.
+//! classDef·style 선언은 상자 채움·테두리·구분선·글자색을 덮고, 앞머리 `title`은 그림 위 가운데에 놓는다.
 
 mod parser;
 mod requirement_box;
 
-use self::parser::{RelationKind, RequirementDiagram};
+use self::parser::{RelationKind, RequirementDiagram, StyleAssignment};
 use self::requirement_box::{BoxStyle, element_node, requirement_node};
-use crate::er::unified::{UnifiedGraph, edge_label_background, render_unified};
+use crate::er::unified::{
+    DiagramTitle, UnifiedGraph, edge_label_background, render_unified, rough_pen,
+};
 use crate::flowchart::parser::{ArrowType, Stroke};
 use crate::flowchart::render::CustomMarker;
 use crate::flowchart::{ElementStyle, FlowEdge, FlowNode, FlowRender};
-use crate::label::measure_label;
+use crate::label::{FONT_SIZE, measure_label};
 use crate::scene::{Color, PathCommand, Point, Scene};
 use crate::theme::{Palette, Theme, hsl};
 use crate::{DiagramError, LabelMode, RenderContext};
@@ -64,6 +67,13 @@ pub fn render(definition: &str, context: &RenderContext) -> Result<Scene, Diagra
         edges: relation_edges(&diagram, context)?,
         node_spacing: NODE_SPACING,
         rank_spacing: RANK_SPACING,
+        title: crate::directive::read_config(definition)
+            .title
+            .map(|text| DiagramTitle {
+                text,
+                font_size: FONT_SIZE,
+                color: context.palette.text,
+            }),
     };
     Ok(render_unified(&render, graph))
 }
@@ -82,22 +92,31 @@ fn requirement_palette(base: &Palette, mode: LabelMode) -> Palette {
 
 /// RequirementDB.getData: 요구사항 다음 요소 순서
 fn box_nodes(diagram: &RequirementDiagram, context: &RenderContext) -> Vec<FlowNode> {
-    let style = BoxStyle {
-        fonts: context.fonts,
-        mode: context.label_mode,
-        fill: context.palette.node_fill,
-        border: context.palette.node_stroke,
-        text: context.palette.text,
-    };
     let requirements = diagram
         .requirements
         .iter()
-        .map(|requirement| requirement_node(requirement, &style));
+        .map(|requirement| requirement_node(requirement, &box_style(context, &requirement.style)));
     let elements = diagram
         .elements
         .iter()
-        .map(|element| element_node(element, &style));
+        .map(|element| element_node(element, &box_style(context, &element.style)));
     requirements.chain(elements).collect()
+}
+
+/// 테마 색 위에 노드의 스타일 선언(userNodeOverrides·labelStyles)을 덮는다
+fn box_style<'a>(context: &RenderContext<'a>, assignment: &StyleAssignment) -> BoxStyle<'a> {
+    let palette = context.palette;
+    let user = ElementStyle::from_declarations(assignment.declarations.iter());
+    BoxStyle {
+        fonts: context.fonts,
+        mode: context.label_mode,
+        fill: user.fill.unwrap_or(palette.node_fill),
+        border: rough_pen(
+            user.stroke.unwrap_or(palette.node_stroke),
+            user.stroke_width,
+        ),
+        text: user.text_color.unwrap_or(palette.text),
+    }
 }
 
 fn is_known(diagram: &RequirementDiagram, name: &str) -> bool {
@@ -157,4 +176,31 @@ fn relation_edges(
         });
     }
     Ok(edges)
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::scene::SceneItem;
+    use crate::text::tests::bundled_fonts;
+    use crate::theme::Theme;
+    use crate::{LabelMode, render_scene};
+
+    #[test]
+    fn 스타일_선언으로_테두리_굵기와_채움을_바꾸고_제목을_더한다() {
+        let fonts = bundled_fonts();
+        let source = include_str!("../../../../parity/diagrams/baseline/requirement-styles.mmd");
+        let scene = render_scene(source, Theme::Light, LabelMode::Html, &fonts).unwrap();
+        // requirement-styles 기준 SVG viewBox: 0 -50 170.40625 436
+        assert!((scene.width - 170.406_25).abs() < 0.01, "{}", scene.width);
+        assert!((scene.height - 436.0).abs() < 0.01, "{}", scene.height);
+        let widths: Vec<f64> = scene
+            .items
+            .iter()
+            .filter_map(|item| match item {
+                SceneItem::Path(path) => path.stroke.as_ref().map(|stroke| stroke.width),
+                _ => None,
+            })
+            .collect();
+        assert!(widths.contains(&3.0), "{widths:?}");
+    }
 }

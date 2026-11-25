@@ -6,6 +6,7 @@ pub mod faults;
 pub mod options;
 pub mod prompts;
 pub mod targets;
+pub mod window_focus;
 
 use gpui_kit::Global;
 

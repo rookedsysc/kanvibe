@@ -1,6 +1,7 @@
 //! flowchart·graph 다이어그램(Mermaid 11 flowchart-v2, htmlLabels, dagre 레이아웃).
 
 pub(crate) mod clusters;
+pub(crate) mod effects;
 pub(crate) mod geometry;
 pub(crate) mod layout;
 pub(crate) mod parser;
@@ -35,6 +36,12 @@ pub struct ElementStyle {
     pub stroke_width: Option<f64>,
     pub dash: Vec<f64>,
     pub text_color: Option<Color>,
+    /// `look: neo`의 `drop-shadow` 그림자 색(경계에 넣지 않고 윤곽선 아래에 그린다)
+    pub drop_shadow: Option<Color>,
+    /// `look: neo` 어두운 테마의 가로 그라디언트 테두리(시작 색, 끝 색). 있으면 `stroke` 색 대신 쓴다
+    pub stroke_gradient: Option<(Color, Color)>,
+    /// `look: handDrawn` 간선을 roughjs path(거칠기 0.3)로 흔들어 그릴 때의 시드
+    pub sketch_seed: Option<i32>,
 }
 
 impl ElementStyle {

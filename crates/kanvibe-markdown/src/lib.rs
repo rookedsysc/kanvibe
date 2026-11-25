@@ -20,7 +20,7 @@ mod segment;
 
 pub use model::{
     Alignment, Block, CodeBlock, Disclosure, Inline, Length, List, ListItem, Segment, Table,
-    TableCell, TableRow,
+    TableCaption, TableCell, TableRow,
 };
 
 use kanvibe_diagram::scene::Scene;

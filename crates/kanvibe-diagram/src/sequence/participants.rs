@@ -7,7 +7,6 @@ use super::document::{Participant, ParticipantKind, SequenceDocument};
 use super::draw::{centered_text, line, stroke};
 use super::measure::{FONT_SIZE, split_breaks};
 use super::models::ActorBox;
-use super::{ACTOR_HEIGHT, LABEL_BOX_HEIGHT};
 use crate::DiagramError;
 use crate::scene::{Color, PathCommand, Point, Scene, StrokeStyle, ellipse, polygon, rounded_rect};
 use crate::text::FontBook;
@@ -16,6 +15,9 @@ use crate::text::FontBook;
 pub(super) const FIGURE_HALF_WIDTH: f64 = 18.0;
 /// control·entity·boundary 원 반지름
 const FIGURE_RADIUS: f64 = 22.0;
+/// 그림 모양 높이 계산에 쓰는 conf.height·conf.labelBoxHeight 기본값(그림 모양은 이 설정을 아직 따르지 않는다)
+const ACTOR_HEIGHT: f64 = 65.0;
+const LABEL_BOX_HEIGHT: f64 = 20.0;
 /// collections 뒤 상자가 비켜 놓이는 거리
 const STACK_OFFSET: f64 = 6.0;
 /// `properties`의 class로 `.actor` 모양을 잃은 상자의 getNoteRect 기본 색

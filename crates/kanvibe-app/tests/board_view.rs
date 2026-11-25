@@ -5,9 +5,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use gpui_kit::gpui;
-use gpui_kit::{
-    Bounds, Entity, Modifiers, MouseButton, Pixels, TestAppContext, VisualTestContext, WeakEntity,
-};
+use gpui_kit::{Bounds, Entity, Modifiers, MouseButton, Pixels, TestAppContext, VisualTestContext};
+use kanvibe_app::app_window::AppWindow;
 use kanvibe_app::qa::faults::{FaultMode, ServiceFault};
 use kanvibe_app::qa::options::{DEFAULT_WINDOW_SIZE, LaunchOptions, QaOptions};
 use kanvibe_app::qa::targets::{DescribedTarget, QaTargetRegistry, TargetQuery};
@@ -15,7 +14,8 @@ use kanvibe_app::routes::{RouteResolution, resolve_route_path};
 use kanvibe_app::services::AppServices;
 use kanvibe_app::shortcuts::ShortcutState;
 use kanvibe_app::views::board::{BoardView, BoardViewMode};
-use kanvibe_app::views::{ScreenContext, WindowNavigator};
+use kanvibe_app::views::locale_shell::LocaleShell;
+use kanvibe_app::views::locale_shell::background_sync::background_sync_store;
 use kanvibe_db::Database;
 use kanvibe_db::repositories::app_settings::save_app_setting;
 use kanvibe_db::repositories::projects::{NewProject, insert_project};
@@ -26,6 +26,8 @@ use kanvibe_domain::task::{KanbanTask, SessionType, TaskPriority, TaskStatus};
 
 struct Board {
     view: Entity<BoardView>,
+    /// 창의 전역 덮개(커맨드 팔레트·빠른 검색·릴리스·토스트). 보드는 창 루트(`AppWindow`) 아래에 뜬다
+    shell: Entity<LocaleShell>,
     cx: VisualTestContext,
 }
 
@@ -57,6 +59,7 @@ fn init_app_with_network(
             faults_path: None,
             control_socket_path: None,
             platform_override: None,
+            loading_holds: Default::default(),
         }),
     };
     cx.update(|cx| {
@@ -114,20 +117,22 @@ fn task(
 }
 
 fn open_board(cx: &mut TestAppContext, path: &str) -> Board {
-    let RouteResolution::Render(route) = resolve_route_path(path) else {
+    let RouteResolution::Render(_) = resolve_route_path(path) else {
         panic!("{path} must render");
     };
-    let (view, visual) = cx.add_window_view(|_, cx| {
-        BoardView::new(
-            ScreenContext {
-                route,
-                navigator: WindowNavigator::new(WeakEntity::new_invalid()),
-            },
-            cx,
-        )
+    let (app_window, visual) = cx.add_window_view(|window, cx| AppWindow::new(path, window, cx));
+    let (view, shell) = visual.update(|_, cx| {
+        let app_window = app_window.read(cx);
+        let view = app_window
+            .screen()
+            .clone()
+            .downcast::<BoardView>()
+            .expect("board route renders the board");
+        (view, app_window.locale_shell().clone())
     });
     let mut board = Board {
         view,
+        shell,
         cx: visual.clone(),
     };
     board.draw();
@@ -135,6 +140,11 @@ fn open_board(cx: &mut TestAppContext, path: &str) -> Board {
 }
 
 impl Board {
+    fn shell_read<T>(&mut self, read: impl FnOnce(&LocaleShell, &gpui_kit::App) -> T) -> T {
+        let shell = self.shell.clone();
+        self.cx.update(|_, cx| read(shell.read(cx), cx))
+    }
+
     /// 지난 프레임 대상을 지우고 다시 그린다
     fn draw(&mut self) {
         self.cx.run_until_parked();
@@ -1394,9 +1404,12 @@ fn missing_task_shows_a_notice_instead_of_navigating(cx: &mut TestAppContext) {
     board.keys("enter");
     board.draw();
     let view = board.view.clone();
-    let missing = board
-        .cx
-        .update(|_, cx| view.read(cx).missing_task_notification_id());
+    let missing = board.cx.update(|_, cx| {
+        view.read(cx)
+            .notification_center()
+            .read(cx)
+            .missing_task_notification_id()
+    });
     assert_eq!(missing.as_deref(), Some("new"));
 }
 
@@ -2063,7 +2076,7 @@ fn sync_progress_shows_on_the_button_and_unlocks_after_completion(cx: &mut TestA
     let (mut board, _database, _dir) = seeded_board(cx, true);
     board.emit_board_event(sync_status(BackgroundTaskSyncPhase::PullRequests, true));
     assert!(board.has_role_name("status", "동기화 중…"));
-    board.click(role_name("button", "알림"));
+    board.dispatch(kanvibe_app::shortcuts::ToggleNotificationCenter);
     assert!(board.has_text("2/3 · PR 상태 확인 중"));
     board.emit_board_event(sync_status(BackgroundTaskSyncPhase::Completed, false));
     assert!(!board.has_role_name("status", "동기화 중…"));
@@ -2078,7 +2091,7 @@ fn sync_start_failure_stays_visible_and_allows_retry(cx: &mut TestAppContext) {
         "backgroundTaskSync.startBackgroundTaskSyncNow",
         "gh missing",
     );
-    board.click(role_name("button", "알림"));
+    board.dispatch(kanvibe_app::shortcuts::ToggleNotificationCenter);
     board.click(role_name("button", "지금 동기화"));
     assert!(board.find(text_contains("gh missing")).is_some());
     assert!(board.has_role_name("button", "다시 시도"));
@@ -2095,12 +2108,8 @@ fn palette_sync_command_runs_the_background_sync(cx: &mut TestAppContext) {
     board.dispatch(OpenCommandPalette);
     board.type_text("sync");
     board.keys("enter");
-    assert!(
-        !board
-            .view
-            .read_with(&board.cx, |view, _| view.is_command_palette_open())
-    );
-    board.click(role_name("button", "알림"));
+    assert!(!board.shell_read(|shell, _| shell.is_command_palette_open()));
+    board.dispatch(kanvibe_app::shortcuts::ToggleNotificationCenter);
     assert!(board.find(text_contains("sync was started")).is_some());
 }
 
@@ -2114,13 +2123,9 @@ fn clicking_the_sync_row_starts_sync_and_closes(cx: &mut TestAppContext) {
     );
     board.dispatch(OpenCommandPalette);
     board.click_text("sync");
-    assert!(
-        !board
-            .view
-            .read_with(&board.cx, |view, _| view.is_command_palette_open())
-    );
-    assert!(board.view.read_with(&board.cx, |view, _| {
-        view.background_sync_state().error.as_deref()
+    assert!(!board.shell_read(|shell, _| shell.is_command_palette_open()));
+    assert!(board.cx.update(|_, cx| {
+        background_sync_store(cx).read(cx).state().error.as_deref()
             == Some("Error invoking remote method 'kanvibe:invoke': Error: sync was started")
     }));
 }
@@ -2137,9 +2142,11 @@ fn palette_does_not_start_sync_while_another_sync_runs(cx: &mut TestAppContext) 
     board.dispatch(OpenCommandPalette);
     assert!(board.has_text("동기화하는 중…"));
     board.keys("enter");
-    assert!(board.view.read_with(&board.cx, |view, _| {
-        view.background_sync_state().error.is_none()
-    }));
+    assert!(
+        board
+            .cx
+            .update(|_, cx| { background_sync_store(cx).read(cx).state().error.is_none() })
+    );
 }
 
 // parity: TS-components-Board-fbad2a
@@ -2248,11 +2255,7 @@ fn open_palette_blocks_other_board_shortcuts(cx: &mut TestAppContext) {
     board.dispatch(OpenTaskSearch);
     assert!(!board.has_text("태스크 빠른 검색"));
     board.keys("escape");
-    assert!(
-        !board
-            .view
-            .read_with(&board.cx, |view, _| view.is_command_palette_open())
-    );
+    assert!(!board.shell_read(|shell, _| shell.is_command_palette_open()));
 }
 
 // parity: TS-renderer-TaskQuickSearchDialog-1c2f0f
@@ -2288,11 +2291,7 @@ fn board_shortcuts_are_ignored_while_quick_search_is_open(cx: &mut TestAppContex
     let (mut board, _database, _dir) = seeded_board(cx, true);
     board.dispatch(OpenTaskSearch);
     board.dispatch(OpenCommandPalette);
-    assert!(
-        !board
-            .view
-            .read_with(&board.cx, |view, _| view.is_command_palette_open())
-    );
+    assert!(!board.shell_read(|shell, _| shell.is_command_palette_open()));
 }
 
 // parity: TS-renderer-TaskQuickSearchDialog-05154c
@@ -2446,9 +2445,7 @@ fn deletion_failing_after_close_is_announced_by_toast(cx: &mut TestAppContext) {
     board.keys("escape");
     assert!(!board.has_role_name("dialog", "프로젝트 스캔"), "closed");
     board.advance(Duration::from_millis(1_100));
-    let toasts = board
-        .view
-        .read_with(&board.cx, |view, _| view.toast_messages());
+    let toasts = board.shell_read(|shell, _| shell.toast_messages());
     assert_eq!(
         toasts,
         [
@@ -2578,14 +2575,15 @@ fn release_board(cx: &mut TestAppContext, dismissed: Option<&str>) -> (Board, te
         .unwrap();
     }
     task(&database, "보드 카드", TaskStatus::Todo, |_| {});
-    let board = open_board(cx, "/ko");
+    let mut board = open_board(cx, "/ko");
+    // 릴리스 확인은 창이 앞에 있을 때만 돈다(TS `document.hasFocus()`). 다른 시험은 창을 앞으로 두지 않아 바깥 요청을 하지 않는다
+    board.cx.update(|window, _| window.activate_window());
+    board.draw();
     (board, dir)
 }
 
 fn release_version(board: &mut Board) -> Option<String> {
-    board
-        .view
-        .read_with(&board.cx, |view, _| view.release_update_version())
+    board.shell_read(|shell, _| shell.release_update_version())
 }
 
 // parity: TS-renderer-ReleaseUpdateDialog-4e3df2
@@ -2671,11 +2669,7 @@ fn a_release_claimed_by_another_window_is_not_shown(cx: &mut TestAppContext) {
 fn release_dialog_keeps_board_shortcuts_from_running(cx: &mut TestAppContext) {
     let (mut board, _dir) = release_board(cx, None);
     board.dispatch(OpenCommandPalette);
-    assert!(
-        !board
-            .view
-            .read_with(&board.cx, |view, _| view.is_command_palette_open())
-    );
+    assert!(!board.shell_read(|shell, _| shell.is_command_palette_open()));
     board.keys("escape");
     assert_eq!(release_version(&mut board), None);
 }
@@ -2727,11 +2721,7 @@ fn board_shortcuts_are_ignored_behind_a_blocker(cx: &mut TestAppContext) {
             .view
             .read_with(&board.cx, |view, _| view.is_create_task_open())
     );
-    assert!(
-        !board
-            .view
-            .read_with(&board.cx, |view, _| view.is_command_palette_open())
-    );
+    assert!(!board.shell_read(|shell, _| shell.is_command_palette_open()));
 }
 
 // parity: TS-renderer-BoardCommandProvider-9af655
@@ -2759,7 +2749,7 @@ fn rapid_sync_starts_are_blocked_while_one_is_starting(cx: &mut TestAppContext) 
         None,
         None,
     );
-    board.click(role_name("button", "알림"));
+    board.dispatch(kanvibe_app::shortcuts::ToggleNotificationCenter);
     board.click(role_name("button", "지금 동기화"));
     assert!(board.has_role_name("button", "동기화 중…"));
     assert!(board.has_role_name("status", "동기화 중…"));
@@ -2776,7 +2766,7 @@ fn palette_sync_failure_is_shared_with_the_notification_center(cx: &mut TestAppC
     board.dispatch(OpenCommandPalette);
     board.keys("enter");
     assert!(board.has_role_name("status", "동기화에 실패했습니다. 다시 시도해 주세요."));
-    board.click(role_name("button", "알림"));
+    board.dispatch(kanvibe_app::shortcuts::ToggleNotificationCenter);
     assert!(board.find(text_contains("gh missing")).is_some());
 }
 
@@ -2808,9 +2798,7 @@ fn space_on_a_read_notification_does_not_save_again(cx: &mut TestAppContext) {
     board.fault("kanvibe:notifications-mark-read", "should not be called");
     board.dispatch(kanvibe_app::shortcuts::ToggleNotificationCenter);
     board.keys("space");
-    let toasts = board
-        .view
-        .read_with(&board.cx, |view, _| view.toast_messages());
+    let toasts = board.shell_read(|shell, _| shell.toast_messages());
     assert!(toasts.is_empty());
 }
 

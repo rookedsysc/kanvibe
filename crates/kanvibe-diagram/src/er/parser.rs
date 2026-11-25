@@ -2,9 +2,12 @@
 //!
 //! 지원: `direction`, 엔티티(따옴표 이름, `[별칭]`), 속성 블록(타입·이름·PK/FK/UK 목록·따옴표 설명),
 //! 관계(기호·낱말 차수 전부, `--`·`to` 식별 관계, `..`·`.-`·`-.`·`optionally to` 비식별 관계, 따옴표 역할),
-//! `accTitle`·`accDescr`, `%%` 주석. `classDef`·`class`·`style`·`:::`는 문법 오류로 돌려 원문 표시로 넘긴다.
+//! `accTitle`·`accDescr`, `%%` 주석, `classDef`·`class`·`style`·`:::`(엔티티 문장과 관계 양쪽).
+
+use std::collections::HashMap;
 
 use crate::DiagramError;
+use crate::directive::diagram_body;
 use crate::flowchart::parser::Direction;
 
 /// ErDB.Cardinality
@@ -31,6 +34,10 @@ pub struct Entity {
     pub name: String,
     pub alias: String,
     pub attributes: Vec<Attribute>,
+    /// `:::`·`class`로 붙인 클래스 이름(원본 cssClasses에서 `default`를 뺀 나머지)
+    pub classes: Vec<String>,
+    /// `style` 문장의 선언(원본 cssStyles)
+    pub styles: Vec<String>,
 }
 
 /// 관계 한 줄. 왼쪽 차수는 시작(왼쪽 엔티티) 쪽, 오른쪽 차수는 끝 쪽에 그린다
@@ -42,6 +49,9 @@ pub struct Relationship {
     pub start_cardinality: Cardinality,
     pub end_cardinality: Cardinality,
     pub is_identifying: bool,
+    /// 양쪽 엔티티 이름 뒤 `:::`로 붙인 클래스
+    pub start_classes: Vec<String>,
+    pub end_classes: Vec<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -49,6 +59,8 @@ pub struct ErDiagram {
     pub direction: Direction,
     pub entities: Vec<Entity>,
     pub relationships: Vec<Relationship>,
+    /// `classDef` 이름 → 선언 목록
+    pub class_styles: HashMap<String, Vec<String>>,
 }
 
 impl ErDiagram {
@@ -61,6 +73,8 @@ impl ErDiagram {
                     name: name.to_string(),
                     alias: String::new(),
                     attributes: Vec::new(),
+                    classes: Vec::new(),
+                    styles: Vec::new(),
                 });
                 self.entities.len() - 1
             }
@@ -71,6 +85,38 @@ impl ErDiagram {
         }
         entity
     }
+
+    /// ErDB.setClass: 있는 엔티티에만 클래스를 덧붙인다
+    fn set_class(&mut self, ids: &[String], classes: &[String]) {
+        for entity in &mut self.entities {
+            if ids.contains(&entity.name) {
+                entity.classes.extend(classes.iter().cloned());
+            }
+        }
+    }
+
+    /// ErDB.addCssStyles: 없는 엔티티를 만나면 거기서 멈춘다
+    fn add_css_styles(&mut self, ids: &[String], styles: &[String]) {
+        for id in ids {
+            let Some(entity) = self.entities.iter_mut().find(|entity| &entity.name == id) else {
+                return;
+            };
+            entity.styles.extend(styles.iter().cloned());
+        }
+    }
+
+    /// cssCompiledStyles(`default`와 붙인 클래스의 classDef 선언) 뒤에 cssStyles를 이은 선언 목록
+    pub fn entity_declarations(&self, entity: &Entity) -> Vec<String> {
+        let class_names =
+            std::iter::once("default").chain(entity.classes.iter().map(String::as_str));
+        let mut declarations: Vec<String> = class_names
+            .filter_map(|name| self.class_styles.get(name))
+            .flatten()
+            .cloned()
+            .collect();
+        declarations.extend(entity.styles.iter().cloned());
+        declarations
+    }
 }
 
 pub fn parse(definition: &str) -> Result<ErDiagram, DiagramError> {
@@ -78,8 +124,10 @@ pub fn parse(definition: &str) -> Result<ErDiagram, DiagramError> {
         direction: Direction::TopBottom,
         entities: Vec::new(),
         relationships: Vec::new(),
+        class_styles: HashMap::new(),
     };
-    let lines: Vec<&str> = definition
+    let body = diagram_body(definition);
+    let lines: Vec<&str> = body
         .lines()
         .map(|line| line.split("%%").next().unwrap_or("").trim())
         .collect();
@@ -122,12 +170,16 @@ fn parse_statement(
         diagram.direction = direction;
         return Ok(index + 1);
     }
-    if is_style_statement(line) {
-        return Err(DiagramError::Syntax(format!("지원하지 않는 문장: {line}")));
+    if parse_style_statement(diagram, line)? {
+        return Ok(index + 1);
     }
     if let Some(relationship) = parse_relationship(line)? {
         diagram.add_entity(&relationship.start, "");
         diagram.add_entity(&relationship.end, "");
+        let start = [relationship.start.clone()];
+        let end = [relationship.end.clone()];
+        diagram.set_class(&start, &relationship.start_classes);
+        diagram.set_class(&end, &relationship.end_classes);
         diagram.relationships.push(relationship);
         return Ok(index + 1);
     }
@@ -157,9 +209,51 @@ fn parse_direction(line: &str) -> Option<Direction> {
     }
 }
 
-fn is_style_statement(line: &str) -> bool {
-    let keyword = line.split_whitespace().next().unwrap_or("");
-    matches!(keyword, "classDef" | "class" | "style") || line.contains(":::")
+/// `classDef 이름들 선언`, `class 엔티티들 클래스들`, `style 엔티티들 선언`. 이 문장이 아니면 `false`
+fn parse_style_statement(diagram: &mut ErDiagram, line: &str) -> Result<bool, DiagramError> {
+    let Some((keyword, rest)) = line.split_once(char::is_whitespace) else {
+        return Ok(false);
+    };
+    if !matches!(keyword, "classDef" | "class" | "style") {
+        return Ok(false);
+    }
+    let (ids, values) = rest
+        .trim()
+        .split_once(char::is_whitespace)
+        .ok_or_else(|| DiagramError::Syntax(format!("스타일 문장이 짧음: {line}")))?;
+    let ids = split_list(ids);
+    let values = split_list(values);
+    match keyword {
+        "classDef" => {
+            for id in ids {
+                let styles = diagram.class_styles.entry(id).or_default();
+                styles.extend(values.iter().cloned());
+            }
+        }
+        "class" => diagram.set_class(&ids, &values),
+        _ => diagram.add_css_styles(&ids, &values),
+    }
+    Ok(true)
+}
+
+/// 쉼표로 나눈 목록(빈 칸은 버린다)
+fn split_list(text: &str) -> Vec<String> {
+    text.split(',')
+        .map(|part| part.trim().to_string())
+        .filter(|part| !part.is_empty())
+        .collect()
+}
+
+/// 엔티티 이름 바로 뒤의 `:::클래스[,클래스]`
+fn read_class_suffix(text: &str) -> (Vec<String>, &str) {
+    let Some(rest) = text.strip_prefix(":::") else {
+        return (Vec::new(), text);
+    };
+    let end = rest
+        .char_indices()
+        .find(|(_, character)| !is_name_character(*character) && *character != ',')
+        .map_or(rest.len(), |(index, _)| index);
+    (split_list(&rest[..end]), &rest[end..])
 }
 
 /// 차수 토큰. 낱말형은 원본 정규식처럼 낱말 경계가 필요하다
@@ -201,6 +295,7 @@ const RELATION_TOKENS: [(&str, bool); 6] = [
 /// `A ||--o{ B : role`. 관계 기호가 없으면 `None`(엔티티 문장)
 fn parse_relationship(line: &str) -> Result<Option<Relationship>, DiagramError> {
     let (start, rest) = read_entity_name(line);
+    let (start_classes, rest) = read_class_suffix(rest);
     let rest = rest.trim_start();
     let Some((start_cardinality, rest)) = read_cardinality(rest) else {
         return Ok(None);
@@ -211,6 +306,7 @@ fn parse_relationship(line: &str) -> Result<Option<Relationship>, DiagramError> 
     let (end_cardinality, rest) = read_cardinality(rest.trim_start())
         .ok_or_else(|| DiagramError::Syntax(format!("관계 차수가 없음: {line}")))?;
     let (end, rest) = read_entity_name(rest.trim_start());
+    let (end_classes, rest) = read_class_suffix(rest);
     let role = rest
         .trim_start()
         .strip_prefix(':')
@@ -225,6 +321,8 @@ fn parse_relationship(line: &str) -> Result<Option<Relationship>, DiagramError> 
         start_cardinality,
         end_cardinality,
         is_identifying,
+        start_classes,
+        end_classes,
     }))
 }
 
@@ -287,16 +385,19 @@ fn parse_entity_statement(
         return Err(DiagramError::Syntax(format!("알 수 없는 문장: {line}")));
     }
     let (alias, rest) = read_alias(rest.trim_start());
+    let (classes, rest) = read_class_suffix(rest.trim_start());
     let rest = rest.trim_start();
     let entity = diagram.add_entity(&name, &alias);
-    if rest.is_empty() {
-        return Ok(index + 1);
-    }
-    let Some(block_start) = rest.strip_prefix('{') else {
-        return Err(DiagramError::Syntax(format!("알 수 없는 문장: {line}")));
+    let next_index = match rest.strip_prefix('{') {
+        _ if rest.is_empty() => index + 1,
+        Some(block_start) => {
+            let (block, next_index) = collect_block(block_start, lines, index)?;
+            entity.attributes.extend(parse_attributes(&block)?);
+            next_index
+        }
+        None => return Err(DiagramError::Syntax(format!("알 수 없는 문장: {line}"))),
     };
-    let (block, next_index) = collect_block(block_start, lines, index)?;
-    entity.attributes.extend(parse_attributes(&block)?);
+    diagram.set_class(std::slice::from_ref(&name), &classes);
     Ok(next_index)
 }
 
@@ -473,7 +574,21 @@ mod tests {
     }
 
     #[test]
-    fn 스타일_문장은_문법_오류다() {
-        assert!(parse("erDiagram\n  classDef foo fill:#f00").is_err());
+    fn 클래스와_스타일_문장을_엔티티에_붙인다() {
+        let diagram = parse(
+            "---\ntitle: T\n---\nerDiagram\n  A:::hot ||--o{ B : r\n  C[\"Cee\"]:::cool {\n    string x\n  }\n  classDef hot fill:#f96,stroke:#333\n  class B,C cool\n  style B color:#900\n  style Z,A fill:#000",
+        )
+        .unwrap();
+        let [a, b, c] = &diagram.entities[..] else {
+            panic!("엔티티 세 개");
+        };
+        assert_eq!(a.classes, ["hot"]);
+        assert_eq!(b.classes, ["cool"]);
+        assert_eq!(c.classes, ["cool", "cool"]);
+        assert_eq!(c.alias, "Cee");
+        assert_eq!(b.styles, ["color:#900"]);
+        // 없는 Z에서 멈추므로 A에는 붙지 않는다
+        assert!(a.styles.is_empty());
+        assert_eq!(diagram.entity_declarations(a), ["fill:#f96", "stroke:#333"]);
     }
 }

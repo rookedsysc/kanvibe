@@ -6,8 +6,8 @@ use super::document::{Participant, ParticipantGroup, ParticipantKind};
 use super::parser::{SequenceParser, clean_text, split_keyword, syntax};
 use crate::DiagramError;
 
-/// 참여자 이름 뒤의 설명(별칭 글, `wrap:` 여부)
-type Description = Option<(String, bool)>;
+/// 참여자 이름 뒤의 설명(별칭 글, 머리말이 정한 감싸기)
+type Description = Option<(String, Option<bool>)>;
 
 impl SequenceParser {
     /// addActor: 이미 있는 참여자는 별칭이 새로 올 때만 다시 쓴다
@@ -30,7 +30,8 @@ impl SequenceParser {
                 return Ok(());
             }
         }
-        let (description, is_wrapped) = description.unwrap_or_else(|| (id.to_string(), false));
+        let (description, wrap) = description.unwrap_or_else(|| (id.to_string(), None));
+        let is_wrapped = wrap.unwrap_or(self.is_auto_wrapped);
         let participant = Participant {
             description,
             kind,
@@ -149,7 +150,8 @@ impl SequenceParser {
         } else {
             ("transparent".to_string(), rest)
         };
-        let (title, is_wrapped) = clean_text(title);
+        let (title, wrap) = clean_text(title);
+        let is_wrapped = wrap.unwrap_or(self.is_auto_wrapped);
         self.document.groups.push(ParticipantGroup {
             title: (!title.is_empty()).then_some(title),
             fill,
@@ -280,8 +282,8 @@ fn read_declaration(
     let mut description = strip_as(after).map(clean_text);
     let is_alias_usable = description.as_ref().is_none_or(|(text, _)| *text == id);
     if let Some(alias) = alias.filter(|_| is_alias_usable) {
-        let is_wrapped = description.is_some_and(|(_, is_wrapped)| is_wrapped);
-        description = Some((alias, is_wrapped));
+        let wrap = description.and_then(|(_, wrap)| wrap);
+        description = Some((alias, wrap));
     }
     Ok((id, description, kind))
 }

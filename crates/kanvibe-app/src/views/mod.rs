@@ -7,7 +7,9 @@
 
 pub mod ai_accounts;
 pub mod board;
+pub mod boot;
 pub mod diff;
+pub mod locale_shell;
 pub mod not_found;
 pub mod pane_layout;
 pub mod settings;
@@ -51,6 +53,12 @@ impl WindowNavigator {
         let _ = self
             .app_window
             .update(cx, |app_window, cx| app_window.replace_search(href, cx));
+    }
+
+    /// 이 창의 전역 덮개(`LocaleShell`). 창 루트가 없으면(시험에서 화면만 띄운 경우) `None`이다
+    pub fn locale_shell(&self, cx: &App) -> Option<gpui_kit::Entity<locale_shell::LocaleShell>> {
+        let app_window = self.app_window.upgrade()?;
+        Some(app_window.read(cx).locale_shell().clone())
     }
 
     pub fn go_back(&self, cx: &mut App) {

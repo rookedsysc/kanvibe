@@ -7,14 +7,19 @@ use crate::LabelMode;
 use crate::flowchart::clusters::{ClusterContext, adjust_clusters_and_edges};
 use crate::flowchart::layout::render_level;
 use crate::flowchart::parser::Direction;
+use crate::flowchart::render::Bounds;
 use crate::flowchart::shapes::{Intersect, NodeGeometry};
 use crate::flowchart::{FlowEdge, FlowNode, FlowRender, build_level};
 use crate::label::{FONT_SIZE, LINE_HEIGHT, LabelBox, LabelLine};
-use crate::scene::{Color, PathCommand, PathItem, Point, Scene, SceneItem, StrokeStyle, polygon};
+use crate::scene::{
+    Color, PathCommand, PathItem, Point, Scene, SceneItem, StrokeStyle, TextItem, polygon,
+};
 use crate::text::{FontBook, FontWeight};
 
 /// setupViewPortForSVG의 diagramPadding
 const DIAGRAM_PADDING: f64 = 8.0;
+/// insertTitle의 titleTopMargin 기본값: 제목 기준선이 y = -25에 놓인다
+const TITLE_TOP_MARGIN: f64 = 25.0;
 /// roughjs 선 굵기(userNodeOverrides 기본 strokeWidth)
 const ROUGH_STROKE_WIDTH: f64 = 1.3;
 
@@ -36,6 +41,14 @@ pub struct UnifiedGraph {
     pub edges: Vec<FlowEdge>,
     pub node_spacing: f64,
     pub rank_spacing: f64,
+    pub title: Option<DiagramTitle>,
+}
+
+/// 앞머리 `title`을 insertTitle처럼 그림 위 가운데에 놓는 글자
+pub struct DiagramTitle {
+    pub text: String,
+    pub font_size: f64,
+    pub color: Color,
 }
 
 /// flowchart와 같은 단계 렌더링 뒤 viewBox를 8px 여백으로 맞춘다
@@ -46,18 +59,51 @@ pub fn render_unified(render: &FlowRender, graph: UnifiedGraph) -> Scene {
     let mut context = ClusterContext::default();
     adjust_clusters_and_edges(&mut level, &mut context);
     let group = render_level(render, &mut level, &mut context, None);
-    let bounds = group.bounds;
+    let mut bounds = group.bounds;
+    let mut items = group.items;
+    if let Some(title) = graph.title.filter(|title| !title.text.is_empty()) {
+        items.push(place_title(render.fonts, &title, &mut bounds));
+    }
     let mut scene = Scene {
         is_start_aligned: false,
         width: bounds.width() + DIAGRAM_PADDING * 2.0,
         height: bounds.height() + DIAGRAM_PADDING * 2.0,
-        items: group.items,
+        items,
     };
     scene.translate(
         DIAGRAM_PADDING - bounds.min_x,
         DIAGRAM_PADDING - bounds.min_y,
     );
     scene
+}
+
+/// insertTitle: 그때까지 그린 것의 가운데 위(y = -25)에 가운데 맞춤 글자를 두고, 그 글자의 `getBBox()`를
+/// 경계에 더한다
+fn place_title(fonts: &FontBook, title: &DiagramTitle, bounds: &mut Bounds) -> SceneItem {
+    let center = if bounds.is_empty() {
+        0.0
+    } else {
+        (bounds.min_x + bounds.max_x) / 2.0
+    };
+    let extent = fonts.measure_svg_runs(&[&title.text], title.font_size, FontWeight::Regular);
+    let metrics = fonts.primary_metrics(title.font_size);
+    let start_x = center - extent.advance / 2.0;
+    let baseline = -TITLE_TOP_MARGIN;
+    bounds.include_rect(
+        start_x + extent.left,
+        baseline - metrics.ascent,
+        extent.width(),
+        metrics.ascent + metrics.descent,
+    );
+    SceneItem::Text(TextItem {
+        text: title.text.clone(),
+        x: start_x,
+        baseline,
+        font_size: title.font_size,
+        weight: FontWeight::Regular,
+        color: title.color,
+        rotation: None,
+    })
 }
 
 /// 그림을 모두 장식 조각으로 그리는 사각형 노드(모양 윤곽선·라벨 없음, 교점은 사각형)
@@ -166,12 +212,13 @@ pub fn empty_text_extent(origin: Point) -> SceneItem {
     })
 }
 
-fn rough_stroke(color: Color) -> Option<StrokeStyle> {
-    Some(StrokeStyle {
+/// roughjs 테두리 펜. 사용자 `stroke-width`가 없으면 userNodeOverrides 기본 굵기 1.3이다
+pub fn rough_pen(color: Color, width: Option<f64>) -> StrokeStyle {
+    StrokeStyle {
         color,
-        width: ROUGH_STROKE_WIDTH,
+        width: width.unwrap_or(ROUGH_STROKE_WIDTH),
         dash: Vec::new(),
-    })
+    }
 }
 
 /// roughjs rectangle: 채움 경로 하나와 네 변을 따로 그은 테두리 경로 하나
@@ -181,7 +228,7 @@ pub fn rough_rect(
     width: f64,
     height: f64,
     fill: Color,
-    stroke: Color,
+    pen: &StrokeStyle,
 ) -> [SceneItem; 2] {
     let corners = [
         Point::new(x, y),
@@ -203,16 +250,16 @@ pub fn rough_rect(
         SceneItem::Path(PathItem {
             commands: sides,
             fill: None,
-            stroke: rough_stroke(stroke),
+            stroke: Some(pen.clone()),
         }),
     ]
 }
 
-/// roughjs line(또는 두께가 거의 0인 polygon): 굵기 1.3 선 하나
-pub fn rough_line(from: Point, to: Point, stroke: Color) -> SceneItem {
+/// roughjs line(또는 두께가 거의 0인 polygon): 펜 굵기 선 하나
+pub fn rough_line(from: Point, to: Point, pen: &StrokeStyle) -> SceneItem {
     SceneItem::Path(PathItem {
         commands: vec![PathCommand::MoveTo(from), PathCommand::LineTo(to)],
         fill: None,
-        stroke: rough_stroke(stroke),
+        stroke: Some(pen.clone()),
     })
 }

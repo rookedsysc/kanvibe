@@ -1,12 +1,14 @@
 //! 메시지 그리기(drawMessage): 글, 선 또는 자기 메시지 고리, 선 끝 표식, 중앙 연결 동그라미, autonumber 동그라미.
 
 use super::SequenceColors;
-use super::WRAP_PADDING;
+use super::config::SequenceConfig;
 use super::document::CentralConnection;
-use super::draw::{centered_text, line, middle_baseline, stacked_line_y, stroke};
+use super::draw::{
+    aligned_anchor, anchored_text, centered_text, line, middle_baseline, stacked_line_y, stroke,
+};
 use super::layout::PlacedMessage;
 use super::markers::{Direction, MESSAGE_LINE_WIDTH, draw_end_marker, draw_start_marker};
-use super::measure::{FONT_SIZE, js_round, split_breaks};
+use super::measure::{FONT_SIZE, split_breaks, text_size};
 use super::models::ActorBox;
 use crate::scene::{PathCommand, Point, Scene, ellipse};
 use crate::text::FontBook;
@@ -22,11 +24,12 @@ pub(super) fn draw_message(
     scene: &mut Scene,
     fonts: &FontBook,
     colors: &SequenceColors,
+    config: &SequenceConfig,
     actors: &[ActorBox],
     message: &PlacedMessage,
 ) {
-    draw_message_text(scene, fonts, colors, message);
-    let (commands, start_direction, end_direction) = message_path(message);
+    draw_message_text(scene, fonts, colors, config, message);
+    let (commands, start_direction, end_direction) = message_path(fonts, config, message);
     let dash: &[f64] = if message.arrow.is_dotted {
         &[3.0, 3.0]
     } else {
@@ -47,25 +50,28 @@ pub(super) fn draw_message(
     }
 }
 
-/// 글은 화살표 가운데 위, 줄마다 `dy = 1em`·`dominant-baseline: middle`
+/// 글은 화살표 위 messageAlign 자리, 줄마다 `dy = 1em`·`dominant-baseline: middle`
 fn draw_message_text(
     scene: &mut Scene,
     fonts: &FontBook,
     colors: &SequenceColors,
+    config: &SequenceConfig,
     message: &PlacedMessage,
 ) {
     let model = &message.model;
     let left = model.start_x.min(model.stop_x);
-    let center_x = js_round(left + (model.stop_x - model.start_x).abs() / 2.0);
+    let width = (model.stop_x - model.start_x).abs();
+    let (align, margin) = (config.message_align, config.wrap_padding);
+    let anchor_x = aligned_anchor(align, left, width, margin);
     let top = message.start_y + 10.0;
     for (index, text) in split_breaks(&model.text).iter().enumerate() {
-        let y = stacked_line_y(fonts, top, index, WRAP_PADDING);
-        scene.push_text(centered_text(
+        let y = stacked_line_y(fonts, top, index, margin);
+        let position = (anchor_x, middle_baseline(y, FONT_SIZE));
+        scene.push_text(anchored_text(
             fonts,
             text,
-            center_x,
-            middle_baseline(y, FONT_SIZE),
-            FONT_SIZE,
+            position,
+            align,
             colors.message_text,
         ));
     }
@@ -119,7 +125,11 @@ fn line_ends(message: &PlacedMessage) -> (f64, f64) {
 }
 
 /// 선(또는 자기 메시지 고리)과 시작·끝 접선 방향
-fn message_path(message: &PlacedMessage) -> (Vec<PathCommand>, Direction, Direction) {
+fn message_path(
+    fonts: &FontBook,
+    config: &SequenceConfig,
+    message: &PlacedMessage,
+) -> (Vec<PathCommand>, Direction, Direction) {
     let (model, y) = (&message.model, message.line_y);
     if model.start_x != model.stop_x {
         let (x1, x2) = line_ends(message);
@@ -130,6 +140,11 @@ fn message_path(message: &PlacedMessage) -> (Vec<PathCommand>, Direction, Direct
     let arrow = message.arrow;
     let is_shifted = message.number.is_some() && (arrow.is_reverse() || arrow.is_bidirectional());
     let start = Point::new(model.start_x + if is_shifted { 10.0 } else { 0.0 }, y);
+    if config.has_right_angles {
+        let text_width = text_size(fonts, &model.text).width;
+        let reach = (config.actor_width / 2.0).max(text_width / 2.0);
+        return right_angle_loop(start, model.start_x, reach);
+    }
     let first = Point::new(start.x + 60.0, y - 10.0);
     let second = Point::new(model.start_x + 60.0, y + 30.0);
     let end = Point::new(model.start_x, y + 20.0);
@@ -141,6 +156,28 @@ fn message_path(message: &PlacedMessage) -> (Vec<PathCommand>, Direction, Direct
         commands,
         Direction::between(start, first),
         Direction::between(second, end),
+    )
+}
+
+/// rightAngles 자기 메시지: 오른쪽으로 `reach`만큼 나갔다가 25px 내려와 생명선으로 돌아오는 꺾은선
+fn right_angle_loop(
+    start: Point,
+    lifeline_x: f64,
+    reach: f64,
+) -> (Vec<PathCommand>, Direction, Direction) {
+    let outer_top = Point::new(lifeline_x + reach, start.y);
+    let outer_bottom = Point::new(outer_top.x, start.y + 25.0);
+    let end = Point::new(lifeline_x, outer_bottom.y);
+    let commands = vec![
+        PathCommand::MoveTo(start),
+        PathCommand::LineTo(outer_top),
+        PathCommand::LineTo(outer_bottom),
+        PathCommand::LineTo(end),
+    ];
+    (
+        commands,
+        Direction::between(start, outer_top),
+        Direction::between(outer_bottom, end),
     )
 }
 

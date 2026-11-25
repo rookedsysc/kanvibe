@@ -1,14 +1,18 @@
 //! 정화한 요소 나무를 블록·인라인 모델로 옮긴다. 브라우저가 TS 화면에 그리는 모양을 따른다.
 //!
 //! - 블록 요소 사이에 놓인 글자·인라인 요소는 이름 없는 글자 줄([`Block::Inlines`])로 묶는다.
-//! - 뜻이 없는 블록 요소(`div`, `section`, `dl` …)와 꾸밈 없는 인라인 요소(`span`, `font`, `small` …)는 태그만
-//!   벗기고 내용을 그 자리에 둔다. 블록을 품은 인라인 요소도 블록 자리에서 태그를 벗긴다.
+//! - 뜻이 없는 블록 요소(`div`, `section`, `dl` …)와 꾸밈 없는 인라인 요소(`span`, `font`, `title` 없는 `abbr` …)는
+//!   태그만 벗기고 내용을 그 자리에 둔다. 블록을 품은 인라인 요소도 블록 자리에서 태그를 벗긴다. 다만 `align`을
+//!   받은 `p`·`div`·제목과 `center`는 정렬 묶음([`Block::Aligned`])으로 감싼다.
 //! - 그려지지 않는 요소(`template`, `audio`, `video`, `hidden` 속성, `open` 없는 `dialog` …)는 내용까지 뺀다.
 //! - `pre` 밖 글자는 CSS `white-space: normal`처럼 공백을 하나로 접고 줄 머리·끝 공백을 지운다.
 
 use crate::math::parse_tex;
+use std::cell::Cell;
+
 use crate::model::{
-    Alignment, Block, Disclosure, Inline, Length, List, ListItem, Table, TableCell, TableRow,
+    Alignment, Block, Disclosure, Inline, Length, List, ListItem, Table, TableCaption, TableCell,
+    TableRow,
 };
 use crate::sanitize::{HtmlElement, HtmlNode};
 use crate::scan::{self, InlineSpan};
@@ -69,11 +73,20 @@ const HIDDEN_ELEMENTS: &[&str] = &[
 
 /// 정화한 마디 목록을 블록 모델로 옮긴다. `spans`는 글자 속 자리표시자가 가리키는 수식이다
 pub fn blocks(nodes: &[HtmlNode], spans: &[InlineSpan]) -> Vec<Block> {
-    FlowBuilder { spans }.blocks(nodes)
+    FlowBuilder {
+        spans,
+        quote_depth: Cell::new(0),
+    }
+    .blocks(nodes)
 }
+
+/// 문서 언어 `ko`의 따옴표 쌍. 두 겹보다 깊은 인용은 마지막 쌍을 쓴다
+const QUOTE_MARKS: [(char, char); 2] = [('\u{201C}', '\u{201D}'), ('\u{2018}', '\u{2019}')];
 
 struct FlowBuilder<'a> {
     spans: &'a [InlineSpan],
+    /// 지금 옮기는 글자를 감싼 `q` 수. CSS `open-quote`가 고르는 따옴표 쌍을 정한다
+    quote_depth: Cell<usize>,
 }
 
 fn element(node: &HtmlNode) -> Option<&HtmlElement> {
@@ -136,6 +149,14 @@ impl FlowBuilder<'_> {
     }
 
     fn block(&self, element: &HtmlElement) -> Vec<Block> {
+        let blocks = self.element_blocks(element);
+        match block_alignment(element) {
+            Some(alignment) if !blocks.is_empty() => vec![Block::Aligned { alignment, blocks }],
+            _ => blocks,
+        }
+    }
+
+    fn element_blocks(&self, element: &HtmlElement) -> Vec<Block> {
         let block = match element.name.as_str() {
             "p" => Block::Paragraph(self.line_box(element.children.iter())),
             "h1" | "h2" | "h3" | "h4" | "h5" | "h6" => Block::Heading {
@@ -210,25 +231,37 @@ impl FlowBuilder<'_> {
     }
 
     fn table(&self, table: &HtmlElement) -> Table {
+        let mut captions = Vec::new();
         let mut rows = Vec::new();
         for child in table.children.iter().filter_map(element) {
             match child.name.as_str() {
-                "thead" | "tbody" | "tfoot" => rows.extend(
-                    child
-                        .children
-                        .iter()
-                        .filter_map(element)
-                        .filter(|row| row.name == "tr")
-                        .map(|row| self.table_row(row)),
-                ),
-                "tr" => rows.push(self.table_row(child)),
+                "caption" => captions.push(TableCaption {
+                    is_below: child
+                        .attribute("align")
+                        .is_some_and(|side| side.eq_ignore_ascii_case("bottom")),
+                    blocks: self.blocks(&child.children),
+                }),
+                "thead" | "tbody" | "tfoot" => {
+                    let section_alignment = alignment(child.attribute("align"));
+                    rows.extend(
+                        child
+                            .children
+                            .iter()
+                            .filter_map(element)
+                            .filter(|row| row.name == "tr")
+                            .map(|row| self.table_row(row, section_alignment)),
+                    )
+                }
+                "tr" => rows.push(self.table_row(child, Alignment::None)),
                 _ => {}
             }
         }
-        Table { rows }
+        Table { captions, rows }
     }
 
-    fn table_row(&self, row: &HtmlElement) -> TableRow {
+    /// 칸은 자기 `align`이 없으면 행, 그다음 행 묶음(`section_alignment`)의 `align`을 물려받는다
+    fn table_row(&self, row: &HtmlElement, section_alignment: Alignment) -> TableRow {
+        let row_alignment = inherit_alignment(alignment(row.attribute("align")), section_alignment);
         let cells = row
             .children
             .iter()
@@ -236,7 +269,7 @@ impl FlowBuilder<'_> {
             .filter(|cell| matches!(cell.name.as_str(), "td" | "th"))
             .map(|cell| TableCell {
                 is_header: cell.name == "th",
-                alignment: alignment(cell.attribute("align")),
+                alignment: inherit_alignment(alignment(cell.attribute("align")), row_alignment),
                 column_span: span_attribute(cell.attribute("colspan"), 1000),
                 row_span: span_attribute(cell.attribute("rowspan"), 65534),
                 blocks: self.blocks(&cell.children),
@@ -307,6 +340,12 @@ impl FlowBuilder<'_> {
             "sub" => Inline::Subscript(children()),
             "sup" => Inline::Superscript(children()),
             "kbd" | "samp" | "tt" => Inline::Monospace(children()),
+            "small" => Inline::Small(children()),
+            "q" => self.quote(element),
+            "abbr" | "acronym" if element.attribute("title").is_some() => Inline::Abbreviation {
+                title: element.attribute("title").unwrap_or("").to_string(),
+                content: children(),
+            },
             _ => {
                 for child in &element.children {
                     self.inline(child, output);
@@ -315,6 +354,20 @@ impl FlowBuilder<'_> {
             }
         };
         output.push(inline);
+    }
+
+    /// 안쪽 `q`가 다음 따옴표 쌍을 고르도록 깊이를 하나 늘린 채 내용을 옮긴다
+    fn quote(&self, element: &HtmlElement) -> Inline {
+        let depth = self.quote_depth.get();
+        let (open, close) = QUOTE_MARKS[depth.min(QUOTE_MARKS.len() - 1)];
+        self.quote_depth.set(depth + 1);
+        let content = self.inline_children(element);
+        self.quote_depth.set(depth);
+        Inline::Quote {
+            open,
+            close,
+            content,
+        }
     }
 
     fn inline_children(&self, element: &HtmlElement) -> Vec<Inline> {
@@ -385,13 +438,31 @@ fn image(element: &HtmlElement) -> Inline {
     }
 }
 
+/// Chromium이 `text-align`으로 바꾸는 `align` 값. 그 밖의 값은 무시한다
 fn alignment(value: Option<&str>) -> Alignment {
     match value.map(str::to_ascii_lowercase).as_deref() {
         Some("left") => Alignment::Left,
         Some("center" | "middle") => Alignment::Center,
         Some("right") => Alignment::Right,
+        Some("justify") => Alignment::Justify,
         _ => Alignment::None,
     }
+}
+
+fn inherit_alignment(own: Alignment, parent: Alignment) -> Alignment {
+    if own == Alignment::None { parent } else { own }
+}
+
+/// 블록 요소 가운데 `align`을 `text-align`으로 받는 것(`p`·`div`·제목)과, UA CSS가 늘 가운데 맞추는 `center`
+fn block_alignment(element: &HtmlElement) -> Option<Alignment> {
+    let alignment = match element.name.as_str() {
+        "center" => Alignment::Center,
+        "p" | "div" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" => {
+            alignment(element.attribute("align"))
+        }
+        _ => return None,
+    };
+    (alignment != Alignment::None).then_some(alignment)
 }
 
 /// HTML 정수 읽기 규칙: 앞 공백, 부호, 숫자까지만 읽고 나머지는 버린다
@@ -473,6 +544,11 @@ fn collapse_sequence(inlines: Vec<Inline>, is_after_space: &mut bool) -> Vec<Inl
                 output.push(Inline::LineBreak);
                 *is_after_space = true;
             }
+            Inline::Quote {
+                open,
+                close,
+                content,
+            } => output.push(collapse_quote(open, close, content, is_after_space)),
             mut container if container.children().is_some() => {
                 let is_empty = container.children_mut().is_none_or(|children| {
                     *children = collapse_sequence(std::mem::take(children), is_after_space);
@@ -489,6 +565,23 @@ fn collapse_sequence(inlines: Vec<Inline>, is_after_space: &mut bool) -> Vec<Inl
         }
     }
     output
+}
+
+/// 따옴표는 공백이 아닌 글자라서 앞뒤 공백을 지우지 못한다. 비어 있어도 따옴표는 남는다
+fn collapse_quote(
+    open: char,
+    close: char,
+    content: Vec<Inline>,
+    is_after_space: &mut bool,
+) -> Inline {
+    *is_after_space = false;
+    let content = collapse_sequence(content, is_after_space);
+    *is_after_space = false;
+    Inline::Quote {
+        open,
+        close,
+        content,
+    }
 }
 
 /// 지운 주석·벗긴 태그 때문에 나뉜 글자 마디를 하나로 붙인다
@@ -514,6 +607,7 @@ fn trim_line_end(inlines: &mut Vec<Inline>) {
                 text.truncate(text.trim_end_matches(' ').len());
                 false
             }
+            Inline::Quote { .. } => false,
             other => other.children_mut().is_some_and(|children| {
                 trim_line_end(children);
                 children.is_empty()

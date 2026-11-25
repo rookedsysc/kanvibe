@@ -6,11 +6,13 @@
 
 use std::collections::HashMap;
 
+use super::config::SequenceConfig;
 use super::document::{
     Arrow, ArrowHead, BlockKind, CentralConnection, NotePlacement, ParticipantKind,
     SequenceDocument, SequenceEvent, SequenceMessage, SequenceNote,
 };
 use crate::DiagramError;
+use crate::directive::diagram_body;
 
 /// 렉서 규칙의 화살표 표기. 같은 자리에서는 긴 표기를 먼저 맞춘다
 const ARROW_TOKENS: [(&str, ArrowHead, bool); 26] = [
@@ -61,12 +63,17 @@ pub(super) struct SequenceParser {
     pub destroyed_names: Vec<(String, usize)>,
     /// 여러 줄 `accDescr { ... }` 안
     is_in_description: bool,
+    /// `wrap:`·`nowrap:` 머리말이 없는 글의 감싸기(SequenceDB.autoWrap)
+    pub is_auto_wrapped: bool,
 }
 
 pub(super) fn parse(definition: &str) -> Result<SequenceDocument, DiagramError> {
-    let mut parser = SequenceParser::default();
+    let mut parser = SequenceParser {
+        is_auto_wrapped: SequenceConfig::read(definition).is_auto_wrapped,
+        ..SequenceParser::default()
+    };
     let mut has_header = false;
-    for raw_line in definition.lines() {
+    for raw_line in diagram_body(definition).lines() {
         let line = strip_comment(raw_line);
         for statement in line.split(';').map(str::trim) {
             if statement.is_empty() || parser.skip_description(statement) {
@@ -101,8 +108,8 @@ fn strip_comment(line: &str) -> &str {
     }
 }
 
-/// parseMessage: 앞뒤 공백과 `wrap:`·`nowrap:` 머리말을 지우고, `wrap:`이었는지 함께 돌려준다
-pub(super) fn clean_text(text: &str) -> (String, bool) {
+/// parseMessage: 앞뒤 공백과 `wrap:`·`nowrap:` 머리말을 지우고, 머리말이 정한 감싸기를 함께 돌려준다
+pub(super) fn clean_text(text: &str) -> (String, Option<bool>) {
     let text = text.trim();
     let lower = text.to_ascii_lowercase();
     let lower = lower.strip_prefix(':').unwrap_or(&lower);
@@ -110,10 +117,10 @@ pub(super) fn clean_text(text: &str) -> (String, bool) {
     for (prefix, is_wrapped) in [("nowrap:", false), ("wrap:", true)] {
         if lower.starts_with(prefix) {
             let rest = &text[colon + prefix.len()..];
-            return (rest.trim().to_string(), is_wrapped);
+            return (rest.trim().to_string(), Some(is_wrapped));
         }
     }
-    (text.to_string(), false)
+    (text.to_string(), None)
 }
 
 /// 문장 맨 앞 낱말(소문자)과 나머지
@@ -222,7 +229,8 @@ impl SequenceParser {
             Some(_) => return Err(syntax("두 참여자 노트는 over만 쓸 수 있습니다")),
             None => from,
         };
-        let (text, is_wrapped) = clean_text(text.split('#').next().unwrap_or(""));
+        let (text, wrap) = clean_text(text.split('#').next().unwrap_or(""));
+        let is_wrapped = wrap.unwrap_or(self.is_auto_wrapped);
         self.document.events.push(SequenceEvent::Note(SequenceNote {
             from,
             to,
@@ -353,7 +361,8 @@ impl SequenceParser {
         let from = self.reference_participant(source)?;
         let to = self.reference_participant(target.trim())?;
         self.check_lifecycle_message(from, to)?;
-        let (text, is_wrapped) = clean_text(text.split('#').next().unwrap_or(""));
+        let (text, wrap) = clean_text(text.split('#').next().unwrap_or(""));
+        let is_wrapped = wrap.unwrap_or(self.is_auto_wrapped);
         let message = SequenceMessage {
             from,
             to,

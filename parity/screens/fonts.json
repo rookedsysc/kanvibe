@@ -105,5 +105,117 @@
     "Noto Sans Symbols2",
     "DejaVu Sans",
     "Noto Color Emoji"
+  ],
+  "bundled": [
+    {
+      "file": "crates/kanvibe-app/assets/fonts/KanVibeNotoSans-Regular.ttf",
+      "source": "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+      "family": "KanVibe Noto Sans",
+      "style": "Regular",
+      "size": 512712,
+      "sha256": "9e45a4ce825d0a1b4ceeaecd90711cb838f08e0f1a5fd9238bb0cb6df1902b92",
+      "license": "OFL-1.1",
+      "license_file": "crates/kanvibe-app/assets/fonts/LICENSE-Noto.txt"
+    },
+    {
+      "file": "crates/kanvibe-app/assets/fonts/KanVibeNotoSans-Bold.ttf",
+      "source": "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
+      "family": "KanVibe Noto Sans",
+      "style": "Bold",
+      "size": 515792,
+      "sha256": "888d2920bb71324550ec47993da422d9829fe7222ad6c1c91b74cef701ecf851",
+      "license": "OFL-1.1",
+      "license_file": "crates/kanvibe-app/assets/fonts/LICENSE-Noto.txt"
+    },
+    {
+      "file": "crates/kanvibe-app/assets/fonts/KanVibeNotoSans-Italic.ttf",
+      "source": "/usr/share/fonts/truetype/noto/NotoSans-Italic.ttf",
+      "family": "KanVibe Noto Sans",
+      "style": "Italic",
+      "size": 530160,
+      "sha256": "4d258a4bd7f7468e910a47f8abe84871ec23746942bb046bfa5b6e593c19615e",
+      "license": "OFL-1.1",
+      "license_file": "crates/kanvibe-app/assets/fonts/LICENSE-Noto.txt"
+    },
+    {
+      "file": "crates/kanvibe-app/assets/fonts/KanVibeNotoSans-BoldItalic.ttf",
+      "source": "/usr/share/fonts/truetype/noto/NotoSans-BoldItalic.ttf",
+      "family": "KanVibe Noto Sans",
+      "style": "Bold Italic",
+      "size": 534220,
+      "sha256": "91b45b9d2d3103e74257613ecaf350749d0440600757362c180759f9d4021d75",
+      "license": "OFL-1.1",
+      "license_file": "crates/kanvibe-app/assets/fonts/LICENSE-Noto.txt"
+    },
+    {
+      "file": "crates/kanvibe-app/assets/fonts/KanVibeNotoSansCJKkr-Regular.otf",
+      "source": "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+      "family": "KanVibe Noto Sans CJK KR",
+      "style": "Regular",
+      "size": 16433172,
+      "sha256": "c563e8a276e85570ddc6ecc3a891737a19645291fe3863b47b0fbd65d7044204",
+      "license": "OFL-1.1",
+      "license_file": "crates/kanvibe-app/assets/fonts/LICENSE-NotoSansCJK.txt"
+    },
+    {
+      "file": "crates/kanvibe-app/assets/fonts/KanVibeNotoSansCJKkr-SyntheticBold.otf",
+      "source": "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+      "family": "KanVibe Noto Sans CJK KR Synthetic Bold",
+      "style": "Bold",
+      "size": 2504820,
+      "sha256": "238267590405739705d6a76092620c5704f33c7db609bfea18ed882f0a518858",
+      "license": "OFL-1.1",
+      "license_file": "crates/kanvibe-app/assets/fonts/LICENSE-NotoSansCJK.txt"
+    },
+    {
+      "file": "crates/kanvibe-app/assets/fonts/KanVibeNotoSansSymbols-Regular.ttf",
+      "source": "/usr/share/fonts/truetype/noto/NotoSansSymbols-Regular.ttf",
+      "family": "KanVibe Noto Sans Symbols",
+      "style": "Regular",
+      "size": 258188,
+      "sha256": "bddfa7f11502511a10ecbc08a391b1e6af176427a30e09086fb9e02d45a55ffe",
+      "license": "OFL-1.1",
+      "license_file": "crates/kanvibe-app/assets/fonts/LICENSE-Noto.txt"
+    },
+    {
+      "file": "crates/kanvibe-app/assets/fonts/KanVibeNotoSansSymbols2-Regular.ttf",
+      "source": "/usr/share/fonts/truetype/noto/NotoSansSymbols2-Regular.ttf",
+      "family": "KanVibe Noto Sans Symbols2",
+      "style": "Regular",
+      "size": 656892,
+      "sha256": "6d0b55c8dee48e95d7024558445def5175a890e0da9ca5dc5cf3cc38228446d2",
+      "license": "OFL-1.1",
+      "license_file": "crates/kanvibe-app/assets/fonts/LICENSE-Noto.txt"
+    },
+    {
+      "file": "crates/kanvibe-app/assets/fonts/KanVibeDejaVuSans.ttf",
+      "source": "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+      "family": "KanVibe DejaVu Sans",
+      "style": "Book",
+      "size": 759804,
+      "sha256": "81fece7c2a8c950da347062dc96397053173771f9efb463f7b28324d3d4449e9",
+      "license": "Bitstream-Vera AND LicenseRef-DejaVu-public-domain",
+      "license_file": "crates/kanvibe-app/assets/fonts/LICENSE-DejaVu.txt"
+    },
+    {
+      "file": "crates/kanvibe-app/assets/fonts/KanVibeDejaVuSansMono.ttf",
+      "source": "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+      "family": "KanVibe DejaVu Sans Mono",
+      "style": "Book",
+      "size": 343200,
+      "sha256": "69f94a6f7997c73bb1f4799cf7f76023e817a59707539adaf639e8df9290c4ee",
+      "license": "Bitstream-Vera AND LicenseRef-DejaVu-public-domain",
+      "license_file": "crates/kanvibe-app/assets/fonts/LICENSE-DejaVu.txt"
+    },
+    {
+      "file": "crates/kanvibe-app/assets/fonts/KanVibeDejaVuSansMono-Bold.ttf",
+      "source": "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf",
+      "family": "KanVibe DejaVu Sans Mono",
+      "style": "Bold",
+      "size": 334332,
+      "sha256": "f1061f4badefb6172f722e47c9952a4045f808bc6fb8f24fdee4e3e3a9d8b5da",
+      "license": "Bitstream-Vera AND LicenseRef-DejaVu-public-domain",
+      "license_file": "crates/kanvibe-app/assets/fonts/LICENSE-DejaVu.txt"
+    }
   ]
 }

@@ -6,6 +6,7 @@
 mod actor_layout;
 mod arrows;
 mod bounds;
+mod config;
 mod css_color;
 mod document;
 mod draw;
@@ -20,21 +21,6 @@ mod participants;
 use crate::scene::{Color, Scene};
 use crate::theme::{Theme, hsl};
 use crate::{DiagramError, RenderContext};
-
-/// conf.activationWidth
-const ACTIVATION_WIDTH: f64 = 10.0;
-/// conf.width·conf.height: 참여자 상자 최소 크기
-const ACTOR_WIDTH: f64 = 150.0;
-const ACTOR_HEIGHT: f64 = 65.0;
-/// conf.actorMargin
-const ACTOR_MARGIN: f64 = 50.0;
-const BOX_TEXT_MARGIN: f64 = 5.0;
-const NOTE_MARGIN: f64 = 10.0;
-const WRAP_PADDING: f64 = 10.0;
-const LABEL_BOX_WIDTH: f64 = 50.0;
-const LABEL_BOX_HEIGHT: f64 = 20.0;
-const DIAGRAM_MARGIN_X: f64 = 50.0;
-const DIAGRAM_MARGIN_Y: f64 = 10.0;
 
 /// 기준 SVG `<style>`의 시퀀스 다이어그램 색
 #[derive(Clone, Debug)]
@@ -129,16 +115,24 @@ impl SequenceColors {
 }
 
 pub fn render(definition: &str, context: &RenderContext) -> Result<Scene, DiagramError> {
+    let settings = config::SequenceConfig::read(definition);
     let document = parser::parse(definition)?;
     participants::check_menu_anchors(&document)?;
-    let layout = layout::layout(&document, context.fonts);
+    let layout = layout::layout(&document, context.fonts, &settings);
     let colors = SequenceColors::for_theme(context.palette.theme);
-    Ok(draw::draw(&document, &layout, context.fonts, &colors))
+    Ok(draw::draw(
+        &document,
+        &layout,
+        context.fonts,
+        &colors,
+        &settings,
+    ))
 }
 
 #[cfg(test)]
 mod tests {
     use crate::scene::SceneItem;
+    use crate::text::FontWeight;
     use crate::text::tests::bundled_fonts;
     use crate::theme::Theme;
     use crate::{DiagramError, LabelMode, render_scene};
@@ -169,6 +163,28 @@ mod tests {
         let html = render_scene(definition, Theme::Light, LabelMode::Html, &fonts).unwrap();
         let svg = render_scene(definition, Theme::Light, LabelMode::SvgText, &fonts).unwrap();
         assert_eq!(html, svg);
+    }
+
+    #[test]
+    fn 앞머리_설정의_감싸기와_글_맞춤을_따른다() {
+        let fonts = bundled_fonts();
+        let source = include_str!("../../../../parity/diagrams/baseline/seq-config-front.mmd");
+        let scene = render_scene(source, Theme::Light, LabelMode::Html, &fonts).unwrap();
+        let text_at = |wanted: &str| {
+            scene.items.iter().find_map(|item| match item {
+                SceneItem::Text(text) if text.text == wanted => Some(text.x),
+                _ => None,
+            })
+        };
+        // 기준 SVG(viewBox x = -50): 노트는 왼쪽 맞춤 x = 66, 메시지는 오른쪽 맞춤 끝 x = 265·262
+        assert_eq!(text_at("participants"), Some(116.0));
+        let ok_width = fonts.shape_line("ok", 16.0, FontWeight::Regular).width;
+        assert_eq!(text_at("ok").map(|x| x + ok_width), Some(315.0));
+        let wrapped_width = fonts
+            .shape_line("enough to wrap", 16.0, FontWeight::Regular)
+            .width;
+        let wrapped_end = text_at("enough to wrap").map(|x| x + wrapped_width);
+        assert_eq!(wrapped_end, Some(312.0));
     }
 
     #[test]

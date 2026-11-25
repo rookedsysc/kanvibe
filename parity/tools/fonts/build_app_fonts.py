@@ -52,6 +52,11 @@ SOURCE_FONTS = [
      "89c3c497f618fdaa0b2d1e98fef93582f28c71debd2c4a8cdf41f190ced2909d", "KanVibeNotoSans-Regular.ttf"),
     ("/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
      "e83493c945848ecd4a9ad0f6d19164541a0d3e23a9c952304a00a46e00272ac5", "KanVibeNotoSans-Bold.ttf"),
+    # Mermaid class·C4 등의 이탤릭 글자. Chromium은 `font-style: italic`을 fontconfig로 이 파일에 풀었다
+    ("/usr/share/fonts/truetype/noto/NotoSans-Italic.ttf",
+     "5d7618dda819443fd07301c84adcee9fe8960c873ea5e5e1f0f59db384b78082", "KanVibeNotoSans-Italic.ttf"),
+    ("/usr/share/fonts/truetype/noto/NotoSans-BoldItalic.ttf",
+     "4315b26e5afb62f70f5ffe0edaa3363e57765ff2af2beda12b6fef197e3e5f5a", "KanVibeNotoSans-BoldItalic.ttf"),
     ("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
      "b76b0433203017ca80401b2ee0dd69350349871c4b19d504c34dbdd80541690a", "KanVibeNotoSansCJKkr-Regular.otf"),
     ("/usr/share/fonts/truetype/noto/NotoSansSymbols-Regular.ttf",
@@ -65,8 +70,8 @@ SOURCE_FONTS = [
     ("/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf",
      "2d67eed9b325ee2e69f906ce4f3f6264d5105230a13352c8494daad4f17b12c8", "KanVibeDejaVuSansMono-Bold.ttf"),
 ]
-CJK_SOURCE_PATH = SOURCE_FONTS[2][0]
-LATIN_BOLD_SOURCE_PATH = SOURCE_FONTS[1][0]
+CJK_SOURCE_PATH = "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"
+LATIN_BOLD_SOURCE_PATH = "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf"
 SYNTHETIC_BOLD_OUTPUT = "KanVibeNotoSansCJKkr-SyntheticBold.otf"
 
 SYNTHETIC_BOLD_RANGES = [

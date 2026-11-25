@@ -2,17 +2,18 @@
 //! TS `App.tsx`의 `HashRouter` + `LocaleShell`에 해당한다.
 
 use gpui_kit::{
-    AnyView, AnyWindowHandle, App, AppContext, Bounds, Context, FocusHandle, InteractiveElement,
-    IntoElement, KeyContext, ParentElement, Render, Styled, Window, WindowBounds,
-    WindowDecorations, WindowOptions, deferred, div, point, px, size,
+    AnyView, AnyWindowHandle, App, AppContext, Bounds, Context, Entity, FocusHandle,
+    InteractiveElement, IntoElement, KeyContext, ParentElement, Render, Styled, Window,
+    WindowBounds, WindowDecorations, WindowOptions, deferred, div, point, px, size,
 };
+use kanvibe_domain::i18n::Locale;
 
 use crate::navigation::NavigationHistory;
 use crate::qa::targets::QaTargetRegistry;
 use crate::routes::AppRoute;
 use crate::shortcuts::{
-    NavigateBack, NavigateForward, OpenNewWindow, RunTerminalTabCommand, TASK_DETAIL_KEY_CONTEXT,
-    end_shortcut_capture,
+    NavigateBack, NavigateForward, OpenCommandPalette, OpenNewWindow, OpenTaskSearch,
+    RunTerminalTabCommand, TASK_DETAIL_KEY_CONTEXT, end_shortcut_capture,
 };
 
 /// 창 루트 키 컨텍스트
@@ -20,7 +21,12 @@ pub const WINDOW_KEY_CONTEXT: &str = "KanvibeWindow";
 
 use crate::components::dialog::MODAL_LAYER_PRIORITY;
 use crate::fonts::sans_font;
+use crate::qa::QaRuntime;
+use crate::qa::options::LoadingHolds;
 use crate::theme::{CANVAS_BACKGROUND, ThemeTokens, text_scale};
+use crate::views::board::BoardView;
+use crate::views::boot::{BootSkeletonView, HeldRouteView, lazy_route_bundle};
+use crate::views::locale_shell::LocaleShell;
 use crate::views::window_controls::window_controls_overlay;
 use crate::views::{ScreenContext, WindowNavigator, build_screen_view};
 use crate::windows::WindowRegistry;
@@ -32,6 +38,10 @@ pub struct AppWindow {
     focus_handle: FocusHandle,
     /// 현재 경로의 화면 뷰(`views::build_screen_view`). 경로가 바뀔 때마다 새로 만든다
     screen: AnyView,
+    /// 경로가 바뀌어도 남는 전역 덮개(TS `LocaleShell`). locale이 바뀌면 새로 만든다
+    locale_shell: Entity<LocaleShell>,
+    /// QA 재생이 첫 프레임(`index.html` 정적 스켈레톤)을 붙잡았는지
+    is_first_frame_held: bool,
 }
 
 /// gpui-pre-linux 0.3.14 X11 `create_window`는 요청한 x에 2를 더해 창을 만든다(`x11/window.rs`).
@@ -79,15 +89,55 @@ impl AppWindow {
         })
         .detach();
         let history = NavigationHistory::new(initial_path);
-        let screen = Self::build_screen(&history, cx);
+        let locale_shell = Self::build_locale_shell(history.current_route().locale, window, cx);
+        let loading_holds = qa_loading_holds(cx);
+        let screen = if loading_holds.is_first_frame_held {
+            cx.new(|_| BootSkeletonView).into()
+        } else {
+            Self::build_screen(&history, cx)
+        };
         let app_window = Self {
             window_handle: window.window_handle(),
             history,
             focus_handle,
             screen,
+            locale_shell,
+            is_first_frame_held: loading_holds.is_first_frame_held,
         };
+        app_window.attach_screen_to_shell(cx);
         app_window.record_current_path(cx);
         app_window
+    }
+
+    fn build_locale_shell(
+        locale: Locale,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Entity<LocaleShell> {
+        let navigator = WindowNavigator::new(cx.entity().downgrade());
+        cx.new(|cx| LocaleShell::new(locale, navigator, window, cx))
+    }
+
+    /// 전역 덮개가 보드 처리기(포커스된 카드, 카드 이동, 새 작업)를 쓸 수 있게 지금 화면을 알린다
+    fn attach_screen_to_shell(&self, cx: &mut Context<Self>) {
+        let board = self
+            .screen
+            .clone()
+            .downcast::<BoardView>()
+            .ok()
+            .map(|board| board.downgrade());
+        self.locale_shell
+            .update(cx, |shell, _| shell.set_board(board));
+    }
+
+    /// 이 창의 전역 덮개
+    pub fn locale_shell(&self) -> &Entity<LocaleShell> {
+        &self.locale_shell
+    }
+
+    /// 지금 경로의 화면 뷰
+    pub fn screen(&self) -> &AnyView {
+        &self.screen
     }
 
     pub fn current_path(&self) -> &str {
@@ -121,6 +171,8 @@ impl AppWindow {
         // TS는 문서를 다시 불러오면(`did-navigate`) 그 창의 녹화 표시를 지웠다. 녹화하던 화면 뷰가 여기서 버려진다
         end_shortcut_capture(self.window_handle.window_id(), cx);
         self.screen = Self::build_screen(&self.history, cx);
+        self.rebuild_locale_shell_if_needed(cx);
+        self.attach_screen_to_shell(cx);
         self.record_current_path(cx);
         self.reclaim_focus_after_navigation(cx);
         cx.notify();
@@ -137,9 +189,36 @@ impl AppWindow {
         });
     }
 
+    /// TS `LocaleShell`은 `/:locale` 아래에 있어 locale이 바뀌면 새로 붙었다
+    fn rebuild_locale_shell_if_needed(&mut self, cx: &mut Context<Self>) {
+        let locale = self.history.current_route().locale;
+        if self.locale_shell.read(cx).locale() == locale {
+            return;
+        }
+        let window_handle = self.window_handle;
+        let app_window = cx.entity().downgrade();
+        // 새 덮개는 창이 있어야 만들 수 있어 이 갱신이 끝난 뒤에 만든다
+        cx.defer(move |cx| {
+            let _ = window_handle.update(cx, |_, window, cx| {
+                let _ = app_window.update(cx, |this, cx| {
+                    this.locale_shell = Self::build_locale_shell(locale, window, cx);
+                    this.attach_screen_to_shell(cx);
+                    cx.notify();
+                });
+            });
+        });
+    }
+
+    /// QA 재생이 번들을 붙잡은 lazy 라우트는 Suspense fallback(`Loading...`)에 머문다
     fn build_screen(history: &NavigationHistory, cx: &mut Context<Self>) -> AnyView {
+        let route = history.current_route();
+        let is_held = lazy_route_bundle(&route.route)
+            .is_some_and(|bundle| is_bundle_held(&qa_loading_holds(cx), bundle));
+        if is_held {
+            return cx.new(|_| HeldRouteView).into();
+        }
         let screen = ScreenContext {
-            route: history.current_route(),
+            route,
             navigator: WindowNavigator::new(cx.entity().downgrade()),
         };
         build_screen_view(screen, cx)
@@ -167,6 +246,27 @@ impl AppWindow {
         {
             eprintln!("[kanvibe] failed to open a new window: {error:#}");
         }
+    }
+
+    /// 커맨드 팔레트와 빠른 검색은 어느 경로에서든 열린다(TS `LocaleShell` 자식)
+    fn handle_open_command_palette(
+        &mut self,
+        _: &OpenCommandPalette,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.locale_shell
+            .update(cx, |shell, cx| shell.open_command_palette(window, cx));
+    }
+
+    fn handle_open_task_search(
+        &mut self,
+        _: &OpenTaskSearch,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.locale_shell
+            .update(cx, |shell, cx| shell.toggle_quick_search(window, cx));
     }
 
     fn handle_navigate_back(&mut self, _: &NavigateBack, _: &mut Window, cx: &mut Context<Self>) {
@@ -210,6 +310,21 @@ impl AppWindow {
     }
 }
 
+/// QA 재생의 로딩 붙잡기. QA 모드가 아니면 비어 있다
+fn qa_loading_holds(cx: &App) -> LoadingHolds {
+    cx.try_global::<QaRuntime>()
+        .map(|qa| qa.options.loading_holds.clone())
+        .unwrap_or_default()
+}
+
+/// TS 드라이버는 번들 URL(`…/assets/SettingsRoute-<hash>.js`)을 정규식으로 붙잡았다. 같은 모양의 URL로 판정한다
+fn is_bundle_held(holds: &LoadingHolds, bundle: &str) -> bool {
+    let bundle_url = format!("file:///kanvibe/build/renderer/assets/{bundle}-qa.js");
+    holds.held_request_patterns.iter().any(|pattern| {
+        regress::Regex::new(pattern).is_ok_and(|regex| regex.find(&bundle_url).is_some())
+    })
+}
+
 /// TS 앱은 macOS에서 신호등 버튼(`hiddenInset`)을 쓰고 그 밖에서만 흰 조작 버튼을 겹쳤다. Electron 조작 버튼은
 /// 웹 문서 밖에 그려져 모달 배경보다도 위에 보였으므로, 모달보다 한 단계 위 층에 그린다
 fn linux_window_controls() -> Option<impl IntoElement> {
@@ -232,6 +347,8 @@ impl Render for AppWindow {
             .on_action(cx.listener(Self::handle_navigate_forward))
             .on_action(cx.listener(Self::handle_terminal_tab_command))
             .on_action(cx.listener(Self::handle_open_new_window))
+            .on_action(cx.listener(Self::handle_open_command_palette))
+            .on_action(cx.listener(Self::handle_open_task_search))
             .relative()
             .size_full()
             .bg(CANVAS_BACKGROUND)
@@ -240,6 +357,23 @@ impl Render for AppWindow {
             .line_height(text_scale::BODY.line_height)
             .text_color(theme.text.primary)
             .child(self.screen.clone())
+            .children((!self.is_first_frame_held).then(|| self.locale_shell.clone()))
             .children(linux_window_controls())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn held_bundle_patterns_match_like_the_ts_driver() {
+        let holds = LoadingHolds {
+            is_first_frame_held: false,
+            held_request_patterns: vec![r"/SettingsRoute-[^/]*\.js$".into()],
+        };
+        assert!(is_bundle_held(&holds, "SettingsRoute"));
+        assert!(!is_bundle_held(&holds, "ShortcutSettingsRoute"));
+        assert!(!is_bundle_held(&LoadingHolds::default(), "SettingsRoute"));
     }
 }

@@ -4,13 +4,13 @@
 use super::SequenceColors;
 use super::arrows::draw_message;
 use super::bounds::BlockFrame;
+use super::config::{SequenceConfig, TextAlign};
 use super::css_color::parse_css_color;
-use super::document::{BlockKind, Participant, SequenceDocument};
+use super::document::{BlockKind, SequenceDocument};
 use super::layout::{LayeredItem, PlacedGroup, PlacedTitle, SequenceLayout};
 use super::measure::{FONT_SIZE, js_round, line_height, split_breaks};
-use super::models::{ActorBox, NoteModel};
+use super::models::NoteModel;
 use super::participants::{ParticipantPainter, is_boxed, lifeline_offset};
-use super::{BOX_TEXT_MARGIN, LABEL_BOX_HEIGHT, LABEL_BOX_WIDTH, NOTE_MARGIN};
 use crate::scene::{
     Color, PathCommand, Point, Scene, StrokeStyle, TextItem, polygon, rounded_rect,
 };
@@ -19,6 +19,8 @@ use crate::text::{FontBook, FontWeight};
 /// `dominant-baseline: middle`: 기준선이 x-height 절반만큼 아래다(Noto Sans x-height 536/1000)
 const MIDDLE_BASELINE_SHIFT: f64 = FONT_SIZE * 0.536 / 2.0;
 const LIFELINE_WIDTH: f64 = 2.0;
+/// drawActor가 처음 긋는 생명선 끝 y
+const UNMIRRORED_LIFELINE_END: f64 = 2000.0;
 const BLOCK_LINE_WIDTH: f64 = 2.0;
 /// 묶음 상자 그림자: 옮김, 흐림 표준편차(CSS drop-shadow의 흐림 길이), 그리는 범위와 층 수
 const SHADOW_OFFSET: (f64, f64) = (1.0, 2.0);
@@ -59,6 +61,33 @@ pub(super) fn centered_text(
     }
 }
 
+/// drawText의 가로 맞춤: 왼쪽은 여백만큼 안, 가운데는 폭 절반, 오른쪽은 끝에서 여백만큼 안이 글 기준점이다
+pub(super) fn aligned_anchor(align: TextAlign, left: f64, width: f64, margin: f64) -> f64 {
+    match align {
+        TextAlign::Left => js_round(left + margin),
+        TextAlign::Center => js_round(left + width / 2.0),
+        TextAlign::Right => js_round(left + width - margin),
+    }
+}
+
+/// `text-anchor`가 start·middle·end인 한 줄
+pub(super) fn anchored_text(
+    fonts: &FontBook,
+    text: &str,
+    (anchor_x, baseline): (f64, f64),
+    align: TextAlign,
+    color: Color,
+) -> TextItem {
+    let mut item = centered_text(fonts, text, anchor_x, baseline, FONT_SIZE, color);
+    let width = fonts.shape_line(text, FONT_SIZE, FontWeight::Regular).width;
+    item.x = match align {
+        TextAlign::Left => anchor_x,
+        TextAlign::Center => item.x,
+        TextAlign::Right => anchor_x - width,
+    };
+    item
+}
+
 /// drawText의 세로 가운데 맞춤: i번째 줄 y는 앞 줄들 높이 합을 두 번 더한 값의 절반만큼 내려간다
 pub(super) fn stacked_line_y(fonts: &FontBook, top: f64, index: usize, margin: f64) -> f64 {
     let above = line_height(fonts) * index as f64;
@@ -75,13 +104,9 @@ pub(super) fn draw(
     layout: &SequenceLayout,
     fonts: &FontBook,
     colors: &SequenceColors,
+    config: &SequenceConfig,
 ) -> Scene {
-    let mut scene = Scene {
-        is_start_aligned: false,
-        width: layout.view_width,
-        height: layout.view_height,
-        items: Vec::new(),
-    };
+    let mut scene = empty_scene(layout);
     for group in &layout.groups {
         draw_group(&mut scene, fonts, colors, group, view_bounds(layout));
     }
@@ -101,16 +126,21 @@ pub(super) fn draw(
                 is_footer,
             })
     };
-    paint_boxed(&mut scene, colors, painters(true).rev());
-    paint_boxed(&mut scene, colors, painters(false).rev());
+    let is_mirrored = config.should_mirror_actors;
+    if is_mirrored {
+        paint_boxed(&mut scene, colors, painters(true).rev(), is_mirrored);
+    }
+    paint_boxed(&mut scene, colors, painters(false).rev(), is_mirrored);
     for item in &layout.layered {
-        draw_layered(&mut scene, fonts, colors, item);
+        draw_layered(&mut scene, fonts, colors, config, item);
     }
     paint_figures(&mut scene, painters(false));
     for message in &layout.messages {
-        draw_message(&mut scene, fonts, colors, &layout.actors, message);
+        draw_message(&mut scene, fonts, colors, config, &layout.actors, message);
     }
-    paint_figures(&mut scene, painters(true));
+    if is_mirrored {
+        paint_figures(&mut scene, painters(true));
+    }
     if let Some(title) = &layout.title {
         draw_title(&mut scene, fonts, colors, title);
     }
@@ -118,15 +148,25 @@ pub(super) fn draw(
     scene
 }
 
+fn empty_scene(layout: &SequenceLayout) -> Scene {
+    Scene {
+        is_start_aligned: false,
+        width: layout.view_width,
+        height: layout.view_height,
+        items: Vec::new(),
+    }
+}
+
 /// 노트·블록 아래로 내려 그리는 상자 모양 참여자. 위 참여자는 생명선을 먼저 긋는다
 fn paint_boxed<'a>(
     scene: &mut Scene,
     colors: &SequenceColors,
     painters: impl Iterator<Item = ParticipantPainter<'a>>,
+    is_mirrored: bool,
 ) {
     for painter in painters {
         if !painter.is_footer {
-            draw_lifeline(scene, colors, painter.participant, painter.actor);
+            draw_lifeline(scene, colors, &painter, is_mirrored);
         }
         if is_boxed(painter.participant.kind) {
             painter.paint(scene);
@@ -158,16 +198,23 @@ fn draw_background(scene: &mut Scene, frame: &BlockFrame) {
     scene.push_path(polygon(&corners), fill, None);
 }
 
-/// 생명선: 위 참여자 아래 끝부터 아래 참여자(또는 소멸 자리)까지
+/// 생명선: 위 참여자 아래 끝부터 아래 참여자(또는 소멸 자리)까지. 거울 참여자가 없으면 소멸 자리 가운데나
+/// 처음 그은 끝(y = 2000, viewBox 밖은 잘린다)까지다
 fn draw_lifeline(
     scene: &mut Scene,
     colors: &SequenceColors,
-    participant: &Participant,
-    actor: &ActorBox,
+    painter: &ParticipantPainter,
+    is_mirrored: bool,
 ) {
+    let actor = painter.actor;
     let center = actor.center();
-    let top = actor.start_y + lifeline_offset(participant.kind, actor);
-    let bottom = actor.stop_y.unwrap_or(top);
+    let top = actor.start_y + lifeline_offset(painter.participant.kind, actor);
+    let bottom = match actor.stop_y {
+        Some(stop_y) if is_mirrored => stop_y,
+        Some(stop_y) => stop_y + actor.height / 2.0,
+        None if is_mirrored => top,
+        None => UNMIRRORED_LIFELINE_END,
+    };
     scene.push_path(
         line(Point::new(center, top), Point::new(center, bottom)),
         None,
@@ -365,7 +412,13 @@ fn draw_title(scene: &mut Scene, fonts: &FontBook, colors: &SequenceColors, titl
     scene.push_text(item);
 }
 
-fn draw_layered(scene: &mut Scene, fonts: &FontBook, colors: &SequenceColors, item: &LayeredItem) {
+fn draw_layered(
+    scene: &mut Scene,
+    fonts: &FontBook,
+    colors: &SequenceColors,
+    config: &SequenceConfig,
+    item: &LayeredItem,
+) {
     match item {
         LayeredItem::Activation {
             x,
@@ -381,16 +434,19 @@ fn draw_layered(scene: &mut Scene, fonts: &FontBook, colors: &SequenceColors, it
             model,
             start_y,
             height,
-        } => draw_note(scene, fonts, colors, model, (*start_y, *height)),
-        LayeredItem::Block { frame, kind } => draw_block(scene, fonts, colors, frame, *kind),
+        } => draw_note(scene, fonts, colors, config, model, (*start_y, *height)),
+        LayeredItem::Block { frame, kind } => {
+            draw_block(scene, fonts, colors, config, frame, *kind)
+        }
     }
 }
 
-/// drawNote: 줄마다 가운데 맞춤, `dy = 1em`, `dominant-baseline: middle`
+/// drawNote: 줄마다 noteAlign 맞춤, `dy = 1em`, `dominant-baseline: middle`
 fn draw_note(
     scene: &mut Scene,
     fonts: &FontBook,
     colors: &SequenceColors,
+    config: &SequenceConfig,
     model: &NoteModel,
     (start_y, height): (f64, f64),
 ) {
@@ -399,15 +455,16 @@ fn draw_note(
         Some(colors.note_fill),
         stroke(colors.note_stroke, 1.0, &[]),
     );
-    let center_x = js_round(model.start_x + model.width / 2.0);
+    let (align, margin) = (config.note_align, config.note_margin);
+    let anchor_x = aligned_anchor(align, model.start_x, model.width, margin);
     for (index, line_text) in split_breaks(&model.text).iter().enumerate() {
-        let y = stacked_line_y(fonts, start_y, index, NOTE_MARGIN);
-        scene.push_text(centered_text(
+        let y = stacked_line_y(fonts, start_y, index, margin);
+        let position = (anchor_x, middle_baseline(y, FONT_SIZE));
+        scene.push_text(anchored_text(
             fonts,
             line_text,
-            center_x,
-            middle_baseline(y, FONT_SIZE),
-            FONT_SIZE,
+            position,
+            align,
             colors.note_text,
         ));
     }
@@ -418,6 +475,7 @@ fn draw_block(
     scene: &mut Scene,
     fonts: &FontBook,
     colors: &SequenceColors,
+    config: &SequenceConfig,
     frame: &BlockFrame,
     kind: BlockKind,
 ) {
@@ -444,19 +502,15 @@ fn draw_block(
         );
         scene.push_path(line(from, to), None, divider.clone());
     }
-    draw_block_label(scene, fonts, colors, Point::new(start_x, start_y), kind);
-    let title_x = start_x + LABEL_BOX_WIDTH / 2.0 + (stop_x - start_x) / 2.0;
-    draw_block_title(
-        scene,
-        fonts,
-        colors,
-        &frame.title,
-        Point::new(title_x, start_y),
-    );
+    let corner = Point::new(start_x, start_y);
+    draw_block_label(scene, fonts, colors, config, corner, kind);
+    let title_x = start_x + config.label_box_width / 2.0 + (stop_x - start_x) / 2.0;
+    let title_anchor = Point::new(title_x, start_y);
+    draw_block_title(scene, fonts, colors, config, &frame.title, title_anchor);
     let section_x = start_x + (stop_x - start_x) / 2.0;
     for section in &frame.sections {
         let anchor = Point::new(section_x, section.y);
-        draw_block_title(scene, fonts, colors, &section.title, anchor);
+        draw_block_title(scene, fonts, colors, config, &section.title, anchor);
     }
 }
 
@@ -465,11 +519,12 @@ fn draw_block_label(
     scene: &mut Scene,
     fonts: &FontBook,
     colors: &SequenceColors,
+    config: &SequenceConfig,
     corner: Point,
     kind: BlockKind,
 ) {
     let (x, y) = (corner.x, corner.y);
-    let (width, height, cut) = (LABEL_BOX_WIDTH, LABEL_BOX_HEIGHT, 7.0);
+    let (width, height, cut) = (config.label_box_width, config.label_box_height, 7.0);
     let points = [
         Point::new(x, y),
         Point::new(x + width, y),
@@ -482,7 +537,7 @@ fn draw_block_label(
         Some(colors.label_box_fill),
         stroke(colors.label_box_stroke, 1.0, &[]),
     );
-    let text_y = js_round(y + height / 2.0 + BOX_TEXT_MARGIN / 2.0);
+    let text_y = js_round(y + height / 2.0 + config.box_text_margin / 2.0);
     scene.push_text(centered_text(
         fonts,
         kind.keyword(),
@@ -498,15 +553,16 @@ fn draw_block_title(
     scene: &mut Scene,
     fonts: &FontBook,
     colors: &SequenceColors,
+    config: &SequenceConfig,
     title: &str,
     anchor: Point,
 ) {
-    let top = anchor.y + super::bounds::BOX_MARGIN + BOX_TEXT_MARGIN;
+    let top = anchor.y + config.box_margin + config.box_text_margin;
     for (index, text) in split_breaks(title).iter().enumerate() {
         if text.is_empty() {
             continue;
         }
-        let baseline = stacked_line_y(fonts, top, index, BOX_TEXT_MARGIN);
+        let baseline = stacked_line_y(fonts, top, index, config.box_text_margin);
         scene.push_text(centered_text(
             fonts,
             text,

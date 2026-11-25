@@ -1,9 +1,11 @@
 //! timeline 다이어그램(가로, timelineRenderer.ts·svgDraw.js). 기간 상자를 200 간격으로 늘어놓고, 각 기간
 //! 아래 점선 화살표를 따라 사건 상자를 쌓는다. 구역이 있으면 기간들 위에 구역 상자를 둔다.
 //! 상자 글자는 SVG `<text>`(가운데 정렬, `dominant-baseline: middle`)라 라벨 방식과 상관없이 같다.
+//! `timeline TD`는 세로 렌더러([`vertical`])가 그린다.
 
 mod colors;
 mod parser;
+mod vertical;
 
 use crate::scene::{Color, PathCommand, Point, Scene, StrokeStyle, TextItem, polygon};
 use crate::text::{FontBook, FontWeight};
@@ -60,11 +62,12 @@ impl Bounds {
     }
 }
 
-/// 상자 왼쪽 위와 글자 줄바꿈 폭. 상자 폭은 글자 폭 + 안쪽 여백 2 × 20이다
+/// 상자 왼쪽 위와 글자 줄바꿈 폭·안쪽 여백. 상자 폭은 글자 폭 + 안쪽 여백 2배다
 #[derive(Clone, Copy, Debug)]
 struct NodeFrame {
     origin: Point,
     text_width: f64,
+    padding: f64,
 }
 
 /// 그리는 동안 함께 쓰는 값
@@ -85,6 +88,9 @@ struct RowHeights {
 
 pub fn render(definition: &str, context: &RenderContext) -> Result<Scene, DiagramError> {
     let timeline = parser::parse(definition)?;
+    if timeline.is_vertical {
+        return Ok(vertical::render(&timeline, context));
+    }
     let fonts = context.fonts;
     let heights = measure_rows(fonts, &timeline.sections, &timeline.periods);
     let mut canvas = TimelineCanvas {
@@ -115,23 +121,28 @@ pub fn render(definition: &str, context: &RenderContext) -> Result<Scene, Diagra
     };
     let axis_end = Point::new(content_width + 3.0 * LEFT_MARGIN, depth_y);
     draw_arrow(&mut canvas, Point::new(LEFT_MARGIN, depth_y), axis_end, 4.0);
+    Ok(finish_scene(canvas))
+}
+
+/// setupGraphViewbox: 그린 것의 경계에 여백 50을 둘러 viewBox로 삼는다
+fn finish_scene(canvas: TimelineCanvas) -> Scene {
     let bounds = canvas.bounds;
     let mut scene = canvas.scene;
     scene.width = bounds.right - bounds.left + 2.0 * VIEW_PADDING;
     scene.height = bounds.bottom - bounds.top + 2.0 * VIEW_PADDING;
     scene.translate(VIEW_PADDING - bounds.left, VIEW_PADDING - bounds.top);
-    Ok(scene)
+    scene
 }
 
 fn measure_rows(fonts: &FontBook, sections: &[String], periods: &[Period]) -> RowHeights {
     let section = sections
         .iter()
-        .map(|name| node_content_height(fonts, name, NODE_TEXT_WIDTH) + 20.0)
+        .map(|name| node_content_height(fonts, name, NODE_TEXT_WIDTH, NODE_PADDING) + 20.0)
         .fold(0.0, f64::max);
     let period = if periods.is_empty() {
         0.0
     } else {
-        node_content_height(fonts, MEASURED_PERIOD_TEXT, NODE_TEXT_WIDTH) + 20.0
+        node_content_height(fonts, MEASURED_PERIOD_TEXT, NODE_TEXT_WIDTH, NODE_PADDING) + 20.0
     };
     let event_column = periods
         .iter()
@@ -139,7 +150,7 @@ fn measure_rows(fonts: &FontBook, sections: &[String], periods: &[Period]) -> Ro
             let heights: f64 = period
                 .events
                 .iter()
-                .map(|event| node_content_height(fonts, event, NODE_TEXT_WIDTH))
+                .map(|event| node_content_height(fonts, event, NODE_TEXT_WIDTH, NODE_PADDING))
                 .sum();
             heights + period.events.len().saturating_sub(1) as f64 * EVENT_GAP
         })
@@ -229,10 +240,10 @@ fn text_block_height(fonts: &FontBook, lines: &[String]) -> f64 {
     metrics.ascent + metrics.descent + (last - first) as f64 * LINE_HEIGHT
 }
 
-/// 상자 높이(최소 높이 적용 전): 글자 높이 + 반 줄 + 안쪽 여백
-fn node_content_height(fonts: &FontBook, text: &str, text_width: f64) -> f64 {
+/// 상자 높이(최소 높이 적용 전, getVirtualNodeHeight): 글자 높이 + 반 줄 + 안쪽 여백
+fn node_content_height(fonts: &FontBook, text: &str, text_width: f64, padding: f64) -> f64 {
     let lines = wrap_lines(fonts, text, text_width);
-    text_block_height(fonts, &lines) + FONT_SIZE * 1.1 * 0.5 + NODE_PADDING
+    text_block_height(fonts, &lines) + FONT_SIZE * 1.1 * 0.5 + padding
 }
 
 /// 상자 하나: 위 모서리만 둥근 바탕, 밑줄, 가운데 글자. 그린 높이를 돌려준다
@@ -243,10 +254,14 @@ fn draw_node(
     min_height: f64,
     colors: SectionColors,
 ) -> f64 {
-    let NodeFrame { origin, text_width } = frame;
-    let width = text_width + 2.0 * NODE_PADDING;
+    let NodeFrame {
+        origin,
+        text_width,
+        padding,
+    } = frame;
+    let width = text_width + 2.0 * padding;
     let lines = wrap_lines(canvas.fonts, text, text_width);
-    let content = text_block_height(canvas.fonts, &lines) + FONT_SIZE * 1.1 * 0.5 + NODE_PADDING;
+    let content = text_block_height(canvas.fonts, &lines) + FONT_SIZE * 1.1 * 0.5 + padding;
     let height = content.max(min_height);
     let background = node_background(origin, width, height);
     canvas.scene.push_path(background, Some(colors.fill), None);
@@ -260,7 +275,7 @@ fn draw_node(
     let center_x = origin.x + width / 2.0;
     let middle_shift = X_HEIGHT_RATIO * FONT_SIZE / 2.0;
     for (index, line) in lines.into_iter().enumerate() {
-        let baseline = origin.y + NODE_PADDING / 2.0 + FONT_SIZE + index as f64 * LINE_HEIGHT;
+        let baseline = origin.y + padding / 2.0 + FONT_SIZE + index as f64 * LINE_HEIGHT;
         let item = centered_text(
             canvas.fonts,
             line,
@@ -337,6 +352,7 @@ fn draw_sections(
         let frame = NodeFrame {
             origin: Point::new(column_x, TOP),
             text_width: COLUMN_STEP * columns - 50.0,
+            padding: NODE_PADDING,
         };
         draw_node(canvas, section, frame, heights.section, colors);
         let period_origin = Point::new(column_x, TOP + heights.section + 50.0);
@@ -366,6 +382,7 @@ fn draw_periods(
         let frame = NodeFrame {
             origin: Point::new(x, origin.y),
             text_width: NODE_TEXT_WIDTH,
+            padding: NODE_PADDING,
         };
         let height = draw_node(canvas, &period.name, frame, period_height, colors);
         period_height = period_height.max(height);
@@ -382,6 +399,7 @@ fn draw_periods(
             let frame = NodeFrame {
                 origin: Point::new(x, event_y),
                 text_width: NODE_TEXT_WIDTH,
+                padding: NODE_PADDING,
             };
             let height = draw_node(canvas, event, frame, EVENT_MIN_HEIGHT, colors.brightened());
             event_y += height + EVENT_GAP;
@@ -478,6 +496,7 @@ mod tests {
     #[test]
     fn 한_줄_상자_높이는_50_8이다() {
         let fonts = bundled_fonts();
-        assert!((node_content_height(&fonts, "LinkedIn", NODE_TEXT_WIDTH) - 50.8).abs() < 1e-9);
+        let height = node_content_height(&fonts, "LinkedIn", NODE_TEXT_WIDTH, NODE_PADDING);
+        assert!((height - 50.8).abs() < 1e-9);
     }
 }

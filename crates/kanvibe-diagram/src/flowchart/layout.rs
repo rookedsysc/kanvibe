@@ -409,7 +409,11 @@ fn route_edge<'a>(
 /// 간선 경로: 모서리 보정 → 화살표 자리 보정 → curveBasis
 pub fn edge_path(edge: &FlowEdge, points: &[Point]) -> Vec<PathCommand> {
     let corrected = fix_corners(points);
-    let offset = |arrow: ArrowType| (arrow == ArrowType::Point).then_some(4.0);
+    let offset = |arrow: ArrowType| match arrow {
+        ArrowType::Point => Some(4.0),
+        ArrowType::BarbNeo => Some(5.5),
+        _ => None,
+    };
     let shifted = apply_line_offsets(&corrected, offset(edge.arrow_start), offset(edge.arrow_end));
     curve_basis(&shifted)
 }

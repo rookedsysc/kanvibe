@@ -24,8 +24,17 @@ pub(crate) struct NodeGeometry {
     pub bounds: (f64, f64, f64, f64),
 }
 
-pub(crate) fn node_geometry(shape: NodeShape, label: &LabelBox) -> NodeGeometry {
+/// `label_box_shift`는 라벨 묶음 원점에서 라벨 getBBox 상자 왼쪽 위까지의 거리다(아이콘 배경 상자 등)
+pub(crate) fn node_geometry(
+    shape: NodeShape,
+    label: &LabelBox,
+    label_box_shift: Point,
+) -> NodeGeometry {
     let label_origin = label_origin(shape, label);
+    let label_box = Point::new(
+        label_origin.x + label_box_shift.x,
+        label_origin.y + label_box_shift.y,
+    );
     let (width, height) = (label.width, label.height);
     let (outline, underline) = match shape {
         NodeShape::Default => default_outline(width + 8.0 * (PADDING / 2.0), height + PADDING),
@@ -44,19 +53,19 @@ pub(crate) fn node_geometry(shape: NodeShape, label: &LabelBox) -> NodeGeometry 
         NodeShape::Hexagon => (hexagon_outline(width, height), None),
         NodeShape::Cloud => {
             let (w, h) = (width + PADDING, height + PADDING);
-            return arc_geometry(cloud_arcs(w, h), (w, h), label_origin, label);
+            return arc_geometry(cloud_arcs(w, h), (w, h), (label_origin, label_box), label);
         }
         NodeShape::Bang => {
             let (w, h) = (width + PADDING * 5.0, height + PADDING * 4.0);
-            return arc_geometry(bang_arcs(w, h), (w, h), label_origin, label);
+            return arc_geometry(bang_arcs(w, h), (w, h), (label_origin, label_box), label);
         }
     };
     let shape_bounds = path_bounds(&outline).unwrap_or((0.0, 0.0, 0.0, 0.0));
     let bounds = (
-        shape_bounds.0.min(label_origin.x),
-        shape_bounds.1.min(label_origin.y),
-        shape_bounds.2.max(label_origin.x + width),
-        shape_bounds.3.max(label_origin.y + height),
+        shape_bounds.0.min(label_box.x),
+        shape_bounds.1.min(label_box.y),
+        shape_bounds.2.max(label_box.x + width),
+        shape_bounds.3.max(label_box.y + height),
     );
     NodeGeometry {
         outline,
@@ -141,11 +150,12 @@ fn hexagon_outline(label_width: f64, label_height: f64) -> Vec<PathCommand> {
     polygon(&shifted)
 }
 
-/// 구름·폭발: `M0 0 a… H0 V0 Z` 경로를 모양 왼쪽 위가 (−w/2, −h/2)에 오도록 옮긴다
+/// 구름·폭발: `M0 0 a… H0 V0 Z` 경로를 모양 왼쪽 위가 (−w/2, −h/2)에 오도록 옮긴다.
+/// `(label_origin, label_box)`는 라벨 묶음 원점과 라벨 getBBox 상자 왼쪽 위다
 fn arc_geometry(
     arcs: Vec<RelativeArc>,
     (width, height): (f64, f64),
-    label_origin: Point,
+    (label_origin, label_box): (Point, Point),
     label: &LabelBox,
 ) -> NodeGeometry {
     let offset = Point::new(-width / 2.0, -height / 2.0);
@@ -153,7 +163,7 @@ fn arc_geometry(
         outline: arc_outline(&arcs, offset),
         underline: None,
         label_origin,
-        bounds: chromium_arc_node_bounds(&arcs, offset, label_origin, label),
+        bounds: chromium_arc_node_bounds(&arcs, offset, label_box, label),
     }
 }
 
@@ -161,14 +171,14 @@ fn arc_geometry(
 fn chromium_arc_node_bounds(
     arcs: &[RelativeArc],
     offset: Point,
-    label_origin: Point,
+    label_box: Point,
     label: &LabelBox,
 ) -> (f64, f64, f64, f64) {
     let (min_x, min_y, max_x, max_y) = arc_path_bounds(arcs);
     let path_x = (f64::from(min_x) + offset.x) as f32;
     let path_y = (f64::from(min_y) + offset.y) as f32;
     let (path_width, path_height) = (max_x - min_x, max_y - min_y);
-    let (label_x, label_y) = (label_origin.x as f32, label_origin.y as f32);
+    let (label_x, label_y) = (label_box.x as f32, label_box.y as f32);
     let (label_width, label_height) = (label.width as f32, label.height as f32);
     let left = path_x.min(label_x);
     let top = path_y.min(label_y);

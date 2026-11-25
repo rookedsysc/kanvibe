@@ -1,0 +1,14 @@
+architecture-beta
+    group edge_zone(internet)[Edge]
+    group core(cloud)[Core]
+
+    service gateway(internet)[Gateway] in edge_zone
+    service api(server)[API] in core
+    service db(database)[DB] in core
+    service cache(disk)[Cache] in core
+    junction hub in core
+
+    gateway{group}:R --> L:api{group}
+    api:R -[reads]- L:hub
+    hub:T --> B:db
+    hub:B <-- T:cache

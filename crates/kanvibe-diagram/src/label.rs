@@ -164,7 +164,7 @@ pub fn measure_label_with_font_size(
     font_size: f64,
 ) -> LabelBox {
     match mode {
-        LabelMode::Html => measure_html_label(fonts, label, font_size),
+        LabelMode::Html => measure_html_label(fonts, label, font_size, WRAPPING_WIDTH),
         LabelMode::SvgText => measure_svg_label(fonts, label, font_size, WRAPPING_WIDTH),
     }
 }
@@ -288,7 +288,13 @@ fn split_long_word(
     rest
 }
 
-fn measure_html_label(fonts: &FontBook, label: &str, font_size: f64) -> LabelBox {
+/// HTML 라벨 크기를 div `max-width`가 `wrap_width`일 때로 잰다(kanban 카드는 175px)
+pub fn measure_html_label(
+    fonts: &FontBook,
+    label: &str,
+    font_size: f64,
+    wrap_width: f64,
+) -> LabelBox {
     let raw_lines = label_lines(label);
     let measured: Vec<LabelLine> = raw_lines
         .into_iter()
@@ -299,7 +305,7 @@ fn measure_html_label(fonts: &FontBook, label: &str, font_size: f64) -> LabelBox
         .collect();
     let natural = measured.iter().map(|line| line.width).fold(0.0, f64::max);
     let line_height = html_line_height(font_size);
-    if natural < WRAPPING_WIDTH {
+    if natural < wrap_width {
         let height = if label.is_empty() {
             0.0
         } else {
@@ -315,10 +321,10 @@ fn measure_html_label(fonts: &FontBook, label: &str, font_size: f64) -> LabelBox
     }
     let lines: Vec<LabelLine> = measured
         .iter()
-        .flat_map(|line| wrap_line(fonts, &line.text, font_size))
+        .flat_map(|line| wrap_line(fonts, &line.text, font_size, wrap_width))
         .collect();
     LabelBox {
-        width: WRAPPING_WIDTH,
+        width: wrap_width,
         height: lines.len() as f64 * line_height,
         lines,
         mode: LabelMode::Html,
@@ -354,20 +360,20 @@ fn is_closing_punctuation(character: char) -> bool {
     )
 }
 
-fn wrap_line(fonts: &FontBook, text: &str, font_size: f64) -> Vec<LabelLine> {
+fn wrap_line(fonts: &FontBook, text: &str, font_size: f64, wrap_width: f64) -> Vec<LabelLine> {
     let mut lines = Vec::new();
     let mut start = 0;
     while start < text.len() {
         let rest = &text[start..];
         let mut end = rest.len();
-        if fonts.measure_line(rest.trim_end(), font_size, FontWeight::Regular) > WRAPPING_WIDTH {
+        if fonts.measure_line(rest.trim_end(), font_size, FontWeight::Regular) > wrap_width {
             let candidates = break_opportunities(rest);
             let fitting = candidates
                 .iter()
                 .copied()
                 .take_while(|index| {
                     fonts.measure_line(rest[..*index].trim_end(), font_size, FontWeight::Regular)
-                        <= WRAPPING_WIDTH
+                        <= wrap_width
                 })
                 .last();
             end = fitting

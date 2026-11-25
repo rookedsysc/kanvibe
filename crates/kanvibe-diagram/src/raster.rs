@@ -2,12 +2,15 @@
 //! 폭 `width - 16`과 높이 2384px 중 작은 배율, 위아래 8px)로 그리고 PNG·JPEG로 인코딩한다.
 
 use tiny_skia::{
-    FillRule, LineCap, LineJoin, Mask, Paint, PathBuilder, Pixmap, PixmapPaint, Rect, Stroke,
-    StrokeDash, Transform,
+    BlendMode, FillRule, GradientStop, LineCap, LineJoin, LinearGradient, Mask, Paint, PathBuilder,
+    Pixmap, PixmapPaint, Rect, SpreadMode, Stroke, StrokeDash, Transform,
 };
 
 use crate::hinting::VerticalHinting;
-use crate::scene::{ClipItem, Color, PathCommand, PathItem, Rotation, Scene, SceneItem, TextItem};
+use crate::scene::{
+    ClipItem, Color, MultiplyStrokeItem, PathCommand, PathItem, Rotation, Scene, SceneItem,
+    TextItem, TextStrokeItem,
+};
 use crate::text::FontBook;
 
 /// 워커 body padding
@@ -143,6 +146,45 @@ fn draw_path(pixmap: &mut Pixmap, item: &PathItem, transform: Transform) {
     pixmap.stroke_path(&path, &paint_for(style.color), &stroke, transform, None);
 }
 
+/// 그라디언트 선을 곱하기 섞기로 그린다. 그라디언트 좌표는 경로와 같은 장면 좌표다
+fn draw_multiply_stroke(pixmap: &mut Pixmap, item: &MultiplyStrokeItem, transform: Transform) {
+    let Some(path) = build_path(&item.commands) else {
+        return;
+    };
+    let stop = |offset: f32, color: Color| {
+        GradientStop::new(
+            offset,
+            tiny_skia::Color::from_rgba8(
+                color.red,
+                color.green,
+                color.blue,
+                (color.alpha.clamp(0.0, 1.0) * 255.0).round() as u8,
+            ),
+        )
+    };
+    let Some(shader) = LinearGradient::new(
+        tiny_skia::Point::from_xy(item.start_x as f32, 0.0),
+        tiny_skia::Point::from_xy(item.end_x as f32, 0.0),
+        vec![stop(0.0, item.start_color), stop(1.0, item.end_color)],
+        SpreadMode::Pad,
+        Transform::identity(),
+    ) else {
+        return;
+    };
+    let paint = Paint {
+        shader,
+        blend_mode: BlendMode::Multiply,
+        anti_alias: true,
+        ..Paint::default()
+    };
+    let stroke = Stroke {
+        width: item.width as f32,
+        line_cap: LineCap::Butt,
+        ..Stroke::default()
+    };
+    pixmap.stroke_path(&path, &paint, &stroke, transform, None);
+}
+
 /// 한글처럼 대체 얼굴로 넘어간 글리프는 FreeType CJK autofit이 라틴 청색 영역을 쓰지 않으므로 기준선만
 /// 장치 픽셀에 맞춘다. 가로 글리프 위치는 부분 픽셀 그대로 둔다(맞추면 기준 이미지와 더 멀어진다)
 fn fallback_glyph_transform(item: &TextItem, glyph_x: f64, placement: Placement) -> Transform {
@@ -196,6 +238,39 @@ fn rotated_glyph_transform(
         .post_concat(placement.transform())
 }
 
+/// 글리프 윤곽선을 힌팅 없이 장면 좌표에서 긋는다
+fn draw_text_stroke(
+    pixmap: &mut Pixmap,
+    fonts: &FontBook,
+    item: &TextStrokeItem,
+    placement: Placement,
+) {
+    let text = &item.text;
+    let line = fonts.shape_line(&text.text, text.font_size, text.weight);
+    let paint = paint_for(item.color);
+    let stroke = Stroke {
+        width: item.width as f32,
+        line_join: if item.is_round_join {
+            LineJoin::Round
+        } else {
+            LineJoin::Miter
+        },
+        miter_limit: 4.0,
+        ..Stroke::default()
+    };
+    for glyph in &line.glyphs {
+        let Some(outline) = fonts.glyph_outline(glyph, text.font_size) else {
+            continue;
+        };
+        let transform = match text.rotation {
+            Some(rotation) => rotated_glyph_transform(text, glyph.x, rotation, placement),
+            None => Transform::from_translate((text.x + glyph.x) as f32, text.baseline as f32)
+                .post_concat(placement.transform()),
+        };
+        pixmap.stroke_path(&outline, &paint, &stroke, transform, None);
+    }
+}
+
 fn draw_text(pixmap: &mut Pixmap, fonts: &FontBook, item: &TextItem, placement: Placement) {
     let line = fonts.shape_line(&item.text, item.font_size, item.weight);
     let paint = paint_for(item.color);
@@ -227,6 +302,8 @@ fn draw_items(pixmap: &mut Pixmap, items: &[SceneItem], fonts: &FontBook, placem
             SceneItem::Path(path) => draw_path(pixmap, path, transform),
             SceneItem::Text(text) => draw_text(pixmap, fonts, text, placement),
             SceneItem::Clip(clip) => draw_clipped(pixmap, clip, fonts, placement),
+            SceneItem::MultiplyStroke(stroke) => draw_multiply_stroke(pixmap, stroke, transform),
+            SceneItem::TextStroke(stroke) => draw_text_stroke(pixmap, fonts, stroke, placement),
         }
     }
 }

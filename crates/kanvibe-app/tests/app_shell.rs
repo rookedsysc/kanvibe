@@ -324,3 +324,61 @@ fn os_notification_click_reuses_the_open_task_window(cx: &mut TestAppContext) {
         None
     );
 }
+
+fn locale_shell_state<T>(
+    window: WindowHandle<AppWindow>,
+    cx: &mut TestAppContext,
+    read: impl FnOnce(&kanvibe_app::views::locale_shell::LocaleShell, &gpui_kit::App) -> T,
+) -> T {
+    window
+        .read_with(cx, |app_window, cx| {
+            read(app_window.locale_shell().read(cx), cx)
+        })
+        .unwrap()
+}
+
+// TS `LocaleShell`은 모든 경로에 커맨드 팔레트·빠른 검색을 둔다
+#[gpui::test]
+fn command_palette_and_quick_search_open_outside_the_board(cx: &mut TestAppContext) {
+    init_app(cx, None);
+    let window = open_app_window(cx, "/ko/settings");
+    let mut visual = VisualTestContext::from_window(window.into(), cx);
+
+    visual.simulate_keystrokes("ctrl-shift-p");
+    visual.run_until_parked();
+    assert!(locale_shell_state(window, cx, |shell, _| shell.is_command_palette_open()));
+
+    let mut visual = VisualTestContext::from_window(window.into(), cx);
+    visual.simulate_keystrokes("escape");
+    visual.dispatch_action(kanvibe_app::shortcuts::OpenTaskSearch);
+    visual.run_until_parked();
+    assert!(locale_shell_state(window, cx, |shell, _| shell.is_quick_search_open()));
+    assert_eq!(current_path(window, cx), "/ko/settings");
+}
+
+// TS main은 검토 알림을 지금 창으로 보내고 경로는 그대로 둔다
+#[gpui::test]
+fn activated_review_notification_opens_the_review_dialog_on_the_current_route(
+    cx: &mut TestAppContext,
+) {
+    init_app(cx, None);
+    let window = open_app_window(cx, "/ko/pane-layout");
+    let notification: kanvibe_domain::notifications::AppNotification =
+        serde_json::from_value(serde_json::json!({
+            "id": "review", "title": "백그라운드 sync 검토", "body": "확인할 항목 1개",
+            "taskId": null, "relativePath": "/ko", "locale": "ko", "isRead": false,
+            "createdAt": "2026-01-15T02:55:00.000Z", "dedupeKey": "review",
+            "action": {"type": "background-sync-review", "payload": {
+                "mergedPullRequests": [{"taskId": "t1", "taskTitle": "로그인 수정",
+                    "branchName": "fix/login", "prUrl": "https://example.com/pull/1",
+                    "mergedAt": "2026-01-15T02:30:00.000Z"}],
+                "registeredWorktrees": []
+            }}
+        }))
+        .unwrap();
+    cx.update(|cx| kanvibe_app::app_events::activate_notification(notification, None, cx));
+    cx.run_until_parked();
+
+    assert!(locale_shell_state(window, cx, |shell, cx| shell.has_open_overlay(cx)));
+    assert_eq!(current_path(window, cx), "/ko/pane-layout");
+}

@@ -10,6 +10,22 @@ pub struct StyledSpan {
     pub text: String,
     pub is_strong: bool,
     pub is_emphasis: bool,
+    /// strong과 em이 겹칠 때 strong이 안쪽 요소인지(`***x***`는 `<em><strong>x</strong></em>`)
+    pub is_strong_innermost: bool,
+}
+
+impl StyledSpan {
+    /// createFormattedText(markdownToLines)는 글자를 감싼 가장 안쪽 강조 하나만 tspan에 옮긴다.
+    /// 그래서 SVG 글자에서는 겹친 강조 중 안쪽 것만 남는다
+    pub fn innermost_only(&self) -> StyledSpan {
+        let is_both = self.is_strong && self.is_emphasis;
+        StyledSpan {
+            text: self.text.clone(),
+            is_strong: self.is_strong && (!is_both || self.is_strong_innermost),
+            is_emphasis: self.is_emphasis && (!is_both || !self.is_strong_innermost),
+            is_strong_innermost: self.is_strong_innermost,
+        }
+    }
 }
 
 /// 글자 하나 또는 `*`·`_` 구분자 묶음
@@ -32,6 +48,8 @@ struct DelimiterRun {
 struct Depth {
     strong: usize,
     emphasis: usize,
+    /// 안쪽 짝부터 맞추므로 처음 더한 강조가 가장 안쪽 요소다
+    is_strong_innermost: Option<bool>,
 }
 
 pub fn parse_inline(text: &str) -> Vec<StyledSpan> {
@@ -140,6 +158,7 @@ fn mark_between(tokens: &[Token], depths: &mut [Depth], used: usize) {
         } else {
             depth.emphasis += 1;
         }
+        depth.is_strong_innermost.get_or_insert(used == 2);
     }
 }
 
@@ -173,19 +192,24 @@ fn collect_spans(tokens: &[Token], depths: &[Depth]) -> Vec<StyledSpan> {
         if text.is_empty() {
             continue;
         }
-        let (is_strong, is_emphasis) = (depth.strong > 0, depth.emphasis > 0);
+        let span = StyledSpan {
+            text,
+            is_strong: depth.strong > 0,
+            is_emphasis: depth.emphasis > 0,
+            is_strong_innermost: depth.is_strong_innermost.unwrap_or(false),
+        };
         match spans.last_mut() {
-            Some(last) if last.is_strong == is_strong && last.is_emphasis == is_emphasis => {
-                last.text.push_str(&text)
-            }
-            _ => spans.push(StyledSpan {
-                text,
-                is_strong,
-                is_emphasis,
-            }),
+            Some(last) if is_same_style(last, &span) => last.text.push_str(&span.text),
+            _ => spans.push(span),
         }
     }
     spans
+}
+
+fn is_same_style(first: &StyledSpan, second: &StyledSpan) -> bool {
+    first.is_strong == second.is_strong
+        && first.is_emphasis == second.is_emphasis
+        && first.is_strong_innermost == second.is_strong_innermost
 }
 
 #[cfg(test)]
@@ -212,5 +236,18 @@ mod tests {
         assert_eq!(render("+area()* double"), "+area()* double");
         assert_eq!(render("a \\*b\\* c"), "a *b* c");
         assert_eq!(render("List<T> items"), "List<T> items");
+    }
+
+    #[test]
+    fn 겹친_강조는_svg_글자에서_안쪽_것만_남는다() {
+        let innermost = |text: &str| {
+            let span = parse_inline(text)[0].innermost_only();
+            (span.is_strong, span.is_emphasis)
+        };
+        assert_eq!(render("***both***"), "[BI:both]");
+        assert_eq!(innermost("***both***"), (true, false));
+        assert_eq!(innermost("**_both_**"), (false, true));
+        assert_eq!(innermost("*_x_*"), (false, true));
+        assert_eq!(innermost("**x**"), (true, false));
     }
 }

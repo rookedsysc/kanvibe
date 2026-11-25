@@ -1,17 +1,14 @@
 //! sequenceRenderer.draw의 본 배치. 사건을 차례로 읽으며 세로 위치를 쌓고, 그릴 것들을 SVG에 들어가는 순서대로 모은다.
 //! 참여자·묶음·아래 참여자 자리는 [`super::actor_layout`]이 맡는다.
 
-use super::bounds::{BOX_MARGIN, BlockFrame, Bounds};
+use super::bounds::{BlockFrame, Bounds};
+use super::config::SequenceConfig;
 use super::document::{
     Arrow, BlockKind, CentralConnection, SequenceDocument, SequenceEvent, SequenceMessage,
 };
 use super::measure::{js_round, line_height, split_breaks, text_size, wrap_label};
 use super::models::{
     ActorBox, EventModels, GroupBox, MessageModel, NoteModel, build_event_models, size_actors,
-};
-use super::{
-    ACTOR_WIDTH, BOX_TEXT_MARGIN, DIAGRAM_MARGIN_X, DIAGRAM_MARGIN_Y, LABEL_BOX_HEIGHT,
-    NOTE_MARGIN, WRAP_PADDING,
 };
 use crate::text::FontBook;
 
@@ -96,6 +93,7 @@ struct Numbering {
 
 pub(super) struct LayoutPass<'a> {
     pub fonts: &'a FontBook,
+    pub config: &'a SequenceConfig,
     pub document: &'a SequenceDocument,
     pub actors: Vec<ActorBox>,
     pub groups: Vec<GroupBox>,
@@ -110,17 +108,22 @@ pub(super) struct LayoutPass<'a> {
     numbering: Numbering,
 }
 
-pub(super) fn layout(document: &SequenceDocument, fonts: &FontBook) -> SequenceLayout {
-    let (actors, groups, group_title_height) = size_actors(document, fonts);
+pub(super) fn layout(
+    document: &SequenceDocument,
+    fonts: &FontBook,
+    config: &SequenceConfig,
+) -> SequenceLayout {
+    let (actors, groups, group_title_height) = size_actors(document, fonts, config);
     let mut pass = LayoutPass {
         fonts,
+        config,
         document,
         actors,
         groups,
         group_order: Vec::new(),
         placed_groups: Vec::new(),
         models: EventModels::default(),
-        bounds: Bounds::default(),
+        bounds: Bounds::new(config),
         layered: Vec::new(),
         messages: Vec::new(),
         backgrounds: Vec::new(),
@@ -131,7 +134,7 @@ pub(super) fn layout(document: &SequenceDocument, fonts: &FontBook) -> SequenceL
         },
     };
     pass.place_actors(group_title_height);
-    pass.models = build_event_models(document, fonts, &pass.actors);
+    pass.models = build_event_models(document, fonts, config, &pass.actors);
     for (index, event) in document.events.iter().enumerate() {
         pass.place_event(index, event);
     }
@@ -184,10 +187,11 @@ impl LayoutPass<'_> {
         let Some(model) = self.models.notes.get(&index).cloned() else {
             return;
         };
-        self.bounds.bump(BOX_MARGIN);
+        self.bounds.bump(self.config.box_margin);
         let start_y = self.bounds.vertical_pos;
         let line_count = split_breaks(&model.text).len() as f64;
-        let height = js_round(line_count * line_height(self.fonts)) + 2.0 * NOTE_MARGIN;
+        let note_margin = self.config.note_margin;
+        let height = js_round(line_count * line_height(self.fonts)) + 2.0 * note_margin;
         self.bounds.bump(height);
         let stop_x = model.start_x + model.width;
         self.bounds
@@ -225,9 +229,11 @@ impl LayoutPass<'_> {
         let width = self.models.block_widths.get(&index).copied();
         match width.filter(|_| !text.is_empty()) {
             Some(width) => {
-                let title =
-                    wrap_label(self.fonts, &format!("[{text}]"), width - 2.0 * WRAP_PADDING);
-                let title_height = text_size(self.fonts, &title).height.max(LABEL_BOX_HEIGHT);
+                let wrap_width = width - 2.0 * self.config.wrap_padding;
+                let title = wrap_label(self.fonts, &format!("[{text}]"), wrap_width);
+                let title_height = text_size(self.fonts, &title)
+                    .height
+                    .max(self.config.label_box_height);
                 (title, after + title_height)
             }
             None => (text.to_string(), after),
@@ -236,12 +242,13 @@ impl LayoutPass<'_> {
 
     fn start_block(&mut self, index: usize, kind: BlockKind, text: &str) {
         let is_background = kind == BlockKind::Rect;
+        let box_margin = self.config.box_margin;
         let after = if is_background {
-            BOX_MARGIN
+            box_margin
         } else {
-            BOX_MARGIN + BOX_TEXT_MARGIN
+            box_margin + self.config.box_text_margin
         };
-        let (title, height_adjust) = self.block_title(index, text, BOX_MARGIN, after);
+        let (title, height_adjust) = self.block_title(index, text, box_margin, after);
         if is_background {
             self.bounds.new_block(String::new(), Some(title));
         } else {
@@ -251,8 +258,9 @@ impl LayoutPass<'_> {
     }
 
     fn add_section(&mut self, index: usize, text: &str) {
-        let before = BOX_MARGIN + BOX_TEXT_MARGIN;
-        let (title, height_adjust) = self.block_title(index, text, before, BOX_MARGIN);
+        let box_margin = self.config.box_margin;
+        let before = box_margin + self.config.box_text_margin;
+        let (title, height_adjust) = self.block_title(index, text, before, box_margin);
         self.bounds.add_section(title);
         self.bounds.bump(height_adjust);
     }
@@ -280,7 +288,8 @@ impl LayoutPass<'_> {
         let span = (start_y, line_y, stop_y);
         self.adjust_lifecycle(index, message, &mut model, span);
         let numbering = &mut self.numbering;
-        let number = numbering.is_visible.then(|| format_number(numbering.next));
+        let is_numbered = numbering.is_visible || self.config.should_show_numbers;
+        let number = is_numbered.then(|| format_number(numbering.next));
         numbering.next = js_round((numbering.next + numbering.step) * 100.0) / 100.0;
         self.messages.push(PlacedMessage {
             model,
@@ -295,19 +304,24 @@ impl LayoutPass<'_> {
     }
 
     /// boundMessage: 글 한 줄 높이만큼 내린 뒤 선을 긋고, 자기 메시지는 고리 높이만큼 더 내린다.
-    /// 선 y와 메시지 아래 끝을 돌려준다
+    /// 꺾은 자기 메시지(rightAngles)는 boxMargin을 띄우지 않는다. 선 y와 메시지 아래 끝을 돌려준다
     fn bound_message(&mut self, model: &MessageModel, start_y: f64) -> (f64, f64) {
+        let config = self.config;
         self.bounds.bump(10.0);
         let size = text_size(self.fonts, &model.text);
         let line_count = split_breaks(&model.text).len() as f64;
         let first_line = size.height / line_count;
         self.bounds.bump(first_line);
         let vertical = self.bounds.vertical_pos;
-        let mut offset = size.height - 10.0 + BOX_MARGIN;
+        let is_self = model.start_x == model.stop_x;
+        let mut offset = size.height - 10.0;
+        if !is_self || !config.has_right_angles {
+            offset += config.box_margin;
+        }
         let line_y = vertical + offset;
-        if model.start_x == model.stop_x {
+        if is_self {
             offset += 30.0;
-            let half = (size.width / 2.0).max(ACTOR_WIDTH / 2.0);
+            let half = (size.width / 2.0).max(config.actor_width / 2.0);
             self.bounds.insert(
                 model.start_x - half,
                 vertical - 10.0 + offset,
@@ -325,9 +339,10 @@ impl LayoutPass<'_> {
         (line_y, stop_y)
     }
 
-    /// viewBox: 경계 상자(팝업 메뉴가 더 크면 그 크기)에 diagramMargin을 두르고, 아래 거울 참여자 몫으로
+    /// viewBox: 경계 상자(팝업 메뉴가 더 크면 그 크기)에 diagramMargin을 두르고, 아래 거울 참여자가 있으면
     /// 높이를 고친다. 제목은 위쪽에 40px을 더 연다
     fn finish(self) -> SequenceLayout {
+        let config = self.config;
         let extent = self.bounds.extent;
         let start_x = extent.start_x.unwrap_or(0.0);
         let stop_x = extent.stop_x.unwrap_or(0.0);
@@ -337,10 +352,14 @@ impl LayoutPass<'_> {
         let box_width = (stop_x - start_x).max(menu_width);
         let title = self.document.title.clone().map(|text| PlacedTitle {
             text,
-            x: (stop_x - start_x) / 2.0 - 2.0 * DIAGRAM_MARGIN_X,
+            x: (stop_x - start_x) / 2.0 - 2.0 * config.diagram_margin_x,
             baseline: -25.0,
         });
         let title_space = if title.is_some() { TITLE_SPACE } else { 0.0 };
+        let mirror_adjust = match config.should_mirror_actors {
+            true => config.bottom_margin_adj - config.box_margin,
+            false => 0.0,
+        };
         SequenceLayout {
             actors: self.actors,
             groups: self.placed_groups,
@@ -348,10 +367,10 @@ impl LayoutPass<'_> {
             messages: self.messages,
             backgrounds: self.backgrounds,
             title,
-            view_x: start_x - DIAGRAM_MARGIN_X,
-            view_y: -(DIAGRAM_MARGIN_Y + title_space),
-            view_width: box_width + 2.0 * DIAGRAM_MARGIN_X,
-            view_height: box_height + 2.0 * DIAGRAM_MARGIN_Y - BOX_MARGIN + 1.0 + title_space,
+            view_x: start_x - config.diagram_margin_x,
+            view_y: -(config.diagram_margin_y + title_space),
+            view_width: box_width + 2.0 * config.diagram_margin_x,
+            view_height: box_height + 2.0 * config.diagram_margin_y + mirror_adjust + title_space,
         }
     }
 }
@@ -368,12 +387,12 @@ mod tests {
     #[test]
     fn 기준_svg와_같은_viewbox를_만든다() {
         let fonts = bundled_fonts();
-        let basic = layout(&parse(BASIC).unwrap(), &fonts);
+        let basic = layout(&parse(BASIC).unwrap(), &fonts, &SequenceConfig::default());
         assert_eq!(
             (basic.view_x, basic.view_width, basic.view_height),
             (-62.5, 796.5, 790.0)
         );
-        let full = layout(&parse(FULL).unwrap(), &fonts);
+        let full = layout(&parse(FULL).unwrap(), &fonts, &SequenceConfig::default());
         assert_eq!(
             (full.view_x, full.view_width, full.view_height),
             (-150.0, 750.0, 1767.0)
@@ -383,7 +402,7 @@ mod tests {
     #[test]
     fn 메시지_선과_활성화_자리가_기준과_같다() {
         let fonts = bundled_fonts();
-        let basic = layout(&parse(BASIC).unwrap(), &fonts);
+        let basic = layout(&parse(BASIC).unwrap(), &fonts, &SequenceConfig::default());
         let lines: Vec<f64> = basic
             .messages
             .iter()
@@ -399,17 +418,48 @@ mod tests {
                 height: 54.0
             }
         );
-        let full = layout(&parse(FULL).unwrap(), &fonts);
+        let full = layout(&parse(FULL).unwrap(), &fonts, &SequenceConfig::default());
         assert_eq!(full.backgrounds[0].start_x, Some(-9.0));
         assert_eq!(full.backgrounds[0].stop_y, Some(1661.0));
         assert_eq!(full.messages[19].number.as_deref(), Some("20"));
     }
 
     #[test]
+    fn sequence_설정이_간격과_거울_참여자와_꺾은_자기_메시지를_바꾼다() {
+        let fonts = bundled_fonts();
+        let source = include_str!("../../../../parity/diagrams/baseline/seq-config.mmd");
+        let config = SequenceConfig::read(source);
+        let placed = layout(&parse(source).unwrap(), &fonts, &config);
+        // seq-config 기준 SVG viewBox: -20 -30 361 463
+        assert_eq!(
+            (
+                placed.view_x,
+                placed.view_y,
+                placed.view_width,
+                placed.view_height
+            ),
+            (-20.0, -30.0, 361.0, 463.0)
+        );
+        let lines: Vec<f64> = placed
+            .messages
+            .iter()
+            .map(|message| message.line_y)
+            .collect();
+        assert_eq!(lines, [114.0, 158.0, 252.0, 383.0]);
+        assert_eq!(placed.actors[1].x, 200.0);
+        assert!(placed.actors.iter().all(|actor| actor.stop_y.is_none()));
+        assert_eq!(placed.messages[0].number.as_deref(), Some("1"));
+    }
+
+    #[test]
     fn 제목과_묶음과_생성_참여자를_배치한다() {
         let fonts = bundled_fonts();
         let definition = "sequenceDiagram\ntitle T\nbox Aqua G\nparticipant A\nend\nA->>B: x\ncreate participant C\nA->>C: new";
-        let placed = layout(&parse(definition).unwrap(), &fonts);
+        let placed = layout(
+            &parse(definition).unwrap(),
+            &fonts,
+            &SequenceConfig::default(),
+        );
         assert_eq!(placed.view_y, -50.0);
         assert_eq!(placed.groups.len(), 1);
         assert_eq!(placed.groups[0].start_y, -5.0);

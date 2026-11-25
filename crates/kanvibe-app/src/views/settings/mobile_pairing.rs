@@ -11,7 +11,6 @@ use gpui_kit::{
     App, Context, InteractiveElement, IntoElement, ParentElement, Render, Styled, Task, Window,
     div, px,
 };
-use kanvibe_ai::javascript::parse_date_ms;
 use kanvibe_db::Database;
 use kanvibe_db::app_settings_service::AppSettingsService;
 use kanvibe_domain::i18n::{Locale, Translator};
@@ -21,13 +20,13 @@ use kanvibe_process::hooks::endpoint::HookServerEndpoint;
 use serde::{Deserialize, Serialize};
 
 use crate::components::TailwindText;
+use crate::locale_format::format_date_time;
 use crate::services::{AppServices, ServiceResult};
 use crate::theme::{ThemeTokens, radius, spacing, text_scale};
 use crate::views::settings::controls::{
     INLINE_TEXT_SM, inline_load_error, keyed_id, make_pressable, native_checkbox, pressable,
     section_heading,
 };
-use crate::views::settings::local_time::LocalDateTime;
 use crate::views::settings::service_call::{call_service, failure};
 
 /// 남은 시간을 1초마다 다시 그린다
@@ -270,18 +269,9 @@ impl MobilePairingState {
     }
 }
 
-/// `new Date(iso).toLocaleString()`. 현지 시간대의 `M/D/YYYY, h:mm:ss AM`(en-US) 모양이다
+/// `new Date(iso).toLocaleString()`. 시스템 locale·현지 시간대로 적는다(en-US는 `M/D/YYYY, h:mm:ss AM`)
 pub fn format_paired_at(iso: &str) -> String {
-    let Some(local) = parse_date_ms(iso).and_then(LocalDateTime::from_epoch_ms) else {
-        return iso.to_string();
-    };
-    format!(
-        "{}/{}/{}, {}",
-        local.month,
-        local.day,
-        local.year,
-        local.twelve_hour_second()
-    )
+    format_date_time(iso)
 }
 
 pub struct MobilePairingSettings {
@@ -739,9 +729,14 @@ impl MobilePairingSettings {
                 div()
                     .child(
                         div()
+                            .relative()
                             .text_scale(text_scale::SM)
                             .text_color(theme.text.primary)
-                            .child(device.device_name.clone()),
+                            .child(device.device_name.clone())
+                            .child(crate::qa::targets::qa_text_layer(
+                                "text",
+                                &device.device_name,
+                            )),
                     )
                     .child(
                         div()

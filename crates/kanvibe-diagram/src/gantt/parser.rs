@@ -1,6 +1,8 @@
-//! gantt.jison 문법 중 그림에 드러나는 문장만 읽는다. 클릭·링크(`click`·`href`·`call`)와 접근성 문장은 건너뛴다.
+//! gantt.jison 문법 중 그림에 드러나는 문장만 읽는다. 클릭 문장(`click id href "…"`·`click id call f()`)은
+//! 이미 나온 작업에 `clickable` 표시만 남긴다. 장면에는 링크 개념이 없어 이동할 곳은 버린다. 접근성 문장은 건너뛴다.
 
 use crate::DiagramError;
+use crate::directive;
 
 /// 작업 머리 태그(ganttDb `tags`)
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -9,6 +11,8 @@ pub struct TaskTags {
     pub is_done: bool,
     pub is_crit: bool,
     pub is_milestone: bool,
+    /// 세로 기준선(`vert`)
+    pub is_vert: bool,
 }
 
 /// 시작 시각을 아직 계산하지 않은 작업 시작 표현
@@ -29,6 +33,8 @@ pub struct RawTask {
     /// 끝 표현: 기간(`10d`), 날짜, `until a`
     pub end: String,
     pub tags: TaskTags,
+    /// `click` 문장이 가리킨 작업(ganttDb `setClass(ids, "clickable")`)
+    pub is_clickable: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -47,6 +53,8 @@ pub struct GanttDocument {
     pub week_start: u32,
     /// 주말 첫날의 ISO 요일(금 5, 토 6)
     pub weekend_start: u32,
+    /// `displayMode: compact`: 겹치지 않는 작업을 한 줄에 모은다
+    pub is_compact: bool,
     pub tasks: Vec<RawTask>,
 }
 
@@ -64,6 +72,7 @@ impl Default for GanttDocument {
             has_top_axis: false,
             week_start: 0,
             weekend_start: 6,
+            is_compact: false,
             tasks: Vec::new(),
         }
     }
@@ -88,7 +97,8 @@ struct ParseState {
 }
 
 pub fn parse(definition: &str) -> Result<GanttDocument, DiagramError> {
-    let mut lines = definition
+    let body = directive::diagram_body(definition);
+    let mut lines = body
         .lines()
         .map(str::trim)
         .filter(|line| !line.is_empty() && !line.starts_with("%%"));
@@ -96,12 +106,25 @@ pub fn parse(definition: &str) -> Result<GanttDocument, DiagramError> {
     if !header.to_ascii_lowercase().starts_with("gantt") {
         return Err(DiagramError::Syntax("gantt 머리줄".to_string()));
     }
-    let mut document = GanttDocument::default();
+    let mut document = GanttDocument {
+        is_compact: is_compact_display(definition),
+        ..GanttDocument::default()
+    };
     let mut state = ParseState::default();
     for line in lines {
         read_line(line, &mut document, &mut state)?;
     }
     Ok(document)
+}
+
+/// 앞머리 `displayMode`나 `gantt.displayMode` 설정이 `compact`인지
+fn is_compact_display(definition: &str) -> bool {
+    let config = directive::read_config(definition);
+    let display_mode = config
+        .section("gantt")
+        .and_then(|gantt| gantt.get("displayMode"))
+        .and_then(|value| value.as_str());
+    display_mode == Some("compact")
 }
 
 fn read_line(
@@ -114,6 +137,10 @@ fn read_line(
         return Ok(());
     }
     if read_setting(line, document) || is_ignored_statement(line, state) {
+        return Ok(());
+    }
+    if let Some(statement) = keyword_value(line, "click") {
+        mark_clickable(statement, document);
         return Ok(());
     }
     if let Some(section) = keyword_value(line, "section") {
@@ -192,7 +219,7 @@ fn is_ignored_statement(line: &str, state: &mut ParseState) -> bool {
         state.is_in_description_block = !line.contains('}');
         return true;
     }
-    ["acctitle", "accdescr", "click ", "href ", "call "]
+    ["acctitle", "accdescr", "href ", "call "]
         .iter()
         .any(|prefix| lower.starts_with(prefix))
 }
@@ -207,7 +234,7 @@ fn parse_task(
         .ok_or_else(|| DiagramError::Syntax(format!("gantt 작업 형식: {line}")))?;
     let data_end = rest.find(['#', ';']).unwrap_or(rest.len());
     let mut parts: Vec<&str> = rest[..data_end].split(',').collect();
-    let tags = take_tags(&mut parts)?;
+    let tags = take_tags(&mut parts);
     let parts: Vec<&str> = parts.iter().map(|part| part.trim()).collect();
     let mut next_auto_id = || {
         state.auto_id_count += 1;
@@ -235,11 +262,23 @@ fn parse_task(
         start,
         end: end.to_string(),
         tags,
+        is_clickable: false,
     })
 }
 
-/// 앞쪽의 `active`·`done`·`crit`·`milestone` 조각을 떼어 낸다. `vert`는 아직 그리지 못한다
-fn take_tags(parts: &mut Vec<&str>) -> Result<TaskTags, DiagramError> {
+/// `click a,b href "…"`의 작업 id들. 클릭 문장보다 먼저 나온 작업만 표시한다(ganttDb `findTaskById`)
+fn mark_clickable(statement: &str, document: &mut GanttDocument) {
+    let ids = statement.split_whitespace().next().unwrap_or("");
+    for id in ids.split(',') {
+        let task = document.tasks.iter_mut().rev().find(|task| task.id == id);
+        if let Some(task) = task {
+            task.is_clickable = true;
+        }
+    }
+}
+
+/// 앞쪽의 `active`·`done`·`crit`·`milestone`·`vert` 조각을 떼어 낸다
+fn take_tags(parts: &mut Vec<&str>) -> TaskTags {
     let mut tags = TaskTags::default();
     while let Some(first) = parts.first().map(|part| part.trim()) {
         match first {
@@ -247,12 +286,12 @@ fn take_tags(parts: &mut Vec<&str>) -> Result<TaskTags, DiagramError> {
             "done" => tags.is_done = true,
             "crit" => tags.is_crit = true,
             "milestone" => tags.is_milestone = true,
-            "vert" => return Err(DiagramError::Unsupported("gantt vert".to_string())),
+            "vert" => tags.is_vert = true,
             _ => break,
         }
         parts.remove(0);
     }
-    Ok(tags)
+    tags
 }
 
 #[cfg(test)]
@@ -273,5 +312,39 @@ mod tests {
         assert_eq!(document.tasks[0].id, "a1");
         assert_eq!(document.tasks[1].id, "task1");
         assert_eq!(document.tasks[1].start, RawStart::PreviousTaskEnd(Some(0)));
+    }
+
+    #[test]
+    fn vert_태그와_클릭_문장을_읽는다() {
+        let document = parse(
+            "gantt\n  dateFormat YYYY-MM-DD\n  click a1 href \"https://x.y\"\n  \
+             One :a1, 2024-01-01, 3d\n  Freeze :vert, v1, 2024-01-02, 0d\n  \
+             click a1,v1 call open()\n",
+        )
+        .unwrap();
+        assert!(document.tasks[1].tags.is_vert);
+        // 작업보다 먼저 나온 클릭 문장은 아무 작업도 가리키지 못한다
+        assert!(document.tasks[0].is_clickable);
+        assert!(document.tasks[1].is_clickable);
+        let early =
+            parse("gantt\n  click a1 href \"https://x.y\"\n  One :a1, 2024-01-01, 3d\n").unwrap();
+        assert!(!early.tasks[0].is_clickable);
+    }
+
+    #[test]
+    fn 앞머리나_지시문의_compact_표시를_읽는다() {
+        let front =
+            parse("---\ndisplayMode: compact\n---\ngantt\n  One :a1, 2024-01-01, 3d\n").unwrap();
+        assert!(front.is_compact);
+        let directive = parse(
+            "%%{init: {\"gantt\": {\"displayMode\": \"compact\"}}}%%\ngantt\n  One :a1, 2024-01-01, 3d\n",
+        )
+        .unwrap();
+        assert!(directive.is_compact);
+        assert!(
+            !parse("gantt\n  One :a1, 2024-01-01, 3d\n")
+                .unwrap()
+                .is_compact
+        );
     }
 }

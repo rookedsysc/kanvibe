@@ -55,6 +55,8 @@ pub enum ArrowType {
     Cross,
     /// stateDiagram 전이 끝의 barb 화살표(flowchart 문법에는 없다)
     Barb,
+    /// `look: neo` stateDiagram 전이 끝의 barbEnd-margin 화살표(채운 화살촉, 선은 5.5 당긴다)
+    BarbNeo,
     /// 다른 다이어그램이 정의한 표식(erDiagram 관계 차수, requirementDiagram 화살표 등)
     Custom(&'static CustomMarker),
 }

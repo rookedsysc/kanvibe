@@ -3,7 +3,7 @@
 
 use crate::text::{FontBook, FontWeight};
 
-use super::parser::{C4Boundary, C4Diagram, C4Element, GLOBAL_BOUNDARY};
+use super::parser::{C4Boundary, C4Diagram, C4Element, GLOBAL_BOUNDARY, ShapeStyle};
 
 pub(crate) const DIAGRAM_MARGIN_X: f64 = 50.0;
 pub(crate) const DIAGRAM_MARGIN_Y: f64 = 10.0;
@@ -11,8 +11,6 @@ const SHAPE_MARGIN: f64 = 50.0;
 const SHAPE_PADDING: f64 = 20.0;
 const SHAPE_WIDTH: f64 = 216.0;
 const SHAPE_HEIGHT: f64 = 60.0;
-const SHAPES_IN_ROW: usize = 4;
-const BOUNDARIES_IN_ROW: usize = 2;
 const IMAGE_SIZE: f64 = 48.0;
 /// `screen.availWidth`로 정하는 줄 폭 한계. 기준 SVG(모바일 워커의 화면 밖 창)는 모양마다 새 줄을 시작하므로
 /// 한계가 두 번째 모양 끝(682px)보다 좁다. 그 동작을 그대로 따르도록 0으로 둔다
@@ -47,7 +45,9 @@ pub(crate) struct ShapeBox {
     pub height: f64,
     /// `«종류»` 글자 폭(그릴 때 `textLength`)
     pub type_width: f64,
+    /// 사람 그림 자리. 스프라이트가 있으면 그 아래로 내려간다(스프라이트 그림은 그리지 않는다)
     pub image_y: Option<f64>,
+    pub style: ShapeStyle,
     pub label: TextBlock,
     pub techn: TextBlock,
     pub descr: TextBlock,
@@ -63,12 +63,13 @@ pub(crate) struct BoundaryBox {
     pub kind: TextBlock,
     pub descr: TextBlock,
     pub is_deployment_node: bool,
+    pub style: ShapeStyle,
 }
 
 /// 그리는 순서
 pub(crate) enum Drawable {
     Shape(usize),
-    Boundary(BoundaryBox),
+    Boundary(Box<BoundaryBox>),
 }
 
 pub(crate) struct C4Layout {
@@ -150,6 +151,8 @@ struct Bounds {
     next: Extent,
     next_count: usize,
     width_limit: f64,
+    /// `UpdateLayoutConfig`의 줄당 모양 수
+    shapes_in_row: usize,
 }
 
 impl Bounds {
@@ -175,7 +178,7 @@ impl Bounds {
         let mut start_y = self.next.start_y + SHAPE_MARGIN * 2.0;
         let mut stop_y = start_y + shape.height;
         let is_overflow = start_x >= self.width_limit || stop_x >= self.width_limit;
-        if is_overflow || self.next_count > SHAPES_IN_ROW {
+        if is_overflow || self.next_count > self.shapes_in_row {
             start_x = self.next.start_x + SHAPE_MARGIN;
             start_y = self.next.stop_y + SHAPE_MARGIN * 2.0;
             stop_x = start_x + shape.width;
@@ -217,6 +220,7 @@ pub(crate) fn layout(fonts: &FontBook, diagram: &C4Diagram) -> C4Layout {
     };
     let mut screen = Bounds {
         width_limit: SCREEN_AVAILABLE_WIDTH,
+        shapes_in_row: diagram.shapes_in_row,
         ..Bounds::default()
     };
     screen.reset_origin(DIAGRAM_MARGIN_X, DIAGRAM_MARGIN_Y);
@@ -238,13 +242,15 @@ impl<'a> LayoutBuilder<'a> {
 
     /// drawInsideBoundary: 경계들을 두 개씩 한 줄에 놓고, 각 경계 안의 모양과 하위 경계를 배치한다
     fn layout_inside(&mut self, parent: &mut Bounds, boundaries: &[&'a C4Boundary]) {
+        let boundaries_in_row = self.diagram.boundaries_in_row;
         let mut current = Bounds {
-            width_limit: parent.width_limit / BOUNDARIES_IN_ROW.min(boundaries.len()).max(1) as f64,
+            width_limit: parent.width_limit / boundaries_in_row.min(boundaries.len()).max(1) as f64,
+            shapes_in_row: self.diagram.shapes_in_row,
             ..Bounds::default()
         };
         for (index, boundary) in boundaries.iter().enumerate() {
             let (mut boundary_box, text_height) = self.measure_boundary(boundary);
-            if index.is_multiple_of(BOUNDARIES_IN_ROW) {
+            if index.is_multiple_of(boundaries_in_row) {
                 let x = parent.extent.start_x + DIAGRAM_MARGIN_X;
                 let y = parent.extent.stop_y + DIAGRAM_MARGIN_Y + text_height;
                 current.reset_origin(x, y);
@@ -267,7 +273,9 @@ impl<'a> LayoutBuilder<'a> {
                 boundary_box.y = current.extent.start_y;
                 boundary_box.width = current.extent.stop_x - current.extent.start_x;
                 boundary_box.height = current.extent.stop_y - current.extent.start_y;
-                self.layout.drawables.push(Drawable::Boundary(boundary_box));
+                self.layout
+                    .drawables
+                    .push(Drawable::Boundary(Box::new(boundary_box)));
             }
             parent.extent.stop_y = (current.extent.stop_y + SHAPE_MARGIN).max(parent.extent.stop_y);
             parent.extent.stop_x = (current.extent.stop_x + SHAPE_MARGIN).max(parent.extent.stop_x);
@@ -276,7 +284,8 @@ impl<'a> LayoutBuilder<'a> {
         }
     }
 
-    /// 경계 이름(굵게 16px)·종류(`[종류]`, 14px)·설명(12px)을 잰다. 둘째 값은 글자가 차지한 높이다
+    /// 경계 이름(굵게 16px)·종류(`[종류]`, 14px)·설명(12px)을 잰다. 스프라이트가 있으면 그림 자리만큼 내린다.
+    /// 둘째 값은 글자가 차지한 높이다
     fn measure_boundary(&self, boundary: &C4Boundary) -> (BoundaryBox, f64) {
         let mut label = measure_block(
             self.fonts,
@@ -284,7 +293,8 @@ impl<'a> LayoutBuilder<'a> {
             LABEL_FONT_SIZE,
             FontWeight::Bold,
         );
-        label.offset_y = 8.0;
+        let image_height = if boundary.has_sprite { IMAGE_SIZE } else { 0.0 };
+        label.offset_y = image_height + 8.0;
         let mut y = label.offset_y + label.height;
         let mut kind = TextBlock::default();
         if !boundary.kind.is_empty() {
@@ -313,6 +323,7 @@ impl<'a> LayoutBuilder<'a> {
             kind,
             descr,
             is_deployment_node: boundary.is_deployment_node,
+            style: boundary.style.clone(),
             ..BoundaryBox::default()
         };
         (boundary_box, y)
@@ -337,16 +348,27 @@ impl<'a> LayoutBuilder<'a> {
     }
 }
 
-/// 모양 안 글자를 위에서부터 쌓아 크기를 정한다(`«종류»` → 사람 그림 → 이름 → 기술 → 설명)
-fn measure_shape(fonts: &FontBook, element: &C4Element) -> ShapeBox {
-    let type_text = format!("\u{ab}{}\u{bb}", element.kind);
-    let type_width = measure_block(fonts, &type_text, SMALL_FONT_SIZE, FontWeight::Regular).width;
-    let mut y = SHAPE_PADDING + (SMALL_FONT_SIZE + 2.0) - 4.0;
+/// 사람 그림과 스프라이트 자리(각 48px)를 `top`부터 쌓는다. 사람 그림은 마지막 자리에 그리고, 스프라이트 그림은
+/// 그리지 않는다. 둘째 값은 그 아래 y다
+fn image_slots(element: &C4Element, top: f64) -> (Option<f64>, f64) {
     let mut image_y = None;
+    let mut y = top;
     if element.kind.ends_with("person") {
         image_y = Some(y);
         y += IMAGE_SIZE;
     }
+    if element.has_sprite {
+        image_y = image_y.map(|_| y);
+        y += IMAGE_SIZE;
+    }
+    (image_y, y)
+}
+
+/// 모양 안 글자를 위에서부터 쌓아 크기를 정한다(`«종류»` → 사람 그림 → 스프라이트 자리 → 이름 → 기술 → 설명)
+fn measure_shape(fonts: &FontBook, element: &C4Element) -> ShapeBox {
+    let type_text = format!("\u{ab}{}\u{bb}", element.kind);
+    let type_width = measure_block(fonts, &type_text, SMALL_FONT_SIZE, FontWeight::Regular).width;
+    let (image_y, mut y) = image_slots(element, SHAPE_PADDING + (SMALL_FONT_SIZE + 2.0) - 4.0);
     let mut label = measure_block(fonts, &element.label, LABEL_FONT_SIZE, FontWeight::Bold);
     label.offset_y = y + 8.0;
     y = label.offset_y + label.height;
@@ -378,6 +400,7 @@ fn measure_shape(fonts: &FontBook, element: &C4Element) -> ShapeBox {
         height: SHAPE_HEIGHT.max(rect_height),
         type_width,
         image_y,
+        style: element.style.clone(),
         label,
         techn,
         descr,
@@ -416,5 +439,58 @@ mod tests {
         assert_eq!((layout.stop_x, layout.stop_y), (466.0, 804.0));
         assert_eq!(layout.shapes[0].as_ref().unwrap().type_width, 52.0);
         assert_eq!(layout.shapes[2].as_ref().unwrap().type_width, 104.0);
+    }
+
+    /// 기준 사례 정의를 읽어 배치한다
+    fn baseline_layout(fonts: &FontBook, id: &str) -> C4Layout {
+        let path = format!(
+            "{}/../../parity/diagrams/baseline/{id}.mmd",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        let source = std::fs::read_to_string(path).unwrap();
+        layout(fonts, &parse(&source).unwrap())
+    }
+
+    #[test]
+    fn 스프라이트가_있으면_그림_자리만큼_글자를_내린다() {
+        let fonts = bundled_fonts();
+        let placed = baseline_layout(&fonts, "c4-sprites-links");
+        let boxes: Vec<(f64, f64, f64, f64)> = placed
+            .shapes
+            .iter()
+            .flatten()
+            .map(|shape| (shape.x, shape.y, shape.width, shape.height))
+            .collect();
+        assert_eq!(boxes[0], (150.0, 174.0, 216.0, 190.0));
+        assert_eq!(placed.shapes[0].as_ref().unwrap().image_y, Some(78.0));
+        assert_eq!(boxes[1], (200.0, 578.0, 216.0, 164.0));
+        assert_eq!(boxes[3], (200.0, 1036.0, 216.0, 60.0));
+        let phone = placed.drawables.iter().find_map(|drawable| match drawable {
+            Drawable::Boundary(boundary) if boundary.label.text == "Phone" => {
+                Some((boundary.x, boundary.y, boundary.label.offset_y))
+            }
+            _ => None,
+        });
+        assert_eq!(phone, Some((516.0, 478.0, 56.0)));
+    }
+
+    #[test]
+    fn 줄당_경계_수를_바꾸면_경계를_세로로_쌓는다() {
+        let fonts = bundled_fonts();
+        let placed = baseline_layout(&fonts, "c4-styles");
+        let boundaries: Vec<(f64, f64, f64, f64)> = placed
+            .drawables
+            .iter()
+            .filter_map(|drawable| match drawable {
+                Drawable::Boundary(boundary) => {
+                    Some((boundary.x, boundary.y, boundary.width, boundary.height))
+                }
+                Drawable::Shape(_) => None,
+            })
+            .collect();
+        assert_eq!(
+            boundaries,
+            vec![(150.0, 624.0, 316.0, 244.0), (150.0, 982.0, 316.0, 292.0)]
+        );
     }
 }

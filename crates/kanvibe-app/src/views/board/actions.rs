@@ -157,7 +157,7 @@ impl BoardView {
     }
 
     /// 카드를 다른 열로 옮긴다. 정리할 자원이 있는 카드를 Done으로 옮기면 먼저 확인을 받는다
-    pub(super) fn move_task_to_status(
+    pub(crate) fn move_task_to_status(
         &mut self,
         task_id: &str,
         target_status: TaskStatus,

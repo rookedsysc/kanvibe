@@ -33,16 +33,23 @@ fn collect_inlines(blocks: &[Block], found: &mut Vec<Inline>) {
             | Block::Inlines(content)
             | Block::Preformatted(content)
             | Block::Heading { content, .. } => found.extend(content.iter().cloned()),
-            Block::BlockQuote(inner) => collect_inlines(inner, found),
+            Block::BlockQuote(inner) | Block::Aligned { blocks: inner, .. } => {
+                collect_inlines(inner, found)
+            }
             Block::List(list) => list
                 .items
                 .iter()
                 .for_each(|item| collect_inlines(&item.blocks, found)),
-            Block::Table(table) => table
-                .rows
-                .iter()
-                .flat_map(|row| &row.cells)
-                .for_each(|cell| collect_inlines(&cell.blocks, found)),
+            Block::Table(table) => {
+                for caption in &table.captions {
+                    collect_inlines(&caption.blocks, found);
+                }
+                table
+                    .rows
+                    .iter()
+                    .flat_map(|row| &row.cells)
+                    .for_each(|cell| collect_inlines(&cell.blocks, found))
+            }
             Block::Disclosure(disclosure) => {
                 collect_inlines(disclosure.summary.as_deref().unwrap_or(&[]), found);
                 collect_inlines(&disclosure.blocks, found);
@@ -564,7 +571,8 @@ fn 원시_html_꾸밈_태그를_모델로_옮기고_뜻없는_태그는_벗긴�
             Inline::Superscript(one("3")),
             Inline::Underline(one("n")),
             Inline::Strikethrough(one("d")),
-            text(" sm sp "),
+            Inline::Small(one("sm")),
+            text(" sp "),
             Inline::Code("c".to_string()),
             Inline::Monospace(vec![
                 Inline::Monospace(one("Ctrl")),
@@ -798,5 +806,216 @@ fn html_블록_안은_markdown을_읽지_않고_빈_줄_뒤와_인라인_태그_
             Block::Paragraph(vec![text("Paragraph")]),
             Block::Inlines(vec![text("interrupt")]),
         ]
+    );
+}
+
+fn math(tex: &str) -> Inline {
+    let Ok(node) = math::parse_tex(tex) else {
+        panic!("수식: {tex}")
+    };
+    Inline::Math {
+        tex: tex.to_string(),
+        display: false,
+        node,
+    }
+}
+
+#[test]
+fn 수식_양옆의_강조_구분자는_marked처럼_수식_구분자를_문장_부호로_보고_정한다() {
+    let paragraph = |markdown: &str| markdown_blocks(markdown);
+
+    assert_eq!(
+        paragraph("a**$x$**b"),
+        [Block::Paragraph(vec![text("a**"), math("x"), text("**b")])]
+    );
+    assert_eq!(
+        paragraph("**\\(x\\)**b"),
+        [Block::Paragraph(vec![text("**"), math("x"), text("**b")])]
+    );
+    assert_eq!(
+        paragraph("a~~$x$~~b"),
+        [Block::Paragraph(vec![text("a~~"), math("x"), text("~~b")])]
+    );
+    assert_eq!(
+        paragraph("a **$x$** b"),
+        [Block::Paragraph(vec![
+            text("a "),
+            Inline::Strong(vec![math("x")]),
+            text(" b")
+        ])]
+    );
+    assert_eq!(
+        paragraph("a**b$x$c**d"),
+        [Block::Paragraph(vec![
+            text("a"),
+            Inline::Strong(vec![text("b"), math("x"), text("c")]),
+            text("d")
+        ])]
+    );
+}
+
+#[test]
+fn align_속성은_문단과_div와_제목과_center를_정렬_묶음으로_감싼다() {
+    let blocks = markdown_blocks(
+        "<p align=\"MIDDLE\">가운데</p>\n<div align=\"right\">오른쪽 **md**</div>\n\
+         <h2 align=\"justify\">제목</h2>\n<center>센터</center>\n<p align=\"bogus\">무시</p>\n\
+         <span align=\"right\">인라인</span>",
+    );
+
+    assert_eq!(
+        blocks,
+        [
+            Block::Aligned {
+                alignment: Alignment::Center,
+                blocks: vec![Block::Paragraph(vec![text("가운데")])],
+            },
+            Block::Aligned {
+                alignment: Alignment::Right,
+                blocks: vec![Block::Inlines(vec![text("오른쪽 **md**")])],
+            },
+            Block::Aligned {
+                alignment: Alignment::Justify,
+                blocks: vec![Block::Heading {
+                    level: 2,
+                    content: vec![text("제목")],
+                }],
+            },
+            Block::Aligned {
+                alignment: Alignment::Center,
+                blocks: vec![Block::Inlines(vec![text("센터")])],
+            },
+            Block::Paragraph(vec![text("무시")]),
+            Block::Inlines(vec![text("인라인")]),
+        ]
+    );
+}
+
+#[test]
+fn 정렬한_div_안의_빈_줄_뒤_markdown과_그림도_정렬_묶음_안에_둔다() {
+    let blocks = markdown_blocks("<div align=\"center\">\n\n**md** ![로고](a.png)\n</div>");
+
+    let Some(Block::Aligned { alignment, blocks }) = blocks.first() else {
+        panic!("정렬 묶음: {blocks:?}")
+    };
+    assert_eq!(*alignment, Alignment::Center);
+    let Some(Block::Paragraph(content)) = blocks.first() else {
+        panic!("문단: {blocks:?}")
+    };
+    assert_eq!(content[0], Inline::Strong(vec![text("md")]));
+    assert!(matches!(&content[2], Inline::Image { alt, .. } if alt == "로고"));
+}
+
+#[test]
+fn 표_칸은_자기_align이_없으면_행과_행_묶음의_align을_물려받는다() {
+    let blocks = markdown_blocks(
+        "<table><tbody align=\"right\"><tr align=\"center\"><td>a</td><td align=\"left\">b</td></tr>\
+         <tr><td>c</td><th align=\"justify\">d</th></tr></tbody></table>",
+    );
+
+    let Some(Block::Table(table)) = blocks.first() else {
+        panic!("표: {blocks:?}")
+    };
+    let alignments: Vec<Vec<Alignment>> = table
+        .rows
+        .iter()
+        .map(|row| row.cells.iter().map(|cell| cell.alignment).collect())
+        .collect();
+    assert_eq!(
+        alignments,
+        [
+            [Alignment::Center, Alignment::Left],
+            [Alignment::Right, Alignment::Justify]
+        ]
+    );
+}
+
+#[test]
+fn 표_제목은_정화를_통과하고_align_bottom이면_표_아래에_둔다() {
+    let blocks = markdown_blocks(
+        "<table><caption>표 <b>제목</b></caption><caption align=\"Bottom\">아래</caption>\
+         <tr><td>1</td></tr></table>",
+    );
+
+    let Some(Block::Table(table)) = blocks.first() else {
+        panic!("표: {blocks:?}")
+    };
+    assert_eq!(
+        table.captions,
+        [
+            TableCaption {
+                is_below: false,
+                blocks: vec![Block::Inlines(vec![
+                    text("표 "),
+                    Inline::Strong(vec![text("제목")])
+                ])],
+            },
+            TableCaption {
+                is_below: true,
+                blocks: vec![Block::Inlines(vec![text("아래")])],
+            },
+        ]
+    );
+    assert_eq!(table.rows.len(), 1);
+}
+
+#[test]
+fn small은_작은_글자로_남기고_겹치면_거듭_줄인다() {
+    let blocks = markdown_blocks("<small>작게</small> 글 <small><small>더</small></small>");
+
+    assert_eq!(
+        blocks,
+        [Block::Paragraph(vec![
+            Inline::Small(vec![text("작게")]),
+            text(" 글 "),
+            Inline::Small(vec![Inline::Small(vec![text("더")])]),
+        ])]
+    );
+}
+
+#[test]
+fn q는_ko_따옴표로_감싸고_안쪽_인용은_홑따옴표이며_복사_글자에는_넣지_않는다() {
+    let blocks = markdown_blocks("<q cite=\"x\">a <q>b <q>c</q></q></q> <q></q>빈 <q> d </q>끝");
+
+    let quote = |open: char, close: char, content: Vec<Inline>| Inline::Quote {
+        open,
+        close,
+        content,
+    };
+    let innermost = quote('\u{2018}', '\u{2019}', vec![text("c")]);
+    let inner = quote('\u{2018}', '\u{2019}', vec![text("b "), innermost]);
+    assert_eq!(
+        blocks,
+        [Block::Paragraph(vec![
+            quote('\u{201C}', '\u{201D}', vec![text("a "), inner]),
+            text(" "),
+            quote('\u{201C}', '\u{201D}', Vec::new()),
+            text("빈 "),
+            quote('\u{201C}', '\u{201D}', vec![text(" d ")]),
+            text("끝"),
+        ])]
+    );
+    assert_eq!(Inline::plain_text(&inlines_of(&blocks)), "a b c 빈  d 끝");
+}
+
+#[test]
+fn title이_있는_abbr와_acronym만_점선_밑줄_약어로_남긴다() {
+    let blocks = markdown_blocks(
+        "<abbr title=\"HyperText Markup Language\">HTML</abbr> <abbr>CSS</abbr> \
+         <acronym title=\"\">ACR</acronym>",
+    );
+
+    assert_eq!(
+        blocks,
+        [Block::Paragraph(vec![
+            Inline::Abbreviation {
+                title: "HyperText Markup Language".to_string(),
+                content: vec![text("HTML")],
+            },
+            text(" CSS "),
+            Inline::Abbreviation {
+                title: String::new(),
+                content: vec![text("ACR")],
+            },
+        ])]
     );
 }

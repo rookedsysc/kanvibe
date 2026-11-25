@@ -7,8 +7,8 @@
 
 mod class_box;
 mod edges;
-mod markdown;
-mod measure;
+pub(crate) mod markdown;
+pub(crate) mod measure;
 mod member;
 mod painter;
 mod parser;

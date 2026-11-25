@@ -207,6 +207,7 @@ fn init_app(cx: &mut TestAppContext) {
             faults_path: None,
             control_socket_path: None,
             platform_override: None,
+            loading_holds: Default::default(),
         }),
     };
     cx.update(|cx| {

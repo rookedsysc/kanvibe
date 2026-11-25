@@ -9,6 +9,8 @@ const SECTION_OPACITY: f32 = 0.2;
 const TICK_OPACITY: f32 = 0.8;
 const LIGHT_GREY: Color = Color::rgb(211, 211, 211);
 const GREY: Color = Color::rgb(128, 128, 128);
+/// 두 테마 모두 `#003163`
+const CLICKABLE_TEXT: Color = Color::rgb(0x00, 0x31, 0x63);
 
 /// 작업 막대 한 종류의 칠과 테두리
 #[derive(Clone, Copy, Debug)]
@@ -42,6 +44,10 @@ pub struct GanttColors {
     pub text_outside: Color,
     /// 막대 밖에 놓인 끝난 작업 글자
     pub text_done_outside: Color,
+    /// `click`이 걸린 작업 글자(`taskTextClickableColor`, 굵게)
+    pub text_clickable: Color,
+    /// `vert` 기준선 테두리와 글자(`vertLineColor`)
+    pub vert_line: Color,
 }
 
 fn faded(color: Color, opacity: f32) -> Color {
@@ -100,6 +106,8 @@ fn light() -> GanttColors {
         text_tagged: black,
         text_outside: black,
         text_done_outside: black,
+        text_clickable: CLICKABLE_TEXT,
+        vert_line: Color::rgb(0, 0, 0x80),
     }
 }
 
@@ -138,5 +146,7 @@ fn dark() -> GanttColors {
         text_tagged: Color::rgb(0x2c, 0x2c, 0x2c),
         text_outside: LIGHT_GREY,
         text_done_outside: LIGHT_GREY,
+        text_clickable: CLICKABLE_TEXT,
+        vert_line: Color::rgb(0x00, 0xBF, 0xFF),
     }
 }

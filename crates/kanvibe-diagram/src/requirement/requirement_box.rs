@@ -8,7 +8,7 @@ use crate::er::unified::{
 };
 use crate::flowchart::FlowNode;
 use crate::label::{FONT_SIZE, LabelBox};
-use crate::scene::{Color, Point, SceneItem};
+use crate::scene::{Color, Point, SceneItem, StrokeStyle};
 use crate::text::{FontBook, FontWeight};
 
 /// 상자 여백과 이름 아래 간격
@@ -21,7 +21,7 @@ pub struct BoxStyle<'a> {
     pub fonts: &'a FontBook,
     pub mode: LabelMode,
     pub fill: Color,
-    pub border: Color,
+    pub border: StrokeStyle,
     pub text: Color,
 }
 
@@ -136,7 +136,7 @@ fn box_node(name: &str, kind: &str, details: &[String], style: &BoxStyle) -> Flo
     let height = max_y - min_y + PADDING;
     let (x, y) = (-width / 2.0, -height / 2.0);
     let mut items: Vec<SceneItem> =
-        rough_rect(x, y, width, height, style.fill, style.border).into();
+        rough_rect(x, y, width, height, style.fill, &style.border).into();
     for (index, line) in stacked.lines.iter().enumerate() {
         let left = if index < 2 {
             -line.label.width / 2.0
@@ -158,7 +158,7 @@ fn box_node(name: &str, kind: &str, details: &[String], style: &BoxStyle) -> Flo
         items.push(rough_line(
             Point::new(x, line_y),
             Point::new(x + width, line_y),
-            style.border,
+            &style.border,
         ));
     }
     decorated_node(name.to_string(), width, height, items)

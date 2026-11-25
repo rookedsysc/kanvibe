@@ -22,6 +22,8 @@ pub enum FontWeight {
     Italic,
     /// 굵은 이탤릭 얼굴
     BoldItalic,
+    /// 고정폭 얼굴(DejaVu Sans Mono, HTML `<code>`의 `monospace`). 없는 글자는 보통 얼굴 순서로 넘긴다
+    Monospace,
 }
 
 #[derive(Clone)]
@@ -90,6 +92,9 @@ pub enum FontLoadError {
     MissingRequiredFace,
 }
 
+/// 고정폭 글꼴의 순서. 이 얼굴은 [`FontWeight::Monospace`]일 때만 맨 앞에 쓴다
+const MONOSPACE_RANK: usize = 5;
+
 /// family 이름에서 대체 순서를 정한다. 앱 번들 글꼴의 `KanVibe ` 접두어는 무시한다
 fn fallback_rank(family: &str) -> Option<usize> {
     let name = family.trim_start_matches("KanVibe ");
@@ -99,6 +104,7 @@ fn fallback_rank(family: &str) -> Option<usize> {
         "Noto Sans Symbols" => Some(2),
         "Noto Sans Symbols2" => Some(3),
         "DejaVu Sans" => Some(4),
+        "DejaVu Sans Mono" => Some(MONOSPACE_RANK),
         _ => None,
     }
 }
@@ -182,7 +188,12 @@ impl FontBook {
         let wants_bold = matches!(weight, FontWeight::Bold | FontWeight::BoldItalic);
         let wants_italic = matches!(weight, FontWeight::Italic | FontWeight::BoldItalic);
         let mut chosen: Vec<usize> = Vec::new();
-        for (index, face) in self.faces.iter().enumerate() {
+        let proportional = self
+            .faces
+            .iter()
+            .enumerate()
+            .filter(|(_, face)| face.rank != MONOSPACE_RANK);
+        for (index, face) in proportional {
             match chosen.last_mut() {
                 Some(last)
                     if self.faces[*last].rank == face.rank
@@ -194,6 +205,13 @@ impl FontBook {
                 Some(last) if self.faces[*last].rank == face.rank => {}
                 _ => chosen.push(index),
             }
+        }
+        let monospace = self
+            .faces
+            .iter()
+            .position(|face| face.rank == MONOSPACE_RANK && !face.is_bold && !face.is_italic);
+        if let (FontWeight::Monospace, Some(index)) = (weight, monospace) {
+            chosen.insert(0, index);
         }
         chosen
     }
@@ -413,6 +431,33 @@ pub(crate) mod tests {
             (overhang.width() - 36.144_058).abs() < 0.02,
             "{}",
             overhang.width()
+        );
+    }
+
+    #[test]
+    fn 이탤릭은_번들한_noto_sans_이탤릭_얼굴로_그린다() {
+        let fonts = bundled_fonts();
+        let face_of = |weight| fonts.shape_line("a", 16.0, weight).glyphs[0].face_index;
+        let faces = [
+            face_of(FontWeight::Regular),
+            face_of(FontWeight::Bold),
+            face_of(FontWeight::Italic),
+            face_of(FontWeight::BoldItalic),
+        ];
+        for (index, face) in faces.iter().enumerate() {
+            assert!(fonts.is_primary_face(*face));
+            assert!(!faces[index + 1..].contains(face), "{faces:?}");
+        }
+    }
+
+    #[test]
+    fn 고정폭_글자는_dejavu_sans_mono로_잰다() {
+        let fonts = bundled_fonts();
+        // DejaVu Sans Mono 글자 폭 1233/2048em
+        let width = fonts.shape_line("ab", 16.0, FontWeight::Monospace).width;
+        assert!(
+            (width - 2.0 * 16.0 * 1233.0 / 2048.0).abs() < 0.01,
+            "{width}"
         );
     }
 

@@ -39,6 +39,12 @@ const TICK_OFFSET: f64 = 0.5;
 const TICK_PADDING: f64 = 3.0;
 /// `.milestone{transform: rotate(45deg) scale(0.8)}`
 const MILESTONE_SCALE: f64 = 0.8;
+/// `vert` 기준선 막대 폭은 막대 높이의 0.08배다
+const VERT_WIDTH_RATIO: f64 = 0.08;
+/// `.vertText{font-size: 15px}`
+const VERT_FONT_SIZE: f64 = 15.0;
+/// `vert` 글자는 기준선 아래 끝(작업 줄들 + 막대 높이 2개)보다 20 더 아래에 놓인다
+const VERT_LABEL_GAP: f64 = 60.0;
 
 /// `scaleTime().domain([최소 시작, 최대 끝]).rangeRound([0, 폭])`
 #[derive(Clone, Copy, Debug)]
@@ -71,6 +77,10 @@ struct GanttLayout<'a> {
     colors: GanttColors,
     /// 작업에 처음 나온 순서의 구역 이름
     categories: Vec<String>,
+    /// 구역마다 차지하는 줄 수(그 순서는 `categories`와 같다)
+    category_rows: Vec<usize>,
+    /// `vert` 기준선 길이는 줄 수가 아니라 작업 수로 정한다
+    task_count: usize,
     height: f64,
     scale: TimeScale,
 }
@@ -87,21 +97,36 @@ impl GanttLayout<'_> {
 }
 
 pub fn render(definition: &str, context: &RenderContext) -> Result<Scene, DiagramError> {
+    render_at(definition, context, calendar::now_millis())
+}
+
+/// `today`(현지 벽시계 밀리초)에 오늘 선을 긋는다. 시계를 넣어 시험할 수 있게 나눴다
+fn render_at(definition: &str, context: &RenderContext, today: i64) -> Result<Scene, DiagramError> {
     let document = parser::parse(definition)?;
     let mut tasks = schedule::schedule(&document)?;
     let categories = collect_categories(&tasks);
-    let height = 2.0 * TOP_PADDING + tasks.len() as f64 * ROW_HEIGHT;
+    let category_rows = if document.is_compact {
+        assign_compact_rows(&mut tasks, &categories)
+    } else {
+        count_category_rows(&tasks, &categories)
+    };
+    let row_count: usize = category_rows.iter().sum();
+    let height = 2.0 * TOP_PADDING + row_count as f64 * ROW_HEIGHT;
     let scale = TimeScale {
         start: tasks.iter().map(|task| task.start).min().unwrap_or(0),
         stop: tasks.iter().map(|task| task.end).max().unwrap_or(0),
         range: DIAGRAM_WIDTH - 2.0 * SIDE_PADDING,
     };
+    // 시작 순으로 늘어놓은 뒤 drawRects처럼 `vert`를 맨 뒤로 보낸다(둘 다 안정 정렬)
     tasks.sort_by_key(|task| task.start);
+    tasks.sort_by_key(|task| task.tags.is_vert);
     let layout = GanttLayout {
         fonts: context.fonts,
         document: &document,
         colors: GanttColors::for_theme(context.palette.theme),
         categories,
+        category_rows,
+        task_count: tasks.len(),
         height,
         scale,
     };
@@ -111,29 +136,92 @@ pub fn render(definition: &str, context: &RenderContext) -> Result<Scene, Diagra
         height,
         items: Vec::new(),
     };
-    draw_excluded_days(&mut scene, &layout, &tasks);
-    draw_axes(&mut scene, &layout);
-    draw_section_rows(&mut scene, &layout, &tasks);
+    draw_diagram(&mut scene, &layout, &tasks, today);
+    Ok(scene)
+}
+
+fn draw_diagram(scene: &mut Scene, layout: &GanttLayout, tasks: &[ScheduledTask], today: i64) {
+    draw_excluded_days(scene, layout, tasks);
+    draw_axes(scene, layout);
+    draw_section_rows(scene, layout, tasks);
+    tasks.iter().for_each(|task| draw_bar(scene, layout, task));
     tasks
         .iter()
-        .for_each(|task| draw_bar(&mut scene, &layout, task));
-    tasks
-        .iter()
-        .for_each(|task| draw_task_label(&mut scene, &layout, task));
-    draw_section_titles(&mut scene, &layout, &tasks);
-    draw_today_marker(&mut scene, &layout);
-    let title = document.title.clone();
-    let title_color = layout.colors.title;
+        .for_each(|task| draw_task_label(scene, layout, task));
+    draw_section_titles(scene, layout);
+    draw_today_marker(scene, layout, today);
     let title_item = centered_text(
-        context.fonts,
-        title,
+        layout.fonts,
+        layout.document.title.clone(),
         DIAGRAM_WIDTH / 2.0,
         TITLE_TOP_MARGIN,
         TITLE_FONT_SIZE,
-        title_color,
+        layout.colors.title,
     );
     scene.push_text(title_item);
-    Ok(scene)
+}
+
+/// 보통 배치: 작업마다 한 줄
+fn count_category_rows(tasks: &[ScheduledTask], categories: &[String]) -> Vec<usize> {
+    categories
+        .iter()
+        .map(|category| {
+            tasks
+                .iter()
+                .filter(|task| &task.section == category)
+                .count()
+        })
+        .collect()
+}
+
+/// `compact` 배치(getMaxIntersections): 구역마다 시작 순으로 훑어 앞 작업이 끝난 첫 줄에 넣는다
+fn assign_compact_rows(tasks: &mut [ScheduledTask], categories: &[String]) -> Vec<usize> {
+    let mut row_offset = 0;
+    let mut category_rows = vec![0; categories.len()];
+    for category_index in js_key_order(categories) {
+        let category = &categories[category_index];
+        let mut members: Vec<usize> = (0..tasks.len())
+            .filter(|index| &tasks[*index].section == category)
+            .collect();
+        members.sort_by_key(|index| (tasks[*index].start, tasks[*index].order));
+        let mut row_ends: Vec<i64> = Vec::new();
+        for index in members {
+            let free_row = row_ends.iter().position(|end| tasks[index].start >= *end);
+            let row = free_row.unwrap_or(row_ends.len());
+            if row == row_ends.len() {
+                row_ends.push(tasks[index].end);
+            } else {
+                row_ends[row] = tasks[index].end;
+            }
+            tasks[index].order = row_offset + row;
+        }
+        let rows = row_ends.len().max(1);
+        category_rows[category_index] = rows;
+        row_offset += rows;
+    }
+    category_rows
+}
+
+/// 구역 이름을 열쇠로 쓴 JS 객체의 `Object.keys` 순서. 배열 번호 꼴(`"2024"`) 열쇠가 숫자 순으로 먼저 오고,
+/// 나머지는 넣은 순서다. 구역 제목 자리와 `compact` 줄 배정이 이 순서를 따른다
+fn js_key_order(categories: &[String]) -> Vec<usize> {
+    let array_index = |name: &str| -> Option<u32> {
+        let is_canonical = name == "0" || !name.starts_with('0');
+        let number = name.parse::<u32>().ok().filter(|_| is_canonical)?;
+        (number < u32::MAX).then_some(number)
+    };
+    let mut numeric: Vec<(u32, usize)> = categories
+        .iter()
+        .enumerate()
+        .filter_map(|(index, name)| array_index(name).map(|number| (number, index)))
+        .collect();
+    numeric.sort_unstable();
+    let named = (0..categories.len()).filter(|index| array_index(&categories[*index]).is_none());
+    numeric
+        .into_iter()
+        .map(|(_, index)| index)
+        .chain(named)
+        .collect()
 }
 
 /// 작업에 처음 나온 순서의 구역 이름(ganttRenderer `checkUnique`)
@@ -306,10 +394,15 @@ fn draw_axis(
     }
 }
 
-/// 작업 줄마다 구역 색 띠(폭은 그림 폭 − 오른쪽 여백 절반)
+/// 줄마다 구역 색 띠(폭은 그림 폭 − 오른쪽 여백 절반). 같은 줄을 쓰는 작업 중 먼저 그린 작업의 구역 색이다
 fn draw_section_rows(scene: &mut Scene, layout: &GanttLayout, tasks: &[ScheduledTask]) {
     let width = DIAGRAM_WIDTH - SIDE_PADDING / 2.0;
+    let mut drawn_rows: Vec<usize> = Vec::new();
     for task in tasks {
+        if drawn_rows.contains(&task.order) {
+            continue;
+        }
+        drawn_rows.push(task.order);
         let y = task.order as f64 * ROW_HEIGHT + TOP_PADDING - 2.0;
         let color = layout.colors.section_rows[layout.section_index(&task.section)];
         scene.push_path(rect(0.0, y, width, ROW_HEIGHT), Some(color), None);
@@ -329,6 +422,10 @@ fn bar_colors(colors: &GanttColors, task: &ScheduledTask) -> BarColors {
 }
 
 fn draw_bar(scene: &mut Scene, layout: &GanttLayout, task: &ScheduledTask) {
+    if task.tags.is_vert {
+        draw_vert_bar(scene, layout, task);
+        return;
+    }
     let colors = bar_colors(&layout.colors, task);
     let y = task.order as f64 * ROW_HEIGHT + TOP_PADDING;
     let start_x = layout.bar_x(task.start);
@@ -359,6 +456,31 @@ fn draw_bar(scene: &mut Scene, layout: &GanttLayout, task: &ScheduledTask) {
         dash: Vec::new(),
     };
     scene.push_path(commands, Some(colors.fill), Some(stroke));
+}
+
+/// `vert` 기준선: 격자 위에서 작업 줄들 아래 막대 두 개 높이까지 내려오는 가는 막대. 칠은 작업 종류 색이고
+/// 테두리는 `.vert`가 덮는다
+fn draw_vert_bar(scene: &mut Scene, layout: &GanttLayout, task: &ScheduledTask) {
+    let x = layout.bar_x(task.start);
+    let width = VERT_WIDTH_RATIO * BAR_HEIGHT;
+    let commands = rounded_rect(
+        x,
+        GRID_LINE_START_PADDING,
+        width,
+        vert_bar_height(layout),
+        BAR_RADIUS,
+    );
+    let stroke = StrokeStyle {
+        color: layout.colors.vert_line,
+        width: BAR_STROKE_WIDTH,
+        dash: Vec::new(),
+    };
+    let fill = bar_colors(&layout.colors, task).fill;
+    scene.push_path(commands, Some(fill), Some(stroke));
+}
+
+fn vert_bar_height(layout: &GanttLayout) -> f64 {
+    layout.task_count as f64 * ROW_HEIGHT + BAR_HEIGHT * 2.0
 }
 
 /// 마일스톤 사각형을 가운데 둘레로 45° 돌리고 0.8배 줄인다
@@ -415,10 +537,16 @@ fn label_color(colors: &GanttColors, task: &ScheduledTask, placement: LabelPlace
     }
 }
 
-/// 작업 이름. 자리(class)는 시작·끝 시각으로, x는 그리는 끝(`renderEndTime`)으로 정하는 TS 계산을 따른다
+/// 작업 이름. 자리(class)는 시작·끝 시각으로, x는 그리는 끝(`renderEndTime`)으로 정하는 TS 계산을 따른다.
+/// 자리를 정하는 폭은 class가 붙기 전 getBBox라 보통 굵기로 재고, 그리는 글꼴은 마일스톤 기울임·클릭 굵게를 따른다
 fn draw_task_label(scene: &mut Scene, layout: &GanttLayout, task: &ScheduledTask) {
     let text = collapse_whitespace(&task.name);
+    if task.tags.is_vert {
+        draw_vert_label(scene, layout, task, text);
+        return;
+    }
     let fonts = layout.fonts;
+    let weight = label_weight(task);
     let text_width = fonts
         .measure_svg_runs(&[&text], FONT_SIZE, FontWeight::Regular)
         .width();
@@ -441,7 +569,7 @@ fn draw_task_label(scene: &mut Scene, layout: &GanttLayout, task: &ScheduledTask
         LabelPlacement::OutsideLeft => start_x + SIDE_PADDING - 5.0,
         LabelPlacement::OutsideRight => end_x + SIDE_PADDING + 5.0,
     };
-    let advance = fonts.measure_line(&text, FONT_SIZE, FontWeight::Regular);
+    let advance = fonts.measure_line(&text, FONT_SIZE, weight);
     let x = match placement {
         LabelPlacement::Inside => anchor_x - advance / 2.0,
         LabelPlacement::OutsideLeft => anchor_x - advance,
@@ -449,20 +577,50 @@ fn draw_task_label(scene: &mut Scene, layout: &GanttLayout, task: &ScheduledTask
     };
     let baseline =
         task.order as f64 * ROW_HEIGHT + BAR_HEIGHT / 2.0 + (FONT_SIZE / 2.0 - 2.0) + TOP_PADDING;
-    let color = label_color(&layout.colors, task, placement);
-    scene.push_text(plain_text(text, x, baseline, FONT_SIZE, color));
+    let color = if task.is_clickable {
+        layout.colors.text_clickable
+    } else {
+        label_color(&layout.colors, task, placement)
+    };
+    let mut item = plain_text(text, x, baseline, FONT_SIZE, color);
+    item.weight = weight;
+    scene.push_text(item);
 }
 
-/// 구역 이름을 그 구역 작업 줄들의 가운데에 `alignment-baseline: central`로 쓴다
-fn draw_section_titles(scene: &mut Scene, layout: &GanttLayout, tasks: &[ScheduledTask]) {
+/// `.milestoneText{font-style: italic}`와 `.clickable{font-weight: bold}`
+fn label_weight(task: &ScheduledTask) -> FontWeight {
+    match (task.tags.is_milestone, task.is_clickable) {
+        (true, true) => FontWeight::BoldItalic,
+        (true, false) => FontWeight::Italic,
+        (false, true) => FontWeight::Bold,
+        (false, false) => FontWeight::Regular,
+    }
+}
+
+/// `vert` 글자는 `.vertText`대로 기준선 아래에 15px로 가운데 맞춘다. 클릭이 걸리면 `.clickable` 색이 이긴다
+fn draw_vert_label(scene: &mut Scene, layout: &GanttLayout, task: &ScheduledTask, text: String) {
+    let weight = label_weight(task);
+    let advance = layout.fonts.measure_line(&text, VERT_FONT_SIZE, weight);
+    let x = layout.bar_x(task.start) - advance / 2.0;
+    let baseline = GRID_LINE_START_PADDING + layout.task_count as f64 * ROW_HEIGHT + VERT_LABEL_GAP;
+    let color = if task.is_clickable {
+        layout.colors.text_clickable
+    } else {
+        layout.colors.vert_line
+    };
+    let mut item = plain_text(text, x, baseline, VERT_FONT_SIZE, color);
+    item.weight = weight;
+    scene.push_text(item);
+}
+
+/// 구역 이름을 그 구역 줄들의 가운데에 `alignment-baseline: central`로 쓴다. 차례는 `Object.keys` 순서다
+fn draw_section_titles(scene: &mut Scene, layout: &GanttLayout) {
     let metrics = layout.fonts.primary_metrics(FONT_SIZE);
     let central_shift = (metrics.ascent - metrics.descent) / 2.0;
     let mut rows_before = 0.0;
-    for category in &layout.categories {
-        let row_count = tasks
-            .iter()
-            .filter(|task| &task.section == category)
-            .count() as f64;
+    for category_index in js_key_order(&layout.categories) {
+        let category = &layout.categories[category_index];
+        let row_count = layout.category_rows[category_index] as f64;
         let center_y = row_count * ROW_HEIGHT / 2.0 + rows_before * ROW_HEIGHT + TOP_PADDING;
         rows_before += row_count;
         let lines = section_title_lines(category);
@@ -486,7 +644,7 @@ fn section_title_lines(category: &str) -> Vec<String> {
 }
 
 /// 오늘 선. `todayMarker off`면 없고, 스타일 글자가 있으면 `stroke`·`stroke-width`·`opacity`를 읽는다
-fn draw_today_marker(scene: &mut Scene, layout: &GanttLayout) {
+fn draw_today_marker(scene: &mut Scene, layout: &GanttLayout, today: i64) {
     let marker = layout.document.today_marker.as_str();
     if marker == "off" {
         return;
@@ -502,7 +660,7 @@ fn draw_today_marker(scene: &mut Scene, layout: &GanttLayout) {
         };
         apply_today_style(&mut style, property.trim(), value.trim());
     }
-    let x = layout.bar_x(calendar::now_millis());
+    let x = layout.bar_x(today);
     let line = vec![
         PathCommand::MoveTo(Point::new(x, TITLE_TOP_MARGIN)),
         PathCommand::LineTo(Point::new(x, layout.height - TITLE_TOP_MARGIN)),
@@ -562,5 +720,94 @@ mod tests {
             LabelPlacement::OutsideLeft
         );
         assert_eq!(label_placement(10.0, 0.0, 20.0), LabelPlacement::Inside);
+    }
+
+    fn path_x_with_color(scene: &Scene, color: Color) -> Vec<f64> {
+        scene
+            .items
+            .iter()
+            .filter_map(|item| match item {
+                crate::scene::SceneItem::Path(path)
+                    if path
+                        .stroke
+                        .as_ref()
+                        .is_some_and(|stroke| stroke.color == color) =>
+                {
+                    match path.commands.first() {
+                        Some(PathCommand::MoveTo(point)) => Some(point.x),
+                        _ => None,
+                    }
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn 오늘_선은_넣어_준_시각에_긋는다() {
+        let fonts = bundled_fonts();
+        let palette = Palette::for_theme(Theme::Light);
+        let context = RenderContext {
+            fonts: &fonts,
+            palette: &palette,
+            label_mode: crate::LabelMode::SvgText,
+        };
+        // 1월 1일 ~ 1월 27일(26일, 634px)의 한가운데인 1월 14일 0시
+        let definition = "gantt\ndateFormat YYYY-MM-DD\nsection A\nOne :a1, 2024-01-01, 10d\n\
+                          Two :after a1, 14d\nThree :2024-01-20, 7d\n";
+        let today = calendar::CivilTime::date(2024, 1, 14).to_millis();
+        let scene = render_at(definition, &context, today).unwrap();
+        let today_color = GanttColors::for_theme(Theme::Light).today;
+        assert_eq!(path_x_with_color(&scene, today_color), vec![392.0]);
+        let hidden = format!("{definition}todayMarker off\n");
+        let scene = render_at(&hidden, &context, today).unwrap();
+        assert!(path_x_with_color(&scene, today_color).is_empty());
+    }
+
+    #[test]
+    fn compact는_겹치지_않는_작업을_한_줄에_모은다() {
+        // 기준 SVG gantt-compact: Team A 2줄, Team B 2줄, 높이 196
+        let scene = render_light(
+            "---\ndisplayMode: compact\n---\ngantt\ndateFormat YYYY-MM-DD\ntodayMarker off\n\
+             section Team A\nDesign :a1, 2020-03-01, 4d\nBuild :a2, 2020-03-03, 5d\n\
+             Test :a3, 2020-03-06, 3d\nShip :a4, after a3, 2d\nsection Team B\n\
+             Research :b1, 2020-03-02, 6d\nWrite :b2, 2020-03-05, 2d\n",
+        );
+        assert_eq!(scene.height, 196.0);
+    }
+
+    #[test]
+    fn 숫자_구역_이름은_객체_열쇠처럼_앞으로_간다() {
+        let categories: Vec<String> = ["Plan", "2024", "Ship", "7", "007"]
+            .iter()
+            .map(|name| name.to_string())
+            .collect();
+        assert_eq!(js_key_order(&categories), vec![3, 1, 0, 2, 4]);
+    }
+
+    #[test]
+    fn vert_기준선은_작업_수만큼_내려오고_글자는_그_아래에_놓인다() {
+        // 기준 SVG gantt-vert: 작업 5개, 막대 x 445·y 35·폭 1.6·높이 160, 글자 y 215
+        let scene = render_light(
+            "gantt\ndateFormat YYYY-MM-DD\ntodayMarker off\nsection Build\n\
+             Backend :b1, 2024-05-01, 6d\nFrontend :b2, after b1, 5d\n\
+             Code freeze :vert, v1, 2024-05-08, 0d\nsection Ship\n\
+             Beta :milestone, m1, 2024-05-12, 0d\nDocs site :d1, 2024-05-09, 4d\n",
+        );
+        let vert_color = GanttColors::for_theme(Theme::Light).vert_line;
+        let label = scene.items.iter().find_map(|item| match item {
+            crate::scene::SceneItem::Text(text) if text.text == "Code freeze" => Some(text),
+            _ => None,
+        });
+        let label = label.unwrap();
+        assert_eq!(label.baseline, 215.0);
+        assert_eq!(label.color, vert_color);
+        assert_eq!(label.font_size, 15.0);
+        let beta = scene.items.iter().find_map(|item| match item {
+            crate::scene::SceneItem::Text(text) if text.text == "Beta" => Some(text.weight),
+            _ => None,
+        });
+        assert_eq!(beta, Some(FontWeight::Italic));
+        assert_eq!(path_x_with_color(&scene, vert_color).len(), 1);
     }
 }

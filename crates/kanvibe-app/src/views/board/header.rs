@@ -2,9 +2,8 @@
 //! 컨트롤 순서: 종류 필터 · 프로젝트 필터 · 데스크톱 필터 · 정렬 · 프로젝트 스캔 · 새 작업 · 설정 · 알림.
 
 use gpui_kit::{
-    AnyElement, App, Bounds, Context, Div, InteractiveElement, IntoElement, ParentElement,
-    PathBuilder, Pixels, Rgba, Stateful, StatefulInteractiveElement, Styled, Window, canvas, div,
-    img, point, px, svg,
+    AnyElement, App, Context, Div, InteractiveElement, IntoElement, ParentElement, Rgba, Stateful,
+    StatefulInteractiveElement, Styled, Window, div, img, px, svg,
 };
 use kanvibe_domain::i18n::{Locale, Translator};
 
@@ -13,8 +12,6 @@ use super::task_filters::TaskKindFilter;
 use super::{BoardView, HeaderPopover};
 use crate::assets::{icon_paths, image_paths};
 use crate::components::{TailwindText, box_shadows};
-use crate::notifications::unread_badge_label;
-use crate::qa::targets::{QaTargetDescription, qa_target_layer};
 use crate::theme::{ThemeMode, ThemeTokens, radius, spacing, text_scale};
 
 /// Tailwind `xl` 경계
@@ -40,22 +37,7 @@ impl HeaderLabels {
     }
 }
 
-pub(super) fn qa_button_layer(label: &str, text: &str) -> impl IntoElement {
-    qa_target_layer(QaTargetDescription {
-        role: "button",
-        name: label.to_string().into(),
-        text: text.to_string().into(),
-    })
-}
-
-/// 제목·안내처럼 버튼이 아닌 글자
-pub(super) fn qa_text_layer(role: &'static str, text: &str) -> impl IntoElement {
-    qa_target_layer(QaTargetDescription {
-        role,
-        name: text.to_string().into(),
-        text: text.to_string().into(),
-    })
-}
+pub(super) use crate::qa::targets::{qa_button_layer, qa_text_layer};
 
 fn logo(window_width: f32, mode: ThemeMode) -> Option<AnyElement> {
     if window_width < LOGO_MIN_WINDOW_WIDTH {
@@ -98,8 +80,7 @@ impl BoardView {
                 .into_any_element(),
             self.render_settings_button(theme, &labels, cx)
                 .into_any_element(),
-            self.render_notification_button(theme, &labels, cx)
-                .into_any_element(),
+            self.render_notification_button().into_any_element(),
         ];
         let header = div().flex().items_center().justify_end().px(spacing(6.0));
         // macOS 데스크톱 앱은 신호등 버튼 자리를 비우고 타이틀바 한 줄에 컨트롤을 놓는다(TS `shouldUseMacTitlebarLayout`)
@@ -447,70 +428,8 @@ impl BoardView {
         }))
     }
 
-    fn render_notification_button(
-        &mut self,
-        theme: &ThemeTokens,
-        labels: &HeaderLabels,
-        cx: &mut Context<Self>,
-    ) -> impl IntoElement + use<> {
-        let unread_count = self
-            .board
-            .as_ref()
-            .map(|board| {
-                board
-                    .notifications
-                    .iter()
-                    .filter(|item| !item.is_read)
-                    .count()
-            })
-            .unwrap_or(0);
-        let hover_background = theme.background.page;
-        let button = icon_button(
-            "board-notifications",
-            icon_paths::BELL,
-            labels.common.translate("notifications"),
-            theme.text.muted,
-        )
-        .hover(move |style| style.bg(hover_background))
-        .on_click(cx.listener(|this, _, window, cx| this.toggle_notification_center(window, cx)));
-        let sync = self.background_sync_state();
-        let sync_labels = Translator::new(self.locale(), "common.backgroundSyncStatus");
-        let indicator = if sync.is_running() {
-            Some(sync_spinner(theme, &sync_labels.translate("running"), cx).into_any_element())
-        } else if sync.is_failed() {
-            Some(sync_failed_badge(theme, &sync_labels.translate("failed")).into_any_element())
-        } else {
-            None
-        };
-        let badge = indicator.or_else(|| {
-            unread_badge_label(unread_count).map(|badge_label| {
-                div()
-                    .absolute()
-                    .top(px(-4.0))
-                    .right(px(-4.0))
-                    .min_w(spacing(4.0))
-                    .h(spacing(4.0))
-                    .rounded(radius::FULL)
-                    .bg(theme.brand.primary)
-                    .px(spacing(1.0))
-                    .text_scale(text_scale::PX_10)
-                    .css_weight(600)
-                    .text_color(theme.text.inverse)
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .child(badge_label)
-                    .into_any_element()
-            })
-        });
-        let panel = self
-            .is_notification_center_open()
-            .then(|| self.render_notification_panel(theme, cx));
-        div()
-            .relative()
-            .flex_none()
-            .child(button.children(badge))
-            .children(panel)
+    fn render_notification_button(&self) -> impl IntoElement + use<> {
+        self.notification_center.clone()
     }
 }
 
@@ -519,87 +438,6 @@ pub(super) fn is_mac_titlebar_layout(cx: &App) -> bool {
     cx.global::<crate::services::AppServices>()
         .shortcut_platform
         == kanvibe_domain::platform::ShortcutPlatform::Mac
-}
-
-/// 동기화 중 표시(TS `h-3 w-3 rounded-full border-2 border-brand-primary border-t-transparent animate-spin`).
-/// 위쪽 테두리만 투명한 고리를 그리고, QA 재생(움직임 줄이기)이 아니면 1초에 한 바퀴 돈다
-fn sync_spinner(theme: &ThemeTokens, label: &str, cx: &App) -> impl IntoElement + use<> {
-    let color = theme.brand.primary;
-    let is_animated = !cx.has_global::<crate::qa::QaRuntime>();
-    div()
-        .absolute()
-        .top(px(-4.0))
-        .right(px(-4.0))
-        .size(px(12.0))
-        .child(qa_text_layer("status", label))
-        .child(
-            canvas(
-                |_, _, _| {},
-                move |bounds, _, window, _| {
-                    let turn = if is_animated {
-                        window.request_animation_frame();
-                        spinner_turn()
-                    } else {
-                        0.0
-                    };
-                    paint_spinner_ring(bounds, turn, color, window);
-                },
-            )
-            .size_full(),
-        )
-}
-
-/// 지금 회전 각(라디안, 1초에 한 바퀴)
-fn spinner_turn() -> f32 {
-    let elapsed = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default();
-    (elapsed.as_millis() % 1000) as f32 / 1000.0 * std::f32::consts::TAU
-}
-
-/// 2px 테두리 고리 가운데 위쪽 4분의 1(-135°~-45°)을 뺀 호
-fn paint_spinner_ring(bounds: Bounds<Pixels>, turn: f32, color: Rgba, window: &mut Window) {
-    let center = bounds.center();
-    let radius = f32::from(bounds.size.width) / 2.0 - 1.0;
-    let at = |angle: f32| {
-        let angle = angle + turn;
-        point(
-            center.x + px(radius * angle.cos()),
-            center.y + px(radius * angle.sin()),
-        )
-    };
-    let quarter = std::f32::consts::FRAC_PI_4;
-    let mut builder = PathBuilder::stroke(px(2.0));
-    builder.move_to(at(-quarter));
-    builder.arc_to(
-        point(px(radius), px(radius)),
-        px(0.0),
-        true,
-        true,
-        at(-3.0 * quarter),
-    );
-    if let Ok(path) = builder.build() {
-        window.paint_path(path, color);
-    }
-}
-
-/// 동기화 실패 표시(TS `h-4 w-4 rounded-full bg-status-error text-[10px] font-semibold text-white` "!")
-fn sync_failed_badge(theme: &ThemeTokens, label: &str) -> impl IntoElement + use<> {
-    div()
-        .absolute()
-        .top(px(-4.0))
-        .right(px(-4.0))
-        .size(spacing(4.0))
-        .flex()
-        .items_center()
-        .justify_center()
-        .rounded(radius::FULL)
-        .bg(theme.status.error)
-        .text_scale(text_scale::PX_10)
-        .css_weight(600)
-        .text_color(gpui_kit::white())
-        .child("!")
-        .child(qa_text_layer("status", label))
 }
 
 fn chevron(theme: &ThemeTokens) -> impl IntoElement {

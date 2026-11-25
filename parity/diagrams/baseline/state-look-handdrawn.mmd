@@ -1,0 +1,10 @@
+---
+config:
+  look: handDrawn
+  handDrawnSeed: 7
+---
+stateDiagram-v2
+    [*] --> Idle
+    Idle --> Busy : go
+    Busy --> Done
+    Done --> [*]

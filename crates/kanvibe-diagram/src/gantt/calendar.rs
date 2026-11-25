@@ -1,7 +1,8 @@
 //! 달력 계산. 시각은 1970-01-01 00:00 벽시계에서 잰 밀리초(i64)다.
 //!
 //! TS 쪽 dayjs·d3는 현지 시간대 `Date`를 쓰지만 기준 이미지는 서머타임이 없는 시간대에서 만들어졌으므로,
-//! 여기서는 시간대 없이 벽시계 시각 그대로 더하고 뺀다. 그래서 하루는 언제나 24시간이다.
+//! 여기서는 시간대 없이 벽시계 시각 그대로 더하고 뺀다. 그래서 하루는 언제나 24시간이다. 지금 시각만은
+//! 현지 시간대 벽시계로 옮겨 이 기준에 맞춘다.
 
 pub const MILLIS_PER_SECOND: i64 = 1_000;
 pub const MILLIS_PER_MINUTE: i64 = 60 * MILLIS_PER_SECOND;
@@ -162,12 +163,15 @@ pub fn add_months(millis: i64, months: i64) -> i64 {
     .to_millis()
 }
 
-/// 지금 시각(UTC 벽시계). 시간대 데이터베이스가 없어 현지 시간대 대신 UTC를 쓴다
+/// 지금 시각을 현지 시간대 벽시계로 잰 값. TS의 `new Date()`·`dayjs()`는 현지 시간대이고 작업 날짜도 현지
+/// 벽시계로 읽으므로, 오늘 선도 같은 기준에서 잰다
 pub fn now_millis() -> i64 {
-    let elapsed = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default();
-    i64::try_from(elapsed.as_millis()).unwrap_or(0)
+    wall_clock_millis(&chrono::Local::now())
+}
+
+/// 시각을 그 시간대의 벽시계 밀리초로 바꾼다
+pub fn wall_clock_millis<Zone: chrono::TimeZone>(instant: &chrono::DateTime<Zone>) -> i64 {
+    instant.naive_local().and_utc().timestamp_millis()
 }
 
 #[cfg(test)]
@@ -180,6 +184,23 @@ mod tests {
         assert_eq!(days_from_civil(2024, 3, 1), 19_783);
         assert_eq!(civil_from_days(19_783), (2024, 3, 1));
         assert_eq!(CivilTime::date(2024, 1, 1).weekday(), 1);
+    }
+
+    #[test]
+    fn 지금_시각은_현지_시간대_날짜로_센다() {
+        use chrono::{FixedOffset, TimeZone};
+        let seoul = FixedOffset::east_opt(9 * 3600).unwrap();
+        // UTC로는 1월 1일 20시지만 서울(UTC+9)에서는 이미 1월 2일 오전 5시다
+        let instant = seoul.with_ymd_and_hms(2024, 1, 2, 5, 0, 0).unwrap();
+        let wall = CivilTime::from_millis(wall_clock_millis(&instant));
+        assert_eq!(
+            (wall.year, wall.month, wall.day, wall.hour),
+            (2024, 1, 2, 5)
+        );
+        let new_york = FixedOffset::west_opt(5 * 3600).unwrap();
+        let same_instant = instant.with_timezone(&new_york);
+        let wall = CivilTime::from_millis(wall_clock_millis(&same_instant));
+        assert_eq!((wall.month, wall.day, wall.hour), (1, 1, 15));
     }
 
     #[test]

@@ -7,25 +7,36 @@
 //!   모바일 워커는 [`LabelMode::Html`]로 라벨 크기를 잰다
 //! - [`service::NativeDiagramRenderer`]: 모바일 계약([`contract`])을 지키는 [`service::DiagramRenderer`] 구현
 
+mod architecture;
+mod block;
 mod c4;
+mod chart_config;
+mod chart_text;
 mod class;
 pub mod contract;
 pub mod dagre;
 pub mod directive;
 mod er;
+mod eventmodeling;
 mod flowchart;
 mod gantt;
 mod git_graph;
 pub mod graph;
 mod hinting;
+mod ishikawa;
 mod journey;
+mod kanban;
 pub mod label;
 mod mindmap;
+mod packet;
 mod pie;
 mod quadrant;
+mod radar;
 pub mod raster;
 mod requirement;
+mod rough;
 mod sanitize;
+mod sankey;
 pub mod scene;
 mod sequence;
 pub mod service;
@@ -33,6 +44,12 @@ mod state;
 pub mod text;
 pub mod theme;
 mod timeline;
+mod tree_view;
+mod treemap;
+mod venn;
+mod version_banner;
+mod wardley;
+mod xychart;
 
 use scene::Scene;
 use text::FontBook;
@@ -81,6 +98,20 @@ pub enum DiagramKind {
     Quadrant,
     Requirement,
     C4,
+    Ishikawa,
+    Wardley,
+    EventModeling,
+    Block,
+    Packet,
+    Info,
+    TreeView,
+    Sankey,
+    Treemap,
+    Kanban,
+    XyChart,
+    Radar,
+    Venn,
+    Architecture,
 }
 
 /// 앞머리·지시문과 `%%` 주석, 빈 줄을 건너뛴 첫 낱말로 종류를 고른다
@@ -112,6 +143,24 @@ pub fn detect_kind(definition: &str) -> Result<DiagramKind, DiagramError> {
         "C4Context" | "C4Container" | "C4Component" | "C4Dynamic" | "C4Deployment" => {
             Ok(DiagramKind::C4)
         }
+        _ if keyword.eq_ignore_ascii_case("ishikawa")
+            || keyword.eq_ignore_ascii_case("ishikawa-beta") =>
+        {
+            Ok(DiagramKind::Ishikawa)
+        }
+        _ if keyword.eq_ignore_ascii_case("wardley-beta") => Ok(DiagramKind::Wardley),
+        _ if keyword.starts_with("eventmodeling") => Ok(DiagramKind::EventModeling),
+        "block" | "block-beta" => Ok(DiagramKind::Block),
+        "packet" | "packet-beta" => Ok(DiagramKind::Packet),
+        "info" => Ok(DiagramKind::Info),
+        "treeView-beta" => Ok(DiagramKind::TreeView),
+        "sankey" | "sankey-beta" => Ok(DiagramKind::Sankey),
+        "treemap" | "treemap-beta" => Ok(DiagramKind::Treemap),
+        "kanban" => Ok(DiagramKind::Kanban),
+        "xychart-beta" | "xychart" => Ok(DiagramKind::XyChart),
+        "radar-beta" => Ok(DiagramKind::Radar),
+        "venn-beta" => Ok(DiagramKind::Venn),
+        other if other.starts_with("architecture") => Ok(DiagramKind::Architecture),
         other => Err(DiagramError::Unsupported(other.to_string())),
     }
 }
@@ -144,5 +193,19 @@ pub fn render_scene(
         DiagramKind::Quadrant => quadrant::render(definition, &context),
         DiagramKind::Requirement => requirement::render(definition, &context),
         DiagramKind::C4 => c4::render(definition, &context),
+        DiagramKind::Ishikawa => ishikawa::render(definition, &context),
+        DiagramKind::Wardley => wardley::render(definition, &context),
+        DiagramKind::EventModeling => eventmodeling::render(definition, &context),
+        DiagramKind::Block => block::render(definition, &context),
+        DiagramKind::Packet => packet::render(definition, &context),
+        DiagramKind::Info => version_banner::render(definition, &context),
+        DiagramKind::TreeView => tree_view::render(definition, &context),
+        DiagramKind::Sankey => sankey::render(definition, &context),
+        DiagramKind::Treemap => treemap::render(definition, &context),
+        DiagramKind::Kanban => kanban::render(definition, &context),
+        DiagramKind::XyChart => xychart::render(definition, &context),
+        DiagramKind::Radar => radar::render(definition, &context),
+        DiagramKind::Venn => venn::render(definition, &context),
+        DiagramKind::Architecture => architecture::render(definition, &context),
     }
 }

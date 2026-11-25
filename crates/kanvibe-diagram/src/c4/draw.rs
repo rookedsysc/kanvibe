@@ -1,7 +1,7 @@
 //! c4 svgDraw.js: 모양·경계·관계·사람 그림을 장면에 옮긴다.
 //!
-//! 글자는 모두 `"Open Sans", sans-serif`라 기준 환경에서 Noto Sans로 풀린다. 기울임(`font-style: italic`)
-//! 얼굴은 번들에 없어 바로 선 글자로 그린다.
+//! 글자는 모두 `"Open Sans", sans-serif`라 기준 환경에서 Noto Sans로 풀린다. `«종류»`·기술(`[기술]`)·관계 기술은
+//! `font-style: italic`이라 번들의 Noto Sans Italic으로 그린다. 폭은 원본처럼 바로 선 글자로 잰다.
 
 use crate::scene::{
     Color, PathCommand, Point, Scene, StrokeStyle, TextItem, ellipse, polygon, rounded_rect,
@@ -11,6 +11,7 @@ use crate::text::{FontBook, FontWeight};
 use super::layout::{
     BoundaryBox, LABEL_FONT_SIZE, SMALL_FONT_SIZE, ShapeBox, TEXT_FONT_SIZE, TextBlock,
 };
+use super::parser::ShapeStyle;
 
 /// 관계선·관계 글자·경계 기본색(`#444444`)
 pub(crate) const RELATION_COLOR: Color = Color::rgb(0x44, 0x44, 0x44);
@@ -33,6 +34,21 @@ fn shape_colors(kind: &str) -> (Color, Color) {
         _ => (0xCCCCCC, 0xBFBFBF),
     };
     (hex_color(fill), hex_color(border))
+}
+
+/// `UpdateElementStyle`·`UpdateRelStyle`로 바꾼 색. 없거나 읽지 못하면 기본색이다
+pub(crate) fn style_color(value: Option<&str>, default: Color) -> Color {
+    value.and_then(Color::parse_css).unwrap_or(default)
+}
+
+/// 모양 칠·테두리·글자색. 사람 그림(PNG)은 바꾼 칠과 상관없이 종류의 기본 칠을 바탕으로 쓴다
+fn styled_shape_colors(kind: &str, style: &ShapeStyle) -> (Color, Color, Color) {
+    let (fill, border) = shape_colors(kind);
+    (
+        style_color(style.background.as_deref(), fill),
+        style_color(style.border.as_deref(), border),
+        style_color(style.font.as_deref(), SHAPE_TEXT_COLOR),
+    )
 }
 
 fn hex_color(value: u32) -> Color {
@@ -101,7 +117,7 @@ impl PathPen {
 }
 
 pub(crate) fn draw_shape(scene: &mut Scene, fonts: &FontBook, shape: &ShapeBox) {
-    let (fill, border) = shape_colors(&shape.kind);
+    let (fill, border, text_color) = styled_shape_colors(&shape.kind, &shape.style);
     let stroke = Some(StrokeStyle {
         color: border,
         width: 0.5,
@@ -114,21 +130,23 @@ pub(crate) fn draw_shape(scene: &mut Scene, fonts: &FontBook, shape: &ShapeBox) 
     let type_text = format!("<<{}>>", shape.kind);
     let type_left = center_x - shape.type_width / 2.0;
     let type_baseline = shape.y + 20.0;
-    spaced_text(
-        fonts,
-        &type_text,
-        type_left,
-        type_baseline,
-        shape.type_width,
-    )
-    .into_iter()
-    .for_each(|text| scene.push_text(text));
+    let type_line = SpacedLine {
+        left: type_left,
+        baseline: type_baseline,
+        text_length: shape.type_width,
+        color: text_color,
+    };
+    spaced_text(fonts, &type_text, &type_line)
+        .into_iter()
+        .for_each(|text| scene.push_text(text));
     if let Some(image_y) = shape.image_y {
-        draw_person_icon(scene, Point::new(center_x - 24.0, shape.y + image_y), fill);
+        let (icon_background, _) = shape_colors(&shape.kind);
+        let origin = Point::new(center_x - 24.0, shape.y + image_y);
+        draw_person_icon(scene, origin, icon_background);
     }
     let blocks = [
         (&shape.label, LABEL_FONT_SIZE, FontWeight::Bold),
-        (&shape.techn, TEXT_FONT_SIZE, FontWeight::Regular),
+        (&shape.techn, TEXT_FONT_SIZE, FontWeight::Italic),
         (&shape.descr, TEXT_FONT_SIZE, FontWeight::Regular),
     ];
     for (block, font_size, weight) in blocks {
@@ -139,7 +157,7 @@ pub(crate) fn draw_shape(scene: &mut Scene, fonts: &FontBook, shape: &ShapeBox) 
             (center_x, shape.y),
             font_size,
             weight,
-            SHAPE_TEXT_COLOR,
+            text_color,
         );
     }
 }
@@ -196,36 +214,39 @@ fn shape_body(shape: &ShapeBox) -> Vec<(Vec<PathCommand>, bool)> {
     vec![(rounded_rect(x, y, width, height, 2.5), true)]
 }
 
-/// `lengthAdjust="spacing"`·`textLength`: 글자 사이를 고르게 줄이거나 늘려 첫 글자부터 마지막 글자 끝까지를
-/// `text_length`에 맞춘다(SVG 2 글자 배치, 간격은 글자 수 − 1로 나눈다)
-fn spaced_text(
-    fonts: &FontBook,
-    text: &str,
+/// `textLength`로 폭을 맞추는 기울인 `«종류»` 한 줄
+struct SpacedLine {
     left: f64,
     baseline: f64,
     text_length: f64,
-) -> Vec<TextItem> {
-    let line = fonts.shape_line(text, SMALL_FONT_SIZE, FontWeight::Regular);
+    color: Color,
+}
+
+/// `lengthAdjust="spacing"`·`textLength`: 글자 사이를 고르게 줄이거나 늘려 첫 글자부터 마지막 글자 끝까지를
+/// `text_length`에 맞춘다(SVG 2 글자 배치, 간격은 글자 수 − 1로 나눈다)
+fn spaced_text(fonts: &FontBook, text: &str, spaced: &SpacedLine) -> Vec<TextItem> {
+    let line = fonts.shape_line(text, SMALL_FONT_SIZE, FontWeight::Italic);
     let characters: Vec<char> = text.chars().collect();
     let item = |text: String, x: f64| TextItem {
         text,
         x,
-        baseline,
+        baseline: spaced.baseline,
         font_size: SMALL_FONT_SIZE,
-        weight: FontWeight::Regular,
-        color: SHAPE_TEXT_COLOR,
+        weight: FontWeight::Italic,
+        color: spaced.color,
         rotation: None,
     };
     if characters.len() < 2 || line.glyphs.len() != characters.len() {
-        return vec![item(text.to_string(), left)];
+        return vec![item(text.to_string(), spaced.left)];
     }
-    let shift = (text_length - line.width) / (characters.len() - 1) as f64;
+    let shift = (spaced.text_length - line.width) / (characters.len() - 1) as f64;
     characters
         .iter()
         .zip(&line.glyphs)
         .enumerate()
         .map(|(index, (character, glyph))| {
-            item(character.to_string(), left + glyph.x + shift * index as f64)
+            let x = spaced.left + glyph.x + shift * index as f64;
+            item(character.to_string(), x)
         })
         .collect()
 }
@@ -273,20 +294,22 @@ fn draw_person_icon(scene: &mut Scene, origin: Point, background: Color) {
     scene.push_path(commands, white, None);
 }
 
-/// drawBoundary: 점선(배포 노드는 실선) 테두리와 이름·종류·설명
+/// drawBoundary: 점선(배포 노드는 실선) 테두리와 이름·종류·설명. 칠한 경계는 먼저 그린 안쪽 모양을 덮는다
 pub(crate) fn draw_boundary(scene: &mut Scene, fonts: &FontBook, boundary: &BoundaryBox) {
     let dash = if boundary.is_deployment_node {
         Vec::new()
     } else {
         vec![7.0, 7.0]
     };
+    let style = &boundary.style;
     let stroke = StrokeStyle {
-        color: RELATION_COLOR,
+        color: style_color(style.border.as_deref(), RELATION_COLOR),
         width: 1.0,
         dash,
     };
+    let fill = style.background.as_deref().and_then(Color::parse_css);
     let outline = rounded_rect(boundary.x, boundary.y, boundary.width, boundary.height, 2.5);
-    scene.push_path(outline, None, Some(stroke));
+    scene.push_path(outline, fill, Some(stroke));
     let anchor = (boundary.x + boundary.width / 2.0, boundary.y);
     let blocks = [
         (&boundary.label, LABEL_FONT_SIZE, FontWeight::Bold),

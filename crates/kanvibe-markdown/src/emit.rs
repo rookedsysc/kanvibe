@@ -302,7 +302,8 @@ impl HtmlWriter<'_> {
                         clean_url(&link.href),
                         escape_keeping_entities(&link.text)
                     ),
-                    _ => scan::placeholder(index),
+                    Some(span) => scan::placeholder(index, span),
+                    None => String::new(),
                 },
             };
             self.html.push_str(&html);

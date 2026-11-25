@@ -41,7 +41,7 @@ impl BoardView {
     }
 
     /// 새 작업 모달을 연다. `defaults`는 (베이스 브랜치, 프로젝트 ID)다
-    pub(super) fn open_create_task(
+    pub(crate) fn open_create_task(
         &mut self,
         defaults: Option<(String, String)>,
         window: &mut Window,

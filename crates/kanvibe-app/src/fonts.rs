@@ -12,9 +12,13 @@ use std::borrow::Cow;
 
 use gpui_kit::{App, Font, FontFallbacks, FontFeatures, FontStyle, FontWeight, SharedString};
 
-pub const BUNDLED_FONT_FILES: [&[u8]; 9] = [
+pub const BUNDLED_FONT_FILES: [&[u8]; 11] = [
     include_bytes!("../assets/fonts/KanVibeNotoSans-Regular.ttf"),
     include_bytes!("../assets/fonts/KanVibeNotoSans-Bold.ttf"),
+    // Mermaid 이탤릭 글자(class 추상 멤버·C4 등)는 Chromium이 이 얼굴을 골랐다. family는 Regular와 같은
+    // `KanVibe Noto Sans`라서 GPUI `FontStyle::Italic`과 다이어그램 `FontBook` 모두 같은 family에서 고른다
+    include_bytes!("../assets/fonts/KanVibeNotoSans-Italic.ttf"),
+    include_bytes!("../assets/fonts/KanVibeNotoSans-BoldItalic.ttf"),
     include_bytes!("../assets/fonts/KanVibeNotoSansCJKkr-Regular.otf"),
     include_bytes!("../assets/fonts/KanVibeNotoSansCJKkr-SyntheticBold.otf"),
     include_bytes!("../assets/fonts/KanVibeNotoSansSymbols-Regular.ttf"),

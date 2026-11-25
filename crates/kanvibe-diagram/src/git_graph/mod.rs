@@ -14,7 +14,10 @@ use crate::text::{FontBook, FontWeight};
 use crate::theme::{Theme, hsl};
 use crate::{DiagramError, RenderContext};
 
-use layout::{ArrowPath, BRANCH_FONT_SIZE, GraphLayout, VERTICAL_START, branch_label_width};
+use layout::{
+    ArrowPath, BRANCH_FONT_SIZE, GraphLayout, VERTICAL_START, branch_label_height,
+    branch_label_rows, branch_label_width,
+};
 use parse::{Direction, GitGraph};
 
 const DIAGRAM_PADDING: f64 = 8.0;
@@ -339,8 +342,7 @@ fn draw_branch_label(
     place: BranchLabelPlace,
 ) {
     let width = branch_label_width(canvas.fonts, name);
-    let metrics = canvas.fonts.primary_metrics(BRANCH_FONT_SIZE);
-    let height = metrics.ascent + metrics.descent;
+    let height = branch_label_height(canvas.fonts, name);
     let (rect_left, rect_top, text_left, text_top) =
         branch_label_origin(layout, &place, width, height);
     let background = canvas.colors.branch[place.color_index];
@@ -353,11 +355,14 @@ fn draw_branch_label(
     );
     canvas.path(rect, Some(background), None);
     let color = canvas.colors.branch_text[place.color_index];
-    let baseline = text_top + BRANCH_FONT_SIZE;
-    canvas.text(name, text_left, baseline, BRANCH_FONT_SIZE, color);
+    for (index, row) in branch_label_rows(name).iter().enumerate() {
+        let baseline = text_top + (index + 1) as f64 * BRANCH_FONT_SIZE;
+        canvas.text(row, text_left, baseline, BRANCH_FONT_SIZE, color);
+    }
 }
 
-/// 이름표 바탕 (왼쪽, 위)와 이름 g의 (왼쪽, 위). 이름 g는 글자 칸 위 - 2에 놓이고 tspan이 1em 내려 기준선을 잡는다
+/// 이름표 바탕 (왼쪽, 위)와 이름 g의 (왼쪽, 위). LR은 바탕과 이름 g 모두 글자 칸 위 - 2에 놓이고, 줄마다 tspan이
+/// 1em씩 내려 기준선을 잡는다
 fn branch_label_origin(
     layout: &GraphLayout,
     place: &BranchLabelPlace,
@@ -368,7 +373,7 @@ fn branch_label_origin(
     match layout.direction {
         Direction::LeftToRight => (
             -width - 23.0 - place.label_shift,
-            spine - 13.0,
+            spine - height / 2.0 - 2.0,
             -width - 14.0 - place.label_shift,
             spine - height / 2.0 - 2.0,
         ),

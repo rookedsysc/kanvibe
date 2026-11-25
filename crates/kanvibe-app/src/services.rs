@@ -30,13 +30,32 @@ pub struct ServiceFailure {
 
 pub type ServiceResult<T> = Result<T, ServiceFailure>;
 
-/// TS 렌더러가 IPC로 부른 서비스가 실패했을 때 Electron이 붙이던 머리말. 화면 문구와 픽셀을 TS와 같게 둔다
-const IPC_ERROR_PREFIX: &str = "Error invoking remote method 'kanvibe:invoke': Error: ";
+/// TS 렌더러가 서비스(`namespace.method`)를 부르던 범용 IPC 채널
+const GENERIC_IPC_CHANNEL: &str = "kanvibe:invoke";
+
+/// 전용 IPC 채널 이름의 머리. 알림 동작(`kanvibe:notifications-*`)처럼 서비스 이름 자체가 채널이다
+const DEDICATED_CHANNEL_PREFIX: &str = "kanvibe:";
 
 /// 서비스 실패 사유를 화면에 보일 문구로 바꾸는 유일한 자리. 모든 화면이 이 함수를 거쳐야
 /// 머리말을 붙일지 정하는 판단이 한 곳에 남는다
 pub fn format_service_error(reason: &str) -> String {
-    format!("{IPC_ERROR_PREFIX}{reason}")
+    format_service_error_on_channel(GENERIC_IPC_CHANNEL, reason)
+}
+
+/// 실패한 호출의 고장 판정 이름(`namespace.method` 또는 `kanvibe:*` 채널)으로 문구를 고른다.
+/// 전용 채널로 부르던 알림 동작은 Electron이 그 채널 이름을 머리말에 넣었다
+pub fn format_service_error_for(target: &str, reason: &str) -> String {
+    let channel = if target.starts_with(DEDICATED_CHANNEL_PREFIX) {
+        target
+    } else {
+        GENERIC_IPC_CHANNEL
+    };
+    format_service_error_on_channel(channel, reason)
+}
+
+/// TS 렌더러가 IPC로 부른 서비스가 실패했을 때 Electron이 붙이던 머리말. 화면 문구와 픽셀을 TS와 같게 둔다
+fn format_service_error_on_channel(channel: &str, reason: &str) -> String {
+    format!("Error invoking remote method '{channel}': Error: {reason}")
 }
 
 impl ServiceFailure {
@@ -220,4 +239,25 @@ fn read_board_header(
         sort_active_count: sort_preference.keys.len(),
         status_counts,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn service_errors_name_the_ipc_channel_the_renderer_used() {
+        assert_eq!(
+            format_service_error_for("kanban.deleteTask", "boom"),
+            "Error invoking remote method 'kanvibe:invoke': Error: boom"
+        );
+        assert_eq!(
+            format_service_error_for("kanvibe:notifications-mark-read", "window is closing"),
+            "Error invoking remote method 'kanvibe:notifications-mark-read': Error: window is closing"
+        );
+        assert_eq!(
+            format_service_error("boom"),
+            format_service_error_for("diff.getDiffFiles", "boom")
+        );
+    }
 }

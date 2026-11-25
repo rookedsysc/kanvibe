@@ -37,6 +37,13 @@ pub enum Block {
     /// `<details>` 접기 상자
     Disclosure(Disclosure),
     ThematicBreak,
+    /// `align` 속성을 받은 `p`·`div`·`h1`~`h6`과 `center`. Chromium은 이 값을 `text-align`으로 바꿔 안쪽 블록에
+    /// 물려주고, 가운데·오른쪽(`-webkit-center`·`-webkit-right`)이면 그림 같은 블록 상자도 그쪽으로 민다.
+    /// 안쪽에서 다시 `align`을 받은 블록이나 표 칸은 자기 값을 쓴다
+    Aligned {
+        alignment: Alignment,
+        blocks: Vec<Block>,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -65,19 +72,31 @@ pub struct ListItem {
     pub blocks: Vec<Block>,
 }
 
-/// 칸의 `align` 속성. 대화 화면 CSS는 머리 칸(`th`)을 이 값과 상관없이 왼쪽으로 맞춘다
+/// `align` 속성(대소문자 무시, `middle`은 가운데). 표 칸은 자기 값이 없으면 `tr`, 그다음 `thead`·`tbody`·`tfoot`
+/// 값을 물려받는다. 대화 화면 CSS는 머리 칸(`th`)을 이 값과 상관없이 왼쪽으로 맞춘다
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Alignment {
     None,
     Left,
     Center,
     Right,
+    Justify,
 }
 
 /// `thead`·`tbody`·`tfoot`의 행을 문서 순서대로 담는다
 #[derive(Clone, Debug, PartialEq)]
 pub struct Table {
+    /// `caption` 요소들(문서 순서). 없으면 비어 있다
+    pub captions: Vec<TableCaption>,
     pub rows: Vec<TableRow>,
+}
+
+/// 표 제목. Chromium은 표 너비 안에서 가운데(`-webkit-center`) 맞춘 보통 굵기 글자로 표 위에 그린다
+#[derive(Clone, Debug, PartialEq)]
+pub struct TableCaption {
+    /// `align="bottom"`이면 `caption-side: bottom`이라 표 아래에 그린다
+    pub is_below: bool,
+    pub blocks: Vec<Block>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -129,6 +148,20 @@ pub enum Inline {
     Superscript(Vec<Inline>),
     /// `kbd`·`samp`·`tt`: 고정폭 글꼴만 바꾼다(코드 배경 없음)
     Monospace(Vec<Inline>),
+    /// `small`: Tailwind preflight가 글자 크기를 부모의 80%로 줄인다(겹치면 거듭 줄어든다)
+    Small(Vec<Inline>),
+    /// `q`. 문서 언어가 `ko`라 Chromium은 바깥 인용 앞뒤에 “ ”, 인용 안의 인용에 ‘ ’를 그린다. 생성 내용이라
+    /// 선택·복사되지 않으므로 [`Inline::plain_text`]에도 넣지 않는다. 비어 있어도 따옴표는 그린다
+    Quote {
+        open: char,
+        close: char,
+        content: Vec<Inline>,
+    },
+    /// `title` 속성이 있는 `abbr`·`acronym`: 점선 밑줄을 긋는다. `title`이 없으면 꾸밈 없이 벗긴다
+    Abbreviation {
+        title: String,
+        content: Vec<Inline>,
+    },
     /// 새 창(`target=_blank`, `rel=noopener noreferrer`)으로 연다. DOMPurify가 막은 주소는 None
     Link {
         href: Option<String>,
@@ -185,8 +218,11 @@ impl Inline {
             | Inline::Highlight(children)
             | Inline::Subscript(children)
             | Inline::Superscript(children)
-            | Inline::Monospace(children) => Some(children),
-            Inline::Link { content, .. } => Some(content),
+            | Inline::Monospace(children)
+            | Inline::Small(children) => Some(children),
+            Inline::Link { content, .. }
+            | Inline::Quote { content, .. }
+            | Inline::Abbreviation { content, .. } => Some(content),
             _ => None,
         }
     }
@@ -200,8 +236,11 @@ impl Inline {
             | Inline::Highlight(children)
             | Inline::Subscript(children)
             | Inline::Superscript(children)
-            | Inline::Monospace(children) => Some(children),
-            Inline::Link { content, .. } => Some(content),
+            | Inline::Monospace(children)
+            | Inline::Small(children) => Some(children),
+            Inline::Link { content, .. }
+            | Inline::Quote { content, .. }
+            | Inline::Abbreviation { content, .. } => Some(content),
             _ => None,
         }
     }

@@ -1,0 +1,34 @@
+---
+config:
+  look: handDrawn
+  handDrawnSeed: 3
+---
+stateDiagram-v2
+    state Check <<choice>>
+    state Split <<fork>>
+    state Merge <<join>>
+    [*] --> Work
+    state Work {
+        [*] --> Load
+        Load --> Inner
+        state Inner {
+            [*] --> Deep
+        }
+    }
+    Work --> Check
+    Check --> Split : ok
+    Check --> Busy : no
+    state Busy {
+        [*] --> A
+        --
+        [*] --> B
+    }
+    Split --> Left
+    Split --> Right
+    Left --> Merge
+    Right --> Merge
+    Merge --> Desc
+    Desc : first line
+    Desc : second line
+    note right of Desc : a note
+    Desc --> [*]

@@ -4,19 +4,13 @@
 use std::collections::HashMap;
 
 use super::bounds::{ActivationFrame, Bounds};
+use super::config::SequenceConfig;
 use super::document::{
     BlockKind, CentralConnection, NotePlacement, Participant, SequenceDocument, SequenceEvent,
     SequenceMessage, SequenceNote,
 };
 use super::measure::{text_size, wrap_label};
-use super::{
-    ACTIVATION_WIDTH, ACTOR_HEIGHT, ACTOR_MARGIN, ACTOR_WIDTH, BOX_TEXT_MARGIN, LABEL_BOX_WIDTH,
-    NOTE_MARGIN, WRAP_PADDING,
-};
 use crate::text::FontBook;
-
-/// 감싸는 글이 들어갈 폭(conf.width − 2·wrapPadding)
-const WRAPPED_TEXT_WIDTH: f64 = ACTOR_WIDTH - 2.0 * WRAP_PADDING;
 
 /// 참여자 상자 자리
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -38,8 +32,8 @@ impl ActorBox {
         self.x + self.width / 2.0
     }
 
-    pub fn margin(&self) -> f64 {
-        self.required_margin.unwrap_or(ACTOR_MARGIN)
+    pub fn margin(&self, config: &SequenceConfig) -> f64 {
+        self.required_margin.unwrap_or(config.actor_margin)
     }
 }
 
@@ -83,7 +77,11 @@ pub(super) struct EventModels {
 }
 
 /// 메시지·노트 글이 참여자 사이 간격을 얼마나 요구하는지(getMaxMessageWidthPerActor)
-fn message_width_per_actor(document: &SequenceDocument, fonts: &FontBook) -> HashMap<usize, f64> {
+fn message_width_per_actor(
+    document: &SequenceDocument,
+    fonts: &FontBook,
+    config: &SequenceConfig,
+) -> HashMap<usize, f64> {
     let mut widths: HashMap<usize, f64> = HashMap::new();
     for event in &document.events {
         let (from, to, text, is_wrapped, placement) = match event {
@@ -104,11 +102,11 @@ fn message_width_per_actor(document: &SequenceDocument, fonts: &FontBook) -> Has
             _ => continue,
         };
         let text = if is_wrapped {
-            wrap_label(fonts, text, WRAPPED_TEXT_WIDTH)
+            wrap_label(fonts, text, config.wrapped_text_width())
         } else {
             text.clone()
         };
-        let width = text_size(fonts, &text).width + 2.0 * WRAP_PADDING;
+        let width = text_size(fonts, &text).width + 2.0 * config.wrap_padding;
         let receiver = &document.participants[to];
         for (target, required) in width_targets(receiver, from, to, placement, width) {
             let entry = widths.entry(target).or_insert(0.0);
@@ -147,19 +145,21 @@ fn width_targets(
 }
 
 /// 참여자 크기. `wrap:` 설명은 상자 폭 안에서 줄을 바꾸고 높이가 늘 수 있다
-fn sized_actor(fonts: &FontBook, participant: &Participant) -> ActorBox {
+fn sized_actor(fonts: &FontBook, config: &SequenceConfig, participant: &Participant) -> ActorBox {
     let label = if participant.is_wrapped {
-        wrap_label(fonts, &participant.description, WRAPPED_TEXT_WIDTH)
+        wrap_label(fonts, &participant.description, config.wrapped_text_width())
     } else {
         participant.description.clone()
     };
     let size = text_size(fonts, &label);
     let (width, height) = if participant.is_wrapped {
-        (ACTOR_WIDTH, size.height.max(ACTOR_HEIGHT))
+        (config.actor_width, size.height.max(config.actor_height))
     } else {
         (
-            ACTOR_WIDTH.max(size.width + 2.0 * WRAP_PADDING),
-            ACTOR_HEIGHT,
+            config
+                .actor_width
+                .max(size.width + 2.0 * config.wrap_padding),
+            config.actor_height,
         )
     };
     ActorBox {
@@ -174,27 +174,29 @@ fn sized_actor(fonts: &FontBook, participant: &Participant) -> ActorBox {
 pub(super) fn size_actors(
     document: &SequenceDocument,
     fonts: &FontBook,
+    config: &SequenceConfig,
 ) -> (Vec<ActorBox>, Vec<GroupBox>, f64) {
     let mut actors: Vec<ActorBox> = document
         .participants
         .iter()
-        .map(|participant| sized_actor(fonts, participant))
+        .map(|participant| sized_actor(fonts, config, participant))
         .collect();
-    for (index, message_width) in message_width_per_actor(document, fonts) {
+    let margin = config.actor_margin;
+    for (index, message_width) in message_width_per_actor(document, fonts, config) {
         let next_half = document.participants[index]
             .next
             .map_or(0.0, |next| actors[next].width / 2.0);
-        let required = message_width + ACTOR_MARGIN - actors[index].width / 2.0 - next_half;
-        actors[index].required_margin = Some(required.max(ACTOR_MARGIN));
+        let required = message_width + margin - actors[index].width / 2.0 - next_half;
+        actors[index].required_margin = Some(required.max(margin));
     }
     let tallest = actors
         .iter()
         .map(|actor| actor.height)
-        .fold(ACTOR_HEIGHT, f64::max);
+        .fold(config.actor_height, f64::max);
     for actor in &mut actors {
         actor.height = actor.height.max(tallest);
     }
-    let (groups, title_height) = size_groups(document, fonts, &actors);
+    let (groups, title_height) = size_groups(document, fonts, config, &actors);
     (actors, groups, title_height)
 }
 
@@ -202,6 +204,7 @@ pub(super) fn size_actors(
 fn size_groups(
     document: &SequenceDocument,
     fonts: &FontBook,
+    config: &SequenceConfig,
     actors: &[ActorBox],
 ) -> (Vec<GroupBox>, f64) {
     let mut title_height: f64 = 0.0;
@@ -212,16 +215,16 @@ fn size_groups(
             .iter()
             .map(|member| actors[*member].width + actors[*member].required_margin.unwrap_or(0.0))
             .sum();
-        let total_width = members_width + super::bounds::BOX_MARGIN * 8.0 - 2.0 * BOX_TEXT_MARGIN;
+        let total_width = members_width + config.box_margin * 8.0 - 2.0 * config.box_text_margin;
         let title = group.title.as_ref().map(|title| match group.is_wrapped {
-            true => wrap_label(fonts, title, total_width - 2.0 * WRAP_PADDING),
+            true => wrap_label(fonts, title, total_width - 2.0 * config.wrap_padding),
             false => title.clone(),
         });
         let size = text_size(fonts, title.as_deref().unwrap_or(""));
         title_height = title_height.max(size.height);
-        let minimum_width = total_width.max(size.width + 2.0 * WRAP_PADDING);
+        let minimum_width = total_width.max(size.width + 2.0 * config.wrap_padding);
         groups.push(GroupBox {
-            margin: BOX_TEXT_MARGIN + (minimum_width - total_width) / 2.0,
+            margin: config.box_text_margin + (minimum_width - total_width) / 2.0,
             title,
             ..GroupBox::default()
         });
@@ -260,6 +263,7 @@ fn central_offset(message: &SequenceMessage, is_rightward: bool) -> f64 {
 /// buildMessageModel: 화살표 끝을 활성화 막대와 화살촉 길이만큼 당긴다
 fn message_model(
     fonts: &FontBook,
+    config: &SequenceConfig,
     actors: &[ActorBox],
     activations: &[ActivationFrame],
     message: &SequenceMessage,
@@ -276,7 +280,7 @@ fn message_model(
     } else {
         let is_to_activation = (to_left - to_right).abs() > 2.0;
         if message.is_activating && !is_to_activation {
-            stop_x += toward(ACTIVATION_WIDTH / 2.0 - 1.0);
+            stop_x += toward(config.activation_width / 2.0 - 1.0);
         }
         if !message.arrow.keeps_stop_end() {
             stop_x += toward(3.0);
@@ -285,20 +289,20 @@ fn message_model(
             start_x -= toward(3.0);
         }
     }
-    let bounded_width = (start_x - stop_x).abs() + 2.0 * WRAP_PADDING;
+    let bounded_width = (start_x - stop_x).abs() + 2.0 * config.wrap_padding;
     let text = match message.is_wrapped && !message.text.is_empty() {
-        true => wrap_label(fonts, &message.text, bounded_width.max(ACTOR_WIDTH)),
+        true => wrap_label(fonts, &message.text, bounded_width.max(config.actor_width)),
         false => message.text.clone(),
     };
     let text_width = match message.is_wrapped {
         true => 0.0,
-        false => text_size(fonts, &text).width + 2.0 * WRAP_PADDING,
+        false => text_size(fonts, &text).width + 2.0 * config.wrap_padding,
     };
     let edges = [from_left, from_right, to_left, to_right];
     MessageModel {
         start_x,
         stop_x,
-        width: text_width.max(bounded_width).max(ACTOR_WIDTH),
+        width: text_width.max(bounded_width).max(config.actor_width),
         from_bounds: edges.iter().copied().fold(f64::INFINITY, f64::min),
         to_bounds: edges.iter().copied().fold(f64::NEG_INFINITY, f64::max),
         text,
@@ -306,51 +310,66 @@ fn message_model(
 }
 
 /// buildNoteModel
-fn note_model(fonts: &FontBook, actors: &[ActorBox], note: &SequenceNote) -> NoteModel {
-    let (from, to) = (&actors[note.from], &actors[note.to]);
+fn note_model(
+    fonts: &FontBook,
+    config: &SequenceConfig,
+    actors: &[ActorBox],
+    note: &SequenceNote,
+) -> NoteModel {
     let should_wrap = note.is_wrapped && !note.text.is_empty();
     let measured_width = |wrap_width: f64| {
-        let text = match should_wrap {
-            true => wrap_label(fonts, &note.text, wrap_width),
-            false => note.text.clone(),
-        };
+        let text = wrapped_note_text(fonts, note, should_wrap, wrap_width);
         text_size(fonts, &text).width
     };
-    let text_width = measured_width(ACTOR_WIDTH);
-    let padded = text_width + 2.0 * NOTE_MARGIN;
+    let (start_x, width) = note_span(config, actors, note, &measured_width);
+    let wrap_width = width - 2.0 * config.wrap_padding;
+    NoteModel {
+        start_x,
+        width,
+        text: wrapped_note_text(fonts, note, should_wrap, wrap_width),
+    }
+}
+
+/// 노트의 시작 x와 폭. `measured_width`는 주어진 폭에서 감싼 글의 폭이다
+fn note_span(
+    config: &SequenceConfig,
+    actors: &[ActorBox],
+    note: &SequenceNote,
+    measured_width: &dyn Fn(f64) -> f64,
+) -> (f64, f64) {
+    let (from, to) = (&actors[note.from], &actors[note.to]);
+    let (actor_width, actor_margin) = (config.actor_width, config.actor_margin);
+    let should_wrap = note.is_wrapped && !note.text.is_empty();
+    let text_width = measured_width(actor_width);
+    let padded = text_width + 2.0 * config.note_margin;
     let side_width = match should_wrap {
-        true => ACTOR_WIDTH.max(padded),
+        true => actor_width.max(padded),
         false => (from.width / 2.0 + to.width / 2.0).max(padded),
     };
-    let (start_x, width) = match note.placement {
+    match note.placement {
         NotePlacement::RightOf => {
             let width = match should_wrap {
-                true => ACTOR_WIDTH.max(text_width),
+                true => actor_width.max(text_width),
                 false => side_width,
             };
-            (from.x + (from.width + ACTOR_MARGIN) / 2.0, width)
+            (from.x + (from.width + actor_margin) / 2.0, width)
         }
         NotePlacement::LeftOf => (
-            from.x - side_width + (from.width - ACTOR_MARGIN) / 2.0,
+            from.x - side_width + (from.width - actor_margin) / 2.0,
             side_width,
         ),
         NotePlacement::Over if note.from == note.to => {
-            let own_width = ACTOR_WIDTH.max(from.width);
+            let own_width = actor_width.max(from.width);
             let width = match should_wrap {
                 true => own_width,
-                false => own_width.max(measured_width(own_width) + 2.0 * NOTE_MARGIN),
+                false => own_width.max(measured_width(own_width) + 2.0 * config.note_margin),
             };
             (from.x + (from.width - width) / 2.0, width)
         }
         NotePlacement::Over => (
-            from.center().min(to.center()) - ACTOR_MARGIN / 2.0,
-            (from.center() - to.center()).abs() + ACTOR_MARGIN,
+            from.center().min(to.center()) - actor_margin / 2.0,
+            (from.center() - to.center()).abs() + actor_margin,
         ),
-    };
-    NoteModel {
-        start_x,
-        width,
-        text: wrapped_note_text(fonts, note, should_wrap, width),
     }
 }
 
@@ -359,10 +378,10 @@ fn wrapped_note_text(
     fonts: &FontBook,
     note: &SequenceNote,
     should_wrap: bool,
-    width: f64,
+    wrap_width: f64,
 ) -> String {
     match should_wrap {
-        true => wrap_label(fonts, &note.text, width - 2.0 * WRAP_PADDING),
+        true => wrap_label(fonts, &note.text, wrap_width),
         false => note.text.clone(),
     }
 }
@@ -374,13 +393,15 @@ struct BlockWidth {
     from: f64,
     to: f64,
     width: f64,
+    /// conf.labelBoxWidth
+    label_box_width: f64,
 }
 
 impl BlockWidth {
     fn include_note(&mut self, note: &NoteModel) {
         self.from = self.from.min(note.start_x);
         self.to = self.to.max(note.start_x + note.width);
-        self.width = self.width.max((self.from - self.to).abs()) - LABEL_BOX_WIDTH;
+        self.width = self.width.max((self.from - self.to).abs()) - self.label_box_width;
     }
 
     /// 자기 메시지는 참여자 왼쪽 끝(x)을 기준으로 넓힌다(Mermaid 그대로)
@@ -392,18 +413,18 @@ impl BlockWidth {
             self.to = (to.x + model.width / 2.0)
                 .max(to.x + from.width / 2.0)
                 .max(self.to);
-            self.width = self.width.max((self.to - self.from).abs()) - LABEL_BOX_WIDTH;
+            self.width = self.width.max((self.to - self.from).abs()) - self.label_box_width;
         } else {
             self.from = self.from.min(model.start_x);
             self.to = self.to.max(model.stop_x);
-            self.width = self.width.max(model.width) - LABEL_BOX_WIDTH;
+            self.width = self.width.max(model.width) - self.label_box_width;
         }
     }
 }
 
 /// calculateLoopBounds를 따라 사건마다 모델을 만들고 블록 제목 폭을 모은다
-#[derive(Default)]
-struct ModelBuilder {
+struct ModelBuilder<'a> {
+    config: &'a SequenceConfig,
     models: EventModels,
     open_blocks: Vec<BlockWidth>,
     /// 제목 있는 구역(구역 사건 순번, 블록 시작 사건 순번)
@@ -411,7 +432,7 @@ struct ModelBuilder {
     activations: Bounds,
 }
 
-impl ModelBuilder {
+impl ModelBuilder<'_> {
     /// 블록이 끝날 때 그 폭을 시작 사건 순번에 건다
     fn track_block(&mut self, index: usize, event: &SequenceEvent) {
         match event {
@@ -421,6 +442,7 @@ impl ModelBuilder {
                     from: f64::MAX,
                     to: f64::MIN,
                     width: 0.0,
+                    label_box_width: self.config.label_box_width,
                 });
             }
             SequenceEvent::BlockSection(text) if !text.is_empty() => {
@@ -461,14 +483,15 @@ impl ModelBuilder {
     ) {
         match event {
             SequenceEvent::Note(note) => {
-                let model = note_model(fonts, actors, note);
+                let model = note_model(fonts, self.config, actors, note);
                 for block in &mut self.open_blocks {
                     block.include_note(&model);
                 }
                 self.models.notes.insert(index, model);
             }
             SequenceEvent::Message(message) => {
-                let model = message_model(fonts, actors, &self.activations.activations, message);
+                let activations = &self.activations.activations;
+                let model = message_model(fonts, self.config, actors, activations, message);
                 if model.start_x != 0.0 && model.stop_x != 0.0 {
                     let (from, to) = (&actors[message.from], &actors[message.to]);
                     for block in &mut self.open_blocks {
@@ -494,9 +517,16 @@ fn settle_section_widths(models: &mut EventModels, sections: &[(usize, usize)]) 
 pub(super) fn build_event_models(
     document: &SequenceDocument,
     fonts: &FontBook,
+    config: &SequenceConfig,
     actors: &[ActorBox],
 ) -> EventModels {
-    let mut builder = ModelBuilder::default();
+    let mut builder = ModelBuilder {
+        config,
+        models: EventModels::default(),
+        open_blocks: Vec::new(),
+        titled_sections: Vec::new(),
+        activations: Bounds::new(config),
+    };
     for (index, event) in document.events.iter().enumerate() {
         builder.track_block(index, event);
         builder.track_activation(actors, event);

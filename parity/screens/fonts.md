@@ -54,3 +54,23 @@ font-weight 500·600은 파일이 없어 Chromium이 가까운 굵기(500→Regu
 - fontconfig 2.17에서 `sans-serif` 질의는 `sans`로 정규화되므로 두 이름 모두 별칭을 둔다.
 - 렌더링: antialias 켬, hinting 켬, hintstyle `hintslight`, rgba `none`(그레이스케일), lcdfilter 없음, autohint 끔, embedded bitmap 끔. Chromium에는 `--disable-lcd-text`, `--force-device-scale-factor=1`, `--force-color-profile=srgb`를 함께 준다.
 - 크기: 본문 14px, `text-xs` 12px 등 CSS px 그대로(96dpi, 배율 1).
+
+## 앱 번들 파생본(fonts.json `bundled`와 같다)
+
+`parity/tools/fonts/build_app_fonts.py`를 다시 돌리면 아래 해시가 그대로 나온다. 원본 라이선스 전문은 같은 디렉터리의 `LICENSE-*.txt`이고, Noto 계열은 SIL Open Font License 1.1(예약 글꼴 이름 없음)이라 이름을 바꾼 수정본 배포가 허용된다.
+
+| 번들 파일 | 원본 | family | 스타일 | 크기 | sha256 앞 16자 | 라이선스 |
+|---|---|---|---|---:|---|---|
+| `KanVibeNotoSans-Regular.ttf` | `NotoSans-Regular.ttf` | KanVibe Noto Sans | Regular | 512712 | 9e45a4ce825d0a1b | OFL-1.1 |
+| `KanVibeNotoSans-Bold.ttf` | `NotoSans-Bold.ttf` | KanVibe Noto Sans | Bold | 515792 | 888d2920bb713245 | OFL-1.1 |
+| `KanVibeNotoSans-Italic.ttf` | `NotoSans-Italic.ttf` | KanVibe Noto Sans | Italic | 530160 | 4d258a4bd7f7468e | OFL-1.1 |
+| `KanVibeNotoSans-BoldItalic.ttf` | `NotoSans-BoldItalic.ttf` | KanVibe Noto Sans | Bold Italic | 534220 | 91b45b9d2d3103e7 | OFL-1.1 |
+| `KanVibeNotoSansCJKkr-Regular.otf` | `NotoSansCJK-Regular.ttc` | KanVibe Noto Sans CJK KR | Regular | 16433172 | c563e8a276e85570 | OFL-1.1 |
+| `KanVibeNotoSansCJKkr-SyntheticBold.otf` | `NotoSansCJK-Regular.ttc` | KanVibe Noto Sans CJK KR Synthetic Bold | Bold | 2504820 | 2382675904057397 | OFL-1.1 |
+| `KanVibeNotoSansSymbols-Regular.ttf` | `NotoSansSymbols-Regular.ttf` | KanVibe Noto Sans Symbols | Regular | 258188 | bddfa7f11502511a | OFL-1.1 |
+| `KanVibeNotoSansSymbols2-Regular.ttf` | `NotoSansSymbols2-Regular.ttf` | KanVibe Noto Sans Symbols2 | Regular | 656892 | 6d0b55c8dee48e95 | OFL-1.1 |
+| `KanVibeDejaVuSans.ttf` | `DejaVuSans.ttf` | KanVibe DejaVu Sans | Book | 759804 | 81fece7c2a8c950d | Bitstream-Vera AND LicenseRef-DejaVu-public-domain |
+| `KanVibeDejaVuSansMono.ttf` | `DejaVuSansMono.ttf` | KanVibe DejaVu Sans Mono | Book | 343200 | 69f94a6f7997c73b | Bitstream-Vera AND LicenseRef-DejaVu-public-domain |
+| `KanVibeDejaVuSansMono-Bold.ttf` | `DejaVuSansMono-Bold.ttf` | KanVibe DejaVu Sans Mono | Bold | 334332 | f1061f4badefb617 | Bitstream-Vera AND LicenseRef-DejaVu-public-domain |
+
+**이탤릭.** Mermaid는 class 다이어그램의 추상 멤버·`*기울임*` 라벨, C4 기술 설명 등에 `font-style: italic`을 쓴다. 기준 환경의 Chromium은 이 요청을 fontconfig로 `NotoSans-Italic.ttf`·`NotoSans-BoldItalic.ttf`(위 파일 목록에 있음)에 풀었으므로 두 얼굴을 Regular·Bold와 같은 family `KanVibe Noto Sans`로 번들한다. 그래서 GPUI(`Font { style: FontStyle::Italic }`)와 다이어그램 `FontBook`(`FontWeight::Italic`·`BoldItalic`, family 이름에서 `KanVibe ` 접두어를 떼고 고른다)이 같은 이름으로 같은 얼굴을 고른다. CJK·기호 얼굴에는 이탤릭이 없어 Chromium이 기울임을 합성하는데, 다이어그램 렌더러는 그 합성을 아직 하지 않는다(현재 기준 사례에 이탤릭 한글이 없다).

@@ -1,0 +1,14 @@
+C4Container
+    title Sprites, tags and links
+    Person(dev, "Developer", "Uses the app", $sprite="person2", $link="https://example.com/dev")
+    System_Boundary(sys, "KanVibe", $link="https://example.com/sys", $tags="core") {
+        Container(web, "Desktop", "Rust, GPUI", "Native UI", $sprite="rust", $tags="ui", $link="https://example.com/web")
+        Container(api, "API", $descr="Serves mobile", $link="https://example.com/api")
+        Container(cli, "CLI", $descr="Dropped description")
+    }
+    Boundary(phone, "Phone", "APP", $sprite="phone") {
+        Container(mob, "Mobile", "Flutter", "Chat view")
+    }
+    Rel(dev, web, "Uses", "GUI", $tags="main", $link="https://example.com/rel")
+    Rel(web, api, "Calls", $sprite="http")
+    Rel(mob, api, "Polls", "HTTPS", $link="https://example.com/poll")

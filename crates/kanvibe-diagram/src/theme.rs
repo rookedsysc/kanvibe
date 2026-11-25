@@ -152,3 +152,47 @@ fn dark_pie_palette() -> PiePalette {
         legend_text: light_grey,
     }
 }
+
+/// 기본 테마 `cScale0..11`의 색상(hue). 모두 채도 100%이고, 밝기는 다이어그램이 고른다
+pub const LIGHT_SCALE_HUES: [f64; 12] = [
+    240.0, 60.0, 80.0, 270.0, 300.0, 330.0, 0.0, 30.0, 90.0, 150.0, 180.0, 210.0,
+];
+
+/// dark 테마 `cScale0..11`(theme-dark.js)
+pub const DARK_SCALE: [Color; 12] = [
+    Color::rgb(0x1f, 0x20, 0x20),
+    Color::rgb(0x0b, 0x00, 0x00),
+    Color::rgb(0x4d, 0x10, 0x37),
+    Color::rgb(0x3f, 0x52, 0x58),
+    Color::rgb(0x4f, 0x2f, 0x1b),
+    Color::rgb(0x6e, 0x0a, 0x0a),
+    Color::rgb(0x3b, 0x00, 0x48),
+    Color::rgb(0x99, 0x5a, 0x01),
+    Color::rgb(0x15, 0x47, 0x06),
+    Color::rgb(0x16, 0x17, 0x22),
+    Color::rgb(0x00, 0x29, 0x6f),
+    Color::rgb(0x01, 0x62, 0x9c),
+];
+
+/// khroma `lighten`: HSL 밝기에 `amount`%를 더한다
+pub fn lighten(color: Color, amount: f64) -> Color {
+    let channels = [color.red, color.green, color.blue].map(|value| f64::from(value) / 255.0);
+    let max = channels.iter().copied().fold(0.0, f64::max);
+    let min = channels.iter().copied().fold(1.0, f64::min);
+    let lightness = (max + min) / 2.0;
+    let delta = max - min;
+    let target = (lightness * 100.0 + amount).min(100.0);
+    if delta == 0.0 {
+        return hsl(0.0, 0.0, target);
+    }
+    let saturation = delta / (1.0 - (2.0 * lightness - 1.0).abs());
+    let [red, green, blue] = channels;
+    let sector = if max == red {
+        ((green - blue) / delta).rem_euclid(6.0)
+    } else if max == green {
+        (blue - red) / delta + 2.0
+    } else {
+        (red - green) / delta + 4.0
+    };
+    hsl(sector * 60.0, saturation * 100.0, target)
+}

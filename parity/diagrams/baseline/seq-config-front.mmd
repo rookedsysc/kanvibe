@@ -1,0 +1,17 @@
+---
+config:
+  sequence:
+    wrap: true
+    messageAlign: right
+    noteAlign: left
+    actorFontSize: 18
+    messageFontSize: 14
+    noteFontSize: 12
+    noteMargin: 16
+---
+sequenceDiagram
+    participant A as Alice
+    participant B as Bob
+    A->>B: a message that is long enough to wrap
+    Note over A,B: note text that wraps across the participants
+    B-->>A: ok

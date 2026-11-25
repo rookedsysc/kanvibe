@@ -1,0 +1,15 @@
+---
+config:
+  kanban:
+    ticketBaseUrl: 'https://tracker.example.com/browse/#TICKET#'
+---
+kanban
+  todo[Todo]
+    t1[Write spec]@{ ticket: KV-101, assigned: 'mina', priority: 'High' }
+    t2[Review layout]@{
+      ticket: KV-102
+      assigned: jun
+      priority: 'Very Low'
+    }
+  done[Done]
+    t3[Ship it]@{ ticket: KV-99 }

@@ -99,6 +99,32 @@ Codex에서는 화면에 표시된 스레드 ID로 그 스레드의 기록을 �
 연결에 실패하면 전송을 비활성화한다.
 읽을 수 있는 CLI 화면이 있으면 화면 내용을 대신 표시할 수 있다.
 
+### Codex가 열릴 때 훅으로 세션 ID를 보내면 해결되는가 {#codex-session-start-hook toc="Codex 세션 시작 훅"}
+
+`SessionStart` 훅은 첫 입력에 의존하지 않고 ID를 얻을 후보다.
+Codex는 훅에 `session_id`와 `cwd`를 전달한다.
+현재 KanVibe는 `UserPromptSubmit` 등에서 이미 이 값을 받으며, 시작 훅은 설치하지 않는다.
+기존 수신 코드는 훅의 조상 프로세스를 찾아 실제 Codex 실행의 PID와 시작 시각에 ID를 묶는다. [Codex 훅 필드](https://learn.chatgpt.com/docs/hooks#common-input-fields), [KanVibe 훅 등록](https://github.com/rookedsysc/kanvibe/blob/eba089449e671ffcb68b460d43313748a736a2dc/src/lib/codexHooksSetup.ts#L138-L163), [KanVibe의 ID 수신과 연결](https://github.com/rookedsysc/kanvibe/blob/eba089449e671ffcb68b460d43313748a736a2dc/src/lib/aiSessions/paneChatSessionBindings.ts#L48-L105).
+
+**공유 app-server에서는 ID만 보내도 어느 pane인지 알 수 없다.**
+예를 들어 같은 작업 폴더에서 pane A와 B가 서로 다른 대화를 열 수 있다.
+공유 app-server가 훅을 실행하면 두 훅 모두 같은 서버의 자식이다.
+KanVibe는 공유 app-server를 조상으로 찾으면 그 정보를 pane 연결에 사용하지 않는다.
+"대화 ID 표시"는 해당 pane의 Codex 상태줄에서 ID를 읽는 기존 경로다. [공유 app-server에서 확인한 동작과 대화 ID 표시](https://github.com/rookedsysc/kanvibe/pull/483), [조상 프로세스 판정 코드](https://github.com/rookedsysc/kanvibe/blob/eba089449e671ffcb68b460d43313748a736a2dc/src/lib/aiSessions/paneChatSessionBindings.ts#L48-L68).
+
+KanVibe가 직접 시작하는 pane이라면 `codex --no-daemon`과 `SessionStart`를 함께 검증할 수 있다.
+새 대화와 재개한 대화에서 첫 프롬프트 전에 훅이 도착하는지 확인해야 한다.
+이때 훅의 조상 프로세스가 해당 pane의 Codex와 일치해야 한다.
+새 대화의 JSONL 파일이 아직 없으면, ID를 받아도 현재 훅 조회는 기록을 연결하지 못한다.
+별도의 빈 대화 조회 경로는 이미 있어서, 같은 실행의 대화라고 확인할 수 있을 때 연결에 재사용할 수 있다. [현재 훅의 기록 조회](https://github.com/rookedsysc/kanvibe/blob/eba089449e671ffcb68b460d43313748a736a2dc/src/lib/aiSessions/paneChatSessionBindings.ts#L112-L126), [Codex 빈 대화 조회](https://github.com/rookedsysc/kanvibe/blob/eba089449e671ffcb68b460d43313748a736a2dc/src/desktop/main/services/paneChatService.ts#L345-L378).
+
+현재 호스트의 `codex --version`은 `0.172.0`이다.
+이 작업 브랜치의 "대화 ID 표시" 버전 목록에는 `0.169.0`만 있다.
+문제가 난 pane도 `0.172.0`을 쓰고 동일한 KanVibe 코드가 실행 중이라면, 그 기능으로 대화 ID를 읽는 경로는 열리지 않는다.
+Electron의 자동 전환은 CLI를 찾은 뒤 전송이 가능할 때 진행한다.
+Codex가 대화 ID 표시를 기다리는 상태라면 화면을 먼저 열 수 있다.
+문제가 난 pane의 Codex 버전과 실패 원인은 ==확인 안 됨==. [Codex 상태줄의 버전 목록](https://github.com/rookedsysc/kanvibe/blob/eba089449e671ffcb68b460d43313748a736a2dc/src/lib/aiSessions/paneChatCodexDisplay.ts#L1-L8), [버전을 확인하는 대화 ID 표시](https://github.com/rookedsysc/kanvibe/blob/eba089449e671ffcb68b460d43313748a736a2dc/src/desktop/main/services/paneChatService.ts#L873-L884), [Electron의 자동 전환 조건](https://github.com/rookedsysc/kanvibe/blob/eba089449e671ffcb68b460d43313748a736a2dc/src/desktop/renderer/components/TerminalPaneChatLayer.tsx#L16-L23).
+
 ### KanVibe는 항상 터미널에 타이핑하는가 {#kanvibe-send back="flow"}
 
 KanVibe에는 터미널 입력과 Codex 스레드 API의 두 전송 경로가 있다.

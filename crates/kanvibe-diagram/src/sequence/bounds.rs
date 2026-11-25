@@ -2,8 +2,7 @@
 //!
 //! 무엇을 넣든 열린 블록은 바깥일수록 `boxMargin`을 한 칸씩 더 둘러 넓어지고, 활성화는 위쪽 끝만 당겨진다.
 
-/// conf.boxMargin
-pub(super) const BOX_MARGIN: f64 = 10.0;
+use super::config::SequenceConfig;
 
 fn merge_min(slot: &mut Option<f64>, value: f64) {
     *slot = Some(slot.map_or(value, |current| current.min(value)));
@@ -53,15 +52,29 @@ pub(super) struct ActivationFrame {
     pub slot: usize,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub(super) struct Bounds {
     pub vertical_pos: f64,
     pub extent: Extent,
     pub blocks: Vec<BlockFrame>,
     pub activations: Vec<ActivationFrame>,
+    /// conf.boxMargin·conf.activationWidth
+    box_margin: f64,
+    activation_width: f64,
 }
 
 impl Bounds {
+    pub fn new(config: &SequenceConfig) -> Self {
+        Self {
+            vertical_pos: 0.0,
+            extent: Extent::default(),
+            blocks: Vec::new(),
+            activations: Vec::new(),
+            box_margin: config.box_margin,
+            activation_width: config.activation_width,
+        }
+    }
+
     /// updateBounds: 열린 블록·활성화마다 바깥에서부터 n·boxMargin만큼 둘러 넓힌다
     fn update_open_frames(&mut self, start_x: f64, start_y: f64, stop_x: f64, stop_y: f64) {
         let open_blocks = self.blocks.len() as f64;
@@ -69,7 +82,7 @@ impl Bounds {
         let mut counter = 0.0;
         for block in &mut self.blocks {
             counter += 1.0;
-            let margin = (open_blocks - counter + 1.0) * BOX_MARGIN;
+            let margin = (open_blocks - counter + 1.0) * self.box_margin;
             block.start_y = block.start_y.min(start_y - margin);
             merge_max(&mut block.stop_y, stop_y + margin);
             merge_min(&mut block.start_x, start_x - margin);
@@ -81,7 +94,7 @@ impl Bounds {
         }
         for activation in &mut self.activations {
             counter += 1.0;
-            let margin = (open_blocks - counter + 1.0) * BOX_MARGIN;
+            let margin = (open_blocks - counter + 1.0) * self.box_margin;
             activation.start_y = activation.start_y.min(start_y - margin);
             merge_min(&mut extent.start_x, start_x - margin);
             merge_max(&mut extent.stop_x, stop_x + margin);
@@ -135,10 +148,10 @@ impl Bounds {
     /// 겹친 활성화는 반 폭씩 오른쪽으로 비켜 쌓인다
     pub fn new_activation(&mut self, actor: usize, actor_center: f64, slot: usize) {
         let stacked = self.activation_count(actor) as f64;
-        let start_x = actor_center + (stacked - 1.0) * super::ACTIVATION_WIDTH / 2.0;
+        let start_x = actor_center + (stacked - 1.0) * self.activation_width / 2.0;
         self.activations.push(ActivationFrame {
             start_x,
-            stop_x: start_x + super::ACTIVATION_WIDTH,
+            stop_x: start_x + self.activation_width,
             start_y: self.vertical_pos + 2.0,
             actor,
             slot,
@@ -161,7 +174,7 @@ mod tests {
 
     #[test]
     fn 바깥_블록일수록_여백이_크다() {
-        let mut bounds = Bounds::default();
+        let mut bounds = Bounds::new(&SequenceConfig::default());
         bounds.new_block("outer".to_string(), None);
         bounds.new_block("inner".to_string(), None);
         bounds.insert(100.0, 50.0, 200.0, 60.0);

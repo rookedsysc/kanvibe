@@ -299,9 +299,63 @@ impl GraphLayout {
 
 /// drawText로 만든 브랜치 이름 글자의 getBBox 폭
 pub fn branch_label_width(fonts: &FontBook, name: &str) -> f64 {
-    fonts
-        .measure_svg_runs(&[name], BRANCH_FONT_SIZE, FontWeight::Regular)
-        .width()
+    let (mut left, mut right) = (0.0_f64, 0.0_f64);
+    for row in branch_label_rows(name) {
+        let extent = fonts.measure_svg_runs(&[&row], BRANCH_FONT_SIZE, FontWeight::Regular);
+        left = left.min(extent.left);
+        right = right.max(extent.right);
+    }
+    right - left
+}
+
+/// 이름표 글자 getBBox 높이. 줄마다 `dy="1em"`씩 내려가므로 한 줄 높이에 줄 수 − 1만큼 글자 크기를 더한다
+pub fn branch_label_height(fonts: &FontBook, name: &str) -> f64 {
+    let metrics = fonts.primary_metrics(BRANCH_FONT_SIZE);
+    let extra_rows = branch_label_rows(name).len().saturating_sub(1) as f64;
+    metrics.ascent + metrics.descent + extra_rows * BRANCH_FONT_SIZE
+}
+
+/// drawText: 브랜치 이름을 글자 그대로의 `\n`, 줄바꿈, `<br>`·`<br/>`(대소문자 무시)에서 나눠 앞뒤 공백을 지운 줄들
+pub fn branch_label_rows(name: &str) -> Vec<String> {
+    let mut rows = Vec::new();
+    let mut row_start = 0;
+    let mut index = 0;
+    while index < name.len() {
+        let rest = &name[index..];
+        let separator_length = if rest.starts_with("\\n") {
+            2
+        } else if rest.starts_with('\n') {
+            1
+        } else {
+            line_break_tag_length(rest)
+        };
+        if separator_length == 0 {
+            index += rest.chars().next().map_or(1, char::len_utf8);
+            continue;
+        }
+        rows.push(name[row_start..index].trim().to_string());
+        index += separator_length;
+        row_start = index;
+    }
+    rows.push(name[row_start..].trim().to_string());
+    rows
+}
+
+/// `<br\s*\/?>`(대소문자 무시)가 맨 앞에 있으면 그 길이, 없으면 0
+fn line_break_tag_length(text: &str) -> usize {
+    let is_open = text
+        .get(..3)
+        .is_some_and(|head| head.eq_ignore_ascii_case("<br"));
+    if !is_open {
+        return 0;
+    }
+    let after_name = &text[3..];
+    let after_space = after_name.trim_start();
+    let after_slash = after_space.strip_prefix('/').unwrap_or(after_space);
+    match after_slash.strip_prefix('>') {
+        Some(rest) => text.len() - rest.len(),
+        None => 0,
+    }
 }
 
 #[cfg(test)]
@@ -369,5 +423,27 @@ mod tests {
             .unwrap();
         assert_eq!(arrow.points[1], Point::new(110.0, 88.0));
         assert_eq!(arrow.color_index, 1);
+    }
+
+    #[test]
+    fn 브랜치_이름은_br과_줄바꿈에서_줄을_나눈다() {
+        assert_eq!(branch_label_rows("main"), vec!["main"]);
+        assert_eq!(
+            branch_label_rows("feature<br>login"),
+            vec!["feature", "login"]
+        );
+        assert_eq!(
+            branch_label_rows("a<BR />b\\nc\nd"),
+            vec!["a", "b", "c", "d"]
+        );
+        assert_eq!(branch_label_rows("x <br/ > y"), vec!["x <br/ > y"]);
+    }
+
+    #[test]
+    fn 여러_줄_이름표는_줄마다_글자_크기만큼_높다() {
+        // 기준 SVG gitgraph-multiline-branch: 한 줄 바탕 높이 26, 두 줄 42(글자 높이 + 4)
+        let fonts = bundled_fonts();
+        assert_eq!(branch_label_height(&fonts, "main") + 4.0, 26.0);
+        assert_eq!(branch_label_height(&fonts, "feature<br>login") + 4.0, 42.0);
     }
 }

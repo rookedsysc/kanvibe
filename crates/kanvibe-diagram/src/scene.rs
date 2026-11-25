@@ -172,11 +172,37 @@ pub struct ClipItem {
     pub items: Vec<SceneItem>,
 }
 
+/// 가로 선형 그라디언트로 칠한 굵은 선을 SVG `mix-blend-mode: multiply`처럼 아래 그림과 곱해 섞는다
+/// (sankey 링크). 그라디언트는 `start_x`에서 `end_x`까지 이어지고 그 밖은 끝 색으로 채운다
+#[derive(Clone, Debug, PartialEq)]
+pub struct MultiplyStrokeItem {
+    pub commands: Vec<PathCommand>,
+    pub width: f64,
+    pub start_x: f64,
+    pub end_x: f64,
+    /// 알파에는 `stroke-opacity`가 들어 있다
+    pub start_color: Color,
+    pub end_color: Color,
+}
+
+/// 글자 윤곽선을 따라 긋는 선(SVG `<text>`의 `stroke`). 칠은 같은 자리의 [`TextItem`]이 따로 맡으므로,
+/// `paint-order: stroke`면 이 항목을 칠보다 먼저, 기본 순서면 나중에 넣는다
+#[derive(Clone, Debug, PartialEq)]
+pub struct TextStrokeItem {
+    pub text: TextItem,
+    pub color: Color,
+    pub width: f64,
+    /// `stroke-linejoin: round`이면 참(아니면 miter)
+    pub is_round_join: bool,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum SceneItem {
     Path(PathItem),
     Text(TextItem),
     Clip(ClipItem),
+    MultiplyStroke(MultiplyStrokeItem),
+    TextStroke(TextStrokeItem),
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -220,20 +246,31 @@ fn translate_items(items: &mut [SceneItem], dx: f64, dy: f64) {
                 .commands
                 .iter_mut()
                 .for_each(|command| translate_command(command, dx, dy)),
-            SceneItem::Text(text) => {
-                text.x += dx;
-                text.baseline += dy;
-                if let Some(rotation) = &mut text.rotation {
-                    rotation.center.x += dx;
-                    rotation.center.y += dy;
-                }
-            }
+            SceneItem::Text(text) => translate_text(text, dx, dy),
+            SceneItem::TextStroke(stroke) => translate_text(&mut stroke.text, dx, dy),
             SceneItem::Clip(clip) => {
                 clip.x += dx;
                 clip.y += dy;
                 translate_items(&mut clip.items, dx, dy);
             }
+            SceneItem::MultiplyStroke(stroke) => {
+                stroke
+                    .commands
+                    .iter_mut()
+                    .for_each(|command| translate_command(command, dx, dy));
+                stroke.start_x += dx;
+                stroke.end_x += dx;
+            }
         }
+    }
+}
+
+fn translate_text(text: &mut TextItem, dx: f64, dy: f64) {
+    text.x += dx;
+    text.baseline += dy;
+    if let Some(rotation) = &mut text.rotation {
+        rotation.center.x += dx;
+        rotation.center.y += dy;
     }
 }
 

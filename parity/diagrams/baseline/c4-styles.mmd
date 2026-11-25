@@ -1,0 +1,19 @@
+C4Context
+    title Styled context
+    Person(user, "User", "Writes tasks")
+    System(app, "KanVibe", "Task board")
+    Enterprise_Boundary(corp, "Corp") {
+        System_Ext(git, "GitHub", "Hosts code")
+    }
+    Boundary(home, "Home", "LAN") {
+        System(nas, "NAS", "Backups")
+    }
+    Rel(user, app, "Uses", "HTTPS")
+    Rel(app, git, "Fetches PRs")
+    Rel(app, nas, "Syncs", "rsync")
+    UpdateElementStyle(user, $fontColor="red", $bgColor="grey", $borderColor="red")
+    UpdateElementStyle(corp, $bgColor="#eeeeff", $borderColor="#3355aa", $fontColor="red")
+    UpdateElementStyle(nas, $shape="EightSideShape", $sprite="disk")
+    UpdateRelStyle(user, app, $textColor="blue", $lineColor="blue", $offsetX="5")
+    UpdateRelStyle(app, git, $textColor="red", $offsetY="-20")
+    UpdateLayoutConfig($c4ShapeInRow="2", $c4BoundaryInRow="1")

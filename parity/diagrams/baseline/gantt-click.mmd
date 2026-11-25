@@ -1,0 +1,13 @@
+gantt
+    title Linked tasks
+    dateFormat YYYY-MM-DD
+    todayMarker off
+    section Work
+    Spec review     :s1, 2024-02-01, 5d
+    Prototype       :p1, after s1, 3d
+    Wrap up         :w1, after p1, 1d
+    Final demo      :milestone, m1, 2024-02-12, 0d
+    Untracked       :u1, 2024-02-02, 2d
+    click s1 href "https://example.com/spec"
+    click p1 call openPrototype()
+    click w1,m1 href "https://example.com/wrap"

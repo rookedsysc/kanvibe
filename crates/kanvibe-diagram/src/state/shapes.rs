@@ -2,10 +2,11 @@
 //! rectWithTitle)과 클러스터(clusters.js의 roundedWithTitle·noteGroup·divider), 기준 SVG `<style>`의 색.
 
 use crate::LabelMode;
+use crate::flowchart::effects::{drop_shadow, gradient_stroke};
 use crate::flowchart::geometry::BoundaryBox;
 use crate::flowchart::render::Group;
 use crate::flowchart::shapes::{Intersect, NodeGeometry};
-use crate::flowchart::{FlowNode, FlowRender};
+use crate::flowchart::{ElementStyle, FlowNode, FlowRender};
 use crate::label::LabelBox;
 use crate::scene::{
     Color, PathCommand, PathItem, Point, SceneItem, StrokeStyle, TextItem, ellipse, polygon,
@@ -27,6 +28,35 @@ const END_INNER_RADIUS: f64 = 2.5;
 const CHOICE_SIZE: f64 = 28.0;
 const BAR_LENGTH: f64 = 70.0;
 const BAR_THICKNESS: f64 = 10.0;
+
+/// `look: neo` 테두리와 그림자. 어두운 테마는 테두리가 `url(#gradient)` 가로 그라디언트다
+#[derive(Clone, Copy, Debug)]
+pub struct NeoLook {
+    pub stroke: Color,
+    pub stroke_gradient: Option<(Color, Color)>,
+    pub shadow: Color,
+}
+
+impl NeoLook {
+    pub fn for_theme(theme: Theme) -> Self {
+        let shadow = Color::rgb(185, 185, 185);
+        match theme {
+            Theme::Light => Self {
+                stroke: Color::rgb(0x93, 0x70, 0xDB),
+                stroke_gradient: None,
+                shadow,
+            },
+            Theme::Dark => Self {
+                stroke: Color::rgb(0xCC, 0xCC, 0xCC),
+                stroke_gradient: Some((
+                    Color::rgb(0xCC, 0xCC, 0xCC),
+                    hsl(180.0, 0.0, 18.352_941_176_5),
+                )),
+                shadow,
+            },
+        }
+    }
+}
 
 /// 기준 SVG에서 읽은 stateDiagram 전용 색
 pub struct StateColors {
@@ -126,6 +156,27 @@ pub fn end_inner_circle(color: Color) -> SceneItem {
             dash: Vec::new(),
         }),
     })
+}
+
+/// neo stateEnd 안쪽 원: 채움은 그대로, 테두리는 neo 1px(그라디언트면 띠로 나눠 긋는다)
+pub fn neo_end_inner_circle(fill: Color, neo: &NeoLook) -> Vec<SceneItem> {
+    let commands = ellipse(Point::new(0.0, 0.0), END_INNER_RADIUS, END_INNER_RADIUS);
+    match neo.stroke_gradient {
+        Some(colors) => {
+            let mut items = vec![SceneItem::Path(PathItem {
+                commands: commands.clone(),
+                fill: Some(fill),
+                stroke: None,
+            })];
+            items.extend(gradient_stroke(&commands, 1.0, colors));
+            items
+        }
+        None => vec![SceneItem::Path(PathItem {
+            commands,
+            fill: Some(fill),
+            stroke: Some(solid(neo.stroke, 1.0)),
+        })],
+    }
 }
 
 /// roundedRect(padding 8, 반지름 5)
@@ -245,6 +296,34 @@ fn push_rect(
     }));
 }
 
+/// neo 복합 상태 상자: 그림자(바깥 상자만)와 그라디언트 테두리는 경계에 넣지 않는다
+fn push_neo_rect(
+    group: &mut Group,
+    (frame, radius): ((f64, f64, f64, f64), f64),
+    fill: Color,
+    stroke: StrokeStyle,
+    style: &ElementStyle,
+) {
+    let (x, y, width, height) = frame;
+    let commands = rounded_rect(x, y, width, height, radius);
+    if let Some(shadow) = style.drop_shadow.filter(|_| radius > 0.0) {
+        group.items.extend(drop_shadow(&commands, shadow));
+    }
+    let Some(colors) = style.stroke_gradient else {
+        push_rect(group, frame, fill, stroke, radius);
+        return;
+    };
+    group.bounds.include_path(&commands);
+    group.items.push(SceneItem::Path(PathItem {
+        commands: commands.clone(),
+        fill: Some(fill),
+        stroke: None,
+    }));
+    group
+        .items
+        .extend(gradient_stroke(&commands, stroke.width, colors));
+}
+
 fn push_label(
     render: &FlowRender,
     group: &mut Group,
@@ -294,13 +373,8 @@ fn paint_titled_cluster(
     let y = frame.center.y - frame.height / 2.0;
     let stroke = solid(flow.style.stroke.unwrap_or(palette.node_stroke), 1.0);
     let fill = flow.style.fill.unwrap_or(palette.node_fill);
-    push_rect(
-        group,
-        (x, y, frame.width, frame.height),
-        fill,
-        stroke.clone(),
-        5.0,
-    );
+    let outer = ((x, y, frame.width, frame.height), 5.0);
+    push_neo_rect(group, outer, fill, stroke.clone(), &flow.style);
     let label = &flow.label;
     let inner_y = y + label.height + 2.0;
     let inner_height = frame.height - label.height - 6.0;
@@ -309,13 +383,21 @@ fn paint_titled_cluster(
     } else {
         colors.composite_inner
     };
-    push_rect(
-        group,
-        (x, inner_y, frame.width, inner_height),
-        inner_fill,
-        stroke,
-        0.0,
-    );
+    let inner = ((x, inner_y, frame.width, inner_height), 0.0);
+    push_neo_rect(group, inner, inner_fill, stroke, &flow.style);
+    push_cluster_label(render, group, flow, frame, y);
+}
+
+/// 복합 상태 제목: 바깥 상자 위 끝(SVG 글자는 3px 위) 가운데
+pub fn push_cluster_label(
+    render: &FlowRender,
+    group: &mut Group,
+    flow: &FlowNode,
+    frame: &BoundaryBox,
+    y: f64,
+) {
+    let colors = StateColors::for_theme(render.palette.theme);
+    let label = &flow.label;
     let label_top = match label.mode {
         LabelMode::Html => y + 1.0,
         LabelMode::SvgText => y - 2.0,
@@ -323,7 +405,7 @@ fn paint_titled_cluster(
     let color = flow
         .style
         .text_color
-        .unwrap_or(colors.label(palette, label.mode));
+        .unwrap_or(colors.label(render.palette, label.mode));
     let left = frame.center.x - label.width / 2.0;
     push_label(render, group, label, left, label_top, color);
 }

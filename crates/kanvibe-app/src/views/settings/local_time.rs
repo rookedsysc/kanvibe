@@ -30,38 +30,6 @@ impl LocalDateTime {
             second: number(17..19)?,
         })
     }
-
-    /// `5:07 AM`(en-US `hour: numeric, minute: 2-digit`)
-    pub fn twelve_hour_minute(&self) -> String {
-        format!(
-            "{}:{:02} {}",
-            self.twelve_hour(),
-            self.minute,
-            self.meridiem()
-        )
-    }
-
-    /// `5:07:09 AM`
-    pub fn twelve_hour_second(&self) -> String {
-        format!(
-            "{}:{:02}:{:02} {}",
-            self.twelve_hour(),
-            self.minute,
-            self.second,
-            self.meridiem()
-        )
-    }
-
-    fn twelve_hour(&self) -> u32 {
-        match self.hour % 12 {
-            0 => 12,
-            other => other,
-        }
-    }
-
-    fn meridiem(&self) -> &'static str {
-        if self.hour < 12 { "AM" } else { "PM" }
-    }
 }
 
 /// 그 순간의 현지 시간대 오프셋. UTC 벽시계 값을 현지 시각으로 읽은 순간과의 차이다

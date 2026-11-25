@@ -2,32 +2,25 @@
 //! 워크스페이스(TS `TaskWorkspaceRoute`)를 그린다.
 
 mod actions;
-mod background_sync;
 mod board_model;
 mod column;
-mod command_palette;
 mod context_menu;
 mod create_task;
 mod dialogs;
 mod done_confirm;
-mod event_alert;
 mod folder_search;
 mod header;
 mod header_popovers;
-mod icons;
+pub(crate) mod icons;
 pub mod kanban;
 mod keyboard;
-mod notification_center;
-mod quick_search;
 mod registry;
 mod registry_actions;
-mod release_notes;
-mod release_update;
-mod services;
+pub(crate) mod services;
 mod task_card;
 mod task_filters;
 mod task_kind_session;
-mod text_field;
+pub(crate) mod text_field;
 mod workspace;
 
 use std::cell::RefCell;
@@ -46,13 +39,12 @@ use kanvibe_domain::i18n::{Locale, Translator};
 use kanvibe_domain::notifications::AppNotification;
 use kanvibe_domain::task::{SessionType, TaskStatus};
 use kanvibe_domain::task_diff_stats::TaskDiffStats;
-use kanvibe_services::board_notifier::BoardEvent;
 use kanvibe_services::kanban::TasksByStatus;
 
-use crate::app_events::{
-    AppEvents, BoardEventReceived, NotificationsChanged, RefreshScope, subscribe_to_refresh,
-};
+use crate::app_events::{AppEvents, NotificationsChanged, RefreshScope, subscribe_to_refresh};
 use crate::components::TailwindText;
+use crate::components::notification_center::NotificationCenterButton;
+use crate::components::toast::ToastKind;
 use crate::notifications::NotificationCenter;
 use crate::theme::{ThemeTokens, radius, spacing, text_scale};
 use crate::views::ScreenContext;
@@ -141,18 +133,6 @@ pub(crate) struct OpenContextMenu {
     highlighted_index: usize,
 }
 
-/// 보드 동작 결과 알림(TS `showActionStatus`). 성공은 5초 뒤 사라지고 실패는 닫을 때까지 남는다
-#[derive(Clone)]
-pub(crate) struct BoardToast {
-    id: usize,
-    kind: crate::components::toast::ToastKind,
-    message: String,
-    /// 열기 같은 후속 동작: (글자, 열 작업 ID)
-    open_task_id: Option<String>,
-}
-
-const SUCCESS_TOAST_DURATION: Duration = Duration::from_millis(5_000);
-
 /// 헤더에서 열린 팝오버
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum HeaderPopover {
@@ -191,18 +171,12 @@ pub struct BoardView {
     find_bar: keyboard::FindBarState,
     find_field: Entity<BoardTextField>,
     find_match: Option<keyboard::FindTextMatch>,
-    command_palette: Option<command_palette::CommandPaletteState>,
-    palette_field: Entity<BoardTextField>,
-    quick_search: Option<quick_search::QuickSearchState>,
-    quick_search_field: Entity<BoardTextField>,
-    notification_panel: notification_center::NotificationPanelState,
+    notification_center: Entity<NotificationCenterButton>,
     workspace: workspace::WorkspaceState,
     workspace_search: Entity<BoardTextField>,
     workspace_scroll: ScrollHandle,
     workspace_list_focus: FocusHandle,
     workspace_terminal_focus: FocusHandle,
-    notification_focus: FocusHandle,
-    toasts: Vec<BoardToast>,
     is_registry_open: bool,
     registry_search: Entity<BoardTextField>,
     registry_path: Entity<BoardTextField>,
@@ -211,12 +185,6 @@ pub struct BoardView {
     /// 만드는 중에 닫은 모달. 결과를 받을 때까지 붙잡아 둔다
     background_create_tasks: Vec<Entity<create_task::CreateTaskModal>>,
     create_task_subscriptions: Vec<Subscription>,
-    next_toast_id: usize,
-    event_alert: event_alert::BoardEventAlertState,
-    background_sync: background_sync::BackgroundSyncState,
-    release_dialog: release_update::ReleaseDialogState,
-    release_focus: FocusHandle,
-    _release_check_loop: Task<()>,
     _board_load: Task<()>,
     _load_delay_timer: Task<()>,
     _diff_stats_poll: Task<()>,
@@ -244,8 +212,11 @@ impl BoardView {
             Self::create_text_fields(screen.route.locale, cx);
         let (registry_search, registry_path) =
             Self::create_registry_fields(screen.route.locale, cx);
-        let palette_field = Self::create_palette_field(screen.route.locale, "commandPalette", cx);
-        let quick_search_field = Self::create_palette_field(screen.route.locale, "taskSearch", cx);
+        let notification_center = {
+            let locale = screen.route.locale;
+            let navigator = screen.navigator.clone();
+            cx.new(|cx| NotificationCenterButton::new(locale, navigator, cx))
+        };
         let mut view = Self {
             screen,
             services,
@@ -276,18 +247,12 @@ impl BoardView {
             find_bar: keyboard::FindBarState::default(),
             find_field,
             find_match: None,
-            command_palette: None,
-            palette_field,
-            quick_search: None,
-            quick_search_field,
-            notification_panel: Default::default(),
+            notification_center,
             workspace: Default::default(),
             workspace_search,
             workspace_scroll: ScrollHandle::new(),
             workspace_list_focus: cx.focus_handle(),
             workspace_terminal_focus: cx.focus_handle(),
-            notification_focus: cx.focus_handle(),
-            toasts: Vec::new(),
             is_registry_open: false,
             registry_search,
             registry_path,
@@ -295,12 +260,6 @@ impl BoardView {
             create_task: None,
             background_create_tasks: Vec::new(),
             create_task_subscriptions: Vec::new(),
-            next_toast_id: 0,
-            event_alert: Default::default(),
-            background_sync: Default::default(),
-            release_dialog: Default::default(),
-            release_focus: cx.focus_handle(),
-            _release_check_loop: Task::ready(()),
             _board_load: Task::ready(()),
             _load_delay_timer: Task::ready(()),
             _diff_stats_poll: Task::ready(()),
@@ -313,30 +272,18 @@ impl BoardView {
         view
     }
 
-    /// 새로 고침 신호(TS `useRefreshSignal(["board"])`), 보드 이벤트, 알림 변경을 구독한다
+    /// 새로 고침 신호(TS `useRefreshSignal(["board"])`)와 알림 변경을 구독한다
     fn subscribe_to_app_events(&mut self, cx: &mut Context<Self>) {
         let mut subscriptions: Vec<Subscription> =
             subscribe_to_refresh(&[RefreshScope::Board], cx, |this, cx| this.refresh(cx))
                 .into_iter()
                 .collect();
         if let Some(bus) = cx.try_global::<AppEvents>().map(|events| events.0.clone()) {
-            subscriptions.push(
-                cx.subscribe(&bus, |this, _, event: &BoardEventReceived, cx| {
-                    this.receive_board_event(&event.0, cx)
-                }),
-            );
             subscriptions.push(cx.subscribe(&bus, |this, _, _: &NotificationsChanged, cx| {
                 this.reload_notifications(cx)
             }));
         }
         self._app_event_subscriptions = subscriptions;
-    }
-
-    fn receive_board_event(&mut self, event: &BoardEvent, cx: &mut Context<Self>) {
-        if let BoardEvent::BackgroundSyncStatusChanged(payload) = event {
-            self.receive_background_sync_status(payload.status.clone(), cx);
-        }
-        self.show_board_event_alert(event, cx);
     }
 
     /// 런타임 알림 목록(`NotificationCenter`)을 카드 배지와 알림 센터에 반영한다
@@ -372,31 +319,6 @@ impl BoardView {
             Translator::new(locale, "workspace").translate("searchPlaceholder");
         let workspace_search = cx.new(|cx| BoardTextField::new(workspace_placeholder, colors, cx));
         (project_search, find_field, workspace_search)
-    }
-
-    /// 커맨드 팔레트·빠른 검색 입력칸. 안내 문구는 `namespace.placeholder`다
-    fn create_palette_field(
-        locale: Locale,
-        namespace: &'static str,
-        cx: &mut Context<Self>,
-    ) -> Entity<BoardTextField> {
-        let theme = *cx.global::<ThemeTokens>();
-        let colors = [theme.text.primary, theme.text.muted, theme.text.primary];
-        let placeholder = Translator::new(locale, namespace).translate("placeholder");
-        cx.new(|cx| BoardTextField::new(placeholder, colors, cx))
-    }
-
-    /// 덮개(팔레트·빠른 검색)를 닫은 뒤 열 때 포커스돼 있던 카드로, 없으면 보드로 포커스를 돌려준다
-    pub(super) fn restore_focus_after_overlay(
-        &mut self,
-        task_id: Option<&str>,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        match task_id.and_then(|task_id| self.card_focus.get(task_id).cloned()) {
-            Some(handle) => handle.focus(window, cx),
-            None => self.board_focus.focus(window, cx),
-        }
     }
 
     /// 창 루트가 쥔 포커스를 보드로 가져온다. 그래야 앱 단축키 동작이 보드까지 내려온다.
@@ -445,8 +367,6 @@ impl BoardView {
         }
         let project_search = self.project_search.clone();
         let find_field = self.find_field.clone();
-        let palette_field = self.palette_field.clone();
-        let quick_search_field = self.quick_search_field.clone();
         let registry_path = self.registry_path.clone();
         let registry_search = self.registry_search.clone();
         let workspace_search = self.workspace_search.clone();
@@ -480,13 +400,6 @@ impl BoardView {
                 },
             ),
             cx.subscribe_in(
-                &palette_field,
-                window,
-                |this: &mut Self, _, event: &TextFieldEvent, window, cx| {
-                    this.handle_palette_field_event(event, window, cx)
-                },
-            ),
-            cx.subscribe_in(
                 &registry_path,
                 window,
                 |this: &mut Self, _, event: &TextFieldEvent, window, cx| {
@@ -494,13 +407,6 @@ impl BoardView {
                 },
             ),
             cx.subscribe(&registry_search, |_, _, _: &TextFieldEvent, cx| cx.notify()),
-            cx.subscribe_in(
-                &quick_search_field,
-                window,
-                |this: &mut Self, _, event: &TextFieldEvent, window, cx| {
-                    this.handle_quick_search_field_event(event, window, cx)
-                },
-            ),
             cx.subscribe_in(
                 &find_field,
                 window,
@@ -510,7 +416,6 @@ impl BoardView {
             ),
         ];
         self._subscriptions = subscriptions;
-        self.observe_release_window(window, cx);
     }
 
     pub fn view_mode(&self) -> BoardViewMode {
@@ -556,12 +461,8 @@ impl BoardView {
                 match &mut self.board {
                     Some(board) => board.replace_with(snapshot),
                     None => {
-                        self.notification_panel.is_unread_only =
-                            snapshot.is_notification_unread_only;
                         self.board = Some(KanbanBoard::from_snapshot(snapshot));
                         self.start_diff_stats_poll(cx);
-                        self.load_background_sync_status(cx);
-                        self.start_release_update_checks(cx);
                     }
                 }
             }
@@ -620,7 +521,7 @@ impl BoardView {
 
 impl BoardView {
     /// 화면을 덮는 층의 크기. 칸반은 페이지 스크롤바 홈을 덮지 않는다(Chromium의 `fixed inset-0`이 스크롤바를 빼는 것과 같다)
-    pub(super) fn overlay_viewport(&self, window: &Window) -> gpui_kit::Size<Pixels> {
+    pub(crate) fn overlay_viewport(&self, window: &Window) -> gpui_kit::Size<Pixels> {
         let viewport = window.viewport_size();
         if self.view_mode == BoardViewMode::Workspace || self.board.is_none() {
             return viewport;
@@ -632,93 +533,28 @@ impl BoardView {
     }
 
     pub(super) fn show_failure_toast(&mut self, message: String, cx: &mut Context<Self>) {
-        self.push_toast(
-            crate::components::toast::ToastKind::Failure,
-            message,
-            None,
-            cx,
-        );
+        self.push_toast(ToastKind::Failure, message, None, cx);
     }
 
+    /// 작업 결과 알림은 창의 전역 덮개가 그린다(TS `showActionStatus`)
     pub(super) fn push_toast(
         &mut self,
-        kind: crate::components::toast::ToastKind,
+        kind: ToastKind,
         message: String,
         open_task_id: Option<String>,
         cx: &mut Context<Self>,
     ) {
-        let id = self.next_toast_id;
-        self.next_toast_id += 1;
-        self.toasts.push(BoardToast {
-            id,
-            kind,
-            message,
-            open_task_id,
-        });
-        if kind == crate::components::toast::ToastKind::Success {
-            let timer = cx.background_executor().timer(SUCCESS_TOAST_DURATION);
-            cx.spawn(async move |this, cx| {
-                timer.await;
-                let _ = this.update(cx, |this, cx| this.dismiss_toast(id, cx));
-            })
-            .detach();
+        match self.screen.navigator.locale_shell(cx) {
+            Some(shell) => shell.update(cx, |shell, cx| {
+                shell.show_action_status(kind, message, open_task_id, cx)
+            }),
+            None => eprintln!("[kanvibe] {message}"),
         }
-        cx.notify();
     }
 
-    /// 떠 있는 동작 결과 알림 글자(오래된 것부터)
-    pub fn toast_messages(&self) -> Vec<String> {
-        self.toasts
-            .iter()
-            .map(|toast| toast.message.clone())
-            .collect()
-    }
-
-    fn dismiss_toast(&mut self, id: usize, cx: &mut Context<Self>) {
-        self.toasts.retain(|toast| toast.id != id);
-        cx.notify();
-    }
-
-    fn render_toasts(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
-        if self.toasts.is_empty() {
-            return None;
-        }
-        let labels = Translator::new(self.locale(), "common");
-        let close_label = labels.translate("close");
-        let open_label = labels.translate("open");
-        let locale = self.locale();
-        let toasts: Vec<crate::components::toast::Toast> = self
-            .toasts
-            .clone()
-            .into_iter()
-            .map(|toast| {
-                let id = toast.id;
-                let view = cx.entity().downgrade();
-                let mut element = crate::components::toast::Toast::new(
-                    gpui_kit::SharedString::from(format!("board-toast-{id}")),
-                    toast.kind,
-                    toast.message.clone(),
-                    close_label.clone(),
-                )
-                .on_dismiss(move |_, _, cx| {
-                    let _ = view.update(cx, |this, cx| this.dismiss_toast(id, cx));
-                });
-                if let Some(task_id) = toast.open_task_id.clone() {
-                    element = element.action(open_label.clone(), move |_, window, cx| {
-                        let request = crate::windows::TaskNavigationRequest {
-                            origin_window: Some(window.window_handle().window_id()),
-                            should_open_new_window: false,
-                        };
-                        crate::windows::navigate_to_task_detail(&task_id, locale, request, cx);
-                    });
-                }
-                element
-            })
-            .collect();
-        Some(
-            crate::components::toast::toast_stack(self.overlay_viewport(window), toasts)
-                .into_any_element(),
-        )
+    /// 알림 센터(시험이 패널 상태를 읽는다)
+    pub fn notification_center(&self) -> &Entity<NotificationCenterButton> {
+        &self.notification_center
     }
 }
 
@@ -812,22 +648,12 @@ impl Render for BoardView {
             )
             .into_any_element()
         };
-        let toasts = self.render_toasts(window, cx);
-        let event_alert = self.render_board_event_alert(&theme, window, cx);
-        let command_palette = self.render_command_palette(&theme, window, cx);
-        let quick_search = self.render_quick_search(&theme, window, cx);
-        let release_dialog = self.render_release_dialog(&theme, window, cx);
         let root = div()
             .id("board-route")
             .key_context(keyboard::BOARD_KEY_CONTEXT)
             .track_focus(&self.board_focus)
             .size_full()
-            .child(content)
-            .children(toasts)
-            .children(command_palette)
-            .children(quick_search)
-            .children(release_dialog)
-            .children(event_alert);
+            .child(content);
         self.register_board_actions(root, cx)
     }
 }

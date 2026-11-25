@@ -9,6 +9,8 @@ use gpui_kit::{
     SharedString, Styled, UTF16Selection, Window, canvas, div, px,
 };
 
+use crate::qa::targets::qa_text_input_layer;
+
 /// 입력이 바뀌었거나 Enter·Esc를 눌렀을 때 부모에게 알린다
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TextFieldEvent {
@@ -79,6 +81,12 @@ impl BoardTextField {
         self.text = text.into();
         self.marked_range = None;
         cx.notify();
+    }
+
+    /// 값을 통째로 바꾸고 입력이 바뀌었다고 알린다(Playwright `fill`)
+    pub fn fill(&mut self, text: &str, cx: &mut Context<Self>) {
+        self.set_text(text, cx);
+        cx.emit(TextFieldEvent::Changed(self.text.clone()));
     }
 
     fn utf16_range_to_bytes(&self, range: &Range<usize>) -> Range<usize> {
@@ -225,6 +233,16 @@ impl Render for BoardTextField {
         let caret =
             move || is_focused.then(|| div().w(px(1.0)).h(px(16.0)).flex_none().bg(caret_color));
         let caret_first = self.text.is_empty();
+        let fill_target = cx.entity().downgrade();
+        let qa_target = (!self.placeholder.is_empty()).then(|| {
+            qa_text_input_layer(
+                self.placeholder.clone(),
+                self.focus_handle.clone(),
+                move |value, _, cx| {
+                    let _ = fill_target.update(cx, |field, cx| field.fill(value, cx));
+                },
+            )
+        });
         div()
             .id("board-text-field")
             .track_focus(&self.focus_handle)
@@ -238,6 +256,7 @@ impl Render for BoardTextField {
             .children(caret().filter(|_| caret_first))
             .child(div().flex_none().whitespace_nowrap().child(content))
             .children(caret().filter(|_| !caret_first))
+            .children(qa_target)
             .child(
                 canvas(
                     |_, _, _| {},

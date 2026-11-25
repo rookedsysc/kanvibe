@@ -22,7 +22,8 @@ pub struct ScheduledTask {
     /// 제외한 날 때문에 끝이 늦춰졌을 때 막대를 그릴 끝
     pub render_end: Option<i64>,
     pub tags: TaskTags,
-    /// 정의에 나온 순서(막대가 놓이는 줄)
+    pub is_clickable: bool,
+    /// 막대가 놓이는 줄. 정의에 나온 순서이고, `compact`면 겹치지 않는 작업끼리 같은 줄을 쓴다
     pub order: usize,
 }
 
@@ -73,6 +74,7 @@ fn scheduled_task(
         end,
         render_end: times.render_end,
         tags: task.tags,
+        is_clickable: task.is_clickable,
         order,
     })
 }

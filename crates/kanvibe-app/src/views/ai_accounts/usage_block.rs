@@ -10,6 +10,7 @@ use kanvibe_domain::i18n::Translator;
 
 use crate::assets::provider_icon_paths;
 use crate::components::TailwindText;
+use crate::locale_format::{format_month_day_time_hm, format_time_hm};
 use crate::theme::{ThemeTokens, radius, spacing, text_scale};
 use crate::views::ai_accounts::model::UsageState;
 use crate::views::settings::local_time::LocalDateTime;
@@ -18,21 +19,16 @@ use crate::views::settings::local_time::LocalDateTime;
 const HIGH_USAGE_PERCENT: f64 = 90.0;
 const ELEVATED_USAGE_PERCENT: f64 = 75.0;
 
-/// 오늘이면 `5:00 AM`, 아니면 `1/20, 12:00 AM`(TS `formatResetTime`). 날짜와 시각은 현지 시간대로 읽는다
+/// 오늘이면 `5:00 AM`, 아니면 `1/20, 12:00 AM`(TS `formatResetTime`, en-US). 시스템 locale·현지 시간대로 적는다
 pub fn format_reset_time(resets_at: &str, now_ms: i64) -> Option<String> {
     let target = LocalDateTime::from_epoch_ms(parse_date_ms(resets_at)?)?;
     let today = LocalDateTime::from_epoch_ms(now_ms as f64)?;
     let is_today = (target.year, target.month, target.day) == (today.year, today.month, today.day);
-    Some(if is_today {
-        target.twelve_hour_minute()
+    if is_today {
+        format_time_hm(target)
     } else {
-        format!(
-            "{}/{}, {}",
-            target.month,
-            target.day,
-            target.twelve_hour_minute()
-        )
-    })
+        format_month_day_time_hm(target)
+    }
 }
 
 fn usage_bar_color(theme: &ThemeTokens, used_percent: f64) -> Rgba {

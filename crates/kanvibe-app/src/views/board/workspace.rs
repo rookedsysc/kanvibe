@@ -192,7 +192,7 @@ impl BoardView {
     }
 
     /// 작업을 고른다. 세션이 없으면 기본 세션 타입으로 연결을 시작한다
-    pub(super) fn select_workspace_task(&mut self, task_id: &str, cx: &mut Context<Self>) {
+    pub(crate) fn select_workspace_task(&mut self, task_id: &str, cx: &mut Context<Self>) {
         self.workspace.selected_task_id = Some(task_id.to_string());
         self.workspace.connect_failure = None;
         let Some(board) = &self.board else {
@@ -265,7 +265,7 @@ impl BoardView {
             || modifiers.alt
             || modifiers.platform
             || modifiers.shift
-            || self.has_shortcut_blocker()
+            || self.has_shortcut_blocker(cx)
         {
             return;
         }

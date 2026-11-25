@@ -77,3 +77,31 @@ pub fn focus_ring(theme: &ThemeTokens) -> Vec<BoxShadow> {
 
 /// `disabled:opacity-50`
 pub const DISABLED_OPACITY: f32 = 0.5;
+
+/// Chromium 기본 포커스 링(`:focus-visible`): 2px 링과 바깥 1px 테두리. 다크 화면은 흰 링, 라이트 화면은 주황 링이다.
+/// 링이 없을 때는 패널 기본 테두리(`border border-border-default shadow-lg`)를 그린다
+pub trait FocusRing: Styled + Sized {
+    fn when_focus_ring(self, is_visible: bool, theme: &ThemeTokens) -> Self {
+        if !is_visible {
+            return self
+                .border_1()
+                .border_color(theme.border.default)
+                .shadow(box_shadows(&theme.shadow.lg));
+        }
+        let (ring, halo) = match theme.mode {
+            crate::theme::ThemeMode::Dark => (gpui_kit::rgb(0xffffff), gpui_kit::rgb(0x101010)),
+            crate::theme::ThemeMode::Light => (gpui_kit::rgb(0xe59700), gpui_kit::rgb(0xffffff)),
+        };
+        let mut shadows = vec![BoxShadow {
+            color: halo.into(),
+            offset: point(px(0.0), px(0.0)),
+            blur_radius: px(0.0),
+            spread_radius: px(1.0),
+            inset: false,
+        }];
+        shadows.extend(box_shadows(&theme.shadow.lg));
+        self.border_2().border_color(ring).shadow(shadows)
+    }
+}
+
+impl<E: Styled> FocusRing for E {}

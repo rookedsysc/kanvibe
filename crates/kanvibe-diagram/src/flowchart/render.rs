@@ -1,6 +1,7 @@
 //! flowchart 요소를 장면으로 그린다: 노드 모양과 라벨, 클러스터 상자, 간선과 화살표, 간선 라벨.
 
 use super::SVG_EDGE_LABEL_PADDING;
+use super::effects::{drop_shadow, gradient_stroke};
 use super::geometry::{BoundaryBox, end_tangent};
 use super::layout::{EdgeRoute, LevelNode, LevelPainter, edge_path};
 use super::parser::{ArrowType, Stroke};
@@ -174,11 +175,18 @@ pub fn draw_node(render: &FlowRender, group: &mut Group, flow: &FlowNode, center
         dash: flow.style.dash.clone(),
     };
     for outline in &geometry.outlines {
-        group.push_path(
-            translate_commands(outline, center.x, center.y),
-            Some(fill),
-            Some(stroke.clone()),
-        );
+        let commands = translate_commands(outline, center.x, center.y);
+        if let Some(shadow) = flow.style.drop_shadow {
+            group.items.extend(drop_shadow(&commands, shadow));
+        }
+        match flow.style.stroke_gradient {
+            Some(colors) => {
+                group.push_path(commands.clone(), Some(fill), None);
+                let strips = gradient_stroke(&commands, stroke.width, colors);
+                group.items.extend(strips);
+            }
+            None => group.push_path(commands, Some(fill), Some(stroke.clone())),
+        }
     }
     let left = center.x - flow.label.width / 2.0;
     let top = center.y - flow.label.height / 2.0 + geometry.label_offset_y;
@@ -289,14 +297,31 @@ pub fn draw_edge(
         return commands;
     };
     let color = stroke.color;
-    group.push_path(commands.clone(), None, Some(stroke));
-    if let Some((anchor, angle)) = end_tangent(&commands, true) {
+    let drawn = match edge.style.sketch_seed {
+        Some(seed) => sketched_edge(&commands, seed),
+        None => commands.clone(),
+    };
+    group.push_path(drawn.clone(), None, Some(stroke));
+    if let Some((anchor, angle)) = end_tangent(&drawn, true) {
         draw_marker(group, edge.arrow_end, true, anchor, angle, color);
     }
-    if let Some((anchor, angle)) = end_tangent(&commands, false) {
+    if let Some((anchor, angle)) = end_tangent(&drawn, false) {
         draw_marker(group, edge.arrow_start, false, anchor, angle, color);
     }
     commands
+}
+
+/// handDrawn 간선: roughjs `path(d, { roughness: 0.3, seed })`의 테두리 경로(라벨 자리는 원래 경로를 쓴다)
+fn sketched_edge(commands: &[PathCommand], seed: i32) -> Vec<PathCommand> {
+    let options = crate::rough::RoughOptions {
+        roughness: 0.3,
+        ..crate::rough::RoughOptions::new(seed)
+    };
+    let segments = crate::rough::segments_from_commands(commands);
+    crate::rough::path(&segments, &options)
+        .pop()
+        .map(|set| set.commands)
+        .unwrap_or_default()
 }
 
 impl LevelPainter for FlowRender<'_> {
@@ -368,6 +393,7 @@ fn draw_marker(
         ArrowType::Circle => circle_marker(is_end, anchor, angle, color),
         ArrowType::Cross => cross_marker(is_end, anchor, angle, color),
         ArrowType::Barb => barb_marker(anchor, angle, color),
+        ArrowType::BarbNeo => barb_neo_marker(anchor, angle, color),
         ArrowType::Custom(marker) => {
             draw_custom_marker(group, marker, anchor, angle, color);
             return;
@@ -497,6 +523,31 @@ fn barb_marker(anchor: Point, angle: f64, color: Color) -> MarkerShape {
     ];
     let points: Vec<Point> = shape.iter().map(|point| placement.place(*point)).collect();
     (polygon(&points), Some(color), solid_stroke(color, 1.0))
+}
+
+/// barbEnd-margin: userSpaceOnUse, refX 17, 테두리 없이 선 색으로 채운 화살촉
+fn barb_neo_marker(anchor: Point, angle: f64, color: Color) -> MarkerShape {
+    let placement = MarkerPlacement {
+        anchor,
+        angle,
+        reference: Point::new(17.0, 7.0),
+        scale: 1.0,
+    };
+    let shape = [
+        Point::new(19.0, 7.0),
+        Point::new(11.0, 14.0),
+        Point::new(13.0, 7.0),
+        Point::new(11.0, 0.0),
+    ];
+    let points: Vec<Point> = shape.iter().map(|point| placement.place(*point)).collect();
+    let no_stroke = solid_stroke(
+        Color {
+            alpha: 0.0,
+            ..color
+        },
+        0.0,
+    );
+    (polygon(&points), Some(color), no_stroke)
 }
 
 /// viewBox 0 0 10 10, 표식 크기 11(배율 1.1), 끝은 refX 11·시작은 refX -1

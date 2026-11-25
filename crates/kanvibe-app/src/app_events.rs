@@ -7,7 +7,9 @@ use std::time::Duration;
 
 use futures::StreamExt as _;
 use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender, unbounded};
-use gpui_kit::{App, AppContext, AsyncApp, Context, Entity, EventEmitter, Global, Subscription};
+use gpui_kit::{
+    App, AppContext, AsyncApp, Context, Entity, EventEmitter, Global, Subscription, WindowId,
+};
 use kanvibe_domain::notifications::AppNotification;
 use kanvibe_services::board_notifier::{BoardEvent, BoardEventSubscription};
 use kanvibe_services::desktop_notification::NotificationClick;
@@ -66,6 +68,13 @@ pub struct BoardEventReceived(pub BoardEvent);
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct NotificationsChanged;
 
+/// main이 창에 알린 알림 열기(TS `kanvibe:notification-activated`). `window_id`가 없으면 모든 창에 보낸 것이다
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NotificationActivated {
+    pub notification: AppNotification,
+    pub window_id: Option<WindowId>,
+}
+
 /// 앱 전역 이벤트를 내는 엔티티
 #[derive(Default)]
 pub struct AppEventBus {
@@ -75,6 +84,7 @@ pub struct AppEventBus {
 impl EventEmitter<RefreshRequested> for AppEventBus {}
 impl EventEmitter<BoardEventReceived> for AppEventBus {}
 impl EventEmitter<NotificationsChanged> for AppEventBus {}
+impl EventEmitter<NotificationActivated> for AppEventBus {}
 
 #[derive(Clone)]
 pub struct AppEvents(pub Entity<AppEventBus>);
@@ -173,6 +183,26 @@ where
     if let Some(bus) = cx.try_global::<AppEvents>().map(|events| events.0.clone()) {
         bus.update(cx, |_, cx| cx.emit(event));
     }
+}
+
+/// 화면이 알림 저장소를 바꾼 뒤 다른 화면(카드 배지·알림 센터)에 알린다
+pub fn notify_notifications_changed(cx: &mut App) {
+    emit(NotificationsChanged, cx);
+}
+
+/// TS main `sendNotificationActivated`·`broadcastNotificationActivated`
+pub fn activate_notification(
+    notification: AppNotification,
+    window_id: Option<WindowId>,
+    cx: &mut App,
+) {
+    emit(
+        NotificationActivated {
+            notification,
+            window_id,
+        },
+        cx,
+    );
 }
 
 /// TS `triggerDesktopRefresh(scope)`

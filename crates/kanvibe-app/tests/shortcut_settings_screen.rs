@@ -34,6 +34,7 @@ fn init_app_with_database(cx: &mut TestAppContext) -> tempfile::TempDir {
             faults_path: None,
             control_socket_path: None,
             platform_override: None,
+            loading_holds: Default::default(),
         }),
     };
     cx.update(|cx| kanvibe_app::init_app(&launch, cx).expect("app init"));

@@ -1,5 +1,5 @@
 //! timeline.jison 문법: `title`, `section`, `기간 : 사건 : 사건`, `: 사건`(앞 기간에 이어 붙임).
-//! 사건 구분자는 뒤에 공백이 오는 `:`이다. 세로 방향(`timeline TD`)은 아직 그리지 못한다.
+//! 사건 구분자는 뒤에 공백이 오는 `:`이다. 머리줄 `timeline TD`는 세로 방향이다.
 
 use crate::DiagramError;
 
@@ -13,6 +13,8 @@ pub struct Period {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Timeline {
     pub title: String,
+    /// `timeline TD`(세로 렌더러)
+    pub is_vertical: bool,
     /// 나온 순서의 구역 이름
     pub sections: Vec<String>,
     pub periods: Vec<Period>,
@@ -25,12 +27,15 @@ pub fn parse(definition: &str) -> Result<Timeline, DiagramError> {
         .filter(|line| !line.is_empty() && !line.starts_with('%') && !line.starts_with('#'));
     let header = lines.next().unwrap_or("");
     let direction = header.strip_prefix("timeline").map(str::trim);
-    match direction {
-        Some("") | Some("LR") => {}
-        Some("TD") => return Err(DiagramError::Unsupported("timeline TD".to_string())),
+    let is_vertical = match direction {
+        Some("") | Some("LR") => false,
+        Some("TD") => true,
         _ => return Err(DiagramError::Syntax("timeline 머리줄".to_string())),
-    }
-    let mut timeline = Timeline::default();
+    };
+    let mut timeline = Timeline {
+        is_vertical,
+        ..Timeline::default()
+    };
     let mut section = String::new();
     let mut is_in_description_block = false;
     for line in lines {
@@ -114,5 +119,12 @@ mod tests {
             timeline.periods[0].events,
             vec!["Facebook ", "Google", "Orkut"]
         );
+    }
+
+    #[test]
+    fn td_머리줄은_세로_방향이다() {
+        assert!(parse("timeline TD\n2002 : A\n").unwrap().is_vertical);
+        assert!(!parse("timeline LR\n2002 : A\n").unwrap().is_vertical);
+        assert!(!parse("timeline\n2002 : A\n").unwrap().is_vertical);
     }
 }

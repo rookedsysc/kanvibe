@@ -2,6 +2,7 @@
 //! 규칙으로 그린다. 라벨은 늘 SVG 글자라 모바일·데스크톱 결과가 같다.
 
 mod draw;
+mod fields;
 mod layout;
 mod parser;
 
@@ -9,7 +10,7 @@ use crate::scene::{PathCommand, Point, Scene, StrokeStyle, TextItem};
 use crate::text::FontWeight;
 use crate::{DiagramError, RenderContext};
 
-use draw::{RELATION_COLOR, draw_boundary, draw_shape, middle_text, push_marker};
+use draw::{RELATION_COLOR, draw_boundary, draw_shape, middle_text, push_marker, style_color};
 use layout::{
     C4Layout, DIAGRAM_MARGIN_X, DIAGRAM_MARGIN_Y, Drawable, SMALL_FONT_SIZE, ShapeBox,
     measure_block,
@@ -71,7 +72,8 @@ fn fit_viewport(
     );
 }
 
-/// drawRels: 첫 관계는 곧은 선, 나머지는 2차 곡선이다. 글자는 두 끝점 가운데에서 라벨 폭 절반만큼 오른쪽에 둔다
+/// drawRels: 첫 관계는 곧은 선, 나머지는 2차 곡선이다. 글자는 두 끝점 가운데에서 라벨 폭 절반만큼 오른쪽에 두고
+/// `UpdateRelStyle`의 `offsetX`·`offsetY`만큼 옮긴다. 선 색을 바꿔도 화살촉 표식 색은 그대로다
 fn draw_relations(
     scene: &mut Scene,
     diagram: &C4Diagram,
@@ -122,7 +124,7 @@ fn draw_relation_line(
         (curve, (control, end), (start, control))
     };
     let stroke = StrokeStyle {
-        color: RELATION_COLOR,
+        color: style_color(relation.line_color.as_deref(), RELATION_COLOR),
         width: 1.0,
         dash: Vec::new(),
     };
@@ -150,8 +152,9 @@ fn draw_relation_text(
     context: &RenderContext,
 ) {
     let fonts = context.fonts;
-    let middle_x = start.x.min(end.x) + (end.x - start.x).abs() / 2.0;
-    let middle_y = start.y.min(end.y) + (end.y - start.y).abs() / 2.0;
+    let color = style_color(relation.text_color.as_deref(), RELATION_COLOR);
+    let middle_x = start.x.min(end.x) + (end.x - start.x).abs() / 2.0 + relation.offset_x;
+    let middle_y = start.y.min(end.y) + (end.y - start.y).abs() / 2.0 + relation.offset_y;
     let label_block = measure_block(fonts, label, SMALL_FONT_SIZE, FontWeight::Regular);
     let mut texts = middle_text(
         fonts,
@@ -160,7 +163,7 @@ fn draw_relation_text(
         middle_y,
         SMALL_FONT_SIZE,
         FontWeight::Regular,
-        RELATION_COLOR,
+        color,
     );
     if !relation.techn.is_empty() {
         let techn_block =
@@ -172,8 +175,8 @@ fn draw_relation_text(
             middle_x + width / 2.0,
             middle_y + SMALL_FONT_SIZE + 5.0,
             SMALL_FONT_SIZE,
-            FontWeight::Regular,
-            RELATION_COLOR,
+            FontWeight::Italic,
+            color,
         ));
     }
     texts.into_iter().for_each(|text| scene.push_text(text));
