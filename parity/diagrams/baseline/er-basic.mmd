@@ -1,0 +1,12 @@
+erDiagram
+    PROJECT ||--o{ TASK : contains
+    TASK ||--o{ NOTIFICATION : emits
+    PROJECT {
+        string id PK
+        string name
+    }
+    TASK {
+        string id PK
+        string project_id FK
+        string status
+    }

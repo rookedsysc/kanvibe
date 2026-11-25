@@ -15,6 +15,8 @@ kanvibe-process = { path = "crates/kanvibe-process" }
 kanvibe-ai = { path = "crates/kanvibe-ai" }
 kanvibe-services = { path = "crates/kanvibe-services" }
 kanvibe-terminal = { path = "crates/kanvibe-terminal" }
+kanvibe-markdown = { path = "crates/kanvibe-markdown" }
+kanvibe-diagram = { path = "crates/kanvibe-diagram" }
 rusqlite = { version = "0.43", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

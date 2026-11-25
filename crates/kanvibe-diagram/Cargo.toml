@@ -1,0 +1,18 @@
+[package]
+name = "kanvibe-diagram"
+description = "네이티브 Mermaid 렌더러: 파서·dagre 레이아웃·벡터 장면, tiny-skia PNG/JPEG 출력과 모바일 다이어그램 계약"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+base64 = "0.22"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
+indexmap = "2"
+rustybuzz = "0.20"
+serde_json.workspace = true
+sha2 = "0.10"
+thiserror.workspace = true
+tiny-skia = "0.11"
+ttf-parser = "0.25"

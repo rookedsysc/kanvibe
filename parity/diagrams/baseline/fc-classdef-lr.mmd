@@ -1,0 +1,7 @@
+flowchart LR
+  classDef warn fill:#fde68a,stroke:#b45309,color:#78350f
+  classDef ok fill:#bbf7d0,stroke:#15803d
+  A[Queued]:::warn --> B[Running]
+  B --> C[Finished]
+  class C ok
+  style B fill:#bfdbfe,stroke:#1d4ed8,stroke-width:2px

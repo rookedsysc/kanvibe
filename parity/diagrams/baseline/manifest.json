@@ -1,0 +1,226 @@
+{
+  "class-basic--dark": {
+    "id": "class-basic",
+    "theme": "dark",
+    "width": 800,
+    "naturalWidth": 366,
+    "success": true,
+    "height": 1306
+  },
+  "class-basic--light": {
+    "id": "class-basic",
+    "theme": "light",
+    "width": 800,
+    "naturalWidth": 366,
+    "success": true,
+    "height": 1306
+  },
+  "er-basic--dark": {
+    "id": "er-basic",
+    "theme": "dark",
+    "width": 800,
+    "naturalWidth": 228,
+    "success": true,
+    "height": 2083
+  },
+  "er-basic--light": {
+    "id": "er-basic",
+    "theme": "light",
+    "width": 800,
+    "naturalWidth": 228,
+    "success": true,
+    "height": 2083
+  },
+  "fc-chain-lr--dark": {
+    "id": "fc-chain-lr",
+    "theme": "dark",
+    "width": 800,
+    "naturalWidth": 1053,
+    "success": true,
+    "height": 68
+  },
+  "fc-chain-lr--light": {
+    "id": "fc-chain-lr",
+    "theme": "light",
+    "width": 800,
+    "naturalWidth": 1053,
+    "success": true,
+    "height": 68
+  },
+  "fc-classdef-lr--dark": {
+    "id": "fc-classdef-lr",
+    "theme": "dark",
+    "width": 800,
+    "naturalWidth": 483,
+    "success": true,
+    "height": 129
+  },
+  "fc-classdef-lr--light": {
+    "id": "fc-classdef-lr",
+    "theme": "light",
+    "width": 800,
+    "naturalWidth": 483,
+    "success": true,
+    "height": 129
+  },
+  "fc-contract-td--dark": {
+    "id": "fc-contract-td",
+    "theme": "dark",
+    "width": 800,
+    "naturalWidth": 87,
+    "success": true,
+    "height": 1594
+  },
+  "fc-contract-td--light": {
+    "id": "fc-contract-td",
+    "theme": "light",
+    "width": 800,
+    "naturalWidth": 87,
+    "success": true,
+    "height": 1594
+  },
+  "fc-edges-td--dark": {
+    "id": "fc-edges-td",
+    "theme": "dark",
+    "width": 800,
+    "naturalWidth": 357,
+    "success": true,
+    "height": 1005
+  },
+  "fc-edges-td--light": {
+    "id": "fc-edges-td",
+    "theme": "light",
+    "width": 800,
+    "naturalWidth": 357,
+    "success": true,
+    "height": 1005
+  },
+  "fc-fixture-td--dark": {
+    "id": "fc-fixture-td",
+    "theme": "dark",
+    "width": 800,
+    "naturalWidth": 179,
+    "success": true,
+    "height": 1235
+  },
+  "fc-fixture-td--light": {
+    "id": "fc-fixture-td",
+    "theme": "light",
+    "width": 800,
+    "naturalWidth": 179,
+    "success": true,
+    "height": 1235
+  },
+  "fc-korean-lr--dark": {
+    "id": "fc-korean-lr",
+    "theme": "dark",
+    "width": 800,
+    "naturalWidth": 1161,
+    "success": true,
+    "height": 79
+  },
+  "fc-korean-lr--light": {
+    "id": "fc-korean-lr",
+    "theme": "light",
+    "width": 800,
+    "naturalWidth": 1161,
+    "success": true,
+    "height": 79
+  },
+  "fc-shapes-lr--dark": {
+    "id": "fc-shapes-lr",
+    "theme": "dark",
+    "width": 800,
+    "naturalWidth": 918,
+    "success": true,
+    "height": 225
+  },
+  "fc-shapes-lr--light": {
+    "id": "fc-shapes-lr",
+    "theme": "light",
+    "width": 800,
+    "naturalWidth": 918,
+    "success": true,
+    "height": 225
+  },
+  "fc-subgraph-td--dark": {
+    "id": "fc-subgraph-td",
+    "theme": "dark",
+    "width": 800,
+    "naturalWidth": 336,
+    "success": true,
+    "height": 1143
+  },
+  "fc-subgraph-td--light": {
+    "id": "fc-subgraph-td",
+    "theme": "light",
+    "width": 800,
+    "naturalWidth": 336,
+    "success": true,
+    "height": 1143
+  },
+  "gantt-basic--dark": {
+    "id": "gantt-basic",
+    "theme": "dark",
+    "width": 800,
+    "naturalWidth": 784,
+    "success": true,
+    "height": 188
+  },
+  "gantt-basic--light": {
+    "id": "gantt-basic",
+    "theme": "light",
+    "width": 800,
+    "naturalWidth": 784,
+    "success": true,
+    "height": 188
+  },
+  "pie-basic--dark": {
+    "id": "pie-basic",
+    "theme": "dark",
+    "width": 800,
+    "naturalWidth": 589,
+    "success": true,
+    "height": 615
+  },
+  "pie-basic--light": {
+    "id": "pie-basic",
+    "theme": "light",
+    "width": 800,
+    "naturalWidth": 589,
+    "success": true,
+    "height": 615
+  },
+  "seq-basic--dark": {
+    "id": "seq-basic",
+    "theme": "dark",
+    "width": 800,
+    "naturalWidth": 797,
+    "success": true,
+    "height": 793
+  },
+  "seq-basic--light": {
+    "id": "seq-basic",
+    "theme": "light",
+    "width": 800,
+    "naturalWidth": 797,
+    "success": true,
+    "height": 793
+  },
+  "state-basic--dark": {
+    "id": "state-basic",
+    "theme": "dark",
+    "width": 800,
+    "naturalWidth": 242,
+    "success": true,
+    "height": 1721
+  },
+  "state-basic--light": {
+    "id": "state-basic",
+    "theme": "light",
+    "width": 800,
+    "naturalWidth": 242,
+    "success": true,
+    "height": 1721
+  }
+}

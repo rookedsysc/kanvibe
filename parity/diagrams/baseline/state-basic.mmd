@@ -1,0 +1,7 @@
+stateDiagram-v2
+    [*] --> Todo
+    Todo --> Progress : start
+    Progress --> Review : open PR
+    Review --> Progress : changes requested
+    Review --> Done : merge
+    Done --> [*]

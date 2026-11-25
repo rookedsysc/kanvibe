@@ -1,0 +1,11 @@
+[package]
+name = "kanvibe-markdown"
+description = "AI 대화 본문 Markdown을 렌더러와 무관한 블록·인라인 모델로 바꾼다(marked·DOMPurify·highlight.js·KaTeX 부분집합, Mermaid는 kanvibe-diagram)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+kanvibe-diagram.workspace = true
+pulldown-cmark = { version = "0.13", default-features = false }

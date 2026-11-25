@@ -1,0 +1,5 @@
+flowchart LR
+    A["local·CI<br/>PostgreSQL 검증"] --> B["검증한<br/>GHCR digest"]
+    B --> C["prod 설정 변경 PR 승인"]
+    C -->|"수동"| D["sync와 migration"]
+    D --> E["backend Ready"]

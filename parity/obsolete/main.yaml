@@ -19,3 +19,19 @@
   reason: "paste-image IPC 채널이 terminalBridge의 pasteImageToRemoteTerminal로 이어지는지 Electron main 소스 문자열로 검사한다. AD-8로 GPUI 뷰가 kanvibe-terminal terminal_bridge의 원격 이미지 붙여넣기를 직접 부른다."
 - id: TS-main-terminalPasteImageBridge-65a86b
   reason: "preload desktop bridge에 pasteImageToRemoteTerminal이 노출됐는지 소스 문자열로 검사한다. AD-8로 preload·IPC 브리지가 없다."
+- id: TS-main-mobileDiagramWorker-7bc5a1
+  reason: "오프스크린 BrowserWindow의 빈 첫 compositor 프레임을 건너뛰고 창을 없애는지 검증한다. AD-9로 kanvibe-diagram이 Mermaid를 직접 그려 tiny-skia 픽스맵을 바로 인코딩하므로(raster::rasterize_mobile) 창·프레임 캡처가 없다."
+- id: TS-main-mobileDiagramWorker-f546a3
+  reason: "네이티브 BrowserWindow 생성 실패 시 워커를 남기지 않는지 검증한다. Rust 렌더러는 창을 만들지 않는다(service::NativeRasterizer)."
+- id: TS-main-mobileDiagramWorker-60dc19
+  reason: "이미 파괴된 렌더러 네이티브 객체 정리를 검증한다. 렌더러 프로세스·창 객체가 없다."
+- id: TS-main-mobileDiagramWorker-da54fc
+  reason: "앱 종료(before-quit) 중 진행 중인 Electron 워커를 중단하는지 검증한다. 네이티브 렌더링은 호출한 스레드 안에서 동기로 끝나 중단할 외부 워커가 없다."
+- id: TS-main-mobileDiagramWorker-9681fd
+  reason: "워커 세션이 패키지된 diagram-worker.html·assets 외 로컬·네트워크 요청을 막는지 검증한다. Rust 렌더러는 문서·스크립트를 읽지 않고 정의 문자열만 해석한다."
+- id: TS-main-mobileDiagramWorker-76d2b5
+  reason: "15초 기한에 멈춘 Chromium 워커만 파괴하는지 검증한다. 네이티브 렌더링은 정의 64 KiB·간선 500개 상한 안에서 끝나는 동기 계산이라 멈춘 워커를 기다리는 기한이 없다(503 경로 없음)."
+- id: TS-main-mobileDiagramWorker-b0d569
+  reason: "렌더러 프로세스가 죽으면 소유 숨은 창을 닫는지 검증한다. 렌더러 프로세스가 없다."
+- id: TS-main-mobileDiagramWorker-19e38c
+  reason: "IPC 완료 신호를 main frame에서만 받는지 검증한다. 워커 IPC가 없다(AD-8, AD-9)."
