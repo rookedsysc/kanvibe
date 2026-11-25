@@ -1,3 +1,9 @@
 # Rust로 옮기지 않는 src/desktop/renderer/** TS 테스트.
 - id: TS-renderer-keyboardShortcut-37f0c0
   reason: "platform 인자 없이 Meta·Ctrl을 그대로 적던 옛 녹화 분기다. TS에서도 이 분기를 부르는 곳은 이 테스트뿐이고(ShortcutSettingsRoute는 항상 platform을 넘김) Rust capture_shortcut_from_event는 ShortcutPlatform을 필수 인자로 받는다. 옛 표기 저장값은 canonicalize 경로(TS-main-appSettingsService-f068f7 등)로 검증한다."
+- id: TS-renderer-diff-403f37
+  reason: "renderer `readTaskWorkspaceFile`가 IPC 응답을 `{ ok, file }`로 감싸던 어댑터다. Rust 화면은 같은 프로세스에서 kanvibe-services `DiffService::read_task_workspace_file`을 직접 부르고 결과 타입이 그대로 Result다(계획 AD-8). 읽기 결과는 TS-main-diffService-cd6dbd·b7242f 매핑 테스트가 검증한다."
+- id: TS-renderer-diff-69700b
+  reason: "Electron IPC가 붙인 `Error invoking remote method ...` 문자열에서 실패 사유를 다시 파싱하던 동작이다. Rust에는 IPC 경계가 없고 서비스가 `TaskWorkspaceFileFailure` 열거형을 돌려주므로 문자열 파싱이 없다(계획 AD-8). 사유별 분기는 TS-main-diffService-6f363c·d7fc07·3a800c 매핑 테스트가 검증한다."
+- id: TS-renderer-diff-1c3cff
+  reason: "IPC 오류 문자열에서 사유를 읽지 못하면 unreadable로 바꾸던 파싱 분기다. Rust 서비스는 원격 명령 실패를 바로 `Unreadable`로 돌려주므로 화면 쪽 문자열 파싱이 없다(계획 AD-8). 동작은 TS-main-diffService-fa41c2 매핑 테스트가 검증한다."
