@@ -1,4 +1,4 @@
-//! 네이티브 확인 대화상자(TS `window.confirm`). QA 재생(`--qa`)에서는 기준 이미지를 찍은 Playwright가 대화상자를
+//! 네이티브 확인 대화상자(TS `window.confirm`). QA 재생(`--qa-harness`)에서는 기준 이미지를 찍은 Playwright가 대화상자를
 //! 자동으로 받아들인 것과 같게 묻지 않고 받아들인다. 화면은 대화상자를 직접 띄우지 않고 이 함수를 거친다.
 
 use gpui_kit::{App, PromptButton, PromptLevel, Task, Window};

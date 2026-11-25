@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use kanvibe_domain::platform::ShortcutPlatform;
 
-/// QA 모드(`--qa`)에서만 쓰는 결정성 장치
+/// 자동 QA 하네스(`--qa-harness`)에서만 쓰는 결정성 장치
 #[derive(Debug, Clone, PartialEq)]
 pub struct QaOptions {
     /// fixture 루트. 단계 안 `{fixture_root}` 치환과 정리 기준이다
@@ -53,6 +53,8 @@ impl LaunchOptions {
     }
 }
 
+/// 스크린샷·성능 하네스가 앱을 결정적으로 띄우는 자동 QA 스위치(TS `KANVIBE_QA_MODE=1`). 사용자용 수동 QA `--qa`와 다르다
+pub const QA_HARNESS_SWITCH: &str = "--qa-harness";
 pub const DEFAULT_WINDOW_SIZE: (f32, f32) = (1600.0, 1000.0);
 const DEFAULT_ROUTE: &str = "/ko";
 
@@ -64,9 +66,9 @@ pub enum LaunchOptionsError {
     MissingValue(String),
     #[error("{flag} 값을 읽지 못했습니다: {value}")]
     InvalidValue { flag: String, value: String },
-    #[error("--qa에는 --fixed-now가 필요합니다")]
+    #[error("{QA_HARNESS_SWITCH}에는 --fixed-now가 필요합니다")]
     MissingFixedNow,
-    #[error("{0}는 --qa와 함께만 쓸 수 있습니다")]
+    #[error("{0}는 {QA_HARNESS_SWITCH}와 함께만 쓸 수 있습니다")]
     QaOnly(String),
 }
 
@@ -92,7 +94,7 @@ pub fn parse_launch_options(
     let mut raw = RawLaunchArguments::default();
     let mut arguments = arguments.into_iter();
     while let Some(flag) = arguments.next() {
-        if flag == "--qa" {
+        if flag == QA_HARNESS_SWITCH {
             raw.is_qa = true;
             continue;
         }
@@ -259,7 +261,7 @@ mod tests {
     #[test]
     fn qa_mode_reads_every_determinism_input_from_arguments() {
         let options = parse_launch_options(arguments(
-            "--qa --data-dir /d --fixed-now 2026-01-15T03:00:00Z --faults /f.json \
+            "--qa-harness --data-dir /d --fixed-now 2026-01-15T03:00:00Z --faults /f.json \
              --network-responses /n.json --control-socket /s.sock --route /ko/settings --window-size 1599x999",
         ))
         .unwrap();
@@ -274,7 +276,7 @@ mod tests {
     #[test]
     fn loading_holds_are_read_only_in_qa_mode() {
         let options = parse_launch_options(arguments(
-            "--qa --fixed-now 2026-01-15T03:00:00Z --hold-first-frame \
+            "--qa-harness --fixed-now 2026-01-15T03:00:00Z --hold-first-frame \
              --hold-request /SettingsRoute-[^/]*\\.js$ --hold-request /DiffRoute-",
         ))
         .unwrap();
@@ -293,7 +295,7 @@ mod tests {
     #[test]
     fn qa_platform_override_changes_the_shortcut_platform_only_in_qa_mode() {
         let options = parse_launch_options(arguments(
-            "--qa --fixed-now 2026-01-15T03:00:00Z --platform mac",
+            "--qa-harness --fixed-now 2026-01-15T03:00:00Z --platform mac",
         ))
         .unwrap();
 
@@ -311,7 +313,7 @@ mod tests {
             Err(LaunchOptionsError::QaOnly("--faults".into()))
         );
         assert_eq!(
-            parse_launch_options(arguments("--qa")),
+            parse_launch_options(arguments("--qa-harness")),
             Err(LaunchOptionsError::MissingFixedNow)
         );
         let defaults = parse_launch_options(Vec::new()).unwrap();

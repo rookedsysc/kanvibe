@@ -3,12 +3,12 @@
 
 고정 조건: 스크린샷과 같은 fixture(`parity/fixtures/build_fixture.py` full, 다크 테마), 같은 고정 글꼴 설정(FONTCONFIG_FILE),
 같은 Xvfb 화면(1600x1000x24, 96dpi, 창 관리자 없음), 같은 창 크기(1600x1000), 같은 격리 환경(HOME·XDG_*·TMUX_TMPDIR),
-측정마다 새 fixture와 새 프로세스. 앱은 QA 모드(`--qa`)에 hook 서버를 켠다(`--kanvibe-hook-port`). 첫 회는 디스크 캐시
+측정마다 새 fixture와 새 프로세스. 앱은 자동 QA 하네스 모드(`--qa-harness`)에 hook 서버를 켠다(`--kanvibe-hook-port`). 첫 회는 디스크 캐시
 워밍업으로 버린다. TS(Electron) 앱을 같은 조건으로 재던 경로는 TS 코드와 함께 지웠다(커밋 `a73f3498`까지 git 기록에 있다).
 
 지표와 방법
 - 콜드 스타트: 하네스가 프로세스를 띄우기 직전 시각부터 `first_board_paint` 표식까지. 표식은 Todo 열 카드가 처음 그려진
-  프레임의 다음 프레임 시작에서 나온다. `kanvibe --qa --perf-markers`(qa/perf_markers.rs)가 QA 대상 목록으로 판단한다.
+  프레임의 다음 프레임 시작에서 나온다. `kanvibe --qa-harness --perf-markers`(qa/perf_markers.rs)가 QA 대상 목록으로 판단한다.
   "변화가 그려진 프레임 다음 프레임의 시작"이라 프레임 간격(약 16ms)만큼 양자화된다.
 - 메모리: 첫 페인트 +settle초(기본 10초) 뒤 앱 프로세스 트리 전체의 `/proc/<pid>/smaps_rollup` Pss 합(참고로 Rss 합).
   tmux 서버는 데몬이라 트리 밖이고 세지 않는다.
@@ -127,7 +127,7 @@ def fixed_now_iso() -> str:
 
 def rust_command(app: Path, fixture: dict, route: str, hook_port: int) -> list[str]:
     return [
-        str(app), "--qa", "--perf-markers",
+        str(app), "--qa-harness", "--perf-markers",
         "--data-dir", fixture["appdata"],
         "--fixture-root", fixture["root"],
         "--fixed-now", fixed_now_iso(),

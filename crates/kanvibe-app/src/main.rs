@@ -1,6 +1,6 @@
 use kanvibe_app::app_window::open_app_window;
 use kanvibe_app::assets::KanvibeAssets;
-use kanvibe_app::desktop_process::{DesktopLaunchPlan, split_desktop_launch_arguments};
+use kanvibe_app::desktop_process::{AppBuild, DesktopLaunchPlan, split_desktop_launch_arguments};
 use kanvibe_app::qa::control::start_control_server;
 use kanvibe_app::qa::options::{LaunchOptions, parse_launch_options};
 use kanvibe_app::qa::perf_markers::{
@@ -18,6 +18,7 @@ fn main() {
     let environment: std::collections::BTreeMap<String, String> = std::env::vars().collect();
     let plan = launch.as_ref().map_err(Clone::clone).and_then(|launch| {
         DesktopLaunchPlan::resolve(
+            AppBuild::current(),
             launch,
             desktop_arguments,
             &environment,

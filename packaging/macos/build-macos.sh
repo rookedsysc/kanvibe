@@ -145,7 +145,9 @@ main() {
   dmg="$output_dir/KanVibe-$version.dmg"
   mkdir -p "$output_dir/mac"
 
-  run cargo build --release -j "${CARGO_BUILD_JOBS:-4}" -p kanvibe-app --bin kanvibe --manifest-path "$repo_root/Cargo.toml"
+  # `packaged` 기능을 켠 바이너리만 설치된 앱 데이터 디렉터리(`KanVibe`)와 hook 포트 9736을 쓴다
+  run cargo build --release -j "${CARGO_BUILD_JOBS:-4}" -p kanvibe-app --bin kanvibe --features packaged \
+    --manifest-path "$repo_root/Cargo.toml"
   run "$repo_root/packaging/build-remote-agents.sh" --out "$work_dir/agents"
   assemble_app "$app" "$work_dir/agents" "$version"
   if [[ "$is_signing_skipped" == false ]]; then

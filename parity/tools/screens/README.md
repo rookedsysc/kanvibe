@@ -13,7 +13,7 @@ TS(Electron) 앱의 화면 상태 102개(이미지 130장)를 결정적으로 �
 | `capture.py` | 공용 부품: states.yaml 읽기, fixture 생성, Xvfb 시작, 격리 앱 환경, `ffmpeg -f x11grab` 캡처 |
 | `diff.py` | PNG 픽셀 차이 비율. 기본은 pixelmatch YIQ 색 차이 허용치(0.1), `--strict`는 완전 일치. 두 비율을 함께 출력(Pillow, 없으면 순수 Python 디코더). 시험: `test_diff.py` |
 | `fontconfig.py` | 앱 프로세스 전용 `FONTCONFIG_FILE` 생성 |
-| `../screens-rust/capture_rust.py` | GPUI 앱을 `kanvibe --qa`로 띄워 상태를 재현하고 찍은 뒤 기준 이미지와 비교 |
+| `../screens-rust/capture_rust.py` | GPUI 앱을 `kanvibe --qa-harness`로 띄워 상태를 재현하고 찍은 뒤 기준 이미지와 비교 |
 
 ## 실행
 

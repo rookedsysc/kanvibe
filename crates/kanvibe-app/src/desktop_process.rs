@@ -4,9 +4,11 @@
 //! 첫 창을 연 뒤 hook·task CLI·모바일 서버를 같은 프로세스에서 띄운다. 잠자기에서 깨어나면 hook 터널을 다시 잇고,
 //! 종료(창을 모두 닫음, 종료 신호)할 때 서버·원격 agent·PTY를 TS `before-quit` 순서로 정리한다.
 //!
-//! 실행 방식 대응: 릴리스 빌드 = 설치된 앱(`app.isPackaged`), 디버그 빌드 = 소스 개발 실행(`KANVIBE_RENDERER_URL`),
-//! `--qa` = 자동 QA(`KANVIBE_QA_MODE=1`). 자동 QA는 TS 런처처럼 `--kanvibe-hook-port`를 줄 때만 서버를 띄운다
-//! (화면 캡처 실행은 포트를 주지 않아 지금처럼 서버 없이 뜬다). 프로세스 환경은 시작할 때 한 번 읽기만 한다.
+//! 실행 방식 대응: `packaged` 기능으로 만든 배포 바이너리 = 설치된 앱(`app.isPackaged`), 디버그 빌드 = 소스 개발 실행
+//! (`pnpm dev`, `KANVIBE_RENDERER_URL`), 기능 없이 만든 릴리스 빌드 = 소스로 띄운 수동 QA(`pnpm start`),
+//! `--qa` = 수동 QA(TS Electron 스위치 `--qa`), `--qa-harness` = 자동 QA(`KANVIBE_QA_MODE=1`). 자동 QA는 TS 런처처럼
+//! `--kanvibe-hook-port`를 줄 때만 서버를 띄운다(화면 캡처 실행은 포트를 주지 않아 서버 없이 뜬다).
+//! 프로세스 환경은 시작할 때 한 번 읽기만 한다.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -36,6 +38,32 @@ use crate::services::AppServices;
 
 const DATA_SOURCE_SWITCH: &str = "data-source";
 const APPLICATION_DATA_DIRECTORY_SWITCH: &str = "application-data-dir";
+/// TS `app.commandLine.hasSwitch("qa")`: 설치된 앱이나 소스 실행을 수동 QA 데이터·포트로 띄운다
+const MANUAL_QA_SWITCH: &str = "qa";
+
+/// 이 실행 파일을 어떻게 빌드했는지(TS `app.isPackaged`와 `KANVIBE_RENDERER_URL`이 정하던 것)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AppBuild {
+    /// 패키지 스크립트가 `packaged` 기능을 켜고 만든 배포 바이너리(TS 설치된 앱)
+    Packaged,
+    /// 소스에서 기능 없이 만든 릴리스 빌드(TS `pnpm start`)
+    SourceRelease,
+    /// 소스 디버그 빌드(TS `pnpm dev`)
+    SourceDebug,
+}
+
+impl AppBuild {
+    /// 컴파일할 때 정해진 빌드. `packaged` 기능이 디버그 여부보다 앞선다
+    pub const fn current() -> Self {
+        if cfg!(feature = "packaged") {
+            Self::Packaged
+        } else if cfg!(debug_assertions) {
+            Self::SourceDebug
+        } else {
+            Self::SourceRelease
+        }
+    }
+}
 
 /// `kanvibe` 명령줄 가운데 데스크톱 프로세스가 읽는 스위치(TS Electron 스위치와 같은 이름).
 /// `--name value`와 Chromium 방식 `--name=value`를 모두 받는다
@@ -47,6 +75,8 @@ pub struct DesktopLaunchArguments {
     pub data_source: Option<String>,
     /// `--application-data-dir`
     pub application_data_directory: Option<PathBuf>,
+    /// `--qa`(수동 QA)
+    pub is_manual_qa: bool,
 }
 
 /// 데스크톱 스위치를 떼어 내고 나머지(화면·QA 인자)를 돌려준다
@@ -66,6 +96,10 @@ pub fn split_desktop_launch_arguments(
             None => (switch, None),
         };
         let slot = match name {
+            MANUAL_QA_SWITCH => {
+                desktop.is_manual_qa = true;
+                continue;
+            }
             HOOK_SERVER_PORT_SWITCH => &mut desktop.requested_hook_port,
             DATA_SOURCE_SWITCH => &mut desktop.data_source,
             APPLICATION_DATA_DIRECTORY_SWITCH => {
@@ -97,19 +131,20 @@ pub struct DesktopLaunchPlan {
 }
 
 impl DesktopLaunchPlan {
-    /// TS `runtimeEnvironment.js`와 같은 규칙으로 고른다. `--data-dir`은 TS `KANVIBE_APP_DATA_DIR`이다
+    /// TS `runtimeEnvironment.js`와 같은 규칙으로 고른다. `--data-dir`은 TS `KANVIBE_APP_DATA_DIR`이다.
+    /// 자동 QA는 TS처럼 늘 소스 실행으로 보므로 배포 바이너리여도 설치된 앱 데이터·포트·namespace를 쓰지 않는다
     pub fn resolve(
+        build: AppBuild,
         launch: &LaunchOptions,
         arguments: DesktopLaunchArguments,
         environment: &ShellEnvironment,
         home_directory: &str,
     ) -> Result<Self, LaunchError> {
         let is_automated_qa = launch.qa.is_some();
-        let is_debug_build = cfg!(debug_assertions);
         let mode = LaunchMode {
-            is_packaged: !is_automated_qa && !is_debug_build,
-            is_manual_qa: false,
-            is_dev_run: !is_automated_qa && is_debug_build,
+            is_packaged: build == AppBuild::Packaged && !is_automated_qa,
+            is_manual_qa: arguments.is_manual_qa,
+            is_dev_run: build == AppBuild::SourceDebug && !is_automated_qa,
             is_automated_qa,
             requested_app_data_dir: launch
                 .data_dir
@@ -416,23 +451,34 @@ mod tests {
         line.split_whitespace().map(str::to_string).collect()
     }
 
+    const HARNESS: &str = "--qa-harness --fixed-now 2026-01-15T03:00:00Z";
+
     fn plan(line: &str, environment: &[(&str, &str)]) -> Result<DesktopLaunchPlan, LaunchError> {
+        plan_for_build(AppBuild::current(), line, environment)
+    }
+
+    fn plan_for_build(
+        build: AppBuild,
+        line: &str,
+        environment: &[(&str, &str)],
+    ) -> Result<DesktopLaunchPlan, LaunchError> {
         let (desktop, remaining) = split_desktop_launch_arguments(arguments(line));
         let launch = parse_launch_options(remaining).unwrap();
         let environment: ShellEnvironment = environment
             .iter()
             .map(|(name, value)| (name.to_string(), value.to_string()))
             .collect();
-        DesktopLaunchPlan::resolve(&launch, desktop, &environment, "/home/user")
+        DesktopLaunchPlan::resolve(build, &launch, desktop, &environment, "/home/user")
     }
 
     #[test]
     fn desktop_switches_accept_both_electron_forms_and_leave_the_rest() {
         let (desktop, remaining) = split_desktop_launch_arguments(arguments(
-            "--kanvibe-hook-port=41234 --data-dir /d --data-source application --application-data-dir=/app --route /ko",
+            "--kanvibe-hook-port=41234 --qa --data-dir /d --data-source application --application-data-dir=/app --route /ko",
         ));
 
         assert_eq!(desktop.requested_hook_port.as_deref(), Some("41234"));
+        assert!(desktop.is_manual_qa);
         assert_eq!(desktop.data_source.as_deref(), Some("application"));
         assert_eq!(
             desktop.application_data_directory,
@@ -442,18 +488,126 @@ mod tests {
     }
 
     #[test]
-    fn a_normal_launch_opens_the_platform_data_directory_and_starts_the_server() {
-        let plan = plan("", &[("XDG_CONFIG_HOME", "/xdg")]).unwrap();
-
-        let directory = if cfg!(debug_assertions) {
-            "kanvibe-dev"
-        } else {
-            "KanVibe"
+    fn the_packaged_feature_decides_the_installed_build_before_the_debug_profile() {
+        let expected = match (cfg!(feature = "packaged"), cfg!(debug_assertions)) {
+            (true, _) => AppBuild::Packaged,
+            (false, true) => AppBuild::SourceDebug,
+            (false, false) => AppBuild::SourceRelease,
         };
-        let port = if cfg!(debug_assertions) { 19736 } else { 9736 };
-        assert_eq!(plan.data_dir, Some(Path::new("/xdg").join(directory)));
-        assert_eq!(plan.hook_port, port);
-        assert!(plan.should_start_server);
+
+        assert_eq!(AppBuild::current(), expected);
+    }
+
+    // parity: TS-electron-runtimeEnvironment-d4830f, TS-electron-runtimeEnvironment-19a69e, TS-electron-runtimeEnvironment-de42d5
+    #[test]
+    fn each_build_and_the_qa_switch_get_their_own_data_directory_port_and_namespace() {
+        // TS 설치된 앱, `pnpm dev`, `pnpm start`, 설치된 앱 `--qa`, 소스 실행 `--qa` 순서다
+        let cases = [
+            (AppBuild::Packaged, "", "KanVibe", 9736, "prod", false),
+            (AppBuild::SourceDebug, "", "kanvibe-dev", 19736, "dev", true),
+            (
+                AppBuild::SourceRelease,
+                "",
+                "kanvibe-qa",
+                29736,
+                "qa-",
+                false,
+            ),
+            (
+                AppBuild::Packaged,
+                "--qa",
+                "kanvibe-qa",
+                29736,
+                "qa-",
+                false,
+            ),
+            (
+                AppBuild::SourceDebug,
+                "--qa",
+                "kanvibe-qa",
+                29736,
+                "qa-",
+                true,
+            ),
+            (
+                AppBuild::SourceRelease,
+                "--qa",
+                "kanvibe-qa",
+                29736,
+                "qa-",
+                false,
+            ),
+        ];
+        for (build, line, directory, port, namespace, is_pairing_route_enabled) in cases {
+            let plan = plan_for_build(build, line, &[("XDG_CONFIG_HOME", "/xdg")]).unwrap();
+            let data_dir = plan.data_dir.clone().unwrap();
+
+            let case = format!("{build:?} {line:?}");
+            assert_eq!(data_dir, Path::new("/xdg").join(directory), "{case}");
+            assert_eq!(plan.hook_port, port, "{case}");
+            assert!(plan.should_start_server, "{case}");
+            assert!(
+                resolve_remote_host_namespace(&plan.mode, &data_dir).starts_with(namespace),
+                "{case}"
+            );
+            assert_eq!(
+                is_dev_pairing_route_enabled(&plan.mode),
+                is_pairing_route_enabled,
+                "{case}"
+            );
+        }
+    }
+
+    // parity: TS-electron-runtimeEnvironment-0b3891
+    #[test]
+    fn manual_qa_on_the_installed_app_reuses_its_directory_across_launches() {
+        let first = plan_for_build(AppBuild::Packaged, "--qa", &[]).unwrap();
+        let second = plan_for_build(AppBuild::Packaged, "--qa", &[]).unwrap();
+
+        assert_eq!(first.data_dir, second.data_dir);
+        assert_eq!(
+            first.data_dir,
+            Some(PathBuf::from("/home/user/.config/kanvibe-qa"))
+        );
+    }
+
+    #[test]
+    fn only_a_debug_build_without_qa_prepares_the_development_database() {
+        let cases = [
+            (AppBuild::SourceDebug, "", true),
+            (AppBuild::SourceDebug, "--qa", false),
+            (AppBuild::SourceRelease, "", false),
+            (AppBuild::Packaged, "", false),
+        ];
+        for (build, line, is_prepared) in cases {
+            let app_data = tempfile::tempdir().unwrap();
+            let xdg = app_data.path().to_str().unwrap();
+            let plan = plan_for_build(build, line, &[("XDG_CONFIG_HOME", xdg)]).unwrap();
+            let request = plan.development_database_request(&plan.data_dir.clone().unwrap());
+
+            let outcome = prepare_development_database(&request).unwrap();
+
+            let is_development_run =
+                !matches!(outcome, DevelopmentDatabaseOutcome::NotDevelopmentRun);
+            assert_eq!(is_development_run, is_prepared, "{build:?} {line:?}");
+        }
+    }
+
+    #[test]
+    fn the_qa_harness_never_counts_as_the_installed_app() {
+        let plan = plan_for_build(
+            AppBuild::Packaged,
+            &format!("{HARNESS} --data-dir /fixture --kanvibe-hook-port 41234"),
+            &[],
+        )
+        .unwrap();
+
+        assert!(!plan.mode.is_packaged);
+        assert_eq!(plan.data_dir, Some(PathBuf::from("/fixture")));
+        assert_eq!(plan.hook_port, 41234);
+        assert!(
+            resolve_remote_host_namespace(&plan.mode, Path::new("/fixture")).starts_with("qa-")
+        );
     }
 
     #[test]
@@ -467,11 +621,10 @@ mod tests {
     // parity: TS-root-launchElectron-468c59
     #[test]
     fn automated_qa_starts_the_server_only_on_a_launcher_port() {
-        let fixed_now = "--qa --fixed-now 2026-01-15T03:00:00Z";
-        let capture = plan(&format!("{fixed_now} --data-dir /d"), &[]).unwrap();
-        let without_data = plan(fixed_now, &[]).unwrap();
+        let capture = plan(&format!("{HARNESS} --data-dir /d"), &[]).unwrap();
+        let without_data = plan(HARNESS, &[]).unwrap();
         let launched = plan(
-            &format!("{fixed_now} --data-dir /d --kanvibe-hook-port 41234"),
+            &format!("{HARNESS} --data-dir /d --kanvibe-hook-port 41234"),
             &[],
         )
         .unwrap();
@@ -526,11 +679,7 @@ mod tests {
             ("KANVIBE_DB_PATH", "/production/kanvibe.db"),
         ];
 
-        let qa = plan(
-            "--qa --fixed-now 2026-01-15T03:00:00Z --data-dir /fixture",
-            &inherited,
-        )
-        .unwrap();
+        let qa = plan(&format!("{HARNESS} --data-dir /fixture"), &inherited).unwrap();
 
         // DB는 늘 데이터 디렉터리 안 `kanvibe.db`라 앱 데이터와 DB가 같은 fixture를 쓴다
         assert_eq!(qa.data_dir, Some(PathBuf::from("/fixture")));
@@ -541,10 +690,7 @@ mod tests {
     fn startup_and_panics_are_written_to_the_diagnostics_log() {
         let data_dir = tempfile::tempdir().unwrap();
         let plan = plan(
-            &format!(
-                "--qa --fixed-now 2026-01-15T03:00:00Z --data-dir {}",
-                data_dir.path().display()
-            ),
+            &format!("{HARNESS} --data-dir {}", data_dir.path().display()),
             &[],
         )
         .unwrap();

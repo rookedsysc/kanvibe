@@ -10,6 +10,11 @@ publish.workspace = true
 name = "kanvibe"
 path = "src/main.rs"
 
+[features]
+# 배포 바이너리(TS `app.isPackaged`). 패키지 스크립트(packaging/linux/build-linux.sh, packaging/macos/build-macos.sh)만
+# 켠다. 켜야 설치된 앱의 데이터 디렉터리(`<appData>/KanVibe`)와 hook 포트 9736을 쓴다(desktop_process.rs `AppBuild`)
+packaged = []
+
 [dependencies]
 # gpui-kit 0.11.0은 gpui-pre =0.3.14(zed@f126950 스냅샷)와 gpui-component 0.11.0을 함께 고정한다(계획 AD-2)
 gpui-kit = "0.11.0"

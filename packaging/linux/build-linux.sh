@@ -2,7 +2,7 @@
 # Linux 릴리스 번들을 만든다: tarball(`kanvibe-<ver>-linux-<arch>.tar.gz`)과 .deb(`kanvibe_<ver>_<deb arch>.deb`).
 #
 # 배치(두 산출물 같음, tarball은 <prefix> = 압축을 푼 디렉터리, .deb는 /usr):
-#   <prefix>/bin/kanvibe                                  strip한 릴리스 바이너리. 글꼴·아이콘·로고는 바이너리에 들어 있다
+#   <prefix>/bin/kanvibe                                  strip한 릴리스 바이너리(`packaged` 기능). 글꼴·아이콘·로고는 바이너리에 들어 있다
 #   <prefix>/lib/kanvibe/remote-agents/                   원격 agent 바이너리와 SHA256SUMS. 앱이 실행 파일 위치로 찾는다
 #                                                         (crates/kanvibe-app/src/desktop_process.rs bundled_agent_binary_directory)
 #   <prefix>/share/applications/kanvibe.desktop           StartupWMClass=kanvibe(GPUI app_id)
@@ -15,6 +15,8 @@
 # AppImage는 appimagetool(이 머신에 없음, 내려받기 금지)이 필요해 만들지 않는다.
 #
 # 사용: packaging/linux/build-linux.sh [--out dist] [--skip-build] [--allow-missing-agents] [--verify]
+#   --skip-build: 이미 있는 target/release/kanvibe를 쓴다. `cargo build --release -p kanvibe-app --features packaged`로
+#                 만든 바이너리여야 설치된 앱 데이터 디렉터리와 hook 포트 9736을 쓴다(기능 없이 만들면 수동 QA로 뜬다)
 #   --verify: 만든 tarball을 임시 디렉터리에 풀고 parity/tools/app-launch/check_release_launch.py로 실행을 확인한다
 set -euo pipefail
 
@@ -54,7 +56,8 @@ trap 'rm -rf "$work_dir"' EXIT
 
 build_binaries() {
   if [[ "$is_build_skipped" == false ]]; then
-    cargo build --release -j "${CARGO_BUILD_JOBS:-4}" -p kanvibe-app --bin kanvibe --manifest-path "$repo_root/Cargo.toml"
+    cargo build --release -j "${CARGO_BUILD_JOBS:-4}" -p kanvibe-app --bin kanvibe --features packaged \
+      --manifest-path "$repo_root/Cargo.toml"
   fi
   "$repo_root/packaging/build-remote-agents.sh" --out "$work_dir/agents" "${agent_arguments[@]}"
 }

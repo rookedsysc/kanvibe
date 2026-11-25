@@ -40,6 +40,8 @@ packaging/linux/build-linux.sh --verify
 packaging/macos/build-macos.sh
 ```
 
+두 스크립트는 `kanvibe-app`을 `packaged` cargo 기능으로 빌드합니다. 이 바이너리만 설치된 앱의 데이터 디렉터리와 hook 포트 `9736`을 쓰고, 기능 없이 만든 `cargo build --release`는 수동 QA(`<appData>/kanvibe-qa`, 포트 `29736`)로 뜹니다.
+
 버전은 루트 `Cargo.toml`의 `workspace.package.version`에서 읽습니다. `build-macos.sh`는 서명 자격 증명을 환경 변수나 `.env.example`에 적힌 키에서 읽고, `--unsigned`는 자격 증명 없이 로컬 확인용으로 빌드합니다.
 
 - macOS 산출물: `dist/KanVibe-${version}.dmg`

@@ -40,6 +40,8 @@ packaging/linux/build-linux.sh --verify
 packaging/macos/build-macos.sh
 ```
 
+Both scripts build `kanvibe-app` with the `packaged` cargo feature. Only that binary uses the installed app's data directory and hook port `9736`; `cargo build --release` without it runs as manual QA (`<appData>/kanvibe-qa`, port `29736`).
+
 The version comes from `workspace.package.version` in the root `Cargo.toml`. `build-macos.sh` reads the signing credentials from the environment or from the keys listed in `.env.example`; `--unsigned` builds without them for local checks.
 
 - macOS output: `dist/KanVibe-${version}.dmg`

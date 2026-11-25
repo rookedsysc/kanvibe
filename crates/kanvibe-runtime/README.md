@@ -5,15 +5,16 @@ pane 미러·pane chat, AI 계정·사용량·로그인 브리지, 알림 저장
 다이어그램 렌더러)를 `DesktopRuntime` 하나로 만든다. GPUI 앱과 `kanvibe-server`가 같은 인스턴스를 쓴다.
 
 - 앱: `main`이 `kanvibe_app::init_desktop_app`으로 연다. `desktop_process::DesktopLaunchPlan`이 TS `runtimeEnvironment.js`와
-  같은 규칙으로 데이터 디렉터리(설치 앱 = 릴리스 빌드 `<appData>/KanVibe`, 개발 실행 = 디버그 빌드 `<appData>/kanvibe-dev`,
+  같은 규칙으로 데이터 디렉터리(설치 앱 = `packaged` 기능으로 만든 배포 바이너리 `<appData>/KanVibe`, 개발 실행 = 디버그 빌드
+  `<appData>/kanvibe-dev`, 수동 QA = 기능 없이 만든 릴리스 빌드나 `--qa` `<appData>/kanvibe-qa`,
   `--data-dir`이 있으면 그 값. Linux `<appData>`는 `$XDG_CONFIG_HOME` 또는 `~/.config`, macOS는 `~/Library/Application Support`)와
-  hook 포트(9736 / 19736, `--kanvibe-hook-port`가 있으면 그 값)를 고른다. 개발 실행이면 `development_database`(`--data-source`,
+  hook 포트(9736 / 19736 / 29736, `--kanvibe-hook-port`가 있으면 그 값)를 고른다. 개발 실행이면 `development_database`(`--data-source`,
   `--application-data-dir`)를, 모든 실행에서 `diagnostics`(`<data>/logs/kanvibe-desktop.log`)를 먼저 준비한다.
   `AppServices`가 `Arc<DesktopRuntime>`과 모바일 업무 계층 `Arc<DesktopServices>`를 갖는다.
   `kanvibe_app::start_runtime_services`가 첫 창을 연 뒤 `start()`를 한 번 부르고 프로세스 안 서버(`InProcessServer`)를 띄운다.
   잠자기에서 깨면(GPUI `on_system_wake`: Linux logind `PrepareForSleep(false)` D-Bus 신호, macOS `NSWorkspaceDidWakeNotification`)
   hook 터널을 다시 잇고, 종료(마지막 창 닫기, SIGTERM·SIGINT)할 때 `on_app_quit`에서 서버·런타임을 TS `before-quit` 순서로 닫는다.
-  `--qa` 화면 캡처는 `--kanvibe-hook-port`를 줄 때만 서버를 띄운다. 화면 시험은 서버 없는 `init_app`을 쓴다.
+  `--qa-harness` 화면 캡처는 `--kanvibe-hook-port`를 줄 때만 서버를 띄운다. 화면 시험은 서버 없는 `init_app`을 쓴다.
 - 서버(QA 실행기): `RemoteHostWiring::wire_runtime(&mut config)` → `DesktopRuntime::new` → `DesktopServices::new` →
   `runtime.start()` → `InProcessServer::start`. 앱도 같은 순서다.
 - 이 crate는 프로세스 환경을 바꾸지 않는다. 시작 스냅샷을 `RuntimeConfig.base_environment`로 받아 자식 환경을 좁힌다.

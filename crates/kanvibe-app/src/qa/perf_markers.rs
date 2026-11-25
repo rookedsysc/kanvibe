@@ -1,4 +1,4 @@
-//! 성능 하네스(`parity/tools/perf/run_perf.py`)가 읽는 표식. `--qa --perf-markers`일 때만 켠다.
+//! 성능 하네스(`parity/tools/perf/run_perf.py`)가 읽는 표식. `--qa-harness --perf-markers`일 때만 켠다.
 //!
 //! 표식은 stdout 한 줄 `KANVIBE_PERF <이름> <유닉스 epoch ns>`다. TS 앱을 재던 표식(커밋 a73f3498까지 `parity/tools/perf/ts_perf_preload.cjs`)과
 //! 같은 시점을 가리키도록, 화면 변화가 그려진 프레임의 "다음 프레임 시작"에서 쓴다. GPUI는 프레임 시작에서 next-frame
@@ -21,7 +21,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use gpui_kit::{AnyWindowHandle, App, Window};
 
-use crate::qa::options::LaunchOptions;
+use crate::qa::options::{LaunchOptions, QA_HARNESS_SWITCH};
 use crate::qa::targets::{DescribedTarget, QaTargetRegistry, TargetQuery};
 
 pub const PERF_MARKERS_SWITCH: &str = "--perf-markers";
@@ -64,7 +64,7 @@ pub fn require_qa_for_perf_markers(
 ) -> Result<LaunchOptions, String> {
     match is_perf_markers_enabled && launch.qa.is_none() {
         true => Err(format!(
-            "{PERF_MARKERS_SWITCH}는 --qa와 함께만 쓸 수 있습니다"
+            "{PERF_MARKERS_SWITCH}는 {QA_HARNESS_SWITCH}와 함께만 쓸 수 있습니다"
         )),
         false => Ok(launch),
     }
@@ -177,17 +177,18 @@ mod tests {
     #[test]
     fn perf_markers_switch_is_removed_from_the_remaining_arguments() {
         let (is_enabled, remaining) =
-            split_perf_markers_switch(arguments("--qa --perf-markers --route /ko"));
+            split_perf_markers_switch(arguments("--qa-harness --perf-markers --route /ko"));
 
         assert!(is_enabled);
-        assert_eq!(remaining, arguments("--qa --route /ko"));
+        assert_eq!(remaining, arguments("--qa-harness --route /ko"));
     }
 
     #[test]
     fn perf_markers_are_refused_outside_qa_mode() {
         let normal_launch = parse_launch_options(Vec::new()).unwrap();
         let qa_launch =
-            parse_launch_options(arguments("--qa --fixed-now 2026-01-15T03:00:00Z")).unwrap();
+            parse_launch_options(arguments("--qa-harness --fixed-now 2026-01-15T03:00:00Z"))
+                .unwrap();
 
         assert!(require_qa_for_perf_markers(normal_launch.clone(), true).is_err());
         assert!(require_qa_for_perf_markers(normal_launch, false).is_ok());
@@ -196,9 +197,10 @@ mod tests {
 
     #[test]
     fn perf_markers_stay_off_without_the_switch() {
-        let (is_enabled, remaining) = split_perf_markers_switch(arguments("--qa --route /ko"));
+        let (is_enabled, remaining) =
+            split_perf_markers_switch(arguments("--qa-harness --route /ko"));
 
         assert!(!is_enabled);
-        assert_eq!(remaining, arguments("--qa --route /ko"));
+        assert_eq!(remaining, arguments("--qa-harness --route /ko"));
     }
 }

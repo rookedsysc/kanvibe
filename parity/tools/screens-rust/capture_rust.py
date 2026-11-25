@@ -2,7 +2,7 @@
 """GPUI(Rust) 앱을 states.yaml 상태로 띄워 TS 기준 이미지와 같은 방법으로 찍고 비교한다.
 
 기준 이미지를 찍은 TS 드라이버와 같은 Xvfb 화면 크기·`ffmpeg -f x11grab` 명령·fixture 생성기·고정 글꼴 설정을
-`parity/tools/screens/capture.py`에서 가져다 쓴다. 앱은 `kanvibe --qa`로 띄우고, 단계는 QA 제어 소켓(한 줄 JSON)으로 보낸다.
+`parity/tools/screens/capture.py`에서 가져다 쓴다. 앱은 자동 QA 하네스 모드(`kanvibe --qa-harness`)로 띄우고, 단계는 QA 제어 소켓(한 줄 JSON)으로 보낸다.
 앱에 넘기는 결정성 입력(고정 시각, 네트워크 응답 표, 고장 목록, 소켓 경로)은 모두 실행 인자이고, 환경은 capture.py가 만드는
 격리 환경을 앱 프로세스에만 준다.
 
@@ -144,7 +144,7 @@ def app_command(args: argparse.Namespace, state: dict, fixture: dict, job_dir: P
     width = state["window"]["width"] - VIEWPORT_INSET
     height = state["window"]["height"] - VIEWPORT_INSET
     return [
-        str(args.app), "--qa",
+        str(args.app), "--qa-harness",
         "--data-dir", fixture["appdata"],
         "--fixture-root", fixture["root"],
         "--fixed-now", fixed_now.strftime("%Y-%m-%dT%H:%M:%SZ"),

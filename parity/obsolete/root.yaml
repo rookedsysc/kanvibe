@@ -12,6 +12,6 @@
 - id: TS-root-launchElectron-9a083f
   reason: "CDP 포트를 정하지 않으면 동적으로 고르는지 검사한다. GPUI 앱에는 CDP 포트가 없다(a3538c와 같은 이유). 제어 소켓 경로는 실행하는 쪽이 인자로 준다."
 - id: TS-root-launchElectron-b97b0b
-  reason: "appDataDir를 빼고 부른 Electron 런처가 실행마다 임시 DB를 새로 만드는지 검사한다. Rust 앱은 --qa로 뜨고 --data-dir가 없으면 DB를 열지 않는다(desktop_process tests automated_qa_starts_the_server_only_on_a_launcher_port의 without_data). 임시 디렉터리를 대신 만들어 주는 런처가 없다."
+  reason: "appDataDir를 빼고 부른 Electron 런처가 실행마다 임시 DB를 새로 만드는지 검사한다. Rust 앱은 --qa-harness로 뜨고 --data-dir가 없으면 DB를 열지 않는다(desktop_process tests automated_qa_starts_the_server_only_on_a_launcher_port의 without_data). 임시 디렉터리를 대신 만들어 주는 런처가 없다."
 - id: TS-root-launchElectron-599b89
-  reason: "Electron 런처가 자동 QA 실행마다 설치된 앱·pnpm dev와 겹치지 않는 hook 포트를 골라 --kanvibe-hook-port로 넘기는지 검사한다. Rust 화면 캡처(capture_rust.py)는 hook 포트를 넘기지 않고, 앱은 --qa에서 런처 포트가 없으면 hook 서버를 띄우지 않는다(automated_qa_starts_the_server_only_on_a_launcher_port). 포트를 고르는 런처가 없다."
+  reason: "Electron 런처가 자동 QA 실행마다 설치된 앱·pnpm dev와 겹치지 않는 hook 포트를 골라 --kanvibe-hook-port로 넘기는지 검사한다. Rust 화면 캡처(capture_rust.py)는 hook 포트를 넘기지 않고, 앱은 --qa-harness에서 런처 포트가 없으면 hook 서버를 띄우지 않는다(automated_qa_starts_the_server_only_on_a_launcher_port). 포트를 고르는 런처가 없다."

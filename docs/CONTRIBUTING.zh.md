@@ -40,6 +40,8 @@ packaging/linux/build-linux.sh --verify
 packaging/macos/build-macos.sh
 ```
 
+两个脚本都以 `packaged` cargo feature 构建 `kanvibe-app`。只有该二进制使用已安装应用的数据目录和 hook 端口 `9736`；不带该 feature 的 `cargo build --release` 以手动 QA 方式运行（`<appData>/kanvibe-qa`，端口 `29736`）。
+
 版本号取自根目录 `Cargo.toml` 的 `workspace.package.version`。`build-macos.sh` 从环境变量或 `.env.example` 中列出的键读取签名凭据；`--unsigned` 可在没有凭据时进行本地构建检查。
 
 - macOS 输出：`dist/KanVibe-${version}.dmg`

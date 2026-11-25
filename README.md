@@ -56,12 +56,16 @@ Each runtime uses a separate SQLite database and a separate hook server port, so
 
 | Run | Data directory | Lifetime | Hook / mobile TLS port |
 | --- | --- | --- | --- |
-| Installed KanVibe (release build) | `<appData>/KanVibe` | Persistent; production data stays in place | `9736` / `9746` |
+| Installed KanVibe (packaged build) | `<appData>/KanVibe` | Persistent; production data stays in place | `9736` / `9746` |
 | `cargo run -p kanvibe-app` (debug build) | `<appData>/kanvibe-dev` | Keeps development data across restarts and worktrees by default | `19736` / `19746` |
 | `cargo run -p kanvibe-app -- --data-source=application` | `<appData>/kanvibe-dev` | Replaces development data with the installed application's DB on this launch | `19736` / `19746` |
-| Automated QA (`kanvibe --qa --data-dir <dir> ...`) | The run's explicit `--data-dir` | Isolated per run | Only with `--kanvibe-hook-port=<port>` |
+| `cargo run --release -p kanvibe-app` (release build from source) | `<appData>/kanvibe-qa` | Persistent across restarts, builds, and worktrees | `29736` / `29746` |
+| Installed KanVibe with `--qa` | `<appData>/kanvibe-qa` | Same persistent manual QA database | `29736` / `29746` |
+| Automated QA (`kanvibe --qa-harness --data-dir <dir> ...`) | The run's explicit `--data-dir` | Isolated per run | Only with `--kanvibe-hook-port=<port>` |
 | Contract replay (`kanvibe-server-qa serve`) | The run's `--data-dir` | Isolated per run | The run's `--hook-port` |
 | `cargo nextest run` | Separate temporary test directories | Isolated from application data | — |
+
+Only the binary built by `packaging/linux/build-linux.sh` or `packaging/macos/build-macos.sh` counts as installed KanVibe: those scripts compile `kanvibe-app` with the `packaged` cargo feature. A release build without that feature, such as `cargo build --release`, runs as manual QA, so it never opens the installed app's database or port `9736`.
 
 A launcher that must pick the port itself passes `--kanvibe-hook-port=<port>` to `kanvibe`. Automated QA starts the hook server only when that switch is given.
 
@@ -69,7 +73,11 @@ A launcher that must pick the port itself passes `--kanvibe-hook-port=<port>` to
 
 For a different installation data directory, use `cargo run -p kanvibe-app -- --data-source=application --application-data-dir="/path/to/application-data"`. In application mode, an absent default application DB produces a warning and keeps the existing development DB; an invalid explicit source or corrupt source DB stops startup. Shared source/target paths or DB links stop startup in both modes. Copying uses SQLite's [Online Backup API](https://www.sqlite.org/backup.html). Repository/worktree paths still point to the same files on disk; this option copies the SQLite data, not repositories, running terminals, or OS credentials.
 
-`--data-dir <dir>` overrides the desktop data directory; use a distinct directory for each environment. Add `--data-source=application` explicitly to refresh that development directory from application data. Automated QA (`--qa`) always keeps its fixture and never copies application data.
+Manual QA reuses its own database and applies the existing schema migrations, so QA can test upgrades against previously created data. Rebuild with `cargo build --release -p kanvibe-app` before launching `target/release/kanvibe` when testing a new source version.
+
+To test an installed build with the persistent QA database, run `open -na KanVibe --args --qa` on macOS or `kanvibe --qa` on Linux. Close an existing manual QA instance first so both do not use the same QA database concurrently.
+
+`--data-dir <dir>` overrides the desktop data directory; use a distinct directory for each environment. Add `--data-source=application` explicitly to refresh that development directory from application data. Automated QA (`--qa-harness`) always keeps its fixture and never copies application data.
 
 ## From your desk to your phone
 
