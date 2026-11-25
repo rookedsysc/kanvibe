@@ -3,7 +3,7 @@ resolver = "3"
 members = ["crates/*", "xtask"]
 
 [workspace.package]
-version = "0.1.0"
+version = "1.6.0"
 edition = "2024"
 license = "AGPL-3.0-only"
 publish = false

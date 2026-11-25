@@ -4,6 +4,7 @@
 pub mod control;
 pub mod faults;
 pub mod options;
+pub mod perf_markers;
 pub mod prompts;
 pub mod targets;
 pub mod window_focus;

@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  electron-builder.yml이 만들던 값과 같다: appId com.kanvibe.desktop, productName KanVibe, icon.icns, 최소 macOS 10.15.0.
+  @VERSION@은 build-macos.sh가 Cargo의 kanvibe-app 버전으로 바꾼다.
+  사용 권한 문구(NS*UsageDescription): TS 앱은 하나도 선언하지 않았다(electron-builder.yml에 extendInfo 없음). Electron 런타임이
+  기본으로 넣던 카메라·마이크·블루투스 문구는 Chromium 기능용이라 GPUI 앱에는 넣지 않는다.
+-->
+<plist version="1.0">
+<dict>
+  <key>CFBundleDevelopmentRegion</key>
+  <string>en</string>
+  <key>CFBundleDisplayName</key>
+  <string>KanVibe</string>
+  <key>CFBundleExecutable</key>
+  <string>kanvibe</string>
+  <key>CFBundleIconFile</key>
+  <string>icon.icns</string>
+  <key>CFBundleIdentifier</key>
+  <string>com.kanvibe.desktop</string>
+  <key>CFBundleInfoDictionaryVersion</key>
+  <string>6.0</string>
+  <key>CFBundleName</key>
+  <string>KanVibe</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>CFBundleShortVersionString</key>
+  <string>@VERSION@</string>
+  <key>CFBundleVersion</key>
+  <string>@VERSION@</string>
+  <key>LSMinimumSystemVersion</key>
+  <string>10.15.0</string>
+  <key>NSHighResolutionCapable</key>
+  <true/>
+</dict>
+</plist>

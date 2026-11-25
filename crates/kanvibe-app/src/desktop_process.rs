@@ -225,7 +225,9 @@ pub(crate) fn prepare_desktop_process(
             RemoteHostWiring::new(RemoteHostWiringConfig {
                 home_directory: home_directory.to_string(),
                 base_environment: environment.clone(),
-                agent_binary_directory: None,
+                agent_binary_directory: std::env::current_exe()
+                    .ok()
+                    .and_then(|executable| bundled_agent_binary_directory(&executable)),
                 namespace: resolve_remote_host_namespace(&plan.mode, data_dir),
             })
             .map_err(anyhow::Error::msg)?,
@@ -241,6 +243,20 @@ pub(crate) fn prepare_desktop_process(
         },
         remote,
     })
+}
+
+/// 패키지가 원격 agent 바이너리(`kanvibe-remote-agent-<OS>-<arch>`)를 넣은 디렉터리(`packaging/`이 만든다).
+/// 실행 파일 위치로 찾고, 없으면(소스 빌드 실행) `None`이라 원격 호스트는 순수 ssh 경로로 간다
+fn bundled_agent_binary_directory(executable: &Path) -> Option<PathBuf> {
+    let executable_directory = executable.parent()?;
+    [
+        // macOS `KanVibe.app/Contents/MacOS/kanvibe` → `Contents/Resources/remote-agents`
+        executable_directory.join("../Resources/remote-agents"),
+        // Linux `<prefix>/bin/kanvibe` → `<prefix>/lib/kanvibe/remote-agents`(tarball, .deb)
+        executable_directory.join("../lib/kanvibe/remote-agents"),
+    ]
+    .into_iter()
+    .find(|directory| directory.is_dir())
 }
 
 /// 런타임과 모바일 서비스가 생긴 뒤 서버를 띄울 준비를 해 둔다
@@ -442,6 +458,41 @@ mod tests {
         assert!(!without_data.should_start_server);
         assert!(launched.should_start_server);
         assert_eq!(launched.hook_port, 41234);
+    }
+
+    #[test]
+    fn bundled_agent_binaries_are_found_next_to_the_packaged_executable() {
+        let root = tempfile::tempdir().unwrap();
+        let mac_agents = root
+            .path()
+            .join("KanVibe.app/Contents/Resources/remote-agents");
+        let linux_agents = root.path().join("usr/lib/kanvibe/remote-agents");
+        // 실행 파일 디렉터리도 있어야 `..`이 풀린다(실제 번들처럼)
+        for directory in [
+            mac_agents.clone(),
+            linux_agents.clone(),
+            root.path().join("KanVibe.app/Contents/MacOS"),
+            root.path().join("usr/bin"),
+            root.path().join("target/release"),
+        ] {
+            std::fs::create_dir_all(directory).unwrap();
+        }
+
+        let mac =
+            bundled_agent_binary_directory(&root.path().join("KanVibe.app/Contents/MacOS/kanvibe"));
+        let linux = bundled_agent_binary_directory(&root.path().join("usr/bin/kanvibe"));
+        let source_build =
+            bundled_agent_binary_directory(&root.path().join("target/release/kanvibe"));
+
+        assert_eq!(
+            mac.map(|directory| directory.canonicalize().unwrap()),
+            Some(mac_agents.canonicalize().unwrap())
+        );
+        assert_eq!(
+            linux.map(|directory| directory.canonicalize().unwrap()),
+            Some(linux_agents.canonicalize().unwrap())
+        );
+        assert_eq!(source_build, None);
     }
 
     #[test]

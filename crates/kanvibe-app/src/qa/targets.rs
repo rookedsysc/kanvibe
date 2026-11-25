@@ -120,6 +120,20 @@ impl QaTargetRegistry {
                 fill: painted.behavior.fill.clone(),
             })
     }
+
+    /// 마지막 프레임에 그려진 대상 가운데 역할이 `role`인 것의 글(성능 표식이 터미널 줄 변화를 볼 때 쓴다)
+    pub fn painted_texts<'a>(
+        &'a self,
+        window_id: WindowId,
+        role: &'a str,
+    ) -> impl Iterator<Item = &'a str> + 'a {
+        self.painted_targets
+            .get(&window_id)
+            .into_iter()
+            .flatten()
+            .filter(move |painted| painted.description.role == role)
+            .map(|painted| painted.description.text.as_ref())
+    }
 }
 
 fn text_matches(actual: &str, expected: &str, is_exact: bool) -> bool {
