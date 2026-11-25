@@ -9,8 +9,8 @@ use kanvibe_domain::locale_order::compare_like_locale;
 use kanvibe_domain::task_diff_stats::{DiffFile, DiffFileStatus};
 
 use super::icons::{DiffIcon, diff_icon};
-use super::text_baseline::{TextFamily, aligned_text, chromium_text};
 use crate::components::fade;
+use crate::text_baseline::{TextFamily, aligned_text, chromium_text};
 use crate::theme::{ThemeTokens, radius, spacing, text_scale};
 use crate::views::TailwindText;
 

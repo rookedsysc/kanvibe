@@ -12,6 +12,7 @@ use crate::views::diff::auto_closing::{
 use crate::views::diff::line_diff::TextPoint;
 use crate::views::diff::monaco::LINE_HEIGHT;
 use crate::views::diff::syntax::TokenKind;
+use crate::views::diff::typescript_config::DOC_COMMENT_CLOSE;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum EditorCommand {
@@ -448,7 +449,7 @@ impl DiffFileEditor {
             }
             "backspace" => self.buffer.delete_backward(),
             "delete" => self.buffer.delete_forward(),
-            "enter" => self.buffer.insert_newline(),
+            "enter" => self.buffer.insert_newline(self.language),
             _ => self.buffer.insert_indent(),
         }
         self.auto_closed.clear();
@@ -487,9 +488,13 @@ impl DiffFileEditor {
             }
             TypingAction::Surround { close } => self.buffer.surround_selection(typed, close),
             TypingAction::InsertPair { close } => {
-                self.buffer.insert_pair(typed, close);
+                self.buffer.insert_pair(typed, &close.to_string());
                 self.shift_auto_closed(cursor, typed.len_utf8());
                 self.auto_closed.push(self.buffer.cursor());
+            }
+            TypingAction::InsertDocCommentClose => {
+                self.buffer.insert_pair(typed, DOC_COMMENT_CLOSE);
+                self.shift_auto_closed(cursor, typed.len_utf8() + DOC_COMMENT_CLOSE.len());
             }
             TypingAction::Insert => {
                 self.buffer.insert_text(&typed.to_string());

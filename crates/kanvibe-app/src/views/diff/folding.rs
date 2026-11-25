@@ -1,7 +1,11 @@
 //! 편집 모드의 접기(Monaco `folding: true`, `foldingStrategy: auto`). Monaco TypeScript 언어는 접기 범위 제공자를 두지 않아
-//! 들여쓰기 기준 범위(`IndentRangeProvider`)를 쓴다. 비교 모드의 두 편집기는 Monaco diff 편집기가 `folding: false`로 끈다.
+//! 들여쓰기 기준 범위(`IndentRangeProvider.computeRanges`)를 쓰고, TS 언어 설정의 `// #region`·`// #endregion` 표식이 그 위에
+//! 범위를 더한다. 비교 모드의 두 편집기는 Monaco diff 편집기가 `folding: false`로 끈다.
 
 use std::collections::BTreeSet;
+
+use super::syntax::Language;
+use super::typescript_config::region_marker;
 
 /// 접을 수 있는 범위. `start` 줄은 남고 `start + 1..=end` 줄이 숨는다
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -10,42 +14,120 @@ pub struct FoldRange {
     pub end: usize,
 }
 
+/// Monaco `computeIndentLevel`: 탭은 다음 탭 멈춤까지 센다. 공백뿐인 줄은 `None`
 fn indentation(line: &str, tab_size: usize) -> Option<usize> {
-    if line.trim().is_empty() {
-        return None;
+    let mut indent = 0;
+    for character in line.chars() {
+        match character {
+            ' ' => indent += 1,
+            '\t' => indent = indent - indent % tab_size + tab_size,
+            _ => return Some(indent),
+        }
     }
-    Some(
-        line.chars()
-            .take_while(|c| *c == ' ' || *c == '\t')
-            .map(|c| if c == '\t' { tab_size } else { 1 })
-            .sum(),
-    )
+    None
 }
 
-/// 다음 내용 줄이 더 깊이 들어간 줄마다, 들여쓰기가 다시 그 줄 이하로 돌아오기 전 마지막 내용 줄까지 접는다
-pub fn compute_fold_ranges(lines: &[String], tab_size: usize) -> Vec<FoldRange> {
-    let indents: Vec<Option<usize>> = lines
-        .iter()
-        .map(|line| indentation(line, tab_size))
-        .collect();
+/// 아래에서 위로 올라가며 열린 들여쓰기 구역을 쌓는 칸(`previousRegions`의 원소)
+struct OpenRegion {
+    /// `None`은 `// #endregion` 표식이 연 구역이다(Monaco의 `indent: -2`)
+    indent: Option<usize>,
+    /// 이 구역과 같은 들여쓰기로 시작하는 가장 위 줄
+    end_above: usize,
+    line: usize,
+}
+
+/// Monaco `computeRanges`: 들여쓰기가 더 깊은 줄이 이어지는 줄마다, 다음 같거나 얕은 줄 바로 위(빈 줄 포함)까지 접는다.
+/// `// #region` 줄은 짝이 되는 `// #endregion` 줄까지(그 줄 포함) 접는다
+pub fn compute_fold_ranges(
+    lines: &[String],
+    tab_size: usize,
+    language: Language,
+) -> Vec<FoldRange> {
     let mut ranges = Vec::new();
-    for (start, indent) in indents.iter().enumerate() {
-        let Some(indent) = *indent else {
+    let sentinel = OpenRegion {
+        indent: None,
+        end_above: lines.len(),
+        line: lines.len(),
+    };
+    let mut regions = vec![sentinel];
+    for (line_index, line) in lines.iter().enumerate().rev() {
+        let Some(indent) = indentation(line, tab_size) else {
             continue;
         };
-        let mut end = start;
-        for (index, candidate) in indents.iter().enumerate().skip(start + 1) {
-            match candidate {
-                Some(candidate) if *candidate > indent => end = index,
-                Some(_) => break,
-                None => {}
+        match region_marker(language, line) {
+            Some(false) => {
+                regions.push(OpenRegion {
+                    indent: None,
+                    end_above: line_index,
+                    line: line_index,
+                });
+                continue;
             }
+            Some(true) if close_marker_region(&mut regions, &mut ranges, line_index, indent) => {
+                continue;
+            }
+            _ => {}
         }
-        if end > start {
-            ranges.push(FoldRange { start, end });
+        add_indent_region(&mut regions, &mut ranges, line_index, indent);
+    }
+    ranges.reverse();
+    ranges
+}
+
+/// `// #region` 줄: 가장 가까운 `// #endregion` 구역까지 버리고 그 구역을 이 줄에서 시작하는 범위로 닫는다.
+/// 짝이 없으면 거짓을 돌려 보통 줄로 다룬다
+fn close_marker_region(
+    regions: &mut Vec<OpenRegion>,
+    ranges: &mut Vec<FoldRange>,
+    line: usize,
+    indent: usize,
+) -> bool {
+    let Some(marker_index) = (1..regions.len())
+        .rev()
+        .find(|index| regions[*index].indent.is_none())
+    else {
+        return false;
+    };
+    regions.truncate(marker_index + 1);
+    let region = &mut regions[marker_index];
+    ranges.push(FoldRange {
+        start: line,
+        end: region.line,
+    });
+    *region = OpenRegion {
+        indent: Some(indent),
+        end_above: line,
+        line,
+    };
+    true
+}
+
+/// 보통 줄: 더 깊은 구역을 닫아 범위로 남기고, 같은 깊이면 구역 위끝을 올리고, 더 깊으면 새 구역을 연다
+fn add_indent_region(
+    regions: &mut Vec<OpenRegion>,
+    ranges: &mut Vec<FoldRange>,
+    line: usize,
+    indent: usize,
+) {
+    // `// #endregion` 구역(-2)과 맨 아래 칸(-1)은 어느 들여쓰기보다 얕다
+    let is_deeper = |region: &OpenRegion| region.indent.is_some_and(|open| open > indent);
+    if regions.last().is_some_and(is_deeper) {
+        while regions.last().is_some_and(is_deeper) {
+            regions.pop();
+        }
+        let end = regions.last().map_or(line, |region| region.end_above) - 1;
+        if end > line {
+            ranges.push(FoldRange { start: line, end });
         }
     }
-    ranges
+    match regions.last_mut() {
+        Some(region) if region.indent == Some(indent) => region.end_above = line,
+        _ => regions.push(OpenRegion {
+            indent: Some(indent),
+            end_above: line,
+            line,
+        }),
+    }
 }
 
 /// 접힌 범위를 시작 줄로 기억한다. 편집으로 범위가 바뀌면 같은 시작 줄의 새 범위를 따른다
@@ -128,7 +210,7 @@ mod tests {
     fn indented_blocks_fold_up_to_their_last_inner_line() {
         let text = lines("function a() {\n  if (x) {\n    y();\n  }\n\n  z();\n}\nend");
 
-        let ranges = compute_fold_ranges(&text, 4);
+        let ranges = compute_fold_ranges(&text, 4, Language::TypeScript);
 
         assert_eq!(
             ranges,
@@ -142,7 +224,7 @@ mod tests {
     #[test]
     fn collapsed_ranges_hide_their_body_lines() {
         let text = lines("a {\n  b\n  c\n}\nd");
-        let ranges = compute_fold_ranges(&text, 4);
+        let ranges = compute_fold_ranges(&text, 4, Language::TypeScript);
         let mut state = FoldState::default();
 
         state.toggle(0);
@@ -155,6 +237,40 @@ mod tests {
         assert_eq!(
             innermost_range_at(&ranges, 1),
             Some(FoldRange { start: 0, end: 2 })
+        );
+    }
+
+    #[test]
+    fn region_markers_fold_through_their_endregion_line_in_typescript() {
+        let text = lines(
+            "// #region helpers\nfunction f() {\n  x();\n}\n// #endregion\nend\n\nblock {\n  y\n\n}",
+        );
+
+        assert_eq!(
+            compute_fold_ranges(&text, 4, Language::TypeScript),
+            vec![
+                FoldRange { start: 0, end: 4 },
+                FoldRange { start: 1, end: 2 },
+                // 닫는 줄 앞 빈 줄까지 접는다(Monaco `computeRanges`)
+                FoldRange { start: 7, end: 9 },
+            ]
+        );
+        assert_eq!(
+            compute_fold_ranges(&text, 4, Language::Python),
+            vec![
+                FoldRange { start: 1, end: 2 },
+                FoldRange { start: 7, end: 9 },
+            ]
+        );
+    }
+
+    #[test]
+    fn tabs_indent_to_the_next_tab_stop() {
+        let text = lines("a\n  \tb\n    c\nd");
+
+        assert_eq!(
+            compute_fold_ranges(&text, 4, Language::PlainText),
+            vec![FoldRange { start: 0, end: 2 }]
         );
     }
 }

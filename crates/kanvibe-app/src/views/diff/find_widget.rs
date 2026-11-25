@@ -1,7 +1,7 @@
 //! Monaco 찾기(·바꾸기) 위젯(`findWidget.css`, 라이트 테마). 편집기 오른쪽 위(오른쪽 여백 28px)에 붙는 419px 막대로,
 //! 찾을 글자, 대소문자·단어 단위·정규식 토글, 결과 수, 이전·다음, 선택 영역에서 찾기, 닫기가 있다. 편집할 수 있는 편집기에서는
-//! 왼쪽 펼침 단추와 바꿀 글자·바꾸기·모두 바꾸기 줄이 더 있다. 검색과 결과 이동은 편집기가 맡고, 위젯은 입력과 사건만 낸다.
-//! Monaco 바꾸기 입력의 "대/소문자 보존" 토글은 옮기지 않았다.
+//! 왼쪽 펼침 단추와 바꿀 글자(대/소문자 보존 토글 포함)·바꾸기·모두 바꾸기 줄이 더 있다. 검색과 결과 이동은 편집기가 맡고,
+//! 위젯은 입력과 사건만 낸다. 아이콘은 Monaco와 같은 codicon 글꼴로 그린다.
 
 use std::ops::Range;
 
@@ -14,6 +14,7 @@ use gpui_kit::{
 use kanvibe_domain::platform::ShortcutPlatform;
 use kanvibe_domain::shortcuts::key_event::match_shortcut_event;
 
+use super::codicon::{Codicon, codicon_font, ensure_codicon_font};
 use super::line_diff::TextPoint;
 use super::search::FindOptions;
 use super::text_buffer::TextBuffer;
@@ -32,8 +33,10 @@ const INPUT_WIDTH: f32 = 221.0;
 const INPUT_HEIGHT: f32 = 25.0;
 const INPUT_FONT_SIZE: f32 = 13.0;
 const INPUT_PADDING_LEFT: f32 = 4.0;
-/// 입력란 오른쪽 토글 세 개 자리
-const FIND_CONTROLS_WIDTH: f32 = 66.0;
+/// 입력란 오른쪽 토글 자리(토글 하나 20px + 왼쪽 여백 2px). 찾을 글자는 셋, 바꿀 글자는 하나다
+const TOGGLE_SLOT_WIDTH: f32 = 22.0;
+/// codicon 글자 크기(`codicon.css`의 `16px/1`)
+const ICON_SIZE: f32 = 16.0;
 const MATCHES_COUNT_MIN_WIDTH: f32 = 69.0;
 
 /// Monaco 라이트 테마 위젯 색
@@ -58,8 +61,9 @@ mod widget_colors {
     pub fn error_border() -> Rgba {
         rgb(0xBE1100)
     }
-    pub fn icon() -> Rgba {
-        rgb(0x424242)
+    /// `inputOption.activeForeground`
+    pub fn toggle_active_foreground() -> Rgba {
+        rgb(0x000000)
     }
     pub fn toggle_active_border() -> Rgba {
         rgb(0x007ACC)
@@ -88,7 +92,7 @@ mod widget_colors {
         b: 0.0,
         a: 0.16,
     };
-    /// `input.placeholderForeground`(foreground 50%)
+    /// `input.placeholderForeground`·`disabledForeground`(foreground 50%)
     pub const PLACEHOLDER: Rgba = Rgba {
         r: 97.0 / 255.0,
         g: 97.0 / 255.0,
@@ -132,6 +136,7 @@ pub struct FindWidget {
     replacement: TextBuffer,
     options: FindOptions,
     is_in_selection: bool,
+    is_preserving_case: bool,
     is_replace_allowed: bool,
     is_replace_visible: bool,
     summary: MatchSummary,
@@ -149,6 +154,7 @@ impl FindWidget {
         platform: ShortcutPlatform,
         cx: &mut Context<Self>,
     ) -> Self {
+        ensure_codicon_font(cx);
         let mut query = TextBuffer::new(initial_query);
         query.select_all();
         Self {
@@ -156,6 +162,7 @@ impl FindWidget {
             replacement: TextBuffer::new(""),
             options: FindOptions::default(),
             is_in_selection: false,
+            is_preserving_case: false,
             is_replace_allowed,
             is_replace_visible: false,
             summary: MatchSummary::NoQuery,
@@ -179,6 +186,10 @@ impl FindWidget {
 
     pub fn is_in_selection(&self) -> bool {
         self.is_in_selection
+    }
+
+    pub fn is_preserving_case(&self) -> bool {
+        self.is_preserving_case
     }
 
     pub fn set_summary(&mut self, summary: MatchSummary, cx: &mut Context<Self>) {
@@ -244,6 +255,12 @@ impl FindWidget {
             FindOption::WholeWord => self.options.is_whole_word = !self.options.is_whole_word,
             FindOption::Regex => self.options.is_regex = !self.options.is_regex,
             FindOption::InSelection => self.is_in_selection = !self.is_in_selection,
+            // 대소문자 보존은 바꿀 글자만 바꾸므로 다시 찾지 않는다
+            FindOption::PreserveCase => {
+                self.is_preserving_case = !self.is_preserving_case;
+                cx.notify();
+                return;
+            }
         }
         cx.emit(FindEvent::Changed);
         cx.notify();
@@ -267,6 +284,7 @@ enum FindOption {
     WholeWord,
     Regex,
     InSelection,
+    PreserveCase,
 }
 
 /// 키보드: Monaco 찾기 위젯 단축키와 입력란 편집 키
@@ -287,7 +305,7 @@ impl FindWidget {
     fn widget_shortcut(&self, event: &KeyDownEvent) -> Option<FindCommand> {
         let shortcut = shortcut_event_from_keystroke(&event.keystroke);
         let is_mac = self.platform == ShortcutPlatform::Mac;
-        let table: [(&str, FindCommand); 11] = [
+        let table: [(&str, FindCommand); 12] = [
             ("Escape", FindCommand::Close),
             ("Enter", FindCommand::EnterKey),
             ("Shift+Enter", FindCommand::Emit(FindEvent::Previous)),
@@ -304,6 +322,10 @@ impl FindWidget {
             (
                 if is_mac { "Meta+Alt+R" } else { "Alt+R" },
                 FindCommand::Toggle(FindOption::Regex),
+            ),
+            (
+                if is_mac { "Meta+Alt+P" } else { "Alt+P" },
+                FindCommand::Toggle(FindOption::PreserveCase),
             ),
             ("Mod+Shift+1", FindCommand::Emit(FindEvent::ReplaceOne)),
             (
@@ -540,10 +562,16 @@ impl FindWidget {
         window: &Window,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
-        let (buffer, focus, placeholder, controls_width) = match field {
-            Field::Find => (&self.query, &self.find_focus, "Find", FIND_CONTROLS_WIDTH),
-            Field::Replace => (&self.replacement, &self.replace_focus, "Replace", 0.0),
+        let (buffer, focus, placeholder, toggles) = match field {
+            Field::Find => (&self.query, &self.find_focus, "Find", self.find_toggles()),
+            Field::Replace => (
+                &self.replacement,
+                &self.replace_focus,
+                "Replace",
+                self.replace_toggles(),
+            ),
         };
+        let controls_width = TOGGLE_SLOT_WIDTH * toggles.len() as f32;
         let is_focused = focus.is_focused(window);
         let has_error = field == Field::Find && self.summary == MatchSummary::InvalidPattern;
         let border = if has_error {
@@ -574,9 +602,7 @@ impl FindWidget {
                     .child(text_area),
             )
             .when_some(border, |input, color| input.border_1().border_color(color))
-            .when(field == Field::Find, |input| {
-                input.child(self.render_option_toggles(cx))
-            })
+            .child(render_option_toggles(toggles, cx))
             .child(qa_target_layer(QaTargetDescription {
                 role: "textbox",
                 name: placeholder.into(),
@@ -617,52 +643,46 @@ impl FindWidget {
         .size_full()
     }
 
-    fn render_option_toggles(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let toggles = [
-            (
-                FindOption::CaseSensitive,
-                "Aa",
-                "Match Case",
-                self.options.is_case_sensitive,
-            ),
-            (
-                FindOption::WholeWord,
-                "ab",
-                "Match Whole Word",
-                self.options.is_whole_word,
-            ),
-            (
-                FindOption::Regex,
-                ".*",
-                "Use Regular Expression",
-                self.options.is_regex,
-            ),
-        ];
-        let buttons = toggles.into_iter().map(|(option, glyph, name, is_active)| {
-            let toggle = icon_button(name, glyph, 20.0)
-                .ml(px(2.0))
-                .rounded(px(3.0))
-                .on_click(cx.listener(move |this, _, _, cx| this.toggle_option(option, cx)));
-            if is_active {
-                toggle
-                    .border_1()
-                    .border_color(widget_colors::toggle_active_border())
-                    .bg(widget_colors::TOGGLE_ACTIVE_BACKGROUND)
-            } else {
-                toggle
-            }
-        });
-        div()
-            .absolute()
-            .top(px(2.0))
-            .right(px(2.0))
-            .flex()
-            .children(buttons)
+    /// 찾을 글자 입력란 안의 토글(`Alt+C`·`Alt+W`·`Alt+R`)
+    fn find_toggles(&self) -> Vec<OptionToggle> {
+        vec![
+            OptionToggle {
+                option: FindOption::CaseSensitive,
+                icon: Codicon::CaseSensitive,
+                name: "Match Case",
+                is_active: self.options.is_case_sensitive,
+            },
+            OptionToggle {
+                option: FindOption::WholeWord,
+                icon: Codicon::WholeWord,
+                name: "Match Whole Word",
+                is_active: self.options.is_whole_word,
+            },
+            OptionToggle {
+                option: FindOption::Regex,
+                icon: Codicon::Regex,
+                name: "Use Regular Expression",
+                is_active: self.options.is_regex,
+            },
+        ]
+    }
+
+    /// 바꿀 글자 입력란 안의 대/소문자 보존 토글(`Alt+P`, Monaco `PreserveCaseToggle`)
+    fn replace_toggles(&self) -> Vec<OptionToggle> {
+        vec![OptionToggle {
+            option: FindOption::PreserveCase,
+            icon: Codicon::PreserveCase,
+            name: "Preserve Case",
+            is_active: self.is_preserving_case,
+        }]
     }
 
     fn render_find_part(&self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
         let (label, color) = self.summary_label();
-        let in_selection = icon_button("Find in Selection", "≡", 22.0)
+        // Monaco `_updateButtons`: 찾을 글자가 있고 결과가 있을 때만 이전·다음을 쓸 수 있다
+        let can_navigate =
+            matches!(self.summary, MatchSummary::Position { total, .. } if total > 0);
+        let in_selection = icon_button("Find in Selection", Codicon::Selection, 22.0, true)
             .ml(px(3.0))
             .when(self.is_in_selection, |button| {
                 button.bg(widget_colors::TOGGLE_ACTIVE_BACKGROUND)
@@ -697,19 +717,25 @@ impl FindWidget {
                     })),
             )
             .child(
-                icon_button("Previous Match", "↑", 22.0)
+                icon_button("Previous Match", Codicon::ArrowUp, 22.0, can_navigate)
                     .ml(px(3.0))
-                    .on_click(cx.listener(|_, _, _, cx| cx.emit(FindEvent::Previous))),
+                    .when(can_navigate, |button| {
+                        button.on_click(cx.listener(|_, _, _, cx| cx.emit(FindEvent::Previous)))
+                    }),
             )
             .child(
-                icon_button("Next Match", "↓", 22.0)
+                icon_button("Next Match", Codicon::ArrowDown, 22.0, can_navigate)
                     .ml(px(3.0))
-                    .on_click(cx.listener(|_, _, _, cx| cx.emit(FindEvent::Next))),
+                    .when(can_navigate, |button| {
+                        button.on_click(cx.listener(|_, _, _, cx| cx.emit(FindEvent::Next)))
+                    }),
             )
             .child(in_selection)
     }
 
     fn render_replace_part(&self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // Monaco `_updateButtons`: 찾을 글자가 있을 때만 바꾸기 단추를 쓸 수 있다
+        let can_replace = !self.query.text().is_empty();
         div()
             .flex()
             .items_center()
@@ -718,25 +744,67 @@ impl FindWidget {
             .mr(px(25.0))
             .child(self.render_input(Field::Replace, window, cx))
             .child(
-                icon_button("Replace", "↵", 22.0)
+                icon_button("Replace", Codicon::Replace, 22.0, can_replace)
                     .ml(px(3.0))
-                    .on_click(cx.listener(|_, _, _, cx| cx.emit(FindEvent::ReplaceOne))),
+                    .when(can_replace, |button| {
+                        button.on_click(cx.listener(|_, _, _, cx| cx.emit(FindEvent::ReplaceOne)))
+                    }),
             )
             .child(
-                icon_button("Replace All", "⇶", 22.0)
+                icon_button("Replace All", Codicon::ReplaceAll, 22.0, can_replace)
                     .ml(px(3.0))
-                    .on_click(cx.listener(|_, _, _, cx| cx.emit(FindEvent::ReplaceAll))),
+                    .when(can_replace, |button| {
+                        button.on_click(cx.listener(|_, _, _, cx| cx.emit(FindEvent::ReplaceAll)))
+                    }),
             )
     }
 }
 
-/// 16px 아이콘 + 3px 여백 단추(`.find-widget .button`). Monaco codicon 대신 같은 뜻의 글자로 그린다
+/// 입력란 안 토글 하나
+struct OptionToggle {
+    option: FindOption,
+    icon: Codicon,
+    name: &'static str,
+    is_active: bool,
+}
+
+/// 입력란 오른쪽 위의 토글 묶음(`.monaco-findInput > .controls`). 켜진 토글은 파란 테두리·배경과 검은 아이콘이다
+fn render_option_toggles(
+    toggles: Vec<OptionToggle>,
+    cx: &mut Context<FindWidget>,
+) -> impl IntoElement {
+    let buttons = toggles.into_iter().map(|toggle| {
+        let option = toggle.option;
+        let button = icon_button(toggle.name, toggle.icon, 20.0, true)
+            .ml(px(2.0))
+            .rounded(px(3.0))
+            .on_click(cx.listener(move |this, _, _, cx| this.toggle_option(option, cx)));
+        if toggle.is_active {
+            button
+                .border_1()
+                .border_color(widget_colors::toggle_active_border())
+                .bg(widget_colors::TOGGLE_ACTIVE_BACKGROUND)
+                .text_color(widget_colors::toggle_active_foreground())
+        } else {
+            button
+        }
+    });
+    div()
+        .absolute()
+        .top(px(2.0))
+        .right(px(2.0))
+        .flex()
+        .children(buttons)
+}
+
+/// 16px codicon + 3px 여백 단추(`.find-widget .button`). 아이콘 색은 위젯 글자색을 물려받고, 쓸 수 없으면 흐리게 그린다
 fn icon_button(
     name: &'static str,
-    glyph: &'static str,
+    icon: Codicon,
     side: f32,
+    is_enabled: bool,
 ) -> gpui_kit::Stateful<gpui_kit::Div> {
-    div()
+    let button = div()
         .id(name)
         .relative()
         .flex_none()
@@ -745,16 +813,27 @@ fn icon_button(
         .items_center()
         .justify_center()
         .rounded(px(5.0))
-        .text_color(widget_colors::icon())
-        .text_size(px(13.0))
-        .cursor_pointer()
-        .hover(|style| style.bg(widget_colors::BUTTON_HOVER))
-        .child(glyph)
+        .child(
+            div()
+                .size(px(ICON_SIZE))
+                .font(codicon_font())
+                .text_size(px(ICON_SIZE))
+                .line_height(px(ICON_SIZE))
+                .text_align(TextAlign::Center)
+                .child(icon.glyph()),
+        )
         .child(qa_target_layer(QaTargetDescription {
             role: "button",
             name: name.into(),
             text: name.into(),
-        }))
+        }));
+    if is_enabled {
+        button
+            .cursor_pointer()
+            .hover(|style| style.bg(widget_colors::BUTTON_HOVER))
+    } else {
+        button.text_color(widget_colors::PLACEHOLDER)
+    }
 }
 
 /// 입력란 글자·선택·커서
@@ -838,13 +917,13 @@ fn inner_bar(bounds: Bounds<Pixels>, x: f32, width: f32) -> Bounds<Pixels> {
 impl FindWidget {
     /// 편집할 수 있는 편집기에서만 보이는 왼쪽 바꾸기 펼침 단추(`button.toggle`)
     fn render_replace_toggle(&self, cx: &mut Context<Self>) -> Option<impl IntoElement> {
-        let glyph = if self.is_replace_visible {
-            "⌄"
+        let icon = if self.is_replace_visible {
+            Codicon::ChevronDown
         } else {
-            "›"
+            Codicon::ChevronRight
         };
         self.is_replace_allowed.then(|| {
-            icon_button("Toggle Replace", glyph, 18.0)
+            icon_button("Toggle Replace", icon, 18.0, true)
                 .absolute()
                 .top_0()
                 .left(px(3.0))
@@ -895,7 +974,7 @@ impl Render for FindWidget {
                 widget.child(self.render_replace_part(window, cx))
             })
             .child(
-                icon_button("Close (Escape)", "×", 22.0)
+                icon_button("Close (Escape)", Codicon::Close, 22.0, true)
                     .absolute()
                     .top(px(5.0))
                     .right(px(4.0))

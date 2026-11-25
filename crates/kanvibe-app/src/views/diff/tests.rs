@@ -1120,3 +1120,76 @@ fn double_click_selects_a_word_and_triple_click_a_line(cx: &mut TestAppContext) 
     assert!(is_shown(cx, "Z"));
     assert!(!is_shown(cx, "second"));
 }
+
+#[gpui::test]
+fn regex_replace_all_substitutes_capture_groups(cx: &mut TestAppContext) {
+    init(cx);
+    let harness = EditorHarness::new();
+    let (_, cx) = harness.open_with(cx, "countOpen();\ncountDone();");
+    click_code_line(cx, "countOpen();", 1);
+
+    cx.simulate_keystrokes("ctrl-home ctrl-h tab alt-r");
+    cx.simulate_input(r"count(\w+)");
+    assert_eq!(find_status(cx).as_deref(), Some("1 of 2"));
+    cx.simulate_keystrokes("tab");
+    cx.simulate_input("$1Count$$");
+    cx.simulate_keystrokes("ctrl-alt-enter");
+
+    assert!(is_shown(cx, "OpenCount$();") && is_shown(cx, "DoneCount$();"));
+}
+
+#[gpui::test]
+fn preserve_case_keeps_the_shape_of_each_replaced_word(cx: &mut TestAppContext) {
+    init(cx);
+    let harness = EditorHarness::new();
+    let (_, cx) = harness.open_with(cx, "Card card CARD");
+    click_code_line(cx, "Card card CARD", 1);
+
+    cx.simulate_keystrokes("ctrl-home ctrl-h");
+    cx.simulate_input("deck");
+    cx.simulate_keystrokes("alt-p ctrl-alt-enter");
+
+    assert!(is_shown(cx, "Deck deck DECK"));
+}
+
+#[gpui::test]
+fn regex_with_a_newline_escape_finds_across_lines(cx: &mut TestAppContext) {
+    init(cx);
+    let harness = EditorHarness::new();
+    let (_, cx) = harness.open_with(cx, "a;\nb;\na;");
+    click_code_line(cx, "b;", 1);
+
+    cx.simulate_keystrokes("ctrl-f alt-r");
+    cx.simulate_input(r";\nb");
+
+    assert_eq!(find_status(cx).as_deref(), Some("1 of 1"));
+}
+
+#[gpui::test]
+fn typing_a_doc_comment_opener_closes_it_and_enter_continues_it(cx: &mut TestAppContext) {
+    init(cx);
+    let harness = EditorHarness::new();
+    let (_, cx) = harness.open_with(cx, "");
+    click_code_line(cx, "", 1);
+
+    cx.simulate_input("/**");
+    assert!(is_shown(cx, "/** */"));
+    cx.simulate_keystrokes("enter");
+    cx.simulate_input("Sum");
+
+    assert!(is_shown(cx, "/**") && is_shown(cx, " * Sum") && is_shown(cx, " */"));
+}
+
+#[gpui::test]
+fn region_markers_fold_the_whole_region(cx: &mut TestAppContext) {
+    init(cx);
+    let harness = EditorHarness::new();
+    let (_, cx) = harness.open_with(cx, "// #region helpers\nconst x = 1;\n// #endregion\nend");
+    let header = find(cx, TargetQuery::ExactText("// #region helpers".into())).expect("region");
+    let control = gpui_kit::point(header.origin.x - gpui_kit::px(8.0), header.center().y);
+
+    cx.simulate_click(control, Modifiers::none());
+
+    assert!(!is_shown(cx, "const x = 1;") && !is_shown(cx, "// #endregion"));
+    assert!(is_shown(cx, "end"));
+}

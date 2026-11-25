@@ -457,7 +457,7 @@ impl DiffViewer {
         let rows = self.side_document(*side).1;
         let Some(row) = rows
             .iter()
-            .position(|row| matches!(row, PaneRow::Text { line, .. } if *line == found.line))
+            .position(|row| matches!(row, PaneRow::Text { line, .. } if *line == found.start.line))
         else {
             return;
         };

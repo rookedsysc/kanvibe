@@ -44,7 +44,7 @@ impl FindSession {
                 self.current = self
                     .matches
                     .iter()
-                    .position(|found| match_start(found) >= anchor)
+                    .position(|found| found.start >= anchor)
                     .or((!self.matches.is_empty()).then_some(0));
                 self.summary_for(&query)
             }
@@ -89,22 +89,8 @@ impl FindSession {
     }
 }
 
-pub fn match_start(found: &FindMatch) -> TextPoint {
-    TextPoint {
-        line: found.line,
-        column: found.range.start,
-    }
-}
-
-pub fn match_end(found: &FindMatch) -> TextPoint {
-    TextPoint {
-        line: found.line,
-        column: found.range.end,
-    }
-}
-
 fn is_inside(found: &FindMatch, (start, end): (TextPoint, TextPoint)) -> bool {
-    match_start(found) >= start && match_end(found) <= end
+    found.start >= start && found.end <= end
 }
 
 /// 열린 위젯의 사건을 구독할 때 쓰는 생성 도우미

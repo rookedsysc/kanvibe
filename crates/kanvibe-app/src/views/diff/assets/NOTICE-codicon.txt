@@ -1,0 +1,14 @@
+codicon.ttf
+
+Source: monaco-editor 0.55.1 (esm/vs/base/browser/ui/codicons/codicon/codicon.ttf),
+        the same file the KanVibe TypeScript app loaded through Monaco.
+        sha256 9d25513c861704be650eacef8c4588aceabdc8b668857747b5e42b299e926918
+Project: Visual Studio Code Codicons, https://github.com/microsoft/vscode-codicons
+Copyright (c) Microsoft Corporation.
+License: Creative Commons Attribution 4.0 International (CC BY 4.0),
+         full text in LICENSE-codicon-CC-BY-4.0.txt
+         (https://github.com/microsoft/vscode-codicons/blob/main/LICENSE).
+
+The file is shipped unmodified. At runtime KanVibe builds an in-memory copy whose
+cmap table also maps the letter "m" to an existing glyph, because GPUI refuses to
+load a font face that has no "m" glyph. No glyph outline is changed.

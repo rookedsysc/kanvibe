@@ -4,20 +4,15 @@
 
 use std::rc::Rc;
 use std::sync::Arc;
-use std::time::Duration;
 
-use gpui_kit::{App, AppContext, BackgroundExecutor, Global, Task};
+use gpui_kit::{App, AppContext, Task};
 use kanvibe_db::Database;
 use kanvibe_db::repositories::tasks::find_task;
 use kanvibe_domain::task::KanbanTask;
 use kanvibe_domain::task_diff_stats::DiffFile;
-use kanvibe_process::exec::system::SystemShellCommandRunner;
-use kanvibe_process::host_file_access::HostFileAccess;
-use kanvibe_process::shell_environment::current_user_home_directory;
 use kanvibe_services::diff::DiffService;
 
-use crate::qa::faults::{FaultOutcome, FaultRegistry};
-use crate::services::AppServices;
+use crate::services::{AppServices, apply_fault, format_service_error};
 
 /// 실패 사유. 화면은 TS `error.message`처럼 그대로 보여 준다
 pub type SourceResult<T> = Result<T, String>;
@@ -47,42 +42,23 @@ pub trait DiffSource {
 
 pub type SharedDiffSource = Rc<dyn DiffSource>;
 
-/// 앱 서비스(DB, diff 서비스, QA 고장 목록)로 부르는 실제 구현
+/// 앱 런타임의 DB와 diff 서비스로 부르는 실제 구현. 같은 task 조회를 합치는 대기열은 런타임의 diff 서비스 하나에 있다
 pub struct ServiceDiffSource {
     database: Option<Arc<Database>>,
-    diff_service: Option<DiffService>,
-    faults: Option<Arc<FaultRegistry>>,
+    diff_service: Option<Arc<DiffService>>,
 }
 
-/// 앱 전체가 하나의 diff 서비스를 함께 쓴다. 같은 task 조회를 합치는 대기열이 서비스 안에 있다
-struct SharedDiffService(DiffService);
-
-impl Global for SharedDiffService {}
-
 impl ServiceDiffSource {
-    pub fn from_app(cx: &mut App) -> Self {
+    pub fn from_app(cx: &App) -> Self {
         let services = cx.global::<AppServices>();
-        let database = services.database().cloned();
-        let faults = services.faults().cloned();
-        let diff_service = database
-            .as_ref()
-            .map(|database| shared_diff_service(database, cx));
         Self {
-            database,
-            diff_service,
-            faults,
+            database: services.database().cloned(),
+            diff_service: services.runtime().map(|runtime| Arc::clone(runtime.diff())),
         }
     }
 
-    fn check_fault(&self, target: &str, arguments: &[&str]) -> FaultOutcome {
-        let serialized_arguments = serde_json::to_string(arguments).unwrap_or_default();
-        self.faults
-            .as_ref()
-            .map(|faults| faults.check(target, &serialized_arguments))
-            .unwrap_or(FaultOutcome::Proceed)
-    }
-
-    /// 고장 판정을 거친 뒤 막히는 서비스 호출을 백그라운드에서 돌린다
+    /// 고장 판정을 거친 뒤 막히는 서비스 호출을 백그라운드에서 돌린다.
+    /// 던져진 실패(고장 주입, DB 오류)는 TS IPC가 붙이던 머리말까지 붙인 문구가 된다(`format_service_error`)
     fn spawn<T: Send + 'static>(
         &self,
         target: &str,
@@ -90,30 +66,24 @@ impl ServiceDiffSource {
         cx: &App,
         call: impl FnOnce() -> SourceResult<T> + Send + 'static,
     ) -> Task<SourceResult<T>> {
-        let fault = self.check_fault(target, arguments);
+        let serialized_arguments = serde_json::to_string(arguments).unwrap_or_default();
+        let fault = cx
+            .global::<AppServices>()
+            .check_fault(target, &serialized_arguments);
         let executor = cx.background_executor().clone();
         cx.background_spawn(async move {
-            apply_fault(fault, &executor).await?;
+            apply_fault(fault, &executor)
+                .await
+                .map_err(|failure| failure.display_message())?;
             call()
         })
     }
 
-    fn diff_service(&self) -> SourceResult<DiffService> {
+    fn diff_service(&self) -> SourceResult<Arc<DiffService>> {
         self.diff_service
             .clone()
             .ok_or_else(|| "데이터 디렉터리가 없습니다".to_string())
     }
-}
-
-fn shared_diff_service(database: &Arc<Database>, cx: &mut App) -> DiffService {
-    if let Some(shared) = cx.try_global::<SharedDiffService>() {
-        return shared.0.clone();
-    }
-    let runner = Arc::new(SystemShellCommandRunner::for_current_process());
-    let files = Arc::new(HostFileAccess::new(runner, current_user_home_directory()));
-    let service = DiffService::new(Arc::clone(database), files);
-    cx.set_global(SharedDiffService(service.clone()));
-    service
 }
 
 impl DiffSource for ServiceDiffSource {
@@ -124,7 +94,8 @@ impl DiffSource for ServiceDiffSource {
             let Some(database) = database else {
                 return Ok(None);
             };
-            find_task(&database.connection(), &task_id_owned).map_err(|error| error.to_string())
+            find_task(&database.connection(), &task_id_owned)
+                .map_err(|error| format_service_error(&error.to_string()))
         })
     }
 
@@ -182,23 +153,5 @@ impl DiffSource for ServiceDiffSource {
                 Err(result.error.unwrap_or_default())
             }
         })
-    }
-}
-
-/// 고장 판정 결과대로 기다리거나 실패한다. 값 대체(`result`)는 이 화면의 상태 목록이 쓰지 않아 그대로 진행한다
-async fn apply_fault(fault: FaultOutcome, executor: &BackgroundExecutor) -> SourceResult<()> {
-    match fault {
-        FaultOutcome::Proceed | FaultOutcome::Result(_) => Ok(()),
-        FaultOutcome::Hang => std::future::pending().await,
-        FaultOutcome::Delay(wait) => {
-            executor.timer(wait).await;
-            Ok(())
-        }
-        FaultOutcome::Fail { message, after } => {
-            if after > Duration::ZERO {
-                executor.timer(after).await;
-            }
-            Err(message)
-        }
     }
 }

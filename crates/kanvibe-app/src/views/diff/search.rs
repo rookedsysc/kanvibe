@@ -1,9 +1,16 @@
-//! 찾기 위젯의 검색(Monaco `FindModel`). 대소문자 구분·단어 단위·정규식 세 토글을 따르고 결과는 줄별 바이트 범위다.
-//! 정규식은 앱이 정규식 crate에 의존하지 않아 이 화면이 쓰는 JS 정규식 부분집합(글자·`.`·문자 집합·`\d\w\s\b`·`^$`·
-//! 묶음·`|`·`* + ? {m,n}` 반복)을 줄 단위로 되추적해 맞춘다. 줄을 넘는 패턴(`\n`)은 지원하지 않는다.
+//! 찾기 위젯의 검색(Monaco `TextModelSearch`). 대소문자 구분·단어 단위·정규식 세 토글을 따르고, 결과는 시작·끝 위치와 묶음 글자다.
+//!
+//! Monaco는 찾을 글자를 JS `RegExp`로 만들어(정규식이 아니면 특수 문자를 이스케이프) 플래그 `u`, 대소문자 무시면 `i`를 단다.
+//! 정규식 원문에 줄바꿈·`\n`·`\r`·`\W`가 있으면 줄을 `\n`으로 이은 문서 전체에서 `m` 플래그로 찾고, 아니면 줄마다 따로 찾는다.
+//! 여기서는 ECMAScript 정규식 문법과 의미(역참조, 앞·뒤 보기, ASCII `\w`·`\b`, `u`의 대소문자 접기)를 그대로 구현한
+//! `regress` crate로 같은 정규식을 만든다. 남은 차이: JS는 UTF-16 단위로 세고 여기서는 UTF-8 바이트로 세므로 위치 값만 다르고
+//! 찾는 글자는 같다. `u` 플래그가 늘 켜져 있어 UTF-16 대리 쌍을 반쪽씩 맞추는 JS 동작은 Monaco에서도 일어나지 않는다.
 
 use std::ops::Range;
 
+use regress::{Flags, Regex};
+
+use super::line_diff::TextPoint;
 use super::word_boundary::is_word_boundary_character;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -13,11 +20,13 @@ pub struct FindOptions {
     pub is_regex: bool,
 }
 
-/// 찾은 자리 하나
+/// 찾은 자리 하나. 여러 줄 정규식이면 시작과 끝 줄이 다를 수 있다
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FindMatch {
-    pub line: usize,
-    pub range: Range<usize>,
+    pub start: TextPoint,
+    pub end: TextPoint,
+    /// `$0`(찾은 글자 전체)부터 묶음 번호 순서의 찾은 글자. 맞지 않은 묶음은 `None`(JS `undefined`)
+    pub captures: Vec<Option<String>>,
 }
 
 /// 문서 전체에서 찾는다. 정규식이 틀리면 사유를 돌려준다(Monaco는 입력란 테두리를 붉게 한다)
@@ -29,396 +38,153 @@ pub fn find_matches(
     if query.is_empty() {
         return Ok(Vec::new());
     }
-    let pattern = if options.is_regex {
-        parse_pattern(query)?
+    let is_multiline = if options.is_regex {
+        is_multiline_regex_source(query)
     } else {
-        Node::Sequence(query.chars().map(Node::Literal).collect())
+        query.contains('\n')
     };
+    let regex = build_regex(query, options, is_multiline)?;
+    if is_multiline {
+        return Ok(find_in_document(&regex, lines, options.is_whole_word));
+    }
     let mut matches = Vec::new();
     for (line_index, line) in lines.iter().enumerate() {
-        let characters: Vec<(usize, char)> = line.char_indices().collect();
-        let matcher = Matcher {
-            characters: &characters,
-            is_case_sensitive: options.is_case_sensitive,
-            line_len: line.len(),
-        };
-        for range in matcher.find_all(&pattern) {
-            if !options.is_whole_word || is_whole_word(line, &range) {
-                matches.push(FindMatch {
+        for (range, captures) in search_text(&regex, line, options.is_whole_word) {
+            matches.push(FindMatch {
+                start: TextPoint {
                     line: line_index,
-                    range,
-                });
-            }
+                    column: range.start,
+                },
+                end: TextPoint {
+                    line: line_index,
+                    column: range.end,
+                },
+                captures,
+            });
         }
     }
     Ok(matches)
 }
 
-/// Monaco 단어 단위: 앞뒤가 줄 경계·구분 기호이거나, 찾은 글자 자체가 구분 기호로 시작·끝나면 인정한다
-fn is_whole_word(line: &str, range: &Range<usize>) -> bool {
-    let before = line[..range.start].chars().next_back();
-    let first = line[range.clone()].chars().next();
-    let last = line[range.clone()].chars().next_back();
-    let after = line[range.end..].chars().next();
+/// Monaco `createRegExp(searchString, isRegex, { matchCase, multiline, global: true, unicode: true })`
+fn build_regex(query: &str, options: FindOptions, is_multiline: bool) -> Result<Regex, String> {
+    let source = if options.is_regex {
+        query.to_string()
+    } else {
+        regress::escape(query)
+    };
+    let flags = Flags {
+        icase: !options.is_case_sensitive,
+        multiline: is_multiline,
+        unicode: true,
+        ..Flags::default()
+    };
+    Regex::with_flags(&source, flags).map_err(|error| error.to_string())
+}
+
+/// Monaco `isMultilineRegexSource`: 줄바꿈 글자나 `\n`·`\r`·`\W`가 있으면 줄을 넘어 찾는다
+fn is_multiline_regex_source(source: &str) -> bool {
+    let mut characters = source.chars();
+    while let Some(character) = characters.next() {
+        match character {
+            '\n' => return true,
+            '\\' => match characters.next() {
+                Some('n' | 'r' | 'W') => return true,
+                Some(_) => {}
+                None => return false,
+            },
+            _ => {}
+        }
+    }
+    false
+}
+
+/// 줄을 `\n`으로 이은 글에서 찾고, 바이트 위치를 줄·칸으로 되돌린다(Monaco `_doFindMatchesMultiline`)
+fn find_in_document(regex: &Regex, lines: &[String], is_whole_word: bool) -> Vec<FindMatch> {
+    let text = lines.join("\n");
+    let mut line_starts = Vec::with_capacity(lines.len());
+    let mut offset = 0;
+    for line in lines {
+        line_starts.push(offset);
+        offset += line.len() + 1;
+    }
+    let point_at = |offset: usize| {
+        let line = line_starts.partition_point(|start| *start <= offset) - 1;
+        TextPoint {
+            line,
+            column: offset - line_starts[line],
+        }
+    };
+    search_text(regex, &text, is_whole_word)
+        .into_iter()
+        .map(|(range, captures)| FindMatch {
+            start: point_at(range.start),
+            end: point_at(range.end),
+            captures,
+        })
+        .collect()
+}
+
+/// 찾은 범위와 묶음 글자
+type TextMatch = (Range<usize>, Vec<Option<String>>);
+
+/// Monaco `Searcher.next`를 끝까지 되풀이한다. 빈 결과도 결과로 세고, 같은 빈 결과가 다시 나오면 한 글자 건너뛴다.
+/// 직전 결과가 글 끝에서 끝나면 더 찾지 않는다(그래서 `x*`는 글 끝의 빈 결과를 내지 않는다)
+fn search_text(regex: &Regex, text: &str, is_whole_word: bool) -> Vec<TextMatch> {
+    let mut found = Vec::new();
+    let mut last_index = 0;
+    let mut previous: Option<Range<usize>> = None;
+    loop {
+        if previous
+            .as_ref()
+            .is_some_and(|range| range.end == text.len())
+            || last_index > text.len()
+        {
+            break;
+        }
+        let Some(candidate) = regex.find_from(text, last_index).next() else {
+            break;
+        };
+        let range = candidate.range();
+        if previous.as_ref() == Some(&range) {
+            if !range.is_empty() {
+                break;
+            }
+            last_index = next_character_boundary(text, last_index);
+            continue;
+        }
+        last_index = range.end;
+        previous = Some(range.clone());
+        if !is_whole_word || is_whole_word_match(text, &range) {
+            let captures = candidate
+                .groups()
+                .map(|group| group.map(|group| text[group].to_string()))
+                .collect();
+            found.push((range, captures));
+        }
+    }
+    found
+}
+
+/// JS는 빈 결과 뒤 `lastIndex`를 코드 포인트 하나만큼 옮긴다. 글 끝이면 끝을 넘겨 멈추게 한다
+fn next_character_boundary(text: &str, index: usize) -> usize {
+    text[index..]
+        .chars()
+        .next()
+        .map_or(index + 1, |character| index + character.len_utf8())
+}
+
+/// Monaco 단어 단위(`isValidMatch`): 앞뒤가 글 경계·구분 기호·줄바꿈이거나, 찾은 글자 자체가 구분 기호로 시작·끝나면 인정한다
+fn is_whole_word_match(text: &str, range: &Range<usize>) -> bool {
+    let before = text[..range.start].chars().next_back();
+    let first = text[range.clone()].chars().next();
+    let last = text[range.clone()].chars().next_back();
+    let after = text[range.end..].chars().next();
     let is_left_ok = before.is_none_or(is_word_boundary_character)
         || first.is_some_and(is_word_boundary_character);
     let is_right_ok = after.is_none_or(is_word_boundary_character)
         || last.is_some_and(is_word_boundary_character);
     is_left_ok && is_right_ok
-}
-
-#[derive(Debug, Clone, PartialEq)]
-enum Node {
-    Literal(char),
-    AnyCharacter,
-    Class {
-        ranges: Vec<(char, char)>,
-        is_negated: bool,
-    },
-    LineStart,
-    LineEnd,
-    WordBoundary {
-        is_negated: bool,
-    },
-    Sequence(Vec<Node>),
-    Alternation(Vec<Node>),
-    Repeat {
-        node: Box<Node>,
-        min: usize,
-        max: Option<usize>,
-    },
-}
-
-fn parse_pattern(source: &str) -> Result<Node, String> {
-    let characters: Vec<char> = source.chars().collect();
-    let mut parser = Parser {
-        characters,
-        position: 0,
-    };
-    let node = parser.parse_alternation()?;
-    if parser.position < parser.characters.len() {
-        return Err(format!("Unmatched ')' at {}", parser.position));
-    }
-    Ok(node)
-}
-
-struct Parser {
-    characters: Vec<char>,
-    position: usize,
-}
-
-impl Parser {
-    fn peek(&self) -> Option<char> {
-        self.characters.get(self.position).copied()
-    }
-
-    fn next(&mut self) -> Option<char> {
-        let character = self.peek();
-        self.position += 1;
-        character
-    }
-
-    fn parse_alternation(&mut self) -> Result<Node, String> {
-        let mut branches = vec![self.parse_sequence()?];
-        while self.peek() == Some('|') {
-            self.position += 1;
-            branches.push(self.parse_sequence()?);
-        }
-        Ok(if branches.len() == 1 {
-            branches.remove(0)
-        } else {
-            Node::Alternation(branches)
-        })
-    }
-
-    fn parse_sequence(&mut self) -> Result<Node, String> {
-        let mut items = Vec::new();
-        while let Some(character) = self.peek() {
-            if character == '|' || character == ')' {
-                break;
-            }
-            let atom = self.parse_atom()?;
-            items.push(self.parse_quantifier(atom)?);
-        }
-        Ok(Node::Sequence(items))
-    }
-
-    fn parse_atom(&mut self) -> Result<Node, String> {
-        match self.next() {
-            Some('(') => {
-                if self.characters[self.position..].starts_with(&['?', ':']) {
-                    self.position += 2;
-                }
-                let inner = self.parse_alternation()?;
-                if self.next() != Some(')') {
-                    return Err("Unterminated group".to_string());
-                }
-                Ok(inner)
-            }
-            Some('[') => self.parse_class(),
-            Some('.') => Ok(Node::AnyCharacter),
-            Some('^') => Ok(Node::LineStart),
-            Some('$') => Ok(Node::LineEnd),
-            Some('\\') => self.parse_escape(),
-            Some('*' | '+' | '?') => Err("Nothing to repeat".to_string()),
-            Some(character) => Ok(Node::Literal(character)),
-            None => Err("Unexpected end of pattern".to_string()),
-        }
-    }
-
-    fn parse_escape(&mut self) -> Result<Node, String> {
-        let class = |ranges: &[(char, char)], is_negated: bool| Node::Class {
-            ranges: ranges.to_vec(),
-            is_negated,
-        };
-        Ok(match self.next().ok_or("\\ at end of pattern")? {
-            'd' => class(&DIGIT, false),
-            'D' => class(&DIGIT, true),
-            'w' => class(&WORD, false),
-            'W' => class(&WORD, true),
-            's' => class(&SPACE, false),
-            'S' => class(&SPACE, true),
-            'b' => Node::WordBoundary { is_negated: false },
-            'B' => Node::WordBoundary { is_negated: true },
-            't' => Node::Literal('\t'),
-            other => Node::Literal(other),
-        })
-    }
-
-    fn parse_class(&mut self) -> Result<Node, String> {
-        let is_negated = self.peek() == Some('^');
-        if is_negated {
-            self.position += 1;
-        }
-        let mut ranges = Vec::new();
-        loop {
-            let start = match self.next().ok_or("Unterminated character class")? {
-                ']' if !ranges.is_empty() => break,
-                '\\' => self.class_escape(&mut ranges)?,
-                character => character,
-            };
-            let is_range = self.peek() == Some('-')
-                && self
-                    .characters
-                    .get(self.position + 1)
-                    .is_some_and(|next| *next != ']');
-            if is_range {
-                self.position += 1;
-                let end = self.next().ok_or("Unterminated character class")?;
-                ranges.push((start, end));
-            } else if start != '\0' {
-                ranges.push((start, start));
-            }
-        }
-        Ok(Node::Class { ranges, is_negated })
-    }
-
-    /// 문자 집합 안의 `\d` 같은 묶음은 범위에 바로 넣고 `\0`을 돌려 하나짜리 글자로 넣지 않게 한다
-    fn class_escape(&mut self, ranges: &mut Vec<(char, char)>) -> Result<char, String> {
-        let escaped = self.next().ok_or("\\ at end of pattern")?;
-        let group: &[(char, char)] = match escaped {
-            'd' => &DIGIT,
-            'w' => &WORD,
-            's' => &SPACE,
-            't' => return Ok('\t'),
-            other => return Ok(other),
-        };
-        ranges.extend_from_slice(group);
-        Ok('\0')
-    }
-
-    fn parse_quantifier(&mut self, atom: Node) -> Result<Node, String> {
-        let (min, max) = match self.peek() {
-            Some('*') => (0, None),
-            Some('+') => (1, None),
-            Some('?') => (0, Some(1)),
-            Some('{') => match self.parse_braces() {
-                Some(bounds) => bounds,
-                None => return Ok(atom),
-            },
-            _ => return Ok(atom),
-        };
-        if matches!(self.peek(), Some('*' | '+' | '?')) {
-            self.position += 1;
-        }
-        // 게으른 반복(`*?`)은 찾는 범위만 달라지므로 같은 탐욕 반복으로 다룬다
-        if self.peek() == Some('?') {
-            self.position += 1;
-        }
-        Ok(Node::Repeat {
-            node: Box::new(atom),
-            min,
-            max,
-        })
-    }
-
-    /// `{m}`, `{m,}`, `{m,n}`. 숫자가 아니면 글자 `{`로 둔다(JS와 같다)
-    fn parse_braces(&mut self) -> Option<(usize, Option<usize>)> {
-        let rest: String = self.characters[self.position + 1..].iter().collect();
-        let close = rest.find('}')?;
-        let body = &rest[..close];
-        let (min, max) = match body.split_once(',') {
-            Some((min, "")) => (min.parse().ok()?, None),
-            Some((min, max)) => (min.parse().ok()?, Some(max.parse().ok()?)),
-            None => (body.parse().ok()?, Some(body.parse().ok()?)),
-        };
-        self.position += close + 2;
-        Some((min, max))
-    }
-}
-
-const DIGIT: [(char, char); 1] = [('0', '9')];
-const WORD: [(char, char); 4] = [('a', 'z'), ('A', 'Z'), ('0', '9'), ('_', '_')];
-const SPACE: [(char, char); 4] = [
-    (' ', ' '),
-    ('\t', '\t'),
-    ('\u{a0}', '\u{a0}'),
-    ('\u{3000}', '\u{3000}'),
-];
-
-struct Matcher<'a> {
-    characters: &'a [(usize, char)],
-    is_case_sensitive: bool,
-    line_len: usize,
-}
-
-impl Matcher<'_> {
-    fn byte_offset(&self, index: usize) -> usize {
-        self.characters
-            .get(index)
-            .map_or(self.line_len, |(offset, _)| *offset)
-    }
-
-    /// 앞에서부터 겹치지 않게 찾는다. 빈 일치는 건너뛴다
-    fn find_all(&self, pattern: &Node) -> Vec<Range<usize>> {
-        let mut found = Vec::new();
-        let mut start = 0;
-        while start <= self.characters.len() {
-            let mut end = None;
-            self.match_node(pattern, start, &mut |position| {
-                end = Some(position);
-                true
-            });
-            match end {
-                Some(end) if end > start => {
-                    found.push(self.byte_offset(start)..self.byte_offset(end));
-                    start = end;
-                }
-                _ => start += 1,
-            }
-        }
-        found
-    }
-
-    fn equals(&self, left: char, right: char) -> bool {
-        left == right || (!self.is_case_sensitive && left.to_lowercase().eq(right.to_lowercase()))
-    }
-
-    fn is_word_character(&self, index: usize) -> bool {
-        self.characters
-            .get(index)
-            .is_some_and(|(_, character)| character.is_alphanumeric() || *character == '_')
-    }
-
-    fn in_class(&self, character: char, ranges: &[(char, char)]) -> bool {
-        let variants = [
-            character,
-            character.to_lowercase().next().unwrap_or(character),
-            character.to_uppercase().next().unwrap_or(character),
-        ];
-        let candidates = if self.is_case_sensitive {
-            &variants[..1]
-        } else {
-            &variants[..]
-        };
-        candidates.iter().any(|candidate| {
-            ranges
-                .iter()
-                .any(|(low, high)| (*low..=*high).contains(candidate))
-        })
-    }
-
-    /// `position`에서 `node`를 맞추고, 맞으면 끝 위치로 `next`를 부른다. `next`가 참이면 거기서 멈춘다
-    fn match_node(
-        &self,
-        node: &Node,
-        position: usize,
-        next: &mut dyn FnMut(usize) -> bool,
-    ) -> bool {
-        match node {
-            Node::Sequence(items) => self.match_sequence(items, position, next),
-            Node::Alternation(branches) => branches
-                .iter()
-                .any(|branch| self.match_node(branch, position, next)),
-            Node::Repeat { node, min, max } => {
-                self.match_repeat(node, *min, *max, 0, position, next)
-            }
-            _ => self.match_single(node, position).is_some_and(next),
-        }
-    }
-
-    fn match_single(&self, node: &Node, position: usize) -> Option<usize> {
-        let current = self
-            .characters
-            .get(position)
-            .map(|(_, character)| *character);
-        let is_match = match node {
-            Node::Literal(expected) => {
-                current.is_some_and(|character| self.equals(character, *expected))
-            }
-            Node::AnyCharacter => current.is_some(),
-            Node::Class { ranges, is_negated } => {
-                current.is_some_and(|character| self.in_class(character, ranges) != *is_negated)
-            }
-            Node::LineStart => return (position == 0).then_some(position),
-            Node::LineEnd => return (position == self.characters.len()).then_some(position),
-            Node::WordBoundary { is_negated } => {
-                let is_boundary = position
-                    .checked_sub(1)
-                    .is_some_and(|before| self.is_word_character(before))
-                    != self.is_word_character(position);
-                return (is_boundary != *is_negated).then_some(position);
-            }
-            _ => false,
-        };
-        is_match.then_some(position + 1)
-    }
-
-    fn match_sequence(
-        &self,
-        items: &[Node],
-        position: usize,
-        next: &mut dyn FnMut(usize) -> bool,
-    ) -> bool {
-        let Some((first, rest)) = items.split_first() else {
-            return next(position);
-        };
-        self.match_node(first, position, &mut |end| {
-            self.match_sequence(rest, end, next)
-        })
-    }
-
-    /// 탐욕 반복: 더 많이 맞추는 쪽을 먼저 해 보고 안 되면 줄인다. 빈 반복으로 제자리를 돌지 않게 한다
-    fn match_repeat(
-        &self,
-        node: &Node,
-        min: usize,
-        max: Option<usize>,
-        count: usize,
-        position: usize,
-        next: &mut dyn FnMut(usize) -> bool,
-    ) -> bool {
-        let can_repeat = max.is_none_or(|max| count < max);
-        if can_repeat {
-            let mut try_more = |end: usize| {
-                end != position && self.match_repeat(node, min, max, count + 1, end, next)
-            };
-            if self.match_node(node, position, &mut try_more) {
-                return true;
-            }
-        }
-        count >= min && next(position)
-    }
 }
 
 #[cfg(test)]
@@ -429,24 +195,51 @@ mod tests {
         text.split('\n').map(str::to_string).collect()
     }
 
-    fn ranges(text: &str, query: &str, options: FindOptions) -> Vec<(usize, Range<usize>)> {
+    /// (시작 줄, 시작 칸, 끝 줄, 끝 칸)
+    fn spans(text: &str, query: &str, options: FindOptions) -> Vec<(usize, usize, usize, usize)> {
         find_matches(&lines(text), query, options)
             .unwrap()
             .into_iter()
-            .map(|found| (found.line, found.range))
+            .map(|found| {
+                (
+                    found.start.line,
+                    found.start.column,
+                    found.end.line,
+                    found.end.column,
+                )
+            })
             .collect()
     }
+
+    fn texts(text: &str, query: &str, options: FindOptions) -> Vec<String> {
+        find_matches(&lines(text), query, options)
+            .unwrap()
+            .into_iter()
+            .map(|found| found.captures[0].clone().unwrap())
+            .collect()
+    }
+
+    const REGEX: FindOptions = FindOptions {
+        is_case_sensitive: false,
+        is_whole_word: false,
+        is_regex: true,
+    };
+    const CASE_SENSITIVE_REGEX: FindOptions = FindOptions {
+        is_case_sensitive: true,
+        ..REGEX
+    };
 
     #[test]
     fn plain_search_ignores_case_unless_asked() {
         let text = "Card card\nCARD";
 
-        assert_eq!(ranges(text, "card", FindOptions::default()).len(), 3);
+        assert_eq!(spans(text, "card", FindOptions::default()).len(), 3);
         let case_sensitive = FindOptions {
             is_case_sensitive: true,
             ..FindOptions::default()
         };
-        assert_eq!(ranges(text, "card", case_sensitive), vec![(0, 5..9)]);
+        assert_eq!(spans(text, "card", case_sensitive), vec![(0, 5, 0, 9)]);
+        assert_eq!(texts("a.b axb", "a.b", FindOptions::default()), ["a.b"]);
     }
 
     #[test]
@@ -456,26 +249,101 @@ mod tests {
             ..FindOptions::default()
         };
 
-        assert_eq!(ranges("cards card", "card", whole_word), vec![(0, 6..10)]);
+        assert_eq!(spans("cards card", "card", whole_word), vec![(0, 6, 0, 10)]);
     }
 
     #[test]
     fn regex_supports_classes_groups_and_quantifiers() {
-        let regex = FindOptions {
-            is_regex: true,
-            ..FindOptions::default()
-        };
-
         assert_eq!(
-            ranges("countOpen countDone", r"count(Open|Done)", regex).len(),
+            spans("countOpen countDone", r"count(Open|Done)", REGEX).len(),
             2
         );
         assert_eq!(
-            ranges("a1 b22 c333", r"\d{2,}", regex),
-            vec![(0, 4..6), (0, 8..11)]
+            spans("a1 b22 c333", r"\d{2,}", REGEX),
+            vec![(0, 4, 0, 6), (0, 8, 0, 11)]
         );
-        assert_eq!(ranges("  return x;", r"^\s*\w+", regex), vec![(0, 0..8)]);
-        assert_eq!(ranges("x = [1, 2]", r"[^\w\s]", regex).len(), 4);
-        assert!(find_matches(&lines("a"), "(a", regex).is_err());
+        assert_eq!(spans("  return x;", r"^\s*\w+", REGEX), vec![(0, 0, 0, 8)]);
+        assert_eq!(spans("x = [1, 2]", r"[^\w\s]", REGEX).len(), 4);
+        assert!(find_matches(&lines("a"), "(a", REGEX).is_err());
+    }
+
+    #[test]
+    fn line_anchors_match_every_line_including_empty_matches() {
+        let text = "alpha\nbeta\n\ngamma";
+
+        // Monaco는 빈 결과도 센다: `^`는 줄마다 하나, `$`도 줄마다 하나
+        assert_eq!(spans(text, "^", REGEX).len(), 4);
+        assert_eq!(spans(text, "$", REGEX).len(), 4);
+        assert_eq!(texts(text, "a$", REGEX), ["a", "a", "a"]);
+        // 앞 결과가 줄 끝에서 끝나면 그 줄의 끝 빈 결과는 더 찾지 않는다
+        assert_eq!(spans("ax", "x*", REGEX), vec![(0, 0, 0, 0), (0, 1, 0, 2)]);
+    }
+
+    #[test]
+    fn newline_escapes_switch_to_multiline_search_with_the_m_flag() {
+        let text = "const a = 1;\nconst b = 2;\nlet c;";
+
+        assert_eq!(spans(text, r";\nconst", REGEX), vec![(0, 11, 1, 5)]);
+        // `m` 플래그: `$`와 `^`가 줄바꿈 앞뒤에서 맞는다
+        assert_eq!(spans(text, r"1;$\n^const", REGEX), vec![(0, 10, 1, 5)]);
+        // `.`은 줄바꿈을 넘지 않는다(JS `s` 플래그 없음)
+        assert_eq!(texts(text, r"b.*\n?", REGEX), ["b = 2;\n"]);
+        // 줄마다 찾는 모드에서 `\s`는 줄을 넘지 않는다(Monaco와 같다)
+        assert!(spans(text, r"1;\s+const", REGEX).is_empty());
+    }
+
+    #[test]
+    fn word_boundary_and_word_class_stay_ascii_like_javascript() {
+        // JS `\w`·`\b`는 `u` 플래그에서도 ASCII 글자만 단어 글자로 본다
+        assert_eq!(texts("café naïve", r"\b\w+\b", REGEX), ["caf", "na", "ve"]);
+        assert_eq!(texts("작업 board", r"\bboard\b", REGEX), ["board"]);
+        assert!(spans("작업", r"\b작업\b", REGEX).is_empty());
+        assert_eq!(texts("ÉCOLE école", "école", REGEX), ["ÉCOLE", "école"]);
+        assert_eq!(
+            texts("ÉCOLE école", "école", CASE_SENSITIVE_REGEX),
+            ["école"]
+        );
+    }
+
+    #[test]
+    fn backreferences_and_named_groups_match_repeated_text() {
+        assert_eq!(texts("aa ab bb", r"(\w)\1", REGEX), ["aa", "bb"]);
+        assert_eq!(
+            texts("<b>x</b> <i>y</b>", r"<(?<tag>\w)>\w</\k<tag>>", REGEX),
+            ["<b>x</b>"]
+        );
+    }
+
+    #[test]
+    fn lookahead_and_variable_length_lookbehind_work() {
+        assert_eq!(texts("count countOpen", r"count(?=Open)", REGEX), ["count"]);
+        assert_eq!(texts("count countOpen", r"count(?!Open)", REGEX), ["count"]);
+        assert_eq!(texts("$12 €34 56", r"(?<=\$|€)\d+", REGEX), ["12", "34"]);
+        assert_eq!(texts("ab12 b34", r"(?<=a\w+)\d", REGEX), ["1", "2"]);
+        assert_eq!(texts("ab12 b34", r"(?<!a)b\d+", REGEX), ["b34"]);
+    }
+
+    #[test]
+    fn unicode_flag_rejects_identity_escapes_like_monaco() {
+        // `u` 플래그에서는 뜻 없는 이스케이프와 홀로 선 `{`가 문법 오류다
+        assert!(find_matches(&lines("a"), r"\a", REGEX).is_err());
+        assert!(find_matches(&lines("a{"), r"a{", REGEX).is_err());
+        assert_eq!(texts("😀x", r"\u{1F600}", REGEX), ["😀"]);
+        assert_eq!(texts("😀x", r"^.", REGEX), ["😀"]);
+    }
+
+    #[test]
+    fn captures_keep_unmatched_groups_as_none() {
+        let found = find_matches(&lines("ab"), "(a)(x)?(b)", REGEX).unwrap();
+
+        assert_eq!(
+            found[0].captures,
+            vec![
+                Some("ab".to_string()),
+                Some("a".to_string()),
+                None,
+                Some("b".to_string())
+            ]
+        );
     }
 }
