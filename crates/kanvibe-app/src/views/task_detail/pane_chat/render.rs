@@ -10,9 +10,10 @@ use kanvibe_ai::pane_chat::snapshot::PaneChatTranscriptStatus;
 use kanvibe_ai::types::AggregatedAiMessage;
 
 use super::super::ai_provider_icon::ai_provider_icon;
-use super::view::PaneChatView;
+use super::view::{PERF_SCREEN, PaneChatView};
 use super::widgets::view_button;
 use crate::components::TailwindText;
+use crate::qa::perf_markers::mark_screen_phase;
 use crate::qa::targets::{QaTargetDescription, qa_target_layer};
 use crate::text_baseline::{TextFamily, aligned_text};
 use crate::theme::{ThemeTokens, radius, spacing, text_scale};
@@ -226,6 +227,24 @@ impl PaneChatView {
         }
     }
 
+    /// 성능 표식이 기다리는 첫 그리기(화면·대화 줄·보낼 수 있는 입력창)와 대상이 바뀐 뒤의 보낼 수 있는 화면을 알린다
+    fn observe_paint_marks(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.paint_marks.is_pending() && !self.is_retarget_mark_pending {
+            return;
+        }
+        let can_send = self.composer.is_editable()
+            && self
+                .session
+                .snapshot()
+                .is_some_and(|snapshot| snapshot.can_send);
+        let has_rows = !self.visible_messages(cx).is_empty();
+        self.paint_marks
+            .observe(PERF_SCREEN, window, has_rows, can_send);
+        if can_send && std::mem::take(&mut self.is_retarget_mark_pending) {
+            window.on_next_frame(|_, _| mark_screen_phase(PERF_SCREEN, "retarget"));
+        }
+    }
+
     pub fn jump_to_latest(&mut self, cx: &mut Context<Self>) {
         self.is_detached = false;
         self.transcript_scroll.scroll_to_bottom();
@@ -306,6 +325,7 @@ impl PaneChatView {
 impl Render for PaneChatView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = *cx.global::<ThemeTokens>();
+        self.observe_paint_marks(window, cx);
         let padding = Self::horizontal_padding(window);
         let prompt = self
             .session

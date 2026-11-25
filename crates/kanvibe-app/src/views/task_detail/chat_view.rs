@@ -27,11 +27,14 @@ use super::session_queries::{load_session_detail, load_session_list};
 use crate::components::scroll_area::scroll_area;
 use crate::components::{TailwindText, box_shadows, fade};
 use crate::locale_format::format_date;
+use crate::qa::perf_markers::ScreenPaintMarks;
 use crate::qa::targets::{QaTargetDescription, qa_target_layer};
 use crate::services::AppServices;
 use crate::shortcuts::shortcut_event_from_keystroke;
 use crate::theme::{ThemeTokens, radius, spacing, text_scale};
 
+/// 성능 표식의 화면 이름
+const PERF_SCREEN: &str = "history";
 /// 이 폭보다 좁으면 목록과 대화를 한 번에 하나만 보인다(TS `@min-[720px]`)
 const NARROW_LAYOUT_WIDTH: f32 = 720.0;
 /// 고른 대화 글자를 복사하는 단축키(브라우저 기본 복사)
@@ -76,6 +79,8 @@ pub struct InlineAiChatView {
     /// 최신 메시지 버튼. TS처럼 스크롤이 움직였을 때만 다시 판정한다(내용만 커지면 그대로)
     is_jump_to_latest_visible: bool,
     last_scroll_offset: Option<f32>,
+    /// 성능 표식(`--perf-markers`)이 기다리는 첫 그리기. `ready`는 세션 목록, `rows`는 고른 대화의 메시지다
+    paint_marks: ScreenPaintMarks,
     _history: Option<Task<()>>,
     _detail: Option<Task<()>>,
     _search_events: Subscription,
@@ -114,10 +119,12 @@ impl InlineAiChatView {
             is_aligning_latest_anchor: false,
             is_jump_to_latest_visible: false,
             last_scroll_offset: None,
+            paint_marks: ScreenPaintMarks::default(),
             _history: None,
             _detail: None,
             _search_events: search_events,
         };
+        view.paint_marks.arm(PERF_SCREEN, "open");
         view.reload_history("", cx);
         view
     }
@@ -164,6 +171,7 @@ impl InlineAiChatView {
     }
 
     fn select_session(&mut self, key: String, cx: &mut Context<Self>) {
+        self.paint_marks.arm(PERF_SCREEN, "select");
         self.file_preview = None;
         let request = self.state.select_session(key);
         self.send_detail_request(request, cx);
@@ -262,6 +270,12 @@ impl InlineAiChatView {
 impl Render for InlineAiChatView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = *cx.global::<ThemeTokens>();
+        if self.paint_marks.is_pending() {
+            let has_rows = !self.state.messages().is_empty();
+            let has_sessions = !self.state.filtered_sessions().is_empty();
+            self.paint_marks
+                .observe(PERF_SCREEN, window, has_rows, has_sessions);
+        }
         self.settle_scroll(window);
         self.prepare_document_preview(window, cx);
         let header = self.render_header(&theme, cx).into_any_element();

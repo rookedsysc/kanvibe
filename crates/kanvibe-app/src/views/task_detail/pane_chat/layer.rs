@@ -16,9 +16,10 @@ use kanvibe_domain::i18n::Translator;
 use super::client::PaneChatClient;
 use super::preferences::PaneChatPreferences;
 use super::toggle::render_pane_chat_toggle;
-use super::view::{PaneChatView, PaneChatViewEvent, PaneChatViewProps};
+use super::view::{PERF_SCREEN, PaneChatView, PaneChatViewEvent, PaneChatViewProps};
 use super::widgets::view_button;
 use crate::components::TailwindText;
+use crate::qa::perf_markers::mark_screen_phase;
 use crate::theme::{ThemeTokens, radius, spacing, text_scale};
 
 const LAYOUT_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(1_000);
@@ -345,6 +346,7 @@ impl PaneChatLayer {
         }
         self._poll_timer = None;
         self.is_reading = true;
+        mark_screen_phase(PERF_SCREEN, "layout_start");
         let generation = self.generation;
         let request = self
             .client
@@ -368,6 +370,7 @@ impl PaneChatLayer {
             return;
         }
         self.is_reading = false;
+        mark_screen_phase(PERF_SCREEN, "layout_done");
         match layout {
             Some(layout) => self.apply_layout(layout, window, cx),
             // 이전 좌표로 다른 pane을 덮지 않도록 조회 실패 시 원래 터미널을 보여 준다
@@ -635,6 +638,7 @@ impl PaneChatLayer {
         let generation = self.generation;
         let client = self.client.clone();
         let task_id = self.task_id.clone();
+        mark_screen_phase(PERF_SCREEN, "probe_start");
         let provider = client.get_agent_provider(&task_id, &pane_id, cx);
         cx.spawn(async move |this, cx| {
             let is_ready = match provider.await {
@@ -649,6 +653,7 @@ impl PaneChatLayer {
                 }
                 _ => false,
             };
+            mark_screen_phase(PERF_SCREEN, "probe_done");
             let window_handle = this
                 .update(cx, |layer, _| {
                     layer.probing_panes.remove(&pane_id);

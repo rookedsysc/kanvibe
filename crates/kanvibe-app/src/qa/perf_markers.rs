@@ -11,6 +11,9 @@
 //! - `key_text_change`: 키 입력 뒤 터미널 줄 글이 바뀐 프레임이 그려졌다(에코된 글자)
 //! - `startup:<단계>`: 시작 단계(창 열기, 첫 프레임 시작, 첫 보드 조회, hook 서버 등록 등)가 끝난 시각. 콜드 스타트를
 //!   단계별로 나눠 보는 용도이고 하네스 지표에는 쓰지 않는다
+//! - `pane_chat:<단계>`·`history:<단계>`: pane 채팅과 대화 기록 화면의 열림(`open`·`shown`), 조회(`read_start`·`read_done`,
+//!   층의 배치 조회 `layout_start`·`layout_done`과 자동 열기 확인 `probe_start`·`probe_done`), 첫 그리기(`frame`·`rows`·`ready`, 대화 대상이 바뀐 뒤 보낼 수 있게 된
+//!   `retarget`). `parity/tools/perf/pane_chat_latency.py`가 읽는다
 //!
 //! 프레임마다 확인할 때는 프레임만 요청하고 창을 다시 그리게 하지 않는다. 다시 그리게 하면 측정 대상인 그리기 비용이 늘어난다.
 
@@ -42,6 +45,75 @@ pub fn enable_startup_timeline() {
 pub fn mark_startup_phase(phase: &str) {
     if IS_STARTUP_TIMELINE_ENABLED.load(Ordering::Relaxed) {
         print_marker(&format!("startup:{phase}"));
+    }
+}
+
+/// 화면 하나의 단계 표식(`<화면>:<단계>`, 예: `pane_chat:read_done`). 시작 단계 표식과 같은 스위치로 켠다
+pub fn mark_screen_phase(screen: &str, phase: &str) {
+    if IS_STARTUP_TIMELINE_ENABLED.load(Ordering::Relaxed) {
+        print_marker(&format!("{screen}:{phase}"));
+    }
+}
+
+/// 화면을 열거나 다시 보인 뒤 처음 그려진 순간을 한 번씩 남긴다. `frame`은 화면 자체, `rows`는 대화 줄,
+/// `ready`는 보낼 수 있는 입력창이 그려진 프레임이다. 표식이 꺼져 있으면 기록하지도 프레임을 요청하지도 않는다
+#[derive(Debug, Default)]
+pub struct ScreenPaintMarks {
+    is_frame_pending: bool,
+    is_rows_pending: bool,
+    is_ready_pending: bool,
+}
+
+impl ScreenPaintMarks {
+    /// 표식이 켜져 있는지. 그리기 쪽은 이 값이 참일 때만 대화 줄을 세는 등 판정 비용을 쓴다
+    pub fn is_enabled() -> bool {
+        IS_STARTUP_TIMELINE_ENABLED.load(Ordering::Relaxed)
+    }
+
+    /// `event`(열림·다시 보임)를 남기고 첫 그리기 표식을 다시 기다린다
+    pub fn arm(&mut self, screen: &str, event: &str) {
+        if !Self::is_enabled() {
+            return;
+        }
+        mark_screen_phase(screen, event);
+        *self = Self {
+            is_frame_pending: true,
+            is_rows_pending: true,
+            is_ready_pending: true,
+        };
+    }
+
+    /// 지금 그리는 프레임의 모습을 알린다. 처음 맞은 항목은 그 프레임이 그려진 다음 프레임 시작에서 남긴다
+    pub fn observe(
+        &mut self,
+        screen: &'static str,
+        window: &mut Window,
+        has_rows: bool,
+        is_ready: bool,
+    ) {
+        let mut phases: Vec<&'static str> = Vec::new();
+        if std::mem::take(&mut self.is_frame_pending) {
+            phases.push("frame");
+        }
+        if has_rows && std::mem::take(&mut self.is_rows_pending) {
+            phases.push("rows");
+        }
+        if is_ready && std::mem::take(&mut self.is_ready_pending) {
+            phases.push("ready");
+        }
+        if phases.is_empty() {
+            return;
+        }
+        window.on_next_frame(move |_, _| {
+            for phase in phases {
+                mark_screen_phase(screen, phase);
+            }
+        });
+    }
+
+    /// 그리기 판정이 남아 있는지. 남아 있지 않으면 그리기 쪽은 판정을 건너뛴다
+    pub fn is_pending(&self) -> bool {
+        self.is_frame_pending || self.is_rows_pending || self.is_ready_pending
     }
 }
 

@@ -17,6 +17,10 @@ use super::prompt_card::PromptCardState;
 use super::session::ChatSession;
 use super::transcript::TranscriptPages;
 use crate::components::text_context_menu::OpenTextMenu;
+use crate::qa::perf_markers::{ScreenPaintMarks, mark_screen_phase};
+
+/// 성능 표식의 화면 이름
+pub(super) const PERF_SCREEN: &str = "pane_chat";
 
 /// 화면을 만들 때 넘기는 값
 pub struct PaneChatViewProps {
@@ -68,6 +72,10 @@ pub struct PaneChatView {
     pub(super) text_menu: Option<OpenTextMenu>,
     pub(super) text_menu_focus: FocusHandle,
     is_reading: bool,
+    /// 성능 표식(`--perf-markers`)이 기다리는 첫 그리기
+    pub(super) paint_marks: ScreenPaintMarks,
+    /// 대화 대상이 바뀐 뒤 보낼 수 있는 화면이 그려지기를 기다리는 중(성능 표식)
+    pub(super) is_retarget_mark_pending: bool,
     _read: Option<Task<()>>,
     _poll_timer: Option<Task<()>>,
     _working_timer: Option<Task<()>>,
@@ -121,6 +129,8 @@ impl PaneChatView {
             text_menu: None,
             text_menu_focus: cx.focus_handle(),
             is_reading: false,
+            paint_marks: ScreenPaintMarks::default(),
+            is_retarget_mark_pending: false,
             _read: None,
             _poll_timer: None,
             _working_timer: None,
@@ -129,6 +139,7 @@ impl PaneChatView {
             _activation: Some(activation),
             _preferences: preferences,
         };
+        view.paint_marks.arm(PERF_SCREEN, "open");
         view.restart_reading(window, cx);
         view
     }
@@ -155,6 +166,9 @@ impl PaneChatView {
             return;
         }
         self.is_visible = is_visible;
+        if is_visible {
+            self.paint_marks.arm(PERF_SCREEN, "shown");
+        }
         self.restart_reading(window, cx);
         cx.notify();
     }
@@ -180,6 +194,7 @@ impl PaneChatView {
         }
         self._poll_timer = None;
         self.is_reading = true;
+        mark_screen_phase(PERF_SCREEN, "read_start");
         let generation = self.session.generation;
         let read =
             self.client
@@ -203,6 +218,7 @@ impl PaneChatView {
             return;
         }
         self.is_reading = false;
+        mark_screen_phase(PERF_SCREEN, "read_done");
         match result {
             Ok(snapshot) => self.apply_snapshot(snapshot, window, cx),
             Err(_) => self.session.apply_read_failure(),
@@ -226,6 +242,7 @@ impl PaneChatView {
             .unwrap_or_else(|| format!("{}:unavailable", self.session.task_id));
         self.session.apply_snapshot(snapshot);
         if next_target_key != self.target_key {
+            self.is_retarget_mark_pending = ScreenPaintMarks::is_enabled();
             self.target_key = next_target_key;
             self.reset_for_new_target();
         }
