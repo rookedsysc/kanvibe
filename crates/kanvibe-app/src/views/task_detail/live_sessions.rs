@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use gpui_kit::{
     AnyElement, Context, InteractiveElement, IntoElement, ParentElement, Rgba, SharedString,
-    StatefulInteractiveElement, Styled, Task, div, px,
+    StatefulInteractiveElement, Styled, Window, div, px,
 };
 use kanvibe_ai::providers::AiSessionProvider;
 use kanvibe_ai::running_agent_panes::count_by_provider;
@@ -19,6 +19,7 @@ use super::ai_provider_icon::ai_provider_icon;
 use super::session_queries::load_live_sessions;
 use super::tabs::TabCommand;
 use crate::components::{TailwindText, fade};
+use crate::polled_value::{PollingSubscription, start_polling};
 use crate::qa::options::parse_iso_utc_ms;
 use crate::qa::targets::{QaTargetDescription, qa_target_layer};
 use crate::services::AppServices;
@@ -37,8 +38,8 @@ pub struct LiveSessionsState {
     pub graph_session: Option<LiveAiSession>,
     /// 아직 읽지 못했으면 `None`
     pub graph: Option<AgentCallGraph>,
-    pub(super) poll: Option<Task<()>>,
-    pub(super) graph_poll: Option<Task<()>>,
+    pub(super) poll: Option<PollingSubscription<Vec<LiveAiSession>>>,
+    pub(super) graph_poll: Option<PollingSubscription<Option<AgentCallGraph>>>,
 }
 
 impl LiveSessionsState {
@@ -181,28 +182,25 @@ pub fn state_dot_color(theme: &ThemeTokens, is_running: bool) -> Rgba {
 
 impl TaskDetailView {
     /// 패널이 보이면 폴링을 걸고, 닫히면 멈춘다. 마지막으로 읽은 목록은 남긴다
-    pub(super) fn sync_live_session_polling(&mut self, is_visible: bool, cx: &mut Context<Self>) {
+    pub(super) fn sync_live_session_polling(
+        &mut self,
+        is_visible: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         match (is_visible, self.live_sessions.poll.is_some()) {
             (true, false) => {
                 let task_id = self.task_id.clone();
-                self.live_sessions.poll = Some(cx.spawn(async move |this, cx| {
-                    loop {
-                        let read = cx.update(|cx| load_live_sessions(&task_id, cx));
-                        // 폴링 실패는 다음 주기에 다시 시도한다. 화면을 오류로 덮지 않는다
-                        if let Ok(sessions) = read.await {
-                            let is_alive = this.update(cx, |view, cx| {
-                                view.live_sessions.sessions = sessions;
-                                cx.notify();
-                            });
-                            if is_alive.is_err() {
-                                return;
-                            }
-                        }
-                        cx.background_executor()
-                            .timer(LIVE_SESSION_POLL_INTERVAL)
-                            .await;
-                    }
-                }));
+                self.live_sessions.poll = Some(start_polling(
+                    LIVE_SESSION_POLL_INTERVAL,
+                    move |cx| load_live_sessions(&task_id, cx),
+                    |view: &mut Self, sessions, cx| {
+                        view.live_sessions.sessions = sessions;
+                        cx.notify();
+                    },
+                    window,
+                    cx,
+                ));
             }
             (false, true) => self.live_sessions.poll = None,
             _ => {}
@@ -351,8 +349,8 @@ impl TaskDetailView {
             .border_1()
             .border_color(theme.border.subtle)
             .px(spacing(1.0))
-            .on_click(cx.listener(move |view, _, _, cx| {
-                view.open_agent_call_graph(graph_session.clone(), cx)
+            .on_click(cx.listener(move |view, _, window, cx| {
+                view.open_agent_call_graph(graph_session.clone(), window, cx)
             }))
     }
 }

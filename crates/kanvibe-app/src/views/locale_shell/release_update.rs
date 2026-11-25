@@ -14,9 +14,13 @@ use kanvibe_services::release_update::ReleaseUpdate;
 use super::LocaleShell;
 use super::release_notes::release_notes;
 use crate::components::{FocusRing, TailwindText};
+use crate::qa::faults::FaultOutcome;
 use crate::qa::targets::{qa_button_layer, qa_text_layer};
 use crate::services::AppServices;
 use crate::theme::{ThemeTokens, radius, spacing, text_scale};
+
+/// 릴리스 확인의 QA 고장 주입 이름(TS IPC `releaseUpdates.checkForReleaseUpdate`)
+const RELEASE_CHECK_SERVICE: &str = "releaseUpdates.checkForReleaseUpdate";
 
 /// TS `RELEASE_UPDATE_CHECK_INTERVAL_MS`
 const RELEASE_CHECK_INTERVAL: Duration = Duration::from_secs(60 * 60);
@@ -34,6 +38,41 @@ pub(super) struct ReleaseDialogState {
     pub is_checking: bool,
     /// 창이 앞에 있어 대화상자를 보일 수 있는지(TS `document.visibilityState === "visible" && document.hasFocus()`)
     pub can_present: bool,
+    /// Tab으로 고른 바닥 조작. 대화상자 밖으로는 나가지 않는다(TS focus trap)
+    pub focused_control: Option<ReleaseControl>,
+}
+
+/// 바닥 줄의 조작(Tab 순서대로)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum ReleaseControl {
+    DismissVersion,
+    Close,
+    ViewRelease,
+}
+
+impl ReleaseControl {
+    const TAB_ORDER: [Self; 3] = [Self::DismissVersion, Self::Close, Self::ViewRelease];
+
+    /// 다음(또는 이전) 조작. 끝에서는 처음으로 돌아 대화상자 안에 머문다
+    fn step(current: Option<Self>, is_forward: bool) -> Self {
+        let count = Self::TAB_ORDER.len();
+        let index = match (current, is_forward) {
+            (None, true) => 0,
+            (None, false) => count - 1,
+            (Some(control), _) => {
+                let position = Self::TAB_ORDER
+                    .iter()
+                    .position(|candidate| *candidate == control)
+                    .unwrap_or(0);
+                if is_forward {
+                    (position + 1) % count
+                } else {
+                    (position + count - 1) % count
+                }
+            }
+        };
+        Self::TAB_ORDER[index]
+    }
 }
 
 impl LocaleShell {
@@ -84,35 +123,43 @@ impl LocaleShell {
             return;
         };
         self.release_dialog.is_checking = true;
+        let fault = cx
+            .global::<AppServices>()
+            .check_fault(RELEASE_CHECK_SERVICE, "[]");
         let check = cx.background_spawn(async move {
-            let result = runtime.release_update().check_for_release_update();
+            let release = read_release_update(&runtime, &fault);
             let dismissed = runtime
                 .app_settings()
                 .get_release_update_dismissed_versions()
                 .unwrap_or_default();
-            (result, dismissed, runtime)
+            (release, dismissed, runtime)
         });
         cx.spawn(async move |this, cx| {
-            let (result, dismissed, runtime) = check.await;
+            let (release, dismissed, runtime) = check.await;
             let _ = this.update(cx, |this, cx| {
                 this.release_dialog.is_checking = false;
-                let Some(release) = result.release.filter(|_| result.is_update_available) else {
+                let Some(release) = release else {
                     return;
                 };
                 let version = release.version.clone();
                 if this.release_dialog.shown_versions.contains(&version) {
                     return;
                 }
-                this.release_dialog.shown_versions.push(version.clone());
-                // 다시 보지 않기로 한 버전이거나 다른 창이 먼저 띄운 버전은 넘긴다
-                if dismissed.contains(&version)
-                    || !runtime
-                        .release_update()
-                        .claim_release_update_version(&version)
+                // 다시 보지 않기로 한 버전은 이번 실행에서 다시 묻지 않는다
+                if dismissed.contains(&version) {
+                    this.release_dialog.shown_versions.push(version);
+                    return;
+                }
+                // 다른 창이 먼저 띄운 버전은 넘긴다(다음 확인에서 다시 시도한다)
+                if !runtime
+                    .release_update()
+                    .claim_release_update_version(&version)
                 {
                     return;
                 }
+                this.release_dialog.shown_versions.push(version);
                 this.release_dialog.should_dismiss_version = false;
+                this.release_dialog.focused_control = None;
                 this.release_dialog.release = Some(release);
                 cx.notify();
             });
@@ -135,6 +182,48 @@ impl LocaleShell {
         self.release_dialog.should_dismiss_version = false;
         self.restore_focus(window, cx);
         cx.notify();
+    }
+
+    /// 대화상자 키는 창의 다른 단축키로 새지 않는다. Tab은 바닥 조작 사이만 돌고, Enter·Space는 고른 조작을 누른다
+    fn handle_release_key(
+        &mut self,
+        event: &KeyDownEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        cx.stop_propagation();
+        let focused = self.release_dialog.focused_control;
+        match event.keystroke.key.as_str() {
+            "escape" => self.close_release_dialog(window, cx),
+            "tab" => {
+                let is_forward = !event.keystroke.modifiers.shift;
+                self.release_dialog.focused_control =
+                    Some(ReleaseControl::step(focused, is_forward));
+                cx.notify();
+            }
+            "enter" | "space" => match focused {
+                Some(ReleaseControl::DismissVersion) => {
+                    self.release_dialog.should_dismiss_version =
+                        !self.release_dialog.should_dismiss_version;
+                    cx.notify();
+                }
+                Some(ReleaseControl::Close) => self.close_release_dialog(window, cx),
+                Some(ReleaseControl::ViewRelease) => self.open_release_page(window, cx),
+                None => {}
+            },
+            _ => {}
+        }
+    }
+
+    /// Tab으로 고른 바닥 조작(시험이 읽는다)
+    pub fn release_focused_control_label(&self) -> Option<&'static str> {
+        self.release_dialog
+            .focused_control
+            .map(|control| match control {
+                ReleaseControl::DismissVersion => "dontShowVersionAgain",
+                ReleaseControl::Close => "close",
+                ReleaseControl::ViewRelease => "viewRelease",
+            })
     }
 
     fn open_release_page(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -170,12 +259,7 @@ impl LocaleShell {
         let dialog = div()
             .id("release-update-dialog")
             .track_focus(&self.release_focus)
-            .on_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
-                cx.stop_propagation();
-                if event.keystroke.key == "escape" {
-                    this.close_release_dialog(window, cx);
-                }
-            }))
+            .on_key_down(cx.listener(Self::handle_release_key))
             .occlude()
             .relative()
             .flex()
@@ -245,6 +329,8 @@ impl LocaleShell {
         let checkbox = native_checkbox(theme, is_checked);
         let hover_border = theme.brand.primary;
         let hover_brand = theme.brand.hover;
+        let focused = self.release_dialog.focused_control;
+        let is_focused = |control: ReleaseControl| focused == Some(control);
         div()
             .flex()
             .items_center()
@@ -271,6 +357,7 @@ impl LocaleShell {
                             !this.release_dialog.should_dismiss_version;
                         cx.notify();
                     }))
+                    .when_keyboard_focused(is_focused(ReleaseControl::DismissVersion), theme)
                     .child(checkbox)
                     .child(dismiss_label.clone())
                     .child(qa_button_layer(&dismiss_label, &dismiss_label)),
@@ -292,6 +379,7 @@ impl LocaleShell {
                     .on_click(
                         cx.listener(|this, _, window, cx| this.close_release_dialog(window, cx)),
                     )
+                    .when_keyboard_focused(is_focused(ReleaseControl::Close), theme)
                     .child(close_label.clone())
                     .child(qa_button_layer(&close_label, &close_label)),
             )
@@ -309,6 +397,7 @@ impl LocaleShell {
                     .cursor_pointer()
                     .hover(move |style| style.bg(hover_brand))
                     .on_click(cx.listener(|this, _, window, cx| this.open_release_page(window, cx)))
+                    .when_keyboard_focused(is_focused(ReleaseControl::ViewRelease), theme)
                     .child(view_label.clone())
                     .child(qa_button_layer(&view_label, &view_label)),
             )
@@ -392,3 +481,45 @@ fn release_header(
                 .child(release.name.clone()),
         )
 }
+
+/// 새 릴리스. QA 고장 `result`가 `isUpdateAvailable: false`면 새 버전이 없는 응답이고, 확인 실패도 앱 사용을 막지 않는다
+fn read_release_update(
+    runtime: &kanvibe_runtime::DesktopRuntime,
+    fault: &FaultOutcome,
+) -> Option<ReleaseUpdate> {
+    let is_skipped = match fault {
+        FaultOutcome::Result(value) => {
+            value.get("isUpdateAvailable") == Some(&serde_json::Value::Bool(false))
+        }
+        FaultOutcome::Fail { .. } | FaultOutcome::Hang => true,
+        _ => false,
+    };
+    if is_skipped {
+        return None;
+    }
+    let result = runtime.release_update().check_for_release_update();
+    result.release.filter(|_| result.is_update_available)
+}
+
+trait KeyboardFocusOutline: Styled + Sized {
+    /// Tab으로 고른 조작만 바깥선을 그린다(Chromium `:focus-visible` 기본 outline). 고르지 않았으면 그대로 둔다
+    fn when_keyboard_focused(self, is_focused: bool, theme: &ThemeTokens) -> Self {
+        if is_focused {
+            self.outline_ring(theme)
+        } else {
+            self
+        }
+    }
+
+    fn outline_ring(self, theme: &ThemeTokens) -> Self {
+        self.shadow(vec![gpui_kit::BoxShadow {
+            color: theme.brand.primary.into(),
+            offset: gpui_kit::point(px(0.0), px(0.0)),
+            blur_radius: px(0.0),
+            spread_radius: px(2.0),
+            inset: false,
+        }])
+    }
+}
+
+impl<E: Styled> KeyboardFocusOutline for E {}

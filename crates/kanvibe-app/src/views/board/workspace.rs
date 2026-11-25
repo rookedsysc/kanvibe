@@ -10,6 +10,10 @@ use gpui_kit::{
 };
 use kanvibe_domain::board_sort::BoardSortPreference;
 use kanvibe_domain::i18n::Translator;
+use kanvibe_domain::shortcuts::key_event::{
+    KeyPhase, KeyTransition, ModifierState, ShortcutKeyEvent,
+};
+use kanvibe_domain::shortcuts::workspace_focus::WorkspaceListFocusTracker;
 use kanvibe_domain::task::{KanbanTask, TASK_STATUS_ORDER, TaskStatus};
 use kanvibe_services::kanban::TasksByStatus;
 
@@ -142,6 +146,44 @@ pub(super) fn next_workspace_selection(
     listed.get(next).map(|task| task.id.clone())
 }
 
+fn modifier_state(modifiers: gpui_kit::Modifiers) -> ModifierState {
+    ModifierState {
+        has_meta: modifiers.platform,
+        has_ctrl: modifiers.control,
+        has_alt: modifiers.alt,
+        has_shift: modifiers.shift,
+    }
+}
+
+/// 수식키 상태 변화를 브라우저 `keydown`·`keyup`처럼 키 하나씩의 누름·뗌으로 바꾼다. 각 입력의 수식키는 바뀐 뒤 상태다
+fn modifier_transitions(
+    previous: gpui_kit::Modifiers,
+    current: gpui_kit::Modifiers,
+) -> Vec<KeyTransition> {
+    let keys = [
+        ("Control", previous.control, current.control),
+        ("Alt", previous.alt, current.alt),
+        ("Meta", previous.platform, current.platform),
+        ("Shift", previous.shift, current.shift),
+    ];
+    keys.into_iter()
+        .filter(|(_, was_pressed, is_pressed)| was_pressed != is_pressed)
+        .map(|(key, _, is_pressed)| KeyTransition {
+            phase: if is_pressed {
+                KeyPhase::Down
+            } else {
+                KeyPhase::Up
+            },
+            is_auto_repeat: false,
+            is_composing: false,
+            event: ShortcutKeyEvent {
+                key: key.to_string(),
+                modifiers: modifier_state(current),
+            },
+        })
+        .collect()
+}
+
 /// 워크스페이스 화면 상태
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(super) struct WorkspaceState {
@@ -189,6 +231,87 @@ impl BoardView {
     /// 워크스페이스에서 고른 작업
     pub fn selected_workspace_task_id(&self) -> Option<String> {
         self.workspace.selected_task_id.clone()
+    }
+
+    /// 빠른 검색처럼 밖에서 새로 고르라고 한 요청. 같은 작업이어도 필터로 숨긴 선택을 다시 보인다
+    /// (TS `selectionRequestKey`가 바뀌면 `hiddenSelectionId`를 지운다)
+    pub(crate) fn request_workspace_selection(&mut self, task_id: &str, cx: &mut Context<Self>) {
+        self.workspace.hidden_selection_id = None;
+        self.select_workspace_task(task_id, cx);
+    }
+
+    /// `Mod+Alt`만 눌렀다 떼면 왼쪽 목록에 포커스를 둔다(TS `createWorkspaceListFocusTracker`).
+    /// 수식키 변화를 브라우저처럼 그 키의 누름·뗌으로 바꿔 공용 판정에 넘긴다
+    fn track_workspace_list_focus(
+        &mut self,
+        event: &gpui_kit::ModifiersChangedEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let platform = cx.global::<crate::shortcuts::ShortcutState>().platform;
+        let previous = std::mem::replace(&mut self.workspace_modifiers, event.modifiers);
+        let tracker = self
+            .workspace_focus_tracker
+            .get_or_insert_with(|| WorkspaceListFocusTracker::new(platform));
+        let mut should_focus = false;
+        for transition in modifier_transitions(previous, event.modifiers) {
+            should_focus |= tracker.handle_key_transition(&transition);
+        }
+        let is_capturing = cx
+            .global::<crate::shortcuts::ShortcutState>()
+            .capturing_windows
+            .contains(&window.window_handle().window_id());
+        // 대화상자가 열렸거나 단축키를 녹화하는 중에는 포커스 요청을 버린다
+        if is_capturing || self.has_shortcut_blocker(cx) {
+            if let Some(tracker) = self.workspace_focus_tracker.as_mut() {
+                tracker.reset();
+            }
+            return;
+        }
+        if should_focus {
+            self.focus_workspace_list(window, cx);
+        }
+    }
+
+    /// 다른 키가 끼면 `Mod+Alt` 단독 입력이 아니다. GPUI는 일반 키의 뗌을 따로 주지 않으므로,
+    /// 수식키 없이 누른 키는 브라우저에서 그 키를 뗄 때처럼 판정을 처음으로 돌린다
+    fn cancel_workspace_list_focus(&mut self, event: &KeyDownEvent) {
+        let modifiers = event.keystroke.modifiers;
+        let has_held_modifier =
+            modifiers.control || modifiers.alt || modifiers.platform || modifiers.shift;
+        if !has_held_modifier {
+            if let Some(tracker) = self.workspace_focus_tracker.as_mut() {
+                tracker.reset();
+            }
+            return;
+        }
+        if let Some(tracker) = self.workspace_focus_tracker.as_mut() {
+            let transition = KeyTransition {
+                phase: KeyPhase::Down,
+                is_auto_repeat: event.is_held,
+                is_composing: false,
+                event: ShortcutKeyEvent {
+                    key: event.keystroke.key.clone(),
+                    modifiers: modifier_state(event.keystroke.modifiers),
+                },
+            };
+            tracker.handle_key_transition(&transition);
+        }
+    }
+
+    /// 고른 작업(숨겨져 있으면 첫 표시 작업)을 고른 채 목록에 포커스를 둔다
+    fn focus_workspace_list(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let listed = self.workspace_listed(cx);
+        let selected = self.workspace.selected_task_id.clone();
+        let is_selection_listed = listed
+            .iter()
+            .any(|task| Some(&task.id) == selected.as_ref());
+        if !is_selection_listed && let Some(first) = listed.first() {
+            let first_id = first.id.clone();
+            self.select_workspace_task(&first_id, cx);
+        }
+        self.workspace_list_focus.focus(window, cx);
+        cx.notify();
     }
 
     /// 작업을 고른다. 세션이 없으면 기본 세션 타입으로 연결을 시작한다
@@ -328,6 +451,10 @@ impl BoardView {
             .flex()
             .overflow_hidden()
             .bg(theme.background.page)
+            .on_modifiers_changed(cx.listener(Self::track_workspace_list_focus))
+            .capture_key_down(cx.listener(|this, event: &KeyDownEvent, _, _| {
+                this.cancel_workspace_list_focus(event)
+            }))
             .child(list)
             .child(pane)
             .children(overlays)

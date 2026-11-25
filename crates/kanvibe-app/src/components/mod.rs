@@ -14,6 +14,7 @@ pub mod notification_center;
 pub mod popover;
 pub mod scroll_area;
 pub mod segmented_control;
+pub(crate) mod session_dependency_prompt;
 pub mod spinner;
 pub mod terminal_view;
 pub mod toast;

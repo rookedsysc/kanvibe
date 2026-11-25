@@ -6,8 +6,8 @@
 use std::time::Duration;
 
 use gpui_kit::{
-    AnyElement, Context, IntoElement, ParentElement, StatefulInteractiveElement, Styled, div, px,
-    relative,
+    AnyElement, Context, IntoElement, ParentElement, StatefulInteractiveElement, Styled, Window,
+    div, px, relative,
 };
 use kanvibe_ai::running_agent_panes::flatten_agent_call_nodes;
 use kanvibe_ai::types::{AgentCallGraph, AgentCallNode, LiveAiSession};
@@ -18,6 +18,7 @@ use super::ai_provider_icon::ai_provider_icon;
 use super::live_sessions::{live_session_title, mix_transparent, small_button};
 use super::session_queries::load_agent_call_graph;
 use crate::components::TailwindText;
+use crate::polled_value::start_polling;
 use crate::qa::options::parse_iso_utc_ms;
 use crate::theme::{ThemeTokens, radius, spacing, text_scale};
 
@@ -173,7 +174,12 @@ pub fn call_graph_body(graph: Option<&AgentCallGraph>) -> CallGraphBody {
 }
 
 impl TaskDetailView {
-    pub(super) fn open_agent_call_graph(&mut self, session: LiveAiSession, cx: &mut Context<Self>) {
+    pub(super) fn open_agent_call_graph(
+        &mut self,
+        session: LiveAiSession,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let Some(session_id) = session.session_id.clone() else {
             return;
         };
@@ -181,24 +187,16 @@ impl TaskDetailView {
         self.live_sessions.graph_session = Some(session);
         self.live_sessions.graph = None;
         let task_id = self.task_id.clone();
-        self.live_sessions.graph_poll = Some(cx.spawn(async move |this, cx| {
-            loop {
-                let read =
-                    cx.update(|cx| load_agent_call_graph(&task_id, provider, &session_id, cx));
-                if let Ok(graph) = read.await {
-                    let is_alive = this.update(cx, |view, cx| {
-                        view.live_sessions.graph = graph;
-                        cx.notify();
-                    });
-                    if is_alive.is_err() {
-                        return;
-                    }
-                }
-                cx.background_executor()
-                    .timer(AGENT_CALL_GRAPH_POLL_INTERVAL)
-                    .await;
-            }
-        }));
+        self.live_sessions.graph_poll = Some(start_polling(
+            AGENT_CALL_GRAPH_POLL_INTERVAL,
+            move |cx| load_agent_call_graph(&task_id, provider, &session_id, cx),
+            |view: &mut Self, graph, cx| {
+                view.live_sessions.graph = graph;
+                cx.notify();
+            },
+            window,
+            cx,
+        ));
         cx.notify();
     }
 

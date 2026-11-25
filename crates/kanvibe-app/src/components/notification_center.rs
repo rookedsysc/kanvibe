@@ -15,7 +15,8 @@ use std::sync::Arc;
 use gpui_kit::{
     AnyElement, AnyWindowHandle, App, Context, Entity, EventEmitter, FocusHandle,
     InteractiveElement, IntoElement, KeyDownEvent, MouseButton, ParentElement, Render,
-    SharedString, StatefulInteractiveElement, Styled, Subscription, Window, deferred, div, px, svg,
+    SharedString, StatefulInteractiveElement, Styled, Subscription, Task, Window, deferred, div,
+    px, svg,
 };
 use kanvibe_domain::i18n::{Locale, Translator};
 use kanvibe_domain::notifications::AppNotification;
@@ -91,6 +92,9 @@ pub struct NotificationCenterButton {
     mark_all_read_failure: Option<String>,
     /// 대상 작업이 사라져 안내를 띄운 알림
     missing_task_notification: Option<String>,
+    /// 목록을 읽지 못한 사유. 알림이 없는 것처럼 보이지 않게 따로 남긴다
+    load_failure: Option<String>,
+    _load: Task<()>,
     /// 단축키로 열었으면 패널에 키보드 포커스 링을 그린다(Chromium `:focus-visible`)
     is_keyboard_opened: bool,
     _subscriptions: Vec<Subscription>,
@@ -108,8 +112,11 @@ impl NotificationCenterButton {
             subscriptions
                 .push(cx.subscribe(&bus, |_, _, _: &NotificationsChanged, cx| cx.notify()));
         }
-        // TS는 버튼이 붙을 때 목록과 안읽음만 보기 설정을 읽었다
-        reload_notification_center(cx);
+        // TS는 버튼이 붙을 때 목록과 안읽음만 보기 설정을 읽었다. 서비스가 없는 실행은 바로 읽는다
+        let services = board_services(cx);
+        if services.is_none() {
+            reload_notification_center(cx);
+        }
         let is_unread_only = cx
             .global::<AppServices>()
             .runtime()
@@ -120,11 +127,11 @@ impl NotificationCenterButton {
                     .ok()
             })
             .unwrap_or(false);
-        Self {
+        let mut button = Self {
             locale,
             navigator,
             is_terminal_chrome: false,
-            services: board_services(cx),
+            services,
             background_sync,
             sync_review,
             panel_focus: cx.focus_handle(),
@@ -136,9 +143,35 @@ impl NotificationCenterButton {
             is_marking_all_read: false,
             mark_all_read_failure: None,
             missing_task_notification: None,
+            load_failure: None,
+            _load: Task::ready(()),
             is_keyboard_opened: false,
             _subscriptions: subscriptions,
-        }
+        };
+        button.load_notifications(cx);
+        button
+    }
+
+    /// 알림 목록을 읽어 런타임 알림 목록(`NotificationCenter`)을 바꾼다. 실패하면 사유와 다시 시도를 보인다
+    fn load_notifications(&mut self, cx: &mut Context<Self>) {
+        let Some(services) = self.services.clone() else {
+            return;
+        };
+        let load = services.list_notifications(cx);
+        self._load = cx.spawn(async move |this, cx| {
+            let result = load.await;
+            let _ = this.update(cx, |this, cx| {
+                match result {
+                    Ok(notifications) => {
+                        this.load_failure = None;
+                        cx.default_global::<NotificationCenter>()
+                            .replace_all(notifications);
+                    }
+                    Err(failure) => this.load_failure = Some(failure.reason),
+                }
+                cx.notify();
+            });
+        });
     }
 
     pub fn for_terminal_chrome(mut self) -> Self {
@@ -569,7 +602,9 @@ impl NotificationCenterButton {
         let unread_count = all.iter().filter(|item| !item.is_read).count();
         let visible = visible_notifications(&all, self.is_unread_only);
         let highlighted = self.highlighted_index.min(visible.len().saturating_sub(1));
-        let rows: Vec<AnyElement> = if visible.is_empty() {
+        let rows: Vec<AnyElement> = if visible.is_empty() && self.load_failure.is_some() {
+            Vec::new()
+        } else if visible.is_empty() {
             let key = if self.is_unread_only {
                 "noUnreadNotifications"
             } else {
@@ -615,6 +650,17 @@ impl NotificationCenterButton {
             .mx(spacing(4.0))
             .mt(spacing(3.0))
         });
+        let load_failure = self.load_failure.clone().map(|reason| {
+            inline_load_error(
+                theme,
+                self.locale,
+                labels.translate_with("loadFailed", &[("reason", &reason)]),
+                "notification-load-retry",
+                cx.listener(|this, _, _, cx| this.load_notifications(cx)),
+            )
+            .mx(spacing(4.0))
+            .mt(spacing(3.0))
+        });
         let panel = div()
             .id("notification-panel")
             .track_focus(&self.panel_focus)
@@ -641,6 +687,7 @@ impl NotificationCenterButton {
             .child(self.render_background_sync_status(theme, cx))
             .child(self.render_header(theme, &labels, unread_count, cx))
             .children(mark_all_failure)
+            .children(load_failure)
             .child(
                 div()
                     .id("notification-rows")

@@ -6,9 +6,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use gpui_kit::{
-    AnyElement, AppContext, Context, Div, Image, ImageFormat, InteractiveElement, IntoElement,
-    MouseButton, ParentElement, Rgba, StatefulInteractiveElement, Styled, Window, div, img, px,
-    rgb,
+    AnyElement, AppContext, Context, Div, Entity, Image, ImageFormat, InteractiveElement,
+    IntoElement, MouseButton, ParentElement, Rgba, StatefulInteractiveElement, Styled, Window, div,
+    img, px, rgb,
 };
 use kanvibe_domain::i18n::Translator;
 use kanvibe_domain::task::{KanbanTask, TaskPriority};
@@ -17,6 +17,7 @@ use kanvibe_process::project_color::readable_text_color;
 
 use super::BoardView;
 use super::board_model::{TaskDeletionState, TaskMoveState};
+use super::count_up::CountUpNumber;
 use super::icons::{BoardIcon, board_icon};
 use super::keyboard::FindField;
 use super::task_filters::{ProjectDisplay, is_inherited_priority, resolve_effective_priority};
@@ -129,10 +130,12 @@ fn decode_base64(text: &str) -> Option<Vec<u8>> {
 /// `ProjectIcon`: GitHub 아이콘이 있으면 그 이미지, 없으면 프로젝트 색 이니셜(14px)
 pub(super) fn project_marker(display: &ProjectDisplay, size: f32) -> AnyElement {
     if let Some(image) = display.icon_data_url().and_then(data_url_image) {
-        return img(image)
-            .size(px(size))
+        let icon_label = format!("{} icon", display.name);
+        return div()
+            .relative()
             .flex_none()
-            .rounded(px(2.0))
+            .child(img(image).size(px(size)).rounded(px(2.0)))
+            .child(badge_label_layer("img", &icon_label, ""))
             .into_any_element();
     }
     let color = display.color();
@@ -155,7 +158,19 @@ pub(super) fn project_marker(display: &ProjectDisplay, size: f32) -> AnyElement 
         .text_size(px(9.0))
         .line_height(px(9.0))
         .css_weight(700)
-        .child(initial)
+        .relative()
+        .child(initial.clone())
+        .child(qa_target_layer_with(
+            QaTargetDescription {
+                role: "img",
+                name: display.name.clone().into(),
+                text: initial.into(),
+            },
+            QaTargetBehavior {
+                selector: Some("[data-testid='project-initial-icon']".into()),
+                ..QaTargetBehavior::default()
+            },
+        ))
         .into_any_element()
 }
 
@@ -270,11 +285,18 @@ fn priority_badge(
 fn diff_stats_badge(
     theme: &ThemeTokens,
     stats: &TaskDiffStats,
+    counters: Option<&[Entity<CountUpNumber>; 3]>,
     summary: String,
 ) -> Option<impl IntoElement + use<>> {
     if stats.file_count == 0 {
         return None;
     }
+    let number = |index: usize, value: i64| -> AnyElement {
+        match counters {
+            Some(counters) => counters[index].clone().into_any_element(),
+            None => value.to_string().into_any_element(),
+        }
+    };
     Some(
         div()
             .relative()
@@ -296,17 +318,21 @@ fn diff_stats_badge(
                 div()
                     .css_weight(600)
                     .text_color(theme.text.secondary)
-                    .child(stats.file_count.to_string()),
+                    .child(number(0, stats.file_count)),
             )
             .child(
                 div()
+                    .flex()
                     .text_color(theme.status.success)
-                    .child(format!("+{}", stats.additions)),
+                    .child("+")
+                    .child(number(1, stats.additions)),
             )
             .child(
                 div()
+                    .flex()
                     .text_color(theme.status.error)
-                    .child(format!("-{}", stats.deletions)),
+                    .child("-")
+                    .child(number(2, stats.deletions)),
             ),
     )
 }
@@ -469,7 +495,10 @@ impl BoardView {
         let is_deleting = matches!(input.deletion_state, Some(TaskDeletionState::Deleting));
         let is_saving_move = matches!(input.move_state, Some(TaskMoveState::Saving));
         let focus_handle = self.card_focus_handle(&task.id, cx);
+        self.watch_card_focus(&task.id, &focus_handle, window, cx);
         let is_focused = focus_handle.is_focused(window);
+        // 세션 패널은 카드 아래로 넘치므로 열려 있는 동안에는 카드가 잘라내지 않는다
+        let is_live_panel_open = self.is_live_panel_open(&task.id);
         let project_color = input
             .project
             .map(|display| parse_project_color(&display.color()));
@@ -481,7 +510,7 @@ impl BoardView {
             .track_focus(&focus_handle)
             .relative()
             .mb(px(6.0))
-            .overflow_hidden()
+            .when_clipped(!is_live_panel_open)
             .rounded(radius::MD)
             .border_1()
             .border_color(project_color.unwrap_or(theme.border.subtle))
@@ -490,6 +519,7 @@ impl BoardView {
             .cursor_pointer()
             .when_base_project(is_base_project(task))
             .children(self.task_card_content(theme, &input))
+            .children(self.render_live_session_popover(theme, task, cx))
             .child(card_qa_target(task, focus_handle.clone()));
         if is_focused {
             card = card
@@ -592,6 +622,7 @@ impl BoardView {
                                             display.name.clone(),
                                         )),
                                 )
+                                .child(badge_label_layer("text", &display.name, ""))
                                 .children(unread),
                         )
                         .into_any_element(),
@@ -657,6 +688,7 @@ impl BoardView {
                     .into_any_element(),
             );
         }
+        let counters = self.diff_counters.get(&task.id);
         let diff = input.diff_stats.and_then(|stats| {
             let summary = Translator::new(self.locale(), "taskDetail.diffStats").translate_with(
                 "summary",
@@ -666,16 +698,20 @@ impl BoardView {
                     ("deletions", &stats.deletions.to_string()),
                 ],
             );
-            diff_stats_badge(theme, stats, summary)
+            diff_stats_badge(theme, stats, counters, summary)
         });
         if let Some(diff) = diff {
             badges.push(diff.into_any_element());
         }
+        badges.extend(self.render_running_agents(theme, task));
         if let Some(ssh_host) = &task.ssh_host {
+            // 긴 호스트는 말줄임 대신 배지 안에서 줄을 바꿔 전부 보인다(`break-all`)
             badges.push(
                 badge(theme, theme.tag.ssh)
+                    .flex_shrink(1.0)
+                    .min_w_0()
                     .relative()
-                    .child(ssh_host.clone())
+                    .child(div().min_w_0().child(ssh_host.clone()))
                     .child(badge_label_layer("status", "ssh", ssh_host))
                     .into_any_element(),
             );
@@ -748,7 +784,15 @@ impl BoardView {
     ) -> gpui_kit::Stateful<Div> {
         let click_task_id = task.id.clone();
         let menu_task_id = task.id.clone();
+        let hover_task_id = task.id.clone();
         let card = card
+            .on_hover(cx.listener(move |this, is_hovered: &bool, window, cx| {
+                if *is_hovered {
+                    this.activate_live_panel(&hover_task_id, window, cx);
+                } else {
+                    this.deactivate_live_panel(&hover_task_id, cx);
+                }
+            }))
             .on_click(
                 cx.listener(move |this, event: &gpui_kit::ClickEvent, window, cx| {
                     this.activate_task_card(&click_task_id, event.modifiers().shift, window, cx)
@@ -776,6 +820,19 @@ impl BoardView {
         })
     }
 }
+
+trait CardClip: Styled + Sized {
+    /// 평소에는 카드 밖으로 넘치는 내용을 자른다(`overflow-hidden`)
+    fn when_clipped(self, is_clipped: bool) -> Self {
+        if is_clipped {
+            self.overflow_hidden()
+        } else {
+            self
+        }
+    }
+}
+
+impl<E: Styled> CardClip for E {}
 
 trait BaseProjectPadding: Styled + Sized {
     /// 기본 브랜치 표시가 붙는 카드는 오른쪽 여백을 넓힌다(`pr-8`)

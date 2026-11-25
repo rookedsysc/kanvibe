@@ -702,10 +702,14 @@ impl TaskDetailView {
                 view.is_covered_by_panel = visible_panel.is_some()
             });
         }
-        self.sync_live_session_polling(visible_panel == Some(DetailPanel::LiveSessions), cx);
+        self.sync_live_session_polling(
+            visible_panel == Some(DetailPanel::LiveSessions),
+            window,
+            cx,
+        );
         self.sync_usage_panel(visible_panel == Some(DetailPanel::Usage), window, cx);
         self.sync_hooks_card(visible_panel == Some(DetailPanel::Status), cx);
-        self.sync_diff_polling(visible_panel == Some(DetailPanel::Overview), cx);
+        self.sync_diff_polling(visible_panel == Some(DetailPanel::Overview), window, cx);
         let viewport = window.viewport_size();
         let panel =
             visible_panel.map(|panel| self.render_panel(theme, panel, &snapshot, viewport, cx));

@@ -8,6 +8,7 @@
 pub mod background_sync;
 mod command_palette;
 mod event_alert;
+mod herdr_handoff;
 mod quick_search;
 mod release_notes;
 mod release_update;
@@ -52,6 +53,8 @@ struct ActionStatusEntry {
 pub struct LocaleShell {
     locale: Locale,
     window_handle: AnyWindowHandle,
+    /// 교체를 요청한 원격 Herdr 서버
+    herdr_replacements: Vec<kanvibe_services::board_notifier::HerdrServerHandoffRequiredPayload>,
     navigator: WindowNavigator,
     /// 지금 화면이 보드면 그 뷰. TS `registerBoardHandlers`로 등록되던 처리기의 주인이다
     board: Option<WeakEntity<BoardView>>,
@@ -61,6 +64,8 @@ pub struct LocaleShell {
     return_focus: Option<FocusHandle>,
     palette_field: Entity<BoardTextField>,
     quick_search_field: Entity<BoardTextField>,
+    /// 빠른 검색 결과 목록 스크롤(키보드로 고른 결과를 보이게 굴린다)
+    quick_search_scroll: gpui_kit::ScrollHandle,
     command_palette: Option<command_palette::CommandPaletteState>,
     quick_search: Option<quick_search::QuickSearchState>,
     event_alert: event_alert::BoardEventAlertState,
@@ -90,12 +95,14 @@ impl LocaleShell {
         let mut shell = Self {
             locale,
             window_handle: window.window_handle(),
+            herdr_replacements: Vec::new(),
             navigator,
             board: None,
             task_detail: None,
             return_focus: None,
             palette_field,
             quick_search_field,
+            quick_search_scroll: gpui_kit::ScrollHandle::new(),
             command_palette: None,
             quick_search: None,
             event_alert: Default::default(),
@@ -139,7 +146,8 @@ impl LocaleShell {
         if let Some(bus) = cx.try_global::<AppEvents>().map(|events| events.0.clone()) {
             subscriptions.push(
                 cx.subscribe(&bus, |this, _, event: &BoardEventReceived, cx| {
-                    this.show_board_event_alert(&event.0, cx)
+                    this.show_board_event_alert(&event.0, cx);
+                    this.receive_herdr_handoff_event(&event.0, cx);
                 }),
             );
             subscriptions.push(

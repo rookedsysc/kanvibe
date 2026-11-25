@@ -10,6 +10,7 @@ pub mod fonts;
 pub mod locale_format;
 pub mod navigation;
 pub mod notifications;
+pub mod polled_value;
 pub mod qa;
 pub mod routes;
 pub mod services;

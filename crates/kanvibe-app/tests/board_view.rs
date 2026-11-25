@@ -26,14 +26,16 @@ use kanvibe_domain::task::{KanbanTask, SessionType, TaskPriority, TaskStatus};
 
 struct Board {
     view: Entity<BoardView>,
+    app_window: Entity<AppWindow>,
     /// 창의 전역 덮개(커맨드 팔레트·빠른 검색·릴리스·토스트). 보드는 창 루트(`AppWindow`) 아래에 뜬다
     shell: Entity<LocaleShell>,
     cx: VisualTestContext,
 }
 
 /// QA 모드로 띄우면 고장 주입을 쓸 수 있고 삭제 확인을 자동으로 받아들인다(Playwright 기본 동작과 같다)
+/// QA 모드는 기본 네트워크 응답 표를 쓴다. 창을 앞으로 가져오는 시험이 릴리스 확인으로 바깥 요청을 하지 않게 한다
 fn init_app(cx: &mut TestAppContext, data_dir: PathBuf, is_qa: bool) -> Arc<Database> {
-    init_app_with_network(cx, data_dir, is_qa, None)
+    init_app_with_network(cx, data_dir, is_qa, is_qa.then_some("default"))
 }
 
 /// QA 네트워크 응답 표(`parity/fixtures/network/*.json`)를 쓰는 앱
@@ -132,6 +134,7 @@ fn open_board(cx: &mut TestAppContext, path: &str) -> Board {
     });
     let mut board = Board {
         view,
+        app_window: app_window.clone(),
         shell,
         cx: visual.clone(),
     };
@@ -143,6 +146,32 @@ impl Board {
     fn shell_read<T>(&mut self, read: impl FnOnce(&LocaleShell, &gpui_kit::App) -> T) -> T {
         let shell = self.shell.clone();
         self.cx.update(|_, cx| read(shell.read(cx), cx))
+    }
+
+    /// 다른 화면으로 갔다가 보드로 돌아온다. 보드 화면은 새로 만들어진다
+    fn return_to_board_via(&mut self, other_path: &str) {
+        let app_window = self.app_window.clone();
+        self.cx.update(|_, cx| {
+            app_window.update(cx, |app_window, cx| app_window.navigate(other_path, cx))
+        });
+        self.draw();
+        self.cx
+            .update(|_, cx| app_window.update(cx, |app_window, cx| app_window.navigate("/ko", cx)));
+        self.view = self.cx.update(|_, cx| {
+            app_window
+                .read(cx)
+                .screen()
+                .clone()
+                .downcast::<BoardView>()
+                .expect("board route renders the board")
+        });
+        self.draw();
+    }
+
+    /// 앱처럼 창을 앞으로 가져온다. 주기 조회는 창이 활성일 때만 돈다(TS `usePolledValue`)
+    fn activate_window(&mut self) {
+        self.cx.update(|window, _| window.activate_window());
+        self.draw();
     }
 
     /// 지난 프레임 대상을 지우고 다시 그린다
@@ -221,6 +250,42 @@ impl Board {
                 .emit(event)
         });
         self.draw();
+    }
+
+    /// 떠 있는 작업 결과 알림 글자
+    fn toast_messages(&mut self) -> Vec<String> {
+        self.shell_read(|shell, _| shell.toast_messages())
+    }
+
+    /// 창이 지금 보이는 경로
+    fn current_path(&mut self) -> String {
+        let app_window = self.app_window.clone();
+        self.cx
+            .update(|_, cx| app_window.read(cx).current_path().to_string())
+    }
+
+    /// 서비스가 실제로 돌지 않고 `value`를 응답으로 돌려주게 한다(`match`가 있으면 그 인자일 때만)
+    fn add_result_fault(
+        &mut self,
+        target: &str,
+        value: serde_json::Value,
+        argument_match: Option<&str>,
+    ) {
+        let fault = ServiceFault {
+            target: target.into(),
+            mode: FaultMode::Result,
+            message: None,
+            ms: None,
+            value: Some(value),
+            after_calls: None,
+            argument_match: argument_match.map(str::to_string),
+        };
+        self.cx.update(|_, cx| {
+            cx.global::<AppServices>()
+                .faults()
+                .expect("qa faults")
+                .add(fault);
+        });
     }
 
     fn advance(&mut self, duration: Duration) {
@@ -1915,6 +1980,7 @@ fn diff_stats_follow_the_stored_values_on_each_poll(cx: &mut TestAppContext) {
     let card = task(&database, "변경 작업", TaskStatus::Review, |_| {});
     save_diff_stats(&database, &card.id, 2);
     let mut board = open_board(cx, "/ko");
+    board.activate_window();
     assert!(board.has_role_name("status", "2개 파일 변경 · 4줄 추가 · 1줄 삭제"));
     save_diff_stats(&database, &card.id, 5);
     board.cx.executor().advance_clock(Duration::from_secs(6));
@@ -2815,4 +2881,2782 @@ fn deleting_card_blocks_the_context_menu(cx: &mut TestAppContext) {
     assert!(board.has_text("삭제 중…"));
     board.right_click_text("지울 작업");
     assert!(!board.has_role_name("menuitem", "삭제"));
+}
+
+// ───────────── CreateTaskModal / BranchTaskModal 요청·이동 ─────────────
+
+/// 브랜치가 있는 카드의 메뉴로 새 작업 모달을 연다. 베이스 브랜치는 카드 브랜치(main)이고 브랜치 목록은 고정 응답이다
+fn create_task_modal(
+    cx: &mut TestAppContext,
+    ssh_host: Option<&str>,
+    session_type: &str,
+) -> (Board, Arc<Database>, tempfile::TempDir) {
+    let dir = temp_dir();
+    let database = init_app(cx, dir.path().to_path_buf(), true);
+    save_app_setting(&database.connection(), "default_session_type", session_type).unwrap();
+    let demo = project(&database, "demo", ssh_host);
+    task(&database, "기준 작업", TaskStatus::Todo, |task| {
+        task.project_id = Some(demo.id.clone());
+        task.branch_name = Some("main".into());
+    });
+    let mut board = open_board(cx, "/ko");
+    board.add_result_fault(
+        "project.getProjectBranches",
+        serde_json::json!(["main", "develop"]),
+        None,
+    );
+    board.right_click_text("기준 작업");
+    board.click(role_name("menuitem", "브랜치 기반 TODO 생성"));
+    (board, database, dir)
+}
+
+/// 베이스 브랜치 칸(처음 포커스)에서 Tab으로 브랜치 이름 칸에 가서 입력한다
+fn type_branch_name(board: &mut Board, branch_name: &str) {
+    board.keys("tab");
+    board.type_text(branch_name);
+}
+
+/// 이 인자로 부를 때만 응답을 돌려주는 만들기 고장. 다른 인자면 실제 서비스가 돌아 실패한다
+fn expect_create_request(board: &mut Board, task_id: &str, argument_match: &str) {
+    board.add_result_fault(
+        "kanban.createTask",
+        serde_json::json!({ "id": task_id }),
+        Some(argument_match),
+    );
+}
+
+/// 세션 도구 확인을 부르면 실패하게 한다. 부르지 않는 흐름이면 아무 일도 없다
+fn forbid_dependency_prompt(board: &mut Board) {
+    board.add_fault(
+        "sessionDependency.*",
+        FaultMode::Fail,
+        Some("dependency prompt must not run"),
+        None,
+    );
+}
+
+// parity: TS-components-CreateTaskModal-ecd336
+#[gpui::test]
+fn local_project_create_sends_the_request_without_the_dependency_prompt(cx: &mut TestAppContext) {
+    let (mut board, _database, _dir) = create_task_modal(cx, None, "tmux");
+    forbid_dependency_prompt(&mut board);
+    expect_create_request(
+        &mut board,
+        "task-local-fast",
+        r#""branchName":"fix/session-prompt""#,
+    );
+    type_branch_name(&mut board, "fix/session-prompt");
+    board.click(role_name("button", "생성"));
+    assert_eq!(board.current_path(), "/ko/task/task-local-fast");
+}
+
+// parity: TS-components-CreateTaskModal-8c3b39
+#[gpui::test]
+fn remote_project_create_sends_the_request_without_the_dependency_prompt(cx: &mut TestAppContext) {
+    let (mut board, _database, _dir) = create_task_modal(cx, Some("remote-box"), "tmux");
+    forbid_dependency_prompt(&mut board);
+    expect_create_request(
+        &mut board,
+        "task-remote-fast",
+        r#""branchName":"fix/remote-fast""#,
+    );
+    type_branch_name(&mut board, "fix/remote-fast");
+    board.click(role_name("button", "생성"));
+    assert_eq!(board.current_path(), "/ko/task/task-remote-fast");
+    assert!(!board.find(text_contains("dependency prompt")).is_some());
+}
+
+// parity: TS-components-CreateTaskModal-8d4eb4
+// parity: TS-renderer-sessionDependencyPrompt-a96240
+#[gpui::test]
+fn ready_dependency_lets_the_created_task_open(cx: &mut TestAppContext) {
+    let (mut board, _database, _dir) = create_task_modal(cx, Some("remote-box"), "herdr");
+    board.add_result_fault(
+        "sessionDependency.getSessionDependencyStatus",
+        serde_json::json!({"available": true, "toolName": "herdr", "isRemote": true, "sshHost": "remote-box"}),
+        Some(r#"["herdr","remote-box"]"#),
+    );
+    // 이미 있으면 설치를 부르지 않는다(불렀다면 이 실패로 만들기가 멈춘다)
+    board.add_fault(
+        "sessionDependency.installSessionDependency",
+        FaultMode::Fail,
+        Some("install must not run"),
+        None,
+    );
+    expect_create_request(&mut board, "task-2", r#""sessionType":"herdr""#);
+    type_branch_name(&mut board, "fix/session-prompt");
+    board.click(role_name("button", "생성"));
+    assert_eq!(board.current_path(), "/ko/task/task-2");
+}
+
+/// Herdr가 없는 호스트. 확인(QA에서는 자동 수락) 뒤 설치 결과에 따라 만들지 정한다
+fn herdr_missing_create(cx: &mut TestAppContext, is_install_ready: bool) -> Board {
+    let (mut board, _database, _dir) = create_task_modal(cx, Some("remote-box"), "herdr");
+    std::mem::forget(_dir);
+    board.add_result_fault(
+        "sessionDependency.getSessionDependencyStatus",
+        serde_json::json!({"available": false, "toolName": "herdr", "isRemote": true, "sshHost": "remote-box"}),
+        None,
+    );
+    board.add_result_fault(
+        "sessionDependency.installSessionDependency",
+        serde_json::json!({"available": is_install_ready, "toolName": "herdr", "isRemote": true, "sshHost": "remote-box", "blockedReason": "no curl"}),
+        None,
+    );
+    expect_create_request(&mut board, "herdr-task", r#""branchName":"feature-herdr""#);
+    type_branch_name(&mut board, "feature-herdr");
+    board.click(role_name("button", "생성"));
+    board
+}
+
+// parity: TS-components-CreateTaskModal-889eb0
+// parity: TS-renderer-sessionDependencyPrompt-9a9d2c
+#[gpui::test]
+fn herdr_task_is_created_only_after_the_dependency_is_ready(cx: &mut TestAppContext) {
+    let mut board = herdr_missing_create(cx, true);
+    assert_eq!(board.current_path(), "/ko/task/herdr-task");
+}
+
+// parity: TS-renderer-sessionDependencyPrompt-bf4020
+#[gpui::test]
+fn declining_the_install_prompt_neither_installs_nor_creates(cx: &mut TestAppContext) {
+    let (mut board, _database, _dir) = create_task_modal(cx, Some("remote-a"), "herdr");
+    board.add_result_fault(
+        "sessionDependency.getSessionDependencyStatus",
+        serde_json::json!({"available": false, "toolName": "herdr", "isRemote": true, "sshHost": "remote-a"}),
+        None,
+    );
+    // 설치를 불렀다면 성공해 만들기가 이어지므로, 경로가 그대로면 설치하지 않은 것이다
+    board.add_result_fault(
+        "sessionDependency.installSessionDependency",
+        serde_json::json!({"available": true, "toolName": "herdr", "isRemote": true, "sshHost": "remote-a"}),
+        None,
+    );
+    expect_create_request(
+        &mut board,
+        "declined-task",
+        r#""branchName":"feature-declined""#,
+    );
+    type_branch_name(&mut board, "feature-declined");
+    // QA 자동 수락을 꺼서 실제 확인 대화상자를 띄운다
+    board
+        .cx
+        .update(|_, cx| cx.remove_global::<kanvibe_app::qa::QaRuntime>());
+    board.click(role_name("button", "생성"));
+    assert!(board.cx.has_pending_prompt());
+    board.cx.simulate_prompt_answer("Cancel");
+    board.draw();
+    assert_eq!(board.current_path(), "/ko");
+    assert!(board.has_role_name("button", "생성"));
+    assert!(!board.find(text_contains("설치에 실패했습니다")).is_some());
+}
+
+// parity: TS-components-CreateTaskModal-889eb0
+#[gpui::test]
+fn herdr_task_is_not_created_when_the_dependency_is_not_ready(cx: &mut TestAppContext) {
+    let mut board = herdr_missing_create(cx, false);
+    assert_eq!(board.current_path(), "/ko");
+    assert!(board.has_text("herdr 설치에 실패했습니다: no curl"));
+}
+
+// parity: TS-components-CreateTaskModal-2405f7
+#[gpui::test]
+fn tab_and_shift_tab_walk_the_main_inputs_from_the_base_branch(cx: &mut TestAppContext) {
+    let (mut board, _database, _dir) = create_task_modal(cx, None, "tmux");
+    board.keys("tab");
+    board.type_text("b");
+    board.keys("tab");
+    board.type_text("d");
+    board.keys("shift-tab");
+    board.type_text("c");
+    board.keys("shift-tab");
+    board.type_text("x");
+    let view = board.view.clone();
+    let texts = board
+        .cx
+        .update(|_, cx| view.read(cx).create_task_field_texts(cx));
+    assert_eq!(
+        texts,
+        Some(["mainx".to_string(), "bc".to_string(), "d".to_string()])
+    );
+}
+
+// parity: TS-components-CreateTaskModal-67f888
+#[gpui::test]
+fn escape_in_a_modal_input_closes_the_modal(cx: &mut TestAppContext) {
+    let (mut board, _database, _dir) = create_task_modal(cx, None, "tmux");
+    type_branch_name(&mut board, "fix/escape");
+    board.keys("escape");
+    let view = board.view.clone();
+    assert!(!board.cx.update(|_, cx| view.read(cx).is_create_task_open()));
+}
+
+// parity: TS-components-CreateTaskModal-606faa
+#[gpui::test]
+fn enter_in_an_input_creates_the_task(cx: &mut TestAppContext) {
+    let (mut board, _database, _dir) = create_task_modal(cx, None, "tmux");
+    expect_create_request(
+        &mut board,
+        "task-enter",
+        r#""branchName":"fix/enter-submit""#,
+    );
+    type_branch_name(&mut board, "fix/enter-submit");
+    board.keys("enter");
+    assert_eq!(board.current_path(), "/ko/task/task-enter");
+}
+
+// parity: TS-components-CreateTaskModal-cd2583
+#[gpui::test]
+fn board_refresh_keeps_the_chosen_base_branch(cx: &mut TestAppContext) {
+    let (mut board, _database, _dir) = create_task_modal(cx, None, "tmux");
+    board.keys("backspace backspace backspace backspace");
+    board.type_text("dev");
+    board.keys("enter");
+    let view = board.view.clone();
+    let chosen = board
+        .cx
+        .update(|_, cx| view.read(cx).create_task_base_branch(cx));
+    assert_eq!(chosen.as_deref(), Some("develop"));
+    board
+        .cx
+        .update(|_, cx| view.update(cx, |view, cx| view.refresh(cx)));
+    board.draw();
+    let kept = board
+        .cx
+        .update(|_, cx| view.read(cx).create_task_base_branch(cx));
+    assert_eq!(kept.as_deref(), Some("develop"));
+}
+
+// parity: TS-components-CreateTaskModal-8102b1
+#[gpui::test]
+fn repeated_enter_while_creating_sends_one_request(cx: &mut TestAppContext) {
+    let (mut board, _database, _dir) = create_task_modal(cx, None, "tmux");
+    board.cx.update(|_, cx| {
+        let faults = cx.global::<AppServices>().faults().unwrap().clone();
+        faults.add(ServiceFault {
+            target: "kanban.createTask".into(),
+            mode: FaultMode::Fail,
+            message: Some("duplicate create request".into()),
+            ms: None,
+            value: None,
+            after_calls: Some(1),
+            argument_match: None,
+        });
+        faults.add(ServiceFault {
+            target: "kanban.createTask".into(),
+            mode: FaultMode::Result,
+            message: None,
+            ms: None,
+            value: Some(serde_json::json!({"id": "task-once", "delayMs": 1000})),
+            after_calls: None,
+            argument_match: None,
+        });
+    });
+    type_branch_name(&mut board, "fix/double-enter");
+    board.keys("enter");
+    board.keys("enter");
+    board.keys("enter");
+    board.advance(Duration::from_millis(1_100));
+    assert_eq!(board.current_path(), "/ko/task/task-once");
+}
+
+/// 만들기를 보내고 응답이 오기 전에 "닫기 (백그라운드에서 계속)"로 모달을 닫는다
+fn close_while_creating(board: &mut Board, value: serde_json::Value) {
+    board.add_result_fault("kanban.createTask", value, None);
+    type_branch_name(board, "feat/background");
+    board.click(role_name("button", "생성"));
+    board.click(role_name("button", "닫기 (백그라운드에서 계속)"));
+    let view = board.view.clone();
+    assert!(!board.cx.update(|_, cx| view.read(cx).is_create_task_open()));
+}
+
+// parity: TS-components-CreateTaskModal-5fd23f
+#[gpui::test]
+fn closing_while_creating_shows_an_open_toast_instead_of_navigating(cx: &mut TestAppContext) {
+    let (mut board, _database, _dir) = create_task_modal(cx, None, "tmux");
+    close_while_creating(
+        &mut board,
+        serde_json::json!({"id": "task-background", "delayMs": 1000}),
+    );
+    board.advance(Duration::from_millis(1_100));
+    assert_eq!(
+        board.toast_messages(),
+        vec!["\"feat/background\" 작업을 만들었습니다".to_string()]
+    );
+    assert_eq!(board.current_path(), "/ko");
+    board.click(role_name("button", "열기"));
+    assert_eq!(board.current_path(), "/ko/task/task-background");
+}
+
+// parity: TS-components-CreateTaskModal-a0b8d3
+#[gpui::test]
+fn failure_after_closing_is_announced_by_a_failure_toast(cx: &mut TestAppContext) {
+    let (mut board, _database, _dir) = create_task_modal(cx, None, "tmux");
+    board.cx.update(|_, cx| {
+        cx.global::<AppServices>()
+            .faults()
+            .unwrap()
+            .add(ServiceFault {
+                target: "kanban.createTask".into(),
+                mode: FaultMode::Fail,
+                message: Some("worktree exists".into()),
+                ms: Some(1000),
+                value: None,
+                after_calls: None,
+                argument_match: None,
+            })
+    });
+    type_branch_name(&mut board, "feat/broken");
+    board.click(role_name("button", "생성"));
+    board.click(role_name("button", "닫기 (백그라운드에서 계속)"));
+    board.advance(Duration::from_millis(1_100));
+    assert_eq!(
+        board.toast_messages(),
+        vec![
+            "작업을 만들지 못했습니다: Error invoking remote method 'kanvibe:invoke': Error: worktree exists"
+                .to_string()
+        ]
+    );
+}
+
+/// 브랜치가 없는 카드의 메뉴로 분기 모달을 연다
+fn branch_task_modal(
+    cx: &mut TestAppContext,
+    ssh_host: Option<&str>,
+    session_type: &str,
+) -> (Board, tempfile::TempDir) {
+    let dir = temp_dir();
+    let database = init_app(cx, dir.path().to_path_buf(), true);
+    save_app_setting(&database.connection(), "default_session_type", session_type).unwrap();
+    project(&database, "demo", ssh_host);
+    task(&database, "분기할 작업", TaskStatus::Todo, |_| {});
+    let mut board = open_board(cx, "/ko");
+    board.add_result_fault(
+        "project.getProjectBranches",
+        serde_json::json!(["main"]),
+        None,
+    );
+    board.right_click_text("분기할 작업");
+    board.click(role_name("menuitem", "브랜치 분기"));
+    (board, dir)
+}
+
+fn expect_branch_request(board: &mut Board, task_id: &str, argument_match: &str) {
+    board.add_result_fault(
+        "kanban.branchFromTask",
+        serde_json::json!({ "id": task_id }),
+        Some(argument_match),
+    );
+}
+
+fn branch_modal_is_open(board: &mut Board) -> bool {
+    let view = board.view.clone();
+    board.cx.update(|_, cx| view.read(cx).is_create_task_open())
+}
+
+// parity: TS-components-BranchTaskModal-54000d
+#[gpui::test]
+fn remote_project_branch_sends_the_request_without_the_dependency_prompt(cx: &mut TestAppContext) {
+    let (mut board, _dir) = branch_task_modal(cx, Some("remote-box"), "tmux");
+    forbid_dependency_prompt(&mut board);
+    expect_branch_request(
+        &mut board,
+        "branched",
+        r#""main","feat/remote-fast","tmux"]"#,
+    );
+    type_branch_name(&mut board, "feat/remote-fast");
+    board.click(role_name("button", "분기"));
+    assert!(!branch_modal_is_open(&mut board));
+}
+
+// parity: TS-components-BranchTaskModal-e9fb4c
+#[gpui::test]
+fn local_project_branch_sends_the_request_without_the_dependency_prompt(cx: &mut TestAppContext) {
+    let (mut board, _dir) = branch_task_modal(cx, None, "tmux");
+    forbid_dependency_prompt(&mut board);
+    expect_branch_request(
+        &mut board,
+        "branched",
+        r#""main","feat/local-fast","tmux"]"#,
+    );
+    type_branch_name(&mut board, "feat/local-fast");
+    board.click(role_name("button", "분기"));
+    assert!(!branch_modal_is_open(&mut board));
+}
+
+fn herdr_missing_branch(cx: &mut TestAppContext, is_install_ready: bool) -> Board {
+    let (mut board, dir) = branch_task_modal(cx, Some("remote-box"), "herdr");
+    std::mem::forget(dir);
+    board.add_result_fault(
+        "sessionDependency.getSessionDependencyStatus",
+        serde_json::json!({"available": false, "toolName": "herdr", "isRemote": true, "sshHost": "remote-box"}),
+        Some(r#"["herdr","remote-box"]"#),
+    );
+    board.add_result_fault(
+        "sessionDependency.installSessionDependency",
+        serde_json::json!({"available": is_install_ready, "toolName": "herdr", "blockedReason": "no curl"}),
+        None,
+    );
+    expect_branch_request(&mut board, "herdr-task", r#""feature-herdr","herdr"]"#);
+    type_branch_name(&mut board, "feature-herdr");
+    board.click(role_name("button", "분기"));
+    board
+}
+
+// parity: TS-components-BranchTaskModal-cf2c3d
+#[gpui::test]
+fn herdr_branch_is_sent_only_after_the_dependency_is_ready(cx: &mut TestAppContext) {
+    let mut board = herdr_missing_branch(cx, true);
+    assert!(!branch_modal_is_open(&mut board));
+}
+
+// parity: TS-components-BranchTaskModal-cf2c3d
+#[gpui::test]
+fn herdr_branch_is_not_sent_when_the_dependency_is_not_ready(cx: &mut TestAppContext) {
+    let mut board = herdr_missing_branch(cx, false);
+    assert!(branch_modal_is_open(&mut board));
+    assert!(board.has_text("herdr 설치에 실패했습니다: no curl"));
+}
+
+// parity: TS-components-BranchTaskModal-3c9806
+#[gpui::test]
+fn repeated_branch_submit_while_waiting_sends_one_request(cx: &mut TestAppContext) {
+    let (mut board, _dir) = branch_task_modal(cx, None, "tmux");
+    board.cx.update(|_, cx| {
+        let faults = cx.global::<AppServices>().faults().unwrap().clone();
+        faults.add(ServiceFault {
+            target: "kanban.branchFromTask".into(),
+            mode: FaultMode::Fail,
+            message: Some("duplicate branch request".into()),
+            ms: None,
+            value: None,
+            after_calls: Some(1),
+            argument_match: None,
+        });
+        faults.add(ServiceFault {
+            target: "kanban.branchFromTask".into(),
+            mode: FaultMode::Hang,
+            message: None,
+            ms: None,
+            value: None,
+            after_calls: None,
+            argument_match: None,
+        });
+    });
+    type_branch_name(&mut board, "feat/once");
+    board.keys("enter");
+    board.keys("enter");
+    assert!(
+        board
+            .find(text_contains("duplicate branch request"))
+            .is_none()
+    );
+    assert!(branch_modal_is_open(&mut board));
+}
+
+// parity: TS-components-BranchTaskModal-c93efc
+#[gpui::test]
+fn closing_while_branching_then_success_shows_an_open_toast(cx: &mut TestAppContext) {
+    let (mut board, _dir) = branch_task_modal(cx, None, "tmux");
+    board.add_result_fault(
+        "kanban.branchFromTask",
+        serde_json::json!({"id": "task-1", "delayMs": 1000}),
+        None,
+    );
+    type_branch_name(&mut board, "feat/bg");
+    board.click(role_name("button", "분기"));
+    board.click(role_name("button", "닫기 (백그라운드에서 계속)"));
+    board.advance(Duration::from_millis(1_100));
+    assert_eq!(
+        board.toast_messages(),
+        vec!["\"feat/bg\" 브랜치로 분기했습니다".to_string()]
+    );
+    board.click(role_name("button", "열기"));
+    assert_eq!(board.current_path(), "/ko/task/task-1");
+}
+
+// parity: TS-components-BranchTaskModal-81f49b
+#[gpui::test]
+fn closing_while_branching_then_failure_shows_a_failure_toast(cx: &mut TestAppContext) {
+    let (mut board, _dir) = branch_task_modal(cx, None, "tmux");
+    board.cx.update(|_, cx| {
+        cx.global::<AppServices>()
+            .faults()
+            .unwrap()
+            .add(ServiceFault {
+                target: "kanban.branchFromTask".into(),
+                mode: FaultMode::Fail,
+                message: Some("branch exists".into()),
+                ms: Some(1000),
+                value: None,
+                after_calls: None,
+                argument_match: None,
+            })
+    });
+    type_branch_name(&mut board, "feat/fail");
+    board.click(role_name("button", "분기"));
+    board.click(role_name("button", "닫기 (백그라운드에서 계속)"));
+    board.advance(Duration::from_millis(1_100));
+    assert_eq!(
+        board.toast_messages(),
+        vec![
+            "분기하지 못했습니다: Error invoking remote method 'kanvibe:invoke': Error: branch exists"
+                .to_string()
+        ]
+    );
+}
+
+/// 프로젝트 두 개(A·B)로 분기 모달을 연다. A 브랜치 응답은 1초 늦게 오고 B는 바로 온다
+fn branch_modal_with_slow_first_project(cx: &mut TestAppContext, is_old_failure: bool) -> Board {
+    let dir = temp_dir();
+    let database = init_app(cx, dir.path().to_path_buf(), true);
+    std::mem::forget(dir);
+    let project_a = project(&database, "alpha", None);
+    let project_b = project(&database, "beta", None);
+    task(&database, "분기할 작업", TaskStatus::Todo, |_| {});
+    let mut board = open_board(cx, "/ko");
+    let old_match = format!(r#"["{}"]"#, project_a.id);
+    if is_old_failure {
+        board.cx.update(|_, cx| {
+            cx.global::<AppServices>()
+                .faults()
+                .unwrap()
+                .add(ServiceFault {
+                    target: "project.getProjectBranches".into(),
+                    mode: FaultMode::Fail,
+                    message: Some("A failed".into()),
+                    ms: Some(1000),
+                    value: None,
+                    after_calls: None,
+                    argument_match: Some(old_match.clone()),
+                })
+        });
+    } else {
+        board.add_result_fault(
+            "project.getProjectBranches",
+            serde_json::json!({"delayMs": 1000}),
+            Some(&old_match),
+        );
+    }
+    board.add_result_fault(
+        "project.getProjectBranches",
+        serde_json::json!(["B-only"]),
+        Some(&format!(r#"["{}"]"#, project_b.id)),
+    );
+    board.right_click_text("분기할 작업");
+    board.click(role_name("menuitem", "브랜치 분기"));
+    board.click(role_name("button", "프로젝트 선택"));
+    board.type_text("beta");
+    board.keys("enter");
+    // 베이스 브랜치 칸을 비워 받아 온 브랜치를 모두 펼친다
+    board.keys("backspace backspace backspace backspace");
+    assert!(board.has_role_name("button", "B-only"));
+    board.advance(Duration::from_millis(1_100));
+    board
+}
+
+// parity: TS-components-BranchTaskModal-d62867
+#[gpui::test]
+fn late_success_for_the_previous_project_is_ignored(cx: &mut TestAppContext) {
+    let mut board = branch_modal_with_slow_first_project(cx, false);
+    assert!(board.has_role_name("button", "B-only"));
+}
+
+// parity: TS-components-BranchTaskModal-d62867
+#[gpui::test]
+fn late_failure_for_the_previous_project_is_ignored(cx: &mut TestAppContext) {
+    let mut board = branch_modal_with_slow_first_project(cx, true);
+    assert!(board.has_role_name("button", "B-only"));
+    assert!(board.find(text_contains("A failed")).is_none());
+}
+
+// parity: TS-components-BranchSearchInput-5c54cf
+#[gpui::test]
+fn tab_moves_to_the_next_input_while_the_branch_list_is_open(cx: &mut TestAppContext) {
+    let (mut board, _database, _dir) = create_task_modal(cx, None, "tmux");
+    board.keys("down");
+    assert!(board.has_role_name("button", "main"));
+    board.keys("tab");
+    board.type_text("next");
+    let view = board.view.clone();
+    let texts = board
+        .cx
+        .update(|_, cx| view.read(cx).create_task_field_texts(cx));
+    assert_eq!(texts.map(|texts| texts[1].clone()).as_deref(), Some("next"));
+    assert!(!board.has_role_name("button", "develop"));
+}
+
+/// `kanvibe` 프로젝트에서 베이스 브랜치 칸을 비우고 검색어를 넣는다
+fn search_branches_with_project_name(cx: &mut TestAppContext, query: &str) -> Board {
+    let dir = temp_dir();
+    let database = init_app(cx, dir.path().to_path_buf(), true);
+    std::mem::forget(dir);
+    let kanvibe = project(&database, "kanvibe", None);
+    task(&database, "기준 작업", TaskStatus::Todo, |task| {
+        task.project_id = Some(kanvibe.id.clone());
+        task.branch_name = Some("main".into());
+    });
+    let mut board = open_board(cx, "/ko");
+    board.add_result_fault(
+        "project.getProjectBranches",
+        serde_json::json!(["main", "dev", "feature/search"]),
+        None,
+    );
+    board.right_click_text("기준 작업");
+    board.click(role_name("menuitem", "브랜치 기반 TODO 생성"));
+    board.keys("backspace backspace backspace backspace");
+    board.type_text(query);
+    board
+}
+
+// parity: TS-components-BranchSearchInput-c60042
+#[gpui::test]
+fn project_then_branch_query_finds_the_branch(cx: &mut TestAppContext) {
+    let mut board = search_branches_with_project_name(cx, "kanvibe dev");
+    assert!(board.has_role_name("button", "dev"));
+    assert!(!board.has_role_name("button", "main"));
+}
+
+// parity: TS-components-BranchSearchInput-c60042
+#[gpui::test]
+fn branch_then_project_query_finds_the_branch(cx: &mut TestAppContext) {
+    let mut board = search_branches_with_project_name(cx, "dev kanvibe");
+    assert!(board.has_role_name("button", "dev"));
+    assert!(!board.has_role_name("button", "main"));
+}
+
+// ───────────── TaskCard 실행중 AI 세션·변경 집계 ─────────────
+
+fn test_id(id: &str) -> TargetQuery {
+    TargetQuery::Described(DescribedTarget {
+        selector: Some(format!("[data-testid='{id}']")),
+        ..DescribedTarget::default()
+    })
+}
+
+fn test_id_text(id: &str, text: &str) -> TargetQuery {
+    TargetQuery::Described(DescribedTarget {
+        selector: Some(format!("[data-testid='{id}']")),
+        text: Some(text.into()),
+        exact: Some(true),
+        ..DescribedTarget::default()
+    })
+}
+
+fn add_fault_before_open(cx: &mut TestAppContext, fault: ServiceFault) {
+    cx.update(|cx| cx.global::<AppServices>().faults().unwrap().add(fault));
+}
+
+fn result_fault(target: &str, value: serde_json::Value) -> ServiceFault {
+    ServiceFault {
+        target: target.into(),
+        mode: FaultMode::Result,
+        message: None,
+        ms: None,
+        value: Some(value),
+        after_calls: None,
+        argument_match: None,
+    }
+}
+
+fn running_pane(provider: &str, window_id: &str) -> serde_json::Value {
+    serde_json::json!({
+        "provider": provider,
+        "worktreePath": "/repo/task",
+        "sessionName": "kanvibe-task",
+        "windowId": window_id,
+        "windowName": provider,
+    })
+}
+
+/// `/repo/task`에서 일하는 카드(TODO)와 다른 열 카드 하나. `panes`는 보드가 읽을 실행중 pane 목록이다
+fn live_session_board(
+    cx: &mut TestAppContext,
+    worktree_path: &str,
+    panes: serde_json::Value,
+) -> (Board, KanbanTask) {
+    let dir = temp_dir();
+    let database = init_app(cx, dir.path().to_path_buf(), true);
+    std::mem::forget(dir);
+    let card = task(&database, "세션 카드", TaskStatus::Todo, |task| {
+        task.worktree_path = Some(worktree_path.into());
+    });
+    task(&database, "옆 카드", TaskStatus::Progress, |_| {});
+    add_fault_before_open(cx, result_fault("project.getRunningAgentPanes", panes));
+    let mut board = open_board(cx, "/ko");
+    board.activate_window();
+    (board, card)
+}
+
+fn live_sessions_value() -> serde_json::Value {
+    serde_json::json!({"sessions": [{
+        "provider": "claude",
+        "sessionId": "s1",
+        "currentTask": "리뷰 반영",
+        "state": "running",
+        "lastActiveAt": null,
+        "runningSubtasks": [],
+        "terminalWindow": {"sessionName": "kanvibe-task", "windowId": "@7", "windowName": "claude"},
+    }]})
+}
+
+// parity: TS-components-TaskCard-d455e0
+#[gpui::test]
+fn agents_in_the_same_worktree_show_as_a_card_badge(cx: &mut TestAppContext) {
+    let (mut board, _card) = live_session_board(
+        cx,
+        "/repo/task",
+        serde_json::json!([running_pane("claude", "@7")]),
+    );
+    assert!(board.find(test_id("task-card-running-agents")).is_some());
+}
+
+// parity: TS-components-TaskCard-11e5eb
+#[gpui::test]
+fn each_provider_shows_its_own_running_count(cx: &mut TestAppContext) {
+    let (mut board, _card) = live_session_board(
+        cx,
+        "/repo/task",
+        serde_json::json!([
+            running_pane("claude", "@7"),
+            running_pane("claude", "@8"),
+            running_pane("codex", "@9")
+        ]),
+    );
+    assert!(
+        board
+            .find(test_id_text("task-card-running-claude", "2"))
+            .is_some()
+    );
+    assert!(
+        board
+            .find(test_id_text("task-card-running-codex", "1"))
+            .is_some()
+    );
+}
+
+// parity: TS-components-TaskCard-733861
+#[gpui::test]
+fn running_badges_keep_provider_name_order(cx: &mut TestAppContext) {
+    let (mut board, _card) = live_session_board(
+        cx,
+        "/repo/task",
+        serde_json::json!([
+            running_pane("opencode", "@9"),
+            running_pane("claude", "@7"),
+            running_pane("codex", "@8")
+        ]),
+    );
+    let x_of = |board: &mut Board, provider: &str| {
+        board
+            .find(test_id(&format!("task-card-running-{provider}")))
+            .unwrap_or_else(|| panic!("{provider} badge"))
+            .origin
+            .x
+    };
+    let claude = x_of(&mut board, "claude");
+    let codex = x_of(&mut board, "codex");
+    let opencode = x_of(&mut board, "opencode");
+    assert!(claude < codex && codex < opencode);
+}
+
+// parity: TS-components-TaskCard-d2118f
+#[gpui::test]
+fn agents_in_another_worktree_are_not_shown(cx: &mut TestAppContext) {
+    let (mut board, _card) = live_session_board(
+        cx,
+        "/repo/other",
+        serde_json::json!([running_pane("claude", "@7")]),
+    );
+    assert!(board.find(test_id("task-card-running-agents")).is_none());
+}
+
+/// 키보드로 첫 카드에 포커스를 준다(포커스가 없을 때 ↓는 첫 카드로 들어간다)
+/// 시험 창은 활성 창이 아니라서 포커스 이벤트가 오지 않는다. 사용자가 보는 창처럼 먼저 활성으로 만든다
+fn focus_first_card(board: &mut Board) {
+    board.cx.update(|window, _| window.activate_window());
+    board.draw();
+    board.keys("down");
+}
+
+// parity: TS-components-TaskCard-f2d697
+#[gpui::test]
+fn session_panel_opens_only_after_focus_stays_a_moment(cx: &mut TestAppContext) {
+    let (mut board, _card) = live_session_board(
+        cx,
+        "/repo/task",
+        serde_json::json!([running_pane("claude", "@7")]),
+    );
+    focus_first_card(&mut board);
+    board.advance(Duration::from_millis(1_000));
+    assert!(
+        board
+            .find(test_id("task-card-live-session-popover"))
+            .is_none()
+    );
+    board.advance(Duration::from_millis(500));
+    assert!(
+        board
+            .find(test_id("task-card-live-session-popover"))
+            .is_some()
+    );
+}
+
+// parity: TS-components-TaskCard-d15685
+#[gpui::test]
+fn open_session_panel_is_not_clipped_by_the_card(cx: &mut TestAppContext) {
+    let (mut board, _card) = live_session_board(
+        cx,
+        "/repo/task",
+        serde_json::json!([running_pane("claude", "@7")]),
+    );
+    focus_first_card(&mut board);
+    board.advance(Duration::from_millis(1_500));
+    let popover = board
+        .cx
+        .update(|window, cx| {
+            cx.global::<QaTargetRegistry>().find_hit(
+                window.window_handle().window_id(),
+                &test_id("task-card-live-session-popover"),
+            )
+        })
+        .expect("popover");
+    let card = board.find(role_name("article", "세션 카드")).expect("card");
+    assert!(popover.bounds.origin.y >= card.origin.y + card.size.height);
+    assert!(popover.clip_bounds.size.height >= popover.bounds.size.height);
+}
+
+// parity: TS-components-TaskCard-c1f437
+#[gpui::test]
+fn moving_focus_off_the_card_closes_the_session_panel(cx: &mut TestAppContext) {
+    let (mut board, _card) = live_session_board(
+        cx,
+        "/repo/task",
+        serde_json::json!([running_pane("claude", "@7")]),
+    );
+    focus_first_card(&mut board);
+    board.advance(Duration::from_millis(1_500));
+    assert!(
+        board
+            .find(test_id("task-card-live-session-popover"))
+            .is_some()
+    );
+    board.keys("right");
+    assert!(
+        board
+            .find(test_id("task-card-live-session-popover"))
+            .is_none()
+    );
+}
+
+// parity: TS-components-TaskCardLiveSessions-56347f
+#[gpui::test]
+fn closed_panel_does_not_read_sessions(cx: &mut TestAppContext) {
+    let (mut board, _card) = live_session_board(
+        cx,
+        "/repo/task",
+        serde_json::json!([running_pane("claude", "@7")]),
+    );
+    // 두 번째 조회부터는 다른 세션을 돌려준다. 닫혀 있는 동안 읽었다면 열자마자 두 번째 응답이 보인다
+    board.cx.update(|_, cx| {
+        let faults = cx.global::<AppServices>().faults().unwrap().clone();
+        let mut later = result_fault(
+            "project.getTaskLiveAiSessions",
+            serde_json::json!({"sessions": [{"provider": "codex", "sessionId": null, "currentTask": "두 번째 조회", "state": "idle", "lastActiveAt": null, "runningSubtasks": [], "terminalWindow": null}]}),
+        );
+        later.after_calls = Some(1);
+        faults.add(later);
+        faults.add(result_fault("project.getTaskLiveAiSessions", live_sessions_value()));
+    });
+    board.advance(Duration::from_secs(12));
+    focus_first_card(&mut board);
+    board.advance(Duration::from_millis(1_300));
+    assert!(board.has_role_name("button", "리뷰 반영"));
+    assert!(!board.has_text("두 번째 조회"));
+}
+
+// parity: TS-components-TaskCardLiveSessions-3a4aa3
+#[gpui::test]
+fn clicking_a_session_selects_its_window_then_opens_the_task(cx: &mut TestAppContext) {
+    let (mut board, card) = live_session_board(
+        cx,
+        "/repo/task",
+        serde_json::json!([running_pane("claude", "@7")]),
+    );
+    board.add_result_fault("project.getTaskLiveAiSessions", live_sessions_value(), None);
+    board.add_result_fault(
+        "terminalTabs.selectTerminalTab",
+        serde_json::json!({"ok": true}),
+        Some(&format!(r#"["{}","@7"]"#, card.id)),
+    );
+    focus_first_card(&mut board);
+    board.advance(Duration::from_millis(1_500));
+    board.click(role_name("button", "리뷰 반영"));
+    assert_eq!(board.current_path(), format!("/ko/task/{}", card.id));
+}
+
+// parity: TS-components-TaskCardLiveSessions-2c798a
+#[gpui::test]
+fn open_panel_without_anything_running_draws_no_popover(cx: &mut TestAppContext) {
+    let (mut board, _card) = live_session_board(cx, "/repo/task", serde_json::json!([]));
+    board.add_result_fault(
+        "project.getTaskLiveAiSessions",
+        serde_json::json!({"sessions": []}),
+        None,
+    );
+    focus_first_card(&mut board);
+    board.advance(Duration::from_millis(1_500));
+    assert!(
+        board
+            .find(test_id("task-card-live-session-popover"))
+            .is_none()
+    );
+}
+
+// parity: TS-components-TaskCardLiveSessions-997c46
+#[gpui::test]
+fn no_agents_and_no_open_panel_draw_nothing(cx: &mut TestAppContext) {
+    let (mut board, _card) = live_session_board(cx, "/repo/task", serde_json::json!([]));
+    assert!(board.find(test_id("task-card-running-agents")).is_none());
+    assert!(
+        board
+            .find(test_id("task-card-live-session-popover"))
+            .is_none()
+    );
+}
+
+/// 진행 중 카드 하나와 그 집계. 보드가 5초마다 다시 읽는 집계는 `next`로 바뀐다
+fn diff_stats_board(
+    cx: &mut TestAppContext,
+    first: serde_json::Value,
+    is_motion_reduced: bool,
+) -> (Board, KanbanTask) {
+    let dir = temp_dir();
+    let database = init_app(cx, dir.path().to_path_buf(), true);
+    std::mem::forget(dir);
+    cx.update(|cx| {
+        cx.set_global(kanvibe_app::views::board::MotionPreference {
+            is_reduced: is_motion_reduced,
+        })
+    });
+    let card = task(&database, "집계 카드", TaskStatus::Progress, |task| {
+        task.worktree_path = Some("/repo/stats__worktrees/a".into());
+    });
+    let value = serde_json::json!({ card.id.clone(): first });
+    add_fault_before_open(cx, {
+        let mut fault = result_fault("diff.getTaskDiffStats", value);
+        fault.after_calls = Some(0);
+        fault
+    });
+    let mut board = open_board(cx, "/ko");
+    board.activate_window();
+    (board, card)
+}
+
+fn stats(files: i64, additions: i64, deletions: i64) -> serde_json::Value {
+    serde_json::json!({"fileCount": files, "additions": additions, "deletions": deletions})
+}
+
+/// 다음 주기 응답을 바꾼다
+fn next_diff_stats(board: &mut Board, card: &KanbanTask, next: serde_json::Value) {
+    board.cx.update(|_, cx| {
+        let faults = cx.global::<AppServices>().faults().unwrap().clone();
+        faults.clear("diff.getTaskDiffStats");
+        faults.add(result_fault(
+            "diff.getTaskDiffStats",
+            serde_json::json!({ card.id.clone(): next }),
+        ));
+    });
+}
+
+// parity: TS-components-TaskDiffStats-8548c8
+#[gpui::test]
+fn diff_badge_shows_file_count_and_line_changes(cx: &mut TestAppContext) {
+    let (mut board, card) = diff_stats_board(cx, stats(0, 0, 0), false);
+    next_diff_stats(&mut board, &card, stats(12, 348, 76));
+    board.advance(Duration::from_millis(5_100));
+    board.advance(Duration::from_millis(1_000));
+    assert!(
+        board
+            .find(test_id_text("task-diff-file-count", "12"))
+            .is_some()
+    );
+    assert!(
+        board
+            .find(test_id_text("task-diff-additions", "348"))
+            .is_some()
+    );
+    assert!(
+        board
+            .find(test_id_text("task-diff-deletions", "76"))
+            .is_some()
+    );
+}
+
+// parity: TS-components-TaskDiffStats-a56a86
+#[gpui::test]
+fn tasks_without_changes_have_no_diff_badge(cx: &mut TestAppContext) {
+    let (mut board, _card) = diff_stats_board(cx, stats(0, 0, 0), false);
+    board.advance(Duration::from_millis(5_100));
+    assert!(board.find(test_id("task-diff-file-count")).is_none());
+}
+
+// parity: TS-components-TaskDiffStats-4b9ab7
+#[gpui::test]
+fn tasks_without_received_stats_have_no_diff_badge(cx: &mut TestAppContext) {
+    let (mut board, _card) = diff_stats_board(cx, serde_json::json!(null), false);
+    board.cx.update(|_, cx| {
+        let faults = cx.global::<AppServices>().faults().unwrap().clone();
+        faults.clear("diff.getTaskDiffStats");
+        faults.add(result_fault("diff.getTaskDiffStats", serde_json::json!({})));
+    });
+    board.advance(Duration::from_millis(5_100));
+    assert!(board.find(test_id("task-diff-file-count")).is_none());
+}
+
+/// 첫 주기(5초)에 340을 받고, 두 번째 주기(10초) 직전까지 간다. 두 번째 주기는 348을 돌려준다
+fn counting_board(cx: &mut TestAppContext, is_motion_reduced: bool) -> Board {
+    let (mut board, card) = diff_stats_board(cx, stats(3, 340, 2), is_motion_reduced);
+    board.advance(Duration::from_millis(5_100));
+    next_diff_stats(&mut board, &card, stats(3, 348, 2));
+    board.advance(Duration::from_millis(4_850));
+    board
+}
+
+// parity: TS-components-CountUpNumber-884058
+#[gpui::test]
+fn first_value_is_shown_without_counting(cx: &mut TestAppContext) {
+    let (mut board, _card) = diff_stats_board(cx, stats(1, 0, 0), false);
+    board.advance(Duration::from_millis(5_100));
+    assert!(
+        board
+            .find(test_id_text("task-diff-file-count", "1"))
+            .is_some()
+    );
+}
+
+// parity: TS-components-CountUpNumber-bf57b6
+#[gpui::test]
+fn changed_value_counts_up_and_reaches_the_new_value(cx: &mut TestAppContext) {
+    let mut board = counting_board(cx, false);
+    let mut has_seen_between = false;
+    for _ in 0..12 {
+        board.advance(Duration::from_millis(50));
+        has_seen_between |= (341..348).any(|value| {
+            board
+                .find(test_id_text("task-diff-additions", &value.to_string()))
+                .is_some()
+        });
+    }
+    assert!(has_seen_between, "중간 값을 지나야 한다");
+    assert!(
+        board
+            .find(test_id_text("task-diff-additions", "348"))
+            .is_some()
+    );
+}
+
+// parity: TS-components-CountUpNumber-01ff99
+#[gpui::test]
+fn reduced_motion_jumps_straight_to_the_new_value(cx: &mut TestAppContext) {
+    let mut board = counting_board(cx, true);
+    board.advance(Duration::from_millis(100));
+    assert!(
+        board
+            .find(test_id_text("task-diff-additions", "348"))
+            .is_some()
+    );
+}
+
+/// 배지가 많은 카드 하나(PR·agent·세션·원격·우선순위)
+fn badge_heavy_board(cx: &mut TestAppContext, ssh_host: &str) -> Board {
+    let dir = temp_dir();
+    let database = init_app(cx, dir.path().to_path_buf(), true);
+    std::mem::forget(dir);
+    task(&database, "배지 많은 작업", TaskStatus::Todo, |task| {
+        task.session_type = Some(SessionType::Tmux);
+        task.ssh_host = Some(ssh_host.into());
+        task.pr_url = Some("https://github.com/example/pull/1".into());
+        task.agent_type = Some("claude".into());
+        task.priority = Some(TaskPriority::High);
+    });
+    open_board(cx, "/ko")
+}
+
+fn contains(outer: Bounds<Pixels>, inner: Bounds<Pixels>) -> bool {
+    inner.origin.x >= outer.origin.x
+        && inner.origin.y >= outer.origin.y
+        && inner.origin.x + inner.size.width
+            <= outer.origin.x + outer.size.width + gpui_kit::px(0.5)
+        && inner.origin.y + inner.size.height
+            <= outer.origin.y + outer.size.height + gpui_kit::px(0.5)
+}
+
+// parity: TS-components-TaskCard-d67bd4
+#[gpui::test]
+fn overflowing_badges_flow_to_the_next_line(cx: &mut TestAppContext) {
+    let mut board = badge_heavy_board(cx, "devbox-remote-build-host");
+    let card = board.find(role_name("article", "배지 많은 작업")).unwrap();
+    let pr = board.find(TargetQuery::ExactText("PR".into())).unwrap();
+    let priority = board.find(TargetQuery::ExactText("P1".into())).unwrap();
+    assert!(
+        priority.origin.y > pr.origin.y,
+        "우선순위 배지는 다음 줄로 흐른다"
+    );
+    for badge in [pr, priority] {
+        assert!(contains(card, badge), "배지가 카드 안에 다 보인다");
+    }
+}
+
+// parity: TS-components-TaskCard-ff8e20
+#[gpui::test]
+fn long_remote_host_wraps_inside_its_badge(cx: &mut TestAppContext) {
+    let host = "very-long-remote-development-host.internal.example.company.net";
+    let mut board = badge_heavy_board(cx, host);
+    let card = board.find(role_name("article", "배지 많은 작업")).unwrap();
+    let ssh = board.find(TargetQuery::ExactText(host.into())).unwrap();
+    assert!(contains(card, ssh), "호스트 배지가 카드 안에 다 보인다");
+    assert!(
+        f32::from(ssh.size.height) > 20.0,
+        "한 줄을 넘기면 배지 안에서 줄을 바꾼다"
+    );
+}
+
+fn window_count(board: &mut Board) -> usize {
+    board.cx.update(|_, cx| cx.windows().len())
+}
+
+// parity: TS-components-TaskCard-7004fc
+// parity: TS-components-Board-a0868e
+#[gpui::test]
+fn shift_enter_on_a_card_opens_the_detail_in_a_new_window(cx: &mut TestAppContext) {
+    let dir = temp_dir();
+    let database = init_app(cx, dir.path().to_path_buf(), true);
+    task(&database, "새 창 작업", TaskStatus::Todo, |_| {});
+    let mut board = open_board(cx, "/ko");
+    let before = window_count(&mut board);
+    board.keys("down");
+    board.keys("shift-enter");
+    assert_eq!(window_count(&mut board), before + 1);
+    assert_eq!(board.current_path(), "/ko");
+}
+
+// parity: TS-components-TaskCard-73c134
+#[gpui::test]
+fn clicking_a_card_opens_the_detail_in_the_same_window(cx: &mut TestAppContext) {
+    let dir = temp_dir();
+    let database = init_app(cx, dir.path().to_path_buf(), true);
+    let card = task(&database, "같은 창 작업", TaskStatus::Todo, |_| {});
+    let mut board = open_board(cx, "/ko");
+    let before = window_count(&mut board);
+    board.click(role_name("link", "같은 창 작업"));
+    assert_eq!(board.current_path(), format!("/ko/task/{}", card.id));
+    assert_eq!(window_count(&mut board), before);
+}
+
+// parity: TS-components-TaskCard-ed9d46
+#[gpui::test]
+fn clicking_a_card_focuses_the_window_already_showing_it(cx: &mut TestAppContext) {
+    let dir = temp_dir();
+    let database = init_app(cx, dir.path().to_path_buf(), true);
+    // 프로젝트 없는 작업이라 상세 창이 세션 연결을 시작하지 않는다
+    let card = task(&database, "이미 열린 작업", TaskStatus::Todo, |_| {});
+    let detail =
+        cx.add_window(|window, cx| AppWindow::new(&format!("/ko/task/{}", card.id), window, cx));
+    cx.run_until_parked();
+    let mut board = open_board(cx, "/ko");
+    board.click(role_name("link", "이미 열린 작업"));
+    assert_eq!(board.current_path(), "/ko");
+    let active = board.cx.update(|_, cx| cx.active_window());
+    assert_eq!(
+        active.map(|handle| handle.window_id()),
+        Some(detail.window_id())
+    );
+}
+
+// parity: TS-renderer-useTaskDiffStats-262b4e
+#[gpui::test]
+fn diff_stats_poll_sends_the_tasks_to_refresh_in_one_request(cx: &mut TestAppContext) {
+    let dir = temp_dir();
+    let database = init_app(cx, dir.path().to_path_buf(), true);
+    let in_branch = |path: &'static str| {
+        move |task: &mut NewKanbanTask| {
+            task.branch_name = Some(path.into());
+            task.worktree_path = Some(format!("/repo__worktrees/{path}"));
+        }
+    };
+    let first = task(&database, "첫 진행", TaskStatus::Progress, in_branch("a"));
+    let second = task(&database, "둘째 진행", TaskStatus::Progress, in_branch("b"));
+    let mut board = open_board(cx, "/ko");
+    board.activate_window();
+    let mut ids = [first.id.clone(), second.id.clone()];
+    ids.sort();
+    let both = [
+        format!(r#"["{}","{}"]"#, ids[0], ids[1]),
+        format!(r#"["{}","{}"]"#, ids[1], ids[0]),
+    ];
+    for argument_match in &both {
+        board.add_result_fault(
+            "diff.getTaskDiffStats",
+            serde_json::json!({ first.id.clone(): stats(1, 340, 0) }),
+            Some(argument_match),
+        );
+    }
+    board.advance(Duration::from_millis(5_100));
+    assert!(
+        board
+            .find(test_id_text("task-diff-additions", "340"))
+            .is_some()
+    );
+}
+
+// parity: TS-renderer-useTaskDiffStats-c54b33
+#[gpui::test]
+fn diff_stats_poll_reads_stored_stats_without_tasks_to_refresh(cx: &mut TestAppContext) {
+    let dir = temp_dir();
+    let database = init_app(cx, dir.path().to_path_buf(), true);
+    let card = task(&database, "할 일", TaskStatus::Todo, |_| {});
+    let mut board = open_board(cx, "/ko");
+    board.activate_window();
+    board.add_result_fault(
+        "diff.getTaskDiffStats",
+        serde_json::json!({ card.id.clone(): stats(2, 340, 1) }),
+        Some("[]"),
+    );
+    board.advance(Duration::from_millis(5_100));
+    assert!(
+        board
+            .find(test_id_text("task-diff-additions", "340"))
+            .is_some()
+    );
+}
+
+// ───────────── NotificationCenterButton 열기·실패·검토 ─────────────
+
+fn task_notification(
+    id: &str,
+    task_id: &str,
+    created_at: &str,
+    is_read: bool,
+) -> serde_json::Value {
+    serde_json::json!({
+        "id": id, "title": format!("{id} title"), "body": format!("{id} body"), "taskId": task_id,
+        "relativePath": format!("/task/{task_id}"), "locale": "ko", "isRead": is_read,
+        "createdAt": created_at, "dedupeKey": id
+    })
+}
+
+fn review_notification_value(merged_tasks: &[&KanbanTask]) -> serde_json::Value {
+    let merged: Vec<serde_json::Value> = merged_tasks
+        .iter()
+        .map(|task| {
+            serde_json::json!({
+                "taskId": task.id, "taskTitle": task.title, "branchName": "feature/merged",
+                "prUrl": "https://github.com/test/repo/pull/1", "mergedAt": "2026-01-15T02:00:00.000Z"
+            })
+        })
+        .collect();
+    serde_json::json!({
+        "id": "review", "title": "Background sync review", "body": "검토할 항목", "taskId": null,
+        "relativePath": "/ko", "locale": "ko", "isRead": false,
+        "createdAt": "2026-01-15T02:58:00.000Z", "dedupeKey": "review",
+        "action": {"type": "background-sync-review", "payload": {
+            "mergedPullRequests": merged, "registeredWorktrees": []
+        }}
+    })
+}
+
+fn store_notifications(database: &Database, notifications: serde_json::Value) {
+    save_app_setting(
+        &database.connection(),
+        "app_notifications",
+        &notifications.to_string(),
+    )
+    .unwrap();
+}
+
+fn open_notification_panel(board: &mut Board) {
+    board.cx.update(|window, cx| {
+        window.dispatch_action(
+            Box::new(kanvibe_app::shortcuts::ToggleNotificationCenter),
+            cx,
+        )
+    });
+    board.draw();
+}
+
+/// 작업 하나와 그 작업 알림 하나가 있는 보드
+fn single_notification_board(cx: &mut TestAppContext) -> (Board, Arc<Database>, KanbanTask) {
+    let dir = temp_dir();
+    let database = init_app(cx, dir.path().to_path_buf(), true);
+    std::mem::forget(dir);
+    let card = task(&database, "알림 대상", TaskStatus::Todo, |_| {});
+    store_notifications(
+        &database,
+        serde_json::json!([task_notification(
+            "n1",
+            &card.id,
+            "2026-01-15T02:57:00.000Z",
+            false
+        )]),
+    );
+    let board = open_board(cx, "/ko");
+    (board, database, card)
+}
+
+// parity: TS-components-NotificationCenterButton-7d5739
+#[gpui::test]
+fn unreadable_notifications_show_the_reason_and_retry_loads_them(cx: &mut TestAppContext) {
+    let dir = temp_dir();
+    let database = init_app(cx, dir.path().to_path_buf(), true);
+    let card = task(&database, "알림 대상", TaskStatus::Todo, |_| {});
+    store_notifications(
+        &database,
+        serde_json::json!([task_notification(
+            "n1",
+            &card.id,
+            "2026-01-15T02:57:00.000Z",
+            false
+        )]),
+    );
+    add_fault_before_open(
+        cx,
+        ServiceFault {
+            target: "kanvibe:notifications-list".into(),
+            mode: FaultMode::Fail,
+            message: Some("db closed".into()),
+            ms: None,
+            value: None,
+            after_calls: None,
+            argument_match: None,
+        },
+    );
+    let mut board = open_board(cx, "/ko");
+    open_notification_panel(&mut board);
+    assert!(board.find(text_contains("db closed")).is_some());
+    assert!(!board.has_text("아직 알림이 없습니다."));
+    board.cx.update(|_, cx| {
+        cx.global::<AppServices>()
+            .faults()
+            .unwrap()
+            .clear("kanvibe:notifications-list")
+    });
+    board.click(role_name("button", "다시 시도"));
+    assert!(board.has_role_name("button", "n1 body"));
+    assert!(board.find(text_contains("db closed")).is_none());
+}
+
+// parity: TS-components-NotificationCenterButton-250bbf
+#[gpui::test]
+fn opening_notification_is_not_repeated_and_failure_is_toasted(cx: &mut TestAppContext) {
+    let (mut board, _database, _card) = single_notification_board(cx);
+    board.cx.update(|_, cx| {
+        let faults = cx.global::<AppServices>().faults().unwrap().clone();
+        faults.add(ServiceFault {
+            target: "kanvibe:notifications-mark-read".into(),
+            mode: FaultMode::Fail,
+            message: Some("db locked".into()),
+            ms: Some(1000),
+            value: None,
+            after_calls: None,
+            argument_match: None,
+        });
+    });
+    open_notification_panel(&mut board);
+    board.click(role_name("button", "n1 body"));
+    board.click(role_name("button", "n1 body"));
+    board.advance(Duration::from_millis(1_100));
+    assert_eq!(
+        board.toast_messages(),
+        vec![
+            "알림을 열지 못했습니다: Error invoking remote method 'kanvibe:notifications-mark-read': Error: db locked"
+                .to_string()
+        ]
+    );
+    assert_eq!(board.current_path(), "/ko");
+}
+
+// parity: TS-components-NotificationCenterButton-edfff1
+#[gpui::test]
+fn task_notification_navigates_when_the_task_exists(cx: &mut TestAppContext) {
+    let (mut board, _database, card) = single_notification_board(cx);
+    open_notification_panel(&mut board);
+    board.click(role_name("button", "n1 body"));
+    assert_eq!(board.current_path(), format!("/ko/task/{}", card.id));
+}
+
+// parity: TS-components-NotificationCenterButton-8e8b6e
+#[gpui::test]
+fn task_notification_focuses_the_window_already_showing_the_task(cx: &mut TestAppContext) {
+    let dir = temp_dir();
+    let database = init_app(cx, dir.path().to_path_buf(), true);
+    std::mem::forget(dir);
+    let card = task(&database, "알림 대상", TaskStatus::Todo, |_| {});
+    store_notifications(
+        &database,
+        serde_json::json!([task_notification(
+            "n1",
+            &card.id,
+            "2026-01-15T02:57:00.000Z",
+            false
+        )]),
+    );
+    let detail =
+        cx.add_window(|window, cx| AppWindow::new(&format!("/ko/task/{}", card.id), window, cx));
+    cx.run_until_parked();
+    let mut board = open_board(cx, "/ko");
+    open_notification_panel(&mut board);
+    board.click(role_name("button", "n1 body"));
+    assert_eq!(board.current_path(), "/ko");
+    let active = board.cx.update(|_, cx| cx.active_window());
+    assert_eq!(
+        active.map(|handle| handle.window_id()),
+        Some(detail.window_id())
+    );
+}
+
+// parity: TS-components-NotificationCenterButton-70feef
+#[gpui::test]
+fn shift_click_opens_the_task_notification_in_a_new_window(cx: &mut TestAppContext) {
+    let (mut board, _database, _card) = single_notification_board(cx);
+    open_notification_panel(&mut board);
+    let before = window_count(&mut board);
+    let row = board.find(role_name("button", "n1 body")).unwrap();
+    board.cx.simulate_click(row.center(), Modifiers::shift());
+    board.draw();
+    assert_eq!(window_count(&mut board), before + 1);
+    assert_eq!(board.current_path(), "/ko");
+}
+
+// parity: TS-components-NotificationCenterButton-5bd069
+#[gpui::test]
+fn shift_enter_opens_the_highlighted_notification_in_a_new_window(cx: &mut TestAppContext) {
+    let (mut board, _database, _card) = single_notification_board(cx);
+    open_notification_panel(&mut board);
+    let before = window_count(&mut board);
+    board.keys("shift-enter");
+    assert_eq!(window_count(&mut board), before + 1);
+    assert_eq!(board.current_path(), "/ko");
+}
+
+// parity: TS-components-NotificationCenterButton-cbf153
+#[gpui::test]
+fn unread_only_keyboard_navigation_skips_read_notifications(cx: &mut TestAppContext) {
+    let dir = temp_dir();
+    let database = init_app(cx, dir.path().to_path_buf(), true);
+    std::mem::forget(dir);
+    let newest = task(&database, "최신", TaskStatus::Todo, |_| {});
+    let middle = task(&database, "읽은 것", TaskStatus::Todo, |_| {});
+    let oldest = task(&database, "오래된 것", TaskStatus::Todo, |_| {});
+    store_notifications(
+        &database,
+        serde_json::json!([
+            task_notification(
+                "unread-newest",
+                &newest.id,
+                "2026-01-15T02:57:00.000Z",
+                false
+            ),
+            task_notification("read-middle", &middle.id, "2026-01-15T02:50:00.000Z", true),
+            task_notification(
+                "unread-oldest",
+                &oldest.id,
+                "2026-01-15T02:40:00.000Z",
+                false
+            ),
+        ]),
+    );
+    save_app_setting(&database.connection(), "notification_unread_only", "true").unwrap();
+    let mut board = open_board(cx, "/ko");
+    open_notification_panel(&mut board);
+    assert!(!board.has_role_name("button", "read-middle body"));
+    board.keys("down enter");
+    assert_eq!(board.current_path(), format!("/ko/task/{}", oldest.id));
+}
+
+/// merge된 PR 작업과 그 검토 알림. 알림 센터를 열어 둔다
+fn review_board(
+    cx: &mut TestAppContext,
+    titles: &[&str],
+) -> (Board, Arc<Database>, Vec<KanbanTask>) {
+    let dir = temp_dir();
+    let database = init_app(cx, dir.path().to_path_buf(), true);
+    std::mem::forget(dir);
+    let tasks: Vec<KanbanTask> = titles
+        .iter()
+        .map(|title| task(&database, title, TaskStatus::Review, |_| {}))
+        .collect();
+    let refs: Vec<&KanbanTask> = tasks.iter().collect();
+    store_notifications(
+        &database,
+        serde_json::json!([review_notification_value(&refs)]),
+    );
+    let mut board = open_board(cx, "/ko");
+    open_notification_panel(&mut board);
+    (board, database, tasks)
+}
+
+fn delete_fault(
+    task: &KanbanTask,
+    mode: FaultMode,
+    message: Option<&str>,
+    ms: Option<u64>,
+) -> ServiceFault {
+    ServiceFault {
+        target: "kanban.deleteTask".into(),
+        mode,
+        message: message.map(str::to_string),
+        ms,
+        value: None,
+        after_calls: None,
+        argument_match: Some(format!(r#"["{}"]"#, task.id)),
+    }
+}
+
+fn add_faults(board: &mut Board, faults: Vec<ServiceFault>) {
+    board.cx.update(|_, cx| {
+        let registry = cx.global::<AppServices>().faults().unwrap().clone();
+        faults.into_iter().for_each(|fault| registry.add(fault));
+    });
+}
+
+fn task_exists(database: &Database, task: &KanbanTask) -> bool {
+    find_task(&database.connection(), &task.id)
+        .unwrap()
+        .is_some()
+}
+
+fn review_dialog_is_open(board: &mut Board) -> bool {
+    board.has_role_name("dialog", "백그라운드 sync 검토")
+}
+
+// parity: TS-components-NotificationCenterButton-9a35b8
+#[gpui::test]
+fn review_notification_opens_the_review_dialog_without_navigating(cx: &mut TestAppContext) {
+    let (mut board, _database, _tasks) = review_board(cx, &["Merged task"]);
+    board.click(role_name("button", "검토할 항목"));
+    assert!(review_dialog_is_open(&mut board));
+    assert!(board.has_text("Merged task"));
+    assert_eq!(board.current_path(), "/ko");
+}
+
+// parity: TS-renderer-BackgroundSyncReviewDialog-bce1d5
+#[gpui::test]
+fn deleting_keeps_the_review_and_announces_progress(cx: &mut TestAppContext) {
+    let (mut board, database, tasks) = review_board(cx, &["task-a", "task-b"]);
+    add_faults(
+        &mut board,
+        vec![delete_fault(&tasks[0], FaultMode::Delay, None, Some(1000))],
+    );
+    board.click(role_name("button", "검토할 항목"));
+    board.click(role_name("button", "백그라운드에서 삭제"));
+    assert!(!review_dialog_is_open(&mut board));
+    open_notification_panel(&mut board);
+    board.click(role_name("button", "정리 중"));
+    assert!(board.has_role_name("status", "2개 중 0개 처리 중…"));
+    assert!(board.has_text(
+        "삭제는 백그라운드에서 처리됩니다. 이 창을 닫아도 계속 진행되며, 정리 중 버튼으로 다시 확인할 수 있습니다."
+    ));
+    board.keys("escape");
+    board.advance(Duration::from_millis(1_100));
+    assert!(!review_dialog_is_open(&mut board));
+    assert!(!task_exists(&database, &tasks[0]));
+    assert!(!task_exists(&database, &tasks[1]));
+}
+
+/// 세 작업 가운데 두 번째 삭제만 실패하게 지운다
+fn delete_with_one_failure(cx: &mut TestAppContext) -> (Board, Arc<Database>, Vec<KanbanTask>) {
+    let (mut board, database, tasks) = review_board(cx, &["task-a", "task-b", "task-c"]);
+    add_faults(
+        &mut board,
+        vec![delete_fault(
+            &tasks[1],
+            FaultMode::Fail,
+            Some("worktree busy"),
+            None,
+        )],
+    );
+    board.click(role_name("button", "검토할 항목"));
+    board.click(role_name("button", "백그라운드에서 삭제"));
+    board.draw();
+    (board, database, tasks)
+}
+
+// parity: TS-renderer-BackgroundSyncReviewDialog-2ca09b
+#[gpui::test]
+fn partial_failure_keeps_results_and_retries_only_failed_tasks(cx: &mut TestAppContext) {
+    let (mut board, database, tasks) = delete_with_one_failure(cx);
+    open_notification_panel(&mut board);
+    board.click(role_name("button", "탐지 항목 1개"));
+    assert!(board.has_role_name("alert", "3개 중 2개 삭제, 1개 실패"));
+    assert!(board.find(text_contains("worktree busy")).is_some());
+    assert!(board.has_role_name("status", "삭제 실패"));
+    board.cx.update(|_, cx| {
+        cx.global::<AppServices>()
+            .faults()
+            .unwrap()
+            .clear("kanban.deleteTask")
+    });
+    board.click(role_name("button", "실패한 항목 다시 시도"));
+    assert!(!review_dialog_is_open(&mut board));
+    assert!(!task_exists(&database, &tasks[1]));
+}
+
+// parity: TS-renderer-useBackgroundSyncReview-5d1644
+#[gpui::test]
+fn starting_cleanup_closes_the_dialog_and_reopening_keeps_it_running(cx: &mut TestAppContext) {
+    let (mut board, database, tasks) = review_board(cx, &["a", "b"]);
+    // 같은 작업을 두 번째로 지우려 하면 실패하게 둔다. 정리 중 다시 눌러도 요청이 한 번뿐이면 실패가 없다
+    let mut duplicate = delete_fault(&tasks[0], FaultMode::Fail, Some("duplicate"), None);
+    duplicate.after_calls = Some(1);
+    add_faults(
+        &mut board,
+        vec![
+            duplicate,
+            delete_fault(&tasks[0], FaultMode::Delay, None, Some(1000)),
+        ],
+    );
+    board.click(role_name("button", "검토할 항목"));
+    board.click(role_name("button", "백그라운드에서 삭제"));
+    assert!(!review_dialog_is_open(&mut board));
+    open_notification_panel(&mut board);
+    board.click(role_name("button", "정리 중"));
+    assert!(review_dialog_is_open(&mut board));
+    if board.has_role_name("button", "백그라운드에서 삭제") {
+        board.click(role_name("button", "백그라운드에서 삭제"));
+    }
+    board.keys("escape");
+    board.advance(Duration::from_millis(1_100));
+    open_notification_panel(&mut board);
+    assert!(!board.has_role_name("button", "정리 중"));
+    assert!(board.has_role_name("button", "탐지 항목 0개"));
+    assert!(!task_exists(&database, &tasks[0]) && !task_exists(&database, &tasks[1]));
+}
+
+// parity: TS-renderer-useBackgroundSyncReview-f6f4d8
+// parity: TS-components-NotificationCenterButton-a84417
+#[gpui::test]
+fn failed_cleanup_is_kept_for_reopening_and_retry_clears_it(cx: &mut TestAppContext) {
+    let (mut board, database, tasks) = review_board(cx, &["a", "b"]);
+    assert!(board.has_role_name("button", "탐지 항목 2개"));
+    add_faults(
+        &mut board,
+        vec![delete_fault(&tasks[1], FaultMode::Fail, Some("busy"), None)],
+    );
+    board.click(role_name("button", "검토할 항목"));
+    board.click(role_name("button", "백그라운드에서 삭제"));
+    open_notification_panel(&mut board);
+    board.click(role_name("button", "탐지 항목 1개"));
+    assert!(board.find(text_contains("Error: busy")).is_some());
+    board.cx.update(|_, cx| {
+        cx.global::<AppServices>()
+            .faults()
+            .unwrap()
+            .clear("kanban.deleteTask")
+    });
+    board.click(role_name("button", "실패한 항목 다시 시도"));
+    assert!(!task_exists(&database, &tasks[1]));
+    open_notification_panel(&mut board);
+    assert!(board.has_role_name("button", "탐지 항목 0개"));
+}
+
+// ───────────── ProjectSelector ─────────────
+
+/// 이름순으로 정렬되는 프로젝트 `count`개와 각 프로젝트 카드
+fn many_projects_board(cx: &mut TestAppContext, count: usize) -> Board {
+    let dir = temp_dir();
+    let database = init_app(cx, dir.path().to_path_buf(), true);
+    std::mem::forget(dir);
+    for index in 0..count {
+        let created = project(&database, &format!("project-{index:02}"), None);
+        task(
+            &database,
+            &format!("작업 {index:02}"),
+            TaskStatus::Todo,
+            |task| {
+                task.project_id = Some(created.id.clone());
+            },
+        );
+    }
+    open_board(cx, "/ko")
+}
+
+/// 목록에서 보이는 칸 안에 그 항목이 다 들어와 있는지
+fn is_option_visible(board: &mut Board, name: &str) -> bool {
+    let hit = board.cx.update(|window, cx| {
+        cx.global::<QaTargetRegistry>().find_hit(
+            window.window_handle().window_id(),
+            &role_name("option", name),
+        )
+    });
+    hit.is_some_and(|hit| contains(hit.clip_bounds, hit.bounds))
+}
+
+// parity: TS-components-ProjectSelector-b3c6dc
+#[gpui::test]
+fn three_or_more_selected_projects_show_two_chips_and_a_count(cx: &mut TestAppContext) {
+    let mut board = many_projects_board(cx, 5);
+    board.click_text("전체 프로젝트");
+    for index in 0..5 {
+        board.click(role_name("option", &format!("project-{index:02}")));
+    }
+    board.keys("escape");
+    assert!(board.has_text("+3"));
+    let view = board.view.clone();
+    let (chips, hidden_count) = board
+        .cx
+        .update(|_, cx| view.read(cx).selected_project_chips());
+    assert_eq!(chips.len(), 2);
+    assert_eq!(hidden_count, 3);
+}
+
+// parity: TS-components-ProjectSelector-da673f
+#[gpui::test]
+fn multi_select_keyboard_highlight_scrolls_into_view(cx: &mut TestAppContext) {
+    let mut board = many_projects_board(cx, 20);
+    board.click_text("전체 프로젝트");
+    assert!(!is_option_visible(&mut board, "project-15"));
+    for _ in 0..15 {
+        board.keys("down");
+    }
+    assert!(is_option_visible(&mut board, "project-15"));
+}
+
+// parity: TS-components-ProjectSelector-c1f631
+#[gpui::test]
+fn single_select_keyboard_highlight_scrolls_into_view(cx: &mut TestAppContext) {
+    let mut board = many_projects_board(cx, 20);
+    board.click_text("+ 새 작업");
+    board.keys("enter");
+    assert!(!is_option_visible(&mut board, "project-15"));
+    for _ in 0..15 {
+        board.keys("down");
+    }
+    assert!(is_option_visible(&mut board, "project-15"));
+}
+
+// parity: TS-components-ProjectSelector-0d3167
+#[gpui::test]
+fn single_select_trigger_takes_keyboard_focus(cx: &mut TestAppContext) {
+    let mut board = many_projects_board(cx, 2);
+    board.click_text("+ 새 작업");
+    // 모달이 열리면 첫 입력인 프로젝트 선택 버튼이 포커스를 받고, Enter로 목록을 연다
+    board.keys("enter");
+    assert!(board.has_role_name("option", "project-00"));
+    assert!(board.has_role_name("option", "project-01"));
+}
+
+// ───────────── WorkspaceTaskList 목록 포커스·선택 요청·프로젝트 표식 ─────────────
+
+/// 로그인·결제 두 작업이 있는 워크스페이스. 로그인을 고른 채 연다
+fn login_billing_workspace(cx: &mut TestAppContext) -> (Board, KanbanTask, KanbanTask) {
+    let dir = temp_dir();
+    let database = init_app(cx, dir.path().to_path_buf(), true);
+    std::mem::forget(dir);
+    save_app_setting(&database.connection(), "board_view_mode", "workspace").unwrap();
+    let login = task(&database, "Login page", TaskStatus::Todo, |_| {});
+    let billing = task(&database, "Billing export", TaskStatus::Todo, |_| {});
+    let board = open_board(cx, &format!("/ko?taskId={}", login.id));
+    (board, login, billing)
+}
+
+fn selected_workspace_task(board: &mut Board) -> Option<String> {
+    board
+        .view
+        .read_with(&board.cx, |view, _| view.selected_workspace_task_id())
+}
+
+/// `Ctrl+Alt`을 눌렀다가 Alt, Ctrl 순서로 뗀다(Linux의 `Mod+Alt` 단독 입력)
+fn release_mod_alt(board: &mut Board) {
+    let ctrl = Modifiers {
+        control: true,
+        ..Modifiers::default()
+    };
+    let ctrl_alt = Modifiers {
+        control: true,
+        alt: true,
+        ..Modifiers::default()
+    };
+    for modifiers in [ctrl, ctrl_alt, ctrl, Modifiers::default()] {
+        board.cx.simulate_modifiers_change(modifiers);
+    }
+    board.draw();
+}
+
+fn click_workspace_search(board: &mut Board) {
+    let search = board
+        .find(TargetQuery::Described(DescribedTarget {
+            role: Some("textbox".into()),
+            ..DescribedTarget::default()
+        }))
+        .expect("workspace search");
+    board
+        .cx
+        .simulate_click(search.center(), Modifiers::default());
+    board.draw();
+}
+
+// parity: TS-renderer-WorkspaceTaskList-4df1c7
+#[gpui::test]
+fn mod_alt_release_focuses_the_selected_list_card(cx: &mut TestAppContext) {
+    let (mut board, login, billing) = login_billing_workspace(cx);
+    click_workspace_search(&mut board);
+    release_mod_alt(&mut board);
+    assert_eq!(selected_workspace_task(&mut board), Some(login.id));
+    // 목록에 포커스가 있으면 ↓가 다음 작업을 고른다
+    board.keys("down");
+    assert_eq!(selected_workspace_task(&mut board), Some(billing.id));
+}
+
+// parity: TS-renderer-WorkspaceTaskList-ea3fb6
+#[gpui::test]
+fn hidden_selection_makes_the_focus_shortcut_select_the_first_listed_task(cx: &mut TestAppContext) {
+    let (mut board, _login, billing) = login_billing_workspace(cx);
+    click_workspace_search(&mut board);
+    board.type_text("Billing");
+    assert!(!board.has_role_name("current", "Login page"));
+    release_mod_alt(&mut board);
+    assert_eq!(selected_workspace_task(&mut board), Some(billing.id));
+}
+
+// parity: TS-renderer-WorkspaceTaskList-2dde29
+#[gpui::test]
+fn searching_the_same_task_again_shows_the_hidden_selection(cx: &mut TestAppContext) {
+    let (mut board, _login, _billing) = login_billing_workspace(cx);
+    click_workspace_search(&mut board);
+    board.type_text("Billing");
+    assert!(!board.has_role_name("current", "Login page"));
+    board.dispatch(OpenTaskSearch);
+    board.type_text("Login");
+    board.keys("enter");
+    assert!(board.has_role_name("current", "Login page"));
+}
+
+// parity: TS-renderer-WorkspaceTaskList-f8e417
+#[gpui::test]
+fn list_focus_requests_are_ignored_while_capturing_shortcuts(cx: &mut TestAppContext) {
+    let (mut board, login, _billing) = login_billing_workspace(cx);
+    click_workspace_search(&mut board);
+    board.cx.update(|window, cx| {
+        kanvibe_app::shortcuts::begin_shortcut_capture(window.window_handle().window_id(), cx)
+    });
+    release_mod_alt(&mut board);
+    board.keys("down");
+    assert_eq!(selected_workspace_task(&mut board), Some(login.id.clone()));
+    board.cx.update(|window, cx| {
+        kanvibe_app::shortcuts::end_shortcut_capture(window.window_handle().window_id(), cx)
+    });
+    release_mod_alt(&mut board);
+    board.keys("down");
+    assert_ne!(selected_workspace_task(&mut board), Some(login.id));
+}
+
+// parity: TS-renderer-WorkspaceTaskList-e15132
+#[gpui::test]
+fn projects_without_color_or_icon_show_the_initial_marker(cx: &mut TestAppContext) {
+    let dir = temp_dir();
+    let database = init_app(cx, dir.path().to_path_buf(), true);
+    std::mem::forget(dir);
+    save_app_setting(&database.connection(), "board_view_mode", "workspace").unwrap();
+    let api = project(&database, "api", None);
+    task(&database, "Login page", TaskStatus::Todo, |task| {
+        task.project_id = Some(api.id.clone())
+    });
+    let mut board = open_board(cx, "/ko");
+    assert!(
+        board
+            .find(test_id_text("project-initial-icon", "A"))
+            .is_some()
+    );
+}
+
+// parity: TS-renderer-WorkspaceTaskList-0b8c35
+#[gpui::test]
+fn worktree_project_cards_use_the_main_project_name_and_icon(cx: &mut TestAppContext) {
+    let dir = temp_dir();
+    let database = init_app(cx, dir.path().to_path_buf(), true);
+    std::mem::forget(dir);
+    save_app_setting(&database.connection(), "board_view_mode", "workspace").unwrap();
+    insert_project(
+        &database.connection(),
+        &NewProject {
+            name: "api".into(),
+            repo_path: "/repos/api".into(),
+            default_branch: "main".into(),
+            ssh_host: None,
+            is_worktree: false,
+            color: Some("#0064ff".into()),
+            icon_data_url: Some("data:image/png;base64,aGVsbG8=".into()),
+        },
+    )
+    .unwrap();
+    let worktree = insert_project(
+        &database.connection(),
+        &NewProject {
+            name: "api-worktree".into(),
+            repo_path: "/repos/api__worktrees/feature".into(),
+            default_branch: "main".into(),
+            ssh_host: None,
+            is_worktree: true,
+            color: None,
+            icon_data_url: None,
+        },
+    )
+    .unwrap();
+    task(&database, "Worktree task", TaskStatus::Todo, |task| {
+        task.project_id = Some(worktree.id.clone())
+    });
+    let mut board = open_board(cx, "/ko");
+    assert!(board.has_role_name("text", "api"));
+    assert!(!board.has_role_name("text", "api-worktree"));
+    assert!(board.has_role_name("img", "api icon"));
+}
+
+// ───────────── TaskWorkspaceRoute 완료 작업 더 보기 ─────────────
+
+/// 완료 작업 60개가 있는 워크스페이스
+fn many_done_workspace(cx: &mut TestAppContext) -> Board {
+    let dir = temp_dir();
+    let database = init_app(cx, dir.path().to_path_buf(), true);
+    std::mem::forget(dir);
+    save_app_setting(&database.connection(), "board_view_mode", "workspace").unwrap();
+    for index in 0..60 {
+        task(
+            &database,
+            &format!("Completed {index:02}"),
+            TaskStatus::Done,
+            |_| {},
+        );
+    }
+    open_board(cx, "/ko")
+}
+
+fn listed_done_count(board: &mut Board) -> usize {
+    (0..60)
+        .filter(|index| board.has_role_name("link", &format!("Completed {index:02}")))
+        .count()
+}
+
+/// 같은 페이지를 두 번 달라고 하면 실패하게 둔다
+fn forbid_repeated_page(board: &mut Board, offset: usize) {
+    add_faults(
+        board,
+        vec![ServiceFault {
+            target: "kanban.getMoreDoneTasks".into(),
+            mode: FaultMode::Fail,
+            message: Some(format!("duplicate page {offset}")),
+            ms: None,
+            value: None,
+            after_calls: Some(1),
+            argument_match: Some(format!("[{offset}]")),
+        }],
+    );
+}
+
+/// 목록 끝의 더 보기 버튼까지 한 화면에 들어오게 창을 늘린다
+fn show_whole_workspace_list(board: &mut Board) {
+    board
+        .cx
+        .simulate_resize(gpui_kit::size(gpui_kit::px(1600.0), gpui_kit::px(8000.0)));
+    board.draw();
+}
+
+// parity: TS-renderer-TaskWorkspaceRoute-6847e7
+#[gpui::test]
+fn repeated_load_more_requests_the_next_page_once_without_skipping(cx: &mut TestAppContext) {
+    let mut board = many_done_workspace(cx);
+    show_whole_workspace_list(&mut board);
+    assert_eq!(listed_done_count(&mut board), 20);
+    forbid_repeated_page(&mut board, 20);
+    let button = board
+        .find(role_name("button", "완료된 작업 더 보기"))
+        .unwrap();
+    board
+        .cx
+        .simulate_click(button.center(), Modifiers::default());
+    board
+        .cx
+        .simulate_click(button.center(), Modifiers::default());
+    board.draw();
+    assert!(board.find(text_contains("duplicate page")).is_none());
+    assert_eq!(listed_done_count(&mut board), 40);
+    board.click(role_name("button", "완료된 작업 더 보기"));
+    assert_eq!(listed_done_count(&mut board), 60);
+}
+
+// parity: TS-renderer-TaskWorkspaceRoute-c6ea64
+#[gpui::test]
+fn failed_load_more_shows_the_reason_and_retry_requests_the_same_page(cx: &mut TestAppContext) {
+    let mut board = many_done_workspace(cx);
+    show_whole_workspace_list(&mut board);
+    board.add_fault(
+        "kanban.getMoreDoneTasks",
+        FaultMode::Fail,
+        Some("db locked"),
+        None,
+    );
+    board.click(role_name("button", "완료된 작업 더 보기"));
+    assert!(board.find(text_contains("db locked")).is_some());
+    board.cx.update(|_, cx| {
+        let faults = cx.global::<AppServices>().faults().unwrap().clone();
+        faults.clear("kanban.getMoreDoneTasks");
+        faults.add(ServiceFault {
+            target: "kanban.getMoreDoneTasks".into(),
+            mode: FaultMode::Fail,
+            message: Some("wrong page".into()),
+            ms: None,
+            value: None,
+            after_calls: None,
+            argument_match: Some("[40]".into()),
+        });
+    });
+    board.click(role_name("button", "다시 시도"));
+    assert!(board.find(text_contains("db locked")).is_none());
+    assert!(board.find(text_contains("wrong page")).is_none());
+    assert_eq!(listed_done_count(&mut board), 40);
+}
+
+// parity: TS-renderer-TaskWorkspaceRoute-e70948
+#[gpui::test]
+fn workspace_search_selection_stays_on_the_workspace_route(cx: &mut TestAppContext) {
+    let dir = temp_dir();
+    let database = init_app(cx, dir.path().to_path_buf(), true);
+    save_app_setting(&database.connection(), "board_view_mode", "workspace").unwrap();
+    task(&database, "Billing export", TaskStatus::Review, |task| {
+        task.branch_name = Some("feat/billing".into());
+    });
+    let mut board = open_board(cx, "/ko");
+    board.dispatch(OpenTaskSearch);
+    board.type_text("billing");
+    board.keys("enter");
+    assert_eq!(board.current_path(), "/ko");
+    assert!(board.has_role_name("current", "Billing export"));
+}
+
+// ───────────── Board 머리·dd·돌아온 포커스·검토 활성화 ─────────────
+
+// parity: TS-components-Board-aeb341
+#[gpui::test]
+fn settings_button_opens_the_settings_of_the_current_locale(cx: &mut TestAppContext) {
+    let dir = temp_dir();
+    init_app(cx, dir.path().to_path_buf(), true);
+    let mut board = open_board(cx, "/ko");
+    board.click(role_name("button", "설정"));
+    assert_eq!(board.current_path(), "/ko/settings");
+}
+
+// parity: TS-components-Board-9f1a98
+#[gpui::test]
+fn mac_desktop_places_board_controls_in_the_titlebar_row(cx: &mut TestAppContext) {
+    let linux_top = {
+        let dir = temp_dir();
+        init_app(cx, dir.path().to_path_buf(), true);
+        let mut board = open_board(cx, "/ko");
+        board
+            .find(TargetQuery::ExactText("+ 새 작업".into()))
+            .unwrap()
+            .origin
+    };
+    let mut mac_cx = TestAppContext::single();
+    let dir = temp_dir();
+    init_app(&mut mac_cx, dir.path().to_path_buf(), true);
+    mac_cx.update(|cx| {
+        cx.global_mut::<AppServices>().shortcut_platform = ShortcutPlatform::Mac;
+    });
+    let mut board = open_board(&mut mac_cx, "/ko");
+    let mac_top = board
+        .find(TargetQuery::ExactText("+ 새 작업".into()))
+        .unwrap()
+        .origin;
+    // 신호등 버튼 자리(pt-10)만큼 아래, 같은 한 줄에 놓인다
+    assert!(f32::from(mac_top.y) >= f32::from(linux_top.y) + 28.0);
+    assert!(f32::from(mac_top.y) < 80.0);
+}
+
+// parity: TS-components-Board-94a17d
+#[gpui::test]
+fn dd_keeps_the_card_until_the_delete_finishes(cx: &mut TestAppContext) {
+    let dir = temp_dir();
+    let database = init_app(cx, dir.path().to_path_buf(), true);
+    let card = task(&database, "지울 작업", TaskStatus::Todo, |_| {});
+    let mut board = open_board(cx, "/ko");
+    board.cx.update(|_, cx| {
+        cx.global::<AppServices>()
+            .faults()
+            .unwrap()
+            .add(ServiceFault {
+                target: "kanban.deleteTask".into(),
+                mode: FaultMode::Delay,
+                message: None,
+                ms: Some(1000),
+                value: None,
+                after_calls: None,
+                argument_match: None,
+            })
+    });
+    board.keys("down d d");
+    assert!(board.has_text("지울 작업"));
+    board.advance(Duration::from_millis(1_100));
+    assert!(!board.has_text("지울 작업"));
+    assert!(
+        find_task(&database.connection(), &card.id)
+            .unwrap()
+            .is_none()
+    );
+}
+
+// parity: TS-components-Board-86b04e
+#[gpui::test]
+fn dd_survives_a_board_refresh_between_the_two_presses(cx: &mut TestAppContext) {
+    let dir = temp_dir();
+    let database = init_app(cx, dir.path().to_path_buf(), true);
+    let card = task(&database, "지울 작업", TaskStatus::Todo, |_| {});
+    task(&database, "남을 작업", TaskStatus::Todo, |_| {});
+    let mut board = open_board(cx, "/ko");
+    board.keys("down d");
+    let view = board.view.clone();
+    board
+        .cx
+        .update(|_, cx| view.update(cx, |view, cx| view.refresh(cx)));
+    board.draw();
+    board.keys("d");
+    board.draw();
+    assert!(
+        find_task(&database.connection(), &card.id)
+            .unwrap()
+            .is_none()
+    );
+}
+
+// parity: TS-components-Board-083667
+// parity: TS-renderer-BoardRoute-047eea
+#[gpui::test]
+fn returning_from_the_detail_starts_focus_on_that_task_once(cx: &mut TestAppContext) {
+    let dir = temp_dir();
+    let database = init_app(cx, dir.path().to_path_buf(), true);
+    task(&database, "할 일", TaskStatus::Todo, |_| {});
+    let target = task(&database, "진행 작업", TaskStatus::Progress, |_| {});
+    let mut board = open_board(cx, "/ko");
+    // 상세 화면이 이 창의 복귀 대상으로 적어 둔 것처럼 두고 다른 화면을 거쳐 보드로 돌아온다
+    board.cx.update(|window, cx| {
+        kanvibe_app::board_focus_target::remember_board_focus_task(
+            window.window_handle().window_id(),
+            &target.id,
+            cx,
+        )
+    });
+    board.return_to_board_via("/ko/settings");
+    // 포커스된 카드에서 Enter는 그 작업 상세로 간다
+    board.keys("enter");
+    assert_eq!(board.current_path(), format!("/ko/task/{}", target.id));
+    // 한 번 꺼낸 기록은 남지 않는다
+    let mut next = open_board(cx, "/ko");
+    next.return_to_board_via("/ko/settings");
+    next.keys("enter");
+    assert_eq!(next.current_path(), "/ko");
+}
+
+// parity: TS-components-Board-f9b400
+// parity: TS-renderer-App-82a327
+#[gpui::test]
+fn entering_the_board_does_not_open_a_stored_review(cx: &mut TestAppContext) {
+    let dir = temp_dir();
+    let database = init_app(cx, dir.path().to_path_buf(), true);
+    let merged = task(&database, "Merged task", TaskStatus::Review, |_| {});
+    store_notifications(
+        &database,
+        serde_json::json!([review_notification_value(&[&merged])]),
+    );
+    let mut board = open_board(cx, "/ko");
+    assert!(!review_dialog_is_open(&mut board));
+    assert!(board.has_text("Merged task"));
+}
+
+// ───────────── TaskQuickSearchDialog 단축키·이동·스크롤 ─────────────
+
+/// 프로젝트 `api`의 브랜치 작업 `count`개(`feat/api-search-00`…)
+fn quick_search_board(cx: &mut TestAppContext, count: usize) -> (Board, Vec<KanbanTask>) {
+    let dir = temp_dir();
+    let database = init_app(cx, dir.path().to_path_buf(), true);
+    std::mem::forget(dir);
+    let api = project(&database, "api", None);
+    let tasks = (0..count)
+        .map(|index| {
+            task(
+                &database,
+                &format!("검색 작업 {index:02}"),
+                TaskStatus::Todo,
+                |task| {
+                    task.project_id = Some(api.id.clone());
+                    task.branch_name = Some(format!("feat/api-search-{index:02}"));
+                },
+            )
+        })
+        .collect();
+    let mut board = open_board(cx, "/ko");
+    // 결과로 연 상세 화면이 세션 없는 프로젝트 작업을 실제 tmux에 자동 연결하지 않게 막는다
+    board.add_result_fault(
+        "sessionDependency.getSessionDependencyStatus",
+        serde_json::json!({ "available": true }),
+        None,
+    );
+    board.add_result_fault(
+        "kanban.connectTerminalSession",
+        serde_json::Value::Null,
+        None,
+    );
+    (board, tasks)
+}
+
+fn is_quick_search_open(board: &mut Board) -> bool {
+    board.has_text("태스크 빠른 검색")
+}
+
+// parity: TS-renderer-TaskQuickSearchDialog-eb91f7
+#[gpui::test]
+fn quick_search_opens_with_the_stored_shortcut(cx: &mut TestAppContext) {
+    let dir = temp_dir();
+    let database = init_app(cx, dir.path().to_path_buf(), true);
+    save_app_setting(
+        &database.connection(),
+        "shortcut_bindings",
+        r#"{"taskSearch":"Mod+Shift+Y"}"#,
+    )
+    .unwrap();
+    cx.update(kanvibe_app::shortcuts::reload_shortcut_bindings);
+    let mut board = open_board(cx, "/ko");
+    board.keys("ctrl-shift-y");
+    assert!(is_quick_search_open(&mut board));
+}
+
+// parity: TS-renderer-TaskQuickSearchDialog-156c0c
+#[gpui::test]
+fn project_and_branch_query_then_enter_opens_the_detail(cx: &mut TestAppContext) {
+    let (mut board, tasks) = quick_search_board(cx, 1);
+    board.dispatch(OpenTaskSearch);
+    board.type_text("api search");
+    board.keys("enter");
+    assert_eq!(board.current_path(), format!("/ko/task/{}", tasks[0].id));
+    assert!(!is_quick_search_open(&mut board));
+}
+
+// parity: TS-renderer-TaskQuickSearchDialog-99fac4
+#[gpui::test]
+fn enter_focuses_the_window_already_showing_the_task(cx: &mut TestAppContext) {
+    let dir = temp_dir();
+    let database = init_app(cx, dir.path().to_path_buf(), true);
+    std::mem::forget(dir);
+    let target = task(&database, "열린 작업", TaskStatus::Todo, |task| {
+        task.branch_name = Some("feat/api-open".into());
+    });
+    let detail =
+        cx.add_window(|window, cx| AppWindow::new(&format!("/ko/task/{}", target.id), window, cx));
+    cx.run_until_parked();
+    let mut board = open_board(cx, "/ko");
+    board.dispatch(OpenTaskSearch);
+    board.type_text("api-open");
+    board.keys("enter");
+    assert_eq!(board.current_path(), "/ko");
+    assert!(!is_quick_search_open(&mut board));
+    let active = board.cx.update(|_, cx| cx.active_window());
+    assert_eq!(
+        active.map(|handle| handle.window_id()),
+        Some(detail.window_id())
+    );
+}
+
+// parity: TS-renderer-TaskQuickSearchDialog-7ecf97
+#[gpui::test]
+fn shift_enter_opens_the_result_in_a_new_window(cx: &mut TestAppContext) {
+    let (mut board, _tasks) = quick_search_board(cx, 1);
+    let before = window_count(&mut board);
+    board.dispatch(OpenTaskSearch);
+    board.type_text("api");
+    board.keys("shift-enter");
+    assert_eq!(window_count(&mut board), before + 1);
+    assert_eq!(board.current_path(), "/ko");
+    assert!(!is_quick_search_open(&mut board));
+}
+
+// parity: TS-renderer-TaskQuickSearchDialog-751070
+#[gpui::test]
+fn keyboard_selected_result_scrolls_into_view(cx: &mut TestAppContext) {
+    let (mut board, _tasks) = quick_search_board(cx, 30);
+    board.dispatch(OpenTaskSearch);
+    let is_visible = |board: &mut Board, branch: &str| {
+        let hit = board.cx.update(|window, cx| {
+            cx.global::<QaTargetRegistry>().find_hit(
+                window.window_handle().window_id(),
+                &role_name("button", branch),
+            )
+        });
+        hit.is_some_and(|hit| contains(hit.clip_bounds, hit.bounds))
+    };
+    // 같은 점수의 결과는 만든 시각·id 순이라 이름 순서와 다를 수 있으므로 화면에서 가장 아래 결과를 고른다
+    let last = (0..30)
+        .map(|index| format!("feat/api-search-{index:02}"))
+        .filter_map(|branch| {
+            let bounds = board.find(role_name("button", &branch))?;
+            Some((f32::from(bounds.origin.y), branch))
+        })
+        .max_by(|left, right| left.0.total_cmp(&right.0))
+        .map(|(_, branch)| branch)
+        .expect("results");
+    assert!(!is_visible(&mut board, &last));
+    for _ in 0..29 {
+        board.keys("down");
+    }
+    assert!(is_visible(&mut board, &last));
+}
+
+// ───────────── ReleaseUpdateDialog 창 활성·Tab·재확인 ─────────────
+
+/// 새 릴리스(v9.9.0) 응답이 있는 보드. 창을 앞으로 가져오지 않은 채 연다
+fn inactive_release_board(cx: &mut TestAppContext) -> Board {
+    let dir = temp_dir();
+    let database = init_app_with_network(
+        cx,
+        dir.path().to_path_buf(),
+        true,
+        Some("release-available"),
+    );
+    std::mem::forget(dir);
+    task(&database, "보드 카드", TaskStatus::Todo, |_| {});
+    open_board(cx, "/ko")
+}
+
+// parity: TS-renderer-ReleaseUpdateDialog-6be2d3
+#[gpui::test]
+fn release_waits_until_the_window_can_present_it(cx: &mut TestAppContext) {
+    let mut board = inactive_release_board(cx);
+    assert_eq!(release_version(&mut board), None);
+    board.cx.update(|window, _| window.activate_window());
+    board.draw();
+    assert_eq!(release_version(&mut board).as_deref(), Some("9.9.0"));
+}
+
+// parity: TS-renderer-ReleaseUpdateDialog-dc5e74
+#[gpui::test]
+fn tab_focus_stays_inside_the_release_dialog(cx: &mut TestAppContext) {
+    let (mut board, _dir) = release_board(cx, None);
+    let focused =
+        |board: &mut Board| board.shell_read(|shell, _| shell.release_focused_control_label());
+    board.keys("tab tab tab");
+    assert_eq!(focused(&mut board), Some("viewRelease"));
+    board.keys("tab");
+    assert_eq!(focused(&mut board), Some("dontShowVersionAgain"));
+    board.keys("shift-tab");
+    assert_eq!(focused(&mut board), Some("viewRelease"));
+    assert_eq!(release_version(&mut board).as_deref(), Some("9.9.0"));
+}
+
+// parity: TS-renderer-ReleaseUpdateDialog-85ba1b
+#[gpui::test]
+fn release_is_checked_again_after_an_hour(cx: &mut TestAppContext) {
+    let dir = temp_dir();
+    let database = init_app_with_network(
+        cx,
+        dir.path().to_path_buf(),
+        true,
+        Some("release-available"),
+    );
+    std::mem::forget(dir);
+    task(&database, "보드 카드", TaskStatus::Todo, |_| {});
+    add_fault_before_open(
+        cx,
+        result_fault(
+            "releaseUpdates.checkForReleaseUpdate",
+            serde_json::json!({"isUpdateAvailable": false}),
+        ),
+    );
+    let mut board = open_board(cx, "/ko");
+    board.cx.update(|window, _| window.activate_window());
+    board.draw();
+    assert_eq!(release_version(&mut board), None);
+    board.cx.update(|_, cx| {
+        cx.global::<AppServices>()
+            .faults()
+            .unwrap()
+            .clear("releaseUpdates.checkForReleaseUpdate")
+    });
+    board.advance(Duration::from_secs(60 * 60));
+    assert_eq!(release_version(&mut board).as_deref(), Some("9.9.0"));
+}
+
+// ───────────── HerdrServerHandoffPrompt ─────────────
+
+fn handoff_event(host: &str) -> kanvibe_services::board_notifier::BoardEvent {
+    kanvibe_services::board_notifier::BoardEvent::HerdrServerHandoffRequired(
+        kanvibe_services::board_notifier::HerdrServerHandoffRequiredPayload {
+            ssh_host: host.into(),
+            herdr_session: "kanvibe".into(),
+        },
+    )
+}
+
+fn replacement_hosts(board: &mut Board) -> Vec<String> {
+    board.shell_read(|shell, _| {
+        shell
+            .herdr_replacement_requests()
+            .into_iter()
+            .map(|request| request.ssh_host)
+            .collect()
+    })
+}
+
+/// QA 모드 보드. 실제 교체(ssh)는 고장으로 막는다
+fn handoff_board(cx: &mut TestAppContext) -> Board {
+    let dir = temp_dir();
+    init_app(cx, dir.path().to_path_buf(), true);
+    std::mem::forget(dir);
+    let mut board = open_board(cx, "/ko");
+    board.add_fault(
+        "sessionDependency.replaceHerdrServer",
+        FaultMode::Fail,
+        Some("replacement blocked in test"),
+        None,
+    );
+    board
+}
+
+// parity: TS-renderer-HerdrServerHandoffPrompt-07719f
+#[gpui::test]
+fn handoff_notice_asks_for_the_host_and_replaces_after_approval(cx: &mut TestAppContext) {
+    let mut board = handoff_board(cx);
+    board.emit_board_event(handoff_event("dev-box"));
+    assert_eq!(replacement_hosts(&mut board), ["dev-box"]);
+}
+
+// parity: TS-renderer-HerdrServerHandoffPrompt-08a8ac
+#[gpui::test]
+fn declined_handoff_does_not_replace_the_server(cx: &mut TestAppContext) {
+    let dir = temp_dir();
+    init_app(cx, dir.path().to_path_buf(), false);
+    let mut board = open_board(cx, "/ko");
+    board.emit_board_event(handoff_event("dev-box"));
+    board.cx.simulate_prompt_answer("Cancel");
+    board.draw();
+    assert!(replacement_hosts(&mut board).is_empty());
+}
+
+// parity: TS-renderer-HerdrServerHandoffPrompt-ddbda2
+#[gpui::test]
+fn the_same_server_is_asked_only_once(cx: &mut TestAppContext) {
+    let mut board = handoff_board(cx);
+    board.emit_board_event(handoff_event("dev-box"));
+    board.emit_board_event(handoff_event("dev-box"));
+    assert_eq!(replacement_hosts(&mut board), ["dev-box"]);
+}
+
+// parity: TS-renderer-HerdrServerHandoffPrompt-276459
+#[gpui::test]
+fn other_board_events_do_not_ask_for_a_handoff(cx: &mut TestAppContext) {
+    let mut board = handoff_board(cx);
+    board.emit_board_event(kanvibe_services::board_notifier::BoardEvent::BoardUpdated);
+    assert!(replacement_hosts(&mut board).is_empty());
+}
+
+// ───────────── ActionStatusToast ─────────────
+
+fn show_toast(
+    board: &mut Board,
+    kind: kanvibe_app::components::toast::ToastKind,
+    message: &str,
+    open_task_id: Option<&str>,
+) {
+    let shell = board.shell.clone();
+    let message = message.to_string();
+    let open_task_id = open_task_id.map(str::to_string);
+    board.cx.update(|_, cx| {
+        shell.update(cx, |shell, cx| {
+            shell.show_action_status(kind, message, open_task_id, cx)
+        })
+    });
+    board.draw();
+}
+
+fn plain_board(cx: &mut TestAppContext) -> Board {
+    let dir = temp_dir();
+    init_app(cx, dir.path().to_path_buf(), true);
+    std::mem::forget(dir);
+    open_board(cx, "/ko")
+}
+
+// parity: TS-renderer-ActionStatusToast-0400a3
+#[gpui::test]
+fn toasts_show_by_kind_and_close_with_their_close_button(cx: &mut TestAppContext) {
+    use kanvibe_app::components::toast::ToastKind;
+    let mut board = plain_board(cx);
+    show_toast(&mut board, ToastKind::Progress, "syncing", None);
+    show_toast(&mut board, ToastKind::Failure, "sync failed", None);
+    // 진행은 `status`, 실패는 `alert`로 읽힌다
+    assert!(board.has_role_name("status", "syncing"));
+    assert!(board.has_role_name("alert", "sync failed"));
+    assert!(!board.has_role_name("status", "sync failed"));
+    board.click(TargetQuery::Described(DescribedTarget {
+        role: Some("button".into()),
+        name: Some("닫기".into()),
+        exact: Some(true),
+        nth: Some(1),
+        ..DescribedTarget::default()
+    }));
+    assert!(board.has_role_name("status", "syncing"));
+    assert!(!board.has_role_name("alert", "sync failed"));
+}
+
+// parity: TS-renderer-ActionStatusToast-bb4e6b
+#[gpui::test]
+fn toast_action_runs_and_closes_the_toast(cx: &mut TestAppContext) {
+    use kanvibe_app::components::toast::ToastKind;
+    let mut board = plain_board(cx);
+    show_toast(&mut board, ToastKind::Success, "created", Some("task-1"));
+    board.click(role_name("button", "열기"));
+    assert_eq!(board.current_path(), "/ko/task/task-1");
+}
+
+// parity: TS-renderer-ActionStatusToast-a31615
+#[gpui::test]
+fn success_toasts_fade_while_failure_toasts_stay(cx: &mut TestAppContext) {
+    use kanvibe_app::components::toast::ToastKind;
+    let mut board = plain_board(cx);
+    show_toast(&mut board, ToastKind::Success, "done", None);
+    show_toast(&mut board, ToastKind::Failure, "broken", None);
+    assert!(board.has_role_name("status", "done"));
+    board.advance(Duration::from_secs(10));
+    assert!(!board.has_role_name("status", "done"));
+    assert!(board.has_role_name("alert", "broken"));
+}
+
+// parity: TS-components-ProjectRegistryDialog-13e1e4
+#[gpui::test]
+fn unregistered_repositories_show_their_reasons(cx: &mut TestAppContext) {
+    let (mut board, _database) = host_board(cx);
+    let reason = "/home/tester/c/work/kanvibe: 같은 PC에 이름과 상위 폴더가 모두 같은 프로젝트가 이미 있습니다.";
+    board.add_result_fault(
+        "project.scanAndRegisterProjects",
+        serde_json::json!({"registered": [], "skipped": [], "errors": [reason], "worktreeTasks": []}),
+        None,
+    );
+    board.click(role_name("button", "프로젝트 스캔"));
+    board.click(role_name("button", "스캔 및 등록"));
+    assert!(board.has_text(reason));
+    assert!(!board.find(text_contains("git 저장소")).is_some());
+}
+
+// parity: TS-renderer-useBackgroundTaskSync-279eae
+#[gpui::test]
+fn late_status_snapshot_does_not_hide_a_sync_started_elsewhere(cx: &mut TestAppContext) {
+    let dir = temp_dir();
+    init_app(cx, dir.path().to_path_buf(), true);
+    std::mem::forget(dir);
+    add_fault_before_open(
+        cx,
+        result_fault(
+            "backgroundTaskSync.getBackgroundTaskSyncStatus",
+            serde_json::json!({
+                "phase": "idle", "isRunning": false, "completedStages": 0,
+                "reviewNeeded": false, "boardUpdated": false, "error": null, "delayMs": 1000
+            }),
+        ),
+    );
+    let mut board = open_board(cx, "/ko");
+    board.emit_board_event(sync_status(BackgroundTaskSyncPhase::PullRequests, true));
+    board.advance(Duration::from_millis(1_100));
+    assert!(board.has_role_name("status", "동기화 중…"));
+    board.dispatch(kanvibe_app::shortcuts::ToggleNotificationCenter);
+    assert!(!board.has_role_name("button", "지금 동기화"));
+}
+
+// parity: TS-renderer-BoardCommandProvider-2983f3
+#[gpui::test]
+fn board_commands_reach_their_board_handlers(cx: &mut TestAppContext) {
+    let mut board = plain_board(cx);
+    board.dispatch(OpenCreateTask);
+    let view = board.view.clone();
+    assert!(board.cx.update(|_, cx| view.read(cx).is_create_task_open()));
+    board.keys("escape");
+    board.dispatch(kanvibe_app::shortcuts::ToggleNotificationCenter);
+    assert!(board.has_role_name("dialog", "알림"));
+}
+
+// parity: TS-renderer-project-2f4b41
+#[gpui::test]
+fn project_registration_refreshes_the_board(cx: &mut TestAppContext) {
+    let (mut board, database) = host_board(cx);
+    board.add_result_fault(
+        "project.scanAndRegisterProjects",
+        serde_json::json!({"registered": ["kanvibe"], "skipped": [], "errors": [], "worktreeTasks": []}),
+        None,
+    );
+    task(&database, "등록 뒤 보일 작업", TaskStatus::Todo, |_| {});
+    assert!(!board.has_role_name("link", "등록 뒤 보일 작업"));
+    board.click(role_name("button", "프로젝트 스캔"));
+    board.click(role_name("button", "스캔 및 등록"));
+    board.keys("escape");
+    assert!(board.has_role_name("link", "등록 뒤 보일 작업"));
+}
+
+// ───────────── 카드 순서 전환(TS `useFlipReflow`) ─────────────
+
+/// 진행 중 열 카드 순서는 최근 수정 순이다. 시각을 직접 정해 순서를 고정한다
+fn set_updated_at(database: &Database, task_id: &str, updated_at: &str) {
+    database
+        .connection()
+        .execute(
+            "UPDATE kanban_tasks SET updated_at = ?1 WHERE id = ?2",
+            [updated_at, task_id],
+        )
+        .expect("update updated_at");
+}
+
+/// 진행 중 열에 위(첫째)·아래(둘째) 두 카드, 할 일 열에는 페이지가 스크롤되도록 카드를 많이 둔다
+fn reflow_board(cx: &mut TestAppContext) -> (Board, Arc<Database>, KanbanTask, KanbanTask) {
+    let dir = temp_dir();
+    let database = init_app(cx, dir.path().to_path_buf(), true);
+    std::mem::forget(dir);
+    for index in 0..24 {
+        task(
+            &database,
+            &format!("채움 {index:02}"),
+            TaskStatus::Todo,
+            |_| {},
+        );
+    }
+    let first = task(&database, "첫째 카드", TaskStatus::Progress, |_| {});
+    let second = task(&database, "둘째 카드", TaskStatus::Progress, |_| {});
+    set_updated_at(&database, &first.id, "2030-01-01 00:00:02");
+    set_updated_at(&database, &second.id, "2030-01-01 00:00:01");
+    let board = open_board(cx, "/ko");
+    (board, database, first, second)
+}
+
+impl Board {
+    fn card_top(&mut self, title: &str) -> f32 {
+        let bounds = self
+            .find(TargetQuery::ExactText(title.into()))
+            .unwrap_or_else(|| panic!("{title} card"));
+        f32::from(bounds.origin.y)
+    }
+
+    fn scroll_page_down(&mut self, distance: f32) {
+        self.cx.simulate_event(gpui_kit::ScrollEvent {
+            position: gpui_kit::point(gpui_kit::px(400.0), gpui_kit::px(400.0)),
+            delta: gpui_kit::ScrollDelta::Pixels(gpui_kit::point(
+                gpui_kit::px(0.0),
+                gpui_kit::px(-distance),
+            )),
+            ..Default::default()
+        });
+        self.draw();
+    }
+
+    fn refresh_board(&mut self) {
+        let view = self.view.clone();
+        self.cx
+            .update(|_, cx| view.update(cx, |view, cx| view.refresh(cx)));
+        self.draw();
+    }
+}
+
+// parity: TS-renderer-useFlipReflow-67e76d
+#[gpui::test]
+fn reorder_after_scrolling_slides_by_the_position_change_only(cx: &mut TestAppContext) {
+    let (mut board, database, first, second) = reflow_board(cx);
+    let resting_top = board.card_top("첫째 카드");
+    board.scroll_page_down(200.0);
+    let first_top = board.card_top("첫째 카드");
+    let second_top = board.card_top("둘째 카드");
+    assert!(first_top < resting_top, "보드가 스크롤되어야 한다");
+    set_updated_at(&database, &first.id, "2030-01-01 00:00:01");
+    set_updated_at(&database, &second.id, "2030-01-01 00:00:02");
+    board.refresh_board();
+    // 순서가 바뀐 프레임에는 두 카드가 이전 자리에서 출발한다(스크롤한 거리는 섞이지 않는다)
+    assert_eq!(board.card_top("첫째 카드"), first_top);
+    assert_eq!(board.card_top("둘째 카드"), second_top);
+    board.advance(Duration::from_millis(300));
+    assert_eq!(board.card_top("둘째 카드"), first_top);
+    assert!(board.card_top("첫째 카드") > second_top - 1.0);
+}
+
+// parity: TS-renderer-useFlipReflow-aa4f33
+#[gpui::test]
+fn a_card_that_grew_in_place_starts_the_next_reorder_from_its_new_spot(cx: &mut TestAppContext) {
+    let (mut board, database, first, second) = reflow_board(cx);
+    // 순서는 그대로인데 첫째 카드에 설명이 붙어 커졌다
+    database
+        .connection()
+        .execute(
+            "UPDATE kanban_tasks SET description = ?1 WHERE id = ?2",
+            ["설명이 붙어 카드가 한 줄 더 커진다", first.id.as_str()],
+        )
+        .expect("update description");
+    let resting_second = board.card_top("둘째 카드");
+    board.refresh_board();
+    let grown_second = board.card_top("둘째 카드");
+    assert!(
+        grown_second > resting_second,
+        "둘째 카드가 아래로 밀려야 한다"
+    );
+    set_updated_at(&database, &first.id, "2030-01-01 00:00:01");
+    set_updated_at(&database, &second.id, "2030-01-01 00:00:02");
+    board.refresh_board();
+    assert_eq!(board.card_top("둘째 카드"), grown_second);
+}
+
+// parity: TS-renderer-useFlipReflow-921696
+#[gpui::test]
+fn cards_that_keep_their_spot_get_no_transition(cx: &mut TestAppContext) {
+    let (mut board, database, first, second) = reflow_board(cx);
+    board.scroll_page_down(120.0);
+    let first_top = board.card_top("첫째 카드");
+    let second_top = board.card_top("둘째 카드");
+    let third = task(&database, "셋째 카드", TaskStatus::Progress, |_| {});
+    set_updated_at(&database, &third.id, "2030-01-01 00:00:00");
+    board.refresh_board();
+    assert!(board.has_text("셋째 카드"));
+    assert_eq!(board.card_top("첫째 카드"), first_top);
+    assert_eq!(board.card_top("둘째 카드"), second_top);
+    let _ = (first, second);
+}
+
+/// TS `useFlipReflow`는 `prefers-reduced-motion`을 보지 않는다. 움직임 줄이기를 켜도 재정렬은 이전 자리에서 출발한다
+#[gpui::test]
+fn reorder_slides_even_when_the_os_reduces_motion(cx: &mut TestAppContext) {
+    let (mut board, database, first, second) = reflow_board(cx);
+    cx.update(|cx| cx.set_global(kanvibe_app::views::board::MotionPreference { is_reduced: true }));
+    let second_top = board.card_top("둘째 카드");
+    set_updated_at(&database, &first.id, "2030-01-01 00:00:01");
+    set_updated_at(&database, &second.id, "2030-01-01 00:00:02");
+    board.refresh_board();
+    assert_eq!(board.card_top("둘째 카드"), second_top);
+}
+
+// ───────────── ProjectIcon ─────────────
+
+// parity: TS-components-ProjectIcon-b04097
+// parity: TS-components-ProjectIcon-b029f8
+#[gpui::test]
+fn a_project_with_a_github_icon_shows_the_icon_instead_of_the_initial(cx: &mut TestAppContext) {
+    let dir = temp_dir();
+    let database = init_app(cx, dir.path().to_path_buf(), true);
+    std::mem::forget(dir);
+    let api = insert_project(
+        &database.connection(),
+        &NewProject {
+            name: "api".into(),
+            repo_path: "/repos/api".into(),
+            default_branch: "main".into(),
+            ssh_host: None,
+            is_worktree: false,
+            color: Some("#0064ff".into()),
+            icon_data_url: Some("data:image/png;base64,aGVsbG8=".into()),
+        },
+    )
+    .unwrap();
+    task(&database, "아이콘 작업", TaskStatus::Todo, |task| {
+        task.project_id = Some(api.id.clone())
+    });
+    let mut board = open_board(cx, "/ko");
+    assert!(board.has_role_name("img", "api icon"));
+    assert!(board.find(test_id("project-initial-icon")).is_none());
 }

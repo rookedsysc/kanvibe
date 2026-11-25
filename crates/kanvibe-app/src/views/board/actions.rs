@@ -1,7 +1,7 @@
 //! 칸반 카드 동작: 이동(드래그·메뉴·커맨드), Done 이동 확인, 삭제, Done 더 보기, 상세 열기.
 //! TS `Board.tsx`처럼 화면을 먼저 바꾸고 저장하며, 저장 중에는 같은 카드의 요청을 다시 보내지 않는다.
 
-use gpui_kit::{Context, FocusHandle, Pixels, Point, Window};
+use gpui_kit::{Context, FocusHandle, Focusable, Pixels, Point, Window};
 use kanvibe_domain::i18n::Translator;
 use kanvibe_domain::task::TaskStatus;
 
@@ -70,7 +70,14 @@ impl BoardView {
                 .update(cx, |field, cx| field.set_text("", cx));
             self.popover_highlight = 0;
             self.is_popover_keyboard_navigated = false;
-            self.popover_focus.focus(window, cx);
+            // 프로젝트 필터는 열리면 검색칸에 포커스한다(TS `ProjectSelector`의 `searchInputRef.focus()`)
+            match popover {
+                HeaderPopover::ProjectFilter => {
+                    let search_focus = self.project_search.focus_handle(cx);
+                    search_focus.focus(window, cx);
+                }
+                _ => self.popover_focus.focus(window, cx),
+            }
         }
         cx.notify();
     }

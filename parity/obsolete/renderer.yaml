@@ -27,3 +27,13 @@
   reason: "상세로 이동할 때 xterm DOM에 포커스를 다시 주라고 requestActiveTerminalFocusAfterUiSettles를 부르는지 보는 테스트다. GPUI 작업 상세는 화면을 만들 때 터미널 FocusHandle에 포커스를 주므로 따로 보낼 포커스 요청이 없다."
 - id: TS-renderer-TaskQuickSearchDialog-276c97
   reason: "저장된 단축키가 Ctrl+R이어도 Chromium 새로 고침 차단 규칙 때문에 열지 않는지 보는 테스트다. GPUI 창에는 페이지 새로 고침 단축키가 없어 막을 규칙이 없다."
+- id: TS-renderer-useTaskDiffStats-f1cf65
+  reason: "useBoardTaskDiffStats의 isEnabled(isMounted) 플래그가 false인 동안 조회하지 않는지 보는 React hydration 가드 테스트다. GPUI 보드는 마운트 전 단계가 없고, 집계 폴링은 보드 뷰가 첫 데이터를 받은 뒤에 그 뷰가 가진 Task로 시작해 뷰가 사라지면 함께 멈춘다."
+- id: TS-renderer-kanban-603e12
+  reason: "렌더러 IPC 모듈이 작업 자원 정리 함수를 내보내지 않는지 보는 노출 면 테스트다. Rust 앱은 범용 IPC 없이 화면이 서비스 메서드를 직접 부르고(계획 AD-8) 보드 서비스(views/board/services.rs)에 자원 정리 메서드를 두지 않는다."
+- id: TS-renderer-useTrackedAction-492d5f
+  reason: "React 공용 훅(useTrackedAction)의 중복 실행 막기를 단독으로 보는 테스트다. Rust 화면은 이 훅 없이 각 동작이 진행 상태를 직접 들고, 같은 동작은 화면 시험으로 확인한다(repeated_enter_while_creating_sends_one_request, opening_notification_is_not_repeated_and_failure_is_toasted)."
+- id: TS-renderer-useTrackedAction-d005a7
+  reason: "React 공용 훅의 실패 사유 보관과 마지막 인자로 다시 시도를 단독으로 보는 테스트다. Rust 화면은 실패 사유와 다시 시도를 동작마다 직접 들고 화면 시험으로 확인한다(failed_mark_all_read_shows_the_reason, failed_load_more_shows_the_reason_and_retry_requests_the_same_page)."
+- id: TS-renderer-useTrackedAction-be8a17
+  reason: "React 공용 훅의 clearError 함수 호출을 보는 테스트다. Rust 화면에는 이 훅이 없고, 실패 사유는 다시 시도가 성공하면 그 화면 상태에서 지워진다(unreadable_notifications_show_the_reason_and_retry_loads_them)."

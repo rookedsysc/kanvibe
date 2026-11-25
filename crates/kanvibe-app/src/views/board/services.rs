@@ -4,8 +4,10 @@
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
+use std::time::Duration;
 
 use gpui_kit::{App, AppContext, Task};
+use kanvibe_ai::types::{LiveAiSession, RunningAgentPane};
 use kanvibe_domain::background_sync::BackgroundTaskSyncStatus;
 use kanvibe_domain::board_sort::BoardSortPreference;
 use kanvibe_domain::notifications::AppNotification;
@@ -15,6 +17,9 @@ use kanvibe_domain::task_diff_stats::TaskDiffStats;
 use kanvibe_runtime::DesktopRuntime;
 use kanvibe_services::kanban::{CreateTaskInput, SearchableTask, TasksByStatus};
 use kanvibe_services::project::ScanResult;
+use serde::Deserialize;
+use serde::de::DeserializeOwned;
+use serde_json::Value;
 
 use crate::qa::faults::{FaultOutcome, FaultRegistry};
 use crate::services::{AppServices, apply_fault, format_service_error_for};
@@ -51,14 +56,20 @@ pub const BRANCH_FROM_TASK_SERVICE: &str = "kanban.branchFromTask";
 pub const CONNECT_TERMINAL_SERVICE: &str = "kanban.connectTerminalSession";
 pub const DIFF_STATS_SERVICE: &str = "diff.getTaskDiffStats";
 pub const PROJECT_BRANCHES_SERVICE: &str = "project.getProjectBranches";
+pub const SESSION_DEPENDENCY_STATUS_SERVICE: &str = "sessionDependency.getSessionDependencyStatus";
+pub const SESSION_DEPENDENCY_INSTALL_SERVICE: &str = "sessionDependency.installSessionDependency";
 pub const NOTIFICATION_ACTIVATE_SERVICE: &str = "kanvibe:notifications-activate";
 pub const NOTIFICATION_MARK_READ_SERVICE: &str = "kanvibe:notifications-mark-read";
+pub const NOTIFICATION_LIST_SERVICE: &str = "kanvibe:notifications-list";
 pub const SEARCHABLE_TASKS_SERVICE: &str = "kanban.getSearchableTasks";
 pub const BACKGROUND_SYNC_STATUS_SERVICE: &str = "backgroundTaskSync.getBackgroundTaskSyncStatus";
 pub const BACKGROUND_SYNC_START_SERVICE: &str = "backgroundTaskSync.startBackgroundTaskSyncNow";
 pub const PROJECT_SCAN_SERVICE: &str = "project.scanAndRegisterProjects";
 pub const PROJECT_DELETE_SERVICE: &str = "project.deleteProject";
 pub const LIST_SUBDIRECTORIES_SERVICE: &str = "project.listSubdirectories";
+pub const RUNNING_AGENT_PANES_SERVICE: &str = "project.getRunningAgentPanes";
+pub const TASK_LIVE_SESSIONS_SERVICE: &str = "project.getTaskLiveAiSessions";
+pub const SELECT_TERMINAL_TAB_SERVICE: &str = "terminalTabs.selectTerminalTab";
 
 /// AppSettings `board_view_mode`
 pub const BOARD_VIEW_MODE_KEY: &str = "board_view_mode";
@@ -78,6 +89,61 @@ impl BoardViewMode {
             _ => Self::Kanban,
         }
     }
+}
+
+/// 분기 요청(TS `branchFromTask` 인자)
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BranchFromTaskRequest {
+    pub task_id: String,
+    pub project_id: String,
+    pub base_branch: String,
+    pub branch_name: String,
+    pub session_type: SessionType,
+}
+
+/// 세션 도구 준비 상태(TS `SessionDependencyStatus`). QA 고장 값도 같은 모양으로 받는다
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionDependencyCheck {
+    #[serde(rename = "available")]
+    pub is_available: bool,
+    #[serde(default)]
+    pub tool_name: Option<String>,
+    #[serde(default)]
+    pub is_remote: bool,
+    #[serde(default)]
+    pub ssh_host: Option<String>,
+    #[serde(default)]
+    pub blocked_reason: Option<String>,
+}
+
+impl From<kanvibe_process::remote_session_dependency::SessionDependencyStatus>
+    for SessionDependencyCheck
+{
+    fn from(status: kanvibe_process::remote_session_dependency::SessionDependencyStatus) -> Self {
+        Self {
+            is_available: status.is_available,
+            tool_name: status.tool_name.map(str::to_string),
+            is_remote: status.is_remote,
+            ssh_host: status.ssh_host,
+            blocked_reason: status.blocked_reason,
+        }
+    }
+}
+
+/// TS `createTask(input)` 인자 모양. 고장 주입 `match`가 이 글자를 본다
+fn create_task_arguments(input: &CreateTaskInput) -> String {
+    serde_json::json!([{
+        "title": input.title,
+        "description": input.description,
+        "branchName": input.branch_name,
+        "baseBranch": input.base_branch,
+        "sessionType": input.session_type.map(SessionType::as_str),
+        "sshHost": input.ssh_host,
+        "projectId": input.project_id,
+        "priority": input.priority.map(|priority| priority.as_str()),
+    }])
+    .to_string()
 }
 
 /// 보드가 처음 그리는 데 필요한 값 전부
@@ -204,16 +270,56 @@ fn spawn_service_call<T: Send + 'static>(
     cx: &App,
     call: impl FnOnce(&BoardServices) -> Result<T, String> + Send + 'static,
 ) -> Task<BoardServiceResult<T>> {
+    spawn_service_call_with_result(services, target, arguments, cx, None, call)
+}
+
+/// `result` 고장 값을 그 호출의 응답으로 바꾸는 함수
+type FaultResultDecoder<T> = fn(Value) -> Result<T, String>;
+
+/// QA 고장 주입의 `result` 값을 응답으로 돌려줄 수 있는 호출. 값 안 `delayMs`가 있으면 그만큼 기다렸다가 돌려준다
+/// (TS 드라이버가 늦게 끝나는 응답을 흉내 내던 지연 응답)
+fn spawn_service_call_with_result<T: Send + 'static>(
+    services: &Arc<BoardServices>,
+    target: &'static str,
+    arguments: &str,
+    cx: &App,
+    decode_result: Option<FaultResultDecoder<T>>,
+    call: impl FnOnce(&BoardServices) -> Result<T, String> + Send + 'static,
+) -> Task<BoardServiceResult<T>> {
     let fault = services.check_fault(target, arguments);
     let executor = cx.background_executor().clone();
     let services = services.clone();
     cx.background_spawn(async move {
-        let outcome = match apply_fault(fault, &executor).await {
-            Ok(()) => call(&services),
-            Err(failure) => Err(failure.reason),
+        let outcome = match (fault, decode_result) {
+            (FaultOutcome::Result(value), Some(decode)) => {
+                if let Some(delay) = fault_result_delay(&value) {
+                    executor.timer(delay).await;
+                }
+                decode(value)
+            }
+            (fault, _) => match apply_fault(fault, &executor).await {
+                Ok(()) => call(&services),
+                Err(failure) => Err(failure.reason),
+            },
         };
         outcome.map_err(|reason| BoardServiceFailure::from_service(target, &reason))
     })
+}
+
+fn fault_result_delay(value: &Value) -> Option<Duration> {
+    value
+        .get("delayMs")
+        .and_then(Value::as_u64)
+        .map(Duration::from_millis)
+}
+
+/// 고장 값에서 만든 작업 id만 읽는다(`{"id": "..."}`)
+fn decode_created_task_id(value: Value) -> Result<Option<String>, String> {
+    Ok(value.get("id").and_then(Value::as_str).map(str::to_string))
+}
+
+fn decode_fault_value<T: DeserializeOwned>(value: Value) -> Result<T, String> {
+    serde_json::from_value(value).map_err(|error| error.to_string())
 }
 
 fn json_arguments(arguments: &[&str]) -> String {
@@ -248,12 +354,19 @@ impl BoardServices {
         cx: &App,
     ) -> Task<BoardServiceResult<BTreeMap<String, TaskDiffStats>>> {
         let arguments = serde_json::to_string(&task_ids_to_refresh).unwrap_or_default();
-        spawn_service_call(self, DIFF_STATS_SERVICE, &arguments, cx, move |services| {
-            Ok(services
-                .runtime
-                .diff()
-                .get_task_diff_stats(&task_ids_to_refresh))
-        })
+        spawn_service_call_with_result(
+            self,
+            DIFF_STATS_SERVICE,
+            &arguments,
+            cx,
+            Some(decode_fault_value),
+            move |services| {
+                Ok(services
+                    .runtime
+                    .diff()
+                    .get_task_diff_stats(&task_ids_to_refresh))
+            },
+        )
     }
 
     /// 세션이 없는 작업에 기본 세션 타입으로 터미널 세션을 붙인다
@@ -334,53 +447,115 @@ impl BoardServices {
         })
     }
 
-    /// 기존 작업에서 브랜치를 분기한다(worktree·세션을 만들고 진행 중으로 옮긴다)
+    /// 기존 작업에서 브랜치를 분기한다(worktree·세션을 만들고 진행 중으로 옮긴다). 분기한 작업 id를 돌려준다
     pub fn branch_from_task(
         self: &Arc<Self>,
-        task_id: String,
-        project_id: String,
-        base_branch: String,
-        branch_name: String,
-        session_type: SessionType,
+        request: BranchFromTaskRequest,
         cx: &App,
-    ) -> Task<BoardServiceResult<Option<KanbanTask>>> {
-        let arguments = json_arguments(&[&task_id, &project_id, &base_branch, &branch_name]);
-        spawn_service_call(
+    ) -> Task<BoardServiceResult<Option<String>>> {
+        let arguments = serde_json::json!([
+            request.task_id,
+            request.project_id,
+            request.base_branch,
+            request.branch_name,
+            request.session_type.as_str(),
+        ])
+        .to_string();
+        spawn_service_call_with_result(
             self,
             BRANCH_FROM_TASK_SERVICE,
             &arguments,
             cx,
+            Some(decode_created_task_id),
             move |services| {
                 services
                     .runtime
                     .kanban()
                     .branch_from_task(
-                        &task_id,
-                        &project_id,
-                        &base_branch,
-                        &branch_name,
-                        session_type,
+                        &request.task_id,
+                        &request.project_id,
+                        &request.base_branch,
+                        &request.branch_name,
+                        request.session_type,
                     )
+                    .map(|task| task.map(|task| task.id))
                     .map_err(service_failure)
             },
         )
     }
 
-    /// 작업을 만든다. 브랜치·프로젝트가 있으면 worktree와 세션도 서비스가 함께 준비한다
+    /// 작업을 만든다. 브랜치·프로젝트가 있으면 worktree와 세션도 서비스가 함께 준비한다. 만든 작업 id를 돌려준다
     pub fn create_task(
         self: &Arc<Self>,
         input: CreateTaskInput,
         cx: &App,
-    ) -> Task<BoardServiceResult<Option<KanbanTask>>> {
-        let arguments = json_arguments(&[&input.title]);
-        spawn_service_call(self, CREATE_TASK_SERVICE, &arguments, cx, move |services| {
-            services
-                .runtime
-                .kanban()
-                .create_task(&input)
-                .map(Some)
-                .map_err(service_failure)
-        })
+    ) -> Task<BoardServiceResult<Option<String>>> {
+        let arguments = create_task_arguments(&input);
+        spawn_service_call_with_result(
+            self,
+            CREATE_TASK_SERVICE,
+            &arguments,
+            cx,
+            Some(decode_created_task_id),
+            move |services| {
+                services
+                    .runtime
+                    .kanban()
+                    .create_task(&input)
+                    .map(|task| Some(task.id))
+                    .map_err(service_failure)
+            },
+        )
+    }
+
+    /// 세션 도구가 그 호스트에 있는지(TS `sessionDependency.getSessionDependencyStatus`)
+    pub fn session_dependency_status(
+        self: &Arc<Self>,
+        session_type: SessionType,
+        ssh_host: Option<String>,
+        cx: &App,
+    ) -> Task<BoardServiceResult<SessionDependencyCheck>> {
+        let arguments = serde_json::json!([session_type.as_str(), ssh_host]).to_string();
+        spawn_service_call_with_result(
+            self,
+            SESSION_DEPENDENCY_STATUS_SERVICE,
+            &arguments,
+            cx,
+            Some(decode_fault_value),
+            move |services| {
+                services
+                    .runtime
+                    .session_dependency()
+                    .get_session_dependency_status(session_type, ssh_host.as_deref())
+                    .map(SessionDependencyCheck::from)
+                    .map_err(service_failure)
+            },
+        )
+    }
+
+    /// 세션 도구를 그 호스트에 설치한다(TS `sessionDependency.installSessionDependency`)
+    pub fn install_session_dependency(
+        self: &Arc<Self>,
+        session_type: SessionType,
+        ssh_host: Option<String>,
+        cx: &App,
+    ) -> Task<BoardServiceResult<SessionDependencyCheck>> {
+        let arguments = serde_json::json!([session_type.as_str(), ssh_host]).to_string();
+        spawn_service_call_with_result(
+            self,
+            SESSION_DEPENDENCY_INSTALL_SERVICE,
+            &arguments,
+            cx,
+            Some(decode_fault_value),
+            move |services| {
+                services
+                    .runtime
+                    .session_dependency()
+                    .install_session_dependency(session_type, ssh_host.as_deref())
+                    .map(SessionDependencyCheck::from)
+                    .map_err(service_failure)
+            },
+        )
     }
 
     /// 프로젝트 브랜치 목록. 원격 프로젝트는 화면을 막는 fetch 없이 읽는다
@@ -390,11 +565,12 @@ impl BoardServices {
         cx: &App,
     ) -> Task<BoardServiceResult<Vec<String>>> {
         let arguments = json_arguments(&[&project_id]);
-        spawn_service_call(
+        spawn_service_call_with_result(
             self,
             PROJECT_BRANCHES_SERVICE,
             &arguments,
             cx,
+            Some(decode_fault_value),
             move |services| {
                 services
                     .runtime
@@ -428,6 +604,27 @@ impl BoardServices {
             .app_settings()
             .set_notification_unread_only_enabled(is_enabled)
             .map_err(settings_failure)
+    }
+
+    /// 저장된 알림 목록(TS `kanvibe:notifications-list`)
+    pub fn list_notifications(
+        self: &Arc<Self>,
+        cx: &App,
+    ) -> Task<BoardServiceResult<Vec<AppNotification>>> {
+        spawn_service_call_with_result(
+            self,
+            NOTIFICATION_LIST_SERVICE,
+            "[]",
+            cx,
+            Some(decode_fault_value),
+            |services| {
+                services
+                    .runtime
+                    .notification_store()
+                    .list_notifications()
+                    .map_err(service_failure)
+            },
+        )
     }
 
     /// 알림 하나를 읽음으로 바꾼다
@@ -492,12 +689,19 @@ impl BoardServices {
         self: &Arc<Self>,
         cx: &App,
     ) -> Task<BoardServiceResult<BackgroundTaskSyncStatus>> {
-        spawn_service_call(self, BACKGROUND_SYNC_STATUS_SERVICE, "[]", cx, |services| {
-            Ok(services
-                .runtime
-                .background_task_sync()
-                .get_background_task_sync_status())
-        })
+        spawn_service_call_with_result(
+            self,
+            BACKGROUND_SYNC_STATUS_SERVICE,
+            "[]",
+            cx,
+            Some(decode_fault_value),
+            |services| {
+                Ok(services
+                    .runtime
+                    .background_task_sync()
+                    .get_background_task_sync_status())
+            },
+        )
     }
 
     /// 동기화 한 사이클을 백그라운드에서 시작하고 지금 상태를 돌려준다(TS `startBackgroundTaskSyncNow`)
@@ -521,11 +725,12 @@ impl BoardServices {
         cx: &App,
     ) -> Task<BoardServiceResult<ScanResult>> {
         let arguments = json_arguments(&[&root_path, ssh_host.as_deref().unwrap_or_default()]);
-        spawn_service_call(
+        spawn_service_call_with_result(
             self,
             PROJECT_SCAN_SERVICE,
             &arguments,
             cx,
+            Some(decode_scan_result),
             move |services| {
                 services
                     .runtime
@@ -593,4 +798,90 @@ impl BoardServices {
                 .map_err(service_failure)
         })
     }
+
+    /// 보드 배지가 쓰는 실행중 에이전트 pane 목록(TS `getRunningAgentPanes`)
+    pub fn load_running_agent_panes(
+        self: &Arc<Self>,
+        cx: &App,
+    ) -> Task<BoardServiceResult<Vec<RunningAgentPane>>> {
+        spawn_service_call_with_result(
+            self,
+            RUNNING_AGENT_PANES_SERVICE,
+            "[]",
+            cx,
+            Some(decode_fault_value),
+            |services| Ok(services.runtime.project().get_running_agent_panes()),
+        )
+    }
+
+    /// 작업 하나의 실행중 세션과 서브태스크(TS `getTaskLiveAiSessions(taskId).sessions`)
+    pub fn load_task_live_sessions(
+        self: &Arc<Self>,
+        task_id: String,
+        cx: &App,
+    ) -> Task<BoardServiceResult<Vec<LiveAiSession>>> {
+        let arguments = json_arguments(&[&task_id]);
+        spawn_service_call_with_result(
+            self,
+            TASK_LIVE_SESSIONS_SERVICE,
+            &arguments,
+            cx,
+            Some(decode_live_sessions),
+            move |services| {
+                services
+                    .runtime
+                    .project()
+                    .get_task_live_ai_sessions(&task_id)
+                    .map(|result| result.sessions)
+                    .map_err(service_failure)
+            },
+        )
+    }
+
+    /// 작업 터미널의 tmux window를 고른다(TS `selectTerminalTab`)
+    pub fn select_terminal_tab(
+        self: &Arc<Self>,
+        task_id: String,
+        tab_id: String,
+        cx: &App,
+    ) -> Task<BoardServiceResult<()>> {
+        let arguments = json_arguments(&[&task_id, &tab_id]);
+        spawn_service_call_with_result(
+            self,
+            SELECT_TERMINAL_TAB_SERVICE,
+            &arguments,
+            cx,
+            Some(|_| Ok(())),
+            move |services| {
+                services
+                    .runtime
+                    .terminal_tab_service()
+                    .select_terminal_tab(&task_id, &tab_id)
+                    .map(|_| ())
+                    .map_err(service_failure)
+            },
+        )
+    }
+}
+
+/// 고장 값은 TS `ScanResult` 모양이다(없는 칸은 비어 있다)
+fn decode_scan_result(value: Value) -> Result<ScanResult, String> {
+    let list = |key: &str| -> Result<Vec<String>, String> {
+        match value.get(key) {
+            Some(items) => decode_fault_value(items.clone()),
+            None => Ok(Vec::new()),
+        }
+    };
+    Ok(ScanResult {
+        registered: list("registered")?,
+        skipped: list("skipped")?,
+        errors: list("errors")?,
+        worktree_tasks: list("worktreeTasks")?,
+        ..ScanResult::default()
+    })
+}
+
+/// 고장 값은 TS 응답처럼 `{ sessions: [...] }`이다
+fn decode_live_sessions(value: Value) -> Result<Vec<LiveAiSession>, String> {
+    decode_fault_value(value.get("sessions").cloned().unwrap_or(Value::Null))
 }

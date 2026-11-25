@@ -19,7 +19,7 @@ pub enum TextFieldEvent {
         is_shift_pressed: bool,
     },
     Escaped,
-    /// ↑·↓·Tab처럼 입력이 쓰지 않는 키(목록 이동에 쓴다)
+    /// ↑·↓·Tab(`tab`·`shift-tab`)처럼 입력이 쓰지 않는 키(목록 이동에 쓴다)
     NavigationKey(String),
 }
 
@@ -130,6 +130,10 @@ impl BoardTextField {
             }
             "escape" => {
                 cx.emit(TextFieldEvent::Escaped);
+                cx.stop_propagation();
+            }
+            "tab" if keystroke.modifiers.shift => {
+                cx.emit(TextFieldEvent::NavigationKey("shift-tab".into()));
                 cx.stop_propagation();
             }
             "up" | "down" | "tab" => {
@@ -271,5 +275,59 @@ impl Render for BoardTextField {
                 .absolute()
                 .size_full(),
             )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    use gpui_kit::{EntityInputHandler, TestAppContext, rgb};
+    use kanvibe_process::project_search::matches_project_search;
+
+    use super::{BoardTextField, TextFieldEvent};
+    use crate::views::board::task_filters::tests::project;
+
+    /// 프로젝트 검색칸에 입력기 조합 글자를 넣고, 바뀐 검색어로 걸러지는 프로젝트 이름을 돌려준다
+    fn filter_while_composing(cx: &mut TestAppContext, composing: &str) -> Vec<String> {
+        let (field, cx) =
+            cx.add_window_view(|_, cx| BoardTextField::new("프로젝트 검색...", [rgb(0); 3], cx));
+        let queries = Rc::new(RefCell::new(Vec::new()));
+        let recorded = queries.clone();
+        let _subscription = cx.update(|_, cx| {
+            cx.subscribe(&field, move |_, event: &TextFieldEvent, _| {
+                if let TextFieldEvent::Changed(query) = event {
+                    recorded.borrow_mut().push(query.clone());
+                }
+            })
+        });
+        cx.update(|window, cx| {
+            field.update(cx, |field, cx| {
+                field.replace_and_mark_text_in_range(None, composing, None, window, cx)
+            })
+        });
+        let query = queries.borrow().last().cloned().unwrap_or_default();
+        let mut korean = project("korean");
+        korean.name = "한글 프로젝트".into();
+        let mut english = project("english");
+        english.name = "English Project".into();
+        [korean, english]
+            .into_iter()
+            .filter(|candidate| matches_project_search(candidate, &query))
+            .map(|candidate| candidate.name)
+            .collect()
+    }
+
+    // parity: TS-components-ProjectSelector-794d9f
+    #[gpui_kit::gpui::test]
+    fn projects_filter_while_korean_text_is_composing(cx: &mut TestAppContext) {
+        assert_eq!(filter_while_composing(cx, "한글"), ["한글 프로젝트"]);
+    }
+
+    // parity: TS-components-ProjectSelector-e3296c
+    #[gpui_kit::gpui::test]
+    fn english_entered_during_unfinished_composition_keeps_filtering(cx: &mut TestAppContext) {
+        assert_eq!(filter_while_composing(cx, "English"), ["English Project"]);
     }
 }

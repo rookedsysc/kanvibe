@@ -11,6 +11,7 @@ use kanvibe_services::kanban::TasksByStatus;
 
 use super::BoardView;
 use super::board_model::{column, contiguous_groups, root_priorities};
+use super::flip_reflow::{flip_card, flip_column};
 use super::header::qa_button_layer;
 use super::task_card::{DraggedTask, TaskCardInput};
 use crate::components::TailwindText;
@@ -72,7 +73,13 @@ impl BoardView {
         let body = self.render_column_body(theme, status, tasks, window, cx);
         let drop_background = theme.brand.subtle;
         let drop_ring = theme.border.brand;
-        div()
+        let reflow = self.column_reflows.entry(status).or_default().clone();
+        let order_key = tasks
+            .iter()
+            .map(|task| task.id.as_str())
+            .collect::<Vec<_>>()
+            .join(",");
+        let column = div()
             .flex_1()
             .min_w(px(284.0))
             .max_w(px(340.0))
@@ -93,7 +100,8 @@ impl BoardView {
                         this.drop_task_on_column(&dragged.task_id, status, window, cx)
                     }))
                     .children(body),
-            )
+            );
+        flip_column(&reflow, order_key, column)
     }
 
     fn render_column_body(
@@ -113,6 +121,7 @@ impl BoardView {
         let diff_stats = board.diff_stats.clone();
         let deletion_states = self.deletion_states.clone();
         let move_states = self.move_states.clone();
+        let reflow = self.column_reflows.entry(status).or_default().clone();
         let mut elements = Vec::new();
         for group in contiguous_groups(tasks, &catalog) {
             let mut cards = Vec::new();
@@ -131,7 +140,12 @@ impl BoardView {
                     deletion_state: deletion_states.get(&task.id),
                     move_state: move_states.get(&task.id),
                 };
-                cards.extend(self.render_task_card(theme, input, window, cx));
+                let mut card = self.render_task_card(theme, input, window, cx).into_iter();
+                cards.extend(
+                    card.next()
+                        .map(|element| flip_card(&reflow, &task.id, element).into_any_element()),
+                );
+                cards.extend(card);
             }
             if group.project_name.is_some() {
                 elements.push(div().mb(px(6.0)).children(cards).into_any_element());
@@ -168,7 +182,6 @@ impl BoardView {
         let mut button = div()
             .id("board-load-more-done")
             .relative()
-            .mt(spacing(2.0))
             .w_full()
             .flex()
             .justify_center()
@@ -188,7 +201,10 @@ impl BoardView {
                 .hover(move |style| style.bg(hover_background).text_color(hover_text))
                 .on_click(cx.listener(|this, _, _, cx| this.load_more_done(cx)));
         }
-        let mut elements = vec![button.into_any_element()];
+        // TS `<button>`은 inline-block이라 위쪽 `mt-2`가 앞 카드의 `mb-1.5`와 겹치지 않는다(6px + 8px).
+        // 블록 여백 겹침이 없도록 여백을 감싼 줄의 안쪽 여백으로 옮긴다
+        let button_line = div().pt(spacing(2.0)).child(button);
+        let mut elements = vec![button_line.into_any_element()];
         if let Some(reason) = board.done.error.clone() {
             let message = Translator::new(self.locale(), "common")
                 .translate_with("loadFailed", &[("reason", &reason)]);

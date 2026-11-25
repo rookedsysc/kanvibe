@@ -5,14 +5,18 @@ mod actions;
 mod board_model;
 mod column;
 mod context_menu;
+mod count_up;
 mod dialogs;
 mod done_confirm;
+mod flip_reflow;
 mod folder_search;
 mod header;
 mod header_popovers;
 pub(crate) mod icons;
 pub mod kanban;
 mod keyboard;
+mod live_sessions;
+mod polls;
 mod registry;
 mod registry_actions;
 pub(crate) mod services;
@@ -49,13 +53,11 @@ use crate::notifications::NotificationCenter;
 use crate::theme::{ThemeTokens, radius, spacing, text_scale};
 use crate::views::ScreenContext;
 use board_model::{BoardFilters, DonePagination, ProjectCatalog, TaskDeletionState, TaskMoveState};
+pub use count_up::MotionPreference;
 pub use services::{BoardServiceFailure, BoardSnapshot, BoardViewMode};
 use services::{BoardServices, board_services};
 pub use task_filters::TaskKindFilter;
 use text_field::{BoardTextField, TextFieldEvent};
-
-/// 보드 카드 변경 집계를 다시 읽는 주기(TS `BOARD_DIFF_STATS_POLL_INTERVAL_MS`)
-const DIFF_STATS_POLL_INTERVAL: Duration = Duration::from_millis(5_000);
 
 /// 첫 조회가 이 시간보다 오래 걸리면 지연 안내를 띄운다(TS `INITIAL_DESKTOP_LOAD_TIMEOUT_MS`)
 const LOAD_DELAY_NOTICE_AFTER: Duration = Duration::from_millis(5_000);
@@ -157,6 +159,8 @@ pub struct BoardView {
     is_done_dont_ask_checked: bool,
     open_popover: Option<HeaderPopover>,
     popover_highlight: usize,
+    /// 프로젝트 필터 목록 스크롤(키보드로 고른 항목을 보이게 굴린다)
+    project_options_scroll: ScrollHandle,
     is_popover_keyboard_navigated: bool,
     popover_focus: FocusHandle,
     project_search: Entity<BoardTextField>,
@@ -178,6 +182,10 @@ pub struct BoardView {
     workspace_search: Entity<BoardTextField>,
     workspace_scroll: ScrollHandle,
     workspace_list_focus: FocusHandle,
+    /// 워크스페이스 목록 포커스 단축키(`Mod+Alt` 단독) 판정과 직전 수식키 상태
+    workspace_focus_tracker:
+        Option<kanvibe_domain::shortcuts::workspace_focus::WorkspaceListFocusTracker>,
+    workspace_modifiers: gpui_kit::Modifiers,
     workspace_terminal_focus: FocusHandle,
     is_registry_open: bool,
     registry_search: Entity<BoardTextField>,
@@ -189,7 +197,12 @@ pub struct BoardView {
     create_task_subscriptions: Vec<Subscription>,
     _board_load: Task<()>,
     _load_delay_timer: Task<()>,
-    _diff_stats_poll: Task<()>,
+    polls: polls::BoardPolls,
+    /// 열마다 카드 자리 기록(TS `useFlipReflow`). 칸반을 그리지 않는 동안에는 비운다
+    column_reflows: HashMap<TaskStatus, flip_reflow::SharedColumnReflow>,
+    /// 카드 변경 집계 숫자(파일 수·추가·삭제). 값이 바뀌면 굴려 보인다
+    diff_counters: HashMap<String, [Entity<count_up::CountUpNumber>; 3]>,
+    live_sessions: live_sessions::LiveSessionState,
     _subscriptions: Vec<Subscription>,
     _app_event_subscriptions: Vec<Subscription>,
     /// 작업 종류 필터를 기억할 창(첫 렌더에서 정한다)
@@ -235,6 +248,7 @@ impl BoardView {
             is_done_dont_ask_checked: false,
             open_popover: None,
             popover_highlight: 0,
+            project_options_scroll: ScrollHandle::new(),
             is_popover_keyboard_navigated: false,
             popover_focus: cx.focus_handle(),
             project_search,
@@ -255,6 +269,8 @@ impl BoardView {
             workspace_search,
             workspace_scroll: ScrollHandle::new(),
             workspace_list_focus: cx.focus_handle(),
+            workspace_focus_tracker: None,
+            workspace_modifiers: gpui_kit::Modifiers::default(),
             workspace_terminal_focus: cx.focus_handle(),
             is_registry_open: false,
             registry_search,
@@ -265,11 +281,15 @@ impl BoardView {
             create_task_subscriptions: Vec::new(),
             _board_load: Task::ready(()),
             _load_delay_timer: Task::ready(()),
-            _diff_stats_poll: Task::ready(()),
+            polls: polls::BoardPolls::default(),
+            column_reflows: HashMap::new(),
+            diff_counters: HashMap::new(),
+            live_sessions: Default::default(),
             _subscriptions: Vec::new(),
             _app_event_subscriptions: Vec::new(),
             task_kind_window: None,
         };
+        MotionPreference::ensure_loaded(cx);
         view.subscribe_to_app_events(cx);
         view.begin_load(cx);
         view
@@ -479,9 +499,9 @@ impl BoardView {
                     Some(board) => board.replace_with(snapshot),
                     None => {
                         self.board = Some(KanbanBoard::from_snapshot(snapshot));
-                        self.start_diff_stats_poll(cx);
                     }
                 }
+                self.sync_diff_counters(cx);
             }
             Err(failure) => {
                 self.load_status = RouteLoadStatus {
@@ -493,36 +513,32 @@ impl BoardView {
         cx.notify();
     }
 
-    /// 진행 중 카드의 변경 집계를 주기마다 다시 읽는다. 보드가 사라지면 함께 멈춘다
-    fn start_diff_stats_poll(&mut self, cx: &mut Context<Self>) {
-        let Some(services) = self.services.clone() else {
+    /// 받은 집계를 카드 숫자에 넘긴다. 처음 보는 작업은 굴리지 않고 그 값으로 시작한다
+    fn sync_diff_counters(&mut self, cx: &mut Context<Self>) {
+        let Some(board) = self.board.as_ref() else {
             return;
         };
-        self._diff_stats_poll = cx.spawn(async move |this, cx| {
-            loop {
-                cx.background_executor()
-                    .timer(DIFF_STATS_POLL_INTERVAL)
-                    .await;
-                let Ok(load) = this.update(cx, |this, cx| {
-                    let task_ids =
-                        board_model::task_ids_to_refresh_diff_stats(&this.displayed_tasks());
-                    services.load_diff_stats(task_ids, cx)
-                }) else {
-                    return;
-                };
-                let Ok(stats) = load.await else {
-                    continue;
-                };
-                let _ = this.update(cx, |this, cx| {
-                    if let Some(board) = this.board.as_mut()
-                        && board.diff_stats != stats
-                    {
-                        board.diff_stats = stats;
-                        cx.notify();
+        for (task_id, stats) in &board.diff_stats {
+            let values = [stats.file_count, stats.additions, stats.deletions];
+            match self.diff_counters.get(task_id) {
+                Some(counters) => {
+                    for (counter, value) in counters.iter().zip(values) {
+                        counter.update(cx, |counter, cx| counter.set_value(value, cx));
                     }
-                });
+                }
+                None => {
+                    let test_ids = [
+                        "task-diff-file-count",
+                        "task-diff-additions",
+                        "task-diff-deletions",
+                    ];
+                    let counters = [0, 1, 2].map(|index| {
+                        cx.new(|_| count_up::CountUpNumber::new(values[index], test_ids[index]))
+                    });
+                    self.diff_counters.insert(task_id.clone(), counters);
+                }
             }
-        });
+        }
     }
 
     /// 보드 이벤트(다른 창·hook·sync의 변경)를 받으면 다시 읽는다
@@ -643,9 +659,13 @@ impl Render for BoardView {
         self.subscribe_text_fields(window, cx);
         self.claim_initial_focus(window, cx);
         self.restore_task_kind_session(window, cx);
+        self.ensure_board_polls(window, cx);
         let theme = *cx.global::<ThemeTokens>();
         let viewport = window.viewport_size();
         let is_workspace = self.view_mode == BoardViewMode::Workspace;
+        if is_workspace {
+            self.column_reflows.clear();
+        }
         let content: AnyElement = if self.board.is_some() && is_workspace {
             self.render_workspace(window, cx).into_any_element()
         } else if self.board.is_some() {

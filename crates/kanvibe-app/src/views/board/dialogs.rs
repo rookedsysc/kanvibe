@@ -25,6 +25,11 @@ impl BoardView {
         Some(modal.read(cx).base_branch().to_string())
     }
 
+    /// 열린 새 작업 모달의 베이스 브랜치·브랜치 이름·설명 입력 글자
+    pub fn create_task_field_texts(&self, cx: &gpui_kit::App) -> Option<[String; 3]> {
+        Some(self.create_task.as_ref()?.read(cx).field_texts(cx))
+    }
+
     pub(super) fn is_board_dialog_open(&self) -> bool {
         self.create_task.is_some() || self.is_registry_open
     }

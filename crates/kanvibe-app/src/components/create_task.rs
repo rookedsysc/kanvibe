@@ -8,7 +8,8 @@ use std::sync::Arc;
 use gpui_kit::{
     AnyElement, AppContext, Context, Entity, EventEmitter, FocusHandle, Focusable,
     InteractiveElement, IntoElement, KeyDownEvent, MouseButton, ParentElement, Render,
-    StatefulInteractiveElement, Styled, Subscription, Task, Window, deferred, div, px,
+    ScrollHandle, StatefulInteractiveElement, Styled, Subscription, Task, Window, deferred, div,
+    px,
 };
 use kanvibe_domain::i18n::{Locale, Translator};
 use kanvibe_domain::project::Project;
@@ -17,10 +18,11 @@ use kanvibe_process::project_search::{fuzzy_match, matches_project_search};
 use kanvibe_services::kanban::CreateTaskInput;
 
 use crate::components::popover::POPOVER_LAYER_PRIORITY;
+use crate::components::session_dependency_prompt::ensure_session_dependency;
 use crate::components::{TailwindText, box_shadows, fade};
 use crate::qa::targets::{QaTargetDescription, qa_button_layer, qa_target_layer, qa_text_layer};
 use crate::theme::{ThemeTokens, radius, spacing, text_scale};
-use crate::views::board::services::{BoardServiceFailure, BoardServices};
+use crate::views::board::services::{BoardServiceFailure, BoardServices, BranchFromTaskRequest};
 use crate::views::board::text_field::{BoardTextField, TextFieldEvent};
 
 /// 모달이 부모에게 알리는 일
@@ -79,6 +81,8 @@ pub struct CreateTaskModal {
     branch_highlight: usize,
     is_project_list_open: bool,
     project_highlight: usize,
+    /// 프로젝트 목록 스크롤(키보드로 고른 항목을 보이게 굴린다)
+    project_options_scroll: ScrollHandle,
     priority: Option<TaskPriority>,
     session_type: SessionType,
     is_session_list_open: bool,
@@ -183,6 +187,7 @@ impl CreateTaskModal {
             branch_highlight: 0,
             is_project_list_open: false,
             project_highlight: 0,
+            project_options_scroll: ScrollHandle::new(),
             priority: None,
             session_type: default_session_type,
             is_session_list_open: false,
@@ -221,6 +226,16 @@ impl CreateTaskModal {
     /// 지금 고른 베이스 브랜치
     pub fn base_branch(&self) -> &str {
         &self.base_branch
+    }
+
+    /// 베이스 브랜치·브랜치 이름·설명 입력에 지금 들어 있는 글자
+    pub fn field_texts(&self, cx: &gpui_kit::App) -> [String; 3] {
+        [
+            &self.base_branch_field,
+            &self.branch_name_field,
+            &self.description_field,
+        ]
+        .map(|field| field.read(cx).text().to_string())
     }
 
     pub fn selected_project_id(&self) -> Option<&str> {
@@ -338,10 +353,14 @@ impl CreateTaskModal {
             TextFieldEvent::Changed(_) => self.project_highlight = 0,
             TextFieldEvent::NavigationKey(key) if key == "down" && !projects.is_empty() => {
                 self.project_highlight = (self.project_highlight + 1) % projects.len();
+                self.project_options_scroll
+                    .scroll_to_item(self.project_highlight);
             }
             TextFieldEvent::NavigationKey(key) if key == "up" && !projects.is_empty() => {
                 self.project_highlight =
                     (self.project_highlight + projects.len() - 1) % projects.len();
+                self.project_options_scroll
+                    .scroll_to_item(self.project_highlight);
             }
             TextFieldEvent::Submitted { .. } => {
                 if let Some(project) =
@@ -390,6 +409,13 @@ impl CreateTaskModal {
             TextFieldEvent::Submitted { .. } => self.submit(window, cx),
             TextFieldEvent::Escaped if self.is_branch_list_open => self.restore_base_branch(cx),
             TextFieldEvent::Escaped => self.close(cx),
+            // 목록이 열려 있어도 Tab은 다음 입력으로 간다(TS `BranchSearchInput`)
+            TextFieldEvent::NavigationKey(key) if key == "tab" || key == "shift-tab" => {
+                if self.is_branch_list_open {
+                    self.restore_base_branch(cx);
+                }
+                self.move_field_focus(&self.base_branch_field.clone(), key == "tab", window, cx);
+            }
             TextFieldEvent::NavigationKey(_) => {}
         }
         cx.notify();
@@ -397,7 +423,7 @@ impl CreateTaskModal {
 
     fn handle_plain_field_event(
         &mut self,
-        _: &Entity<BoardTextField>,
+        field: &Entity<BoardTextField>,
         event: &TextFieldEvent,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -407,8 +433,40 @@ impl CreateTaskModal {
                 is_shift_pressed: false,
             } => self.submit(window, cx),
             TextFieldEvent::Escaped => self.close(cx),
-            TextFieldEvent::NavigationKey(key) if key == "tab" => window.focus_next(cx),
+            TextFieldEvent::NavigationKey(key) if key == "tab" || key == "shift-tab" => {
+                self.move_field_focus(field, key == "tab", window, cx)
+            }
             _ => {}
+        }
+    }
+
+    /// 화면에 보이는 입력 순서(베이스 브랜치 → 브랜치 이름 → 설명)대로 Tab·Shift+Tab 포커스를 옮긴다
+    fn move_field_focus(
+        &mut self,
+        from: &Entity<BoardTextField>,
+        is_forward: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let mut fields = Vec::new();
+        if self.selected_project_id.is_some() {
+            fields.push(self.base_branch_field.clone());
+        }
+        fields.push(self.branch_name_field.clone());
+        if self.mode == CreateTaskMode::Create {
+            fields.push(self.description_field.clone());
+        }
+        let Some(position) = fields.iter().position(|field| field == from) else {
+            return;
+        };
+        let target = if is_forward {
+            fields.get(position + 1)
+        } else {
+            position.checked_sub(1).and_then(|index| fields.get(index))
+        };
+        if let Some(target) = target {
+            target.focus_handle(cx).focus(window, cx);
+            cx.notify();
         }
     }
 
@@ -431,8 +489,9 @@ impl CreateTaskModal {
         cx.emit(CreateTaskEvent::Closed);
     }
 
-    /// 만들기를 보낸다. 응답을 기다리는 동안 Enter·버튼을 거듭 눌러도 한 번만 보낸다
-    pub fn submit(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+    /// 만들기를 보낸다. 응답을 기다리는 동안 Enter·버튼을 거듭 눌러도 한 번만 보낸다.
+    /// Herdr 세션은 그 호스트에 도구가 준비된 것을 확인한 뒤에만 만든다(TS `ensureSessionDependencyWithPrompt`)
+    pub fn submit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let branch_name = self.branch_name_field.read(cx).text().trim().to_string();
         let Some(services) = self.services.clone() else {
             return;
@@ -454,14 +513,54 @@ impl CreateTaskModal {
         };
         self.is_submitting = true;
         self.error = None;
-        let request = match &self.mode {
+        let session_type = self.session_type;
+        let locale = self.locale;
+        cx.spawn_in(window, async move |this, cx| {
+            if session_type == SessionType::Herdr {
+                let readiness = ensure_session_dependency(
+                    services,
+                    session_type,
+                    project.ssh_host.clone(),
+                    locale,
+                    cx,
+                )
+                .await;
+                if readiness != Ok(true) {
+                    let failure = readiness.err().map(BoardServiceFailure::new);
+                    let _ = this.update(cx, |this, cx| this.stop_submit(failure, cx));
+                    return;
+                }
+            }
+            let Ok(request) =
+                this.update(cx, |this, cx| this.send_request(&project, &branch_name, cx))
+            else {
+                return;
+            };
+            let result = request.await;
+            let _ = this.update(cx, |this, cx| this.finish_submit(result, branch_name, cx));
+        })
+        .detach();
+        cx.notify();
+    }
+
+    /// 지금 입력으로 만들기·분기 요청을 보낸다
+    fn send_request(
+        &mut self,
+        project: &Project,
+        branch_name: &str,
+        cx: &mut Context<Self>,
+    ) -> Task<Result<Option<String>, BoardServiceFailure>> {
+        let Some(services) = self.services.clone() else {
+            return Task::ready(Ok(None));
+        };
+        match &self.mode {
             CreateTaskMode::Create => {
                 let description = self.description_field.read(cx).text().trim().to_string();
                 services.create_task(
                     CreateTaskInput {
-                        title: branch_name.clone(),
+                        title: branch_name.to_string(),
                         description: (!description.is_empty()).then_some(description),
-                        branch_name: Some(branch_name.clone()),
+                        branch_name: Some(branch_name.to_string()),
                         base_branch: (!self.base_branch.is_empty())
                             .then(|| self.base_branch.clone()),
                         session_type: Some(self.session_type),
@@ -473,25 +572,32 @@ impl CreateTaskModal {
                 )
             }
             CreateTaskMode::Branch { task_id, .. } => services.branch_from_task(
-                task_id.clone(),
-                project.id.clone(),
-                self.base_branch.clone(),
-                branch_name.clone(),
-                self.session_type,
+                BranchFromTaskRequest {
+                    task_id: task_id.clone(),
+                    project_id: project.id.clone(),
+                    base_branch: self.base_branch.clone(),
+                    branch_name: branch_name.to_string(),
+                    session_type: self.session_type,
+                },
                 cx,
             ),
-        };
-        cx.spawn(async move |this, cx| {
-            let result = request.await;
-            let _ = this.update(cx, |this, cx| this.finish_submit(result, branch_name, cx));
-        })
-        .detach();
-        cx.notify();
+        }
+    }
+
+    /// 설치를 거절했거나 도구 준비가 실패해 만들지 않고 멈춘다
+    fn stop_submit(&mut self, failure: Option<BoardServiceFailure>, cx: &mut Context<Self>) {
+        match failure {
+            Some(failure) => self.finish_submit(Err(failure), String::new(), cx),
+            None => {
+                self.is_submitting = false;
+                cx.notify();
+            }
+        }
     }
 
     fn finish_submit(
         &mut self,
-        result: Result<Option<kanvibe_domain::task::KanbanTask>, BoardServiceFailure>,
+        result: Result<Option<String>, BoardServiceFailure>,
         branch_name: String,
         cx: &mut Context<Self>,
     ) {
@@ -500,7 +606,7 @@ impl CreateTaskModal {
         let labels = Translator::new(self.locale, if is_branch { "branch" } else { "task" });
         let event = match (result, self.is_closed) {
             (Ok(task), false) => CreateTaskEvent::Created {
-                task_id: task.map(|task| task.id).unwrap_or_default(),
+                task_id: task.unwrap_or_default(),
                 should_navigate: !is_branch,
             },
             (Ok(task), true) => {
@@ -510,7 +616,7 @@ impl CreateTaskModal {
                     labels.translate_with("createSucceeded", &[("title", &branch_name)])
                 };
                 CreateTaskEvent::FinishedInBackground {
-                    task_id: task.map(|task| task.id),
+                    task_id: task,
                     message,
                 }
             }
@@ -644,9 +750,11 @@ impl Render for CreateTaskModal {
         if let Some(error) = &self.error {
             form.push(
                 div()
+                    .relative()
                     .text_scale(text_scale::XS)
                     .text_color(theme.status.error)
                     .child(error.clone())
+                    .child(qa_text_layer("paragraph", error))
                     .into_any_element(),
             );
         }
@@ -848,6 +956,7 @@ impl CreateTaskModal {
                     .id("create-project-options")
                     .max_h(spacing(48.0))
                     .overflow_y_scroll()
+                    .track_scroll(&self.project_options_scroll)
                     .children(rows),
             );
         deferred(gpui_kit::anchored().snap_to_window().child(panel))
@@ -976,7 +1085,9 @@ impl CreateTaskModal {
                                 cx.notify();
                             }),
                         )
-                        .child(branch)
+                        .relative()
+                        .child(branch.clone())
+                        .child(qa_button_layer(&branch, &branch))
                         .into_any_element(),
                 );
             }

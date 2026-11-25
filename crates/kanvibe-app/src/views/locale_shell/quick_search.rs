@@ -211,6 +211,9 @@ impl LocaleShell {
             is_loading: true,
             ..QuickSearchState::default()
         });
+        // 새로 연 목록은 맨 위에서 시작한다
+        self.quick_search_scroll
+            .set_offset(gpui_kit::point(px(0.0), px(0.0)));
         self.quick_search_field
             .update(cx, |field, cx| field.set_text("", cx));
         let field_focus = gpui_kit::Focusable::focus_handle(self.quick_search_field.read(cx), cx);
@@ -273,11 +276,16 @@ impl LocaleShell {
         };
         match event {
             TextFieldEvent::Changed(_) => state.selected_index = 0,
+            // 키보드로 고른 결과는 목록 안에서 보이게 굴린다(TS `scrollIntoView({ block: "nearest" })`)
             TextFieldEvent::NavigationKey(key) if key == "down" => {
                 state.selected_index = (state.selected_index + 1).min(count.saturating_sub(1));
+                self.quick_search_scroll
+                    .scroll_to_item(state.selected_index);
             }
             TextFieldEvent::NavigationKey(key) if key == "up" => {
                 state.selected_index = state.selected_index.saturating_sub(1);
+                self.quick_search_scroll
+                    .scroll_to_item(state.selected_index);
             }
             TextFieldEvent::NavigationKey(_) => {}
             TextFieldEvent::Submitted { is_shift_pressed } => {
@@ -305,7 +313,9 @@ impl LocaleShell {
             .board()
             .filter(|board| board.read(cx).view_mode() == BoardViewMode::Workspace);
         if let Some(board) = workspace_board.filter(|_| !should_open_new_window) {
-            board.update(cx, |board, cx| board.select_workspace_task(task_id, cx));
+            board.update(cx, |board, cx| {
+                board.request_workspace_selection(task_id, cx)
+            });
             self.close_quick_search(window, cx);
             return;
         }
@@ -315,7 +325,11 @@ impl LocaleShell {
         };
         let locale = self.locale;
         self.close_quick_search(window, cx);
-        navigate_to_task_detail(task_id, locale, request, cx);
+        // 같은 창 이동은 창 루트가 이 덮개를 다시 읽으므로, 덮개 갱신이 끝난 뒤에 옮긴다
+        let task_id = task_id.to_string();
+        cx.defer(move |cx| {
+            navigate_to_task_detail(&task_id, locale, request, cx);
+        });
     }
 
     /// 빠른 검색이 열린 채 새 작업 단축키를 누르면, 고른 작업의 브랜치에서 시작하는 TODO 모달을 연다(TS `requestCreateBranchTodo`)
@@ -397,7 +411,8 @@ impl LocaleShell {
                     .id("quick-search-results")
                     .max_h(px(RESULT_LIST_MAX_HEIGHT))
                     .overflow_y_scroll()
-                    .child(body),
+                    .track_scroll(&self.quick_search_scroll)
+                    .children(body),
             )
             .child(dialog_footer(theme, self.quick_search_hint(cx)));
         let close = cx.listener(|this, _, window, cx| this.close_quick_search(window, cx));
@@ -426,12 +441,13 @@ impl LocaleShell {
         )
     }
 
+    /// 결과 목록의 행들(스크롤 칸의 바로 아래 자식이라야 고른 행으로 굴릴 수 있다)
     fn render_quick_search_body(
         &self,
         theme: &ThemeTokens,
         state: &QuickSearchState,
         cx: &mut Context<Self>,
-    ) -> AnyElement {
+    ) -> Vec<AnyElement> {
         let common = Translator::new(self.locale, "common");
         let message = |text: String| {
             div()
@@ -445,32 +461,38 @@ impl LocaleShell {
                 .into_any_element()
         };
         if state.is_loading {
-            return message(common.translate("loading"));
+            return vec![message(common.translate("loading"))];
         }
         if let Some(reason) = state.load_failure.clone() {
             let text = common.translate_with("loadFailed", &[("reason", &reason)]);
             let retry = cx.listener(|this, _, _, cx| this.retry_quick_search(cx));
-            return div()
-                .m(spacing(4.0))
-                .child(inline_load_error(
-                    theme,
-                    self.locale,
-                    text,
-                    "quick-search-retry",
-                    retry,
-                ))
-                .into_any_element();
+            return vec![
+                div()
+                    .m(spacing(4.0))
+                    .child(inline_load_error(
+                        theme,
+                        self.locale,
+                        text,
+                        "quick-search-retry",
+                        retry,
+                    ))
+                    .into_any_element(),
+            ];
         }
         let results = self.quick_search_results(cx);
         if results.is_empty() {
-            return message(Translator::new(self.locale, "taskSearch").translate("empty"));
+            return vec![message(
+                Translator::new(self.locale, "taskSearch").translate("empty"),
+            )];
         }
         let selected = state.selected_index.min(results.len() - 1);
-        div()
-            .children(results.iter().enumerate().map(|(index, result)| {
+        results
+            .iter()
+            .enumerate()
+            .map(|(index, result)| {
                 self.quick_search_row(theme, result, index, index == selected, cx)
-            }))
-            .into_any_element()
+            })
+            .collect()
     }
 
     fn quick_search_row(

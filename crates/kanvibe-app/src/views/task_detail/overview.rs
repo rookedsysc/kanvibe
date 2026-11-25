@@ -20,6 +20,7 @@ use super::panel::{card, status_badge_label};
 use super::usage_cards::visible_text;
 use crate::components::TailwindText;
 use crate::locale_format::format_date;
+use crate::polled_value::{PollingSubscription, start_polling};
 use crate::qa::targets::{QaTargetDescription, qa_target_layer};
 use crate::theme::{ThemeTokens, radius, spacing, text_scale};
 use crate::views::settings::service_call::{call_service, failure};
@@ -35,7 +36,7 @@ const PROJECT_BADGE_MAX_WIDTH: f32 = 140.0;
 pub struct DiffSummaryState {
     pub files: Vec<DiffFile>,
     pub is_expanded: bool,
-    _poll: Option<Task<()>>,
+    _poll: Option<PollingSubscription<Vec<DiffFile>>>,
 }
 
 /// 정보 카드 프로젝트 바로가기(TS `shortcut-link`)가 갈 곳과 제목.
@@ -99,7 +100,12 @@ fn pill(background: Rgba, text: Rgba, label: String) -> gpui_kit::Div {
 
 impl TaskDetailView {
     /// 작업 정보 패널이 보이고 브랜치가 있을 때만 변경 파일을 읽는다
-    pub(super) fn sync_diff_polling(&mut self, is_visible: bool, cx: &mut Context<Self>) {
+    pub(super) fn sync_diff_polling(
+        &mut self,
+        is_visible: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let has_branch = self
             .snapshot()
             .is_some_and(|snapshot| snapshot.task.branch_name.is_some());
@@ -113,26 +119,16 @@ impl TaskDetailView {
             return;
         }
         let task_id = self.task_id.clone();
-        self.editors.diff_summary._poll = Some(cx.spawn(async move |this, cx| {
-            loop {
-                let request = this.update(cx, |_, cx| read_diff_files(task_id.clone(), cx));
-                let Ok(request) = request else {
-                    return;
-                };
-                if let Ok(files) = request.await {
-                    let updated = this.update(cx, |view, cx| {
-                        view.editors.diff_summary.files = files;
-                        cx.notify();
-                    });
-                    if updated.is_err() {
-                        return;
-                    }
-                }
-                cx.background_executor()
-                    .timer(DIFF_FILES_POLL_INTERVAL)
-                    .await;
-            }
-        }));
+        self.editors.diff_summary._poll = Some(start_polling(
+            DIFF_FILES_POLL_INTERVAL,
+            move |cx| read_diff_files(task_id.clone(), cx),
+            |view: &mut Self, files, cx| {
+                view.editors.diff_summary.files = files;
+                cx.notify();
+            },
+            window,
+            cx,
+        ));
     }
 
     pub(super) fn render_overview(
@@ -660,7 +656,7 @@ fn changed_file_list(theme: &ThemeTokens, files: &[DiffFile]) -> gpui_kit::Div {
 
 fn read_diff_files(
     task_id: String,
-    cx: &mut Context<TaskDetailView>,
+    cx: &gpui_kit::App,
 ) -> Task<crate::services::ServiceResult<Vec<DiffFile>>> {
     let runtime = desktop_runtime(cx);
     let arguments = serde_json::json!([task_id]).to_string();

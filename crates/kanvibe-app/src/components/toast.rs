@@ -119,6 +119,20 @@ impl RenderOnce for Toast {
         } else {
             (theme.border.default, theme.text.primary)
         };
+        // TS는 실패를 `role=alert`, 나머지를 `role=status`로 두어 화면 낭독기가 바로 읽는다. 내용 글자는 메시지·동작·닫기 순이다
+        let live_region = qa_target_layer(QaTargetDescription {
+            role: if is_failure { "alert" } else { "status" },
+            name: self.message.clone(),
+            text: format!(
+                "{}{}×",
+                self.message,
+                self.action
+                    .as_ref()
+                    .map(|(label, _)| label.as_ref())
+                    .unwrap_or_default()
+            )
+            .into(),
+        });
         let action_button = self.action.map(|(label, handler)| {
             div()
                 .id("toast-action")
@@ -156,6 +170,7 @@ impl RenderOnce for Toast {
         div()
             .id(self.id)
             .occlude()
+            .relative()
             .flex()
             .items_start()
             .gap(spacing(3.0))
@@ -168,6 +183,7 @@ impl RenderOnce for Toast {
             .text_scale(text_scale::SM)
             .text_color(text_color)
             .shadow(box_shadows(&theme.shadow.md))
+            .child(live_region)
             .when(self.kind == ToastKind::Progress, |toast| {
                 toast.child(progress_ring(text_color.into()))
             })

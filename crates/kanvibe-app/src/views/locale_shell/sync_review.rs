@@ -313,8 +313,13 @@ impl LocaleShell {
                     .child(labels.review.translate("message"))
                     .child(
                         div()
+                            .relative()
                             .mt(spacing(2.0))
-                            .child(labels.review.translate("backgroundProcessing")),
+                            .child(labels.review.translate("backgroundProcessing"))
+                            .child(qa_text_layer(
+                                "paragraph",
+                                &labels.review.translate("backgroundProcessing"),
+                            )),
                     ),
             )
             .child(div().mt(spacing(4.0)).child(capped_scroll_area(
@@ -456,10 +461,12 @@ impl LocaleShell {
         let failure_reason = match &result {
             Some(DeleteResult::Failed(reason)) => Some(
                 div()
+                    .relative()
                     .mt(spacing(2.0))
                     .text_scale(text_scale::XS)
                     .text_color(theme.status.error)
-                    .child(reason.clone()),
+                    .child(reason.clone())
+                    .child(qa_text_layer("paragraph", reason)),
             ),
             _ => None,
         };
@@ -764,6 +771,21 @@ fn location_pill(
 }
 
 fn delete_status_pill(
+    theme: &ThemeTokens,
+    labels: &ReviewLabels,
+    result: &DeleteResult,
+) -> gpui_kit::Div {
+    let label = match result {
+        DeleteResult::Pending => labels.common.translate("delete"),
+        DeleteResult::Succeeded => labels.review.translate("deleteSucceeded"),
+        DeleteResult::Failed(_) => labels.review.translate("deleteFailed"),
+    };
+    delete_status_pill_shape(theme, labels, result)
+        .relative()
+        .child(qa_text_layer("status", &label))
+}
+
+fn delete_status_pill_shape(
     theme: &ThemeTokens,
     labels: &ReviewLabels,
     result: &DeleteResult,

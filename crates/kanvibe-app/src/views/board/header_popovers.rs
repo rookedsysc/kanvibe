@@ -20,7 +20,7 @@ use super::task_card::project_marker;
 use super::task_filters::{ProjectDisplay, desktop_key, pick_available_desktops};
 use crate::components::popover::POPOVER_LAYER_PRIORITY;
 use crate::components::{TailwindText, box_shadows, fade};
-use crate::qa::targets::{QaTargetDescription, qa_target_layer};
+use crate::qa::targets::{QaTargetDescription, qa_target_layer, qa_text_layer};
 use crate::theme::{ThemeTokens, radius, spacing, text_scale};
 
 pub(super) const MAX_VISIBLE_CHIPS: usize = 2;
@@ -234,7 +234,9 @@ impl BoardView {
                 .text_scale(text_scale::XS)
                 .css_weight(500)
                 .text_color(theme.brand.primary)
-                .child(div().truncate().child(label))
+                .relative()
+                .child(div().truncate().child(label.clone()))
+                .child(qa_text_layer("status", &label))
         };
         let visible = visible_names.into_iter().map(|name| chip(name).child("×"));
         let overflow = (hidden_count > 0).then(|| chip(format!("+{hidden_count}")));
@@ -315,6 +317,7 @@ impl BoardView {
                     .id("board-project-options")
                     .max_h(spacing(48.0))
                     .overflow_y_scroll()
+                    .track_scroll(&self.project_options_scroll)
                     .children(rows),
             );
         deferred(gpui_kit::anchored().snap_to_window().child(panel))
@@ -412,9 +415,16 @@ impl BoardView {
         );
         let count = options.len();
         match key {
-            "down" if count > 0 => self.popover_highlight = (self.popover_highlight + 1) % count,
+            // 키보드로 고른 항목은 목록 안에서 보이게 굴린다(TS `scrollIntoView({ block: "nearest" })`)
+            "down" if count > 0 => {
+                self.popover_highlight = (self.popover_highlight + 1) % count;
+                self.project_options_scroll
+                    .scroll_to_item(self.popover_highlight);
+            }
             "up" if count > 0 => {
-                self.popover_highlight = (self.popover_highlight + count - 1) % count
+                self.popover_highlight = (self.popover_highlight + count - 1) % count;
+                self.project_options_scroll
+                    .scroll_to_item(self.popover_highlight);
             }
             "enter" => {
                 if let Some(project) =
