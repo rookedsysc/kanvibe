@@ -6,6 +6,7 @@
 
 mod bootstrap;
 mod command;
+mod process;
 mod pty_attachment;
 mod socket_forward;
 #[cfg(test)]
@@ -28,6 +29,7 @@ use crate::hook_tunnel::{HostHookHandler, HostHookRequest, HostHookResponse};
 
 pub use bootstrap::{HostTransportSpawner, connect_through_loader};
 pub use command::HostExecuteOptions;
+pub use process::{HostProcess, HostProcessInput, HostProcessOutput, HostProcessTermination};
 pub use pty_attachment::RemotePtyAttachment;
 pub use socket_forward::HostSocketForward;
 

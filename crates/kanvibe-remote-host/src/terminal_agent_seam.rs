@@ -7,15 +7,19 @@
 
 use std::io::{BufRead, BufReader, Cursor, Read, Write};
 use std::sync::Arc;
+use std::time::Duration;
 
 use kanvibe_remote_agent::bootstrap::AgentLaunchMode;
 use kanvibe_terminal::remote_terminal_service::{
-    RemoteTerminalAgentBundle, RemoteTerminalAgentProcess, RemoteTerminalAgentSpawner,
-    RemoteTerminalCertificate, RemoteTerminalCertificateIssuer,
+    CERTIFICATE_VALIDITY_MS, RemoteTerminalAgentBundle, RemoteTerminalAgentProcess,
+    RemoteTerminalAgentSpawner, RemoteTerminalAgentTermination, RemoteTerminalCertificate,
+    RemoteTerminalCertificateIssuer,
 };
 use serde_json::Value;
 
 use crate::agent_binaries::AgentBinaryCatalog;
+use crate::connection::HostProcessTermination;
+use crate::pool::RemoteHostConnectionPool;
 
 const MAX_FIRST_LINE_BYTES: u64 = 4096;
 
@@ -113,6 +117,80 @@ impl RemoteTerminalAgentSpawner for UploadingRemoteTerminalAgentSpawner {
             }
         }
         Err("Remote terminal agent did not start after upload".into())
+    }
+}
+
+/// 호스트 daemon 연결로 agent 명령을 띄우는 길
+pub trait DaemonAgentLauncher: Send + Sync {
+    /// daemon을 쓸 수 없는 호스트면 `None`이다. 연결 준비가 실패하면 오류다(TS `getRemoteHostConnection`이 던지는 경우)
+    fn launch(
+        &self,
+        ssh_host: &str,
+        command: &str,
+    ) -> Result<Option<RemoteTerminalAgentProcess>, String>;
+}
+
+/// 연결 풀의 daemon 연결로 띄운다. 시간 제한은 TS처럼 직접 연결 인증서의 유효 기간이다
+pub struct PooledDaemonAgentLauncher(pub Arc<RemoteHostConnectionPool>);
+
+impl DaemonAgentLauncher for PooledDaemonAgentLauncher {
+    fn launch(
+        &self,
+        ssh_host: &str,
+        command: &str,
+    ) -> Result<Option<RemoteTerminalAgentProcess>, String> {
+        let Some(connection) = self
+            .0
+            .connection(ssh_host)
+            .map_err(|error| error.to_string())?
+        else {
+            return Ok(None);
+        };
+        let timeout = Duration::from_millis(CERTIFICATE_VALIDITY_MS as u64);
+        let process = connection.create_process(command, timeout)?;
+        Ok(Some(RemoteTerminalAgentProcess {
+            stdin: Box::new(process.stdin),
+            stdout: Box::new(process.stdout),
+            termination: Box::new(process.termination),
+        }))
+    }
+}
+
+impl RemoteTerminalAgentTermination for HostProcessTermination {
+    fn terminate(&self) {
+        HostProcessTermination::terminate(self);
+    }
+}
+
+/// daemon 연결이 있는 호스트는 그 연결로, 없으면 감싼 실행기(시스템 ssh)로 agent를 띄운다
+/// (TS `connection ? connection.createProcess(...) : spawn("ssh", ...)`). 원격 명령은 `ssh_arguments`의 마지막 원소다
+pub struct DaemonFirstRemoteTerminalAgentSpawner {
+    daemon: Arc<dyn DaemonAgentLauncher>,
+    ssh: Arc<dyn RemoteTerminalAgentSpawner>,
+}
+
+impl DaemonFirstRemoteTerminalAgentSpawner {
+    pub fn new(
+        daemon: Arc<dyn DaemonAgentLauncher>,
+        ssh: Arc<dyn RemoteTerminalAgentSpawner>,
+    ) -> Self {
+        Self { daemon, ssh }
+    }
+}
+
+impl RemoteTerminalAgentSpawner for DaemonFirstRemoteTerminalAgentSpawner {
+    fn spawn(
+        &self,
+        ssh_host: &str,
+        ssh_arguments: &[String],
+    ) -> Result<RemoteTerminalAgentProcess, String> {
+        let remote_command = ssh_arguments
+            .last()
+            .ok_or("Remote terminal agent command is missing")?;
+        match self.daemon.launch(ssh_host, remote_command)? {
+            Some(process) => Ok(process),
+            None => self.ssh.spawn(ssh_host, ssh_arguments),
+        }
     }
 }
 

@@ -36,10 +36,13 @@ impl HostConnection {
         });
         let attachment = RemotePtyAttachment::start(&id, send, columns, rows, callbacks);
         let receiver = Arc::clone(&attachment);
-        self.subscribe(
+        if let Err(error) = self.subscribe(
             &id,
             Arc::new(move |record: &HostRecord| receiver.receive(record)),
-        )?;
+        ) {
+            attachment.finish_detached(error.clone());
+            return Err(error);
+        }
         let (connection, unsubscribe_id) = (Arc::downgrade(self), id.clone());
         attachment.set_on_finished(Box::new(move || {
             if let Some(connection) = connection.upgrade() {
@@ -49,6 +52,7 @@ impl HostConnection {
         let open = json!({ "type": "pty.open", "id": id, "key": key, "command": command, "cols": columns, "rows": rows });
         if let Err(error) = self.send(open) {
             self.unsubscribe(&id);
+            attachment.finish_detached(error.clone());
             return Err(error);
         }
         attachment.wait_ready(START_TIMEOUT)?;
@@ -157,13 +161,18 @@ impl RemoteHostConnection for RegistryHostConnection {
     }
 }
 
-/// 터미널 레지스트리가 쓰는 연결 조회. daemon을 쓸 수 없거나 시작에 실패하면 순수 ssh 경로로 가도록 `None`이다
+/// 터미널 레지스트리가 쓰는 연결 조회. daemon을 쓸 수 없는 호스트만 순수 ssh 경로로 가도록 `Ok(None)`이고, 연결 오류는 그대로 돌려준다
 pub struct RegistryHostConnections(pub Arc<RemoteHostConnectionPool>);
 
 impl RemoteHostConnections for RegistryHostConnections {
-    fn connection(&self, ssh_host: &str) -> Option<Arc<dyn RemoteHostConnection>> {
-        let connection = self.0.connection(ssh_host).ok().flatten()?;
-        Some(Arc::new(RegistryHostConnection(connection)))
+    fn connection(&self, ssh_host: &str) -> Result<Option<Arc<dyn RemoteHostConnection>>, String> {
+        let connection = self
+            .0
+            .connection(ssh_host)
+            .map_err(|error| error.to_string())?;
+        Ok(connection.map(|connection| {
+            Arc::new(RegistryHostConnection(connection)) as Arc<dyn RemoteHostConnection>
+        }))
     }
 }
 

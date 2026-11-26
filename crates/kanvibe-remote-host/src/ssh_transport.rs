@@ -6,7 +6,9 @@
 use std::io::Read;
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::channel;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use kanvibe_process::shell_environment::ShellEnvironment;
 use kanvibe_process::ssh_config::{
@@ -110,19 +112,54 @@ impl SystemEffectiveSshConfig {
 
 impl EffectiveSshConfig for SystemEffectiveSshConfig {
     fn resolve(&self, ssh_arguments: &[String]) -> Result<String, String> {
-        let output = Command::new("ssh")
+        let mut command = Command::new("ssh");
+        command
             .arg("-G")
             .args(ssh_arguments)
             .env_clear()
-            .envs(&self.environment)
-            .stdin(Stdio::null())
-            .output()
-            .map_err(|error| error.to_string())?;
-        if !output.status.success() {
-            return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
-        }
-        Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+            .envs(&self.environment);
+        bounded_command_stdout(command, EFFECTIVE_CONFIG_TIMEOUT)
     }
+}
+
+/// `ssh -G` 시간·출력 상한(TS `execFileAsync(..., { timeout: 10_000, maxBuffer: 1024 * 1024 })`).
+/// `~/.ssh/config`의 `Match exec`가 끝나지 않아도 원격 연결 준비가 그 자리에서 멈추지 않게 한다
+const EFFECTIVE_CONFIG_TIMEOUT: Duration = Duration::from_secs(10);
+const EFFECTIVE_CONFIG_MAX_OUTPUT_BYTES: usize = 1024 * 1024;
+
+/// 명령을 실행해 stdout을 돌려준다. 시간 안에 끝나지 않으면 죽이고 실패하며, 출력이 상한을 넘어도 실패한다
+fn bounded_command_stdout(mut command: Command, timeout: Duration) -> Result<String, String> {
+    let child = command
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|error| error.to_string())?;
+    let process_id = child.id() as libc::pid_t;
+    let (sender, outputs) = channel();
+    std::thread::spawn(move || {
+        let _ = sender.send(child.wait_with_output());
+    });
+    let output = match outputs.recv_timeout(timeout) {
+        Ok(output) => output.map_err(|error| error.to_string())?,
+        Err(_) => {
+            // SAFETY: 기다리는 스레드가 아직 회수하지 않은 자식 pid에만 보낸다
+            unsafe { libc::kill(process_id, libc::SIGKILL) };
+            return Err(format!(
+                "ssh -G timed out after {} seconds",
+                timeout.as_secs()
+            ));
+        }
+    };
+    if output.stdout.len() > EFFECTIVE_CONFIG_MAX_OUTPUT_BYTES
+        || output.stderr.len() > EFFECTIVE_CONFIG_MAX_OUTPUT_BYTES
+    {
+        return Err("ssh -G maxBuffer length exceeded".into());
+    }
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
 /// 같은 원격 계정에 붙는 별칭이 같은 값을 갖는 식별자. `%n`·`%k`가 남은 설정은 별칭마다 접속 대상이 다를 수 있어 나눈다
@@ -151,4 +188,38 @@ pub fn build_endpoint_probe_args(config: &SshHostConfig) -> Vec<String> {
             ..SshArgsOptions::default()
         },
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Instant;
+
+    use super::*;
+
+    #[test]
+    fn a_command_that_does_not_finish_in_time_is_killed_and_fails() {
+        let mut command = Command::new("sleep");
+        command.arg("30");
+        let started = Instant::now();
+
+        let error = bounded_command_stdout(command, Duration::from_millis(200)).unwrap_err();
+
+        assert!(error.contains("timed out"), "{error}");
+        assert!(started.elapsed() < Duration::from_secs(10));
+    }
+
+    #[test]
+    fn output_over_the_limit_fails_and_ordinary_output_is_returned() {
+        let mut oversized = Command::new("head");
+        oversized.args(["-c", "1048577", "/dev/zero"]);
+        let error = bounded_command_stdout(oversized, Duration::from_secs(10)).unwrap_err();
+        assert!(error.contains("maxBuffer"), "{error}");
+
+        let mut ordinary = Command::new("printf");
+        ordinary.arg("user fixture\\nhost route-a\\n");
+        assert_eq!(
+            bounded_command_stdout(ordinary, Duration::from_secs(10)).unwrap(),
+            "user fixture\nhost route-a\n"
+        );
+    }
 }

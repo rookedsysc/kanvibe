@@ -187,3 +187,89 @@ fn the_agent_wire_helpers_match_the_desktop_protocol() {
         );
     }
 }
+
+/// daemon 연결 흉내. `has_connection`이 거짓이면 daemon을 쓸 수 없는 호스트다
+struct FakeDaemonLauncher {
+    has_connection: bool,
+    launched_commands: Mutex<Vec<(String, String)>>,
+}
+
+impl DaemonAgentLauncher for FakeDaemonLauncher {
+    fn launch(
+        &self,
+        ssh_host: &str,
+        command: &str,
+    ) -> Result<Option<RemoteTerminalAgentProcess>, String> {
+        if !self.has_connection {
+            return Ok(None);
+        }
+        self.launched_commands
+            .lock()
+            .unwrap()
+            .push((ssh_host.to_string(), command.to_string()));
+        Ok(Some(RemoteTerminalAgentProcess {
+            stdin: Box::new(CapturedStdin(Arc::default())),
+            stdout: Box::new(Cursor::new(b"{\"type\":\"bootstrap-ready\"}\n".to_vec())),
+            termination: Box::new(CountedTermination(Arc::default())),
+        }))
+    }
+}
+
+fn daemon_first_spawner(
+    has_connection: bool,
+) -> (
+    DaemonFirstRemoteTerminalAgentSpawner,
+    Arc<FakeDaemonLauncher>,
+    Arc<ScriptedSpawner>,
+) {
+    let daemon = Arc::new(FakeDaemonLauncher {
+        has_connection,
+        launched_commands: Mutex::default(),
+    });
+    let ssh = Arc::new(ScriptedSpawner {
+        launches: AtomicUsize::new(0),
+        uploaded: Arc::default(),
+        terminations: Arc::default(),
+    });
+    let spawner = DaemonFirstRemoteTerminalAgentSpawner::new(daemon.clone(), ssh.clone());
+    (spawner, daemon, ssh)
+}
+
+#[test]
+fn a_host_with_a_daemon_connection_runs_the_agent_command_through_it_without_ssh() {
+    let (spawner, daemon, ssh) = daemon_first_spawner(true);
+    let arguments = vec![
+        "-T".to_string(),
+        "fixture".to_string(),
+        "sh -lc 'agent'".to_string(),
+    ];
+
+    let process = spawner.spawn("fixture", &arguments).unwrap();
+
+    let first_line = BufReader::new(process.stdout)
+        .lines()
+        .next()
+        .unwrap()
+        .unwrap();
+    assert_eq!(first_line, "{\"type\":\"bootstrap-ready\"}");
+    assert_eq!(
+        *daemon.launched_commands.lock().unwrap(),
+        [("fixture".to_string(), "sh -lc 'agent'".to_string())]
+    );
+    assert_eq!(ssh.launches.load(Ordering::SeqCst), 0);
+}
+
+#[test]
+fn a_host_without_a_daemon_connection_falls_back_to_system_ssh() {
+    let (spawner, daemon, ssh) = daemon_first_spawner(false);
+
+    spawner
+        .spawn(
+            "fixture",
+            &["fixture".to_string(), "sh -lc 'agent'".to_string()],
+        )
+        .unwrap();
+
+    assert!(daemon.launched_commands.lock().unwrap().is_empty());
+    assert_eq!(ssh.launches.load(Ordering::SeqCst), 1);
+}

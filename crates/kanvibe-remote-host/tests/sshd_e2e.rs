@@ -305,7 +305,10 @@ impl Drop for NamespaceCleanup {
 
 fn assert_pty_round_trip(pool: &Arc<RemoteHostConnectionPool>) {
     let connections = RegistryHostConnections(Arc::clone(pool));
-    let connection = connections.connection(HOST_ALIAS).expect("레지스트리 연결");
+    let connection = connections
+        .connection(HOST_ALIAS)
+        .expect("레지스트리 연결 오류")
+        .expect("레지스트리 연결");
     let (sender, outputs) = channel();
     let sender = Mutex::new(sender);
     let callbacks = PtyEventCallbacks {

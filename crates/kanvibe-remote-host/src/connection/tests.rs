@@ -3,7 +3,7 @@ mod fake_remote;
 mod integration;
 mod pty_attachment;
 
-use std::io::Write;
+use std::io::{Read, Write};
 use std::net::Shutdown;
 use std::os::unix::net::UnixStream;
 use std::sync::Arc;
@@ -71,6 +71,118 @@ fn socket_forward_keeps_sending_while_acks_are_pending_and_drains_before_end() {
     connection.close();
 }
 
+/// 로컬 연결을 열고 원격 소켓이 준비됐다고 알린다. 돌려준 id로 `socket.data`를 보낸다
+#[test]
+fn a_finished_local_client_is_dropped_from_the_open_streams() {
+    let (connection, remote) = connect_fake();
+    let forward = connection.forward_socket("/remote/herdr.sock").unwrap();
+    let local = UnixStream::connect(forward.path()).unwrap();
+    let id = remote.wait_for("socket.open", 1)[0]["id"].clone();
+    remote.send(json!({ "type": "socket.ready", "id": id }));
+    assert_eq!(forward.open_local_stream_count(), 1);
+
+    drop(local);
+    remote.wait_for("socket.end", 1);
+    remote.send(json!({ "type": "socket.close", "id": id }));
+    remote.wait_for("socket.close", 1);
+
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while forward.open_local_stream_count() > 0 {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "닫힌 로컬 연결이 남았다"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    connection.close();
+}
+
+fn open_ready_forward(
+    connection: &Arc<HostConnection>,
+    remote: &FakeRemote,
+) -> (Arc<HostSocketForward>, UnixStream, serde_json::Value) {
+    let forward = connection.forward_socket("/remote/herdr.sock").unwrap();
+    let local = UnixStream::connect(forward.path()).unwrap();
+    let id = remote.wait_for("socket.open", 1)[0]["id"].clone();
+    remote.send(json!({ "type": "socket.ready", "id": id }));
+    (forward, local, id)
+}
+
+/// 원격이 로컬 연결로 `chunks`개의 조각을 보낸 뒤 명령 하나를 끝낸다. 명령 결과가 돌아온 시점에는
+/// 수신 스레드가 앞선 조각을 모두 처리한 것이다
+fn flood_then_finish_command(
+    connection: &Arc<HostConnection>,
+    remote: FakeRemote,
+    id: serde_json::Value,
+    chunks: usize,
+) -> (
+    std::sync::mpsc::Receiver<String>,
+    std::thread::JoinHandle<FakeRemote>,
+) {
+    let (finished, finished_receiver) = std::sync::mpsc::channel();
+    let command = {
+        let connection = Arc::clone(connection);
+        std::thread::spawn(move || {
+            let output = connection.execute("after-flood", &HostExecuteOptions::default());
+            let _ = finished.send(output.unwrap());
+        })
+    };
+    let command_id = remote.wait_for("exec.open", 1)[0]["id"].clone();
+    let chunk = encode_host_bytes(&vec![b'x'; HOST_CHUNK_BYTES]);
+    let sending = std::thread::spawn(move || {
+        for _ in 0..chunks {
+            remote.send(json!({ "type": "socket.data", "id": id, "data": chunk }));
+        }
+        remote.send(json!({ "type": "exec.data", "id": command_id, "stream": "stdout", "data": encode_host_bytes(b"done") }));
+        remote.send(json!({ "type": "exec.exit", "id": command_id, "code": 0, "signal": null }));
+        remote
+    });
+    drop(command);
+    (finished_receiver, sending)
+}
+
+#[test]
+fn a_local_client_that_stops_reading_does_not_block_other_records_of_the_host() {
+    let (connection, remote) = connect_fake();
+    let (_forward, _local, id) = open_ready_forward(&connection, &remote);
+
+    let (finished, sending) = flood_then_finish_command(&connection, remote, id, 64);
+
+    assert_eq!(
+        finished
+            .recv_timeout(std::time::Duration::from_secs(3))
+            .unwrap(),
+        "done"
+    );
+    sending.join().unwrap();
+    connection.close();
+}
+
+#[test]
+fn a_local_client_that_falls_too_far_behind_is_disconnected_alone() {
+    use std::io::Read;
+    let (connection, remote) = connect_fake();
+    let (_forward, mut local, id) = open_ready_forward(&connection, &remote);
+    let chunks = kanvibe_remote_agent::protocol::HOST_BUFFER_BYTES / HOST_CHUNK_BYTES + 32;
+
+    let (finished, sending) = flood_then_finish_command(&connection, remote, id, chunks);
+    assert_eq!(
+        finished
+            .recv_timeout(std::time::Duration::from_secs(3))
+            .unwrap(),
+        "done"
+    );
+    sending.join().unwrap();
+
+    local
+        .set_read_timeout(Some(std::time::Duration::from_secs(3)))
+        .unwrap();
+    let mut received = Vec::new();
+    local.read_to_end(&mut received).unwrap();
+    assert!(received.len() < chunks * HOST_CHUNK_BYTES);
+    connection.close();
+}
+
 #[test]
 fn concurrent_commands_are_correlated_and_unicode_split_across_chunks_is_kept() {
     let (connection, remote) = connect_fake();
@@ -124,6 +236,88 @@ fn a_disconnect_rejects_an_unknown_command_outcome_without_replay() {
         error.message
     );
     assert!(!error.has_remote_command_completed);
+    assert_eq!(remote.records_of("exec.open").len(), 1);
+}
+
+#[test]
+fn a_pty_open_refused_by_a_closed_connection_ends_its_delivery_thread() {
+    let (connection, _remote) = connect_fake();
+    connection.close();
+    let (exit_sender, exits) = std::sync::mpsc::channel();
+    let callbacks = kanvibe_terminal::pty::PtyEventCallbacks {
+        on_output: Box::new(|_| {}),
+        on_exit: Box::new(move |exit| {
+            let _ = exit_sender.send(exit);
+        }),
+    };
+
+    let result = connection.open_pty("key", "true", 80, 24, callbacks);
+
+    assert!(result.is_err());
+    let exit = exits
+        .recv_timeout(std::time::Duration::from_secs(5))
+        .expect("delivery thread finished");
+    assert!(exit.is_detached);
+}
+
+struct FixtureHostOnly;
+
+impl crate::hook_tunnel::SshHostLookup for FixtureHostOnly {
+    fn find_host(&self, ssh_host: &str) -> Option<kanvibe_process::ssh_config::SshHostConfig> {
+        (ssh_host == "fixture").then(fake_remote::fixture_config)
+    }
+}
+
+struct FixedEffectiveConfig;
+
+impl crate::ssh_transport::EffectiveSshConfig for FixedEffectiveConfig {
+    fn resolve(&self, _: &[String]) -> Result<String, String> {
+        Ok("user fixture\n".into())
+    }
+}
+
+#[test]
+fn a_runtime_command_for_a_host_with_a_daemon_goes_through_the_daemon_connection() {
+    let (remote, spawner, catalog) = FakeRemote::start();
+    let pool = crate::pool::RemoteHostConnectionPool::new(
+        crate::pool::RemoteHostConnectionPoolDependencies {
+            ssh_hosts: Arc::new(FixtureHostOnly),
+            binaries: Arc::new(catalog),
+            transport_spawner: Arc::new(spawner),
+            effective_ssh_config: Arc::new(FixedEffectiveConfig),
+        },
+    );
+    pool.configure_transport("qa-client", "client").unwrap();
+    let home = tempfile::tempdir().unwrap();
+    let system_runner = Arc::new(
+        kanvibe_process::exec::system::SystemShellCommandRunner::new(
+            kanvibe_process::shell_environment::ShellEnvironment::new(),
+            home.path().to_str().unwrap(),
+            kanvibe_process::exec::remote::RemoteSshSettings::default(),
+        ),
+    );
+    let runner = crate::command_runner::DaemonRoutedCommandRunner::new(system_runner, pool);
+    use kanvibe_process::exec::ShellCommandRunner;
+    let runner = Arc::new(runner);
+
+    let remote_result = {
+        let runner = Arc::clone(&runner);
+        std::thread::spawn(move || {
+            runner.exec_git("git status", Some("fixture"), &Default::default())
+        })
+    };
+    let open = remote.wait_for("exec.open", 1)[0].clone();
+    assert_eq!(open["command"], "git status");
+    remote.send(json!({ "type": "exec.data", "id": open["id"], "stream": "stdout", "data": encode_host_bytes(b"clean") }));
+    remote.send(json!({ "type": "exec.exit", "id": open["id"], "code": 0, "signal": null }));
+
+    assert_eq!(remote_result.join().unwrap().unwrap(), "clean");
+    assert_eq!(
+        runner
+            .exec_git("printf local", None, &Default::default())
+            .unwrap(),
+        "local"
+    );
     assert_eq!(remote.records_of("exec.open").len(), 1);
 }
 
@@ -233,4 +427,63 @@ fn an_ssh_exit_before_bootstrap_is_classified_and_keeps_its_stderr() {
         "{}",
         error.message
     );
+}
+
+#[test]
+fn a_created_process_streams_stdin_and_stdout_through_the_daemon_records() {
+    let (connection, remote) = connect_fake();
+    let mut process = connection
+        .create_process("sh -lc 'agent'", std::time::Duration::from_secs(60))
+        .unwrap();
+    let open = remote.wait_for("exec.open", 1)[0].clone();
+    let id = open["id"].clone();
+    assert_eq!(open["command"], "sh -lc 'agent'");
+    assert_eq!(open["interactive"], true);
+
+    let writer = std::thread::spawn(move || {
+        process.stdin.write_all(b"bootstrap\n").unwrap();
+        process
+    });
+    let stdin_record = remote.wait_for("exec.stdin", 1)[0].clone();
+    assert_eq!(
+        decode_host_bytes(stdin_record.get("data"), HOST_CHUNK_BYTES).unwrap(),
+        b"bootstrap\n"
+    );
+    remote.send(json!({ "type": "exec.stdin-ready", "id": id }));
+    let mut process = writer.join().unwrap();
+
+    remote.send(json!({ "type": "exec.data", "id": id, "stream": "stderr", "data": encode_host_bytes(b"noise") }));
+    remote.send(json!({ "type": "exec.data", "id": id, "stream": "stdout", "data": encode_host_bytes(b"{\"type\":\"ready\"}\n") }));
+    let mut line = [0u8; 17];
+    process.stdout.read_exact(&mut line).unwrap();
+    assert_eq!(&line, b"{\"type\":\"ready\"}\n");
+
+    drop(process.stdin);
+    let end = remote.wait_for("exec.stdin", 2)[1].clone();
+    assert_eq!(end["end"], true);
+    remote.send(json!({ "type": "exec.exit", "id": id, "code": 0 }));
+    let mut rest = Vec::new();
+    process.stdout.read_to_end(&mut rest).unwrap();
+    assert!(rest.is_empty());
+    process.termination.terminate();
+    assert!(remote.records_of("exec.cancel").is_empty());
+    connection.close();
+}
+
+#[test]
+fn terminating_a_running_process_cancels_it_and_ends_its_stdout() {
+    let (connection, remote) = connect_fake();
+    let mut process = connection
+        .create_process("sleep 100", std::time::Duration::from_secs(60))
+        .unwrap();
+    let id = remote.wait_for("exec.open", 1)[0]["id"].clone();
+
+    process.termination.terminate();
+
+    assert_eq!(remote.wait_for("exec.cancel", 1)[0]["id"], id);
+    let mut rest = Vec::new();
+    process.stdout.read_to_end(&mut rest).unwrap();
+    assert!(rest.is_empty());
+    assert!(process.stdin.write_all(b"late").is_err());
+    connection.close();
 }

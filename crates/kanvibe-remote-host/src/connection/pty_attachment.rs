@@ -213,6 +213,11 @@ impl RemotePtyAttachment {
     }
 
     /// 끝낸다. 기다리던 입력과 출력은 버리고 종료 알림만 전달 스레드가 보낸다
+    /// 열기 전에 실패한 attachment를 끝내 전달 스레드를 거둔다(TS `pty.open` 전송 실패 때의 `finish`)
+    pub(crate) fn finish_detached(&self, error: String) {
+        self.finish(DETACHED_EXIT, Some(error));
+    }
+
     fn finish(&self, exit: PtyExit, error: Option<String>) {
         let mut state = self.state.lock().unwrap();
         if state.finished.is_some() {
