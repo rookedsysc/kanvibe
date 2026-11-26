@@ -19,9 +19,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Cloudflare Workers 빌드와 같은 pnpm을 쓰도록 docs-site의 packageManager 버전을 그대로 설치한다.
+      # 버전이 다르면 pnpm이 자신을 다시 띄우고, 메타데이터 검증이 종료한 바깥 pnpm 뒤에 서버가 남아 단계가 끝나지 않는다.
       - uses: pnpm/action-setup@v4
         with:
-          version: 10
+          package_json_file: docs-site/package.json
 
       - uses: actions/setup-node@v4
         with:
