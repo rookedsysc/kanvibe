@@ -815,6 +815,31 @@ pub fn build_herdr_observe_pane_command(
     build_herdr_terminal_session_command(session_name, "observe", pane_id, cols, rows)
 }
 
+/// SSH로 띄우는 observe. observe는 stdin을 읽지 않아 SSH 채널이 닫혀도 pane이 다음에 출력할 때까지 원격에 남는다.
+/// 데스크탑은 stdin을 열어 둔 채로 두므로, stdin이 닫혔다는 것은 SSH 채널이 닫혔다는 뜻이다. 그때 observe를 끝낸다
+pub fn build_herdr_remote_observe_pane_command(
+    session_name: &str,
+    pane_id: &str,
+    cols: i64,
+    rows: i64,
+) -> Result<String, String> {
+    let observe = build_herdr_observe_pane_command(session_name, pane_id, cols, rows)?;
+    Ok(end_when_stdin_closes(&observe))
+}
+
+/// `command`를 stdin과 떼어 띄우고, stdin이 닫히면 끝낸다. 출력은 건드리지 않고 종료 코드는 `command`의 것이다.
+/// 비대화형 sh는 백그라운드 명령의 stdin을 /dev/null로 바꾸므로, stdin을 fd 3으로 먼저 복제해 지켜본다.
+/// `command`가 먼저 끝나면 지켜보던 셸도 끝내 데스크탑이 출력 끝과 종료를 바로 본다.
+/// `$!`가 곧 `command`의 pid여야 끝낼 수 있으므로 `command`는 단순 명령 하나여야 한다
+fn end_when_stdin_closes(command: &str) -> String {
+    format!(
+        "exec 3<&0; {command} </dev/null & observer=$!; \
+         {{ cat <&3 >/dev/null 2>&1; kill \"$observer\" 2>/dev/null; }} & stdin_watcher=$!; \
+         exec 3<&-; wait \"$observer\"; observer_status=$?; kill \"$stdin_watcher\" 2>/dev/null; \
+         exit \"$observer_status\""
+    )
+}
+
 pub fn build_herdr_control_pane_command(
     session_name: &str,
     pane_id: &str,

@@ -966,3 +966,83 @@ fn scroll_request_with_invalid_direction_or_cell_is_dropped() {
         assert_eq!(parse_terminal_scroll_request(&record), None, "{record}");
     }
 }
+
+/// 원격 observe 감싸기를 실제 `sh`로 돌린다. 데스크탑의 ssh 자식처럼 stdin과 stdout을 파이프로 잇는다
+fn spawn_until_stdin_closes(fake_observe: &str) -> std::process::Child {
+    std::process::Command::new("sh")
+        .arg("-c")
+        .arg(end_when_stdin_closes(fake_observe))
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .unwrap()
+}
+
+fn wait_for_exit(
+    child: &mut std::process::Child,
+    timeout: std::time::Duration,
+) -> Option<std::process::ExitStatus> {
+    let deadline = std::time::Instant::now() + timeout;
+    while std::time::Instant::now() < deadline {
+        if let Some(status) = child.try_wait().unwrap() {
+            return Some(status);
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    let _ = child.kill();
+    None
+}
+
+fn is_process_alive(process_id: libc::pid_t) -> bool {
+    // SAFETY: 신호 0은 프로세스가 있는지만 묻는다
+    unsafe { libc::kill(process_id, 0) == 0 }
+}
+
+#[test]
+fn remote_observe_wraps_the_plain_observe_command() {
+    let observe = build_herdr_observe_pane_command("session", "w1:p1", 60, 38).unwrap();
+
+    let remote = build_herdr_remote_observe_pane_command("session", "w1:p1", 60, 38).unwrap();
+
+    assert_eq!(remote, end_when_stdin_closes(&observe));
+    assert!(
+        remote.contains(&format!("{observe} </dev/null &")),
+        "{remote}"
+    );
+}
+
+#[test]
+fn an_observer_that_ignores_stdin_ends_soon_after_stdin_closes() {
+    // stdin을 읽지 않고 오래 도는 가짜 observe. 시작하면 자기 pid를 한 줄로 알린다
+    let mut wrapper = spawn_until_stdin_closes("sh -c 'echo $$; exec sleep 30'");
+    let mut stdout = std::io::BufReader::new(wrapper.stdout.take().unwrap());
+    let mut first_line = String::new();
+    std::io::BufRead::read_line(&mut stdout, &mut first_line).unwrap();
+    let observer_id: libc::pid_t = first_line.trim().parse().unwrap();
+    assert!(is_process_alive(observer_id));
+
+    drop(wrapper.stdin.take());
+
+    let status = wait_for_exit(&mut wrapper, std::time::Duration::from_secs(5))
+        .expect("stdin이 닫히면 곧 끝난다");
+    assert!(!status.success(), "{status:?}");
+    assert!(
+        !is_process_alive(observer_id),
+        "observe {observer_id}가 남았다"
+    );
+}
+
+#[test]
+fn an_observer_that_ends_by_itself_keeps_its_output_bytes_and_exit_code() {
+    let mut wrapper = spawn_until_stdin_closes(r#"sh -c "printf 'frame\000\377\n'; exit 7""#);
+
+    let status = wait_for_exit(&mut wrapper, std::time::Duration::from_secs(5))
+        .expect("stdin이 열려 있어도 observe가 끝나면 끝난다");
+    let mut output = Vec::new();
+    std::io::Read::read_to_end(&mut wrapper.stdout.take().unwrap(), &mut output).unwrap();
+    drop(wrapper.stdin.take());
+
+    assert_eq!(output, b"frame\0\xff\n");
+    assert_eq!(status.code(), Some(7));
+}

@@ -11,13 +11,29 @@ use std::time::{Duration, Instant};
 
 use kanvibe_terminal::herdr::HerdrPaneExtent;
 use kanvibe_terminal::pane_mirror::{
-    HerdrObserveRecord, MirrorPane, build_herdr_observe_pane_command, parse_herdr_observe_record,
+    HerdrObserveRecord, MirrorPane, build_herdr_observe_pane_command,
+    build_herdr_remote_observe_pane_command, parse_herdr_observe_record,
 };
 
 use crate::error::{MirrorResult, PaneMirrorError};
 use crate::mirror::{MirrorSessionTarget, MirrorShared, lock};
 use crate::process::{LineSplitter, WatchedProcess};
 use crate::subscription::{PaneStream, StreamAudience};
+
+/// 원격 observe는 SSH 연결이 끊겨도 원격에 남으므로, SSH stdin이 닫히면 끝나는 명령으로 띄운다. 로컬 observe는 그대로 띄운다
+pub(crate) fn build_observe_command(
+    target: &MirrorSessionTarget,
+    pane_id: &str,
+    cols: i64,
+    rows: i64,
+) -> Result<String, String> {
+    match target.ssh_host() {
+        Some(_) => {
+            build_herdr_remote_observe_pane_command(&target.session_name, pane_id, cols, rows)
+        }
+        None => build_herdr_observe_pane_command(&target.session_name, pane_id, cols, rows),
+    }
+}
 
 pub(crate) fn start_herdr_frame_stream(
     shared: &Arc<MirrorShared>,
@@ -97,12 +113,7 @@ impl HerdrFrameStream {
             let size = state.viewport_size.unwrap_or(self.pane_size);
             (state.observer_generation, size)
         };
-        let command = build_herdr_observe_pane_command(
-            &self.target.session_name,
-            &self.pane_id,
-            size.0,
-            size.1,
-        )?;
+        let command = build_observe_command(&self.target, &self.pane_id, size.0, size.1)?;
         let process = self
             .shared()?
             .processes

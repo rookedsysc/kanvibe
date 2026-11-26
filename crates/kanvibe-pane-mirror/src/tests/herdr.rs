@@ -6,7 +6,9 @@ use std::time::Duration;
 
 use kanvibe_domain::task::SessionType;
 use kanvibe_terminal::herdr::build_herdr_command;
-use kanvibe_terminal::pane_mirror::build_herdr_observe_pane_command;
+use kanvibe_terminal::pane_mirror::{
+    build_herdr_observe_pane_command, build_herdr_remote_observe_pane_command,
+};
 use kanvibe_terminal::remote_terminal_protocol::build_wheel_delegated_screen_redraw;
 use serde_json::{Value, json};
 
@@ -589,6 +591,25 @@ fn chat_read_returns_only_the_first_full_frame_and_joins_partial_records() {
         ("\x1b[3;3H› ", 120, 38)
     );
     assert_eq!(observer.terminate_count(), 1);
+}
+
+#[test]
+fn a_remote_herdr_observe_is_spawned_to_end_with_its_ssh_channel() {
+    let harness = herdr_harness();
+    let mut remote_task = task(
+        "herdr-task",
+        Some(SessionType::Herdr),
+        Some("herdr-session"),
+    );
+    remote_task.ssh_host = Some("remote-b".to_string());
+    harness.set_task(remote_task);
+
+    let _subscriber = harness.subscribe("herdr-task", "w1:p1");
+
+    assert_eq!(
+        harness.processes.child(0).command,
+        build_herdr_remote_observe_pane_command("herdr-session", "w1:p1", 120, 38).unwrap()
+    );
 }
 
 // parity: TS-main-mobileBridgeService-e61a5e

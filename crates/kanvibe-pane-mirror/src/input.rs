@@ -5,11 +5,12 @@ use std::sync::{Arc, Condvar, Mutex};
 use kanvibe_domain::task::SessionType;
 use kanvibe_terminal::pane_chat::surface::{HerdrPaneFrame, PaneChatMobileBridge};
 use kanvibe_terminal::pane_mirror::{
-    HerdrObserveRecord, build_herdr_observe_pane_command, build_herdr_write_pane_command,
-    build_tmux_send_keys_command, build_zellij_write_pane_command, parse_herdr_observe_record,
+    HerdrObserveRecord, build_herdr_write_pane_command, build_tmux_send_keys_command,
+    build_zellij_write_pane_command, parse_herdr_observe_record,
 };
 
 use crate::error::{MirrorResult, PaneMirrorError, session_not_running};
+use crate::herdr_stream::build_observe_command;
 use crate::mirror::{MirrorShared, PaneMirror, subscription_key};
 use crate::process::{LineSplitter, WatchedProcess};
 use crate::surfaces::PaneListScope;
@@ -86,12 +87,7 @@ impl MirrorShared {
             .into_iter()
             .find(|entry| entry.id == pane_id)
             .ok_or(PaneMirrorError::PaneNotFound)?;
-        let command = build_herdr_observe_pane_command(
-            &target.session_name,
-            pane_id,
-            pane.width,
-            pane.height,
-        )?;
+        let command = build_observe_command(&target, pane_id, pane.width, pane.height)?;
         let process = self.processes.spawn(&command, target.ssh_host())?;
         let first_frame = Arc::new(FirstFrame::default());
         let frame_sink = Arc::clone(&first_frame);
