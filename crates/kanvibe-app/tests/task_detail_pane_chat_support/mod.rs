@@ -13,7 +13,8 @@ use gpui_kit::{
 };
 use kanvibe_app::qa::options::{DEFAULT_WINDOW_SIZE, LaunchOptions};
 use kanvibe_app::views::task_detail::pane_chat::backend::{
-    PaneChatBackend, PaneChatCall, PaneChatCallError, PaneChatRequest,
+    PaneChatBackend, PaneChatCall, PaneChatCallError, PaneChatConnectionSignal,
+    PaneChatConnectionWatch, PaneChatRequest,
 };
 use kanvibe_app::views::task_detail::pane_chat::client::PaneChatClient;
 use kanvibe_app::views::task_detail::pane_chat::preferences::PaneChatPreferences;
@@ -38,6 +39,8 @@ struct FakeState {
     queued: HashMap<String, VecDeque<Queued>>,
     is_held_forever: HashMap<String, bool>,
     calls: Vec<(String, Vec<Value>)>,
+    /// Task마다 걸린 연결 신호 구독(살아 있는지 확인하는 표식과 알림)
+    connection_watchers: Vec<(String, std::sync::Weak<()>, PaneChatConnectionSignal)>,
 }
 
 /// TS IPC 이름마다 답을 정하는 가짜 pane chat 서비스
@@ -133,6 +136,29 @@ impl FakeBackend {
         self.lock().calls.clear();
     }
 
+    /// CLI가 그 Task에서 새 대화 ID를 알렸다(hook·세션 기록 파일). 아직 구독 중인 화면에만 간다
+    pub fn signal_connection(&self, task_id: &str) {
+        let signals: Vec<PaneChatConnectionSignal> = self
+            .lock()
+            .connection_watchers
+            .iter()
+            .filter(|(watched, alive, _)| watched == task_id && alive.strong_count() > 0)
+            .map(|(_, _, signal)| signal.clone())
+            .collect();
+        for signal in signals {
+            signal();
+        }
+    }
+
+    /// 아직 살아 있는 연결 신호 구독 수
+    pub fn connection_watch_count(&self, task_id: &str) -> usize {
+        self.lock()
+            .connection_watchers
+            .iter()
+            .filter(|(watched, alive, _)| watched == task_id && alive.strong_count() > 0)
+            .count()
+    }
+
     pub fn client(&self) -> PaneChatClient {
         PaneChatClient::new(Arc::new(self.clone()))
     }
@@ -175,6 +201,18 @@ impl PaneChatBackend for FakeBackend {
             }),
             Queued::Forever => Box::pin(std::future::pending()),
         }
+    }
+
+    fn watch_connection(
+        &self,
+        task_id: &str,
+        signal: PaneChatConnectionSignal,
+    ) -> Option<PaneChatConnectionWatch> {
+        let alive = Arc::new(());
+        self.lock()
+            .connection_watchers
+            .push((task_id.to_string(), Arc::downgrade(&alive), signal));
+        Some(Box::new(alive))
     }
 }
 
@@ -291,6 +329,7 @@ pub fn open_view<'a>(
             task_title,
             translator: translator(),
             preferences,
+            initial_snapshot: None,
         };
         PaneChatView::new(props, window, cx)
     })

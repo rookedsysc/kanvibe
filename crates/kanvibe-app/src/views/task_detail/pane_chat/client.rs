@@ -13,7 +13,9 @@ use serde::Deserialize;
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 
-use super::backend::{PaneChatBackend, PaneChatCallError, PaneChatRequest};
+use super::backend::{
+    PaneChatBackend, PaneChatCallError, PaneChatConnectionWatch, PaneChatRequest,
+};
 
 pub type PaneChatResult<T> = Result<T, PaneChatCallError>;
 
@@ -93,6 +95,21 @@ impl PaneChatClient {
     ) -> Task<PaneChatResult<bool>> {
         let task = self.invoke::<ActionResult>(target, arguments, cx);
         cx.background_spawn(async move { task.await.map(|result| result.success) })
+    }
+
+    /// 그 Task의 연결 신호. 받은 쪽이 신호마다 한 번씩 다시 확인한다. 신호를 낼 수 없는 서비스면 `None`이다
+    pub fn watch_connection(&self, task_id: &str) -> Option<ConnectionSignals> {
+        let (sender, receiver) = futures::channel::mpsc::unbounded();
+        let watch = self.backend.watch_connection(
+            task_id,
+            Arc::new(move || {
+                let _ = sender.unbounded_send(());
+            }),
+        )?;
+        Some(ConnectionSignals {
+            receiver,
+            _watch: watch,
+        })
     }
 
     pub fn get_layout(
@@ -338,6 +355,19 @@ impl PaneChatClient {
             vec![json!(key), json!(value)],
             cx,
         )
+    }
+}
+
+/// 연결 신호를 받는 쪽. 구독을 함께 들고 있어 이 값을 버리면 신호도 멈춘다
+pub struct ConnectionSignals {
+    receiver: futures::channel::mpsc::UnboundedReceiver<()>,
+    _watch: PaneChatConnectionWatch,
+}
+
+impl ConnectionSignals {
+    /// 다음 신호. 구독이 끝나면 `None`이다. 값 전체를 빌려 쓰므로 이 값을 옮긴 곳이 구독도 함께 들고 있다
+    pub async fn next_signal(&mut self) -> Option<()> {
+        futures::StreamExt::next(&mut self.receiver).await
     }
 }
 

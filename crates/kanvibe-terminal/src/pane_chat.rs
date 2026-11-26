@@ -3,6 +3,7 @@
 
 pub mod attachments;
 pub mod composer_catalog;
+pub mod connection_signals;
 pub mod mode_store;
 pub mod service;
 pub mod subscription;

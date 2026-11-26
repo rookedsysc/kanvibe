@@ -10,6 +10,7 @@ use kanvibe_pane_mirror::{
 };
 use kanvibe_terminal::pane_chat::attachments::PaneChatAttachmentStore;
 use kanvibe_terminal::pane_chat::composer_catalog::PaneChatComposerCatalog;
+use kanvibe_terminal::pane_chat::connection_signals::PaneChatConnectionSignals;
 use kanvibe_terminal::pane_chat::mode_store::PaneChatModeStore;
 use kanvibe_terminal::pane_chat::service::{AiPaneChatSessionRecords, SystemPaneChatClock};
 use kanvibe_terminal::pane_chat::subscription::{
@@ -84,6 +85,7 @@ pub(crate) fn build_pane_chat(inputs: &PaneChatInputs<'_>) -> PaneChatParts {
         None,
         Arc::clone(&inputs.ai.pane_chat_session_bindings),
     );
+    let connection_signals = build_connection_signals(inputs);
     let pane_chat = Arc::new(PaneChatRuntime::new(PaneChatRuntimeParts {
         mirror: Arc::clone(&mirror),
         tasks: Arc::new(KanbanPaneChatTaskLookup::new(Arc::clone(
@@ -99,8 +101,21 @@ pub(crate) fn build_pane_chat(inputs: &PaneChatInputs<'_>) -> PaneChatParts {
         clock: Arc::new(SystemPaneChatClock),
         timers: Arc::new(ThreadPaneChatTimers::new()),
         file_watchers: Arc::new(NotifyTranscriptFileWatchers),
+        connection_signals,
     }));
     PaneChatParts { mirror, pane_chat }
+}
+
+/// hook 바인딩이 저장되면 그 Task의 pane 채팅이 바로 다시 확인하도록 바인딩 표와 연결 신호를 잇는다
+fn build_connection_signals(inputs: &PaneChatInputs<'_>) -> Arc<PaneChatConnectionSignals> {
+    let home = inputs.ai.session_host.home_directory().ok();
+    let signals = Arc::new(PaneChatConnectionSignals::new(home.as_deref()));
+    let notified = Arc::clone(&signals);
+    inputs
+        .ai
+        .pane_chat_session_bindings
+        .on_binding_recorded(Arc::new(move |task_id: &str| notified.notify_task(task_id)));
+    signals
 }
 
 fn build_mirror(inputs: &PaneChatInputs<'_>) -> Arc<PaneMirror> {

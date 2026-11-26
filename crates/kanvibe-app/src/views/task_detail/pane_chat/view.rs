@@ -31,6 +31,8 @@ pub struct PaneChatViewProps {
     pub task_title: Option<String>,
     pub translator: Translator,
     pub preferences: Entity<PaneChatPreferences>,
+    /// 층이 자동으로 열기 전에 방금 확인한 이 pane의 상태. 있으면 첫 화면부터 그 대화를 보이고, 곧바로 다시 읽어 바꾼다
+    pub initial_snapshot: Option<PaneChatSnapshot>,
 }
 
 /// 부모(pane 채팅 층)에 알리는 사용자 요청
@@ -72,6 +74,8 @@ pub struct PaneChatView {
     pub(super) text_menu: Option<OpenTextMenu>,
     pub(super) text_menu_focus: FocusHandle,
     is_reading: bool,
+    /// 읽는 중에 연결 신호가 왔다. 지금 읽기가 끝나면 주기를 기다리지 않고 한 번 더 읽는다
+    needs_signal_read: bool,
     /// 성능 표식(`--perf-markers`)이 기다리는 첫 그리기
     pub(super) paint_marks: ScreenPaintMarks,
     /// 대화 대상이 바뀐 뒤 보낼 수 있는 화면이 그려지기를 기다리는 중(성능 표식)
@@ -79,6 +83,7 @@ pub struct PaneChatView {
     _read: Option<Task<()>>,
     _poll_timer: Option<Task<()>>,
     _working_timer: Option<Task<()>>,
+    _connection_signals: Option<Task<()>>,
     pub(super) _action: Option<Task<()>>,
     pub(super) _older: Option<Task<()>>,
     _activation: Option<gpui_kit::Subscription>,
@@ -129,19 +134,56 @@ impl PaneChatView {
             text_menu: None,
             text_menu_focus: cx.focus_handle(),
             is_reading: false,
+            needs_signal_read: false,
             paint_marks: ScreenPaintMarks::default(),
             is_retarget_mark_pending: false,
             _read: None,
             _poll_timer: None,
             _working_timer: None,
+            _connection_signals: None,
             _action: None,
             _older: None,
             _activation: Some(activation),
             _preferences: preferences,
         };
         view.paint_marks.arm(PERF_SCREEN, "open");
+        if let Some(snapshot) = props.initial_snapshot {
+            view.apply_snapshot(snapshot, window, cx);
+            view.composer.sync_enabled(&view.session, cx);
+        }
+        view.listen_for_connection_signals(window, cx);
         view.restart_reading(window, cx);
         view
+    }
+
+    /// CLI가 새 대화 ID를 알리면(hook, 세션 기록 파일) 다음 조회 주기를 기다리지 않고 신호마다 한 번 다시 읽는다
+    fn listen_for_connection_signals(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(mut signals) = self.client.watch_connection(&self.session.task_id) else {
+            return;
+        };
+        self._connection_signals = Some(cx.spawn_in(window, async move |this, cx| {
+            while signals.next_signal().await.is_some() {
+                let handled = this.update_in(cx, |view, window, cx| {
+                    view.handle_connection_signal(window, cx)
+                });
+                if handled.is_err() {
+                    break;
+                }
+            }
+        }));
+    }
+
+    /// 보이지 않거나 창이 비활성이면 넘긴다. 다시 보이거나 창이 활성이 되면 어차피 새로 읽는다.
+    /// 읽는 중이면 그 결과가 신호 전의 상태일 수 있으므로, 끝난 뒤 한 번만 더 읽는다
+    fn handle_connection_signal(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.is_visible || !self.is_window_active {
+            return;
+        }
+        mark_screen_phase(PERF_SCREEN, "signal");
+        match self.is_reading {
+            true => self.needs_signal_read = true,
+            false => self.refresh(window, cx),
+        }
     }
 
     pub fn task_id(&self) -> &str {
@@ -178,6 +220,7 @@ impl PaneChatView {
         self._read = None;
         self._poll_timer = None;
         self.is_reading = false;
+        self.needs_signal_read = false;
         if !self.is_visible {
             self.session.hide();
             self.composer.sync_enabled(&self.session, cx);
@@ -225,7 +268,10 @@ impl PaneChatView {
         }
         self.composer.sync_enabled(&self.session, cx);
         self.sync_working_timer(cx);
-        self.schedule_poll(window, cx);
+        match std::mem::take(&mut self.needs_signal_read) {
+            true => self.refresh(window, cx),
+            false => self.schedule_poll(window, cx),
+        }
         cx.notify();
     }
 

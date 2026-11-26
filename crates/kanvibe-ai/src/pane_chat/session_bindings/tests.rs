@@ -808,3 +808,82 @@ fn node_base64_decoding_is_lenient() {
     assert_eq!(decode_node_base64("eyJhIjoxfQ=="), b"{\"a\":1}");
     assert!(serde_json::from_slice::<Value>(&decode_node_base64("bad-json")).is_err());
 }
+
+#[test]
+fn stored_hook_binding_announces_its_task_once_and_ignored_hooks_stay_silent() {
+    let fixture = Fixture::new();
+    let announced: Arc<Mutex<Vec<String>>> = Arc::default();
+    let sink = announced.clone();
+    fixture
+        .registry
+        .on_binding_recorded(Arc::new(move |task_id: &str| {
+            sink.lock().unwrap().push(task_id.to_string())
+        }));
+    fixture.set_output(&format!(
+        "100 1 {STARTED} node node --max-old-space-size=4096 /opt/node_modules/@google/gemini-cli/bundle/gemini.js\n300 100 {STARTED} bash hook.sh"
+    ));
+    let path = "/home/user/.gemini/tmp/project/chats/session-a.jsonl";
+    fixture.record(metadata(
+        "gemini",
+        json!({"session_id": "gemini-a", "cwd": "/repo/a", "transcript_path": path}),
+        300,
+    ));
+    assert_eq!(*announced.lock().unwrap(), vec!["task-a".to_string()]);
+
+    // 다른 작업 경로의 hook과 CLI 조상을 찾지 못한 hook은 바인딩을 남기지 않으므로 알리지도 않는다
+    fixture.record(metadata(
+        "gemini",
+        json!({"session_id": "wrong", "cwd": "/other", "transcript_path": path}),
+        300,
+    ));
+    fixture.record(metadata(
+        "gemini",
+        json!({"session_id": "orphan", "cwd": "/repo/a", "transcript_path": path}),
+        999,
+    ));
+    assert_eq!(announced.lock().unwrap().len(), 1);
+}
+
+/// 같은 작업 폴더의 두 pane에서 Claude가 따로 돈다. 한쪽은 기록이 있는 대화, 다른 쪽은 첫 입력 전이라 기록이 없는 새 대화다.
+/// 새 대화는 같은 폴더의 다른 기록을 빌려 쓰지 않고 자기 대화 ID의 예정 경로에 대기 중으로 묶인다
+#[test]
+fn two_panes_in_the_same_cwd_keep_their_own_claude_conversations() {
+    let scene = ProcessFixture::new(&descriptor(json!({})));
+    write_file(&scene.transcript("session-a"), "");
+    let second_record = descriptor(json!({"pid": 200, "sessionId": "session-new"}));
+    write_file(
+        &format!("{}/.claude/sessions/200.json", scene.home),
+        &second_record.to_string(),
+    );
+    let find_pid = |pid: i64| {
+        let process = PaneChatProcess {
+            pid,
+            process_start_time: STARTED.to_string(),
+            provider: PaneChatProvider::Claude,
+            codex_server_socket: None,
+        };
+        scene
+            .fixture
+            .registry
+            .find_pane_chat_process_session_binding(&scene.context(), &process)
+    };
+    assert_eq!(
+        find_pid(100),
+        Some(PaneChatSessionBinding::exact(
+            "session-a",
+            &scene.transcript("session-a")
+        ))
+    );
+    let second = find_pid(200).unwrap();
+    assert_eq!(second.session_id, "session-new");
+    assert_eq!(second.source_ref, scene.transcript("session-new"));
+    assert!(second.is_pending);
+
+    // 두 번째 pane이 `/clear`로 대화를 바꿔도 첫 pane의 대화는 그대로다
+    write_file(
+        &format!("{}/.claude/sessions/200.json", scene.home),
+        &descriptor(json!({"pid": 200, "sessionId": "session-next"})).to_string(),
+    );
+    assert_eq!(find_pid(200).unwrap().session_id, "session-next");
+    assert_eq!(find_pid(100).unwrap().session_id, "session-a");
+}

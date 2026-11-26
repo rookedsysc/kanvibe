@@ -16,6 +16,10 @@ use kanvibe_terminal::pane_chat::attachments::{
     PaneChatAttachment, PaneChatAttachmentInput, PaneChatAttachmentStore, RemoteAttachmentUploader,
 };
 use kanvibe_terminal::pane_chat::composer_catalog::PaneChatSuggestionKind;
+use kanvibe_terminal::pane_chat::connection_signals::{
+    PaneChatConnectionListener, PaneChatConnectionScope, PaneChatConnectionSignals,
+    PaneChatConnectionSubscription,
+};
 use kanvibe_terminal::pane_chat::mode_store::{PaneChatModeStore, PaneChatModes};
 use kanvibe_terminal::pane_chat::service::{
     PaneChatClock, PaneChatError, PaneChatService, PaneChatServiceDependencies,
@@ -48,12 +52,16 @@ pub struct PaneChatRuntimeParts {
     pub clock: Arc<dyn PaneChatClock>,
     pub timers: Arc<dyn PaneChatTimers>,
     pub file_watchers: Arc<dyn TranscriptFileWatchers>,
+    /// CLI가 새 대화 ID를 알린 순간(hook 바인딩, 세션 기록 파일)의 알림
+    pub connection_signals: Arc<PaneChatConnectionSignals>,
 }
 
 pub struct PaneChatRuntime {
     service: Arc<PaneChatService>,
     subscriptions: PaneChatSubscriptions,
     modes: Arc<PaneChatModeStore>,
+    tasks: Arc<dyn PaneChatTaskLookup>,
+    connection_signals: Arc<PaneChatConnectionSignals>,
 }
 
 fn input_error(message: &str) -> PaneChatError {
@@ -63,8 +71,9 @@ fn input_error(message: &str) -> PaneChatError {
 impl PaneChatRuntime {
     pub fn new(parts: PaneChatRuntimeParts) -> Self {
         let mobile_bridge = parts.mirror;
+        let tasks = parts.tasks;
         let surfaces = Arc::new(PaneChatSurfaceReader::new(
-            parts.tasks,
+            Arc::clone(&tasks),
             Arc::clone(&parts.runner),
             parts.terminals.clone(),
             parts.herdr,
@@ -86,7 +95,34 @@ impl PaneChatRuntime {
             service,
             subscriptions,
             modes: parts.modes,
+            tasks,
+            connection_signals: parts.connection_signals,
         }
+    }
+
+    /// 그 Task의 pane CLI가 새 대화 ID를 알리면 `listener`를 부른다. 로컬 Task는 세션 기록 파일도 감시하고,
+    /// 원격 Task와 조회하지 못한 Task는 hook 신호만 받는다. 돌려받은 값을 버리면 멈춘다
+    pub fn watch_pane_chat_connection(
+        &self,
+        task_id: &str,
+        listener: PaneChatConnectionListener,
+    ) -> PaneChatConnectionSubscription {
+        let task = self.tasks.find_pane_chat_task(task_id).ok().flatten();
+        let local_workspaces = task
+            .filter(|task| task.ssh_host().is_none())
+            .map(|task| {
+                [task.worktree_path, task.project_repo_path]
+                    .into_iter()
+                    .flatten()
+                    .filter(|path| !path.is_empty())
+                    .collect()
+            })
+            .unwrap_or_default();
+        let scope = PaneChatConnectionScope {
+            task_id: task_id.to_string(),
+            local_workspaces,
+        };
+        self.connection_signals.subscribe(scope, listener)
     }
 
     /// 데스크탑 화면도 같은 서비스(대상 lease, 입력 큐, 요청 영수증)를 써야 해서 함께 내보낸다

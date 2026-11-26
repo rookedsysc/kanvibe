@@ -51,6 +51,7 @@ fn open_chat(cx: &mut TestAppContext) -> &mut VisualTestContext {
                 task_title: Some("Task".into()),
                 translator: translator(),
                 preferences,
+                initial_snapshot: None,
             };
             PaneChatView::new(props, window, cx)
         });

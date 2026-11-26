@@ -79,9 +79,24 @@ impl From<PaneChatError> for PaneChatCallError {
     }
 }
 
+/// pane CLI가 새 대화 ID를 알렸을 때 부르는 알림. 서비스의 감시 스레드에서 불린다
+pub type PaneChatConnectionSignal = Arc<dyn Fn() + Send + Sync>;
+
+/// 걸어 둔 연결 신호 구독. 값을 버리면 멈춘다
+pub type PaneChatConnectionWatch = Box<dyn Send>;
+
 /// 화면이 쓰는 pane chat 서비스. 앱은 [`RuntimePaneChatBackend`]를, 테스트는 가짜를 넘긴다
 pub trait PaneChatBackend: Send + Sync {
     fn call(&self, request: PaneChatRequest) -> PaneChatCall;
+
+    /// 그 Task의 연결 신호를 받는다. 신호를 낼 수 없는 서비스는 `None`이고, 화면은 조회 주기로만 연결한다
+    fn watch_connection(
+        &self,
+        _task_id: &str,
+        _signal: PaneChatConnectionSignal,
+    ) -> Option<PaneChatConnectionWatch> {
+        None
+    }
 }
 
 /// 앱 런타임의 pane chat 서비스와 AppSettings를 부르는 실제 경계. QA 모드면 고장 주입을 먼저 거친다
@@ -123,6 +138,18 @@ impl PaneChatBackend for RuntimePaneChatBackend {
                 .ok_or_else(|| PaneChatCallError::new("pane chat runtime is unavailable"))?;
             dispatch(&runtime, &request)
         })
+    }
+
+    fn watch_connection(
+        &self,
+        task_id: &str,
+        signal: PaneChatConnectionSignal,
+    ) -> Option<PaneChatConnectionWatch> {
+        let runtime = self.runtime.as_ref()?;
+        let watch = runtime
+            .pane_chat()
+            .watch_pane_chat_connection(task_id, signal);
+        Some(Box::new(watch))
     }
 }
 

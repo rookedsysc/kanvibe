@@ -10,7 +10,7 @@ use gpui_kit::{
     AnyElement, AppContext, Context, Entity, EventEmitter, InteractiveElement, IntoElement,
     MouseButton, ParentElement, Pixels, Render, Styled, Subscription, Task, Window, div, px,
 };
-use kanvibe_ai::pane_chat::snapshot::{PaneChatLayout, PaneChatLayoutPane};
+use kanvibe_ai::pane_chat::snapshot::{PaneChatLayout, PaneChatLayoutPane, PaneChatSnapshot};
 use kanvibe_domain::i18n::Translator;
 
 use super::client::PaneChatClient;
@@ -123,6 +123,8 @@ pub struct PaneChatLayer {
     /// 저장된 모드는 채팅이지만 그 pane의 CLI를 아직 확인하지 못해 터미널로 보이는 pane
     saved_chat_panes_awaiting_agent: HashSet<String>,
     probing_panes: HashSet<String>,
+    /// 확인하는 중에 연결 신호를 받은 pane. 그 확인이 연결하지 못하고 끝나면 한 번 더 확인한다
+    reprobe_panes: HashSet<String>,
     focused_pane: Option<String>,
     is_chat_focused: bool,
     /// 보이기가 바뀔 때마다 올린다. 그 전에 시작한 응답은 버린다
@@ -139,6 +141,7 @@ pub struct PaneChatLayer {
     _poll_timer: Option<Task<()>>,
     _close: Option<Task<()>>,
     _modes: Option<Task<()>>,
+    _connection_signals: Option<Task<()>>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -170,6 +173,7 @@ impl PaneChatLayer {
             decided_modes: HashMap::new(),
             saved_chat_panes_awaiting_agent: HashSet::new(),
             probing_panes: HashSet::new(),
+            reprobe_panes: HashSet::new(),
             focused_pane: None,
             is_chat_focused: false,
             generation: 0,
@@ -183,10 +187,36 @@ impl PaneChatLayer {
             _poll_timer: None,
             _close: None,
             _modes: None,
+            _connection_signals: None,
             _subscriptions: vec![observe_preferences],
         };
         layer.load_modes(cx);
+        layer.listen_for_connection_signals(cx);
         layer
+    }
+
+    /// CLI가 새 대화 ID를 알리면(hook, 세션 기록 파일) 다음 배치 조회를 기다리지 않고 자동으로 열 pane을 신호마다 한 번 확인한다
+    fn listen_for_connection_signals(&mut self, cx: &mut Context<Self>) {
+        let Some(mut signals) = self.client.watch_connection(&self.task_id) else {
+            return;
+        };
+        self._connection_signals = Some(cx.spawn(async move |this, cx| {
+            while signals.next_signal().await.is_some() {
+                let handled = this.update(cx, |layer, cx| layer.handle_connection_signal(cx));
+                if handled.is_err() {
+                    break;
+                }
+            }
+        }));
+    }
+
+    fn handle_connection_signal(&mut self, cx: &mut Context<Self>) {
+        if !self.is_visible {
+            return;
+        }
+        let probing: Vec<String> = self.probing_panes.iter().cloned().collect();
+        self.reprobe_panes.extend(probing);
+        self.probe_agent_panes(cx);
     }
 
     pub fn task_id(&self) -> &str {
@@ -478,7 +508,7 @@ impl PaneChatLayer {
             return;
         };
         self.saved_chat_panes_awaiting_agent.remove(&pane);
-        self.open_pane(&pane, window, cx);
+        self.open_pane(&pane, None, window, cx);
         self.save_mode(&pane, true, cx);
         self.chat_panes.insert(pane.clone());
         self.sync_children(window, cx);
@@ -562,7 +592,14 @@ impl PaneChatLayer {
         cx.notify();
     }
 
-    fn open_pane(&mut self, pane_id: &str, window: &mut Window, cx: &mut Context<Self>) {
+    /// `initial_snapshot`은 자동으로 열기 전에 방금 확인한 그 pane의 상태다. 화면은 그것으로 첫 화면을 그리고 곧바로 다시 읽는다
+    fn open_pane(
+        &mut self,
+        pane_id: &str,
+        initial_snapshot: Option<PaneChatSnapshot>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if self.views.iter().any(|(id, _)| id == pane_id) {
             return;
         }
@@ -573,6 +610,7 @@ impl PaneChatLayer {
             task_title: self.task_title.clone(),
             translator: self.translator,
             preferences: self.preferences.clone(),
+            initial_snapshot,
         };
         let view = cx.new(|cx| PaneChatView::new(props, window, cx));
         let owner = pane_id.to_string();
@@ -641,33 +679,38 @@ impl PaneChatLayer {
         mark_screen_phase(PERF_SCREEN, "probe_start");
         let provider = client.get_agent_provider(&task_id, &pane_id, cx);
         cx.spawn(async move |this, cx| {
-            let is_ready = match provider.await {
+            let confirmed = match provider.await {
                 Ok(Some(_)) => {
                     let snapshot =
                         cx.update(|cx| client.get_snapshot(&task_id, Some(&pane_id), cx));
-                    snapshot.await.is_ok_and(|snapshot| {
+                    snapshot.await.ok().filter(|snapshot| {
                         snapshot.can_send
                             || snapshot.transcript.reason.as_deref()
                                 == Some(CODEX_UNCONFIRMED_REASON)
                     })
                 }
-                _ => false,
+                _ => None,
             };
             mark_screen_phase(PERF_SCREEN, "probe_done");
+            let is_ready = confirmed.is_some();
             let window_handle = this
-                .update(cx, |layer, _| {
+                .update(cx, |layer, cx| {
                     layer.probing_panes.remove(&pane_id);
+                    // 확인하는 사이 온 신호는 이 확인이 보지 못했을 수 있다. 연결하지 못했으면 그 신호 몫으로 한 번 더 확인한다
+                    if layer.reprobe_panes.remove(&pane_id) && !is_ready {
+                        layer.probe_agent_panes(cx);
+                    }
                     layer.window_handle
                 })
                 .ok()
                 .flatten();
-            let Some(window_handle) = window_handle.filter(|_| is_ready) else {
+            let (Some(window_handle), Some(snapshot)) = (window_handle, confirmed) else {
                 return;
             };
             let _ = cx.update_window(window_handle, |_, window, cx| {
                 this.update(cx, |layer, cx| {
                     if layer.generation == generation && layer.is_visible {
-                        layer.open_confirmed_pane(pane_id, active, window, cx);
+                        layer.open_confirmed_pane(pane_id, active, snapshot, window, cx);
                         cx.notify();
                     }
                 })
@@ -681,6 +724,7 @@ impl PaneChatLayer {
         &mut self,
         pane_id: String,
         active: Option<String>,
+        snapshot: PaneChatSnapshot,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -691,7 +735,7 @@ impl PaneChatLayer {
         if !is_saved_chat_pane {
             self.save_mode(&pane_id, true, cx);
         }
-        self.open_pane(&pane_id, window, cx);
+        self.open_pane(&pane_id, Some(snapshot), window, cx);
         self.chat_panes.insert(pane_id.clone());
         self.sync_children(window, cx);
         // 채팅이 덮는 pane이 지금 쓰는 pane이면 입력도 채팅으로 옮겨야, 가려진 터미널에 글자가 들어가지 않는다

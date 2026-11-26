@@ -337,10 +337,14 @@ fn gemini_pending_source(
     Ok(is_gemini_chat.then_some(normalized))
 }
 
+/// hook이 대화를 새로 묶었을 때 그 Task ID로 부르는 알림. pane 채팅이 다음 주기를 기다리지 않고 그 Task의 pane을 다시 확인하게 한다
+pub type PaneChatBindingListener = Arc<dyn Fn(&str) + Send + Sync>;
+
 /// pane 채팅의 대화 바인딩 목록. TS 모듈 전역 `bindings`를 앱이 하나 들고 쓰는 값으로 옮겼다
 pub struct PaneChatSessionBindings {
     catalog: Arc<dyn PaneChatSessionCatalog>,
     table: Mutex<BindingTable>,
+    listeners: Mutex<Vec<PaneChatBindingListener>>,
 }
 
 impl PaneChatSessionBindings {
@@ -348,6 +352,22 @@ impl PaneChatSessionBindings {
         Self {
             catalog,
             table: Mutex::new(BindingTable::default()),
+            listeners: Mutex::new(Vec::new()),
+        }
+    }
+
+    /// hook 바인딩을 저장할 때마다 부를 알림을 더한다. 앱이 조립할 때 한 번 건다
+    pub fn on_binding_recorded(&self, listener: PaneChatBindingListener) {
+        self.listeners
+            .lock()
+            .expect("바인딩 알림 목록")
+            .push(listener);
+    }
+
+    fn announce_recorded(&self, task_id: &str) {
+        let listeners = self.listeners.lock().expect("바인딩 알림 목록").clone();
+        for listener in listeners {
+            listener(task_id);
         }
     }
 
@@ -416,6 +436,7 @@ impl PaneChatSessionBindings {
             source_ref: pending_source,
         };
         self.lock().store(key, pending_binding);
+        self.announce_recorded(&context.task_id);
         Ok(())
     }
 
