@@ -1,9 +1,10 @@
-//! 작업 상태 변경, hook 대상 누락, 백그라운드 sync 검토 알림 문구. 메인 알림과 모바일 알림이 같은 문구를 쓴다.
+//! 작업 상태 변경, hook 대상 누락, hook 터널 실패·복구, 백그라운드 sync 검토 알림 문구. 메인 알림과 모바일 알림이 같은 문구를 쓴다.
 
 use crate::i18n::Locale;
 use crate::notifications::{
     AppNotificationAction, BackgroundSyncFailurePayload, BackgroundSyncPulledTaskPayload,
-    BackgroundSyncReviewPayload, DesktopNotificationPayload, PulledTaskStatus,
+    BackgroundSyncReviewPayload, DesktopNotificationPayload, HookTunnelFailedPayload,
+    HookTunnelFailureKind, HookTunnelRecoveredPayload, PulledTaskStatus,
 };
 
 /// 알림 locale은 `en-US`처럼 지역이 붙어 올 수 있어 앞부분만 본다. 모르는 값은 한국어로 보낸다.
@@ -42,6 +43,79 @@ fn task_not_found_message(locale: Locale) -> &'static str {
         Locale::Ko => "연결된 작업을 찾지 못했습니다.",
         Locale::En => "No matching task was found.",
         Locale::Zh => "未找到匹配的任务。",
+    }
+}
+
+/// 실패 갈래의 제목과 확인할 곳
+fn hook_tunnel_failure_message(
+    locale: Locale,
+    kind: HookTunnelFailureKind,
+) -> (&'static str, &'static str) {
+    use HookTunnelFailureKind::*;
+    match (locale, kind) {
+        (Locale::Ko, Ssh) => (
+            "SSH 연결 실패",
+            "네트워크, VPN, 호스트 전원 및 SSH 설정을 확인하세요.",
+        ),
+        (Locale::Ko, Handshake) => (
+            "KanVibe 핸드셰이크 실패",
+            "원격 daemon과 데스크톱의 KanVibe 버전 및 설정을 확인하세요.",
+        ),
+        (Locale::Ko, ClientInUse) => (
+            "KanVibe 연결 거부",
+            "같은 클라이언트 ID의 기존 연결이 응답했습니다. 기존 데스크톱의 연결을 종료한 뒤 다시 시도하세요.",
+        ),
+        (Locale::Ko, Setup) => (
+            "Hook 터널 준비 실패",
+            "원격 호스트의 KanVibe 실행 환경을 확인하세요.",
+        ),
+        (Locale::En, Ssh) => (
+            "SSH connection failed",
+            "Check the network, VPN, host power, and SSH configuration.",
+        ),
+        (Locale::En, Handshake) => (
+            "KanVibe handshake failed",
+            "Check the KanVibe versions and configuration on the remote host and desktop.",
+        ),
+        (Locale::En, ClientInUse) => (
+            "KanVibe connection rejected",
+            "An existing connection with this client ID responded. Disconnect the other desktop and try again.",
+        ),
+        (Locale::En, Setup) => (
+            "Hook tunnel setup failed",
+            "Check the KanVibe runtime on the remote host.",
+        ),
+        (Locale::Zh, Ssh) => ("SSH 连接失败", "请检查网络、VPN、主机电源和 SSH 配置。"),
+        (Locale::Zh, Handshake) => (
+            "KanVibe 握手失败",
+            "请检查远程主机和桌面端的 KanVibe 版本和配置。",
+        ),
+        (Locale::Zh, ClientInUse) => (
+            "KanVibe 连接被拒绝",
+            "使用相同客户端 ID 的现有连接已响应。请断开另一台桌面端的连接后重试。",
+        ),
+        (Locale::Zh, Setup) => (
+            "Hook 隧道初始化失败",
+            "请检查远程主机上的 KanVibe 运行环境。",
+        ),
+    }
+}
+
+/// 자동 복구 알림의 제목과 본문
+fn hook_tunnel_recovered_message(locale: Locale) -> (&'static str, &'static str) {
+    match locale {
+        Locale::Ko => (
+            "Hook 터널 복구",
+            "같은 클라이언트 ID의 기존 연결이 남아 있었습니다. 응답이 없어 기존 연결을 교체했습니다.",
+        ),
+        Locale::En => (
+            "Hook tunnel recovered",
+            "An existing connection with this client ID did not respond and was replaced.",
+        ),
+        Locale::Zh => (
+            "Hook 隧道已恢复",
+            "使用相同客户端 ID 的现有连接没有响应，已将其替换。",
+        ),
     }
 }
 
@@ -173,6 +247,46 @@ pub fn build_hook_status_target_missing_notification(
         },
         title,
         body,
+    }
+}
+
+/// hook 터널 실패 알림. 본문 첫 줄은 확인할 곳, 다음 줄은 실패 사유 원문이다
+pub fn build_hook_tunnel_failed_notification(
+    payload: &HookTunnelFailedPayload,
+    locale_text: &str,
+) -> DesktopNotificationPayload {
+    let (title, hint) = hook_tunnel_failure_message(notification_locale(locale_text), payload.kind);
+    build_hook_tunnel_notification(
+        &payload.ssh_host,
+        title,
+        format!("{hint}\n{}", payload.reason),
+        locale_text,
+    )
+}
+
+/// 응답 없는 기존 연결을 교체해 hook 터널이 다시 이어졌다는 알림
+pub fn build_hook_tunnel_recovered_notification(
+    payload: &HookTunnelRecoveredPayload,
+    locale_text: &str,
+) -> DesktopNotificationPayload {
+    let (title, body) = hook_tunnel_recovered_message(notification_locale(locale_text));
+    build_hook_tunnel_notification(&payload.ssh_host, title, body.to_string(), locale_text)
+}
+
+fn build_hook_tunnel_notification(
+    ssh_host: &str,
+    title: &str,
+    body: String,
+    locale_text: &str,
+) -> DesktopNotificationPayload {
+    DesktopNotificationPayload {
+        title: format!("{ssh_host} — {title}"),
+        body,
+        task_id: None,
+        locale: locale_text.to_string(),
+        relative_path: None,
+        dedupe_key: None,
+        action: None,
     }
 }
 

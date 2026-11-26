@@ -18,6 +18,8 @@ pub const HOST_PROTOCOL_VERSION: u64 = 2;
 pub const HOST_RECORD_BYTES: usize = 1024 * 1024;
 pub const HOST_CHUNK_BYTES: usize = 32 * 1024;
 pub const HOST_BUFFER_BYTES: usize = 8 * 1024 * 1024;
+/// 같은 client id의 기존 데스크탑이 ping에 답해 새 연결을 거절했다는 `error` 레코드의 `code`
+pub const HOST_CLIENT_ALREADY_CONNECTED: &str = "client-already-connected";
 
 /// JSON 객체 하나. `type` 필드는 언제나 문자열이다
 pub type HostRecord = Map<String, Value>;

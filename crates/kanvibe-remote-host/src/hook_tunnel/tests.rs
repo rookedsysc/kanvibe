@@ -10,6 +10,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use kanvibe_db::{Database, DatabaseLocation};
+use kanvibe_domain::notifications::{HookTunnelFailedPayload, HookTunnelFailureKind};
 use kanvibe_domain::project::Project;
 use kanvibe_domain::task::{KanbanTask, TaskStatus};
 use kanvibe_process::request_scope::is_task_reachable_from_tunnel;
@@ -17,6 +18,7 @@ use kanvibe_process::shell_environment::ShellEnvironment;
 
 use self::fakes::*;
 use super::*;
+use crate::connection::{RemoteHostConnectionError, RemoteHostConnectionErrorKind};
 
 const REMOTE_SOCKET: &str = "/tmp/kv-1000/1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed.sock";
 
@@ -180,6 +182,73 @@ fn a_dropped_tunnel_reconnects_and_backs_off_when_it_drops_again_quickly() {
     assert!(second_wait >= minimum * 2, "{second_wait:?}");
 }
 
+// parity: TS-main-hookTunnelService-47620d
+#[test]
+fn ssh_failures_are_logged_and_notified_only_when_the_reason_changes_across_retries() {
+    let fixture = Fixture::new(&["host-a"]);
+    let timeout = "ssh: connect to host host-a port 22: Operation timed out";
+    let refused = "ssh: connect to host host-a port 22: Connection refused";
+    fixture.start();
+    fixture.spawner.wait_for_spawns(1);
+
+    fixture
+        .spawner
+        .process(0)
+        .exit_with_error_output(255, &format!("{timeout}\n"));
+    fixture.spawner.wait_for_spawns(2);
+    fixture
+        .spawner
+        .process(1)
+        .exit_with_error_output(255, timeout);
+    fixture.spawner.wait_for_spawns(3);
+    fixture
+        .spawner
+        .process(2)
+        .exit_with_error_output(255, refused);
+    wait_until("두 번째 실패 알림", || {
+        fixture.health.failures().len() >= 2
+    });
+
+    let failure = |reason: &str| HookTunnelFailedPayload {
+        ssh_host: "host-a".into(),
+        kind: HookTunnelFailureKind::Ssh,
+        reason: reason.into(),
+    };
+    assert_eq!(
+        fixture.health.failures(),
+        [failure(timeout), failure(refused)]
+    );
+}
+
+#[test]
+fn a_daemon_connection_that_replaced_a_stale_peer_reports_recovery() {
+    let fixture = Fixture::with_daemon_transport();
+    fixture.transport.replace_stale_peer_on_next_connection();
+
+    fixture.service.start(Some("qa-namespace")).unwrap();
+    wait_until("복구 알림", || !fixture.health.recoveries().is_empty());
+
+    assert_eq!(fixture.health.recoveries()[0].ssh_host, "host-a");
+    assert!(fixture.health.failures().is_empty());
+}
+
+#[test]
+fn a_daemon_rejection_for_a_responding_client_is_classified_as_client_in_use() {
+    let mut rejection = RemoteHostConnectionError::new(
+        RemoteHostConnectionErrorKind::Handshake,
+        "A desktop with this client ID is already connected",
+    );
+    rejection.code = Some("client-already-connected".into());
+
+    let failure = super::tunnel::TunnelFailure::from(rejection);
+
+    assert_eq!(failure.kind, HookTunnelFailureKind::ClientInUse);
+    assert_eq!(
+        failure.reason,
+        "A desktop with this client ID is already connected"
+    );
+}
+
 // parity: TS-main-hookTunnelService-638b48
 #[test]
 fn a_failed_prepare_command_does_not_stop_the_app_and_is_retried() {
@@ -224,6 +293,7 @@ fn waking_from_sleep_drops_a_live_looking_connection_and_reconnects() {
 
     assert_eq!(fixture.spawner.process(0).kill_count(), 1);
     fixture.spawner.wait_for_spawns(2);
+    assert!(fixture.health.failures().is_empty());
 }
 
 // parity: TS-main-hookTunnelService-314ab8

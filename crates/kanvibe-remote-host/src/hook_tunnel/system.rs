@@ -22,8 +22,8 @@ use super::boundaries::{
     HostTaskStatusRefresher, RemoteHostsSource,
 };
 
-/// 로그에 남기는 ssh stderr 끝부분 길이
-const LAST_ERROR_OUTPUT_CHARACTERS: usize = 300;
+/// 실패 사유로 남기는 ssh stderr 끝부분 길이. 여러 조각으로 나뉘어 와도 이어 붙여 끝부분을 둔다
+const LAST_ERROR_OUTPUT_CHARACTERS: usize = 4096;
 
 /// 시스템 `ssh`로 터널을 띄운다. 자식에는 서버 런타임 값(`PORT`, `HOST`, `NODE_ENV`, `KANVIBE_*`)을 걷어 낸 환경만 넘긴다
 pub struct SystemHookTunnelProcessSpawner {
@@ -79,13 +79,13 @@ fn keep_last_error_output(mut stderr: impl Read, output: &Mutex<String>) {
         if count == 0 {
             return;
         }
-        let chunk = String::from_utf8_lossy(&buffer[..count]);
-        let trimmed = chunk.trim();
-        let skipped = trimmed
+        let mut output = output.lock().unwrap();
+        output.push_str(&String::from_utf8_lossy(&buffer[..count]));
+        let skipped = output
             .chars()
             .count()
             .saturating_sub(LAST_ERROR_OUTPUT_CHARACTERS);
-        *output.lock().unwrap() = trimmed.chars().skip(skipped).collect();
+        *output = output.chars().skip(skipped).collect();
     }
 }
 

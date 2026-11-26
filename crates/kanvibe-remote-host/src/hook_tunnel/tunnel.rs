@@ -5,8 +5,12 @@ use std::path::PathBuf;
 use std::sync::{Arc, Condvar, Mutex, Weak};
 use std::time::{Duration, Instant};
 
+use kanvibe_domain::notifications::{
+    HookTunnelFailedPayload, HookTunnelFailureKind, HookTunnelRecoveredPayload,
+};
 use kanvibe_process::exec::ExecGitOptions;
 use kanvibe_process::hooks::socket_path::build_remote_hook_socket_prepare_command;
+use kanvibe_remote_agent::protocol::HOST_CLIENT_ALREADY_CONNECTED;
 
 use super::boundaries::{
     HookTunnelHostConnection, HookTunnelProcess, HookTunnelServing, HostHookRequest,
@@ -17,6 +21,7 @@ use super::ssh_args::{
     build_hook_tunnel_base_args, build_hook_tunnel_ssh_args, validate_remote_socket_path,
 };
 use super::{ServiceShared, TunnelTimings};
+use crate::connection::{RemoteHostConnectionError, RemoteHostConnectionErrorKind};
 
 #[derive(Default)]
 struct TunnelState {
@@ -26,6 +31,44 @@ struct TunnelState {
     host_connection: Option<Arc<dyn HookTunnelHostConnection>>,
     is_host_connection_closed: bool,
     should_reconnect_now: bool,
+    /// 잠자기에서 깨어 일부러 끊은 ssh 프로세스. 그 종료는 실패로 알리지 않는다
+    is_reconnect_requested: bool,
+    /// 마지막으로 알린 실패. 재시도에서 같은 사유면 다시 알리지 않는다
+    last_failure: Option<TunnelFailure>,
+}
+
+/// 한 번 잇지 못한 사유(TS `HookTunnelFailedPayload`의 kind·reason)
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct TunnelFailure {
+    pub(super) kind: HookTunnelFailureKind,
+    pub(super) reason: String,
+}
+
+/// daemon 연결 밖의 준비 실패(호스트 찾기, 원격 소켓 준비, ssh 실행)
+impl From<String> for TunnelFailure {
+    fn from(reason: String) -> Self {
+        Self {
+            kind: HookTunnelFailureKind::Setup,
+            reason,
+        }
+    }
+}
+
+/// 같은 client ID의 기존 연결이 답해 daemon이 거절한 경우는 핸드셰이크 실패와 따로 알린다
+impl From<RemoteHostConnectionError> for TunnelFailure {
+    fn from(error: RemoteHostConnectionError) -> Self {
+        let is_client_in_use = error.code.as_deref() == Some(HOST_CLIENT_ALREADY_CONNECTED);
+        let kind = match error.kind {
+            _ if is_client_in_use => HookTunnelFailureKind::ClientInUse,
+            RemoteHostConnectionErrorKind::Ssh => HookTunnelFailureKind::Ssh,
+            RemoteHostConnectionErrorKind::Handshake => HookTunnelFailureKind::Handshake,
+            RemoteHostConnectionErrorKind::Setup => HookTunnelFailureKind::Setup,
+        };
+        Self {
+            kind,
+            reason: error.message,
+        }
+    }
 }
 
 pub(crate) struct HookTunnel {
@@ -113,6 +156,8 @@ impl HookTunnel {
             state.reconnect_delay = reconnect_min_delay;
             let is_waiting = state.host_connection.is_none() && state.process.is_none();
             state.should_reconnect_now = is_waiting;
+            state.is_reconnect_requested =
+                state.host_connection.is_none() && state.process.is_some();
             (state.host_connection.clone(), state.process.clone())
         };
         self.state_changed.notify_all();
@@ -136,6 +181,31 @@ impl HookTunnel {
             .unwrap();
         state.should_reconnect_now = false;
         !state.is_closed
+    }
+
+    /// 사유가 앞서 알린 실패와 같으면 로그와 알림을 다시 남기지 않는다
+    fn report_failure(&self, shared: &ServiceShared, failure: TunnelFailure) {
+        {
+            let mut state = self.state.lock().unwrap();
+            if state.is_closed || state.last_failure.as_ref() == Some(&failure) {
+                return;
+            }
+            state.last_failure = Some(failure.clone());
+        }
+        eprintln!(
+            "[kanvibe] Hook tunnel to {} failed ({}): {}",
+            self.connect_host,
+            failure.kind.as_str(),
+            failure.reason
+        );
+        shared
+            .dependencies
+            .health_notifier
+            .broadcast_hook_tunnel_failed(HookTunnelFailedPayload {
+                ssh_host: self.connect_host.clone(),
+                kind: failure.kind,
+                reason: failure.reason,
+            });
     }
 
     fn is_current_connection(&self, host_connection: &Arc<dyn HookTunnelHostConnection>) -> bool {
@@ -163,10 +233,7 @@ fn supervise(shared: &Arc<ServiceShared>, tunnel: &Arc<HookTunnel>) {
             }
             Ok(Some(TunnelConnection::Process(process))) => watch_process(shared, tunnel, &process),
             Ok(None) => return,
-            Err(error) => eprintln!(
-                "[kanvibe] Hook tunnel to {} failed: {error}",
-                tunnel.connect_host
-            ),
+            Err(failure) => tunnel.report_failure(shared, failure),
         }
         if !tunnel.wait_before_reconnect(&shared.timings) {
             return;
@@ -177,7 +244,7 @@ fn supervise(shared: &Arc<ServiceShared>, tunnel: &Arc<HookTunnel>) {
 fn connect(
     shared: &Arc<ServiceShared>,
     tunnel: &Arc<HookTunnel>,
-) -> Result<Option<TunnelConnection>, String> {
+) -> Result<Option<TunnelConnection>, TunnelFailure> {
     let dependencies = &shared.dependencies;
     let config = dependencies
         .ssh_hosts
@@ -240,15 +307,30 @@ fn watch_process(
     if state.is_closed {
         return;
     }
+    let is_reconnect_requested = std::mem::take(&mut state.is_reconnect_requested);
     if started_at.elapsed() >= shared.timings.stable_after {
         state.reconnect_delay = shared.timings.reconnect_min_delay;
+        state.last_failure = None;
+    }
+    drop(state);
+    if is_reconnect_requested {
+        return;
     }
     let exit_code = exit
         .exit_code
         .map_or("null".to_string(), |code| code.to_string());
-    eprintln!(
-        "[kanvibe] Hook tunnel to {} closed (exit {exit_code}): {}",
-        tunnel.connect_host, exit.last_error_output
+    let error_output = exit.last_error_output.trim();
+    let reason = if error_output.is_empty() {
+        format!("SSH tunnel closed (exit {exit_code})")
+    } else {
+        error_output.to_string()
+    };
+    tunnel.report_failure(
+        shared,
+        TunnelFailure {
+            kind: HookTunnelFailureKind::Ssh,
+            reason,
+        },
     );
 }
 
@@ -262,6 +344,7 @@ fn attach_host_connection(
         let mut state = tunnel.state.lock().unwrap();
         state.host_connection = Some(Arc::clone(host_connection));
         state.is_host_connection_closed = false;
+        state.last_failure = None;
     }
     let replay_target = Arc::downgrade(tunnel);
     host_connection.set_hook_handler(Arc::new(move |request| {
@@ -269,6 +352,18 @@ fn attach_host_connection(
     }));
     let close_target = Arc::downgrade(tunnel);
     host_connection.on_close(Box::new(move || mark_host_connection_closed(&close_target)));
+    if host_connection.has_replaced_stale_peer() {
+        eprintln!(
+            "[kanvibe] Hook tunnel to {} reconnected after replacing an unresponsive desktop connection",
+            tunnel.connect_host
+        );
+        shared
+            .dependencies
+            .health_notifier
+            .broadcast_hook_tunnel_recovered(HookTunnelRecoveredPayload {
+                ssh_host: tunnel.connect_host.clone(),
+            });
+    }
     let (refresher, tunnel, host_connection) = (
         Arc::clone(&shared.dependencies.status_refresher),
         Arc::clone(tunnel),

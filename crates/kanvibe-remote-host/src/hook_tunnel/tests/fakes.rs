@@ -8,6 +8,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
+use kanvibe_domain::notifications::{HookTunnelFailedPayload, HookTunnelRecoveredPayload};
 use kanvibe_process::exec::{ExecGitError, ExecGitOptions, ShellCommandRunner};
 use kanvibe_process::host_file_access::HostFileAccess;
 use kanvibe_process::ssh_config::SshHostConfig;
@@ -15,6 +16,7 @@ use kanvibe_process::task_state_service::BoardUpdateNotifier;
 
 use super::super::*;
 use super::{DatabaseFixture, REMOTE_SOCKET};
+use crate::connection::RemoteHostConnectionError;
 
 pub(super) const CLIENT_ID: &str = "1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed";
 
@@ -40,6 +42,7 @@ pub(super) struct Fixture {
     pub runner: Arc<FakeRunner>,
     pub server: Arc<FakeRequestServer>,
     pub transport: Arc<FakeTransport>,
+    pub health: Arc<RecordingHealthNotifier>,
 }
 
 struct FixtureParts {
@@ -95,6 +98,7 @@ impl Fixture {
         let spawner = Arc::new(FakeSpawner::default());
         let runner = Arc::new(FakeRunner::new(REMOTE_SOCKET));
         let server = Arc::new(FakeRequestServer::default());
+        let health = Arc::new(RecordingHealthNotifier::default());
         let dependencies = HookTunnelDependencies {
             request_server: server.clone(),
             host_transport: parts.transport.clone(),
@@ -104,6 +108,7 @@ impl Fixture {
             remote_hosts: parts.remote_hosts,
             hook_client_ids: Arc::new(FixedClientId),
             status_refresher: parts.status_refresher,
+            health_notifier: health.clone(),
         };
         Self {
             service: HookTunnelService::with_timings(dependencies, parts.timings),
@@ -111,6 +116,7 @@ impl Fixture {
             runner,
             server,
             transport: parts.transport,
+            health,
         }
     }
 
@@ -143,6 +149,33 @@ struct FixedClientId;
 impl HookClientIdSource for FixedClientId {
     fn hook_client_id(&self) -> Result<String, String> {
         Ok(CLIENT_ID.into())
+    }
+}
+
+/// 터널이 알린 실패와 복구를 차례대로 모은다
+#[derive(Default)]
+pub(super) struct RecordingHealthNotifier {
+    failures: Mutex<Vec<HookTunnelFailedPayload>>,
+    recoveries: Mutex<Vec<HookTunnelRecoveredPayload>>,
+}
+
+impl RecordingHealthNotifier {
+    pub fn failures(&self) -> Vec<HookTunnelFailedPayload> {
+        self.failures.lock().unwrap().clone()
+    }
+
+    pub fn recoveries(&self) -> Vec<HookTunnelRecoveredPayload> {
+        self.recoveries.lock().unwrap().clone()
+    }
+}
+
+impl HookTunnelHealthNotifier for RecordingHealthNotifier {
+    fn broadcast_hook_tunnel_failed(&self, payload: HookTunnelFailedPayload) {
+        self.failures.lock().unwrap().push(payload);
+    }
+
+    fn broadcast_hook_tunnel_recovered(&self, payload: HookTunnelRecoveredPayload) {
+        self.recoveries.lock().unwrap().push(payload);
     }
 }
 
@@ -235,6 +268,7 @@ pub(super) struct FakeProcess {
     exit: Mutex<Option<Option<i32>>>,
     exited: Condvar,
     kills: AtomicUsize,
+    error_output: Mutex<String>,
 }
 
 impl FakeProcess {
@@ -242,6 +276,12 @@ impl FakeProcess {
     pub fn exit(&self, exit_code: Option<i32>) {
         self.exit.lock().unwrap().get_or_insert(exit_code);
         self.exited.notify_all();
+    }
+
+    /// stderr에 `error_output`을 남기고 끝난 ssh
+    pub fn exit_with_error_output(&self, exit_code: i32, error_output: &str) {
+        *self.error_output.lock().unwrap() = error_output.into();
+        self.exit(Some(exit_code));
     }
 
     pub fn kill_count(&self) -> usize {
@@ -260,7 +300,7 @@ impl HookTunnelProcess for FakeProcess {
         let exit = self.exited.wait_while(exit, |exit| exit.is_none()).unwrap();
         HookTunnelProcessExit {
             exit_code: exit.flatten(),
-            last_error_output: String::new(),
+            last_error_output: self.error_output.lock().unwrap().clone(),
         }
     }
 }
@@ -307,6 +347,7 @@ pub(super) struct FakeHostConnection {
     handler: Mutex<Option<HostHookHandler>>,
     close_callbacks: Mutex<Vec<Box<dyn FnOnce() + Send>>>,
     is_closed: AtomicBool,
+    has_replaced_stale_peer: bool,
 }
 
 impl FakeHostConnection {
@@ -335,11 +376,17 @@ impl HookTunnelHostConnection for FakeHostConnection {
         }
         self.close_callbacks.lock().unwrap().push(callback);
     }
+
+    fn has_replaced_stale_peer(&self) -> bool {
+        self.has_replaced_stale_peer
+    }
 }
 
 #[derive(Default)]
 pub(super) struct FakeTransport {
     is_daemon: bool,
+    /// 다음에 여는 daemon 연결이 응답 없는 앞 연결을 교체한 것처럼 보이게 한다
+    should_replace_stale_peer: AtomicBool,
     namespace: Mutex<Option<String>>,
     configured: Mutex<Vec<(String, String)>>,
     connections: Mutex<Vec<Arc<FakeHostConnection>>>,
@@ -369,6 +416,10 @@ impl FakeTransport {
     pub fn stop_count(&self) -> usize {
         self.stops.load(Ordering::SeqCst)
     }
+
+    pub fn replace_stale_peer_on_next_connection(&self) {
+        self.should_replace_stale_peer.store(true, Ordering::SeqCst);
+    }
 }
 
 impl HookTunnelHostTransport for FakeTransport {
@@ -389,11 +440,17 @@ impl HookTunnelHostTransport for FakeTransport {
         Ok(format!("endpoint-{}", config.hostname))
     }
 
-    fn connection(&self, _: &str) -> Result<Option<Arc<dyn HookTunnelHostConnection>>, String> {
+    fn connection(
+        &self,
+        _: &str,
+    ) -> Result<Option<Arc<dyn HookTunnelHostConnection>>, RemoteHostConnectionError> {
         if !self.is_daemon || self.namespace().is_none() {
             return Ok(None);
         }
-        let connection = Arc::new(FakeHostConnection::default());
+        let connection = Arc::new(FakeHostConnection {
+            has_replaced_stale_peer: self.should_replace_stale_peer.swap(false, Ordering::SeqCst),
+            ..FakeHostConnection::default()
+        });
         self.connections
             .lock()
             .unwrap()

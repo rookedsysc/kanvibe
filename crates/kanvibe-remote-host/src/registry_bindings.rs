@@ -12,7 +12,9 @@ use kanvibe_terminal::terminal_registry::{
 };
 use serde_json::{Value, json};
 
-use crate::connection::{HostConnection, RemotePtyAttachment, START_TIMEOUT};
+use crate::connection::{
+    HostConnection, RemoteHostConnectionError, RemotePtyAttachment, START_TIMEOUT,
+};
 use crate::hook_tunnel::{HookTunnelHostConnection, HookTunnelHostTransport, HostHookHandler};
 use crate::pool::RemoteHostConnectionPool;
 
@@ -177,6 +179,10 @@ impl HookTunnelHostConnection for HostConnection {
     fn on_close(&self, callback: Box<dyn FnOnce() + Send>) {
         HostConnection::on_close(self, callback);
     }
+
+    fn has_replaced_stale_peer(&self) -> bool {
+        self.replaced_stale_peer
+    }
 }
 
 /// hook 터널이 쓰는 daemon 연결 풀
@@ -198,7 +204,7 @@ impl HookTunnelHostTransport for TunnelHostTransport {
     fn connection(
         &self,
         ssh_host: &str,
-    ) -> Result<Option<Arc<dyn HookTunnelHostConnection>>, String> {
+    ) -> Result<Option<Arc<dyn HookTunnelHostConnection>>, RemoteHostConnectionError> {
         let connection = self.0.connection(ssh_host)?;
         Ok(connection.map(|connection| connection as Arc<dyn HookTunnelHostConnection>))
     }

@@ -3,6 +3,7 @@
 //! loader가 `upload-required`로 답하면 그 플랫폼 바이너리를 stdin으로 끝까지 보내 게시하게 하고, 같은 loader를 한 번
 //! 더 돌린다. `bridge-ready`가 오면 그 줄의 build hash가 데스크탑이 가진 바이너리 것인지 확인한 뒤 `hello`를 보낸다.
 //! `unsupported`면 daemon 없이 순수 ssh 경로로 가도록 `None`을 돌려준다.
+//! 실패는 단계로 나눈다. loader의 첫 줄 전에 끊기면 SSH, 업로드와 bootstrap 순서는 준비, `hello` 뒤는 핸드셰이크다.
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::sync::mpsc::{RecvTimeoutError, channel};
@@ -13,7 +14,10 @@ use kanvibe_process::ssh_config::SshHostConfig;
 use kanvibe_remote_agent::bootstrap::AgentLaunchMode;
 use serde_json::Value;
 
-use super::{HostConnection, HostIdentity, HostTransport, START_TIMEOUT};
+use super::{
+    HostConnection, HostIdentity, HostTransport, RemoteHostConnectionError,
+    RemoteHostConnectionErrorKind, START_TIMEOUT,
+};
 use crate::agent_binaries::AgentBinaryCatalog;
 
 const UPLOAD_TIMEOUT: Duration = Duration::from_secs(120);
@@ -55,21 +59,27 @@ pub fn connect_through_loader(
     binaries: &AgentBinaryCatalog,
     namespace: &str,
     client_id: &str,
-) -> Result<Option<Arc<HostConnection>>, String> {
-    let loader = binaries.loader_script(namespace, AgentLaunchMode::HostBridge)?;
+) -> Result<Option<Arc<HostConnection>>, RemoteHostConnectionError> {
+    let loader = binaries
+        .loader_script(namespace, AgentLaunchMode::HostBridge)
+        .map_err(RemoteHostConnectionError::setup)?;
     let remote_command = format!(
         "sh -lc {}",
         kanvibe_process::worktree::quote_for_posix_shell(&loader)
     );
     for _ in 0..2 {
-        let transport = spawner.spawn(config, &remote_command)?;
+        let transport = spawner.spawn(config, &remote_command).map_err(|error| {
+            RemoteHostConnectionError::new(RemoteHostConnectionErrorKind::Ssh, error)
+        })?;
         match run_loader(transport, binaries, namespace, client_id)? {
             LoaderOutcome::Unsupported => return Ok(None),
             LoaderOutcome::Uploaded => continue,
             LoaderOutcome::Connected(connection) => return Ok(Some(connection)),
         }
     }
-    Err("Host bootstrap did not start after upload".into())
+    Err(RemoteHostConnectionError::setup(
+        "Host bootstrap did not start after upload",
+    ))
 }
 
 enum LoaderOutcome {
@@ -83,7 +93,7 @@ fn run_loader(
     binaries: &AgentBinaryCatalog,
     namespace: &str,
     client_id: &str,
-) -> Result<LoaderOutcome, String> {
+) -> Result<LoaderOutcome, RemoteHostConnectionError> {
     let HostTransport {
         mut writer,
         reader,
@@ -93,7 +103,11 @@ fn run_loader(
     let terminate: Arc<dyn Fn() + Send + Sync> = Arc::from(terminate);
     let watchdog = Watchdog::start(START_TIMEOUT, Arc::clone(&terminate));
     let mut reader = BufReader::new(reader);
-    let first = read_preamble_line(&mut reader, &stderr_tail);
+    let first = read_preamble_line(
+        &mut reader,
+        &stderr_tail,
+        RemoteHostConnectionErrorKind::Ssh,
+    );
     watchdog.stop();
     let first = first.inspect_err(|_| terminate())?;
     match first["type"].as_str().unwrap_or_default() {
@@ -104,7 +118,8 @@ fn run_loader(
         "upload-required" => {
             let platform = first["platform"].as_str().unwrap_or_default().to_string();
             let watchdog = Watchdog::start(UPLOAD_TIMEOUT, Arc::clone(&terminate));
-            let outcome = upload(&mut writer, &mut reader, binaries, &platform, &stderr_tail);
+            let outcome = upload(&mut writer, &mut reader, binaries, &platform, &stderr_tail)
+                .map_err(RemoteHostConnectionError::setup);
             watchdog.stop();
             terminate();
             outcome.map(|()| LoaderOutcome::Uploaded)
@@ -121,7 +136,9 @@ fn run_loader(
         }
         _ => {
             terminate();
-            Err("Invalid host bootstrap sequence".into())
+            Err(RemoteHostConnectionError::setup(
+                "Invalid host bootstrap sequence",
+            ))
         }
     }
 }
@@ -133,10 +150,13 @@ fn attach_bridge(
     namespace: &str,
     client_id: &str,
     build_hash: &str,
-) -> Result<LoaderOutcome, String> {
+) -> Result<LoaderOutcome, RemoteHostConnectionError> {
     if !binaries.contains_hash(build_hash) {
         (transport.terminate)();
-        return Err("Host handshake mismatch".into());
+        return Err(RemoteHostConnectionError::new(
+            RemoteHostConnectionErrorKind::Handshake,
+            "Host handshake mismatch",
+        ));
     }
     let identity = HostIdentity {
         namespace: namespace.into(),
@@ -160,18 +180,20 @@ fn upload(
         .map_err(|error| error.to_string())?;
     // stdin을 닫아야 원격 loader가 끝을 안다
     drop(std::mem::replace(writer, Box::new(std::io::sink())));
-    let uploaded = read_preamble_line(reader, stderr_tail)?;
+    let uploaded = read_preamble_line(reader, stderr_tail, RemoteHostConnectionErrorKind::Setup)
+        .map_err(|error| error.message)?;
     if uploaded["type"] != "uploaded" {
         return Err("Invalid host bootstrap sequence".into());
     }
     Ok(())
 }
 
-/// JSON 한 줄을 읽는다. 끊기면 SSH stderr 끝부분을 붙여 알린다
+/// JSON 한 줄을 읽는다. 끊기면 SSH stderr 끝부분을 붙여 `disconnect_kind` 단계의 실패로 알린다
 fn read_preamble_line(
     reader: &mut BufReader<Box<dyn Read + Send>>,
     stderr_tail: &Arc<Mutex<String>>,
-) -> Result<Value, String> {
+    disconnect_kind: RemoteHostConnectionErrorKind,
+) -> Result<Value, RemoteHostConnectionError> {
     let mut line = String::new();
     let count = reader
         .by_ref()
@@ -179,15 +201,17 @@ fn read_preamble_line(
         .read_line(&mut line)
         .unwrap_or(0);
     if count == 0 || !line.ends_with('\n') {
-        let tail = stderr_tail.lock().unwrap().clone();
+        let tail = stderr_tail.lock().unwrap().trim().to_string();
         let suffix = if tail.is_empty() {
             String::new()
         } else {
             format!(": {tail}")
         };
-        return Err(format!(
-            "SSH host disconnected; command outcome may be unknown{suffix}"
+        return Err(RemoteHostConnectionError::new(
+            disconnect_kind,
+            format!("SSH host disconnected during startup{suffix}"),
         ));
     }
-    serde_json::from_str(line.trim()).map_err(|_| "Invalid host bootstrap preamble".to_string())
+    serde_json::from_str(line.trim())
+        .map_err(|_| RemoteHostConnectionError::setup("Invalid host bootstrap preamble"))
 }

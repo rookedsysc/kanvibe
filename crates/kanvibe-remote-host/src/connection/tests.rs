@@ -148,3 +148,96 @@ fn completed_remote_errors_carry_stdout_and_stderr() {
     assert!(error.has_remote_command_completed);
     assert_eq!(remote.records_of("exec.open")[0]["command"], "false");
 }
+
+// parity: TS-lib-remoteHostConnection-a0c20a
+#[test]
+fn the_daemons_liveness_probe_is_answered_with_the_same_request_id() {
+    let (_connection, remote) = connect_fake();
+
+    remote.send(json!({ "type": "ping", "id": "fixture-probe" }));
+
+    assert_eq!(remote.wait_for("pong", 1)[0]["id"], "fixture-probe");
+}
+
+fn connect_with_handshake(
+    handshake: impl FnOnce(&str) -> serde_json::Value,
+) -> Result<Option<Arc<HostConnection>>, RemoteHostConnectionError> {
+    let (_remote, spawner, catalog) = FakeRemote::start_with_handshake(handshake);
+    connect_through_loader(
+        &spawner,
+        &fake_remote::fixture_config(),
+        &catalog,
+        "qa-client",
+        "client",
+    )
+}
+
+// parity: TS-lib-remoteHostConnection-b690a4
+#[test]
+fn the_daemons_exact_rejection_reason_is_returned() {
+    let error = connect_with_handshake(|_| {
+        json!({ "type": "error", "error": "A desktop with this client ID is already connected", "code": "client-already-connected" })
+    })
+    .err()
+    .expect("daemon이 거절했다");
+
+    assert_eq!(error.kind, RemoteHostConnectionErrorKind::Handshake);
+    assert_eq!(error.code.as_deref(), Some("client-already-connected"));
+    assert_eq!(
+        error.message,
+        "A desktop with this client ID is already connected"
+    );
+}
+
+// parity: TS-lib-remoteHostConnection-3c2ea9
+#[test]
+fn a_mismatched_ready_field_is_named_in_the_error() {
+    let mismatches = [
+        ("version", json!(1)),
+        ("namespace", json!("dev")),
+        ("buildHash", json!("old-build")),
+        ("capabilities", json!(["exec"])),
+    ];
+
+    for (field, value) in mismatches {
+        let error = connect_with_handshake(|hash| {
+            let mut ready = fake_remote::fixture_ready(hash);
+            ready[field] = value;
+            ready
+        })
+        .err()
+        .expect("ready가 맞지 않는다");
+        assert_eq!(
+            error.kind,
+            RemoteHostConnectionErrorKind::Handshake,
+            "{field}"
+        );
+        assert!(error.message.contains(field), "{field}: {}", error.message);
+    }
+}
+
+// parity: TS-lib-remoteHostConnection-739722
+#[test]
+fn an_ssh_exit_before_bootstrap_is_classified_and_keeps_its_stderr() {
+    let (_binary_directory, catalog) = fake_remote::fixture_catalog();
+    let spawner = fake_remote::ssh_exit_before_bootstrap(
+        "ssh: connect to host example port 22: Operation timed out\n",
+    );
+
+    let error = connect_through_loader(
+        &spawner,
+        &fake_remote::fixture_config(),
+        &catalog,
+        "qa-client",
+        "client",
+    )
+    .err()
+    .expect("ssh가 끝났다");
+
+    assert_eq!(error.kind, RemoteHostConnectionErrorKind::Ssh);
+    assert!(
+        error.message.contains("Operation timed out"),
+        "{}",
+        error.message
+    );
+}

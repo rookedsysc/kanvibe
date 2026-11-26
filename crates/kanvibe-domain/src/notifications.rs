@@ -119,6 +119,47 @@ pub struct AppNotification {
     pub action: Option<Option<AppNotificationAction>>,
 }
 
+/// hook 터널을 잇지 못한 이유의 갈래(TS `HookTunnelFailedPayload.kind`). 갈래마다 확인할 곳이 다르다
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum HookTunnelFailureKind {
+    /// 원격 호스트에 SSH로 닿지 못했다
+    Ssh,
+    /// 원격 daemon과 핸드셰이크하지 못했다
+    Handshake,
+    /// 같은 client ID의 기존 데스크톱 연결이 ping에 답해 daemon이 새 연결을 거절했다
+    ClientInUse,
+    /// 원격 실행 환경이나 터널을 준비하지 못했다
+    Setup,
+}
+
+impl HookTunnelFailureKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Ssh => "ssh",
+            Self::Handshake => "handshake",
+            Self::ClientInUse => "client-in-use",
+            Self::Setup => "setup",
+        }
+    }
+}
+
+/// hook 터널을 잇지 못했다. 같은 이유가 이어지는 재시도에서는 한 번만 보낸다
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HookTunnelFailedPayload {
+    pub ssh_host: String,
+    pub kind: HookTunnelFailureKind,
+    pub reason: String,
+}
+
+/// daemon이 응답 없는 기존 연결을 교체해 hook 터널이 다시 이어졌다
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HookTunnelRecoveredPayload {
+    pub ssh_host: String,
+}
+
 /// 데스크톱 알림을 띄우고 알림 목록에 남길 내용
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

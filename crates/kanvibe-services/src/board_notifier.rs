@@ -5,7 +5,10 @@
 use std::sync::{Arc, Mutex};
 
 use kanvibe_domain::background_sync::BackgroundTaskSyncStatus;
-use kanvibe_domain::notifications::{BackgroundSyncReviewPayload, TaskPrMergedDetectedPayload};
+use kanvibe_domain::notifications::{
+    BackgroundSyncReviewPayload, HookTunnelFailedPayload, HookTunnelRecoveredPayload,
+    TaskPrMergedDetectedPayload,
+};
 use kanvibe_process::task_state_service::BoardUpdateNotifier;
 use serde::{Deserialize, Serialize};
 
@@ -92,6 +95,8 @@ pub enum BoardEvent {
     TaskStatusChanged(TaskStatusChangedPayload),
     HookStatusTargetMissing(HookStatusTargetMissingPayload),
     TaskHookInstallFailed(TaskHookInstallFailedPayload),
+    HookTunnelFailed(HookTunnelFailedPayload),
+    HookTunnelRecovered(HookTunnelRecoveredPayload),
     TaskSessionChanged(TaskSessionChangedPayload),
     TaskPeerDeletionFailed(TaskPeerDeletionFailedPayload),
     HerdrMachineRegistrationFailed(HerdrMachineRegistrationFailedPayload),
@@ -205,6 +210,14 @@ impl BoardNotifier {
 
     pub fn broadcast_task_hook_install_failed(&self, payload: TaskHookInstallFailedPayload) {
         self.emit(BoardEvent::TaskHookInstallFailed(payload));
+    }
+
+    pub fn broadcast_hook_tunnel_failed(&self, payload: HookTunnelFailedPayload) {
+        self.emit(BoardEvent::HookTunnelFailed(payload));
+    }
+
+    pub fn broadcast_hook_tunnel_recovered(&self, payload: HookTunnelRecoveredPayload) {
+        self.emit(BoardEvent::HookTunnelRecovered(payload));
     }
 
     pub fn broadcast_herdr_machine_registration_failed(

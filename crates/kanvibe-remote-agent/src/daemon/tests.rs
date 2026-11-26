@@ -147,6 +147,19 @@ impl WireClient {
             self.held.push(record);
         }
     }
+
+    /// daemon이 이 연결을 닫을 때까지 기다린다. 남은 레코드는 버린다
+    fn wait_until_closed(&mut self) {
+        loop {
+            match self.records.recv_timeout(Duration::from_secs(10)) {
+                Ok(_) => continue,
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => return,
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                    panic!("daemon이 연결을 닫지 않았다")
+                }
+            }
+        }
+    }
 }
 
 fn text_of(record: &HostRecord) -> String {
@@ -439,10 +452,80 @@ fn a_duplicate_live_client_id_is_rejected_without_replacing_the_first_desktop() 
     let (mut first, original) = WireClient::ready(&fixture.server, "client-one");
 
     let mut second = WireClient::connect(&fixture.server, "client-one", json!({}));
-    assert!(record_text(&second.next("error"), "error").is_some());
+    // daemon이 첫 데스크탑에 먼저 물어보지 않고 거절했다면 ping은 오지 않는다
+    let probe = first.next("ping");
+    first.send(json!({ "type": "pong", "id": probe["id"] }));
+    let rejection = second.next("error");
     first.send(json!({ "type": "status", "id": "identity" }));
 
+    assert_eq!(rejection["code"], json!("client-already-connected"));
+    assert!(
+        record_text(&rejection, "error").is_some_and(|error| error.contains("already connected")),
+        "{rejection:?}"
+    );
     assert_eq!(first.next("status")["instanceId"], original["instanceId"]);
+}
+
+// parity: TS-lib-remoteHostServer-6a8ce9
+#[test]
+fn an_unresponsive_desktop_is_replaced_once_when_several_connections_share_its_client_id() {
+    let fixture = start();
+    let (mut original, ready) = WireClient::ready(&fixture.server, "client-one");
+    let server_paths = fixture.server.paths.clone();
+    let pending_hook = std::thread::spawn(move || {
+        post_to(&server_paths, "client-one", "{}", &[], "/api/hooks/status")
+    });
+    original.next("hook.request");
+
+    let mut replacements = [
+        WireClient::connect(&fixture.server, "client-one", json!({})),
+        WireClient::connect(&fixture.server, "client-one", json!({})),
+    ];
+    let results: Vec<HostRecord> = replacements
+        .iter_mut()
+        .map(|replacement| replacement.next_of(&["ready", "error"]))
+        .collect();
+
+    let ready_index = results
+        .iter()
+        .position(|record| record_text(record, "type") == Some("ready"))
+        .expect("교체한 연결 하나는 ready를 받는다");
+    let rejected = &results[1 - ready_index];
+    assert_eq!(results[ready_index]["instanceId"], ready["instanceId"]);
+    assert_eq!(results[ready_index]["replacedStalePeer"], json!(true));
+    assert_eq!(record_text(rejected, "type"), Some("error"));
+    assert_eq!(rejected["code"], json!("client-already-connected"));
+    original.wait_until_closed();
+    assert_eq!(
+        pending_hook.join().unwrap(),
+        (
+            503,
+            "Desktop disconnected; request not replayed".to_string()
+        )
+    );
+    let server_paths = fixture.server.paths.clone();
+    let new_hook = std::thread::spawn(move || {
+        post_to(&server_paths, "client-one", "{}", &[], "/api/hooks/status")
+    });
+    let active = &mut replacements[ready_index];
+    let request = active.next("hook.request");
+    active.send(json!({ "type": "hook.response", "id": request["id"], "status": 202, "headers": {}, "body": "" }));
+    assert_eq!(new_hook.join().unwrap(), (202, String::new()));
+}
+
+// parity: TS-lib-remoteHostServer-0100d6
+#[test]
+fn the_original_desktop_stays_when_the_waiting_replacement_disconnects() {
+    let fixture = start();
+    let (mut original, _) = WireClient::ready(&fixture.server, "client-one");
+    let cancelled = WireClient::connect(&fixture.server, "client-one", json!({}));
+    original.next("ping");
+
+    drop(cancelled);
+    std::thread::sleep(Duration::from_millis(2_100));
+
+    original.send(json!({ "type": "status", "id": "original-status" }));
+    assert_eq!(original.next("status")["id"], json!("original-status"));
 }
 
 // parity: TS-lib-remoteHostServer-32c20b

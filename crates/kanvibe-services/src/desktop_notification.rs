@@ -10,6 +10,7 @@ use kanvibe_domain::platform::ShortcutPlatform;
 use kanvibe_domain::task_notifications::{
     HookStatusTargetMissingNotification, TaskStatusNotification,
     build_background_sync_review_notification, build_hook_status_target_missing_notification,
+    build_hook_tunnel_failed_notification, build_hook_tunnel_recovered_notification,
     build_task_status_notification,
 };
 
@@ -107,7 +108,8 @@ impl DesktopNotificationService {
     }
 
     /// 보드 이벤트를 알림으로 바꾼다. 상태 변경과 hook 대상 누락만 설정에 따라 OS 알림이 되고,
-    /// background sync 검토는 설정과 상관없이 알림 목록에만 조용히 남는다
+    /// background sync 검토는 설정과 상관없이 알림 목록에만 조용히 남는다.
+    /// hook 터널 실패는 OS 알림이 켜져 있으면 띄우고 꺼져 있어도 알림 목록에 사유를 남긴다. 자동 복구는 목록에만 남는다
     pub fn deliver_board_event_notification(
         &self,
         event: &BoardEvent,
@@ -125,6 +127,9 @@ impl DesktopNotificationService {
             }
             return Ok(true);
         }
+        if let Some((payload, is_failure)) = hook_tunnel_notification(event, locale) {
+            return self.deliver_hook_tunnel_notification(&payload, is_failure, callbacks);
+        }
         let Some((status, payload)) = notification_candidate(event, locale) else {
             return Ok(false);
         };
@@ -134,6 +139,41 @@ impl DesktopNotificationService {
             return Ok(false);
         }
         self.deliver_desktop_notification(&payload, callbacks)
+    }
+
+    /// 실패는 OS 알림이 켜져 있으면 띄우고, 꺼져 있거나 복구 알림이면 알림 목록에만 남긴다
+    fn deliver_hook_tunnel_notification(
+        &self,
+        payload: &DesktopNotificationPayload,
+        is_failure: bool,
+        callbacks: &NotificationDeliveryCallbacks,
+    ) -> ServiceResult<bool> {
+        let settings = AppSettingsService::new(&self.database, ShortcutPlatform::current())
+            .get_notification_settings()?;
+        if is_failure && settings.is_enabled {
+            return self.deliver_desktop_notification(payload, callbacks);
+        }
+        if self.store.create_notification(payload)?.is_created {
+            callbacks.notify_changed();
+        }
+        Ok(true)
+    }
+}
+
+/// hook 터널 이벤트의 알림과 그것이 실패 알림인지
+fn hook_tunnel_notification(
+    event: &BoardEvent,
+    locale: &str,
+) -> Option<(DesktopNotificationPayload, bool)> {
+    match event {
+        BoardEvent::HookTunnelFailed(failed) => {
+            Some((build_hook_tunnel_failed_notification(failed, locale), true))
+        }
+        BoardEvent::HookTunnelRecovered(recovered) => Some((
+            build_hook_tunnel_recovered_notification(recovered, locale),
+            false,
+        )),
+        _ => None,
     }
 }
 

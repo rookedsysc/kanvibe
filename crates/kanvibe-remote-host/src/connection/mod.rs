@@ -2,7 +2,7 @@
 //!
 //! SSH 자식(또는 테스트의 소켓)의 stdin/stdout 위에서 길이 접두 레코드를 주고받는다. 요청마다 id를 붙이고
 //! 응답 레코드를 id로 받는 쪽에 넘긴다. 연결이 끊기면 기다리던 모든 쪽에 `disconnected`를 알리고, 결과를 알 수
-//! 없는 명령은 다시 보내지 않는다. `hook.request`는 등록한 처리기로 답한다.
+//! 없는 명령은 다시 보내지 않는다. `hook.request`는 등록한 처리기로 답하고, daemon의 `ping`에는 같은 id의 `pong`으로 답한다.
 
 mod bootstrap;
 mod command;
@@ -47,6 +47,58 @@ pub struct HostTransport {
     pub stderr_tail: Arc<Mutex<String>>,
 }
 
+/// daemon 연결을 시작하지 못한 단계(TS `RemoteHostConnectionError.kind`)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RemoteHostConnectionErrorKind {
+    /// 원격 loader가 첫 줄을 내기 전에 ssh가 끝났다
+    Ssh,
+    /// daemon과 hello·ready를 주고받지 못했거나 daemon이 연결을 거절했다
+    Handshake,
+    /// 바이너리 업로드나 bootstrap 순서처럼 원격 실행 환경을 준비하지 못했다
+    Setup,
+}
+
+/// daemon 연결 시작 실패. 호출자가 SSH 문제와 daemon 거절을 구분해 알리도록 단계와 daemon의 사유 코드를 싣는다
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RemoteHostConnectionError {
+    pub kind: RemoteHostConnectionErrorKind,
+    pub message: String,
+    /// daemon이 `error` 레코드에 실은 `code`
+    pub code: Option<String>,
+}
+
+impl RemoteHostConnectionError {
+    pub fn new(kind: RemoteHostConnectionErrorKind, message: impl Into<String>) -> Self {
+        Self {
+            kind,
+            message: message.into(),
+            code: None,
+        }
+    }
+
+    pub fn setup(message: impl Into<String>) -> Self {
+        Self::new(RemoteHostConnectionErrorKind::Setup, message)
+    }
+
+    fn handshake(message: impl Into<String>) -> Self {
+        Self::new(RemoteHostConnectionErrorKind::Handshake, message)
+    }
+}
+
+impl std::fmt::Display for RemoteHostConnectionError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&self.message)
+    }
+}
+
+impl std::error::Error for RemoteHostConnectionError {}
+
+impl From<RemoteHostConnectionError> for String {
+    fn from(error: RemoteHostConnectionError) -> Self {
+        error.message
+    }
+}
+
 /// `hello`에 싣는 데스크탑 신원
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HostIdentity {
@@ -60,6 +112,8 @@ type RecordReceiver = Arc<dyn Fn(&HostRecord) + Send + Sync>;
 pub struct HostConnection {
     pub instance_id: String,
     pub remote_pid: i64,
+    /// daemon이 응답 없는 같은 client id의 앞 연결을 닫고 이 연결을 받았다
+    pub replaced_stale_peer: bool,
     outbox: Arc<RecordOutbox>,
     receivers: Mutex<HashMap<String, RecordReceiver>>,
     hook_handler: Mutex<Option<HostHookHandler>>,
@@ -70,7 +124,10 @@ pub struct HostConnection {
 
 impl HostConnection {
     /// bridge가 붙은 통로에서 `hello`를 보내고 `ready`를 확인한 뒤 연결을 돌려준다
-    pub fn attach(transport: HostTransport, identity: &HostIdentity) -> Result<Arc<Self>, String> {
+    pub fn attach(
+        transport: HostTransport,
+        identity: &HostIdentity,
+    ) -> Result<Arc<Self>, RemoteHostConnectionError> {
         let HostTransport {
             writer,
             reader,
@@ -91,7 +148,7 @@ impl HostConnection {
         });
         let handshake = outbox
             .send(&record_from(hello))
-            .map_err(|error| error.to_string())
+            .map_err(|error| RemoteHostConnectionError::handshake(error.to_string()))
             .and_then(|()| receive_ready(&first_record, identity));
         let ready = match handshake {
             Ok(ready) => ready,
@@ -107,6 +164,7 @@ impl HostConnection {
                 .unwrap_or_default()
                 .to_string(),
             remote_pid: record_integer(&ready, "pid").unwrap_or_default(),
+            replaced_stale_peer: ready.get("replacedStalePeer") == Some(&Value::Bool(true)),
             outbox,
             receivers: Mutex::new(HashMap::new()),
             hook_handler: Mutex::new(None),
@@ -147,6 +205,14 @@ impl HostConnection {
     }
 
     fn receive(self: &Arc<Self>, record: HostRecord) {
+        if record_text(&record, "type") == Some("ping")
+            && let Some(id) = record_text(&record, "id")
+        {
+            if self.send(json!({ "type": "pong", "id": id })).is_err() {
+                self.close();
+            }
+            return;
+        }
         if record_text(&record, "type") == Some("hook.request") {
             let connection = Arc::clone(self);
             std::thread::spawn(move || connection.answer_hook(&record));
@@ -243,37 +309,67 @@ fn parse_hook_request(record: &HostRecord) -> Option<HostHookRequest> {
 fn receive_ready(
     first_record: &std::sync::mpsc::Receiver<Result<HostRecord, String>>,
     identity: &HostIdentity,
-) -> Result<HostRecord, String> {
+) -> Result<HostRecord, RemoteHostConnectionError> {
     let ready = match first_record.recv_timeout(START_TIMEOUT) {
         Ok(Ok(record)) => record,
-        Ok(Err(error)) => return Err(error),
-        Err(RecvTimeoutError::Timeout) => return Err("Host bootstrap timed out".into()),
+        Ok(Err(error)) => return Err(RemoteHostConnectionError::handshake(error)),
+        Err(RecvTimeoutError::Timeout) => {
+            return Err(RemoteHostConnectionError::handshake(
+                "Host handshake timed out",
+            ));
+        }
         Err(RecvTimeoutError::Disconnected) => {
-            return Err("SSH host disconnected; command outcome may be unknown".into());
+            return Err(RemoteHostConnectionError::handshake(
+                "SSH host disconnected during startup",
+            ));
         }
     };
-    let capabilities = ready
-        .get("capabilities")
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
-    let has_capabilities = ["exec", "socket", "hooks", "pty"]
-        .iter()
-        .all(|capability| capabilities.contains(&Value::from(*capability)));
-    let is_matching = record_text(&ready, "type") == Some("ready")
-        && record_integer(&ready, "version") == Some(HOST_PROTOCOL_VERSION as i64)
-        && record_text(&ready, "namespace") == Some(identity.namespace.as_str())
-        && record_text(&ready, "buildHash") == Some(identity.build_hash.as_str())
-        && record_text(&ready, "instanceId").is_some()
-        && record_integer(&ready, "pid").is_some()
-        && has_capabilities;
-    if !is_matching {
-        let detail = record_text(&ready, "error")
-            .map(|error| format!(": {error}"))
-            .unwrap_or_default();
-        return Err(format!("Host handshake mismatch{detail}"));
+    if record_text(&ready, "type") == Some("error") {
+        let message = record_text(&ready, "error").unwrap_or("Host daemon rejected the handshake");
+        return Err(RemoteHostConnectionError {
+            code: record_text(&ready, "code").map(str::to_string),
+            ..RemoteHostConnectionError::handshake(message)
+        });
     }
+    validate_ready(&ready, identity).map_err(RemoteHostConnectionError::handshake)?;
     Ok(ready)
+}
+
+/// `ready`가 이 데스크탑과 맞는지 항목마다 따로 확인해 어느 값이 어긋났는지 알린다
+fn validate_ready(ready: &HostRecord, identity: &HostIdentity) -> Result<(), String> {
+    let kind = record_text(ready, "type").unwrap_or_default();
+    if kind != "ready" {
+        return Err(format!("Expected host ready record, received {kind}"));
+    }
+    if record_integer(ready, "version") != Some(HOST_PROTOCOL_VERSION as i64) {
+        return Err("Host ready version mismatch".into());
+    }
+    if record_text(ready, "namespace") != Some(identity.namespace.as_str()) {
+        return Err("Host ready namespace mismatch".into());
+    }
+    if record_text(ready, "buildHash") != Some(identity.build_hash.as_str()) {
+        return Err("Host ready buildHash mismatch".into());
+    }
+    if record_text(ready, "instanceId").is_none() {
+        return Err("Invalid host ready instanceId".into());
+    }
+    if record_integer(ready, "pid").is_none() {
+        return Err("Invalid host ready pid".into());
+    }
+    let Some(capabilities) = ready.get("capabilities").and_then(Value::as_array) else {
+        return Err("Invalid host ready capabilities".into());
+    };
+    let missing_capabilities: Vec<&str> = ["exec", "socket", "hooks", "pty"]
+        .into_iter()
+        .filter(|capability| !capabilities.contains(&Value::from(*capability)))
+        .collect();
+    if !missing_capabilities.is_empty() {
+        return Err(format!(
+            "Host ready capabilities missing: {}",
+            missing_capabilities.join(", ")
+        ));
+    }
+    Ok(())
 }
 
 /// 레코드를 읽는다. 첫 레코드는 핸드셰이크 쪽으로 보내고, 연결이 만들어지면 그 뒤 레코드를 연결에 넘긴다
@@ -310,15 +406,13 @@ fn read_records(
         }
     }
     if let Some(sender) = first_sender {
-        let tail = stderr_tail.lock().unwrap().clone();
+        let tail = stderr_tail.lock().unwrap().trim().to_string();
         let suffix = if tail.is_empty() {
             String::new()
         } else {
             format!(": {tail}")
         };
-        let _ = sender.send(Err(format!(
-            "SSH host disconnected; command outcome may be unknown{suffix}"
-        )));
+        let _ = sender.send(Err(format!("SSH host disconnected during startup{suffix}")));
     }
     if let Some(connection) = connection {
         connection.close();

@@ -12,7 +12,9 @@ use kanvibe_process::ssh_config::SshHostConfig;
 use kanvibe_remote_agent::protocol::is_valid_host_namespace;
 
 use crate::agent_binaries::AgentBinaryCatalog;
-use crate::connection::{HostConnection, HostTransportSpawner, connect_through_loader};
+use crate::connection::{
+    HostConnection, HostTransportSpawner, RemoteHostConnectionError, connect_through_loader,
+};
 use crate::hook_tunnel::SshHostLookup;
 use crate::ssh_transport::{
     EffectiveSshConfig, build_endpoint_probe_args, endpoint_key_from_effective_config,
@@ -37,7 +39,7 @@ enum SlotOutcome {
     Starting,
     Ready(Arc<HostConnection>),
     Unsupported { expires_at: Instant },
-    Failed(String),
+    Failed(RemoteHostConnectionError),
 }
 
 struct ConnectionSlot {
@@ -55,7 +57,7 @@ impl ConnectionSlot {
         }
     }
 
-    fn wait(&self) -> Result<Option<Arc<HostConnection>>, String> {
+    fn wait(&self) -> Result<Option<Arc<HostConnection>>, RemoteHostConnectionError> {
         let outcome = self.outcome.lock().unwrap();
         let outcome = self
             .settled
@@ -157,11 +159,12 @@ impl RemoteHostConnectionPool {
         Ok(key)
     }
 
-    /// 호스트의 daemon 연결. 신원을 설정하지 않았거나 원격이 지원하지 않으면 `None`이다
+    /// 호스트의 daemon 연결. 신원을 설정하지 않았거나 원격이 지원하지 않으면 `None`이다.
+    /// 연결 시작 전 준비(호스트 찾기, 실효 ssh 설정)의 실패는 준비 단계 실패다
     pub fn connection(
         self: &Arc<Self>,
         ssh_host: &str,
-    ) -> Result<Option<Arc<HostConnection>>, String> {
+    ) -> Result<Option<Arc<HostConnection>>, RemoteHostConnectionError> {
         let Some((identity, epoch)) = self.current_identity() else {
             return Ok(None);
         };
@@ -169,13 +172,22 @@ impl RemoteHostConnectionPool {
             .dependencies
             .ssh_hosts
             .find_host(ssh_host)
-            .ok_or_else(|| format!("SSH 호스트를 찾을 수 없습니다: {ssh_host}"))?;
-        let key = serde_json::to_string(&[self.endpoint_key(&config)?, identity.namespace.clone()])
+            .ok_or_else(|| {
+                RemoteHostConnectionError::setup(format!(
+                    "SSH 호스트를 찾을 수 없습니다: {ssh_host}"
+                ))
+            })?;
+        let endpoint_key = self
+            .endpoint_key(&config)
+            .map_err(RemoteHostConnectionError::setup)?;
+        let key = serde_json::to_string(&[endpoint_key, identity.namespace.clone()])
             .expect("문자열 배열");
         let (slot, is_owner) = {
             let mut state = self.state.lock().unwrap();
             if state.generation != epoch {
-                return Err("Host preparation cancelled".into());
+                return Err(RemoteHostConnectionError::setup(
+                    "Host preparation cancelled",
+                ));
             }
             match state.slots.get(&key).filter(|slot| slot.is_reusable()) {
                 Some(slot) => (Arc::clone(slot), false),
@@ -250,7 +262,9 @@ impl RemoteHostConnectionPool {
             if state.generation != epoch {
                 drop(state);
                 connection.close();
-                return SlotOutcome::Failed("Host preparation cancelled".into());
+                return SlotOutcome::Failed(RemoteHostConnectionError::setup(
+                    "Host preparation cancelled",
+                ));
             }
             state.live.push(Arc::clone(&connection));
         }

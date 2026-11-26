@@ -47,15 +47,46 @@ impl HostTransportSpawner for OneShotSpawner {
     }
 }
 
+/// 가짜 원격이 올린 것처럼 볼 바이너리 하나의 목록. 디렉터리는 목록을 쓰는 동안 살아 있어야 한다
+pub fn fixture_catalog() -> (tempfile::TempDir, AgentBinaryCatalog) {
+    let binary_directory = tempfile::tempdir().unwrap();
+    let binary_path: PathBuf = binary_directory
+        .path()
+        .join("kanvibe-remote-agent-Linux-x86_64");
+    std::fs::write(&binary_path, b"fixture binary").unwrap();
+    let catalog =
+        AgentBinaryCatalog::from_files(vec![("Linux-x86_64".into(), binary_path)]).unwrap();
+    (binary_directory, catalog)
+}
+
+/// 원격에 닿기 전에 끝난 ssh. stdout은 바로 닫히고 stderr에 이유만 남긴다
+pub fn ssh_exit_before_bootstrap(stderr: &str) -> OneShotSpawner {
+    let (desktop, remote) = UnixStream::pair().unwrap();
+    drop(remote);
+    let closer = desktop.try_clone().unwrap();
+    OneShotSpawner(Mutex::new(Some(HostTransport {
+        writer: Box::new(desktop.try_clone().unwrap()),
+        reader: Box::new(desktop),
+        terminate: Box::new(move || drop(closer.shutdown(Shutdown::Both))),
+        stderr_tail: Arc::new(Mutex::new(stderr.to_string())),
+    })))
+}
+
+/// 데스크탑 hello에 답하는 daemon의 기본 `ready`
+pub fn fixture_ready(build_hash: &str) -> Value {
+    json!({ "type": "ready", "version": 2, "namespace": "qa-client", "buildHash": build_hash, "pid": 123, "instanceId": "server", "capabilities": ["exec", "socket", "hooks", "pty"] })
+}
+
 impl FakeRemote {
     pub fn start() -> (Self, OneShotSpawner, AgentBinaryCatalog) {
-        let binary_directory = tempfile::tempdir().unwrap();
-        let binary_path: PathBuf = binary_directory
-            .path()
-            .join("kanvibe-remote-agent-Linux-x86_64");
-        std::fs::write(&binary_path, b"fixture binary").unwrap();
-        let catalog =
-            AgentBinaryCatalog::from_files(vec![("Linux-x86_64".into(), binary_path)]).unwrap();
+        Self::start_with_handshake(fixture_ready)
+    }
+
+    /// hello에 `handshake`가 만든 레코드로 답하는 원격. 인자는 데스크탑이 확인할 build hash다
+    pub fn start_with_handshake(
+        handshake: impl FnOnce(&str) -> Value,
+    ) -> (Self, OneShotSpawner, AgentBinaryCatalog) {
+        let (binary_directory, catalog) = fixture_catalog();
         let build_hash = catalog.digests()[0].sha256.clone();
         let (desktop, remote) = UnixStream::pair().unwrap();
         let closer = desktop.try_clone().unwrap();
@@ -76,7 +107,7 @@ impl FakeRemote {
         spawn_reader(
             remote.try_clone().unwrap(),
             Arc::clone(&records),
-            build_hash,
+            handshake(&build_hash),
         );
         let fake = Self {
             stream: remote,
@@ -121,8 +152,8 @@ impl FakeRemote {
     }
 }
 
-/// hello에 ready로 답하고, 그 뒤 레코드는 모아 둔다
-fn spawn_reader(mut stream: UnixStream, records: Arc<Mutex<Vec<Value>>>, build_hash: String) {
+/// hello에 `handshake`로 답하고, 그 뒤 레코드는 모아 둔다
+fn spawn_reader(mut stream: UnixStream, records: Arc<Mutex<Vec<Value>>>, handshake: Value) {
     std::thread::spawn(move || {
         let mut decoder = HostRecordDecoder::new();
         let mut buffer = vec![0; 64 * 1024];
@@ -133,8 +164,8 @@ fn spawn_reader(mut stream: UnixStream, records: Arc<Mutex<Vec<Value>>>, build_h
             };
             for record in decoded {
                 if record.get("type") == Some(&Value::from("hello")) {
-                    let ready = json!({ "type": "ready", "version": 2, "namespace": "qa-client", "buildHash": build_hash, "pid": 123, "instanceId": "server", "capabilities": ["exec", "socket", "hooks", "pty"] });
-                    let _ = writer.write_all(&encode_host_record(&record_from(ready)).unwrap());
+                    let reply = record_from(handshake.clone());
+                    let _ = writer.write_all(&encode_host_record(&reply).unwrap());
                 }
                 records.lock().unwrap().push(Value::Object(record));
             }

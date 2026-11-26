@@ -3,6 +3,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use kanvibe_domain::notifications::{
     AppNotificationAction, BackgroundSyncRegisteredWorktreePayload, BackgroundSyncReviewPayload,
+    HookTunnelFailedPayload, HookTunnelFailureKind, HookTunnelRecoveredPayload,
     TaskPrMergedDetectedPayload,
 };
 
@@ -138,6 +139,114 @@ fn stores_sync_results_quietly_even_when_os_notifications_are_off() {
 
     assert!(is_handled);
     assert_eq!(fixture.store.list_notifications().unwrap().len(), 1);
+    assert_eq!(change_count.load(Ordering::SeqCst), 1);
+    assert_eq!(fixture.presenter.shown_count(), 0);
+}
+
+fn hook_tunnel_failed(kind: HookTunnelFailureKind, reason: &str) -> BoardEvent {
+    BoardEvent::HookTunnelFailed(HookTunnelFailedPayload {
+        ssh_host: "dev-vm".into(),
+        kind,
+        reason: reason.into(),
+    })
+}
+
+/// 제목에 `title_part`가 든 저장된 알림
+fn stored_with_title(store: &NotificationStore, title_part: &str) -> AppNotification {
+    store
+        .list_notifications()
+        .unwrap()
+        .into_iter()
+        .find(|notification| notification.title.contains(title_part))
+        .unwrap_or_else(|| panic!("{title_part} 알림이 없다"))
+}
+
+// parity: TS-main-desktopNotificationService-e21026
+#[test]
+fn ssh_failures_and_daemon_rejections_show_different_recovery_hints() {
+    let fixture = fixture();
+    fixture.set_notification_settings(true, &[]);
+    let (callbacks, _) = counting_callbacks();
+
+    for event in [
+        hook_tunnel_failed(HookTunnelFailureKind::Ssh, "Operation timed out"),
+        hook_tunnel_failed(
+            HookTunnelFailureKind::ClientInUse,
+            "A desktop with this client ID is already connected",
+        ),
+    ] {
+        fixture
+            .service
+            .deliver_board_event_notification(&event, "ko", &callbacks)
+            .unwrap();
+    }
+
+    let ssh_failure = stored_with_title(&fixture.store, "SSH 연결 실패");
+    let rejection = stored_with_title(&fixture.store, "KanVibe 연결 거부");
+    let (ssh_hint, ssh_reason) = ssh_failure.body.split_once('\n').unwrap();
+    let (rejection_hint, rejection_reason) = rejection.body.split_once('\n').unwrap();
+    assert!(ssh_hint.contains("VPN"), "{}", ssh_failure.body);
+    assert_eq!(ssh_reason, "Operation timed out");
+    assert!(
+        rejection_hint.contains("기존 데스크톱"),
+        "{}",
+        rejection.body
+    );
+    assert_eq!(
+        rejection_reason,
+        "A desktop with this client ID is already connected"
+    );
+    assert_eq!(fixture.presenter.shown_count(), 2);
+}
+
+// parity: TS-main-desktopNotificationService-3e2396
+#[test]
+fn the_daemon_rejection_reason_stays_in_the_inbox_when_os_notifications_are_off() {
+    let fixture = fixture();
+    fixture.set_notification_settings(false, &[]);
+    let (callbacks, change_count) = counting_callbacks();
+
+    fixture
+        .service
+        .deliver_board_event_notification(
+            &hook_tunnel_failed(
+                HookTunnelFailureKind::Handshake,
+                "Host hello buildHash mismatch",
+            ),
+            "en",
+            &callbacks,
+        )
+        .unwrap();
+
+    let stored = fixture.store.list_notifications().unwrap();
+    assert_eq!(stored[0].title, "dev-vm — KanVibe handshake failed");
+    assert!(
+        stored[0].body.contains("Host hello buildHash mismatch"),
+        "{}",
+        stored[0].body
+    );
+    assert_eq!(change_count.load(Ordering::SeqCst), 1);
+    assert_eq!(fixture.presenter.shown_count(), 0);
+}
+
+// parity: TS-main-desktopNotificationService-1aae77
+#[test]
+fn replacing_an_unresponsive_connection_leaves_the_recovery_reason_in_the_inbox() {
+    let fixture = fixture();
+    fixture.set_notification_settings(true, &[]);
+    let (callbacks, change_count) = counting_callbacks();
+    let recovered = BoardEvent::HookTunnelRecovered(HookTunnelRecoveredPayload {
+        ssh_host: "dev-vm".into(),
+    });
+
+    fixture
+        .service
+        .deliver_board_event_notification(&recovered, "ko", &callbacks)
+        .unwrap();
+
+    let stored = fixture.store.list_notifications().unwrap();
+    assert_eq!(stored[0].title, "dev-vm — Hook 터널 복구");
+    assert!(stored[0].body.contains("응답이 없어"), "{}", stored[0].body);
     assert_eq!(change_count.load(Ordering::SeqCst), 1);
     assert_eq!(fixture.presenter.shown_count(), 0);
 }

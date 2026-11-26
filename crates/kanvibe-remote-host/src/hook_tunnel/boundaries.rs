@@ -4,7 +4,10 @@ use std::collections::HashSet;
 use std::os::unix::net::UnixListener;
 use std::sync::{Arc, RwLock};
 
+use kanvibe_domain::notifications::{HookTunnelFailedPayload, HookTunnelRecoveredPayload};
 use kanvibe_process::ssh_config::{SshConfigReader, SshHostConfig};
+
+use crate::connection::RemoteHostConnectionError;
 
 /// 터널 하나가 맡은 SSH 별칭. 같은 원격 계정을 가리키는 별칭이 나중에 더해지거나 빠져도 요청 처리기가 지금 값을 보도록
 /// 서비스와 요청 처리기가 같은 값을 나눠 쥔다(TS `HookTunnel.sshHosts` Set을 그대로 넘기던 자리)
@@ -37,6 +40,8 @@ pub trait HookTunnelHostConnection: Send + Sync {
     fn close(&self);
     /// 연결이 닫히면 한 번 부른다. 이미 닫혔으면 바로 부른다
     fn on_close(&self, callback: Box<dyn FnOnce() + Send>);
+    /// daemon이 응답 없는 같은 client ID의 앞 연결을 닫고 이 연결을 받았다
+    fn has_replaced_stale_peer(&self) -> bool;
 }
 
 /// 호스트별 daemon 연결 풀(TS `remoteHostConnection` 모듈 함수들)
@@ -51,9 +56,15 @@ pub trait HookTunnelHostTransport: Send + Sync {
     fn connection(
         &self,
         ssh_host: &str,
-    ) -> Result<Option<Arc<dyn HookTunnelHostConnection>>, String>;
+    ) -> Result<Option<Arc<dyn HookTunnelHostConnection>>, RemoteHostConnectionError>;
     /// 모든 연결을 닫고 설정을 지운다(TS `stopRemoteHostConnections`)
     fn stop(&self);
+}
+
+/// 터널을 잇지 못한 사유와 자동 복구를 앱 알림으로 넘긴다(TS `broadcastHookTunnelFailed`, `broadcastHookTunnelRecovered`)
+pub trait HookTunnelHealthNotifier: Send + Sync {
+    fn broadcast_hook_tunnel_failed(&self, payload: HookTunnelFailedPayload);
+    fn broadcast_hook_tunnel_recovered(&self, payload: HookTunnelRecoveredPayload);
 }
 
 /// 터널 로컬 소켓에서 hook·task CLI 요청을 처리하는 서버. 서버 crate가 구현한다.

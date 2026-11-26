@@ -10,6 +10,7 @@ use std::os::unix::net::UnixListener;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
+use kanvibe_domain::notifications::{HookTunnelFailedPayload, HookTunnelRecoveredPayload};
 use kanvibe_pane_mirror::RemotePaneGrants;
 use kanvibe_process::shell_environment::{
     ShellEnvironment, ShellPlatform, create_local_shell_environment,
@@ -18,9 +19,9 @@ use kanvibe_process::ssh_config::SshConfigReader;
 use kanvibe_remote_host::agent_binaries::AgentBinaryCatalog;
 use kanvibe_remote_host::command_runner::DaemonRoutedCommandRunner;
 use kanvibe_remote_host::hook_tunnel::{
-    DatabaseHookClientIds, DatabaseRemoteHosts, HookTunnelDependencies, HookTunnelRequestServer,
-    HookTunnelService, HookTunnelServing, SourceSshHosts, SystemHookTunnelProcessSpawner,
-    TaskStatusFileRefresher,
+    DatabaseHookClientIds, DatabaseRemoteHosts, HookTunnelDependencies, HookTunnelHealthNotifier,
+    HookTunnelRequestServer, HookTunnelService, HookTunnelServing, SourceSshHosts,
+    SystemHookTunnelProcessSpawner, TaskStatusFileRefresher,
 };
 use kanvibe_remote_host::pool::{RemoteHostConnectionPool, RemoteHostConnectionPoolDependencies};
 use kanvibe_remote_host::registry_bindings::{RegistryHostConnections, TunnelHostTransport};
@@ -29,6 +30,7 @@ use kanvibe_remote_host::terminal_agent_seam::{
     RustRemoteTerminalAgentBundle, SelfSignedCertificateIssuer, UploadingRemoteTerminalAgentSpawner,
 };
 use kanvibe_runtime::{DesktopRuntime, RemoteHookRouting, RuntimeConfig};
+use kanvibe_services::board_notifier::BoardNotifier;
 use kanvibe_terminal::environment::TerminalHostEnvironment;
 use kanvibe_terminal::remote_terminal_service::{
     RemoteTerminalService, RemoteTerminalServiceDependencies, SystemRemoteTerminalAgentSpawner,
@@ -165,7 +167,21 @@ impl RemoteHostWiring {
                 Arc::clone(runtime.host_files()),
                 runtime.board_notifier().clone(),
             )),
+            health_notifier: Arc::new(BoardHookTunnelHealth(runtime.board_notifier().clone())),
         }
+    }
+}
+
+/// 터널 실패·복구를 보드 이벤트로 보내 알림 서비스가 로그와 앱 알림함에 남기게 한다
+struct BoardHookTunnelHealth(Arc<BoardNotifier>);
+
+impl HookTunnelHealthNotifier for BoardHookTunnelHealth {
+    fn broadcast_hook_tunnel_failed(&self, payload: HookTunnelFailedPayload) {
+        self.0.broadcast_hook_tunnel_failed(payload);
+    }
+
+    fn broadcast_hook_tunnel_recovered(&self, payload: HookTunnelRecoveredPayload) {
+        self.0.broadcast_hook_tunnel_recovered(payload);
     }
 }
 

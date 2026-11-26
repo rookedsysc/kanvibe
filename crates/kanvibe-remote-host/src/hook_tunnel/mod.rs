@@ -8,6 +8,7 @@
 //! 터널은 두 방식 가운데 하나로 이어진다. 원격 host daemon을 쓸 수 있으면 daemon 연결이 넘긴 `hook.request`를
 //! 로컬 소켓에 다시 보내고, 쓸 수 없으면 예전처럼 `ssh -R <원격 소켓>:<로컬 소켓>`을 띄운다.
 //! 끊기면 5초부터 두 배씩(최대 5분) 기다렸다 다시 잇고, 30초 넘게 살아 있었으면 대기를 처음 값으로 되돌린다.
+//! 잇지 못한 사유는 로그와 앱 알림으로 남기되, 재시도에서 같은 사유가 이어지면 한 번만 남긴다.
 //! 스레드 모델: 터널마다 감시 스레드 하나, 주기 정리 스레드 하나. 호스트를 터널에 묶는 판단은 잠금 하나로 줄 세운다.
 
 mod boundaries;
@@ -28,10 +29,10 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use kanvibe_process::exec::ShellCommandRunner;
 
 pub use boundaries::{
-    HookClientIdSource, HookTunnelHostConnection, HookTunnelHostTransport, HookTunnelProcess,
-    HookTunnelProcessExit, HookTunnelProcessSpawner, HookTunnelRequestServer, HookTunnelServing,
-    HostHookHandler, HostHookRequest, HostHookResponse, HostTaskStatusRefresher, RemoteHostsSource,
-    SourceSshHosts, SshHostLookup,
+    HookClientIdSource, HookTunnelHealthNotifier, HookTunnelHostConnection,
+    HookTunnelHostTransport, HookTunnelProcess, HookTunnelProcessExit, HookTunnelProcessSpawner,
+    HookTunnelRequestServer, HookTunnelServing, HostHookHandler, HostHookRequest, HostHookResponse,
+    HostTaskStatusRefresher, RemoteHostsSource, SourceSshHosts, SshHostLookup,
 };
 pub use replay::replay_hook_request;
 pub use ssh_args::{build_hook_tunnel_ssh_args, build_plain_endpoint_key};
@@ -74,6 +75,7 @@ pub struct HookTunnelDependencies {
     pub remote_hosts: Arc<dyn RemoteHostsSource>,
     pub hook_client_ids: Arc<dyn HookClientIdSource>,
     pub status_refresher: Arc<dyn HostTaskStatusRefresher>,
+    pub health_notifier: Arc<dyn HookTunnelHealthNotifier>,
 }
 
 pub struct HookTunnelService {
