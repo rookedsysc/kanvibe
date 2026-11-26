@@ -69,10 +69,12 @@ def link_real_claude_records(home: Path) -> None:
 
 
 class RecordWatch:
-    """실제 세션 기록을 2ms마다 읽어 (pid, 대화 ID)를 처음 본 시각과 그 기록의 cwd를 남긴다"""
+    """실제 세션 기록을 2ms마다 읽어 CLI(pid)의 대화 ID가 바뀐 시각과 그 기록의 cwd를 남긴다.
+    `/resume`은 전에 쓴 대화 ID로 돌아가므로 (pid, 대화 ID)를 처음 본 시각이 아니라 바뀔 때마다 남긴다"""
 
     def __init__(self) -> None:
-        self.first_seen: dict[tuple[str, str], int] = {}
+        self.changes: list[tuple[str, str, int]] = []
+        self.current: dict[str, str] = {}
         self.cwd_of: dict[str, str] = {}
         self.lock = threading.Lock()
         threading.Thread(target=self.follow, daemon=True).start()
@@ -86,24 +88,25 @@ class RecordWatch:
                 except (OSError, ValueError):
                     continue
                 with self.lock:
-                    self.first_seen.setdefault((path.stem, record.get("sessionId")), now)
                     self.cwd_of[path.stem] = record.get("cwd")
+                    if self.current.get(path.stem) != record.get("sessionId"):
+                        self.current[path.stem] = record.get("sessionId")
+                        self.changes.append((path.stem, record.get("sessionId"), now))
             time.sleep(0.002)
 
     def known_pids(self) -> set[str]:
         with self.lock:
-            return {pid for pid, _ in self.first_seen}
+            return set(self.current)
 
     def records_for(self, cwd: str) -> list[tuple[str, str, int]]:
         with self.lock:
-            return [(pid, session_id, seen) for (pid, session_id), seen in self.first_seen.items()
-                    if self.cwd_of.get(pid) == cwd]
+            return [change for change in self.changes if self.cwd_of.get(change[0]) == cwd]
 
-    def wait(self, cwd: str, predicate, timeout_s: float = 60.0) -> tuple[str, str, int]:
+    def wait(self, cwd: str, predicate, timeout_s: float = 60.0, after_ns: int = 0) -> tuple[str, str, int]:
         deadline = time.monotonic() + timeout_s
         while time.monotonic() < deadline:
             for pid, session_id, seen in self.records_for(cwd):
-                if predicate(pid, session_id):
+                if seen >= after_ns and predicate(pid, session_id):
                     return pid, session_id, seen
             time.sleep(0.005)
         raise TimeoutError("claude session record not seen")
@@ -265,14 +268,16 @@ def scenario_herdr_claude(session: harness.Session, pane, watch: RecordWatch, re
     cwd = harness.task_worktree(session)
     pid, first_id = start_and_connect(session, pane, watch, results)
     time.sleep(2.0)
+    sent = time.time_ns()
     send_line(pane, "/clear")
-    _, cleared_id, written = watch.wait(cwd, lambda p, sid: p == pid and sid != first_id)
+    _, cleared_id, written = watch.wait(cwd, lambda p, sid: p == pid and sid != first_id, after_ns=sent)
     results["clear"] = {"session": cleared_id, "record_to_retarget_ms": ms_after(session, "pane_chat:retarget", written)}
     time.sleep(3.0)
+    sent = time.time_ns()
     send_line(pane, "/resume")
     time.sleep(2.5)
     pane.send_key("enter")
-    _, resumed_id, written = watch.wait(cwd, lambda p, sid: p == pid and sid == first_id, timeout_s=30)
+    _, resumed_id, written = watch.wait(cwd, lambda p, sid: p == pid and sid == first_id, timeout_s=30, after_ns=sent)
     results["resume"] = {"session": resumed_id, "record_to_retarget_ms": ms_after(session, "pane_chat:retarget", written)}
     wait_chat_text(session, FIRST_PROMPT, 10000)
     results["resume"]["resumed_rows_shown"] = True

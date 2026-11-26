@@ -35,6 +35,7 @@ import json
 import os
 import shutil
 import signal
+import sqlite3
 import statistics
 import subprocess
 import sys
@@ -93,6 +94,8 @@ class Session:
         self.fixture = capture.build_fixture(fixture_root, "full", {
             "theme_preference": "dark", "sidebar_default_collapsed": "true", **settings_overrides})
         self.fixture_root = fixture_root
+        if target is TASK_TARGETS["herdr"]:
+            use_shared_herdr_space(self.fixture["database"], target.route.rsplit("/", 1)[1])
         self.agent = work / "agent"
         self.agent.mkdir(parents=True, exist_ok=True)
         shutil.copy(TOOLS_DIR / "pane_chat_fake_claude.py", self.agent / "claude")
@@ -209,6 +212,14 @@ def write_transcript(home: Path, cwd: str, session_id: str, target_bytes: int) -
                 written += len(line.encode("utf-8")) + 1
             turn += 1
     return path
+
+
+def use_shared_herdr_space(database: str, task_id: str) -> None:
+    """fixture의 Herdr task는 독립 서버 이름이라 pane focus를 알려 주는 client 중계가 붙지 않아 pane 채팅 대상이 아니다.
+    제품이 새 Herdr task에 쓰는 공유 Space 이름(`kanvibe:<세션 이름>`, kanvibe-process `worktree/sessions.rs`)으로 바꾼다.
+    fixture 세션 이름은 Herdr가 허용하는 글자만 써서 제품의 이름 정리를 거쳐도 그대로다"""
+    with sqlite3.connect(database) as connection:
+        connection.execute("UPDATE kanban_tasks SET session_name = 'kanvibe:' || session_name WHERE id = ?", (task_id,))
 
 
 def task_worktree(session: Session) -> str:
