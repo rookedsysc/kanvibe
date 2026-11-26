@@ -676,6 +676,28 @@ fn allows_new_empty_session_before_first_flush() {
             ..PaneChatSessionBinding::exact("session-a", &scene.transcript("session-a"))
         })
     );
+    // 그 대화 ID 이름의 기록이 어디에도 없으면 모든 프로젝트 기록을 여는 리더 조회 없이 대기 중으로 잇는다
+    assert_eq!(scene.fixture.catalog.call_count(), 0);
+
+    // 프로젝트 디렉터리 이름이 어긋난 곳에 같은 이름의 기록이 있으면 리더가 허용한 기록으로만 잇는다(검색어 없이 한 번)
+    write_file(
+        &format!(
+            "{}/.claude/projects/-moved-repo-a/session-a.jsonl",
+            scene.home
+        ),
+        "",
+    );
+    scene.fixture.catalog.set(
+        PaneChatProvider::Claude,
+        vec![session("session-a", "/safe/session-a.jsonl")],
+    );
+    assert_eq!(
+        scene.find(PaneChatProvider::Claude),
+        Some(PaneChatSessionBinding::exact(
+            "session-a",
+            "/safe/session-a.jsonl"
+        ))
+    );
     let calls = scene.fixture.catalog.calls.lock().unwrap().clone();
     assert!(calls.iter().all(|(_, _, query)| query.is_none()));
     assert_eq!(calls.len(), 1);

@@ -589,16 +589,40 @@ impl PaneChatSessionBindings {
                 &source_ref,
             )));
         }
+        let pending = PaneChatSessionBinding {
+            is_pending: true,
+            ..PaneChatSessionBinding::exact(&descriptor.session_id, &source_ref)
+        };
+        if !has_transcript_named_after(context, &home, &descriptor.session_id)? {
+            return Ok(Some(pending));
+        }
         let existing = self.find_pane_chat_reported_session_binding(
             context,
             PaneChatProvider::Claude,
             &descriptor.session_id,
         )?;
-        Ok(Some(existing.unwrap_or(PaneChatSessionBinding {
-            is_pending: true,
-            ..PaneChatSessionBinding::exact(&descriptor.session_id, &source_ref)
-        })))
+        Ok(Some(existing.unwrap_or(pending)))
     }
+}
+
+/// 그 대화 ID 이름의 기록 파일이 Claude 프로젝트 디렉터리 어디든 있는지. 이름만 훑고 내용은 읽지 않는다.
+///
+/// 첫 입력 전의 새 대화는 기록 파일이 없다. 이때 세션 리더로 찾으면 그 작업 폴더의 기록이 아직 없어 모든 프로젝트의 기록을
+/// 열어 보게 되고, 기록이 많은 머신에서는 조회 한 번이 몇 초 걸린다. 같은 이름의 파일이 어디에도 없으면 리더도 그 대화를
+/// 찾지 못하므로 바로 대기 중인 새 대화로 잇는다. 다른 대화의 기록은 이 판정으로 연결되지 않는다
+fn has_transcript_named_after(
+    context: &AiSessionReaderContext,
+    home: &str,
+    session_id: &str,
+) -> AiResult<bool> {
+    let projects = node_path::join(&[home, ".claude", "projects"]);
+    let file_name = format!("{session_id}.jsonl");
+    let found = context
+        .host
+        .list_files_recursively_by_suffix(&projects, &file_name)?;
+    Ok(found
+        .iter()
+        .any(|path| node_path::basename(path) == file_name))
 }
 
 /// Claude Code가 남긴 실행 중 프로세스 기록에서 쓰는 값
