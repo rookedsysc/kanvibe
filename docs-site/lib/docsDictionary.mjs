@@ -12,6 +12,7 @@ const dictionaries = {
       ['/installation', '설치'],
       ['/quick-start', 'Quick Start'],
       ['/features', '기능'],
+      ['/performance', '성능 벤치마크'],
       ['/mobile', '모바일'],
       ['/settings', '설정'],
       ['/shortcuts', '단축키']
@@ -32,6 +33,7 @@ const dictionaries = {
       ['/installation', 'Installation'],
       ['/quick-start', 'Quick Start'],
       ['/features', 'Features'],
+      ['/performance', 'Performance benchmark'],
       ['/mobile', 'Mobile'],
       ['/settings', 'Settings'],
       ['/shortcuts', 'Shortcuts']
@@ -52,6 +54,7 @@ const dictionaries = {
       ['/installation', '安装'],
       ['/quick-start', 'Quick Start'],
       ['/features', '功能'],
+      ['/performance', '性能基准测试'],
       ['/mobile', '移动端'],
       ['/settings', '设置'],
       ['/shortcuts', '快捷键']

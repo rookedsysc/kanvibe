@@ -244,6 +244,7 @@ Each pane can run a custom command (e.g., `vim`, `htop`, `lazygit`, test runner,
 - **tmux**, **zellij**, and **Herdr** are supported as terminal multiplexers
 - Native in-app terminal (alacritty_terminal) attached to the task session
 - SSH remote terminal support that reads `~/.ssh/config`
+- [Performance benchmark](https://kanvibe.rookedsysc.com/en/performance): SSH burst input and paste timings, and pane chat connection latency
 - Non-interactive remote SSH commands reuse an app-local ControlMaster socket pool under `~/.kanvibe`, with per-host concurrency capped at 4x available CPU cores
 - Remote terminal attach executes tmux/zellij/Herdr directly over SSH; trusted X11 forwarding (`ssh -Y`) is requested only when local `DISPLAY`, remote `X11Forwarding`, and `xauth` are available
 - Nerd Font rendering support

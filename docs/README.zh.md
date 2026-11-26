@@ -195,6 +195,7 @@ brew untap rookedsysc/kanvibe
 - 支持 **Herdr**、**tmux** 和 **zellij** 作为终端复用器
 - 连接到任务会话的应用内原生终端（alacritty_terminal）
 - 读取 `~/.ssh/config` 的 SSH 远程终端支持
+- [性能基准测试](https://kanvibe.rookedsysc.com/zh/performance)：SSH 连续输入和粘贴的传输耗时以及 Pane 聊天连接延迟
 - 非交互式远程 SSH 命令会复用 `~/.kanvibe` 下的应用专用 ControlMaster socket 池，并将每个 host 的并发数限制为可用 CPU 核心数的 4 倍
 - 远程终端 attach 会通过 SSH 直接执行 Herdr/tmux/zellij；仅在本地 `DISPLAY`、远程 `X11Forwarding` 和 `xauth` 可用时请求 trusted X11 forwarding（`ssh -Y`）
 - Nerd Font 渲染支持

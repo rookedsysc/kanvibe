@@ -197,6 +197,7 @@ brew untap rookedsysc/kanvibe
 - **Herdr**, **tmux**, **zellij** 모두 터미널 멀티플렉서로 지원
 - 태스크 세션에 붙는 앱 내장 네이티브 터미널(alacritty_terminal)
 - `~/.ssh/config`를 읽는 SSH 원격 터미널 지원
+- [성능 벤치마크](https://kanvibe.rookedsysc.com/ko/performance): SSH 연속 입력·붙여넣기 전송 시간과 Pane 채팅 연결 지연
 - 비대화형 원격 SSH 명령은 `~/.kanvibe` 아래의 앱 전용 ControlMaster 소켓 풀을 재사용하며 host별 동시성을 사용 가능한 CPU 코어 수의 4배까지 제한합니다
 - 원격 터미널 attach는 SSH에서 Herdr/tmux/zellij를 직접 실행하며, 로컬 `DISPLAY`, 원격 `X11Forwarding`, `xauth`가 준비된 경우에만 trusted X11 forwarding(`ssh -Y`)을 요청합니다
 - Nerd Font 렌더링 지원

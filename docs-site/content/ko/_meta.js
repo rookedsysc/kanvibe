@@ -16,6 +16,9 @@ export default {
   features: {
     title: '기능'
   },
+  performance: {
+    title: '성능 벤치마크'
+  },
   mobile: {
     title: '모바일'
   },

@@ -1,0 +1,104 @@
+---
+title: Performance benchmark
+description: "KanVibe SSH burst input, paste, screen response, and pane chat connection timings measured in an isolated Linux environment."
+---
+
+# Performance benchmark
+
+With simulated SSH round-trip latency (RTT) of 60 ms, the median time to paste 280 KB and confirm receipt on the remote host dropped from **556 ms to 124 ms**, and the time to echo a burst of eight characters dropped from **487 ms to 61 ms**. In pane chat, the time until a message can be sent again after Claude's `/clear` dropped from **1,215 ms to 63 ms**, and the time from first opening the chat to the first conversation row dropped from **354 ms to 170 ms**. The p95 time from a single keystroke to its echo on screen was 115.0 ms for the baseline and 115.8 ms with both the board and remote changes applied.
+
+## Remote terminal
+
+### What we compared
+
+On November 26, 2026, we built four release variants in separate worktrees from the same KanVibe revision (`6e7ceb7a3220`). The **board variant** reduces repeated computation and copying during card moves and rendering (`d194e50d4c38`). The **remote variant** lets the PTY and Herdr socket send up to eight chunks in order while waiting for acknowledgments (`568f66d03259`). The **combined variant** includes both changes.
+
+### SSH transfer times
+
+The table shows medians in milliseconds at a configured RTT of 60 ms. The 280 KB paste ends when the remote shell has read 280,000 bytes and reports the count. The Herdr row measures a round trip of the same volume of binary data through the SSH socket forwarding path KanVibe uses.
+
+| Operation | Baseline | Board variant | Remote variant | Combined |
+| --- | ---: | ---: | ---: | ---: |
+| PTY single-character echo | 61.0 | 60.9 | 60.9 | 60.9 |
+| PTY eight-character burst echo | 486.7 | 487.0 | 61.0 | 61.0 |
+| PTY 280 KB paste with receipt confirmation | 555.5 | 552.5 | 124.4 | 124.4 |
+| Herdr socket 280 KB echo | 553.5 | 550.7 | 123.2 | 123.0 |
+| Direct OpenSSH pipe single-character echo | 60.6 | 60.5 | 60.5 | 60.6 |
+
+The next table shows medians in milliseconds for the baseline and remote variant at each simulated latency.
+
+| Configured RTT | Eight-character echo, baseline → remote | 280 KB paste, baseline → remote |
+| --- | ---: | ---: |
+| 0 ms | 2.2 → 0.4 | 10.2 → 7.1 |
+| 60 ms | 486.7 → 61.0 | 555.5 → 124.4 |
+| 120 ms | 969.1 → 120.9 | 1093.0 → 243.6 |
+
+The burst test sent eight characters without waiting for echoes between them. Single-character echoes stayed close to one network round trip in every build. The larger differences appeared when multiple characters were queued.
+
+### Screen response
+
+Each cell shows the median and p95 in milliseconds. The p95 is the time within which approximately 95% of samples completed. Keystroke timing runs from X11 input injection to the frame that paints the terminal echo. Card drop timing runs from mouse release to the card appearing in the destination column.
+
+| Operation | Baseline | Board variant | Remote variant | Combined |
+| --- | ---: | ---: | ---: | ---: |
+| Remote PTY keystroke to screen, 60 ms RTT | 99.4 / 115.0 | 99.4 / 115.7 | 97.3 / 115.6 | 83.9 / 115.8 |
+| Local tmux keystroke to screen | 19.2 / 51.8 | 19.8 / 51.7 | 19.8 / 63.2 | 19.8 / 61.3 |
+| Card drop to screen, default board | 35.7 / 52.7 | 37.7 / 50.3 | 38.2 / 57.9 | 38.9 / 51.9 |
+| Card drop to screen, 240 additional cards | 103.1 / 117.1 | 95.5 / 124.4 | 104.6 / 130.0 | 96.1 / 122.0 |
+
+On the larger board, the board and combined variants had lower median drop times and higher p95 times. The results give a mixed picture of board responsiveness.
+
+### Test environment
+
+- Bubblewrap isolated the app and test server on Linux. Each scenario had two CPU cores, 2 GiB of memory, and no swap. GPU devices were hidden, and llvmpipe rendered to a 1600 × 1000 Xvfb display.
+- Within each scenario, all four builds ran on the same CPU cores in alternating order. After warm-up, the screen benchmarks recorded 48 keystrokes and 24 card drops per build across four sessions. The transfer benchmarks recorded 24 single-character echoes and eight samples per burst or bulk transfer operation for each build and RTT.
+- A temporary OpenSSH server and a bidirectional delay proxy supplied the configured RTT. The proxy added delay only. Herdr timings cover socket forwarding, and direct OpenSSH timings cover pipe round trips. Internet packet loss, full Herdr and Ghostty display latency, and physical monitor timing were outside the measurement scope.
+
+## Pane chat connection
+
+Pane chat shows the conversation of the AI CLI running in a terminal pane as a chat view and sends messages to that CLI. In the tables below, "ready to send" is the moment KanVibe has confirmed the pane's CLI and conversation, so chat input can be delivered to that conversation.
+
+### What we compared
+
+We compared a release build of the same baseline revision (`6e7ceb7a3220`) with a build that adds the pane chat changes (`6b8c4b8fd09f` through `7bfefd2d6601`). The changed build does the following:
+
+- On Linux, checking whether a CLI runs in the pane reads only the pane shell's descendant processes in one pass, instead of scanning the full process list several times. One check dropped from 22–60 ms to 3.6 ms.
+- When the CLI reports a new conversation ID, KanVibe checks that pane again immediately instead of waiting for the next 1–1.5 second poll.
+- Opening the chat paints the latest 12 rows first and the remaining rows on the next frame.
+- A new Claude conversation before its first prompt, and a Claude transcript that has no messages yet right after `/clear`, connect as an empty new conversation without opening every project's transcripts. KanVibe never borrows another conversation's transcript.
+
+### Results
+
+Each cell shows the median and p90 in milliseconds. The p90 is the time within which approximately 90% of samples completed. The history session selection row recorded medians only.
+
+| Operation | Baseline | Changed build | Samples |
+| --- | ---: | ---: | ---: |
+| First chat open → first frame | 33.7 / 34.2 | 34.1 / 34.4 | 10 |
+| First chat open → first conversation row | 353.9 / 370.2 | 169.6 / 178.0 | 10 |
+| Switch from terminal back to chat → conversation rows | 123.1 / 123.2 | 59.1 / 59.2 | 20 |
+| Switch from terminal back to chat → ready to send | 203.0 / 203.1 | 139.1 / 171.1 | 20 |
+| Return from the board to the task → conversation rows | 498.5 / 506.6 | 138.6 / 154.6 | 10 |
+| Select a session in history → messages shown | 155.8 | 139.7 | 10 |
+| CLI session detected → ready to send (auto-open) | 340.1 / 346.4 | 104.4 / 112.1 | 10 |
+| `/clear` → ready to send | 1215.4 / 1247.4 | 62.7 / 63.8 | 30 |
+| `/resume` → ready to send | 1279.9 / 1296.3 | 78.9 / 80.0 | 20 |
+
+The first frame after opening the chat was the same in both builds; the time to fill in the conversation dropped. Opening the history view measured 55.7 ms → 71.7 ms in the alternating runs, one frame slower. Painting the view cost 20–27 ms in both builds, and a rerun on the final commit measured 55.7 ms. We attribute the gap to clicks that coincided with the full-window repaint after the once-per-second pane layout read.
+
+### Checked with real Claude Code
+
+We ran real Claude Code 2.1.332 in a tmux pane once per build. Each value is the time in milliseconds from Claude writing its conversation ID to its session file (`~/.claude/sessions/`) until the chat connected to that conversation.
+
+| Operation | Baseline | Changed build |
+| --- | ---: | ---: |
+| Start a new conversation → ready to send | 774 | 80 |
+| `/clear` → connected to the new conversation | 690 | 69 |
+| `/resume` → connected to the earlier conversation | 774 | 80 |
+
+In a folder where Claude had never run before, the baseline opened every project's transcript files and took about 4 seconds to connect; the changed build took 80 ms. With Claude running in two panes of the same folder, each chat showed only its own pane's conversation.
+
+### Test environment
+
+- Release builds ran on Linux with an Xvfb display and isolated HOME, XDG, and tmux socket paths. CPU pinning and memory limits were not applied, and the load average stayed between 0.1 and 2 during the runs.
+- The repeated measurements used a test CLI that writes session files like real Claude 2.1.332 and emulates `/clear` and `/resume`. The resumed transcript was 4 MB. The baseline and changed builds alternated for at least 10 rounds with no failures. Ten more runs on the final commit stayed within ±5% for every operation.
+- The real CLI checks ran once per combination. Codex 0.172.0 is not a version whose conversation identification has been verified (0.169.0), so it stayed unconnected as intended. Claude in a Zellij pane did not connect automatically in either build and was not measured. Herdr, Gemini CLI, and OpenCode were not measured with real CLIs.
