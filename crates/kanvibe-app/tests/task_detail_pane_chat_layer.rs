@@ -115,6 +115,18 @@ fn advance_poll(cx: &mut VisualTestContext) {
     advance(cx, 1_100);
 }
 
+/// 층이 다시 그려 달라고 알린(notify) 횟수. 돌려받은 구독을 쥐고 있는 동안 센다
+fn count_notifications(
+    layer: &Entity<PaneChatLayer>,
+    cx: &mut VisualTestContext,
+) -> (Rc<Cell<usize>>, gpui_kit::Subscription) {
+    let notifications = Rc::new(Cell::new(0));
+    let counter = notifications.clone();
+    let subscription =
+        cx.update(|_, cx| cx.observe(layer, move |_, _| counter.set(counter.get() + 1)));
+    (notifications, subscription)
+}
+
 // parity: TS-renderer-TerminalPaneChatLayer-08b4c4
 #[gpui::test]
 fn default_chat_waits_for_layout_and_cli_without_a_connecting_screen(cx: &mut TestAppContext) {
@@ -683,5 +695,96 @@ fn pane_shortcut_opens_the_active_pane_only_while_the_terminal_is_shown(cx: &mut
     backend.clear_calls();
     toggle(&layer, cx, None);
     assert_eq!(backend.call_count(LAYOUT), 0);
+    assert!(!is_visible(&layer, cx, "%1"));
+}
+
+/// 배치가 그대로인 1초 주기 조회는 층을 다시 그리지 않는다(창 전체 다시 그리기 약 31ms를 아낀다)
+#[gpui::test]
+fn unchanged_layout_polls_do_not_redraw_the_layer(cx: &mut TestAppContext) {
+    init(cx);
+    let backend = backend(&saved_modes(), false);
+    let (layer, cx) = open_layer(cx, &backend, "task-1", true);
+    let reads_before = backend.call_count(LAYOUT);
+    let (notifications, _subscription) = count_notifications(&layer, cx);
+
+    for _ in 0..3 {
+        advance_poll(cx);
+    }
+
+    assert_eq!(backend.call_count(LAYOUT), reads_before + 3);
+    assert_eq!(notifications.get(), 0);
+}
+
+/// 활성 pane·좌표가 바뀌거나 조회가 실패했다가 복구되면 알리고, 덮개 위치와 안내가 새 상태를 따른다
+#[gpui::test]
+fn layout_changes_and_read_failures_still_redraw_the_layer(cx: &mut TestAppContext) {
+    init(cx);
+    let backend = backend(&saved_modes(), false);
+    let (layer, cx) = open_layer(cx, &backend, "task-1", true);
+    toggle(&layer, cx, None);
+    let (notifications, _subscription) = count_notifications(&layer, cx);
+
+    backend.respond(
+        LAYOUT,
+        json!({ "activePaneId": "%1", "panes": [
+            { "id": "%1", "tabId": "@1", "bounds": { "left": 0, "top": 0, "width": 29, "height": 24 } },
+            { "id": "%2", "tabId": "@1", "bounds": { "left": 30, "top": 0, "width": 50, "height": 24 } }] }),
+    );
+    advance_poll(cx);
+    assert!(notifications.get() >= 1);
+    assert_eq!(width_of(&layer, cx, "%1"), Some((0.0, 290.0)));
+
+    notifications.set(0);
+    backend.respond(LAYOUT, split("%2"));
+    advance_poll(cx);
+    assert!(notifications.get() >= 1);
+    assert_eq!(
+        layer
+            .read_with(cx, |layer, _| layer.toggle_pane().map(str::to_string))
+            .as_deref(),
+        Some("%2")
+    );
+
+    notifications.set(0);
+    backend.fail(LAYOUT, "tmux unavailable");
+    advance_poll(cx);
+    assert!(notifications.get() >= 1);
+    assert_eq!(
+        layer.read_with(cx, |layer, _| layer.alert_message_key()),
+        Some("readError")
+    );
+    assert!(!is_visible(&layer, cx, "%1"));
+    assert!(!layer.read_with(cx, |layer, _| layer.is_chat_focused()));
+
+    notifications.set(0);
+    backend.respond(LAYOUT, split("%1"));
+    advance_poll(cx);
+    assert!(notifications.get() >= 1);
+    assert_eq!(
+        layer.read_with(cx, |layer, _| layer.alert_message_key()),
+        None
+    );
+    assert!(is_visible(&layer, cx, "%1"));
+}
+
+/// 입력을 쥔 채팅 pane이 배치에서 사라지면 알리고 포커스를 놓는다
+#[gpui::test]
+fn focused_chat_pane_disappearing_redraws_and_releases_focus(cx: &mut TestAppContext) {
+    init(cx);
+    let backend = backend(&saved_modes(), false);
+    let (layer, cx) = open_layer(cx, &backend, "task-1", true);
+    toggle(&layer, cx, None);
+    assert!(layer.read_with(cx, |layer, _| layer.is_chat_focused()));
+    let (notifications, _subscription) = count_notifications(&layer, cx);
+
+    backend.respond(
+        LAYOUT,
+        json!({ "activePaneId": "%2", "panes": [
+            { "id": "%2", "tabId": "@1", "bounds": { "left": 0, "top": 0, "width": 80, "height": 24 } }] }),
+    );
+    advance_poll(cx);
+
+    assert!(notifications.get() >= 1);
+    assert!(!layer.read_with(cx, |layer, _| layer.is_chat_focused()));
     assert!(!is_visible(&layer, cx, "%1"));
 }

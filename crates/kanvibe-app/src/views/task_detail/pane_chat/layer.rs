@@ -399,6 +399,7 @@ impl PaneChatLayer {
         if generation != self.generation || !self.is_visible {
             return;
         }
+        let shown_before = self.layout_shown_fields();
         self.is_reading = false;
         mark_screen_phase(PERF_SCREEN, "layout_done");
         match layout {
@@ -418,7 +419,21 @@ impl PaneChatLayer {
         }
         self.sync_children(window, cx);
         self.probe_agent_panes(cx);
-        cx.notify();
+        // 배치가 그대로인 주기 조회까지 알리면 작업 상세와 창 전체가 1초마다 다시 그려진다. 포커스 복원, 전환 완료,
+        // 확인 결과, 자식 화면은 각자 알린다
+        if self.layout_shown_fields() != shown_before {
+            cx.notify();
+        }
+    }
+
+    /// 배치 조회가 끝날 때 바뀌어 화면에 드러날 수 있는 값(덮개 위치·전환 버튼, 안내, 포커스)
+    fn layout_shown_fields(&self) -> (Option<PaneChatLayout>, bool, bool, Option<String>) {
+        (
+            self.layout.clone(),
+            self.is_layout_failed,
+            self.is_chat_focused,
+            self.focused_pane.clone(),
+        )
     }
 
     fn apply_layout(
