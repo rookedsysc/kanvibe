@@ -229,3 +229,46 @@ fn local_tail_keeps_last_values_and_drops_null_lines() {
     );
     assert_eq!(read_json_lines(&host, &file_path).unwrap().len(), 3);
 }
+
+#[test]
+fn appending_while_the_previous_result_is_held_keeps_the_earlier_lines_shared() {
+    let (_directory, file_path) = session_file();
+    let earlier_lines: String = (0..1000).map(|id| line(json!({ "id": id }))).collect();
+    std::fs::write(&file_path, earlier_lines).unwrap();
+    let first = read_appended_json_lines(&file_path).unwrap();
+
+    append(&file_path, &line(json!({"id": 1000})));
+    let second = read_appended_json_lines(&file_path).unwrap();
+
+    assert!(Arc::ptr_eq(&second.lines.chunks[0], &first.lines.chunks[0]));
+    assert_eq!(second.lines.len(), 1001);
+    assert_eq!(second.lines[1000].as_ref(), &json!({"id": 1000}));
+}
+
+#[test]
+fn chunked_lines_index_like_one_list_and_stay_few_chunks() {
+    let mut chunks = JsonLineChunks::default();
+    let mut expected = Vec::new();
+    for (round, size) in [1, 3, 2, 2, 7, 1, 1, 1, 16, 5, 0, 4]
+        .into_iter()
+        .enumerate()
+    {
+        let appended: Vec<_> = (0..size)
+            .map(|offset| Arc::new(json!({ "round": round, "offset": offset })))
+            .collect();
+        expected.extend(appended.iter().cloned());
+        chunks.append(appended);
+    }
+
+    assert_eq!(chunks.len(), expected.len());
+    for (index, value) in expected.iter().enumerate() {
+        assert!(Arc::ptr_eq(&chunks[index], value), "line {index}");
+    }
+    assert!(
+        chunks
+            .iter()
+            .zip(&expected)
+            .all(|(left, right)| Arc::ptr_eq(left, right))
+    );
+    assert!(chunks.chunks.len() <= expected.len().ilog2() as usize + 1);
+}

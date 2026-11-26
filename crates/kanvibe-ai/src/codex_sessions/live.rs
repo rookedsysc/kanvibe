@@ -75,15 +75,17 @@ pub fn read_codex_live_sessions(
         |thread| thread.file.mtime_ms,
     );
     let running_since = now_ms - windows.running_window_ms as f64;
-    Ok(live_threads
-        .iter()
-        .map(|own_thread| LiveProviderSnapshot {
+    // TS처럼 스레드마다 현재 작업 읽기를 함께 돌린다
+    Ok(map_with_concurrency(
+        &live_threads,
+        parse_concurrency(context),
+        |own_thread, _| LiveProviderSnapshot {
             session_id: Some(own_thread.meta.thread_id.clone()),
             current_task: read_codex_current_activity(&own_thread.file.file_path, context),
             last_active_at: iso_string_from_ms(own_thread.file.mtime_ms),
             running_subtasks: running_subtasks(&threads, &own_thread.meta.thread_id, running_since),
-        })
-        .collect())
+        },
+    ))
 }
 
 fn running_subtasks(

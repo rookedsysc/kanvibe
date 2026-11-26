@@ -59,6 +59,20 @@ const PROVIDER_CLI_INHERITED_VARIABLES: [&str; 25] = [
     "SSL_CERT_DIR",
 ];
 
+/// API 키나 클라우드 자격증명으로 인증하는 사용자의 CLI가 상태 조회·로그인·로그아웃에서도 같은 계정을 보도록
+/// TS처럼 넘기는 provider 인증 변수. 계정 위치 변수(`CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `GEMINI_CLI_HOME`)는
+/// 계정을 가르는 값이라 여기 넣지 않고 아래에서 계정마다 새로 정한다
+const PROVIDER_CLI_AUTH_VARIABLE_PREFIXES: [&str; 4] =
+    ["ANTHROPIC_", "CLAUDE_CODE_", "OPENAI_", "GOOGLE_"];
+const PROVIDER_CLI_AUTH_VARIABLES: [&str; 1] = ["GEMINI_API_KEY"];
+
+fn is_provider_auth_variable(name: &str) -> bool {
+    PROVIDER_CLI_AUTH_VARIABLES.contains(&name)
+        || PROVIDER_CLI_AUTH_VARIABLE_PREFIXES
+            .iter()
+            .any(|prefix| name.starts_with(prefix))
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProviderAuthStatus {
@@ -172,7 +186,7 @@ fn create_local_path(context: &UsageContext) -> String {
     merge_path_entries(&[process_path, &extra_paths.join(":")])
 }
 
-/// 계정 위치를 알리는 변수 하나만 얹은 CLI 자식 환경. 서버 런타임 값과 KanVibe 내부 값은 처음부터 고르지 않는다.
+/// 고른 셸 값과 provider 인증 변수에 계정 위치를 알리는 변수 하나만 얹은 CLI 자식 환경. 서버 런타임 값과 KanVibe 내부 값은 처음부터 고르지 않는다.
 /// 기본 루트일 때는 그 변수를 넣지 않는다. Claude Code는 `CLAUDE_CONFIG_DIR`가 있으면 설정 파일을 config dir 안에 새로 만들어
 /// 같은 계정의 신원이 홈과 config dir 두 곳으로 갈리기 때문이다
 pub fn create_provider_cli_environment(
@@ -188,6 +202,12 @@ pub fn create_provider_cli_environment(
                 .map(|value| (name.to_string(), value.to_string()))
         })
         .collect();
+    let provider_auth_variables = context
+        .process_variables
+        .iter()
+        .filter(|(name, _)| is_provider_auth_variable(name))
+        .map(|(name, value)| (name.clone(), value.clone()));
+    environment.extend(provider_auth_variables);
     let locale = |name: &str| {
         context
             .variable(name)

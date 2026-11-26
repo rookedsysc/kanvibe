@@ -49,11 +49,13 @@ static IMAGE_MARKER_PREFIX_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
 
 const TOOL_CALL_TYPES: [&str; 3] = ["function_call", "tool_call", "custom_tool_call"];
 
-/// `event.payload ?? {}`
-fn event_payload(event: &Value) -> Value {
+static EMPTY_PAYLOAD: LazyLock<Value> = LazyLock::new(|| Value::Object(Map::new()));
+
+/// `event.payload ?? {}`. 이벤트마다 payload를 복제하지 않도록 참조를 돌려준다
+fn event_payload(event: &Value) -> &Value {
     match event.get("payload") {
-        Some(payload) if !payload.is_null() => payload.clone(),
-        _ => Value::Object(Map::new()),
+        Some(payload) if !payload.is_null() => payload,
+        _ => &EMPTY_PAYLOAD,
     }
 }
 
@@ -65,9 +67,9 @@ pub(crate) fn extract_codex_event_messages(
 ) -> Vec<CodexEventMessage> {
     match event.get("type").and_then(Value::as_str) {
         Some("response_item") => {
-            extract_response_item(&event_payload(event), source_ref, tool_names)
+            extract_response_item(event_payload(event), source_ref, tool_names)
         }
-        Some("event_msg") => extract_agent_message(&event_payload(event)),
+        Some("event_msg") => extract_agent_message(event_payload(event)),
         _ => Vec::new(),
     }
 }

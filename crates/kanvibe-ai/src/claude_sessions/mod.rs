@@ -23,7 +23,8 @@ use crate::providers::AiSessionProvider;
 use crate::session_listing::{
     LOCAL_SESSION_FILE_PARSE_CONCURRENCY, Page, REMOTE_SESSION_FILE_PARSE_CONCURRENCY,
     create_reader_result, create_unavailable_result, determine_match_scope, get_candidate_paths,
-    map_with_concurrency, paginate_items, sort_messages_descending,
+    map_with_concurrency, newest_first_message_order, paginate_items, paginate_messages_in_order,
+    sort_messages_descending,
 };
 use crate::types::{
     AggregatedAiMessage, AggregatedAiSession, AggregatedAiSessionDetail, AiMessageRole,
@@ -143,9 +144,14 @@ fn view_file_transcript(
         with_session_transcript(&log, file_path, request.session_id, context, |transcript| {
             let page = request.is_single_file.then(|| {
                 let newest_first = transcript
-                    .newest_first_messages
-                    .get_or_insert_with(|| sort_messages_descending(&transcript.messages));
-                paginate_items(newest_first, request.cursor, request.limit)
+                    .newest_first_order
+                    .get_or_insert_with(|| newest_first_message_order(&transcript.messages));
+                paginate_messages_in_order(
+                    &transcript.messages,
+                    newest_first,
+                    request.cursor,
+                    request.limit,
+                )
             });
             let messages = if request.is_single_file {
                 Vec::new()

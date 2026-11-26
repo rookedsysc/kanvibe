@@ -32,7 +32,7 @@ use crate::providers::AiSessionProvider;
 use crate::record_fields::{first_present, matches_query, string_field};
 use crate::session_listing::{
     create_reader_result, create_unavailable_result, determine_match_scope, map_with_concurrency,
-    paginate_items, parse_concurrency, sort_messages_descending,
+    newest_first_message_order, paginate_messages_in_order, parse_concurrency,
 };
 use crate::types::{
     AggregatedAiSession, AggregatedAiSessionDetail, AiMessageRole, AiSessionMatchScope,
@@ -368,14 +368,11 @@ fn parse_codex_session_detail(
     if transcript.is_other_session || transcript.matched_path.as_deref().is_none_or(str::is_empty) {
         return Ok(None);
     }
-    if transcript.newest_first_messages.is_none() {
-        transcript.newest_first_messages = Some(sort_messages_descending(&transcript.messages));
-    }
+    let transcript = &mut *transcript;
     let newest_first = transcript
-        .newest_first_messages
-        .as_deref()
-        .unwrap_or_default();
-    let page = paginate_items(newest_first, cursor, limit);
+        .newest_first_order
+        .get_or_insert_with(|| newest_first_message_order(&transcript.messages));
+    let page = paginate_messages_in_order(&transcript.messages, newest_first, cursor, limit);
     Ok(Some(AggregatedAiSessionDetail {
         session_id: session_id.to_string(),
         provider: AiSessionProvider::Codex,

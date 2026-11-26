@@ -1,6 +1,7 @@
 //! 모바일 기기가 여는 provider 로그인 PTY(TS `mobileAiLoginBridge`). 세션은 기기와 소켓이 소유하고,
 //! 계정 하나에는 로그인 터미널을 하나만 열며, OAuth 화면을 남겨 둔 기기가 CLI를 계속 점유하지 않도록 수명을 제한한다.
 
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex, Weak};
 
 use serde::{Deserialize, Serialize};
@@ -41,20 +42,43 @@ pub trait MobileLoginSocket: Send + Sync {
     fn send_event(&self, event: MobileAiLoginEvent);
 }
 
-/// 지연 작업. 앱에서는 스레드 타이머가, 시험에서는 손으로 돌리는 가짜가 맡는다
+/// 지연 작업. 앱에서는 스레드 타이머가, 시험에서는 손으로 돌리는 가짜가 맡는다.
+/// 돌려받은 취소 신호를 버리면 아직 돌지 않은 작업은 돌지 않는다
 pub trait LoginTimerScheduler: Send + Sync {
-    fn schedule(&self, delay_ms: u64, task: Box<dyn FnOnce() + Send>);
+    fn schedule(&self, delay_ms: u64, task: Box<dyn FnOnce() + Send>) -> LoginTimerCancellation;
 }
 
-/// 잠든 스레드 하나로 지연 작업을 돌린다. 세션이 먼저 끝나면 작업은 할 일이 없어 그냥 빠져나간다
+/// 예약한 지연 작업의 취소 신호. 값을 버리면 짝인 수신 쪽이 끊겨 기다리던 타이머가 바로 깨어나 작업 없이 끝난다
+pub struct LoginTimerCancellation {
+    _cancel_on_drop: Sender<()>,
+}
+
+impl LoginTimerCancellation {
+    /// 취소 신호와, 타이머가 기다릴 수신 쪽. 수신 쪽이 끊기면 취소된 것이다
+    pub fn new() -> (Self, Receiver<()>) {
+        let (sender, receiver) = mpsc::channel();
+        (
+            Self {
+                _cancel_on_drop: sender,
+            },
+            receiver,
+        )
+    }
+}
+
+/// 지연 작업마다 스레드 하나가 취소 신호를 기다린다. 세션이 먼저 끝나 신호가 버려지면 그 즉시 빠져나간다(TS `clearTimeout`)
 pub struct ThreadTimerScheduler;
 
 impl LoginTimerScheduler for ThreadTimerScheduler {
-    fn schedule(&self, delay_ms: u64, task: Box<dyn FnOnce() + Send>) {
+    fn schedule(&self, delay_ms: u64, task: Box<dyn FnOnce() + Send>) -> LoginTimerCancellation {
+        let (cancellation, cancelled) = LoginTimerCancellation::new();
         std::thread::spawn(move || {
-            std::thread::sleep(std::time::Duration::from_millis(delay_ms));
-            task();
+            let waited = cancelled.recv_timeout(std::time::Duration::from_millis(delay_ms));
+            if waited == Err(RecvTimeoutError::Timeout) {
+                task();
+            }
         });
+        cancellation
     }
 }
 
@@ -90,6 +114,8 @@ struct LoginSession {
     generation: u64,
     socket: Arc<dyn MobileLoginSocket>,
     terminal: Arc<dyn LoginTerminal>,
+    /// 세션을 목록에서 떼어 내면 함께 버려져 만료 타이머를 취소한다
+    _expiry: LoginTimerCancellation,
 }
 
 #[derive(Default)]
@@ -242,7 +268,7 @@ impl MobileLoginBridge {
         }
         registry.next_generation += 1;
         let generation = registry.next_generation;
-        self.schedule_expiry(generation);
+        let expiry = self.schedule_expiry(generation);
         let extra_args: &[&str] = if request.provider == AiUsageProvider::Codex {
             &["--device-auth"]
         } else {
@@ -277,11 +303,12 @@ impl MobileLoginBridge {
             generation,
             socket: request.socket,
             terminal,
+            _expiry: expiry,
         });
         Ok(())
     }
 
-    fn schedule_expiry(&self, generation: u64) {
+    fn schedule_expiry(&self, generation: u64) -> LoginTimerCancellation {
         let sessions = Arc::downgrade(&self.sessions);
         self.timers.schedule(
             LOGIN_TIMEOUT_MS,
@@ -302,7 +329,7 @@ impl MobileLoginBridge {
                     });
                 }
             }),
-        );
+        )
     }
 
     fn terminal(&self, device_id: &str, socket_id: &str) -> Option<Arc<dyn LoginTerminal>> {

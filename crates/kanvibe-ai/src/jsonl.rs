@@ -156,7 +156,61 @@ const CONSUMED_TAIL_BYTES: usize = 64;
 #[derive(Debug, Clone)]
 pub struct AppendedJsonLines {
     pub log_id: u64,
-    pub lines: Arc<Vec<Arc<Value>>>,
+    pub lines: JsonLineChunks,
+}
+
+/// 뒤에만 붙는 줄 목록. 지난 결과를 다른 곳(파싱 캐시)이 쥐고 있어도 붙일 때 앞쪽 줄 목록을 복사하지 않도록
+/// 바꾸지 않는 조각들로 나눠 둔다. 새 조각이 앞 조각보다 크거나 같으면 둘을 합쳐, 조각 수는 줄 수의 로그를 넘지 않는다.
+/// 복제는 조각 포인터만 복사한다
+#[derive(Debug, Clone, Default)]
+pub struct JsonLineChunks {
+    chunks: Vec<Arc<[Arc<Value>]>>,
+    /// `chunks[i]`의 첫 줄 번호
+    chunk_starts: Vec<usize>,
+    length: usize,
+}
+
+impl JsonLineChunks {
+    pub fn len(&self) -> usize {
+        self.length
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.length == 0
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &Arc<Value>> {
+        self.chunks.iter().flat_map(|chunk| chunk.iter())
+    }
+
+    fn append(&mut self, appended: Vec<Arc<Value>>) {
+        if appended.is_empty() {
+            return;
+        }
+        self.length += appended.len();
+        let mut chunk = appended;
+        while let Some(last) = self.chunks.last()
+            && last.len() <= chunk.len()
+        {
+            let mut merged = Vec::with_capacity(last.len() + chunk.len());
+            merged.extend(last.iter().cloned());
+            merged.append(&mut chunk);
+            chunk = merged;
+            self.chunks.pop();
+            self.chunk_starts.pop();
+        }
+        self.chunk_starts.push(self.length - chunk.len());
+        self.chunks.push(chunk.into());
+    }
+}
+
+impl std::ops::Index<usize> for JsonLineChunks {
+    type Output = Arc<Value>;
+
+    fn index(&self, index: usize) -> &Arc<Value> {
+        let chunk_index = self.chunk_starts.partition_point(|start| *start <= index) - 1;
+        &self.chunks[chunk_index][index - self.chunk_starts[chunk_index]]
+    }
 }
 
 struct AppendedLog {
@@ -166,7 +220,7 @@ struct AppendedLog {
     consumed_bytes: u64,
     /// consumed_bytes 바로 앞의 바이트. 다음에 읽을 때 같은 내용이 그 자리에 있어야 뒤에 붙은 것으로 본다
     consumed_tail: Vec<u8>,
-    lines: Arc<Vec<Arc<Value>>>,
+    lines: JsonLineChunks,
 }
 
 #[derive(Default)]
@@ -223,7 +277,7 @@ pub fn read_appended_json_lines(file_path: &str) -> AiResult<AppendedJsonLines> 
             inode: metadata.ino(),
             consumed_bytes: 0,
             consumed_tail: Vec::new(),
-            lines: Arc::new(Vec::new()),
+            lines: JsonLineChunks::default(),
         });
     }
     let unread = match appended_bytes {
@@ -273,15 +327,16 @@ fn consume_complete_json_lines(log: &mut AppendedLog, unread: &[u8]) {
         &unread[..last_line_end]
     };
     let complete_text = String::from_utf8_lossy(&unread[..last_line_end]);
-    let lines = Arc::make_mut(&mut log.lines);
+    let mut appended_lines = Vec::new();
     for line in complete_text.split('\n') {
         if let Some(value) = parse_json(js_trim(line)).filter(|value| !value.is_null()) {
-            lines.push(Arc::new(value));
+            appended_lines.push(Arc::new(value));
         }
     }
     if let Some(value) = last_line {
-        lines.push(Arc::new(value));
+        appended_lines.push(Arc::new(value));
     }
+    log.lines.append(appended_lines);
     log.consumed_bytes += consumed.len() as u64;
     let mut tail_source = if consumed.len() >= CONSUMED_TAIL_BYTES {
         consumed.to_vec()

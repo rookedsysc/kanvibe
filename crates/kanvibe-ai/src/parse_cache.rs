@@ -3,7 +3,7 @@
 //! 전체·앞부분·끝부분 파싱 결과는 서로 섞이지 않도록 캐시를 따로 두고, 호스트와 경로를 함께 키로 쓴다.
 //! 원격 stat은 초 단위라 같은 수정 시각을 1초 뒤 한 번 더 읽어 마지막 기록을 확정한다.
 
-use std::any::Any;
+use std::any::{Any, TypeId};
 use std::sync::{Arc, LazyLock, Mutex};
 
 use crate::error::AiResult;
@@ -121,7 +121,8 @@ where
     let Some(mtime) = mtime else {
         return parse().map(Arc::new);
     };
-    let key = cache_key(ssh_host, file_path);
+    // 같은 파일을 다른 타입으로 읽는 호출(이어 읽기 목록과 통째로 읽은 목록)이 서로의 칸을 덮어쓰지 않도록 타입도 키에 넣는다
+    let key = format!("{}{:?}", cache_key(ssh_host, file_path), TypeId::of::<T>());
     // 같은 파일을 겹쳐 파싱하면 뒤 호출은 앞 호출이 끝나기를 기다렸다가 그 결과를 함께 쓴다(TS의 Promise 공유)
     let parse_turn = parse_turn(kind, &key);
     let _turn_guard = parse_turn.lock().expect("파싱 차례");
@@ -303,6 +304,35 @@ mod tests {
             assert_eq!(read(kind, None, &file, 1_001.0, 50_000.0, &parse), "after");
             assert_eq!(parse.calls(), 2);
         }
+    }
+
+    #[test]
+    fn reading_one_file_as_two_types_keeps_both_parsed_values() {
+        let file = "/local/two-readers.jsonl";
+        let parse_calls = RefCell::new(0);
+        let read_lines = || {
+            cached_or_parse_at(ParseCacheKind::Full, None, file, Some(1.0), 0.0, || {
+                *parse_calls.borrow_mut() += 1;
+                Ok("appended-lines".to_string())
+            })
+            .unwrap()
+        };
+        let read_events = || {
+            cached_or_parse_at(ParseCacheKind::Full, None, file, Some(1.0), 0.0, || {
+                *parse_calls.borrow_mut() += 1;
+                Ok(vec!["whole-events"])
+            })
+            .unwrap()
+        };
+
+        read_lines();
+        read_events();
+        let lines = read_lines();
+        let events = read_events();
+
+        assert_eq!(lines.as_str(), "appended-lines");
+        assert_eq!(*events, ["whole-events"]);
+        assert_eq!(*parse_calls.borrow(), 2);
     }
 
     #[test]

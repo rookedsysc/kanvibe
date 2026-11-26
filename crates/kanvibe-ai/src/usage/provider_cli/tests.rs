@@ -48,6 +48,37 @@ fn server_runtime_and_kanvibe_values_never_reach_the_cli() {
 }
 
 #[test]
+fn provider_auth_variables_reach_the_cli_but_other_account_locations_do_not() {
+    let usage = usage_with(&[
+        ("GEMINI_API_KEY", "gemini-key"),
+        ("GOOGLE_CLOUD_PROJECT", "project-1"),
+        ("ANTHROPIC_API_KEY", "anthropic-key"),
+        ("CLAUDE_CODE_USE_BEDROCK", "1"),
+        ("OPENAI_API_KEY", "openai-key"),
+        ("CODEX_HOME", "/home/tester/.codex-other"),
+        ("GEMINI_CLI_HOME", "/home/tester/.gemini-other"),
+        ("SECRET_TOKEN", "secret"),
+    ]);
+    let environment = environment_for(&usage, AiUsageProvider::Claude, "/home/tester/.claude-work");
+    for (name, value) in [
+        ("GEMINI_API_KEY", "gemini-key"),
+        ("GOOGLE_CLOUD_PROJECT", "project-1"),
+        ("ANTHROPIC_API_KEY", "anthropic-key"),
+        ("CLAUDE_CODE_USE_BEDROCK", "1"),
+        ("OPENAI_API_KEY", "openai-key"),
+    ] {
+        assert_eq!(
+            environment.get(name).map(String::as_str),
+            Some(value),
+            "{name}"
+        );
+    }
+    for name in ["CODEX_HOME", "GEMINI_CLI_HOME", "SECRET_TOKEN"] {
+        assert!(!environment.contains_key(name), "{name}");
+    }
+}
+
+#[test]
 fn default_root_gets_no_location_variable() {
     let usage = usage_with(&[]);
     let environment = environment_for(&usage, AiUsageProvider::Claude, "/home/tester/.claude");

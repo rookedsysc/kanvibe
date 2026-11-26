@@ -59,8 +59,8 @@ pub(crate) struct CodexSessionTranscript {
     pub title: Option<String>,
     /// 파일에 적힌 순서
     pub messages: Vec<AggregatedAiMessage>,
-    /// messages를 최신순으로 정렬해 둔 것. 메시지가 늘면 버리고 다음에 다시 만든다
-    pub newest_first_messages: Option<Vec<AggregatedAiMessage>>,
+    /// messages의 최신순 위치. 메시지가 늘면 버리고 다음에 다시 만든다
+    pub newest_first_order: Option<Vec<usize>>,
     seen_messages: HashSet<String>,
     tool_names: HashMap<String, String>,
 }
@@ -95,12 +95,21 @@ impl EventListKey {
             Self::Appended(_) => true,
         }
     }
+
+    /// 파일을 다시 처음부터 이어 읽기 시작해 새 로그 번호를 받으면, 같은 파일의 옛 이어 읽기 목록은 다시 오지 않는다
+    fn is_replaced_by(&self, events: &Arc<RolloutEvents>) -> bool {
+        matches!(
+            (self, events.as_ref()),
+            (Self::Appended(log_id), RolloutEvents::Appended(lines)) if *log_id != lines.log_id
+        )
+    }
 }
 
 type SharedTranscript = Arc<Mutex<CodexSessionTranscript>>;
 
 struct EventListTranscripts {
     key: EventListKey,
+    file_path: String,
     /// 조건 문자열과 그 조건으로 만든 메시지. 앞이 가장 오래됐다
     transcripts: Vec<(String, SharedTranscript)>,
 }
@@ -132,22 +141,13 @@ fn transcript_conditions(
     )
 }
 
-fn shared_transcript(events: &Arc<RolloutEvents>, conditions: String) -> SharedTranscript {
+fn shared_transcript(
+    events: &Arc<RolloutEvents>,
+    file_path: &str,
+    conditions: String,
+) -> SharedTranscript {
     let mut lists = TRANSCRIPTS.lock().expect("Codex 대화 캐시");
-    lists.retain(|list| list.key.is_alive());
-    let index = match lists.iter().position(|list| list.key.is_same(events)) {
-        Some(index) => index,
-        None => {
-            if lists.len() >= MAX_EVENT_LISTS {
-                lists.remove(0);
-            }
-            lists.push(EventListTranscripts {
-                key: EventListKey::of(events),
-                transcripts: Vec::new(),
-            });
-            lists.len() - 1
-        }
-    };
+    let index = find_or_insert_list(&mut lists, events, file_path);
     let transcripts = &mut lists[index].transcripts;
     if let Some((_, transcript)) = transcripts.iter().find(|(known, _)| *known == conditions) {
         return transcript.clone();
@@ -160,6 +160,27 @@ fn shared_transcript(events: &Arc<RolloutEvents>, conditions: String) -> SharedT
     transcript
 }
 
+fn find_or_insert_list(
+    lists: &mut Vec<EventListTranscripts>,
+    events: &Arc<RolloutEvents>,
+    file_path: &str,
+) -> usize {
+    lists.retain(|list| list.key.is_alive());
+    if let Some(index) = lists.iter().position(|list| list.key.is_same(events)) {
+        return index;
+    }
+    lists.retain(|list| !(list.file_path == file_path && list.key.is_replaced_by(events)));
+    if lists.len() >= MAX_EVENT_LISTS {
+        lists.remove(0);
+    }
+    lists.push(EventListTranscripts {
+        key: EventListKey::of(events),
+        file_path: file_path.to_string(),
+        transcripts: Vec::new(),
+    });
+    lists.len() - 1
+}
+
 /// 이벤트 목록에서 한 대화의 메시지를 만든다. 같은 목록을 같은 조건으로 다시 받으면 지난번에 읽은 곳 뒤로 붙은 이벤트만 읽는다
 pub(crate) fn read_codex_session_transcript(
     events: &Arc<RolloutEvents>,
@@ -169,6 +190,7 @@ pub(crate) fn read_codex_session_transcript(
 ) -> SharedTranscript {
     let shared = shared_transcript(
         events,
+        file_path,
         transcript_conditions(file_path, session_id, context),
     );
     {
@@ -222,7 +244,7 @@ fn read_transcript_event(
                 message.tool_name.as_deref(),
                 &message.files,
             ));
-            transcript.newest_first_messages = None;
+            transcript.newest_first_order = None;
             #[cfg(test)]
             tests::record_built_message();
         }
@@ -281,6 +303,10 @@ fn is_selected_message(
 #[cfg(test)]
 pub(crate) mod tests {
     use std::cell::Cell;
+    use std::sync::Arc;
+
+    use super::{EventListTranscripts, RolloutEvents, find_or_insert_list};
+    use crate::jsonl::AppendedJsonLines;
 
     thread_local! {
         static BUILT_MESSAGES: Cell<usize> = const { Cell::new(0) };
@@ -293,5 +319,26 @@ pub(crate) mod tests {
     /// 이 스레드에서 지금까지 새로 만든 대화 메시지 수
     pub(crate) fn built_message_count() -> usize {
         BUILT_MESSAGES.with(Cell::get)
+    }
+
+    fn appended(log_id: u64) -> Arc<RolloutEvents> {
+        Arc::new(RolloutEvents::Appended(AppendedJsonLines {
+            log_id,
+            lines: Default::default(),
+        }))
+    }
+
+    #[test]
+    fn a_restarted_appended_log_drops_the_previous_transcripts_of_the_same_file() {
+        let mut lists: Vec<EventListTranscripts> = Vec::new();
+        find_or_insert_list(&mut lists, &appended(1), "/rollouts/a.jsonl");
+        find_or_insert_list(&mut lists, &appended(2), "/rollouts/b.jsonl");
+
+        let restarted = appended(3);
+        find_or_insert_list(&mut lists, &restarted, "/rollouts/a.jsonl");
+
+        let remaining: Vec<&str> = lists.iter().map(|list| list.file_path.as_str()).collect();
+        assert_eq!(remaining, ["/rollouts/b.jsonl", "/rollouts/a.jsonl"]);
+        assert!(lists[1].key.is_same(&restarted));
     }
 }

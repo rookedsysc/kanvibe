@@ -80,6 +80,14 @@ impl EventLogIdentity {
             Self::Whole(weak) => weak.strong_count() > 0,
         }
     }
+
+    /// 파일을 다시 처음부터 이어 읽기 시작해 새 `log_id`를 받으면, 같은 파일의 옛 이어 읽기 목록은 다시 오지 않는다
+    fn is_replaced_by(&self, log: &ClaudeEventLog) -> bool {
+        matches!(
+            (self, log),
+            (Self::Appended(log_id), ClaudeEventLog::Appended(appended)) if *log_id != appended.log_id
+        )
+    }
 }
 
 /// 한 대화의 메시지와, 이벤트를 어디까지 읽어 만들었는지
@@ -91,14 +99,18 @@ pub(super) struct ClaudeSessionTranscript {
     pub matched_path: Option<String>,
     /// 파일에 적힌 순서
     pub messages: Vec<AggregatedAiMessage>,
-    /// messages를 최신순으로 정렬해 둔 것. 메시지가 늘면 버리고 다음에 다시 만든다
-    pub newest_first_messages: Option<Vec<AggregatedAiMessage>>,
+    /// messages의 최신순 위치. 메시지가 늘면 버리고 다음에 다시 만든다
+    pub newest_first_order: Option<Vec<usize>>,
 }
+
+/// 한 대화의 기억. 전역 목록 잠금은 이것을 찾는 동안만 쥐고, 파싱과 조회는 대화별 잠금으로 한다
+type SharedTranscript = Arc<Mutex<ClaudeSessionTranscript>>;
 
 struct TranscriptSet {
     identity: EventLogIdentity,
+    file_path: String,
     /// 넣은 순서대로. 가득 차면 맨 앞을 버린다
-    transcripts: Vec<(String, ClaudeSessionTranscript)>,
+    transcripts: Vec<(String, SharedTranscript)>,
 }
 
 static TRANSCRIPT_SETS: LazyLock<Mutex<Vec<TranscriptSet>>> =
@@ -129,35 +141,49 @@ pub(super) fn with_session_transcript<R>(
     inspect: impl FnOnce(&mut ClaudeSessionTranscript) -> R,
 ) -> R {
     let conditions = transcript_conditions(file_path, session_id, context);
-    let mut sets = TRANSCRIPT_SETS.lock().expect("Claude 대화 기억");
-    let set_index = find_or_insert_set(&mut sets, log);
-    let transcripts = &mut sets[set_index].transcripts;
-    let transcript_index = match transcripts.iter().position(|(key, _)| *key == conditions) {
-        Some(index) => index,
-        None => {
-            if transcripts.len() >= MAX_TRANSCRIPTS_PER_EVENT_LIST {
-                transcripts.remove(0);
-            }
-            transcripts.push((conditions, ClaudeSessionTranscript::default()));
-            transcripts.len() - 1
-        }
-    };
-    let transcript = &mut transcripts[transcript_index].1;
-    consume_new_events(transcript, log, file_path, session_id, context);
-    inspect(transcript)
+    let shared = shared_transcript(log, file_path, conditions);
+    let mut transcript = shared.lock().expect("Claude 대화");
+    consume_new_events(&mut transcript, log, file_path, session_id, context);
+    inspect(&mut transcript)
 }
 
-fn find_or_insert_set(sets: &mut Vec<TranscriptSet>, log: &ClaudeEventLog) -> usize {
+/// 조건에 맞는 대화 기억을 찾거나 새로 넣는다. 전역 잠금은 이 안에서만 쥔다
+fn shared_transcript(
+    log: &ClaudeEventLog,
+    file_path: &str,
+    conditions: String,
+) -> SharedTranscript {
+    let mut sets = TRANSCRIPT_SETS.lock().expect("Claude 대화 기억");
+    let set_index = find_or_insert_set(&mut sets, log, file_path);
+    let transcripts = &mut sets[set_index].transcripts;
+    if let Some((_, transcript)) = transcripts.iter().find(|(key, _)| *key == conditions) {
+        return transcript.clone();
+    }
+    if transcripts.len() >= MAX_TRANSCRIPTS_PER_EVENT_LIST {
+        transcripts.remove(0);
+    }
+    let transcript = SharedTranscript::default();
+    transcripts.push((conditions, transcript.clone()));
+    transcript
+}
+
+fn find_or_insert_set(
+    sets: &mut Vec<TranscriptSet>,
+    log: &ClaudeEventLog,
+    file_path: &str,
+) -> usize {
     sets.retain(|set| set.identity.is_alive());
     if let Some(index) = sets.iter().position(|set| set.identity.is_same_log(log)) {
         let set = sets.remove(index);
         sets.push(set);
     } else {
+        sets.retain(|set| !(set.file_path == file_path && set.identity.is_replaced_by(log)));
         if sets.len() >= MAX_EVENT_LISTS {
             sets.remove(0);
         }
         sets.push(TranscriptSet {
             identity: log.identity(),
+            file_path: file_path.to_string(),
             transcripts: Vec::new(),
         });
     }
@@ -218,7 +244,7 @@ fn consume_event_messages(
             transcript
                 .messages
                 .push(with_tool_call(preview, tool_name, &message.files));
-            transcript.newest_first_messages = None;
+            transcript.newest_first_order = None;
         }
     }
 }
@@ -247,4 +273,63 @@ fn matches_detail_query(
         .collect::<Vec<_>>()
         .join("\n");
     searchable.to_lowercase().contains(&query.to_lowercase())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn appended(log_id: u64) -> ClaudeEventLog {
+        ClaudeEventLog::Appended(AppendedJsonLines {
+            log_id,
+            lines: Default::default(),
+        })
+    }
+
+    #[test]
+    fn a_restarted_appended_log_drops_the_previous_transcripts_of_the_same_file() {
+        let mut sets = Vec::new();
+        find_or_insert_set(&mut sets, &appended(1), "/logs/a.jsonl");
+        find_or_insert_set(&mut sets, &appended(2), "/logs/b.jsonl");
+
+        find_or_insert_set(&mut sets, &appended(3), "/logs/a.jsonl");
+
+        let remaining: Vec<&str> = sets.iter().map(|set| set.file_path.as_str()).collect();
+        assert_eq!(remaining, ["/logs/b.jsonl", "/logs/a.jsonl"]);
+        assert!(sets[1].identity.is_same_log(&appended(3)));
+    }
+
+    #[test]
+    fn reading_one_conversation_does_not_block_reading_another_file() {
+        let context =
+            AiSessionReaderContext::new(crate::test_support::local_host("/home/user"), None);
+        let first_log = ClaudeEventLog::Whole(Arc::new(Vec::new()));
+        let second_log = ClaudeEventLog::Whole(Arc::new(Vec::new()));
+        let (finished_sender, finished_receiver) = std::sync::mpsc::channel();
+
+        let was_other_read_finished = with_session_transcript(
+            &first_log,
+            "/logs/first.jsonl",
+            "session-1",
+            &context,
+            |_| {
+                let other_context = context.clone();
+                std::thread::spawn(move || {
+                    with_session_transcript(
+                        &second_log,
+                        "/logs/second.jsonl",
+                        "session-2",
+                        &other_context,
+                        |_| (),
+                    );
+                    let _ = finished_sender.send(());
+                });
+                finished_receiver
+                    .recv_timeout(std::time::Duration::from_secs(5))
+                    .is_ok()
+            },
+        );
+
+        assert!(was_other_read_finished);
+    }
 }

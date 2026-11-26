@@ -14,7 +14,7 @@ use crate::javascript::iso_string_from_ms;
 use crate::jsonl::{read_json_lines_head, read_json_lines_tail};
 use crate::message_text::{extract_plain_text, truncate_text_to};
 use crate::node_path;
-use crate::session_listing::pick_live_session_files;
+use crate::session_listing::{map_with_concurrency, parse_concurrency, pick_live_session_files};
 use crate::types::{
     AiSessionReaderContext, LiveAiSessionWindows, LiveAiSubtask, LiveProviderSnapshot,
 };
@@ -50,10 +50,14 @@ pub fn read_claude_live_sessions(
         now_ms,
         |file| file.mtime_ms,
     );
-    live_files
-        .iter()
-        .map(|session_file| to_claude_live_snapshot(session_file, windows, context, now_ms))
-        .collect()
+    // TS처럼 세션마다 읽기를 함께 돌린다. 원격 호스트에서는 읽기 하나가 SSH 왕복 하나다
+    map_with_concurrency(
+        &live_files,
+        parse_concurrency(context),
+        |session_file, _| to_claude_live_snapshot(session_file, windows, context, now_ms),
+    )
+    .into_iter()
+    .collect()
 }
 
 fn to_claude_live_snapshot(
@@ -78,10 +82,11 @@ fn to_claude_live_snapshot(
         current_task: read_current_activity(&session_file.file_path, context),
         session_id: Some(session_id),
         last_active_at: iso_string_from_ms(session_file.mtime_ms),
-        running_subtasks: running_subagent_files
-            .iter()
-            .map(|file| to_claude_subtask(file, context))
-            .collect(),
+        running_subtasks: map_with_concurrency(
+            &running_subagent_files,
+            parse_concurrency(context),
+            |file, _| to_claude_subtask(file, context),
+        ),
     })
 }
 

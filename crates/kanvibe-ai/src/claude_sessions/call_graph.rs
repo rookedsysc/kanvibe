@@ -15,7 +15,7 @@ use crate::javascript::iso_string_from_ms;
 use crate::jsonl::read_json_lines;
 use crate::message_text::truncate_text_to;
 use crate::node_path;
-use crate::session_listing::get_candidate_paths;
+use crate::session_listing::{get_candidate_paths, map_with_concurrency, parse_concurrency};
 use crate::types::{AgentCallNode, AiSessionReaderContext, LiveAiSessionWindows};
 
 /// 서브에이전트를 띄우는 도구 이름. 배포판에 따라 둘 중 하나로 기록된다
@@ -37,10 +37,22 @@ pub fn read_claude_agent_call_graph(
         now_ms,
     )?;
     let session_file = node_path::join(&[&session_directory, &format!("{session_id}.jsonl")]);
-    let session_transcript = read_claude_transcript(&session_file, 0.0, context);
-    let identified: Vec<ClaudeTranscript> = subagent_files
-        .iter()
-        .map(|file| read_claude_transcript(&file.file_path, file.mtime_ms, context))
+    // TS처럼 세션 기록과 서브에이전트 기록을 함께 읽는다. 첫 항목이 세션 기록이다
+    let transcript_files: Vec<(&str, f64)> = std::iter::once((session_file.as_str(), 0.0))
+        .chain(
+            subagent_files
+                .iter()
+                .map(|file| (file.file_path.as_str(), file.mtime_ms)),
+        )
+        .collect();
+    let mut transcripts = map_with_concurrency(
+        &transcript_files,
+        parse_concurrency(context),
+        |(file_path, mtime_ms), _| read_claude_transcript(file_path, *mtime_ms, context),
+    )
+    .into_iter();
+    let session_transcript = transcripts.next().expect("세션 기록을 첫 항목으로 넣었다");
+    let identified: Vec<ClaudeTranscript> = transcripts
         .filter(|transcript| transcript.agent_id.is_some())
         .collect();
 

@@ -20,7 +20,7 @@ impl MobileLoginSocket for RecordingSocket {
     }
 }
 
-type ScheduledTask = (u64, Box<dyn FnOnce() + Send>);
+type ScheduledTask = (u64, Box<dyn FnOnce() + Send>, Receiver<()>);
 
 /// 예약된 지연 작업을 쌓아 두었다가 테스트가 원할 때 돌린다
 #[derive(Default)]
@@ -31,17 +31,31 @@ struct ManualTimers {
 impl ManualTimers {
     fn run_due(&self, elapsed_ms: u64) {
         let tasks = std::mem::take(&mut *self.tasks.lock().unwrap());
-        for (delay_ms, task) in tasks {
-            if delay_ms <= elapsed_ms {
+        for (delay_ms, task, cancelled) in tasks {
+            let is_cancelled = cancelled.try_recv() == Err(mpsc::TryRecvError::Disconnected);
+            if delay_ms <= elapsed_ms && !is_cancelled {
                 task();
             }
         }
     }
+
+    /// 아직 취소되지 않은 지연 작업 수
+    fn pending_count(&self) -> usize {
+        let tasks = self.tasks.lock().unwrap();
+        tasks
+            .iter()
+            .filter(|(_, _, cancelled)| {
+                cancelled.try_recv() != Err(mpsc::TryRecvError::Disconnected)
+            })
+            .count()
+    }
 }
 
 impl LoginTimerScheduler for ManualTimers {
-    fn schedule(&self, delay_ms: u64, task: Box<dyn FnOnce() + Send>) {
-        self.tasks.lock().unwrap().push((delay_ms, task));
+    fn schedule(&self, delay_ms: u64, task: Box<dyn FnOnce() + Send>) -> LoginTimerCancellation {
+        let (cancellation, cancelled) = LoginTimerCancellation::new();
+        self.tasks.lock().unwrap().push((delay_ms, task, cancelled));
+        cancellation
     }
 }
 
@@ -253,6 +267,45 @@ fn abandoned_logins_expire_and_free_ownership() {
     assert!(matches!(&events[..], [MobileAiLoginEvent::Error { error }] if error.contains("만료")));
     fixture.open_default();
     assert_eq!(fixture.spawner.count(), 2);
+}
+
+#[test]
+fn closing_a_login_cancels_its_expiry_timer() {
+    let fixture = fixture();
+    fixture.open_default();
+    assert_eq!(fixture.timers.pending_count(), 1);
+
+    fixture.bridge.close_mobile_ai_login("device-1", "socket-1");
+
+    assert_eq!(fixture.timers.pending_count(), 0);
+}
+
+#[test]
+fn a_cancelled_thread_timer_ends_without_waiting_for_its_delay() {
+    let task_lifetime = Arc::new(());
+    let task_capture = Arc::clone(&task_lifetime);
+    let has_run = Arc::new(AtomicBool::new(false));
+    let run_flag = Arc::clone(&has_run);
+    let cancellation = ThreadTimerScheduler.schedule(
+        LOGIN_TIMEOUT_MS,
+        Box::new(move || {
+            let _keep = task_capture;
+            run_flag.store(true, Ordering::SeqCst);
+        }),
+    );
+
+    drop(cancellation);
+
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while Arc::strong_count(&task_lifetime) > 1 && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    assert_eq!(
+        Arc::strong_count(&task_lifetime),
+        1,
+        "타이머 스레드가 작업을 버리고 끝나야 한다"
+    );
+    assert!(!has_run.load(Ordering::SeqCst));
 }
 
 #[test]

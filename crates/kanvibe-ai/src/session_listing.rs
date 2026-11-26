@@ -117,14 +117,43 @@ pub fn sort_sessions_descending(sessions: &mut [AggregatedAiSession]) {
 
 /// 같은 시각에도 나중에 추가된 기록을 먼저 돌려줘야 화면에서 뒤집을 때 원래 대화 순서가 된다
 pub fn sort_messages_descending(messages: &[AggregatedAiMessage]) -> Vec<AggregatedAiMessage> {
-    let mut sorted: Vec<AggregatedAiMessage> = messages.iter().rev().cloned().collect();
-    sorted.sort_by(|left, right| {
-        compare_optional_times_descending(
-            parse_optional_date(left.timestamp.as_deref()),
-            parse_optional_date(right.timestamp.as_deref()),
-        )
-    });
-    sorted
+    newest_first_message_order(messages)
+        .into_iter()
+        .map(|index| messages[index].clone())
+        .collect()
+}
+
+/// 메시지를 최신순으로 둔 위치 목록. 메시지를 복제하지 않고, 시각은 메시지마다 한 번만 해석한다
+pub fn newest_first_message_order(messages: &[AggregatedAiMessage]) -> Vec<usize> {
+    let mut timed_positions: Vec<(Option<f64>, usize)> = messages
+        .iter()
+        .enumerate()
+        .rev()
+        .map(|(index, message)| (parse_optional_date(message.timestamp.as_deref()), index))
+        .collect();
+    timed_positions.sort_by(|left, right| compare_optional_times_descending(left.0, right.0));
+    timed_positions
+        .into_iter()
+        .map(|(_, index)| index)
+        .collect()
+}
+
+/// 최신순 위치 목록에서 한 페이지를 잘라, 그 페이지의 메시지만 복제한다
+pub fn paginate_messages_in_order(
+    messages: &[AggregatedAiMessage],
+    order: &[usize],
+    cursor: Option<&str>,
+    limit: usize,
+) -> Page<AggregatedAiMessage> {
+    let page = paginate_items(order, cursor, limit);
+    Page {
+        items: page
+            .items
+            .into_iter()
+            .map(|index| messages[index].clone())
+            .collect(),
+        next_cursor: page.next_cursor,
+    }
 }
 
 pub fn limit_preview_messages(mut messages: Vec<AggregatedAiMessage>) -> Vec<AggregatedAiMessage> {
@@ -310,6 +339,29 @@ mod tests {
             texts(&sort_messages_descending(&messages)),
             ["응답", "질문"]
         );
+    }
+
+    #[test]
+    fn newest_first_pages_clone_only_the_requested_messages_in_sorted_order() {
+        let messages = [
+            message(AiMessageRole::User, Some("2026-03-13T09:00:00.000Z"), "old"),
+            message(AiMessageRole::Assistant, None, "untimed"),
+            message(AiMessageRole::Tool, Some("2026-03-13T09:02:00.000Z"), "new"),
+            message(
+                AiMessageRole::User,
+                Some("2026-03-13T09:02:00.000Z"),
+                "new-later",
+            ),
+        ];
+        let order = newest_first_message_order(&messages);
+        assert_eq!(order, [3, 2, 0, 1]);
+
+        let first = paginate_messages_in_order(&messages, &order, None, 2);
+        assert_eq!(texts(&first.items), ["new-later", "new"]);
+        assert_eq!(first.next_cursor.as_deref(), Some("2"));
+        let second = paginate_messages_in_order(&messages, &order, Some("2"), 2);
+        assert_eq!(texts(&second.items), ["old", "untimed"]);
+        assert_eq!(second.next_cursor, None);
     }
 
     #[test]

@@ -1,11 +1,13 @@
 use std::fs::File;
 use std::io::Write;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, UNIX_EPOCH};
 
 use serde_json::{Value, json};
 
 use super::*;
-use crate::host::SessionHost;
+use crate::host::{CommandOptions, CommandRunner, SessionHost};
 use crate::javascript::stringify;
 use crate::test_support::{
     json_lines, local_host, remote_file_system, remote_host, temp_home, write_file,
@@ -877,5 +879,135 @@ mod live_and_graph {
                 .unwrap()
                 .is_empty()
         );
+    }
+
+    /// 원격 파일 시스템 응답마다 지연을 넣고, 한꺼번에 돌던 명령 수의 최댓값을 잰다
+    fn slow_remote_file_system(
+        files: &[(String, String)],
+    ) -> (Arc<crate::test_support::ScriptedRunner>, Arc<AtomicUsize>) {
+        let file_refs: Vec<(&str, &str)> = files
+            .iter()
+            .map(|(file_path, content)| (file_path.as_str(), content.as_str()))
+            .collect();
+        let file_system = remote_file_system(&file_refs);
+        let file_paths: Vec<String> = files
+            .iter()
+            .map(|(file_path, _)| file_path.clone())
+            .collect();
+        let in_flight = Arc::new(AtomicUsize::new(0));
+        let peak_in_flight = Arc::new(AtomicUsize::new(0));
+        let peak = peak_in_flight.clone();
+        let runner = crate::test_support::ScriptedRunner::new(move |command, ssh_host| {
+            let running = in_flight.fetch_add(1, Ordering::SeqCst) + 1;
+            peak.fetch_max(running, Ordering::SeqCst);
+            std::thread::sleep(Duration::from_millis(30));
+            let answer = match recently_modified_root(command) {
+                Some(root) => Ok(list_with_fixed_mtime(&file_paths, &root)),
+                None => file_system.run(command, ssh_host, CommandOptions::default()),
+            };
+            in_flight.fetch_sub(1, Ordering::SeqCst);
+            answer
+        });
+        (runner, peak_in_flight)
+    }
+
+    /// 수정 시각을 함께 내는 원격 `find ... -mmin` 명령이면 찾는 디렉터리
+    fn recently_modified_root(command: &str) -> Option<String> {
+        if !command.contains(" -mmin ") {
+            return None;
+        }
+        let quoted_root = command.strip_prefix("test -d '")?;
+        Some(quoted_root[..quoted_root.find('\'')?].to_string())
+    }
+
+    /// 원격 파일 시스템의 수정 시각(1700000000초)을 붙인 `find` 출력
+    fn list_with_fixed_mtime(file_paths: &[String], root: &str) -> String {
+        file_paths
+            .iter()
+            .filter(|file_path| file_path.starts_with(&format!("{root}/")))
+            .map(|file_path| format!("1700000000\t{file_path}"))
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    #[test]
+    fn live_reads_of_several_remote_sessions_run_together_within_the_limit() {
+        let worktree_path = "/remote/home/repo";
+        let project = format!(
+            "/remote/home/.claude/projects/{}",
+            claude_project_directory_name(worktree_path)
+        );
+        let files: Vec<(String, String)> = (0..4)
+            .map(|index| {
+                let answer =
+                    json!({"message": {"role": "assistant", "content": format!("answer {index}")}});
+                (
+                    format!("{project}/session-{index}.jsonl"),
+                    json_lines(&[answer]),
+                )
+            })
+            .collect();
+        let (runner, peak_in_flight) = slow_remote_file_system(&files);
+        let context = context_for(remote_host(runner, "remote-host"), worktree_path);
+
+        let live = read_claude_live_sessions(&context, WINDOWS, 1_700_000_010_000.0).unwrap();
+
+        let session_ids: Vec<_> = live
+            .iter()
+            .map(|snapshot| snapshot.session_id.clone().unwrap())
+            .collect();
+        let current_tasks: Vec<_> = live
+            .iter()
+            .map(|snapshot| snapshot.current_task.clone().unwrap())
+            .collect();
+        let expected_tasks: Vec<_> = session_ids
+            .iter()
+            .map(|session_id| session_id.replace("session-", "answer "))
+            .collect();
+        assert_eq!(session_ids.len(), 4);
+        assert_eq!(current_tasks, expected_tasks);
+        let peak = peak_in_flight.load(Ordering::SeqCst);
+        assert!(peak > 1, "peak {peak}");
+        assert!(
+            peak <= crate::session_listing::REMOTE_SESSION_FILE_PARSE_CONCURRENCY,
+            "peak {peak}"
+        );
+    }
+
+    #[test]
+    fn call_graph_reads_remote_subagent_transcripts_together() {
+        let worktree_path = "/remote/home/repo";
+        let project = format!(
+            "/remote/home/.claude/projects/{}",
+            claude_project_directory_name(worktree_path)
+        );
+        let session = json_lines(&[json!({"message": {"role": "assistant", "content": [
+            {"type": "tool_use", "id": "t1", "name": "Agent", "input": {"prompt": "first"}},
+            {"type": "tool_use", "id": "t2", "name": "Agent", "input": {"prompt": "second"}}
+        ]}})]);
+        let files = vec![
+            (format!("{project}/s1.jsonl"), session),
+            (
+                format!("{project}/s1/subagents/agent-a1.jsonl"),
+                json_lines(&[
+                    json!({"agentId": "a1", "message": {"role": "user", "content": "first"}}),
+                ]),
+            ),
+            (
+                format!("{project}/s1/subagents/agent-a2.jsonl"),
+                json_lines(&[
+                    json!({"agentId": "a2", "message": {"role": "user", "content": "second"}}),
+                ]),
+            ),
+        ];
+        let (runner, peak_in_flight) = slow_remote_file_system(&files);
+        let context = context_for(remote_host(runner, "remote-host"), worktree_path);
+
+        let roots =
+            read_claude_agent_call_graph(&context, "s1", WINDOWS, 1_700_000_010_000.0).unwrap();
+
+        let root_ids: Vec<_> = roots.iter().map(|root| root.id.as_str()).collect();
+        assert_eq!(root_ids, ["a1", "a2"]);
+        assert!(peak_in_flight.load(Ordering::SeqCst) > 1);
     }
 }
