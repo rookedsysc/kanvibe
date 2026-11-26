@@ -193,7 +193,7 @@ impl LocaleShell {
     }
 
     /// 보드의 대화상자·메뉴가 열려 있는지(TS `registerShortcutBlocker`)
-    fn has_board_blocker(&self, cx: &gpui_kit::App) -> bool {
+    pub(crate) fn has_board_blocker(&self, cx: &gpui_kit::App) -> bool {
         self.board()
             .is_some_and(|board| board.read(cx).has_board_blocker())
     }

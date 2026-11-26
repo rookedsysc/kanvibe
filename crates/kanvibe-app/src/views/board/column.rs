@@ -2,6 +2,7 @@
 //! Done 열은 더 보기 버튼과 실패 안내를 단다. 카드를 다른 열 위에 놓으면 그 열로 옮긴다.
 
 use std::collections::{BTreeMap, HashMap};
+use std::rc::Rc;
 
 use gpui_kit::{
     AnyElement, Context, InteractiveElement, IntoElement, ParentElement, Rgba,
@@ -25,11 +26,16 @@ use crate::theme::{ThemeTokens, radius, spacing, text_scale};
 /// 열 본문 최소 높이 `min-h-[calc(100vh-132px)]`
 const COLUMN_BODY_VIEWPORT_OFFSET: f32 = 132.0;
 
-struct ColumnRenderData {
+/// 카드를 그릴 때 보는 보드 단위 조회표. 보드가 바뀔 때만 만든다
+pub(super) struct BoardCardLookups {
     catalog: ProjectCatalog,
     root_priorities: HashMap<String, TaskPriority>,
     unread: HashMap<String, usize>,
     diff_stats: BTreeMap<String, TaskDiffStats>,
+}
+
+struct ColumnRenderData {
+    lookups: Rc<BoardCardLookups>,
     deletion_states: HashMap<String, TaskDeletionState>,
     move_states: HashMap<String, TaskMoveState>,
 }
@@ -59,11 +65,16 @@ impl BoardView {
         let Some(board) = self.board.as_ref() else {
             return Vec::new();
         };
+        let lookups = self
+            .card_lookups_cache
+            .get_or_build(self.board.revision(), || BoardCardLookups {
+                catalog: board.catalog.clone(),
+                root_priorities: root_priorities(&board.tasks, &board.catalog),
+                unread: board.unread_count_by_task(),
+                diff_stats: board.diff_stats.clone(),
+            });
         let render_data = ColumnRenderData {
-            catalog: board.catalog.clone(),
-            root_priorities: root_priorities(&board.tasks, &board.catalog),
-            unread: board.unread_count_by_task(),
-            diff_stats: board.diff_stats.clone(),
+            lookups,
             deletion_states: self.deletion_states.clone(),
             move_states: self.move_states.clone(),
         };
@@ -148,20 +159,25 @@ impl BoardView {
     ) -> Vec<AnyElement> {
         let reflow = self.column_reflows.entry(status).or_default().clone();
         let mut elements = Vec::new();
-        for group in contiguous_groups(tasks, &render_data.catalog) {
+        for group in contiguous_groups(tasks, &render_data.lookups.catalog) {
             let mut cards = Vec::new();
             for task in &group.tasks {
                 let project = group
                     .project_name
                     .as_ref()
                     .and(task.project_id.as_ref())
-                    .and_then(|project_id| render_data.catalog.displays.get(project_id));
+                    .and_then(|project_id| render_data.lookups.catalog.displays.get(project_id));
                 let input = TaskCardInput {
                     task,
                     project,
-                    unread_count: render_data.unread.get(&task.id).copied().unwrap_or(0),
-                    root_priorities: &render_data.root_priorities,
-                    diff_stats: render_data.diff_stats.get(&task.id),
+                    unread_count: render_data
+                        .lookups
+                        .unread
+                        .get(&task.id)
+                        .copied()
+                        .unwrap_or(0),
+                    root_priorities: &render_data.lookups.root_priorities,
+                    diff_stats: render_data.lookups.diff_stats.get(&task.id),
                     deletion_state: render_data.deletion_states.get(&task.id),
                     move_state: render_data.move_states.get(&task.id),
                 };

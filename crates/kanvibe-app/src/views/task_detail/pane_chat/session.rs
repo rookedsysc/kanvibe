@@ -119,6 +119,8 @@ pub struct ChatSession {
     pub pane_id: Option<String>,
     /// 화면에 보이는 마지막 상태
     displayed: Option<PaneChatSnapshot>,
+    /// 보이는 스냅샷이 바뀔 때마다 오른다. 보일 대화를 다시 만들지 가르는 데 쓴다
+    snapshot_revision: u64,
     /// 동작을 보낼 수 있는 확인된 상태인지(TS `current.current`가 있는지)
     has_current: bool,
     is_ready: bool,
@@ -141,6 +143,7 @@ impl ChatSession {
             task_id,
             pane_id,
             displayed: None,
+            snapshot_revision: 0,
             has_current: false,
             is_ready: false,
             has_read_error: false,
@@ -154,6 +157,10 @@ impl ChatSession {
             queued_prompt_options: Vec::new(),
             sending_prompt_option: None,
         }
+    }
+
+    pub fn snapshot_revision(&self) -> u64 {
+        self.snapshot_revision
     }
 
     pub fn snapshot(&self) -> Option<&PaneChatSnapshot> {
@@ -201,6 +208,7 @@ impl ChatSession {
             self.prompt_error = None;
         }
         self.displayed = Some(snapshot);
+        self.snapshot_revision += 1;
         self.has_current = true;
         self.has_read_error = false;
         self.acknowledge_recorded_messages();

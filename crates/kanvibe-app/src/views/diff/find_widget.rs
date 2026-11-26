@@ -953,7 +953,7 @@ impl Render for FindWidget {
             .map(IntoElement::into_any_element);
         div()
             .id("find-widget")
-            .key_context("FindWidget")
+            .key_context(crate::shortcuts::FIND_WIDGET_KEY_CONTEXT)
             .on_key_down(cx.listener(Self::handle_key_down))
             .absolute()
             .top_0()

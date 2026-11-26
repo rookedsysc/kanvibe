@@ -8,7 +8,8 @@
 use std::collections::HashSet;
 
 use gpui_kit::{
-    Action, App, Global, Keystroke, KeystrokeEvent, Subscription, Window, WindowId, actions,
+    Action, App, Global, KeyContext, Keystroke, KeystrokeEvent, Subscription, Window, WindowId,
+    actions,
 };
 use kanvibe_domain::platform::ShortcutPlatform;
 use kanvibe_domain::shortcuts::bindings::{
@@ -69,6 +70,22 @@ pub struct RunTerminalTabCommand {
 pub const TERMINAL_KEY_CONTEXT: &str = "Terminal";
 /// 작업 상세 화면이 거는 키 컨텍스트. TS가 URL로 하던 "작업 상세인가" 판정을 포커스 경로의 컨텍스트로 한다
 pub const TASK_DETAIL_KEY_CONTEXT: &str = "TaskDetail";
+/// diff 화면 파일 편집기가 거는 키 컨텍스트
+pub const DIFF_FILE_EDITOR_KEY_CONTEXT: &str = "DiffFileEditor";
+/// diff 화면 찾기 상자가 거는 키 컨텍스트
+pub const FIND_WIDGET_KEY_CONTEXT: &str = "FindWidget";
+/// 보드 한 줄 입력란이 거는 키 컨텍스트
+pub const BOARD_TEXT_FIELD_KEY_CONTEXT: &str = "BoardTextField";
+/// gpui-component `InputState`가 거는 키 컨텍스트
+const COMPONENT_INPUT_KEY_CONTEXT: &str = "Input";
+/// 글을 입력받는 요소의 키 컨텍스트. TS `shouldIgnoreGlobalShortcut`이 거르던 input·textarea(xterm 입력 textarea 포함)에 해당한다
+const TEXT_ENTRY_KEY_CONTEXTS: [&str; 5] = [
+    COMPONENT_INPUT_KEY_CONTEXT,
+    BOARD_TEXT_FIELD_KEY_CONTEXT,
+    DIFF_FILE_EDITOR_KEY_CONTEXT,
+    FIND_WIDGET_KEY_CONTEXT,
+    TERMINAL_KEY_CONTEXT,
+];
 
 /// 앱 전역 단축키 상태(AppSettings가 원천). 모든 창이 이 한 벌을 읽으므로 재배정은 열린 창 전부에 함께 적용된다
 pub struct ShortcutState {
@@ -191,6 +208,25 @@ pub fn route_shortcut_command(
         .unwrap_or(ShortcutRouting::PassThrough)
 }
 
+/// 작업 상세 밖에서 글 입력 요소에 포커스가 있으면 뒤로/앞으로 단축키를 그 요소에 넘긴다(TS `BoardCommandProvider`).
+/// 작업 상세는 TS 캡처 단계 처리처럼 입력 중에도 이동한다
+fn should_leave_history_shortcut_to_text_entry(
+    command: ShortcutCommandId,
+    is_task_detail_route: bool,
+    context_stack: &[KeyContext],
+) -> bool {
+    let is_history_command = matches!(
+        command,
+        ShortcutCommandId::PageBack | ShortcutCommandId::PageForward
+    );
+    let is_text_entry_focused = context_stack.iter().any(|context| {
+        TEXT_ENTRY_KEY_CONTEXTS
+            .iter()
+            .any(|text_entry_context| context.contains(text_entry_context))
+    });
+    is_history_command && !is_task_detail_route && is_text_entry_focused
+}
+
 /// 작업 상세에서만 터미널보다 앞서는 명령. 다른 화면에서 숫자 키를 삼키지 않게 화면을 먼저 본다
 fn task_detail_only_action(command: ShortcutCommandId) -> Option<Box<dyn Action>> {
     if let Some(position) = command.task_detail_dock_index() {
@@ -248,6 +284,13 @@ fn handle_intercepted_keystroke(event: &KeystrokeEvent, window: &mut Window, cx:
         .context_stack
         .iter()
         .any(|context| context.contains(TASK_DETAIL_KEY_CONTEXT));
+    if should_leave_history_shortcut_to_text_entry(
+        command,
+        is_task_detail_route,
+        &event.context_stack,
+    ) {
+        return;
+    }
     match route_shortcut_command(command, is_task_detail_route) {
         ShortcutRouting::Intercept(action) => {
             window.dispatch_action(action, cx);
@@ -278,6 +321,81 @@ mod tests {
             shortcut_event_from_keystroke(&keystroke("escape")).key,
             "Escape"
         );
+    }
+
+    fn focus_path(contexts: &[&str]) -> Vec<KeyContext> {
+        contexts
+            .iter()
+            .map(|context| KeyContext::parse(context).unwrap())
+            .collect()
+    }
+
+    #[test]
+    fn history_shortcuts_stay_with_the_diff_editor_outside_task_detail() {
+        let diff_editor_focus = focus_path(&["KanvibeWindow", DIFF_FILE_EDITOR_KEY_CONTEXT]);
+
+        for command in [ShortcutCommandId::PageBack, ShortcutCommandId::PageForward] {
+            assert!(should_leave_history_shortcut_to_text_entry(
+                command,
+                false,
+                &diff_editor_focus
+            ));
+        }
+    }
+
+    #[test]
+    fn history_shortcuts_stay_with_text_inputs_outside_task_detail() {
+        for text_entry_context in [
+            COMPONENT_INPUT_KEY_CONTEXT,
+            BOARD_TEXT_FIELD_KEY_CONTEXT,
+            FIND_WIDGET_KEY_CONTEXT,
+            TERMINAL_KEY_CONTEXT,
+        ] {
+            let focus = focus_path(&["KanvibeWindow", text_entry_context]);
+
+            assert!(should_leave_history_shortcut_to_text_entry(
+                ShortcutCommandId::PageBack,
+                false,
+                &focus
+            ));
+        }
+    }
+
+    #[test]
+    fn history_shortcuts_navigate_when_no_text_entry_is_focused() {
+        let board_focus = focus_path(&["KanvibeWindow", "BoardRoute"]);
+
+        assert!(!should_leave_history_shortcut_to_text_entry(
+            ShortcutCommandId::PageBack,
+            false,
+            &board_focus
+        ));
+    }
+
+    #[test]
+    fn task_detail_history_shortcuts_navigate_even_from_text_entry() {
+        let task_detail_terminal_focus = focus_path(&[
+            "KanvibeWindow",
+            TASK_DETAIL_KEY_CONTEXT,
+            TERMINAL_KEY_CONTEXT,
+        ]);
+
+        assert!(!should_leave_history_shortcut_to_text_entry(
+            ShortcutCommandId::PageBack,
+            true,
+            &task_detail_terminal_focus
+        ));
+    }
+
+    #[test]
+    fn other_commands_ignore_text_entry_focus_here() {
+        let input_focus = focus_path(&["KanvibeWindow", COMPONENT_INPUT_KEY_CONTEXT]);
+
+        assert!(!should_leave_history_shortcut_to_text_entry(
+            ShortcutCommandId::CommandPalette,
+            false,
+            &input_focus
+        ));
     }
 
     #[test]

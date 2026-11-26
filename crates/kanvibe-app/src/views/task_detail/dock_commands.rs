@@ -160,7 +160,7 @@ impl TaskDetailView {
         if let super::DetailLoad::Loaded(snapshot) = &mut self.load
             && snapshot.task.id == task_id
         {
-            snapshot.task.pr_url = Some(pr_url.to_string());
+            std::rc::Rc::make_mut(snapshot).task.pr_url = Some(pr_url.to_string());
         }
     }
 
@@ -326,7 +326,7 @@ fn open_task_folder_in_vs_code(task_id: &str, cx: &App) -> gpui_kit::Task<bool> 
 }
 
 /// TS `window.alert`. QA 재생에서는 기준 이미지를 찍은 Playwright처럼 띄우지 않고 넘긴다
-pub(super) fn show_alert(message: &str, window: &mut Window, cx: &mut App) {
+pub(crate) fn show_alert(message: &str, window: &mut Window, cx: &mut App) {
     if cx.has_global::<QaRuntime>() {
         eprintln!("[kanvibe-qa] alert: {message}");
         return;

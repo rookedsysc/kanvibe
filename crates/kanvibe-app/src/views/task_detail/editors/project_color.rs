@@ -201,7 +201,7 @@ impl TaskDetailView {
             Ok(()) => {
                 self.editors.project_color.save.finish(None);
                 if let super::DetailLoad::Loaded(snapshot) = &mut self.load
-                    && let Some(project) = snapshot.project.as_mut()
+                    && let Some(project) = std::rc::Rc::make_mut(snapshot).project.as_mut()
                 {
                     project.color = Some(hex);
                 }

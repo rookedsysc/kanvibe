@@ -157,16 +157,20 @@ pub fn navigate_to_task_detail(
     cx: &mut App,
 ) -> TaskNavigationOutcome {
     let href = task_detail_href(task_id, Some(locale.as_str()));
-    if request.should_open_new_window {
-        return open_new_window(&href, cx);
-    }
     let registry = cx.default_global::<WindowRegistry>();
-    let existing_window =
-        resolve_existing_navigation_target_window(&href, &registry.open_windows(), None)
-            .and_then(|window_id| registry.handle_for(window_id));
+    let existing_window = find_task_detail_window_to_focus(
+        &href,
+        &registry.open_windows(),
+        request.origin_window,
+        request.should_open_new_window,
+    )
+    .and_then(|window_id| registry.handle_for(window_id));
     if let Some(handle) = existing_window {
         activate(handle, cx);
         return TaskNavigationOutcome::FocusedExistingWindow;
+    }
+    if request.should_open_new_window {
+        return open_new_window(&href, cx);
     }
     let target_view = request
         .origin_window
@@ -180,6 +184,21 @@ pub fn navigate_to_task_detail(
         }
         None => open_new_window(&href, cx),
     }
+}
+
+/// 같은 작업 상세를 보여 주는 창. 새 창 요청은 TS `excludeWindow`처럼 출발 창을 빼고 찾는다
+fn find_task_detail_window_to_focus<W: Copy + PartialEq>(
+    href: &str,
+    open_windows: &[(W, String)],
+    origin_window: Option<W>,
+    should_open_new_window: bool,
+) -> Option<W> {
+    let excluded_window = if should_open_new_window {
+        origin_window
+    } else {
+        None
+    };
+    resolve_existing_navigation_target_window(href, open_windows, excluded_window)
 }
 
 /// 화면 안 링크를 연다(TS `setWindowOpenHandler`). 앱 경로면 같은 경로 창을 앞으로 가져오거나 새 창을 열고,
@@ -220,7 +239,45 @@ fn open_new_window(href: &str, cx: &mut App) -> TaskNavigationOutcome {
 
 #[cfg(test)]
 mod tests {
-    use super::notification_locale_for_path;
+    use super::{find_task_detail_window_to_focus, notification_locale_for_path};
+
+    const TASK_DETAIL_HREF: &str = "/ko/task/t1";
+
+    #[test]
+    fn new_window_request_focuses_another_window_showing_the_same_task() {
+        let open_windows = [
+            (1_u32, "/ko".to_string()),
+            (2, TASK_DETAIL_HREF.to_string()),
+        ];
+
+        let focused_window =
+            find_task_detail_window_to_focus(TASK_DETAIL_HREF, &open_windows, Some(1), true);
+
+        assert_eq!(focused_window, Some(2));
+    }
+
+    #[test]
+    fn new_window_request_skips_the_origin_window_showing_the_same_task() {
+        let open_windows = [
+            (1_u32, TASK_DETAIL_HREF.to_string()),
+            (2, "/ko".to_string()),
+        ];
+
+        let focused_window =
+            find_task_detail_window_to_focus(TASK_DETAIL_HREF, &open_windows, Some(1), true);
+
+        assert_eq!(focused_window, None);
+    }
+
+    #[test]
+    fn same_window_request_may_focus_the_origin_window_showing_the_same_task() {
+        let open_windows = [(1_u32, TASK_DETAIL_HREF.to_string())];
+
+        let focused_window =
+            find_task_detail_window_to_focus(TASK_DETAIL_HREF, &open_windows, Some(1), false);
+
+        assert_eq!(focused_window, Some(1));
+    }
 
     #[test]
     fn notification_locale_comes_from_the_first_route_segment() {

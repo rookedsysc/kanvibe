@@ -3,10 +3,11 @@
 //! `BackgroundTaskSync` 호출로 바꾼다. 모든 호출은 QA 고장 주입 판정을 TS IPC 이름으로 먼저 거친다.
 
 use std::collections::BTreeMap;
-use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
-use gpui_kit::{App, AppContext, Task};
+use gpui_kit::{App, AppContext, Global, Task};
 use kanvibe_ai::types::{LiveAiSession, RunningAgentPane};
 use kanvibe_domain::background_sync::BackgroundTaskSyncStatus;
 use kanvibe_domain::board_sort::BoardSortPreference;
@@ -21,6 +22,7 @@ use serde::Deserialize;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
+use crate::blocking_call::run_blocking_call;
 use crate::qa::faults::{FaultOutcome, FaultRegistry};
 use crate::services::{AppServices, apply_fault, format_service_error_for};
 
@@ -54,6 +56,7 @@ pub const DELETE_TASK_SERVICE: &str = "kanban.deleteTask";
 pub const CREATE_TASK_SERVICE: &str = "kanban.createTask";
 pub const BRANCH_FROM_TASK_SERVICE: &str = "kanban.branchFromTask";
 pub const CONNECT_TERMINAL_SERVICE: &str = "kanban.connectTerminalSession";
+pub const TASK_BY_ID_SERVICE: &str = "kanban.getTaskById";
 pub const DIFF_STATS_SERVICE: &str = "diff.getTaskDiffStats";
 pub const PROJECT_BRANCHES_SERVICE: &str = "project.getProjectBranches";
 pub const SESSION_DEPENDENCY_STATUS_SERVICE: &str = "sessionDependency.getSessionDependencyStatus";
@@ -70,6 +73,12 @@ pub const LIST_SUBDIRECTORIES_SERVICE: &str = "project.listSubdirectories";
 pub const RUNNING_AGENT_PANES_SERVICE: &str = "project.getRunningAgentPanes";
 pub const TASK_LIVE_SESSIONS_SERVICE: &str = "project.getTaskLiveAiSessions";
 pub const SELECT_TERMINAL_TAB_SERVICE: &str = "terminalTabs.selectTerminalTab";
+pub const APP_SETTING_SERVICE: &str = "appSettings.getAppSetting";
+pub const DISMISS_DONE_ALERT_SERVICE: &str = "appSettings.dismissDoneAlert";
+pub const SAVE_BOARD_SORT_SERVICE: &str = "appSettings.setBoardSortPreference";
+pub const NOTIFICATION_UNREAD_ONLY_SERVICE: &str = "appSettings.getNotificationUnreadOnlyEnabled";
+pub const SAVE_NOTIFICATION_UNREAD_ONLY_SERVICE: &str =
+    "appSettings.setNotificationUnreadOnlyEnabled";
 
 /// AppSettings `board_view_mode`
 pub const BOARD_VIEW_MODE_KEY: &str = "board_view_mode";
@@ -89,6 +98,20 @@ impl BoardViewMode {
             _ => Self::Kanban,
         }
     }
+}
+
+/// 이 앱 실행에서 마지막으로 알려진 보드 뷰. 보드를 만들 때마다 UI 스레드에서 DB 잠금을 기다리지 않도록
+/// 처음 한 번만 background에서 읽고, 명령 팔레트가 뷰를 바꿀 때 함께 갱신한다
+struct KnownBoardViewMode(BoardViewMode);
+
+impl Global for KnownBoardViewMode {}
+
+pub fn known_board_view_mode(cx: &App) -> Option<BoardViewMode> {
+    cx.try_global::<KnownBoardViewMode>().map(|known| known.0)
+}
+
+pub fn remember_board_view_mode(mode: BoardViewMode, cx: &mut App) {
+    cx.set_global(KnownBoardViewMode(mode));
 }
 
 /// 분기 요청(TS `branchFromTask` 인자)
@@ -207,16 +230,6 @@ impl BoardServices {
             .unwrap_or(FaultOutcome::Proceed)
     }
 
-    /// AppSettings `board_view_mode`. 읽지 못하면 칸반이다
-    pub fn board_view_mode(&self) -> BoardViewMode {
-        let stored = self
-            .runtime
-            .app_settings()
-            .get_app_setting(BOARD_VIEW_MODE_KEY)
-            .ok();
-        BoardViewMode::parse(stored.flatten().as_deref())
-    }
-
     fn read_snapshot(&self) -> Result<BoardSnapshot, String> {
         let runtime = &self.runtime;
         let tasks = runtime
@@ -298,7 +311,7 @@ fn spawn_service_call_with_result<T: Send + 'static>(
                 decode(value)
             }
             (fault, _) => match apply_fault(fault, &executor).await {
-                Ok(()) => call(&services),
+                Ok(()) => run_blocking_call(executor.is_test(), move || call(&services)).await,
                 Err(failure) => Err(failure.reason),
             },
         };
@@ -326,9 +339,58 @@ fn json_arguments(arguments: &[&str]) -> String {
     serde_json::to_string(arguments).unwrap_or_default()
 }
 
-/// 화면 문구 없이 로그로만 남기는 설정 저장 실패
-fn settings_failure(error: kanvibe_db::DatabaseError) -> BoardServiceFailure {
-    BoardServiceFailure::new(error.to_string())
+/// 한 설정의 저장 순서. 저장마다 전용 스레드가 DB 잠금을 다투므로 먼저 요청한 저장이 나중에 끝날 수 있다.
+/// 요청할 때(UI 스레드) 순번을 받고, 쓸 때 더 새 순번이 이미 썼으면 옛 값을 쓰지 않는다
+struct OrderedSettingSaves {
+    issued: AtomicU64,
+    written: Mutex<u64>,
+}
+
+impl OrderedSettingSaves {
+    const fn new() -> Self {
+        Self {
+            issued: AtomicU64::new(0),
+            written: Mutex::new(0),
+        }
+    }
+
+    fn issue_ticket(&self) -> u64 {
+        self.issued.fetch_add(1, Ordering::SeqCst) + 1
+    }
+
+    fn write_unless_superseded(
+        &self,
+        ticket: u64,
+        write: impl FnOnce() -> Result<(), String>,
+    ) -> Result<(), String> {
+        let mut written = self.written.lock().unwrap_or_else(PoisonError::into_inner);
+        if *written > ticket {
+            return Ok(());
+        }
+        write()?;
+        *written = ticket;
+        Ok(())
+    }
+}
+
+static BOARD_SORT_SAVES: OrderedSettingSaves = OrderedSettingSaves::new();
+static NOTIFICATION_UNREAD_ONLY_SAVES: OrderedSettingSaves = OrderedSettingSaves::new();
+
+/// 결과를 기다리지 않는 설정 저장. 실패는 TS처럼 로그로만 남긴다
+pub fn detach_setting_save(
+    save: Task<BoardServiceResult<()>>,
+    setting_name: &'static str,
+    cx: &App,
+) {
+    cx.background_spawn(async move {
+        if let Err(failure) = save.await {
+            eprintln!(
+                "[kanvibe] failed to save {setting_name}: {}",
+                failure.reason
+            );
+        }
+    })
+    .detach();
 }
 
 /// 서비스 오류를 사유 글자로 바꾼다
@@ -390,6 +452,23 @@ impl BoardServices {
                     .map_err(service_failure)
             },
         )
+    }
+
+    /// 작업 하나. 워크스페이스에서 불러온 페이지 밖의 작업을 고르면 따로 읽는다(TS `getTaskById`)
+    pub fn load_task(
+        self: &Arc<Self>,
+        task_id: String,
+        cx: &App,
+    ) -> Task<BoardServiceResult<Option<KanbanTask>>> {
+        let arguments = json_arguments(&[task_id.as_str()]);
+        spawn_service_call(self, TASK_BY_ID_SERVICE, &arguments, cx, move |services| {
+            let found = services
+                .runtime
+                .kanban()
+                .get_task_by_id(&task_id)
+                .map_err(service_failure)?;
+            Ok(found.map(|found| found.task))
+        })
     }
 
     /// Done 열 다음 페이지
@@ -581,29 +660,99 @@ impl BoardServices {
         )
     }
 
+    /// AppSettings `board_view_mode`(TS `getBoardViewMode`). 모르는 값은 칸반이다
+    pub fn load_board_view_mode(
+        self: &Arc<Self>,
+        cx: &App,
+    ) -> Task<BoardServiceResult<BoardViewMode>> {
+        let arguments = json_arguments(&[BOARD_VIEW_MODE_KEY]);
+        spawn_service_call(self, APP_SETTING_SERVICE, &arguments, cx, |services| {
+            let stored = services
+                .runtime
+                .app_settings()
+                .get_app_setting(BOARD_VIEW_MODE_KEY)
+                .map_err(service_failure)?;
+            Ok(BoardViewMode::parse(stored.as_deref()))
+        })
+    }
+
     /// Done 이동 안내를 다시 보지 않는다(AppSettings `done_alert_dismissed`)
-    pub fn dismiss_done_alert(&self) -> BoardServiceResult<()> {
-        self.runtime
-            .app_settings()
-            .dismiss_done_alert()
-            .map_err(settings_failure)
+    pub fn dismiss_done_alert(self: &Arc<Self>, cx: &App) -> Task<BoardServiceResult<()>> {
+        spawn_service_call(self, DISMISS_DONE_ALERT_SERVICE, "[]", cx, |services| {
+            services
+                .runtime
+                .app_settings()
+                .dismiss_done_alert()
+                .map_err(service_failure)
+        })
     }
 
     pub fn save_board_sort_preference(
-        &self,
-        preference: &BoardSortPreference,
-    ) -> BoardServiceResult<()> {
-        self.runtime
-            .app_settings()
-            .set_board_sort_preference(preference)
-            .map_err(settings_failure)
+        self: &Arc<Self>,
+        preference: BoardSortPreference,
+        cx: &App,
+    ) -> Task<BoardServiceResult<()>> {
+        let arguments = serde_json::to_string(&[&preference]).unwrap_or_default();
+        let ticket = BOARD_SORT_SAVES.issue_ticket();
+        spawn_service_call(
+            self,
+            SAVE_BOARD_SORT_SERVICE,
+            &arguments,
+            cx,
+            move |services| {
+                BOARD_SORT_SAVES.write_unless_superseded(ticket, || {
+                    services
+                        .runtime
+                        .app_settings()
+                        .set_board_sort_preference(&preference)
+                        .map_err(service_failure)
+                })
+            },
+        )
     }
 
-    pub fn save_notification_unread_only(&self, is_enabled: bool) -> BoardServiceResult<()> {
-        self.runtime
-            .app_settings()
-            .set_notification_unread_only_enabled(is_enabled)
-            .map_err(settings_failure)
+    /// 알림 센터 안읽음만 보기(TS `getNotificationUnreadOnlyEnabled`)
+    pub fn load_notification_unread_only(
+        self: &Arc<Self>,
+        cx: &App,
+    ) -> Task<BoardServiceResult<bool>> {
+        spawn_service_call(
+            self,
+            NOTIFICATION_UNREAD_ONLY_SERVICE,
+            "[]",
+            cx,
+            |services| {
+                services
+                    .runtime
+                    .app_settings()
+                    .get_notification_unread_only_enabled()
+                    .map_err(service_failure)
+            },
+        )
+    }
+
+    pub fn save_notification_unread_only(
+        self: &Arc<Self>,
+        is_enabled: bool,
+        cx: &App,
+    ) -> Task<BoardServiceResult<()>> {
+        let arguments = format!("[{is_enabled}]");
+        let ticket = NOTIFICATION_UNREAD_ONLY_SAVES.issue_ticket();
+        spawn_service_call(
+            self,
+            SAVE_NOTIFICATION_UNREAD_ONLY_SERVICE,
+            &arguments,
+            cx,
+            move |services| {
+                NOTIFICATION_UNREAD_ONLY_SAVES.write_unless_superseded(ticket, || {
+                    services
+                        .runtime
+                        .app_settings()
+                        .set_notification_unread_only_enabled(is_enabled)
+                        .map_err(service_failure)
+                })
+            },
+        )
     }
 
     /// 저장된 알림 목록(TS `kanvibe:notifications-list`)
@@ -884,4 +1033,51 @@ fn decode_scan_result(value: Value) -> Result<ScanResult, String> {
 /// 고장 값은 TS 응답처럼 `{ sessions: [...] }`이다
 fn decode_live_sessions(value: Value) -> Result<Vec<LiveAiSession>, String> {
     decode_fault_value(value.get("sessions").cloned().unwrap_or(Value::Null))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_earlier_save_that_arrives_late_does_not_overwrite_the_newer_value() {
+        let saves = OrderedSettingSaves::new();
+        let earlier = saves.issue_ticket();
+        let newer = saves.issue_ticket();
+        let stored = Mutex::new(None);
+
+        saves
+            .write_unless_superseded(newer, || {
+                *stored.lock().unwrap() = Some("newer");
+                Ok(())
+            })
+            .unwrap();
+        saves
+            .write_unless_superseded(earlier, || {
+                *stored.lock().unwrap() = Some("earlier");
+                Ok(())
+            })
+            .unwrap();
+
+        assert_eq!(*stored.lock().unwrap(), Some("newer"));
+    }
+
+    #[test]
+    fn a_failed_newer_save_lets_the_earlier_value_through() {
+        let saves = OrderedSettingSaves::new();
+        let earlier = saves.issue_ticket();
+        let newer = saves.issue_ticket();
+        let stored = Mutex::new(None);
+
+        let failed = saves.write_unless_superseded(newer, || Err("잠김".to_string()));
+        saves
+            .write_unless_superseded(earlier, || {
+                *stored.lock().unwrap() = Some("earlier");
+                Ok(())
+            })
+            .unwrap();
+
+        assert_eq!(failed, Err("잠김".to_string()));
+        assert_eq!(*stored.lock().unwrap(), Some("earlier"));
+    }
 }

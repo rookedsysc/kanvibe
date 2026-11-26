@@ -1,27 +1,34 @@
-//! 터미널 탭 상태(TS `useTerminalTabs`). tmux·zellij·Herdr 탭은 KanVibe 밖에서도 바뀌어 주기적으로 다시 읽고,
-//! terminal 세션 탭은 KanVibe만 바꾸므로 조작 직후에만 읽는다. 탭 명령은 한 번에 하나만 보내고, 끝나면 성공·실패와
-//! 상관없이 다시 읽어 실제 상태로 돌아온다.
+//! 터미널 탭 상태와 탭 바(TS `useTerminalTabs` + `TerminalTabBar`). 작업 상세와 보드 워크스페이스가 작업마다 하나씩 둔다.
+//! tmux·zellij·Herdr 탭은 KanVibe 밖에서도 바뀌어 주기적으로 다시 읽고, terminal 세션 탭은 KanVibe만 바꾸므로 조작 직후에만 읽는다.
+//! 탭 명령은 한 번에 하나만 보내고, 끝나면 성공·실패와 상관없이 다시 읽어 실제 상태로 돌아온다.
+//! 터미널 뷰 바꾸기·창 닫기·입력 포커스 돌려주기처럼 화면마다 다른 일은 `TerminalTabsEvent`로 그 화면에 넘긴다.
+
+mod loader;
+mod tab_bar;
+mod tab_close;
 
 use std::sync::Arc;
 use std::time::Duration;
 
-use gpui_kit::{AppContext, Context};
+use gpui_kit::base::input::InputState;
+use gpui_kit::{AppContext, Context, Entity, EventEmitter, Subscription, Task};
+use kanvibe_domain::i18n::{Locale, Translator};
 use kanvibe_domain::terminal_tabs::TerminalTab;
+use kanvibe_runtime::DesktopRuntime;
 use kanvibe_terminal::terminal_tab_service::{TerminalTabListResult, TerminalTabMutationResult};
 use serde_json::Value;
 
-use super::TaskDetailView;
-use super::data::desktop_runtime;
 use crate::qa::faults::FaultOutcome;
 use crate::services::{AppServices, apply_fault, format_service_error};
-use kanvibe_runtime::DesktopRuntime;
+
+pub use loader::render_terminal_loader;
 
 const LOCAL_POLL_INTERVAL: Duration = Duration::from_millis(1_000);
 const REMOTE_POLL_INTERVAL: Duration = Duration::from_millis(3_000);
 /// TS가 목록 조회 예외에 쓰던 문구
 const TAB_LIST_READ_FAILED: &str = "터미널 탭 목록을 읽지 못했습니다.";
 /// TS IPC `terminalTabs.listTerminalTabs`
-pub const LIST_TABS_SERVICE: &str = "terminalTabs.listTerminalTabs";
+const LIST_TABS_SERVICE: &str = "terminalTabs.listTerminalTabs";
 
 /// 탭 명령 하나
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -82,10 +89,10 @@ impl TerminalTabsState {
         }
     }
 
-    /// `Mod+Alt+[`·`]`: 앞뒤 탭(끝에서 돌아간다)
+    /// `Mod+Alt+[`·`]`: 앞뒤 탭(끝에서 돌아간다). 탭이 하나면 옮길 곳이 없어 선택 명령을 보내지 않는다
     pub fn relative_tab_id(&self, offset: isize) -> Option<String> {
         let count = self.tabs.len() as isize;
-        if count == 0 {
+        if count < 2 {
             return None;
         }
         let current = self.tabs.iter().position(|tab| tab.is_active).unwrap_or(0) as isize;
@@ -109,17 +116,82 @@ pub fn renamed_tab_name(tabs: &[TerminalTab], tab_id: &str, draft: &str) -> Opti
     (!trimmed.is_empty() && Some(trimmed) != previous).then(|| trimmed.to_string())
 }
 
-impl TaskDetailView {
+/// 탭 상태가 바뀌어 탭을 가진 화면이 따라 해야 하는 일
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TerminalTabsEvent {
+    /// 탭 목록을 새로 읽었다. 화면은 활성 탭에 맞춰 터미널 뷰를 바꾼다
+    TabsRead,
+    /// 이름 바꾸기를 확정하거나 그만뒀다. 화면은 입력 포커스를 터미널로 돌린다
+    RenameEnded,
+    /// 닫으려던 탭이 마지막 탭이라 창까지 닫아야 한다
+    WindowCloseRequested,
+}
+
+/// 작업 하나의 터미널 탭. 화면이 작업마다 하나씩 만들고, 버리면 진행 중인 조회·명령도 함께 멈춘다
+pub struct TerminalTabsController {
+    task_id: String,
+    state: TerminalTabsState,
+    /// 이름을 바꾸는 중인 탭과 입력
+    rename: Option<(String, Entity<InputState>)>,
+    translator: Translator,
+    common: Translator,
+    /// 터미널이 보이고 창이 활성이라 탭 목록을 주기적으로 읽는 중인지
+    should_poll: bool,
+    is_refresh_queued: bool,
+    is_closing_tab: bool,
+    _poll: Option<Task<()>>,
+    _refresh: Option<Task<()>>,
+    _command: Option<Task<()>>,
+    _rename_events: Option<Subscription>,
+    _close: Option<Task<()>>,
+}
+
+impl EventEmitter<TerminalTabsEvent> for TerminalTabsController {}
+
+impl TerminalTabsController {
+    pub fn new(task_id: String, locale: Locale) -> Self {
+        Self {
+            task_id,
+            state: TerminalTabsState::default(),
+            rename: None,
+            translator: Translator::new(locale, "taskDetail"),
+            common: Translator::new(locale, "common"),
+            should_poll: false,
+            is_refresh_queued: false,
+            is_closing_tab: false,
+            _poll: None,
+            _refresh: None,
+            _command: None,
+            _rename_events: None,
+            _close: None,
+        }
+    }
+
+    pub fn task_id(&self) -> &str {
+        &self.task_id
+    }
+
+    pub fn state(&self) -> &TerminalTabsState {
+        &self.state
+    }
+
+    /// 탭 이름 입력란이 열려 있는지. 막 연 입력란은 아직 그려지지 않아 화면이 포커스를 빼앗지 않게 묻는다
+    pub fn is_renaming(&self) -> bool {
+        self.rename.is_some()
+    }
+
+    /// 세션이 바뀌면 이전 목록을 비우고, 이전 세션의 늦은 탭 목록 응답이 새 세션 목록을 덮지 않게 버린다
+    pub fn reset_for_new_session(&mut self) {
+        self.state = TerminalTabsState::default();
+        self._refresh = None;
+        self.is_refresh_queued = false;
+    }
+
     /// 탭 목록 조회를 시작한다. 멀티플렉서 세션이면 주기 조회도 건다
-    pub(super) fn start_tab_polling(
-        &mut self,
-        is_multiplexer: bool,
-        is_remote: bool,
-        cx: &mut Context<Self>,
-    ) {
-        self.refresh_tabs(cx);
+    pub fn start_polling(&mut self, is_multiplexer: bool, is_remote: bool, cx: &mut Context<Self>) {
+        self.refresh(cx);
         if !is_multiplexer {
-            self._tab_poll = None;
+            self._poll = None;
             return;
         }
         let interval = if is_remote {
@@ -127,13 +199,13 @@ impl TaskDetailView {
         } else {
             LOCAL_POLL_INTERVAL
         };
-        self._tab_poll = Some(cx.spawn(async move |this, cx| {
+        self._poll = Some(cx.spawn(async move |this, cx| {
             loop {
                 cx.background_executor().timer(interval).await;
                 let is_alive = this
-                    .update(cx, |view, cx| {
-                        if view.should_poll_tabs {
-                            view.poll_tabs(cx)
+                    .update(cx, |tabs, cx| {
+                        if tabs.should_poll {
+                            tabs.poll(cx)
                         }
                     })
                     .is_ok();
@@ -144,19 +216,28 @@ impl TaskDetailView {
         }));
     }
 
+    /// 터미널이 보이고 창이 활성이면 주기 조회를 켠다. 꺼져 있다가 켜지는 순간에는 밀린 변화를 한 번 읽는다
+    pub fn set_polling_active(&mut self, should_poll: bool, cx: &mut Context<Self>) {
+        let is_resumed = should_poll && !self.should_poll;
+        self.should_poll = should_poll;
+        if is_resumed && self.state.is_list_loaded {
+            self.poll(cx);
+        }
+    }
+
     /// 읽는 중이면 겹쳐 보내지 않고, 끝난 뒤 한 번 더 읽도록 예약한다(TS `queued`)
-    pub(super) fn refresh_tabs(&mut self, cx: &mut Context<Self>) {
+    pub fn refresh(&mut self, cx: &mut Context<Self>) {
         self.read_tabs(true, cx);
     }
 
     /// 주기 조회. 읽는 중이면 이번 차례를 건너뛰고 다시 읽기를 예약하지 않는다(TS `refresh(false)`)
-    pub(super) fn poll_tabs(&mut self, cx: &mut Context<Self>) {
+    fn poll(&mut self, cx: &mut Context<Self>) {
         self.read_tabs(false, cx);
     }
 
     fn read_tabs(&mut self, should_queue_if_busy: bool, cx: &mut Context<Self>) {
-        if self._tab_refresh.is_some() {
-            self.is_tab_refresh_queued |= should_queue_if_busy;
+        if self._refresh.is_some() {
+            self.is_refresh_queued |= should_queue_if_busy;
             return;
         }
         let Some(runtime) = desktop_runtime(cx) else {
@@ -177,9 +258,9 @@ impl TaskDetailView {
                 .list_terminal_tabs(&task_id)
                 .map_err(|error| error.to_string())
         });
-        self._tab_refresh = Some(cx.spawn(async move |this, cx| {
+        self._refresh = Some(cx.spawn(async move |this, cx| {
             let result = read.await;
-            let _ = this.update(cx, |view, cx| view.finish_tab_read(result, cx));
+            let _ = this.update(cx, |tabs, cx| tabs.finish_tab_read(result, cx));
         }));
     }
 
@@ -188,8 +269,8 @@ impl TaskDetailView {
         result: Result<TerminalTabListResult, String>,
         cx: &mut Context<Self>,
     ) {
-        self._tab_refresh = None;
-        let tabs = &mut self.terminal_tabs;
+        self._refresh = None;
+        let tabs = &mut self.state;
         match result {
             Ok(list) => {
                 tabs.tabs = if list.is_ok { list.tabs } else { Vec::new() };
@@ -204,26 +285,26 @@ impl TaskDetailView {
             }
         }
         tabs.is_list_loaded = true;
-        self.sync_terminal_tab_pane(cx);
-        if std::mem::take(&mut self.is_tab_refresh_queued) {
-            self.refresh_tabs(cx);
+        cx.emit(TerminalTabsEvent::TabsRead);
+        if std::mem::take(&mut self.is_refresh_queued) {
+            self.refresh(cx);
         }
         cx.notify();
     }
 
     /// 탭 명령을 보낸다. 처리 중이면 새 명령은 받지 않는다(TS `useTrackedAction`)
-    pub(super) fn run_tab_command(&mut self, command: TabCommand, cx: &mut Context<Self>) {
-        if self.terminal_tabs.pending.is_some() {
+    pub fn run_command(&mut self, command: TabCommand, cx: &mut Context<Self>) {
+        if self.state.pending.is_some() {
             return;
         }
         let Some(runtime) = desktop_runtime(cx) else {
             return;
         };
         if let TabCommand::Select(tab_id) = &command {
-            self.terminal_tabs.select_optimistically(tab_id);
+            self.state.select_optimistically(tab_id);
         }
-        self.terminal_tabs.pending = Some(command.clone());
-        self.terminal_tabs.action_error = None;
+        self.state.pending = Some(command.clone());
+        self.state.action_error = None;
         let task_id = self.task_id.clone();
         let sent = command.clone();
         let (service, arguments) = command.service_call(&task_id);
@@ -238,9 +319,9 @@ impl TaskDetailView {
                 .map_err(|failure| failure.reason)?;
             send_tab_command(&runtime, &task_id, &sent)
         });
-        self._tab_command = Some(cx.spawn(async move |this, cx| {
+        self._command = Some(cx.spawn(async move |this, cx| {
             let result = mutation.await;
-            let _ = this.update(cx, |view, cx| view.finish_tab_command(command, result, cx));
+            let _ = this.update(cx, |tabs, cx| tabs.finish_tab_command(command, result, cx));
         }));
         cx.notify();
     }
@@ -251,7 +332,7 @@ impl TaskDetailView {
         result: Result<TerminalTabMutationResult, String>,
         cx: &mut Context<Self>,
     ) {
-        self.terminal_tabs.pending = None;
+        self.state.pending = None;
         let failure = match result {
             Ok(mutation) if mutation.is_ok => None,
             Ok(mutation) => Some(mutation.error.unwrap_or_default()),
@@ -259,28 +340,32 @@ impl TaskDetailView {
         };
         match failure {
             Some(reason) => {
-                self.terminal_tabs.action_error = Some(reason);
-                self.terminal_tabs.failed_command = Some(command);
+                self.state.action_error = Some(reason);
+                self.state.failed_command = Some(command);
             }
-            None => self.terminal_tabs.failed_command = None,
+            None => self.state.failed_command = None,
         }
-        self._tab_refresh = None;
-        self.refresh_tabs(cx);
+        self._refresh = None;
+        self.refresh(cx);
         cx.notify();
     }
 
-    pub(super) fn retry_tab_command(&mut self, cx: &mut Context<Self>) {
-        if let Some(command) = self.terminal_tabs.failed_command.take() {
-            self.run_tab_command(command, cx);
+    fn retry_command(&mut self, cx: &mut Context<Self>) {
+        if let Some(command) = self.state.failed_command.take() {
+            self.run_command(command, cx);
         }
     }
+}
+
+fn desktop_runtime(cx: &gpui_kit::App) -> Option<Arc<DesktopRuntime>> {
+    cx.global::<AppServices>().runtime().map(Arc::clone)
 }
 
 /// QA 모드 고장 주입 판정
 fn tab_service_fault(
     service: &str,
     arguments: &Value,
-    cx: &Context<TaskDetailView>,
+    cx: &Context<TerminalTabsController>,
 ) -> FaultOutcome {
     cx.global::<AppServices>()
         .check_fault(service, &arguments.to_string())
@@ -359,6 +444,13 @@ mod tests {
         assert_eq!(tabs.relative_tab_id(-1).as_deref(), Some("2"));
         assert_eq!(tabs.tab_id_at(1).as_deref(), Some("2"));
         assert_eq!(tabs.tab_id_at(5), None);
+    }
+
+    #[test]
+    fn relative_selection_has_no_target_with_a_single_tab() {
+        let tabs = state(vec![tab("1", true)]);
+        assert_eq!(tabs.relative_tab_id(1), None);
+        assert_eq!(tabs.relative_tab_id(-1), None);
     }
 
     #[test]

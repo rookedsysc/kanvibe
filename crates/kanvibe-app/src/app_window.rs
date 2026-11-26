@@ -44,6 +44,8 @@ pub struct AppWindow {
     locale_shell: Entity<LocaleShell>,
     /// QA 재생이 첫 프레임(`index.html` 정적 스켈레톤)을 붙잡았는지
     is_first_frame_held: bool,
+    /// OS 밝기 변경 구독. "시스템" 테마가 밝기 전환을 따라간다
+    _system_appearance: gpui_kit::Subscription,
 }
 
 /// gpui-pre-linux 0.3.14 X11 `create_window`는 요청한 x에 2를 더해 창을 만든다(`x11/window.rs`).
@@ -89,9 +91,11 @@ impl AppWindow {
         let focus_handle = cx.focus_handle();
         focus_handle.focus(window, cx);
         let window_id = window.window_handle().window_id();
+        let app_window_id = cx.entity_id();
         cx.on_release(move |_, cx| {
             cx.default_global::<WindowRegistry>().forget(window_id);
             end_shortcut_capture(window_id, cx);
+            crate::views::board::forget_board_snapshot(app_window_id, cx);
         })
         .detach();
         let history = NavigationHistory::new(initial_path);
@@ -102,6 +106,9 @@ impl AppWindow {
         } else {
             Self::build_screen(&history, cx)
         };
+        let system_appearance = cx.observe_window_appearance(window, |_, window, cx| {
+            crate::views::settings::follow_system_appearance(window.appearance(), cx);
+        });
         let app_window = Self {
             window_handle: window.window_handle(),
             history,
@@ -109,6 +116,7 @@ impl AppWindow {
             screen,
             locale_shell,
             is_first_frame_held: loading_holds.is_first_frame_held,
+            _system_appearance: system_appearance,
         };
         app_window.attach_screen_to_shell(cx);
         app_window.record_current_path(cx);
@@ -284,6 +292,9 @@ impl AppWindow {
     }
 
     fn handle_navigate_back(&mut self, _: &NavigateBack, _: &mut Window, cx: &mut Context<Self>) {
+        if self.has_history_shortcut_blocker(cx) {
+            return;
+        }
         self.go_back(cx);
     }
 
@@ -293,7 +304,16 @@ impl AppWindow {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.has_history_shortcut_blocker(cx) {
+            return;
+        }
         self.go_forward(cx);
+    }
+
+    /// 전역 덮개나 보드 대화상자·메뉴가 열려 있으면 뒤로/앞으로 단축키를 삼키기만 한다(TS `hasShortcutBlocker`)
+    fn has_history_shortcut_blocker(&self, cx: &App) -> bool {
+        let shell = self.locale_shell.read(cx);
+        shell.has_open_overlay(cx) || shell.has_board_blocker(cx)
     }
 
     /// 창 닫기는 터미널이 없는 화면에서도 동작해야 하므로 루트가 받는다. 나머지 탭 명령은 작업 상세가 받는다.

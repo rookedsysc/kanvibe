@@ -32,6 +32,13 @@ impl PaneChatView {
         self.composer.textarea.focus_handle(cx).is_focused(window)
     }
 
+    /// 대화 영역이 아래 끝에서 위로 올라가 있는 거리(논리 px). 0이면 최신 메시지까지 보인다
+    pub fn transcript_distance_from_bottom(&self) -> f32 {
+        let max = f32::from(self.transcript_scroll.max_offset().y);
+        let offset = -f32::from(self.transcript_scroll.offset().y);
+        max - offset
+    }
+
     /// 입력창 높이(논리 px)
     pub fn composer_height(&self) -> f32 {
         self.composer.input_height

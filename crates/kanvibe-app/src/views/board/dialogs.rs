@@ -84,7 +84,7 @@ impl BoardView {
         if self.create_task.is_some() {
             return;
         }
-        let Some(board) = &self.board else {
+        let Some(board) = self.board.as_ref() else {
             return;
         };
         let single_selected_project = (self.filters.selected_project_ids.len() == 1)

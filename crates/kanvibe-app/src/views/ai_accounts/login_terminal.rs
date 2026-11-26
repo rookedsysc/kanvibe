@@ -2,7 +2,9 @@
 //! 고정폭 글자로 그리고, 포커스된 동안 누른 글자는 그대로 CLI에 보낸다. 상자 크기가 바뀌면 xterm fit처럼 열·행을 다시 재어
 //! 화면과 PTY를 함께 맞춘다. 화면이 사라지면 로그인 세션을 닫는다.
 //!
-//! task-detail 터미널 뷰가 공용 컴포넌트로 옮겨지면 이 화면도 그 뷰로 바꾼다(선택·스크롤백·커서 깜빡임은 그때 따라온다).
+//! 왼쪽 버튼 드래그로 글을 고르고 복사 키로 클립보드에 넣는다(작업 터미널과 같은 선택 규칙·복사 키).
+//!
+//! task-detail 터미널 뷰가 공용 컴포넌트로 옮겨지면 이 화면도 그 뷰로 바꾼다(스크롤백·커서 깜빡임은 그때 따라온다).
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -10,12 +12,14 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use futures::StreamExt;
 use futures::channel::mpsc::{UnboundedSender, unbounded};
 use gpui_kit::{
-    Context, EventEmitter, FocusHandle, FontStyle, FontWeight, HighlightStyle, Hsla,
-    InteractiveElement, IntoElement, KeyDownEvent, ParentElement, Pixels, Render, Size,
-    StrikethroughStyle, Styled, StyledText, Task, UnderlineStyle, Window, canvas, div, px,
+    Bounds, Context, EventEmitter, FocusHandle, FontStyle, FontWeight, HighlightStyle, Hsla,
+    InteractiveElement, IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent,
+    MouseUpEvent, ParentElement, Pixels, Render, StrikethroughStyle, Styled, StyledText, Task,
+    UnderlineStyle, Window, canvas, div, px, size,
 };
 use kanvibe_ai::accounts::desktop_login_bridge::LoginWindow;
 use kanvibe_ai::usage::types::AiUsageProvider;
+use kanvibe_domain::platform::ShortcutPlatform;
 use kanvibe_terminal::osc52_clipboard::{
     Osc52Body, Osc52SequenceScanner, read_osc52_clipboard_text,
 };
@@ -24,6 +28,10 @@ use kanvibe_terminal::screen::{
 };
 
 use crate::components::TailwindText;
+use crate::components::terminal_view::input::{KeyEncodingModes, encode_keystroke, encode_paste};
+use crate::components::terminal_view::mouse::{GridPoint, GridSelection};
+use crate::components::terminal_view::paint::{GridLayout, SELECTION_BACKGROUND};
+use crate::components::terminal_view::pane::selection_text;
 use crate::theme::{ThemeTokens, radius};
 use crate::views::ai_accounts::backend::AiAccountsBackend;
 
@@ -86,6 +94,11 @@ pub struct AiAccountLoginTerminal {
     clipboard_scanner: Osc52SequenceScanner,
     has_exited: bool,
     focus_handle: FocusHandle,
+    /// 글자 칸이 그려진 자리. 마우스 위치를 칸으로 바꿀 때 쓴다
+    grid_layout: Option<GridLayout>,
+    /// 드래그로 고른 영역과 지금 끌고 있는지
+    selection: Option<GridSelection>,
+    is_selecting: bool,
     _events: Task<()>,
 }
 
@@ -141,6 +154,9 @@ impl AiAccountLoginTerminal {
             clipboard_scanner: Osc52SequenceScanner::default(),
             has_exited: false,
             focus_handle,
+            grid_layout: None,
+            selection: None,
+            is_selecting: false,
             _events: events,
         }
     }
@@ -148,6 +164,11 @@ impl AiAccountLoginTerminal {
     /// 지금 화면·PTY 크기(열, 행)
     pub fn grid_size(&self) -> (u16, u16) {
         self.grid_size
+    }
+
+    /// 글자 칸이 그려진 자리(첫 그리기 전에는 없다)
+    pub fn grid_layout(&self) -> Option<GridLayout> {
+        self.grid_layout
     }
 
     /// 지금 화면에 보이는 줄
@@ -187,20 +208,36 @@ impl AiAccountLoginTerminal {
             .close_ai_account_login(self.window.window_id, &self.account_root);
     }
 
-    /// 끝난 뒤에는 입력을 보내지 않는다
+    /// 끝난 뒤에는 입력을 보내지 않는다. 방향키·Ctrl 조합은 작업 터미널과 같은 xterm 바이트로, 붙여넣기는 클립보드 글로 보낸다
     fn handle_key_down(&mut self, event: &KeyDownEvent, _: &mut Window, cx: &mut Context<Self>) {
         if self.has_exited {
             return;
         }
-        let data = match event.keystroke.key.as_str() {
-            "enter" => "\r".to_string(),
-            "backspace" => "\u{7f}".to_string(),
-            "tab" => "\t".to_string(),
-            "escape" => "\u{1b}".to_string(),
-            _ => match &event.keystroke.key_char {
-                Some(text) => text.clone(),
+        let keystroke = &event.keystroke;
+        let platform = ShortcutPlatform::current();
+        if is_copy_chord(keystroke, platform) {
+            self.copy_selection(cx);
+            cx.stop_propagation();
+            return;
+        }
+        let input_modes = self.screen.input_modes();
+        let data = if is_paste_chord(keystroke, platform) {
+            let Some(text) = cx.read_from_clipboard().and_then(|item| item.text()) else {
+                return;
+            };
+            encode_paste(&text, input_modes.is_bracketed_paste)
+        } else {
+            let modes = KeyEncodingModes {
+                is_application_cursor: input_modes.is_application_cursor,
+            };
+            let typed_character = keystroke
+                .key_char
+                .clone()
+                .filter(|_| !keystroke.modifiers.platform);
+            match encode_keystroke(keystroke, modes).or(typed_character) {
+                Some(data) => data,
                 None => return,
-            },
+            }
         };
         self.backend
             .write_ai_account_login(self.window.window_id, &self.account_root, &data);
@@ -208,16 +245,54 @@ impl AiAccountLoginTerminal {
     }
 }
 
+/// 작업 터미널과 같은 복사 키: macOS `Cmd+C`, 그 밖은 `Ctrl+Shift+C`. `Ctrl+C`는 CLI 중단 키로 그대로 보낸다
+fn is_copy_chord(keystroke: &gpui_kit::Keystroke, platform: ShortcutPlatform) -> bool {
+    let modifiers = &keystroke.modifiers;
+    let is_clipboard_chord = match platform {
+        ShortcutPlatform::Mac => modifiers.platform && !modifiers.control && !modifiers.alt,
+        ShortcutPlatform::Linux => modifiers.control && modifiers.shift && !modifiers.alt,
+    };
+    keystroke.key == "c" && is_clipboard_chord
+}
+
+/// 작업 터미널과 같은 붙여넣기 키: macOS `Cmd+V`, 그 밖은 `Ctrl+Shift+V`와 `Shift+Insert`
+fn is_paste_chord(keystroke: &gpui_kit::Keystroke, platform: ShortcutPlatform) -> bool {
+    let modifiers = &keystroke.modifiers;
+    match platform {
+        ShortcutPlatform::Mac => {
+            keystroke.key == "v" && modifiers.platform && !modifiers.control && !modifiers.alt
+        }
+        ShortcutPlatform::Linux => {
+            let is_control_shift_v =
+                keystroke.key == "v" && modifiers.control && modifiers.shift && !modifiers.alt;
+            let is_shift_insert = keystroke.key == "insert"
+                && modifiers.shift
+                && !modifiers.control
+                && !modifiers.platform
+                && !modifiers.alt;
+            is_control_shift_v || is_shift_insert
+        }
+    }
+}
+
 impl AiAccountLoginTerminal {
     /// 상자 안쪽 크기로 열·행을 다시 잰다(xterm fit). 바뀌었으면 화면과 PTY를 함께 맞춘다
-    fn fit_to(&mut self, inner_size: Size<Pixels>, cx: &mut Context<Self>) {
+    fn fit_to(&mut self, inner_bounds: Bounds<Pixels>, cx: &mut Context<Self>) {
+        let inner_size = inner_bounds.size;
         let columns = (f32::from(inner_size.width) / CELL_WIDTH).floor().max(1.0) as u16;
         let rows = (f32::from(inner_size.height) / CELL_HEIGHT)
             .floor()
             .max(1.0) as u16;
+        self.grid_layout = Some(GridLayout {
+            origin: inner_bounds.origin,
+            cell_size: size(px(CELL_WIDTH), px(CELL_HEIGHT)),
+            columns,
+            rows,
+        });
         if (columns, rows) == self.grid_size {
             return;
         }
+        self.selection = None;
         self.grid_size = (columns, rows);
         self.screen.resize(columns, rows);
         if !self.has_exited {
@@ -231,7 +306,51 @@ impl AiAccountLoginTerminal {
         cx.notify();
     }
 
-    /// 한 줄을 셀 색·꾸밈이 있는 글자 조각으로 만든다. 커서 칸은 커서 색 블록으로 칠한다
+    /// 왼쪽 버튼을 누른 칸에서 새 선택을 시작한다. 이전 선택은 버린다
+    fn start_selection(&mut self, event: &MouseDownEvent, _: &mut Window, cx: &mut Context<Self>) {
+        let Some(layout) = self.grid_layout else {
+            return;
+        };
+        let point = layout.grid_point(event.position);
+        self.selection = Some(GridSelection {
+            anchor: point,
+            head: point,
+        });
+        self.is_selecting = true;
+        cx.notify();
+    }
+
+    /// 상자 밖에서 버튼을 떼 뗌을 받지 못했으면 버튼 없는 이동에서 끌기를 끝낸다
+    fn extend_selection(&mut self, event: &MouseMoveEvent, _: &mut Window, cx: &mut Context<Self>) {
+        if event.pressed_button != Some(MouseButton::Left) {
+            self.is_selecting = false;
+            return;
+        }
+        let (true, Some(layout), Some(selection)) =
+            (self.is_selecting, self.grid_layout, self.selection.as_mut())
+        else {
+            return;
+        };
+        let point = layout.grid_point(event.position);
+        if selection.head != point {
+            selection.head = point;
+            cx.notify();
+        }
+    }
+
+    fn finish_selection(&mut self, _: &MouseUpEvent, _: &mut Window, _: &mut Context<Self>) {
+        self.is_selecting = false;
+    }
+
+    fn copy_selection(&mut self, cx: &mut Context<Self>) {
+        let Some(selection) = self.selection.filter(|selection| !selection.is_empty()) else {
+            return;
+        };
+        let text = selection_text(&self.screen, selection, usize::from(self.grid_size.0));
+        cx.write_to_clipboard(gpui_kit::ClipboardItem::new_string(text));
+    }
+
+    /// 한 줄을 셀 색·꾸밈이 있는 글자 조각으로 만든다. 커서 칸은 커서 색 블록으로, 고른 칸은 선택 색으로 칠한다
     fn render_row(&self, screen_row: usize, theme: &ThemeTokens) -> StyledText {
         let cells = self.screen.visible_cells(screen_row).unwrap_or_default();
         let cursor = self.screen.cursor();
@@ -249,7 +368,16 @@ impl AiAccountLoginTerminal {
             } else {
                 &cell.text
             });
-            let style = cell_highlight(cell, Some(column) == cursor_column, theme);
+            let mut style = cell_highlight(cell, Some(column) == cursor_column, theme);
+            let is_selected = self.selection.is_some_and(|selection| {
+                selection.contains(GridPoint {
+                    row: screen_row,
+                    column,
+                })
+            });
+            if is_selected {
+                style.background_color = Some(gpui_kit::rgba(SELECTION_BACKGROUND).into());
+            }
             if style != HighlightStyle::default() {
                 highlights.push((start..text.len(), style));
             }
@@ -323,7 +451,7 @@ impl Render for AiAccountLoginTerminal {
         let measure = canvas(
             move |bounds, _, cx| {
                 cx.defer(move |cx| {
-                    let _ = entity.update(cx, |this, cx| this.fit_to(bounds.size, cx));
+                    let _ = entity.update(cx, |this, cx| this.fit_to(bounds, cx));
                 });
             },
             |_, _, _, _| {},
@@ -334,6 +462,9 @@ impl Render for AiAccountLoginTerminal {
             .id("ai-account-login-terminal")
             .track_focus(&self.focus_handle)
             .on_key_down(cx.listener(Self::handle_key_down))
+            .on_mouse_down(MouseButton::Left, cx.listener(Self::start_selection))
+            .on_mouse_move(cx.listener(Self::extend_selection))
+            .on_mouse_up(MouseButton::Left, cx.listener(Self::finish_selection))
             .h(px(LOGIN_TERMINAL_HEIGHT))
             .w_full()
             .overflow_hidden()

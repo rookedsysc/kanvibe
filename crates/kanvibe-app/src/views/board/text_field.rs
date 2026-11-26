@@ -249,6 +249,7 @@ impl Render for BoardTextField {
         });
         div()
             .id("board-text-field")
+            .key_context(crate::shortcuts::BOARD_TEXT_FIELD_KEY_CONTEXT)
             .track_focus(&self.focus_handle)
             .on_key_down(cx.listener(Self::handle_key_down))
             .relative()

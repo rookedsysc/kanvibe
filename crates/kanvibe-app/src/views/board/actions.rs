@@ -9,6 +9,7 @@ use super::board_model::{
     TaskDeletionState, TaskMoveState, append_done_page, apply_drag_move, find_task, remove_task,
     restore_moved_task, should_confirm_done_move,
 };
+use super::services::detach_setting_save;
 use super::task_filters::TaskKindFilter;
 use super::{BoardView, HeaderPopover, OpenContextMenu};
 use crate::qa::prompts::confirm_action;
@@ -27,7 +28,7 @@ impl BoardView {
     }
 
     pub(super) fn set_task_kind_filter(&mut self, filter: TaskKindFilter, cx: &mut Context<Self>) {
-        self.filters.task_kind = filter;
+        self.filters.get_mut().task_kind = filter;
         self.sync_task_kind_query(filter, cx);
         cx.notify();
     }
@@ -196,7 +197,8 @@ impl BoardView {
         target_status: TaskStatus,
         cx: &mut Context<Self>,
     ) {
-        let (Some(board), Some(services)) = (self.board.as_mut(), self.services.clone()) else {
+        let (Some(board), Some(services)) = (self.board.get_mut().as_mut(), self.services.clone())
+        else {
             return;
         };
         if self.saving_move_task_ids.contains(task_id) {
@@ -219,7 +221,7 @@ impl BoardView {
                         this.move_states.remove(&plan.task_id);
                     }
                     Err(failure) => {
-                        if let Some(board) = this.board.as_mut() {
+                        if let Some(board) = this.board.get_mut().as_mut() {
                             restore_moved_task(&mut board.tasks, &plan);
                             board.done.apply_delta(-plan.done_delta);
                         }
@@ -246,11 +248,11 @@ impl BoardView {
         };
         if self.is_done_dont_ask_checked
             && let Some(services) = &self.services
-            && let Err(failure) = services.dismiss_done_alert()
         {
-            eprintln!("[kanvibe] failed to dismiss done alert: {}", failure.reason);
+            let dismissal = services.dismiss_done_alert(cx);
+            detach_setting_save(dismissal, "done alert dismissal", cx);
         }
-        if let Some(board) = self.board.as_mut() {
+        if let Some(board) = self.board.get_mut().as_mut() {
             board.is_done_alert_dismissed = true;
         }
         self.execute_move(&task_id, target_status, cx);
@@ -318,7 +320,7 @@ impl BoardView {
     }
 
     fn remove_deleted_task(&mut self, task_id: &str) {
-        let Some(board) = self.board.as_mut() else {
+        let Some(board) = self.board.get_mut().as_mut() else {
             return;
         };
         let was_done = board.tasks.done.iter().any(|task| task.id == task_id);
@@ -329,7 +331,8 @@ impl BoardView {
 
     /// Done 열 다음 페이지. 실패하면 사유를 남기고 다시 누르면 같은 페이지를 다시 요청한다
     pub(super) fn load_more_done(&mut self, cx: &mut Context<Self>) {
-        let (Some(board), Some(services)) = (self.board.as_mut(), self.services.clone()) else {
+        let (Some(board), Some(services)) = (self.board.get_mut().as_mut(), self.services.clone())
+        else {
             return;
         };
         let Some((generation, offset)) = board.done.begin() else {
@@ -339,7 +342,7 @@ impl BoardView {
         let task = cx.spawn(async move |this, cx| {
             let result = page.await;
             let _ = this.update(cx, |this, cx| {
-                let Some(board) = this.board.as_mut() else {
+                let Some(board) = this.board.get_mut().as_mut() else {
                     return;
                 };
                 match result {

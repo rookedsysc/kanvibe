@@ -392,6 +392,24 @@ impl SettingsView {
 /// 고른 테마를 앱 전체(열린 창 모두)에 바로 적용한다(TS `applyThemePreference` + `notifyThemePreferenceChanged`)
 pub fn apply_theme_preference(preference: ThemePreference, cx: &mut App) {
     let appearance = cx.window_appearance();
+    apply_theme_for_appearance(preference, appearance, cx);
+}
+
+/// OS 밝기가 바뀌었다. 저장된 선택이 "시스템"이면 새 밝기로 테마를 다시 정한다(TS `prefers-color-scheme` `change` 리스너)
+pub fn follow_system_appearance(appearance: gpui_kit::WindowAppearance, cx: &mut App) {
+    let preference = cx
+        .global::<crate::services::AppServices>()
+        .theme_preference();
+    if preference == ThemePreference::System {
+        apply_theme_for_appearance(preference, appearance, cx);
+    }
+}
+
+fn apply_theme_for_appearance(
+    preference: ThemePreference,
+    appearance: gpui_kit::WindowAppearance,
+    cx: &mut App,
+) {
     let is_system_light = matches!(
         appearance,
         gpui_kit::WindowAppearance::Light | gpui_kit::WindowAppearance::VibrantLight

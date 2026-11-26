@@ -6,9 +6,9 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use gpui_kit::{
-    AppContext, Bounds, Context, FocusHandle, InteractiveElement, IntoElement, KeyDownEvent,
-    MouseButton, MouseDownEvent, ParentElement, Pixels, Render, ScrollEvent, Styled, Task, Window,
-    canvas, div, point, px, size,
+    AppContext, Bounds, ClipboardItem, Context, FocusHandle, InteractiveElement, IntoElement,
+    KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement, Pixels,
+    Render, ScrollEvent, Styled, Task, Window, canvas, div, point, px, size,
 };
 
 use super::find_session::{FindSession, new_session};
@@ -16,10 +16,11 @@ use super::find_widget::{FindEvent, FindWidget};
 use super::line_diff::{LineChange, TextPoint, TextSpan, compute_line_changes};
 use super::monaco::{
     CHARACTER_WIDTH, GutterLayout, GutterMarker, LINE_HEIGHT, LineDecoration, MonacoPane,
-    PaneDocument, PaneRow, TextFill, paint_pane, palette,
+    PaneDocument, PaneRow, TextFill, hit_test, paint_pane, palette,
 };
 use super::syntax::{detect_language, tokenize_document};
-use crate::qa::targets::{QaTargetDescription, qa_target_layer};
+use super::text_buffer::TextBuffer;
+use crate::qa::targets::{QaTargetDescription, QaTargetRegistry, qa_target_layer};
 use crate::services::AppServices;
 use crate::shortcuts::shortcut_event_from_keystroke;
 use kanvibe_domain::platform::ShortcutPlatform;
@@ -199,6 +200,11 @@ pub struct DiffViewer {
     active_side: Side,
     find: Option<(Side, FindSession)>,
     platform: ShortcutPlatform,
+    /// 읽기 전용 편집기의 선택(Monaco `readOnly`도 글을 고르고 복사한다). 글은 바꾸지 않고 선택만 쓴다
+    original_selection: TextBuffer,
+    modified_selection: TextBuffer,
+    /// 왼쪽 단추를 누른 채 끄는 중
+    is_selecting: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -209,6 +215,14 @@ enum Side {
 
 /// 스크롤이 멈춘 뒤 막대를 숨기기까지(Monaco 스크롤바 fade 시간)
 pub const SCROLLBAR_FADE_AFTER: Duration = Duration::from_millis(800);
+
+fn side_of(is_original: bool) -> Side {
+    if is_original {
+        Side::Original
+    } else {
+        Side::Modified
+    }
+}
 
 /// Monaco는 원본 편집기에 폭의 절반을 내림해 주고 나머지를 수정본에 준다
 fn split_bounds(bounds: Bounds<Pixels>) -> (Bounds<Pixels>, Bounds<Pixels>) {
@@ -224,7 +238,12 @@ fn split_bounds(bounds: Bounds<Pixels>) -> (Bounds<Pixels>, Bounds<Pixels>) {
 
 impl DiffViewer {
     pub fn new(model: SideBySideModel, cx: &mut Context<Self>) -> Self {
+        let original_selection = TextBuffer::new(&model.original.lines.join("\n"));
+        let modified_selection = TextBuffer::new(&model.modified.lines.join("\n"));
         Self {
+            original_selection,
+            modified_selection,
+            is_selecting: false,
             focus_handle: cx.focus_handle(),
             active_side: Side::Modified,
             find: None,
@@ -240,6 +259,11 @@ impl DiffViewer {
 
     fn handle_scroll(&mut self, event: &ScrollEvent, cx: &mut Context<Self>) {
         let delta = event.delta.pixel_delta(px(LINE_HEIGHT));
+        self.scroll_by(f32::from(delta.x), f32::from(delta.y), cx);
+    }
+
+    /// 두 편집기를 함께 스크롤한다. 양수가 위·왼쪽(휠 방향)이다
+    fn scroll_by(&mut self, delta_x: f32, delta_y: f32, cx: &mut Context<Self>) {
         let Some(bounds) = self.last_bounds.get() else {
             return;
         };
@@ -247,8 +271,8 @@ impl DiffViewer {
         let (original_max_x, max_y) = self.pane(true).scroll_limits(original_bounds);
         let (modified_max_x, _) = self.pane(false).scroll_limits(modified_bounds);
         let max_x = original_max_x.max(modified_max_x);
-        self.scroll_y = (self.scroll_y - f32::from(delta.y)).clamp(0.0, max_y);
-        self.scroll_x = (self.scroll_x - f32::from(delta.x)).clamp(0.0, max_x);
+        self.scroll_y = (self.scroll_y - delta_y).clamp(0.0, max_y);
+        self.scroll_x = (self.scroll_x - delta_x).clamp(0.0, max_x);
         self.is_scrollbar_visible = true;
         self._scrollbar_fade = Some(cx.spawn(async move |this, cx| {
             cx.background_executor().timer(SCROLLBAR_FADE_AFTER).await;
@@ -280,7 +304,7 @@ impl DiffViewer {
             gutter,
             current_line: Some(0),
             caret: None,
-            selection: None,
+            selection: self.selection_buffer(side_of(is_original)).selection(),
             bracket_boxes: Vec::new(),
             active_guide: None,
             has_right_shadow: is_original,
@@ -339,11 +363,7 @@ impl DiffViewer {
 /// 찾기(읽기 전용이라 바꾸기 없음): `Mod+F`로 열고, Enter·F3로 다음, Escape로 닫는다
 impl DiffViewer {
     fn find_for(&self, is_original: bool) -> Option<&FindSession> {
-        let side = if is_original {
-            Side::Original
-        } else {
-            Side::Modified
-        };
+        let side = side_of(is_original);
         self.find
             .as_ref()
             .filter(|(find_side, _)| *find_side == side)
@@ -357,6 +377,37 @@ impl DiffViewer {
         }
     }
 
+    fn selection_buffer(&self, side: Side) -> &TextBuffer {
+        match side {
+            Side::Original => &self.original_selection,
+            Side::Modified => &self.modified_selection,
+        }
+    }
+
+    fn selection_buffer_mut(&mut self, side: Side) -> &mut TextBuffer {
+        match side {
+            Side::Original => &mut self.original_selection,
+            Side::Modified => &mut self.modified_selection,
+        }
+    }
+
+    /// 마우스 자리의 글자 위치(그 편집기 기준)
+    fn text_point_at(
+        &self,
+        side: Side,
+        position: gpui_kit::Point<Pixels>,
+        window: &mut Window,
+    ) -> Option<TextPoint> {
+        let (original_bounds, modified_bounds) = split_bounds(self.last_bounds.get()?);
+        let side_bounds = match side {
+            Side::Original => original_bounds,
+            Side::Modified => modified_bounds,
+        };
+        let pane = self.pane(side == Side::Original);
+        Some(hit_test(&pane, side_bounds, position, window))
+    }
+
+    /// 누르면 그 편집기에 커서를 두고, 두 번은 단어·세 번은 줄을 고른다. 다른 편집기의 선택은 지운다
     fn handle_mouse_down(
         &mut self,
         event: &MouseDownEvent,
@@ -364,14 +415,68 @@ impl DiffViewer {
         cx: &mut Context<Self>,
     ) {
         window.focus(&self.focus_handle, cx);
-        if let Some(bounds) = self.last_bounds.get() {
-            let (_, modified_bounds) = split_bounds(bounds);
-            self.active_side = if event.position.x >= modified_bounds.origin.x {
-                Side::Modified
-            } else {
-                Side::Original
-            };
+        let Some(bounds) = self.last_bounds.get() else {
+            return;
+        };
+        let (_, modified_bounds) = split_bounds(bounds);
+        let side = if event.position.x >= modified_bounds.origin.x {
+            Side::Modified
+        } else {
+            Side::Original
+        };
+        self.active_side = side;
+        let other_side = side_of(side == Side::Modified);
+        let other = self.selection_buffer_mut(other_side);
+        other.set_cursor(other.cursor(), false);
+        let Some(target) = self.text_point_at(side, event.position, window) else {
+            return;
+        };
+        let buffer = self.selection_buffer_mut(side);
+        match event.click_count {
+            2 => buffer.select_word_at(target),
+            count if count >= 3 => buffer.select_line(target.line),
+            _ => buffer.set_cursor(target, event.modifiers.shift),
         }
+        self.is_selecting = event.click_count == 1;
+        cx.notify();
+    }
+
+    fn handle_mouse_move(
+        &mut self,
+        event: &MouseMoveEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.is_selecting || event.pressed_button != Some(MouseButton::Left) {
+            self.is_selecting = false;
+            return;
+        }
+        let side = self.active_side;
+        if let Some(target) = self.text_point_at(side, event.position, window) {
+            self.selection_buffer_mut(side).set_cursor(target, true);
+            cx.notify();
+        }
+    }
+
+    fn handle_mouse_up(&mut self, _: &MouseUpEvent, _: &mut Window, _: &mut Context<Self>) {
+        self.is_selecting = false;
+    }
+
+    /// 방향키는 한 줄, Page 키는 보이는 높이만큼 두 편집기를 함께 스크롤한다. 처리했으면 참
+    fn scroll_with_key(&mut self, key: &str, cx: &mut Context<Self>) -> bool {
+        let page_height = self
+            .last_bounds
+            .get()
+            .map_or(LINE_HEIGHT, |bounds| f32::from(bounds.size.height));
+        let delta_y = match key {
+            "up" => LINE_HEIGHT,
+            "down" => -LINE_HEIGHT,
+            "pageup" => page_height,
+            "pagedown" => -page_height,
+            _ => return false,
+        };
+        self.scroll_by(0.0, delta_y, cx);
+        true
     }
 
     fn handle_key_down(
@@ -385,13 +490,20 @@ impl DiffViewer {
         let matches = |notation: &str| match_shortcut_event(&shortcut, notation, self.platform);
         if matches("Mod+F") {
             self.open_find(window, cx);
+        } else if matches("Mod+C") {
+            if let Some(text) = self.selection_buffer(self.active_side).selected_text() {
+                cx.write_to_clipboard(ClipboardItem::new_string(text));
+            }
+        } else if matches("Mod+A") {
+            self.selection_buffer_mut(self.active_side).select_all();
+            cx.notify();
         } else if matches("F3") || (is_mac && matches("Meta+G")) {
             self.step_find(true, cx);
         } else if matches("Shift+F3") || (is_mac && matches("Meta+Shift+G")) {
             self.step_find(false, cx);
         } else if matches("Escape") && self.find.is_some() {
             self.close_find(window, cx);
-        } else {
+        } else if !self.scroll_with_key(event.keystroke.key.as_str(), cx) {
             return;
         }
         cx.stop_propagation();
@@ -501,7 +613,10 @@ impl Render for DiffViewer {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let (original, modified) = (self.pane(true), self.pane(false));
         let mut targets = Vec::new();
-        if let Some(bounds) = self.last_bounds.get() {
+        // 줄마다의 대상은 QA 재생 드라이버만 쓴다. 기록할 곳이 없는 실행에서는 만들지 않는다
+        if let Some(bounds) = self.last_bounds.get()
+            && cx.has_global::<QaTargetRegistry>()
+        {
             let (original_bounds, modified_bounds) = split_bounds(bounds);
             let height = f32::from(bounds.size.height);
             targets.extend(self.line_targets(&original, 0.0, height));
@@ -533,6 +648,8 @@ impl Render for DiffViewer {
             .track_focus(&self.focus_handle)
             .on_key_down(cx.listener(Self::handle_key_down))
             .on_mouse_down(MouseButton::Left, cx.listener(Self::handle_mouse_down))
+            .on_mouse_move(cx.listener(Self::handle_mouse_move))
+            .on_mouse_up(MouseButton::Left, cx.listener(Self::handle_mouse_up))
             .relative()
             .size_full()
             .overflow_hidden()

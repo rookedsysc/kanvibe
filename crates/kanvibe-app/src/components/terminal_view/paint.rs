@@ -1,5 +1,6 @@
 //! 레지스트리 화면을 그대로 그린다(xterm.js DOM 렌더러 자리). 셀 너비를 고정해 글자를 칸에 맞추고,
 //! 같은 꾸밈이 이어진 칸은 한 번에 그린다. 넓은 글자(한글 등)는 두 칸 자리에 따로 그린다.
+//! 화면은 출력 반영 잠금 안에서 `ScreenPaintFrame`으로 복사만 하고, 글자 배치와 그리기는 잠금 밖에서 한다.
 
 use gpui_kit::{
     App, Bounds, Font, FontWeight, Hsla, Pixels, Point, Rgba, SharedString, Size,
@@ -10,13 +11,15 @@ use kanvibe_terminal::screen::{
     TERMINAL_FOREGROUND, TerminalScreen, default_color,
 };
 
+use std::ops::Range;
+
 use super::mouse::{GridPoint, GridSelection};
 use crate::fonts::mono_font;
 
 /// TS `createTerminalOptions`의 `fontSize: 14`
 pub const TERMINAL_FONT_SIZE: f32 = 14.0;
 /// TS 테마 `selectionBackground: #3b82f680`
-const SELECTION_BACKGROUND: u32 = 0x3b82f680;
+pub(crate) const SELECTION_BACKGROUND: u32 = 0x3b82f680;
 
 /// 셀 크기와 그릴 자리. 그리기 전에 글꼴 측정으로 정한다
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -66,25 +69,57 @@ pub struct GridPaintState<'a> {
     pub layout: GridLayout,
     pub selection: Option<GridSelection>,
     pub is_focused: bool,
+    /// 깜박임에서 커서를 그리는 차례인지. 포커스가 없으면 깜박이지 않는다
+    pub is_cursor_blink_on: bool,
     /// IME 조합 중인 글자. 커서 자리에 밑줄로 그린다
     pub marked_text: Option<&'a str>,
 }
 
+/// 그릴 줄의 셀과 커서를 화면에서 복사해 둔 것. 뷰가 프레임마다 같은 버퍼를 다시 써서 칸마다 할당하지 않는다
+#[derive(Default)]
+pub struct ScreenPaintFrame {
+    rows: Vec<Vec<ScreenCell>>,
+    row_count: usize,
+    cursor: Option<ScreenCursor>,
+}
+
+impl ScreenPaintFrame {
+    /// 출력 반영 잠금 안에서 부른다. 보이는 줄 중 `visible_rows`까지만 셀 값을 복사한다
+    pub fn copy_from(&mut self, screen: &TerminalScreen, visible_rows: usize) {
+        self.row_count = visible_rows.min(screen.rows());
+        if self.rows.len() < self.row_count {
+            self.rows.resize_with(self.row_count, Vec::new);
+        }
+        for (row, cells) in self.rows.iter_mut().take(self.row_count).enumerate() {
+            screen.copy_visible_cells_into(row, cells);
+        }
+        self.cursor = Some(screen.cursor());
+    }
+
+    fn visible_rows(&self) -> &[Vec<ScreenCell>] {
+        &self.rows[..self.row_count]
+    }
+}
+
 pub fn paint_screen(
-    screen: &TerminalScreen,
+    frame: &ScreenPaintFrame,
     state: &GridPaintState<'_>,
     window: &mut Window,
     cx: &mut App,
 ) {
-    let rows = usize::from(state.layout.rows).min(screen.rows());
-    for row in 0..rows {
-        let Some(cells) = screen.visible_cells(row) else {
-            continue;
-        };
-        paint_row_backgrounds(&cells, row, state, window);
-        paint_row_text(&cells, row, state, window, cx);
+    let fonts = TerminalFonts::new();
+    for (row, cells) in frame.visible_rows().iter().enumerate() {
+        paint_row_backgrounds(cells, row, state, window);
+        paint_row_text(cells, row, state, &fonts, window, cx);
     }
-    paint_cursor(screen.cursor(), state, window, cx);
+    let Some(cursor) = frame.cursor else {
+        return;
+    };
+    let cursor_cell = frame
+        .visible_rows()
+        .get(cursor.row)
+        .and_then(|cells| cells.get(cursor.column));
+    paint_cursor(cursor, cursor_cell, state, &fonts, window, cx);
 }
 
 /// 셀의 실제 글자색과 배경색. 반전·dim·숨김과 xterm `drawBoldTextInBrightColors`를 반영한다
@@ -129,27 +164,58 @@ fn rgb(value: u32) -> Rgba {
     gpui_kit::rgb(value)
 }
 
+/// 같은 값이 이어지는 칸들을 `(칸 범위, 값)` 하나로 묶는다. 값이 없는 칸은 건너뛴다
+fn merge_column_runs<T: PartialEq + Copy>(
+    values: impl IntoIterator<Item = Option<T>>,
+) -> Vec<(Range<usize>, T)> {
+    let mut runs: Vec<(Range<usize>, T)> = Vec::new();
+    for (column, value) in values.into_iter().enumerate() {
+        let Some(value) = value else {
+            continue;
+        };
+        match runs.last_mut() {
+            Some((columns, run_value)) if columns.end == column && *run_value == value => {
+                columns.end = column + 1;
+            }
+            _ => runs.push((column..column + 1, value)),
+        }
+    }
+    runs
+}
+
 fn paint_row_backgrounds(
     cells: &[ScreenCell],
     row: usize,
     state: &GridPaintState<'_>,
     window: &mut Window,
 ) {
-    let cell_size = state.layout.cell_size;
-    for (column, cell) in cells.iter().enumerate() {
-        let is_selected = state
-            .selection
-            .is_some_and(|selection| selection.contains(GridPoint { row, column }));
-        let (_, background) = resolve_cell_colors(cell);
-        let origin = state.layout.cell_origin(row, column);
-        let bounds = Bounds::new(origin, cell_size);
-        if let Some(background) = background {
-            window.paint_quad(fill(bounds, background));
-        }
-        if is_selected {
-            window.paint_quad(fill(bounds, gpui_kit::rgba(SELECTION_BACKGROUND)));
-        }
+    let backgrounds = merge_column_runs(cells.iter().map(|cell| resolve_cell_colors(cell).1));
+    for (columns, background) in backgrounds {
+        window.paint_quad(fill(column_run_bounds(row, &columns, state), background));
     }
+    let Some(selection) = state.selection else {
+        return;
+    };
+    let selected_columns = merge_column_runs(
+        (0..cells.len()).map(|column| selection.contains(GridPoint { row, column }).then_some(())),
+    );
+    for (columns, ()) in selected_columns {
+        window.paint_quad(fill(
+            column_run_bounds(row, &columns, state),
+            gpui_kit::rgba(SELECTION_BACKGROUND),
+        ));
+    }
+}
+
+fn column_run_bounds(
+    row: usize,
+    columns: &Range<usize>,
+    state: &GridPaintState<'_>,
+) -> Bounds<Pixels> {
+    let cell_size = state.layout.cell_size;
+    let origin = state.layout.cell_origin(row, columns.start);
+    let width = cell_size.width * columns.len() as f32;
+    Bounds::new(origin, size(width, cell_size.height))
 }
 
 /// 같은 꾸밈이 이어진 한 칸짜리 글자 묶음
@@ -159,23 +225,51 @@ struct TextBatch {
     run: TextRun,
 }
 
-fn cell_font(cell: &ScreenCell) -> Font {
-    let mut font = mono_font(if cell.is_bold { 700 } else { 400 });
-    if cell.is_italic {
+/// 굵게·기울임 조합 네 가지 글꼴. 프레임마다 한 번 만들고 칸에서는 복제(참조 카운트)만 한다
+struct TerminalFonts {
+    regular: Font,
+    bold: Font,
+    italic: Font,
+    bold_italic: Font,
+}
+
+impl TerminalFonts {
+    fn new() -> Self {
+        Self {
+            regular: styled_mono_font(false, false),
+            bold: styled_mono_font(true, false),
+            italic: styled_mono_font(false, true),
+            bold_italic: styled_mono_font(true, true),
+        }
+    }
+
+    fn for_cell(&self, cell: &ScreenCell) -> &Font {
+        match (cell.is_bold, cell.is_italic) {
+            (false, false) => &self.regular,
+            (true, false) => &self.bold,
+            (false, true) => &self.italic,
+            (true, true) => &self.bold_italic,
+        }
+    }
+}
+
+fn styled_mono_font(is_bold: bool, is_italic: bool) -> Font {
+    let mut font = mono_font(if is_bold { 700 } else { 400 });
+    if is_italic {
         font.style = gpui_kit::FontStyle::Italic;
     }
-    if cell.is_bold {
+    if is_bold {
         font.weight = FontWeight::BOLD;
     }
     font
 }
 
-fn cell_run(cell: &ScreenCell, length: usize) -> TextRun {
+fn cell_run(cell: &ScreenCell, length: usize, fonts: &TerminalFonts) -> TextRun {
     let (foreground, _) = resolve_cell_colors(cell);
     let color: Hsla = foreground.into();
     TextRun {
         len: length,
-        font: cell_font(cell),
+        font: fonts.for_cell(cell).clone(),
         color,
         background_color: None,
         underline: cell.is_underline.then_some(UnderlineStyle {
@@ -201,6 +295,7 @@ fn paint_row_text(
     cells: &[ScreenCell],
     row: usize,
     state: &GridPaintState<'_>,
+    fonts: &TerminalFonts,
     window: &mut Window,
     cx: &mut App,
 ) {
@@ -219,12 +314,12 @@ fn paint_row_text(
             let wide = TextBatch {
                 start_column: column,
                 text: text.to_string(),
-                run: cell_run(cell, text.len()),
+                run: cell_run(cell, text.len(), fonts),
             };
             paint_batch(wide, row, state, None, window, cx);
             continue;
         }
-        let run = cell_run(cell, text.len());
+        let run = cell_run(cell, text.len(), fonts);
         match batch.as_mut() {
             Some(current) if is_same_style(&current.run, &run) => {
                 current.text.push_str(text);
@@ -285,7 +380,9 @@ fn paint_batch(
 /// 커서. 포커스가 있으면 채운 블록 위에 글자를 배경색으로 다시 그리고, 없으면 테두리만 그린다(xterm.js)
 fn paint_cursor(
     cursor: ScreenCursor,
+    cursor_cell: Option<&ScreenCell>,
     state: &GridPaintState<'_>,
+    fonts: &TerminalFonts,
     window: &mut Window,
     cx: &mut App,
 ) {
@@ -298,14 +395,22 @@ fn paint_cursor(
         paint_marked_text(marked_text, origin, state, window, cx);
         return;
     }
+    if state.is_focused && !state.is_cursor_blink_on {
+        return;
+    }
     let color = rgb(TERMINAL_FOREGROUND);
+    let is_wide_cell = cursor_cell.is_some_and(|cell| cell.width == 2);
+    let block_width = match is_wide_cell {
+        true => cell_size.width * 2.0,
+        false => cell_size.width,
+    };
     let bounds = match cursor.shape {
         ScreenCursorShape::Bar => Bounds::new(origin, size(px(1.0), cell_size.height)),
         ScreenCursorShape::Underline => Bounds::new(
             point(origin.x, origin.y + cell_size.height - px(1.0)),
             size(cell_size.width, px(1.0)),
         ),
-        ScreenCursorShape::Block => Bounds::new(origin, cell_size),
+        ScreenCursorShape::Block => Bounds::new(origin, size(block_width, cell_size.height)),
     };
     match (cursor.shape, state.is_focused) {
         (ScreenCursorShape::Block, false) => {
@@ -315,8 +420,41 @@ fn paint_cursor(
                 gpui_kit::BorderStyle::Solid,
             ));
         }
+        (ScreenCursorShape::Block, true) => {
+            window.paint_quad(fill(bounds, color));
+            let glyph = cursor_cell.and_then(|cell| cursor_glyph_batch(cell, cursor.column, fonts));
+            if let Some(glyph) = glyph {
+                let force_width = (!is_wide_cell).then_some(cell_size.width);
+                paint_batch(glyph, cursor.row, state, force_width, window, cx);
+            }
+        }
         _ => window.paint_quad(fill(bounds, color)),
     }
+}
+
+/// 채운 블록 커서 위에 다시 그릴 커서 칸 글자. 블록에 가려지지 않게 배경색으로 그린다. 빈 칸·숨긴 글자면 `None`이다
+fn cursor_glyph_batch(
+    cell: &ScreenCell,
+    column: usize,
+    fonts: &TerminalFonts,
+) -> Option<TextBatch> {
+    if cell.text.trim().is_empty() || cell.is_hidden {
+        return None;
+    }
+    let mut run = cell_run(cell, cell.text.len(), fonts);
+    let background: Hsla = rgb(TERMINAL_BACKGROUND).into();
+    run.color = background;
+    if let Some(underline) = run.underline.as_mut() {
+        underline.color = Some(background);
+    }
+    if let Some(strikethrough) = run.strikethrough.as_mut() {
+        strikethrough.color = Some(background);
+    }
+    Some(TextBatch {
+        start_column: column,
+        text: cell.text.clone(),
+        run,
+    })
 }
 
 fn paint_marked_text(
@@ -394,6 +532,53 @@ mod tests {
         assert_eq!(foreground.a, 0.5);
         let rgb_cell = cell(CellColor::Rgb(1, 2, 3), CellColor::Palette(4));
         assert_eq!(resolve_cell_colors(&rgb_cell).0, rgb(0x010203));
+    }
+
+    #[test]
+    fn the_focused_block_cursor_redraws_its_glyph_in_the_background_color() {
+        let mut underlined = cell(CellColor::Palette(2), CellColor::Default);
+        underlined.is_underline = true;
+        let fonts = TerminalFonts::new();
+        let glyph = cursor_glyph_batch(&underlined, 5, &fonts).expect("글자가 있는 칸");
+        let background: Hsla = rgb(TERMINAL_BACKGROUND).into();
+        assert_eq!((glyph.start_column, glyph.text.as_str()), (5, "x"));
+        assert_eq!(glyph.run.color, background);
+        assert_eq!(
+            glyph.run.underline.and_then(|style| style.color),
+            Some(background)
+        );
+
+        let mut blank = cell(CellColor::Default, CellColor::Default);
+        blank.text = String::new();
+        assert!(cursor_glyph_batch(&blank, 0, &fonts).is_none());
+    }
+
+    #[test]
+    fn neighbouring_cells_with_the_same_background_share_one_quad() {
+        let red = Some(rgb(0xff0000));
+        let blue = Some(rgb(0x0000ff));
+        let runs = merge_column_runs([red, red, None, blue, blue, blue, red]);
+        assert_eq!(
+            runs,
+            [
+                (0..2, rgb(0xff0000)),
+                (3..6, rgb(0x0000ff)),
+                (6..7, rgb(0xff0000)),
+            ]
+        );
+        assert!(merge_column_runs::<Rgba>([None, None]).is_empty());
+    }
+
+    #[test]
+    fn each_style_combination_keeps_its_weight_and_slant() {
+        let fonts = TerminalFonts::new();
+        let mut cell = cell(CellColor::Default, CellColor::Default);
+        cell.is_bold = true;
+        cell.is_italic = true;
+        let font = fonts.for_cell(&cell);
+        assert_eq!(font.weight, FontWeight::BOLD);
+        assert_eq!(font.style, gpui_kit::FontStyle::Italic);
+        assert_eq!(fonts.regular.weight, FontWeight::NORMAL);
     }
 
     #[test]

@@ -1,6 +1,8 @@
 //! 대화 영역의 내용(TS `PaneChatView` 대화 영역 안 조건부 블록들). 무엇을 어떤 글로 보일지 먼저 [`BodyBlock`] 목록으로 정하고,
 //! 그 목록을 그린다. 화면 검사도 같은 목록을 읽는다.
 
+use std::rc::Rc;
+
 use gpui_kit::{
     AnyElement, App, Context, InteractiveElement, IntoElement, ParentElement,
     StatefulInteractiveElement, Styled, Window, div, px,
@@ -85,7 +87,7 @@ pub enum BodyBlock {
     },
     Message {
         key: String,
-        message: Box<AggregatedAiMessage>,
+        message: Rc<AggregatedAiMessage>,
     },
     Unavailable(UnavailableCard),
     Screen {
@@ -143,7 +145,7 @@ fn message_text(message: &AggregatedAiMessage) -> String {
 impl PaneChatView {
     /// 대화 영역에 보일 블록들(TS 대화 영역의 조건부 블록 순서)
     pub fn body_blocks(&self, cx: &App) -> Vec<BodyBlock> {
-        let Some(snapshot) = self.session.snapshot().cloned() else {
+        let Some(snapshot) = self.session.snapshot() else {
             return match self.session.has_read_error {
                 true => Vec::new(),
                 false => vec![BodyBlock::Loading(self.t("loading"))],
@@ -154,13 +156,13 @@ impl PaneChatView {
             blocks.push(BodyBlock::NoAgent(self.t("noAgent")));
         }
         if snapshot.can_send && snapshot.transcript.status == PaneChatTranscriptStatus::Available {
-            blocks.extend(self.transcript_blocks(&snapshot, cx));
+            blocks.extend(self.transcript_blocks(snapshot, cx));
         }
         if let (Some(provider), PaneChatTranscriptStatus::Unavailable) =
             (snapshot.provider, snapshot.transcript.status)
         {
             blocks.push(BodyBlock::Unavailable(
-                self.unavailable_card(provider, &snapshot),
+                self.unavailable_card(provider, snapshot),
             ));
         }
         if !snapshot.screen.is_empty()
@@ -224,12 +226,11 @@ impl PaneChatView {
                 provider,
             });
         }
-        let messages = self.visible_messages(cx);
-        let session_key = snapshot.transcript.session_id.clone();
-        for row in super::super::chat_history::transcript_rows(&messages, session_key.as_deref()) {
+        let transcript = self.visible_transcript(cx);
+        for row in transcript.newest_first.iter().rev() {
             blocks.push(BodyBlock::Message {
-                key: row.key,
-                message: Box::new(row.message.clone()),
+                key: row.key.clone(),
+                message: Rc::clone(&row.message),
             });
         }
         blocks
@@ -391,7 +392,8 @@ impl PaneChatView {
                 provider,
             } => render_welcome(theme, title, hint, provider),
             BodyBlock::Message { key, message } => {
-                self.render_message_row(theme, &message, &key, message_provider, cx)
+                let context = self.attachment_context();
+                self.render_message_row(theme, &message, &key, message_provider, context, cx)
             }
             BodyBlock::Unavailable(card) => self.render_unavailable(theme, card, cx),
             BodyBlock::Screen { label, content } => self.render_screen(theme, label, content, cx),
@@ -400,7 +402,7 @@ impl PaneChatView {
                 message,
                 status,
             } => {
-                let row = self.render_message_row(theme, &message, &id, message_provider, cx);
+                let row = self.render_message_row(theme, &message, &id, message_provider, None, cx);
                 pending_bubble(theme, row, status)
             }
             BodyBlock::Working { label, elapsed } => {
@@ -705,7 +707,7 @@ mod tests {
     fn message_block(index: usize) -> BodyBlock {
         BodyBlock::Message {
             key: format!("m{index}"),
-            message: Box::new(AggregatedAiMessage::plain(
+            message: Rc::new(AggregatedAiMessage::plain(
                 AiMessageRole::Assistant,
                 None,
                 &format!("message {index}"),

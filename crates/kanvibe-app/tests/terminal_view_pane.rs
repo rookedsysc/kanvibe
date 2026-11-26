@@ -14,7 +14,7 @@ use gpui_kit::{
 };
 use kanvibe_app::components::terminal_view::window::ViewTerminalWindow;
 use kanvibe_app::components::terminal_view::{
-    ImagePasteOutcome, TerminalPane, TerminalTarget, TerminalTransport,
+    ImagePasteOutcome, TerminalPane, TerminalPaneEvent, TerminalTarget, TerminalTransport,
 };
 use kanvibe_app::qa::faults::{FaultMode, ServiceFault};
 use kanvibe_app::qa::options::{DEFAULT_WINDOW_SIZE, LaunchOptions, QaOptions};
@@ -481,6 +481,58 @@ fn coming_back_to_the_window_reports_the_terminal_size_again(cx: &mut TestAppCon
 }
 
 #[gpui::test]
+fn a_size_change_while_opening_is_reported_again_once_connected(cx: &mut TestAppContext) {
+    let dir = tempfile::tempdir().unwrap();
+    init_app(cx, dir.path().to_path_buf());
+    add_fault(
+        cx,
+        fault("kanvibe:terminal-open", FaultMode::Delay, Some(1_000)),
+    );
+    let transport = Arc::new(RecordingTransport::default());
+    let mut pane = open_pane(cx, target("slow-open", None, false), &transport);
+    pane.cx
+        .simulate_resize(gpui_kit::size(gpui_kit::px(1600.0), gpui_kit::px(900.0)));
+    pane.draw();
+    let resized_while_opening = *transport
+        .resizes
+        .lock()
+        .unwrap()
+        .last()
+        .expect("열기 중 크기 변경");
+    transport.resizes.lock().unwrap().clear();
+
+    pane.advance(Duration::from_secs(2));
+
+    assert_eq!(transport.open_count(), 1);
+    assert_eq!(
+        *transport.resizes.lock().unwrap(),
+        vec![resized_while_opening]
+    );
+}
+
+#[gpui::test]
+fn a_closed_session_tells_the_screen_to_reread_its_tabs(cx: &mut TestAppContext) {
+    let dir = tempfile::tempdir().unwrap();
+    init_app(cx, dir.path().to_path_buf());
+    let transport = Arc::new(RecordingTransport::default());
+    let mut pane = open_pane(cx, target("shell-exit", Some("tab-1"), false), &transport);
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let recorded = events.clone();
+    let entity = pane.entity();
+    let _subscription = pane.cx.update(|_, cx| {
+        cx.subscribe(&entity, move |_, event: &TerminalPaneEvent, _| {
+            recorded.lock().unwrap().push(*event);
+        })
+    });
+    let window = transport.windows.lock().unwrap()[0].clone();
+
+    window.send_terminal_closed("shell-exit", Some("tab-1"), None);
+    pane.draw();
+
+    assert_eq!(*events.lock().unwrap(), vec![TerminalPaneEvent::Closed]);
+}
+
+#[gpui::test]
 fn herdr_server_replacement_reconnects_without_an_error_line(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
     init_app(cx, dir.path().to_path_buf());
@@ -536,7 +588,7 @@ fn remote_paste_with_an_image_sends_it_and_types_the_remote_path(cx: &mut TestAp
 }
 
 #[gpui::test]
-fn a_rejected_remote_image_shows_the_reason_in_the_terminal(cx: &mut TestAppContext) {
+fn a_rejected_remote_image_shows_the_reason_without_covering_the_terminal(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
     init_app(cx, dir.path().to_path_buf());
     let transport = Arc::new(RecordingTransport::default());
@@ -548,7 +600,9 @@ fn a_rejected_remote_image_shows_the_reason_in_the_terminal(cx: &mut TestAppCont
     let mut pane = open_pane(cx, target("task-1", None, true), &transport);
     copy_image(cx, b"fake");
     pane.keys("ctrl-shift-v");
-    assert!(pane.has_role_text("row", "원격 세션이 아닙니다."));
+    assert!(pane.has_role_text("alert", "원격 세션이 아닙니다."));
+    assert!(!pane.has_role_text("row", "원격 세션이 아닙니다."));
+    assert!(!pane.has_role_text("button", "다시 보내기"));
     assert!(transport.writes().is_empty());
 }
 

@@ -60,7 +60,7 @@ impl TaskDetailView {
         cx: &mut Context<Self>,
     ) {
         if let (Some(saved), DetailLoad::Loaded(snapshot)) = (saved, &mut self.load) {
-            snapshot.task = saved;
+            std::rc::Rc::make_mut(snapshot).task = saved;
         }
         trigger_refresh(RefreshScope::TaskDetail, cx);
     }

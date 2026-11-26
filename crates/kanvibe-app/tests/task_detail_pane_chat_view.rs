@@ -6,6 +6,7 @@ mod task_detail_pane_chat_support;
 use std::sync::{Arc, Mutex};
 
 use gpui_kit::{Entity, TestAppContext, VisualTestContext, gpui};
+use kanvibe_app::qa::targets::{DescribedTarget, QaTargetRegistry, TargetQuery};
 use kanvibe_app::views::task_detail::pane_chat::{BodyBlock, PaneChatView, PaneChatViewEvent};
 use kanvibe_domain::pane_chat::PaneChatPromptAnswer;
 use serde_json::{Value, json};
@@ -115,6 +116,87 @@ fn pending_bubble_shows_before_the_reply_and_disappears_when_the_record_arrives(
             .count(),
         1
     );
+}
+
+/// 한 프레임을 새로 그리고 그 프레임에 그려진 단추가 있는지 본다
+fn has_painted_button(cx: &mut VisualTestContext, name: &str) -> bool {
+    cx.update(|window, cx| {
+        let window_id = window.window_handle().window_id();
+        cx.global_mut::<QaTargetRegistry>().begin_frame(window_id);
+        window.refresh();
+    });
+    settle(cx);
+    let query = TargetQuery::Described(DescribedTarget {
+        role: Some("button".into()),
+        name: Some(name.into()),
+        exact: Some(true),
+        ..DescribedTarget::default()
+    });
+    cx.update(|window, cx| {
+        cx.global::<QaTargetRegistry>()
+            .find(window.window_handle().window_id(), &query)
+            .is_some()
+    })
+}
+
+#[gpui::test]
+fn an_image_only_request_shows_its_attachment_and_text_messages_offer_copy(
+    cx: &mut TestAppContext,
+) {
+    init(cx);
+    cx.update(|cx| cx.set_global(QaTargetRegistry::default()));
+    let image_only = json!({ "role": "user", "timestamp": null, "text": "", "fullText": "", "isTruncated": false,
+        "attachments": [{ "id": "image-1", "kind": "image", "name": "screen.png", "mimeType": "image/png", "sizeBytes": 10 }] });
+    let mut value = snapshot("process-a");
+    value["transcript"]["messages"] =
+        json!([message("assistant", "Exact pane response"), image_only]);
+    let backend = backend(value);
+    let (_view, cx) = open_view(cx, &backend, None, None);
+
+    let download = translator().translate("aiSessions.downloadAttachment");
+    assert!(has_painted_button(cx, &format!("{download}: screen.png")));
+    let copy = translator().translate("aiSessions.copyMessage");
+    assert!(has_painted_button(cx, &copy));
+}
+
+fn long_conversation() -> Value {
+    let messages: Vec<Value> = (0..60)
+        .map(|index| {
+            let role = if index % 2 == 0 { "user" } else { "assistant" };
+            message(role, &format!("Message number {index}\n\nsecond paragraph"))
+        })
+        .collect();
+    with_transcript(snapshot("process-a"), "messages", json!(messages))
+}
+
+fn distance_from_bottom(view: &Entity<PaneChatView>, cx: &mut VisualTestContext) -> f32 {
+    view.read_with(cx, |view, _| view.transcript_distance_from_bottom())
+}
+
+#[gpui::test]
+fn a_small_scroll_near_the_bottom_stays_where_the_user_left_it(cx: &mut TestAppContext) {
+    init(cx);
+    let backend = backend(long_conversation());
+    let (view, cx) = open_view(cx, &backend, None, None);
+    // 첫 그리기는 최신 메시지만 넣고 다음 프레임에 전부 그린다. 전부 그린 화면에서 시작한다
+    settle(cx);
+    assert_eq!(distance_from_bottom(&view, cx), 0.0);
+
+    let transcript_point = gpui_kit::point(gpui_kit::px(400.0), gpui_kit::px(200.0));
+    cx.simulate_event(gpui_kit::ScrollEvent {
+        position: transcript_point,
+        delta: gpui_kit::ScrollDelta::Pixels(gpui_kit::point(
+            gpui_kit::px(0.0),
+            gpui_kit::px(40.0),
+        )),
+        ..Default::default()
+    });
+    settle(cx);
+    assert_eq!(distance_from_bottom(&view, cx), 40.0);
+
+    advance(cx, 1_500);
+    refresh(&view, cx);
+    assert_eq!(distance_from_bottom(&view, cx), 40.0);
 }
 
 #[gpui::test]

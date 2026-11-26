@@ -214,7 +214,14 @@ impl DiffPage {
     ) {
         let is_previous_intact =
             self.is_current_content() && !self.content.is_loading && self.content.error.is_none();
+        // 보드 갱신마다 같은 내용을 다시 읽으므로, 내용이 그대로면 비교 보기의 스크롤·찾기를 버리지 않는다(TS DiffEditor는 값이 바뀔 때만 모델을 갱신했다)
+        let is_unchanged_content = is_previous_intact
+            && self.content.file_path.as_deref() == Some(file_path.as_str())
+            && result.as_ref().is_ok_and(|(original, modified)| {
+                self.content.original == *original && self.content.modified == *modified
+            });
         match result {
+            Ok(_) if is_unchanged_content => {}
             Ok((original, modified)) => {
                 self.content = FileContentState {
                     task_id: self.task_id.clone(),
@@ -290,6 +297,12 @@ impl DiffPage {
             );
         }
         self.editor.clone()
+    }
+
+    /// 지금 그리는 비교 보기. 갱신 뒤에도 같은 보기가 남는지 테스트가 확인한다
+    #[cfg(test)]
+    pub(super) fn current_viewer_id(&self) -> Option<gpui_kit::EntityId> {
+        self.viewer.as_ref().map(Entity::entity_id)
     }
 
     fn ensure_viewer(&mut self, cx: &mut Context<Self>) -> Option<Entity<DiffViewer>> {

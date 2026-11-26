@@ -1,10 +1,13 @@
 //! 릴리스 노트 Markdown(TS `ReleaseNotesContent`: marked + DOMPurify, `text-sm leading-6 text-text-secondary`).
 //! `kanvibe-markdown`이 만든 블록을 그리고, 글자 꾸밈(굵게·기울임·코드·링크)은 한 줄 글자 안의 구간 스타일로 그린다.
-//! HTML 원문은 받지 않으므로 스크립트·이벤트 속성이 끼어들 자리가 없다.
+//! HTML 원문은 받지 않으므로 스크립트·이벤트 속성이 끼어들 자리가 없다. 링크는 TS `target="_blank"`처럼 앱 링크 규칙으로 연다.
+
+use std::hash::{DefaultHasher, Hash, Hasher};
+use std::ops::Range;
 
 use gpui_kit::{
-    AnyElement, Div, FontStyle, Hsla, IntoElement, ParentElement, SharedString, StrikethroughStyle,
-    Styled, StyledText, TextRun, UnderlineStyle, div, img, px,
+    AnyElement, Div, ElementId, FontStyle, Hsla, InteractiveText, IntoElement, ParentElement,
+    SharedString, StrikethroughStyle, Styled, StyledText, TextRun, UnderlineStyle, div, img, px,
 };
 use kanvibe_markdown::{Block, Inline, List};
 
@@ -17,7 +20,7 @@ const BODY_FONT_SIZE: f32 = 14.0;
 const BODY_LINE_HEIGHT: f32 = 24.0;
 
 pub(super) fn release_notes(theme: &ThemeTokens, markdown: &str) -> Div {
-    let blocks = kanvibe_markdown::parse_markdown(markdown);
+    let blocks = release_note_blocks(markdown);
     let count = blocks.len();
     div()
         .text_size(px(BODY_FONT_SIZE))
@@ -28,6 +31,11 @@ pub(super) fn release_notes(theme: &ThemeTokens, markdown: &str) -> Div {
             let is_last = index + 1 == count;
             render_block(theme, block, is_first, is_last)
         }))
+}
+
+/// 릴리스 노트는 대화용 파서가 아니라 TS 기본 marked와 같은 규칙(줄바꿈 유지 안 함, 수식 없음)으로 읽는다
+fn release_note_blocks(markdown: &str) -> Vec<Block> {
+    kanvibe_markdown::parse_release_notes(markdown)
 }
 
 /// 블록 위아래 여백(`[&_*:first-child]:mt-0 [&_*:last-child]:mb-0`)
@@ -236,17 +244,18 @@ struct RunStyle {
     is_struck: bool,
 }
 
-/// 한 문단의 글자와 구간 스타일
+/// 한 문단의 글자와 구간 스타일, 누를 수 있는 링크 구간과 그 주소
 struct StyledRuns {
     text: String,
     runs: Vec<TextRun>,
+    links: Vec<(Range<usize>, String)>,
 }
 
-fn inline_text(theme: &ThemeTokens, inlines: &[Inline]) -> AnyElement {
-    let images: Vec<AnyElement> = collect_images(theme, inlines);
+fn styled_runs(theme: &ThemeTokens, inlines: &[Inline]) -> StyledRuns {
     let mut styled = StyledRuns {
         text: String::new(),
         runs: Vec::new(),
+        links: Vec::new(),
     };
     let base = RunStyle {
         weight: 400,
@@ -256,12 +265,42 @@ fn inline_text(theme: &ThemeTokens, inlines: &[Inline]) -> AnyElement {
         is_struck: false,
     };
     push_inlines(theme, inlines, base, &mut styled);
-    let text = div().child(StyledText::new(SharedString::from(styled.text)).with_runs(styled.runs));
+    styled
+}
+
+fn inline_text(theme: &ThemeTokens, inlines: &[Inline]) -> AnyElement {
+    let images: Vec<AnyElement> = collect_images(theme, inlines);
+    let text = div().child(clickable_text(styled_runs(theme, inlines)));
     if images.is_empty() {
         text.into_any_element()
     } else {
         div().child(text).children(images).into_any_element()
     }
+}
+
+/// 링크가 있으면 링크 구간을 눌렀을 때 그 주소를 연다
+fn clickable_text(styled: StyledRuns) -> AnyElement {
+    let StyledRuns { text, runs, links } = styled;
+    let element_id = links_element_id(&text, &links);
+    let styled_text = StyledText::new(SharedString::from(text)).with_runs(runs);
+    if links.is_empty() {
+        return styled_text.into_any_element();
+    }
+    let (ranges, hrefs): (Vec<Range<usize>>, Vec<String>) = links.into_iter().unzip();
+    InteractiveText::new(element_id, styled_text)
+        .on_click(ranges, move |link_index, window, cx| {
+            let origin_window = window.window_handle().window_id();
+            crate::windows::open_href(&hrefs[link_index], Some(origin_window), cx);
+        })
+        .into_any_element()
+}
+
+/// 누를 수 있는 문단마다 다른 요소 id. 같은 대화상자 안 문단끼리 클릭 상태가 섞이지 않게 글과 주소로 만든다
+fn links_element_id(text: &str, links: &[(Range<usize>, String)]) -> ElementId {
+    let mut hasher = DefaultHasher::new();
+    text.hash(&mut hasher);
+    links.hash(&mut hasher);
+    ElementId::NamedInteger("release-note-links".into(), hasher.finish())
 }
 
 fn push_inlines(theme: &ThemeTokens, inlines: &[Inline], style: RunStyle, out: &mut StyledRuns) {
@@ -328,15 +367,17 @@ fn push_inlines(theme: &ThemeTokens, inlines: &[Inline], style: RunStyle, out: &
                 },
                 out,
             ),
-            Inline::Link { content, .. } => push_inlines(
-                theme,
-                content,
-                RunStyle {
+            Inline::Link { href, content, .. } => {
+                let start = out.text.len();
+                let link_style = RunStyle {
                     is_link: true,
                     ..style
-                },
-                out,
-            ),
+                };
+                push_inlines(theme, content, link_style, out);
+                if let Some(href) = href {
+                    out.links.push((start..out.text.len(), href.clone()));
+                }
+            }
             Inline::LineBreak => push_run(theme, "\n", style, out),
             Inline::Image { .. } | Inline::Math { .. } | Inline::Checkbox { .. } => {}
         }
@@ -393,4 +434,35 @@ fn collect_images(theme: &ThemeTokens, inlines: &[Inline]) -> Vec<AnyElement> {
             _ => None,
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::theme::ThemeMode;
+
+    fn first_paragraph_runs(markdown: &str) -> StyledRuns {
+        let theme = ThemeTokens::for_mode(ThemeMode::Dark);
+        let blocks = release_note_blocks(markdown);
+        let Some(Block::Paragraph(inlines)) = blocks.first() else {
+            panic!("첫 블록은 문단이어야 한다: {blocks:?}");
+        };
+        styled_runs(&theme, inlines)
+    }
+
+    #[test]
+    fn dollar_signs_in_release_notes_stay_as_text() {
+        let runs = first_paragraph_runs("set $HOME and $PATH before running");
+
+        assert_eq!(runs.text, "set $HOME and $PATH before running");
+    }
+
+    #[test]
+    fn release_note_links_keep_their_address_on_the_link_text() {
+        let runs = first_paragraph_runs("See [PR #509](https://github.com/o/r/pull/509) now");
+
+        let (range, href) = runs.links.first().expect("링크 구간");
+        assert_eq!(&runs.text[range.clone()], "PR #509");
+        assert_eq!(href, "https://github.com/o/r/pull/509");
+    }
 }

@@ -1,9 +1,10 @@
 //! 터미널 탭 바(TS `TerminalTabBar`). tmux window·zellij tab·terminal 탭을 같은 모양으로 그리고,
-//! 조작은 모두 `TabCommand`로 화면에 넘긴다. 앞 5개 탭에는 `Mod+Alt+{n}` 표기를 붙인다.
+//! 조작은 모두 `TabCommand`로 보낸다. 앞 5개 탭에는 `Mod+Alt+{n}` 표기를 붙인다.
 
+use gpui_kit::base::input::{Input, InputEvent, InputState};
 use gpui_kit::{
-    AnyElement, AppContext, Context, Entity, InteractiveElement, IntoElement, ParentElement,
-    Render, SharedString, StatefulInteractiveElement, Styled, Window, div, px,
+    AnyElement, AppContext, Context, Entity, InteractiveElement, IntoElement, KeyDownEvent,
+    ParentElement, Render, SharedString, StatefulInteractiveElement, Styled, Window, div, px,
 };
 use kanvibe_domain::i18n::Translator;
 use kanvibe_domain::platform::ShortcutPlatform;
@@ -11,8 +12,9 @@ use kanvibe_domain::shortcuts::bindings::ShortcutCommandId;
 use kanvibe_domain::shortcuts::notation::format_shortcut_for_display;
 use kanvibe_domain::terminal_tabs::TerminalTab;
 
-use super::TaskDetailView;
-use super::tabs::{TabCommand, TerminalTabsState};
+use super::{
+    TabCommand, TerminalTabsController, TerminalTabsEvent, TerminalTabsState, renamed_tab_name,
+};
 use crate::components::{TailwindText, fade};
 use crate::qa::targets::{QaTargetDescription, qa_target_layer};
 use crate::shortcuts::ShortcutState;
@@ -62,9 +64,10 @@ pub fn tab_shortcut_label(index: usize, state: &ShortcutState) -> Option<String>
     ))
 }
 
-impl TaskDetailView {
-    pub(super) fn render_tab_bar(&self, theme: &ThemeTokens, cx: &mut Context<Self>) -> AnyElement {
-        let tabs = &self.terminal_tabs;
+impl Render for TerminalTabsController {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = *cx.global::<ThemeTokens>();
+        let tabs = &self.state;
         let mut bar = div()
             .id("terminal-tab-bar")
             .flex()
@@ -73,19 +76,20 @@ impl TaskDetailView {
             .items_center()
             .overflow_x_scroll();
         for (index, tab) in tabs.tabs.iter().enumerate() {
-            bar = bar.child(self.render_tab(theme, tabs, tab, index, cx));
+            bar = bar.child(self.render_tab(&theme, tabs, tab, index, cx));
         }
-        bar.child(render_new_tab_button(theme, tabs, &self.translator, cx))
+        bar.child(render_new_tab_button(&theme, tabs, &self.translator, cx))
             .children(render_tab_action_error(
-                theme,
+                &theme,
                 tabs,
                 &self.translator,
                 &self.common,
                 cx,
             ))
-            .into_any_element()
     }
+}
 
+impl TerminalTabsController {
     fn render_tab(
         &self,
         theme: &ThemeTokens,
@@ -147,11 +151,11 @@ impl TaskDetailView {
                 text: tab.name.clone().into(),
             }))
             .on_click(
-                cx.listener(move |view, event: &gpui_kit::ClickEvent, window, cx| {
+                cx.listener(move |tabs, event: &gpui_kit::ClickEvent, window, cx| {
                     if event.click_count() >= 2 {
-                        view.begin_tab_rename(&tab_id, window, cx);
+                        tabs.begin_rename(&tab_id, window, cx);
                     } else if !is_active {
-                        view.run_tab_command(TabCommand::Select(tab_id.clone()), cx);
+                        tabs.run_command(TabCommand::Select(tab_id.clone()), cx);
                     }
                 }),
             )
@@ -162,28 +166,32 @@ impl TaskDetailView {
                 },
                 |dragged, _, _, cx| cx.new(|_| dragged.clone()),
             )
-            .on_drop(cx.listener(move |view, dragged: &DraggedTab, _, cx| {
-                let is_same_tab = view
-                    .terminal_tabs
+            .on_drop(cx.listener(move |tabs, dragged: &DraggedTab, _, cx| {
+                let is_same_tab = tabs
+                    .state
                     .tabs
                     .get(index)
                     .is_some_and(|target| target.id == dragged.tab_id);
                 if !is_same_tab {
-                    view.run_tab_command(TabCommand::Move(dragged.tab_id.clone(), index), cx);
+                    tabs.run_command(TabCommand::Move(dragged.tab_id.clone(), index), cx);
                 }
             }))
             .into_any_element()
     }
 
     fn render_tab_name(&self, tab: &TerminalTab, cx: &mut Context<Self>) -> AnyElement {
-        if let Some((renaming_id, input)) = self.tab_rename.as_ref().filter(|(id, _)| *id == tab.id)
-        {
-            let _ = renaming_id;
+        if let Some((_, input)) = self.rename.as_ref().filter(|(id, _)| *id == tab.id) {
             let theme = *cx.global::<ThemeTokens>();
+            // Esc는 이 입력란에서 받아 변경 요청 없이 이름 바꾸기를 그만둔다(TS `onKeyDown` Escape)
             return div()
                 .min_w_0()
                 .flex_1()
-                .child(gpui_kit::base::input::Input::new(input))
+                .on_key_down(cx.listener(|tabs, event: &KeyDownEvent, _, cx| {
+                    if event.keystroke.key == "escape" && tabs.cancel_rename(cx) {
+                        cx.stop_propagation();
+                    }
+                }))
+                .child(Input::new(input))
                 .text_color(theme.text.inverse)
                 .into_any_element();
         }
@@ -196,61 +204,50 @@ impl TaskDetailView {
             .into_any_element()
     }
 
-    fn begin_tab_rename(&mut self, tab_id: &str, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(tab) = self.terminal_tabs.tabs.iter().find(|tab| tab.id == tab_id) else {
+    fn begin_rename(&mut self, tab_id: &str, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(tab) = self.state.tabs.iter().find(|tab| tab.id == tab_id) else {
             return;
         };
         let name = SharedString::from(tab.name.clone());
-        let input =
-            cx.new(|cx| gpui_kit::base::input::InputState::new(window, cx).default_value(name));
+        let input = cx.new(|cx| InputState::new(window, cx).default_value(name));
         input.update(cx, |state, cx| {
             state.focus(window, cx);
             state.select_all(window, cx);
         });
         let renaming_tab = tab_id.to_string();
-        self._tab_rename_events =
-            Some(
-                cx.subscribe_in(&input, window, move |view, input, event, window, cx| {
-                    view.handle_rename_event(&renaming_tab, input, event, window, cx)
-                }),
-            );
-        self.tab_rename = Some((tab_id.to_string(), input));
+        self._rename_events = Some(cx.subscribe(&input, move |tabs, input, event, cx| {
+            tabs.handle_rename_event(&renaming_tab, &input, event, cx)
+        }));
+        self.rename = Some((tab_id.to_string(), input));
         cx.notify();
     }
 
     fn handle_rename_event(
         &mut self,
         tab_id: &str,
-        input: &Entity<gpui_kit::base::input::InputState>,
-        event: &gpui_kit::base::input::InputEvent,
-        window: &mut Window,
+        input: &Entity<InputState>,
+        event: &InputEvent,
         cx: &mut Context<Self>,
     ) {
-        use gpui_kit::base::input::InputEvent;
         if !matches!(event, InputEvent::PressEnter { .. } | InputEvent::Blur) {
             return;
         }
         let draft = input.read(cx).value().to_string();
-        self.tab_rename = None;
-        if let Some(name) = super::tabs::renamed_tab_name(&self.terminal_tabs.tabs, tab_id, &draft)
-        {
-            self.run_tab_command(TabCommand::Rename(tab_id.to_string(), name), cx);
+        self.rename = None;
+        if let Some(name) = renamed_tab_name(&self.state.tabs, tab_id, &draft) {
+            self.run_command(TabCommand::Rename(tab_id.to_string(), name), cx);
         }
-        self.focus_terminal(window, cx);
+        cx.emit(TerminalTabsEvent::RenameEnded);
         cx.notify();
     }
 
-    /// Esc로 이름 바꾸기를 그만둔다(변경 요청을 보내지 않는다)
-    pub(super) fn cancel_tab_rename(
-        &mut self,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> bool {
-        if self.tab_rename.take().is_none() {
+    /// 이름 바꾸기를 그만둔다(변경 요청을 보내지 않는다). 입력란이 열려 있지 않았으면 `false`
+    pub fn cancel_rename(&mut self, cx: &mut Context<Self>) -> bool {
+        if self.rename.take().is_none() {
             return false;
         }
-        self._tab_rename_events = None;
-        self.focus_terminal(window, cx);
+        self._rename_events = None;
+        cx.emit(TerminalTabsEvent::RenameEnded);
         cx.notify();
         true
     }
@@ -260,7 +257,7 @@ impl TaskDetailView {
 fn render_close_button(
     tab: &TerminalTab,
     translator: &Translator,
-    cx: &mut Context<TaskDetailView>,
+    cx: &mut Context<TerminalTabsController>,
 ) -> impl IntoElement {
     let tab_id = tab.id.clone();
     let label = translator.translate_with("closeTerminalTab", &[("name", &tab.name)]);
@@ -276,9 +273,9 @@ fn render_close_button(
             name: label.into(),
             text: "×".into(),
         }))
-        .on_click(cx.listener(move |view, _, window, cx| {
+        .on_click(cx.listener(move |tabs, _, window, cx| {
             cx.stop_propagation();
-            view.close_terminal_tab(&tab_id, window, cx);
+            tabs.close_tab(&tab_id, window, cx);
         }))
 }
 
@@ -287,7 +284,7 @@ fn render_new_tab_button(
     theme: &ThemeTokens,
     tabs: &TerminalTabsState,
     translator: &Translator,
-    cx: &mut Context<TaskDetailView>,
+    cx: &mut Context<TerminalTabsController>,
 ) -> impl IntoElement {
     let label = translator.translate("newTerminalTab");
     let is_disabled = tabs.pending.is_some();
@@ -317,7 +314,7 @@ fn render_new_tab_button(
         button = button
             .cursor_pointer()
             .hover(|style| style.bg(fade(gpui_kit::rgb(0xffffff), 0.1)))
-            .on_click(cx.listener(|view, _, _, cx| view.run_tab_command(TabCommand::Create, cx)));
+            .on_click(cx.listener(|tabs, _, _, cx| tabs.run_command(TabCommand::Create, cx)));
     }
     button
 }
@@ -327,7 +324,7 @@ fn render_tab_action_error(
     tabs: &TerminalTabsState,
     translator: &Translator,
     common: &Translator,
-    cx: &mut Context<TaskDetailView>,
+    cx: &mut Context<TerminalTabsController>,
 ) -> Option<AnyElement> {
     let reason = tabs.action_error.as_ref()?;
     let retry_label = common.translate("retry");
@@ -360,7 +357,7 @@ fn render_tab_action_error(
                         name: retry_label.clone().into(),
                         text: retry_label.into(),
                     }))
-                    .on_click(cx.listener(|view, _, _, cx| view.retry_tab_command(cx))),
+                    .on_click(cx.listener(|tabs, _, _, cx| tabs.retry_command(cx))),
             )
             .into_any_element(),
     )

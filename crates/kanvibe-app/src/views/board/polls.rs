@@ -77,7 +77,7 @@ impl BoardView {
             DIFF_STATS_POLL_INTERVAL,
             read,
             |this: &mut Self, stats, cx| {
-                if let Some(board) = this.board.as_mut()
+                if let Some(board) = this.board.get_mut().as_mut()
                     && board.diff_stats != stats
                 {
                     board.diff_stats = stats;

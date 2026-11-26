@@ -126,7 +126,7 @@ fn retry_button(
         }))
 }
 
-/// 연결이 끝났거나 원격 이미지 전송이 실패한 사유. TS는 xterm에 빨간 줄로 썼다(터미널 줄과 같은 대상으로 남긴다)
+/// 연결이 끝난 사유. TS는 xterm에 빨간 줄로 썼다(터미널 줄과 같은 대상으로 남긴다)
 pub fn render_closed_reason(reason: String) -> AnyElement {
     div()
         .absolute()

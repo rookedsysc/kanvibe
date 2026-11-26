@@ -127,7 +127,7 @@ fn definition_hash(definition: &str) -> u64 {
 pub struct MermaidDiagram {
     pub scope: SharedString,
     pub index: usize,
-    pub definition: String,
+    pub definition: SharedString,
     pub theme: ThemeTokens,
 }
 
@@ -141,10 +141,14 @@ impl MermaidDiagram {
 impl RenderOnce for MermaidDiagram {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let state_id = self.state_id();
-        let definition = self.definition.clone();
         let theme = diagram_theme(&self.theme);
         let state = window.use_keyed_state(state_id.clone(), cx, |window, cx| {
-            MermaidDiagramState::start(definition, theme, window.scale_factor(), cx)
+            MermaidDiagramState::start(
+                self.definition.to_string(),
+                theme,
+                window.scale_factor(),
+                cx,
+            )
         });
         let render = state.read(cx).render.clone();
         let tokens = self.theme;

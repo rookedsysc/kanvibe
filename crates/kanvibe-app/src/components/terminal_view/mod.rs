@@ -6,6 +6,7 @@ mod lifecycle;
 pub mod mouse;
 pub mod paint;
 pub mod pane;
+mod scroll_bar;
 pub mod status;
 pub mod transport;
 pub mod window;

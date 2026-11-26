@@ -236,19 +236,23 @@ impl HooksStatusCard {
         cx.notify();
     }
 
-    /// 설치 뒤 네 상태를 한 번 더 읽는다. 받은 값만 덮고 읽지 못하면 그대로 둔다
+    /// 설치 뒤 네 상태를 한 번 더 읽는다. 받은 값만 덮고 읽지 못하면 그대로 둔다.
+    /// 같은 슬롯을 쓰므로 진행 중이던 첫 읽기를 대신한다. 그래서 읽는 중 표시도 여기서 끈다
     fn refresh_after_install(&mut self, cx: &mut Context<Self>) {
         let request = request_statuses(&self.task_id, cx);
         self._load = Some(cx.spawn(async move |this, cx| {
-            let Ok(Some(latest)) = request.await else {
-                return;
-            };
+            let result = request.await;
             let _ = this.update(cx, |card, cx| {
-                for (current, latest) in card.statuses.iter_mut().zip(latest.into_array()) {
-                    if latest.is_some() {
-                        *current = latest;
+                if let Ok(latest) = result {
+                    card.has_loaded = true;
+                    let latest = latest.unwrap_or_default().into_array();
+                    for (current, latest) in card.statuses.iter_mut().zip(latest) {
+                        if latest.is_some() {
+                            *current = latest;
+                        }
                     }
                 }
+                card.is_loading = false;
                 cx.notify();
             });
         }));
@@ -410,5 +414,49 @@ impl super::TaskDetailView {
                 }
             });
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::qa::AppClock;
+    use gpui_kit::{AppContext, TestAppContext};
+    use kanvibe_domain::i18n::{Locale, Translator};
+    use kanvibe_domain::platform::ShortcutPlatform;
+
+    use super::{HookInstallOutcome, HookTool, HookToolStatus, HooksStatusCard};
+    use crate::services::AppServices;
+
+    #[gpui_kit::gpui::test]
+    fn an_install_finishing_before_the_first_read_clears_the_loading_line(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            cx.set_global(AppServices::new(
+                None,
+                None,
+                AppClock::system(),
+                ShortcutPlatform::current(),
+            ))
+        });
+        let translator = Translator::new(Locale::Ko, "taskDetail");
+        let card = cx.new(|_| HooksStatusCard::new("task-1".into(), translator, translator));
+
+        card.update(cx, |card, cx| {
+            card.load_statuses(cx);
+            let outcome = HookInstallOutcome {
+                success: true,
+                error: None,
+                status: Some(HookToolStatus {
+                    installed: true,
+                    plugin_registration_error: None,
+                }),
+            };
+            card.finish_install(HookTool::Claude, Ok(outcome), cx);
+        });
+        cx.run_until_parked();
+
+        card.read_with(cx, |card, _| {
+            assert!(!card.is_loading);
+            assert_eq!(card.installed_count(), 1);
+        });
     }
 }

@@ -498,6 +498,19 @@ mod tests {
     }
 
     #[test]
+    fn a_period_total_listed_after_its_model_limits_still_leads_the_group() {
+        let windows = [
+            window(AiUsageWindowKind::Weekly, Some("Opus"), 40.0),
+            window(AiUsageWindowKind::Weekly, None, 10.0),
+        ];
+        let groups = group_windows_by_period(&windows);
+
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].total.map(|total| total.used_percent), Some(10.0));
+        assert_eq!(groups[0].scoped[0].model_name.as_deref(), Some("Opus"));
+    }
+
+    #[test]
     fn model_windows_without_a_period_total_are_not_indented() {
         let windows = [
             window(AiUsageWindowKind::Model, Some("Pro"), 12.0),

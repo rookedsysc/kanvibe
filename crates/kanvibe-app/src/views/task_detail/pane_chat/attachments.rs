@@ -81,6 +81,15 @@ fn image_format(mime_type: &str) -> Option<ImageFormat> {
     }
 }
 
+/// 붙여넣은 클립보드 이미지를 실제 형식 그대로 첨부한다(TS `clipboardData.files`의 `File.type`)
+fn clipboard_image_file(image: &Image) -> PickedFile {
+    PickedFile {
+        name: format!("image.{}", image.format.extension()),
+        mime_type: image.format.mime_type().to_string(),
+        bytes: Arc::new(image.bytes.clone()),
+    }
+}
+
 fn read_picked_files(paths: Vec<PathBuf>) -> Vec<PickedFile> {
     paths
         .into_iter()
@@ -420,11 +429,7 @@ impl PaneChatView {
         let Some(image) = image.filter(|_| can_attach) else {
             return false;
         };
-        let file = PickedFile {
-            name: "image.png".to_string(),
-            mime_type: "image/png".to_string(),
-            bytes: Arc::new(image.bytes.clone()),
-        };
+        let file = clipboard_image_file(&image);
         self.add_files(vec![file], window, cx);
         true
     }
@@ -459,5 +464,24 @@ mod tests {
         );
         assert_eq!(mime_type_for("notes.txt"), "text/plain");
         assert_eq!(mime_type_for("archive.bin"), "application/octet-stream");
+    }
+
+    #[test]
+    fn a_pasted_clipboard_image_keeps_its_own_format() {
+        let jpeg = Image::from_bytes(ImageFormat::Jpeg, vec![0xFF, 0xD8, 0xFF]);
+        let gif = Image::from_bytes(ImageFormat::Gif, b"GIF89a".to_vec());
+
+        let jpeg_file = clipboard_image_file(&jpeg);
+        let gif_file = clipboard_image_file(&gif);
+
+        assert_eq!(
+            (jpeg_file.name.as_str(), jpeg_file.mime_type.as_str()),
+            ("image.jpg", "image/jpeg")
+        );
+        assert_eq!(*jpeg_file.bytes, vec![0xFF, 0xD8, 0xFF]);
+        assert_eq!(
+            (gif_file.name.as_str(), gif_file.mime_type.as_str()),
+            ("image.gif", "image/gif")
+        );
     }
 }

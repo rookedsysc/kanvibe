@@ -107,6 +107,44 @@ fn recorded_combination_becomes_the_commands_new_shortcut(cx: &mut TestAppContex
 }
 
 #[gpui::test]
+fn a_save_from_another_window_updates_this_screen_and_survives_its_next_save(
+    cx: &mut TestAppContext,
+) {
+    let _data_dir = init_app_with_database(cx);
+    let (view, cx) = open_shortcuts(cx);
+    cx.update(|_, cx| {
+        let services = cx.global::<AppServices>();
+        let database = services.database().expect("database").clone();
+        let mut other_window_bindings = ShortcutBindings::defaults();
+        other_window_bindings.set_shortcut(ShortcutCommandId::TaskDetailDock4, "Mod+Shift+K");
+        AppSettingsService::new(&database, services.shortcut_platform)
+            .set_shortcut_bindings(&other_window_bindings)
+            .expect("save");
+        kanvibe_app::shortcuts::reload_shortcut_bindings(cx);
+    });
+    cx.run_until_parked();
+    let shown = view.read_with(cx, |view, _| {
+        view.model
+            .bindings
+            .shortcut(ShortcutCommandId::TaskDetailDock4)
+            .to_string()
+    });
+    assert_eq!(shown, "Mod+Shift+K");
+
+    view.update_in(cx, |view, window, cx| {
+        view.toggle_recording(ShortcutCommandId::TerminalToggleChat, window, cx)
+    });
+    cx.simulate_keystrokes("ctrl-alt-j");
+    cx.run_until_parked();
+
+    let stored = stored_bindings(cx).expect("saved bindings");
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&stored).unwrap(),
+        json!({"taskDetailDock4": "Mod+Shift+K", "terminalToggleChat": "Mod+Alt+J"})
+    );
+}
+
+#[gpui::test]
 fn recorded_pane_toggle_is_normalized_and_every_window_reloads_it(cx: &mut TestAppContext) {
     let _data_dir = init_app_with_database(cx);
     let (view, cx) = open_shortcuts(cx);

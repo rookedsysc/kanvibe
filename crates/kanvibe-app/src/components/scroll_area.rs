@@ -31,6 +31,16 @@ pub fn thumb_span(viewport_height: f32, content_height: f32, scroll_top: f32) ->
     (thumb_top, thumb_length)
 }
 
+/// [`thumb_span`]의 역. thumb 윗변을 `thumb_top`(홈 위쪽 기준)에 둘 때의 스크롤 위치다. thumb은 트랙 안으로 붙인다
+pub fn scroll_top_for_thumb_top(viewport_height: f32, content_height: f32, thumb_top: f32) -> f32 {
+    let track_length = viewport_height - ARROW_BUTTON_LENGTH * 2.0;
+    let thumb_length = (track_length * viewport_height / content_height).round();
+    let max_scroll = (content_height - viewport_height).max(1.0);
+    let travel = (track_length - thumb_length).max(1.0);
+    let traveled = (thumb_top - ARROW_BUTTON_LENGTH).clamp(0.0, travel);
+    traveled * max_scroll / travel
+}
+
 /// 스크롤바 홈 전체를 채우는 요소. `content_height`는 문서 전체 높이다.
 pub fn page_scrollbar(content_height: f32, scroll_top: f32, color: Hsla) -> impl IntoElement {
     canvas(
@@ -93,7 +103,7 @@ pub fn scroll_area(
         .into_any_element()
 }
 
-fn paint_page_scrollbar(
+pub fn paint_page_scrollbar(
     bounds: Bounds<Pixels>,
     content_height: f32,
     scroll_top: f32,

@@ -3,6 +3,7 @@
 pub mod app_events;
 pub mod app_window;
 pub mod assets;
+mod blocking_call;
 pub mod board_focus_target;
 pub mod components;
 pub mod desktop_process;
@@ -12,6 +13,7 @@ pub mod navigation;
 pub mod notifications;
 pub mod polled_value;
 pub mod qa;
+mod render_cache;
 pub mod routes;
 pub mod services;
 pub mod shortcuts;

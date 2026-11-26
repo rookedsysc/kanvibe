@@ -8,6 +8,8 @@ use gpui_kit::{
 
 pub const WINDOW_CONTROLS_HEIGHT: Pixels = px(40.0);
 const BUTTON_WIDTH: f32 = 32.0;
+/// 버튼 세 개(최소화·최대화·닫기)를 겹친 폭. 창 맨 위에서 오른쪽 끝까지 닿는 줄이 이만큼 비워 둔다
+pub const WINDOW_CONTROLS_WIDTH: Pixels = px(BUTTON_WIDTH * 3.0);
 const ICON_SIZE: f32 = 10.0;
 /// 기호 굵기. 최소화·최대화 기호는 2px 선이다
 const STROKE: f32 = 2.0;

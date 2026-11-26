@@ -12,6 +12,7 @@ use kanvibe_runtime::DesktopRuntime;
 use kanvibe_terminal::pane_chat::service::PaneChatError;
 use serde_json::{Value, json};
 
+use crate::blocking_call::run_blocking_call;
 use crate::qa::faults::{FaultOutcome, FaultRegistry};
 use crate::services::{AppServices, apply_fault};
 
@@ -136,7 +137,7 @@ impl PaneChatBackend for RuntimePaneChatBackend {
                 .map_err(|failure| PaneChatCallError::from_ipc_message(&failure.reason))?;
             let runtime = runtime
                 .ok_or_else(|| PaneChatCallError::new("pane chat runtime is unavailable"))?;
-            dispatch(&runtime, &request)
+            run_blocking_call(executor.is_test(), move || dispatch(&runtime, &request)).await
         })
     }
 

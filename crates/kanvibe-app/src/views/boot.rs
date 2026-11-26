@@ -3,11 +3,11 @@
 //! GPUI 앱은 화면을 곧바로 만들므로 이 둘은 QA 재생이 그 순간을 붙잡을 때(`--hold-first-frame`, `--hold-request`)만 그린다.
 
 use gpui_kit::{
-    Context, Div, IntoElement, ParentElement, Render, Rgba, Styled, Window, div, px, rgb, rgba,
+    Context, Div, IntoElement, ParentElement, Render, Rgba, Styled, Window, div, px, rgb,
 };
 
 use crate::routes::AppRoute;
-use crate::theme::ThemeTokens;
+use crate::theme::{ThemeMode, ThemeTokens};
 use crate::views::route_loading_fallback;
 
 /// TS `App.tsx`가 `lazy(() => import(...))`로 나눈 라우트의 번들 이름. 보드는 처음부터 실린다
@@ -43,10 +43,20 @@ mod colors {
     pub const LINE: u32 = 0x24262d;
     pub const FILL: u32 = 0x1a1c22;
     pub const PROJECT_DOT: u32 = 0x353842;
-    /// `rgba(0, 100, 255, 0.26)`
-    pub const PRIMARY_BUTTON: u32 = 0x0064ff42;
-    /// `:nth-child(1..5) .kanvibe-skeleton-status`
-    pub const STATUS: [u32; 5] = [0x747985, 0xf6c35f, 0x9b8cff, 0x0064ff, 0x65d08a];
+    /// `rgba(0, 100, 255, 0.26)`의 투명도. 색은 point color라 테마 토큰에서 읽는다
+    pub const PRIMARY_BUTTON_ALPHA: f32 = 0.26;
+}
+
+/// `:nth-child(1..5) .kanvibe-skeleton-status`. 네 번째 점은 point color라 다크 테마 토큰에서 읽는다
+fn skeleton_status_color(index: usize) -> Rgba {
+    let point_color = ThemeTokens::for_mode(ThemeMode::Dark).brand.primary;
+    [
+        rgb(0x747985),
+        rgb(0xf6c35f),
+        rgb(0x9b8cff),
+        point_color,
+        rgb(0x65d08a),
+    ][index]
 }
 
 /// 열마다 카드의 배지 수(HTML 그대로)
@@ -106,18 +116,25 @@ fn skeleton_header() -> Div {
         .border_color(rgb(colors::LINE))
         .bg(rgb(colors::HEADER))
         .child(outlined_box(256.0, 32.0, rgb(colors::FILL)))
-        .child(outlined_box(80.0, 32.0, rgba(colors::PRIMARY_BUTTON)))
+        .child(outlined_box(
+            80.0,
+            32.0,
+            Rgba {
+                a: colors::PRIMARY_BUTTON_ALPHA,
+                ..ThemeTokens::for_mode(ThemeMode::Dark).brand.primary
+            },
+        ))
         .child(outlined_box(32.0, 32.0, rgb(colors::FILL)))
         .child(outlined_box(32.0, 32.0, rgb(colors::FILL)))
 }
 
-fn pill(width: f32, height: f32, color: u32) -> Div {
+fn pill(width: f32, height: f32, color: Rgba) -> Div {
     div()
         .w(px(width))
         .h(px(height))
         .flex_none()
         .rounded_full()
-        .bg(rgb(color))
+        .bg(color)
 }
 
 fn skeleton_column(index: usize, badges: &[usize], height: f32) -> Div {
@@ -129,9 +146,9 @@ fn skeleton_column(index: usize, badges: &[usize], height: f32) -> Div {
         .px(px(12.0))
         .border_b_1()
         .border_color(rgb(colors::FILL))
-        .child(pill(8.0, 8.0, colors::STATUS[index]))
-        .child(pill(80.0, 12.0, colors::LINE))
-        .child(div().ml_auto().child(pill(20.0, 12.0, colors::LINE)));
+        .child(pill(8.0, 8.0, skeleton_status_color(index)))
+        .child(pill(80.0, 12.0, rgb(colors::LINE)))
+        .child(div().ml_auto().child(pill(20.0, 12.0, rgb(colors::LINE))));
     div()
         .w(px(COLUMN_WIDTH))
         .min_h(px(height))
@@ -177,14 +194,18 @@ fn skeleton_task(row: usize, badge_count: usize) -> Div {
                 .flex()
                 .items_center()
                 .gap(px(8.0))
-                .child(pill(6.0, 6.0, colors::PROJECT_DOT))
-                .child(pill(96.0, 10.0, colors::LINE)),
+                .child(pill(6.0, 6.0, rgb(colors::PROJECT_DOT)))
+                .child(pill(96.0, 10.0, rgb(colors::LINE))),
         )
-        .child(pill(inner_width * TITLE_WIDTHS[row], 14.0, colors::LINE))
+        .child(pill(
+            inner_width * TITLE_WIDTHS[row],
+            14.0,
+            rgb(colors::LINE),
+        ))
         .child(
             div()
                 .mt(px(9.0))
-                .child(pill(inner_width * 0.58, 10.0, colors::FILL)),
+                .child(pill(inner_width * 0.58, 10.0, rgb(colors::FILL))),
         )
         .child(div().mt(px(12.0)).flex().gap(px(6.0)).children(badges))
 }

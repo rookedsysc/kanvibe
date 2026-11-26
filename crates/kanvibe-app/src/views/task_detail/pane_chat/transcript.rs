@@ -49,9 +49,15 @@ pub struct TranscriptPages {
     /// 이전 페이지를 읽는 중인 대화
     loading_key: Option<String>,
     error_key: Option<String>,
+    /// 펼친 페이지의 메시지가 바뀔 때마다 오른다. 보일 대화를 다시 만들지 가르는 데 쓴다
+    revision: u64,
 }
 
 impl TranscriptPages {
+    pub fn revision(&self) -> u64 {
+        self.revision
+    }
+
     fn own_page(&self, key: &str) -> Option<&OlderPage> {
         self.page.as_ref().filter(|page| page.key == key)
     }
@@ -73,6 +79,7 @@ impl TranscriptPages {
         if !added.is_empty() {
             added.append(&mut page.messages);
             page.messages = added;
+            self.revision += 1;
         }
     }
 
@@ -150,5 +157,6 @@ impl TranscriptPages {
             messages,
             next_cursor: older.next_cursor,
         });
+        self.revision += 1;
     }
 }

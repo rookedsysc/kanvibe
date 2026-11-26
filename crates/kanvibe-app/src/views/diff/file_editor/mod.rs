@@ -27,10 +27,13 @@ use super::monaco::{
     CHARACTER_WIDTH, GutterLayout, LINE_HEIGHT, MonacoPane, PaneDocument, PaneRow,
     active_indent_guide, hit_test, paint_pane,
 };
-use super::syntax::{Language, detect_language, matching_bracket_pair, tokenize_document};
+use super::syntax::{
+    Language, LineEndLexState, PreviousTokenization, detect_language, matching_bracket_pair,
+    retokenize_lines, tokenize_lines,
+};
 use super::text_buffer::TextBuffer;
 use crate::components::fade;
-use crate::qa::targets::{QaTargetDescription, qa_target_layer};
+use crate::qa::targets::{QaTargetDescription, QaTargetRegistry, qa_target_layer};
 use crate::services::AppServices;
 use crate::text_baseline::{TextFamily, aligned_text, chromium_text};
 use crate::theme::{ThemeTokens, radius, spacing, text_scale};
@@ -62,6 +65,8 @@ pub struct DiffFileEditor {
     language: Language,
     buffer: TextBuffer,
     document: Rc<PaneDocument>,
+    /// `document` 줄마다 줄 끝 어휘 상태. 편집 뒤 바뀐 줄부터만 다시 토큰화하는 데 쓴다
+    line_end_states: Vec<LineEndLexState>,
     document_revision: u64,
     save_handler: SaveHandler,
     save_status: SaveStatus,
@@ -102,7 +107,9 @@ impl DiffFileEditor {
     ) -> Self {
         let language = detect_language(file_path);
         let buffer = TextBuffer::new(content);
-        let document = Rc::new(build_document(&buffer, language));
+        let lines = buffer.lines().to_vec();
+        let tokenized = tokenize_lines(&lines, language);
+        let document = Rc::new(PaneDocument::new(lines, tokenized.tokens));
         let fold_ranges = compute_fold_ranges(buffer.lines(), document.indent_size, language);
         let visible_lines = (0..buffer.lines().len()).collect();
         let platform = cx.global::<AppServices>().shortcut_platform;
@@ -112,6 +119,7 @@ impl DiffFileEditor {
             language,
             buffer,
             document,
+            line_end_states: tokenized.line_end_states,
             document_revision: 0,
             save_handler,
             save_status: SaveStatus::Idle,
@@ -195,14 +203,24 @@ impl DiffFileEditor {
             self.rebuild_document(cx);
         }
         self.reveal_cursor_line();
-        self.restart_caret_blink(cx);
+        if self._caret_blink.is_some() {
+            self.restart_caret_blink(cx);
+        }
         self.scroll_caret_into_view();
         cx.notify();
     }
 
     /// 내용이 바뀌었다: 강조·접기 범위·찾기 결과를 새 내용으로 다시 만든다
     fn rebuild_document(&mut self, cx: &mut Context<Self>) {
-        self.document = Rc::new(build_document(&self.buffer, self.language));
+        let lines = self.buffer.lines().to_vec();
+        let previous = PreviousTokenization {
+            lines: &self.document.lines,
+            tokens: &self.document.tokens,
+            line_end_states: &self.line_end_states,
+        };
+        let tokenized = retokenize_lines(&previous, &lines, self.language);
+        self.line_end_states = tokenized.line_end_states;
+        self.document = Rc::new(PaneDocument::new(lines, tokenized.tokens));
         self.document_revision = self.buffer.revision();
         let ranges = compute_fold_ranges(
             self.buffer.lines(),
@@ -276,6 +294,17 @@ impl DiffFileEditor {
             .iter()
             .position(|visible| *visible == line)
             .unwrap_or(0)
+    }
+
+    /// Monaco처럼 포커스가 있고 창이 앞에 있을 때만 깜박인다. 둘이 바뀌면 GPUI가 창을 다시 그리므로 그릴 때 맞춘다
+    fn sync_caret_blink(&mut self, window: &Window, cx: &mut Context<Self>) {
+        let should_blink = self.focus_handle.is_focused(window) && window.is_window_active();
+        if !should_blink {
+            self._caret_blink = None;
+            self.is_caret_visible = true;
+        } else if self._caret_blink.is_none() {
+            self.restart_caret_blink(cx);
+        }
     }
 
     fn restart_caret_blink(&mut self, cx: &mut Context<Self>) {
@@ -392,12 +421,6 @@ impl DiffFileEditor {
     }
 }
 
-fn build_document(buffer: &TextBuffer, language: Language) -> PaneDocument {
-    let lines = buffer.lines().to_vec();
-    let tokens = tokenize_document(&lines, language);
-    PaneDocument::new(lines, tokens)
-}
-
 impl EntityInputHandler for DiffFileEditor {
     fn text_for_range(
         &mut self,
@@ -406,10 +429,9 @@ impl EntityInputHandler for DiffFileEditor {
         _: &mut Window,
         _: &mut Context<Self>,
     ) -> Option<String> {
-        let utf16: Vec<u16> = self.buffer.text().encode_utf16().collect();
-        let range = range.start.min(utf16.len())..range.end.min(utf16.len());
-        *adjusted_range = Some(range.clone());
-        Some(String::from_utf16_lossy(&utf16[range]))
+        let (text, document_range) = self.buffer.text_for_utf16_range(range);
+        *adjusted_range = Some(document_range);
+        Some(text)
     }
 
     fn selected_text_range(
@@ -647,6 +669,7 @@ impl DiffFileEditor {
             .flex_1()
             .min_h_0()
             .overflow_hidden()
+            .key_context(crate::shortcuts::DIFF_FILE_EDITOR_KEY_CONTEXT)
             .track_focus(&self.focus_handle)
             .on_key_down(cx.listener(Self::handle_key_down))
             .on_mouse_down(MouseButton::Left, cx.listener(Self::handle_mouse_down))
@@ -656,11 +679,14 @@ impl DiffFileEditor {
             }))
             .relative()
             .child(surface)
-            .child(self.render_line_targets())
+            .children(
+                cx.has_global::<QaTargetRegistry>()
+                    .then(|| self.render_line_targets()),
+            )
             .children(self.find.as_ref().map(|session| session.widget.clone()))
     }
 
-    /// 재생 드라이버가 코드 줄을 글자로 찾아 누를 수 있게 보이는 줄의 위치를 남긴다
+    /// 재생 드라이버가 코드 줄을 글자로 찾아 누를 수 있게 보이는 줄의 위치를 남긴다. 기록할 QA 레지스트리가 있을 때만 부른다
     fn render_line_targets(&self) -> impl IntoElement {
         let viewport_height = self
             .surface_bounds
@@ -695,6 +721,7 @@ impl DiffFileEditor {
 
 impl Render for DiffFileEditor {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.sync_caret_blink(window, cx);
         let theme = *cx.global::<ThemeTokens>();
         let labels = Translator::new(self.locale, "diffView");
         div()
@@ -749,5 +776,41 @@ mod caret_tests {
         assert!(has_caret(cx));
         cx.deactivate_window();
         assert!(!has_caret(cx));
+    }
+
+    /// 포커스를 잃은 편집기는 깜박임 타이머를 멈춰 0.5초마다 다시 그리지 않는다
+    #[gpui::test]
+    fn the_caret_stops_blinking_once_the_editor_window_is_inactive(cx: &mut TestAppContext) {
+        let launch = LaunchOptions {
+            data_dir: None,
+            initial_route: "/ko".into(),
+            window_size: DEFAULT_WINDOW_SIZE,
+            qa: None,
+        };
+        cx.update(|cx| crate::init_app(&launch, cx).expect("app init"));
+        let save_handler: SaveHandler = Rc::new(|_, _| Task::ready(Ok(())));
+        let (editor, cx) = cx.add_window_view(move |_, cx| {
+            DiffFileEditor::new("text", "a.ts", Locale::Ko, save_handler, cx)
+        });
+        let caret_states = |cx: &mut gpui_kit::VisualTestContext| {
+            let mut states = Vec::new();
+            for _ in 0..3 {
+                cx.executor().advance_clock(CARET_BLINK_INTERVAL);
+                cx.run_until_parked();
+                states.push(editor.read_with(cx, |editor, _| editor.is_caret_visible));
+            }
+            states
+        };
+
+        let focus_handle = cx.update(|_, cx| editor.read(cx).focus_handle.clone());
+        cx.update(|window, cx| {
+            window.activate_window();
+            focus_handle.focus(window, cx);
+        });
+        cx.run_until_parked();
+        assert_eq!(caret_states(cx), [false, true, false]);
+        cx.deactivate_window();
+        assert_eq!(caret_states(cx), [true, true, true]);
+        assert!(editor.read_with(cx, |editor, _| editor._caret_blink.is_none()));
     }
 }

@@ -306,16 +306,106 @@ enum LexState {
 
 /// 문서 전체를 줄별 토큰으로 나눈다. 괄호 깊이는 문서 전체에서 이어 센다(Monaco bracket pair colorization)
 pub fn tokenize_document(lines: &[impl AsRef<str>], language: Language) -> Vec<Vec<Token>> {
+    tokenize_lines(lines, language).tokens
+}
+
+/// 한 줄을 다 읽은 뒤의 어휘 상태. 다음 줄은 이 상태에서 읽기 시작한다
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LineEndLexState {
+    state: LexState,
+    open_brackets: Vec<char>,
+}
+
+impl LineEndLexState {
+    fn document_start() -> Self {
+        Self {
+            state: LexState::Code,
+            open_brackets: Vec::new(),
+        }
+    }
+}
+
+/// 줄별 토큰과 줄 끝 어휘 상태. 편집 뒤 다시 토큰화할 때 바뀌지 않은 줄을 건너뛰는 데 쓴다
+#[derive(Debug, Clone, PartialEq)]
+pub struct TokenizedLines {
+    pub tokens: Vec<Vec<Token>>,
+    pub line_end_states: Vec<LineEndLexState>,
+}
+
+/// 앞서 토큰화한 문서. 줄 글과 그 결과를 함께 넘긴다
+pub struct PreviousTokenization<'a, L: AsRef<str>> {
+    pub lines: &'a [L],
+    pub tokens: &'a [Vec<Token>],
+    pub line_end_states: &'a [LineEndLexState],
+}
+
+pub fn tokenize_lines(lines: &[impl AsRef<str>], language: Language) -> TokenizedLines {
+    let no_previous_lines: &[&str] = &[];
+    let empty = PreviousTokenization {
+        lines: no_previous_lines,
+        tokens: &[],
+        line_end_states: &[],
+    };
+    retokenize_lines(&empty, lines, language)
+}
+
+/// 앞 문서와 같은 앞쪽 줄은 그대로 두고, 달라진 줄부터 다시 읽는다. 달라진 줄을 지난 뒤 줄 끝 어휘 상태가
+/// 앞 문서의 같은 줄과 같아지면 그 뒤 줄의 토큰은 앞 문서 것을 옮긴다. 결과는 처음부터 다시 토큰화한 것과 같다
+pub fn retokenize_lines<L: AsRef<str>>(
+    previous: &PreviousTokenization<'_, L>,
+    lines: &[impl AsRef<str>],
+    language: Language,
+) -> TokenizedLines {
+    let previous_count = previous.lines.len();
+    let unchanged_prefix = lines
+        .iter()
+        .zip(previous.lines)
+        .take_while(|(line, previous_line)| line.as_ref() == previous_line.as_ref())
+        .count();
+    let unchanged_suffix = lines[unchanged_prefix..]
+        .iter()
+        .rev()
+        .zip(previous.lines[unchanged_prefix..].iter().rev())
+        .take_while(|(line, previous_line)| line.as_ref() == previous_line.as_ref())
+        .count();
+    let start = match unchanged_prefix.checked_sub(1) {
+        Some(last_unchanged) => previous.line_end_states[last_unchanged].clone(),
+        None => LineEndLexState::document_start(),
+    };
     let grammar = grammar_for(language);
     let mut lexer = Lexer {
         grammar: &grammar,
-        state: LexState::Code,
-        open_brackets: Vec::new(),
+        state: start.state,
+        open_brackets: start.open_brackets,
     };
-    lines
-        .iter()
-        .map(|line| lexer.tokenize_line(line.as_ref()))
-        .collect()
+    let mut tokenized = TokenizedLines {
+        tokens: previous.tokens[..unchanged_prefix].to_vec(),
+        line_end_states: previous.line_end_states[..unchanged_prefix].to_vec(),
+    };
+    let changed_end = lines.len() - unchanged_suffix;
+    let previous_changed_end = previous_count - unchanged_suffix;
+    let mut index = unchanged_prefix;
+    loop {
+        if index >= changed_end {
+            let previous_index = index - changed_end + previous_changed_end;
+            if lexer.starts_like(previous, previous_index) {
+                tokenized
+                    .tokens
+                    .extend_from_slice(&previous.tokens[previous_index..]);
+                tokenized
+                    .line_end_states
+                    .extend_from_slice(&previous.line_end_states[previous_index..]);
+                break;
+            }
+        }
+        let Some(line) = lines.get(index) else {
+            break;
+        };
+        tokenized.tokens.push(lexer.tokenize_line(line.as_ref()));
+        tokenized.line_end_states.push(lexer.line_end_state());
+        index += 1;
+    }
+    tokenized
 }
 
 struct Lexer<'a> {
@@ -326,6 +416,26 @@ struct Lexer<'a> {
 }
 
 impl Lexer<'_> {
+    /// 지금 상태가 앞 문서 `previous_index`번 줄을 읽기 시작할 때의 상태와 같은지
+    fn starts_like<L: AsRef<str>>(
+        &self,
+        previous: &PreviousTokenization<'_, L>,
+        previous_index: usize,
+    ) -> bool {
+        let previous_start = match previous_index.checked_sub(1) {
+            Some(previous_line) => &previous.line_end_states[previous_line],
+            None => &LineEndLexState::document_start(),
+        };
+        self.state == previous_start.state && self.open_brackets == previous_start.open_brackets
+    }
+
+    fn line_end_state(&self) -> LineEndLexState {
+        LineEndLexState {
+            state: self.state,
+            open_brackets: self.open_brackets.clone(),
+        }
+    }
+
     fn tokenize_line(&mut self, line: &str) -> Vec<Token> {
         let mut tokens = Vec::new();
         let mut offset = 0;
@@ -524,6 +634,113 @@ mod tests {
             .filter(|token| !line[token.range.clone()].trim().is_empty())
             .map(|token| (line[token.range.clone()].trim().to_string(), token.kind))
             .collect()
+    }
+
+    fn retokenized_after_edit(before: &[&str], after: &[&str]) -> TokenizedLines {
+        let previous = tokenize_lines(before, Language::TypeScript);
+        let previous = PreviousTokenization {
+            lines: before,
+            tokens: &previous.tokens,
+            line_end_states: &previous.line_end_states,
+        };
+        retokenize_lines(&previous, after, Language::TypeScript)
+    }
+
+    #[test]
+    fn retokenizing_after_an_edit_matches_tokenizing_from_scratch() {
+        let before = [
+            "const a = (1);",
+            "let s = `x`;",
+            "function f() {",
+            "  return [a];",
+            "}",
+            "const z = \"tail\";",
+        ];
+        let edits: [&[&str]; 7] = [
+            &[
+                "const a = (1);",
+                "/* let s = `x`;",
+                "function f() {",
+                "  return [a];",
+                "}",
+                "const z = \"tail\";",
+            ],
+            &[
+                "const a = (1);",
+                "let s = `x",
+                "function f() {",
+                "  return [a];",
+                "}",
+                "const z = \"tail\";",
+            ],
+            &[
+                "const a = ((1);",
+                "let s = `x`;",
+                "function f() {",
+                "  return [a];",
+                "}",
+                "const z = \"tail\";",
+            ],
+            &[
+                "const a = (1);",
+                "let s = `x`;",
+                "function f() {",
+                "  return [a];",
+                "}",
+                "const z = \"tail\";",
+                "x();",
+            ],
+            &[
+                "const a = (1);",
+                "function f() {",
+                "  return [a];",
+                "}",
+                "const z = \"tail\";",
+            ],
+            &[
+                "const a = (1);",
+                "let s = `x`;",
+                "let t = 2;",
+                "function f() {",
+                "  return [a];",
+                "}",
+                "const z = \"tail\";",
+            ],
+            &[],
+        ];
+        for after in edits {
+            assert_eq!(
+                retokenized_after_edit(&before, after),
+                tokenize_lines(after, Language::TypeScript),
+                "{after:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_edit_that_ends_in_the_same_state_reuses_the_following_lines() {
+        let before = ["let a = 1;", "let b = 2;", "let c = 3;"];
+        let after = ["let a = 1;", "let bb = 2;", "let c = 3;"];
+        let previous = tokenize_lines(&before, Language::TypeScript);
+        let mut stale_tokens = previous.tokens.clone();
+        stale_tokens[2] = Vec::new();
+        let reused = retokenize_lines(
+            &PreviousTokenization {
+                lines: &before,
+                tokens: &stale_tokens,
+                line_end_states: &previous.line_end_states,
+            },
+            &after,
+            Language::TypeScript,
+        );
+        assert!(
+            reused.tokens[2].is_empty(),
+            "셋째 줄은 다시 읽지 않고 옮긴다"
+        );
+        assert_eq!(
+            reused.tokens[1],
+            tokenize_document(&after, Language::TypeScript)[1]
+        );
     }
 
     #[test]

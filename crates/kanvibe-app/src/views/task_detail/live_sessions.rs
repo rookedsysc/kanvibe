@@ -17,7 +17,7 @@ use kanvibe_domain::i18n::Translator;
 use super::TaskDetailView;
 use super::ai_provider_icon::ai_provider_icon;
 use super::session_queries::load_live_sessions;
-use super::tabs::TabCommand;
+use crate::components::terminal_tabs::TabCommand;
 use crate::components::{TailwindText, fade};
 use crate::polled_value::{PollingSubscription, start_polling};
 use crate::qa::options::parse_iso_utc_ms;
@@ -214,7 +214,9 @@ impl TaskDetailView {
         window: &mut gpui_kit::Window,
         cx: &mut Context<Self>,
     ) {
-        self.run_tab_command(TabCommand::Select(window_id), cx);
+        self.terminal_tabs.update(cx, |tabs, cx| {
+            tabs.run_command(TabCommand::Select(window_id), cx)
+        });
         self.focus_terminal(window, cx);
     }
 

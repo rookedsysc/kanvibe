@@ -26,6 +26,7 @@ mod text_menu;
 mod toggle;
 mod transcript;
 mod view;
+mod visible_transcript;
 mod widgets;
 
 pub use attachments::{PickedFile, data_url, mime_type_for};

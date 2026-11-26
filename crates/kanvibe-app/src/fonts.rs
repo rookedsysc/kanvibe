@@ -28,6 +28,13 @@ pub const BUNDLED_FONT_FILES: [&[u8]; 11] = [
     include_bytes!("../assets/fonts/KanVibeDejaVuSansMono-Bold.ttf"),
 ];
 
+/// 터미널 프롬프트 아이콘(Powerline·Nerd Font 사설 영역 글자). TS 터미널은 JetBrainsMono Nerd Font Mono를 웹폰트로 받아 첫 순서에 썼다.
+/// 기호만 든 얼굴이라 'm' 글리프가 없어 GPUI가 대체 순서에서는 빼지만(`SYMBOLS2_FAMILY`와 같다), 텍스트 시스템에 올려 두면
+/// cosmic-text 자체 대체가 앞 얼굴들에 없는 글자를 이 얼굴로 그린다. 이름으로 고르지 않으므로 `KanVibe ` 접두어가 필요 없다.
+/// 다이어그램·문서 미리보기 글꼴 묶음(`BUNDLED_FONT_FILES`)에는 넣지 않아 그쪽 기호 대체는 그대로다
+pub const TERMINAL_ICON_FONT_FILE: &[u8] =
+    include_bytes!("../assets/fonts/SymbolsNerdFontMono-Regular.ttf");
+
 /// `--font-sans`가 기준 환경에서 풀린 Noto Sans
 pub const SANS_FAMILY: &str = "KanVibe Noto Sans";
 /// `--font-mono`·터미널·Monaco가 기준 환경에서 풀린 DejaVu Sans Mono
@@ -56,6 +63,7 @@ const MONO_FALLBACKS: [&str; 3] = [CJK_FAMILY, SYMBOLS_FAMILY, SYMBOLS2_FAMILY];
 pub fn register_bundled_fonts(cx: &App) -> anyhow::Result<()> {
     let font_files = BUNDLED_FONT_FILES
         .iter()
+        .chain([&TERMINAL_ICON_FONT_FILE])
         .map(|bytes| Cow::Borrowed(*bytes))
         .collect();
     cx.text_system().add_fonts(font_files)
@@ -107,6 +115,17 @@ fn font_with_fallbacks(family: &str, fallbacks: &[&str], css_weight: u16) -> Fon
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_terminal_icon_font_is_the_nerd_font_symbols_face() {
+        let mut database = resvg::usvg::fontdb::Database::new();
+        database.load_font_data(TERMINAL_ICON_FONT_FILE.to_vec());
+        let families: Vec<String> = database
+            .faces()
+            .flat_map(|face| face.families.iter().map(|(family, _)| family.clone()))
+            .collect();
+        assert_eq!(families, ["Symbols Nerd Font Mono"]);
+    }
 
     #[test]
     fn medium_weight_uses_the_regular_face_like_chromium() {

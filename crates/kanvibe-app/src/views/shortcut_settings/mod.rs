@@ -20,7 +20,7 @@ use crate::components::scroll_area::scroll_area;
 use crate::components::{TailwindText, fade};
 use crate::services::{AppServices, ServiceResult};
 use crate::shortcuts::{
-    begin_shortcut_capture, end_shortcut_capture, reload_shortcut_bindings,
+    ShortcutState, begin_shortcut_capture, end_shortcut_capture, reload_shortcut_bindings,
     shortcut_event_from_keystroke,
 };
 use crate::theme::{ThemeTokens, radius, spacing, text_scale};
@@ -44,6 +44,8 @@ pub struct ShortcutSettingsView {
     /// 녹화 중인 창. 녹화가 끝나거나 화면이 사라지면 표시를 지운다
     capturing_window: Option<WindowId>,
     _recording_keys: Option<Subscription>,
+    /// 다른 창이 저장한 표를 받는다(TS `useShortcutBindings`). 받지 않으면 옛 표 전체로 덮어써 그 변경을 지운다
+    _saved_bindings: Subscription,
     _requests: Vec<Task<()>>,
 }
 
@@ -57,6 +59,12 @@ impl ShortcutSettingsView {
             scroll_handle: ScrollHandle::new(),
             capturing_window: None,
             _recording_keys: None,
+            _saved_bindings: cx.observe_global::<ShortcutState>(|this, cx| {
+                let saved = &cx.global::<ShortcutState>().bindings;
+                if this.model.sync_saved_bindings(saved) {
+                    cx.notify();
+                }
+            }),
             _requests: Vec::new(),
         };
         view.load_bindings(cx);

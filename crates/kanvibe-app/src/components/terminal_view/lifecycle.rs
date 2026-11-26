@@ -80,6 +80,8 @@ impl TerminalPane {
             Ok(()) => {
                 self.connection = TerminalConnection::Ready;
                 self.closed_reason = None;
+                // 열기를 기다리는 동안 바뀐 크기는 붙기 전이라 버려졌다. 붙은 지금 마지막 크기를 다시 알린다
+                self.reassert_size();
                 cx.emit(TerminalPaneEvent::Connected);
             }
             Err(error) => match error.retry_after_ms {
@@ -140,6 +142,10 @@ impl TerminalPane {
             return;
         }
         self.is_hidden = is_hidden;
+        if is_hidden {
+            // 가려진 터미널은 그려지지 않아 그리기에서 깜박임을 끄지 못한다
+            self.stop_cursor_blink();
+        }
         if is_hidden && self._cooldown_wait.is_some() {
             self.pause_reconnect();
         }

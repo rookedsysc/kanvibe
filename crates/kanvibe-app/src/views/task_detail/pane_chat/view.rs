@@ -14,10 +14,13 @@ use super::composer::ComposerState;
 use super::model_picker::ModelPickerState;
 use super::preferences::PaneChatPreferences;
 use super::prompt_card::PromptCardState;
+use super::render::{OlderPageScrollAnchor, TranscriptFollowInputs};
 use super::session::ChatSession;
 use super::transcript::TranscriptPages;
+use super::visible_transcript::{VisibleTranscript, VisibleTranscriptInputs};
 use crate::components::text_context_menu::OpenTextMenu;
 use crate::qa::perf_markers::{ScreenPaintMarks, mark_screen_phase};
+use crate::render_cache::KeyedRenderCache;
 
 /// 성능 표식의 화면 이름
 pub(super) const PERF_SCREEN: &str = "pane_chat";
@@ -51,6 +54,8 @@ pub struct PaneChatView {
     pub(super) task_title: Option<String>,
     pub(super) session: ChatSession,
     pub(super) transcript: TranscriptPages,
+    pub(super) visible_transcript_cache:
+        KeyedRenderCache<VisibleTranscriptInputs, VisibleTranscript>,
     pub(super) is_visible: bool,
     pub(super) is_window_active: bool,
     pub(super) focus_handle: FocusHandle,
@@ -59,14 +64,20 @@ pub struct PaneChatView {
     pub(super) is_detached: bool,
     /// 휠을 굴린 뒤 다음 그리기에서 따라가기 여부를 다시 정한다
     pub(super) needs_detach_check: bool,
+    /// 마지막으로 바닥 고정을 판단한 대화 내용. 내용이 바뀐 그리기에서만 바닥으로 내린다
+    pub(super) last_transcript_follow_inputs: Option<TranscriptFollowInputs>,
     pub(super) transcript_scroll: ScrollHandle,
+    /// "이전 메시지 더 보기"로 앞쪽에 붙일 페이지를 기다리는 동안의 스크롤 위치
+    pub(super) older_page_scroll_anchor: Option<OlderPageScrollAnchor>,
     /// "현재 CLI 화면" 펼침
     pub(super) is_screen_open: bool,
     pub(super) open_disclosures: HashSet<String>,
+    /// 원문을 복사한 메시지. 한 번 복사하면 `복사됨`으로 남는다
+    pub(super) copied_messages: HashSet<String>,
     /// 작업 중 표시의 경과 초. 작업이 끝나면 지우고 다음 작업에서 0부터 센다
     pub(super) working_seconds: Option<u64>,
     /// 대상이 바뀌면 열린 팝오버·결과 안내를 닫는 기준(TS `targetKey`)
-    target_key: String,
+    pub(super) target_key: String,
     pub(super) composer: ComposerState,
     pub(super) prompt_card: PromptCardState,
     pub(super) model_picker: Option<ModelPickerState>,
@@ -119,15 +130,19 @@ impl PaneChatView {
             task_title: props.task_title,
             session: ChatSession::new(props.task_id, props.pane_id),
             transcript: TranscriptPages::default(),
+            visible_transcript_cache: KeyedRenderCache::default(),
             is_visible: true,
             is_window_active: window.is_window_active(),
             focus_handle: cx.focus_handle(),
             reveal_outcome: None,
             is_detached: false,
             needs_detach_check: false,
+            last_transcript_follow_inputs: None,
             transcript_scroll: ScrollHandle::new(),
+            older_page_scroll_anchor: None,
             is_screen_open: false,
             open_disclosures: HashSet::new(),
+            copied_messages: HashSet::new(),
             working_seconds: None,
             target_key,
             composer,
@@ -317,6 +332,7 @@ impl PaneChatView {
     /// 다른 CLI 대상으로 바뀌면 따라가기·팝오버·결과 안내를 처음 상태로 둔다
     fn reset_for_new_target(&mut self) {
         self.is_detached = false;
+        self.older_page_scroll_anchor = None;
         self.is_first_paint_limited = true;
         self.model_picker = None;
         self.reveal_outcome = None;

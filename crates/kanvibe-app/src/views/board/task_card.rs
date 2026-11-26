@@ -3,12 +3,10 @@
 //! Shift+Enter는 새 창 상세를 연다. 삭제 중·이동 저장 중에는 끌 수 없다.
 
 use std::collections::HashMap;
-use std::sync::Arc;
 
 use gpui_kit::{
-    AnyElement, AppContext, Context, Div, Entity, Image, ImageFormat, InteractiveElement,
-    IntoElement, MouseButton, ParentElement, Rgba, StatefulInteractiveElement, Styled, Window, div,
-    img, px, rgb,
+    AnyElement, AppContext, Context, Div, Entity, InteractiveElement, IntoElement, MouseButton,
+    ParentElement, Rgba, StatefulInteractiveElement, Styled, Window, div, img, px, rgb,
 };
 use kanvibe_domain::i18n::Translator;
 use kanvibe_domain::task::{KanbanTask, TaskPriority};
@@ -27,6 +25,7 @@ use crate::qa::targets::{
 };
 use crate::text_baseline::{TextFamily, baseline_lift};
 use crate::theme::{ColorPair, ThemeTokens, radius, spacing, text_scale};
+use crate::views::task_detail::project_icon::data_url_image;
 
 /// 카드 그리기에 필요한 값
 pub(super) struct TaskCardInput<'a> {
@@ -80,51 +79,6 @@ pub(super) fn parse_project_color(value: &str) -> Rgba {
         Ok(color) if hex.len() == 6 => rgb(color),
         _ => rgb(0x93C5FD),
     }
-}
-
-/// `data:image/...;base64,...` 아이콘을 이미지로 바꾼다
-fn data_url_image(data_url: &str) -> Option<Arc<Image>> {
-    let (header, payload) = data_url.strip_prefix("data:")?.split_once(',')?;
-    let (mime, encoding) = header.split_once(';')?;
-    if encoding != "base64" {
-        return None;
-    }
-    let format = match mime {
-        "image/png" => ImageFormat::Png,
-        "image/jpeg" | "image/jpg" => ImageFormat::Jpeg,
-        "image/gif" => ImageFormat::Gif,
-        "image/webp" => ImageFormat::Webp,
-        "image/svg+xml" => ImageFormat::Svg,
-        _ => return None,
-    };
-    Some(Arc::new(Image::from_bytes(format, decode_base64(payload)?)))
-}
-
-fn decode_base64(text: &str) -> Option<Vec<u8>> {
-    let value_of = |byte: u8| -> Option<u32> {
-        match byte {
-            b'A'..=b'Z' => Some(u32::from(byte - b'A')),
-            b'a'..=b'z' => Some(u32::from(byte - b'a') + 26),
-            b'0'..=b'9' => Some(u32::from(byte - b'0') + 52),
-            b'+' => Some(62),
-            b'/' => Some(63),
-            _ => None,
-        }
-    };
-    let symbols: Vec<u8> = text
-        .bytes()
-        .filter(|byte| !byte.is_ascii_whitespace() && *byte != b'=')
-        .collect();
-    let mut bytes = Vec::with_capacity(symbols.len() * 3 / 4);
-    for chunk in symbols.chunks(4) {
-        let mut buffer = 0u32;
-        for (position, symbol) in chunk.iter().enumerate() {
-            buffer |= value_of(*symbol)? << (18 - 6 * position);
-        }
-        let produced = chunk.len().saturating_sub(1);
-        bytes.extend(buffer.to_be_bytes()[1..1 + produced].iter());
-    }
-    Some(bytes)
 }
 
 /// `ProjectIcon`: GitHub 아이콘이 있으면 그 이미지, 없으면 프로젝트 색 이니셜(14px)
@@ -851,14 +805,6 @@ impl<E: Styled> BaseProjectPadding for E {}
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn base64_data_urls_decode_to_the_original_bytes() {
-        assert_eq!(decode_base64("aGVsbG8=").unwrap(), b"hello");
-        assert_eq!(decode_base64("aGk=").unwrap(), b"hi");
-        assert!(data_url_image("data:image/png;base64,aGk=").is_some());
-        assert!(data_url_image("data:text/plain,hi").is_none());
-    }
 
     #[test]
     fn project_colors_fall_back_to_the_default_blue() {

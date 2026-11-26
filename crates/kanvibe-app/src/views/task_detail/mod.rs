@@ -22,22 +22,23 @@ mod hooks_status;
 mod icons;
 pub mod layout_state;
 mod live_sessions;
-mod load_states;
+pub(crate) mod load_states;
 mod message_content;
 mod overview;
 pub mod pane_chat;
 mod panel;
-mod project_icon;
+pub(crate) mod project_icon;
 mod refresh;
 mod session_queries;
 mod status_move;
-mod tab_bar;
-mod tab_close;
-mod tabs;
-mod usage_cards;
+mod tab_shortcuts;
+pub(crate) mod usage_cards;
 mod usage_panel;
 mod window_activation;
 
+pub(crate) use dock_commands::show_alert;
+
+use std::rc::Rc;
 use std::time::Duration;
 
 use gpui_kit::{
@@ -49,6 +50,9 @@ use kanvibe_domain::task::SessionType;
 
 use crate::components::notification_center::{NotificationCenterButton, NotificationPanelClosed};
 use crate::components::spinner::is_spinner_animated;
+use crate::components::terminal_tabs::{
+    TerminalTabsController, TerminalTabsEvent, render_terminal_loader,
+};
 use crate::components::terminal_view::{TerminalPane, TerminalPaneEvent, TerminalTarget};
 use crate::components::{TailwindText, box_shadows};
 use crate::shortcuts::{
@@ -70,10 +74,13 @@ const MAIN_LEFT_MARGIN: f32 = 56.0;
 /// 첫 조회 상태(TS `state === undefined | null | 값`과 `useRouteLoadStatus`)
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DetailLoad {
-    Loading { is_delayed: bool },
+    Loading {
+        is_delayed: bool,
+    },
     Failed(String),
     NotFound,
-    Loaded(Box<TaskDetailSnapshot>),
+    /// 터미널 출력마다 돌 수 있는 render가 스냅샷을 깊이 복제하지 않도록 공유한다. 고칠 때는 `Rc::make_mut`을 쓴다
+    Loaded(Rc<TaskDetailSnapshot>),
 }
 
 pub struct TaskDetailView {
@@ -89,24 +96,18 @@ pub struct TaskDetailView {
     hidden_terminals: Vec<Entity<TerminalPane>>,
     /// 숨긴 탭 터미널의 pane 채팅 층. TS는 탭마다 `TerminalPaneChatLayer`를 따로 두고 탭을 바꿔도 내리지 않았다
     hidden_pane_chats: Vec<(TerminalTarget, Entity<pane_chat::PaneChatLayer>)>,
-    terminal_tabs: tabs::TerminalTabsState,
-    /// 이름을 바꾸는 중인 탭과 입력
-    tab_rename: Option<(String, Entity<gpui_kit::base::input::InputState>)>,
+    /// 터미널 탭 상태와 탭 바. 세션이 바뀌면 목록을 비우고 다시 읽는다
+    terminal_tabs: Entity<TerminalTabsController>,
+    _terminal_tabs_events: [gpui_kit::Subscription; 2],
     focus_handle: FocusHandle,
     translator: Translator,
     common: Translator,
     _load_task: Option<Task<()>>,
     _delay_task: Option<Task<()>>,
-    _tab_poll: Option<Task<()>>,
-    _tab_refresh: Option<Task<()>>,
-    is_tab_refresh_queued: bool,
-    _tab_command: Option<Task<()>>,
-    _tab_rename_events: Option<gpui_kit::Subscription>,
-    _terminal_events: Option<gpui_kit::Subscription>,
+    /// 만든 터미널마다 하나씩 둔다. 숨긴 탭의 셸이 끝나도 탭 목록을 다시 읽어야 해서 활성 터미널만 구독하지 않는다
+    _terminal_events: Vec<gpui_kit::Subscription>,
     /// 터미널 칸 크기가 바뀌면 전환 버튼 자리도 다시 그린다
     _terminal_redraw: Option<gpui_kit::Subscription>,
-    is_closing_tab: bool,
-    _tab_close: Option<Task<()>>,
     status_move: status_move::StatusMoveState,
     description_edit: Option<description_edit::DescriptionEdit>,
     _description_save: Option<Task<()>>,
@@ -137,8 +138,6 @@ pub struct TaskDetailView {
     is_window_active: bool,
     /// 지금 창 활성 구간에서 이 작업의 알림을 이미 읽음 처리했는지
     has_marked_notifications_read: bool,
-    /// 터미널이 보이고 창이 활성이라 탭 목록을 주기적으로 읽는 중인지
-    should_poll_tabs: bool,
     /// AI 대화 기록 화면. 메인 영역을 기록으로 바꿨을 때만 있다
     chat_view: Option<Entity<chat_view::InlineAiChatView>>,
     /// AI 사용량 패널. 사용량 패널이 보이는 동안만 있다
@@ -171,6 +170,13 @@ impl TaskDetailView {
                 cx.notify();
             },
         );
+        let terminal_tabs = cx.new(|_| TerminalTabsController::new(task_id.clone(), locale));
+        let terminal_tabs_events = [
+            cx.observe(&terminal_tabs, |_, _, cx| cx.notify()),
+            cx.subscribe(&terminal_tabs, |view, _, event, cx| {
+                view.handle_terminal_tabs_event(*event, cx)
+            }),
+        ];
         let mut view = Self {
             screen,
             task_id,
@@ -181,22 +187,15 @@ impl TaskDetailView {
             terminal: None,
             hidden_terminals: Vec::new(),
             hidden_pane_chats: Vec::new(),
-            terminal_tabs: tabs::TerminalTabsState::default(),
-            tab_rename: None,
+            terminal_tabs,
+            _terminal_tabs_events: terminal_tabs_events,
             focus_handle: cx.focus_handle(),
             translator: Translator::new(locale, "taskDetail"),
             common: Translator::new(locale, "common"),
             _load_task: None,
             _delay_task: None,
-            _tab_poll: None,
-            _tab_refresh: None,
-            is_tab_refresh_queued: false,
-            _tab_command: None,
-            _tab_rename_events: None,
-            _terminal_events: None,
+            _terminal_events: Vec::new(),
             _terminal_redraw: None,
-            is_closing_tab: false,
-            _tab_close: None,
             status_move: status_move::StatusMoveState::default(),
             description_edit: None,
             _description_save: None,
@@ -219,7 +218,6 @@ impl TaskDetailView {
             window_handle: None,
             is_window_active: false,
             has_marked_notifications_read: false,
-            should_poll_tabs: false,
             chat_view: None,
             usage_panel: None,
             hooks_card: None,
@@ -293,17 +291,16 @@ impl TaskDetailView {
             session_key != previous_key || !matches!(self.load, DetailLoad::Loaded(_));
         let is_multiplexer = snapshot.task.session_type != Some(SessionType::Terminal);
         let is_remote = snapshot.is_remote();
-        self.load = DetailLoad::Loaded(Box::new(snapshot));
+        self.load = DetailLoad::Loaded(Rc::new(snapshot));
         if is_session_changed {
             self.terminal = None;
             self.clear_hidden_terminals();
-            self.terminal_tabs = tabs::TerminalTabsState::default();
-            // 이전 세션의 늦은 탭 목록 응답이 새 세션 목록을 덮지 않게 버린다
-            self._tab_refresh = None;
-            self.is_tab_refresh_queued = false;
-            if session_key.is_some() {
-                self.start_tab_polling(is_multiplexer, is_remote, cx);
-            }
+            self.terminal_tabs.update(cx, |tabs, cx| {
+                tabs.reset_for_new_session();
+                if session_key.is_some() {
+                    tabs.start_polling(is_multiplexer, is_remote, cx);
+                }
+            });
         }
         self.sync_terminal_tab_pane(cx);
         self.mark_task_notifications_read(cx);
@@ -325,7 +322,7 @@ impl TaskDetailView {
             return;
         };
         let tab_id = match snapshot.task.session_type {
-            Some(SessionType::Terminal) => match self.terminal_tabs.active_tab() {
+            Some(SessionType::Terminal) => match self.terminal_tabs.read(cx).state().active_tab() {
                 Some(tab) => Some(tab.id.clone()),
                 None => {
                     self.terminal = None;
@@ -380,16 +377,60 @@ impl TaskDetailView {
             Some(terminal) => terminal,
             None => {
                 let translator = self.translator;
-                cx.new(|cx| TerminalPane::new(target, translator, cx))
+                let terminal = cx.new(|cx| TerminalPane::new(target, translator, cx));
+                self.subscribe_terminal_events(&terminal, cx);
+                terminal
             }
         };
         let is_history = self.layout.main_view == MainView::History;
         terminal.update(cx, |pane, cx| pane.set_hidden(is_history, cx));
         self._terminal_redraw = Some(cx.observe(&terminal, |_, _, cx| cx.notify()));
-        self._terminal_events = Some(cx.subscribe(&terminal, |view, _, event, cx| match event {
-            TerminalPaneEvent::Connected => view.refresh_tabs(cx),
-        }));
         self.terminal = Some(terminal);
+    }
+
+    fn subscribe_terminal_events(
+        &mut self,
+        terminal: &Entity<TerminalPane>,
+        cx: &mut Context<Self>,
+    ) {
+        let subscription = cx.subscribe(terminal, |view, _, event, cx| match event {
+            TerminalPaneEvent::Connected => view.refresh_tabs(cx),
+            TerminalPaneEvent::Closed => view.refresh_tabs_after_shell_exit(cx),
+        });
+        self._terminal_events.push(subscription);
+    }
+
+    /// terminal 세션은 탭 목록을 주기 조회하지 않아, 셸이 끝나 지워진 탭이 탭 바에 남지 않게 닫힘 때 다시 읽는다
+    /// (TS `useTerminalTabs`의 `onTerminalClose`). 멀티플렉서 세션은 주기 조회가 맡는다
+    fn refresh_tabs_after_shell_exit(&mut self, cx: &mut Context<Self>) {
+        let is_terminal_session = matches!(
+            &self.load,
+            DetailLoad::Loaded(snapshot) if snapshot.task.session_type == Some(SessionType::Terminal)
+        );
+        if is_terminal_session {
+            self.refresh_tabs(cx);
+        }
+    }
+
+    fn refresh_tabs(&mut self, cx: &mut Context<Self>) {
+        self.terminal_tabs.update(cx, |tabs, cx| tabs.refresh(cx));
+    }
+
+    /// 탭 목록을 새로 읽으면 터미널 뷰를 활성 탭에 맞추고, 이름 바꾸기가 끝나면 입력 포커스를 터미널로 돌리고,
+    /// 마지막 탭을 닫으면 창을 닫는다
+    fn handle_terminal_tabs_event(&mut self, event: TerminalTabsEvent, cx: &mut Context<Self>) {
+        match event {
+            TerminalTabsEvent::TabsRead => self.sync_terminal_tab_pane(cx),
+            TerminalTabsEvent::RenameEnded => {
+                self.should_refocus_terminal = true;
+                cx.notify();
+            }
+            TerminalTabsEvent::WindowCloseRequested => {
+                if let Some(window_handle) = self.window_handle {
+                    let _ = window_handle.update(cx, |_, window, _| window.remove_window());
+                }
+            }
+        }
     }
 
     /// 목록에서 사라진 탭과 다른 작업·세션의 숨긴 터미널을 닫는다
@@ -402,7 +443,7 @@ impl TaskDetailView {
             self.clear_hidden_terminals();
             return;
         };
-        let tabs = &self.terminal_tabs.tabs;
+        let tabs = &self.terminal_tabs.read(cx).state().tabs;
         let is_kept = |target: &TerminalTarget| {
             target.task_id == active.task_id
                 && target.tab_id.as_deref().is_some_and(|tab_id| {
@@ -417,6 +458,9 @@ impl TaskDetailView {
     fn clear_hidden_terminals(&mut self) {
         self.hidden_terminals.clear();
         self.hidden_pane_chats.clear();
+        if self.terminal.is_none() {
+            self._terminal_events.clear();
+        }
     }
 
     /// 메인 영역이 채팅 기록이면 활성 터미널도 숨긴다. 연결은 그대로 두고 입력 포커스·재연결 예약만 멈춘다
@@ -609,7 +653,7 @@ impl Render for TaskDetailView {
             .is_some_and(|terminal| terminal.read(cx).focus_handle(cx).is_focused(window));
         let is_loaded = matches!(self.load, DetailLoad::Loaded(_));
         // 방금 연 입력란(탭 이름 바꾸기·설명 편집·새 작업 모달)은 아직 그려지지 않아 화면 안 포커스로 잡히지 않으므로 빼앗지 않는다
-        let has_pending_input = self.tab_rename.is_some()
+        let has_pending_input = self.terminal_tabs.read(cx).is_renaming()
             || self.description_edit.is_some()
             || self.create_task.is_some()
             || self.done_confirm.is_some();
@@ -675,9 +719,7 @@ impl Render for TaskDetailView {
                     if event.keystroke.key != "escape" {
                         return;
                     }
-                    if view.cancel_tab_rename(window, cx)
-                        || view.cancel_description_edit(window, cx)
-                    {
+                    if view.cancel_description_edit(window, cx) {
                         cx.stop_propagation();
                     } else if view.layout.visible_panel(view.has_task()).is_some() {
                         view.close_panel(window, cx);
@@ -697,9 +739,10 @@ impl TaskDetailView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let Some(snapshot) = self.snapshot().cloned() else {
+        let DetailLoad::Loaded(snapshot) = &self.load else {
             return div().into_any_element();
         };
+        let snapshot = Rc::clone(snapshot);
         let visible_panel = self.layout.visible_panel(true);
         if let Some(chat_view) = self.chat_view.as_ref() {
             chat_view.update(cx, |view, _| {
@@ -825,8 +868,8 @@ impl TaskDetailView {
         snapshot: &TaskDetailSnapshot,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        if !self.terminal_tabs.tabs.is_empty() {
-            return self.render_tab_bar(theme, cx);
+        if !self.terminal_tabs.read(cx).state().tabs.is_empty() {
+            return self.terminal_tabs.clone().into_any_element();
         }
         let name = snapshot
             .task
@@ -867,13 +910,7 @@ impl TaskDetailView {
                     .children(self.pane_chat.clone())
                     .into_any_element()
             }
-            None => load_states::render_terminal_loader(
-                theme,
-                &self.translator,
-                &self.common,
-                &self.terminal_tabs,
-                cx,
-            ),
+            None => render_terminal_loader(&self.terminal_tabs, theme, cx),
         }
     }
 }

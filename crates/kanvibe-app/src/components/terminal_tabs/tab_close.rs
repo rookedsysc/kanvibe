@@ -1,85 +1,32 @@
-//! 탭 닫기와 탭 단축키(TS `closeTerminalTabOrWindow`·`runTerminalTabCommand`).
-//! 닫기 전에 그 탭에서 도는 프로세스를 확인받고, 마지막 탭이라 창까지 닫아야 하면 창을 닫는다.
+//! 탭 닫기(TS `closeTerminalTabOrWindow`). 닫기 전에 그 탭에서 도는 프로세스를 확인받고,
+//! 마지막 탭이라 창까지 닫아야 하면 화면에 `TerminalTabsEvent::WindowCloseRequested`로 알린다.
 
 use std::sync::Arc;
 
 use gpui_kit::{App, AppContext, Context, Task, Window};
+use kanvibe_domain::platform::ShortcutPlatform;
 use kanvibe_domain::shortcuts::bindings::ShortcutCommandId;
-use kanvibe_domain::terminal_tabs::TerminalTabShortcutCommand;
 use kanvibe_runtime::DesktopRuntime;
 use kanvibe_terminal::terminal_tab_service::TerminalTabClosePreview;
 use serde_json::Value;
 
-use super::TaskDetailView;
-use super::data::desktop_runtime;
-use super::dock_commands::show_alert;
-use super::layout_state::MainView;
 use super::tab_bar::tab_close_confirm_message;
-use super::tabs::TabCommand;
+use super::{TerminalTabsController, TerminalTabsEvent, desktop_runtime};
 use crate::qa::faults::FaultOutcome;
 use crate::qa::prompts::confirm_action;
 use crate::services::{AppServices, apply_fault};
 use crate::shortcuts::ShortcutState;
+use crate::views::task_detail::show_alert;
 
 /// TS IPC `terminalTabs.getTerminalTabCloseInfo`
 const CLOSE_PREVIEW_SERVICE: &str = "terminalTabs.getTerminalTabCloseInfo";
 /// TS IPC `terminalTabs.closeTerminalTab`
 const CLOSE_TAB_SERVICE: &str = "terminalTabs.closeTerminalTab";
 
-impl TaskDetailView {
-    /// 터미널이 보이지 않으면 탭 닫기는 창 닫기다(일반 앱처럼). 그 밖의 탭 명령은 터미널이 보일 때만 한다
-    pub(super) fn run_terminal_tab_shortcut(
-        &mut self,
-        command: TerminalTabShortcutCommand,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let is_terminal_visible = self
-            .snapshot()
-            .is_some_and(|snapshot| snapshot.has_terminal())
-            && self.layout.main_view == MainView::Terminal;
-        if command == TerminalTabShortcutCommand::CloseTab && !is_terminal_visible {
-            window.remove_window();
-            return;
-        }
-        if !is_terminal_visible {
-            return;
-        }
-        let target = match command {
-            TerminalTabShortcutCommand::NewTab => Some(TabCommand::Create),
-            TerminalTabShortcutCommand::CloseTab => {
-                if let Some(tab_id) = self.terminal_tabs.active_tab().map(|tab| tab.id.clone()) {
-                    self.close_terminal_tab(&tab_id, window, cx);
-                }
-                None
-            }
-            TerminalTabShortcutCommand::PreviousTab => self
-                .terminal_tabs
-                .relative_tab_id(-1)
-                .map(TabCommand::Select),
-            TerminalTabShortcutCommand::NextTab => self
-                .terminal_tabs
-                .relative_tab_id(1)
-                .map(TabCommand::Select),
-            TerminalTabShortcutCommand::GoToTab { position } => self
-                .terminal_tabs
-                .tab_id_at(usize::from(position).saturating_sub(1))
-                .map(TabCommand::Select),
-            TerminalTabShortcutCommand::CloseWindow => None,
-        };
-        if let Some(command) = target {
-            self.run_tab_command(command, cx);
-        }
-    }
-
+impl TerminalTabsController {
     /// 닫을지 묻고 닫는다. 확인 중이거나 닫는 중이면 겹쳐 시작하지 않는다.
     /// 화면이 사라지면 진행 중인 확인도 함께 버려 묻지도 닫지도 않는다
-    pub(super) fn close_terminal_tab(
-        &mut self,
-        tab_id: &str,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
+    pub fn close_tab(&mut self, tab_id: &str, window: &mut Window, cx: &mut Context<Self>) {
         if self.is_closing_tab {
             return;
         }
@@ -92,7 +39,7 @@ impl TaskDetailView {
         let translator = self.translator;
         let task_id = self.task_id.clone();
         let tab_id = tab_id.to_string();
-        self._tab_close = Some(cx.spawn_in(window, async move |this, cx| {
+        self._close = Some(cx.spawn_in(window, async move |this, cx| {
             let outcome = async {
                 let preview = Some(preview.await).filter(|preview| preview.is_ok)?;
                 if preview.should_close_window {
@@ -116,12 +63,13 @@ impl TaskDetailView {
                 close.await
             }
             .await;
-            let _ = this.update_in(cx, |view, window, cx| {
-                view.finish_tab_close(outcome, window, cx)
+            let _ = this.update_in(cx, |tabs, window, cx| {
+                tabs.finish_tab_close(outcome, window, cx)
             });
         }));
     }
 
+    /// 창까지 닫아야 하면 화면에 맡기고, 묻고 그만뒀거나 닫았으면 목록을 다시 읽고, 확인·닫기에 실패하면 알린다
     fn finish_tab_close(
         &mut self,
         outcome: Option<bool>,
@@ -130,8 +78,8 @@ impl TaskDetailView {
     ) {
         self.is_closing_tab = false;
         match outcome {
-            Some(true) => window.remove_window(),
-            Some(false) => self.refresh_tabs(cx),
+            Some(true) => cx.emit(TerminalTabsEvent::WindowCloseRequested),
+            Some(false) => self.refresh(cx),
             None => show_alert(
                 &self.translator.translate("terminalTabCloseCheckFailed"),
                 window,
@@ -142,7 +90,7 @@ impl TaskDetailView {
 }
 
 /// 확인 문구에 넣을 창 닫기 단축키(사용자가 바꾼 조합)와 표기 플랫폼
-fn close_window_shortcut(cx: &App) -> (String, kanvibe_domain::platform::ShortcutPlatform) {
+fn close_window_shortcut(cx: &App) -> (String, ShortcutPlatform) {
     let shortcut_state = cx.global::<ShortcutState>();
     let shortcut = shortcut_state
         .bindings

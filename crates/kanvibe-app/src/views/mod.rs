@@ -41,6 +41,11 @@ impl WindowNavigator {
         Self { app_window }
     }
 
+    /// 이 창 루트의 엔티티 ID. 창 ID를 아직 모르는 화면이 창마다 따로 기억할 때 키로 쓴다
+    pub fn app_window_id(&self) -> gpui_kit::EntityId {
+        self.app_window.entity_id()
+    }
+
     /// 앱 안 경로로 이동한다(`router.push`)
     pub fn navigate(&self, href: &str, cx: &mut App) {
         let _ = self

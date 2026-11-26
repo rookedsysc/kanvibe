@@ -4,6 +4,7 @@
 //! `None`이면 터미널이 이 키를 쓰지 않는다는 뜻이고, 글자 키라면 입력기 경로가 이어서 처리한다.
 
 use gpui_kit::Keystroke;
+use kanvibe_domain::platform::ShortcutPlatform;
 
 /// 방향키·Home·End가 `ESC O x`(DECCKM)로 나가는지
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -23,13 +24,21 @@ fn has_modifier(keystroke: &Keystroke) -> bool {
 
 /// 키 하나를 PTY에 보낼 바이트로 바꾼다. macOS Command 조합은 앱 명령이라 보내지 않는다
 pub fn encode_keystroke(keystroke: &Keystroke, modes: KeyEncodingModes) -> Option<String> {
+    encode_keystroke_on_platform(keystroke, modes, ShortcutPlatform::current())
+}
+
+fn encode_keystroke_on_platform(
+    keystroke: &Keystroke,
+    modes: KeyEncodingModes,
+    platform: ShortcutPlatform,
+) -> Option<String> {
     if keystroke.modifiers.platform {
         return None;
     }
     if let Some(sequence) = encode_named_key(keystroke, modes) {
         return Some(sequence);
     }
-    encode_modified_character(keystroke)
+    encode_modified_character(keystroke, platform)
 }
 
 fn encode_named_key(keystroke: &Keystroke, modes: KeyEncodingModes) -> Option<String> {
@@ -100,10 +109,16 @@ fn function_key(key: &str, keystroke: &Keystroke) -> Option<String> {
     Some(tilde_key(code, keystroke))
 }
 
-/// Ctrl·Alt와 함께 누른 글자 키. 수정자가 없는 글자는 입력기 경로로 넘긴다
-fn encode_modified_character(keystroke: &Keystroke) -> Option<String> {
+/// Ctrl·Alt와 함께 누른 글자 키. 수정자가 없는 글자는 입력기 경로로 넘긴다.
+/// macOS Option은 xterm.js 기본값(`macOptionIsMeta: false`)처럼 메타가 아니라 `@`·`[` 같은 글자를 만드는 키라서,
+/// Ctrl 없이 Option만 누른 글자도 입력기 경로가 조합된 글자를 그대로 보내게 넘긴다
+fn encode_modified_character(keystroke: &Keystroke, platform: ShortcutPlatform) -> Option<String> {
     let modifiers = &keystroke.modifiers;
     if !modifiers.control && !modifiers.alt {
+        return None;
+    }
+    let is_mac_option_composition = platform == ShortcutPlatform::Mac && !modifiers.control;
+    if is_mac_option_composition {
         return None;
     }
     let mut characters = keystroke.key.chars();
@@ -147,6 +162,21 @@ fn shifted_character(key: char, is_shift: bool) -> String {
     }
 }
 
+/// Shift+PageUp·PageDown은 PTY로 보내지 않고 스크롤백 보기를 한 화면(`rows - 1`줄) 넘긴다(xterm.js `PAGE_UP`·`PAGE_DOWN`).
+/// 양수가 위(지난 출력) 쪽이다
+pub fn page_scroll_lines(keystroke: &Keystroke, rows: u16) -> Option<i32> {
+    let modifiers = &keystroke.modifiers;
+    if !modifiers.shift || modifiers.platform {
+        return None;
+    }
+    let page = i32::from(rows.saturating_sub(1));
+    match keystroke.key.as_str() {
+        "pageup" => Some(page),
+        "pagedown" => Some(-page),
+        _ => None,
+    }
+}
+
 /// 붙여넣기. bracketed paste 모드면 표시를 두르고, 줄바꿈은 xterm처럼 CR로 바꾼다
 pub fn encode_paste(text: &str, is_bracketed_paste: bool) -> String {
     let normalized = text.replace("\r\n", "\r").replace('\n', "\r");
@@ -161,10 +191,37 @@ mod tests {
     use super::*;
 
     fn encode(text: &'static str) -> Option<String> {
-        encode_keystroke(
+        encode_keystroke_on_platform(
             &Keystroke::parse(text).unwrap(),
             KeyEncodingModes::default(),
+            ShortcutPlatform::Linux,
         )
+    }
+
+    fn encode_on_mac(text: &'static str) -> Option<String> {
+        encode_keystroke_on_platform(
+            &Keystroke::parse(text).unwrap(),
+            KeyEncodingModes::default(),
+            ShortcutPlatform::Mac,
+        )
+    }
+
+    #[test]
+    fn mac_option_characters_are_left_to_the_text_input_path() {
+        assert_eq!(encode_on_mac("alt-l"), None);
+        assert_eq!(encode_on_mac("alt-shift-7"), None);
+    }
+
+    #[test]
+    fn mac_option_keeps_named_key_and_control_sequences() {
+        assert_eq!(encode_on_mac("alt-left").as_deref(), Some("\x1b[1;3D"));
+        assert_eq!(encode_on_mac("alt-enter").as_deref(), Some("\x1b\r"));
+        assert_eq!(encode_on_mac("ctrl-alt-c").as_deref(), Some("\x1b\x03"));
+    }
+
+    #[test]
+    fn linux_alt_characters_get_the_meta_prefix() {
+        assert_eq!(encode("alt-l").as_deref(), Some("\x1bl"));
     }
 
     #[test]
@@ -201,6 +258,17 @@ mod tests {
             encode_keystroke(&Keystroke::parse("up").unwrap(), application).as_deref(),
             Some("\x1bOA")
         );
+    }
+
+    #[test]
+    fn shift_page_keys_scroll_the_view_by_a_screen_instead_of_reaching_the_pty() {
+        let page_scroll =
+            |text: &'static str| page_scroll_lines(&Keystroke::parse(text).unwrap(), 24);
+        assert_eq!(page_scroll("shift-pageup"), Some(23));
+        assert_eq!(page_scroll("shift-pagedown"), Some(-23));
+        assert_eq!(page_scroll("pageup"), None);
+        assert_eq!(page_scroll("ctrl-pageup"), None);
+        assert_eq!(page_scroll("shift-up"), None);
     }
 
     #[test]

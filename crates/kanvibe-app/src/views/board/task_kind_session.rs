@@ -83,11 +83,12 @@ impl BoardView {
             .try_global::<TaskKindFilterSessions>()
             .and_then(|sessions| sessions.0.get(&window_id).copied());
         let entry = resolve_task_kind_entry(&search, raw_value, remembered);
-        self.filters.task_kind = entry.filter;
+        self.filters.get_mut().task_kind = entry.filter;
         self.remember_task_kind(entry.remembered, cx);
         if let Some(search) = entry.replaced_search {
             self.replace_board_search(search, cx);
         }
+        self.restore_project_filter_session(window_id, cx);
     }
 
     /// 필터를 바꾸면 쿼리와 창 기억도 바꾼다(TS `setTaskKindFilter`)
@@ -108,7 +109,7 @@ impl BoardView {
         };
     }
 
-    fn replace_board_search(&mut self, search: String, cx: &mut Context<Self>) {
+    pub(super) fn replace_board_search(&mut self, search: String, cx: &mut Context<Self>) {
         let href = if search.is_empty() {
             "/".to_string()
         } else {

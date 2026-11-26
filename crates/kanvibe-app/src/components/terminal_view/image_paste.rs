@@ -90,17 +90,25 @@ impl TerminalPane {
     ) {
         match outcome {
             ImagePasteOutcome::Pasted(remote_path) => self.write_input(&remote_path),
+            // 거절 사유는 세션을 끝내지 않으므로 연결 종료 띠가 아니라 닫을 수 있는 실패 알림으로 보인다.
+            // 같은 이미지를 다시 보내도 같은 이유로 거절되므로 다시 보내기는 두지 않는다
             ImagePasteOutcome::Rejected(reason) => {
-                self.closed_reason = Some(match reason.is_empty() {
+                let reason = match reason.is_empty() {
                     true => IMAGE_TRANSFER_FAILED.to_string(),
                     false => reason,
-                });
+                };
+                self.push_image_toast(
+                    ToastKind::Failure,
+                    "imagePasteFailed",
+                    Some((reason, None)),
+                    cx,
+                );
             }
             ImagePasteOutcome::RequestFailed(reason) => {
                 self.push_image_toast(
                     ToastKind::Failure,
                     "imagePasteFailed",
-                    Some((reason, image_data_url)),
+                    Some((reason, Some(image_data_url))),
                     cx,
                 );
             }
@@ -111,16 +119,16 @@ impl TerminalPane {
         &mut self,
         kind: ToastKind,
         message_key: &str,
-        failure: Option<(String, String)>,
+        failure: Option<(String, Option<String>)>,
         cx: &mut Context<Self>,
     ) -> u64 {
         let id = self.next_toast_id;
         self.next_toast_id += 1;
         let (message, retry_image_data_url) = match failure {
-            Some((reason, image)) => (
+            Some((reason, retry_image)) => (
                 self.translator
                     .translate_with(message_key, &[("reason", &reason)]),
-                Some(image),
+                retry_image,
             ),
             None => (self.translator.translate(message_key), None),
         };

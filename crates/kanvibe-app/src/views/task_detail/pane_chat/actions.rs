@@ -7,6 +7,7 @@ use kanvibe_domain::pane_chat::PaneChatPromptAnswer;
 
 use super::client::{OutgoingMessage, PaneChatResult};
 use super::model_picker::ModelPickerState;
+use super::render::OlderPageScrollAnchor;
 use super::session::PromptError;
 use super::view::PaneChatView;
 
@@ -332,6 +333,12 @@ impl PaneChatView {
         let Some(key) = self.transcript.begin_loading(&snapshot) else {
             return;
         };
+        // TS처럼 누른 순간의 위치를 남기고 따라가기를 멈춰, 앞쪽에 붙은 페이지 때문에 바닥으로 내려가지 않게 한다
+        self.older_page_scroll_anchor = Some(OlderPageScrollAnchor::new(
+            -f32::from(self.transcript_scroll.offset().y),
+            f32::from(self.transcript_scroll.max_offset().y),
+        ));
+        self.is_detached = true;
         let request = self
             .client
             .get_transcript_page(&snapshot.task_id, &token, &cursor, cx);
@@ -340,6 +347,9 @@ impl PaneChatView {
             let _ = this.update_in(cx, |view, _, cx| {
                 view.transcript
                     .finish_loading(&key, view.session.snapshot(), result);
+                if let Some(anchor) = view.older_page_scroll_anchor.as_mut() {
+                    anchor.mark_page_applied();
+                }
                 cx.notify();
             });
         }));

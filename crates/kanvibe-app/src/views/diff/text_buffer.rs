@@ -10,18 +10,24 @@ use super::typescript_config::{EnterAction, enter_action};
 use super::word_boundary::{next_word_end, previous_word_start, word_range_at};
 
 const DEFAULT_INDENT_WIDTH: usize = 4;
+/// 실행 취소 기록은 문서 전체 사본이라, 개수와 합친 크기 둘 다 넘지 않게 오래된 것부터 버린다
+const MAX_UNDO_SNAPSHOTS: usize = 1000;
+const MAX_UNDO_HISTORY_BYTES: usize = 64 * 1024 * 1024;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Snapshot {
     lines: Vec<String>,
     cursor: TextPoint,
     anchor: TextPoint,
+    /// 줄 글자 바이트 합. 기록 상한을 잴 때 줄을 다시 세지 않으려고 만들 때 한 번 센다
+    byte_size: usize,
 }
 
-/// 마지막 편집이 이어 붙일 수 있는 글자 입력이었는지. 연속 입력은 실행 취소 한 번에 함께 되돌린다
+/// 마지막 편집이 이어 붙일 수 있는 종류였는지. 연속 입력과 연속 지우기는 실행 취소 한 번에 함께 되돌린다
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum EditKind {
     Typing,
+    Deleting,
     Other,
 }
 
@@ -76,13 +82,31 @@ impl TextBuffer {
 
     pub fn selected_text(&self) -> Option<String> {
         let (start, end) = self.selection()?;
+        Some(self.text_between(start, end, self.line_ending))
+    }
+
+    /// 입력기가 묻는 UTF-16 범위의 글과, 문서 안으로 맞춘 범위. 줄바꿈은 `utf16_offset`처럼 한 단위로 센다
+    pub fn text_for_utf16_range(&self, range: Range<usize>) -> (String, Range<usize>) {
+        let (start, end) = ordered(
+            self.point_for_utf16_offset(range.start),
+            self.point_for_utf16_offset(range.end),
+        );
+        let adjusted_range = self.utf16_offset(start)..self.utf16_offset(end);
+        (self.text_between(start, end, "\n"), adjusted_range)
+    }
+
+    fn text_between(&self, start: TextPoint, end: TextPoint, line_separator: &str) -> String {
         if start.line == end.line {
-            return Some(self.lines[start.line][start.column..end.column].to_string());
+            return self.lines[start.line][start.column..end.column].to_string();
         }
-        let mut parts = vec![self.lines[start.line][start.column..].to_string()];
-        parts.extend(self.lines[start.line + 1..end.line].iter().cloned());
-        parts.push(self.lines[end.line][..end.column].to_string());
-        Some(parts.join(self.line_ending))
+        let mut parts = vec![&self.lines[start.line][start.column..]];
+        parts.extend(
+            self.lines[start.line + 1..end.line]
+                .iter()
+                .map(String::as_str),
+        );
+        parts.push(&self.lines[end.line][..end.column]);
+        parts.join(line_separator)
     }
 
     pub fn cursor(&self) -> TextPoint {
@@ -354,28 +378,99 @@ impl TextBuffer {
         self.insert_text(&unit);
     }
 
+    /// Tab(Monaco `TypeOperations.tab`). 여러 줄이나 한 줄 전체를 골랐으면 고른 줄을 들여 쓰고 선택을 남긴다.
+    /// 선택이 없거나 한 줄의 일부만 골랐으면 그 자리에 들여쓰기 한 단위를 넣는다
+    pub fn indent(&mut self) {
+        match self.is_whole_line_selection() {
+            true => self.shift_selected_lines(true),
+            false => self.insert_indent(),
+        }
+    }
+
+    /// Shift+Tab(Monaco 내어쓰기). 선택이 없어도 커서 줄을 한 단계 내어 쓴다
+    pub fn outdent(&mut self) {
+        self.shift_selected_lines(false);
+    }
+
+    fn is_whole_line_selection(&self) -> bool {
+        let Some((start, end)) = self.selection() else {
+            return false;
+        };
+        start.line != end.line || (start.column == 0 && end.column == self.lines[end.line].len())
+    }
+
+    /// 선택이 걸친 줄. 여러 줄 선택이 다음 줄 맨 앞에서 끝나면 그 줄은 빼다(Monaco `ShiftCommand`)
+    fn selected_lines(&self) -> std::ops::RangeInclusive<usize> {
+        let (start, end) = self.selection().unwrap_or((self.cursor, self.cursor));
+        let last_line = match end.line > start.line && end.column == 0 {
+            true => end.line - 1,
+            false => end.line,
+        };
+        start.line..=last_line
+    }
+
+    /// 고른 줄마다 앞 공백을 다음(들여쓰기)·이전(내어쓰기) 들여쓰기 자리로 맞춘다. 여러 줄을 들일 때 빈 줄은 건너뛴다.
+    /// 바뀐 줄이 없으면 실행 취소 기록도 남기지 않는다
+    fn shift_selected_lines(&mut self, is_indenting: bool) {
+        let lines = self.selected_lines();
+        let is_multi_line = lines.start() != lines.end();
+        let indent_width = self.indent_unit.len();
+        let leading_changes: Vec<(usize, isize)> = lines
+            .filter_map(|line| {
+                let text = &self.lines[line];
+                let change = match is_indenting {
+                    true if is_multi_line && text.is_empty() => 0,
+                    true => indent_change(text, indent_width),
+                    false => outdent_change(text, indent_width),
+                };
+                (change != 0).then_some((line, change))
+            })
+            .collect();
+        if leading_changes.is_empty() {
+            return;
+        }
+        self.record_undo(EditKind::Other);
+        for (line, change) in &leading_changes {
+            let text = &mut self.lines[*line];
+            match *change > 0 {
+                true => text.insert_str(0, &" ".repeat(change.unsigned_abs())),
+                false => {
+                    text.drain(..change.unsigned_abs());
+                }
+            }
+        }
+        self.cursor = shifted_point(self.cursor, &leading_changes);
+        self.anchor = shifted_point(self.anchor, &leading_changes);
+        self.preferred_column = None;
+        self.revision += 1;
+    }
+
     pub fn delete_backward(&mut self) {
+        let mut kind = EditKind::Other;
         if self.selection().is_none() {
             let previous = self.step_left(self.cursor);
             if previous == self.cursor {
                 return;
             }
             self.anchor = previous;
+            kind = EditKind::Deleting;
         }
-        self.record_undo(EditKind::Other);
+        self.record_undo(kind);
         self.delete_selection();
         self.finish_edit();
     }
 
     pub fn delete_forward(&mut self) {
+        let mut kind = EditKind::Other;
         if self.selection().is_none() {
             let next = self.step_right(self.cursor);
             if next == self.cursor {
                 return;
             }
             self.anchor = next;
+            kind = EditKind::Deleting;
         }
-        self.record_undo(EditKind::Other);
+        self.record_undo(kind);
         self.delete_selection();
         self.finish_edit();
     }
@@ -489,11 +584,21 @@ impl TextBuffer {
     }
 
     fn record_undo(&mut self, kind: EditKind) {
-        let is_continuing_typing = kind == EditKind::Typing
-            && self.last_edit == Some(EditKind::Typing)
-            && self.selection().is_none();
-        if !is_continuing_typing {
+        // 지우기는 한 글자 선택을 만든 뒤 부르므로, 선택 여부는 글자 입력에서만 본다
+        let is_continuing_group = match kind {
+            EditKind::Typing => {
+                self.last_edit == Some(EditKind::Typing) && self.selection().is_none()
+            }
+            EditKind::Deleting => self.last_edit == Some(EditKind::Deleting),
+            EditKind::Other => false,
+        };
+        if !is_continuing_group {
             self.undo_stack.push(self.snapshot());
+            trim_oldest_snapshots(
+                &mut self.undo_stack,
+                MAX_UNDO_SNAPSHOTS,
+                MAX_UNDO_HISTORY_BYTES,
+            );
         }
         self.redo_stack.clear();
         self.last_edit = Some(kind);
@@ -514,12 +619,14 @@ impl TextBuffer {
         let Some(snapshot) = from.pop() else {
             return false;
         };
-        to.push(Snapshot {
-            lines: self.lines.clone(),
+        let current = Snapshot {
+            byte_size: lines_byte_size(&self.lines),
+            lines: std::mem::replace(&mut self.lines, snapshot.lines),
             cursor: self.cursor,
             anchor: self.anchor,
-        });
-        (self.lines, self.cursor, self.anchor) = (snapshot.lines, snapshot.cursor, snapshot.anchor);
+        };
+        to.push(current);
+        (self.cursor, self.anchor) = (snapshot.cursor, snapshot.anchor);
         self.last_edit = None;
         self.revision += 1;
         true
@@ -530,6 +637,7 @@ impl TextBuffer {
             lines: self.lines.clone(),
             cursor: self.cursor,
             anchor: self.anchor,
+            byte_size: lines_byte_size(&self.lines),
         }
     }
 
@@ -622,6 +730,57 @@ fn byte_index_for_utf16(line: &str, utf16_count: usize) -> usize {
 }
 
 /// 들여쓴 줄 가운데 가장 얕은 공백 수를 들여쓰기 단위로 본다(Monaco `detectIndentation`의 근사)
+/// 앞 공백을 다음 들여쓰기 자리까지 늘릴 바이트 수
+fn indent_change(text: &str, indent_width: usize) -> isize {
+    let leading_spaces = text.len() - text.trim_start_matches(' ').len();
+    (indent_width - leading_spaces % indent_width) as isize
+}
+
+/// 앞 공백을 이전 들여쓰기 자리까지 줄일 바이트 수(음수). 탭으로 시작하면 탭 하나를 뺀다
+fn outdent_change(text: &str, indent_width: usize) -> isize {
+    if text.starts_with('\t') {
+        return -1;
+    }
+    let leading_spaces = text.len() - text.trim_start_matches(' ').len();
+    match leading_spaces {
+        0 => 0,
+        spaces => -((((spaces - 1) % indent_width) + 1) as isize),
+    }
+}
+
+/// 줄 앞 공백이 바뀐 만큼 위치를 옮긴다. 들일 때 줄 맨 앞 위치는 그대로 두어 줄 전체 선택이 새 들여쓰기까지 덮는다
+fn shifted_point(point: TextPoint, leading_changes: &[(usize, isize)]) -> TextPoint {
+    let Some((_, change)) = leading_changes.iter().find(|(line, _)| *line == point.line) else {
+        return point;
+    };
+    let column = match *change > 0 {
+        true if point.column == 0 => 0,
+        true => point.column + change.unsigned_abs(),
+        false => point.column.saturating_sub(change.unsigned_abs()),
+    };
+    TextPoint {
+        line: point.line,
+        column,
+    }
+}
+
+fn lines_byte_size(lines: &[String]) -> usize {
+    lines.iter().map(String::len).sum()
+}
+
+/// 기록이 개수나 합친 크기 상한을 넘으면 가장 오래된 것부터 버린다. 방금 넣은 최신 기록은 남긴다
+fn trim_oldest_snapshots(stack: &mut Vec<Snapshot>, max_count: usize, max_bytes: usize) {
+    let mut total_bytes: usize = stack.iter().map(|snapshot| snapshot.byte_size).sum();
+    let mut dropped_count = 0;
+    while stack.len() - dropped_count > 1
+        && (stack.len() - dropped_count > max_count || total_bytes > max_bytes)
+    {
+        total_bytes -= stack[dropped_count].byte_size;
+        dropped_count += 1;
+    }
+    stack.drain(..dropped_count);
+}
+
 fn detect_indent_width(lines: &[String]) -> usize {
     lines
         .iter()
@@ -696,6 +855,38 @@ mod tests {
     }
 
     #[test]
+    fn tab_on_a_multi_line_selection_indents_each_line_and_keeps_the_selection() {
+        let mut buffer = TextBuffer::new("a\nb\n\nc\nd");
+        buffer.set_cursor(point(0, 0), false);
+        buffer.set_cursor(point(3, 1), true);
+
+        buffer.indent();
+
+        assert_eq!(buffer.text(), "    a\n    b\n\n    c\nd");
+        assert_eq!(
+            buffer.selected_text().as_deref(),
+            Some("    a\n    b\n\n    c")
+        );
+        assert!(buffer.undo());
+        assert_eq!(buffer.text(), "a\nb\n\nc\nd");
+    }
+
+    #[test]
+    fn shift_tab_outdents_the_selected_lines_or_the_cursor_line() {
+        let mut buffer = TextBuffer::new("    a\n      b\nc");
+        buffer.set_cursor(point(0, 0), false);
+        buffer.set_cursor(point(2, 1), true);
+
+        buffer.outdent();
+        assert_eq!(buffer.text(), "a\n    b\nc");
+
+        buffer.set_cursor(point(1, 5), false);
+        buffer.outdent();
+        assert_eq!(buffer.text(), "a\nb\nc");
+        assert_eq!(buffer.cursor(), point(1, 1));
+    }
+
+    #[test]
     fn enter_between_braces_opens_an_indented_line() {
         let mut buffer = TextBuffer::new("  f() {}\n");
         buffer.set_cursor(point(0, 7), false);
@@ -756,6 +947,77 @@ mod tests {
         assert_eq!(buffer.lines()[0], "a");
         assert_eq!(buffer.selected_text().as_deref(), Some("a\r\nb"));
         assert_eq!(buffer.text(), "a\r\nb");
+    }
+
+    #[test]
+    fn held_backspace_is_one_undo_step_that_restores_the_document() {
+        let mut buffer = TextBuffer::new("hello\nworld");
+        buffer.set_cursor(point(1, 5), false);
+
+        for _ in 0..8 {
+            buffer.delete_backward();
+        }
+
+        assert_eq!(buffer.text(), "hel");
+        assert_eq!(buffer.undo_stack.len(), 1);
+        assert!(buffer.undo());
+        assert_eq!(buffer.text(), "hello\nworld");
+    }
+
+    #[test]
+    fn delete_after_moving_the_cursor_starts_a_new_undo_step() {
+        let mut buffer = TextBuffer::new("abcd");
+        buffer.set_cursor(point(0, 4), false);
+        buffer.delete_backward();
+        buffer.set_cursor(point(0, 0), false);
+        buffer.delete_forward();
+
+        assert_eq!(buffer.text(), "bc");
+        assert!(buffer.undo());
+        assert_eq!(buffer.text(), "abc");
+    }
+
+    #[test]
+    fn undo_history_keeps_at_most_the_snapshot_limit_dropping_the_oldest() {
+        let mut buffer = TextBuffer::new("");
+
+        for _ in 0..MAX_UNDO_SNAPSHOTS + 5 {
+            buffer.insert_text("\n");
+        }
+
+        assert_eq!(buffer.undo_stack.len(), MAX_UNDO_SNAPSHOTS);
+        assert_eq!(buffer.undo_stack[0].lines.len(), 6);
+    }
+
+    #[test]
+    fn undo_history_over_the_byte_budget_drops_the_oldest_but_keeps_the_newest() {
+        let snapshot_of = |text: &str| Snapshot {
+            lines: vec![text.to_string()],
+            cursor: point(0, 0),
+            anchor: point(0, 0),
+            byte_size: text.len(),
+        };
+        let mut stack = vec![snapshot_of("aaaa"), snapshot_of("bbbb"), snapshot_of("cc")];
+
+        trim_oldest_snapshots(&mut stack, 10, 6);
+        assert_eq!(stack, vec![snapshot_of("bbbb"), snapshot_of("cc")]);
+
+        trim_oldest_snapshots(&mut stack, 10, 1);
+        assert_eq!(stack, vec![snapshot_of("cc")]);
+    }
+
+    #[test]
+    fn utf16_range_text_counts_a_crlf_line_break_as_one_unit() {
+        let buffer = TextBuffer::new("가a\r\n나b\r\nc");
+        let second_line = buffer.utf16_offset(point(1, 0))..buffer.utf16_offset(point(1, 4));
+
+        let (text, adjusted_range) = buffer.text_for_utf16_range(second_line.clone());
+
+        assert_eq!(text, "나b");
+        assert_eq!(adjusted_range, second_line);
+        let (tail, tail_range) = buffer.text_for_utf16_range(5..100);
+        assert_eq!(tail, "\nc");
+        assert_eq!(tail_range, 5..7);
     }
 
     #[test]

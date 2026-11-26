@@ -15,7 +15,7 @@ use crate::fonts::MONO_FAMILY;
 use crate::qa::targets::{qa_button_layer, qa_text_layer};
 use crate::services::AppServices;
 use crate::theme::{ShadowLayer, ThemeTokens, spacing, text_scale};
-use crate::views::board::services::{BOARD_VIEW_MODE_KEY, BoardViewMode};
+use crate::views::board::services::{BOARD_VIEW_MODE_KEY, BoardViewMode, remember_board_view_mode};
 use crate::views::board::text_field::TextFieldEvent;
 
 /// `z-[500]`: 보드 대화상자보다 위
@@ -356,6 +356,7 @@ fn switch_board_view(
     {
         eprintln!("[kanvibe] Failed to save board view mode: {error}");
     }
+    remember_board_view_mode(mode, cx);
     let navigator = navigator.clone();
     // 이동은 창 루트를 갱신하므로 덮개 갱신이 끝난 뒤로 미룬다
     cx.defer(move |cx| navigator.navigate("/", cx));

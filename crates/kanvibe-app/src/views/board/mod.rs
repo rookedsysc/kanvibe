@@ -17,9 +17,12 @@ pub mod kanban;
 mod keyboard;
 mod live_sessions;
 mod polls;
+mod project_filter_session;
 mod registry;
 mod registry_actions;
+mod revision_tracked;
 pub(crate) mod services;
+mod snapshot_session;
 mod task_card;
 mod task_filters;
 mod task_kind_session;
@@ -51,12 +54,15 @@ use crate::components::notification_center::NotificationCenterButton;
 use crate::components::toast::ToastKind;
 use crate::notifications::NotificationCenter;
 use crate::qa::perf_markers::mark_startup_phase;
+use crate::render_cache::KeyedRenderCache;
 use crate::theme::{ThemeTokens, radius, spacing, text_scale};
 use crate::views::ScreenContext;
 use board_model::{BoardFilters, DonePagination, ProjectCatalog, TaskDeletionState, TaskMoveState};
 pub use count_up::MotionPreference;
+use revision_tracked::RevisionTracked;
 pub use services::{BoardServiceFailure, BoardSnapshot, BoardViewMode};
-use services::{BoardServices, board_services};
+use services::{BoardServices, board_services, known_board_view_mode, remember_board_view_mode};
+pub use snapshot_session::forget_board_snapshot;
 pub use task_filters::TaskKindFilter;
 use text_field::{BoardTextField, TextFieldEvent};
 
@@ -152,8 +158,15 @@ pub struct BoardView {
     services: Option<Arc<BoardServices>>,
     view_mode: BoardViewMode,
     load_status: RouteLoadStatus,
-    board: Option<KanbanBoard>,
-    filters: BoardFilters,
+    board: RevisionTracked<Option<KanbanBoard>>,
+    filters: RevisionTracked<BoardFilters>,
+    /// 필터·정렬한 열. 보드·필터 판 번호와 언어가 같으면 render마다 다시 만들지 않는다
+    displayed_tasks_cache: KeyedRenderCache<(u64, u64, Locale), TasksByStatus>,
+    /// 카드를 그릴 때 보는 보드 단위 조회표. 보드 판 번호가 같으면 다시 만들지 않는다
+    card_lookups_cache: KeyedRenderCache<u64, column::BoardCardLookups>,
+    /// 워크스페이스 왼쪽 목록. 입력이 같으면 render마다 다시 만들지 않는다
+    workspace_listed_cache:
+        KeyedRenderCache<workspace::WorkspaceListInputs, Vec<kanvibe_domain::task::KanbanTask>>,
     deletion_states: HashMap<String, TaskDeletionState>,
     move_states: HashMap<String, TaskMoveState>,
     deleting_task_ids: HashSet<String>,
@@ -191,6 +204,7 @@ pub struct BoardView {
         Option<kanvibe_domain::shortcuts::workspace_focus::WorkspaceListFocusTracker>,
     workspace_modifiers: gpui_kit::Modifiers,
     workspace_terminal_focus: FocusHandle,
+    workspace_terminal: workspace::WorkspaceTerminal,
     is_registry_open: bool,
     registry_search: Entity<BoardTextField>,
     registry_path: Entity<BoardTextField>,
@@ -199,6 +213,7 @@ pub struct BoardView {
     /// 만드는 중에 닫은 모달. 결과를 받을 때까지 붙잡아 둔다
     background_create_tasks: Vec<Entity<crate::components::create_task::CreateTaskModal>>,
     create_task_subscriptions: Vec<Subscription>,
+    _view_mode_load: Task<()>,
     _board_load: Task<()>,
     _load_delay_timer: Task<()>,
     polls: polls::BoardPolls,
@@ -209,22 +224,22 @@ pub struct BoardView {
     live_sessions: live_sessions::LiveSessionState,
     _subscriptions: Vec<Subscription>,
     _app_event_subscriptions: Vec<Subscription>,
-    /// 작업 종류 필터를 기억할 창(첫 렌더에서 정한다)
+    /// 작업 종류·프로젝트 필터를 기억할 창(첫 렌더에서 정한다)
     task_kind_window: Option<gpui_kit::WindowId>,
 }
 
 impl BoardView {
     pub fn new(screen: ScreenContext, cx: &mut Context<Self>) -> Self {
         let services = board_services(cx);
-        let view_mode = services
-            .as_ref()
-            .map(|services| services.board_view_mode())
-            .unwrap_or(BoardViewMode::Kanban);
+        let view_mode = known_board_view_mode(cx).unwrap_or(BoardViewMode::Kanban);
         let filters = BoardFilters {
             task_kind: TaskKindFilter::parse(query_value(
                 &screen.route.search,
                 TaskKindFilter::QUERY_KEY,
             )),
+            selected_project_ids: project_filter_session::parse_selected_project_ids(
+                &screen.route.search,
+            ),
             ..BoardFilters::default()
         };
         let (project_search, find_field, workspace_search) =
@@ -241,8 +256,11 @@ impl BoardView {
             services,
             view_mode,
             load_status: RouteLoadStatus::default(),
-            board: None,
-            filters,
+            board: RevisionTracked::new(None),
+            filters: RevisionTracked::new(filters),
+            displayed_tasks_cache: KeyedRenderCache::default(),
+            card_lookups_cache: KeyedRenderCache::default(),
+            workspace_listed_cache: KeyedRenderCache::default(),
             deletion_states: HashMap::new(),
             move_states: HashMap::new(),
             deleting_task_ids: HashSet::new(),
@@ -276,6 +294,7 @@ impl BoardView {
             workspace_focus_tracker: None,
             workspace_modifiers: gpui_kit::Modifiers::default(),
             workspace_terminal_focus: cx.focus_handle(),
+            workspace_terminal: workspace::WorkspaceTerminal::default(),
             is_registry_open: false,
             registry_search,
             registry_path,
@@ -283,6 +302,7 @@ impl BoardView {
             create_task: None,
             background_create_tasks: Vec::new(),
             create_task_subscriptions: Vec::new(),
+            _view_mode_load: Task::ready(()),
             _board_load: Task::ready(()),
             _load_delay_timer: Task::ready(()),
             polls: polls::BoardPolls::default(),
@@ -295,7 +315,15 @@ impl BoardView {
         };
         MotionPreference::ensure_loaded(cx);
         view.subscribe_to_app_events(cx);
-        view.begin_first_load(cx);
+        view.load_unknown_view_mode(cx);
+        // 같은 창에서 보드로 돌아오면 마지막 데이터로 바로 그리고 뒤에서 새로 읽는다(TS route cache)
+        match view.remembered_board_snapshot(cx) {
+            Some(snapshot) => {
+                view.finish_load(Ok(snapshot), cx);
+                view.begin_load(cx);
+            }
+            None => view.begin_first_load(cx),
+        }
         view
     }
 
@@ -321,7 +349,7 @@ impl BoardView {
         else {
             return;
         };
-        if let Some(board) = self.board.as_mut() {
+        if let Some(board) = self.board.get_mut().as_mut() {
             board.notifications = notifications;
             cx.notify();
         }
@@ -491,6 +519,51 @@ impl BoardView {
         }
     }
 
+    /// 이 앱 실행에서 아직 보드 뷰를 읽지 않았으면 background에서 읽는다. 첫 조회처럼 한 프레임 안에 끝나면 첫 프레임부터
+    /// 저장된 뷰로 그리고, 더 걸리면 칸반 로딩 화면으로 시작해 결과가 오면 바꾼다
+    fn load_unknown_view_mode(&mut self, cx: &mut Context<Self>) {
+        if known_board_view_mode(cx).is_some() {
+            return;
+        }
+        let Some(services) = self.services.clone() else {
+            return;
+        };
+        let load = services.load_board_view_mode(cx);
+        match cx
+            .foreground_executor()
+            .block_with_timeout(FIRST_LOAD_WAIT, load)
+        {
+            Ok(result) => self.apply_loaded_view_mode(result, cx),
+            Err(load) => {
+                self._view_mode_load = cx.spawn(async move |this, cx| {
+                    let result = load.await;
+                    let _ = this.update(cx, |this, cx| this.apply_loaded_view_mode(result, cx));
+                });
+            }
+        }
+    }
+
+    /// 읽는 사이 명령 팔레트가 뷰를 바꿨으면 그 값을 따른다. 읽지 못하면 칸반으로 두고 다음 보드에서 다시 읽는다
+    fn apply_loaded_view_mode(
+        &mut self,
+        result: services::BoardServiceResult<BoardViewMode>,
+        cx: &mut Context<Self>,
+    ) {
+        match result {
+            Ok(stored) => {
+                if known_board_view_mode(cx).is_none() {
+                    remember_board_view_mode(stored, cx);
+                }
+                self.view_mode = known_board_view_mode(cx).unwrap_or(stored);
+                cx.notify();
+            }
+            Err(failure) => eprintln!(
+                "[kanvibe] failed to read board view mode: {}",
+                failure.reason
+            ),
+        }
+    }
+
     /// 보드 데이터를 (다시) 읽는다. 이미 데이터가 있으면 화면은 그대로 두고 실패만 배너로 알린다
     fn begin_load(&mut self, cx: &mut Context<Self>) {
         let load = self.start_snapshot_load(cx);
@@ -539,12 +612,15 @@ impl BoardView {
         match result {
             Ok(snapshot) => {
                 self.load_status = RouteLoadStatus::default();
-                match &mut self.board {
+                self.remember_board_snapshot(&snapshot, cx);
+                let board = self.board.get_mut();
+                match board {
                     Some(board) => board.replace_with(snapshot),
-                    None => {
-                        self.board = Some(KanbanBoard::from_snapshot(snapshot));
-                    }
+                    None => *board = Some(KanbanBoard::from_snapshot(snapshot)),
                 }
+                self.drop_unknown_selected_projects(cx);
+                // 새 데이터에는 따로 덧붙인 작업이 없으므로 고른 작업이 빠져 있으면 다시 읽게 한다
+                self.workspace.outside_task_lookup_id = None;
                 self.sync_diff_counters(cx);
             }
             Err(failure) => {

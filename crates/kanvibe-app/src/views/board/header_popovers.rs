@@ -1,6 +1,8 @@
 //! 헤더 팝오버: 프로젝트 필터(TS `ProjectSelector` 다중 선택), 데스크톱 필터(`DesktopFilter`), 정렬(`BoardSortPicker`).
 //! 바깥을 누르거나 Esc를 누르면 닫히고 포커스는 보드로 돌아간다.
 
+use std::rc::Rc;
+
 use gpui_kit::{
     AnyElement, Context, InteractiveElement, IntoElement, KeyDownEvent, ParentElement,
     StatefulInteractiveElement, Styled, Window, deferred, div, px,
@@ -16,6 +18,7 @@ use super::BoardView;
 use super::board_model::column;
 use super::header::{HeaderLabels, qa_button_layer};
 use super::icons::{BoardIcon, board_icon, board_icon_sized};
+use super::services::detach_setting_save;
 use super::task_card::project_marker;
 use super::task_filters::{ProjectDisplay, desktop_key, pick_available_desktops};
 use crate::components::popover::POPOVER_LAYER_PRIORITY;
@@ -197,7 +200,7 @@ impl BoardView {
     /// `local` + 보드가 아는 SSH 호스트
     pub(super) fn desktop_options(&self, labels: &HeaderLabels) -> Vec<(String, String)> {
         let mut options = vec![("local".to_string(), labels.common.translate("local"))];
-        if let Some(board) = &self.board {
+        if let Some(board) = self.board.as_ref() {
             options.extend(
                 board
                     .catalog
@@ -210,7 +213,7 @@ impl BoardView {
     }
 
     fn filterable_projects(&self) -> Vec<Project> {
-        let Some(board) = &self.board else {
+        let Some(board) = self.board.as_ref() else {
             return Vec::new();
         };
         let hosts = board.catalog.desktop_hosts(&board.ssh_hosts, &board.tasks);
@@ -390,13 +393,14 @@ impl BoardView {
     }
 
     pub(super) fn toggle_project_selection(&mut self, project_id: &str, cx: &mut Context<Self>) {
-        let selected = &mut self.filters.selected_project_ids;
+        let selected = &mut self.filters.get_mut().selected_project_ids;
         match selected.iter().position(|id| id == project_id) {
             Some(index) => {
                 selected.remove(index);
             }
             None => selected.push(project_id.to_string()),
         }
+        self.sync_project_filter_query(cx);
         cx.notify();
     }
 
@@ -523,18 +527,22 @@ impl BoardView {
 
     /// 데스크톱 필터를 바꾸면 다른 데스크톱 프로젝트의 선택을 지워, 숨은 선택이 보드를 비우지 않게 한다
     pub(super) fn change_desktop_filter(&mut self, desktops: Vec<String>, cx: &mut Context<Self>) {
-        self.filters.selected_desktops = desktops;
-        if let Some(board) = &self.board {
+        self.filters.get_mut().selected_desktops = desktops;
+        if let Some(board) = self.board.as_ref() {
             let hosts = board.catalog.desktop_hosts(&board.ssh_hosts, &board.tasks);
             let active = pick_available_desktops(&self.filters.selected_desktops, &hosts);
             let catalog = &board.catalog;
-            self.filters.selected_project_ids.retain(|project_id| {
-                let host = catalog
-                    .by_id
-                    .get(project_id)
-                    .and_then(|project| project.ssh_host.clone());
-                super::task_filters::is_on_desktops(host.as_deref(), &active)
-            });
+            self.filters
+                .get_mut()
+                .selected_project_ids
+                .retain(|project_id| {
+                    let host = catalog
+                        .by_id
+                        .get(project_id)
+                        .and_then(|project| project.ssh_host.clone());
+                    super::task_filters::is_on_desktops(host.as_deref(), &active)
+                });
+            self.sync_project_filter_query(cx);
         }
         cx.notify();
     }
@@ -766,32 +774,38 @@ impl BoardView {
         change: impl FnOnce(&BoardSortPreference) -> BoardSortPreference,
         cx: &mut Context<Self>,
     ) {
-        let Some(board) = self.board.as_mut() else {
+        let Some(board) = self.board.get_mut().as_mut() else {
             return;
         };
         board.sort_preference = change(&board.sort_preference);
-        if let Some(services) = &self.services
-            && let Err(failure) = services.save_board_sort_preference(&board.sort_preference)
-        {
-            eprintln!("[kanvibe] failed to save board sort: {}", failure.reason);
+        if let Some(services) = &self.services {
+            let save = services.save_board_sort_preference(board.sort_preference.clone(), cx);
+            detach_setting_save(save, "board sort", cx);
         }
         cx.notify();
     }
 
-    /// 화면에 늘어놓을 열(필터·정렬 적용)
-    pub(super) fn displayed_tasks(&self) -> kanvibe_services::kanban::TasksByStatus {
-        let Some(board) = &self.board else {
-            return Default::default();
-        };
-        let hosts = board.catalog.desktop_hosts(&board.ssh_hosts, &board.tasks);
-        super::board_model::displayed_tasks(
-            &board.tasks,
-            &self.filters,
-            &board.catalog,
-            &hosts,
-            &board.sort_preference,
-            &crate::text_collation::LocaleCollator::for_locale(self.locale()),
-        )
+    /// 화면에 늘어놓을 열(필터·정렬 적용). 보드·필터·언어가 그대로면 앞서 만든 열을 다시 쓴다
+    pub(super) fn displayed_tasks(&self) -> Rc<kanvibe_services::kanban::TasksByStatus> {
+        let inputs = (
+            self.board.revision(),
+            self.filters.revision(),
+            self.locale(),
+        );
+        self.displayed_tasks_cache.get_or_build(inputs, || {
+            let Some(board) = self.board.as_ref() else {
+                return Default::default();
+            };
+            let hosts = board.catalog.desktop_hosts(&board.ssh_hosts, &board.tasks);
+            super::board_model::displayed_tasks(
+                &board.tasks,
+                &self.filters,
+                &board.catalog,
+                &hosts,
+                &board.sort_preference,
+                &crate::text_collation::LocaleCollator::for_locale(self.locale()),
+            )
+        })
     }
 
     /// 지금 보이는 카드 수(열 순서대로)

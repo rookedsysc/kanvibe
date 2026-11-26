@@ -14,6 +14,7 @@ use crate::locale_format::{format_month_day_time_hm, format_time_hm};
 use crate::theme::{ThemeTokens, radius, spacing, text_scale};
 use crate::views::ai_accounts::model::UsageState;
 use crate::views::settings::local_time::LocalDateTime;
+use crate::views::task_detail::usage_cards::{UsageWindowGroup, group_windows_by_period};
 
 /// 이 위부터는 강조색이 아니라 심각도 색으로 알린다
 const HIGH_USAGE_PERCENT: f64 = 90.0;
@@ -117,6 +118,37 @@ fn render_usage_bar(theme: &ThemeTokens, used_percent: f64) -> Div {
         )
 }
 
+/// 기간 한도를 먼저 세우고 그 기간의 모델별 창을 아래에 들여 세운다(TS `UsageWindowGroupRows`).
+/// 딸릴 기간 한도가 없는 모델 창은 들여쓸 대상이 없어 그대로 나열한다
+fn render_window_group(
+    theme: &ThemeTokens,
+    usage: &Translator,
+    group: &UsageWindowGroup<'_>,
+    now_ms: i64,
+) -> Div {
+    let scoped_rows: Vec<Div> = group
+        .scoped
+        .iter()
+        .map(|window| render_window_row(theme, usage, window, now_ms))
+        .collect();
+    let column = div().flex().flex_col().gap(spacing(2.0));
+    let Some(total) = group.total else {
+        return column.children(scoped_rows);
+    };
+    column
+        .child(render_window_row(theme, usage, total, now_ms))
+        .children((!scoped_rows.is_empty()).then(|| {
+            div()
+                .flex()
+                .flex_col()
+                .gap(spacing(2.0))
+                .border_l_1()
+                .border_color(theme.border.subtle)
+                .pl(spacing(2.0))
+                .children(scoped_rows)
+        }))
+}
+
 /// 계정 하나의 사용량. 같은 기간의 모델별 창은 그 기간 한도 아래 들여 세운다
 pub fn render_account_usage(
     theme: &ThemeTokens,
@@ -124,17 +156,10 @@ pub fn render_account_usage(
     result: &AiUsageAccountResult,
     now_ms: i64,
 ) -> Div {
-    let mut rows = Vec::new();
-    for window in &result.windows {
-        let row = render_window_row(theme, usage, window, now_ms);
-        rows.push(if window.model_name.is_some() {
-            row.border_l_1()
-                .border_color(theme.border.subtle)
-                .pl(spacing(2.0))
-        } else {
-            row
-        });
-    }
+    let rows: Vec<Div> = group_windows_by_period(&result.windows)
+        .iter()
+        .map(|group| render_window_group(theme, usage, group, now_ms))
+        .collect();
     let has_windows = !rows.is_empty();
     div()
         .children(has_windows.then(|| div().flex().flex_col().gap(spacing(2.0)).children(rows)))

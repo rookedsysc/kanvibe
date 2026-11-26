@@ -5,6 +5,8 @@
 
 mod document_view;
 
+use std::rc::Rc;
+
 use gpui_kit::{
     AnyElement, ClipboardItem, Context, InteractiveElement, IntoElement, ParentElement,
     SharedString, StatefulInteractiveElement, Styled, Task, Window, div, px,
@@ -13,11 +15,12 @@ use kanvibe_ai::types::AiMessageRole;
 use kanvibe_services::diff::TaskWorkspaceFileFailure;
 
 use super::chat_view::InlineAiChatView;
-use super::message_content::selectable_text::SelectableRichText;
+use super::message_content::selectable_text::{RichTextSpans, SelectableRichText};
 use super::message_content::{COPY_FEEDBACK_DURATION, highlighted_code_spans, render_message};
 use super::session_queries::read_workspace_file;
 use crate::components::{TailwindText, box_shadows};
 use crate::qa::targets::{QaTargetDescription, qa_target_layer};
+use crate::render_cache::KeyedRenderCache;
 use crate::theme::{ThemeTokens, radius, spacing, text_scale};
 use document_view::{DocumentPreview, HtmlRender, render_document};
 
@@ -44,6 +47,12 @@ pub struct FilePreviewState {
     pub is_copied: bool,
     /// 그린 문서(HTML·SVG). 원문 보기로 바꾸면 버린다
     document: Option<DocumentPreview>,
+    /// 내용을 다시 받을 때마다 1씩 는다. 아래 두 캐시가 내용이 바뀐 것을 알아보는 키다
+    content_revision: u64,
+    /// 원문 보기의 하이라이트 결과. render마다 파일 전체를 다시 하이라이트하지 않는다(TS `SourceView` `useMemo`)
+    source_spans_cache: KeyedRenderCache<(u64, ThemeTokens), RichTextSpans>,
+    /// TeX 그린 보기에 넘기는 Markdown
+    latex_markdown_cache: KeyedRenderCache<u64, String>,
     _read: Option<Task<()>>,
     _copy_feedback: Option<Task<()>>,
 }
@@ -70,50 +79,112 @@ pub fn has_view_toggle(kind: PreviewKind) -> bool {
     kind != PreviewKind::Source
 }
 
-/// TeX 문서를 수식 블록만 남긴 Markdown으로 바꾼다(주석·문서 머리 제거, 수식 환경은 `$$`)
+/// TeX 문서를 Markdown으로 바꾼다. TS `AiChatFilePreview`의 치환을 같은 순서로 한다(주석 줄 비우기, 문서 머리 제거, 수식 환경은 `$$`)
 pub fn latex_preview_markdown(content: &str) -> String {
-    let mut lines: Vec<String> = Vec::new();
-    let mut environment: Option<(String, Vec<String>)> = None;
-    for line in content.lines() {
-        let trimmed = line.trim();
-        if trimmed.starts_with('%')
-            || trimmed.starts_with("\\documentclass")
-            || trimmed.starts_with("\\usepackage")
-        {
-            continue;
-        }
-        if trimmed == "\\begin{document}" || trimmed == "\\end{document}" {
-            continue;
-        }
-        if let Some((name, body)) = environment.as_mut() {
-            if trimmed == format!("\\end{{{name}}}") {
-                let body = body.join("\n");
-                lines.push(match name.starts_with("align") {
-                    true => format!("$$\\begin{{aligned}}{body}\\end{{aligned}}$$"),
-                    false => format!("$${body}$$"),
-                });
-                environment = None;
-            } else {
-                body.push(line.to_string());
+    let without_comments = blank_latex_comment_lines(content);
+    let without_preamble = remove_latex_preamble(&without_comments);
+    replace_math_environments(&without_preamble)
+}
+
+/// TS가 `$$`로 바꾸던 수식 환경. `align` 계열은 `aligned`로 감싼다
+const LATEX_MATH_ENVIRONMENTS: [&str; 6] = [
+    "equation",
+    "equation*",
+    "align",
+    "align*",
+    "gather",
+    "gather*",
+];
+
+/// 주석 줄을 빈 줄로 남긴다(TS `.replace(/^\s*%.*$/gm, "")`). 주석 줄 양쪽 문단이 붙지 않는다
+fn blank_latex_comment_lines(content: &str) -> String {
+    content
+        .split('\n')
+        .map(|line| match line.trim_start().starts_with('%') {
+            true => "",
+            false => line,
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// 문서 머리 명령(`\documentclass[…]{…}`·`\usepackage[…]{…}`)과 `document` 환경 표시를 줄 안 어디서든 지운다
+fn remove_latex_preamble(text: &str) -> String {
+    let mut result = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(start) = rest.find('\\') {
+        result.push_str(&rest[..start]);
+        let candidate = &rest[start..];
+        match preamble_command_length(candidate) {
+            Some(length) => rest = &candidate[length..],
+            None => {
+                result.push('\\');
+                rest = &candidate[1..];
             }
-            continue;
-        }
-        let math_environment = [
-            "equation",
-            "equation*",
-            "align",
-            "align*",
-            "gather",
-            "gather*",
-        ]
-        .into_iter()
-        .find(|name| trimmed == format!("\\begin{{{name}}}"));
-        match math_environment {
-            Some(name) => environment = Some((name.to_string(), Vec::new())),
-            None => lines.push(line.to_string()),
         }
     }
-    lines.join("\n")
+    result.push_str(rest);
+    result
+        .replace("\\begin{document}", "")
+        .replace("\\end{document}", "")
+}
+
+/// 글 맨 앞 문서 머리 명령 하나의 바이트 길이. 인자 `{…}`가 없으면 명령으로 보지 않는다
+fn preamble_command_length(text: &str) -> Option<usize> {
+    let after_name = ["\\documentclass", "\\usepackage"]
+        .into_iter()
+        .find_map(|name| text.strip_prefix(name))?;
+    let after_options = match after_name.strip_prefix('[') {
+        Some(options) => &options[options.find(']')? + 1..],
+        None => after_name,
+    };
+    let argument = after_options.strip_prefix('{')?;
+    let argument_end = argument.find('}')?;
+    Some(text.len() - argument.len() + argument_end + 1)
+}
+
+/// 짝이 맞는 수식 환경만 `$$` 수식으로 바꾼다. 한 줄 안의 환경도 바꾸고, 닫히지 않은 환경은 원문 그대로 둔다
+fn replace_math_environments(text: &str) -> String {
+    const BEGIN: &str = "\\begin{";
+    let mut result = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(start) = rest.find(BEGIN) {
+        let candidate = &rest[start..];
+        match math_environment_formula(candidate) {
+            Some((formula, length)) => {
+                result.push_str(&rest[..start]);
+                result.push_str(&formula);
+                rest = &candidate[length..];
+            }
+            None => {
+                let skipped = start + BEGIN.len();
+                result.push_str(&rest[..skipped]);
+                rest = &rest[skipped..];
+            }
+        }
+    }
+    result.push_str(rest);
+    result
+}
+
+/// 글 맨 앞 수식 환경을 바꾼 수식과, 바꾼 원문의 바이트 길이. 가장 가까운 같은 이름의 `\end`까지다
+fn math_environment_formula(text: &str) -> Option<(String, usize)> {
+    let after_begin = text.strip_prefix("\\begin{")?;
+    let name_end = after_begin.find('}')?;
+    let name = &after_begin[..name_end];
+    if !LATEX_MATH_ENVIRONMENTS.contains(&name) {
+        return None;
+    }
+    let body_and_rest = &after_begin[name_end + 1..];
+    let closing = format!("\\end{{{name}}}");
+    let body_end = body_and_rest.find(&closing)?;
+    let body = &body_and_rest[..body_end];
+    let formula = match name.starts_with("align") {
+        true => format!("$$\\begin{{aligned}}{body}\\end{{aligned}}$$"),
+        false => format!("$${body}$$"),
+    };
+    let length = text.len() - body_and_rest.len() + body_end + closing.len();
+    Some((formula, length))
 }
 
 pub fn failure_key(failure: TaskWorkspaceFileFailure) -> &'static str {
@@ -136,6 +207,9 @@ impl FilePreviewState {
             mode: PreviewMode::Rendered,
             is_copied: false,
             document: None,
+            content_revision: 0,
+            source_spans_cache: KeyedRenderCache::default(),
+            latex_markdown_cache: KeyedRenderCache::default(),
             _read: None,
             _copy_feedback: None,
         }
@@ -143,9 +217,28 @@ impl FilePreviewState {
 
     pub fn finish(&mut self, result: Result<String, TaskWorkspaceFileFailure>) {
         match result {
-            Ok(content) => self.content = Some(content),
+            Ok(content) => {
+                self.content = Some(content);
+                self.content_revision += 1;
+            }
             Err(failure) => self.failure = Some(failure),
         }
+    }
+
+    /// 원문 보기 글자와 색. 같은 내용·테마면 앞서 하이라이트한 결과를 다시 쓴다
+    fn source_spans(&self, content: &str, theme: &ThemeTokens) -> Rc<RichTextSpans> {
+        self.source_spans_cache
+            .get_or_build((self.content_revision, *theme), || {
+                let extension = file_extension(&self.path);
+                let language = (!extension.is_empty()).then_some(extension);
+                let code = kanvibe_markdown::code_block(language, content.to_string());
+                highlighted_code_spans(&code, theme)
+            })
+    }
+
+    fn latex_markdown(&self, content: &str) -> Rc<String> {
+        self.latex_markdown_cache
+            .get_or_build(self.content_revision, || latex_preview_markdown(content))
     }
 
     /// 그린 모양을 보여 줄지. 원문으로 바꿨거나 그릴 수 없는 종류면 원문이다
@@ -463,7 +556,7 @@ impl InlineAiChatView {
             return render_rendered_preview(body, preview, content, theme);
         }
         body.bg(theme.background.page)
-            .child(render_source_view(&preview.path, content, theme))
+            .child(render_source_view(preview, content, theme))
             .into_any_element()
     }
 
@@ -506,11 +599,15 @@ fn render_rendered_preview(
             .children(document)
             .into_any_element();
     }
+    let latex_markdown;
     let markdown = match kind {
-        PreviewKind::Latex => latex_preview_markdown(content),
-        _ => content.to_string(),
+        PreviewKind::Latex => {
+            latex_markdown = preview.latex_markdown(content);
+            latex_markdown.as_str()
+        }
+        _ => content,
     };
-    let rendered = render_message("file-preview", &markdown, AiMessageRole::Assistant, theme);
+    let rendered = render_message("file-preview", markdown, AiMessageRole::Assistant, theme);
     body.child(
         div()
             .p(spacing(4.0))
@@ -521,10 +618,12 @@ fn render_rendered_preview(
 }
 
 /// 원문 보기(`kv-chat-code p-4 font-mono text-xs leading-5`). 확장자를 highlight.js가 알면 색을 입힌다
-fn render_source_view(path: &str, content: &str, theme: &ThemeTokens) -> AnyElement {
-    let extension = file_extension(path);
-    let language = (!extension.is_empty()).then_some(extension);
-    let code = kanvibe_markdown::code_block(language, content.to_string());
+fn render_source_view(
+    preview: &FilePreviewState,
+    content: &str,
+    theme: &ThemeTokens,
+) -> AnyElement {
+    let spans = preview.source_spans(content, theme);
     div()
         .id("ai-chat-file-source")
         .overflow_x_scroll()
@@ -534,7 +633,7 @@ fn render_source_view(path: &str, content: &str, theme: &ThemeTokens) -> AnyElem
         .whitespace_nowrap()
         .child(SelectableRichText::new(
             "file-preview/source",
-            highlighted_code_spans(&code, theme),
+            RichTextSpans::clone(&spans),
             theme.brand.muted.into(),
         ))
         .into_any_element()
@@ -665,9 +764,53 @@ mod tests {
     }
 
     #[test]
+    fn an_unclosed_tex_environment_keeps_its_text_and_comments_still_split_paragraphs() {
+        let source = "앞 문단\n% 주석\n뒤 문단\n\\begin{align}\nx &= 1";
+
+        assert_eq!(
+            latex_preview_markdown(source),
+            "앞 문단\n\n뒤 문단\n\\begin{align}\nx &= 1"
+        );
+    }
+
+    #[test]
+    fn a_one_line_tex_environment_becomes_a_formula() {
+        let source = "\\usepackage[utf8]{inputenc}\n\\begin{equation} E=mc^2 \\end{equation} 끝\n\\begin{align*}a\\end{align*}";
+
+        assert_eq!(
+            latex_preview_markdown(source),
+            "\n$$ E=mc^2 $$ 끝\n$$\\begin{aligned}a\\end{aligned}$$"
+        );
+    }
+
+    #[test]
+    fn the_source_view_highlights_once_until_the_content_or_theme_changes() {
+        let dark = ThemeTokens::for_mode(crate::theme::ThemeMode::Dark);
+        let light = ThemeTokens::for_mode(crate::theme::ThemeMode::Light);
+        let mut preview = FilePreviewState::new("/repo/src/a.ts".into());
+        preview.finish(Ok("const a = 1;".into()));
+
+        let first = preview.source_spans("const a = 1;", &dark);
+        assert!(Rc::ptr_eq(
+            &first,
+            &preview.source_spans("const a = 1;", &dark)
+        ));
+        assert!(!Rc::ptr_eq(
+            &first,
+            &preview.source_spans("const a = 1;", &light)
+        ));
+
+        preview.finish(Ok("let b = 2;".into()));
+        assert_eq!(
+            preview.source_spans("let b = 2;", &light).text,
+            "let b = 2;"
+        );
+    }
+
+    #[test]
     fn tex_equations_render_as_formulas_and_keep_their_source() {
         let source = "\\documentclass{article}\n% 주석\n\\begin{document}\n\\begin{equation}\nE = mc^2\n\\end{equation}\n\\end{document}";
-        assert_eq!(latex_preview_markdown(source), "$$E = mc^2$$");
+        assert_eq!(latex_preview_markdown(source).trim(), "$$\nE = mc^2\n$$");
         let mut preview = FilePreviewState::new("/repo/paper.tex".into());
         preview.finish(Ok(source.into()));
         preview.mode = PreviewMode::Source;

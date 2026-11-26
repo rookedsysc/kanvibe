@@ -15,8 +15,8 @@ use std::sync::Arc;
 use gpui_kit::{
     AnyElement, AnyWindowHandle, App, Context, Entity, EventEmitter, FocusHandle,
     InteractiveElement, IntoElement, KeyDownEvent, MouseButton, ParentElement, Render,
-    SharedString, StatefulInteractiveElement, Styled, Subscription, Task, Window, deferred, div,
-    px, svg,
+    ScrollHandle, SharedString, StatefulInteractiveElement, Styled, Subscription, Task, Window,
+    deferred, div, px, svg,
 };
 use kanvibe_domain::i18n::{Locale, Translator};
 use kanvibe_domain::notifications::AppNotification;
@@ -33,11 +33,10 @@ use crate::components::{FocusRing, TailwindText, fade};
 use crate::locale_format::format_date_time;
 use crate::notifications::{NotificationCenter, reload_notification_center, unread_badge_label};
 use crate::qa::targets::{qa_button_layer, qa_text_layer};
-use crate::services::AppServices;
 use crate::theme::{ThemeTokens, radius, spacing, text_scale};
 use crate::views::WindowNavigator;
 use crate::views::board::inline_load_error;
-use crate::views::board::services::{BoardServices, board_services};
+use crate::views::board::services::{BoardServices, board_services, detach_setting_save};
 use crate::views::locale_shell::background_sync::{BackgroundSyncStore, background_sync_store};
 use crate::views::locale_shell::sync_review::{BackgroundSyncReviewStore, sync_review_store};
 use crate::window_open::{
@@ -86,6 +85,8 @@ pub struct NotificationCenterButton {
     is_open: bool,
     is_unread_only: bool,
     highlighted_index: usize,
+    /// 알림 목록 스크롤. 키보드로 고른 알림이 보이게 굴린다(TS `scrollIntoView({ block: "nearest" })`)
+    notification_rows_scroll: ScrollHandle,
     /// 읽음 저장과 이동을 기다리는 알림. 같은 알림을 거듭 열지 않는다
     opening_notification_id: Option<String>,
     is_marking_all_read: bool,
@@ -95,6 +96,8 @@ pub struct NotificationCenterButton {
     /// 목록을 읽지 못한 사유. 알림이 없는 것처럼 보이지 않게 따로 남긴다
     load_failure: Option<String>,
     _load: Task<()>,
+    /// 저장된 안읽음만 보기 읽기. 그 전에 사용자가 고르면 버린다(사용자가 고른 값이 이긴다)
+    _unread_only_load: Task<()>,
     /// 단축키로 열었으면 패널에 키보드 포커스 링을 그린다(Chromium `:focus-visible`)
     is_keyboard_opened: bool,
     _subscriptions: Vec<Subscription>,
@@ -117,16 +120,6 @@ impl NotificationCenterButton {
         if services.is_none() {
             reload_notification_center(cx);
         }
-        let is_unread_only = cx
-            .global::<AppServices>()
-            .runtime()
-            .and_then(|runtime| {
-                runtime
-                    .app_settings()
-                    .get_notification_unread_only_enabled()
-                    .ok()
-            })
-            .unwrap_or(false);
         let mut button = Self {
             locale,
             navigator,
@@ -137,19 +130,38 @@ impl NotificationCenterButton {
             panel_focus: cx.focus_handle(),
             return_focus: None,
             is_open: false,
-            is_unread_only,
+            is_unread_only: false,
             highlighted_index: 0,
+            notification_rows_scroll: ScrollHandle::new(),
             opening_notification_id: None,
             is_marking_all_read: false,
             mark_all_read_failure: None,
             missing_task_notification: None,
             load_failure: None,
             _load: Task::ready(()),
+            _unread_only_load: Task::ready(()),
             is_keyboard_opened: false,
             _subscriptions: subscriptions,
         };
         button.load_notifications(cx);
+        button.load_unread_only(cx);
         button
+    }
+
+    fn load_unread_only(&mut self, cx: &mut Context<Self>) {
+        let Some(services) = self.services.clone() else {
+            return;
+        };
+        let load = services.load_notification_unread_only(cx);
+        self._unread_only_load = cx.spawn(async move |this, cx| {
+            let Ok(is_unread_only) = load.await else {
+                return;
+            };
+            let _ = this.update(cx, |this, cx| {
+                this.is_unread_only = is_unread_only;
+                cx.notify();
+            });
+        });
     }
 
     /// 알림 목록을 읽어 런타임 알림 목록(`NotificationCenter`)을 바꾼다. 실패하면 사유와 다시 시도를 보인다
@@ -232,13 +244,10 @@ impl NotificationCenterButton {
     fn set_unread_only(&mut self, is_unread_only: bool, cx: &mut Context<Self>) {
         self.is_unread_only = is_unread_only;
         self.highlighted_index = 0;
-        if let Some(services) = &self.services
-            && let Err(failure) = services.save_notification_unread_only(is_unread_only)
-        {
-            eprintln!(
-                "[kanvibe] failed to save unread-only filter: {}",
-                failure.reason
-            );
+        self._unread_only_load = Task::ready(());
+        if let Some(services) = &self.services {
+            let save = services.save_notification_unread_only(is_unread_only, cx);
+            detach_setting_save(save, "unread-only filter", cx);
         }
         cx.notify();
     }
@@ -481,8 +490,16 @@ impl NotificationCenterButton {
         let count = visible.len();
         let index = self.highlighted_index.min(count.saturating_sub(1));
         match event.keystroke.key.as_str() {
-            "down" if count > 0 => self.highlighted_index = (index + 1) % count,
-            "up" if count > 0 => self.highlighted_index = (index + count - 1) % count,
+            "down" if count > 0 => {
+                self.highlighted_index = (index + 1) % count;
+                self.notification_rows_scroll
+                    .scroll_to_item(self.highlighted_index);
+            }
+            "up" if count > 0 => {
+                self.highlighted_index = (index + count - 1) % count;
+                self.notification_rows_scroll
+                    .scroll_to_item(self.highlighted_index);
+            }
             "enter" => {
                 if let Some(notification) = visible.get(index).cloned() {
                     self.open_notification(
@@ -693,6 +710,7 @@ impl NotificationCenterButton {
                     .id("notification-rows")
                     .max_h(px(LIST_MAX_HEIGHT))
                     .overflow_y_scroll()
+                    .track_scroll(&self.notification_rows_scroll)
                     .children(rows),
             )
             .child(qa_text_layer("dialog", &labels.translate("notifications")));

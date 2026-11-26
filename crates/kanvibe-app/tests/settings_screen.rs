@@ -12,13 +12,13 @@ use kanvibe_app::qa::targets::{QaTargetRegistry, TargetQuery};
 use kanvibe_app::routes::{RouteResolution, resolve_route_path};
 use kanvibe_app::services::AppServices;
 use kanvibe_app::theme::{ThemeMode, ThemePreference, ThemeTokens, spacing};
-use kanvibe_app::views::settings::SettingsView;
 use kanvibe_app::views::settings::form::{
     BackgroundSyncPreferences, NotificationPreferences, SettingChange, SettingKey, SettingsForm,
     SettingsValues, toggle_notification_status,
 };
 use kanvibe_app::views::settings::page::aside_top_padding;
 use kanvibe_app::views::settings::session_type_select::SessionTypeSelect;
+use kanvibe_app::views::settings::{SettingsView, follow_system_appearance};
 use kanvibe_app::views::{ScreenContext, WindowNavigator};
 use kanvibe_db::app_settings_service::AppSettingsService;
 use kanvibe_domain::task::SessionType;
@@ -222,6 +222,36 @@ fn choosing_a_theme_applies_it_at_once_and_stores_it(cx: &mut TestAppContext) {
     assert_eq!(
         stored_setting(cx, "theme_preference").as_deref(),
         Some("light")
+    );
+}
+
+#[gpui::test]
+fn the_system_theme_follows_an_os_appearance_change(cx: &mut TestAppContext) {
+    let _data_dir = init_app_with_database(cx);
+    let (_view, cx) = open_settings(cx);
+    let theme_mode =
+        |cx: &mut gpui_kit::VisualTestContext| cx.update(|_, cx| cx.global::<ThemeTokens>().mode);
+
+    cx.update(|_, cx| follow_system_appearance(gpui_kit::WindowAppearance::Dark, cx));
+    assert_eq!(theme_mode(cx), ThemeMode::Dark);
+    cx.update(|_, cx| follow_system_appearance(gpui_kit::WindowAppearance::Light, cx));
+    assert_eq!(theme_mode(cx), ThemeMode::Light);
+}
+
+#[gpui::test]
+fn a_chosen_theme_ignores_an_os_appearance_change(cx: &mut TestAppContext) {
+    let _data_dir = init_app_with_database(cx);
+    let (view, cx) = open_settings(cx);
+    view.update(cx, |view, cx| {
+        view.save_setting(SettingChange::Theme(ThemePreference::Light), cx)
+    });
+    cx.run_until_parked();
+
+    cx.update(|_, cx| follow_system_appearance(gpui_kit::WindowAppearance::Dark, cx));
+
+    assert_eq!(
+        cx.update(|_, cx| cx.global::<ThemeTokens>().mode),
+        ThemeMode::Light
     );
 }
 

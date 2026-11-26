@@ -53,11 +53,11 @@ impl MessageCopyLabels {
     }
 }
 
-/// 해석한 조각. Markdown 블록은 다시 그릴 때 복사하지 않게 나눠 쓴다
+/// 해석한 조각. 다시 그릴 때 블록과 다이어그램 정의를 복사하지 않게 나눠 쓴다
 #[derive(Clone)]
 pub enum MessageSegment {
     Markdown(Arc<Vec<Block>>),
-    Mermaid(String),
+    Mermaid(SharedString),
 }
 
 /// 원문을 조각으로 나눈다. 비어 있는 Markdown 조각은 그리지 않는다(TS `markup.__html.trim()`이 빈 경우)
@@ -67,7 +67,7 @@ pub fn message_segments(content: &str) -> Vec<MessageSegment> {
         .filter_map(|segment| match segment {
             Segment::Markdown(blocks) if blocks.is_empty() => None,
             Segment::Markdown(blocks) => Some(MessageSegment::Markdown(Arc::new(blocks))),
-            Segment::Mermaid { definition } => Some(MessageSegment::Mermaid(definition)),
+            Segment::Mermaid { definition } => Some(MessageSegment::Mermaid(definition.into())),
         })
         .collect()
 }
@@ -125,12 +125,12 @@ impl RenderOnce for MessageContent {
 }
 
 impl MessageContent {
+    /// 원문은 처음 해석하거나 바뀌었을 때만 복사해 둔다
     fn parsed_segments(&self, window: &mut Window, cx: &mut App) -> Vec<MessageSegment> {
         let key = ElementId::Name(format!("{}/parsed", self.scope).into());
-        let content = self.content.clone();
         let parsed = window.use_keyed_state(key, cx, |_, _| ParsedMessage {
-            segments: message_segments(&content),
-            content,
+            segments: message_segments(&self.content),
+            content: self.content.clone(),
         });
         if parsed.read(cx).content != self.content {
             let content = self.content.clone();
@@ -383,7 +383,7 @@ mod tests {
         let first = message_segments(content);
         let second = message_segments(content);
         let definition = |segments: &[MessageSegment]| match &segments[0] {
-            MessageSegment::Mermaid(definition) => definition.clone(),
+            MessageSegment::Mermaid(definition) => definition.to_string(),
             MessageSegment::Markdown(_) => String::new(),
         };
         // 같은 정의는 같은 상태 키를 찾아 이미 그린 그림을 그대로 쓴다(자리표시로 돌아가지 않는다)
@@ -392,7 +392,7 @@ mod tests {
             mermaid_view::MermaidDiagram {
                 scope: "row-1".into(),
                 index: 0,
-                definition,
+                definition: definition.into(),
                 theme,
             }
             .state_id()
@@ -405,8 +405,19 @@ mod tests {
     fn mermaid_fences_become_their_own_segments() {
         let segments = message_segments("앞\n```mermaid\ngraph TD\nA-->B\n```\n뒤");
         assert!(
-            matches!(&segments[1], MessageSegment::Mermaid(definition) if definition == "graph TD\nA-->B")
+            matches!(&segments[1], MessageSegment::Mermaid(definition) if definition.as_ref() == "graph TD\nA-->B")
         );
         assert_eq!(segments.len(), 3);
+    }
+
+    #[test]
+    fn copied_segments_share_the_diagram_definition_instead_of_duplicating_it() {
+        let segments = message_segments("```mermaid\ngraph TD\nA[보드] --> B[필터]\n```");
+        let copied = segments.clone();
+        let definition_address = |segments: &[MessageSegment]| match &segments[0] {
+            MessageSegment::Mermaid(definition) => definition.as_ptr(),
+            MessageSegment::Markdown(_) => std::ptr::null(),
+        };
+        assert_eq!(definition_address(&copied), definition_address(&segments));
     }
 }

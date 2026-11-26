@@ -81,10 +81,7 @@ impl TaskDetailView {
             .is_some_and(|snapshot| snapshot.has_terminal());
         let should_poll =
             has_terminal && self.is_window_active && self.layout.main_view == MainView::Terminal;
-        let is_resumed = should_poll && !self.should_poll_tabs;
-        self.should_poll_tabs = should_poll;
-        if is_resumed && self.terminal_tabs.is_list_loaded {
-            self.poll_tabs(cx);
-        }
+        self.terminal_tabs
+            .update(cx, |tabs, cx| tabs.set_polling_active(should_poll, cx));
     }
 }

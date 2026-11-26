@@ -3,7 +3,7 @@
 //! 도구·추론 메시지는 접힌 상태로 두고 머리줄을 눌러 펼친다. 사용자 요청은 쓴 그대로, 나머지는 본문 그리기로 보인다.
 //! 메시지마다 원문 전체를 복사하는 버튼과 시각을 붙이고, AI가 만들거나 고친 파일은 미리보기를 여는 카드로 보인다.
 
-mod attachment;
+pub(super) mod attachment;
 
 use gpui_kit::{
     AnyElement, ClipboardItem, Context, InteractiveElement, IntoElement, ParentElement,
@@ -23,6 +23,62 @@ use crate::qa::targets::{QaTargetDescription, qa_target_layer};
 use crate::theme::{ThemeTokens, radius, spacing, text_scale};
 use crate::views::settings::local_time::LocalDateTime;
 use attachment::{AttachmentContext, AttachmentLabels, ChatAttachment};
+
+/// 메시지에 붙은 첨부(TS `message.attachments?.map(... <AiChatAttachment />)`). `context`가 없으면 내용을 읽지 못한다
+pub fn message_attachments(
+    message: &AggregatedAiMessage,
+    row_key: &str,
+    context: Option<AttachmentContext>,
+    translator: &Translator,
+    theme: &ThemeTokens,
+) -> Vec<ChatAttachment> {
+    let labels = AttachmentLabels::from_translator(translator);
+    message
+        .attachment_list()
+        .iter()
+        .enumerate()
+        .map(|(index, attachment)| ChatAttachment {
+            key: format!("{row_key}:{index}"),
+            attachment: attachment.clone(),
+            context: context.clone(),
+            labels: labels.clone(),
+            theme: *theme,
+        })
+        .collect()
+}
+
+/// 메시지 원문 복사 버튼의 겉모양. 누를 때 할 일은 부르는 화면이 붙인다
+pub fn copy_message_button(
+    theme: &ThemeTokens,
+    translator: &Translator,
+    row_key: &str,
+    is_copied: bool,
+) -> gpui_kit::Stateful<gpui_kit::Div> {
+    let label = translator.translate(if is_copied {
+        "aiSessions.copiedMessage"
+    } else {
+        "aiSessions.copyMessage"
+    });
+    let hover_background = theme.background.surface;
+    let hover_text = theme.text.primary;
+    div()
+        .id(SharedString::from(format!("copy-{row_key}")))
+        .relative()
+        .min_h(px(28.0))
+        .flex()
+        .items_center()
+        .rounded(radius::SM)
+        .px(spacing(2.0))
+        .py(spacing(1.0))
+        .cursor_pointer()
+        .hover(move |style| style.bg(hover_background).text_color(hover_text))
+        .child(label.clone())
+        .child(qa_target_layer(QaTargetDescription {
+            role: "button",
+            name: label.clone().into(),
+            text: label.into(),
+        }))
+}
 
 /// 메시지 모양
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -186,19 +242,7 @@ impl InlineAiChatView {
                 session_id: session.id.clone(),
                 source_ref: session.source_ref.clone(),
             });
-        let labels = AttachmentLabels::from_translator(&self.translator);
-        let attachments =
-            message
-                .attachment_list()
-                .iter()
-                .enumerate()
-                .map(|(index, attachment)| ChatAttachment {
-                    key: format!("{}:{index}", row.key),
-                    attachment: attachment.clone(),
-                    context: context.clone(),
-                    labels: labels.clone(),
-                    theme: *theme,
-                });
+        let attachments = message_attachments(message, &row.key, context, &self.translator, theme);
         div()
             .min_w_0()
             .children(content)
@@ -328,36 +372,14 @@ impl InlineAiChatView {
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let is_copied = self.copied_messages.contains(row_key);
-        let label = self.translator.translate(if is_copied {
-            "aiSessions.copiedMessage"
-        } else {
-            "aiSessions.copyMessage"
-        });
         let key = row_key.to_string();
-        let hover_background = theme.background.surface;
-        let hover_text = theme.text.primary;
-        div()
-            .id(SharedString::from(format!("copy-{row_key}")))
-            .relative()
-            .min_h(px(28.0))
-            .flex()
-            .items_center()
-            .rounded(radius::SM)
-            .px(spacing(2.0))
-            .py(spacing(1.0))
-            .cursor_pointer()
-            .hover(move |style| style.bg(hover_background).text_color(hover_text))
-            .child(label.clone())
-            .child(qa_target_layer(QaTargetDescription {
-                role: "button",
-                name: label.clone().into(),
-                text: label.into(),
-            }))
-            .on_click(cx.listener(move |view, _, _, cx| {
+        copy_message_button(theme, &self.translator, row_key, is_copied).on_click(cx.listener(
+            move |view, _, _, cx| {
                 cx.write_to_clipboard(ClipboardItem::new_string(text.clone()));
                 view.copied_messages.insert(key.clone());
                 cx.notify();
-            }))
+            },
+        ))
     }
 
     fn render_file_cards(

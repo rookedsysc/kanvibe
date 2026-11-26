@@ -1,5 +1,5 @@
 //! 설정 계열 화면(설정·단축키·AI 계정·pane 레이아웃)이 서비스를 부르는 한 가지 길.
-//! 호출은 백그라운드에서 돌리고, QA 모드에서는 TS IPC 이름(`namespace.method`)으로 고장 주입 판정을 먼저 거친다.
+//! 호출은 전용 스레드에서 돌려 GPUI background 풀을 막지 않고(`blocking_call`), QA 모드에서는 TS IPC 이름(`namespace.method`)으로 고장 주입 판정을 먼저 거친다.
 //! 고장이 `result`면 실제 호출 대신 주입된 값을 응답 모양으로 읽어 돌려준다(states.yaml `value_ref`).
 
 use std::sync::Arc;
@@ -9,6 +9,7 @@ use gpui_kit::{App, AppContext, BackgroundExecutor, Task};
 use kanvibe_db::Database;
 use serde::de::DeserializeOwned;
 
+use crate::blocking_call::run_blocking_call;
 use crate::qa::faults::FaultOutcome;
 use crate::services::{AppServices, ServiceFailure, ServiceResult};
 
@@ -96,7 +97,7 @@ where
     cx.background_spawn(async move {
         match apply_fault(fault, &executor).await? {
             Some(injected) => substitute(injected),
-            None => work(),
+            None => run_blocking_call(executor.is_test(), work).await,
         }
     })
 }

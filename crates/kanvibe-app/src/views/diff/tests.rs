@@ -453,6 +453,65 @@ fn a_new_inventory_with_the_same_path_reloads_the_content(cx: &mut TestAppContex
     );
 }
 
+#[gpui::test]
+fn a_refresh_with_the_same_content_keeps_the_open_comparison(cx: &mut TestAppContext) {
+    init(cx);
+    let (page, cx) = open_page(cx, "task", files_ab(), FakeDiffSource::immediate());
+    redraw(cx);
+    let viewer_before = page.read_with(cx, |page, _| page.current_viewer_id());
+    assert!(viewer_before.is_some());
+
+    page.update(cx, |page, cx| page.set_files(files_ab(), cx));
+    redraw(cx);
+
+    assert_eq!(
+        page.read_with(cx, |page, _| page.current_viewer_id()),
+        viewer_before
+    );
+}
+
+#[gpui::test]
+fn the_comparison_view_copies_a_selection_and_scrolls_with_page_keys(cx: &mut TestAppContext) {
+    init(cx);
+    let modified: String = (0..80)
+        .map(|number| format!("line {number}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let reply = modified.clone();
+    let source = FakeDiffSource::new(move |call| {
+        Some(Ok(match call {
+            Call::Original(..) => "original".to_string(),
+            _ => reply.clone(),
+        }))
+    });
+    let (_page, cx) = open_page(cx, "task", files_ab(), source);
+    redraw(cx);
+    let second_line = TargetQuery::ExactText("line 1".into());
+    let top_before = find(cx, second_line.clone())
+        .expect("둘째 줄이 보인다")
+        .origin
+        .y;
+
+    click(cx, "line 0");
+    cx.simulate_keystrokes("ctrl-a ctrl-c");
+    assert_eq!(
+        cx.read_from_clipboard().and_then(|item| item.text()),
+        Some(modified)
+    );
+
+    cx.simulate_keystrokes("down");
+    let top_after_down = find(cx, second_line.clone())
+        .expect("한 줄만 내려가 둘째 줄은 아직 보인다")
+        .origin
+        .y;
+    assert!(top_after_down < top_before);
+    cx.simulate_keystrokes("pagedown");
+    assert!(
+        find(cx, second_line).is_none(),
+        "한 화면 아래로 내려가 둘째 줄이 보이지 않는다"
+    );
+}
+
 /// 편집기 첫 줄을 눌러 포커스를 주고 글자를 넣는다
 fn type_into_editor(cx: &mut VisualTestContext, text: &str) {
     let first_line = find(

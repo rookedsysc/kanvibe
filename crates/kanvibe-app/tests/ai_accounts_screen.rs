@@ -4,7 +4,7 @@
 use std::sync::{Arc, Mutex};
 
 use gpui_kit::gpui;
-use gpui_kit::{Entity, TestAppContext, VisualTestContext, WeakEntity};
+use gpui_kit::{ClipboardItem, Entity, TestAppContext, VisualTestContext, WeakEntity};
 use kanvibe_ai::accounts::account_service::{
     AiAccountMutationOutcome, AiAccountMutationResult, AiAccountSummary,
 };
@@ -20,6 +20,7 @@ use kanvibe_app::views::ai_accounts::AiAccountsView;
 use kanvibe_app::views::ai_accounts::backend::AiAccountsBackend;
 use kanvibe_app::views::ai_accounts::model::UsageState;
 use kanvibe_app::views::{ScreenContext, WindowNavigator};
+use kanvibe_domain::platform::ShortcutPlatform;
 use serde_json::json;
 
 #[derive(Default)]
@@ -517,6 +518,76 @@ fn exited_login_no_longer_takes_input(cx: &mut TestAppContext) {
             .is_some()
     );
     cx.simulate_keystrokes("a enter");
+    assert!(backend.state.lock().unwrap().writes.is_empty());
+}
+
+#[gpui::test]
+fn login_terminal_sends_navigation_and_control_keys(cx: &mut TestAppContext) {
+    let backend = Arc::new(FakeBackend::default());
+    let (_view, cx) = open_login_terminal(cx, backend.clone());
+
+    cx.simulate_keystrokes("up down ctrl-c a enter");
+
+    assert_eq!(
+        backend.state.lock().unwrap().writes,
+        vec!["\u{1b}[A", "\u{1b}[B", "\u{3}", "a", "\r"]
+    );
+}
+
+#[gpui::test]
+fn login_terminal_pastes_the_clipboard_text(cx: &mut TestAppContext) {
+    let backend = Arc::new(FakeBackend::default());
+    let (_view, cx) = open_login_terminal(cx, backend.clone());
+    cx.update(|_, cx| cx.write_to_clipboard(ClipboardItem::new_string("auth-code".into())));
+    let paste_chord = match ShortcutPlatform::current() {
+        ShortcutPlatform::Mac => "cmd-v",
+        ShortcutPlatform::Linux => "ctrl-shift-v",
+    };
+
+    cx.simulate_keystrokes(paste_chord);
+
+    assert_eq!(backend.state.lock().unwrap().writes, vec!["auth-code"]);
+}
+
+#[gpui::test]
+fn dragging_over_the_login_terminal_copies_the_selected_text(cx: &mut TestAppContext) {
+    let backend = Arc::new(FakeBackend::default());
+    let (view, cx) = open_login_terminal(cx, backend.clone());
+    backend
+        .login_window()
+        .send_output("/root/work", "Visit https://login.example/code\r\n");
+    cx.run_until_parked();
+    let terminal = view
+        .read_with(cx, |view, _| view.login_terminal())
+        .expect("로그인 터미널");
+    let layout = terminal
+        .read_with(cx, |terminal, _| terminal.grid_layout())
+        .expect("그린 뒤 칸 자리");
+    let cell_center = |column: f32| {
+        gpui_kit::point(
+            layout.origin.x + layout.cell_size.width * (column + 0.5),
+            layout.origin.y + layout.cell_size.height * 0.5,
+        )
+    };
+    let no_modifiers = gpui_kit::Modifiers::default();
+
+    cx.simulate_mouse_down(cell_center(6.0), gpui_kit::MouseButton::Left, no_modifiers);
+    cx.simulate_mouse_move(
+        cell_center(31.0),
+        Some(gpui_kit::MouseButton::Left),
+        no_modifiers,
+    );
+    cx.simulate_mouse_up(cell_center(31.0), gpui_kit::MouseButton::Left, no_modifiers);
+    let copy_chord = match ShortcutPlatform::current() {
+        ShortcutPlatform::Mac => "cmd-c",
+        ShortcutPlatform::Linux => "ctrl-shift-c",
+    };
+    cx.simulate_keystrokes(copy_chord);
+
+    let copied = cx
+        .update(|_, cx| cx.read_from_clipboard())
+        .and_then(|item| item.text());
+    assert_eq!(copied.as_deref(), Some("https://login.example/code"));
     assert!(backend.state.lock().unwrap().writes.is_empty());
 }
 

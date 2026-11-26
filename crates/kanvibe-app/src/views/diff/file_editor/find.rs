@@ -68,10 +68,10 @@ impl DiffFileEditor {
             .buffer
             .selection()
             .filter(|(start, end)| start.line != end.line);
-        let lines = self.buffer.lines().to_vec();
-        if let Some(session) = &mut self.find {
-            session.recompute(&lines, scope, anchor, cx);
-        }
+        let Some(session) = &mut self.find else {
+            return;
+        };
+        session.recompute(self.buffer.lines(), scope, anchor, cx);
     }
 
     pub(super) fn step_find(&mut self, is_forward: bool, cx: &mut Context<Self>) -> bool {

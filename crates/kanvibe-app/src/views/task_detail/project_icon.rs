@@ -14,11 +14,14 @@ thread_local! {
 /// `data:image/<형식>;base64,...`. 해석할 수 없으면 `None`(TS `<img>`가 깨진 그림을 그리는 자리)
 pub fn data_url_image(data_url: &str) -> Option<Arc<Image>> {
     DECODED_ICONS.with(|icons| {
+        if let Some(image) = icons.borrow().get(data_url) {
+            return image.clone();
+        }
+        let image = decode(data_url);
         icons
             .borrow_mut()
-            .entry(data_url.to_string())
-            .or_insert_with(|| decode(data_url))
-            .clone()
+            .insert(data_url.to_string(), image.clone());
+        image
     })
 }
 
@@ -34,4 +37,22 @@ fn decode(data_url: &str) -> Option<Arc<Image>> {
     };
     let bytes = decode_data_url_to_bytes(data_url).ok()?;
     Some(Arc::new(Image::from_bytes(format, bytes)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_same_data_url_reuses_the_decoded_image() {
+        let first = data_url_image("data:image/png;base64,aGk=").expect("png 아이콘");
+        let second = data_url_image("data:image/png;base64,aGk=").expect("png 아이콘");
+        assert!(Arc::ptr_eq(&first, &second));
+        assert_eq!(first.bytes(), b"hi");
+    }
+
+    #[test]
+    fn data_urls_that_are_not_images_have_no_icon() {
+        assert!(data_url_image("data:text/plain,hi").is_none());
+    }
 }

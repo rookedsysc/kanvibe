@@ -1,8 +1,9 @@
 //! 작업 터미널 하나(TS `Terminal.tsx`). 레지스트리 화면을 그리고, 키·IME·붙여넣기·마우스를 PTY 입력으로 보낸다.
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use futures::StreamExt;
 use futures::channel::mpsc::UnboundedReceiver;
@@ -15,27 +16,30 @@ use kanvibe_domain::i18n::Translator;
 use kanvibe_domain::terminal_tabs::HERDR_SERVER_REPLACED_CLOSE_REASON;
 use kanvibe_runtime::DesktopRuntime;
 use kanvibe_terminal::mouse_selection::TerminalMousePress;
-use kanvibe_terminal::osc52_clipboard::{
-    Osc52Body, Osc52SequenceScanner, read_osc52_clipboard_text,
-};
-use kanvibe_terminal::screen::{ScreenInputModes, TerminalScreen};
+use kanvibe_terminal::screen::{ScreenInputModes, TerminalScreen, VisibleSelection};
 
 use super::image_paste::ImagePasteToast;
-use super::input::{KeyEncodingModes, encode_keystroke, encode_paste};
+use super::input::{KeyEncodingModes, encode_keystroke, encode_paste, page_scroll_lines};
 use super::mouse::{
-    GridPoint, GridSelection, build_mouse_button_report, build_wheel_input, is_selection_press,
+    GridPoint, GridSelection, MouseReportModifiers, build_mouse_button_report,
+    build_mouse_motion_report, build_wheel_input, is_selection_press, take_whole_wheel_lines,
     word_bounds,
 };
-use super::paint::{GridLayout, GridPaintState, measure_cell_size, paint_screen};
+use super::paint::{GridLayout, GridPaintState, ScreenPaintFrame, measure_cell_size, paint_screen};
+use super::scroll_bar::ScrollbackPosition;
 use super::status::{TerminalConnection, render_connection_overlay};
 use super::transport::{BridgeTransport, TerminalTransport};
 use super::window::{TerminalWindowEvent, ViewTerminalWindow, open_terminal_window};
+use crate::components::scroll_area::{PAGE_SCROLLBAR_WIDTH, paint_page_scrollbar};
 use crate::shortcuts::TERMINAL_KEY_CONTEXT;
+use crate::theme::ThemeTokens;
 
 /// xterm FitAddon이 칸 수를 셀 때 폭에서 빼는 스크롤 막대 자리(`ViewportConstants.DEFAULT_SCROLL_BAR_WIDTH`)
 const XTERM_SCROLL_BAR_WIDTH: f32 = 14.0;
 /// TS 터미널이 연결이 끝났을 때 화면에 남기던 기본 문구
 const CONNECTION_CLOSED_MESSAGE: &str = "연결이 종료되었습니다.";
+/// TS 터미널이 쓴 xterm.js DOM 렌더러의 커서 깜박임. 1초 `step-end` 애니메이션이 절반마다 켜고 끈다
+const CURSOR_BLINK_INTERVAL: Duration = Duration::from_millis(500);
 
 /// 터미널 뷰가 붙을 대상
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -50,6 +54,8 @@ pub struct TerminalTarget {
 pub enum TerminalPaneEvent {
     /// 세션에 붙었다. 멀티플렉서 세션은 이때 처음 생기므로 탭 목록을 다시 읽는다
     Connected,
+    /// 세션이 닫혔다. 셸이 끝난 terminal 세션 탭은 레지스트리가 지우므로 탭 목록을 다시 읽는다
+    Closed,
 }
 
 impl gpui_kit::EventEmitter<TerminalPaneEvent> for TerminalPane {}
@@ -65,14 +71,24 @@ pub struct TerminalPane {
     pub(super) closed_reason: Option<String>,
     /// 마지막 그리기의 칸 크기와 자리. 마우스 좌표를 칸으로 바꿀 때 쓴다
     layout: Rc<Cell<Option<GridLayout>>>,
+    /// 마지막 그리기의 스크롤 막대 홈(오른쪽 끝 띠). 막대를 누른 자리를 가릴 때 쓴다
+    scroll_bar_track: Rc<Cell<Option<gpui_kit::Bounds<gpui_kit::Pixels>>>>,
+    /// 스크롤 막대 thumb을 끄는 중이면 누른 자리와 thumb 윗변의 거리
+    scroll_bar_grab_offset: Option<f32>,
+    /// 그리기 전에 화면에서 복사해 두는 셀 버퍼. 프레임마다 다시 써서 칸마다 할당하지 않는다
+    paint_frame: Rc<RefCell<ScreenPaintFrame>>,
     /// PTY에 마지막으로 알린 크기
     pub(super) reported_size: Option<(u16, u16)>,
     focus_handle: FocusHandle,
     marked_text: Option<String>,
-    selection: Option<GridSelection>,
+    /// 드래그 선택을 시작한 칸. 이 칸을 벗어나기 전까지는 빈 선택이다. 선택 자체는 화면이 버퍼 줄에 묶어 쥔다
+    selection_press_point: Option<GridPoint>,
     is_selecting: bool,
     reporting_button: Option<u8>,
-    osc52: Osc52SequenceScanner,
+    /// 마지막으로 이동을 살핀 칸. 같은 칸 안의 이동은 다시 보고하지 않는다(xterm.js)
+    last_motion_point: Option<GridPoint>,
+    /// 아직 한 줄이 되지 않은 휠 양(줄 단위). 트랙패드의 작은 이동을 버리지 않으려고 쌓는다
+    wheel_remainder_lines: f32,
     pub(super) is_mac_platform: bool,
     pub(super) has_retried_after_cooldown: bool,
     /// 비활성 탭이거나 메인 영역이 채팅 기록이라 가려져 있다
@@ -88,6 +104,12 @@ pub struct TerminalPane {
     /// 쿨다운 뒤 다시 열기 예약. 가려지거나 다시 연결하면 버린다
     pub(super) _cooldown_wait: Option<Task<()>>,
     _window_activation: Option<gpui_kit::Subscription>,
+    /// 끝나지 않은 동기화 출력의 시간 제한 시각과 그때 다시 그리는 예약. 출력이 더 오지 않아도 화면이 풀리게 한다
+    sync_expiry_redraw: Option<(Instant, Task<()>)>,
+    /// 커서 깜박임 타이머(xterm.js `cursorBlink: true`). 포커스가 있고 창이 앞에 있으며 보이는 동안만 쥔다
+    cursor_blink: Option<Task<()>>,
+    /// 깜박임에서 지금 커서를 그리는 차례인지. 깜박이지 않을 때는 늘 `true`다
+    is_cursor_blink_on: bool,
 }
 
 impl TerminalPane {
@@ -132,13 +154,17 @@ impl TerminalPane {
             connection,
             closed_reason: None,
             layout: Rc::new(Cell::new(None)),
+            scroll_bar_track: Rc::default(),
+            scroll_bar_grab_offset: None,
+            paint_frame: Rc::default(),
             reported_size: None,
             focus_handle: cx.focus_handle(),
             marked_text: None,
-            selection: None,
+            selection_press_point: None,
             is_selecting: false,
             reporting_button: None,
-            osc52: Osc52SequenceScanner::default(),
+            last_motion_point: None,
+            wheel_remainder_lines: 0.0,
             is_mac_platform: cfg!(target_os = "macos"),
             has_retried_after_cooldown: false,
             is_hidden: false,
@@ -150,6 +176,9 @@ impl TerminalPane {
             _open_task: None,
             _cooldown_wait: None,
             _window_activation: None,
+            sync_expiry_redraw: None,
+            cursor_blink: None,
+            is_cursor_blink_on: true,
         }
     }
 
@@ -177,6 +206,72 @@ impl TerminalPane {
             .read_terminal_screen(&self.target.task_id, self.target.tab_id.as_deref(), read)
     }
 
+    /// 시간 제한이 지난 동기화 출력을 화면에 반영하고, 아직 모으는 중이면 시간 제한에 맞춰 한 번 더 그린다
+    fn finish_expired_screen_sync(&mut self, cx: &mut Context<Self>) {
+        let Some(runtime) = self.runtime.as_ref() else {
+            return;
+        };
+        let now = Instant::now();
+        let pending_deadline = runtime
+            .terminal_registry()
+            .update_terminal_screen_view(
+                &self.target.task_id,
+                self.target.tab_id.as_deref(),
+                |screen| {
+                    screen.finish_expired_sync(now);
+                    screen.pending_sync_deadline()
+                },
+            )
+            .flatten();
+        let Some(deadline) = pending_deadline else {
+            self.sync_expiry_redraw = None;
+            return;
+        };
+        let is_already_scheduled = self
+            .sync_expiry_redraw
+            .as_ref()
+            .is_some_and(|(scheduled, _)| *scheduled == deadline);
+        if is_already_scheduled {
+            return;
+        }
+        let wait = deadline.saturating_duration_since(now);
+        let redraw = cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(wait).await;
+            let _ = this.update(cx, |_, cx| cx.notify());
+        });
+        self.sync_expiry_redraw = Some((deadline, redraw));
+    }
+
+    /// 포커스·창 활성·가림이 바뀌면 GPUI가 창을 다시 그리므로, 그릴 때 깜박임을 켜거나 끈다
+    fn sync_cursor_blink(&mut self, should_blink: bool, cx: &mut Context<Self>) {
+        if !should_blink {
+            self.stop_cursor_blink();
+        } else if self.cursor_blink.is_none() {
+            self.restart_cursor_blink(cx);
+        }
+    }
+
+    fn restart_cursor_blink(&mut self, cx: &mut Context<Self>) {
+        self.is_cursor_blink_on = true;
+        self.cursor_blink = Some(cx.spawn(async move |this, cx| {
+            loop {
+                cx.background_executor().timer(CURSOR_BLINK_INTERVAL).await;
+                let is_alive = this.update(cx, |pane, cx| {
+                    pane.is_cursor_blink_on = !pane.is_cursor_blink_on;
+                    cx.notify();
+                });
+                if is_alive.is_err() {
+                    break;
+                }
+            }
+        }));
+    }
+
+    pub(super) fn stop_cursor_blink(&mut self) {
+        self.cursor_blink = None;
+        self.is_cursor_blink_on = true;
+    }
+
     fn input_modes(&self) -> ScreenInputModes {
         self.read_screen(TerminalScreen::input_modes)
             .unwrap_or_default()
@@ -196,7 +291,14 @@ impl TerminalPane {
 
     fn handle_window_event(&mut self, event: TerminalWindowEvent, cx: &mut Context<Self>) {
         match event {
-            TerminalWindowEvent::Output(output) => self.forward_osc52(output.as_bytes(), cx),
+            TerminalWindowEvent::Output => {
+                if let Some(window) = &self.window {
+                    window.acknowledge_output();
+                }
+            }
+            TerminalWindowEvent::ClipboardText(text) => {
+                cx.write_to_clipboard(ClipboardItem::new_string(text));
+            }
             TerminalWindowEvent::Closed(reason)
                 if reason.as_deref() == Some(HERDR_SERVER_REPLACED_CLOSE_REASON) =>
             {
@@ -207,21 +309,10 @@ impl TerminalPane {
                     self.closed_reason =
                         Some(reason.unwrap_or_else(|| CONNECTION_CLOSED_MESSAGE.to_string()));
                 }
+                cx.emit(TerminalPaneEvent::Closed);
             }
         }
         cx.notify();
-    }
-
-    /// 멀티플렉서 너머 프로세스의 OSC 52 복사 요청을 시스템 클립보드로 옮긴다. 읽기 요청에는 답하지 않는다
-    fn forward_osc52(&mut self, bytes: &[u8], cx: &mut Context<Self>) {
-        for body in self.osc52.scan(bytes) {
-            let Osc52Body::Text(payload) = body else {
-                continue;
-            };
-            if let Some(text) = read_osc52_clipboard_text(&payload) {
-                cx.write_to_clipboard(ClipboardItem::new_string(text));
-            }
-        }
     }
 
     fn handle_key_down(
@@ -232,6 +323,16 @@ impl TerminalPane {
     ) {
         let keystroke = &event.keystroke;
         if self.handle_clipboard_shortcut(keystroke, cx) {
+            cx.stop_propagation();
+            return;
+        }
+        let page_lines = self
+            .layout
+            .get()
+            .and_then(|layout| page_scroll_lines(keystroke, layout.rows));
+        if let Some(lines) = page_lines {
+            self.scroll_history(lines);
+            cx.notify();
             cx.stop_propagation();
             return;
         }
@@ -247,17 +348,28 @@ impl TerminalPane {
         let _ = window;
     }
 
-    /// 입력하면 스크롤백 보기를 맨 아래로 돌리고 선택을 지운다(xterm.js)
+    /// 입력하면 스크롤백 보기를 맨 아래로 돌리고 선택을 지운다. 깜박이던 커서는 보인 상태로 다시 센다(xterm.js)
     fn prepare_for_input(&mut self, cx: &mut Context<Self>) {
-        self.selection = None;
+        if self.cursor_blink.is_some() {
+            self.restart_cursor_blink(cx);
+        }
+        self.selection_press_point = None;
+        self.update_screen_view(|screen| {
+            screen.clear_selection();
+            screen.scroll_display_to_bottom();
+        });
+        cx.notify();
+    }
+
+    /// 데스크탑 뷰만 쓰는 화면 상태(선택·스크롤백 보기 위치)를 바꾼다
+    fn update_screen_view(&self, update: impl FnOnce(&mut TerminalScreen)) {
         if let Some(runtime) = self.runtime.as_ref() {
             runtime.terminal_registry().update_terminal_screen_view(
                 &self.target.task_id,
                 self.target.tab_id.as_deref(),
-                TerminalScreen::scroll_display_to_bottom,
+                update,
             );
         }
-        cx.notify();
     }
 
     /// 복사(`Mod+C`·Linux `Ctrl+Shift+C`)와 붙여넣기(`Mod+V`·Linux `Ctrl+Shift+V`·`Shift+Insert`).
@@ -293,9 +405,7 @@ impl TerminalPane {
     }
 
     fn selected_text(&self) -> Option<String> {
-        let selection = self.selection.filter(|selection| !selection.is_empty())?;
-        let columns = usize::from(self.layout.get()?.columns);
-        self.read_screen(|screen| selection_text(screen, selection, columns))
+        self.read_screen(TerminalScreen::selected_text).flatten()
     }
 
     /// 붙여넣기. 원격 세션에서 클립보드에 이미지가 있으면 scp로 보내고 원격 경로를 쓴다
@@ -353,34 +463,51 @@ fn spawn_event_loop(
     })
 }
 
-/// 선택 영역의 글. 줄 끝 공백은 떼고 줄마다 줄바꿈으로 잇는다
-fn selection_text(screen: &TerminalScreen, selection: GridSelection, columns: usize) -> String {
+/// 선택 영역의 글. 줄 끝 공백은 떼고 줄마다 줄바꿈으로 잇는다.
+/// 자동 줄바꿈으로 다음 줄에 이어진 줄은 공백을 떼지 않고 개행 없이 잇는다(xterm.js `isWrapped`)
+pub(crate) fn selection_text(
+    screen: &TerminalScreen,
+    selection: GridSelection,
+    columns: usize,
+) -> String {
     let (start, end) = selection.ordered();
-    let lines: Vec<String> = (start.row..=end.row)
-        .map(|row| {
-            let cells = screen.visible_cells(row).unwrap_or_default();
-            let from = if row == start.row { start.column } else { 0 };
-            let to = if row == end.row {
-                end.column
+    let mut text = String::new();
+    for row in start.row..=end.row {
+        let from = if row == start.row { start.column } else { 0 };
+        let to = if row == end.row {
+            end.column
+        } else {
+            columns.saturating_sub(1)
+        };
+        let row_text = selected_row_text(screen, row, from, to);
+        let is_continued_on_next_row = row < end.row && screen.is_visible_row_wrapped(row);
+        if is_continued_on_next_row {
+            text.push_str(&row_text);
+            continue;
+        }
+        text.push_str(row_text.trim_end());
+        if row < end.row {
+            text.push('\n');
+        }
+    }
+    text
+}
+
+/// 한 줄에서 `from`..=`to` 칸의 글. 빈 칸은 공백으로 둔다
+fn selected_row_text(screen: &TerminalScreen, row: usize, from: usize, to: usize) -> String {
+    let cells = screen.visible_cells(row).unwrap_or_default();
+    cells
+        .iter()
+        .enumerate()
+        .filter(|(column, cell)| *column >= from && *column <= to && cell.width > 0)
+        .map(|(_, cell)| {
+            if cell.text.is_empty() {
+                " "
             } else {
-                columns.saturating_sub(1)
-            };
-            let text: String = cells
-                .iter()
-                .enumerate()
-                .filter(|(column, cell)| *column >= from && *column <= to && cell.width > 0)
-                .map(|(_, cell)| {
-                    if cell.text.is_empty() {
-                        " "
-                    } else {
-                        cell.text.as_str()
-                    }
-                })
-                .collect();
-            text.trim_end().to_string()
+                cell.text.as_str()
+            }
         })
-        .collect();
-    lines.join("\n")
+        .collect()
 }
 
 impl Drop for TerminalPane {
@@ -426,97 +553,135 @@ impl TerminalPane {
         let Some(layout) = self.layout.get() else {
             return;
         };
+        if event.button == MouseButton::Left && self.press_scroll_bar(event.position, cx) {
+            return;
+        }
         let point = layout.grid_point(event.position);
         let press = self.mouse_press(event, point);
         let modes = self.input_modes();
         if is_selection_press(&press, &modes, self.is_mac_platform) {
-            self.start_selection(point, event.click_count, cx);
+            if event.button == MouseButton::Left {
+                self.start_selection(point, event.click_count, cx);
+            }
             return;
         }
-        if let Some(report) = build_mouse_button_report(press.button, true, point, &modes) {
+        let modifiers = mouse_report_modifiers(&event.modifiers);
+        if let Some(report) =
+            build_mouse_button_report(press.button, true, point, modifiers, &modes)
+        {
             self.reporting_button = Some(press.button);
             self.write_input(&report);
         }
     }
 
     fn start_selection(&mut self, point: GridPoint, click_count: usize, cx: &mut Context<Self>) {
-        self.selection = match click_count {
-            2 => self.word_selection(point),
-            3 => Some(GridSelection {
-                anchor: GridPoint {
-                    row: point.row,
-                    column: 0,
-                },
-                head: GridPoint {
-                    row: point.row,
-                    column: self
-                        .layout
-                        .get()
-                        .map_or(0, |layout| usize::from(layout.columns) - 1),
-                },
-            }),
-            _ => Some(GridSelection {
-                anchor: point,
-                head: point,
-            }),
-        };
+        let last_column = self
+            .layout
+            .get()
+            .map_or(0, |layout| usize::from(layout.columns) - 1);
+        let word = (click_count == 2)
+            .then(|| self.word_columns(point))
+            .flatten();
+        self.update_screen_view(|screen| match (click_count, word) {
+            (2, Some((start, end))) => {
+                screen.select_visible_range((point.row, start), (point.row, end))
+            }
+            (2, None) => screen.clear_selection(),
+            (3, _) => screen.select_visible_range((point.row, 0), (point.row, last_column)),
+            _ => screen.start_selection(point.row, point.column),
+        });
+        self.selection_press_point = (click_count < 2).then_some(point);
         self.is_selecting = click_count < 2;
         cx.notify();
     }
 
-    fn word_selection(&self, point: GridPoint) -> Option<GridSelection> {
-        let characters: Vec<String> = self.read_screen(|screen| {
-            screen
-                .visible_cells(point.row)
-                .unwrap_or_default()
-                .into_iter()
-                .map(|cell| cell.text)
-                .collect()
-        })?;
-        let (start, end) = word_bounds(&characters, point.column);
-        Some(GridSelection {
-            anchor: GridPoint {
-                row: point.row,
-                column: start,
-            },
-            head: GridPoint {
-                row: point.row,
-                column: end,
-            },
-        })
+    /// 두 번 누른 칸이 속한 단어의 첫 칸과 끝 칸
+    fn word_columns(&self, point: GridPoint) -> Option<(usize, usize)> {
+        let cells =
+            self.read_screen(|screen| screen.visible_cells(point.row).unwrap_or_default())?;
+        Some(word_bounds(&cells, point.column))
     }
 
-    /// X11 중간 클릭 붙여넣기 관례. 원격 세션에서 클립보드 이미지가 있을 때만 가로챈다
-    fn handle_middle_mouse_down(&mut self, cx: &mut Context<Self>) {
+    /// X11 중간 클릭 붙여넣기 관례. 원격 세션에서 클립보드 이미지가 있을 때만 가로채고, 아니면 마우스 보고로 보낸다
+    fn handle_middle_mouse_down(
+        &mut self,
+        event: &MouseDownEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if self.try_paste_remote_image(cx) {
             cx.stop_propagation();
+            return;
         }
+        self.handle_mouse_down(event, window, cx);
     }
 
     fn handle_mouse_move(&mut self, event: &MouseMoveEvent, cx: &mut Context<Self>) {
-        if !self.is_selecting || event.pressed_button != Some(MouseButton::Left) {
-            return;
-        }
         let Some(layout) = self.layout.get() else {
             return;
         };
-        if let Some(selection) = self.selection.as_mut() {
-            selection.head = layout.grid_point(event.position);
-            cx.notify();
+        if let Some(grab_offset) = self.scroll_bar_grab_offset
+            && event.pressed_button == Some(MouseButton::Left)
+        {
+            self.drag_scroll_bar_thumb(event.position.y, grab_offset, cx);
+            return;
+        }
+        let point = layout.grid_point(event.position);
+        if self.is_selecting && event.pressed_button == Some(MouseButton::Left) {
+            if self.selection_press_point != Some(point) {
+                self.selection_press_point = None;
+                self.update_screen_view(|screen| screen.extend_selection(point.row, point.column));
+                cx.notify();
+            }
+            return;
+        }
+        self.report_mouse_motion(point, event);
+    }
+
+    /// 프로그램이 이동 보고(1002·1003)를 켰으면 칸이 바뀔 때마다 이동을 알린다
+    fn report_mouse_motion(&mut self, point: GridPoint, event: &MouseMoveEvent) {
+        if self.last_motion_point == Some(point) {
+            return;
+        }
+        self.last_motion_point = Some(point);
+        let modes = self.input_modes();
+        let modifiers = mouse_report_modifiers(&event.modifiers);
+        if let Some(report) =
+            build_mouse_motion_report(self.reporting_button, point, modifiers, &modes)
+        {
+            self.write_input(&report);
+        }
+    }
+
+    /// 끌지 않고 한 번 누른 칸이 링크면 연다(TS `WebLinksAddon`의 `window.open` → 창 열기 규칙).
+    /// 마우스 보고 중이면 선택 누름이 아니어서 누른 칸이 없고, 클릭은 프로그램이 받는다
+    fn open_clicked_link(&mut self, event: &MouseUpEvent, window: &Window, cx: &mut Context<Self>) {
+        let press_point = self.selection_press_point.take();
+        let Some(layout) = self.layout.get() else {
+            return;
+        };
+        let point = layout.grid_point(event.position);
+        if event.click_count != 1 || press_point != Some(point) {
+            return;
+        }
+        let link = self.read_screen(|screen| screen.link_at(point.row, point.column));
+        if let Some(url) = link.flatten() {
+            crate::windows::open_href(&url, Some(window.window_handle().window_id()), cx);
         }
     }
 
     fn handle_mouse_up(&mut self, event: &MouseUpEvent, cx: &mut Context<Self>) {
         self.is_selecting = false;
+        self.scroll_bar_grab_offset = None;
         let Some(button) = self.reporting_button.take() else {
             return;
         };
         let (Some(layout), modes) = (self.layout.get(), self.input_modes()) else {
             return;
         };
-        if let Some(report) =
-            build_mouse_button_report(button, false, layout.grid_point(event.position), &modes)
-        {
+        let point = layout.grid_point(event.position);
+        let modifiers = mouse_report_modifiers(&event.modifiers);
+        if let Some(report) = build_mouse_button_report(button, false, point, modifiers, &modes) {
             self.write_input(&report);
         }
         cx.notify();
@@ -527,7 +692,8 @@ impl TerminalPane {
             return;
         };
         let delta = event.delta.pixel_delta(layout.cell_size.height);
-        let lines = (f32::from(delta.y) / f32::from(layout.cell_size.height)).round() as i32;
+        let delta_lines = f32::from(delta.y) / f32::from(layout.cell_size.height);
+        let lines = take_whole_wheel_lines(&mut self.wheel_remainder_lines, delta_lines);
         if lines == 0 {
             return;
         }
@@ -541,27 +707,125 @@ impl TerminalPane {
     }
 
     fn scroll_history(&self, lines: i32) {
-        if let Some(runtime) = self.runtime.as_ref() {
-            runtime.terminal_registry().update_terminal_screen_view(
-                &self.target.task_id,
-                self.target.tab_id.as_deref(),
-                |screen| screen.scroll_display(lines),
-            );
+        self.update_screen_view(|screen| screen.scroll_display(lines));
+    }
+
+    /// 지금 화면의 스크롤백 위치. 스크롤백이 없거나 그려진 적이 없으면 `None`이다
+    fn scrollback_position(&self) -> Option<ScrollbackPosition> {
+        let cell_height = f32::from(self.layout.get()?.cell_size.height);
+        self.read_screen(|screen| ScrollbackPosition::read(screen, cell_height))
+            .filter(|position| position.history_size > 0)
+    }
+
+    /// 스크롤 막대 홈을 눌렀으면 처리하고 참을 돌려준다. thumb을 누르면 끌기를 시작하고,
+    /// 홈의 빈 곳을 누르면 그쪽으로 한 화면 넘긴다(Chromium 스크롤바)
+    fn press_scroll_bar(
+        &mut self,
+        position: gpui_kit::Point<gpui_kit::Pixels>,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let Some(track) = self
+            .scroll_bar_track
+            .get()
+            .filter(|track| track.contains(&position))
+        else {
+            return false;
+        };
+        let Some(scrollback) = self.scrollback_position() else {
+            return false;
+        };
+        let track_height = f32::from(track.size.height);
+        let Some((thumb_top, thumb_length)) = scrollback.thumb(track_height) else {
+            return false;
+        };
+        let pressed_y = f32::from(position.y - track.origin.y);
+        let page_lines = scrollback.rows as i32;
+        if pressed_y < thumb_top {
+            self.scroll_history(page_lines);
+        } else if pressed_y > thumb_top + thumb_length {
+            self.scroll_history(-page_lines);
+        } else {
+            self.scroll_bar_grab_offset = Some(pressed_y - thumb_top);
         }
+        cx.notify();
+        true
+    }
+
+    fn drag_scroll_bar_thumb(
+        &mut self,
+        pointer_y: gpui_kit::Pixels,
+        grab_offset: f32,
+        cx: &mut Context<Self>,
+    ) {
+        let (Some(track), Some(scrollback)) =
+            (self.scroll_bar_track.get(), self.scrollback_position())
+        else {
+            return;
+        };
+        let thumb_top = f32::from(pointer_y - track.origin.y) - grab_offset;
+        let target_offset =
+            scrollback.display_offset_for_thumb_top(f32::from(track.size.height), thumb_top);
+        let lines = target_offset as i32 - scrollback.display_offset as i32;
+        if lines != 0 {
+            self.scroll_history(lines);
+            cx.notify();
+        }
+    }
+}
+
+/// 칸 영역 오른쪽 끝의 스크롤 막대 홈. xterm이 칸 수를 셀 때 비워 둔 자리에 놓는다
+fn scroll_bar_track_bounds(
+    bounds: gpui_kit::Bounds<gpui_kit::Pixels>,
+) -> gpui_kit::Bounds<gpui_kit::Pixels> {
+    gpui_kit::Bounds::new(
+        gpui_kit::point(bounds.right() - PAGE_SCROLLBAR_WIDTH, bounds.origin.y),
+        gpui_kit::size(PAGE_SCROLLBAR_WIDTH, bounds.size.height),
+    )
+}
+
+/// 화면이 보이는 칸으로 옮긴 선택을 그리기용 선택으로 바꾼다
+fn grid_selection(selection: VisibleSelection) -> GridSelection {
+    GridSelection {
+        anchor: GridPoint {
+            row: selection.start_row,
+            column: selection.start_column,
+        },
+        head: GridPoint {
+            row: selection.end_row,
+            column: selection.end_column,
+        },
+    }
+}
+
+/// GPUI 수정자를 마우스 보고 수정자로 옮긴다. macOS Command는 보고에 넣지 않는다(xterm.js)
+fn mouse_report_modifiers(modifiers: &gpui_kit::Modifiers) -> MouseReportModifiers {
+    MouseReportModifiers {
+        is_shift_pressed: modifiers.shift,
+        is_alt_pressed: modifiers.alt,
+        is_control_pressed: modifiers.control,
     }
 }
 
 impl Render for TerminalPane {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.observe_window_activation(window, cx);
+        self.finish_expired_screen_sync(cx);
+        let is_focused = self.focus_handle.is_focused(window);
+        self.sync_cursor_blink(
+            is_focused && window.is_window_active() && !self.is_hidden,
+            cx,
+        );
         let entity = cx.entity();
         let layout_slot = Rc::clone(&self.layout);
         let paint_inputs = PaintInputs {
+            paint_frame: Rc::clone(&self.paint_frame),
             runtime: self.runtime.clone(),
             target: self.target.clone(),
-            selection: self.selection,
-            is_focused: self.focus_handle.is_focused(window),
+            is_focused,
+            is_cursor_blink_on: self.is_cursor_blink_on,
             marked_text: self.marked_text.clone(),
+            scroll_bar_track: Rc::clone(&self.scroll_bar_track),
+            scroll_bar_color: cx.global::<ThemeTokens>().border.strong.into(),
             focus_handle: self.focus_handle.clone(),
             entity: cx.entity(),
         };
@@ -585,11 +849,28 @@ impl Render for TerminalPane {
             )
             .on_mouse_down(
                 MouseButton::Middle,
-                cx.listener(|pane, _, _, cx| pane.handle_middle_mouse_down(cx)),
+                cx.listener(|pane, event, window, cx| {
+                    pane.handle_middle_mouse_down(event, window, cx)
+                }),
+            )
+            .on_mouse_down(
+                MouseButton::Right,
+                cx.listener(|pane, event, window, cx| pane.handle_mouse_down(event, window, cx)),
             )
             .on_mouse_move(cx.listener(|pane, event, _, cx| pane.handle_mouse_move(event, cx)))
             .on_mouse_up(
                 MouseButton::Left,
+                cx.listener(|pane, event, window, cx| {
+                    pane.open_clicked_link(event, window, cx);
+                    pane.handle_mouse_up(event, cx)
+                }),
+            )
+            .on_mouse_up(
+                MouseButton::Middle,
+                cx.listener(|pane, event, _, cx| pane.handle_mouse_up(event, cx)),
+            )
+            .on_mouse_up(
+                MouseButton::Right,
                 cx.listener(|pane, event, _, cx| pane.handle_mouse_up(event, cx)),
             )
             .on_scroll(cx.listener(|pane, event, _, cx| pane.handle_scroll(event, cx)))
@@ -689,11 +970,14 @@ fn prepaint_grid(
 
 /// 그리기에 필요한 값. 렌더 시점에 복사해 두어 그리는 동안 뷰를 빌리지 않는다
 struct PaintInputs {
+    paint_frame: Rc<RefCell<ScreenPaintFrame>>,
     runtime: Option<Arc<DesktopRuntime>>,
     target: TerminalTarget,
-    selection: Option<GridSelection>,
     is_focused: bool,
+    is_cursor_blink_on: bool,
     marked_text: Option<String>,
+    scroll_bar_track: Rc<Cell<Option<gpui_kit::Bounds<gpui_kit::Pixels>>>>,
+    scroll_bar_color: gpui_kit::Hsla,
     focus_handle: FocusHandle,
     entity: gpui_kit::Entity<TerminalPane>,
 }
@@ -706,18 +990,42 @@ impl PaintInputs {
         window: &mut Window,
         cx: &mut App,
     ) {
-        let state = GridPaintState {
-            layout,
-            selection: self.selection,
-            is_focused: self.is_focused,
-            marked_text: self.marked_text.as_deref(),
-        };
         if let Some(runtime) = self.runtime.as_ref() {
-            runtime.terminal_registry().read_terminal_screen(
+            let mut frame = self.paint_frame.borrow_mut();
+            let cell_height = f32::from(layout.cell_size.height);
+            let painted = runtime.terminal_registry().read_terminal_screen(
                 &self.target.task_id,
                 self.target.tab_id.as_deref(),
-                |screen| paint_screen(screen, &state, window, cx),
+                |screen| {
+                    frame.copy_from(screen, usize::from(layout.rows));
+                    let selection = screen.visible_selection().map(grid_selection);
+                    (selection, ScrollbackPosition::read(screen, cell_height))
+                },
             );
+            let (selection, scrollback) = painted.unzip();
+            let track = scroll_bar_track_bounds(bounds);
+            self.scroll_bar_track.set(Some(track));
+            if let Some(selection) = selection {
+                let state = GridPaintState {
+                    layout,
+                    selection,
+                    is_focused: self.is_focused,
+                    is_cursor_blink_on: self.is_cursor_blink_on,
+                    marked_text: self.marked_text.as_deref(),
+                };
+                paint_screen(&frame, &state, window, cx);
+            }
+            if let Some((content_height, scroll_top)) =
+                scrollback.and_then(|scrollback| scrollback.page_extent())
+            {
+                paint_page_scrollbar(
+                    track,
+                    content_height,
+                    scroll_top,
+                    self.scroll_bar_color,
+                    window,
+                );
+            }
         }
         // 글자 입력과 IME 조합은 이 입력기로 받는다. 글자가 아닌 키는 `handle_key_down`이 먼저 처리한다
         window.handle_input(
@@ -823,5 +1131,94 @@ impl gpui_kit::EntityInputHandler for TerminalPane {
         _cx: &mut Context<Self>,
     ) -> Option<usize> {
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn whole_rows(first_row: usize, last_row: usize, columns: usize) -> GridSelection {
+        GridSelection {
+            anchor: GridPoint {
+                row: first_row,
+                column: 0,
+            },
+            head: GridPoint {
+                row: last_row,
+                column: columns - 1,
+            },
+        }
+    }
+
+    #[test]
+    fn copying_an_auto_wrapped_line_keeps_it_on_one_line() {
+        let mut screen = TerminalScreen::new(10, 4);
+        screen.write(b"https://example.com/x\r\nnext");
+
+        let copied = selection_text(&screen, whole_rows(0, 3, 10), 10);
+
+        assert_eq!(copied, "https://example.com/x\nnext");
+    }
+
+    #[test]
+    fn copying_separate_lines_keeps_their_line_breaks() {
+        let mut screen = TerminalScreen::new(10, 3);
+        screen.write(b"one   \r\ntwo");
+
+        assert_eq!(
+            selection_text(&screen, whole_rows(0, 1, 10), 10),
+            "one\ntwo"
+        );
+    }
+}
+
+#[cfg(test)]
+mod cursor_blink_tests {
+    use gpui_kit::{TestAppContext, VisualTestContext, gpui};
+    use kanvibe_domain::i18n::Locale;
+
+    use super::*;
+    use crate::qa::options::{DEFAULT_WINDOW_SIZE, LaunchOptions};
+
+    /// xterm.js는 포커스된 터미널의 커서만 깜박이고, 포커스를 잃으면 깜박임을 멈춘 채 커서를 그린다
+    #[gpui::test]
+    fn only_the_focused_terminal_of_an_active_window_blinks_its_cursor(cx: &mut TestAppContext) {
+        let launch = LaunchOptions {
+            data_dir: None,
+            initial_route: "/ko".into(),
+            window_size: DEFAULT_WINDOW_SIZE,
+            qa: None,
+        };
+        cx.update(|cx| crate::init_app(&launch, cx).expect("app init"));
+        let target = TerminalTarget {
+            task_id: "task-1".into(),
+            tab_id: None,
+            is_remote: false,
+        };
+        let (pane, cx) = cx.add_window_view(move |_, cx| {
+            TerminalPane::with_transport(target, Translator::new(Locale::Ko, "terminal"), None, cx)
+        });
+        let blink_states = |cx: &mut VisualTestContext| {
+            let mut states = Vec::new();
+            for _ in 0..3 {
+                cx.executor().advance_clock(CURSOR_BLINK_INTERVAL);
+                cx.run_until_parked();
+                states.push(pane.read_with(cx, |pane, _| pane.is_cursor_blink_on));
+            }
+            states
+        };
+
+        assert_eq!(blink_states(cx), [true, true, true]);
+        let focus_handle = pane.read_with(cx, |pane, _| pane.focus_handle.clone());
+        cx.update(|window, cx| {
+            window.activate_window();
+            focus_handle.focus(window, cx);
+        });
+        cx.run_until_parked();
+        assert_eq!(blink_states(cx), [false, true, false]);
+        cx.deactivate_window();
+        assert_eq!(blink_states(cx), [true, true, true]);
+        assert!(pane.read_with(cx, |pane, _| pane.cursor_blink.is_none()));
     }
 }

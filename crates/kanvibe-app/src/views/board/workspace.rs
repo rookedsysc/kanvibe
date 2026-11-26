@@ -3,18 +3,19 @@
 //! 처음에는 세션이 있는 첫 작업을 고르고, 세션 없는 작업은 사용자가 고를 때만 자동 연결한다.
 
 use std::collections::HashSet;
+use std::rc::Rc;
 
 use gpui_kit::{
-    AnyElement, Context, InteractiveElement, IntoElement, KeyDownEvent, ParentElement,
-    StatefulInteractiveElement, Styled, Window, div, px,
+    AnyElement, AppContext, Context, Entity, Focusable, InteractiveElement, IntoElement,
+    KeyDownEvent, ParentElement, StatefulInteractiveElement, Styled, Subscription, Window, div, px,
 };
 use kanvibe_domain::board_sort::BoardSortPreference;
-use kanvibe_domain::i18n::Translator;
+use kanvibe_domain::i18n::{Locale, Translator};
 use kanvibe_domain::shortcuts::key_event::{
     KeyPhase, KeyTransition, ModifierState, ShortcutKeyEvent,
 };
 use kanvibe_domain::shortcuts::workspace_focus::WorkspaceListFocusTracker;
-use kanvibe_domain::task::{KanbanTask, TASK_STATUS_ORDER, TaskStatus};
+use kanvibe_domain::task::{KanbanTask, SessionType, TASK_STATUS_ORDER, TaskStatus};
 use kanvibe_services::kanban::TasksByStatus;
 
 use super::BoardView;
@@ -26,9 +27,14 @@ use super::task_filters::{
     BoardSortContext, TaskKindFilter, build_project_filter_set, matches_project_filter,
     matches_task_kind_filter, sort_tasks_for_board,
 };
+use crate::components::terminal_tabs::{
+    TerminalTabsController, TerminalTabsEvent, render_terminal_loader,
+};
+use crate::components::terminal_view::{TerminalPane, TerminalPaneEvent, TerminalTarget};
 use crate::components::{TailwindText, fade};
 use crate::text_collation::LocaleCollator;
 use crate::theme::{ThemeTokens, radius, spacing, text_scale};
+use crate::views::window_controls::WINDOW_CONTROLS_WIDTH;
 
 /// xterm 테마 배경(`Terminal.tsx` theme.background). 앱 테마 토큰이 아니라 터미널 고정색이다
 const XTERM_BACKGROUND: u32 = 0x0a0a0a;
@@ -193,26 +199,92 @@ pub(super) struct WorkspaceState {
     /// 세션 없는 작업을 고르면 연결을 시도한다. 그 작업 ID와 실패 사유
     pub connecting_task_id: Option<String>,
     pub connect_failure: Option<(String, String)>,
+    /// 보드에 없는 고른 작업을 따로 읽기 시작한 ID. 보드를 다시 받기 전까지 같은 작업을 또 읽지 않는다
+    pub outside_task_lookup_id: Option<String>,
+}
+
+/// 왼쪽 목록을 정하는 입력. 보드·필터는 판 번호로, 나머지는 값으로 비교한다
+#[derive(PartialEq)]
+pub(super) struct WorkspaceListInputs {
+    board_revision: u64,
+    filters_revision: u64,
+    locale: Locale,
+    search: String,
+    statuses: HashSet<TaskStatus>,
+    selected_task_id: Option<String>,
+    hidden_selection_id: Option<String>,
+}
+
+/// 오른쪽 열에 붙은 터미널(TS `WorkspaceTerminalPane`의 `TerminalLoader`). 고른 작업이 바뀌면 이전 터미널과 탭 상태를 버려
+/// 연결을 닫고 탭 목록 조회를 멈춘다
+#[derive(Default)]
+pub(super) struct WorkspaceTerminal {
+    pane: Option<Entity<TerminalPane>>,
+    /// terminal 세션의 비활성 탭 터미널. 다시 고르면 같은 연결과 스크롤백을 보이려고 숨긴 채 둔다
+    hidden_panes: Vec<Entity<TerminalPane>>,
+    /// terminal 세션 작업의 탭 상태와 탭 바(TS `useTerminalTabs`·`TerminalTabBar`). 멀티플렉서 세션은 탭 없이 세션에 붙는다
+    tabs: Option<Entity<TerminalTabsController>>,
+    /// 탭마다 붙는 터미널이 SSH 원격 작업의 것인지
+    is_remote: bool,
+    _tabs_events: Vec<Subscription>,
+    /// 탭 터미널마다 하나씩 둔다. 숨긴 탭의 셸이 끝나도 탭 목록을 다시 읽어야 한다
+    _terminal_events: Vec<Subscription>,
+    _redraw: Option<Subscription>,
+}
+
+/// 오른쪽 열 머리에 탭 바를 보일지(TS `isTerminalSession && terminalTabs.tabs.length > 0`)
+fn should_show_workspace_tab_bar(task: &KanbanTask, tab_count: usize) -> bool {
+    task.session_type == Some(SessionType::Terminal) && tab_count > 0
+}
+
+/// 터미널 뷰가 붙을 대상. 활성 탭이 없으면 붙지 않는다(버려질 PTY를 만들지 않게)
+fn workspace_tab_target(
+    task_id: &str,
+    active_tab_id: Option<&str>,
+    is_remote: bool,
+) -> Option<TerminalTarget> {
+    active_tab_id.map(|tab_id| TerminalTarget {
+        task_id: task_id.to_string(),
+        tab_id: Some(tab_id.to_string()),
+        is_remote,
+    })
+}
+
+fn is_remote_task(task: &KanbanTask) -> bool {
+    task.ssh_host
+        .as_deref()
+        .is_some_and(|host| !host.is_empty())
 }
 
 impl BoardView {
-    fn workspace_listed(&self, cx: &gpui_kit::App) -> Vec<KanbanTask> {
-        let Some(board) = &self.board else {
-            return Vec::new();
+    /// 왼쪽 목록의 작업. 보드·필터·검색어·고른 작업이 그대로면 앞서 만든 목록을 다시 쓴다
+    fn workspace_listed(&self, cx: &gpui_kit::App) -> Rc<Vec<KanbanTask>> {
+        let inputs = WorkspaceListInputs {
+            board_revision: self.board.revision(),
+            filters_revision: self.filters.revision(),
+            locale: self.locale(),
+            search: self.workspace_search.read(cx).text().to_string(),
+            statuses: self.workspace.statuses.clone(),
+            selected_task_id: self.workspace.selected_task_id.clone(),
+            hidden_selection_id: self.workspace.hidden_selection_id.clone(),
         };
-        let search = self.workspace_search.read(cx).text().to_string();
-        let collator = LocaleCollator::for_locale(self.locale());
-        let query = WorkspaceListQuery {
-            search: &search,
-            statuses: &self.workspace.statuses,
-            task_kind: self.filters.task_kind,
-            selected_project_ids: &self.filters.selected_project_ids,
-            sort_preference: &board.sort_preference,
-            collator: &collator,
-            selected_task_id: self.workspace.selected_task_id.as_deref(),
-            hidden_selection_id: self.workspace.hidden_selection_id.as_deref(),
-        };
-        workspace_listed_tasks(&board.tasks, &board.catalog, &query)
+        self.workspace_listed_cache.get_or_build(inputs, || {
+            let Some(board) = self.board.as_ref() else {
+                return Vec::new();
+            };
+            let collator = LocaleCollator::for_locale(self.locale());
+            let query = WorkspaceListQuery {
+                search: self.workspace_search.read(cx).text(),
+                statuses: &self.workspace.statuses,
+                task_kind: self.filters.task_kind,
+                selected_project_ids: &self.filters.selected_project_ids,
+                sort_preference: &board.sort_preference,
+                collator: &collator,
+                selected_task_id: self.workspace.selected_task_id.as_deref(),
+                hidden_selection_id: self.workspace.hidden_selection_id.as_deref(),
+            };
+            workspace_listed_tasks(&board.tasks, &board.catalog, &query)
+        })
     }
 
     /// 처음 데이터를 받으면 쿼리(`?taskId=`)나 세션 있는 첫 작업을 고른다
@@ -318,15 +390,86 @@ impl BoardView {
     pub(crate) fn select_workspace_task(&mut self, task_id: &str, cx: &mut Context<Self>) {
         self.workspace.selected_task_id = Some(task_id.to_string());
         self.workspace.connect_failure = None;
-        let Some(board) = &self.board else {
+        let Some(board) = self.board.as_ref() else {
             return;
         };
         let Some(task) = super::board_model::find_task(&board.tasks, task_id).cloned() else {
+            self.load_selected_task_outside_board(cx);
             return;
         };
         if !has_terminal_session(&task) && task.project_id.is_some() {
             self.connect_workspace_task(task.id, board.default_session_type, cx);
         }
+        cx.notify();
+    }
+
+    /// 고른 작업이 불러온 보드(Done 첫 페이지 밖 등)에 없으면 따로 읽어 보드에 덧붙인다(TS `TaskWorkspaceRoute`의 `getTaskById`)
+    fn load_selected_task_outside_board(&mut self, cx: &mut Context<Self>) {
+        let (Some(board), Some(services), Some(task_id)) = (
+            self.board.as_ref(),
+            self.services.clone(),
+            self.workspace.selected_task_id.clone(),
+        ) else {
+            return;
+        };
+        let is_on_board = super::board_model::find_task(&board.tasks, &task_id).is_some();
+        let is_already_looked_up =
+            self.workspace.outside_task_lookup_id.as_deref() == Some(task_id.as_str());
+        if is_on_board || is_already_looked_up {
+            return;
+        }
+        self.workspace.outside_task_lookup_id = Some(task_id.clone());
+        let load = services.load_task(task_id.clone(), cx);
+        cx.spawn(async move |this, cx| {
+            let result = load.await;
+            let _ = this.update(cx, |this, cx| match result {
+                Ok(Some(task)) => this.add_selected_task_outside_board(task, cx),
+                Ok(None) => this.replace_deleted_workspace_selection(&task_id, cx),
+                Err(failure) => {
+                    eprintln!(
+                        "[kanvibe] 고른 워크스페이스 작업을 읽지 못했습니다: {}",
+                        failure.reason
+                    )
+                }
+            });
+        })
+        .detach();
+    }
+
+    /// 고른 작업이 DB에도 없으면(다른 창이나 task CLI가 지움) 세션 있는 첫 작업으로 옮긴다
+    /// (TS `setDefaultTaskId`가 새로고침마다 사라진 선택을 `findInitialTaskId`로 바꾸던 동작)
+    fn replace_deleted_workspace_selection(
+        &mut self,
+        deleted_task_id: &str,
+        cx: &mut Context<Self>,
+    ) {
+        if self.workspace.selected_task_id.as_deref() != Some(deleted_task_id) {
+            return;
+        }
+        let replacement = self
+            .board
+            .as_ref()
+            .and_then(|board| initial_task_id(&board.tasks));
+        match replacement {
+            Some(task_id) => self.select_workspace_task(&task_id, cx),
+            None => self.workspace.selected_task_id = None,
+        }
+        cx.notify();
+    }
+
+    fn add_selected_task_outside_board(&mut self, task: KanbanTask, cx: &mut Context<Self>) {
+        if self.workspace.selected_task_id.as_deref() != Some(task.id.as_str()) {
+            return;
+        }
+        let Some(board) = self.board.get_mut().as_mut() else {
+            return;
+        };
+        if super::board_model::find_task(&board.tasks, &task.id).is_some() {
+            return;
+        }
+        let task_id = task.id.clone();
+        super::board_model::column_mut(&mut board.tasks, task.status).push(task);
+        self.select_workspace_task(&task_id, cx);
         cx.notify();
     }
 
@@ -352,7 +495,7 @@ impl BoardView {
                 }
                 match result {
                     Ok(Some(connected)) => {
-                        if let Some(board) = this.board.as_mut() {
+                        if let Some(board) = this.board.get_mut().as_mut() {
                             for status in TASK_STATUS_ORDER {
                                 if let Some(task) =
                                     super::board_model::column_mut(&mut board.tasks, status)
@@ -409,7 +552,7 @@ impl BoardView {
                 if let Some(current) = current {
                     self.select_workspace_task(&current, cx);
                 }
-                self.workspace_terminal_focus.focus(window, cx);
+                self.focus_workspace_terminal(window, cx);
             }
             "space" => {
                 if let Some(current) = current {
@@ -436,8 +579,9 @@ impl BoardView {
     ) -> impl IntoElement + use<> {
         let theme = *cx.global::<ThemeTokens>();
         self.choose_initial_workspace_task();
+        self.load_selected_task_outside_board(cx);
         let list = self.render_workspace_list(&theme, window, cx);
-        let pane = self.render_workspace_terminal_pane(&theme, cx);
+        let pane = self.render_workspace_terminal_pane(&theme, window, cx);
         let overlays: Vec<AnyElement> = [
             self.render_workspace_refresh_banner(&theme, cx),
             self.render_board_dialogs(&theme, window, cx),
@@ -723,7 +867,7 @@ impl BoardView {
         task: &KanbanTask,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let Some(board) = &self.board else {
+        let Some(board) = self.board.as_ref() else {
             return div().into_any_element();
         };
         let roots = root_priorities(&board.tasks, &board.catalog);
@@ -787,7 +931,7 @@ impl BoardView {
         labels: &Translator,
         cx: &mut Context<Self>,
     ) -> Vec<AnyElement> {
-        let Some(board) = &self.board else {
+        let Some(board) = self.board.as_ref() else {
             return Vec::new();
         };
         if !board.done.has_more() {
@@ -831,9 +975,196 @@ impl BoardView {
         elements
     }
 
+    /// 고른 작업의 터미널. 같은 작업이면 붙은 터미널을 그대로 쓰고, 다른 작업이면 버리고 새로 붙는다.
+    /// terminal 세션은 탭 목록을 받은 뒤에 활성 탭으로 붙는다
+    fn sync_workspace_terminal(
+        &mut self,
+        task: &KanbanTask,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<Entity<TerminalPane>> {
+        let attached_task_id = self
+            .workspace_terminal
+            .pane
+            .as_ref()
+            .map(|pane| pane.read(cx).target().task_id.clone());
+        let tabs_task_id = self
+            .workspace_terminal
+            .tabs
+            .as_ref()
+            .map(|tabs| tabs.read(cx).task_id().to_string());
+        let is_current_task = attached_task_id.as_deref() == Some(task.id.as_str())
+            || tabs_task_id.as_deref() == Some(task.id.as_str());
+        if is_current_task {
+            return self.workspace_terminal.pane.clone();
+        }
+        self.drop_workspace_terminal();
+        if task.session_type == Some(SessionType::Terminal) {
+            self.start_workspace_terminal_tabs(task, window, cx);
+            return None;
+        }
+        let target = TerminalTarget {
+            task_id: task.id.clone(),
+            tab_id: None,
+            is_remote: is_remote_task(task),
+        };
+        let pane = self.create_workspace_pane(target, cx);
+        self.show_workspace_pane(pane.clone(), cx);
+        Some(pane)
+    }
+
+    /// terminal 세션 작업의 탭 목록을 읽기 시작한다. terminal 세션 탭은 KanVibe만 바꾸므로 주기 조회는 없다
+    fn start_workspace_terminal_tabs(
+        &mut self,
+        task: &KanbanTask,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let locale = self.locale();
+        let task_id = task.id.clone();
+        let tabs = cx.new(|_| TerminalTabsController::new(task_id, locale));
+        self.workspace_terminal._tabs_events = vec![
+            cx.observe(&tabs, |_, _, cx| cx.notify()),
+            cx.subscribe_in(&tabs, window, |this, _, event, window, cx| {
+                this.handle_workspace_tabs_event(*event, window, cx)
+            }),
+        ];
+        let is_remote = is_remote_task(task);
+        tabs.update(cx, |tabs, cx| tabs.start_polling(false, is_remote, cx));
+        self.workspace_terminal.is_remote = is_remote;
+        self.workspace_terminal.tabs = Some(tabs);
+    }
+
+    /// 탭 목록을 새로 읽으면 활성 탭의 터미널로 바꾸고, 이름 바꾸기가 끝나면 터미널로 포커스를 돌린다.
+    /// 마지막 탭을 닫아도 보드 창은 닫지 않고 목록만 다시 읽는다(TS 워크스페이스는 `shouldCloseWindow`를 쓰지 않았다)
+    fn handle_workspace_tabs_event(
+        &mut self,
+        event: TerminalTabsEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        match event {
+            TerminalTabsEvent::TabsRead => self.sync_workspace_tab_pane(cx),
+            TerminalTabsEvent::RenameEnded => self.focus_workspace_terminal(window, cx),
+            TerminalTabsEvent::WindowCloseRequested => self.refresh_workspace_tabs(cx),
+        }
+    }
+
+    fn refresh_workspace_tabs(&mut self, cx: &mut Context<Self>) {
+        if let Some(tabs) = self.workspace_terminal.tabs.clone() {
+            tabs.update(cx, |tabs, cx| tabs.refresh(cx));
+        }
+    }
+
+    /// 터미널 뷰를 활성 탭에 맞추고, 목록에서 사라진 탭의 숨긴 터미널을 닫는다
+    fn sync_workspace_tab_pane(&mut self, cx: &mut Context<Self>) {
+        let Some(tabs) = self.workspace_terminal.tabs.clone() else {
+            return;
+        };
+        let tabs = tabs.read(cx);
+        let tab_ids: HashSet<String> = tabs.state().tabs.iter().map(|tab| tab.id.clone()).collect();
+        let active_tab_id = tabs.state().active_tab().map(|tab| tab.id.as_str());
+        let target = workspace_tab_target(
+            tabs.task_id(),
+            active_tab_id,
+            self.workspace_terminal.is_remote,
+        );
+        let Some(target) = target else {
+            self.workspace_terminal.pane = None;
+            self.workspace_terminal.hidden_panes.clear();
+            self.workspace_terminal._terminal_events.clear();
+            return;
+        };
+        let is_current = self
+            .workspace_terminal
+            .pane
+            .as_ref()
+            .is_some_and(|pane| pane.read(cx).target() == &target);
+        if !is_current {
+            self.switch_workspace_tab_pane(target, cx);
+        }
+        self.workspace_terminal.hidden_panes.retain(|pane| {
+            let tab_id = pane.read(cx).target().tab_id.as_deref();
+            tab_id.is_some_and(|tab_id| tab_ids.contains(tab_id))
+        });
+    }
+
+    /// 보이던 탭 터미널은 버리지 않고 숨긴다. 숨겨 둔 같은 탭이 있으면 그 연결을 다시 보인다
+    fn switch_workspace_tab_pane(&mut self, target: TerminalTarget, cx: &mut Context<Self>) {
+        if let Some(previous) = self.workspace_terminal.pane.take() {
+            previous.update(cx, |pane, cx| pane.set_hidden(true, cx));
+            self.workspace_terminal.hidden_panes.push(previous);
+        }
+        let hidden_panes = &mut self.workspace_terminal.hidden_panes;
+        let kept = hidden_panes
+            .iter()
+            .position(|pane| pane.read(cx).target() == &target)
+            .map(|index| hidden_panes.remove(index));
+        let pane = match kept {
+            Some(pane) => pane,
+            None => {
+                let pane = self.create_workspace_pane(target, cx);
+                self.subscribe_workspace_pane_events(&pane, cx);
+                pane
+            }
+        };
+        pane.update(cx, |pane, cx| pane.set_hidden(false, cx));
+        self.show_workspace_pane(pane, cx);
+    }
+
+    /// 탭 터미널이 붙거나 셸이 끝나 탭이 지워지면 탭 목록을 다시 읽는다(TS `useTerminalTabs`의 `onTerminalClose`)
+    fn subscribe_workspace_pane_events(
+        &mut self,
+        pane: &Entity<TerminalPane>,
+        cx: &mut Context<Self>,
+    ) {
+        let subscription = cx.subscribe(pane, |this, _, event, cx| match event {
+            TerminalPaneEvent::Connected | TerminalPaneEvent::Closed => {
+                this.refresh_workspace_tabs(cx)
+            }
+        });
+        self.workspace_terminal._terminal_events.push(subscription);
+    }
+
+    fn create_workspace_pane(
+        &mut self,
+        target: TerminalTarget,
+        cx: &mut Context<Self>,
+    ) -> Entity<TerminalPane> {
+        let translator = Translator::new(self.locale(), "taskDetail");
+        cx.new(|cx| TerminalPane::new(target, translator, cx))
+    }
+
+    fn show_workspace_pane(&mut self, pane: Entity<TerminalPane>, cx: &mut Context<Self>) {
+        self.workspace_terminal._redraw = Some(cx.observe(&pane, |_, _, cx| cx.notify()));
+        self.workspace_terminal.pane = Some(pane);
+    }
+
+    /// 오른쪽 터미널로 입력 포커스를 옮긴다. 붙은 터미널이 없으면 터미널 자리가 받는다
+    fn focus_workspace_terminal(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let terminal_focus = match &self.workspace_terminal.pane {
+            Some(pane) => pane.focus_handle(cx),
+            None => self.workspace_terminal_focus.clone(),
+        };
+        terminal_focus.focus(window, cx);
+    }
+
+    /// 터미널 자리가 보이고 창이 활성일 때만 탭 목록을 따라 읽는다. 창이 다시 앞으로 오면 밀린 변화를 한 번 읽는다
+    fn sync_workspace_tab_polling(&mut self, is_window_active: bool, cx: &mut Context<Self>) {
+        if let Some(tabs) = self.workspace_terminal.tabs.clone() {
+            tabs.update(cx, |tabs, cx| tabs.set_polling_active(is_window_active, cx));
+        }
+    }
+
+    /// 붙은 터미널과 탭 상태를 버린다. 터미널 뷰가 사라지며 연결을 닫고, 탭 상태가 사라지며 진행 중인 조회도 멈춘다
+    fn drop_workspace_terminal(&mut self) {
+        self.workspace_terminal = WorkspaceTerminal::default();
+    }
+
     fn render_workspace_terminal_pane(
         &mut self,
         theme: &ThemeTokens,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let labels = Translator::new(self.locale(), "workspace");
@@ -845,6 +1176,7 @@ impl BoardView {
                 .cloned()
         });
         let Some(task) = selected else {
+            self.drop_workspace_terminal();
             let message = labels.translate("noTaskSelected");
             return div()
                 .flex()
@@ -873,13 +1205,24 @@ impl BoardView {
             })
             .map(|project| project.name.clone());
         let body: AnyElement = if has_terminal_session(&task) {
-            // 터미널 화면은 작업 상세와 같은 공용 터미널 뷰가 그린다(공용 컴포넌트 요청 중). 그 전까지는 터미널 배경만 둔다
+            // 터미널 화면은 작업 상세와 같은 공용 터미널 뷰가 그린다. terminal 세션이 붙을 탭이 없으면 탭 목록 상태를 보인다
+            let pane = self.sync_workspace_terminal(&task, window, cx);
+            self.sync_workspace_tab_polling(window.is_window_active(), cx);
+            let tab_list_state = match (&pane, &self.workspace_terminal.tabs) {
+                (None, Some(tabs)) => Some(render_terminal_loader(tabs, theme, cx)),
+                _ => None,
+            };
             div()
+                .flex()
                 .flex_1()
+                .min_h_0()
                 .bg(gpui_kit::rgb(XTERM_BACKGROUND))
                 .track_focus(&self.workspace_terminal_focus)
+                .children(pane)
+                .children(tab_list_state)
                 .into_any_element()
         } else {
+            self.drop_workspace_terminal();
             let message = match (&self.workspace.connect_failure, task.project_id.is_some()) {
                 (_, false) => detail_labels.translate("noTerminal"),
                 (Some((failed_id, reason)), true) if *failed_id == task.id => {
@@ -907,7 +1250,10 @@ impl BoardView {
                 )
                 .into_any_element()
         };
-        let _ = cx;
+        let tab_bar =
+            self.workspace_terminal.tabs.clone().filter(|tabs| {
+                should_show_workspace_tab_bar(&task, tabs.read(cx).state().tabs.len())
+            });
         div()
             .flex()
             .flex_col()
@@ -923,22 +1269,44 @@ impl BoardView {
                     .gap(spacing(3.0))
                     .border_b_1()
                     .border_color(fade(gpui_kit::rgb(0xffffff), 0.1))
-                    .px(spacing(3.0))
+                    .pl(spacing(3.0))
+                    .pr(workspace_header_right_padding())
                     .text_color(theme.terminal.text)
-                    .child(
-                        div()
-                            .flex()
-                            .text_scale(text_scale::SM)
-                            .child(div().css_weight(500).child(task.title.clone()))
-                            .children(
-                                project_name
-                                    .map(|name| div().opacity(0.6).child(format!(" · {name}"))),
-                            ),
-                    ),
+                    .child(render_workspace_task_heading(&task.title, project_name))
+                    .children(tab_bar),
             )
             .child(body)
             .into_any_element()
     }
+}
+
+/// 머리 줄 오른쪽 여백(`px-3`). macOS가 아니면 창 오른쪽 위에 겹치는 창 조작 버튼 폭만큼 더 비워
+/// 탭 바 끝의 새 탭 버튼과 실패 안내가 그 아래에 가려지지 않게 한다
+fn workspace_header_right_padding() -> gpui_kit::Pixels {
+    let base_padding = spacing(3.0);
+    if cfg!(target_os = "macos") {
+        return base_padding;
+    }
+    base_padding + WINDOW_CONTROLS_WIDTH
+}
+
+/// `max-w-[45%] shrink-0 truncate text-sm`: 작업 제목 · 프로젝트 이름. 탭 바가 남은 폭을 쓰고, 넘치는 제목은 말줄임으로 자른다
+fn render_workspace_task_heading(title: &str, project_name: Option<String>) -> impl IntoElement {
+    div()
+        .flex()
+        .flex_none()
+        .max_w(gpui_kit::relative(0.45))
+        .text_scale(text_scale::SM)
+        .child(
+            div()
+                .min_w_0()
+                .truncate()
+                .css_weight(500)
+                .child(title.to_string()),
+        )
+        .children(
+            project_name.map(|name| div().flex_none().opacity(0.6).child(format!(" · {name}"))),
+        )
 }
 
 trait LoadingStyle: Styled + Sized {
@@ -1227,5 +1595,34 @@ mod tests {
             initial_task_id(&board(&[(TaskStatus::Todo, task("no-session"))])),
             None
         );
+    }
+
+    #[test]
+    fn only_a_terminal_session_with_loaded_tabs_shows_the_tab_bar() {
+        let terminal_task = KanbanTask {
+            session_type: Some(SessionType::Terminal),
+            ..task("terminal")
+        };
+        let tmux_task = KanbanTask {
+            session_type: Some(SessionType::Tmux),
+            ..task("tmux")
+        };
+        assert!(!should_show_workspace_tab_bar(&terminal_task, 0));
+        assert!(should_show_workspace_tab_bar(&terminal_task, 2));
+        assert!(!should_show_workspace_tab_bar(&tmux_task, 2));
+    }
+
+    #[test]
+    fn the_terminal_follows_the_active_tab_and_waits_without_one() {
+        let target = workspace_tab_target("task-1", Some("t2"), true);
+        assert_eq!(
+            target,
+            Some(TerminalTarget {
+                task_id: "task-1".into(),
+                tab_id: Some("t2".into()),
+                is_remote: true,
+            })
+        );
+        assert_eq!(workspace_tab_target("task-1", None, false), None);
     }
 }

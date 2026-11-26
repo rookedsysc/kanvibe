@@ -420,7 +420,7 @@ impl DiffFileEditor {
             "home" => self.buffer.move_to_line_start(is_extending),
             "end" => self.buffer.move_to_line_end(is_extending),
             "backspace" | "delete" | "enter" | "tab" => {
-                return self.handle_edit_key(event.keystroke.key.as_str(), cx);
+                return self.handle_edit_key(event.keystroke.key.as_str(), is_extending, cx);
             }
             _ => return false,
         }
@@ -442,7 +442,12 @@ impl DiffFileEditor {
             .move_to_line(self.visible_lines[target_row], is_extending);
     }
 
-    fn handle_edit_key(&mut self, key: &str, cx: &mut Context<Self>) -> bool {
+    fn handle_edit_key(
+        &mut self,
+        key: &str,
+        is_shift_pressed: bool,
+        cx: &mut Context<Self>,
+    ) -> bool {
         match key {
             "backspace" if self.is_cursor_inside_auto_closed_pair() => {
                 self.buffer.delete_surrounding_pair()
@@ -450,7 +455,8 @@ impl DiffFileEditor {
             "backspace" => self.buffer.delete_backward(),
             "delete" => self.buffer.delete_forward(),
             "enter" => self.buffer.insert_newline(self.language),
-            _ => self.buffer.insert_indent(),
+            "tab" if is_shift_pressed => self.buffer.outdent(),
+            _ => self.buffer.indent(),
         }
         self.auto_closed.clear();
         self.after_edit(cx);

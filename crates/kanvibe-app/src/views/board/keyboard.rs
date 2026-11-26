@@ -150,7 +150,7 @@ pub(super) fn displayed_description(task: &kanvibe_domain::task::KanbanTask) -> 
 
 /// 보이는 카드에서 검색어가 나오는 글자 구간을 화면 순서대로 모은다
 pub(super) fn find_text_matches(view: &BoardView, query: &str) -> Vec<FindTextMatch> {
-    let Some(board) = &view.board else {
+    let Some(board) = view.board.as_ref() else {
         return Vec::new();
     };
     if query.is_empty() {
@@ -197,17 +197,23 @@ impl BoardView {
         element
             .on_action(
                 cx.listener(|this, _: &ToggleNotificationCenter, window, cx| {
-                    this.notification_center
-                        .update(cx, |center, cx| center.toggle_by_keyboard(window, cx))
+                    if !this.has_shortcut_blocker(cx) {
+                        this.notification_center
+                            .update(cx, |center, cx| center.toggle_by_keyboard(window, cx))
+                    }
                 }),
             )
             .on_action(cx.listener(|this, _: &OpenProjectFilter, window, cx| {
-                if this.open_popover != Some(HeaderPopover::ProjectFilter) {
+                if !this.has_shortcut_blocker(cx)
+                    && this.open_popover != Some(HeaderPopover::ProjectFilter)
+                {
                     this.toggle_popover(HeaderPopover::ProjectFilter, window, cx)
                 }
             }))
             .on_action(cx.listener(|this, _: &OpenDesktopFilter, window, cx| {
-                if this.open_popover != Some(HeaderPopover::DesktopFilter) {
+                if !this.has_shortcut_blocker(cx)
+                    && this.open_popover != Some(HeaderPopover::DesktopFilter)
+                {
                     this.toggle_popover(HeaderPopover::DesktopFilter, window, cx)
                 }
             }))

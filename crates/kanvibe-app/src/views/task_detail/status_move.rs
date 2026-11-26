@@ -11,6 +11,7 @@ use super::TaskDetailView;
 use crate::components::done_confirm::{DoneConfirmDialog, render_done_confirm};
 use crate::services::{AppServices, ServiceResult};
 use crate::theme::ThemeTokens;
+use crate::views::board::services::{board_services, detach_setting_save};
 use crate::views::settings::service_call::{call_service, failure};
 
 /// 데이터 디렉터리 없이 뜬 실행에서 보드 서비스가 필요한 요청을 거절하는 사유
@@ -114,7 +115,7 @@ impl TaskDetailView {
             dismiss_done_alert(cx);
         }
         if let super::DetailLoad::Loaded(snapshot) = &mut self.load {
-            snapshot.done_alert_dismissed = true;
+            std::rc::Rc::make_mut(snapshot).done_alert_dismissed = true;
         }
         restore_focus(confirm.return_focus, window, cx);
         self.move_status(TaskStatus::Done, cx);
@@ -168,7 +169,7 @@ impl TaskDetailView {
         match result {
             Ok(Some(updated)) => {
                 if let super::DetailLoad::Loaded(snapshot) = &mut self.load {
-                    snapshot.task = updated;
+                    std::rc::Rc::make_mut(snapshot).task = updated;
                 }
             }
             Ok(None) => {}
@@ -192,12 +193,11 @@ impl TaskDetailView {
 
 /// AppSettings `done_alert_dismissed`(TS `dismissDoneAlert`). 저장하지 못해도 이동은 이어 간다
 fn dismiss_done_alert(cx: &App) {
-    let Some(runtime) = cx.global::<AppServices>().runtime() else {
+    let Some(services) = board_services(cx) else {
         return;
     };
-    if let Err(error) = runtime.app_settings().dismiss_done_alert() {
-        eprintln!("[kanvibe] failed to dismiss done alert: {error}");
-    }
+    let dismissal = services.dismiss_done_alert(cx);
+    detach_setting_save(dismissal, "done alert dismissal", cx);
 }
 
 fn restore_focus(return_focus: Option<FocusHandle>, window: &mut Window, cx: &mut App) {

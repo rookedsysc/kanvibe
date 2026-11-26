@@ -17,6 +17,7 @@ pub mod scroll_area;
 pub mod segmented_control;
 pub(crate) mod session_dependency_prompt;
 pub mod spinner;
+pub mod terminal_tabs;
 pub mod terminal_view;
 pub mod text_context_menu;
 pub mod toast;

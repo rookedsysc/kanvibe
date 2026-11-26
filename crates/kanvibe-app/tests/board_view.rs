@@ -70,6 +70,13 @@ fn init_app_with_network(
         if !cx.has_global::<QaTargetRegistry>() {
             cx.set_global(QaTargetRegistry::default());
         }
+        // 워크스페이스 터미널이 실제 tmux 세션을 붙이지 않게 터미널 열기 기본 응답을 건다
+        if let Some(faults) = cx.global::<AppServices>().faults() {
+            faults.add(result_fault(
+                "kanvibe:terminal-open",
+                serde_json::json!({ "ok": true }),
+            ));
+        }
         cx.global::<AppServices>()
             .database()
             .expect("database")
@@ -364,6 +371,21 @@ fn skeleton_shows_until_the_board_data_arrives(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
+fn returning_to_the_board_draws_the_last_cards_while_the_data_reloads(cx: &mut TestAppContext) {
+    let dir = temp_dir();
+    let database = init_app(cx, dir.path().to_path_buf(), true);
+    task(&database, "보드 카드", TaskStatus::Todo, |_| {});
+    let mut board = open_board(cx, "/ko");
+    assert!(board.has_text("보드 카드"));
+    board.add_fault("kanban.getTasksByStatus", FaultMode::Hang, None, None);
+
+    board.return_to_board_via("/ko/settings");
+
+    assert!(board.has_text("보드 카드"));
+    assert!(board.has_text("+ 새 작업"));
+}
+
+#[gpui::test]
 fn slow_first_load_shows_the_delay_notice_without_an_empty_board(cx: &mut TestAppContext) {
     let dir = temp_dir();
     init_app(cx, dir.path().to_path_buf(), true);
@@ -496,6 +518,47 @@ fn unreadable_view_mode_falls_back_to_the_kanban(cx: &mut TestAppContext) {
         board_view_mode_for(cx, Some("weird")),
         BoardViewMode::Kanban
     );
+}
+
+#[gpui::test]
+fn the_board_reuses_the_view_mode_it_read_instead_of_reading_it_again(cx: &mut TestAppContext) {
+    let dir = temp_dir();
+    let database = init_app(cx, dir.path().to_path_buf(), true);
+    save_app_setting(&database.connection(), "board_view_mode", "workspace").unwrap();
+    let mut board = open_board(cx, "/ko");
+    save_app_setting(&database.connection(), "board_view_mode", "kanban").unwrap();
+
+    board.return_to_board_via("/ko/settings");
+
+    let view = board.view.clone();
+    assert_eq!(
+        board.cx.update(|_, cx| view.read(cx).view_mode()),
+        BoardViewMode::Workspace
+    );
+}
+
+#[gpui::test]
+fn a_hanging_view_mode_read_does_not_hold_the_board(cx: &mut TestAppContext) {
+    let dir = temp_dir();
+    let database = init_app(cx, dir.path().to_path_buf(), true);
+    task(&database, "보드 카드", TaskStatus::Todo, |_| {});
+    save_app_setting(&database.connection(), "board_view_mode", "workspace").unwrap();
+    add_fault_before_open(
+        cx,
+        ServiceFault {
+            target: "appSettings.getAppSetting".into(),
+            mode: FaultMode::Hang,
+            message: None,
+            ms: None,
+            value: None,
+            after_calls: None,
+            argument_match: None,
+        },
+    );
+
+    let mut board = open_board(cx, "/ko");
+
+    assert!(board.has_text("보드 카드"));
 }
 
 // ───────────── 카드 ─────────────
@@ -971,6 +1034,27 @@ fn confirm_with_dont_ask_saves_the_dismissal_then_moves(cx: &mut TestAppContext)
 }
 
 #[gpui::test]
+fn a_hanging_dismissal_save_does_not_hold_the_done_move(cx: &mut TestAppContext) {
+    let (mut board, database, card) = open_done_confirm(cx);
+    board.add_fault("appSettings.dismissDoneAlert", FaultMode::Hang, None, None);
+    board.click_text("다시 묻지 않기");
+    board.click_text("이동");
+    assert_eq!(
+        find_task(&database.connection(), &card.id)
+            .unwrap()
+            .unwrap()
+            .status,
+        TaskStatus::Done
+    );
+    let stored = kanvibe_db::repositories::app_settings::find_app_setting(
+        &database.connection(),
+        "done_alert_dismissed",
+    )
+    .unwrap();
+    assert!(stored.is_none());
+}
+
+#[gpui::test]
 fn done_dialog_is_absent_until_a_done_move_needs_it(cx: &mut TestAppContext) {
     let (mut board, _database, _dir) = seeded_board(cx, false);
     assert!(!board.has_text("Done 이동 경고"));
@@ -1361,6 +1445,56 @@ fn saved_unread_filter_applies_when_the_panel_opens(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
+fn a_hanging_unread_filter_save_does_not_hold_the_filter(cx: &mut TestAppContext) {
+    let (mut board, database, _card) = notification_board(cx, false);
+    board.add_fault(
+        "appSettings.setNotificationUnreadOnlyEnabled",
+        FaultMode::Hang,
+        None,
+        None,
+    );
+    board.click(role_name("button", "안읽음"));
+    assert!(!board.has_text("예전 알림"));
+    let stored = kanvibe_db::repositories::app_settings::find_app_setting(
+        &database.connection(),
+        "notification_unread_only",
+    )
+    .unwrap();
+    assert!(stored.is_none());
+}
+
+#[gpui::test]
+fn picking_a_filter_before_the_saved_filter_arrives_keeps_the_pick(cx: &mut TestAppContext) {
+    let (mut board, _database, _card) = notification_board(cx, true);
+    board.cx.update(|_, cx| {
+        let faults = cx.global::<AppServices>().faults().expect("qa faults");
+        faults.add(ServiceFault {
+            target: "appSettings.getNotificationUnreadOnlyEnabled".into(),
+            mode: FaultMode::Delay,
+            message: None,
+            ms: Some(5_000),
+            value: None,
+            after_calls: None,
+            argument_match: None,
+        });
+    });
+    board.return_to_board_via("/ko/settings");
+    board.cx.update(|window, cx| {
+        window.dispatch_action(
+            Box::new(kanvibe_app::shortcuts::ToggleNotificationCenter),
+            cx,
+        )
+    });
+    board.draw();
+    assert!(board.has_text("예전 알림"));
+
+    board.click(role_name("button", "전체"));
+    board.advance(Duration::from_secs(6));
+
+    assert!(board.has_text("예전 알림"));
+}
+
+#[gpui::test]
 fn marking_read_in_unread_only_view_drops_the_item(cx: &mut TestAppContext) {
     let (mut board, _database, _card) = notification_board(cx, false);
     board.click(role_name("button", "안읽음"));
@@ -1475,6 +1609,49 @@ fn changing_desktops_drops_project_selections_from_other_desktops(cx: &mut TestA
 }
 
 #[gpui::test]
+fn the_project_filter_survives_leaving_and_returning_to_the_board(cx: &mut TestAppContext) {
+    let (mut board, _database) = host_board(cx);
+    board.click_text("전체 프로젝트");
+    board.click(role_name("option", "local-app"));
+    board.keys("escape");
+    assert!(board.current_path().contains("projects="));
+
+    board.return_to_board_via("/ko/settings");
+
+    assert!(board.has_text("로컬 작업") && !board.has_text("원격 작업"));
+    assert!(board.current_path().contains("projects="));
+}
+
+#[gpui::test]
+fn clearing_the_project_filter_is_not_restored_on_return(cx: &mut TestAppContext) {
+    let (mut board, _database) = host_board(cx);
+    board.click_text("전체 프로젝트");
+    board.click(role_name("option", "local-app"));
+    board.click(role_name("option", "local-app"));
+    board.keys("escape");
+
+    board.return_to_board_via("/ko/settings");
+
+    assert!(board.has_text("로컬 작업") && board.has_text("원격 작업"));
+    assert!(!board.current_path().contains("projects="));
+}
+
+#[gpui::test]
+fn an_unknown_project_in_the_query_is_dropped_from_the_filter(cx: &mut TestAppContext) {
+    let dir = temp_dir();
+    let database = init_app(cx, dir.path().to_path_buf(), true);
+    let local = project(&database, "local-app", None);
+    task(&database, "로컬 작업", TaskStatus::Todo, |task| {
+        task.project_id = Some(local.id.clone())
+    });
+
+    let mut board = open_board(cx, "/ko?projects=missing-project");
+
+    assert!(board.has_text("로컬 작업"));
+    assert!(!board.current_path().contains("projects="));
+}
+
+#[gpui::test]
 fn up_to_two_selected_projects_show_as_chips(cx: &mut TestAppContext) {
     let (mut board, _database) = host_board(cx);
     board.click_text("전체 프로젝트");
@@ -1530,6 +1707,27 @@ fn turning_on_priority_sort_saves_the_preference(cx: &mut TestAppContext) {
     assert!(stored.value.contains("priority"));
 }
 
+#[gpui::test]
+fn a_hanging_sort_save_does_not_hold_the_sort_change(cx: &mut TestAppContext) {
+    let (mut board, database, _dir) = seeded_board(cx, true);
+    board.add_fault(
+        "appSettings.setBoardSortPreference",
+        FaultMode::Hang,
+        None,
+        None,
+    );
+    board.click(role_name("button", "정렬"));
+    board.click(role_name("option", "우선순위"));
+    board.click(role_name("option", "제목"));
+    assert!(board.has_text("2"));
+    let stored = kanvibe_db::repositories::app_settings::find_app_setting(
+        &database.connection(),
+        "board_sort_preference",
+    )
+    .unwrap();
+    assert!(stored.is_none());
+}
+
 // ───────────── 워크스페이스 ─────────────
 
 fn workspace_board(cx: &mut TestAppContext, path: &str) -> (Board, Arc<Database>, Vec<KanbanTask>) {
@@ -1559,6 +1757,421 @@ fn workspace_board(cx: &mut TestAppContext, path: &str) -> (Board, Arc<Database>
 fn workspace_starts_on_the_first_task_with_a_session(cx: &mut TestAppContext) {
     let (mut board, _database, _tasks) = workspace_board(cx, "/ko");
     assert!(board.has_role_name("current", "세션 있는 작업"));
+}
+
+#[gpui::test]
+fn workspace_shows_the_shared_terminal_view_for_a_task_with_a_session(cx: &mut TestAppContext) {
+    let (mut board, _database, _tasks) = workspace_board(cx, "/ko");
+    board.add_fault("kanban.connectTerminalSession", FaultMode::Hang, None, None);
+    board.cx.update(|_, cx| {
+        let faults = cx.global::<AppServices>().faults().expect("qa faults");
+        faults.clear("kanvibe:terminal-open");
+    });
+    board.add_fault("kanvibe:terminal-open", FaultMode::Hang, None, None);
+
+    board.click_text("세션 없는 작업");
+    board.click_text("세션 있는 작업");
+
+    assert!(board.has_role_name("status", "터미널에 연결하고 있습니다…"));
+}
+
+#[gpui::test]
+fn workspace_shows_a_requested_done_task_beyond_the_first_page(cx: &mut TestAppContext) {
+    let dir = temp_dir();
+    let database = init_app(cx, dir.path().to_path_buf(), true);
+    save_app_setting(&database.connection(), "board_view_mode", "workspace").unwrap();
+    let old_done = task(&database, "오래된 완료 작업", TaskStatus::Done, |_| {});
+    database
+        .connection()
+        .execute(
+            "UPDATE kanban_tasks SET updated_at = '2020-01-01 00:00:00' WHERE id = ?1",
+            [old_done.id.as_str()],
+        )
+        .unwrap();
+    for index in 0..21 {
+        task(
+            &database,
+            &format!("최근 완료 {index}"),
+            TaskStatus::Done,
+            |_| {},
+        );
+    }
+    std::mem::forget(dir);
+
+    let mut board = open_board(cx, &format!("/ko?taskId={}", old_done.id));
+
+    assert!(board.has_role_name("current", "오래된 완료 작업"));
+}
+
+fn terminal_session_workspace(cx: &mut TestAppContext, list_faults: Vec<ServiceFault>) -> Board {
+    open_terminal_session_workspace(cx, Vec::new(), list_faults)
+}
+
+/// `open_faults`가 있으면 `init_app`이 건 기본 터미널 연결 응답을 지우고 그것으로 바꾼다
+fn open_terminal_session_workspace(
+    cx: &mut TestAppContext,
+    open_faults: Vec<ServiceFault>,
+    list_faults: Vec<ServiceFault>,
+) -> Board {
+    let dir = temp_dir();
+    let database = init_app(cx, dir.path().to_path_buf(), true);
+    save_app_setting(&database.connection(), "board_view_mode", "workspace").unwrap();
+    let demo = project(&database, "demo", None);
+    task(
+        &database,
+        "터미널 세션 작업",
+        TaskStatus::Progress,
+        |task| {
+            task.project_id = Some(demo.id.clone());
+            task.session_type = Some(SessionType::Terminal);
+            task.session_name = Some("demo-terminal".into());
+        },
+    );
+    std::mem::forget(dir);
+    if !open_faults.is_empty() {
+        cx.update(|cx| {
+            let faults = cx.global::<AppServices>().faults().expect("qa faults");
+            faults.clear("kanvibe:terminal-open");
+        });
+    }
+    for fault in open_faults.into_iter().chain(list_faults) {
+        add_fault_before_open(cx, fault);
+    }
+    open_board(cx, "/ko")
+}
+
+#[gpui::test]
+fn a_terminal_session_without_tabs_offers_a_new_tab_in_the_workspace(cx: &mut TestAppContext) {
+    let tabs_after_create = ServiceFault {
+        after_calls: Some(1),
+        ..result_fault(
+            "terminalTabs.listTerminalTabs",
+            serde_json::json!({ "ok": true, "tabs": [{ "id": "t1", "nativeIndex": 0, "name": "t1", "isActive": true }] }),
+        )
+    };
+    let no_tabs = result_fault(
+        "terminalTabs.listTerminalTabs",
+        serde_json::json!({ "ok": true, "tabs": [] }),
+    );
+    let mut board = terminal_session_workspace(cx, vec![tabs_after_create, no_tabs]);
+    assert!(board.has_role_name("button", "새 탭"));
+
+    board.click(role_name("button", "새 탭"));
+
+    assert!(board.find(loader_new_tab_button()).is_none());
+    assert!(board.has_role_name("tab", "t1"));
+}
+
+/// 탭이 없을 때 터미널 자리에 뜨는 새 탭 버튼. 탭 바의 `+` 버튼과 이름이 같아 보이는 글자로 가른다
+fn loader_new_tab_button() -> TargetQuery {
+    TargetQuery::Described(DescribedTarget {
+        role: Some("button".into()),
+        name: Some("새 탭".into()),
+        text: Some("새 탭".into()),
+        exact: Some(true),
+        ..DescribedTarget::default()
+    })
+}
+
+fn tab_list(entries: &[(&str, bool)]) -> serde_json::Value {
+    let tabs: Vec<serde_json::Value> = entries
+        .iter()
+        .enumerate()
+        .map(|(index, (id, is_active))| {
+            serde_json::json!({"id": id, "nativeIndex": index, "name": id, "isActive": is_active})
+        })
+        .collect();
+    serde_json::json!({"ok": true, "tabs": tabs})
+}
+
+/// 탭 목록 응답을 바꾼다. 먼저 건 고장이 이기므로 지우고 다시 건다
+fn replace_tab_list(board: &mut Board, entries: &[(&str, bool)]) {
+    board.cx.update(|_, cx| {
+        let faults = cx.global::<AppServices>().faults().expect("qa faults");
+        faults.clear("terminalTabs.listTerminalTabs");
+    });
+    board.add_result_fault("terminalTabs.listTerminalTabs", tab_list(entries), None);
+    board.draw();
+}
+
+fn two_tab_workspace(cx: &mut TestAppContext) -> Board {
+    let list = result_fault(
+        "terminalTabs.listTerminalTabs",
+        tab_list(&[("t1", false), ("t2", true)]),
+    );
+    terminal_session_workspace(cx, vec![list])
+}
+
+#[gpui::test]
+fn a_terminal_session_task_shows_its_tab_bar_in_the_workspace_header(cx: &mut TestAppContext) {
+    let mut board = two_tab_workspace(cx);
+
+    assert!(board.has_role_name("tab", "t1"));
+    assert!(board.has_role_name("tab", "t2"));
+    assert!(board.find(loader_new_tab_button()).is_none());
+    assert!(board.has_role_name("button", "새 탭"));
+}
+
+#[gpui::test]
+fn picking_a_workspace_tab_switches_the_terminal_and_reuses_the_hidden_one(
+    cx: &mut TestAppContext,
+) {
+    // 첫 터미널 연결만 바로 끝나고 두 번째부터 멈춘다. 새 탭으로 바꾸면 연결 중이 보이고,
+    // 숨겨 둔 첫 탭 터미널로 돌아가면 새 연결 없이 그 연결을 다시 쓴다
+    let open_faults = vec![
+        ServiceFault {
+            after_calls: Some(1),
+            mode: FaultMode::Hang,
+            value: None,
+            ..result_fault("kanvibe:terminal-open", serde_json::Value::Null)
+        },
+        result_fault("kanvibe:terminal-open", serde_json::json!({ "ok": true })),
+    ];
+    let list = result_fault(
+        "terminalTabs.listTerminalTabs",
+        tab_list(&[("t1", false), ("t2", true)]),
+    );
+    let mut board = open_terminal_session_workspace(cx, open_faults, vec![list]);
+    board.add_result_fault(
+        "terminalTabs.selectTerminalTab",
+        serde_json::json!({"ok": true}),
+        None,
+    );
+    assert!(!board.has_role_name("status", "터미널에 연결하고 있습니다…"));
+
+    replace_tab_list(&mut board, &[("t1", true), ("t2", false)]);
+    board.click(role_name("tab", "t1"));
+    assert!(
+        board.has_role_name("status", "터미널에 연결하고 있습니다…"),
+        "t1 opens its own terminal"
+    );
+
+    replace_tab_list(&mut board, &[("t1", false), ("t2", true)]);
+    board.click(role_name("tab", "t2"));
+    assert!(
+        !board.has_role_name("status", "터미널에 연결하고 있습니다…"),
+        "t2 reuses its first connection"
+    );
+}
+
+#[gpui::test]
+fn a_failed_workspace_tab_command_shows_the_reason_and_retries_it(cx: &mut TestAppContext) {
+    let mut board = two_tab_workspace(cx);
+    board.add_fault(
+        "terminalTabs.selectTerminalTab",
+        FaultMode::Fail,
+        Some("select sent"),
+        None,
+    );
+
+    board.click(role_name("tab", "t1"));
+    assert!(board.find(text_contains("select sent")).is_some());
+
+    board.cx.update(|_, cx| {
+        let faults = cx.global::<AppServices>().faults().expect("qa faults");
+        faults.clear("terminalTabs.selectTerminalTab");
+    });
+    board.add_result_fault(
+        "terminalTabs.selectTerminalTab",
+        serde_json::json!({"ok": true}),
+        None,
+    );
+    board.click(role_name("button", "다시 시도"));
+    assert!(board.find(text_contains("select sent")).is_none());
+}
+
+#[gpui::test]
+fn adding_a_workspace_tab_sends_a_create_command(cx: &mut TestAppContext) {
+    let mut board = two_tab_workspace(cx);
+    board.add_fault(
+        "terminalTabs.createTerminalTab",
+        FaultMode::Fail,
+        Some("create sent"),
+        None,
+    );
+
+    board.click(role_name("button", "새 탭"));
+
+    assert!(board.find(text_contains("create sent")).is_some());
+}
+
+fn double_click_tab(board: &mut Board, name: &str) {
+    let position = board
+        .find(role_name("tab", name))
+        .unwrap_or_else(|| panic!("tab {name} not found"))
+        .center();
+    for click_count in [1, 2] {
+        board.cx.simulate_event(gpui_kit::MouseDownEvent {
+            button: MouseButton::Left,
+            position,
+            modifiers: Modifiers::default(),
+            click_count,
+            first_mouse: false,
+        });
+        board.cx.simulate_event(gpui_kit::MouseUpEvent {
+            button: MouseButton::Left,
+            position,
+            modifiers: Modifiers::default(),
+            click_count,
+        });
+    }
+    board.draw();
+}
+
+#[gpui::test]
+fn renaming_a_workspace_tab_sends_the_new_name_and_escape_cancels(cx: &mut TestAppContext) {
+    let mut board = two_tab_workspace(cx);
+    board.add_fault(
+        "terminalTabs.renameTerminalTab",
+        FaultMode::Fail,
+        Some("rename sent"),
+        Some("\"build\""),
+    );
+
+    double_click_tab(&mut board, "t2");
+    board.keys("ctrl-a");
+    board.type_text("draft");
+    board.keys("escape");
+    assert!(board.find(text_contains("rename sent")).is_none());
+    assert!(board.has_role_name("tab", "t2"));
+
+    double_click_tab(&mut board, "t2");
+    board.keys("ctrl-a");
+    board.type_text("build");
+    board.keys("enter");
+    assert!(board.find(text_contains("rename sent")).is_some());
+}
+
+#[gpui::test]
+fn dropping_a_workspace_tab_moves_it_to_that_index(cx: &mut TestAppContext) {
+    let mut board = two_tab_workspace(cx);
+    board.add_fault(
+        "terminalTabs.moveTerminalTab",
+        FaultMode::Fail,
+        Some("move sent"),
+        Some("\"t2\",0"),
+    );
+    let start = board.find(role_name("tab", "t2")).unwrap().center();
+    let end = board.find(role_name("tab", "t1")).unwrap().center();
+
+    board
+        .cx
+        .simulate_mouse_down(start, MouseButton::Left, Modifiers::default());
+    let step = gpui_kit::point(start.x - gpui_kit::px(20.0), start.y);
+    board
+        .cx
+        .simulate_mouse_move(step, MouseButton::Left, Modifiers::default());
+    board
+        .cx
+        .simulate_mouse_move(end, MouseButton::Left, Modifiers::default());
+    board
+        .cx
+        .simulate_mouse_up(end, MouseButton::Left, Modifiers::default());
+    board.draw();
+
+    assert!(board.find(text_contains("move sent")).is_some());
+}
+
+#[gpui::test]
+fn closing_a_workspace_tab_asks_with_its_processes_and_keeps_the_board_open(
+    cx: &mut TestAppContext,
+) {
+    let mut board = two_tab_workspace(cx);
+    board.add_result_fault(
+        "terminalTabs.getTerminalTabCloseInfo",
+        serde_json::json!({"ok": true, "shouldCloseWindow": false, "processNames": ["claude", "node"]}),
+        None,
+    );
+    // 마지막 탭을 닫았다는 응답이어도 워크스페이스는 보드 창을 닫지 않는다(TS는 `shouldCloseWindow`를 쓰지 않았다)
+    board.add_result_fault(
+        "terminalTabs.closeTerminalTab",
+        serde_json::json!({"ok": true, "shouldCloseWindow": true}),
+        None,
+    );
+    board
+        .cx
+        .update(|_, cx| cx.remove_global::<kanvibe_app::qa::QaRuntime>());
+    let tab = board.find(role_name("tab", "t1")).unwrap();
+    board
+        .cx
+        .simulate_mouse_move(tab.center(), None, Modifiers::default());
+    board.draw();
+
+    board.click(role_name("button", "t1 탭 닫기"));
+    let message = board
+        .cx
+        .pending_prompt()
+        .map(|(message, _)| message)
+        .expect("close confirmation");
+    assert!(message.contains("claude, node"), "{message}");
+
+    replace_tab_list(&mut board, &[]);
+    board.cx.simulate_prompt_answer("OK");
+    board.draw();
+
+    assert!(board.find(loader_new_tab_button()).is_some());
+    assert!(!board.has_role_name("tab", "t1"));
+}
+
+#[gpui::test]
+fn picking_another_terminal_task_replaces_the_tab_bar(cx: &mut TestAppContext) {
+    let dir = temp_dir();
+    let database = init_app(cx, dir.path().to_path_buf(), true);
+    save_app_setting(&database.connection(), "board_view_mode", "workspace").unwrap();
+    let demo = project(&database, "demo", None);
+    let terminal_task = |title: &str, status: TaskStatus| {
+        task(&database, title, status, |task| {
+            task.project_id = Some(demo.id.clone());
+            task.session_type = Some(SessionType::Terminal);
+            task.session_name = Some(format!("{title}-terminal"));
+        })
+    };
+    let first = terminal_task("첫 터미널 작업", TaskStatus::Todo);
+    let second = terminal_task("둘째 터미널 작업", TaskStatus::Progress);
+    std::mem::forget(dir);
+    for (task_id, tab_id) in [(&first.id, "first-tab"), (&second.id, "second-tab")] {
+        add_fault_before_open(
+            cx,
+            ServiceFault {
+                argument_match: Some(task_id.clone()),
+                ..result_fault("terminalTabs.listTerminalTabs", tab_list(&[(tab_id, true)]))
+            },
+        );
+    }
+    let mut board = open_board(cx, "/ko");
+    assert!(board.has_role_name("tab", "first-tab"));
+
+    board.click_text("둘째 터미널 작업");
+    assert!(board.has_role_name("tab", "second-tab"));
+    assert!(!board.has_role_name("tab", "first-tab"));
+
+    board.click_text("첫 터미널 작업");
+    assert!(board.has_role_name("tab", "first-tab"));
+    assert!(!board.has_role_name("tab", "second-tab"));
+}
+
+#[gpui::test]
+fn an_unreadable_workspace_tab_list_shows_the_reason_and_retries(cx: &mut TestAppContext) {
+    let unreadable = result_fault(
+        "terminalTabs.listTerminalTabs",
+        serde_json::json!({ "ok": false, "tabs": [], "error": "session missing" }),
+    );
+    let mut board = terminal_session_workspace(cx, vec![unreadable]);
+    assert!(board.find(text_contains("session missing")).is_some());
+
+    board.cx.update(|_, cx| {
+        let faults = cx.global::<AppServices>().faults().expect("qa faults");
+        faults.clear("terminalTabs.listTerminalTabs");
+    });
+    board.add_result_fault(
+        "terminalTabs.listTerminalTabs",
+        serde_json::json!({ "ok": true, "tabs": [] }),
+        None,
+    );
+    board.click(role_name("button", "다시 시도"));
+
+    assert!(board.find(text_contains("session missing")).is_none());
+    assert!(board.has_role_name("button", "새 탭"));
 }
 
 #[gpui::test]
@@ -2657,6 +3270,21 @@ fn board_shortcuts_are_ignored_behind_a_blocker(cx: &mut TestAppContext) {
             .read_with(&board.cx, |view, _| view.is_create_task_open())
     );
     assert!(!board.shell_read(|shell, _| shell.is_command_palette_open()));
+}
+
+#[gpui::test]
+fn filter_and_notification_shortcuts_are_ignored_behind_a_context_menu(cx: &mut TestAppContext) {
+    let (mut board, _database, _dir) = seeded_board(cx, true);
+    board.right_click_text("루트 작업");
+    assert!(board.has_role_name("menuitem", "삭제"));
+
+    board.dispatch(kanvibe_app::shortcuts::OpenProjectFilter);
+    board.dispatch(kanvibe_app::shortcuts::OpenDesktopFilter);
+    board.dispatch(kanvibe_app::shortcuts::ToggleNotificationCenter);
+
+    assert!(!board.has_role_name("option", "kanvibe-demo"));
+    assert!(!board.has_text("로컬"));
+    assert!(!board.has_role_name("button", "지금 동기화"));
 }
 
 #[gpui::test]

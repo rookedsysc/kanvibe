@@ -72,6 +72,16 @@ impl ShortcutSettingsModel {
         }
     }
 
+    /// 다른 창이 저장해 앱 전역 표가 바뀌었을 때 화면 표를 맞춘다. 읽기에 실패한 화면은 저장을 막아 둔 채로 둔다.
+    /// 바뀌었으면 `true`
+    pub fn sync_saved_bindings(&mut self, saved: &ShortcutBindings) -> bool {
+        if !self.is_loaded || self.bindings == *saved {
+            return false;
+        }
+        self.bindings = saved.clone();
+        true
+    }
+
     pub fn is_customized(&self, command_id: ShortcutCommandId) -> bool {
         default_shortcut(command_id) != self.bindings.shortcut(command_id)
     }
