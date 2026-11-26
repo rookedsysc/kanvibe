@@ -61,7 +61,8 @@ MARKER_TIMEOUT_S = 30.0
 class Session:
     """fixture 하나와 앱 프로세스 하나"""
 
-    def __init__(self, app: Path, work: Path, settings_overrides: dict[str, str]):
+    def __init__(self, app: Path, work: Path, settings_overrides: dict[str, str],
+                 route: str = TASK_ROUTE, prepare_home=None):
         self.work = work
         fixture_root = work / "fixture"
         self.fixture = capture.build_fixture(fixture_root, "full", {
@@ -75,6 +76,8 @@ class Session:
         self.events_path.touch()
         # Claude Code를 한 번이라도 실행한 머신처럼 세션 기록 디렉터리를 둔다(처음 실행 전에는 없다)
         (Path(self.fixture["home"]) / ".claude" / "sessions").mkdir(parents=True, exist_ok=True)
+        if prepare_home is not None:
+            prepare_home(Path(self.fixture["home"]))
         fontconfig_path = capture.write_pinned_fontconfig(work / "fontconfig")
         display = free_display()
         self.environment = capture.build_app_environment(self.fixture, fixture_root, display, fontconfig_path)
@@ -89,7 +92,7 @@ class Session:
             "--fixed-now", fixed_now_iso(),
             "--network-responses", str(capture.FIXTURES_DIR / "network" / "default.json"),
             "--control-socket", str(socket_path),
-            "--route", TASK_ROUTE,
+            "--route", route,
             "--window-size", f"{WINDOW_SIZE[0]}x{WINDOW_SIZE[1]}",
             "--kanvibe-hook-port", str(free_hook_port()),
         ]
