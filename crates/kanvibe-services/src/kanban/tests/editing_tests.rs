@@ -182,6 +182,34 @@ fn status_change_of_a_feature_task_without_worktree_leaves_the_project_root_stat
     assert_eq!(fixture.board_update_count(), 1);
 }
 
+#[test]
+fn setting_the_current_status_keeps_the_board_order_timestamp() {
+    let fixture = KanbanFixture::new();
+    let task = add_task(&fixture, "Steady", TaskStatus::Progress, |_| {});
+    let earlier_updated_at = "2026-05-02 00:00:00";
+    fixture
+        .database()
+        .connection()
+        .execute(
+            "UPDATE kanban_tasks SET updated_at = ?2 WHERE id = ?1",
+            [task.id.as_str(), earlier_updated_at],
+        )
+        .unwrap();
+
+    let updated = fixture
+        .service
+        .update_task_status(&task.id, TaskStatus::Progress)
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(updated.updated_at, earlier_updated_at);
+    assert_eq!(
+        stored_task(&fixture, &task.id).unwrap().updated_at,
+        earlier_updated_at
+    );
+    assert_eq!(fixture.board_update_count(), 1);
+}
+
 fn add_done_candidate(fixture: &KanbanFixture, with_project: bool) -> KanbanTask {
     let project = add_project(fixture, "/remote/repo", Some("remote-host"));
     add_task(fixture, "Remote cleanup", TaskStatus::Review, |task| {

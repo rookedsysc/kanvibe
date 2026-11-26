@@ -3,7 +3,7 @@
 
 use std::fs;
 use std::io::Write;
-use std::os::unix::fs::OpenOptionsExt;
+use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::{Arc, LazyLock};
@@ -18,6 +18,8 @@ use crate::error::ServiceError;
 
 const REMOTE_TEMP_DIRECTORY: &str = "/tmp";
 const LOCAL_TEMP_DIRECTORY_PREFIX: &str = "kanvibe-paste-";
+/// 로컬 임시 디렉터리 이름이 이미 있는 이름과 겹칠 때 새 이름으로 다시 만드는 횟수(TS `mkdtemp`의 재시도)
+const LOCAL_TEMP_DIRECTORY_ATTEMPTS: usize = 16;
 
 static ATTACHMENT_EXTENSION_PATTERN: LazyLock<Regex> =
     LazyLock::new(|| Regex::new("^[a-z0-9]{1,12}$").expect("유효한 정규식"));
@@ -150,12 +152,10 @@ impl RemoteImagePaste {
     }
 
     fn create_local_directory(&self) -> Result<PathBuf, ServiceError> {
-        let suffix = uuid::Uuid::new_v4().simple().to_string();
-        let directory = self
-            .local_temp_root
-            .join(format!("{LOCAL_TEMP_DIRECTORY_PREFIX}{}", &suffix[..6]));
-        fs::create_dir(&directory).map_err(|error| ServiceError::new(error.to_string()))?;
-        Ok(directory)
+        create_private_directory(&self.local_temp_root, || {
+            uuid::Uuid::new_v4().simple().to_string()[..6].to_string()
+        })
+        .map_err(|error| ServiceError::new(error.to_string()))
     }
 
     fn upload(
@@ -171,6 +171,25 @@ impl RemoteImagePaste {
         let arguments = build_scp_args(ssh_config, &local_path_text, remote_path);
         self.transport.copy(&arguments).map_err(ServiceError::new)
     }
+}
+
+/// TS `mkdtemp`처럼 소유자만 여는(0700) 디렉터리를 만들고, 이름이 겹치면 새 이름으로 다시 만든다
+fn create_private_directory(
+    root: &Path,
+    mut next_suffix: impl FnMut() -> String,
+) -> std::io::Result<PathBuf> {
+    let mut last_error = None;
+    for _ in 0..LOCAL_TEMP_DIRECTORY_ATTEMPTS {
+        let directory = root.join(format!("{LOCAL_TEMP_DIRECTORY_PREFIX}{}", next_suffix()));
+        match fs::DirBuilder::new().mode(0o700).create(&directory) {
+            Ok(()) => return Ok(directory),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                last_error = Some(error);
+            }
+            Err(error) => return Err(error),
+        }
+    }
+    Err(last_error.expect("한 번 이상 시도했다"))
 }
 
 fn write_private_file(path: &Path, bytes: &[u8]) -> std::io::Result<()> {

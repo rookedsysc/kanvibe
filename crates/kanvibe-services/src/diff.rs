@@ -8,12 +8,12 @@ mod paths;
 mod tests;
 mod workspace_file;
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 
 use kanvibe_db::Database;
 use kanvibe_db::repositories::task_diff_stats::save_task_diff_stats;
-use kanvibe_db::repositories::tasks::find_task;
+use kanvibe_db::repositories::tasks::{find_task, select_tasks_where};
 use kanvibe_domain::task_diff_stats::{DiffFile, TaskDiffStats, summarize_diff_files};
 use kanvibe_process::exec::{ExecGitOptions, run_with_background_ssh_commands};
 use kanvibe_process::host_file_access::{HostFileAccess, quote_shell_argument};
@@ -68,10 +68,23 @@ fn run_in_background_ssh_scope(operation: &mut dyn FnMut()) {
     run_with_background_ssh_commands(operation);
 }
 
+/// 보드 배지 집계 갱신을 동시에 돌리는 worker 수. 원격 task가 많아도 OS 스레드를 task 수만큼 만들지 않는다
+const DIFF_REFRESH_CONCURRENCY: usize = 8;
+
+/// 예약한 집계 갱신. worker가 앞에서부터 꺼내 돌린다
+#[derive(Default)]
+struct DiffRefreshQueue {
+    waiting: VecDeque<String>,
+    /// 기다리거나 갱신 중인 task. 끝나기 전에는 다시 예약하지 않는다
+    scheduled: HashSet<String>,
+    worker_count: usize,
+}
+
 struct DiffServiceShared {
     database: Arc<Database>,
     files: Arc<HostFileAccess>,
     pending_refreshes: Mutex<HashMap<String, Arc<PendingDiffRefresh>>>,
+    refresh_queue: Mutex<DiffRefreshQueue>,
     background_scope: BackgroundScope,
 }
 
@@ -121,6 +134,7 @@ impl DiffService {
                 database,
                 files,
                 pending_refreshes: Mutex::new(HashMap::new()),
+                refresh_queue: Mutex::default(),
                 background_scope,
             }),
         }
@@ -237,27 +251,85 @@ impl DiffService {
         })
     }
 
-    /// 진행 중이 아니고 DB에 남아 있는 task만 갱신을 시작한다. 지워진 task는 폴링마다 실패할 조회를 내지 않는다
+    /// 진행 중이 아니고 DB에 남아 있는 task만 갱신을 예약한다. 지워진 task는 폴링마다 실패할 조회를 내지 않는다.
+    /// 살아 있는지는 한 번의 조회로 확인하고(TS `repo.find({ where: { id: In(...) } })`), 갱신은 상한이 있는 worker가 돌린다
     fn schedule_task_diff_refreshes(&self, task_ids: &[String]) {
-        let mut scheduled: Vec<&String> = Vec::new();
-        for task_id in task_ids {
-            let is_pending = lock(&self.shared.pending_refreshes).contains_key(task_id);
-            let is_alive = matches!(
-                find_task(&self.shared.database.connection(), task_id),
-                Ok(Some(_))
-            );
-            if !is_pending && is_alive && !scheduled.contains(&task_id) {
-                scheduled.push(task_id);
-            }
+        let unscheduled_task_ids = self.unscheduled_task_ids(task_ids);
+        if unscheduled_task_ids.is_empty() {
+            return;
         }
-        for task_id in scheduled {
+        let alive_task_ids = match self.find_alive_task_ids(&unscheduled_task_ids) {
+            Ok(alive_task_ids) => alive_task_ids,
+            Err(error) => {
+                eprintln!("변경 집계 갱신 대상 조회 실패: {error}");
+                return;
+            }
+        };
+        let workers_to_start = {
+            let mut queue = lock(&self.shared.refresh_queue);
+            for task_id in unscheduled_task_ids {
+                if alive_task_ids.contains(&task_id) && queue.scheduled.insert(task_id.clone()) {
+                    queue.waiting.push_back(task_id);
+                }
+            }
+            let workers_to_start = DIFF_REFRESH_CONCURRENCY
+                .saturating_sub(queue.worker_count)
+                .min(queue.waiting.len());
+            queue.worker_count += workers_to_start;
+            workers_to_start
+        };
+        for _ in 0..workers_to_start {
             let service = self.clone();
-            let task_id = task_id.clone();
-            std::thread::spawn(move || {
-                (service.shared.background_scope)(&mut || {
-                    service.refresh_task_diff_files(&task_id);
-                });
+            std::thread::spawn(move || service.run_diff_refresh_worker());
+        }
+    }
+
+    /// 순서를 지켜 중복을 빼고, 진행 중이거나 이미 예약한 task를 뺀다
+    fn unscheduled_task_ids(&self, task_ids: &[String]) -> Vec<String> {
+        let pending_refreshes = lock(&self.shared.pending_refreshes);
+        let queue = lock(&self.shared.refresh_queue);
+        let mut seen = HashSet::new();
+        task_ids
+            .iter()
+            .filter(|task_id| seen.insert(task_id.as_str()))
+            .filter(|task_id| {
+                !pending_refreshes.contains_key(*task_id) && !queue.scheduled.contains(*task_id)
+            })
+            .cloned()
+            .collect()
+    }
+
+    fn find_alive_task_ids(&self, task_ids: &[String]) -> ServiceResult<HashSet<String>> {
+        let placeholders = vec!["?"; task_ids.len()].join(", ");
+        let parameters: Vec<&dyn rusqlite::ToSql> = task_ids
+            .iter()
+            .map(|task_id| task_id as &dyn rusqlite::ToSql)
+            .collect();
+        let alive_tasks = select_tasks_where(
+            &self.shared.database.connection(),
+            &format!("WHERE id IN ({placeholders})"),
+            &parameters,
+        )?;
+        Ok(alive_tasks.into_iter().map(|task| task.id).collect())
+    }
+
+    /// 예약이 빌 때까지 하나씩 꺼내 갱신한다. 빈 것을 본 worker는 같은 잠금 안에서 수를 줄이고 끝난다
+    fn run_diff_refresh_worker(&self) {
+        loop {
+            let task_id = {
+                let mut queue = lock(&self.shared.refresh_queue);
+                match queue.waiting.pop_front() {
+                    Some(task_id) => task_id,
+                    None => {
+                        queue.worker_count -= 1;
+                        return;
+                    }
+                }
+            };
+            (self.shared.background_scope)(&mut || {
+                self.refresh_task_diff_files(&task_id);
             });
+            lock(&self.shared.refresh_queue).scheduled.remove(&task_id);
         }
     }
 

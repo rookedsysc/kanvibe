@@ -1184,3 +1184,29 @@ fn detail_reads_join_a_board_refresh_already_in_flight() {
         3
     );
 }
+
+#[test]
+fn board_refreshes_run_at_most_the_worker_limit_at_once_and_each_task_once() {
+    let runner = GatedRunner::new(true, String::new());
+    let tasks: Vec<String> = (0..12).map(|index| format!("task-{index}")).collect();
+    let task_refs: Vec<&str> = tasks.iter().map(String::as_str).collect();
+    let fixture = lazy_fixture(Arc::clone(&runner), &task_refs, &[]);
+    let mut requested = tasks.clone();
+    requested.push("task-0".to_string());
+    requested.push("deleted".to_string());
+
+    fixture.service.get_task_diff_stats(&requested);
+    wait_until(|| runner.started_tasks().len() == DIFF_REFRESH_CONCURRENCY);
+    std::thread::sleep(std::time::Duration::from_millis(30));
+    assert_eq!(runner.started_tasks().len(), DIFF_REFRESH_CONCURRENCY);
+
+    runner.release_all(&single_file_output(1));
+    wait_until(|| runner.started_tasks().len() == tasks.len());
+    runner.release_all(&single_file_output(1));
+    wait_until(|| saved_count(&fixture, &task_refs) == tasks.len());
+
+    let started: Vec<String> = runner.started_tasks();
+    let unique_started: HashSet<&String> = started.iter().collect();
+    assert_eq!(started.len(), tasks.len());
+    assert_eq!(unique_started.len(), tasks.len());
+}

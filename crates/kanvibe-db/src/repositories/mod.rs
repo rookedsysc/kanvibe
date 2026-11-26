@@ -25,16 +25,6 @@ pub(crate) fn parse_stored_value<T>(
     })
 }
 
-pub(crate) fn parse_optional_stored_value<T>(
-    column: &'static str,
-    raw_value: Option<String>,
-    parse: impl Fn(&str) -> Option<T>,
-) -> rusqlite::Result<Option<T>> {
-    raw_value
-        .map(|value| parse_stored_value(column, value, parse))
-        .transpose()
-}
-
 pub(crate) fn new_record_id() -> String {
     uuid::Uuid::new_v4().to_string()
 }

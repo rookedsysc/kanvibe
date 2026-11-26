@@ -226,7 +226,7 @@ impl KanbanService {
     ) -> ServiceResult<ActiveTaskPullRequestSyncResult> {
         let tasks = select_tasks(
             &self.database,
-            "SELECT id FROM kanban_tasks WHERE status != 'done' ORDER BY updated_at ASC, rowid ASC",
+            "WHERE status != 'done' ORDER BY updated_at ASC, rowid ASC",
             &[],
         )?;
         let mut result = ActiveTaskPullRequestSyncResult::default();

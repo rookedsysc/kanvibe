@@ -1,5 +1,6 @@
 //! TS `projectService local hook installation` 뒷부분: 스캔·background sync의 worktree 등록, 공유 상태 반영, 직렬화
 
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use kanvibe_domain::task::{SessionType, TaskStatus};
@@ -84,6 +85,46 @@ fn project_scan_does_not_register_git_submodules_separately() {
         .clone();
     assert!(branch_calls.contains(&("/workspace/app".to_string(), None)));
     assert!(!branch_calls.contains(&("/workspace/app/packages/ui".to_string(), None)));
+}
+
+#[test]
+fn project_scan_bounds_concurrent_git_checks_and_keeps_the_first_order_of_shared_repos() {
+    let harness = Harness::new();
+    let mut scanned: Vec<String> = (0..20)
+        .map(|index| format!("/workspace/repo-{index:02}"))
+        .collect();
+    scanned.push("/workspace/repo-00__worktrees/feature".into());
+    *harness.repositories.scanned_repos.lock().unwrap() = scanned;
+    let active_checks = Arc::new(AtomicUsize::new(0));
+    let max_active_checks = Arc::new(AtomicUsize::new(0));
+    let (active, max_active) = (Arc::clone(&active_checks), Arc::clone(&max_active_checks));
+    harness.repositories.on_command(move |command| {
+        if !command.contains("rev-parse") {
+            return Ok(String::new());
+        }
+        let now_active = active.fetch_add(1, Ordering::SeqCst) + 1;
+        max_active.fetch_max(now_active, Ordering::SeqCst);
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        active.fetch_sub(1, Ordering::SeqCst);
+        if !command.contains("--git-common-dir") {
+            return Ok(String::new());
+        }
+        let repo_name = command
+            .split("'/workspace/")
+            .nth(1)
+            .and_then(|rest| rest.split(['\'', '_']).next())
+            .unwrap_or_default();
+        Ok(format!("/workspace/{repo_name}/.git"))
+    });
+
+    let result = harness
+        .service
+        .scan_and_register_projects("/workspace", None)
+        .unwrap();
+
+    assert!(max_active_checks.load(Ordering::SeqCst) <= 8);
+    let expected: Vec<String> = (0..20).map(|index| format!("repo-{index:02}")).collect();
+    assert_eq!(result.registered, expected);
 }
 
 fn remote_worktree_scan_harness() -> (Harness, &'static str) {

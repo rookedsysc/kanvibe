@@ -20,7 +20,7 @@ impl KanbanService {
     pub fn get_tasks_by_status(&self) -> ServiceResult<TasksByStatusWithMeta> {
         let non_done_tasks = select_tasks(
             &self.database,
-            "SELECT id FROM kanban_tasks WHERE status != 'done' ORDER BY updated_at DESC, rowid ASC",
+            "WHERE status != 'done' ORDER BY updated_at DESC, rowid ASC",
             &[],
         )?;
         let done_page = self.get_more_done_tasks(0, DONE_PAGE_SIZE)?;
@@ -47,7 +47,7 @@ impl KanbanService {
         let (limit, offset) = (limit as i64, offset as i64);
         let tasks = select_tasks(
             &self.database,
-            "SELECT id FROM kanban_tasks WHERE status = 'done' ORDER BY updated_at DESC, rowid ASC \
+            "WHERE status = 'done' ORDER BY updated_at DESC, rowid ASC \
              LIMIT ?1 OFFSET ?2",
             &[&limit, &offset],
         )?;
@@ -71,7 +71,7 @@ impl KanbanService {
     pub fn get_searchable_tasks(&self) -> ServiceResult<Vec<SearchableTask>> {
         let tasks = select_tasks(
             &self.database,
-            "SELECT id FROM kanban_tasks ORDER BY updated_at DESC, created_at DESC, rowid ASC",
+            "ORDER BY updated_at DESC, created_at DESC, rowid ASC",
             &[],
         )?;
         let mut projects: HashMap<String, Option<Project>> = HashMap::new();

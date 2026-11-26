@@ -1,9 +1,9 @@
-//! 보드 서비스가 쓰는 조회·부분 갱신 SQL. 행 변환은 kanvibe-db의 `find_task`·`find_project`를 그대로 써서
+//! 보드 서비스가 쓰는 조회·부분 갱신 SQL. 행 변환은 kanvibe-db의 `find_task`·`select_tasks_where`·`find_project`를 그대로 써서
 //! 컬럼 해석 규칙을 한곳에 둔다. TypeORM `update()`처럼 부분 갱신도 수정 시각을 지금으로 바꾼다.
 //! 같은 수정 시각끼리는 TypeORM이 정하지 않던 순서를 rowid로 고정한다.
 
 use kanvibe_db::repositories::projects::{find_project, list_projects};
-use kanvibe_db::repositories::tasks::find_task;
+use kanvibe_db::repositories::tasks::{find_task, select_tasks_where};
 use kanvibe_db::{Database, DatabaseResult};
 use kanvibe_domain::project::Project;
 use kanvibe_domain::task::{KanbanTask, SessionType, TaskStatus};
@@ -21,25 +21,13 @@ fn query_ids(
     Ok(ids)
 }
 
-fn load_tasks(connection: &Connection, ids: &[String]) -> DatabaseResult<Vec<KanbanTask>> {
-    let mut tasks = Vec::with_capacity(ids.len());
-    for task_id in ids {
-        if let Some(task) = find_task(connection, task_id)? {
-            tasks.push(task);
-        }
-    }
-    Ok(tasks)
-}
-
-/// 조건에 맞는 task를 SQL이 정한 순서대로 읽는다
+/// 조건에 맞는 task를 절(`WHERE ... ORDER BY ...`)이 정한 순서대로 SELECT 한 번으로 읽는다
 pub(super) fn select_tasks(
     database: &Database,
-    sql: &str,
+    filter_and_order_clause: &str,
     parameters: &[&dyn rusqlite::ToSql],
 ) -> DatabaseResult<Vec<KanbanTask>> {
-    let connection = database.connection();
-    let ids = query_ids(&connection, sql, parameters)?;
-    load_tasks(&connection, &ids)
+    select_tasks_where(&database.connection(), filter_and_order_clause, parameters)
 }
 
 pub(super) fn find_task_by_id(

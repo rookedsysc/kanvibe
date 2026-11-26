@@ -186,9 +186,12 @@ impl HookStatusService {
             return Err(task_not_found(&input.task_id));
         }
         self.record_agent_session(input, &task, project.as_ref(), source_ssh_hosts);
-        task.status = status;
-        update_task(&self.database.connection(), &task)
-            .map_err(|error| HookStatusRejection::new(error.to_string(), 500))?;
+        // 같은 상태를 다시 알리는 hook은 DB에 쓰지 않는다. 쓰면 수정 시각이 올라 보드 정렬 순서가 바뀐다
+        if task.status != status {
+            task.status = status;
+            update_task(&self.database.connection(), &task)
+                .map_err(|error| HookStatusRejection::new(error.to_string(), 500))?;
+        }
         self.task_state.persist_task_state_for_task(&task);
         Ok(self.announce_status_change(&task, project.as_ref()))
     }

@@ -187,3 +187,17 @@ fn reports_a_failed_scp_spawn_and_still_cleans_up() {
     assert!(error.message.contains("No such file or directory"));
     assert_eq!(leftover_entries(root.path()), 0);
 }
+
+#[test]
+fn the_local_temp_directory_is_owner_only_and_retries_a_taken_name() {
+    let root = tempfile::tempdir().unwrap();
+    fs::create_dir(root.path().join("kanvibe-paste-aaaaaa")).unwrap();
+    let mut suffixes = ["aaaaaa", "bbbbbb"].into_iter();
+
+    let directory =
+        create_private_directory(root.path(), || suffixes.next().unwrap().to_string()).unwrap();
+
+    assert_eq!(directory, root.path().join("kanvibe-paste-bbbbbb"));
+    let mode = fs::metadata(&directory).unwrap().permissions().mode() & 0o777;
+    assert_eq!(mode, 0o700);
+}

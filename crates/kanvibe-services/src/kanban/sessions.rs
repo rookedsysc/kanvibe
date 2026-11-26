@@ -226,7 +226,7 @@ impl KanbanService {
     ) -> ServiceResult<Vec<KanbanTask>> {
         let tasks_with_session = select_tasks(
             &self.database,
-            "SELECT id FROM kanban_tasks WHERE session_name IS NOT NULL ORDER BY rowid ASC",
+            "WHERE session_name IS NOT NULL ORDER BY rowid ASC",
             &[],
         )?;
         Ok(tasks_with_session

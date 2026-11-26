@@ -229,6 +229,32 @@ fn changes_the_task_status_by_id() {
 }
 
 #[test]
+fn repeating_the_current_status_keeps_the_board_order_timestamp() {
+    let fixture = fixture();
+    let task = fixture
+        .database
+        .insert_task(new_task("task", TaskStatus::Progress));
+    let earlier_updated_at = "2026-05-02 00:00:00";
+    fixture
+        .database
+        .database
+        .connection()
+        .execute(
+            "UPDATE kanban_tasks SET updated_at = ?2 WHERE id = ?1",
+            [task.id.as_str(), earlier_updated_at],
+        )
+        .unwrap();
+
+    fixture.update(&task.id, "progress", None, None).unwrap();
+
+    let stored = find_task(&fixture.database.database.connection(), &task.id)
+        .unwrap()
+        .unwrap();
+    assert_eq!(stored.updated_at, earlier_updated_at);
+    assert_eq!(fixture.status_changes().len(), 1);
+}
+
+#[test]
 fn done_from_a_hook_keeps_session_and_worktree() {
     let fixture = fixture();
     let project = fixture.database.insert_project(NewProject {

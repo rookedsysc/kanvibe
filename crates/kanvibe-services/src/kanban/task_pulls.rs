@@ -100,7 +100,7 @@ impl KanbanService {
     pub fn sync_active_task_pulls(&self) -> ServiceResult<ActiveTaskPullSyncResult> {
         let tasks = select_tasks(
             &self.database,
-            "SELECT id FROM kanban_tasks WHERE status IN ('todo', 'progress', 'pending', 'review') \
+            "WHERE status IN ('todo', 'progress', 'pending', 'review') \
              ORDER BY updated_at ASC, rowid ASC",
             &[],
         )?;

@@ -133,8 +133,13 @@ impl KanbanService {
         let Some(mut task) = find_task_by_id(&self.database, task_id)? else {
             return Ok(None);
         };
-        task.status = new_status;
-        let saved = self.save_task(&task)?;
+        // 상태가 같으면 DB에 쓰지 않는다. 쓰면 수정 시각이 올라 보드 정렬 순서가 바뀐다
+        let saved = if task.status == new_status {
+            task
+        } else {
+            task.status = new_status;
+            self.save_task(&task)?
+        };
         self.state_files.persist_task_state(&saved);
         self.board.broadcast_board_update();
         Ok(Some(saved))

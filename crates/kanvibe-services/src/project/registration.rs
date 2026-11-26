@@ -19,6 +19,9 @@ use super::{
 };
 use crate::error::ServiceResult;
 
+/// 스캔이 찾은 저장소마다 git(원격이면 ssh)을 띄우므로 한꺼번에 띄우는 수를 묶는다
+const REPO_DISCOVERY_CONCURRENCY: usize = 8;
+
 /// 프로젝트 하나를 등록한 결과(TS `{ success, error?, project? }`)
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -249,26 +252,25 @@ impl ProjectService {
         ssh_host: Option<&str>,
     ) -> Vec<String> {
         let discovered = self.repositories.scan_git_repos(root_path, ssh_host);
-        let concurrency = discovered.len().max(1);
-        let is_submodule = map_with_concurrency(&discovered, concurrency, |repo_path, _| {
-            self.is_submodule_repo_path(repo_path, ssh_host)
-        });
+        let is_submodule =
+            map_with_concurrency(&discovered, REPO_DISCOVERY_CONCURRENCY, |repo_path, _| {
+                self.is_submodule_repo_path(repo_path, ssh_host)
+            });
         let registerable: Vec<&String> = discovered
             .iter()
             .zip(is_submodule)
             .filter(|(_, is_submodule)| !is_submodule)
             .map(|(repo_path, _)| repo_path)
             .collect();
-        let common_paths = map_with_concurrency(&registerable, concurrency, |repo_path, _| {
-            self.resolve_common_repo_path(repo_path, ssh_host)
-        });
-        let mut repo_paths: Vec<String> = Vec::new();
-        for repo_path in common_paths {
-            if !repo_paths.contains(&repo_path) {
-                repo_paths.push(repo_path);
-            }
-        }
-        repo_paths
+        let common_paths =
+            map_with_concurrency(&registerable, REPO_DISCOVERY_CONCURRENCY, |repo_path, _| {
+                self.resolve_common_repo_path(repo_path, ssh_host)
+            });
+        let mut seen_repo_paths = HashSet::new();
+        common_paths
+            .into_iter()
+            .filter(|repo_path| seen_repo_paths.insert(repo_path.clone()))
+            .collect()
     }
 
     /// 하위 git 저장소를 스캔해 미등록 프로젝트를 일괄 등록하고, 이번 스캔에서 찾은 저장소의 worktree를 동기화한다
