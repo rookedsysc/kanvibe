@@ -4,7 +4,9 @@ use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use kanvibe_remote_agent::protocol::{decode_host_bytes, encode_host_bytes, record_from};
+use kanvibe_remote_agent::protocol::{
+    HOST_BUFFER_BYTES, HOST_CHUNK_BYTES, decode_host_bytes, encode_host_bytes, record_from,
+};
 use kanvibe_terminal::pty::{PtyEventCallbacks, PtyExit, PtyProcess};
 use kanvibe_terminal::terminal_registry::RemoteHostPty;
 use serde_json::{Value, json};
@@ -197,31 +199,28 @@ fn the_output_ack_waits_until_the_screen_consumer_has_rendered() {
 
 // parity: TS-lib-remoteHostPtyConnection-7a215a
 #[test]
-fn a_large_paste_is_chunked_with_one_chunk_in_flight_and_an_overfull_queue_is_rejected() {
+fn rapid_keys_and_a_large_paste_share_a_bounded_ordered_input_window() {
     let fixture = fixture(false);
 
-    fixture.attachment.write(&"x".repeat(200_000)).unwrap();
-    assert_eq!(fixture.records_of("pty.input").len(), 1);
-    for _ in 0..7 {
-        fixture.receive(json!({ "type": "pty.input-ready" }));
-    }
-
-    let inputs = fixture.records_of("pty.input");
-    assert_eq!(inputs.len(), 7);
-    let sent: usize = inputs
-        .iter()
-        .map(|record| {
-            decode_host_bytes(record.get("data"), 32 * 1024)
-                .unwrap()
-                .len()
-        })
-        .sum();
-    assert_eq!(sent, 200_000);
+    let paste = "한글!".repeat(32_000);
+    fixture.attachment.write("a").unwrap();
+    fixture.attachment.write("b").unwrap();
+    fixture.attachment.write(&paste).unwrap();
+    assert_eq!(fixture.records_of("pty.input").len(), 8);
     let overflow = fixture
         .attachment
-        .write(&"x".repeat(8 * 1024 * 1024 + 1))
+        .write(&"x".repeat(HOST_BUFFER_BYTES - paste.len() - 1))
         .unwrap_err();
     assert!(overflow.contains("backpressure"), "{overflow}");
+
+    fixture.receive(json!({ "type": "pty.input-ready" }));
+    let inputs = fixture.records_of("pty.input");
+    assert_eq!(inputs.len(), 9);
+    let sent: Vec<_> = inputs
+        .iter()
+        .flat_map(|record| decode_host_bytes(record.get("data"), HOST_CHUNK_BYTES).unwrap())
+        .collect();
+    assert_eq!(sent, format!("ab{paste}").into_bytes());
     fixture.attachment.kill().unwrap();
 }
 
@@ -235,7 +234,11 @@ fn a_disconnect_drops_queued_input_while_output_bytes_are_acknowledged() {
     fixture.data(&bytes[1..]);
     until("ACK", || fixture.acks() == vec![1, 5]);
     assert_eq!(fixture.outputs.lock().unwrap().concat(), "한글");
-    fixture.attachment.write(&"\0".repeat(100_000)).unwrap();
+    fixture
+        .attachment
+        .write(&"\0".repeat(HOST_CHUNK_BYTES * 9))
+        .unwrap();
+    assert_eq!(fixture.records_of("pty.input").len(), 8);
     fixture.receive(json!({ "type": "disconnected" }));
     let count = fixture.records.lock().unwrap().len();
     fixture.receive(json!({ "type": "pty.input-ready" }));

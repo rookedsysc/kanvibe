@@ -1,7 +1,7 @@
 //! 원격 Unix 소켓을 로컬 소켓으로 이어 준다(TS `HostConnection.forwardSocket`).
 //!
 //! 로컬 소켓은 `/tmp/kvhost-XXXXXX/upstream.sock`(0700 디렉터리)이고, 로컬 연결마다 daemon에 `socket.open`을 보낸다.
-//! 로컬에서 읽은 조각은 `socket.data-ready`를 받은 뒤에 다음 조각을 보내고, 포워딩을 닫아도 원격 서버는 그대로 둔다.
+//! 로컬에서 읽은 조각은 제한된 범위 안에서 `socket.data-ready`를 기다리지 않고 이어 보낸다. 포워딩을 닫아도 원격 서버는 남는다.
 
 use std::io::{Read, Write};
 use std::net::Shutdown;
@@ -18,7 +18,7 @@ use kanvibe_remote_agent::protocol::{
 use kanvibe_terminal::terminal_registry::RemoteHostSocketForward;
 use serde_json::json;
 
-use super::HostConnection;
+use super::{HostConnection, REMOTE_INPUT_WINDOW_CHUNKS};
 
 const ACCEPT_POLL_MILLISECONDS: i32 = 100;
 const SOCKET_FILE_NAME: &str = "upstream.sock";
@@ -163,7 +163,14 @@ fn pump_local_to_remote(
         return;
     }
     let mut buffer = vec![0; HOST_CHUNK_BYTES];
+    let mut chunks_in_flight = 0;
     loop {
+        if chunks_in_flight == REMOTE_INPUT_WINDOW_CHUNKS {
+            if !matches!(events.recv(), Ok(RemoteEvent::DataReady)) {
+                return;
+            }
+            chunks_in_flight -= 1;
+        }
         let count = match reader.read(&mut buffer) {
             Ok(0) | Err(_) => break,
             Ok(count) => count,
@@ -171,6 +178,9 @@ fn pump_local_to_remote(
         if connection.send(json!({ "type": "socket.data", "id": id, "data": encode_host_bytes(&buffer[..count]) })).is_err() {
             return;
         }
+        chunks_in_flight += 1;
+    }
+    for _ in 0..chunks_in_flight {
         if !matches!(events.recv(), Ok(RemoteEvent::DataReady)) {
             return;
         }

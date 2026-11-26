@@ -315,7 +315,7 @@ fn assert_pty_round_trip(pool: &Arc<RemoteHostConnectionPool>) {
     let pty = connection
         .open_pty(
             "e2e-tab",
-            "printf 'E2E_%s\\n' PTY_OK; exec sleep 30",
+            "stty raw -echo; printf 'E2E_%s\\n' PTY_OK; head -c 280000 | wc -c; exec sleep 30",
             80,
             24,
             callbacks,
@@ -330,6 +330,14 @@ fn assert_pty_round_trip(pool: &Arc<RemoteHostConnectionPool>) {
         );
     }
     assert!(pty.pid() > 0);
+    pty.write(&"x".repeat(280_000)).unwrap();
+    while !output.contains("280000\n") {
+        output.push_str(
+            &outputs
+                .recv_timeout(Duration::from_secs(10))
+                .expect("SSH를 거쳐 280000바이트 입력이 모두 전달되어야 한다"),
+        );
+    }
     pty.close_session().unwrap();
 }
 

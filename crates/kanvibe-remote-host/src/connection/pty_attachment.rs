@@ -1,7 +1,7 @@
 //! daemon PTY attachment 하나를 터미널 레지스트리에 잇는다(TS `remoteHostPtyConnection.ts`).
 //!
 //! 출력은 받은 순서대로 한 조각씩 화면 콜백에 넘기고, 콜백이 돌아온 뒤에만 그 조각을 `pty.ack`로 알린다.
-//! 끝난 프로세스의 마지막 출력은 종료 알림보다 먼저 넘긴다. 입력은 32 KiB 조각 하나만 날아가 있게 하고,
+//! 끝난 프로세스의 마지막 출력은 종료 알림보다 먼저 넘긴다. 입력은 확인 응답을 기다리는 32 KiB 조각 수를 제한하고,
 //! 연결이 끊기면 기다리던 입력을 버린다(결과를 모르는 입력은 다시 보내지 않는다). `kill`은 attachment만 떼고
 //! 세션은 daemon에 남기며, `close_session`만 세션을 끝낸다.
 
@@ -17,6 +17,8 @@ use kanvibe_remote_agent::terminal_agent::wire::Utf8StreamDecoder;
 use kanvibe_terminal::pty::{PtyEventCallbacks, PtyExit, PtyProcess};
 use kanvibe_terminal::terminal_registry::RemoteHostPty;
 use serde_json::{Value, json};
+
+use super::REMOTE_INPUT_WINDOW_CHUNKS;
 
 pub type PtySend = Arc<dyn Fn(Value) -> Result<(), String> + Send + Sync>;
 
@@ -35,7 +37,7 @@ struct AttachmentState {
     rows: u16,
     input: VecDeque<Vec<u8>>,
     input_bytes: usize,
-    is_input_in_flight: bool,
+    input_chunks_in_flight: usize,
     output: VecDeque<Vec<u8>>,
     output_bytes: usize,
     pending_exit: Option<PtyExit>,
@@ -111,10 +113,12 @@ impl RemotePtyAttachment {
             "pty.data" => self.accept_output(record),
             "pty.input-ready" => {
                 let mut state = self.state.lock().unwrap();
-                if state.is_input_in_flight && state.finished.is_none() {
-                    let chunk = state.input.pop_front().unwrap_or_default();
+                if state.input_chunks_in_flight > 0
+                    && state.finished.is_none()
+                    && let Some(chunk) = state.input.pop_front()
+                {
                     state.input_bytes -= chunk.len();
-                    state.is_input_in_flight = false;
+                    state.input_chunks_in_flight -= 1;
                     self.transmit(&mut state);
                 }
             }
@@ -129,7 +133,7 @@ impl RemotePtyAttachment {
                 });
                 state.input.clear();
                 state.input_bytes = 0;
-                state.is_input_in_flight = false;
+                state.input_chunks_in_flight = 0;
                 self.changed.notify_all();
             }
             "pty.error" | "pty.detached" | "disconnected" => {
@@ -175,22 +179,20 @@ impl RemotePtyAttachment {
         self.changed.notify_all();
     }
 
-    /// 앞 입력 조각의 ACK를 받은 뒤에만 다음 조각을 보낸다
+    /// 큐 앞에서 ACK를 기다리는 조각은 건너뛰고 보낼 수 있는 만큼 순서대로 보낸다
     fn transmit(&self, state: &mut AttachmentState) {
-        if state.is_input_in_flight || state.finished.is_some() {
-            return;
-        }
-        let Some(chunk) = state.input.front() else {
-            return;
-        };
-        state.is_input_in_flight = true;
-        if (self.send)(
-            json!({ "type": "pty.input", "id": self.id, "data": encode_host_bytes(chunk) }),
-        )
-        .is_err()
+        while state.finished.is_none()
+            && state.input_chunks_in_flight < REMOTE_INPUT_WINDOW_CHUNKS
+            && let Some(chunk) = state.input.get(state.input_chunks_in_flight)
         {
-            state.finished = Some(DETACHED_EXIT);
-            self.changed.notify_all();
+            let record =
+                json!({ "type": "pty.input", "id": self.id, "data": encode_host_bytes(chunk) });
+            if (self.send)(record).is_err() {
+                state.finished = Some(DETACHED_EXIT);
+                self.changed.notify_all();
+                break;
+            }
+            state.input_chunks_in_flight += 1;
         }
     }
 
@@ -220,6 +222,7 @@ impl RemotePtyAttachment {
         state.open_error = error;
         state.input.clear();
         state.input_bytes = 0;
+        state.input_chunks_in_flight = 0;
         state.output.clear();
         state.output_bytes = 0;
         self.changed.notify_all();

@@ -33,6 +33,8 @@ pub use socket_forward::HostSocketForward;
 
 /// 한 연결이 동시에 기다리는 요청 수 상한
 const MAX_PENDING: usize = 128;
+/// 원격 쓰기의 확인 응답을 기다리는 조각 수. 연속 입력은 최대 256 KiB까지 먼저 전송한다
+const REMOTE_INPUT_WINDOW_CHUNKS: usize = 8;
 /// 부트스트랩과 PTY 요청 응답을 기다리는 시간
 pub(crate) const START_TIMEOUT: Duration = Duration::from_secs(15);
 

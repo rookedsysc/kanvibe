@@ -3,9 +3,12 @@ mod fake_remote;
 mod integration;
 mod pty_attachment;
 
+use std::io::Write;
+use std::net::Shutdown;
+use std::os::unix::net::UnixStream;
 use std::sync::Arc;
 
-use kanvibe_remote_agent::protocol::encode_host_bytes;
+use kanvibe_remote_agent::protocol::{HOST_CHUNK_BYTES, decode_host_bytes, encode_host_bytes};
 use serde_json::json;
 
 use super::*;
@@ -23,6 +26,49 @@ fn connect_fake() -> (Arc<HostConnection>, FakeRemote) {
     .unwrap()
     .expect("fake bridge");
     (connection, remote)
+}
+
+#[test]
+fn socket_forward_keeps_sending_while_acks_are_pending_and_drains_before_end() {
+    let (connection, remote) = connect_fake();
+    let forward = connection.forward_socket("/remote/herdr.sock").unwrap();
+    let mut local = UnixStream::connect(forward.path()).unwrap();
+    let id = remote.wait_for("socket.open", 1)[0]["id"].clone();
+    remote.send(json!({ "type": "socket.ready", "id": id }));
+
+    let bytes: Vec<_> = (0..HOST_CHUNK_BYTES * 9)
+        .map(|index| (index % 251) as u8)
+        .collect();
+    let written = bytes.clone();
+    let writer = std::thread::spawn(move || {
+        local.write_all(&written).unwrap();
+        local.shutdown(Shutdown::Write).unwrap();
+    });
+
+    let mut sent_chunks = 8;
+    let mut received: Vec<_> = remote
+        .wait_for("socket.data", sent_chunks)
+        .iter()
+        .flat_map(|record| decode_host_bytes(record.get("data"), HOST_CHUNK_BYTES).unwrap())
+        .collect();
+    assert_eq!(remote.records_of("socket.data").len(), sent_chunks);
+    while received.len() < bytes.len() {
+        remote.send(json!({ "type": "socket.data-ready", "id": id }));
+        sent_chunks += 1;
+        let records = remote.wait_for("socket.data", sent_chunks);
+        received.extend(
+            decode_host_bytes(records.last().unwrap().get("data"), HOST_CHUNK_BYTES).unwrap(),
+        );
+    }
+    writer.join().unwrap();
+    assert_eq!(received, bytes);
+    assert!(remote.records_of("socket.end").is_empty());
+    for _ in 0..8 {
+        remote.send(json!({ "type": "socket.data-ready", "id": id }));
+    }
+    remote.wait_for("socket.end", 1);
+    remote.send(json!({ "type": "socket.close", "id": id }));
+    connection.close();
 }
 
 // parity: TS-lib-remoteHostConnection-72109c
