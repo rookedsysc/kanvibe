@@ -520,7 +520,7 @@ mod tests {
         text.split('\n').map(str::to_string).collect()
     }
 
-    /// 기준 이미지 fixture(커밋 6854c963까지 `parity/fixtures/make_git_repos.py`의 `src/board.ts`): 원본은 git 출력이라 끝 줄바꿈이 잘려 있다
+    /// 기준 이미지 fixture(`make_git_repos.py`의 `src/board.ts`): 원본은 git 출력이라 끝 줄바꿈이 잘려 있다
     fn board_fixture() -> (Vec<String>, Vec<String>) {
         let original = "export interface Card {\n  id: string;\n  title: string;\n  status: \"todo\" | \"progress\" | \"done\";\n}\n\nexport function sortCards(cards: Card[]): Card[] {\n  return [...cards].sort((left, right) => left.title.localeCompare(right.title));\n}\n\nexport function countDone(cards: Card[]): number {\n  return cards.filter((card) => card.status === \"done\").length;\n}";
         let modified = "export interface Card {\n  id: string;\n  title: string;\n  status: \"todo\" | \"progress\" | \"done\";\n}\n\nexport function sortCards(cards: Card[]): Card[] {\n  return [...cards].sort((left, right) => left.title.localeCompare(right.title, \"ko\"));\n}\n\nexport function countOpen(cards: Card[]): number {\n  return cards.length - countDone(cards);\n}\n\nexport function countDone(cards: Card[]): number {\n  return cards.filter((card) => card.status === \"done\").length;\n}\n";

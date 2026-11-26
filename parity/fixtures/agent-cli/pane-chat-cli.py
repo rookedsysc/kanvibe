@@ -19,7 +19,7 @@ import tty
 FIXED_TIMESTAMP = "2026-01-15T03:00:00.000Z"
 provider, session_id = sys.argv[1:3]
 root = Path.cwd()
-# 설치할 때 fixture HOME을 박아 넣는다(qa/mobile/prepare_chat_history_desktop.py). 실제 HOME은 보지 않는다.
+# 설치할 때 fixture HOME을 박아 넣는다(make_home.bake_fixture_home). 실제 HOME은 보지 않는다.
 home = Path("__FIXTURE_HOME__")
 if provider == "codex":
     transcript = home / ".codex" / "sessions" / f"rollout-{session_id}.jsonl"
