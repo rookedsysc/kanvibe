@@ -1,0 +1,24 @@
+[package]
+name = "kanvibe-pane-mirror"
+description = "모바일에 태스크 pane을 비추는 미러(표면 조회, 탭·pane 조작, 스트림 구독, viewport, 입력)와 pane chat 연결"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+kanvibe-domain.workspace = true
+kanvibe-db.workspace = true
+kanvibe-process.workspace = true
+kanvibe-ai.workspace = true
+# 루트 workspace.dependencies에 항목이 없어 경로로 받는다
+kanvibe-services = { path = "../kanvibe-services" }
+kanvibe-terminal = { path = "../kanvibe-terminal" }
+serde.workspace = true
+serde_json = { workspace = true, features = ["preserve_order"] }
+thiserror.workspace = true
+# 미러 자식 프로세스 그룹에 종료 신호를 보낸다
+libc = "0.2"
+
+[dev-dependencies]
+base64 = "0.22"

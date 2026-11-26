@@ -1,0 +1,17 @@
+architecture-beta
+    title Icon Gallery
+    group outer(cloud)[Outer]
+    group inner(server)[Inner] in outer
+
+    service web(internet)[Web] in outer
+    service app(server)[App] in inner
+    service store(disk)[Store] in inner
+    service vault(database)[Vault]
+    service lambda(logos:aws-lambda)[Lambda]
+    service cdn(cloud)[CDN]
+
+    web:B -- T:app
+    app:R -- L:store
+    store:R -- L:vault
+    vault:B -- T:lambda
+    lambda:L -- R:cdn

@@ -1,0 +1,4 @@
+[profile]
+name = 1
+[features]   # c
+hooks = true

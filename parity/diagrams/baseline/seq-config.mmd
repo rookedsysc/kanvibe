@@ -1,0 +1,10 @@
+%%{init: {"sequence": {"mirrorActors": false, "actorMargin": 80, "messageAlign": "left", "rightAngles": true, "showSequenceNumbers": true, "boxMargin": 20, "diagramMarginX": 20, "diagramMarginY": 30, "width": 120, "height": 50}}}%%
+sequenceDiagram
+    participant A as Alice
+    participant B as Bob
+    A->>B: hello there
+    B->>B: think
+    B-->>A: reply
+    loop retry
+        A->>B: again
+    end

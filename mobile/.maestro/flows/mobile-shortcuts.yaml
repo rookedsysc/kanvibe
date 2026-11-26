@@ -1,4 +1,4 @@
-# `qa/mobile/lib/prepareQaDesktop.cjs`가 띄운 격리 데스크탑(hook 서버 19736, 모바일 포트 19746)의
+# `python3 qa/mobile/prepare_qa_desktop.py`가 띄운 격리 데스크탑(hook 서버 19736, 모바일 포트 19746)의
 # tmux 세션 태스크에서 단축키를 누른다.
 appId: ${APP_ID}
 env:

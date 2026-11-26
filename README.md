@@ -56,26 +56,28 @@ Each runtime uses a separate SQLite database and a separate hook server port, so
 
 | Run | Data directory | Lifetime | Hook / mobile TLS port |
 | --- | --- | --- | --- |
-| Installed KanVibe | Existing Electron `userData` directory | Persistent; production data stays in place | `9736` / `9746` |
-| `pnpm dev` / `pnpm desktop:dev` | `<appData>/kanvibe-dev` | Keeps development data across restarts and worktrees by default | `19736` / `19746` |
-| `pnpm dev --data-source=application` | `<appData>/kanvibe-dev` | Replaces development data with the installed application's DB on this launch | `19736` / `19746` |
-| `pnpm start` | `<appData>/kanvibe-qa` | Persistent across restarts, builds, and worktrees | `29736` / `29746` |
+| Installed KanVibe (packaged build) | `<appData>/KanVibe` | Persistent; production data stays in place | `9736` / `9746` |
+| `cargo run -p kanvibe-app` (debug build) | `<appData>/kanvibe-dev` | Keeps development data across restarts and worktrees by default | `19736` / `19746` |
+| `cargo run -p kanvibe-app -- --data-source=application` | `<appData>/kanvibe-dev` | Replaces development data with the installed application's DB on this launch | `19736` / `19746` |
+| `cargo run --release -p kanvibe-app` (release build from source) | `<appData>/kanvibe-qa` | Persistent across restarts, builds, and worktrees | `29736` / `29746` |
 | Installed KanVibe with `--qa` | `<appData>/kanvibe-qa` | Same persistent manual QA database | `29736` / `29746` |
-| Automated Electron QA | Run's explicit fixture directory, or a fresh temporary directory | Isolated per run | A free port chosen per run |
-| Mobile Maestro QA desktop | Run's fixture directory | Isolated per run | `39736` / `39746` |
-| Vitest / Playwright | Separate temporary test directories | Isolated from application data | — |
+| Automated QA (`kanvibe --qa-harness --data-dir <dir> ...`) | The run's explicit `--data-dir` | Isolated per run | Only with `--kanvibe-hook-port=<port>` |
+| Contract replay (`kanvibe-server-qa serve`) | The run's `--data-dir` | Isolated per run | The run's `--hook-port` |
+| `cargo nextest run` | Separate temporary test directories | Isolated from application data | — |
 
-A launcher that must pick the port itself passes `--kanvibe-hook-port=<port>` to Electron. Automated Electron QA does this for every run.
+Only the binary built by `packaging/linux/build-linux.sh` or `packaging/macos/build-macos.sh` counts as installed KanVibe: those scripts compile `kanvibe-app` with the `packaged` cargo feature. A release build without that feature, such as `cargo build --release`, runs as manual QA, so it never opens the installed app's database or port `9736`.
 
-`<appData>` is `~/Library/Application Support` on macOS. The database filename is `kanvibe.db` in each directory. Development defaults to `--data-source=existing`: `pnpm install && pnpm dev` keeps the existing development database without importing application data. A new development database uses the bundled seed or starts empty. To import application data explicitly, run `pnpm dev --data-source=application`. This replaces the development database with every table from `<appData>/KanVibe/kanvibe.db`, including projects, tasks, app settings, and committed WAL data from a running application. Development changes affect the copy. Subsequent launches without the option keep those changes. Close an existing development instance before restarting.
+A launcher that must pick the port itself passes `--kanvibe-hook-port=<port>` to `kanvibe`. Automated QA starts the hook server only when that switch is given.
 
-For a different installation data directory, use `pnpm dev --data-source=application --application-data-dir="/path/to/application-data"`. In application mode, an absent default application DB produces a warning and keeps the existing development DB or bundled seed; an invalid explicit source or corrupt source DB stops startup. Shared source/target paths or DB links stop startup in both modes. Copying uses SQLite's [Online Backup API](https://www.sqlite.org/backup.html). Repository/worktree paths still point to the same files on disk; this option copies the SQLite data, not repositories, running terminals, OS credentials, or Chromium caches.
+`<appData>` is `~/Library/Application Support` on macOS and `$XDG_CONFIG_HOME` (default `~/.config`) on Linux. The database filename is `kanvibe.db` in each directory. Development defaults to `--data-source=existing`: `cargo run -p kanvibe-app` keeps the existing development database without importing application data. A new development database starts empty; the schema and migrations are applied on startup. To import application data explicitly, run `cargo run -p kanvibe-app -- --data-source=application`. This replaces the development database with every table from `<appData>/KanVibe/kanvibe.db`, including projects, tasks, app settings, and committed WAL data from a running application. Development changes affect the copy. Subsequent launches without the option keep those changes. Close an existing development instance before restarting.
 
-Manual QA reuses its own database and applies the existing schema migrations. A new bundled seed does not replace an existing manual QA database, so QA can test upgrades against previously created data. Rebuild with `pnpm build` before `pnpm start` when testing a new source version.
+For a different installation data directory, use `cargo run -p kanvibe-app -- --data-source=application --application-data-dir="/path/to/application-data"`. In application mode, an absent default application DB produces a warning and keeps the existing development DB; an invalid explicit source or corrupt source DB stops startup. Shared source/target paths or DB links stop startup in both modes. Copying uses SQLite's [Online Backup API](https://www.sqlite.org/backup.html). Repository/worktree paths still point to the same files on disk; this option copies the SQLite data, not repositories, running terminals, or OS credentials.
 
-To test an installed macOS build with the persistent QA database, run `open -na KanVibe --args --qa`. Close an existing manual QA instance first so both do not use the same QA database concurrently.
+Manual QA reuses its own database and applies the existing schema migrations, so QA can test upgrades against previously created data. Rebuild with `cargo build --release -p kanvibe-app` before launching `target/release/kanvibe` when testing a new source version.
 
-An explicit `KANVIBE_APP_DATA_DIR` overrides the desktop data directory and defaults development to `existing` mode; use a distinct directory for each environment. Add `--data-source=application` explicitly to refresh that development directory from application data. Automated QA (`KANVIBE_QA_MODE=1`) always keeps its fixture and never copies application data. Desktop DB selection follows that directory, ignoring an inherited `KANVIBE_DB_PATH`. Non-desktop database tools retain the `KANVIBE_DB_PATH` override. Automated QA callers should pass `appDataDir` explicitly when they want to reopen a particular fixture; the launcher does not reuse application paths inherited from the parent shell.
+To test an installed build with the persistent QA database, run `open -na KanVibe --args --qa` on macOS or `kanvibe --qa` on Linux. Close an existing manual QA instance first so both do not use the same QA database concurrently.
+
+`--data-dir <dir>` overrides the desktop data directory; use a distinct directory for each environment. Add `--data-source=application` explicitly to refresh that development directory from application data. Automated QA (`--qa-harness`) always keeps its fixture and never copies application data.
 
 ## From your desk to your phone
 
@@ -109,7 +111,7 @@ Claude and Codex chat composers support photos and files, including image-only m
 
 Use the skill button to search installed skills, or type `$`, `/`, or `@` for skill, command, and worktree-file suggestions. Arrow keys and Enter/Tab select a suggestion; Escape closes the list. The inserted syntax matches the current CLI. Conversation history preserves image-only messages and loads images through the connected desktop, including after the CLI has stopped. Deleted or unavailable files show a retry state. Uploaded files remain on the CLI host for its use; removing an unsent attachment deletes only that staged upload.
 
-The desktop implementation lives in `renderer/components/TerminalPaneChatLayer`, `renderer/components/PaneChatView`, `renderer/hooks/usePaneChat`, and `main/services/paneChatService`, with wire types in `desktop/shared/paneChat.ts`. Mobile uses `features/pane_chat` and authenticated `/api/mobile/tasks/:taskId/pane-chat` endpoints. Local terminal, tmux, and Herdr input are supported. Zellij prompt controls stay disabled without an exact process identity; automatic desktop targeting of remote tmux sessions is not yet supported.
+The desktop implementation lives in `crates/kanvibe-app/src/views/task_detail/pane_chat/` (view and composer) and `crates/kanvibe-terminal/src/pane_chat/` (service), with wire types in `crates/kanvibe-domain/src/pane_chat.rs`. Mobile uses `features/pane_chat` and authenticated `/api/mobile/tasks/:taskId/pane-chat` endpoints. Local terminal, tmux, and Herdr input are supported. Zellij prompt controls stay disabled without an exact process identity; automatic desktop targeting of remote tmux sessions is not yet supported.
 
 Close Herdr's own dialogs before switching to chat. Herdr pane placement uses the attached client's negotiated workspace size and tab bar configuration; an unrecognized configuration or stale size keeps the original terminal visible.
 
@@ -240,8 +242,9 @@ Each pane can run a custom command (e.g., `vim`, `htop`, `lazygit`, test runner,
 
 ### Terminal Sessions (tmux / zellij / Herdr)
 - **tmux**, **zellij**, and **Herdr** are supported as terminal multiplexers
-- Browser-based terminal streaming through xterm.js and WebSocket
+- Native in-app terminal (alacritty_terminal) attached to the task session
 - SSH remote terminal support that reads `~/.ssh/config`
+- [Performance benchmark](https://kanvibe.rookedsysc.com/en/performance): SSH burst input and paste timings, and pane chat connection latency
 - Non-interactive remote SSH commands reuse an app-local ControlMaster socket pool under `~/.kanvibe`, with per-host concurrency capped at 4x available CPU cores
 - Remote terminal attach executes tmux/zellij/Herdr directly over SSH; trusted X11 forwarding (`ssh -Y`) is requested only when local `DISPLAY`, remote `X11Forwarding`, and `xauth` are available
 - Nerd Font rendering support
@@ -295,7 +298,7 @@ For an SSH task, connect to that task's SSH host first, then run the command the
 ### Mobile Companion (Flutter)
 
 - View tasks by status on phones; tablets at 768dp and wider show Kanban columns. Filter projects and switch between saved PCs.
-- Select multiple local and SSH desktops together with projects. Selecting desktops narrows the project filter to those desktops' projects and clears project selections from other desktops. Each whole row in the desktop list toggles its desktop. Filters use neutral checkmarks without selected accent colors. The desktop control lives in `src/components/DesktopFilter.tsx`; mobile uses the board feature's snapshot and per-connection filter controllers.
+- Select multiple local and SSH desktops together with projects. Selecting desktops narrows the project filter to those desktops' projects and clears project selections from other desktops. Each whole row in the desktop list toggles its desktop. Filters use neutral checkmarks without selected accent colors. The desktop control lives in `crates/kanvibe-app/src/views/board/header_popovers.rs`; mobile uses the board feature's snapshot and per-connection filter controllers.
 - Sync cleans registrations for deleted repository directories and task worktrees. Connection or permission failures preserve records; files, branches, and running sessions stay intact.
 - Open the task’s existing tmux, Zellij, or plain terminal session. Each tab shows one pane on both phones and tablets; add a shell tab without returning to the PC.
 - Read terminal output and type with the on-screen keyboard, including in SSH remote tasks. Create tasks, change status, inspect task details, and open the linked PR.
@@ -410,7 +413,7 @@ Setup: Browser will prompt for permission on first visit. Configure filters in *
 
 Background sync runs once per desktop, even when automatic, desktop, and mobile requests overlap. The notification center shows worktree discovery, PR checks, pull progress, and completion; a detected-item button opens the review dialog. Deletion starts in the background and closes the dialog; the Cleaning up button reopens the same progress and results. Closing the dialog or changing screens does not stop cleanup. Sync results stay in the inbox even when OS notifications are disabled.
 
-The main service owns sync status (`backgroundTaskSyncService`); `useBackgroundTaskSync`, `BackgroundSyncStatus`, `useBackgroundSyncReview`, and `BackgroundSyncReviewDialog` render the desktop notification flow. Mobile uses the notifications feature's shared `backgroundSyncProvider` and `BackgroundSyncCard`. Mobile status/start requests use `GET /api/mobile/sync/status` and `POST /api/mobile/sync/start`; both return a status snapshot immediately, and subsequent stages arrive over the existing event socket.
+The service owns sync status (`crates/kanvibe-services/src/background_task_sync`); the notification center (`crates/kanvibe-app/src/components/notification_center.rs`) and the review dialog (`crates/kanvibe-app/src/views/locale_shell/sync_review.rs`) render the desktop notification flow. Mobile uses the notifications feature's shared `backgroundSyncProvider` and `BackgroundSyncCard`. Mobile status/start requests use `GET /api/mobile/sync/status` and `POST /api/mobile/sync/start`; both return a status snapshot immediately, and subsequent stages arrive over the existing event socket.
 
 #### Hook API Endpoints
 
@@ -423,7 +426,7 @@ The main service owns sync status (`backgroundTaskSyncService`); `useBackgroundT
 Review code changes directly in the browser with a GitHub-style diff viewer. Click the **Diff** badge on the task detail page to see all modified files compared to the base branch.
 
 - File tree sidebar with changed file count
-- Inline diff viewer powered by Monaco Editor
+- Inline diff viewer with find/replace, folding, and syntax highlighting
 - Edit mode for quick fixes directly in the browser
 - Viewed file tracking with checkboxes
 
@@ -434,7 +437,7 @@ Review code changes directly in the browser with a GitHub-style diff viewer. Cli
 
 ### Internationalization (i18n)
 - Supported languages: Korean (ko), English (en), Chinese (zh)
-- Powered by next-intl
+- Messages live in `messages/{ko,en,zh}.json` and are bundled into the app binary
 
 ---
 
@@ -442,14 +445,15 @@ Review code changes directly in the browser with a GitHub-style diff viewer. Cli
 
 | Category | Technology |
 |----------|------------|
-| Frontend/Backend | Next.js 16 (App Router) + React 19 + TypeScript |
-| Database | SQLite + TypeORM + better-sqlite3 |
-| Styling | Tailwind CSS v4 |
-| Terminal | xterm.js + WebSocket + node-pty |
+| Desktop app | Rust workspace (`crates/`) + GPUI (`gpui-kit`) |
+| Database | SQLite + rusqlite (`kanvibe-db`) |
+| Hook / mobile server | hyper + rustls, in the app process (`kanvibe-server`) |
+| Terminal | alacritty_terminal + portable-pty (`kanvibe-terminal`) |
+| Markdown / Mermaid | Native renderers (`kanvibe-markdown`, `kanvibe-diagram`) |
+| HTML preview | gpui-webview (WKWebView on macOS, WebKitGTK on Linux) |
 | SSH | system ssh binary |
-| Drag & Drop | @hello-pangea/dnd |
-| i18n | next-intl |
-| Desktop Packaging | Electron + Electron Builder |
+| i18n | `messages/*.json` (`kanvibe-domain` i18n) |
+| Desktop Packaging | `packaging/linux/build-linux.sh` (tarball, .deb), `packaging/macos/build-macos.sh` (.app, DMG) |
 | Mobile | Flutter + xterm.dart |
 
 ---

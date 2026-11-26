@@ -1,0 +1,53 @@
+{
+  "description": "default.json과 같고, 릴리스 확인이 새 버전(v9.9.0)을 돌려준다(SCR-GLOBAL-03).",
+  "responses": [
+    {
+      "urlPrefix": "https://api.github.com/repos/rookedsysc/kanvibe/releases",
+      "status": 200,
+      "body": [
+        {
+          "tag_name": "v9.9.0",
+          "name": "KanVibe 9.9.0",
+          "draft": false,
+          "prerelease": false,
+          "html_url": "https://github.com/rookedsysc/kanvibe/releases/tag/v9.9.0",
+          "published_at": "2026-01-14T00:00:00Z",
+          "body": "## 새 기능\n\n- 보드 필터를 URL에 저장합니다.\n- 작업 상세에 **실행중 세션** 패널을 추가했습니다.\n\n## 수정\n\n- 터미널 탭 이름 변경이 저장되지 않던 문제를 고쳤습니다.\n\n```bash\nbrew upgrade --cask kanvibe\n```"
+        }
+      ]
+    },
+    {
+      "urlPrefix": "https://api.anthropic.com/api/oauth/usage",
+      "status": 200,
+      "body": {
+        "five_hour": {
+          "utilization": 42,
+          "resets_at": "2026-01-15T05:00:00Z"
+        },
+        "seven_day": {
+          "utilization": 18,
+          "resets_at": "2026-01-20T00:00:00Z"
+        }
+      }
+    },
+    {
+      "urlPrefix": "https://chatgpt.com/backend-api/wham/usage",
+      "status": 200,
+      "body": {
+        "plan_type": "plus",
+        "rate_limit": {
+          "primary_window": {
+            "used_percent": 35,
+            "limit_window_seconds": 18000,
+            "reset_at": 1768453200
+          },
+          "secondary_window": {
+            "used_percent": 61,
+            "limit_window_seconds": 604800,
+            "reset_at": 1768867200
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+[package]
+name = "kanvibe-db"
+description = "TS 앱이 만든 kanvibe.db를 그대로 여는 SQLite 계층"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+kanvibe-domain.workspace = true
+rusqlite.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

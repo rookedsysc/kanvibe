@@ -21,5 +21,6 @@
   "devDependencies": {
     "@opennextjs/cloudflare": "^1.19.11",
     "wrangler": "^4.95.0"
-  }
+  },
+  "packageManager": "pnpm@10.34.5"
 }

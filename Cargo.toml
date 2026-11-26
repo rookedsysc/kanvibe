@@ -1,0 +1,34 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "1.6.0"
+edition = "2024"
+license = "AGPL-3.0-only"
+publish = false
+
+[workspace.dependencies]
+kanvibe-domain = { path = "crates/kanvibe-domain" }
+kanvibe-db = { path = "crates/kanvibe-db" }
+kanvibe-process = { path = "crates/kanvibe-process" }
+kanvibe-ai = { path = "crates/kanvibe-ai" }
+kanvibe-server = { path = "crates/kanvibe-server" }
+kanvibe-mobile = { path = "crates/kanvibe-mobile" }
+kanvibe-pane-mirror = { path = "crates/kanvibe-pane-mirror" }
+kanvibe-remote-host = { path = "crates/kanvibe-remote-host" }
+kanvibe-remote-agent = { path = "crates/kanvibe-remote-agent" }
+kanvibe-runtime = { path = "crates/kanvibe-runtime" }
+kanvibe-services = { path = "crates/kanvibe-services" }
+kanvibe-terminal = { path = "crates/kanvibe-terminal" }
+kanvibe-markdown = { path = "crates/kanvibe-markdown" }
+kanvibe-diagram = { path = "crates/kanvibe-diagram" }
+rusqlite = { version = "0.43", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tempfile = "3"
+thiserror = "2"
+uuid = { version = "1", features = ["v4"] }
+
+[profile.dev]
+debug = "line-tables-only"

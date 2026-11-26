@@ -1,0 +1,33 @@
+[package]
+name = "kanvibe-remote-agent"
+description = "SSH 원격 호스트에서 도는 KanVibe daemon과 원격 터미널 agent(Node 번들을 대체하는 정적 바이너리)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "kanvibe-remote-agent"
+path = "src/main.rs"
+
+# 원격에 올리는 정적 바이너리라 kanvibe-db(rusqlite)처럼 C 라이브러리를 끄는 crate에 기대지 않는다
+[dependencies]
+serde.workspace = true
+serde_json = { workspace = true, features = ["preserve_order"] }
+thiserror.workspace = true
+uuid.workspace = true
+alacritty_terminal = { version = "0.26", default-features = false }
+base64 = "0.22"
+hex = "0.4"
+httparse = "1"
+libc = "0.2"
+portable-pty = "0.9"
+# OpenSSL 없이 ring 암호 공급자만 쓴다
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+rustls-pemfile = "2"
+sha2 = "0.10"
+tungstenite = { version = "0.30", default-features = false, features = ["handshake"] }
+
+[dev-dependencies]
+tempfile.workspace = true
+rcgen = { version = "0.14", default-features = false, features = ["ring", "pem"] }

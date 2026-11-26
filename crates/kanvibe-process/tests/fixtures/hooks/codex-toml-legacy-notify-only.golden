@@ -1,0 +1,4 @@
+model = "x"
+
+[features]
+hooks = true

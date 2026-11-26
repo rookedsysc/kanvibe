@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Hardened Runtime 예외 목록. electron-builder 기본값은 V8 JIT 때문에 allow-jit, allow-unsigned-executable-memory,
+  disable-library-validation을 켰지만, 네이티브 GPUI 바이너리는 JIT도 서명 안 된 동적 라이브러리도 쓰지 않는다.
+  TS 앱처럼 App Sandbox는 쓰지 않는다(셸·tmux·ssh를 띄우고 사용자 저장소를 읽는다). 그래서 예외가 하나도 없다.
+-->
+<plist version="1.0">
+<dict>
+</dict>
+</plist>

@@ -1,0 +1,20 @@
+kanvibe_hook_socket() {
+  case "$1" in
+    ""|*[!A-Za-z0-9-]*) return 0 ;;
+  esac
+  kanvibe_socket_dir="/tmp/kv-$(id -u)"
+  kanvibe_socket_path="${kanvibe_socket_dir}/$1.sock"
+  if [ -n "$2" ]; then
+    case "$2" in
+      dev|prod|qa-?*) ;;
+      *) return 0 ;;
+    esac
+    case "$2" in *[!a-z0-9-]*|????????????????????????????*) return 0 ;; esac
+    if [ -L "${kanvibe_socket_dir}" ] || [ ! -O "${kanvibe_socket_dir}" ] || [ "$(ls -ld "${kanvibe_socket_dir}" 2>/dev/null | cut -c1-10)" != "drwx------" ]; then return 0; fi
+    kanvibe_socket_dir="${kanvibe_socket_dir}/$2"
+    kanvibe_socket_path="${kanvibe_socket_dir}/hooks-v1.sock"
+  fi
+  if [ ! -L "${kanvibe_socket_dir}" ] && [ -O "${kanvibe_socket_dir}" ] && [ "$(ls -ld "${kanvibe_socket_dir}" 2>/dev/null | cut -c1-10)" = "drwx------" ] && [ ! -L "${kanvibe_socket_path}" ] && [ -S "${kanvibe_socket_path}" ] && [ -O "${kanvibe_socket_path}" ]; then
+    printf '%s' "${kanvibe_socket_path}"
+  fi
+}

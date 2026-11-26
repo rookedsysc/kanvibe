@@ -9,21 +9,16 @@ Nextra 4 documentation site for KanVibe.
 
 ## Scripts
 
-Run from the repository root:
+Run in this directory (the repository root has no Node project since the desktop app moved to Rust):
 
 ```bash
-pnpm docs:dev
-pnpm docs:build
-pnpm docs:start
-```
-
-Or run directly in this directory:
-
-```bash
+pnpm install
 pnpm dev
 pnpm build
 pnpm start
 ```
+
+From the repository root, use `pnpm --dir docs-site <script>`.
 
 ## Structure
 

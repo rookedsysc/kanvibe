@@ -1,0 +1,11 @@
+# KANVIBE_HOOK_TRANSPORT_VERSION=4
+kanvibe_hook_uses_local_http() {
+  case "$2" in
+    ""|local) ;;
+    *) return 1 ;;
+  esac
+  case "$1" in
+    *[![:print:]]*) return 1 ;;
+  esac
+  printf '%s\n' "$1" | grep -Eiq '^https?://(localhost|127[.]0[.]0[.]1|\[::1\])(:[0-9]+)?/?$'
+}

@@ -1,0 +1,472 @@
+=== /home/user/my repo/.claude/hooks/kanvibe-prompt-hook.sh mode=755
+#!/bin/bash
+
+# KanVibe Claude Code Hook: UserPromptSubmit
+# 사용자가 prompt를 입력하면 현재 task를 PROGRESS로 변경한다.
+
+KANVIBE_URL="http://10.0.0.5:9736"
+TASK_ID="task-\"q\""
+KANVIBE_STATUS="progress"
+KANVIBE_AGENT_SESSION_JSON=
+KANVIBE_HOOK_PAYLOAD_BASE64="$(if [ ! -t 0 ]; then { command -p head -c 65536; command -p cat >/dev/null; } 2>/dev/null | base64 | tr -d "\r\n"; fi)"
+if [ -n "${KANVIBE_HOOK_PAYLOAD_BASE64}" ]; then
+  KANVIBE_AGENT_SESSION_JSON=",\"agentSession\":{\"provider\":\"claude\",\"hookPid\":$$,\"payloadBase64\":\"${KANVIBE_HOOK_PAYLOAD_BASE64}\"}"
+fi
+KANVIBE_REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || (cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd))"
+KANVIBE_STATE_DIR="${KANVIBE_REPO_ROOT}/.kanvibe"
+KANVIBE_TASK_STATE_FILE="${KANVIBE_STATE_DIR}/status.json"
+KANVIBE_TARGETS_FILE="${KANVIBE_STATE_DIR}/targets.json"
+KANVIBE_GIT_COMMON_DIR="$(git -C "${KANVIBE_REPO_ROOT}" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+if [ -n "${KANVIBE_GIT_COMMON_DIR}" ]; then
+  KANVIBE_GIT_EXCLUDE_FILE="${KANVIBE_GIT_COMMON_DIR}/info/exclude"
+  mkdir -p "$(dirname "${KANVIBE_GIT_EXCLUDE_FILE}")" 2>/dev/null || true
+  touch "${KANVIBE_GIT_EXCLUDE_FILE}" 2>/dev/null || true
+  if ! grep -qxF ".kanvibe/" "${KANVIBE_GIT_EXCLUDE_FILE}" 2>/dev/null; then
+    if ! grep -qxF "# KanVibe AI hooks (auto-generated)" "${KANVIBE_GIT_EXCLUDE_FILE}" 2>/dev/null; then
+      printf '
+%s
+' "# KanVibe AI hooks (auto-generated)" >> "${KANVIBE_GIT_EXCLUDE_FILE}" 2>/dev/null || true
+    fi
+    printf '%s
+' ".kanvibe/" >> "${KANVIBE_GIT_EXCLUDE_FILE}" 2>/dev/null || true
+  fi
+fi
+
+mkdir -p "${KANVIBE_STATE_DIR}" 2>/dev/null || true
+KANVIBE_UPDATED_AT="$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || true)"
+
+KANVIBE_TASK_STATE_JSON="{\"schemaVersion\":1,\"status\":\"${KANVIBE_STATUS}\""
+if [ -n "${KANVIBE_UPDATED_AT}" ]; then
+  KANVIBE_TASK_STATE_JSON="${KANVIBE_TASK_STATE_JSON},\"updatedAt\":\"${KANVIBE_UPDATED_AT}\""
+fi
+printf '%s}\n' "${KANVIBE_TASK_STATE_JSON}" > "${KANVIBE_TASK_STATE_FILE}" 2>/dev/null || true
+
+KANVIBE_TARGET_ROWS="$(
+  if [ -f "${KANVIBE_TARGETS_FILE}" ]; then
+    grep -oE '"(url|taskId|clientId|token|remoteHostNamespace)"[[:space:]]*:[[:space:]]*"[^"]*"|"transport"[[:space:]]*:[[:space:]]*("[^"]*"|[^,}[:space:]]+)|[{}]' "${KANVIBE_TARGETS_FILE}" 2>/dev/null       | awk '
+          function emit() { if(u!="" && t!="" && !(u in seen)){ seen[u]=1; print u "\t" t "\t" (c=="" ? "_" : c) "\t" (k=="" ? "_" : k) "\t" transport "\t" namespace } }
+          function clear_target() { u=""; t=""; c=""; k=""; transport=""; namespace="" }
+          $0=="{" { clear_target(); next }
+          $0=="}" { emit(); clear_target(); next }
+          { s=$0; sub(/^"[^"]*"[[:space:]]*:[[:space:]]*"/,"",s); sub(/"$/,"",s) }
+          /^"url"/ { u=s; sub(/\/+$/,"",u); next }
+          /^"taskId"/ { t=s; next }
+          /^"clientId"/ { c=s; next }
+          /^"token"/ { k=s; next }
+          /^"remoteHostNamespace"/ { namespace=s; next }
+          /^"transport"/ { transport=(s=="" ? "invalid" : s); next }
+          END { emit() }
+        ' 2>/dev/null || true
+  else
+    printf '%s	%s
+' "${KANVIBE_URL%/}" "${TASK_ID}"
+  fi
+)"
+if [ -z "${KANVIBE_TARGET_ROWS}" ]; then
+  KANVIBE_TARGET_ROWS="$(printf '%s	%s
+' "${KANVIBE_URL%/}" "${TASK_ID}")"
+fi
+
+kanvibe_hook_socket() {
+  case "$1" in
+    ""|*[!A-Za-z0-9-]*) return 0 ;;
+  esac
+  kanvibe_socket_dir="/tmp/kv-$(id -u)"
+  kanvibe_socket_path="${kanvibe_socket_dir}/$1.sock"
+  if [ -n "$2" ]; then
+    case "$2" in
+      dev|prod|qa-?*) ;;
+      *) return 0 ;;
+    esac
+    case "$2" in *[!a-z0-9-]*|????????????????????????????*) return 0 ;; esac
+    if [ -L "${kanvibe_socket_dir}" ] || [ ! -O "${kanvibe_socket_dir}" ] || [ "$(ls -ld "${kanvibe_socket_dir}" 2>/dev/null | cut -c1-10)" != "drwx------" ]; then return 0; fi
+    kanvibe_socket_dir="${kanvibe_socket_dir}/$2"
+    kanvibe_socket_path="${kanvibe_socket_dir}/hooks-v1.sock"
+  fi
+  if [ ! -L "${kanvibe_socket_dir}" ] && [ -O "${kanvibe_socket_dir}" ] && [ "$(ls -ld "${kanvibe_socket_dir}" 2>/dev/null | cut -c1-10)" = "drwx------" ] && [ ! -L "${kanvibe_socket_path}" ] && [ -S "${kanvibe_socket_path}" ] && [ -O "${kanvibe_socket_path}" ]; then
+    printf '%s' "${kanvibe_socket_path}"
+  fi
+}
+# KANVIBE_HOOK_TRANSPORT_VERSION=4
+kanvibe_hook_uses_local_http() {
+  case "$2" in
+    ""|local) ;;
+    *) return 1 ;;
+  esac
+  case "$1" in
+    *[![:print:]]*) return 1 ;;
+  esac
+  printf '%s\n' "$1" | grep -Eiq '^https?://(localhost|127[.]0[.]0[.]1|\[::1\])(:[0-9]+)?/?$'
+}
+
+# 토큰은 명령줄 대신 표준 입력으로 curl에 넘겨 ps에 드러나지 않게 한다
+kanvibe_post_status() {
+  printf 'Authorization: Bearer %s
+' "${KANVIBE_TARGET_TOKEN}" | curl -fsS --max-time 3 -X POST "$@" --url "${KANVIBE_TARGET_URL%/}/api/hooks/status"     -H @-     -H "x-kanvibe-client-id: ${KANVIBE_TARGET_CLIENT_ID}"     -H "Content-Type: application/json"     -d "{\"taskId\": \"${KANVIBE_TARGET_TASK_ID}\", \"status\": \"progress\"${KANVIBE_AGENT_SESSION_JSON}}"
+}
+
+printf '%s
+' "${KANVIBE_TARGET_ROWS}" | {
+  while IFS="$(printf '\t')" read -r KANVIBE_TARGET_URL KANVIBE_TARGET_TASK_ID KANVIBE_TARGET_CLIENT_ID KANVIBE_TARGET_TOKEN KANVIBE_TARGET_TRANSPORT KANVIBE_TARGET_NAMESPACE; do
+    if [ -z "${KANVIBE_TARGET_URL}" ] || [ -z "${KANVIBE_TARGET_TASK_ID}" ]; then
+      continue
+    fi
+    case "${KANVIBE_TARGET_URL}" in
+      http://*|https://*) ;;
+      *) continue ;;
+    esac
+    KANVIBE_TARGET_SOCKET="$(kanvibe_hook_socket "${KANVIBE_TARGET_CLIENT_ID}" "${KANVIBE_TARGET_NAMESPACE}")"
+    {
+      if kanvibe_hook_uses_local_http "${KANVIBE_TARGET_URL}" "${KANVIBE_TARGET_TRANSPORT}"; then
+        kanvibe_post_status
+      elif [ -n "${KANVIBE_TARGET_SOCKET}" ]; then
+        kanvibe_post_status --unix-socket "${KANVIBE_TARGET_SOCKET}"
+      else
+        false
+      fi
+    } > /dev/null 2>&1 &
+  done
+  wait
+}
+
+exit 0
+=== /home/user/my repo/.claude/hooks/kanvibe-stop-hook.sh mode=755
+#!/bin/bash
+
+# KanVibe Claude Code Hook: Stop
+# AI 응답이 완료되면 현재 task를 REVIEW로 변경한다.
+
+KANVIBE_URL="http://10.0.0.5:9736"
+TASK_ID="task-\"q\""
+KANVIBE_STATUS="review"
+KANVIBE_AGENT_SESSION_JSON=
+KANVIBE_HOOK_PAYLOAD_BASE64="$(if [ ! -t 0 ]; then { command -p head -c 65536; command -p cat >/dev/null; } 2>/dev/null | base64 | tr -d "\r\n"; fi)"
+if [ -n "${KANVIBE_HOOK_PAYLOAD_BASE64}" ]; then
+  KANVIBE_AGENT_SESSION_JSON=",\"agentSession\":{\"provider\":\"claude\",\"hookPid\":$$,\"payloadBase64\":\"${KANVIBE_HOOK_PAYLOAD_BASE64}\"}"
+fi
+KANVIBE_REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || (cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd))"
+KANVIBE_STATE_DIR="${KANVIBE_REPO_ROOT}/.kanvibe"
+KANVIBE_TASK_STATE_FILE="${KANVIBE_STATE_DIR}/status.json"
+KANVIBE_TARGETS_FILE="${KANVIBE_STATE_DIR}/targets.json"
+KANVIBE_GIT_COMMON_DIR="$(git -C "${KANVIBE_REPO_ROOT}" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+if [ -n "${KANVIBE_GIT_COMMON_DIR}" ]; then
+  KANVIBE_GIT_EXCLUDE_FILE="${KANVIBE_GIT_COMMON_DIR}/info/exclude"
+  mkdir -p "$(dirname "${KANVIBE_GIT_EXCLUDE_FILE}")" 2>/dev/null || true
+  touch "${KANVIBE_GIT_EXCLUDE_FILE}" 2>/dev/null || true
+  if ! grep -qxF ".kanvibe/" "${KANVIBE_GIT_EXCLUDE_FILE}" 2>/dev/null; then
+    if ! grep -qxF "# KanVibe AI hooks (auto-generated)" "${KANVIBE_GIT_EXCLUDE_FILE}" 2>/dev/null; then
+      printf '
+%s
+' "# KanVibe AI hooks (auto-generated)" >> "${KANVIBE_GIT_EXCLUDE_FILE}" 2>/dev/null || true
+    fi
+    printf '%s
+' ".kanvibe/" >> "${KANVIBE_GIT_EXCLUDE_FILE}" 2>/dev/null || true
+  fi
+fi
+
+mkdir -p "${KANVIBE_STATE_DIR}" 2>/dev/null || true
+KANVIBE_UPDATED_AT="$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || true)"
+
+KANVIBE_TASK_STATE_JSON="{\"schemaVersion\":1,\"status\":\"${KANVIBE_STATUS}\""
+if [ -n "${KANVIBE_UPDATED_AT}" ]; then
+  KANVIBE_TASK_STATE_JSON="${KANVIBE_TASK_STATE_JSON},\"updatedAt\":\"${KANVIBE_UPDATED_AT}\""
+fi
+printf '%s}\n' "${KANVIBE_TASK_STATE_JSON}" > "${KANVIBE_TASK_STATE_FILE}" 2>/dev/null || true
+
+KANVIBE_TARGET_ROWS="$(
+  if [ -f "${KANVIBE_TARGETS_FILE}" ]; then
+    grep -oE '"(url|taskId|clientId|token|remoteHostNamespace)"[[:space:]]*:[[:space:]]*"[^"]*"|"transport"[[:space:]]*:[[:space:]]*("[^"]*"|[^,}[:space:]]+)|[{}]' "${KANVIBE_TARGETS_FILE}" 2>/dev/null       | awk '
+          function emit() { if(u!="" && t!="" && !(u in seen)){ seen[u]=1; print u "\t" t "\t" (c=="" ? "_" : c) "\t" (k=="" ? "_" : k) "\t" transport "\t" namespace } }
+          function clear_target() { u=""; t=""; c=""; k=""; transport=""; namespace="" }
+          $0=="{" { clear_target(); next }
+          $0=="}" { emit(); clear_target(); next }
+          { s=$0; sub(/^"[^"]*"[[:space:]]*:[[:space:]]*"/,"",s); sub(/"$/,"",s) }
+          /^"url"/ { u=s; sub(/\/+$/,"",u); next }
+          /^"taskId"/ { t=s; next }
+          /^"clientId"/ { c=s; next }
+          /^"token"/ { k=s; next }
+          /^"remoteHostNamespace"/ { namespace=s; next }
+          /^"transport"/ { transport=(s=="" ? "invalid" : s); next }
+          END { emit() }
+        ' 2>/dev/null || true
+  else
+    printf '%s	%s
+' "${KANVIBE_URL%/}" "${TASK_ID}"
+  fi
+)"
+if [ -z "${KANVIBE_TARGET_ROWS}" ]; then
+  KANVIBE_TARGET_ROWS="$(printf '%s	%s
+' "${KANVIBE_URL%/}" "${TASK_ID}")"
+fi
+
+kanvibe_hook_socket() {
+  case "$1" in
+    ""|*[!A-Za-z0-9-]*) return 0 ;;
+  esac
+  kanvibe_socket_dir="/tmp/kv-$(id -u)"
+  kanvibe_socket_path="${kanvibe_socket_dir}/$1.sock"
+  if [ -n "$2" ]; then
+    case "$2" in
+      dev|prod|qa-?*) ;;
+      *) return 0 ;;
+    esac
+    case "$2" in *[!a-z0-9-]*|????????????????????????????*) return 0 ;; esac
+    if [ -L "${kanvibe_socket_dir}" ] || [ ! -O "${kanvibe_socket_dir}" ] || [ "$(ls -ld "${kanvibe_socket_dir}" 2>/dev/null | cut -c1-10)" != "drwx------" ]; then return 0; fi
+    kanvibe_socket_dir="${kanvibe_socket_dir}/$2"
+    kanvibe_socket_path="${kanvibe_socket_dir}/hooks-v1.sock"
+  fi
+  if [ ! -L "${kanvibe_socket_dir}" ] && [ -O "${kanvibe_socket_dir}" ] && [ "$(ls -ld "${kanvibe_socket_dir}" 2>/dev/null | cut -c1-10)" = "drwx------" ] && [ ! -L "${kanvibe_socket_path}" ] && [ -S "${kanvibe_socket_path}" ] && [ -O "${kanvibe_socket_path}" ]; then
+    printf '%s' "${kanvibe_socket_path}"
+  fi
+}
+# KANVIBE_HOOK_TRANSPORT_VERSION=4
+kanvibe_hook_uses_local_http() {
+  case "$2" in
+    ""|local) ;;
+    *) return 1 ;;
+  esac
+  case "$1" in
+    *[![:print:]]*) return 1 ;;
+  esac
+  printf '%s\n' "$1" | grep -Eiq '^https?://(localhost|127[.]0[.]0[.]1|\[::1\])(:[0-9]+)?/?$'
+}
+
+# 토큰은 명령줄 대신 표준 입력으로 curl에 넘겨 ps에 드러나지 않게 한다
+kanvibe_post_status() {
+  printf 'Authorization: Bearer %s
+' "${KANVIBE_TARGET_TOKEN}" | curl -fsS --max-time 3 -X POST "$@" --url "${KANVIBE_TARGET_URL%/}/api/hooks/status"     -H @-     -H "x-kanvibe-client-id: ${KANVIBE_TARGET_CLIENT_ID}"     -H "Content-Type: application/json"     -d "{\"taskId\": \"${KANVIBE_TARGET_TASK_ID}\", \"status\": \"review\"${KANVIBE_AGENT_SESSION_JSON}}"
+}
+
+printf '%s
+' "${KANVIBE_TARGET_ROWS}" | {
+  while IFS="$(printf '\t')" read -r KANVIBE_TARGET_URL KANVIBE_TARGET_TASK_ID KANVIBE_TARGET_CLIENT_ID KANVIBE_TARGET_TOKEN KANVIBE_TARGET_TRANSPORT KANVIBE_TARGET_NAMESPACE; do
+    if [ -z "${KANVIBE_TARGET_URL}" ] || [ -z "${KANVIBE_TARGET_TASK_ID}" ]; then
+      continue
+    fi
+    case "${KANVIBE_TARGET_URL}" in
+      http://*|https://*) ;;
+      *) continue ;;
+    esac
+    KANVIBE_TARGET_SOCKET="$(kanvibe_hook_socket "${KANVIBE_TARGET_CLIENT_ID}" "${KANVIBE_TARGET_NAMESPACE}")"
+    {
+      if kanvibe_hook_uses_local_http "${KANVIBE_TARGET_URL}" "${KANVIBE_TARGET_TRANSPORT}"; then
+        kanvibe_post_status
+      elif [ -n "${KANVIBE_TARGET_SOCKET}" ]; then
+        kanvibe_post_status --unix-socket "${KANVIBE_TARGET_SOCKET}"
+      else
+        false
+      fi
+    } > /dev/null 2>&1 &
+  done
+  wait
+}
+
+exit 0
+=== /home/user/my repo/.claude/hooks/kanvibe-question-hook.sh mode=755
+#!/bin/bash
+
+# KanVibe Claude Code Hook: PreToolUse (AskUserQuestion)
+# Claude가 사용자에게 질문할 때 현재 task를 PENDING으로 변경한다.
+
+KANVIBE_URL="http://10.0.0.5:9736"
+TASK_ID="task-\"q\""
+KANVIBE_STATUS="pending"
+KANVIBE_AGENT_SESSION_JSON=
+KANVIBE_HOOK_PAYLOAD_BASE64="$(if [ ! -t 0 ]; then { command -p head -c 65536; command -p cat >/dev/null; } 2>/dev/null | base64 | tr -d "\r\n"; fi)"
+if [ -n "${KANVIBE_HOOK_PAYLOAD_BASE64}" ]; then
+  KANVIBE_AGENT_SESSION_JSON=",\"agentSession\":{\"provider\":\"claude\",\"hookPid\":$$,\"payloadBase64\":\"${KANVIBE_HOOK_PAYLOAD_BASE64}\"}"
+fi
+KANVIBE_REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || (cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd))"
+KANVIBE_STATE_DIR="${KANVIBE_REPO_ROOT}/.kanvibe"
+KANVIBE_TASK_STATE_FILE="${KANVIBE_STATE_DIR}/status.json"
+KANVIBE_TARGETS_FILE="${KANVIBE_STATE_DIR}/targets.json"
+KANVIBE_GIT_COMMON_DIR="$(git -C "${KANVIBE_REPO_ROOT}" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+if [ -n "${KANVIBE_GIT_COMMON_DIR}" ]; then
+  KANVIBE_GIT_EXCLUDE_FILE="${KANVIBE_GIT_COMMON_DIR}/info/exclude"
+  mkdir -p "$(dirname "${KANVIBE_GIT_EXCLUDE_FILE}")" 2>/dev/null || true
+  touch "${KANVIBE_GIT_EXCLUDE_FILE}" 2>/dev/null || true
+  if ! grep -qxF ".kanvibe/" "${KANVIBE_GIT_EXCLUDE_FILE}" 2>/dev/null; then
+    if ! grep -qxF "# KanVibe AI hooks (auto-generated)" "${KANVIBE_GIT_EXCLUDE_FILE}" 2>/dev/null; then
+      printf '
+%s
+' "# KanVibe AI hooks (auto-generated)" >> "${KANVIBE_GIT_EXCLUDE_FILE}" 2>/dev/null || true
+    fi
+    printf '%s
+' ".kanvibe/" >> "${KANVIBE_GIT_EXCLUDE_FILE}" 2>/dev/null || true
+  fi
+fi
+
+mkdir -p "${KANVIBE_STATE_DIR}" 2>/dev/null || true
+KANVIBE_UPDATED_AT="$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || true)"
+
+KANVIBE_TASK_STATE_JSON="{\"schemaVersion\":1,\"status\":\"${KANVIBE_STATUS}\""
+if [ -n "${KANVIBE_UPDATED_AT}" ]; then
+  KANVIBE_TASK_STATE_JSON="${KANVIBE_TASK_STATE_JSON},\"updatedAt\":\"${KANVIBE_UPDATED_AT}\""
+fi
+printf '%s}\n' "${KANVIBE_TASK_STATE_JSON}" > "${KANVIBE_TASK_STATE_FILE}" 2>/dev/null || true
+
+KANVIBE_TARGET_ROWS="$(
+  if [ -f "${KANVIBE_TARGETS_FILE}" ]; then
+    grep -oE '"(url|taskId|clientId|token|remoteHostNamespace)"[[:space:]]*:[[:space:]]*"[^"]*"|"transport"[[:space:]]*:[[:space:]]*("[^"]*"|[^,}[:space:]]+)|[{}]' "${KANVIBE_TARGETS_FILE}" 2>/dev/null       | awk '
+          function emit() { if(u!="" && t!="" && !(u in seen)){ seen[u]=1; print u "\t" t "\t" (c=="" ? "_" : c) "\t" (k=="" ? "_" : k) "\t" transport "\t" namespace } }
+          function clear_target() { u=""; t=""; c=""; k=""; transport=""; namespace="" }
+          $0=="{" { clear_target(); next }
+          $0=="}" { emit(); clear_target(); next }
+          { s=$0; sub(/^"[^"]*"[[:space:]]*:[[:space:]]*"/,"",s); sub(/"$/,"",s) }
+          /^"url"/ { u=s; sub(/\/+$/,"",u); next }
+          /^"taskId"/ { t=s; next }
+          /^"clientId"/ { c=s; next }
+          /^"token"/ { k=s; next }
+          /^"remoteHostNamespace"/ { namespace=s; next }
+          /^"transport"/ { transport=(s=="" ? "invalid" : s); next }
+          END { emit() }
+        ' 2>/dev/null || true
+  else
+    printf '%s	%s
+' "${KANVIBE_URL%/}" "${TASK_ID}"
+  fi
+)"
+if [ -z "${KANVIBE_TARGET_ROWS}" ]; then
+  KANVIBE_TARGET_ROWS="$(printf '%s	%s
+' "${KANVIBE_URL%/}" "${TASK_ID}")"
+fi
+
+kanvibe_hook_socket() {
+  case "$1" in
+    ""|*[!A-Za-z0-9-]*) return 0 ;;
+  esac
+  kanvibe_socket_dir="/tmp/kv-$(id -u)"
+  kanvibe_socket_path="${kanvibe_socket_dir}/$1.sock"
+  if [ -n "$2" ]; then
+    case "$2" in
+      dev|prod|qa-?*) ;;
+      *) return 0 ;;
+    esac
+    case "$2" in *[!a-z0-9-]*|????????????????????????????*) return 0 ;; esac
+    if [ -L "${kanvibe_socket_dir}" ] || [ ! -O "${kanvibe_socket_dir}" ] || [ "$(ls -ld "${kanvibe_socket_dir}" 2>/dev/null | cut -c1-10)" != "drwx------" ]; then return 0; fi
+    kanvibe_socket_dir="${kanvibe_socket_dir}/$2"
+    kanvibe_socket_path="${kanvibe_socket_dir}/hooks-v1.sock"
+  fi
+  if [ ! -L "${kanvibe_socket_dir}" ] && [ -O "${kanvibe_socket_dir}" ] && [ "$(ls -ld "${kanvibe_socket_dir}" 2>/dev/null | cut -c1-10)" = "drwx------" ] && [ ! -L "${kanvibe_socket_path}" ] && [ -S "${kanvibe_socket_path}" ] && [ -O "${kanvibe_socket_path}" ]; then
+    printf '%s' "${kanvibe_socket_path}"
+  fi
+}
+# KANVIBE_HOOK_TRANSPORT_VERSION=4
+kanvibe_hook_uses_local_http() {
+  case "$2" in
+    ""|local) ;;
+    *) return 1 ;;
+  esac
+  case "$1" in
+    *[![:print:]]*) return 1 ;;
+  esac
+  printf '%s\n' "$1" | grep -Eiq '^https?://(localhost|127[.]0[.]0[.]1|\[::1\])(:[0-9]+)?/?$'
+}
+
+# 토큰은 명령줄 대신 표준 입력으로 curl에 넘겨 ps에 드러나지 않게 한다
+kanvibe_post_status() {
+  printf 'Authorization: Bearer %s
+' "${KANVIBE_TARGET_TOKEN}" | curl -fsS --max-time 3 -X POST "$@" --url "${KANVIBE_TARGET_URL%/}/api/hooks/status"     -H @-     -H "x-kanvibe-client-id: ${KANVIBE_TARGET_CLIENT_ID}"     -H "Content-Type: application/json"     -d "{\"taskId\": \"${KANVIBE_TARGET_TASK_ID}\", \"status\": \"pending\"${KANVIBE_AGENT_SESSION_JSON}}"
+}
+
+printf '%s
+' "${KANVIBE_TARGET_ROWS}" | {
+  while IFS="$(printf '\t')" read -r KANVIBE_TARGET_URL KANVIBE_TARGET_TASK_ID KANVIBE_TARGET_CLIENT_ID KANVIBE_TARGET_TOKEN KANVIBE_TARGET_TRANSPORT KANVIBE_TARGET_NAMESPACE; do
+    if [ -z "${KANVIBE_TARGET_URL}" ] || [ -z "${KANVIBE_TARGET_TASK_ID}" ]; then
+      continue
+    fi
+    case "${KANVIBE_TARGET_URL}" in
+      http://*|https://*) ;;
+      *) continue ;;
+    esac
+    KANVIBE_TARGET_SOCKET="$(kanvibe_hook_socket "${KANVIBE_TARGET_CLIENT_ID}" "${KANVIBE_TARGET_NAMESPACE}")"
+    {
+      if kanvibe_hook_uses_local_http "${KANVIBE_TARGET_URL}" "${KANVIBE_TARGET_TRANSPORT}"; then
+        kanvibe_post_status
+      elif [ -n "${KANVIBE_TARGET_SOCKET}" ]; then
+        kanvibe_post_status --unix-socket "${KANVIBE_TARGET_SOCKET}"
+      else
+        false
+      fi
+    } > /dev/null 2>&1 &
+  done
+  wait
+}
+
+exit 0
+=== /home/user/my repo/.claude/settings.json mode=none
+{
+  "model": "opus",
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo user-prompt",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/kanvibe-prompt-hook.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/kanvibe-stop-hook.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "notify-send hi"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "AskUserQuestion",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/kanvibe-question-hook.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "AskUserQuestion",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/kanvibe-prompt-hook.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Bash(ls:*)"
+    ]
+  }
+}

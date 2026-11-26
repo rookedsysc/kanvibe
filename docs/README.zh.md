@@ -193,8 +193,9 @@ brew untap rookedsysc/kanvibe
 
 ### 终端会话（Herdr / tmux / zellij）
 - 支持 **Herdr**、**tmux** 和 **zellij** 作为终端复用器
-- 通过 xterm.js 和 WebSocket 进行基于浏览器的终端流式传输
+- 连接到任务会话的应用内原生终端（alacritty_terminal）
 - 读取 `~/.ssh/config` 的 SSH 远程终端支持
+- [性能基准测试](https://kanvibe.rookedsysc.com/zh/performance)：SSH 连续输入和粘贴的传输耗时以及 Pane 聊天连接延迟
 - 非交互式远程 SSH 命令会复用 `~/.kanvibe` 下的应用专用 ControlMaster socket 池，并将每个 host 的并发数限制为可用 CPU 核心数的 4 倍
 - 远程终端 attach 会通过 SSH 直接执行 Herdr/tmux/zellij；仅在本地 `DISPLAY`、远程 `X11Forwarding` 和 `xauth` 可用时请求 trusted X11 forwarding（`ssh -Y`）
 - Nerd Font 渲染支持
@@ -357,7 +358,7 @@ AI 代理 Hooks 触发的任务状态变更会发送**浏览器通知**，显示
 在浏览器中使用 GitHub 风格的 diff 查看器直接审查代码变更。点击任务详情页面上的 **Diff** 徽章，即可查看与 base 分支相比的所有修改文件。
 
 - 显示变更文件数量的文件树侧边栏
-- 基于 Monaco Editor 的内联 diff 查看器
+- 支持查找/替换、折叠和语法高亮的内联 diff 查看器
 - 可在浏览器中直接修改的编辑模式
 - 复选框追踪已查看的文件
 
@@ -368,7 +369,7 @@ AI 代理 Hooks 触发的任务状态变更会发送**浏览器通知**，显示
 
 ### 国际化（i18n）
 - 支持语言：韩语（ko）、英语（en）、中文（zh）
-- 基于 next-intl
+- 消息位于 `messages/{ko,en,zh}.json`，并打包进应用二进制
 
 ---
 
@@ -376,14 +377,15 @@ AI 代理 Hooks 触发的任务状态变更会发送**浏览器通知**，显示
 
 | 类别 | 技术 |
 |------|------|
-| 前端/后端 | Next.js 16 (App Router) + React 19 + TypeScript |
-| 数据库 | SQLite + TypeORM + better-sqlite3 |
-| 样式 | Tailwind CSS v4 |
-| 终端 | xterm.js + WebSocket + node-pty |
+| 桌面应用 | Rust workspace（`crates/`）+ GPUI（`gpui-kit`） |
+| 数据库 | SQLite + rusqlite（`kanvibe-db`） |
+| Hook / 移动端服务器 | hyper + rustls，在应用进程内运行（`kanvibe-server`） |
+| 终端 | alacritty_terminal + portable-pty（`kanvibe-terminal`） |
+| Markdown / Mermaid | 原生渲染器（`kanvibe-markdown`、`kanvibe-diagram`） |
+| HTML 预览 | gpui-webview（macOS WKWebView，Linux WebKitGTK） |
 | SSH | system ssh binary |
-| 拖放 | @hello-pangea/dnd |
-| 国际化 | next-intl |
-| 桌面打包 | Electron + Electron Builder |
+| 国际化 | `messages/*.json`（`kanvibe-domain` i18n） |
+| 桌面打包 | `packaging/linux/build-linux.sh`（tarball、.deb）、`packaging/macos/build-macos.sh`（.app、DMG） |
 | 移动端 | Flutter + xterm.dart |
 
 ---

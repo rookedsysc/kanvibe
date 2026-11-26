@@ -1,0 +1,7 @@
+model = "gpt-5"
+[features]
+fast_mode = true
+
+hooks = true
+[[hooks.PreToolUse]]
+matcher = "^Bash$"

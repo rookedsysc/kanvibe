@@ -1,0 +1,57 @@
+[package]
+name = "kanvibe-app"
+description = "KanVibe GPUI 데스크톱 앱: 테마, 라우터, 창 관리, 단축키 디스패치, 알림, QA 모드"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "kanvibe"
+path = "src/main.rs"
+
+[features]
+# 배포 바이너리(TS `app.isPackaged`). 패키지 스크립트(packaging/linux/build-linux.sh, packaging/macos/build-macos.sh)만
+# 켠다. 켜야 설치된 앱의 데이터 디렉터리(`<appData>/KanVibe`)와 hook 포트 9736을 쓴다(desktop_process.rs `AppBuild`)
+packaged = []
+
+[dependencies]
+# gpui-kit 0.11.0은 gpui-pre =0.3.14(zed@f126950 스냅샷)와 gpui-component 0.11.0을 함께 고정한다(계획 AD-2)
+gpui-kit = "0.11.0"
+anyhow = "1"
+futures = "0.3"
+kanvibe-domain.workspace = true
+kanvibe-db.workspace = true
+kanvibe-process.workspace = true
+kanvibe-ai.workspace = true
+kanvibe-services.workspace = true
+kanvibe-terminal.workspace = true
+kanvibe-runtime.workspace = true
+kanvibe-server.workspace = true
+kanvibe-mobile.workspace = true
+kanvibe-markdown.workspace = true
+kanvibe-diagram.workspace = true
+# 대화 기록 파일 미리보기: SVG는 gpui-pre와 같은 resvg로 그리고, HTML은 스크립트만 허용한 WebView(TS `iframe sandbox`)로 보인다
+resvg = "0.46"
+gpui-webview = "0.11.0"
+wry = { package = "lb-wry", version = "0.53.3" }
+# 화면 목록의 locale 정렬(TS `localeCompare`)
+icu_collator = "2"
+icu_locale_core = "2"
+# 날짜·시각의 사용자 locale 표기(TS `toLocaleString`·`toLocaleDateString`)
+icu_datetime = "2"
+icu_calendar = "2"
+# diff 찾기 위젯의 정규식(Monaco JS `RegExp` 의미: ECMAScript 문법·역참조·앞뒤 보기)
+regress = "0.12"
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# QA 재생: 창 관리자가 없는 Xvfb에서 창에 입력 포커스를 직접 준다(TS 기준 이미지는 포커스된 창에서 찍었다)
+raw-window-handle = "0.6"
+x11rb = { version = "0.13", default-features = false }
+
+[dev-dependencies]
+gpui-kit = { version = "0.11.0", features = ["test-support"] }
+tempfile.workspace = true

@@ -1,0 +1,12 @@
+architecture-beta
+    service web(internet)[Web]
+    service api(server)[API]
+    service db(database)[DB]
+    service cache(disk)[Cache]
+    service queue(cloud)[Queue]
+
+    web:R -[https]- T:api
+    api:B -[sql]- L:db
+    cache:B -[warm]- R:db
+    api:R -[jobs]- T:queue
+    queue:T -- B:api

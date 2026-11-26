@@ -1,5 +1,5 @@
 appId: ${APP_ID}
-# 데스크톱 fixture(--pane-chat)가 Claude pane에서 한 번 응답한 뒤 실행한다. 가짜 Claude는 실제 2.1.325처럼 응답 뒤 빈 입력란에 다음 질문 추천을 dim으로 그린다
+# 데스크톱 fixture(`qa/mobile/prepare_chat_history_desktop.py --pane-chat`)가 Claude pane에서 한 번 응답한 뒤 실행한다. 가짜 Claude는 실제 2.1.325처럼 응답 뒤 빈 입력란에 다음 질문 추천을 dim으로 그린다
 ---
 - launchApp:
     clearState: true

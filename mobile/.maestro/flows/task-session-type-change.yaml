@@ -1,4 +1,4 @@
-# 세션 종류 변경을 기기에서 확인한다. 격리 desktop fixture(qa/mobile/lib/prepareQaDesktop.cjs)가 필요하고,
+# 세션 종류 변경을 기기에서 확인한다. 격리 desktop fixture(qa/mobile/prepare_qa_desktop.py)가 필요하고,
 # 데스크탑을 띄운 셸에서 tmux와 zellij를 모두 찾을 수 있어야 한다.
 #
 # 앞 절반은 데스크탑이 세션을 바꿀 때 열린 화면이 스스로 새 세션으로 다시 붙는지 본다. 화면은 아무것도

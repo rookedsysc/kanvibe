@@ -10,9 +10,11 @@
 
 ### 前置要求
 
-- Node.js 24.x（参见 `.nvmrc`）
-- pnpm
+- Rust stable 及 `rustfmt`、`clippy`（edition 2024）
+- [cargo-nextest](https://nexte.st/)
 - Herdr、tmux 或 zellij（用于终端功能）
+- 仅 Linux：GPUI 与 WebKitGTK 开发包，例如 Ubuntu：
+  `pkg-config libfontconfig-dev libfreetype-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libvulkan-dev libwebkit2gtk-4.1-dev`
 
 ### 开始
 
@@ -21,28 +23,26 @@
 git clone https://github.com/rookedsysc/kanvibe.git
 cd kanvibe
 
-# 复制环境变量
-cp .env.example .env
-
-# 安装依赖
-pnpm install
-
-# 准备内置数据库
-pnpm db:prepare
-
-# 启动开发服务器
-pnpm dev
+# 从源码启动桌面应用（debug 构建，开发数据库）
+cargo run -p kanvibe-app
 ```
 
-在浏览器中打开 `http://localhost:4885`。
+debug 构建使用开发数据目录和 hook 端口 `19736`。参见 [开发与 QA 数据库](./README.zh.md)。
 
 ### 发布构建
 
 ```bash
-pnpm dist
+# Linux：在 dist/ 生成 tarball 和 .deb（--verify 解包后启动一次进行确认，
+# --allow-missing-agents 跳过本机无法构建的远程 agent 目标）
+packaging/linux/build-linux.sh --verify
+
+# macOS：签名并公证的 KanVibe.app 与 dist/KanVibe-${version}.dmg
+packaging/macos/build-macos.sh
 ```
 
-该命令会构建 renderer bundle，将桌面 main process 编译到 `build/main`，生成随包附带的 seed DB，并通过 Electron Builder 打包 macOS DMG。
+两个脚本都以 `packaged` cargo feature 构建 `kanvibe-app`。只有该二进制使用已安装应用的数据目录和 hook 端口 `9736`；不带该 feature 的 `cargo build --release` 以手动 QA 方式运行（`<appData>/kanvibe-qa`，端口 `29736`）。
+
+版本号取自根目录 `Cargo.toml` 的 `workspace.package.version`。`build-macos.sh` 从环境变量或 `.env.example` 中列出的键读取签名凭据；`--unsigned` 可在没有凭据时进行本地构建检查。
 
 - macOS 输出：`dist/KanVibe-${version}.dmg`
 - Homebrew cask：更新 `Casks/kanvibe.rb`
@@ -55,25 +55,26 @@ pnpm dist
 
 1. **所有检查必须通过：**
    ```bash
-   pnpm build    # 构建成功
-   pnpm check    # 类型检查通过
-   pnpm test     # 测试通过
+   cargo fmt --all --check                                  # 格式
+   cargo clippy --workspace --all-targets -- -D warnings    # Lint
+   cargo nextest run --workspace                            # 测试
+   cargo build --workspace --release                        # 发布构建
    ```
 
 2. **附上工作截图或 GIF** 展示您的更改。没有功能运行视觉证据的 PR 将不会被合并。
 
 3. **遵循现有代码风格。** 项目使用：
-   - TypeScript 严格模式
-   - Tailwind CSS v4 + 设计令牌（CSS 变量）
-   - next-intl 处理所有面向用户的字符串
-   - 内置 SQLite + TypeORM 数据访问
+   - `crates/` 下的 Rust workspace（按层划分的 crate：`kanvibe-domain`、`kanvibe-db`、`kanvibe-services`、`kanvibe-app` 等）
+   - 使用语义主题令牌（`crates/kanvibe-app/src/theme.rs`）的 GPUI 视图
+   - 所有面向用户的字符串放在 `messages/*.json`
+   - 通过 `rusqlite` 访问的内置 SQLite（`kanvibe-db`）
 
 ### PR 流程
 
 1. Fork 仓库
 2. 从 `main` 创建功能分支
 3. 进行更改
-4. 运行所有检查（`pnpm build && pnpm check && pnpm test`）
+4. 运行所有检查（见上文）
 5. 使用 [Conventional Commits](https://www.conventionalcommits.org/) 格式提交
 6. Push 并创建 Pull Request
 7. 附上功能运行的截图/GIF
@@ -95,20 +96,16 @@ refactor(scope): 代码重构
 
 1. 在 `messages/ko.json` 中添加键/值
 2. 在 `messages/en.json` 和 `messages/zh.json` 中添加翻译
-3. 在组件中通过 `useTranslations` 或 `getTranslations` 使用 `t("key")`
+3. 在视图中通过 `kanvibe_domain::i18n`（`Translator::translate` 或 `translate`）读取
 
 ---
 
 ## 数据库更改
 
-KanVibe 使用内置 SQLite 数据库。修改实体结构时，也要同步更新 SQLite 引导 schema：
+KanVibe 使用内置 SQLite 数据库（`crates/kanvibe-db`）。修改表结构时：
 
-```bash
-# 重新生成随包附带的 seed DB
-pnpm db:prepare
-```
-
-请始终保持 `src/lib/sqliteSchema.ts` 与 TypeORM 实体定义一致。
+1. 在 `crates/kanvibe-db/src/migrations/mod.rs` 的 `MIGRATIONS` 中添加迁移
+2. 更新 `crates/kanvibe-db/src/schema/` 中的幂等 schema 修复，使旧数据库也达到相同的 schema
 
 ---
 

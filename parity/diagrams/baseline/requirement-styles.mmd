@@ -1,0 +1,17 @@
+---
+title: Requirement styles
+---
+requirementDiagram
+    requirement req_a {
+    id: 1
+    text: first
+    risk: high
+    verifymethod: test
+    }
+    element el_b {
+    type: doc
+    }
+    el_b - satisfies -> req_a
+    classDef warn fill:#fd8,stroke:#a60
+    class req_a warn
+    style el_b fill:#cef,stroke:#36c,stroke-width:3px

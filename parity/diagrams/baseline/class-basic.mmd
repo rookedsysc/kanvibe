@@ -1,0 +1,16 @@
+classDiagram
+    class DiagramRenderer {
+        <<interface>>
+        +render(request) DiagramImage
+    }
+    class MermaidRenderer {
+        -FontBook fonts
+        +render(request) DiagramImage
+    }
+    class DiagramImage {
+        +String mimeType
+        +int width
+        +int height
+    }
+    DiagramRenderer <|.. MermaidRenderer
+    MermaidRenderer --> DiagramImage : creates

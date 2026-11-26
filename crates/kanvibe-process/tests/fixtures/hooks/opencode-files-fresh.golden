@@ -1,0 +1,353 @@
+=== /repo/.opencode/kanvibe-tui.mjs mode=none
+import { mkdirSync, writeFileSync, renameSync, unlinkSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { join } from "node:path";
+export default {
+  id: "kanvibe-pane-chat",
+  tui: async (api) => {
+    const directory = join("/repo", ".kanvibe", "pane-chat");
+    const file = join(directory, "opencode-" + process.pid + ".json");
+    const temporary = file + ".tmp";
+    const processStartTime = execFileSync("ps", ["-p", String(process.pid), "-o", "lstart="], { encoding: "utf8" }).trim().replace(/\s+/g, " ");
+    const POLL_INTERVAL_MS = 100;
+    const HEARTBEAT_INTERVAL_MS = 1000;
+    let previous;
+    let revision = 0;
+    let lastWriteAt = 0;
+    const observe = () => {
+      try {
+        const route = api.route.current;
+        const sessionId = route.name === "session" ? route.params.sessionID : null;
+        const now = Date.now();
+        if (previous === sessionId && now - lastWriteAt < HEARTBEAT_INTERVAL_MS) return;
+        if (previous !== sessionId) { previous = sessionId; revision++; }
+        mkdirSync(directory, { recursive: true });
+        writeFileSync(temporary, JSON.stringify({ pid: process.pid, processStartTime, cwd: process.cwd(), sessionId, revision, updatedAt: now }), { mode: 0o600 });
+        renameSync(temporary, file);
+        lastWriteAt = now;
+      } catch { /* CLI navigation must continue when the observer cannot write. */ }
+    };
+    observe();
+    const timer = setInterval(observe, POLL_INTERVAL_MS);
+    api.lifecycle.onDispose(() => {
+      clearInterval(timer);
+      for (const path of [file, temporary]) { try { unlinkSync(path); } catch {} }
+    });
+  },
+};
+=== /repo/.opencode/tui.json mode=none
+{
+  "plugin": [
+    "/repo/.opencode/kanvibe-tui.mjs"
+  ]
+}
+=== /repo/.opencode/plugins/kanvibe-plugin.ts mode=none
+import type { Plugin } from "@opencode-ai/plugin";
+import { appendFileSync, existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+import { execFileSync } from "child_process";
+import { dirname, resolve } from "path";
+import { fileURLToPath } from "url";
+
+/**
+ * KanVibe OpenCode Plugin
+ * message.updated(user) → progress, question.asked → pending,
+ * question.replied → progress, session.idle → review, session.deleted → done 상태 변경
+ */
+export const KanvibePlugin: Plugin = async ({ client }) => {
+  const KANVIBE_URL = "http://localhost:9736";
+  // KANVIBE_HOOK_TRANSPORT_VERSION=4
+  const KANVIBE_LOOPBACK_URL = new RegExp("^https?://(localhost|127[.]0[.]0[.]1|\\[::1\\])(:[0-9]+)?/?$", "i");
+  const TASK_ID = "task-1";
+  const KANVIBE_REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+  const KANVIBE_STATE_DIR = resolve(KANVIBE_REPO_ROOT, ".kanvibe");
+  const KANVIBE_STATUS_FILE = resolve(KANVIBE_STATE_DIR, "status.json");
+  const KANVIBE_TARGETS_FILE = resolve(KANVIBE_STATE_DIR, "targets.json");
+  /** 이미 종료된 client가 targets.json에 남아 있어도 통보가 매달리지 않도록 상한을 둔다 */
+  const KANVIBE_NOTIFY_TIMEOUT_MS = 3000;
+  const KANVIBE_STATE_DIR_EXCLUDE_PATTERN = ".kanvibe/";
+  const KANVIBE_GIT_EXCLUDE_MARKER = "# KanVibe AI hooks (auto-generated)";
+  const lastStatusBySession = new Map<string, string>();
+  const lastUserMessageBySession = new Map<string, string>();
+
+  function ensureKanvibeStatusExcluded(): void {
+    try {
+      const gitCommonDir = execFileSync(
+        "git",
+        ["-C", KANVIBE_REPO_ROOT, "rev-parse", "--path-format=absolute", "--git-common-dir"],
+        { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
+      ).trim();
+      if (!gitCommonDir) return;
+
+      const excludeFile = resolve(gitCommonDir, "info", "exclude");
+      mkdirSync(dirname(excludeFile), { recursive: true });
+
+      const content = existsSync(excludeFile) ? readFileSync(excludeFile, "utf8") : "";
+      const lines = content.split(/\r?\n/);
+      if (lines.includes(KANVIBE_STATE_DIR_EXCLUDE_PATTERN)) return;
+
+      const markerPrefix = lines.includes(KANVIBE_GIT_EXCLUDE_MARKER)
+        ? ""
+        : "\n" + KANVIBE_GIT_EXCLUDE_MARKER + "\n";
+      appendFileSync(excludeFile, markerPrefix + KANVIBE_STATE_DIR_EXCLUDE_PATTERN + "\n", "utf8");
+    } catch {
+      /* git exclude 갱신 에러 무시 */
+    }
+  }
+
+  function writeKanvibeTaskState(status: string): void {
+    try {
+      ensureKanvibeStatusExcluded();
+      mkdirSync(KANVIBE_STATE_DIR, { recursive: true });
+      writeFileSync(
+        KANVIBE_STATUS_FILE,
+        JSON.stringify({
+          schemaVersion: 1,
+          status,
+          updatedAt: new Date().toISOString(),
+        }, null, 2) + "\n",
+        "utf8",
+      );
+    } catch {
+      /* 파일 쓰기 에러 무시 */
+    }
+  }
+
+  type KanvibeTarget = { url: string; taskId: string; token?: string; clientId?: string; transport?: string; remoteHostNamespace?: string };
+
+  function normalizeKanvibeUrl(url: string): string {
+    return url.trim().replace(/\/+$/, "");
+  }
+
+  function getFallbackKanvibeTarget(): KanvibeTarget[] {
+    return [{ url: normalizeKanvibeUrl(KANVIBE_URL), taskId: TASK_ID }];
+  }
+
+  /**
+   * targets.json은 client(url) 단위로 등록되므로 같은 url의 중복 항목만 제거한다.
+   * targets.json은 브랜치 checkout으로 바뀔 수 있으므로 http(s) 주소가 아닌 항목은 fetch에 넘기지 않는다
+   */
+  function readKanvibeTargets(): KanvibeTarget[] {
+    try {
+      const parsed = JSON.parse(readFileSync(KANVIBE_TARGETS_FILE, "utf8"));
+      const targets = Array.isArray(parsed?.targets) ? parsed.targets : [];
+      const seenUrls = new Set<string>();
+      const normalizedTargets: KanvibeTarget[] = [];
+
+      for (const target of targets) {
+        const url = typeof target?.url === "string" ? normalizeKanvibeUrl(target.url) : "";
+        const taskId = typeof target?.taskId === "string" ? target.taskId.trim() : "";
+        if (!/^https?:\/\/\S+$/.test(url) || !taskId || seenUrls.has(url)) continue;
+
+        const clientId = typeof target?.clientId === "string" && /^[A-Za-z0-9-]+$/.test(target.clientId)
+          ? target.clientId
+          : undefined;
+        const token = typeof target?.token === "string" && /^[A-Za-z0-9]+$/.test(target.token) ? target.token : undefined;
+        seenUrls.add(url);
+        const transport = target.transport === undefined ? undefined : String(target.transport);
+        const remoteHostNamespace = target.remoteHostNamespace;
+        if (remoteHostNamespace !== undefined && (typeof remoteHostNamespace !== "string" || !/^(dev|prod|qa-[a-z0-9-]{1,24})$/.test(remoteHostNamespace))) continue;
+        normalizedTargets.push({ url, taskId, token, clientId, transport, remoteHostNamespace });
+      }
+
+      return normalizedTargets.length > 0 ? normalizedTargets : getFallbackKanvibeTarget();
+    } catch {
+      return getFallbackKanvibeTarget();
+    }
+  }
+
+  /**
+   * 이 소켓으로 task 정보가 나가므로, 본인 소유이고 0700인 디렉터리 안의 본인 소유 소켓만 쓴다
+   */
+  function findKanvibeHookSocket(clientId: string | undefined, namespace?: string): string | undefined {
+    if (!clientId) return undefined;
+    try {
+      const uid = process.getuid?.();
+      let directory = "/tmp/kv-" + uid;
+      const directoryStat = lstatSync(directory);
+      if (!directoryStat.isDirectory() || directoryStat.uid !== uid || (directoryStat.mode & 0o777) !== 0o700) return undefined;
+      if (namespace) {
+        directory += "/" + namespace;
+        const namespaceStat = lstatSync(directory);
+        if (!namespaceStat.isDirectory() || namespaceStat.uid !== uid || (namespaceStat.mode & 0o777) !== 0o700) return undefined;
+      }
+      const socketPath = directory + "/" + (namespace ? "hooks-v1.sock" : clientId + ".sock");
+      const socketStat = lstatSync(socketPath);
+      return socketStat.isSocket() && socketStat.uid === uid ? socketPath : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  async function sendKanvibeStatus(target: KanvibeTarget, status: string, unix?: string): Promise<void> {
+    const response = await fetch(target.url + "/api/hooks/status", {
+      method: "POST",
+      redirect: "error",
+      headers: {
+        "Content-Type": "application/json",
+        ...(target.token ? { Authorization: "Bearer " + target.token } : {}),
+        ...(unix ? { "x-kanvibe-client-id": target.clientId ?? "" } : {}),
+      },
+      body: JSON.stringify({ taskId: target.taskId, status }),
+      signal: AbortSignal.timeout(KANVIBE_NOTIFY_TIMEOUT_MS),
+      ...(unix ? { unix } : {}),
+    } as RequestInit);
+    if (!response.ok) throw new Error("KanVibe hook HTTP " + response.status);
+  }
+
+  /** Bun의 unix 옵션으로 연결하며, 로컬 loopback 등록만 TCP를 허용한다. */
+  async function postKanvibeStatus(target: KanvibeTarget, status: string): Promise<void> {
+    try {
+      if ((target.transport === undefined || target.transport === "local") && KANVIBE_LOOPBACK_URL.test(target.url)) {
+        await sendKanvibeStatus(target, status);
+        return;
+      }
+      const socketPath = findKanvibeHookSocket(target.clientId, target.remoteHostNamespace);
+      if (!socketPath) throw new Error("KanVibe SSH tunnel socket unavailable");
+      await sendKanvibeStatus(target, status, socketPath);
+    } catch {
+      /* 훅 연결 실패가 OpenCode의 작업을 중단하지 않게 한다. */
+    }
+  }
+
+  /** 등록된 모든 client에 병렬로 통보한다. 느린 client가 다른 client를 막지 않는다 */
+  async function fanoutKanvibeStatus(status: string): Promise<void> {
+    await Promise.all(readKanvibeTargets().map((target) => postKanvibeStatus(target, status)));
+  }
+
+  function getSessionID(source: any): string | undefined {
+    return (
+      source?.sessionID ??
+      source?.sessionId ??
+      source?.id ??
+      source?.session?.id ??
+      source?.info?.sessionID ??
+      source?.info?.sessionId ??
+      source?.info?.id
+    );
+  }
+
+  function buildMessageSignature(source: any): string | undefined {
+    const parts = [
+      source?.messageID,
+      source?.messageId,
+      source?.id,
+      source?.timeCreated,
+      source?.time_created,
+      source?.createdAt,
+      source?.updatedAt,
+      source?.timestamp,
+      typeof source?.content === "string" ? source.content : undefined,
+    ].filter((value): value is string | number => value !== undefined && value !== null);
+
+    if (parts.length === 0) return undefined;
+    return parts.join(":");
+  }
+
+  async function updateStatus(source: any, status: string, options?: { dedupeMessage?: boolean }): Promise<void> {
+    const sessionID = getSessionID(source);
+
+    if (options?.dedupeMessage && sessionID) {
+      const signature = buildMessageSignature(source);
+      if (signature) {
+        if (lastUserMessageBySession.get(sessionID) === signature) {
+          return;
+        }
+        lastUserMessageBySession.set(sessionID, signature);
+      }
+    }
+
+    if (sessionID && lastStatusBySession.get(sessionID) === status) {
+      return;
+    }
+
+    writeKanvibeTaskState(status);
+    await fanoutKanvibeStatus(status);
+
+    if (sessionID) {
+      lastStatusBySession.set(sessionID, status);
+    }
+  }
+
+  const sessionCache = new Map<string, boolean>();
+
+  function getParentSessionID(source: any): string | null | undefined {
+    return (
+      source?.parentID ??
+      source?.parentId ??
+      source?.session?.parentID ??
+      source?.session?.parentId ??
+      source?.info?.parentID ??
+      source?.info?.parentId
+    );
+  }
+
+  async function isMainSession(source: any): Promise<boolean> {
+    const sessionID = getSessionID(source);
+    if (!sessionID) return false;
+
+    const parentSessionID = getParentSessionID(source);
+    if (parentSessionID !== undefined) {
+      const isMain = !parentSessionID;
+      sessionCache.set(sessionID, isMain);
+      return isMain;
+    }
+
+    if (sessionCache.has(sessionID)) return sessionCache.get(sessionID)!;
+
+    try {
+      const result = await client.session.get({
+        path: { id: sessionID },
+      });
+
+      if (result.error) return false;
+
+      const isMain = !result.data?.parentID;
+      sessionCache.set(sessionID, isMain);
+
+      return isMain;
+    } catch {
+      return sessionCache.get(sessionID) ?? false;
+    }
+  }
+
+  return {
+    event: async ({ event }) => {
+      if (event.type === "message.updated") {
+        const message =
+          (event as any).properties?.info ?? (event as any).properties?.message;
+
+        if (message?.role === "user" && (await isMainSession(message))) {
+          await updateStatus(message, "progress", { dedupeMessage: true });
+        }
+      }
+      if (event.type === "question.asked") {
+        if (!(await isMainSession(event.properties))) {
+          return;
+        }
+
+        await updateStatus(event.properties, "pending");
+      }
+      if (event.type === "question.replied") {
+        if (!(await isMainSession(event.properties))) {
+          return;
+        }
+
+        await updateStatus(event.properties, "progress");
+      }
+      if (event.type === "session.idle") {
+        if (!(await isMainSession(event.properties))) {
+          return;
+        }
+
+        await updateStatus(event.properties, "review");
+      }
+      if (event.type === "session.deleted") {
+        if (!(await isMainSession(event.properties))) {
+          return;
+        }
+
+        await updateStatus(event.properties, "done");
+      }
+    },
+  };
+};

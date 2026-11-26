@@ -1,0 +1,5 @@
+[features] # user settings
+fast_mode = true
+hooks = true
+[other] # next table
+hooks = false

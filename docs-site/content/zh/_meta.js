@@ -16,6 +16,9 @@ export default {
   features: {
     title: '功能'
   },
+  performance: {
+    title: '性能基准测试'
+  },
   mobile: {
     title: '移动端'
   },

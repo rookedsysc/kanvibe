@@ -59,15 +59,17 @@ def main() -> None:
     logo = logo.crop(logo.getbbox())
     emblem = emblem.crop(emblem.getbbox())
     logo = ImageOps.contain(logo, (1024, 1024), Image.Resampling.LANCZOS)
-    for destination in ("public/branding/kanvibe-logo.png", "mobile/assets/branding/kanvibe-logo.png"):
+    for destination in (
+        "public/branding/kanvibe-logo.png",
+        "crates/kanvibe-app/assets/branding/kanvibe-logo.png",
+        "mobile/assets/branding/kanvibe-logo.png",
+    ):
         save_png(logo, ROOT / destination)
-    save_png(opaque_icon(emblem, 64), ROOT / "public/favicon.png")
     save_docs_assets(logo, emblem)
 
     desktop_icon = Image.new("RGBA", (1024, 1024))
     ImageDraw.Draw(desktop_icon).rounded_rectangle((100, 100, 923, 923), radius=184, fill="white")
     desktop_icon.alpha_composite(centered_mark(emblem, 1024, 560))
-    save_png(desktop_icon, ROOT / "public/branding/app-icon.png")
     desktop_icon.save(ROOT / "resources/icon.icns", format="ICNS")
 
     catalog = json.loads((IOS_ICONS / "Contents.json").read_text())

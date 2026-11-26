@@ -1,0 +1,39 @@
+sequenceDiagram
+    autonumber
+    participant A as Alice
+    participant B as Bob
+    participant C as Carol
+    A->B: solid open
+    A-->B: dotted open
+    A->>B: solid arrow
+    A-->>B: dotted arrow
+    B-xC: solid cross
+    B--xC: dotted cross
+    C-)A: solid async
+    C--)A: dotted async
+    A<<->>B: bidirectional
+    A->>+B: activate
+    B->>+C: nested
+    C-->>-B: done
+    B-->>-A: reply
+    Note left of A: left note
+    Note over B,C: spanning note
+    opt optional
+        A->>C: maybe
+    end
+    par first
+        A->>B: one
+    and second
+        A->>C: two
+    end
+    critical connect
+        B->>C: open
+    option timeout
+        B->>A: retry
+    end
+    break failure
+        C->>A: abort
+    end
+    rect rgb(200, 220, 255)
+        A->>A: self call
+    end

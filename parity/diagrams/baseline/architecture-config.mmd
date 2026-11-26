@@ -1,0 +1,17 @@
+---
+config:
+  architecture:
+    iconSize: 60
+    padding: 30
+    fontSize: 20
+---
+architecture-beta
+    group app(cloud)[App]
+    service front "Hello web"[Front] in app
+    service back "A much longer icon text that clamps after a few lines"[Back] in app
+    service plain[Plain] in app
+    service store(database)[Store]
+
+    front:R --> L:back
+    back:B -- T:plain
+    plain{group}:R -- L:store

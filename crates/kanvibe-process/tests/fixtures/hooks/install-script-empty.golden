@@ -1,0 +1,2 @@
+set -e
+printf '%s\n' '__KANVIBE_HOOK_INSTALL_OK__'

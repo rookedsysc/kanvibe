@@ -7,30 +7,35 @@ on:
     branches: [main, dev]
 
 jobs:
-  check:
-    name: Type Check & Test
+  rust:
+    name: Rust (fmt, clippy, test, release build)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - uses: pnpm/action-setup@v4
+      # GPUI 링크에 필요한 시스템 라이브러리와, HTML 미리보기(gpui-webview)가 링크하는 WebKitGTK 4.1이다.
+      # tmux가 있으면 실제 tmux를 쓰는 런타임 시험도 돈다. OpenCode 플러그인 전송 시험은 러너에 기본 탑재된 node로 생성된 JS를 실행한다.
+      - name: Install system libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libfontconfig-dev libfreetype-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libvulkan-dev libwebkit2gtk-4.1-dev tmux
+
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          version: 10
+          components: rustfmt, clippy
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: pnpm
+      - uses: Swatinem/rust-cache@v2
 
-      - run: pnpm install --frozen-lockfile
+      - uses: taiki-e/install-action@nextest
 
-      - name: Type Check
-        run: pnpm check
+      - name: Format
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Test
-        run: pnpm test
+        run: cargo nextest run --workspace
 
-      # 렌더러는 브라우저 번들이라 main 전용 Node 모듈을 끌어오면 여기서만 깨진다.
-      # tsc와 vitest는 Node 해상도로 돌아 그 위반을 통과시키므로 빌드를 따로 게이트로 둔다.
-      - name: Build
-        run: pnpm build
+      - name: Release build
+        run: cargo build --workspace --release

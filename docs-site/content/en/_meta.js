@@ -16,6 +16,9 @@ export default {
   features: {
     title: 'Features'
   },
+  performance: {
+    title: 'Performance benchmark'
+  },
   mobile: {
     title: 'Mobile'
   },

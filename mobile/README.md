@@ -99,7 +99,7 @@ fvm flutter run
 
 1. 데스크탑 KanVibe에서 **설정 → 모바일 연결 → 연결 코드 만들기**를 누른다.
 2. 앱에 데스크탑 주소와 포트, 화면에 뜬 6자리 코드를 입력한다.
-   포트는 패키지된 앱이 `9746`, 개발 빌드(`pnpm dev`)가 `19746`, `pnpm start`로 띄운 빌드가 `29746`이다. TLS 전용 포트이며 페어링 때 데스크탑 인증서의 지문을 고정한다.
+   포트는 설치된 앱이 `9746`, 디버그 빌드(`cargo run -p kanvibe-app`)가 `19746`, 소스에서 띄운 릴리스 빌드(`cargo run --release -p kanvibe-app`)가 `29746`이다. TLS 전용 포트이며 페어링 때 데스크탑 인증서의 지문을 고정한다.
 3. 한 번 연결하면 기기에 열쇠가 저장되어 다음부터는 바로 보드가 열린다.
 
 다른 PC를 추가하려면 보드 상단의 현재 PC 이름을 누른 뒤 **PC 추가**를 선택한다. PC마다 구분할
@@ -129,7 +129,7 @@ PC의 기기 목록에서도 이 기기가 지워지며, 다른 PC의 연결은 
 
 화면과 경로 입력은 `features/project_registry/presentation/project_registry_screen.dart`, 탐색·등록 상태와 액션은 `application/project_registry_controller.dart`, 스캔 응답 변환은 `data/project_scan_result.dart`가 담당한다. 전송은 공통 `DesktopClient`를 사용한다. 화면 진입 시 선택한 PC에 요청하며, 등록 중 경로 이동·중복 요청·뒤로 가기를 막는다.
 
-기기 검증은 `qa/mobile/lib/prepareProjectRegistrationDesktop.cjs`의 격리된 데스크톱과 `project-registration` Maestro 흐름으로 폴더 탐색, 신규 등록, 중복 등록, 보드 반영을 확인한다.
+기기 검증은 `python3 qa/mobile/prepare_project_registration_desktop.py --run-dir <새 폴더>`가 띄운 격리된 Rust 데스크톱(hook 20736, 모바일 20746, probe 20737)과 `project-registration` Maestro 흐름으로 폴더 탐색, 신규 등록, 중복 등록, 보드 반영을 확인한다.
 
 ## 데스크톱 알림함
 
@@ -146,7 +146,7 @@ PC의 기기 목록에서도 이 기기가 지워지며, 다른 PC의 연결은 
 
 필터 상태는 `features/board/application/board_project_filter_controller.dart`, 필터 UI는 `features/board/presentation/widgets/project_filter_button.dart`가 관리한다. 알림함의 조회·읽음 상태는 `features/notifications/application/notification_inbox_controller.dart`, 목록과 배지는 `features/notifications/presentation/notification_center_screen.dart`에 있다. 기존 푸시 구독용 `PUT/DELETE /api/mobile/notifications`도 계속 사용한다.
 
-실제 데스크톱과의 기기 검증은 `qa/mobile/lib/prepareNotificationDesktop.cjs`로 격리된 PC 데이터를 준비한 뒤 `project-filter-notifications` Maestro 흐름을 실행한다. 이 흐름은 프로젝트·worktree 필터와 데스크톱·모바일 양쪽 읽음 상태, 새 알림 수신, 최신 태스크 이동을 확인한다.
+실제 데스크톱과의 기기 검증은 `python3 qa/mobile/prepare_notification_desktop.py --run-dir <새 폴더>`로 격리된 Rust 데스크톱과 PC 데이터를 준비한 뒤 `project-filter-notifications` Maestro 흐름을 실행한다. 이 흐름은 프로젝트·worktree 필터와 데스크톱·모바일 양쪽 읽음 상태, 새 알림 수신, 최신 태스크 이동을 확인한다.
 
 ## Hook 상태 알림
 
@@ -176,7 +176,7 @@ Android는 같은 빌드 설정을 네이티브 Firebase 리소스에도 반영�
 
 ```bash
 KANVIBE_MOBILE_PUSH_RELAY_URL=http://127.0.0.1:4890/notifications \
-KANVIBE_MOBILE_PUSH_RELAY_TOKEN='<relay-config-secret>' pnpm dev
+KANVIBE_MOBILE_PUSH_RELAY_TOKEN='<relay-config-secret>' cargo run -p kanvibe-app
 ```
 
 위 명령은 저장소 루트에서 실행한다. 외부 중계 서버는 HTTPS 주소를 사용한다. 푸시 토큰은 모바일이 페어링된 PC마다 인증 후 등록하고 갱신하며, PC 연결을 해제하면 해당 PC의 수신 정보도 함께 제거한다. 중계 요청은 페어링 인증 토큰을 포함하지 않는다.
@@ -204,7 +204,7 @@ A에 등록된 원격 B의 Herdr pane은 A의 인증된 TLS API로 연결 권한
 
 `common/network/pane_connection.dart`가 응답을 검증하고, `DesktopClient.openPaneStream`이 경로 선택과 취소를 맡는다. `pinned_http_client.dart`는 HTTP 인증 헤더를 보내기 전에 실제 TLS peer의 SHA256 지문을 확인한다. 위젯은 기다리던 연결 결과가 현재 화면의 것인지 확인하고 지난 결과는 닫는다.
 
-기기 검증은 `qa/mobile/lib/remoteTerminalFixture.cjs`와 `remote-terminal-transport` Maestro 흐름을 사용한다. 실제 B agent에 격리된 NDJSON 터미널 actor를 연결하여 직접/중계 입력·복귀·기기 해제와 입력 중복 여부를 확인한다. 이 actor는 실제 원격 Herdr 환경의 성능을 측정하지 않는다.
+기기 검증은 `remote-terminal-transport` Maestro 흐름을 사용한다. 이 흐름이 쓰던 TS fixture(`remoteTerminalFixture.cjs`)는 TS 원격 agent와 모바일 라우트를 직접 불러 가짜 B를 만들었으므로 TS 코드와 함께 지웠고, Rust 데스크톱용 fixture는 아직 없다.
 
 ## 검증
 
@@ -221,6 +221,28 @@ fvm flutter build apk --release
 
 `flutter_secure_storage`가 API 37 이상을 요구해서 `android/app/build.gradle.kts`의 `compileSdk`를
 Flutter 기본값보다 한 단계 올려 두었다.
+
+### 기기 E2E용 데스크톱 fixture
+
+Maestro 흐름은 `qa/mobile/`의 Python 3(표준 라이브러리만) fixture가 띄운 격리 Rust 데스크톱을 상대한다.
+fixture는 `target/release/kanvibe`(다른 경로는 `--app`)를 자체 Xvfb 화면에서 자동 QA 모드로 띄우고,
+`--run-dir`(새 폴더)에 DB·로그·데스크톱 화면·probe 관측 기록을 남긴다. HOME·XDG·tmux 소켓은 짧은 임시 폴더로
+따로 두므로 사용자의 `~/.kanvibe`, tmux 기본 서버, herdr는 건드리지 않는다. 흐름이 끝나면 fixture에 Ctrl+C(SIGINT)를 보내
+앱·tmux·herdr·Xvfb를 정리한다.
+
+```bash
+cargo build --release -p kanvibe-app
+python3 qa/mobile/prepare_qa_desktop.py --run-dir <새 폴더> [--default-session-type herdr]
+maestro test -e APP_ID=com.kanvibe.kanvibe_mobile .maestro/flows/mobile-journey.yaml
+```
+
+| fixture | 흐름 |
+| --- | --- |
+| `prepare_qa_desktop.py` | mobile-journey, herdr-terminal, terminal-*, task-* 등 hook 39736·probe 19737 흐름 |
+| `prepare_notification_desktop.py` | project-filter-notifications, task-detail-notification-read |
+| `prepare_project_registration_desktop.py` | project-registration |
+| `prepare_chat_history_desktop.py` | chat-history(`--run-dir`에 포트를 맞춘 사본), pane-chat-*(`--pane-chat`, `--live-cli`). `fixture.json`의 `maestroEnv`를 `-e`로 넘긴다 |
+| `multi_pc_fixture.py` | multi-pc, chat-history-multi-pc의 가짜 PC 둘 |
 
 ## 배포용 서명 (Android)
 
@@ -285,9 +307,9 @@ Zellij는 모바일에서 선택한 pane의 탭을 PC에서도 활성화한 뒤,
 
 모바일에 연결하기 전에 쌓인 출력도 스크롤할 수 있도록 tmux는 이전 2000줄을 함께 가져오고, Herdr는 `pane read --source recent`로 이전 출력을 가져온다. Zellij는 `dump-screen`으로 지금 보이는 화면만 가져오고 이전 출력은 Zellij 자체 스크롤로 본다. Zellij는 기존 pane 지정 덤프 API를 지원하는 버전이 필요하며 모바일 터미널은 최대 2000줄을 보관한다. 스크롤 중 화면 덤프가 갱신되어도 기존 xterm 스크롤 위치를 유지한다. tmux는 화면 크기를 바꾼 뒤 새 크기의 화면을 다시 받아 마지막 출력과 커서 위치도 유지한다.
 
-격리 데스크탑 fixture(`qa/mobile/lib/prepareQaDesktop.cjs`)에 이전 출력을 준비하고 모바일을 페어링해 보드를 연 뒤 `mobile/.maestro/flows/terminal-notification-settings.yaml`로 설정 저장·재진입과 터미널 스와이프를 검증한다. 녹화는 흐름 안의 `startRecording`을 사용한다.
+격리 데스크탑 fixture(`python3 qa/mobile/prepare_qa_desktop.py --run-dir <새 폴더>`)에 이전 출력을 준비하고 모바일을 페어링해 보드를 연 뒤 `mobile/.maestro/flows/terminal-notification-settings.yaml`로 설정 저장·재진입과 터미널 스와이프를 검증한다. 녹화는 흐름 안의 `startRecording`을 사용한다.
 
-Herdr 세션은 같은 fixture에서 `mobile/.maestro/flows/herdr-terminal.yaml`로 생성·입력·손가락 스크롤·단축키 구성을 검증한다. 데스크탑을 띄우는 셸의 `PATH`나 `$HOME/.local/bin`에 `herdr`가 있어야 한다.
+Herdr 세션은 같은 fixture에서 `mobile/.maestro/flows/herdr-terminal.yaml`로 생성·입력·손가락 스크롤·단축키 구성을 검증한다. fixture에 `--default-session-type herdr`를 주고, fixture를 띄우는 셸의 `PATH`에 `herdr`가 있어야 한다.
 
 ## 터미널 글자 선택과 복사
 
@@ -320,6 +342,6 @@ Herdr 세션은 같은 fixture에서 `mobile/.maestro/flows/herdr-terminal.yaml`
 
 Mermaid 원문은 페어링된 PC의 `POST /api/mobile/diagrams/render`로 전송해 최고 품질 JPEG로 받는다. 다이어그램의 라이트·다크 배경은 불투명하게 렌더링한다. 모바일은 응답 MIME과 이미지 헤더·크기를 검증하며 기존 PNG 응답도 지원한다. 응답의 `naturalWidth`가 화면보다 넓으면 그 너비(최대 1200)로 한 번 더 받아 줄이지 않고 옆으로 밀어 읽게 하며, 이 값을 보내지 않는 데스크탑에서는 화면 너비 이미지 하나만 쓴다. 실제 이미지 프레임이 준비된 뒤 준비 완료를 표시하고, 확대·원문 보기·복사와 실패 시 재시도를 제공한다. PC 렌더링 API를 지원하는 데스크탑 버전이 필요하다.
 
-구현 항목과 워크트리 추적은 [구현 기록](../docs/research/mobile-parity-implementation.md)을 참고한다. 실제 OAuth·SSH·푸시와 iOS 검증 여부는 해당 실행의 QA 보고서에서 확인한다.
+실제 OAuth·SSH·푸시와 iOS 검증 여부는 해당 실행의 QA 보고서에서 확인한다.
 
 정리 상태는 `notifications/application/sync_review_controller.dart`가 알림별 선택·성공·실패를 보존하고, `sync_review_cleanup_controller.dart`가 현재 PC의 정리 작업을 공유한다. 정리를 시작한 검토만 화면이 닫힌 뒤에도 보존하며 PC나 토큰이 바뀌면 이전 작업의 표시 상태를 버린다. `presentation/sync_review_button.dart`와 `sync_review_screen.dart`는 탐지 버튼·검토 대화상자를 구성하고 알림함과 PC 설정에서 같은 작업을 다시 연다.

@@ -1,0 +1,5 @@
+set -e
+mkdir -p '/home/user/project/.claude/hooks' && printf '%s' 'IyEvYmluL2Jhc2gKZWNobyAn7J6R7JeFIOyZhOujjCcK' | (base64 -d 2>/dev/null || base64 -D) > '/home/user/project/.claude/hooks/kanvibe-stop-hook.sh' && chmod 755 '/home/user/project/.claude/hooks/kanvibe-stop-hook.sh'
+mkdir -p '/home/user/project/.claude' && printf '%s' 'ewogICJob29rcyI6IHt9Cn0K' | (base64 -d 2>/dev/null || base64 -D) > '/home/user/project/.claude/settings.json'
+mkdir -p '/home/user/it'\''s' && printf '%s' '' | (base64 -d 2>/dev/null || base64 -D) > '/home/user/it'\''s/file.txt' && chmod 600 '/home/user/it'\''s/file.txt'
+printf '%s\n' '__KANVIBE_HOOK_INSTALL_OK__'

@@ -1,0 +1,26 @@
+[package]
+name = "kanvibe-ai"
+description = "AI 세션 기록·실시간 세션·사용량·계정을 읽는 KanVibe 비 UI 계층"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+kanvibe-db.workspace = true
+kanvibe-domain.workspace = true
+rusqlite.workspace = true
+serde.workspace = true
+# JS 객체처럼 키를 넣은 순서대로 다시 직렬화해야 JSON.stringify 결과와 같아진다
+serde_json = { workspace = true, features = ["preserve_order"] }
+thiserror.workspace = true
+uuid.workspace = true
+base64 = "0.22"
+chrono = "0.4"
+regex = "1"
+sha2 = "0.10"
+ureq = "3"
+tungstenite = { version = "0.30", default-features = false, features = ["handshake"] }
+
+[dev-dependencies]
+tempfile.workspace = true

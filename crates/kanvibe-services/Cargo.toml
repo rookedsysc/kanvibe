@@ -1,0 +1,27 @@
+[package]
+name = "kanvibe-services"
+description = "GPUI 앱이 같은 프로세스에서 직접 부르는 KanVibe 서비스 계층(보드, 프로젝트, diff, hook 상태, 백그라운드 sync, 알림, 릴리스 확인)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+kanvibe-domain.workspace = true
+kanvibe-db.workspace = true
+# 루트 workspace.dependencies에 아직 항목이 없어 경로로 받는다. 루트에 추가되면 `workspace = true`로 바꾼다
+kanvibe-process = { path = "../kanvibe-process" }
+kanvibe-ai = { path = "../kanvibe-ai" }
+rusqlite.workspace = true
+serde.workspace = true
+serde_json = { workspace = true, features = ["preserve_order"] }
+thiserror.workspace = true
+uuid.workspace = true
+base64 = "0.22"
+chrono = "0.4"
+libc = "0.2"
+regex = "1"
+ureq = "3"
+
+[dev-dependencies]
+tempfile.workspace = true

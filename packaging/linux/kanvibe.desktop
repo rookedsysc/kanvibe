@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=KanVibe
+Comment=Kanban board for AI coding agent sessions
+Exec=kanvibe
+Icon=kanvibe
+Terminal=false
+Categories=Development;
+StartupWMClass=kanvibe
