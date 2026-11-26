@@ -78,6 +78,8 @@ pub struct PaneChatView {
     needs_signal_read: bool,
     /// 성능 표식(`--perf-markers`)이 기다리는 첫 그리기
     pub(super) paint_marks: ScreenPaintMarks,
+    /// 첫 그리기에 최신 메시지만 넣는 중. 열거나 다시 보이거나 대화가 바뀌면 켜고, 메시지를 그린 다음 프레임에 끈다
+    pub(super) is_first_paint_limited: bool,
     /// 대화 대상이 바뀐 뒤 보낼 수 있는 화면이 그려지기를 기다리는 중(성능 표식)
     pub(super) is_retarget_mark_pending: bool,
     _read: Option<Task<()>>,
@@ -136,6 +138,7 @@ impl PaneChatView {
             is_reading: false,
             needs_signal_read: false,
             paint_marks: ScreenPaintMarks::default(),
+            is_first_paint_limited: true,
             is_retarget_mark_pending: false,
             _read: None,
             _poll_timer: None,
@@ -210,6 +213,8 @@ impl PaneChatView {
         self.is_visible = is_visible;
         if is_visible {
             self.paint_marks.arm(PERF_SCREEN, "shown");
+            // 읽던 위치로 돌아가는 대화는 위쪽 메시지가 보일 수 있으므로 전부 그린다
+            self.is_first_paint_limited = !self.is_detached;
         }
         self.restart_reading(window, cx);
         cx.notify();
@@ -312,6 +317,7 @@ impl PaneChatView {
     /// 다른 CLI 대상으로 바뀌면 따라가기·팝오버·결과 안내를 처음 상태로 둔다
     fn reset_for_new_target(&mut self) {
         self.is_detached = false;
+        self.is_first_paint_limited = true;
         self.model_picker = None;
         self.reveal_outcome = None;
         self.transcript_scroll.scroll_to_bottom();

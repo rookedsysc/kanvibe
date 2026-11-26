@@ -265,7 +265,7 @@ impl PaneChatView {
         if !self.is_detached {
             self.transcript_scroll.scroll_to_bottom();
         }
-        let blocks = self.render_body_blocks(theme, cx);
+        let blocks = self.render_body_blocks(theme, window, cx);
         let scroll = transcript_scroll(&self.transcript_scroll, padding, blocks, is_new).on_scroll(
             cx.listener(|view, _: &ScrollEvent, _, cx| {
                 view.needs_detach_check = true;

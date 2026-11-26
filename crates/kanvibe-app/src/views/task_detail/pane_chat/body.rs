@@ -3,7 +3,7 @@
 
 use gpui_kit::{
     AnyElement, App, Context, InteractiveElement, IntoElement, ParentElement,
-    StatefulInteractiveElement, Styled, div, px,
+    StatefulInteractiveElement, Styled, Window, div, px,
 };
 use kanvibe_ai::AiSessionProvider;
 use kanvibe_ai::pane_chat::snapshot::{PaneChatSnapshot, PaneChatTranscriptStatus};
@@ -302,14 +302,57 @@ impl PaneChatView {
     }
 }
 
+/// 화면을 열거나 다시 보인 뒤 첫 그리기에 넣을 최신 메시지 수. 아래쪽을 따라가는 대화에서 처음 보이는 부분이다
+pub const FIRST_PAINT_MESSAGES: usize = 12;
+
+/// 첫 그리기용 블록. 최신 메시지 `limit`개만 남기고, 그 위에 있는 이전 메시지·이전 기록 버튼은 다음 프레임으로 미룬다.
+/// 메시지 아래의 블록(보낸 말풍선, 작업 중 표시 등)은 그대로 둔다
+pub fn limit_to_newest_messages(blocks: Vec<BodyBlock>, limit: usize) -> Vec<BodyBlock> {
+    let message_count = blocks
+        .iter()
+        .filter(|block| matches!(block, BodyBlock::Message { .. }))
+        .count();
+    let mut skipped = message_count.saturating_sub(limit);
+    blocks
+        .into_iter()
+        .filter(|block| match block {
+            BodyBlock::LoadOlder { .. } | BodyBlock::OlderError(_) => skipped == 0,
+            BodyBlock::Message { .. } if skipped > 0 => {
+                skipped -= 1;
+                false
+            }
+            _ => true,
+        })
+        .collect()
+}
+
 /// 블록 그리기
 impl PaneChatView {
+    /// 첫 그리기를 미루는 중이면 최신 메시지만 그리고, 메시지를 그린 그 프레임 다음에 나머지를 그린다.
+    /// 대화 100개의 글자 배치를 한 프레임에 모두 하면 첫 화면이 100ms 가까이 늦어진다
     pub(super) fn render_body_blocks(
-        &self,
+        &mut self,
         theme: &ThemeTokens,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Vec<AnyElement> {
-        self.body_blocks(cx)
+        let mut blocks = self.body_blocks(cx);
+        if self.is_first_paint_limited {
+            let has_messages = blocks
+                .iter()
+                .any(|block| matches!(block, BodyBlock::Message { .. }));
+            if has_messages {
+                blocks = limit_to_newest_messages(blocks, FIRST_PAINT_MESSAGES);
+                let view = cx.entity().downgrade();
+                window.on_next_frame(move |_, cx| {
+                    let _ = view.update(cx, |view, cx| {
+                        view.is_first_paint_limited = false;
+                        cx.notify();
+                    });
+                });
+            }
+        }
+        blocks
             .into_iter()
             .map(|block| self.render_body_block(theme, block, cx))
             .collect()
@@ -651,4 +694,56 @@ fn secondary_text(theme: &ThemeTokens, text: String) -> AnyElement {
         .text_color(theme.text.secondary)
         .child(text)
         .into_any_element()
+}
+
+#[cfg(test)]
+mod tests {
+    use kanvibe_ai::types::AiMessageRole;
+
+    use super::*;
+
+    fn message_block(index: usize) -> BodyBlock {
+        BodyBlock::Message {
+            key: format!("m{index}"),
+            message: Box::new(AggregatedAiMessage::plain(
+                AiMessageRole::Assistant,
+                None,
+                &format!("message {index}"),
+            )),
+        }
+    }
+
+    fn keys(blocks: &[BodyBlock]) -> Vec<String> {
+        blocks
+            .iter()
+            .map(|block| match block {
+                BodyBlock::Message { key, .. } => key.clone(),
+                BodyBlock::LoadOlder { .. } => "older".into(),
+                BodyBlock::Working { .. } => "working".into(),
+                _ => "other".into(),
+            })
+            .collect()
+    }
+
+    #[test]
+    fn first_paint_keeps_only_the_newest_messages_and_what_follows_them() {
+        let mut blocks = vec![BodyBlock::LoadOlder {
+            label: "older".into(),
+            is_loading: false,
+        }];
+        blocks.extend((0..5).map(message_block));
+        blocks.push(BodyBlock::Working {
+            label: "working".into(),
+            elapsed: None,
+        });
+        assert_eq!(
+            keys(&limit_to_newest_messages(blocks.clone(), 2)),
+            vec!["m3", "m4", "working"]
+        );
+        // 메시지가 한도보다 적으면 그대로 그린다
+        assert_eq!(
+            keys(&limit_to_newest_messages(blocks.clone(), 5)),
+            keys(&blocks)
+        );
+    }
 }
