@@ -53,30 +53,60 @@ fn claude_install_files_match_ts_output() {
 
     assert_matches_golden(
         "installer-claude-fresh",
-        &describe_files(&build_claude_hook_files(
-            "/repo",
-            "task-1",
-            "http://localhost:9736",
-            "",
-        )),
+        &describe_files(
+            &build_claude_hook_files("/repo", "task-1", "http://localhost:9736", "").unwrap(),
+        ),
     );
     assert_matches_golden(
         "installer-claude-existing",
-        &describe_files(&build_claude_hook_files(
-            "/home/user/my repo/",
-            "task-\"q\"",
-            "http://10.0.0.5:9736",
-            &existing,
-        )),
+        &describe_files(
+            &build_claude_hook_files(
+                "/home/user/my repo/",
+                "task-\"q\"",
+                "http://10.0.0.5:9736",
+                &existing,
+            )
+            .unwrap(),
+        ),
     );
-    assert_matches_golden(
-        "installer-claude-broken-settings",
-        &describe_files(&build_claude_hook_files(
-            "/repo",
-            "task-1",
-            "http://localhost:9736",
-            "{not json",
-        )),
+}
+
+#[test]
+fn unparsable_hook_settings_are_rejected_instead_of_overwritten() {
+    // 주석이 든 설정이나 머지 충돌 중인 파일을 hooks만 남기고 덮어쓰면 사용자 설정이 사라진다
+    let claude_error =
+        build_claude_hook_files("/repo", "task-1", "http://localhost:9736", "{not json")
+            .expect_err("Claude 설정을 덮어쓰지 않는다");
+    let gemini_error = build_gemini_hook_files(
+        "/repo",
+        "task-1",
+        "http://localhost:9736",
+        "// 주석\n{\"ui\": {}}",
+    )
+    .expect_err("Gemini 설정을 덮어쓰지 않는다");
+    let codex_error = build_codex_hook_files(
+        "/repo",
+        "task-1",
+        "http://localhost:9736",
+        "",
+        "<<<<<<< HEAD\n{}",
+    )
+    .expect_err("Codex hooks.json을 덮어쓰지 않는다");
+
+    assert!(
+        claude_error
+            .to_string()
+            .starts_with("Invalid Claude settings.json: ")
+    );
+    assert!(
+        gemini_error
+            .to_string()
+            .starts_with("Invalid Gemini settings.json: ")
+    );
+    assert!(
+        codex_error
+            .to_string()
+            .starts_with("Invalid Codex hooks.json: ")
     );
 }
 
@@ -90,21 +120,16 @@ fn gemini_install_files_match_ts_output() {
 
     assert_matches_golden(
         "installer-gemini-fresh",
-        &describe_files(&build_gemini_hook_files(
-            "/repo",
-            "task-1",
-            "http://localhost:9736",
-            "",
-        )),
+        &describe_files(
+            &build_gemini_hook_files("/repo", "task-1", "http://localhost:9736", "").unwrap(),
+        ),
     );
     assert_matches_golden(
         "installer-gemini-existing",
-        &describe_files(&build_gemini_hook_files(
-            "/repo",
-            "task-2",
-            "http://localhost:19736",
-            &existing,
-        )),
+        &describe_files(
+            &build_gemini_hook_files("/repo", "task-2", "http://localhost:19736", &existing)
+                .unwrap(),
+        ),
     );
 }
 
@@ -127,28 +152,30 @@ fn codex_install_files_match_ts_output() {
 
     assert_matches_golden(
         "installer-codex-fresh",
-        &describe_files(&build_codex_hook_files(
-            "/repo",
-            "task-1",
-            "http://localhost:3000",
-            "",
-            "",
-        )),
+        &describe_files(
+            &build_codex_hook_files("/repo", "task-1", "http://localhost:3000", "", "").unwrap(),
+        ),
     );
     assert_matches_golden(
         "installer-codex-existing",
-        &describe_files(&build_codex_hook_files(
-            "/repo",
-            "task-1",
-            "http://localhost:9736",
-            config,
-            &codex_existing_hooks(),
-        )),
+        &describe_files(
+            &build_codex_hook_files(
+                "/repo",
+                "task-1",
+                "http://localhost:9736",
+                config,
+                &codex_existing_hooks(),
+            )
+            .unwrap(),
+        ),
     );
-    assert_matches_golden("codex-hooks-json-empty", &upsert_codex_hooks_json(""));
+    assert_matches_golden(
+        "codex-hooks-json-empty",
+        &upsert_codex_hooks_json("").unwrap(),
+    );
     assert_matches_golden(
         "codex-hooks-json-existing",
-        &upsert_codex_hooks_json(&codex_existing_hooks()),
+        &upsert_codex_hooks_json(&codex_existing_hooks()).unwrap(),
     );
 }
 

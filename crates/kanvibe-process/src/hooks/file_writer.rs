@@ -83,7 +83,7 @@ fn install_remote_hook_provider_files_over_http(
     let install_ticket = install_scripts.issue(files);
     let install_result = (|| {
         let client_id = runtime.hook_client_id()?;
-        let namespace = runtime.remote_host_namespace(ssh_host);
+        let namespace = runtime.remote_host_namespace(ssh_host)?;
         let command = build_hook_install_bootstrap_command(
             &hook_server_url,
             &install_ticket,

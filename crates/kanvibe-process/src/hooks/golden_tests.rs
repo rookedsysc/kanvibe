@@ -138,7 +138,7 @@ fn json_hook_settings_serialization_matches_ts_output() {
         ] },
         "permissions": { "allow": ["Bash(ls:*)"] },
     });
-    let mut settings = parse_json_hook_settings(&existing.to_string());
+    let mut settings = parse_json_hook_settings(&existing.to_string(), "settings.json").unwrap();
     let buckets = ensure_json_hook_buckets(&mut settings);
     let stop_entries = upsert_json_hook_entries(
         buckets.get("Stop"),
@@ -157,7 +157,7 @@ fn json_hook_settings_serialization_matches_ts_output() {
         &serialize_json_hook_settings(&settings),
     );
 
-    let mut fresh = parse_json_hook_settings("not json");
+    let mut fresh = parse_json_hook_settings("", "settings.json").unwrap();
     let prompt_entries = upsert_json_hook_entries(
         None,
         "kanvibe-prompt-hook.sh",

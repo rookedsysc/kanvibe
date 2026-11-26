@@ -839,9 +839,10 @@ impl KanvibeHooksInstaller {
             self.read_verification_files(target, [cli_path.clone(), targets_path.clone()])?;
         let client_id = self.runtime.hook_client_id()?;
         let verification_key = target.key("all");
-        let namespace = target
-            .ssh_host
-            .and_then(|host| self.runtime.remote_host_namespace(host));
+        let namespace = match target.ssh_host {
+            Some(host) => self.runtime.remote_host_namespace(host)?,
+            None => None,
+        };
         let fingerprint = format!(
             "{}:{}",
             namespace.as_deref().unwrap_or("legacy"),

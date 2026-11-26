@@ -132,7 +132,7 @@ fn keeps_inline_hooks_tables_outside_the_features_table() {
 
 #[test]
 fn registers_the_current_codex_lifecycle_hooks() {
-    let updated = upsert_codex_hooks_json("");
+    let updated = upsert_codex_hooks_json("").unwrap();
 
     for event in [
         "\"UserPromptSubmit\"",

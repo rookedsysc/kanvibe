@@ -161,7 +161,8 @@ pub fn build_codex_hook_files(
     kanvibe_url: &str,
     config_content: &str,
     hooks_content: &str,
-) -> Vec<HookProviderFile> {
+) -> Result<Vec<HookProviderFile>, HookInstallError> {
+    let hooks_json = upsert_codex_hooks_json(hooks_content)?;
     let mut files = build_shell_hook_script_files(
         &hooks_dir(repo_path),
         AGENT_LABEL,
@@ -176,14 +177,14 @@ pub fn build_codex_hook_files(
     });
     files.push(HookProviderFile {
         file_path: hooks_path(repo_path),
-        content: upsert_codex_hooks_json(hooks_content),
+        content: hooks_json,
         mode: None,
     });
-    files
+    Ok(files)
 }
 
-pub fn upsert_codex_hooks_json(hooks_content: &str) -> String {
-    let mut settings = parse_json_hook_settings(hooks_content);
+pub fn upsert_codex_hooks_json(hooks_content: &str) -> Result<String, HookInstallError> {
+    let mut settings = parse_json_hook_settings(hooks_content, "Codex hooks.json")?;
     let hooks = ensure_json_hook_buckets(&mut settings);
     let upserts = [
         (
@@ -225,7 +226,7 @@ pub fn upsert_codex_hooks_json(hooks_content: &str) -> String {
         let entries = upsert_json_hook_entries(hooks.get(event), script_name, entry);
         hooks.insert(event.to_string(), Value::Array(entries));
     }
-    serialize_json_hook_settings(&settings)
+    Ok(serialize_json_hook_settings(&settings))
 }
 
 /// 지정된 repo에 Codex CLI hooks를 설정한다. 로컬과 원격 repo 모두 같은 산출물을 기록한다
@@ -257,7 +258,7 @@ pub fn setup_codex_hooks(
         kanvibe_url,
         read_content(&config_path),
         read_content(&hooks_path),
-    );
+    )?;
     write_hook_provider_files(context, &files, ssh_host)?;
     register_kanvibe_hook_target(context, repo_path, task_id, kanvibe_url, ssh_host)
 }
@@ -311,7 +312,8 @@ pub fn get_codex_hooks_status(
 }
 
 fn has_codex_hook_entries(hooks_content: &str) -> bool {
-    let settings = parse_json_hook_settings(hooks_content);
+    // 해석할 수 없는 설정에는 KanVibe hook이 등록돼 있다고 볼 수 없다
+    let settings = parse_json_hook_settings(hooks_content, "Codex hooks.json").unwrap_or_default();
     // hooks가 없거나 객체가 아니면 아래 조회가 모두 Null이 되어 거짓이다
     let hooks = settings.get("hooks").unwrap_or(&Value::Null);
     has_command_hook_entry(

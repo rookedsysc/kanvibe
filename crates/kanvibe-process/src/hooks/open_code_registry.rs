@@ -4,6 +4,7 @@
 
 use std::collections::HashMap;
 use std::io::Read;
+use std::os::unix::process::CommandExt;
 use std::process::{Command, Stdio};
 use std::sync::mpsc;
 use std::sync::{Arc, Condvar, LazyLock, Mutex};
@@ -17,6 +18,8 @@ use crate::shell_environment::ShellEnvironment;
 const REGISTRATION_CACHE_TTL: Duration = Duration::from_millis(5000);
 const DEBUG_CONFIG_TIMEOUT: Duration = Duration::from_millis(3000);
 const DEBUG_CONFIG_MAX_BUFFER_BYTES: usize = 1024 * 1024;
+/// 자식이 끝나거나 죽은 뒤 출력 파이프가 닫히기를 기다리는 시간
+const STREAM_CLOSE_GRACE: Duration = Duration::from_millis(500);
 
 static PLUGIN_BLOCK_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r#""plugin"\s*:\s*\[([\s\S]*?)\]\s*,\s*"[^"]+"\s*:"#).expect("유효한 정규식")
@@ -53,6 +56,7 @@ impl SystemOpenCodeDebugConfigCommand {
 
 impl OpenCodeDebugConfigCommand for SystemOpenCodeDebugConfigCommand {
     fn run(&self, working_directory: &str) -> Result<String, String> {
+        // 자손이 출력 파이프를 물려받아도 한 번에 끝낼 수 있게 자기 프로세스 그룹으로 띄운다
         let mut child = Command::new("opencode")
             .args(["debug", "config"])
             .current_dir(working_directory)
@@ -61,23 +65,30 @@ impl OpenCodeDebugConfigCommand for SystemOpenCodeDebugConfigCommand {
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
+            .process_group(0)
             .spawn()
             .map_err(|error| describe_spawn_error(&error))?;
         let stdout = read_stream(child.stdout.take().expect("piped stdout"));
         let stderr = read_stream(child.stderr.take().expect("piped stderr"));
-        let process_id = child.id();
+        let process_group_id = child.id();
         let (sender, receiver) = mpsc::channel();
         std::thread::spawn(move || drop(sender.send(child.wait())));
-        let status = receiver
-            .recv_timeout(DEBUG_CONFIG_TIMEOUT)
-            .ok()
-            .or_else(|| {
-                // SAFETY: 아직 회수하지 않은 자식 프로세스의 pid에만 신호를 보낸다
-                unsafe { libc::kill(process_id as libc::pid_t, libc::SIGKILL) };
-                receiver.recv().ok()
-            });
-        let stdout = stdout.join().unwrap_or_default();
-        let stderr = String::from_utf8_lossy(&stderr.join().unwrap_or_default()).into_owned();
+        let status = receiver.recv_timeout(DEBUG_CONFIG_TIMEOUT).ok();
+        if status.is_none() {
+            kill_process_group(process_group_id);
+        }
+        // 파이프를 쥔 자손이 남아도 읽기를 기다리는 시간은 늘 상한 안에 둔다
+        let streams_deadline = Instant::now() + STREAM_CLOSE_GRACE;
+        let stdout = receive_before(&stdout, streams_deadline);
+        let stderr = receive_before(&stderr, streams_deadline);
+        let Some(stdout) = stdout else {
+            kill_process_group(process_group_id);
+            return Err(format!(
+                "Command failed: opencode debug config\n{}",
+                String::from_utf8_lossy(&stderr.unwrap_or_default())
+            ));
+        };
+        let stderr = String::from_utf8_lossy(&stderr.unwrap_or_default()).into_owned();
         if stdout.len() > DEBUG_CONFIG_MAX_BUFFER_BYTES {
             return Err("stdout maxBuffer length exceeded".into());
         }
@@ -90,6 +101,18 @@ impl OpenCodeDebugConfigCommand for SystemOpenCodeDebugConfigCommand {
     }
 }
 
+/// `opencode`와 그 자손 전체에 SIGKILL을 보낸다
+fn kill_process_group(process_group_id: u32) {
+    // SAFETY: `process_group(0)`으로 만든, 이 호출이 띄운 자식의 프로세스 그룹에만 신호를 보낸다
+    unsafe { libc::kill(-(process_group_id as libc::pid_t), libc::SIGKILL) };
+}
+
+fn receive_before(stream: &mpsc::Receiver<Vec<u8>>, deadline: Instant) -> Option<Vec<u8>> {
+    stream
+        .recv_timeout(deadline.saturating_duration_since(Instant::now()))
+        .ok()
+}
+
 /// Node `execFile`의 spawn 실패 메시지(`spawn opencode ENOENT` 등)
 fn describe_spawn_error(error: &std::io::Error) -> String {
     match error.kind() {
@@ -99,12 +122,14 @@ fn describe_spawn_error(error: &std::io::Error) -> String {
     }
 }
 
-fn read_stream(mut stream: impl Read + Send + 'static) -> std::thread::JoinHandle<Vec<u8>> {
+fn read_stream(mut stream: impl Read + Send + 'static) -> mpsc::Receiver<Vec<u8>> {
+    let (sender, receiver) = mpsc::channel();
     std::thread::spawn(move || {
         let mut bytes = Vec::new();
         let _ = stream.read_to_end(&mut bytes);
-        bytes
-    })
+        drop(sender.send(bytes));
+    });
+    receiver
 }
 
 /// 조회 하나의 결과와 수명. `expires_at`이 없으면 아직 진행 중이다

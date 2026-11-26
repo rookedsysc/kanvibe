@@ -127,8 +127,8 @@ pub fn build_gemini_hook_files(
     task_id: &str,
     kanvibe_url: &str,
     settings_content: &str,
-) -> Vec<HookProviderFile> {
-    let mut settings = parse_json_hook_settings(settings_content);
+) -> Result<Vec<HookProviderFile>, HookInstallError> {
+    let mut settings = parse_json_hook_settings(settings_content, "Gemini settings.json")?;
     let hooks = ensure_json_hook_buckets(&mut settings);
     for (event, script_name, entry) in gemini_hook_entries() {
         let entries = upsert_json_hook_entries(hooks.get(event), script_name, entry);
@@ -146,7 +146,7 @@ pub fn build_gemini_hook_files(
         content: serialize_json_hook_settings(&settings),
         mode: None,
     });
-    files
+    Ok(files)
 }
 
 /// 지정된 repo에 Gemini CLI hooks를 설정한다. 로컬과 원격 repo 모두 같은 산출물을 기록한다
@@ -169,7 +169,7 @@ pub fn setup_gemini_hooks(
     let settings_content = existing_files
         .get(&settings_path)
         .map_or("", |file| file.content.as_str());
-    let files = build_gemini_hook_files(repo_path, task_id, kanvibe_url, settings_content);
+    let files = build_gemini_hook_files(repo_path, task_id, kanvibe_url, settings_content)?;
     write_hook_provider_files(context, &files, ssh_host)?;
     register_kanvibe_hook_target(context, repo_path, task_id, kanvibe_url, ssh_host)
 }
@@ -211,7 +211,9 @@ pub fn get_gemini_hooks_status(
 }
 
 fn has_gemini_settings_entry(settings_content: &str) -> bool {
-    let settings = parse_json_hook_settings(settings_content);
+    // 해석할 수 없는 설정에는 KanVibe hook이 등록돼 있다고 볼 수 없다
+    let settings =
+        parse_json_hook_settings(settings_content, "Gemini settings.json").unwrap_or_default();
     // hooks가 없거나 객체가 아니면 아래 조회가 모두 Null이 되어 거짓이다
     let hooks = settings.get("hooks").unwrap_or(&Value::Null);
     has_matcher_command_hook_entry(

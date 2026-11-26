@@ -35,8 +35,10 @@ pub fn register_kanvibe_hook_target(
     ensure_ai_tool_patterns_excluded(&context.files, repo_path, ssh_host);
     let token = context.runtime.task_cli_token(task_id)?;
     let client_id = context.runtime.hook_client_id()?;
-    let remote_host_namespace =
-        ssh_host.and_then(|host| context.runtime.remote_host_namespace(host));
+    let remote_host_namespace = match ssh_host {
+        Some(host) => context.runtime.remote_host_namespace(host)?,
+        None => None,
+    };
     let target = KanvibeHookTarget {
         url: hook_server_url.to_string(),
         task_id: task_id.to_string(),

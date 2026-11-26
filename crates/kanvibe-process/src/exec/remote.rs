@@ -358,6 +358,43 @@ impl RemoteSshExecutor {
             false => *failure.error,
         })
     }
+
+    /// ssh가 아닌 통로(원격 host daemon 연결)로 보내는 원격 명령에 이 실행기의 입장 규칙을 적용한다(TS `execGit`의 daemon 분기).
+    /// background 우선순위 명령은 이 호스트의 ssh 명령과 같은 채널 줄을 서고, 같은 호스트 응답기 안의 중첩 명령은 줄을 서지 않는다.
+    /// `execute`는 남은 시간과 문맥을 심은 응답기를 담은 옵션을 받는다. 시간 초과는 ssh 경로와 같은 문구로 바꾼다
+    pub fn exec_through(
+        &self,
+        ssh_host: &str,
+        options: &ExecGitOptions,
+        execute: impl FnOnce(&ExecGitOptions) -> Result<String, ExecGitError>,
+    ) -> Result<String, ExecGitError> {
+        let timeout = options
+            .timeout
+            .unwrap_or(self.shared.settings.command_timeout);
+        let deadline = Instant::now() + timeout;
+        let should_queue = is_background_priority() && !is_nested_responder_command(ssh_host);
+        let is_responder_active = Arc::new(AtomicBool::new(true));
+        let admitted_run = || -> Result<String, CommandFailure> {
+            let _lease = match should_queue {
+                true => Some(self.shared.slots.acquire(ssh_host, deadline)?),
+                false => None,
+            };
+            let admitted_options = ExecGitOptions {
+                timeout: Some(remaining_timeout(deadline)?),
+                remote_stdin_responder: options.remote_stdin_responder.as_ref().map(|responder| {
+                    wrap_responder(responder, None, ssh_host, Arc::clone(&is_responder_active))
+                }),
+                ..options.clone()
+            };
+            execute(&admitted_options).map_err(CommandFailure::plain)
+        };
+        let result = admitted_run();
+        is_responder_active.store(false, Ordering::SeqCst);
+        result.map_err(|failure| match failure.is_timeout() {
+            true => normalize_ssh_exec_error(&failure, ssh_host, timeout, true),
+            false => *failure.error,
+        })
+    }
 }
 
 impl RemoteSshShared {

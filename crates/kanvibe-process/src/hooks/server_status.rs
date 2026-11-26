@@ -7,6 +7,7 @@ use std::time::{Duration, Instant};
 use regex::Regex;
 
 use super::client_runtime::{HookClientRuntime, HookInstallContext};
+use super::installer_jobs::SharedJobs;
 use super::socket_path::build_shell_owned_hook_socket_assignment;
 use crate::exec::ExecGitOptions;
 use crate::host_file_access::quote_shell_argument;
@@ -28,11 +29,13 @@ struct CachedValue<T> {
 }
 
 /// 기대 hook 서버 주소와 도달 여부를 잠시 기억해, 여러 provider 상태를 한꺼번에 볼 때 같은 검사를 반복하지 않는다.
-/// 실패한 주소 계산은 기억하지 않는다.
+/// 실패한 주소 계산은 기억하지 않는다. 캐시가 빈 채로 동시에 들어온 검사는 진행 중인 검사 하나의 결과를 함께 쓴다.
 pub struct HookServerStatusCache {
     time_to_live: Duration,
     expected_urls: Mutex<HashMap<String, CachedValue<String>>>,
     reachability: Mutex<HashMap<String, CachedValue<bool>>>,
+    expected_url_lookups: SharedJobs<Option<String>>,
+    reachability_checks: SharedJobs<bool>,
 }
 
 impl HookServerStatusCache {
@@ -41,6 +44,8 @@ impl HookServerStatusCache {
             time_to_live,
             expected_urls: Mutex::new(HashMap::new()),
             reachability: Mutex::new(HashMap::new()),
+            expected_url_lookups: SharedJobs::new(),
+            reachability_checks: SharedJobs::new(),
         }
     }
 }
@@ -210,7 +215,9 @@ fn perform_reachability_check(
     let Ok(client_id) = runtime.hook_client_id() else {
         return false;
     };
-    let namespace = runtime.remote_host_namespace(host);
+    let Ok(namespace) = runtime.remote_host_namespace(host) else {
+        return false;
+    };
     let Some(command) =
         build_remote_hook_health_check_command(health_check_url, &client_id, namespace.as_deref())
     else {
@@ -241,14 +248,20 @@ fn is_hook_server_reachable(
     if let Some(is_reachable) = read_cached(&cache.reachability, &cache_key) {
         return is_reachable;
     }
-    let is_reachable = perform_reachability_check(context, &health_check_url, ssh_host);
-    store_cached(
-        &cache.reachability,
-        &cache_key,
-        is_reachable,
-        cache.time_to_live,
-    );
-    is_reachable
+    let shared_check = cache.reachability_checks.run(&cache_key, || {
+        if let Some(is_reachable) = read_cached(&cache.reachability, &cache_key) {
+            return Ok(is_reachable);
+        }
+        let is_reachable = perform_reachability_check(context, &health_check_url, ssh_host);
+        store_cached(
+            &cache.reachability,
+            &cache_key,
+            is_reachable,
+            cache.time_to_live,
+        );
+        Ok(is_reachable)
+    });
+    shared_check.unwrap_or(false)
 }
 
 fn expected_hook_server_url(
@@ -260,14 +273,22 @@ fn expected_hook_server_url(
     if let Some(expected_url) = read_cached(&cache.expected_urls, cache_key) {
         return Some(expected_url);
     }
-    let expected_url = context.runtime.hook_server_url(ssh_host).ok()?;
-    store_cached(
-        &cache.expected_urls,
-        cache_key,
-        expected_url.clone(),
-        cache.time_to_live,
-    );
-    Some(expected_url)
+    let shared_lookup = cache.expected_url_lookups.run(cache_key, || {
+        if let Some(expected_url) = read_cached(&cache.expected_urls, cache_key) {
+            return Ok(Some(expected_url));
+        }
+        let Ok(expected_url) = context.runtime.hook_server_url(ssh_host) else {
+            return Ok(None);
+        };
+        store_cached(
+            &cache.expected_urls,
+            cache_key,
+            expected_url.clone(),
+            cache.time_to_live,
+        );
+        Ok(Some(expected_url))
+    });
+    shared_lookup.ok().flatten()
 }
 
 fn unvalidated(configured_hook_server_url: Option<String>, is_valid: bool) -> HookServerValidation {

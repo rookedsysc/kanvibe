@@ -1459,3 +1459,73 @@ fn a_master_failure_after_every_caller_left_does_not_trap_the_next_request() {
     assert_eq!(h.launcher.master_count(), 2);
     assert_eq!(h.launcher.command_count(), 1);
 }
+
+/// daemon 연결처럼 ssh 밖에서 실행하는 명령. 시작을 알리고 풀어 줄 때까지 끝나지 않는다
+fn spawn_exec_through(
+    h: &Harness,
+    is_background: bool,
+    started: std::sync::mpsc::Sender<()>,
+    release: Arc<Mutex<std::sync::mpsc::Receiver<()>>>,
+) -> JoinHandle<Result<String, ExecGitError>> {
+    let executor = Arc::clone(&h.executor);
+    std::thread::spawn(move || {
+        let run = || {
+            executor.exec_through(HOST, &ExecGitOptions::default(), |_| {
+                started.send(()).unwrap();
+                release.lock().unwrap().recv().unwrap();
+                Ok("daemon".into())
+            })
+        };
+        match is_background {
+            true => run_with_background_ssh_commands(run),
+            false => run(),
+        }
+    })
+}
+
+#[test]
+fn background_daemon_commands_wait_in_the_same_host_channel_queue() {
+    let h = harness_with_concurrency(3);
+    let (started, starts) = std::sync::mpsc::channel();
+    let (release, released) = std::sync::mpsc::channel();
+    let released = Arc::new(Mutex::new(released));
+    let background: Vec<_> = (0..3)
+        .map(|_| spawn_exec_through(&h, true, started.clone(), Arc::clone(&released)))
+        .collect();
+    starts.recv().unwrap();
+    starts.recv().unwrap();
+    wait_until(|| h.executor.queued_count(HOST) == 1);
+
+    let interactive = spawn_exec_through(&h, false, started.clone(), Arc::clone(&released));
+    starts.recv().unwrap();
+    assert_eq!(h.executor.queued_count(HOST), 1);
+
+    for _ in 0..4 {
+        release.send(()).unwrap();
+    }
+    for handle in background.into_iter().chain([interactive]) {
+        assert_eq!(join(handle).unwrap(), "daemon");
+    }
+}
+
+#[test]
+fn a_daemon_command_timeout_reads_like_the_ssh_path() {
+    let h = harness();
+
+    let error = h
+        .executor
+        .exec_through(HOST, &timeout_options(1500), |admitted| {
+            assert!(admitted.timeout.unwrap() <= Duration::from_millis(1500));
+            Err(ExecGitError {
+                message: "Command failed".into(),
+                signal: Some("SIGTERM"),
+                ..ExecGitError::default()
+            })
+        })
+        .unwrap_err();
+
+    assert_eq!(
+        error.message,
+        "remote-host 원격 명령 실패: SSH 명령이 2초 안에 완료되지 않았습니다."
+    );
+}

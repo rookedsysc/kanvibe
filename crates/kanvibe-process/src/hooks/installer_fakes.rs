@@ -322,8 +322,8 @@ impl HookClientRuntime for TestRuntime {
         self.hook_server_port.load(Ordering::SeqCst)
     }
 
-    fn remote_host_namespace(&self, _ssh_host: &str) -> Option<String> {
-        None
+    fn remote_host_namespace(&self, _ssh_host: &str) -> Result<Option<String>, HookInstallError> {
+        Ok(None)
     }
 
     fn ensure_hook_tunnel(&self, _ssh_host: &str) {}

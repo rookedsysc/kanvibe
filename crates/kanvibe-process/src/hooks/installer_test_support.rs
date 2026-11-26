@@ -18,7 +18,7 @@ pub(crate) struct FakeHookClientRuntime {
     client_id_calls: AtomicUsize,
     pub hook_server_url: Result<String, String>,
     pub hook_server_port: u16,
-    pub remote_host_namespace: Option<String>,
+    pub remote_host_namespace: Result<Option<String>, String>,
     pub is_local_server_healthy: bool,
     pub tunnel_hosts: Mutex<Vec<String>>,
     pub token_task_ids: Mutex<Vec<String>>,
@@ -34,7 +34,7 @@ impl FakeHookClientRuntime {
             client_id_calls: AtomicUsize::new(0),
             hook_server_url: Ok("http://localhost:9736".into()),
             hook_server_port: 9736,
-            remote_host_namespace: None,
+            remote_host_namespace: Ok(None),
             is_local_server_healthy: true,
             tunnel_hosts: Mutex::new(Vec::new()),
             token_task_ids: Mutex::new(Vec::new()),
@@ -71,8 +71,10 @@ impl HookClientRuntime for FakeHookClientRuntime {
         self.hook_server_port
     }
 
-    fn remote_host_namespace(&self, _ssh_host: &str) -> Option<String> {
-        self.remote_host_namespace.clone()
+    fn remote_host_namespace(&self, _ssh_host: &str) -> Result<Option<String>, HookInstallError> {
+        self.remote_host_namespace
+            .clone()
+            .map_err(HookInstallError::Message)
     }
 
     fn ensure_hook_tunnel(&self, ssh_host: &str) {

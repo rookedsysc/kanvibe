@@ -72,6 +72,33 @@ fn registering_a_client_records_the_task_cli_token() {
 }
 
 #[test]
+fn remote_registration_fails_instead_of_writing_a_legacy_target_when_the_daemon_connection_errors()
+{
+    let repo = tempfile::tempdir().unwrap();
+    let repo_path = repo.path().to_str().unwrap();
+    let mut runtime = FakeHookClientRuntime::new();
+    runtime.remote_host_namespace = Err("Host preparation cancelled".into());
+    let runtime = Arc::new(runtime);
+    let runner = Arc::new(LoopbackShellRunner::new(repo_path));
+    let context = install_context(runner, runtime.clone(), repo_path);
+
+    let result = register_kanvibe_hook_target(
+        &context,
+        repo_path,
+        "task-1",
+        "http://127.0.0.1:9736",
+        Some("remote-host"),
+    );
+
+    assert_eq!(
+        result.unwrap_err().to_string(),
+        "Host preparation cancelled"
+    );
+    assert!(!repo.path().join(".kanvibe/targets.json").exists());
+    assert!(runtime.tunnel_hosts.lock().unwrap().is_empty());
+}
+
+#[test]
 fn remote_registration_without_transport_or_client_id_needs_reinstall() {
     let remote_url = Some("http://10.0.0.5:9736");
     let remote_host = Some("remote-host");

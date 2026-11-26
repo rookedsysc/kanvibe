@@ -4,16 +4,25 @@
 
 use serde_json::{Map, Value, json};
 
+use super::client_runtime::HookInstallError;
+
 pub type JsonHookSettings = Map<String, Value>;
 
-/// 비었거나 JSON 객체가 아니면 빈 설정으로 본다
-pub fn parse_json_hook_settings(content: &str) -> JsonHookSettings {
-    if content.is_empty() {
-        return JsonHookSettings::new();
+/// 비어 있으면 빈 설정으로 본다. 주석이 든 설정이나 머지 충돌 중인 파일처럼 JSON 객체로 해석할 수 없는
+/// 내용은 hooks만 남기고 덮어쓰면 사용자 설정이 사라지므로, OpenCode `tui.json`처럼 오류로 돌려준다
+pub fn parse_json_hook_settings(
+    content: &str,
+    settings_label: &str,
+) -> Result<JsonHookSettings, HookInstallError> {
+    if content.trim().is_empty() {
+        return Ok(JsonHookSettings::new());
     }
+    let invalid_settings_error =
+        |reason: String| HookInstallError::Message(format!("Invalid {settings_label}: {reason}"));
     match serde_json::from_str(content) {
-        Ok(Value::Object(settings)) => settings,
-        _ => JsonHookSettings::new(),
+        Ok(Value::Object(settings)) => Ok(settings),
+        Ok(_) => Err(invalid_settings_error("JSON object가 아닙니다".into())),
+        Err(error) => Err(invalid_settings_error(error.to_string())),
     }
 }
 
@@ -147,9 +156,40 @@ mod tests {
     }
 
     #[test]
-    fn unreadable_settings_become_an_empty_object() {
-        assert!(parse_json_hook_settings("").is_empty());
-        assert!(parse_json_hook_settings("{oops").is_empty());
-        assert_eq!(parse_json_hook_settings("{\"a\":1}")["a"], 1);
+    fn empty_settings_become_an_empty_object() {
+        assert!(
+            parse_json_hook_settings("", "settings.json")
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            parse_json_hook_settings(" \n", "settings.json")
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(
+            parse_json_hook_settings("{\"a\":1}", "settings.json").unwrap()["a"],
+            1
+        );
+    }
+
+    #[test]
+    fn unparsable_or_non_object_settings_are_rejected_with_the_settings_label() {
+        for content in [
+            "{oops",
+            "// 주석\n{\"a\": 1}",
+            "<<<<<<< HEAD\n{}",
+            "[1, 2]",
+            "\"text\"",
+        ] {
+            let error = parse_json_hook_settings(content, "Claude settings.json")
+                .expect_err("해석할 수 없는 설정은 거절한다");
+            assert!(
+                error
+                    .to_string()
+                    .starts_with("Invalid Claude settings.json: "),
+                "{content:?} → {error}"
+            );
+        }
     }
 }

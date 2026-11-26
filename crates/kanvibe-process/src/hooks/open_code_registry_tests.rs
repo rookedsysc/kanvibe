@@ -280,6 +280,24 @@ fn bounds_a_slow_cli_and_retains_failure_instead_of_reporting_an_empty_registrat
 }
 
 #[test]
+fn a_descendant_holding_the_output_pipes_does_not_hold_the_query_past_its_bound() {
+    let workspace = tempfile::tempdir().unwrap();
+    install_fake_open_code(workspace.path(), "sleep 20 &\nsleep 20");
+    let system_command = SystemOpenCodeDebugConfigCommand::new(fake_cli_environment(
+        workspace.path(),
+        ShellPlatform::Other,
+    ));
+
+    let started_at = Instant::now();
+    let error = system_command
+        .run(workspace.path().to_str().unwrap())
+        .unwrap_err();
+
+    assert!(started_at.elapsed() < Duration::from_secs(6));
+    assert!(error.starts_with("Command failed: opencode debug config"));
+}
+
+#[test]
 fn invalidates_a_completed_query_after_installation() {
     let command = FakeDebugConfigCommand::new(|_| Ok(r#"{"plugin":[]}"#.into()));
     let registry = registry_with(&command, &ManualClock::new());

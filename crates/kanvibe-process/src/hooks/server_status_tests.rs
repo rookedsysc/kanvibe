@@ -3,7 +3,10 @@
 use std::sync::Arc;
 
 use super::installer_test_support::{FakeHookClientRuntime, install_context};
-use super::server_status::{HookServerValidation, validate_hook_server_configuration};
+use super::server_status::{
+    HOOK_SERVER_CACHE_TTL, HookServerStatusCache, HookServerValidation,
+    validate_hook_server_configuration,
+};
 use crate::exec::ExecGitError;
 use crate::exec::testing::ScriptedCommandRunner;
 
@@ -177,4 +180,45 @@ fn loopback_aliases_match_for_local_urls_but_ports_must_match() {
             .validate("not a url", None)
             .has_expected_hook_server_url
     );
+}
+
+#[test]
+fn parallel_provider_checks_share_one_remote_health_check() {
+    let slow_runner = ScriptedCommandRunner::new(|_| {
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        Ok(String::new())
+    });
+    let scenario = Scenario::new(Ok("http://10.0.0.4:9736"), slow_runner);
+    let mut context = install_context(
+        scenario.runner.clone(),
+        scenario.runtime.clone(),
+        "/home/test",
+    );
+    context.server_status = Arc::new(HookServerStatusCache::new(HOOK_SERVER_CACHE_TTL));
+
+    let results: Vec<HookServerValidation> = std::thread::scope(|scope| {
+        let checks: Vec<_> = (0..4)
+            .map(|_| {
+                scope.spawn(|| {
+                    validate_hook_server_configuration(
+                        &context,
+                        &[Some("http://10.0.0.4:9736".to_string())],
+                        true,
+                        Some("remote-host"),
+                    )
+                })
+            })
+            .collect();
+        checks
+            .into_iter()
+            .map(|check| check.join().unwrap())
+            .collect()
+    });
+
+    assert!(
+        results
+            .iter()
+            .all(|result| result.has_reachable_hook_server)
+    );
+    assert_eq!(scenario.runner.calls().len(), 1);
 }

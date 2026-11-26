@@ -29,8 +29,8 @@ pub trait HookClientRuntime: Send + Sync {
     fn hook_server_url(&self, ssh_host: Option<&str>) -> Result<String, HookInstallError>;
     /// 지금 열려 있는 hook 서버 포트(TS `getHookServerPort`)
     fn hook_server_port(&self) -> u16;
-    /// 원격 host daemon이 붙어 있으면 그 namespace. daemon이 없으면 `None`이다
-    fn remote_host_namespace(&self, ssh_host: &str) -> Option<String>;
+    /// 원격 host daemon이 붙어 있으면 그 namespace. daemon을 쓰지 않는 호스트면 `Ok(None)`이고, 연결 오류는 legacy로 돌리지 않고 돌려준다
+    fn remote_host_namespace(&self, ssh_host: &str) -> Result<Option<String>, HookInstallError>;
     /// 원격 hook이 데스크탑으로 돌아올 터널을 연다(TS `ensureHookTunnel`). 결과를 기다리지 않는다
     fn ensure_hook_tunnel(&self, ssh_host: &str);
     /// 로컬 hook 서버 health 주소에 GET을 보내 2xx로 답하는지(TS `fetch(url).ok`)

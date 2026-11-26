@@ -349,12 +349,7 @@ impl KanvibeHookProviderModule for ClaudeHookProviderModule {
     ) -> Result<Vec<HookProviderFile>, HookInstallError> {
         let settings_path = self.install_input_paths(repo_path);
         let settings_content = read_existing_content(existing_files, settings_path.first());
-        Ok(build_claude_hook_files(
-            repo_path,
-            task_id,
-            hook_server_url,
-            settings_content,
-        ))
+        build_claude_hook_files(repo_path, task_id, hook_server_url, settings_content)
     }
 
     fn install(
@@ -401,12 +396,7 @@ impl KanvibeHookProviderModule for GeminiHookProviderModule {
     ) -> Result<Vec<HookProviderFile>, HookInstallError> {
         let settings_path = self.install_input_paths(repo_path);
         let settings_content = read_existing_content(existing_files, settings_path.first());
-        Ok(build_gemini_hook_files(
-            repo_path,
-            task_id,
-            hook_server_url,
-            settings_content,
-        ))
+        build_gemini_hook_files(repo_path, task_id, hook_server_url, settings_content)
     }
 
     fn install(
@@ -454,13 +444,13 @@ impl KanvibeHookProviderModule for CodexHookProviderModule {
         let input_paths = self.install_input_paths(repo_path);
         let config_content = read_existing_content(existing_files, input_paths.first());
         let hooks_content = read_existing_content(existing_files, input_paths.get(1));
-        Ok(build_codex_hook_files(
+        build_codex_hook_files(
             repo_path,
             task_id,
             hook_server_url,
             config_content,
             hooks_content,
-        ))
+        )
     }
 
     fn install(
