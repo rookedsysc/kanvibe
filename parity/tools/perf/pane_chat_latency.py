@@ -18,6 +18,11 @@ connect 세션: 기본 채팅 모드를 켜고 CLI가 없는 pane에서 시작
 - auto_open: 가짜 CLI가 세션 기록을 쓴 시각 → `pane_chat:ready`(층이 확인하고 열어 보낼 수 있는 입력창을 그림)
 - clear: `/clear`가 새 세션 기록을 쓴 시각 → `pane_chat:retarget`
 - resume: `/resume`이 다른 대화를 쓴 시각 → `pane_chat:retarget`
+- trust_wait(`--trust-wait`): 가짜 CLI가 신뢰 화면을 띄운 뒤 3.5초 동안 `pane_chat:open`이 없는지, Enter로 수락해 세션 기록을 쓴
+  시각 → `pane_chat:ready`. 이때는 auto_open·clear·resume을 재지 않는다
+
+`--task`는 어느 fixture task의 pane에서 재는지 고른다(tmux `board-filters`, zellij `rate-limit`, herdr `dark-mode`).
+open 세션은 tmux에서만 돌고, zellij·herdr의 connect 세션은 auto_open(또는 trust_wait)만 잰다.
 
 예:
   python3 parity/tools/perf/pane_chat_latency.py --app /var/tmp/kanvibe --runs 10 --label baseline
@@ -37,6 +42,7 @@ import threading
 import time
 import uuid
 from pathlib import Path
+from typing import NamedTuple
 
 TOOLS_DIR = Path(__file__).resolve().parent
 REPO_ROOT = TOOLS_DIR.parents[2]
@@ -55,15 +61,34 @@ WINDOW_SIZE = (1600, 1000)
 TASK_ROUTE = "/ko/task/22222222-2222-4222-8222-000000000010"
 SHELL_PROMPT = "feat-board-filters $"
 FAKE_READY = "Ready for a prompt"
+FAKE_TRUST_PROMPT = "Yes, I trust this folder"
+TRUST_WAIT_S = 3.5
 MARKER_TIMEOUT_S = 30.0
+
+
+class TaskTarget(NamedTuple):
+    """측정할 fixture task. worktree는 fixture `repos/` 아래 경로다"""
+    route: str
+    worktree: str
+    shell_prompt: str
+
+
+TASK_TARGETS = {
+    "tmux": TaskTarget(TASK_ROUTE, "kanvibe-demo__worktrees/feat-board-filters", SHELL_PROMPT),
+    "zellij": TaskTarget("/ko/task/22222222-2222-4222-8222-000000000011", "api-server__worktrees/feat-rate-limit",
+                         "feat-rate-limit $"),
+    "herdr": TaskTarget("/ko/task/22222222-2222-4222-8222-000000000020", "kanvibe-demo__worktrees/feat-dark-mode",
+                        "feat-dark-mode $"),
+}
 
 
 class Session:
     """fixture 하나와 앱 프로세스 하나"""
 
     def __init__(self, app: Path, work: Path, settings_overrides: dict[str, str],
-                 route: str = TASK_ROUTE, prepare_home=None):
+                 target: TaskTarget = TASK_TARGETS["tmux"], prepare_home=None):
         self.work = work
+        self.target = target
         fixture_root = work / "fixture"
         self.fixture = capture.build_fixture(fixture_root, "full", {
             "theme_preference": "dark", "sidebar_default_collapsed": "true", **settings_overrides})
@@ -92,7 +117,7 @@ class Session:
             "--fixed-now", fixed_now_iso(),
             "--network-responses", str(capture.FIXTURES_DIR / "network" / "default.json"),
             "--control-socket", str(socket_path),
-            "--route", route,
+            "--route", target.route,
             "--window-size", f"{WINDOW_SIZE[0]}x{WINDOW_SIZE[1]}",
             "--kanvibe-hook-port", str(free_hook_port()),
         ]
@@ -121,12 +146,12 @@ class Session:
         self.send({"cmd": "key", "keys": keys})
         return self.marker("key_received", sent_ns)
 
-    def start_fake_cli(self, extra: str) -> None:
-        self.send({"cmd": "wait_for", "target": {"text": SHELL_PROMPT, "exact": False}, "timeout_ms": 30000})
+    def start_fake_cli(self, extra: str, ready_text: str = FAKE_READY) -> None:
+        self.send({"cmd": "wait_for", "target": {"text": self.target.shell_prompt, "exact": False}, "timeout_ms": 30000})
         self.send({"cmd": "click", "target": {"selector": ".xterm-screen"}})
         self.send({"cmd": "type", "text": f"{self.agent / 'claude'} --events {self.events_path} {extra}"})
         self.send({"cmd": "key", "keys": "Enter"})
-        self.send({"cmd": "wait_for", "target": {"text": FAKE_READY, "exact": False}, "timeout_ms": 30000})
+        self.send({"cmd": "wait_for", "target": {"text": ready_text, "exact": False}, "timeout_ms": 30000})
 
     def agent_event(self, event: str, after_ns: int, timeout_s: float = 10.0) -> dict:
         deadline = time.monotonic() + timeout_s
@@ -187,7 +212,26 @@ def write_transcript(home: Path, cwd: str, session_id: str, target_bytes: int) -
 
 
 def task_worktree(session: Session) -> str:
-    return str(session.fixture_root / "repos" / "kanvibe-demo__worktrees" / "feat-board-filters")
+    return str(session.fixture_root / "repos" / session.target.worktree)
+
+
+def quiet_zellij_first_run(home: Path) -> None:
+    """격리 XDG_CONFIG_HOME의 Zellij 설정에 시작 안내와 릴리스 노트 창을 끈다(fixture 안에만 쓴다)"""
+    config = home.parent / "xdg" / "config" / "zellij" / "config.kdl"
+    config.parent.mkdir(parents=True, exist_ok=True)
+    config.write_text("show_startup_tips false\nshow_release_notes false\n", encoding="utf-8")
+
+
+def dismiss_zellij_welcome(session: Session) -> None:
+    """Zellij 0.46 첫 실행의 데스크톱 연동 안내는 설정으로 끌 수 없고 Enter가 설치를 승인하므로 Esc(Dismiss)로만 닫는다"""
+    session.send({"cmd": "wait_for", "target": {"text": session.target.shell_prompt, "exact": False}, "timeout_ms": 30000})
+    session.send({"cmd": "click", "target": {"selector": ".xterm-screen"}})
+    try:
+        session.send({"cmd": "wait_for", "target": {"text": "Welcome to Zellij", "exact": False}, "timeout_ms": 8000})
+    except RuntimeError:
+        return
+    session.send({"cmd": "key", "keys": "Escape"})
+    time.sleep(1.0)
 
 
 # ───────────── 구간 ─────────────
@@ -254,19 +298,43 @@ def run_open_session(app: Path, work: Path, transcript_mb: float) -> dict:
         session.close()
 
 
-def run_connect_session(app: Path, work: Path) -> dict:
-    session = Session(app, work, {"pane_chat_default_enabled": "true"})
+def measure_trust_wait(session: Session, resume_id: str) -> dict:
+    """신뢰 화면이 떠 있는 동안 채팅이 열리지 않고, 수락해 세션 기록이 생긴 뒤에 열리는지"""
+    before = time.time_ns()
+    session.start_fake_cli(f"--trust-wait --switch-to {resume_id}", ready_text=FAKE_TRUST_PROMPT)
+    shown = session.agent_event("trust_shown", before)["ns"]
+    time.sleep(TRUST_WAIT_S)
+    accepted = time.time_ns()
+    with session.markers.condition:
+        during = [name for name, at in session.markers.markers if shown <= at < accepted]
+    session.send({"cmd": "key", "keys": "Enter"})
+    started = session.agent_event("start", accepted)["ns"]
+    return {"open_during_trust": "pane_chat:open" in during,
+            "layouts_during_trust": during.count("pane_chat:layout_done"),
+            "probes_during_trust": during.count("pane_chat:probe_done"),
+            "ready": (session.marker("pane_chat:ready", started) - started) / 1e6}
+
+
+def run_connect_session(app: Path, work: Path, target: TaskTarget, should_wait_for_trust: bool) -> dict:
+    prepare_home = quiet_zellij_first_run if target is TASK_TARGETS["zellij"] else None
+    session = Session(app, work, {"pane_chat_default_enabled": "true"}, target=target, prepare_home=prepare_home)
     try:
         resume_id = str(uuid.uuid4())
         write_transcript(session.home, task_worktree(session), resume_id, 64 * 1024)
+        if target is TASK_TARGETS["zellij"]:
+            dismiss_zellij_welcome(session)
         # 기본 채팅 모드가 CLI 없는 pane을 확인하며 도는 상태로 둔다
         time.sleep(3.0)
+        if should_wait_for_trust:
+            return {"trust_wait": measure_trust_wait(session, resume_id)}
         before = time.time_ns()
         session.start_fake_cli(f"--switch-to {resume_id}")
         detected = session.agent_event("start", before)["ns"]
         result: dict = {"auto_open": paint_segments(session, detected, "pane_chat", ("open", "ready"))}
         ready_at = detected + int(result["auto_open"]["ready"] * 1e6)
         result["auto_open"]["probes_ms"] = read_durations(session, detected, ready_at, "probe")
+        if target is not TASK_TARGETS["tmux"]:
+            return result
         result["clear"], result["resume"] = [], []
         for index in range(3):
             time.sleep(2.0)
@@ -328,6 +396,8 @@ def main() -> int:
     parser.add_argument("--label", required=True)
     parser.add_argument("--transcript-mb", type=float, default=4.0)
     parser.add_argument("--only", choices=["open", "connect"])
+    parser.add_argument("--task", choices=sorted(TASK_TARGETS), default="tmux")
+    parser.add_argument("--trust-wait", action="store_true", help="connect 세션에서 신뢰 화면 순서(trust_wait)만 잰다")
     parser.add_argument("--work", type=Path, default=Path("/var/tmp/kanvibe-pane-chat-latency"))
     args = parser.parse_args()
     output = OUTPUT_ROOT / args.label
@@ -338,13 +408,16 @@ def main() -> int:
         for kind in ("open", "connect"):
             if args.only and kind != args.only:
                 continue
+            if kind == "open" and args.task != "tmux":
+                continue
             work = args.work / f"{kind}-{run}"
             shutil.rmtree(work, ignore_errors=True)
             try:
                 if kind == "open":
                     sessions[kind].append(run_open_session(args.app.resolve(), work, args.transcript_mb))
                 else:
-                    sessions[kind].append(run_connect_session(args.app.resolve(), work))
+                    sessions[kind].append(run_connect_session(args.app.resolve(), work, TASK_TARGETS[args.task],
+                                                              args.trust_wait))
                 print(f"{kind} {run}: {json.dumps(sessions[kind][-1], ensure_ascii=False)}", flush=True)
             except Exception as error:  # noqa: BLE001 - 한 회가 실패해도 나머지를 잰다
                 failures.append({"kind": kind, "run": run, "error": str(error)[-400:]})
