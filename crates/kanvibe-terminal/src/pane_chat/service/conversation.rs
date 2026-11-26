@@ -385,7 +385,10 @@ impl PaneChatService {
             )
             .map_err(other_error)?;
         let Some(detail) = detail else {
-            return Ok(unavailable());
+            return Ok(match is_claude_conversation_file(process, binding) {
+                true => not_written_yet(),
+                false => unavailable(),
+            });
         };
         let mut transcript = available_transcript(detail.session_id);
         transcript.messages = detail.messages;
@@ -495,6 +498,17 @@ impl PaneChatService {
             Err(_) => prompt,
         }
     }
+}
+
+/// Claude가 그 대화 ID 이름으로 만든 기록 파일인지. `/clear`·새 대화 직후 Claude는 이 파일에 대화 메타데이터만 먼저 쓰고
+/// 메시지는 조금 뒤에 쓴다. 그 사이 이 대화의 메시지가 없다는 것은 아직 빈 새 대화라는 뜻이라, 다른 대화의 기록을 빌리지 않고
+/// 빈 대화로 잇는다. 다른 공급자와 이름이 다른 파일은 이전처럼 연결하지 못한 것으로 둔다
+fn is_claude_conversation_file(
+    process: &PaneChatProcess,
+    binding: &PaneChatSessionBinding,
+) -> bool {
+    process.provider == PaneChatProvider::Claude
+        && node_path::basename(&binding.source_ref) == format!("{}.jsonl", binding.session_id)
 }
 
 /// 화면에 떠 있는 선택 화면. 화면 배치를 확인한 Claude와 Codex만 읽는다

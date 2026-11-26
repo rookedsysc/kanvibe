@@ -2155,3 +2155,49 @@ fn a_conversation_draft_key_is_not_shared_across_hosts_with_the_same_session_id(
     assert!(remote.conversation_key.is_some());
     assert_ne!(remote.conversation_key, local.conversation_key);
 }
+
+/// `/clear` 직후 Claude는 새 대화 ID 이름의 기록 파일에 메타데이터만 먼저 쓴다. 그 대화의 메시지가 아직 없으면
+/// 빈 새 대화로 보내기를 허용하고, 다른 이름의 기록이나 다른 공급자는 이전처럼 연결하지 못한 것으로 둔다
+#[test]
+fn claude_conversation_file_without_messages_yet_is_an_empty_new_conversation() {
+    let cases = [
+        (
+            "claude",
+            "/home/u/.claude/projects/-repo/session-new.jsonl",
+            true,
+        ),
+        (
+            "claude",
+            "/home/u/.claude/projects/-repo/other-session.jsonl",
+            false,
+        ),
+        (
+            "gemini",
+            "/home/u/.gemini/tmp/p/chats/session-new.jsonl",
+            false,
+        ),
+    ];
+    for (name, source_ref, can_send) in cases {
+        let harness = Harness::new();
+        harness.respond_all_commands(&format!(
+            "100 1 100 200 ttys010 Thu Nov 12 18:00:00 2026 zsh /bin/zsh\n200 100 200 200 ttys010 Thu Nov 12 19:00:00 2026 {name} {name}"
+        ));
+        harness
+            .sessions
+            .set_process_binding(Some(binding("session-new", source_ref)));
+        harness
+            .sessions
+            .set_binding(Some(binding("session-new", source_ref)));
+        harness.sessions.respond_detail(|_| Ok(None));
+        let shown = snapshot(&harness, Some("%3"));
+        assert_eq!(shown.can_send, can_send, "{name} {source_ref}");
+        assert!(shown.transcript.messages.is_empty());
+        match can_send {
+            true => {
+                assert_eq!(shown.transcript.session_id.as_deref(), Some("session-new"));
+                assert!(shown.target_token.is_some());
+            }
+            false => assert_eq!(shown.reason.as_deref(), Some("exact-session-unavailable")),
+        }
+    }
+}
