@@ -6,7 +6,7 @@ use kanvibe_process::worktree::quote_for_posix_shell;
 use serde::Deserialize;
 use serde_json::Value;
 
-use super::{PaneChatSurfaceError, PaneChatSurfaceReader, PaneChatSurfaces, js_number};
+use super::{PaneChatSurfaceError, PaneChatSurfaceReader, js_number};
 use crate::pane_mirror::{
     MirrorPane, build_tmux_list_mirror_panes_command, build_zellij_read_viewport_command,
     parse_tmux_mirror_pane_list, parse_zellij_mirror_pane_list,
@@ -44,7 +44,7 @@ pub(super) fn read_pane_chat_layout(
     task_id: &str,
     terminal_tab_id: Option<&str>,
 ) -> Result<PaneChatLayout, PaneChatSurfaceError> {
-    let Some(surface) = reader.read_pane_chat_surface(task_id, terminal_tab_id, false)? else {
+    let Some(surface) = reader.read_surface(task_id, terminal_tab_id, false, false)? else {
         return Ok(unavailable());
     };
     let task = &surface.task;

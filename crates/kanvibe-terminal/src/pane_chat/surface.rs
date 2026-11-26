@@ -6,6 +6,7 @@
 mod layout;
 #[cfg(test)]
 mod tests;
+mod zellij_root;
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, LazyLock};
@@ -534,6 +535,7 @@ impl PaneChatSurfaceReader {
         &self,
         task: PaneChatTask,
         requested_pane_id: Option<&str>,
+        should_resolve_root: bool,
     ) -> Result<Option<PaneChatSurface>, PaneChatSurfaceError> {
         let session_name = task.session_name().unwrap_or_default().to_string();
         let command = match requested_pane_id {
@@ -557,26 +559,42 @@ impl PaneChatSurfaceReader {
         let Some(pane) = pane else {
             return Ok(None);
         };
-        // PID를 제공하지 않는 Zellij 버전은 정확한 화면만 반환하고 입력은 허용하지 않는다.
+        // JSON에 PID가 없는 Zellij 버전은 pane 환경 변수로 root를 찾는다. 커서와 화면을 읽지 않으므로 입력은 계속 허용하지 않는다.
         let pid = pane
             .get("terminal_pid")
             .filter(|pid| !pid.is_null())
             .or_else(|| pane.get("pid"));
-        let root_pid = positive_safe_integer(pid);
+        let root_pid = positive_safe_integer(pid).or_else(|| match should_resolve_root {
+            true => self.read_zellij_pane_root(&task, &session_name, pane),
+            false => None,
+        });
         Ok(Some(PaneChatSurface::bare(
             task,
             zellij_pane_id(pane),
             root_pid,
         )))
     }
-}
 
-impl PaneChatSurfaces for PaneChatSurfaceReader {
-    fn read_pane_chat_surface(
+    /// 조회가 실패하거나 PID 하나로 좁혀지지 않으면 root를 모르는 채로 둔다
+    fn read_zellij_pane_root(
+        &self,
+        task: &PaneChatTask,
+        session_name: &str,
+        pane: &Value,
+    ) -> Option<i64> {
+        let pane_number = pane.get("id").and_then(Value::as_u64)?;
+        let command = zellij_root::build_zellij_pane_root_command(session_name, pane_number);
+        let output = self.run(task, &command).ok()?;
+        zellij_root::parse_zellij_pane_root(&output)
+    }
+
+    /// `should_resolve_root`가 거짓이면 Zellij pane의 root PID를 따로 찾지 않는다(배치 조회)
+    fn read_surface(
         &self,
         task_id: &str,
         requested_pane_id: Option<&str>,
         should_capture: bool,
+        should_resolve_root: bool,
     ) -> Result<Option<PaneChatSurface>, PaneChatSurfaceError> {
         let observation =
             should_capture.then(|| self.next_observation.fetch_add(1, Ordering::SeqCst) + 1);
@@ -595,9 +613,22 @@ impl PaneChatSurfaces for PaneChatSurfaceReader {
             Some(SessionType::Herdr) => {
                 self.read_herdr_surface(task, requested_pane_id, observation)
             }
-            Some(SessionType::Zellij) => self.read_zellij_surface(task, requested_pane_id),
+            Some(SessionType::Zellij) => {
+                self.read_zellij_surface(task, requested_pane_id, should_resolve_root)
+            }
             None => Ok(None),
         }
+    }
+}
+
+impl PaneChatSurfaces for PaneChatSurfaceReader {
+    fn read_pane_chat_surface(
+        &self,
+        task_id: &str,
+        requested_pane_id: Option<&str>,
+        should_capture: bool,
+    ) -> Result<Option<PaneChatSurface>, PaneChatSurfaceError> {
+        self.read_surface(task_id, requested_pane_id, should_capture, true)
     }
 
     /// tmux와 Zellij는 외부 명령을 한 번 더 실행하고 큰 문자열을 만들므로, 대상 확인과 떼어 화면을 실제로 보여 줄 때만 부른다.

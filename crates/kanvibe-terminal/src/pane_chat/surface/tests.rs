@@ -719,6 +719,90 @@ fn zellij_selects_active_tab_even_when_inactive_tabs_keep_a_focused_pane() {
     assert_eq!(harness.screen(&surface), "active tab screen");
 }
 
+const ZELLIJ_PANE_ROOT_LOOKUP: &str = "kanvibe-zellij-pane-root";
+
+/// Zellij `list-panes` JSON에는 PID가 없어, 고른 pane의 환경으로 찾은 root PID 하나를 쓴다
+#[test]
+fn zellij_surface_uses_the_single_root_found_from_pane_environment() {
+    let harness = Harness::new();
+    harness.set_session_type(SessionType::Zellij);
+    harness.respond(|command| {
+        if command.contains(ZELLIJ_PANE_ROOT_LOOKUP) {
+            return "4242\n".to_string();
+        }
+        match command.starts_with("printf") {
+            true => single_zellij_viewport(),
+            false => json!([{ "id": 7, "is_plugin": false, "tab_id": 0 }]).to_string(),
+        }
+    });
+
+    let focused = harness.surface(None).unwrap();
+    let requested = harness.surface(Some("terminal_7")).unwrap();
+
+    assert_eq!(focused.root_pid, Some(4242));
+    assert_eq!(requested.root_pid, Some(4242));
+    let lookups: Vec<String> = harness
+        .commands()
+        .into_iter()
+        .filter(|command| command.contains(ZELLIJ_PANE_ROOT_LOOKUP))
+        .collect();
+    assert_eq!(lookups.len(), 2);
+    assert!(lookups[0].ends_with("kanvibe-zellij-pane-root 'kv' 7"));
+}
+
+/// 조회가 PID 하나로 좁혀지지 않거나 실패하면 root는 모르는 채로 두고, pane과 화면은 그대로 읽는다
+#[test]
+fn zellij_root_stays_unknown_unless_the_lookup_narrows_to_one_pid() {
+    for lookup in [
+        Ok(""),
+        Ok("100\n200\n"),
+        Ok("not a pid"),
+        Err("lookup failed"),
+    ] {
+        let harness = Harness::new();
+        harness.set_session_type(SessionType::Zellij);
+        harness.runner.respond(move |command, _| {
+            if command.contains(ZELLIJ_PANE_ROOT_LOOKUP) {
+                return Some(lookup.map(str::to_string).map_err(ExecGitError::new));
+            }
+            Some(Ok(match command.starts_with("printf") {
+                true => single_zellij_viewport(),
+                false => "zellij screen".to_string(),
+            }))
+        });
+
+        let surface = harness.surface(None).unwrap();
+
+        assert_eq!(surface.pane_id, "terminal_7", "{lookup:?}");
+        assert_eq!(surface.root_pid, None, "{lookup:?}");
+        assert_eq!(harness.screen(&surface), "zellij screen");
+    }
+}
+
+/// 1초마다 도는 배치 조회는 PID가 필요 없으므로 root를 찾지 않는다
+#[test]
+fn zellij_layout_poll_does_not_look_up_the_pane_root() {
+    let harness = Harness::new();
+    harness.set_session_type(SessionType::Zellij);
+    let panes = json!([
+        { "id": 2, "is_plugin": false, "is_focused": true, "tab_id": 1, "pane_x": 0, "pane_y": 0, "pane_columns": 100, "pane_rows": 24 },
+    ]);
+    let tabs = json!([{ "tab_id": 1, "active": true }]);
+    respond_with_zellij(&harness, panes, tabs);
+
+    let layout = harness.layout(None);
+
+    assert_eq!(layout.active_pane_id.as_deref(), Some("terminal_2"));
+    assert!(
+        !harness
+            .commands()
+            .iter()
+            .any(|command| command.contains(ZELLIJ_PANE_ROOT_LOOKUP)),
+        "{:?}",
+        harness.commands()
+    );
+}
+
 // parity: TS-main-paneChatSurface-721547
 #[test]
 fn tmux_and_zellij_screens_strip_ansi_colors_and_osc_links() {
