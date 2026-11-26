@@ -31,6 +31,18 @@ from make_home import build_home, solid_png_data_url  # noqa: E402
 FIXED_NOW_ISO = "2026-01-15T03:00:00Z"
 FIXED_NOW_EPOCH_MS = 1768446000000
 
+# 설정 파일이 없으면 Herdr가 첫 실행 화면을 띄워 키 입력을 가로채고, 그 화면의 Enter는 통합 설치를 시도한다.
+# 업데이트 확인과 소리도 끈다. 격리 XDG_CONFIG_HOME 아래에만 쓴다.
+HERDR_CONFIG = """onboarding = false
+
+[update]
+version_check = false
+manifest_check = false
+
+[ui.sound]
+enabled = false
+"""
+
 
 def at(minutes_before_now: int) -> str:
     """FIXED_NOW에서 N분 전 시각을 TypeORM이 쓰는 'YYYY-MM-DD HH:MM:SS'(UTC) 문자열로 만든다."""
@@ -289,6 +301,9 @@ def build_fixture(root: Path, dataset: str, overrides: dict[str, str], extras: l
     root.mkdir(parents=True)
     build_home(root, home_dir, FIXED_NOW_EPOCH_MS, extras or [])
     build_all_repositories(root, home_dir)
+    herdr_config = root / "xdg" / "config" / "herdr" / "config.toml"
+    herdr_config.parent.mkdir(parents=True, exist_ok=True)
+    herdr_config.write_text(HERDR_CONFIG, encoding="utf-8")
     database_path = build_database(root, dataset, overrides)
     return {"root": str(root), "home": str(home_dir), "bin": str(root / "bin"),
             "appdata": str(database_path.parent), "database": str(database_path)}

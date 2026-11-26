@@ -8,6 +8,7 @@
 """
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import signal
@@ -33,7 +34,7 @@ from fontconfig import write_pinned_fontconfig  # noqa: E402,F401
 def multiplexer_bin_dirs() -> list[str]:
     """tmux·zellij·herdr가 깔린 디렉터리만 앱 PATH에 더한다. 머신마다 위치가 다르므로 실행 시 찾는다."""
     dirs = []
-    for tool in ("tmux", "zellij"):
+    for tool in ("tmux", "zellij", "herdr"):
         found = shutil.which(tool)
         if found and os.path.dirname(found) not in dirs:
             dirs.append(os.path.dirname(found))
@@ -110,9 +111,28 @@ def build_app_environment(fixture: dict, fixture_root: Path, display_number: int
 
 
 def kill_fixture_multiplexers(environment: dict[str, str]) -> None:
-    """이 실행의 TMUX_TMPDIR에 있는 tmux 서버만 끈다. 사용자 기본 소켓은 건드리지 않는다."""
+    """이 실행의 TMUX_TMPDIR에 있는 tmux 서버와 격리 XDG_CONFIG_HOME에서 실행 중인 Herdr 세션만 끈다.
+
+    환경을 명시하므로 HERDR_* 변수가 섞이지 않아 사용자 기본 소켓과 Herdr 서버는 보이지 않는다. Herdr는 세션 폴더가 격리
+    XDG_CONFIG_HOME 안에 있는 세션만 이름으로 멈추고 지우며 `server stop`은 쓰지 않는다.
+    """
     tmux_environment = {"PATH": environment["PATH"], "HOME": environment["HOME"], "TMUX_TMPDIR": environment["TMUX_TMPDIR"]}
     subprocess.run(["tmux", "kill-server"], env=tmux_environment, capture_output=True)
+    herdr = shutil.which("herdr", path=environment["PATH"])
+    if herdr is None:
+        return
+    herdr_environment = {"PATH": environment["PATH"], "HOME": environment["HOME"],
+                         "XDG_CONFIG_HOME": environment["XDG_CONFIG_HOME"]}
+    listed = subprocess.run([herdr, "session", "list", "--json"], env=herdr_environment, capture_output=True, text=True)
+    try:
+        sessions = json.loads(listed.stdout)["sessions"]
+    except (ValueError, KeyError, TypeError):
+        return
+    for session in sessions:
+        is_fixture_session = str(session.get("session_dir", "")).startswith(environment["XDG_CONFIG_HOME"] + "/")
+        if session.get("running") and is_fixture_session:
+            subprocess.run([herdr, "session", "stop", session["name"]], env=herdr_environment, capture_output=True)
+            subprocess.run([herdr, "session", "delete", session["name"]], env=herdr_environment, capture_output=True)
 
 
 def kill_leftover_processes(fixture_root: Path) -> None:
