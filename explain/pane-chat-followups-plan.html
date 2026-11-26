@@ -1,0 +1,2118 @@
+<!doctype html>
+<!-- 생성 파일입니다. 직접 고치면 다음 빌드가 덮어씁니다. 글은 pane-chat-followups-plan/content.md 에서 고치고 explain-me-skill 의 build_explain_page.py 로 다시 만듭니다. -->
+<html lang="ko" data-reading="prd">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pane Chat 후속 4건 작업 계획</title>
+<style>
+  /* 색은 모두 이 변수로 쓴다. 그림의 SVG도 같은 변수를 읽으므로 테마와 인쇄에서 함께 바뀐다. */
+  :root {
+    color-scheme: light dark;
+    --bg: light-dark(#ffffff, #121212);
+    --surface: light-dark(#f9f9f9, #1f1f1f);
+    --ink: light-dark(#242424, #dedede);
+    --ink-strong: light-dark(#242424, #f5f5f5);
+    --muted: light-dark(#6b6b6b, #a8a8a8);
+    --line: light-dark(#e5e5e5, #363636);
+    --accent: light-dark(#1a8917, #5cbf59);
+    --accent-soft: light-dark(#ebf5ea, #1d3320);
+    --link: light-dark(#242424, #f5f5f5);
+    --caution: light-dark(#b4460b, #ffa56b);
+    --caution-soft: light-dark(#fff3e8, #38261a);
+    --literal: light-dark(#1b64da, #84b8ff);
+    --literal-soft: light-dark(#e8f3ff, #1b2c47);
+    --free: light-dark(#02754a, #4fd6a2);
+    --free-soft: light-dark(#e5f7ef, #12332a);
+    --tok-keyword: light-dark(#ad1871, #f08bc4);
+    --tok-string: light-dark(#02754a, #5fd3a5);
+    --tok-comment: light-dark(#616b79, #a3a3ad);
+    --tok-type: light-dark(#1a5ccb, #84b8ff);
+    --tok-decorator: light-dark(#b4460b, #ffa56b);
+    --tok-number: light-dark(#8f5000, #fbbf24);
+    --diff-add: light-dark(#d9f5e7, #12382c);
+    --diff-del: light-dark(#fde4e4, #43201f);
+    --diff-meta: light-dark(#e8f3ff, #1b2c47);
+    --dim: 0.22;
+    --radius: 4px;
+    --column: 680px;
+    --toc-width: 200px;
+    --toc-gap: 48px;
+    /* 본문은 세리프, 제목과 화면 조작 요소는 산세리프다. 외부 글꼴 파일 없이 운영체제에 있는 글꼴만 쓴다.
+       본문의 영문과 숫자는 세리프로, 한글은 산세리프로 그린다. 세리프 한글 글꼴은 자간이 넓고 획이 고르지 않아 긴 설명을 읽기 어렵다.
+       Charter 를 Georgia 앞에 두는 이유는 Georgia 의 숫자가 높낮이가 다른 모양이라 3.2, 10개 같은 기술 수치가 어긋나 보이기 때문이다. */
+    --font: "Helvetica Neue", Helvetica, Arial, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif;
+    --font-serif: Charter, Georgia, Cambria, "Times New Roman", Times, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", serif;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --body-size: 20px;
+    --body-leading: 32px;
+    --block-gap: 34px;
+    --h1-size: 42px;
+    --h1-leading: 52px;
+    --h2-size: 24px;
+    --h2-leading: 30px;
+    --h3-size: 20px;
+    --h3-leading: 24px;
+  }
+  /* 좁은 화면은 본문과 제목을 한 단계 줄인다. */
+  @media (max-width: 727px) {
+    :root { --body-size: 18px; --body-leading: 28px; --block-gap: 20px; --h1-size: 32px; --h1-leading: 38px; --h2-size: 20px; --h2-leading: 24px; --h3-size: 16px; --h3-leading: 20px; }
+  }
+  :root[data-theme="light"] { color-scheme: light; }
+  :root[data-theme="dark"] { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html { scroll-padding-top: 24px; -webkit-text-size-adjust: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font-serif); font-size: var(--body-size); line-height: var(--body-leading); letter-spacing: -0.003em; word-break: keep-all; overflow-wrap: anywhere; }
+  main { max-width: calc(var(--column) + 48px); margin: 0 auto; padding: 24px 24px 120px; }
+  h1, h2, h3, dt { color: var(--ink-strong); font-family: var(--font); }
+  h1 { font-size: var(--h1-size); font-weight: 700; line-height: var(--h1-leading); letter-spacing: -0.011em; margin: 40px 0 16px; }
+  h2 { font-size: var(--h2-size); font-weight: 600; line-height: var(--h2-leading); letter-spacing: -0.016em; margin: calc(var(--block-gap) + 4px) 0 12px; }
+  h3 { font-size: var(--h3-size); font-weight: 600; line-height: var(--h3-leading); margin: var(--block-gap) 0 8px; }
+  p, ul, ol { margin: 0 0 var(--block-gap); }
+  li { margin: 14px 0; }
+  ul, ol { padding-left: 30px; }
+  a { color: var(--link); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+  code { font-family: var(--mono); font-size: 0.8em; letter-spacing: 0; background: var(--surface); border-radius: var(--radius); padding: 3px 4px; }
+  :not(pre) > code { overflow-wrap: anywhere; word-break: break-word; }
+  pre { background: var(--surface); border-radius: var(--radius); padding: 32px; margin: 0 0 var(--block-gap); overflow-x: auto; font-size: 16px; line-height: normal; letter-spacing: 0; word-break: normal; overflow-wrap: normal; }
+  pre code { border: 0; padding: 0; font-size: inherit; }
+  .table-scroll { overflow-x: auto; margin: 0 0 var(--block-gap); }
+  table { width: 100%; border-collapse: collapse; font-family: var(--font); font-size: 0.8125rem; line-height: 1.6; }
+  th, td { border-bottom: 1px solid var(--line); padding: 10px 12px; text-align: left; vertical-align: top; }
+  thead th { background: var(--surface); color: var(--ink-strong); font-weight: 600; }
+  tbody th { color: var(--ink-strong); font-weight: 600; }
+
+  .page-actions { display: flex; justify-content: flex-end; gap: 8px; }
+  .page-actions button, .step-controls button { min-height: 44px; padding: 0 16px; background: none; color: var(--ink); border: 1px solid var(--line); border-radius: 999px; font: 400 14px/20px var(--font); cursor: pointer; transition: border-color 0.15s; }
+  .page-actions button:hover, .step-controls button:hover { border-color: var(--ink); }
+  .reader { color: var(--muted); font-family: var(--font); font-size: 16px; line-height: 24px; margin: 0 0 40px; }
+  /* 요약은 본문 인용처럼 왼쪽 세로줄로 묶는다. */
+  .summary { box-shadow: inset 3px 0 0 0 var(--ink-strong); padding: 0 0 0 23px; margin: 0 0 40px; }
+  .summary .one-line { color: var(--ink-strong); font-family: var(--font); font-size: var(--h2-size); font-weight: 600; line-height: var(--h2-leading); margin: 0 0 12px; }
+  .summary ul { margin: 0; }
+
+  /* 목차: 좁은 화면에서는 요약 아래에 가로로 나열하고, 넓은 화면에서는 본문 왼쪽에 고정한다.
+     지금 읽는 절의 항목은 스크립트가 aria-current 를 달고, 색과 함께 굵기와 테두리(넓은 화면은 왼쪽 세로줄)로도 구분한다. */
+  .toc { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 var(--block-gap); font-family: var(--font); font-size: 14px; line-height: 20px; letter-spacing: 0; }
+  .toc a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 16px; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; text-decoration: none; transition: color 0.15s, border-color 0.15s; }
+  .toc a:hover { color: var(--ink-strong); }
+  .toc a[aria-current] { color: var(--ink-strong); border-color: var(--ink-strong); font-weight: 600; }
+  @media (min-width: 1100px) {
+    main { width: calc(var(--column) + 48px); max-width: none; margin-left: calc((100vw - var(--column) - var(--toc-width) - var(--toc-gap)) / 2 + var(--toc-width) + var(--toc-gap) - 24px); margin-right: 0; }
+    .toc { position: fixed; top: 48px; left: calc((100vw - var(--column) - var(--toc-width) - var(--toc-gap)) / 2); width: var(--toc-width); max-height: calc(100vh - 96px); overflow-y: auto; flex-direction: column; flex-wrap: nowrap; gap: 0; margin: 0; }
+    .toc a { display: block; min-height: 0; padding: 6px 12px; border: 0; border-radius: 0; box-shadow: inset 1px 0 0 0 var(--line); }
+    .toc a[aria-current] { box-shadow: inset 3px 0 0 0 var(--ink-strong); }
+    .toc a.toc-sub { padding-left: 24px; font-size: 13px; }
+  }
+
+  /* 다이어그램: diagram-design 출력이나 직접 그린 SVG가 figure 안에 inline으로 들어간다. */
+  figure.diagram { margin: 0 0 var(--block-gap); background: var(--surface); border-radius: var(--radius); padding: 24px; overflow-x: auto; }
+  figure.diagram svg { display: block; max-width: 100%; height: auto; margin: 0 auto; }
+  figure.diagram figcaption { color: var(--muted); font-family: var(--font); font-size: 14px; line-height: 20px; text-align: center; margin-top: 12px; }
+
+  /* 단계 강조: data-step 값이 같은 SVG 요소와 단계 목록 항목을 함께 강조한다. */
+  [data-flow] [data-step] { transition: opacity 0.2s; cursor: pointer; }
+  [data-flow].is-stepping [data-step]:not(.is-active) { opacity: var(--dim); }
+  [data-flow] .steps li.is-active { background: var(--accent-soft); }
+  [data-flow] svg .is-active { filter: drop-shadow(0 0 4px var(--accent)); }
+  .steps { list-style: none; padding: 0; margin: 16px 0 24px; }
+  .steps li { padding: 12px 16px 12px 56px; margin: 4px 0; position: relative; border-radius: var(--radius); transition: background-color 0.15s; }
+  .steps li:hover { background: var(--surface); }
+  .steps li::before { content: attr(data-step); position: absolute; left: 16px; top: 13px; width: 26px; height: 26px; border-radius: 50%; background: var(--link); color: var(--bg); font: 600 13px/1 var(--font); display: grid; place-items: center; }
+  .step-controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .step-controls .step-status { color: var(--muted); font-family: var(--font); font-size: 14px; margin-left: 4px; }
+
+  /* 코드 블록: pre 의 data-lang 이 언어 라벨이 되고, 강조 스크립트가 tok-* 와 줄 클래스를 붙인다. */
+  pre[data-lang]::before { content: attr(data-lang); display: block; position: sticky; left: 0; width: max-content; margin-bottom: 8px; color: var(--muted); font: 600 0.75rem var(--font); }
+  pre code[class*="language-"] { display: inline-block; min-width: 100%; background: none; }
+  .code-line { display: block; white-space: pre; }
+  .line-add { background: var(--diff-add); }
+  .line-del { background: var(--diff-del); }
+  .line-meta { background: var(--diff-meta); }
+  .tok-keyword { color: var(--tok-keyword); }
+  .tok-string { color: var(--tok-string); }
+  .tok-comment { color: var(--tok-comment); font-style: italic; }
+  .tok-type { color: var(--tok-type); }
+  .tok-decorator { color: var(--tok-decorator); }
+  .tok-number { color: var(--tok-number); }
+
+  /* 용어: 본문의 모든 등장을 a.term 으로 용어 설명 항목에 연결한다. 점선 밑줄이라 모든 등장을 감싸도 문단이 덮이지 않는다. */
+  a.term { color: inherit; text-decoration: underline dotted var(--accent); scroll-margin-top: 30vh; }
+  /* 용어 항목의 참조 링크로 도착한 용어와 그 줄을 강조한다. */
+  a.term:target { background: var(--accent-soft); outline: 2px solid var(--accent); border-radius: 3px; }
+  p:has(> a.term:target), li:has(> a.term:target), td:has(> a.term:target) { background: var(--accent-soft); border-radius: 6px; transition: background-color 0.3s; }
+  /* 참조 목록이 길면 항목이 화면을 덮지 않도록 상자 안에서 스크롤한다. */
+  .glossary .term-uses { max-height: 9.5em; overflow-y: auto; font-size: 0.875rem; margin: 0; }
+  .glossary .term-uses .field { display: block; }
+  .glossary .term-uses a { display: block; padding: 2px 0; }
+  .term-tip { position: absolute; z-index: 10; max-width: min(340px, calc(100vw - 16px)); background: var(--ink-strong); color: var(--bg); border-radius: var(--radius); padding: 10px 14px; font-family: var(--font); font-size: 14px; line-height: 20px; pointer-events: none; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2); }
+  .glossary { margin: 0; }
+  .glossary .term-entry { border-top: 1px solid var(--line); padding: 24px 12px; margin: 0 -12px; }
+  .glossary .term-entry:target { background: var(--accent-soft); border-radius: var(--radius); }
+  .glossary dt { font-weight: 700; font-size: 1.125rem; margin-bottom: 6px; }
+  .glossary dd { margin: 0; }
+  .glossary p { margin: 0 0 8px; }
+  .glossary .field { color: var(--muted); font-family: var(--font); font-size: 0.8em; font-weight: 600; margin-right: 4px; }
+
+  /* PRD 레코드의 추적 필드: 독자용 줄글 뒤에 접어 두고, 검토할 때만 펼친다. */
+  .prd-record-fields { margin: 8px 0 16px; font-size: 0.9375rem; }
+  .prd-record-fields > summary { cursor: pointer; color: var(--muted); font-family: var(--font); font-size: 0.875rem; font-weight: 600; }
+
+  /* 번역/해석 모드: 원문, 직역, 의역을 라벨과 색으로 함께 구분한다. */
+  .parallel .unit { background: var(--surface); border-radius: var(--radius); margin: 16px 0; overflow: hidden; }
+  .parallel .layers { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .parallel .layer { padding: 12px 16px 16px; font-size: 0.9375rem; }
+  .parallel .label { display: block; font-size: 0.8125rem; font-weight: 700; margin-bottom: 4px; }
+  .parallel .src .label { color: var(--muted); }
+  .parallel .source-text { margin: 0; white-space: pre-wrap; }
+  .parallel .literal { background: var(--literal-soft); }
+  .parallel .literal .label { color: var(--literal); }
+  .parallel .free { background: var(--free-soft); }
+  .parallel .free .label { color: var(--free); }
+  .parallel .unit-no { color: var(--muted); font-size: 0.8125rem; font-weight: 600; font-variant-numeric: tabular-nums; padding: 10px 16px 6px; }
+  .parallel .note { padding: 12px 16px; font-size: 0.9375rem; }
+  .parallel .note .kind { font-weight: 700; color: var(--caution); margin-right: 4px; }
+  @media (max-width: 720px) {
+    .parallel .layers { grid-template-columns: minmax(0, 1fr); }
+  }
+
+  .pitfall { background: var(--caution-soft); padding: 16px 20px; margin: 12px 0; border-radius: var(--radius); }
+  .unverified { color: var(--caution); font-weight: 700; font-size: 0.875rem; }
+  .back-link { font-size: 0.8125rem; font-weight: 400; margin-left: 6px; white-space: nowrap; }
+
+  @media (prefers-reduced-motion: no-preference) {
+    html { scroll-behavior: smooth; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; }
+  }
+
+  /* PDF 출력: 화면 테마와 무관하게 밝은 색으로 내보내고, 화면 조작용 요소를 뺀다. */
+  @media print {
+    :root, :root[data-theme="dark"] { color-scheme: light; }
+    @page { margin: 14mm; }
+    body { font-size: 11pt; line-height: 1.6; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    main { width: auto; max-width: none; margin: 0; padding: 0; }
+    .page-actions, .toc, .step-controls, .term-tip, .term-uses { display: none !important; }
+    /* :not 을 빼면 화면용 흐림 규칙보다 특이도가 낮아 흐림이 남는다. */
+    [data-flow].is-stepping [data-step]:not(.is-active) { opacity: 1; }
+    [data-flow] svg .is-active { filter: none; }
+    [data-flow] .steps li.is-active { background: none; }
+    pre, figure.diagram, .table-scroll { overflow: visible; }
+    pre, pre code, .code-line { white-space: pre-wrap; overflow-wrap: anywhere; }
+    pre code { display: block; }
+    table { font-size: 9pt; }
+    figure.diagram, tr, .pitfall, .term-entry, .steps li, .unit { break-inside: avoid; }
+    h2, h3 { break-after: avoid; margin-top: 28px; }
+  }
+/* 모든 설명 HTML의 읽기 화면이다. 제품 목업은 대상 서비스의 디자인을 따른다. */
+:root {
+  --bg: light-dark(#f1f1f5, #17171c);
+  --panel: light-dark(#ffffff, #22222a);
+  --surface: light-dark(#f6f6f8, #2c2c34);
+  --ink: light-dark(#34333a, #e4e4e7);
+  --ink-strong: light-dark(#101014, #fafafa);
+  --muted: light-dark(#5a5860, #b0aeb8);
+  --line: light-dark(#e4e4ea, #41414b);
+  --accent: light-dark(#242428, #ededf0);
+  --accent-soft: light-dark(#eaeaef, #363640);
+  --link: light-dark(#1d4fb8, #9abaff);
+  --radius: 12px;
+  --font: "Noto Sans KR", -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", "Segoe UI", Roboto, sans-serif;
+  --page-gutter: clamp(20px, 2.2vw, 44px);
+  --page-max: 1840px;
+  --toc-width: clamp(240px, 16vw, 280px);
+  --toc-space: var(--toc-width);
+  --toc-gap: clamp(24px, 2.2vw, 40px);
+  --toc-control-ink: light-dark(#09090b, #f5f5f5);
+  --toc-control-hover: color-mix(in srgb, var(--toc-control-ink) 7%, var(--bg));
+}
+
+:root[data-toc-collapsed="true"] {
+  --toc-space: 44px;
+}
+
+/* CMS 기획 참고 문서의 회색 캔버스·흰 패널·조밀한 정보 위계를 읽기 화면에 적용한다. */
+@media screen {
+  body { font: 16px/1.75 var(--font); letter-spacing: normal; }
+  h1 { font-size: clamp(1.5rem, 1.1rem + 1.5vw, 2rem); font-weight: 700; line-height: 1.4; letter-spacing: -0.02em; margin: 20px 0 8px; }
+  h2 { font-size: 1.5rem; font-weight: 700; line-height: 1.4; letter-spacing: -0.01em; margin: 0 0 20px; }
+  h3 { font-size: 1.125rem; line-height: 1.5; margin: 32px 0 12px; }
+  p, ul, ol { margin: 0 0 16px; }
+  li { margin: 6px 0; }
+  ul, ol { padding-left: 1.4em; }
+  code { font-size: 0.875em; border-radius: 4px; padding: 2px 5px; }
+  pre { padding: 16px 20px; margin: 16px 0 20px; font-size: 0.875rem; line-height: 1.6; }
+  .table-scroll { margin: 16px 0 20px; }
+  table { font-size: 0.875rem; }
+  main > header, main > section, .summary { padding: clamp(20px, 2.2vw, 32px); background: var(--panel); border-radius: var(--radius); }
+  main > header { margin-bottom: 20px; }
+  main > section { margin: 20px 0; }
+  main > section > h2 { padding-bottom: 16px; border-bottom: 2px solid var(--ink-strong); }
+  main > section > :last-child { margin-bottom: 0; }
+  .page-actions button { padding: 0 14px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); font: 500 14px/1.6 var(--font); }
+  .page-actions button:hover { background: var(--accent-soft); }
+  .reader { font-size: 0.875rem; line-height: 1.6; margin-bottom: 0; }
+  .summary { margin: 0 0 20px; box-shadow: none; }
+  .summary .one-line { font-size: 1.125rem; font-weight: 700; line-height: 1.6; }
+  figure.diagram { margin: 20px 0 24px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+  figure.diagram figcaption { font-size: 0.875rem; line-height: 1.6; text-align: left; }
+}
+
+body > main {
+  width: 100%;
+  max-width: var(--page-max);
+  min-width: 0;
+  margin: 0 auto;
+  padding: 24px var(--page-gutter) 96px;
+}
+
+main > header .reader,
+main > section > p,
+main > section > ul,
+main > section > ol,
+.summary .one-line,
+.summary ul {
+  max-width: 86ch;
+}
+
+main > section,
+.table-scroll,
+figure.diagram {
+  min-width: 0;
+}
+
+.table-scroll table {
+  min-width: 0;
+}
+
+.table-scroll:has(thead tr > :nth-child(4)) table {
+  min-width: 760px;
+}
+
+.table-scroll th:first-child,
+.table-scroll td:first-child {
+  min-width: 88px;
+}
+
+.table-scroll-hint {
+  margin: 12px 0 4px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.table-scroll-hint[hidden] {
+  display: none;
+}
+
+.table-scroll-hint:not([hidden]) + .table-scroll {
+  margin-top: 4px;
+}
+
+.table-scroll.is-overflowing tr > :first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  width: 128px;
+  max-width: 128px;
+  background: var(--panel);
+  box-shadow: 1px 0 var(--line);
+}
+
+.table-scroll.is-overflowing thead tr > :first-child {
+  z-index: 2;
+  background: var(--surface);
+}
+
+.table-scroll[tabindex="0"]:focus-visible {
+  outline: 2px solid var(--toc-control-ink);
+  outline-offset: 2px;
+}
+
+figure.diagram {
+  max-width: 880px;
+  padding: 20px;
+}
+
+figure.diagram svg {
+  width: min(100%, 840px);
+}
+
+figure.diagram svg.geohash-grid {
+  width: min(100%, 560px);
+}
+
+.toc a {
+  flex-shrink: 0;
+  border: 0;
+  border-radius: 8px;
+  box-shadow: none;
+  font-weight: 400;
+}
+
+.toc a[hidden] {
+  display: none !important;
+}
+
+.toc a.toc-sub {
+  padding-left: calc(12px + var(--toc-depth, 1) * 12px);
+}
+
+.toc-toggle {
+  display: none;
+}
+
+.desktop-toc {
+  display: none;
+}
+
+.desktop-toc-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 44px;
+  margin-bottom: 12px;
+  padding: 0 8px 12px 12px;
+  border-bottom: 1px solid var(--line);
+  flex-shrink: 0;
+}
+
+.desktop-toc-title {
+  color: var(--ink-strong);
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.toc-collapse {
+  display: inline-flex;
+  flex: 0 0 44px;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: color-mix(in srgb, var(--toc-control-ink) 65%, var(--bg));
+  cursor: pointer;
+}
+
+.toc-collapse:hover,
+.toc-collapse:active,
+.toc-collapse:focus-visible,
+.toc-toggle:hover,
+.toc-toggle:active,
+.toc-toggle:focus-visible,
+.toc-close:hover,
+.toc-close:focus-visible {
+  color: var(--toc-control-ink);
+  background: var(--toc-control-hover);
+}
+
+.toc-collapse:focus-visible,
+.toc-toggle:focus-visible,
+.toc-close:focus-visible {
+  outline: 2px solid var(--toc-control-ink);
+  outline-offset: 2px;
+}
+
+.toc-resize-handle {
+  position: absolute;
+  top: 0;
+  right: -12px;
+  bottom: 0;
+  width: 18px;
+  border-radius: 6px;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.toc-resize-handle::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 8px;
+  width: 1px;
+  background: var(--line);
+}
+
+.toc-resize-handle::after {
+  content: "";
+  position: absolute;
+  top: calc(50% - 16px);
+  left: 7px;
+  width: 3px;
+  height: 32px;
+  border-radius: 3px;
+  background: var(--muted);
+}
+
+.toc-resize-handle:hover,
+.toc-resize-handle:focus-visible {
+  background: transparent;
+  outline: none;
+}
+
+.toc-resize-handle:hover::before,
+.toc-resize-handle:focus-visible::before,
+html.toc-resizing .toc-resize-handle::before {
+  left: 7px;
+  width: 3px;
+  background: var(--toc-control-ink);
+}
+
+.toc-resize-handle:hover::after,
+.toc-resize-handle:focus-visible::after,
+html.toc-resizing .toc-resize-handle::after {
+  background: var(--toc-control-ink);
+}
+
+html.toc-resizing,
+html.toc-resizing * {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+
+html.toc-resizing iframe {
+  pointer-events: none;
+}
+
+.toc-dialog {
+  position: fixed;
+  inset: auto max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) auto;
+  width: min(440px, calc(100vw - 32px));
+  max-width: calc(100vw - 32px);
+  max-height: min(76dvh, 680px);
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  box-shadow: 0 16px 56px #0003;
+}
+
+.toc-dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+.toc-dialog::backdrop {
+  background: #0006;
+}
+
+.toc-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.toc-dialog-header h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.toc-close {
+  min-width: 52px;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.toc-dialog .toc {
+  --toc-link-ink: var(--ink);
+  position: static;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  gap: 4px;
+  width: 100%;
+  min-height: 0;
+  max-height: none;
+  margin: 0;
+  padding: 12px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.toc-dialog .toc a {
+  display: flex;
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding: 10px 12px;
+  line-height: 1.5;
+  background-color: transparent;
+}
+
+.toc-dialog .toc a.toc-sub {
+  padding-left: calc(12px + var(--toc-depth, 1) * 12px);
+}
+
+.toc a[aria-current="location"] {
+  color: var(--toc-link-ink, var(--muted));
+  border: 0;
+  border-radius: 8px;
+  box-shadow: none;
+  font-weight: 400;
+  background: var(--accent-soft);
+}
+
+html.toc-modal-open {
+  overflow: hidden;
+}
+
+@media (min-width: 1100px) {
+  body > main {
+    padding-left: calc(var(--page-gutter) + var(--toc-space) + var(--toc-gap));
+  }
+
+  .toc {
+    top: 32px;
+    left: max(var(--page-gutter), calc((100vw - var(--page-max)) / 2 + var(--page-gutter)));
+    width: var(--toc-width);
+    max-height: calc(100vh - 64px);
+  }
+
+  .desktop-toc {
+    position: fixed;
+    top: 24px;
+    left: max(var(--page-gutter), calc((100vw - var(--page-max)) / 2 + var(--page-gutter)));
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    width: var(--toc-space);
+    height: calc(100dvh - 48px);
+    padding: 12px 0;
+    border-radius: var(--radius);
+    background: var(--panel);
+  }
+
+  .desktop-toc .toc {
+    position: static;
+    flex: 1 1 auto;
+    width: 100%;
+    min-height: 0;
+    max-height: none;
+    margin: 0;
+    padding: 0 4px;
+    gap: 2px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+  }
+
+  .desktop-toc .toc a {
+    min-height: 40px;
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
+
+  :root[data-toc-collapsed="true"] .desktop-toc {
+    height: auto;
+    padding: 0;
+  }
+
+  :root[data-toc-collapsed="true"] .desktop-toc-header {
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+
+  :root[data-toc-collapsed="true"] .desktop-toc .toc,
+  :root[data-toc-collapsed="true"] .desktop-toc-title,
+  :root[data-toc-collapsed="true"] .toc-resize-handle {
+    display: none;
+  }
+}
+
+@media (max-width: 1099px) {
+  main > header .page-actions {
+    padding-top: env(safe-area-inset-top);
+    padding-right: calc(56px + env(safe-area-inset-right));
+  }
+
+  .toc-toggle {
+    position: fixed;
+    top: calc(24px + env(safe-area-inset-top));
+    right: calc(var(--page-gutter) + env(safe-area-inset-right));
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--bg);
+    color: var(--toc-control-ink);
+    box-shadow: 0 2px 12px #0001;
+    font: inherit;
+    cursor: pointer;
+  }
+
+  .toc {
+    max-height: 200px;
+    overflow-y: auto;
+    gap: 6px;
+    padding: 4px;
+    margin: 0 -4px 24px;
+    scrollbar-gutter: stable;
+  }
+
+  .toc a {
+    padding: 0 10px;
+  }
+}
+
+@media (max-width: 520px) {
+  .summary {
+    padding: 20px;
+  }
+
+  figure.diagram {
+    padding: 16px;
+  }
+}
+
+@media print {
+  :root { --bg: #fff; --panel: #fff; }
+  .table-scroll-hint {
+    display: none;
+  }
+
+  .table-scroll.is-overflowing tr > :first-child {
+    position: static;
+    width: auto;
+    max-width: none;
+    box-shadow: none;
+  }
+
+  .table-scroll table {
+    min-width: 0 !important;
+  }
+
+  html.toc-modal-open {
+    overflow: visible;
+  }
+
+  .toc-toggle,
+  .toc-dialog,
+  .desktop-toc {
+    display: none !important;
+  }
+
+  body > main {
+    width: auto;
+    max-width: none;
+    margin: 0;
+    padding: 0;
+  }
+}
+
+
+.playbook { border:1px solid var(--line); border-radius:8px; background:var(--surface); padding:20px; margin-bottom:24px; }
+.playbook-inputs,.playbook-controls { display:flex; gap:12px; flex-wrap:wrap; align-items:center; margin-bottom:20px; }
+.playbook-controls { gap:8px; }
+.playbook-inputs label,.playbook-controls label { display:flex; gap:8px; align-items:center; }
+.playbook input,.playbook select,.playbook button { min-height:44px; max-width:100%; padding:8px 12px; border:1px solid var(--line); border-radius:6px; background:var(--panel); color:var(--ink); font:inherit; }
+.playbook button:disabled,.playbook input:disabled { cursor:default; opacity:.45; }
+.playbook input:not([type="range"]) { width:180px; min-width:0; }
+.playbook input[type="range"] { width:150px; padding:0; border:0; accent-color:var(--link); }
+.playbook-tabs { display:flex; gap:4px; flex-wrap:wrap; width:fit-content; max-width:100%; padding:4px; margin-bottom:16px; border-radius:8px; background:var(--accent-soft); }
+.playbook-tabs button { border-color:transparent; background:transparent; }
+.playbook-tabs [aria-selected="true"] { color:var(--ink-strong); background:var(--panel); border-color:var(--line); font-weight:700; }
+.playbook-panels { display:grid; grid-template-columns:minmax(230px,.9fr) minmax(0,1.1fr); gap:24px; }
+.playbook-panels>div { min-width:0; }
+.playbook-sequence { list-style:none; padding:0; max-width:720px; }
+.playbook-sequence li { margin:8px 0; }
+.playbook-sequence button { width:100%; padding:14px 16px; text-align:left; }
+.playbook-sequence button[aria-current="step"] { background:var(--accent-soft); border-color:var(--link); }
+.playbook-note { font-size:14px; color:var(--muted); }
+.playbook-state .table-scroll table { min-width:420px; }
+.playbook-state h4 { margin:16px 0 8px; font:600 16px/1.5 var(--font); }
+.playbook-state pre { font:13px/1.6 var(--mono); padding:16px; white-space:pre; overflow-wrap:normal; overflow-x:auto; }
+.playbook-screen { margin:16px 0; width:180px; max-width:100%; min-height:240px; padding:18px; border:1px solid var(--line); border-radius:22px; background:var(--surface); }
+.playbook-screen strong { display:block; margin:20px 0 12px; }
+.playbook [data-panel="screen"] { white-space:pre-wrap; overflow-wrap:anywhere; font:14px/1.6 var(--font); }
+.toc-sub { overflow-wrap:normal; }
+@media(max-width:760px) { .playbook-panels { grid-template-columns:1fr; } .playbook { padding:14px; } .playbook-tabs { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media print { .playbook-controls,.playbook-inputs,.playbook-tabs { display:none!important; } .playbook-panels { display:block; } .playbook-sequence { break-inside:auto; } }
+
+.toc-dialog .toc { flex-direction: column; flex-wrap: nowrap; }
+.table-scroll tr > :first-child { overflow-wrap: normal; word-break: normal; }
+
+.api-contract { min-width: 0; }
+.api-operation { margin-block: 16px; border: 1px solid var(--line, #c9cdd1); border-radius: 6px; padding: 12px 16px; scroll-margin-top: 24px; }
+.api-operation > summary { cursor: pointer; min-height: 44px; overflow-wrap: anywhere; }
+.api-operation > summary:focus-visible { outline: 2px solid currentColor; outline-offset: 4px; }
+.api-field { margin-block: 16px; min-width: 0; }
+.api-contract tr[data-api-target] { cursor: pointer; }
+.api-contract tr[data-api-target]:hover { background: var(--surface, #f4f4f4); }
+@media print { .api-operation { break-inside: avoid; } }
+
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="page-actions">
+      <button type="button" id="print-button">PDF로 출력</button>
+      <button type="button" id="theme-toggle">테마 전환</button>
+    </div>
+    <h1>Pane Chat 후속 4건 작업 계획</h1>
+    <p class="reader term-no-link">독자: KanVibe Pane Chat 코드를 아는 개발자. 이 계획의 범위와 테스트 선택을 승인하려는 사람</p>
+  </header>
+<section class="summary" id="summary"><p class="one-line">Pane Chat 지연 개선에서 남긴 후속 4건을 리서치 실측에 맞춘 범위로 나눴고, 승인 전에 정할 것은 열린 결정 4개와 테스트 선택 12개다.</p><ul>
+<li>코드가 바뀌는 것은 둘이다. Zellij pane의 <a class="term" id="use-root-pid-1" href="#term-root-pid">root PID</a>를 환경 변수로 찾고(F1), 배치가 그대로이면 다시 그리지 않는다(F3).</li>
+<li>나머지 둘은 테스트와 <a class="term" id="use-fixture-1" href="#term-fixture">fixture</a>만 바꾼다. Herdr 첫 실행 화면을 설정으로 끄고(F2), <a class="term" id="use-trust-screen-1" href="#term-trust-screen">신뢰 화면</a> 순서를 시나리오로 고정한다(F4).</li>
+<li>F4는 전제가 재현되지 않았다. Claude 2.1.332는 신뢰를 수락한 0.11초 뒤에 <a class="term" id="use-session-record-1" href="#term-session-record">세션 기록</a>을 쓰므로 제품 코드는 바꾸지 않는다.</li>
+</ul>
+</section>
+<nav class="toc" aria-label="목차"><a href="#decide">결정할 것</a><a href="#scope">건별 범위</a><a class="toc-sub" href="#f1">F1 Zellij</a><a class="toc-sub" href="#f2">F2 Herdr</a><a class="toc-sub" href="#f3">F3 다시 그리기</a><a class="toc-sub" href="#f4">F4 신뢰 화면</a><a href="#open-questions">열린 결정</a><a href="#test-case-decision">테스트 선택</a><a href="#todos">작업 순서</a><a href="#detail">적용 판단</a><a href="#risks">남는 위험</a><a href="#glossary">용어</a><a href="#sources">출처</a></nav>
+<section id="decide"><h2>결정할 것: 범위 4건과 열린 결정, 테스트 선택</h2>
+<p>이 문서는 계획 파일 <code>.claude/plan/pane-chat/2611/26-pane-chat-followups.plan.md</code>를 검토용으로 옮긴 것이다. 정책과 결정의 정본은 계획 파일이고, 이 페이지는 같은 ID와 값을 쓴다. 승인 전에는 코드를 고치지 않는다.</p>
+<p>독자가 정할 것은 세 가지다.</p>
+<ul>
+<li>아래 표의 건별 범위가 맞는지 본다.</li>
+<li><a href="#open-questions">열린 결정</a> 네 개에서 선택지를 고른다. 각 항목에 권장안이 있다.</li>
+<li><a href="#test-case-decision">테스트 선택</a> 열두 개를 Required 또는 Skip으로 정한다. 하나라도 미정이면 구현을 시작하지 않는다.</li>
+</ul>
+<div class="table-scroll"><table>
+<thead>
+<tr>
+<th>건</th>
+<th>리서치 결론</th>
+<th>이번에 하는 일</th>
+<th>제품 코드 변경</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th scope="row"><a href="#f1">F1 Zellij</a></th>
+<td>가설이 성립한다. pane 번호와 <code>ZELLIJ_PANE_ID</code>가 같다</td>
+<td>서버의 <a class="term" id="use-direct-child-1" href="#term-direct-child">직접 자식</a> 환경을 읽어 <a class="term" id="use-root-pid-2" href="#term-root-pid">root PID</a>를 채운다</td>
+<td>있음</td>
+</tr>
+<tr>
+<th scope="row"><a href="#f2">F2 Herdr</a></th>
+<td>원인은 <code>onboarding</code> 설정 누락이다</td>
+<td><a class="term" id="use-fixture-2" href="#term-fixture">fixture</a>가 설정을 미리 쓰고 서버를 정리한다. 실제 Claude로 검증한다</td>
+<td>없음</td>
+</tr>
+<tr>
+<th scope="row"><a href="#f3">F3 다시 그리기</a></th>
+<td>무조건 <a class="term" id="use-notify-1" href="#term-notify">notify</a>가 창 전체를 다시 그린다</td>
+<td>네 가지 상태가 바뀐 때만 <a class="term" id="use-notify-2" href="#term-notify">notify</a>한다</td>
+<td>있음</td>
+</tr>
+<tr>
+<th scope="row"><a href="#f4">F4 신뢰 화면</a></th>
+<td>가리는 경로가 재현되지 않았다</td>
+<td>현재 순서를 끝단 시나리오와 실제 Claude 확인으로 고정한다</td>
+<td>없음</td>
+</tr>
+</tbody>
+</table></div>
+</section>
+<section id="scope"><h2>건별 범위: 무엇을 고치고 무엇을 남기는가</h2>
+<p>각 건은 원인, 고른 방법, 범위에서 뺀 것의 순서로 적는다. 수치는 Linux, Zellij 0.46.0, Herdr 0.9.5, Claude Code 2.1.332에서 잰 값이다.</p>
+<h3 id="f1">F1 Zellij: root PID를 pane 환경 변수로 찾는다</h3>
+<p>Zellij에서 채팅이 자동으로 열리지 않는 이유는 KanVibe가 pane의 <a class="term" id="use-root-pid-3" href="#term-root-pid">root PID</a>를 얻지 못해서다. <code>read_zellij_surface</code>는 <code>list-panes</code> JSON의 <code>terminal_pid</code>와 <code>pid</code>를 읽는데, Zellij는 이 값을 주지 않는다. <a class="term" id="use-root-pid-4" href="#term-root-pid">root PID</a>가 없으면 CLI 확인이 &quot;CLI 없음&quot;으로 끝나고 <a class="term" id="use-auto-open-1" href="#term-auto-open">자동 열기</a> 확인이 통과하지 못한다.</p>
+<p>Zellij 서버는 pane 프로세스를 띄울 때 <code>ZELLIJ_PANE_ID</code>를 환경에 넣는다. 격리 서버에서 pane 0, 1, 2, 3, 5의 값이 <code>list-panes</code>의 <code>id</code>와 모두 같았다. pane 안에서 띄운 자손도 같은 값을 물려받으므로, 서버의 <a class="term" id="use-direct-child-2" href="#term-direct-child">직접 자식</a>으로 좁혀야 root 하나가 남는다. 아래 그림은 pane 5를 찾는 예다.</p>
+<figure class="diagram"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 468" role="img" aria-labelledby="dg1-title dg1-desc" style="min-width:800px">
+<title id="dg1-title">Zellij pane의 root PID를 찾는 관계</title>
+<desc id="dg1-desc">KanVibe 조회는 Zellij 서버의 직접 자식 가운데 세션 이름과 pane 번호가 환경 변수와 모두 같은 프로세스 하나를 root로 고른다. 같은 값을 물려받은 자손 프로세스는 직접 자식이 아니라서 고르지 않는다.</desc>
+<defs>
+<marker id="dg1-arrow" viewBox="0 0 10 10" markerWidth="7" markerHeight="7" refX="9" refY="5" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="var(--muted, #5a5860)"/></marker>
+<marker id="dg1-arrow-accent" viewBox="0 0 10 10" markerWidth="7" markerHeight="7" refX="9" refY="5" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="var(--accent, #242428)"/></marker>
+</defs>
+<text x="24" y="28" fill="var(--muted, #5a5860)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="12" font-weight="400" text-anchor="start">변경 후 제안, 미구현. 값은 Zellij 0.46.0 실측 예</text>
+<path d="M 296 116 V 144 Q 296 152 288 152 H 128 Q 120 152 120 160 V 188" fill="none" stroke="var(--muted, #5a5860)" stroke-width="1.5" marker-end="url(#dg1-arrow)"/>
+<path d="M 376 116 V 144 Q 376 152 384 152 H 408 Q 416 152 416 160 V 188" fill="none" stroke="var(--muted, #5a5860)" stroke-width="1.5" marker-end="url(#dg1-arrow)"/>
+<line x1="416" y1="256" x2="416" y2="300" stroke="var(--muted, #5a5860)" stroke-width="1.5" marker-end="url(#dg1-arrow)"/>
+<line x1="416" y1="352" x2="416" y2="392" stroke="var(--muted, #5a5860)" stroke-width="1.5" marker-end="url(#dg1-arrow)"/>
+<line x1="624" y1="222" x2="512" y2="222" stroke="var(--accent, #242428)" stroke-width="2" marker-end="url(#dg1-arrow-accent)"/>
+<rect x="172" y="126" width="72" height="16" rx="2" fill="var(--panel, #ffffff)"/>
+<text x="208" y="138" fill="var(--muted, #5a5860)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="12" font-weight="500" text-anchor="middle">직접 자식</text>
+<rect x="424" y="164" width="72" height="16" rx="2" fill="var(--panel, #ffffff)"/>
+<text x="460" y="176" fill="var(--muted, #5a5860)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="12" font-weight="500" text-anchor="middle">직접 자식</text>
+<rect x="424" y="270" width="84" height="16" rx="2" fill="var(--panel, #ffffff)"/>
+<text x="466" y="282" fill="var(--muted, #5a5860)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="12" font-weight="500" text-anchor="middle">자식 프로세스</text>
+<rect x="424" y="364" width="36" height="16" rx="2" fill="var(--panel, #ffffff)"/>
+<text x="442" y="376" fill="var(--muted, #5a5860)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="12" font-weight="500" text-anchor="middle">실행</text>
+<rect x="524" y="196" width="88" height="16" rx="2" fill="var(--panel, #ffffff)"/>
+<text x="568" y="208" fill="var(--ink, #34333a)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="12" font-weight="700" text-anchor="middle">환경 일치 1개</text>
+<rect x="224" y="48" width="224" height="68" rx="6" fill="var(--panel, #ffffff)"/>
+<rect x="224" y="48" width="224" height="68" rx="6" fill="var(--surface, #f6f6f8)" stroke="var(--line, #e4e4ea)" stroke-width="1"/>
+<text x="336" y="72" fill="var(--ink, #34333a)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="15" font-weight="700" text-anchor="middle">Zellij 서버 프로세스</text>
+<text x="336" y="90" fill="var(--muted, #5a5860)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="12" font-weight="400" text-anchor="middle">명령줄에 --server가 있다</text>
+<text x="336" y="106" fill="var(--muted, #5a5860)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="12" font-weight="400" text-anchor="middle">세션 이름은 명령줄에 없다</text>
+<rect x="24" y="188" width="192" height="68" rx="6" fill="var(--panel, #ffffff)"/>
+<rect x="24" y="188" width="192" height="68" rx="6" fill="var(--surface, #f6f6f8)" stroke="var(--line, #e4e4ea)" stroke-width="1"/>
+<text x="120" y="212" fill="var(--ink, #34333a)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="15" font-weight="700" text-anchor="middle">pane 0의 root 셸</text>
+<text x="120" y="230" fill="var(--muted, #5a5860)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="12" font-weight="400" text-anchor="middle">ZELLIJ_PANE_ID=0</text>
+<text x="120" y="246" fill="var(--muted, #5a5860)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="12" font-weight="400" text-anchor="middle">번호가 달라 제외</text>
+<rect x="320" y="188" width="192" height="68" rx="6" fill="var(--panel, #ffffff)"/>
+<rect x="320" y="188" width="192" height="68" rx="6" fill="var(--accent-soft, #eaeaef)" stroke="var(--accent, #242428)" stroke-width="2"/>
+<text x="416" y="212" fill="var(--ink, #34333a)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="15" font-weight="700" text-anchor="middle">pane 5의 root 셸</text>
+<text x="416" y="230" fill="var(--muted, #5a5860)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="12" font-weight="400" text-anchor="middle">ZELLIJ_PANE_ID=5</text>
+<text x="416" y="246" fill="var(--ink, #34333a)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="12" font-weight="700" text-anchor="middle">직접 자식, root PID로 채택</text>
+<rect x="320" y="300" width="192" height="52" rx="6" fill="var(--panel, #ffffff)"/>
+<rect x="320" y="300" width="192" height="52" rx="6" fill="var(--surface, #f6f6f8)" stroke="var(--line, #e4e4ea)" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="416" y="322" fill="var(--ink, #34333a)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="15" font-weight="700" text-anchor="middle">중첩 셸</text>
+<text x="416" y="340" fill="var(--muted, #5a5860)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="12" font-weight="400" text-anchor="middle">값만 상속, 직접 자식 아님</text>
+<rect x="320" y="392" width="192" height="52" rx="6" fill="var(--panel, #ffffff)"/>
+<rect x="320" y="392" width="192" height="52" rx="6" fill="var(--surface, #f6f6f8)" stroke="var(--line, #e4e4ea)" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="416" y="414" fill="var(--ink, #34333a)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="15" font-weight="700" text-anchor="middle">Claude CLI</text>
+<text x="416" y="432" fill="var(--muted, #5a5860)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="12" font-weight="400" text-anchor="middle">값만 상속, 직접 자식 아님</text>
+<rect x="624" y="188" width="152" height="68" rx="6" fill="var(--panel, #ffffff)"/>
+<rect x="624" y="188" width="152" height="68" rx="6" fill="var(--panel, #ffffff)" stroke="var(--ink, #34333a)" stroke-width="1"/>
+<text x="700" y="212" fill="var(--ink, #34333a)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="15" font-weight="700" text-anchor="middle">KanVibe 조회</text>
+<text x="700" y="230" fill="var(--muted, #5a5860)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="12" font-weight="400" text-anchor="middle">세션 이름 kvzt</text>
+<text x="700" y="246" fill="var(--muted, #5a5860)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="12" font-weight="400" text-anchor="middle">pane 번호 5</text>
+</svg><figcaption>KanVibe 조회는 Zellij 서버의 <a class="term" id="use-direct-child-3" href="#term-direct-child">직접 자식</a> 중 세션 이름과 pane 번호가 모두 맞는 프로세스 하나만 root로 고른다. 값을 물려받은 중첩 셸과 Claude CLI는 <a class="term" id="use-direct-child-4" href="#term-direct-child">직접 자식</a>이 아니라서 제외한다.</figcaption></figure>
+<p>고른 방법은 다음과 같다.</p>
+<ul>
+<li>D1: root는 명령줄에 <code>--server</code>가 있는 <code>zellij</code> 프로세스의 <a class="term" id="use-direct-child-5" href="#term-direct-child">직접 자식</a> 가운데, 환경의 <code>ZELLIJ_SESSION_NAME</code>과 <code>ZELLIJ_PANE_ID</code>가 모두 같은 프로세스다. 정확히 하나일 때만 쓴다. 0개나 2개 이상이면 지금처럼 <code>None</code>이다.</li>
+<li>D2: 조회는 <code>/proc</code>만 읽는 POSIX <code>sh</code> 스크립트 하나다. <code>pgrep</code>을 쓰면 40.4ms, <code>/proc</code>만 읽으면 14.2ms였다. <code>list-panes</code> 한 번은 18.9ms다.</li>
+<li>D3: <a class="term" id="use-surface-1" href="#term-surface">surface</a>를 읽을 때 고른 pane 하나만 조회한다. 1초마다 도는 배치 조회에서는 생략한다. JSON에 PID가 있으면 그 값을 먼저 쓴다.</li>
+<li>D4: 범위는 자동으로 열리고 대화가 보이는 데까지다.</li>
+</ul>
+<p>세션 이름으로 서버를 직접 찾지 않는 이유가 있다. Zellij 0.46.0은 소켓 파일 이름이 세션 이름이 아니라 불투명 ID다. 그래서 서버 명령줄에는 세션 이름이 없고, 자식의 <code>ZELLIJ_SESSION_NAME</code>으로 맞춘다.</p>
+<p>아래는 조회 스크립트의 뼈대다. 제안이며 아직 구현하지 않았다.</p>
+<pre data-lang="Bash"><code class="language-bash">session=$1
+pane=$2
+for comm in $(grep -lxF -e zellij /proc/[0-9]*/comm 2&gt;/dev/null); do
+  server=${comm#/proc/}
+  server=${server%/comm}
+  tr '\0' '\n' &lt; "/proc/$server/cmdline" | grep -qxF -e --server || continue
+  # 서버의 직접 자식만 읽는다. 자손은 같은 값을 물려받아도 대상이 아니다.
+  children=$(cat /proc/$server/task/*/children 2&gt;/dev/null)
+  for child in $children; do
+    grep -qzxF -e "ZELLIJ_PANE_ID=$pane" "/proc/$child/environ" || continue
+    grep -qzxF -e "ZELLIJ_SESSION_NAME=$session" "/proc/$child/environ" || continue
+    echo "$child"
+  done
+done</code></pre>
+<p>범위에서 뺀 것은 둘이다.</p>
+<ul>
+<li>전송과 선택 카드. 전송은 입력란 상태가 <code>Ready</code>여야 하는데 Zellij <a class="term" id="use-surface-2" href="#term-surface">surface</a>는 커서와 화면을 읽지 않는다. 채팅은 열리고 대화는 보이지만 보내기는 계속 막힌다. <a href="#open-questions">OQ2</a>에서 정한다.</li>
+<li>macOS. <code>/proc</code>가 없어 스크립트가 아무것도 출력하지 않고 지금 동작을 유지한다. <a href="#open-questions">OQ1</a>에서 정한다.</li>
+</ul>
+<p>검토한 다른 방법은 모두 탈락했다.</p>
+<div class="table-scroll"><table>
+<thead>
+<tr>
+<th>방법</th>
+<th>탈락 이유</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>list-panes -c</code>, <code>list-clients</code>, 세션 메타데이터</td>
+<td>PID가 없다(실측)</td>
+</tr>
+<tr>
+<td>플러그인 API <code>get_pane_pid</code></td>
+<td>wasm 플러그인 배포와 <code>ReadApplicationState</code> 권한 창이 필요하다. Zellij 전역 부작용이라 환경 안전 규칙과 충돌한다</td>
+</tr>
+<tr>
+<td>서버 소켓 직접 통신</td>
+<td>비공개 프로토콜이다</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="f2">F2 Herdr: fixture가 첫 실행 화면을 끄고 서버를 정리한다</h3>
+<p>Herdr 실제 CLI 검증이 막힌 이유는 <a class="term" id="use-fixture-3" href="#term-fixture">fixture</a>에 Herdr 설정 파일이 없어서다. <a class="term" id="use-fixture-4" href="#term-fixture">fixture</a>는 <code>XDG_CONFIG_HOME</code>을 격리하고, 그 아래 <code>herdr/config.toml</code>이 없으면 Herdr가 첫 실행 화면을 띄운다. 격리 세션에서 그 화면은 키 입력을 pane에 넘기지 않았다. 그 화면의 Enter는 통합 설치를 시도했으므로 키 입력으로 넘기는 방식은 쓰지 않는다.</p>
+<p>D5로 <a class="term" id="use-fixture-5" href="#term-fixture">fixture</a>가 아래 내용을 <code>xdg/config/herdr/config.toml</code>에 미리 쓴다. 이 설정으로 띄운 격리 세션에서는 화면이 뜨지 않았고 입력이 pane에 들어갔다.</p>
+<pre data-lang="Text"><code class="language-text">onboarding = false
+
+[update]
+version_check = false
+manifest_check = false
+
+[ui.sound]
+enabled = false</code></pre>
+<p>함께 고칠 <a class="term" id="use-fixture-6" href="#term-fixture">fixture</a>의 빈틈은 둘이다.</p>
+<ul>
+<li><code>multiplexer_bin_dirs()</code>가 tmux와 zellij만 PATH에 넣는다. herdr를 더한다.</li>
+<li>종료 처리가 tmux만 끈다. D6으로 <a class="term" id="use-fixture-7" href="#term-fixture">fixture</a> 환경 안에서 실행 중인 Herdr 세션을 이름으로 <code>session stop</code>, <code>session delete</code>한다. 리서치 중에 13시간 남은 고아 서버를 실제로 봤다.</li>
+</ul>
+<p>KanVibe의 Herdr 경로가 받는 값은 명령 수준에서 확인했다. <code>pane process-info</code>가 <code>shell_pid</code>를 주고, 그 값으로 읽은 프로세스 표에서 가짜 Claude가 판정 조건에 맞았다. 앱을 띄운 끝단 확인은 아직 하지 않았고 이번 계획의 T6과 T12가 맡는다.</p>
+<p>화면 기준 이미지는 바뀌지 않는다. 기준 상태 가운데 Herdr task의 터미널을 여는 상태가 없기 때문이다.</p>
+<h3 id="f3">F3 다시 그리기: 상태가 바뀐 때만 알린다</h3>
+<p>터미널 화면을 보는 동안 1초마다 창 전체를 다시 그리는 이유는 배치 조회가 끝날 때마다 무조건 <a class="term" id="use-notify-3" href="#term-notify">notify</a>하기 때문이다. GPUI는 <a class="term" id="use-notify-4" href="#term-notify">notify</a>된 view의 조상을 모두 dirty로 표시하고, 앱에는 캐시된 view가 없다. 다시 그리기 한 번은 약 31ms다.</p>
+<p>D7로 <code>finish_layout</code>의 시작과 끝에서 네 값을 비교해 달라졌을 때만 <a class="term" id="use-notify-5" href="#term-notify">notify</a>한다.</p>
+<div class="table-scroll"><table>
+<thead>
+<tr>
+<th>비교하는 값</th>
+<th>화면에서 쓰이는 곳</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>layout</code></td>
+<td>채팅 덮개의 위치, 전환 버튼, 연결 화면</td>
+</tr>
+<tr>
+<td><code>is_layout_failed</code></td>
+<td>아래쪽 안내 문구</td>
+</tr>
+<tr>
+<td><code>is_chat_focused</code></td>
+<td>작업 상세가 터미널에 포커스를 줄지 판단</td>
+</tr>
+<tr>
+<td><code>focused_pane</code></td>
+<td>포커스된 pane이 사라졌을 때의 초기화</td>
+</tr>
+</tbody>
+</table></div>
+<p>나머지 변화는 이미 각자 <a class="term" id="use-notify-6" href="#term-notify">notify</a>한다. 포커스 복원과 toggle 완료는 <code>focus_pane</code>이, <a class="term" id="use-auto-open-2" href="#term-auto-open">자동 열기</a> 확인 결과는 <code>probe_pane</code>이, 자식 화면의 가시성은 <code>set_visible</code>이 알린다.</p>
+<div class="table-scroll"><table>
+<thead>
+<tr>
+<th>상황</th>
+<th>지금</th>
+<th>변경 후</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>배치가 그대로인 조회</td>
+<td>조회마다 창 전체를 다시 그린다</td>
+<td>다시 그리지 않는다</td>
+</tr>
+<tr>
+<td>배치 변경, 조회 실패, 포커스 pane 소멸</td>
+<td>다시 그린다</td>
+<td>다시 그린다</td>
+</tr>
+</tbody>
+</table></div>
+<p>이 건은 그림 없이 표로 충분하다. 전후 차이가 한 줄이기 때문이다.</p>
+<h3 id="f4">F4 신뢰 화면: 제품 코드는 그대로 두고 순서를 테스트로 고정한다</h3>
+<p>채팅이 <a class="term" id="use-trust-screen-2" href="#term-trust-screen">신뢰 화면</a> 위로 열린다는 전제는 재현되지 않았다. <a class="term" id="use-auto-open-3" href="#term-auto-open">자동 열기</a>는 대화 연결이 필요하고, 연결 증거인 <a class="term" id="use-session-record-2" href="#term-session-record">세션 기록</a>은 신뢰를 수락한 뒤에 생긴다. 아래 그림은 실제 Claude 2.1.332에서 잰 순서다.</p>
+<figure class="diagram"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 516" role="img" aria-labelledby="dg2-title dg2-desc" style="min-width:800px">
+<title id="dg2-title">신뢰 화면과 세션 기록, 채팅 열기의 순서</title>
+<desc id="dg2-desc">Claude가 신뢰 화면을 보이는 동안에는 세션 기록이 없어 KanVibe가 채팅을 열지 않는다. 사용자가 수락하면 0.11초 뒤 세션 기록이 생기고, KanVibe가 그 신호로 다시 확인한 뒤 채팅을 연다.</desc>
+<defs>
+<marker id="dg2-arrow" viewBox="0 0 10 10" markerWidth="7" markerHeight="7" refX="9" refY="5" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="var(--muted, #5a5860)"/></marker>
+<marker id="dg2-arrow-accent" viewBox="0 0 10 10" markerWidth="7" markerHeight="7" refX="9" refY="5" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="var(--accent, #242428)"/></marker>
+</defs>
+<text x="176" y="36" fill="var(--ink, #34333a)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="14" font-weight="700" text-anchor="middle">Claude CLI (터미널 pane)</text>
+<text x="624" y="36" fill="var(--ink, #34333a)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="14" font-weight="700" text-anchor="middle">KanVibe 채팅 층</text>
+<line x1="472" y1="90" x2="328" y2="90" stroke="var(--muted, #5a5860)" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#dg2-arrow)"/>
+<line x1="176" y1="124" x2="176" y2="176" stroke="var(--muted, #5a5860)" stroke-width="1.5" marker-end="url(#dg2-arrow)"/>
+<line x1="176" y1="244" x2="176" y2="296" stroke="var(--muted, #5a5860)" stroke-width="1.5" marker-end="url(#dg2-arrow)"/>
+<line x1="328" y1="330" x2="472" y2="330" stroke="var(--accent, #242428)" stroke-width="2" marker-end="url(#dg2-arrow-accent)"/>
+<line x1="624" y1="364" x2="624" y2="416" stroke="var(--muted, #5a5860)" stroke-width="1.5" marker-end="url(#dg2-arrow)"/>
+<rect x="344" y="64" width="112" height="16" rx="2" fill="var(--panel, #ffffff)"/>
+<text x="400" y="76" fill="var(--muted, #5a5860)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="12" font-weight="500" text-anchor="middle">CLI와 기록 확인</text>
+<rect x="184" y="142" width="88" height="16" rx="2" fill="var(--panel, #ffffff)"/>
+<text x="228" y="154" fill="var(--muted, #5a5860)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="12" font-weight="500" text-anchor="middle">사용자 답 대기</text>
+<rect x="184" y="262" width="64" height="16" rx="2" fill="var(--panel, #ffffff)"/>
+<text x="216" y="274" fill="var(--muted, #5a5860)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="12" font-weight="500" text-anchor="middle">0.11초 뒤</text>
+<rect x="348" y="304" width="104" height="16" rx="2" fill="var(--panel, #ffffff)"/>
+<text x="400" y="316" fill="var(--ink, #34333a)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="12" font-weight="700" text-anchor="middle">기록 변경 신호</text>
+<rect x="632" y="382" width="80" height="16" rx="2" fill="var(--panel, #ffffff)"/>
+<text x="672" y="394" fill="var(--muted, #5a5860)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="12" font-weight="500" text-anchor="middle">연결 확인됨</text>
+<rect x="24" y="56" width="304" height="68" rx="6" fill="var(--panel, #ffffff)"/>
+<rect x="24" y="56" width="304" height="68" rx="6" fill="var(--surface, #f6f6f8)" stroke="var(--line, #e4e4ea)" stroke-width="1"/>
+<text x="176" y="80" fill="var(--ink, #34333a)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="15" font-weight="700" text-anchor="middle">1. 신뢰 화면 표시</text>
+<text x="176" y="98" fill="var(--muted, #5a5860)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="12" font-weight="400" text-anchor="middle">세션 기록 파일이 아직 없다</text>
+<text x="176" y="114" fill="var(--muted, #5a5860)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="12" font-weight="400" text-anchor="middle">실측: 25초와 36초 동안 없음</text>
+<rect x="472" y="56" width="304" height="68" rx="6" fill="var(--panel, #ffffff)"/>
+<rect x="472" y="56" width="304" height="68" rx="6" fill="var(--surface, #f6f6f8)" stroke="var(--line, #e4e4ea)" stroke-width="1"/>
+<text x="624" y="80" fill="var(--ink, #34333a)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="15" font-weight="700" text-anchor="middle">2. 1초마다 확인</text>
+<text x="624" y="98" fill="var(--muted, #5a5860)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="12" font-weight="400" text-anchor="middle">CLI는 있음, 대화 연결 없음</text>
+<text x="624" y="114" fill="var(--muted, #5a5860)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="12" font-weight="400" text-anchor="middle">채팅을 열지 않고 터미널 유지</text>
+<rect x="24" y="176" width="304" height="68" rx="6" fill="var(--panel, #ffffff)"/>
+<rect x="24" y="176" width="304" height="68" rx="6" fill="var(--surface, #f6f6f8)" stroke="var(--line, #e4e4ea)" stroke-width="1"/>
+<text x="176" y="204" fill="var(--ink, #34333a)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="15" font-weight="700" text-anchor="middle">3. 사용자가 수락</text>
+<text x="176" y="224" fill="var(--muted, #5a5860)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Yes, I trust this folder 선택</text>
+<rect x="24" y="296" width="304" height="68" rx="6" fill="var(--panel, #ffffff)"/>
+<rect x="24" y="296" width="304" height="68" rx="6" fill="var(--surface, #f6f6f8)" stroke="var(--line, #e4e4ea)" stroke-width="1"/>
+<text x="176" y="320" fill="var(--ink, #34333a)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="15" font-weight="700" text-anchor="middle">4. 세션 기록 쓰기</text>
+<text x="176" y="338" fill="var(--muted, #5a5860)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="12" font-weight="400" text-anchor="middle">수락 0.11초 뒤에 생긴다</text>
+<text x="176" y="354" fill="var(--muted, #5a5860)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="12" font-weight="400" text-anchor="middle">SessionStart hook도 이때 실행</text>
+<rect x="472" y="296" width="304" height="68" rx="6" fill="var(--panel, #ffffff)"/>
+<rect x="472" y="296" width="304" height="68" rx="6" fill="var(--surface, #f6f6f8)" stroke="var(--line, #e4e4ea)" stroke-width="1"/>
+<text x="624" y="320" fill="var(--ink, #34333a)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="15" font-weight="700" text-anchor="middle">5. 신호 받고 즉시 재확인</text>
+<text x="624" y="338" fill="var(--muted, #5a5860)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="12" font-weight="400" text-anchor="middle">세션 기록 폴더를 감시한다</text>
+<text x="624" y="354" fill="var(--muted, #5a5860)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="12" font-weight="400" text-anchor="middle">다음 주기를 기다리지 않는다</text>
+<rect x="472" y="416" width="304" height="68" rx="6" fill="var(--panel, #ffffff)"/>
+<rect x="472" y="416" width="304" height="68" rx="6" fill="var(--accent-soft, #eaeaef)" stroke="var(--accent, #242428)" stroke-width="2"/>
+<text x="624" y="444" fill="var(--ink, #34333a)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="15" font-weight="700" text-anchor="middle">6. 채팅 열기</text>
+<text x="624" y="464" fill="var(--ink, #34333a)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="12" font-weight="700" text-anchor="middle">대화 연결을 확인한 뒤에만 연다</text>
+<text x="24" y="504" fill="var(--muted, #5a5860)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="12" font-weight="400" text-anchor="start">현재 동작. Claude Code 2.1.332 실측</text>
+</svg><figcaption><a class="term" id="use-trust-screen-3" href="#term-trust-screen">신뢰 화면</a>이 떠 있는 동안에는 <a class="term" id="use-session-record-3" href="#term-session-record">세션 기록</a>이 없어 KanVibe가 채팅을 열지 않는다. 수락 0.11초 뒤 <a class="term" id="use-session-record-4" href="#term-session-record">세션 기록</a>이 생기면 KanVibe가 그 신호로 다시 확인하고 채팅을 연다.</figcaption></figure>
+<p>실측은 두 조건에서 했다. 일반 폴더에서는 25초, hook을 선언한 git 저장소에서는 36초 동안 <a class="term" id="use-trust-screen-4" href="#term-trust-screen">신뢰 화면</a>을 띄워 뒀고 그동안 <a class="term" id="use-session-record-5" href="#term-session-record">세션 기록</a>이 없었다. SessionStart hook도 수락 뒤에만 실행됐다.</p>
+<p>화면 자체도 선택 카드로 읽히지 않는다. 선택지에 번호가 없고 기본 강조가 <code>No, exit</code>다. 저장소의 <code>read_claude_prompt</code>를 그대로 복사해 이 화면에 돌린 결과는 <code>null</code>이었다.</p>
+<p>그래서 D8로 제품 코드는 바꾸지 않는다. 대신 두 가지로 순서를 고정한다.</p>
+<ul>
+<li>가짜 Claude에 신뢰 대기 모드를 넣는다. <a class="term" id="use-trust-screen-5" href="#term-trust-screen">신뢰 화면</a> 글을 그리고 Enter 전에는 <a class="term" id="use-session-record-6" href="#term-session-record">세션 기록</a>을 쓰지 않는다. 그동안 채팅이 열리지 않는지 끝단에서 본다(T10).</li>
+<li>실제 Claude로 같은 순서를 1회 확인한다(T12). Claude 버전을 올릴 때 다시 돌릴 항목이다.</li>
+</ul>
+<p>범위에서 뺀 것은 둘이다.</p>
+<ul>
+<li>신뢰 질문을 채팅 카드로 보여 주는 안. 번호가 없어 숫자 키로 고를 수 없고, 기본값이 <code>No, exit</code>라 잘못 보내면 CLI가 종료된다.</li>
+<li><a class="term" id="use-trust-screen-6" href="#term-trust-screen">신뢰 화면</a> 문구를 읽어 <a class="term" id="use-auto-open-4" href="#term-auto-open">자동 열기</a>를 막는 방어 코드. 재현되지 않은 상황을 위한 코드다. <a href="#open-questions">OQ3</a>에서 정한다.</li>
+</ul>
+</section>
+<section id="open-questions"><h2>열린 결정: 승인 전에 정할 네 가지</h2>
+<p>네 항목 모두 범위를 바꾸는 선택이라 계획이 임의로 정하지 않았다.</p>
+<div class="table-scroll"><table>
+<thead>
+<tr>
+<th>ID</th>
+<th>질문</th>
+<th>A (권장)</th>
+<th>B</th>
+<th>판단 기준</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th scope="row">OQ1</th>
+<td>macOS에서 Zellij root 조회를 이번에 넣을까</td>
+<td>Linux와 Linux 원격만 한다. macOS는 지금 동작을 유지한다</td>
+<td><code>ps -E</code> 기반 분기를 함께 넣는다. Mac에서 확인할 사람이 필요하다</td>
+<td>Mac에서 <code>ps -E</code>가 pane 셸의 환경을 보여 주는가. 이 머신은 Linux라 실측할 수 없다</td>
+</tr>
+<tr>
+<th scope="row">OQ2</th>
+<td>Zellij에서 전송과 선택 카드까지 열까</td>
+<td>이번 범위 밖으로 둔다</td>
+<td>커서와 화면 캡처를 함께 한다. Todo와 실제 CLI 검증이 늘어난다</td>
+<td>이번 목표가 자동 연결까지인가, 전송까지인가</td>
+</tr>
+<tr>
+<th scope="row">OQ3</th>
+<td><a class="term" id="use-trust-screen-7" href="#term-trust-screen">신뢰 화면</a> 문구를 읽는 방어 코드를 지금 넣을까</td>
+<td>넣지 않는다. 신뢰 전에 <a class="term" id="use-session-record-7" href="#term-session-record">세션 기록</a>을 쓰는 Claude 버전이 확인되면 넣는다</td>
+<td>지금 넣는다. <a class="term" id="use-auto-open-5" href="#term-auto-open">자동 열기</a> 확인이 이미 읽는 화면에서 문구와 커서를 본다</td>
+<td>재현되지 않은 상황에 코드를 둘 것인가</td>
+</tr>
+<tr>
+<th scope="row">OQ4</th>
+<td>실제 CLI 시나리오 드라이버를 저장소에 남길까</td>
+<td><code>parity/tools/perf/pane_chat_real_cli.py</code>로 남긴다. 세 시나리오가 쓴다</td>
+<td>임시 스크립트로 1회만 돌리고 결과만 남긴다</td>
+<td>Claude 버전을 올릴 때 다시 돌릴 것인가</td>
+</tr>
+</tbody>
+</table></div>
+</section>
+<section id="test-case-decision"><h2>테스트 선택: Required와 Skip을 정할 열두 항목</h2>
+<p>각 행은 입력과 기대 결과를 적은 계약이다. 결정 칸은 모두 미정이며 권장값만 적었다.</p>
+<div class="table-scroll"><table>
+<thead>
+<tr>
+<th>ID</th>
+<th>수준</th>
+<th>입력</th>
+<th>기대</th>
+<th>지금 RED인 이유</th>
+<th>권장</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th scope="row">T1</th>
+<td>단위 (F1)</td>
+<td>Zellij 조회 결과가 고른 pane에 PID 한 개를 준다</td>
+<td><code>root_pid = Some(pid)</code></td>
+<td>JSON의 PID만 읽어 항상 <code>None</code>이다</td>
+<td>Required</td>
+</tr>
+<tr>
+<th scope="row">T2</th>
+<td>단위 (F1)</td>
+<td>조회 결과가 0줄, 2줄 이상, 숫자 아님, 명령 실패</td>
+<td><code>root_pid = None</code>, <a class="term" id="use-surface-3" href="#term-surface">surface</a>와 화면 조회는 성공</td>
+<td>T1의 최소 구현은 2줄일 때 값을 돌려준다</td>
+<td>Required</td>
+</tr>
+<tr>
+<th scope="row">T3</th>
+<td>통합 (F1)</td>
+<td>실제 <code>sh</code> 조회 스크립트와 가짜 서버의 자식, 손자</td>
+<td>두 변수가 맞는 <a class="term" id="use-direct-child-6" href="#term-direct-child">직접 자식</a>의 PID 한 줄만 출력</td>
+<td>스크립트가 없다</td>
+<td>Required</td>
+</tr>
+<tr>
+<th scope="row">T4</th>
+<td>회귀 (F1)</td>
+<td>Zellij task의 배치 조회 1회</td>
+<td>실행 명령에 root 조회가 없다</td>
+<td>공통 경로에 넣으면 배치 조회도 조회한다</td>
+<td>Required</td>
+</tr>
+<tr>
+<th scope="row">T5</th>
+<td>끝단 (F1)</td>
+<td><a class="term" id="use-fixture-8" href="#term-fixture">fixture</a> Zellij task에서 가짜 Claude 실행</td>
+<td>30초 안에 <code>pane_chat:ready</code> 표식</td>
+<td>이전 실행이 30초 시간 초과다</td>
+<td>Required</td>
+</tr>
+<tr>
+<th scope="row">T6</th>
+<td>끝단 (F2)</td>
+<td><a class="term" id="use-fixture-9" href="#term-fixture">fixture</a> Herdr task에서 가짜 Claude 실행</td>
+<td>첫 실행 화면이 없고 <code>pane_chat:ready</code> 표식</td>
+<td>화면이 입력을 가로채 CLI가 시작되지 않는다</td>
+<td>Required</td>
+</tr>
+<tr>
+<th scope="row">T7</th>
+<td>회귀 (F2)</td>
+<td>Herdr를 쓴 <a class="term" id="use-fixture-10" href="#term-fixture">fixture</a> 실행의 종료</td>
+<td>그 <a class="term" id="use-fixture-11" href="#term-fixture">fixture</a>의 <code>herdr</code> 프로세스 0개</td>
+<td>종료 처리가 tmux만 끈다</td>
+<td>Required</td>
+</tr>
+<tr>
+<th scope="row">T8</th>
+<td>단위 (F3)</td>
+<td>같은 배치를 돌려주는 조회 3회</td>
+<td>층의 <a class="term" id="use-notify-7" href="#term-notify">notify</a> 0회</td>
+<td>조회마다 <a class="term" id="use-notify-8" href="#term-notify">notify</a>한다</td>
+<td>Required</td>
+</tr>
+<tr>
+<th scope="row">T9</th>
+<td>회귀 (F3)</td>
+<td>활성 pane 변경, 좌표 변경, 조회 실패, 복구, 포커스 pane 소멸</td>
+<td><a class="term" id="use-notify-9" href="#term-notify">notify</a>가 오고 덮개, 안내, 포커스 상태가 맞다</td>
+<td>없음. 변경 전후 모두 GREEN이어야 하는 보호 테스트다</td>
+<td>Required</td>
+</tr>
+<tr>
+<th scope="row">T10</th>
+<td>끝단 (F4)</td>
+<td>가짜 Claude 신뢰 대기 모드</td>
+<td><a class="term" id="use-trust-screen-8" href="#term-trust-screen">신뢰 화면</a> 동안 <code>pane_chat:open</code> 없음, Enter 뒤 <code>pane_chat:ready</code></td>
+<td>가짜에 신뢰 대기 모드가 없다</td>
+<td>Required</td>
+</tr>
+<tr>
+<th scope="row">T11</th>
+<td>단위 (F4)</td>
+<td>2.1.332 <a class="term" id="use-trust-screen-9" href="#term-trust-screen">신뢰 화면</a>의 줄과 커서</td>
+<td><code>read_claude_prompt</code>가 <code>None</code></td>
+<td>없음. 이미 GREEN인 특성 고정이다</td>
+<td>Skip</td>
+</tr>
+<tr>
+<th scope="row">T12</th>
+<td>수동 (공통)</td>
+<td>실제 Claude haiku 3종</td>
+<td>Zellij와 Herdr는 자동으로 열리고, <a class="term" id="use-trust-screen-10" href="#term-trust-screen">신뢰 화면</a> 10초 동안은 열리지 않는다</td>
+<td>해당 없음</td>
+<td>Required</td>
+</tr>
+</tbody>
+</table></div>
+<p>테스트 방법에 열린 질문이 하나 있다.</p>
+<ul>
+<li>OTQ1 (F3): &quot;유휴 상태에서 다시 그리지 않는다&quot;를 끝단에서 무엇으로 판정할지 정해야 한다. 지금 성능 표식에는 일반 프레임마다 나오는 표식이 없다. A는 T8의 <a class="term" id="use-notify-10" href="#term-notify">notify</a> 횟수와 기존 구간 10회 재측정이다. B는 측정 도구에 유휴 프레임 수 표식을 추가하는 것이다. C는 A에 수동 CPU 관찰을 더하는 것이다. 권장은 A다.</li>
+</ul>
+</section>
+<section id="todos"><h2>작업 순서: Todo 열한 개와 의존 관계</h2>
+<p>단계 1은 서로 독립이라 함께 시작할 수 있다. Required로 정한 테스트는 해당 Todo에서 실패를 먼저 확인한 뒤 구현한다.</p>
+<div class="table-scroll"><table>
+<thead>
+<tr>
+<th>Todo</th>
+<th>단계</th>
+<th>선행</th>
+<th>하는 일</th>
+<th>검증</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th scope="row">1</th>
+<td>1</td>
+<td>없음</td>
+<td>Zellij root 조회 스크립트와 결과 해석 함수(<code>surface/zellij_root.rs</code>)</td>
+<td>T2, T3</td>
+</tr>
+<tr>
+<th scope="row">2</th>
+<td>2</td>
+<td>1</td>
+<td><code>read_zellij_surface</code>에 연결, 배치 조회에서는 생략</td>
+<td>T1, T4, parity 장부</td>
+</tr>
+<tr>
+<th scope="row">3</th>
+<td>3</td>
+<td>2</td>
+<td>측정 드라이버에 <code>--task</code> 추가, Zellij 끝단 실행</td>
+<td>T5</td>
+</tr>
+<tr>
+<th scope="row">4</th>
+<td>1</td>
+<td>없음</td>
+<td><a class="term" id="use-fixture-12" href="#term-fixture">fixture</a>의 Herdr 설정, PATH, 종료 정리</td>
+<td>T7</td>
+</tr>
+<tr>
+<th scope="row">5</th>
+<td>3</td>
+<td>3, 4</td>
+<td>Herdr 끝단 실행</td>
+<td>T6, T7</td>
+</tr>
+<tr>
+<th scope="row">6</th>
+<td>1</td>
+<td>없음</td>
+<td><code>finish_layout</code>의 <a class="term" id="use-notify-11" href="#term-notify">notify</a>를 상태 변화에 묶기</td>
+<td>T8, T9</td>
+</tr>
+<tr>
+<th scope="row">7</th>
+<td>2</td>
+<td>6</td>
+<td>기존 구간 10회 재측정</td>
+<td>이전 값의 5% 이내</td>
+</tr>
+<tr>
+<th scope="row">8</th>
+<td>1</td>
+<td>없음</td>
+<td>가짜 Claude 신뢰 대기 모드와 끝단 시나리오</td>
+<td>T10, 선택 시 T11</td>
+</tr>
+<tr>
+<th scope="row">9</th>
+<td>2</td>
+<td>3</td>
+<td>실제 CLI 시나리오 드라이버(OQ4가 A일 때)</td>
+<td>신뢰 순서 시나리오 선실행</td>
+</tr>
+<tr>
+<th scope="row">10</th>
+<td>4</td>
+<td>2, 4, 9</td>
+<td>실제 Claude 3종 실행과 기록</td>
+<td>T12</td>
+</tr>
+<tr>
+<th scope="row">11</th>
+<td>5</td>
+<td>전부</td>
+<td>fmt, clippy, nextest, parity, 릴리스 빌드와 보고서 갱신</td>
+<td>게이트 5종 통과</td>
+</tr>
+</tbody>
+</table></div>
+</section>
+<section id="detail"><h2>적용 판단: 이 문서의 깊이와 변경 요약</h2>
+<p>이 문서는 구현 계약 전체가 아니라 승인을 위한 결정 요약이다. 구현에 쓰는 파일별 작업과 RED, GREEN 기록 형식은 계획 파일의 Todo에 있다.</p>
+<div class="table-scroll"><table>
+<thead>
+<tr>
+<th>PRD 프로파일</th>
+<th>이유</th>
+<th>플랫폼</th>
+<th>문서 상태</th>
+<th>코드 상태</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>compact</td>
+<td>새 기능이 아니라 기존 Pane Chat의 결함 수정, 검증 환경, 성능 후속 4건의 범위와 테스트 선택을 승인받는 결정 요약이다</td>
+<td>없음</td>
+<td>draft</td>
+<td>proposed</td>
+</tr>
+</tbody>
+</table></div>
+<div class="table-scroll"><table>
+<thead>
+<tr>
+<th>목표</th>
+<th>변경 범위</th>
+<th>영향</th>
+<th>확인 방법</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Zellij에서도 채팅이 자동으로 열리게 하고, Herdr 실제 CLI 검증을 가능하게 하고, 유휴 다시 그리기를 없애고, <a class="term" id="use-trust-screen-11" href="#term-trust-screen">신뢰 화면</a> 순서를 테스트로 고정한다</td>
+<td><code>read_zellij_surface</code>의 <a class="term" id="use-root-pid-5" href="#term-root-pid">root PID</a> 조회 추가, <a class="term" id="use-fixture-13" href="#term-fixture">fixture</a>의 Herdr 설정과 정리, <code>finish_layout</code>의 알림 조건, 가짜 Claude 신뢰 대기 모드와 실제 CLI 시나리오</td>
+<td>Zellij task에서 채팅이 자동으로 열린다(전송은 계속 막힌다). 터미널 화면의 1초 주기 다시 그리기가 사라진다. F2와 F4는 테스트와 <a class="term" id="use-fixture-14" href="#term-fixture">fixture</a>만 바뀐다</td>
+<td>cargo 게이트 5종, <a class="term" id="use-fixture-15" href="#term-fixture">fixture</a> 끝단 시나리오 3종(T5, T6, T10), 실제 Claude haiku 3종(T12)</td>
+</tr>
+</tbody>
+</table></div>
+<p>이번 계획이 다루지 않는 것은 다음과 같다.</p>
+<ul>
+<li>Codex 연결 방식 전부(ID 추정, 0.169.0 허용 목록 확대, 실행 옵션 래퍼, <code>-c</code>, <code>--remote</code>, app-server 프록시).</li>
+<li>리서치 중 발견한 고아 Herdr 서버(PID 3610626)와 <code>~/.claude.json</code>의 임시 폴더 신뢰 항목 정리.</li>
+</ul>
+</section>
+<section id="risks"><h2>남는 위험: 이번에 검증하지 못하는 것</h2>
+<p>계획대로 끝내도 아래는 확인되지 않은 채 남는다.</p>
+<ul>
+<li>macOS. Zellij root 조회가 동작하지 않고 지금 동작을 유지한다. OQ1이 B가 되어도 Mac 실측이 필요하다.</li>
+<li>SSH 원격. 이 머신에서 localhost SSH 인증이 되지 않아 원격 실행을 재지 못했다. 근거는 기존 프로세스 표 스크립트와 같은 전달 방식이라는 점뿐이다.</li>
+<li>세션 이름을 바꾼 Zellij 세션. 기존 pane은 옛 이름을 유지하므로 조회가 실패하고 지금처럼 연결되지 않는다. 잘못된 대상에 연결하지는 않는다.</li>
+<li>래퍼로 실행한 Zellij. 프로세스 이름이 <code>zellij</code>가 아니면 서버를 찾지 못한다. 역시 연결되지 않는 쪽으로 실패한다.</li>
+<li>F3의 암묵적 의존. 다른 화면이 1초 다시 그리기에 기대고 있었다면 갱신이 멈춘다. 그런 의존은 찾지 못했고 화면 기준 캡처로 확인한다.</li>
+<li>Claude의 버전 변화. <a class="term" id="use-session-record-8" href="#term-session-record">세션 기록</a>을 쓰는 시점이 신뢰 전으로 당겨지면 F4의 전제가 바뀐다. T12를 버전마다 다시 돌려 잡는다.</li>
+</ul>
+</section>
+<section id="glossary"><h2>용어</h2>
+<dl class="glossary">
+<div class="term-entry" id="term-root-pid" data-aliases="root PID"><dt>root PID</dt><dd><p class="def">root PID는 터미널 pane 하나에서 가장 먼저 뜬 프로세스의 번호다.</p><p><span class="field">존재 이유</span> KanVibe는 이 번호에서 시작해 그 pane에서 도는 CLI를 찾는다. 번호가 없으면 CLI가 없다고 판정한다.</p><p><span class="field">구체 예</span> Zellij pane 5의 root는 서버가 직접 띄운 셸이다. 실측에서 PID는 2380671이었다.</p><p class="term-uses"><span class="field">참조 5곳</span><a href="#use-root-pid-1">요약: Zellij pane의 root PID를 환경 변수로</a><a href="#use-root-pid-2">결정할 것: 범위 4건과 열린 결정, 테스트 선택: 환경을 읽어 root PID를 채운다</a><a href="#use-root-pid-3">F1 Zellij: root PID를 pane 환경 변수로 찾는다: KanVibe가 pane의 root PID를 얻지 못해서다.</a><a href="#use-root-pid-4">F1 Zellij: root PID를 pane 환경 변수로 찾는다: 주지 않는다. root PID가 없으면 CLI</a><a href="#use-root-pid-5">적용 판단: 이 문서의 깊이와 변경 요약: read_zellij_surface의 root PID 조회 추가,</a></p></dd></div>
+<div class="term-entry" id="term-direct-child" data-aliases="직접 자식"><dt>직접 자식</dt><dd><p class="def">직접 자식은 어떤 프로세스가 스스로 띄운 프로세스다.</p><p><span class="field">존재 이유</span> 환경 변수는 자손에게 그대로 내려간다. 직접 자식으로 좁히지 않으면 같은 pane 번호를 가진 프로세스가 여럿 잡힌다.</p><p><span class="field">구체 예</span> pane 5에서 셸, 중첩 셸, 가짜 Claude가 모두 <code>ZELLIJ_PANE_ID=5</code>였다. 서버의 직접 자식은 셸 하나였다.</p><p class="term-uses"><span class="field">참조 6곳</span><a href="#use-direct-child-1">결정할 것: 범위 4건과 열린 결정, 테스트 선택: 서버의 직접 자식 환경을 읽어</a><a href="#use-direct-child-2">F1 Zellij: root PID를 pane 환경 변수로 찾는다: 물려받으므로, 서버의 직접 자식으로 좁혀야 root</a><a href="#use-direct-child-3">F1 Zellij: root PID를 pane 환경 변수로 찾는다: Zellij 서버의 직접 자식 중 세션</a><a href="#use-direct-child-4">F1 Zellij: root PID를 pane 환경 변수로 찾는다: Claude CLI는 직접 자식이 아니라서 제외한다.</a><a href="#use-direct-child-5">F1 Zellij: root PID를 pane 환경 변수로 찾는다: zellij 프로세스의 직접 자식 가운데, 환경의</a><a href="#use-direct-child-6">테스트 선택: Required와 Skip을 정할 열두 항목: 변수가 맞는 직접 자식의 PID 한</a></p></dd></div>
+<div class="term-entry" id="term-surface" data-aliases="surface"><dt>surface</dt><dd><p class="def">surface는 KanVibe가 pane 하나를 읽은 결과다.</p><p><span class="field">존재 이유</span> 어느 pane인지, 그 pane의 root가 무엇인지, 입력란이 어떤 상태인지를 한 값으로 넘기기 위해서다.</p><p><span class="field">구체 예</span> Zellij surface는 지금 pane 식별자만 채우고 root와 커서는 비어 있다.</p><p class="term-uses"><span class="field">참조 3곳</span><a href="#use-surface-1">F1 Zellij: root PID를 pane 환경 변수로 찾는다: D3: surface를 읽을 때</a><a href="#use-surface-2">F1 Zellij: root PID를 pane 환경 변수로 찾는다: 하는데 Zellij surface는 커서와 화면을</a><a href="#use-surface-3">테스트 선택: Required와 Skip을 정할 열두 항목: = None, surface와 화면 조회는</a></p></dd></div>
+<div class="term-entry" id="term-session-record" data-aliases="세션 기록"><dt>세션 기록</dt><dd><p class="def">세션 기록은 Claude Code가 실행 중인 대화의 ID를 적어 두는 파일이다.</p><p><span class="field">존재 이유</span> KanVibe는 이 파일로 pane의 Claude 프로세스와 대화를 잇는다. 파일이 없으면 연결할 증거가 없다.</p><p><span class="field">구체 예</span> 경로는 <code>~/.claude/sessions/2455754.json</code> 같은 모양이고 숫자는 Claude의 PID다.</p><p class="term-uses"><span class="field">참조 8곳</span><a href="#use-session-record-1">요약: 0.11초 뒤에 세션 기록을 쓰므로 제품</a><a href="#use-session-record-2">F4 신뢰 화면: 제품 코드는 그대로 두고 순서를 테스트로 고정한다: 연결 증거인 세션 기록은 신뢰를 수락한</a><a href="#use-session-record-3">F4 신뢰 화면: 제품 코드는 그대로 두고 순서를 테스트로 고정한다: 있는 동안에는 세션 기록이 없어 KanVibe가</a><a href="#use-session-record-4">F4 신뢰 화면: 제품 코드는 그대로 두고 순서를 테스트로 고정한다: 0.11초 뒤 세션 기록이 생기면 KanVibe가</a><a href="#use-session-record-5">F4 신뢰 화면: 제품 코드는 그대로 두고 순서를 테스트로 고정한다: 뒀고 그동안 세션 기록이 없었다. SessionStart</a><a href="#use-session-record-6">F4 신뢰 화면: 제품 코드는 그대로 두고 순서를 테스트로 고정한다: Enter 전에는 세션 기록을 쓰지 않는다.</a><a href="#use-session-record-7">열린 결정: 승인 전에 정할 네 가지: 신뢰 전에 세션 기록을 쓰는 Claude</a><a href="#use-session-record-8">남는 위험: 이번에 검증하지 못하는 것: 버전 변화. 세션 기록을 쓰는 시점이</a></p></dd></div>
+<div class="term-entry" id="term-auto-open" data-aliases="자동 열기"><dt>자동 열기</dt><dd><p class="def">자동 열기는 사용자가 누르지 않아도 pane 위에 채팅을 여는 동작이다.</p><p><span class="field">존재 이유</span> 기본 채팅 모드나 저장된 채팅 모드를 쓰는 사용자가 매번 전환하지 않게 하려는 것이다.</p><p><span class="field">구체 예</span> 그 pane의 CLI와 대화를 연결할 수 있는 것이 확인된 뒤에만 연다. 확인 전에는 터미널을 그대로 보인다.</p><p class="term-uses"><span class="field">참조 5곳</span><a href="#use-auto-open-1">F1 Zellij: root PID를 pane 환경 변수로 찾는다: 없음&quot;으로 끝나고 자동 열기 확인이 통과하지</a><a href="#use-auto-open-2">F3 다시 그리기: 상태가 바뀐 때만 알린다: 완료는 focus_pane이, 자동 열기 확인 결과는</a><a href="#use-auto-open-3">F4 신뢰 화면: 제품 코드는 그대로 두고 순서를 테스트로 고정한다: 재현되지 않았다. 자동 열기는 대화 연결이</a><a href="#use-auto-open-4">F4 신뢰 화면: 제품 코드는 그대로 두고 순서를 테스트로 고정한다: 문구를 읽어 자동 열기를 막는 방어</a><a href="#use-auto-open-5">열린 결정: 승인 전에 정할 네 가지: 지금 넣는다. 자동 열기 확인이 이미</a></p></dd></div>
+<div class="term-entry" id="term-trust-screen" data-aliases="신뢰 화면"><dt>신뢰 화면</dt><dd><p class="def">신뢰 화면은 Claude Code가 처음 쓰는 폴더에서 그 폴더를 믿는지 묻는 화면이다.</p><p><span class="field">존재 이유</span> 폴더의 설정과 hook이 명령을 실행할 수 있어서, 사용자가 먼저 동의해야 한다.</p><p><span class="field">구체 예</span> 2.1.332의 선택지는 <code>No, exit</code>와 <code>Yes, I trust this folder</code>이고 번호가 없다.</p><p class="term-uses"><span class="field">참조 11곳</span><a href="#use-trust-screen-1">요약: 설정으로 끄고(F2), 신뢰 화면 순서를 시나리오로</a><a href="#use-trust-screen-2">F4 신뢰 화면: 제품 코드는 그대로 두고 순서를 테스트로 고정한다: 채팅이 신뢰 화면 위로 열린다는</a><a href="#use-trust-screen-3">F4 신뢰 화면: 제품 코드는 그대로 두고 순서를 테스트로 고정한다: 신뢰 화면이 떠 있는</a><a href="#use-trust-screen-4">F4 신뢰 화면: 제품 코드는 그대로 두고 순서를 테스트로 고정한다: 36초 동안 신뢰 화면을 띄워 뒀고</a><a href="#use-trust-screen-5">F4 신뢰 화면: 제품 코드는 그대로 두고 순서를 테스트로 고정한다: 모드를 넣는다. 신뢰 화면 글을 그리고</a><a href="#use-trust-screen-6">F4 신뢰 화면: 제품 코드는 그대로 두고 순서를 테스트로 고정한다: 신뢰 화면 문구를 읽어</a><a href="#use-trust-screen-7">열린 결정: 승인 전에 정할 네 가지: 신뢰 화면 문구를 읽는</a><a href="#use-trust-screen-8">테스트 선택: Required와 Skip을 정할 열두 항목: 신뢰 화면 동안 pane_chat:open</a><a href="#use-trust-screen-9">테스트 선택: Required와 Skip을 정할 열두 항목: 2.1.332 신뢰 화면의 줄과 커서</a><a href="#use-trust-screen-10">테스트 선택: Required와 Skip을 정할 열두 항목: 자동으로 열리고, 신뢰 화면 10초 동안은</a><a href="#use-trust-screen-11">적용 판단: 이 문서의 깊이와 변경 요약: 그리기를 없애고, 신뢰 화면 순서를 테스트로</a></p></dd></div>
+<div class="term-entry" id="term-notify" data-aliases="notify"><dt>notify</dt><dd><p class="def">notify는 GPUI에서 어떤 view의 상태가 바뀌었다고 알리는 호출이다.</p><p><span class="field">존재 이유</span> GPUI는 이 호출을 받은 view와 그 조상을 다시 그린다.</p><p><span class="field">구체 예</span> 채팅 층이 notify하면 작업 상세와 창의 루트까지 다시 그려진다. 한 번에 약 31ms가 든다.</p><p class="term-uses"><span class="field">참조 12곳</span><a href="#use-notify-1">결정할 것: 범위 4건과 열린 결정, 테스트 선택: 무조건 notify가 창 전체를</a><a href="#use-notify-2">결정할 것: 범위 4건과 열린 결정, 테스트 선택: 바뀐 때만 notify한다</a><a href="#use-notify-3">F3 다시 그리기: 상태가 바뀐 때만 알린다: 때마다 무조건 notify하기 때문이다. GPUI는</a><a href="#use-notify-4">F3 다시 그리기: 상태가 바뀐 때만 알린다: 때문이다. GPUI는 notify된 view의 조상을</a><a href="#use-notify-5">F3 다시 그리기: 상태가 바뀐 때만 알린다: 달라졌을 때만 notify한다.</a><a href="#use-notify-6">F3 다시 그리기: 상태가 바뀐 때만 알린다: 이미 각자 notify한다. 포커스 복원과</a><a href="#use-notify-7">테스트 선택: Required와 Skip을 정할 열두 항목: 층의 notify 0회</a><a href="#use-notify-8">테스트 선택: Required와 Skip을 정할 열두 항목: 조회마다 notify한다</a><a href="#use-notify-9">테스트 선택: Required와 Skip을 정할 열두 항목: notify가 오고 덮개,</a><a href="#use-notify-10">테스트 선택: Required와 Skip을 정할 열두 항목: A는 T8의 notify 횟수와 기존</a><a href="#use-notify-11">작업 순서: Todo 열한 개와 의존 관계: finish_layout의 notify를 상태 변화에</a><a href="#use-notify-12">출처: GPUI notify 동작: gpui-fast</a></p></dd></div>
+<div class="term-entry" id="term-fixture" data-aliases="fixture"><dt>fixture</dt><dd><p class="def">fixture는 테스트용으로 만든 격리된 앱 환경이다.</p><p><span class="field">존재 이유</span> 사용자의 실제 HOME, 설정, 터미널 세션을 건드리지 않고 앱을 띄우기 위해서다.</p><p><span class="field">구체 예</span> fixture는 <code>HOME</code>과 <code>XDG_CONFIG_HOME</code>을 임시 폴더로 바꾼다. 그래서 Herdr가 설정이 없는 첫 실행으로 뜬다.</p><p class="term-uses"><span class="field">참조 15곳</span><a href="#use-fixture-1">요약: 둘은 테스트와 fixture만 바꾼다. Herdr</a><a href="#use-fixture-2">결정할 것: 범위 4건과 열린 결정, 테스트 선택: fixture가 설정을 미리</a><a href="#use-fixture-3">F2 Herdr: fixture가 첫 실행 화면을 끄고 서버를 정리한다: 막힌 이유는 fixture에 Herdr 설정</a><a href="#use-fixture-4">F2 Herdr: fixture가 첫 실행 화면을 끄고 서버를 정리한다: 파일이 없어서다. fixture는 XDG_CONFIG_HOME을 격리하고,</a><a href="#use-fixture-5">F2 Herdr: fixture가 첫 실행 화면을 끄고 서버를 정리한다: D5로 fixture가 아래 내용을</a><a href="#use-fixture-6">F2 Herdr: fixture가 첫 실행 화면을 끄고 서버를 정리한다: 함께 고칠 fixture의 빈틈은 둘이다.</a><a href="#use-fixture-7">F2 Herdr: fixture가 첫 실행 화면을 끄고 서버를 정리한다: 끈다. D6으로 fixture 환경 안에서</a><a href="#use-fixture-8">테스트 선택: Required와 Skip을 정할 열두 항목: fixture Zellij task에서</a><a href="#use-fixture-9">테스트 선택: Required와 Skip을 정할 열두 항목: fixture Herdr task에서</a><a href="#use-fixture-10">테스트 선택: Required와 Skip을 정할 열두 항목: Herdr를 쓴 fixture 실행의 종료</a><a href="#use-fixture-11">테스트 선택: Required와 Skip을 정할 열두 항목: 그 fixture의 herdr 프로세스</a><a href="#use-fixture-12">작업 순서: Todo 열한 개와 의존 관계: fixture의 Herdr 설정,</a><a href="#use-fixture-13">적용 판단: 이 문서의 깊이와 변경 요약: 조회 추가, fixture의 Herdr 설정과</a><a href="#use-fixture-14">적용 판단: 이 문서의 깊이와 변경 요약: F4는 테스트와 fixture만 바뀐다</a><a href="#use-fixture-15">적용 판단: 이 문서의 깊이와 변경 요약: 게이트 5종, fixture 끝단 시나리오</a></p></dd></div>
+</dl>
+</section>
+<section id="sources"><h2>출처</h2>
+<p>코드와 실측 근거는 2026-11-26 리서치에서 얻었다.</p>
+<ul>
+<li>Zellij가 pane 프로세스에 <code>ZELLIJ_PANE_ID</code>를 넣는 코드: <a href="https://github.com/zellij-org/zellij/blob/aedee21cb0d58d716496e7f6c66ba0b6f08045d8/zellij-server/src/os_input_output_unix.rs#L247-L249">os_input_output_unix.rs#L247-L249</a></li>
+<li><code>list-panes</code> 항목에 PID가 없는 구조체: <a href="https://github.com/zellij-org/zellij/blob/aedee21cb0d58d716496e7f6c66ba0b6f08045d8/zellij-utils/src/data.rs#L3598-L3608">data.rs#L3598-L3608</a></li>
+<li>소켓 이름이 세션 ID라는 설명: <a href="https://github.com/zellij-org/zellij/blob/aedee21cb0d58d716496e7f6c66ba0b6f08045d8/zellij-server/src/lib.rs#L3772-L3773">lib.rs#L3772-L3773</a></li>
+<li>플러그인 API의 PID 조회와 필요한 권한: <a href="https://github.com/zellij-org/zellij/blob/aedee21cb0d58d716496e7f6c66ba0b6f08045d8/zellij-tile/src/shim.rs#L2467-L2468">shim.rs#L2467-L2468</a>, <a href="https://github.com/zellij-org/zellij/blob/aedee21cb0d58d716496e7f6c66ba0b6f08045d8/zellij-server/src/plugins/zellij_exports.rs#L6883">zellij_exports.rs#L6883</a></li>
+<li>Herdr 첫 실행 설정: <code>herdr --default-config</code>의 <code>onboarding</code> 주석(0.9.5)</li>
+<li>KanVibe 코드: <code>crates/kanvibe-terminal/src/pane_chat/surface.rs</code>, <code>service/target.rs</code>, <code>service/reading.rs</code>, <code>crates/kanvibe-app/src/views/task_detail/pane_chat/layer.rs</code>, <code>crates/kanvibe-ai/src/pane_chat/claude_prompt.rs</code></li>
+<li>GPUI <a class="term" id="use-notify-12" href="#term-notify">notify</a> 동작: gpui-fast 0.1.19의 <code>app.rs</code>와 <code>window.rs</code></li>
+<li>이전 측정과 실제 CLI 결과: <code>qa-results/roky-harness/pane-chat-latency/report.md</code></li>
+<li>계획 정본: <code>.claude/plan/pane-chat/2611/26-pane-chat-followups.plan.md</code></li>
+</ul>
+</section>
+</main>
+
+<script>
+function preservePrdReadingPosition(changeLayout) {
+  const link = document.querySelector('.toc a[aria-current="location"]');
+  const target = link && document.getElementById(link.hash.slice(1));
+  const heading = target && (target.matches("h2,h3") ? target : target.querySelector("h2,h3"));
+  const before = heading && scrollY > 0 ? heading.getBoundingClientRect().top : null;
+  changeLayout();
+  if (before !== null) window.scrollBy({top:heading.getBoundingClientRect().top - before,behavior:"instant"});
+}
+
+// 제품 PRD 읽기 화면의 목차 소유자는 이 함수 한 벌이다.
+function setupPrdNavigation(toc) {
+  "use strict";
+
+  const parents = [];
+  const entries = Array.from(toc.querySelectorAll('a[href^="#"]')).map((link) => {
+    const target = document.getElementById(link.hash.slice(1));
+    const heading = target.matches("h2, h3, h4, h5, h6") ? target : target.querySelector("h2, h3, h4, h5, h6") || target;
+    const level = Number(heading.tagName.slice(1));
+    while (parents.length && parents[parents.length - 1].level >= level) parents.pop();
+    const parent = parents[parents.length - 1] || null;
+    const entry = { link, heading, level, parent, depth: parent ? parent.depth + 1 : 0, hasChildren: false };
+    if (parent) parent.hasChildren = true;
+    link.style.setProperty("--toc-depth", entry.depth);
+    parents.push(entry);
+    return entry;
+  });
+  if (!entries.length) return;
+  const mobile = matchMedia("(max-width: 1099px)");
+  const home = document.createComment("목차의 데스크톱 위치");
+  toc.before(home);
+  toc.id = "reading-toc-list";
+  toc.setAttribute("aria-label", "Table of Content");
+  const sidebar = document.createElement("aside");
+  sidebar.id = "reading-toc-sidebar";
+  sidebar.className = "desktop-toc";
+  sidebar.setAttribute("aria-label", "문서 Table of Content");
+  sidebar.innerHTML = '<div class="desktop-toc-header"><span class="desktop-toc-title">Table of Content</span><button type="button" class="toc-collapse" aria-controls="reading-toc-list" aria-expanded="true" aria-label="Table of Content 접기" title="Table of Content 접기"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button></div>';
+  const collapseButton = sidebar.querySelector(".toc-collapse");
+  const resizeHandle = document.createElement("div");
+  resizeHandle.className = "toc-resize-handle";
+  resizeHandle.tabIndex = 0;
+  resizeHandle.setAttribute("role", "separator");
+  resizeHandle.setAttribute("aria-orientation", "vertical");
+  resizeHandle.setAttribute("aria-label", "Table of Content 너비 조절");
+  resizeHandle.setAttribute("aria-controls", "reading-toc-list");
+  resizeHandle.setAttribute("aria-valuemin", "240");
+  resizeHandle.setAttribute("aria-valuemax", "420");
+  resizeHandle.title = "드래그하거나 좌우 방향키로 너비 조절. 두 번 누르면 기본 너비";
+  sidebar.append(resizeHandle);
+  home.after(sidebar);
+  const toggle = document.createElement("button");
+  toggle.type = "button";
+  toggle.className = "toc-toggle";
+  toggle.setAttribute("aria-haspopup", "dialog");
+  toggle.setAttribute("aria-controls", "reading-toc-dialog");
+  toggle.setAttribute("aria-expanded", "false");
+  toggle.title = "Table of Content 열기";
+  toggle.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>';
+  const dialog = document.createElement("dialog");
+  dialog.id = "reading-toc-dialog";
+  dialog.className = "toc-dialog";
+  dialog.setAttribute("aria-labelledby", "reading-toc-title");
+  dialog.innerHTML = '<div class="toc-dialog-header"><h2 id="reading-toc-title">Table of Content</h2><button type="button" class="toc-close" aria-label="Table of Content 닫기">닫기</button></div>';
+  document.body.append(toggle, dialog);
+
+  let current = null;
+  let pinned = null;
+  let settleTimer = null;
+  let settling = false;
+  function pinHash() {
+    pinned = entries.find((entry) => entry.link.hash === location.hash) || null;
+    settling = true;
+    clearTimeout(settleTimer);
+    settleTimer = setTimeout(() => { settling = false; }, 150);
+    scheduleUpdate();
+  }
+  function releasePin(event) {
+    if (event.target.closest && event.target.closest(".desktop-toc, .toc-dialog, .toc-toggle")) return;
+    pinned = null;
+    settling = false;
+    clearTimeout(settleTimer);
+  }
+  ["wheel", "touchstart", "keydown", "mousedown"].forEach((type) => window.addEventListener(type, releasePin, { passive:true }));
+  let nextFocus = null;
+  let scheduled = false;
+  let sidebarCollapsed = false;
+  let dragging = null;
+
+  const keepReadingPosition = preservePrdReadingPosition;
+
+  function syncWidthValue() {
+    if (mobile.matches || sidebarCollapsed) return;
+    const width = Math.round(sidebar.getBoundingClientRect().width);
+    resizeHandle.setAttribute("aria-valuenow", String(width));
+    resizeHandle.setAttribute("aria-valuetext", width + "픽셀");
+  }
+
+  function setSidebarWidth(width) {
+    keepReadingPosition(function () {
+      document.documentElement.style.setProperty("--toc-width", Math.round(Math.max(240, Math.min(420, width))) + "px");
+    });
+    syncWidthValue();
+    scheduleUpdate();
+  }
+
+  function finishResize() {
+    const pointerId = dragging && dragging.pointerId;
+    dragging = null;
+    document.documentElement.classList.remove("toc-resizing");
+    if (pointerId != null && resizeHandle.hasPointerCapture(pointerId)) resizeHandle.releasePointerCapture(pointerId);
+  }
+
+  function revealCurrent() {
+    if (!current || (mobile.matches ? !dialog.open : sidebarCollapsed)) return;
+    const item = current.link.getBoundingClientRect();
+    const box = toc.getBoundingClientRect();
+    if (item.top < box.top + 8) toc.scrollTop += item.top - box.top - 8;
+    else if (item.bottom > box.bottom - 8) toc.scrollTop += item.bottom - box.bottom + 8;
+  }
+
+  function updateBranches() {
+    const expanded = new Set();
+    for (let entry = current; entry; entry = entry.parent) expanded.add(entry);
+    for (const entry of entries) {
+      entry.link.hidden = entry.parent !== null && !expanded.has(entry.parent);
+      if (entry.hasChildren) entry.link.setAttribute("aria-expanded", String(expanded.has(entry)));
+    }
+    const hiddenFocus = entries.find((entry) => entry.link === document.activeElement && entry.link.hidden);
+    if (hiddenFocus) current.link.focus({ preventScroll: true });
+  }
+
+  function updateCurrent() {
+    scheduled = false;
+    syncWidthValue();
+    const maxScroll = Math.max(0, document.documentElement.scrollHeight - innerHeight);
+    const tailLength = Math.min(innerHeight, maxScroll);
+    const baseLine = innerHeight * 0.25;
+    const tailProgress = tailLength > 0 ? Math.max(0, Math.min(1, (scrollY - (maxScroll - tailLength)) / tailLength)) : 0;
+    const readingLine = baseLine + tailProgress * (innerHeight - baseLine);
+    let entry = entries[0];
+    for (const candidate of entries) {
+      if (candidate.heading.getBoundingClientRect().top <= readingLine) entry = candidate;
+      else break;
+    }
+    if (scrollY + innerHeight >= document.documentElement.scrollHeight - 4) entry = entries[entries.length - 1];
+    if (pinned) entry = pinned;
+    if (entry === current) return;
+    if (current) current.link.removeAttribute("aria-current");
+    current = entry;
+    current.link.setAttribute("aria-current", "location");
+    toggle.setAttribute("aria-label", "Table of Content 열기, 현재 위치: " + current.link.textContent);
+    updateBranches();
+    revealCurrent();
+  }
+
+  function scheduleUpdate() {
+    if (scheduled) return;
+    scheduled = true;
+    requestAnimationFrame(updateCurrent);
+  }
+
+  function placeToc() {
+    finishResize();
+    if (dialog.open) dialog.close();
+    if (mobile.matches) dialog.append(toc);
+    else sidebar.insertBefore(toc, resizeHandle);
+    revealCurrent();
+    scheduleUpdate();
+  }
+
+  collapseButton.addEventListener("click", function () {
+    finishResize();
+    sidebarCollapsed = !sidebarCollapsed;
+    keepReadingPosition(function () {
+      document.documentElement.dataset.tocCollapsed = String(sidebarCollapsed);
+    });
+    collapseButton.setAttribute("aria-expanded", String(!sidebarCollapsed));
+    const action = sidebarCollapsed ? "Table of Content 펼치기" : "Table of Content 접기";
+    collapseButton.setAttribute("aria-label", action);
+    collapseButton.title = action;
+    revealCurrent();
+    scheduleUpdate();
+  });
+  resizeHandle.addEventListener("pointerdown", function (event) {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    resizeHandle.focus({ preventScroll: true });
+    dragging = { pointerId: event.pointerId, x: event.clientX, width: sidebar.getBoundingClientRect().width };
+    resizeHandle.setPointerCapture(event.pointerId);
+    document.documentElement.classList.add("toc-resizing");
+  });
+  resizeHandle.addEventListener("pointermove", function (event) {
+    if (dragging && event.pointerId === dragging.pointerId) setSidebarWidth(dragging.width + event.clientX - dragging.x);
+  });
+  resizeHandle.addEventListener("pointerup", finishResize);
+  resizeHandle.addEventListener("pointercancel", finishResize);
+  resizeHandle.addEventListener("lostpointercapture", finishResize);
+  resizeHandle.addEventListener("keydown", function (event) {
+    const width = sidebar.getBoundingClientRect().width;
+    const values = { ArrowLeft: width - 16, ArrowRight: width + 16, Home: 240, End: 420 };
+    if (!(event.key in values)) return;
+    event.preventDefault();
+    setSidebarWidth(values[event.key]);
+  });
+  resizeHandle.addEventListener("dblclick", function () {
+    keepReadingPosition(function () {
+      document.documentElement.style.removeProperty("--toc-width");
+    });
+    syncWidthValue();
+    scheduleUpdate();
+  });
+
+  toggle.addEventListener("click", function () {
+    dialog.showModal();
+    document.documentElement.classList.add("toc-modal-open");
+    toggle.setAttribute("aria-expanded", "true");
+    revealCurrent();
+    (current ? current.link : dialog.querySelector("button")).focus({ preventScroll: true });
+  });
+  dialog.querySelector(".toc-close").addEventListener("click", function () { dialog.close(); });
+  dialog.addEventListener("keydown", function (event) {
+    if (event.key !== "Tab") return;
+    const controls = Array.from(dialog.querySelectorAll("button, a[href]")).filter((control) => control.getClientRects().length > 0);
+    const first = controls[0];
+    const last = controls[controls.length - 1];
+    if (document.activeElement === (event.shiftKey ? first : last)) {
+      event.preventDefault();
+      (event.shiftKey ? last : first).focus();
+    }
+  });
+  dialog.addEventListener("click", function (event) {
+    if (event.target !== dialog) return;
+    const box = dialog.getBoundingClientRect();
+    if (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom) dialog.close();
+  });
+  dialog.addEventListener("close", function () {
+    document.documentElement.classList.remove("toc-modal-open");
+    toggle.setAttribute("aria-expanded", "false");
+    const target = nextFocus || (mobile.matches ? toggle : sidebarCollapsed ? collapseButton : current.link);
+    nextFocus = null;
+    target.focus({ preventScroll: true });
+  });
+  toc.addEventListener("click", function (event) {
+    const link = event.target.closest('a[href^="#"]');
+    if (!link) return;
+    pinned = entries.find((entry) => entry.link === link) || null;
+    settling = true;
+    clearTimeout(settleTimer);
+    settleTimer = setTimeout(() => { settling = false; }, 150);
+    scheduleUpdate();
+    if (!dialog.open) return;
+    nextFocus = entries.find((entry) => entry.link === link).heading;
+    nextFocus.tabIndex = -1;
+    dialog.close();
+  });
+  mobile.addEventListener("change", placeToc);
+  window.addEventListener("scroll", () => {
+    if (settling) { clearTimeout(settleTimer); settleTimer = setTimeout(() => { settling = false; }, 150); }
+    else pinned = null;
+    scheduleUpdate();
+  }, { passive: true });
+  window.addEventListener("resize", scheduleUpdate);
+  window.addEventListener("hashchange", pinHash);
+  window.addEventListener("blur", finishResize);
+  new ResizeObserver(scheduleUpdate).observe(document.querySelector("body > main"));
+  placeToc();
+  pinHash();
+  updateCurrent();
+}
+
+(function () {
+  "use strict";
+  document.querySelectorAll("main .table-scroll").forEach(function (container, index) {
+    const hint = document.createElement("p");
+    let suffix = index + 1;
+    do { hint.id = "table-scroll-help-" + suffix++; } while (document.getElementById(hint.id));
+    hint.className = "table-scroll-hint";
+    hint.textContent = "표를 좌우로 움직여 나머지 열을 확인하세요.";
+    hint.hidden = true;
+    container.before(hint);
+    let previous;
+    function update() {
+      const overflowing = container.scrollWidth > container.clientWidth + 1;
+      if (overflowing === previous) return;
+      previous = overflowing;
+      const previousBottom = container.getBoundingClientRect().bottom;
+      hint.hidden = !overflowing;
+      container.classList.toggle("is-overflowing", overflowing);
+      if (overflowing) {
+        container.tabIndex = 0;
+        container.setAttribute("role", "group");
+        container.setAttribute("aria-label", "가로 스크롤 표");
+        container.setAttribute("aria-describedby", hint.id);
+      } else {
+        ["tabindex", "role", "aria-label", "aria-describedby"].forEach(function (name) { container.removeAttribute(name); });
+      }
+      if (previousBottom <= 0) window.scrollBy({ top: container.getBoundingClientRect().bottom - previousBottom, behavior: "instant" });
+    }
+    new MutationObserver(update).observe(container, {childList:true,subtree:true,characterData:true});
+    new ResizeObserver(update).observe(container);
+    update();
+  });
+}());
+
+// 시나리오 원문에서 선택한 단계와 입력값을 모든 패널에 함께 적용한다.
+(function () {
+  "use strict";
+  document.querySelectorAll("[data-playbook]").forEach(function (player) {
+    const model = JSON.parse(player.querySelector(".playbook-source").textContent);
+    const inputs = { ...model.inputs };
+    let scenarioIndex = 0;
+    let stepIndex = 0;
+    let timer = null;
+    const inputArea = player.querySelector(".playbook-inputs");
+    const tablist = player.querySelector('[role="tablist"]');
+    const panel = player.querySelector('[role="tabpanel"]');
+    const tabs = model.scenarios.map(function (scenario, index) {
+      const tab = document.createElement("button");
+      tab.type = "button";
+      tab.id = model.anchor + "-tab-" + scenario.id;
+      tab.setAttribute("role", "tab");
+      tab.setAttribute("aria-controls", panel.id);
+      tab.textContent = scenario.title;
+      tab.addEventListener("click", () => selectScenario(index));
+      tab.addEventListener("keydown", function (event) {
+        if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+        event.preventDefault();
+        const next = event.key === "Home" ? 0 : event.key === "End" ? model.scenarios.length - 1
+          : (index + (event.key === "ArrowRight" ? 1 : -1) + model.scenarios.length) % model.scenarios.length;
+        selectScenario(next);
+        tabs[next].focus();
+      });
+      tablist.append(tab);
+      return tab;
+    });
+    Object.entries(inputs).forEach(function ([name, value]) {
+      const label = document.createElement("label");
+      const labels = model["input-labels"] || {};
+      label.textContent = (Object.prototype.hasOwnProperty.call(labels, name) ? labels[name] : name) + " ";
+      const input = document.createElement("input");
+      input.value = value;
+      input.maxLength = 500;
+      input.addEventListener("input", function () { inputs[name] = input.value; render(); });
+      label.append(input);
+      inputArea.append(label);
+    });
+    const play = player.querySelector('[data-action="play"]');
+    const stepRange = player.querySelector("[data-step-range]");
+    const speed = player.querySelector("[data-speed]");
+    const detail = player.querySelector("[data-playbook-detail]");
+    const sequence = player.querySelector(".playbook-sequence");
+
+    function substitute(value) {
+      if (typeof value === "string") return value.replace(/\{\{([^{}]+)\}\}/g, (_, key) => inputs[key]);
+      if (Array.isArray(value)) return value.map(substitute);
+      if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, substitute(item)]));
+      return value;
+    }
+    function renderStorage(value) {
+      const isRecord = (row) => row !== null && typeof row === "object" && !Array.isArray(row);
+      const rows = Array.isArray(value) && value.every(isRecord) ? value : isRecord(value) ? [value] : [{value}];
+      const columns = [...new Set(rows.flatMap(row => Object.keys(row)))];
+      const table = document.createElement("table");
+      table.setAttribute("aria-label", "현재 단계의 저장 상태 예시");
+      if (rows.length === 0) table.createCaption().textContent = "저장된 레코드 없음";
+      const head = table.createTHead().insertRow();
+      columns.forEach(function (key) {
+        const cell = document.createElement("th");
+        cell.scope = "col";
+        cell.textContent = key;
+        head.append(cell);
+      });
+      const body = table.createTBody();
+      rows.forEach(function (row) {
+        const tr = body.insertRow();
+        columns.forEach(function (key) {
+          const cell = tr.insertCell();
+          const item = Object.prototype.hasOwnProperty.call(row, key) ? row[key] : undefined;
+          cell.textContent = item === undefined ? "—" : typeof item === "string" ? item : JSON.stringify(item);
+        });
+      });
+      player.querySelector('[data-panel="storage"]').replaceChildren(table);
+    }
+    function stop() {
+      clearInterval(timer);
+      timer = null;
+      play.textContent = "재생";
+      play.setAttribute("aria-pressed", "false");
+    }
+    function render() {
+      preservePrdReadingPosition(function () {
+      const scenario = model.scenarios[scenarioIndex];
+      const selected = scenario.steps[stepIndex];
+      tabs.forEach(function (tab, index) {
+        tab.setAttribute("aria-selected", String(index === scenarioIndex));
+        tab.tabIndex = index === scenarioIndex ? 0 : -1;
+      });
+      panel.setAttribute("aria-labelledby", tabs[scenarioIndex].id);
+      sequence.replaceChildren();
+      scenario.steps.forEach(function (step, index) {
+        const row = document.createElement("li");
+        row.id = "playbook-" + scenario.id + "-" + (index + 1);
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = (index + 1) + ". " + step.title;
+        if (index === stepIndex) button.setAttribute("aria-current", "step");
+        button.addEventListener("click", () => selectStep(index));
+        row.append(button);
+        sequence.append(row);
+      });
+      stepRange.max = String(scenario.steps.length - 1);
+      stepRange.value = String(stepIndex);
+      stepRange.disabled = scenario.steps.length === 1;
+      stepRange.setAttribute("aria-valuetext", (stepIndex + 1) + " / " + scenario.steps.length + ": " + selected.title);
+      const screen = substitute(selected.screen);
+      player.querySelector('[data-panel="screen"]').textContent = typeof screen === "string" ? screen : JSON.stringify(screen, null, 2);
+      player.querySelector('[data-panel="payload"]').textContent = JSON.stringify({request:substitute(selected.request),response:substitute(selected.response)}, null, 2);
+      renderStorage(substitute(selected.storage));
+      player.querySelector("[data-screen-title]").textContent = selected.title;
+      player.querySelector("output").textContent = (stepIndex + 1) + " / " + scenario.steps.length;
+      player.querySelector('[data-action="first"]').disabled = stepIndex === 0;
+      player.querySelector('[data-action="previous"]').disabled = stepIndex === 0;
+      player.querySelector('[data-action="next"]').disabled = stepIndex === scenario.steps.length - 1;
+      detail.hidden = !selected.detail;
+      if (selected.detail) detail.href = "#" + selected.detail;
+      else detail.removeAttribute("href");
+      });
+    }
+    function selectStep(index) {
+      stop();
+      stepIndex = Math.max(0, Math.min(model.scenarios[scenarioIndex].steps.length - 1, index));
+      render();
+    }
+    function selectScenario(index) {
+      stop();
+      scenarioIndex = index;
+      stepIndex = 0;
+      render();
+    }
+    stepRange.addEventListener("input", () => selectStep(Number(stepRange.value)));
+    player.querySelector('[data-action="first"]').addEventListener("click", () => selectStep(0));
+    player.querySelector('[data-action="previous"]').addEventListener("click", () => selectStep(stepIndex - 1));
+    player.querySelector('[data-action="next"]').addEventListener("click", () => selectStep(stepIndex + 1));
+    play.addEventListener("click", function () {
+      if (timer) { stop(); return; }
+      const steps = model.scenarios[scenarioIndex].steps;
+      if (stepIndex === steps.length - 1) { stepIndex = 0; render(); }
+      if (steps.length === 1) return;
+      play.textContent = "일시정지";
+      play.setAttribute("aria-pressed", "true");
+      timer = setInterval(function () {
+        stepIndex += 1;
+        render();
+        if (stepIndex === steps.length - 1) stop();
+      }, Number(speed.value));
+    });
+    speed.addEventListener("change", stop);
+    detail.addEventListener("click", stop);
+    function route() {
+      const hash = decodeURIComponent(location.hash.slice(1));
+      if (hash !== model.anchor) stop();
+      for (const [index, scenario] of model.scenarios.entries()) {
+        const step = scenario.steps.findIndex((item, number) => hash === "playbook-" + scenario.id + "-" + (number + 1) || (item.aliases || []).includes(hash));
+        if (step < 0) continue;
+        selectScenario(index);
+        selectStep(step);
+        document.getElementById(model.anchor).scrollIntoView({ block:"start", behavior:"instant" });
+        break;
+      }
+    }
+    // 모든 본문 이동에서 재생을 멈추되 같은 재생기 복귀에는 상태를 초기화하지 않는다.
+    document.addEventListener("click", function (event) {
+      const link = event.target.closest('a[href^="#"]');
+      if (link && link.hash !== "#" + model.anchor) stop();
+    });
+    window.addEventListener("hashchange", route);
+    window.addEventListener("pagehide", stop);
+    render();
+    route();
+  });
+}());
+
+// API 표와 직접 링크는 같은 페이지의 상세를 열고, 접힌 부록 정본 링크도 보이게 한다.
+(function setupApiContractLinks() {
+  function revealTarget(hash, focus) {
+    if (!hash) return;
+    let id;
+    try { id = decodeURIComponent(hash.slice(1)); } catch (_) { return; }
+    const target = document.getElementById(id);
+    if (!target) return;
+    let parent = target.closest("details");
+    while (parent) { parent.open = true; parent = parent.parentElement.closest("details"); }
+    if (target.matches("details.api-operation")) target.open = true;
+    if (focus && target.matches("details.api-operation")) target.querySelector("summary").focus();
+  }
+  document.addEventListener("click", function (event) {
+    const link = event.target.closest('a[href^="#"]');
+    const row = event.target.closest("tr[data-api-target]");
+    if (link) revealTarget(link.hash, true);
+    else if (row && !event.target.closest("button,input,summary")) {
+      const summaryLink = row.querySelector('a[href="#' + row.dataset.apiTarget + '"]');
+      summaryLink.click();
+    }
+  });
+  window.addEventListener("hashchange", function () { revealTarget(location.hash, false); });
+  revealTarget(location.hash, false);
+})();
+
+</script>
+<script>
+  // 테마 토글은 시스템 설정 위에 사용자의 선택을 덮어쓴다.
+  (function () {
+    var root = document.documentElement;
+    var toggle = document.getElementById("theme-toggle");
+    toggle.addEventListener("click", function () {
+      var isDark = root.dataset.theme
+        ? root.dataset.theme === "dark"
+        : window.matchMedia("(prefers-color-scheme: dark)").matches;
+      root.dataset.theme = isDark ? "light" : "dark";
+    });
+  })();
+
+  // PDF 버튼은 브라우저의 인쇄 창을 연다. 인쇄 모양은 아래 @media print 가 정한다.
+  document.getElementById("print-button").addEventListener("click", function () { window.print(); });
+
+  // 목차에서 지금 읽고 있는 절의 항목에 aria-current 를 단다. 스크립트가 없으면 표시만 빠지고 목차 링크는 그대로 동작한다.
+  (function () {
+    var toc = document.querySelector(".toc");
+    if (!toc) return;
+    setupPrdNavigation(toc);
+  })();
+
+  // 용어 링크에 마우스를 올리거나 포커스하면 용어 설명 항목의 정의 문장을 말풍선으로 보여 준다.
+  (function () {
+    var tip = document.createElement("div");
+    tip.className = "term-tip";
+    tip.hidden = true;
+    document.body.appendChild(tip);
+
+    function showTip(event) {
+      var entry = document.querySelector(event.currentTarget.getAttribute("href"));
+      var definition = entry && entry.querySelector(".def");
+      if (!definition) return;
+      tip.textContent = definition.textContent;
+      tip.hidden = false;
+      var rect = event.currentTarget.getBoundingClientRect();
+      var left = Math.min(rect.left + window.scrollX, window.scrollX + document.documentElement.clientWidth - 356);
+      tip.style.left = Math.max(8, left) + "px";
+      tip.style.top = rect.bottom + window.scrollY + 6 + "px";
+    }
+    function hideTip() { tip.hidden = true; }
+
+    document.querySelectorAll("a.term").forEach(function (link) {
+      link.addEventListener("mouseenter", showTip);
+      link.addEventListener("focus", showTip);
+      link.addEventListener("mouseleave", hideTip);
+      link.addEventListener("blur", hideTip);
+    });
+  })();
+
+  // 흐름 블록마다 단계 강조를 따로 관리한다. 같은 data-step 값을 가진 그림 요소와 목록 항목이 함께 켜진다.
+  (function () {
+    document.querySelectorAll("[data-flow]").forEach(function (flow) {
+      var stepElements = flow.querySelectorAll("[data-step]");
+      var stepNumbers = Array.from(new Set(Array.from(stepElements, function (el) {
+        return Number(el.dataset.step);
+      }))).sort(function (a, b) { return a - b; });
+      var status = flow.querySelector(".step-status");
+      var activeIndex = -1;
+
+      function render() {
+        var activeStep = stepNumbers[activeIndex];
+        flow.classList.toggle("is-stepping", activeIndex >= 0);
+        stepElements.forEach(function (el) {
+          el.classList.toggle("is-active", Number(el.dataset.step) === activeStep);
+        });
+        if (status) {
+          status.textContent = activeIndex >= 0
+            ? activeStep + "단계 / 전체 " + stepNumbers.length + "단계"
+            : "전체 " + stepNumbers.length + "단계";
+        }
+      }
+      function moveTo(index) {
+        activeIndex = Math.max(-1, Math.min(stepNumbers.length - 1, index));
+        render();
+      }
+
+      stepElements.forEach(function (el) {
+        el.addEventListener("click", function () {
+          moveTo(stepNumbers.indexOf(Number(el.dataset.step)));
+        });
+      });
+      var prev = flow.querySelector("[data-step-prev]");
+      var next = flow.querySelector("[data-step-next]");
+      var reset = flow.querySelector("[data-step-reset]");
+      if (prev) prev.addEventListener("click", function () { moveTo(Math.max(0, activeIndex - 1)); });
+      if (next) next.addEventListener("click", function () { moveTo(activeIndex + 1); });
+      if (reset) reset.addEventListener("click", function () { moveTo(-1); });
+      render();
+    });
+  })();
+  // language-* 코드 블록에 구문 강조와 diff 줄 배경을 입힌다. 글자는 바꾸지 않고 span 으로 감싸기만 하므로 복사한 코드와 스크립트 없는 화면의 내용이 같다.
+  (function () {
+    var C_COMMENT = "/\\*[\\s\\S]*?\\*/|//[^\\n]*";
+    var HASH_COMMENT = "(?<![\\w$])#[^\\n]*";
+    var QUOTED = "'(?:\\\\.|[^'\\\\\\n])*'|\"(?:\\\\.|[^\"\\\\\\n])*\"";
+    var BACKTICK = "`(?:\\\\[\\s\\S]|[^`\\\\])*`";
+    var NUMBER = "\\b\\d[\\d_]*(?:\\.\\d+)?\\b";
+    var CAPITALIZED = "\\b[A-Z]\\w*\\b";
+    var JS_KEYWORDS = "import from export default const let var function class extends return if else for while do switch case break continue throw try catch finally new typeof instanceof in of this super null undefined true false async await yield delete void static get set";
+
+    function words(list) { return "\\b(?:" + list.split(" ").join("|") + ")\\b"; }
+
+    var CODE_GRAMMARS = {
+      typescript: { comment: C_COMMENT, string: QUOTED + "|" + BACKTICK, decorator: "@[\\w.]+", number: NUMBER,
+        keyword: words(JS_KEYWORDS + " interface type enum implements private public protected readonly abstract declare namespace as satisfies keyof"),
+        type: words("string number boolean void any unknown never object") + "|" + CAPITALIZED },
+      javascript: { comment: C_COMMENT, string: QUOTED + "|" + BACKTICK, decorator: "@[\\w.]+", number: NUMBER,
+        keyword: words(JS_KEYWORDS), type: CAPITALIZED },
+      python: { comment: HASH_COMMENT, string: "[rbfRBF]{0,2}(?:\"\"\"[\\s\\S]*?\"\"\"|'''[\\s\\S]*?'''|" + QUOTED + ")", decorator: "(?<![\\w)])@[\\w.]+", number: NUMBER,
+        keyword: words("import from as def class return if elif else for while in not and or is try except finally raise with lambda pass break continue yield async await global nonlocal None True False self"),
+        type: words("int str float bool bytes list dict set tuple object") + "|" + CAPITALIZED },
+      java: { comment: C_COMMENT, string: "\"\"\"[\\s\\S]*?\"\"\"|" + QUOTED, decorator: "@[\\w.]+", number: NUMBER,
+        keyword: words("package import public private protected static final abstract class interface enum record extends implements new return if else for while do switch case default break continue throw throws try catch finally this super null true false var void synchronized instanceof"),
+        type: words("int long short byte char float double boolean") + "|" + CAPITALIZED },
+      php: { comment: "/\\*[\\s\\S]*?\\*/|//[^\\n]*|#(?!\\[)[^\\n]*", string: QUOTED, decorator: "#\\[[^\\]\\n]*\\]|\\$\\w+", number: NUMBER,
+        keyword: words("namespace use class interface trait extends implements function fn public private protected static final abstract const return if else elseif foreach for while do switch case default break continue throw try catch finally new echo print isset empty array null true false as instanceof match"),
+        type: words("int float string bool void mixed self") + "|" + CAPITALIZED },
+      sql: { ignoreCase: true, comment: "--[^\\n]*|/\\*[\\s\\S]*?\\*/", string: "'(?:''|[^'])*'", number: NUMBER,
+        keyword: words("select from where join left right inner outer full cross on and or not in is null as group by order having limit offset insert into values update set delete create alter drop table index view primary key foreign references unique default distinct union all exists between like case when then else end with explain analyze begin commit rollback desc asc"),
+        type: words("int integer bigint smallint decimal numeric float double varchar char text boolean date datetime timestamp json jsonb uuid") },
+      bash: { comment: HASH_COMMENT, string: QUOTED, decorator: "\\$\\{[^}\\n]*\\}|\\$[\\w@#?*!-]", number: NUMBER,
+        keyword: words("if then else elif fi for while until do done case esac in function return exit local export readonly set unset source") },
+      json: { string: "\"(?:\\\\.|[^\"\\\\\\n])*\"(?!\\s*:)", type: "\"(?:\\\\.|[^\"\\\\\\n])*\"", keyword: words("true false null"), number: "-?\\b\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?\\b" },
+      yaml: { comment: HASH_COMMENT, string: QUOTED, type: "[\\w.-]+(?=:(?:\\s|$))", keyword: words("true false null yes no on off"), number: NUMBER }
+    };
+    // 앞선 분류가 먼저 걸린다. 주석과 문자열 안의 단어가 키워드로 칠해지지 않게 하는 순서다.
+    var TOKEN_KINDS = ["comment", "string", "decorator", "keyword", "type", "number"];
+
+    function compileGrammar(grammar) {
+      var kinds = TOKEN_KINDS.filter(function (kind) { return grammar[kind]; });
+      var groups = kinds.map(function (kind) { return "(" + grammar[kind] + ")"; });
+      return { kinds: kinds, pattern: new RegExp(groups.join("|"), grammar.ignoreCase ? "gmi" : "gm") };
+    }
+
+    function appendHighlighted(parent, text, compiled) {
+      var position = 0;
+      var match;
+      compiled.pattern.lastIndex = 0;
+      while ((match = compiled.pattern.exec(text)) !== null) {
+        var kindIndex = match.slice(1).findIndex(function (group) { return group !== undefined; });
+        parent.appendChild(document.createTextNode(text.slice(position, match.index)));
+        var token = document.createElement("span");
+        token.className = "tok-" + compiled.kinds[kindIndex];
+        token.textContent = match[0];
+        parent.appendChild(token);
+        position = match.index + match[0].length;
+      }
+      parent.appendChild(document.createTextNode(text.slice(position)));
+    }
+
+    function readDiffLineClass(line) {
+      if (/^(?:\+\+\+|---|@@)/.test(line)) return "code-line line-meta";
+      if (line.charAt(0) === "+") return "code-line line-add";
+      if (line.charAt(0) === "-") return "code-line line-del";
+      return "code-line";
+    }
+
+    function renderDiff(code, compiled) {
+      var lines = code.textContent.split("\n");
+      code.textContent = "";
+      lines.forEach(function (line, index) {
+        var lineElement = document.createElement("span");
+        lineElement.className = readDiffLineClass(line);
+        if (compiled) appendHighlighted(lineElement, line, compiled);
+        else lineElement.textContent = line;
+        if (index < lines.length - 1) lineElement.appendChild(document.createTextNode("\n"));
+        code.appendChild(lineElement);
+      });
+    }
+
+    document.querySelectorAll('pre code[class*="language-"]').forEach(function (code) {
+      var languageMatch = /(?:^|\s)language-(diff(?:-|(?=\s|$)))?([\w-]*)/.exec(code.className);
+      if (!languageMatch) return;
+      var grammar = CODE_GRAMMARS[languageMatch[2]];
+      var compiled = grammar ? compileGrammar(grammar) : null;
+      if (languageMatch[1]) { renderDiff(code, compiled); return; }
+      if (!compiled) return;
+      var source = code.textContent;
+      code.textContent = "";
+      appendHighlighted(code, source, compiled);
+    });
+  })();
+</script>
+</body>
+</html>

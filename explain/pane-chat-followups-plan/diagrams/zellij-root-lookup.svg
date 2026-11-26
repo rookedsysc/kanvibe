@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 468" role="img" aria-labelledby="dg1-title dg1-desc" style="min-width:800px">
+<title id="dg1-title">Zellij pane의 root PID를 찾는 관계</title>
+<desc id="dg1-desc">KanVibe 조회는 Zellij 서버의 직접 자식 가운데 세션 이름과 pane 번호가 환경 변수와 모두 같은 프로세스 하나를 root로 고른다. 같은 값을 물려받은 자손 프로세스는 직접 자식이 아니라서 고르지 않는다.</desc>
+<defs>
+<marker id="dg1-arrow" viewBox="0 0 10 10" markerWidth="7" markerHeight="7" refX="9" refY="5" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="var(--muted, #5a5860)"/></marker>
+<marker id="dg1-arrow-accent" viewBox="0 0 10 10" markerWidth="7" markerHeight="7" refX="9" refY="5" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="var(--accent, #242428)"/></marker>
+</defs>
+<text x="24" y="28" fill="var(--muted, #5a5860)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="12" font-weight="400" text-anchor="start">변경 후 제안, 미구현. 값은 Zellij 0.46.0 실측 예</text>
+<path d="M 296 116 V 144 Q 296 152 288 152 H 128 Q 120 152 120 160 V 188" fill="none" stroke="var(--muted, #5a5860)" stroke-width="1.5" marker-end="url(#dg1-arrow)"/>
+<path d="M 376 116 V 144 Q 376 152 384 152 H 408 Q 416 152 416 160 V 188" fill="none" stroke="var(--muted, #5a5860)" stroke-width="1.5" marker-end="url(#dg1-arrow)"/>
+<line x1="416" y1="256" x2="416" y2="300" stroke="var(--muted, #5a5860)" stroke-width="1.5" marker-end="url(#dg1-arrow)"/>
+<line x1="416" y1="352" x2="416" y2="392" stroke="var(--muted, #5a5860)" stroke-width="1.5" marker-end="url(#dg1-arrow)"/>
+<line x1="624" y1="222" x2="512" y2="222" stroke="var(--accent, #242428)" stroke-width="2" marker-end="url(#dg1-arrow-accent)"/>
+<rect x="172" y="126" width="72" height="16" rx="2" fill="var(--panel, #ffffff)"/>
+<text x="208" y="138" fill="var(--muted, #5a5860)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="12" font-weight="500" text-anchor="middle">직접 자식</text>
+<rect x="424" y="164" width="72" height="16" rx="2" fill="var(--panel, #ffffff)"/>
+<text x="460" y="176" fill="var(--muted, #5a5860)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="12" font-weight="500" text-anchor="middle">직접 자식</text>
+<rect x="424" y="270" width="84" height="16" rx="2" fill="var(--panel, #ffffff)"/>
+<text x="466" y="282" fill="var(--muted, #5a5860)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="12" font-weight="500" text-anchor="middle">자식 프로세스</text>
+<rect x="424" y="364" width="36" height="16" rx="2" fill="var(--panel, #ffffff)"/>
+<text x="442" y="376" fill="var(--muted, #5a5860)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="12" font-weight="500" text-anchor="middle">실행</text>
+<rect x="524" y="196" width="88" height="16" rx="2" fill="var(--panel, #ffffff)"/>
+<text x="568" y="208" fill="var(--ink, #34333a)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="12" font-weight="700" text-anchor="middle">환경 일치 1개</text>
+<rect x="224" y="48" width="224" height="68" rx="6" fill="var(--panel, #ffffff)"/>
+<rect x="224" y="48" width="224" height="68" rx="6" fill="var(--surface, #f6f6f8)" stroke="var(--line, #e4e4ea)" stroke-width="1"/>
+<text x="336" y="72" fill="var(--ink, #34333a)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="15" font-weight="700" text-anchor="middle">Zellij 서버 프로세스</text>
+<text x="336" y="90" fill="var(--muted, #5a5860)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="12" font-weight="400" text-anchor="middle">명령줄에 --server가 있다</text>
+<text x="336" y="106" fill="var(--muted, #5a5860)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="12" font-weight="400" text-anchor="middle">세션 이름은 명령줄에 없다</text>
+<rect x="24" y="188" width="192" height="68" rx="6" fill="var(--panel, #ffffff)"/>
+<rect x="24" y="188" width="192" height="68" rx="6" fill="var(--surface, #f6f6f8)" stroke="var(--line, #e4e4ea)" stroke-width="1"/>
+<text x="120" y="212" fill="var(--ink, #34333a)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="15" font-weight="700" text-anchor="middle">pane 0의 root 셸</text>
+<text x="120" y="230" fill="var(--muted, #5a5860)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="12" font-weight="400" text-anchor="middle">ZELLIJ_PANE_ID=0</text>
+<text x="120" y="246" fill="var(--muted, #5a5860)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="12" font-weight="400" text-anchor="middle">번호가 달라 제외</text>
+<rect x="320" y="188" width="192" height="68" rx="6" fill="var(--panel, #ffffff)"/>
+<rect x="320" y="188" width="192" height="68" rx="6" fill="var(--accent-soft, #eaeaef)" stroke="var(--accent, #242428)" stroke-width="2"/>
+<text x="416" y="212" fill="var(--ink, #34333a)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="15" font-weight="700" text-anchor="middle">pane 5의 root 셸</text>
+<text x="416" y="230" fill="var(--muted, #5a5860)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="12" font-weight="400" text-anchor="middle">ZELLIJ_PANE_ID=5</text>
+<text x="416" y="246" fill="var(--ink, #34333a)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="12" font-weight="700" text-anchor="middle">직접 자식, root PID로 채택</text>
+<rect x="320" y="300" width="192" height="52" rx="6" fill="var(--panel, #ffffff)"/>
+<rect x="320" y="300" width="192" height="52" rx="6" fill="var(--surface, #f6f6f8)" stroke="var(--line, #e4e4ea)" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="416" y="322" fill="var(--ink, #34333a)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="15" font-weight="700" text-anchor="middle">중첩 셸</text>
+<text x="416" y="340" fill="var(--muted, #5a5860)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="12" font-weight="400" text-anchor="middle">값만 상속, 직접 자식 아님</text>
+<rect x="320" y="392" width="192" height="52" rx="6" fill="var(--panel, #ffffff)"/>
+<rect x="320" y="392" width="192" height="52" rx="6" fill="var(--surface, #f6f6f8)" stroke="var(--line, #e4e4ea)" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="416" y="414" fill="var(--ink, #34333a)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="15" font-weight="700" text-anchor="middle">Claude CLI</text>
+<text x="416" y="432" fill="var(--muted, #5a5860)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="12" font-weight="400" text-anchor="middle">값만 상속, 직접 자식 아님</text>
+<rect x="624" y="188" width="152" height="68" rx="6" fill="var(--panel, #ffffff)"/>
+<rect x="624" y="188" width="152" height="68" rx="6" fill="var(--panel, #ffffff)" stroke="var(--ink, #34333a)" stroke-width="1"/>
+<text x="700" y="212" fill="var(--ink, #34333a)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="15" font-weight="700" text-anchor="middle">KanVibe 조회</text>
+<text x="700" y="230" fill="var(--muted, #5a5860)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="12" font-weight="400" text-anchor="middle">세션 이름 kvzt</text>
+<text x="700" y="246" fill="var(--muted, #5a5860)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="12" font-weight="400" text-anchor="middle">pane 번호 5</text>
+</svg>

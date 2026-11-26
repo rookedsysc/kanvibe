@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 516" role="img" aria-labelledby="dg2-title dg2-desc" style="min-width:800px">
+<title id="dg2-title">신뢰 화면과 세션 기록, 채팅 열기의 순서</title>
+<desc id="dg2-desc">Claude가 신뢰 화면을 보이는 동안에는 세션 기록이 없어 KanVibe가 채팅을 열지 않는다. 사용자가 수락하면 0.11초 뒤 세션 기록이 생기고, KanVibe가 그 신호로 다시 확인한 뒤 채팅을 연다.</desc>
+<defs>
+<marker id="dg2-arrow" viewBox="0 0 10 10" markerWidth="7" markerHeight="7" refX="9" refY="5" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="var(--muted, #5a5860)"/></marker>
+<marker id="dg2-arrow-accent" viewBox="0 0 10 10" markerWidth="7" markerHeight="7" refX="9" refY="5" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="var(--accent, #242428)"/></marker>
+</defs>
+<text x="176" y="36" fill="var(--ink, #34333a)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="14" font-weight="700" text-anchor="middle">Claude CLI (터미널 pane)</text>
+<text x="624" y="36" fill="var(--ink, #34333a)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="14" font-weight="700" text-anchor="middle">KanVibe 채팅 층</text>
+<line x1="472" y1="90" x2="328" y2="90" stroke="var(--muted, #5a5860)" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#dg2-arrow)"/>
+<line x1="176" y1="124" x2="176" y2="176" stroke="var(--muted, #5a5860)" stroke-width="1.5" marker-end="url(#dg2-arrow)"/>
+<line x1="176" y1="244" x2="176" y2="296" stroke="var(--muted, #5a5860)" stroke-width="1.5" marker-end="url(#dg2-arrow)"/>
+<line x1="328" y1="330" x2="472" y2="330" stroke="var(--accent, #242428)" stroke-width="2" marker-end="url(#dg2-arrow-accent)"/>
+<line x1="624" y1="364" x2="624" y2="416" stroke="var(--muted, #5a5860)" stroke-width="1.5" marker-end="url(#dg2-arrow)"/>
+<rect x="344" y="64" width="112" height="16" rx="2" fill="var(--panel, #ffffff)"/>
+<text x="400" y="76" fill="var(--muted, #5a5860)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="12" font-weight="500" text-anchor="middle">CLI와 기록 확인</text>
+<rect x="184" y="142" width="88" height="16" rx="2" fill="var(--panel, #ffffff)"/>
+<text x="228" y="154" fill="var(--muted, #5a5860)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="12" font-weight="500" text-anchor="middle">사용자 답 대기</text>
+<rect x="184" y="262" width="64" height="16" rx="2" fill="var(--panel, #ffffff)"/>
+<text x="216" y="274" fill="var(--muted, #5a5860)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="12" font-weight="500" text-anchor="middle">0.11초 뒤</text>
+<rect x="348" y="304" width="104" height="16" rx="2" fill="var(--panel, #ffffff)"/>
+<text x="400" y="316" fill="var(--ink, #34333a)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="12" font-weight="700" text-anchor="middle">기록 변경 신호</text>
+<rect x="632" y="382" width="80" height="16" rx="2" fill="var(--panel, #ffffff)"/>
+<text x="672" y="394" fill="var(--muted, #5a5860)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="12" font-weight="500" text-anchor="middle">연결 확인됨</text>
+<rect x="24" y="56" width="304" height="68" rx="6" fill="var(--panel, #ffffff)"/>
+<rect x="24" y="56" width="304" height="68" rx="6" fill="var(--surface, #f6f6f8)" stroke="var(--line, #e4e4ea)" stroke-width="1"/>
+<text x="176" y="80" fill="var(--ink, #34333a)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="15" font-weight="700" text-anchor="middle">1. 신뢰 화면 표시</text>
+<text x="176" y="98" fill="var(--muted, #5a5860)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="12" font-weight="400" text-anchor="middle">세션 기록 파일이 아직 없다</text>
+<text x="176" y="114" fill="var(--muted, #5a5860)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="12" font-weight="400" text-anchor="middle">실측: 25초와 36초 동안 없음</text>
+<rect x="472" y="56" width="304" height="68" rx="6" fill="var(--panel, #ffffff)"/>
+<rect x="472" y="56" width="304" height="68" rx="6" fill="var(--surface, #f6f6f8)" stroke="var(--line, #e4e4ea)" stroke-width="1"/>
+<text x="624" y="80" fill="var(--ink, #34333a)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="15" font-weight="700" text-anchor="middle">2. 1초마다 확인</text>
+<text x="624" y="98" fill="var(--muted, #5a5860)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="12" font-weight="400" text-anchor="middle">CLI는 있음, 대화 연결 없음</text>
+<text x="624" y="114" fill="var(--muted, #5a5860)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="12" font-weight="400" text-anchor="middle">채팅을 열지 않고 터미널 유지</text>
+<rect x="24" y="176" width="304" height="68" rx="6" fill="var(--panel, #ffffff)"/>
+<rect x="24" y="176" width="304" height="68" rx="6" fill="var(--surface, #f6f6f8)" stroke="var(--line, #e4e4ea)" stroke-width="1"/>
+<text x="176" y="204" fill="var(--ink, #34333a)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="15" font-weight="700" text-anchor="middle">3. 사용자가 수락</text>
+<text x="176" y="224" fill="var(--muted, #5a5860)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Yes, I trust this folder 선택</text>
+<rect x="24" y="296" width="304" height="68" rx="6" fill="var(--panel, #ffffff)"/>
+<rect x="24" y="296" width="304" height="68" rx="6" fill="var(--surface, #f6f6f8)" stroke="var(--line, #e4e4ea)" stroke-width="1"/>
+<text x="176" y="320" fill="var(--ink, #34333a)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="15" font-weight="700" text-anchor="middle">4. 세션 기록 쓰기</text>
+<text x="176" y="338" fill="var(--muted, #5a5860)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="12" font-weight="400" text-anchor="middle">수락 0.11초 뒤에 생긴다</text>
+<text x="176" y="354" fill="var(--muted, #5a5860)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="12" font-weight="400" text-anchor="middle">SessionStart hook도 이때 실행</text>
+<rect x="472" y="296" width="304" height="68" rx="6" fill="var(--panel, #ffffff)"/>
+<rect x="472" y="296" width="304" height="68" rx="6" fill="var(--surface, #f6f6f8)" stroke="var(--line, #e4e4ea)" stroke-width="1"/>
+<text x="624" y="320" fill="var(--ink, #34333a)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="15" font-weight="700" text-anchor="middle">5. 신호 받고 즉시 재확인</text>
+<text x="624" y="338" fill="var(--muted, #5a5860)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="12" font-weight="400" text-anchor="middle">세션 기록 폴더를 감시한다</text>
+<text x="624" y="354" fill="var(--muted, #5a5860)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="12" font-weight="400" text-anchor="middle">다음 주기를 기다리지 않는다</text>
+<rect x="472" y="416" width="304" height="68" rx="6" fill="var(--panel, #ffffff)"/>
+<rect x="472" y="416" width="304" height="68" rx="6" fill="var(--accent-soft, #eaeaef)" stroke="var(--accent, #242428)" stroke-width="2"/>
+<text x="624" y="444" fill="var(--ink, #34333a)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="15" font-weight="700" text-anchor="middle">6. 채팅 열기</text>
+<text x="624" y="464" fill="var(--ink, #34333a)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="12" font-weight="700" text-anchor="middle">대화 연결을 확인한 뒤에만 연다</text>
+<text x="24" y="504" fill="var(--muted, #5a5860)" font-family="Noto Sans CJK KR, Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="12" font-weight="400" text-anchor="start">현재 동작. Claude Code 2.1.332 실측</text>
+</svg>
