@@ -342,6 +342,6 @@ Herdr 세션은 같은 fixture에서 `mobile/.maestro/flows/herdr-terminal.yaml`
 
 Mermaid 원문은 페어링된 PC의 `POST /api/mobile/diagrams/render`로 전송해 최고 품질 JPEG로 받는다. 다이어그램의 라이트·다크 배경은 불투명하게 렌더링한다. 모바일은 응답 MIME과 이미지 헤더·크기를 검증하며 기존 PNG 응답도 지원한다. 응답의 `naturalWidth`가 화면보다 넓으면 그 너비(최대 1200)로 한 번 더 받아 줄이지 않고 옆으로 밀어 읽게 하며, 이 값을 보내지 않는 데스크탑에서는 화면 너비 이미지 하나만 쓴다. 실제 이미지 프레임이 준비된 뒤 준비 완료를 표시하고, 확대·원문 보기·복사와 실패 시 재시도를 제공한다. PC 렌더링 API를 지원하는 데스크탑 버전이 필요하다.
 
-구현 항목과 워크트리 추적은 [구현 기록](../docs/research/mobile-parity-implementation.md)을 참고한다. 실제 OAuth·SSH·푸시와 iOS 검증 여부는 해당 실행의 QA 보고서에서 확인한다.
+실제 OAuth·SSH·푸시와 iOS 검증 여부는 해당 실행의 QA 보고서에서 확인한다.
 
 정리 상태는 `notifications/application/sync_review_controller.dart`가 알림별 선택·성공·실패를 보존하고, `sync_review_cleanup_controller.dart`가 현재 PC의 정리 작업을 공유한다. 정리를 시작한 검토만 화면이 닫힌 뒤에도 보존하며 PC나 토큰이 바뀌면 이전 작업의 표시 상태를 버린다. `presentation/sync_review_button.dart`와 `sync_review_screen.dart`는 탐지 버튼·검토 대화상자를 구성하고 알림함과 PC 설정에서 같은 작업을 다시 연다.

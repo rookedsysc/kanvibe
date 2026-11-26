@@ -1,4 +1,4 @@
-//! 성능 하네스(`parity/tools/perf/run_perf.py`)가 읽는 표식. `--qa-harness --perf-markers`일 때만 켠다.
+//! 성능 하네스가 읽는 표식(측정 도구는 커밋 6854c963까지 `parity/tools/perf/run_perf.py`). `--qa-harness --perf-markers`일 때만 켠다.
 //!
 //! 표식은 stdout 한 줄 `KANVIBE_PERF <이름> <유닉스 epoch ns>`다. TS 앱을 재던 표식(커밋 a73f3498까지 `parity/tools/perf/ts_perf_preload.cjs`)과
 //! 같은 시점을 가리키도록, 화면 변화가 그려진 프레임의 "다음 프레임 시작"에서 쓴다. GPUI는 프레임 시작에서 next-frame
@@ -13,7 +13,7 @@
 //!   단계별로 나눠 보는 용도이고 하네스 지표에는 쓰지 않는다
 //! - `pane_chat:<단계>`·`history:<단계>`: pane 채팅과 대화 기록 화면의 열림(`open`·`shown`), 조회(`read_start`·`read_done`,
 //!   층의 배치 조회 `layout_start`·`layout_done`과 자동 열기 확인 `probe_start`·`probe_done`), 첫 그리기(`frame`·`rows`·`ready`, 대화 대상이 바뀐 뒤 보낼 수 있게 된
-//!   `retarget`). `parity/tools/perf/pane_chat_latency.py`가 읽는다
+//!   `retarget`). 커밋 6854c963까지 있던 `parity/tools/perf/pane_chat_latency.py`가 읽었다
 //!
 //! 프레임마다 확인할 때는 프레임만 요청하고 창을 다시 그리게 하지 않는다. 다시 그리게 하면 측정 대상인 그리기 비용이 늘어난다.
 
