@@ -43,6 +43,9 @@ next-env.d.ts
 /.review-resolve-loop/
 /needs-user.md
 
+# 로컬 검토용 설명 페이지
+/explain/
+
 # rust
 /target
 
