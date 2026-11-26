@@ -1,16 +1,21 @@
 //! 칸반 열(TS `Column.tsx`)과 보드 본문. 같은 프로젝트 카드가 이어지면 한 묶음(`mb-1.5`)으로 감싸고,
 //! Done 열은 더 보기 버튼과 실패 안내를 단다. 카드를 다른 열 위에 놓으면 그 열로 옮긴다.
 
+use std::collections::{BTreeMap, HashMap};
+
 use gpui_kit::{
     AnyElement, Context, InteractiveElement, IntoElement, ParentElement, Rgba,
     StatefulInteractiveElement, Styled, Window, div, px,
 };
 use kanvibe_domain::i18n::Translator;
-use kanvibe_domain::task::{TASK_STATUS_ORDER, TaskStatus};
+use kanvibe_domain::task::{KanbanTask, TASK_STATUS_ORDER, TaskPriority, TaskStatus};
+use kanvibe_domain::task_diff_stats::TaskDiffStats;
 use kanvibe_services::kanban::TasksByStatus;
 
 use super::BoardView;
-use super::board_model::{column, contiguous_groups, root_priorities};
+use super::board_model::{
+    ProjectCatalog, TaskDeletionState, TaskMoveState, column, contiguous_groups, root_priorities,
+};
 use super::flip_reflow::{flip_card, flip_column};
 use super::header::qa_button_layer;
 use super::task_card::{DraggedTask, TaskCardInput};
@@ -19,6 +24,15 @@ use crate::theme::{ThemeTokens, radius, spacing, text_scale};
 
 /// 열 본문 최소 높이 `min-h-[calc(100vh-132px)]`
 const COLUMN_BODY_VIEWPORT_OFFSET: f32 = 132.0;
+
+struct ColumnRenderData {
+    catalog: ProjectCatalog,
+    root_priorities: HashMap<String, TaskPriority>,
+    unread: HashMap<String, usize>,
+    diff_stats: BTreeMap<String, TaskDiffStats>,
+    deletion_states: HashMap<String, TaskDeletionState>,
+    move_states: HashMap<String, TaskMoveState>,
+}
 
 pub(super) fn status_dot_color(theme: &ThemeTokens, status: TaskStatus) -> Rgba {
     match status {
@@ -42,11 +56,29 @@ impl BoardView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Vec<AnyElement> {
+        let Some(board) = self.board.as_ref() else {
+            return Vec::new();
+        };
+        let render_data = ColumnRenderData {
+            catalog: board.catalog.clone(),
+            root_priorities: root_priorities(&board.tasks, &board.catalog),
+            unread: board.unread_count_by_task(),
+            diff_stats: board.diff_stats.clone(),
+            deletion_states: self.deletion_states.clone(),
+            move_states: self.move_states.clone(),
+        };
         TASK_STATUS_ORDER
             .into_iter()
             .map(|status| {
-                self.render_column(theme, status, column(displayed, status), window, cx)
-                    .into_any_element()
+                self.render_column(
+                    theme,
+                    status,
+                    column(displayed, status),
+                    &render_data,
+                    window,
+                    cx,
+                )
+                .into_any_element()
             })
             .collect()
     }
@@ -55,7 +87,8 @@ impl BoardView {
         &mut self,
         theme: &ThemeTokens,
         status: TaskStatus,
-        tasks: &[kanvibe_domain::task::KanbanTask],
+        tasks: &[KanbanTask],
+        render_data: &ColumnRenderData,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
@@ -70,7 +103,7 @@ impl BoardView {
             _ => tasks.len(),
         };
         let viewport_height = f32::from(window.viewport_size().height);
-        let body = self.render_column_body(theme, status, tasks, window, cx);
+        let body = self.render_column_body(theme, status, tasks, render_data, window, cx);
         let drop_background = theme.brand.subtle;
         let drop_ring = theme.border.brand;
         let reflow = self.column_reflows.entry(status).or_default().clone();
@@ -108,37 +141,29 @@ impl BoardView {
         &mut self,
         theme: &ThemeTokens,
         status: TaskStatus,
-        tasks: &[kanvibe_domain::task::KanbanTask],
+        tasks: &[KanbanTask],
+        render_data: &ColumnRenderData,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Vec<AnyElement> {
-        let Some(board) = self.board.as_ref() else {
-            return Vec::new();
-        };
-        let catalog = board.catalog.clone();
-        let roots = root_priorities(&board.tasks, &catalog);
-        let unread = board.unread_count_by_task();
-        let diff_stats = board.diff_stats.clone();
-        let deletion_states = self.deletion_states.clone();
-        let move_states = self.move_states.clone();
         let reflow = self.column_reflows.entry(status).or_default().clone();
         let mut elements = Vec::new();
-        for group in contiguous_groups(tasks, &catalog) {
+        for group in contiguous_groups(tasks, &render_data.catalog) {
             let mut cards = Vec::new();
             for task in &group.tasks {
                 let project = group
                     .project_name
                     .as_ref()
                     .and(task.project_id.as_ref())
-                    .and_then(|project_id| catalog.displays.get(project_id));
+                    .and_then(|project_id| render_data.catalog.displays.get(project_id));
                 let input = TaskCardInput {
                     task,
                     project,
-                    unread_count: unread.get(&task.id).copied().unwrap_or(0),
-                    root_priorities: &roots,
-                    diff_stats: diff_stats.get(&task.id),
-                    deletion_state: deletion_states.get(&task.id),
-                    move_state: move_states.get(&task.id),
+                    unread_count: render_data.unread.get(&task.id).copied().unwrap_or(0),
+                    root_priorities: &render_data.root_priorities,
+                    diff_stats: render_data.diff_stats.get(&task.id),
+                    deletion_state: render_data.deletion_states.get(&task.id),
+                    move_state: render_data.move_states.get(&task.id),
                 };
                 let mut card = self.render_task_card(theme, input, window, cx).into_iter();
                 cards.extend(

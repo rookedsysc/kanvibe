@@ -550,10 +550,11 @@ impl BoardView {
         input: &TaskCardInput,
     ) -> Vec<AnyElement> {
         let task = input.task;
-        let unread_label = Translator::new(self.locale(), "common")
-            .translate_with("unreadCount", &[("count", &input.unread_count.to_string())]);
-        let unread =
-            (input.unread_count > 0).then(|| unread_badge(theme, input.unread_count, unread_label));
+        let unread = (input.unread_count > 0).then(|| {
+            let unread_label = Translator::new(self.locale(), "common")
+                .translate_with("unreadCount", &[("count", &input.unread_count.to_string())]);
+            unread_badge(theme, input.unread_count, unread_label)
+        });
         let mut content = Vec::new();
         if is_base_project(task) {
             content.push(crown_marker(theme).into_any_element());

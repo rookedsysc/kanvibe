@@ -64,7 +64,6 @@ pub enum TaskMoveState {
 /// 카드를 다른 열로 옮기는 낙관적 변경과 저장할 값
 #[derive(Debug, Clone, PartialEq)]
 pub struct DragMovePlan {
-    pub updated_tasks: TasksByStatus,
     pub done_delta: i64,
     pub task_id: String,
     pub target_status: TaskStatus,
@@ -74,8 +73,8 @@ pub struct DragMovePlan {
 }
 
 /// 다른 열로 옮긴 카드는 방금 수정한 카드이므로 목적지 맨 위에 놓는다. 같은 열 안의 드롭은 아무것도 바꾸지 않는다
-pub fn build_drag_move_plan(
-    tasks: &TasksByStatus,
+pub fn apply_drag_move(
+    tasks: &mut TasksByStatus,
     task_id: &str,
     target_status: TaskStatus,
 ) -> Option<DragMovePlan> {
@@ -88,18 +87,13 @@ pub fn build_drag_move_plan(
     if source_status == target_status {
         return None;
     }
-    let original = column(tasks, source_status)[source_index].clone();
-    let mut updated_tasks = tasks.clone();
-    column_mut(&mut updated_tasks, source_status).remove(source_index);
-    let moved = KanbanTask {
-        status: target_status,
-        ..original.clone()
-    };
-    column_mut(&mut updated_tasks, target_status).insert(0, moved);
+    let mut moved = column_mut(tasks, source_status).remove(source_index);
+    let original = moved.clone();
+    moved.status = target_status;
+    column_mut(tasks, target_status).insert(0, moved);
     let done_delta =
         i64::from(target_status == TaskStatus::Done) - i64::from(source_status == TaskStatus::Done);
     Some(DragMovePlan {
-        updated_tasks,
         done_delta,
         task_id: task_id.to_string(),
         target_status,
@@ -438,36 +432,36 @@ mod tests {
     // parity: TS-components-Board-cfa96d
     #[test]
     fn dropping_inside_the_same_column_saves_nothing() {
-        let tasks = board(&[(TaskStatus::Todo, &["a", "b"])]);
-        assert_eq!(build_drag_move_plan(&tasks, "b", TaskStatus::Todo), None);
+        let mut tasks = board(&[(TaskStatus::Todo, &["a", "b"])]);
+        assert_eq!(apply_drag_move(&mut tasks, "b", TaskStatus::Todo), None);
+        assert_eq!(ids(&tasks.todo), ["a", "b"]);
     }
 
     // parity: TS-components-Board-1d27b8
     #[test]
     fn dropping_on_another_column_saves_only_the_status_and_puts_the_card_on_top() {
-        let tasks = board(&[
+        let mut tasks = board(&[
             (TaskStatus::Todo, &["a", "b"]),
             (TaskStatus::Review, &["r"]),
         ]);
-        let plan = build_drag_move_plan(&tasks, "b", TaskStatus::Review).unwrap();
+        let plan = apply_drag_move(&mut tasks, "b", TaskStatus::Review).unwrap();
         assert_eq!(
             (plan.task_id.as_str(), plan.target_status),
             ("b", TaskStatus::Review)
         );
-        assert_eq!(ids(&plan.updated_tasks.review), ["b", "r"]);
-        assert_eq!(plan.updated_tasks.review[0].status, TaskStatus::Review);
-        assert_eq!(ids(&plan.updated_tasks.todo), ["a"]);
+        assert_eq!(ids(&tasks.review), ["b", "r"]);
+        assert_eq!(tasks.review[0].status, TaskStatus::Review);
+        assert_eq!(ids(&tasks.todo), ["a"]);
     }
 
     // parity: TS-components-Board-cfa576
     #[test]
     fn failed_move_returns_only_that_card_to_its_original_slot() {
-        let tasks = board(&[
+        let mut current = board(&[
             (TaskStatus::Todo, &["a", "b", "c"]),
             (TaskStatus::Progress, &["p"]),
         ]);
-        let plan = build_drag_move_plan(&tasks, "b", TaskStatus::Progress).unwrap();
-        let mut current = plan.updated_tasks.clone();
+        let plan = apply_drag_move(&mut current, "b", TaskStatus::Progress).unwrap();
         // 저장을 기다리는 동안 다른 카드가 지워져도 그 변화는 남는다
         remove_task(&mut current, "c");
         restore_moved_task(&mut current, &plan);

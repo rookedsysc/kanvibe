@@ -6,8 +6,8 @@ use kanvibe_domain::i18n::Translator;
 use kanvibe_domain::task::TaskStatus;
 
 use super::board_model::{
-    TaskDeletionState, TaskMoveState, append_done_page, build_drag_move_plan, find_task,
-    remove_task, restore_moved_task, should_confirm_done_move,
+    TaskDeletionState, TaskMoveState, append_done_page, apply_drag_move, find_task, remove_task,
+    restore_moved_task, should_confirm_done_move,
 };
 use super::task_filters::TaskKindFilter;
 use super::{BoardView, HeaderPopover, OpenContextMenu};
@@ -202,10 +202,9 @@ impl BoardView {
         if self.saving_move_task_ids.contains(task_id) {
             return;
         }
-        let Some(plan) = build_drag_move_plan(&board.tasks, task_id, target_status) else {
+        let Some(plan) = apply_drag_move(&mut board.tasks, task_id, target_status) else {
             return;
         };
-        board.tasks = plan.updated_tasks.clone();
         board.done.apply_delta(plan.done_delta);
         self.saving_move_task_ids.insert(task_id.to_string());
         self.move_states
