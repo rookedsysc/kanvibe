@@ -73,6 +73,8 @@ class Session:
         (self.agent / "claude").chmod(0o755)
         self.events_path = work / "agent-events.jsonl"
         self.events_path.touch()
+        # Claude Code를 한 번이라도 실행한 머신처럼 세션 기록 디렉터리를 둔다(처음 실행 전에는 없다)
+        (Path(self.fixture["home"]) / ".claude" / "sessions").mkdir(parents=True, exist_ok=True)
         fontconfig_path = capture.write_pinned_fontconfig(work / "fontconfig")
         display = free_display()
         self.environment = capture.build_app_environment(self.fixture, fixture_root, display, fontconfig_path)

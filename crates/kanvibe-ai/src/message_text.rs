@@ -112,7 +112,11 @@ pub fn normalize_text(value: &str) -> String {
 
 /// 한 줄로 접은 글을 UTF-16 길이 `max_length`까지 자르고 `...`을 붙인다
 pub fn truncate_text_to(value: &str, max_length: usize) -> String {
-    let normalized = normalize_text(value);
+    truncate_normalized_text(normalize_text(value), max_length)
+}
+
+/// 이미 한 줄로 접은 글을 [`truncate_text_to`]처럼 자른다
+fn truncate_normalized_text(normalized: String, max_length: usize) -> String {
     if utf16_length(&normalized) <= max_length {
         return normalized;
     }
@@ -130,10 +134,14 @@ struct TruncatedText {
     is_truncated: bool,
 }
 
+/// 한 줄로 접은 본문은 미리보기와 잘렸는지 판정에 함께 쓴다. 대화 기록을 처음 읽을 때 메시지마다 불려,
+/// 긴 기록에서는 같은 글을 두 번 접는 비용이 첫 화면을 늦춘다
 fn create_truncated_text(value: &str) -> TruncatedText {
     let full_text = preserve_message_text(value);
-    let preview_text = truncate_text(&full_text);
-    let is_truncated = utf16_length(&preview_text) < utf16_length(&normalize_text(&full_text));
+    let normalized = normalize_text(&full_text);
+    let normalized_length = utf16_length(&normalized);
+    let preview_text = truncate_normalized_text(normalized, MAX_PREVIEW_TEXT_LENGTH);
+    let is_truncated = utf16_length(&preview_text) < normalized_length;
     TruncatedText {
         full_text,
         preview_text,
