@@ -71,7 +71,6 @@ fn server_runtime_variables_never_reach_mirror_child_processes() {
     );
 }
 
-// parity: TS-main-mobileBridgeService-138f06
 #[test]
 fn child_stderr_is_drained_so_a_full_pipe_never_stalls_the_stream() {
     // 읽지 않는 파이프라면 64KB에서 차서 자식이 stderr 쓰기에 멈추고 stdout도 오지 않는다

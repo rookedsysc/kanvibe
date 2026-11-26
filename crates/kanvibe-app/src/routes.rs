@@ -153,7 +153,6 @@ mod tests {
         }
     }
 
-    // parity: TS-renderer-App-e39e49
     #[test]
     fn index_path_renders_the_board() {
         assert_eq!(rendered("/ko").route, AppRoute::Board);
@@ -163,7 +162,6 @@ mod tests {
         );
     }
 
-    // parity: TS-renderer-App-6228e1
     #[test]
     fn settings_path_renders_the_settings_route() {
         assert_eq!(rendered("/ko/settings").route, AppRoute::Settings);

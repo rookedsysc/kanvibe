@@ -71,7 +71,6 @@ mod tests {
         is_ai_instruction_message(&message(AiMessageRole::User, text))
     }
 
-    // parity: TS-aiSessions-messageInstructions-175aec
     #[test]
     fn system_developer_and_standalone_agents_context_are_instructions() {
         assert!(is_ai_instruction_message(&message(
@@ -90,7 +89,6 @@ mod tests {
         ));
     }
 
-    // parity: TS-aiSessions-messageInstructions-1d31ea
     #[test]
     fn real_requests_and_answers_stay_visible() {
         assert!(!is_user_instruction("AGENTS.md 내용을 설명해줘"));
@@ -103,7 +101,6 @@ mod tests {
         )));
     }
 
-    // parity: TS-aiSessions-messageInstructions-ac4811
     #[test]
     fn slash_command_records_and_notifications_are_instructions() {
         assert!(is_user_instruction(
@@ -120,7 +117,6 @@ mod tests {
         ));
     }
 
-    // parity: TS-aiSessions-messageInstructions-1bdc84
     #[test]
     fn quoted_command_tags_stay_visible() {
         assert!(!is_user_instruction(

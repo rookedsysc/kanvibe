@@ -341,7 +341,6 @@ fn temp_dir() -> tempfile::TempDir {
 
 // ───────────── BoardRoute / BoardViewRoute ─────────────
 
-// parity: TS-renderer-BoardRoute-8bef67
 #[gpui::test]
 fn skeleton_shows_until_the_board_data_arrives(cx: &mut TestAppContext) {
     let dir = temp_dir();
@@ -364,7 +363,6 @@ fn skeleton_shows_until_the_board_data_arrives(cx: &mut TestAppContext) {
     assert!(!board.has_text("+ 새 작업"));
 }
 
-// parity: TS-renderer-BoardRoute-8f20dc
 #[gpui::test]
 fn slow_first_load_shows_the_delay_notice_without_an_empty_board(cx: &mut TestAppContext) {
     let dir = temp_dir();
@@ -391,7 +389,6 @@ fn slow_first_load_shows_the_delay_notice_without_an_empty_board(cx: &mut TestAp
     assert!(!board.has_text("+ 새 작업"));
 }
 
-// parity: TS-renderer-BoardRoute-c15865
 #[gpui::test]
 fn failed_first_load_shows_the_reason_and_retry_loads_again(cx: &mut TestAppContext) {
     let dir = temp_dir();
@@ -424,7 +421,6 @@ fn failed_first_load_shows_the_reason_and_retry_loads_again(cx: &mut TestAppCont
     assert!(board.has_text("다시 불러온 카드"));
 }
 
-// parity: TS-renderer-BoardRoute-96d5b6
 #[gpui::test]
 fn failed_refresh_keeps_the_loaded_board_and_shows_a_banner(cx: &mut TestAppContext) {
     let dir = temp_dir();
@@ -451,7 +447,6 @@ fn failed_refresh_keeps_the_loaded_board_and_shows_a_banner(cx: &mut TestAppCont
     );
 }
 
-// parity: TS-renderer-BoardRoute-790591
 #[gpui::test]
 fn refresh_replaces_the_shown_board_with_the_latest_data(cx: &mut TestAppContext) {
     let dir = temp_dir();
@@ -479,7 +474,6 @@ fn board_view_mode_for(cx: &mut TestAppContext, stored: Option<&str>) -> BoardVi
     board.cx.update(|_, cx| view.read(cx).view_mode())
 }
 
-// parity: TS-renderer-BoardViewRoute-96fd1d
 #[gpui::test]
 fn stored_workspace_view_mode_shows_the_workspace(cx: &mut TestAppContext) {
     assert_eq!(
@@ -488,7 +482,6 @@ fn stored_workspace_view_mode_shows_the_workspace(cx: &mut TestAppContext) {
     );
 }
 
-// parity: TS-renderer-BoardViewRoute-02c76f
 #[gpui::test]
 fn kanban_or_unknown_view_modes_show_the_kanban(cx: &mut TestAppContext) {
     assert_eq!(
@@ -497,7 +490,6 @@ fn kanban_or_unknown_view_modes_show_the_kanban(cx: &mut TestAppContext) {
     );
 }
 
-// parity: TS-renderer-BoardViewRoute-20e6df
 #[gpui::test]
 fn unreadable_view_mode_falls_back_to_the_kanban(cx: &mut TestAppContext) {
     assert_eq!(
@@ -546,7 +538,6 @@ fn seeded_board(cx: &mut TestAppContext, is_qa: bool) -> (Board, Arc<Database>, 
     (board, database, dir)
 }
 
-// parity: TS-components-TaskCard-c7c91f
 #[gpui::test]
 fn cards_without_priority_show_no_priority_badge(cx: &mut TestAppContext) {
     let dir = temp_dir();
@@ -557,7 +548,6 @@ fn cards_without_priority_show_no_priority_badge(cx: &mut TestAppContext) {
     assert!(!board.has_role_name("status", "priority"));
 }
 
-// parity: TS-components-TaskCard-5f4aa1
 #[gpui::test]
 fn low_priority_cards_show_p3(cx: &mut TestAppContext) {
     let dir = temp_dir();
@@ -569,7 +559,6 @@ fn low_priority_cards_show_p3(cx: &mut TestAppContext) {
     assert!(board.has_text("P3"));
 }
 
-// parity: TS-components-TaskCard-f8c5a2
 #[gpui::test]
 fn medium_priority_cards_show_p2(cx: &mut TestAppContext) {
     let dir = temp_dir();
@@ -581,7 +570,6 @@ fn medium_priority_cards_show_p2(cx: &mut TestAppContext) {
     assert!(board.has_text("P2"));
 }
 
-// parity: TS-components-TaskCard-3012ff
 #[gpui::test]
 fn high_priority_cards_show_p1(cx: &mut TestAppContext) {
     let dir = temp_dir();
@@ -593,7 +581,6 @@ fn high_priority_cards_show_p1(cx: &mut TestAppContext) {
     assert!(board.has_text("P1"));
 }
 
-// parity: TS-components-TaskCard-d8513f
 #[gpui::test]
 fn inherited_priority_is_shown_with_the_inherited_marker(cx: &mut TestAppContext) {
     let (mut board, _database, _dir) = seeded_board(cx, false);
@@ -601,14 +588,12 @@ fn inherited_priority_is_shown_with_the_inherited_marker(cx: &mut TestAppContext
     assert!(board.has_role_name("status", "inherited-priority"));
 }
 
-// parity: TS-components-TaskCard-c2a377
 #[gpui::test]
 fn own_priority_beats_the_inherited_one(cx: &mut TestAppContext) {
     let (mut board, _database, _dir) = seeded_board(cx, false);
     assert!(board.has_text("P3"));
 }
 
-// parity: TS-components-TaskCard-23e144
 #[gpui::test]
 fn session_and_remote_badges_are_shown(cx: &mut TestAppContext) {
     let (mut board, _database, _dir) = seeded_board(cx, false);
@@ -618,7 +603,6 @@ fn session_and_remote_badges_are_shown(cx: &mut TestAppContext) {
     assert!(board.has_text("claude"));
 }
 
-// parity: TS-components-TaskCard-53380d
 #[gpui::test]
 fn many_badges_are_all_drawn(cx: &mut TestAppContext) {
     let (mut board, _database, _dir) = seeded_board(cx, false);
@@ -627,7 +611,6 @@ fn many_badges_are_all_drawn(cx: &mut TestAppContext) {
     }
 }
 
-// parity: TS-components-TaskCard-e63268
 #[gpui::test]
 fn project_name_is_shown_above_the_title(cx: &mut TestAppContext) {
     let (mut board, _database, _dir) = seeded_board(cx, false);
@@ -640,7 +623,6 @@ fn project_name_is_shown_above_the_title(cx: &mut TestAppContext) {
     assert!(f32::from(title.origin.y) > 0.0);
 }
 
-// parity: TS-components-TaskCard-7b2db2
 #[gpui::test]
 fn base_branch_cards_show_the_crown_icon(cx: &mut TestAppContext) {
     let (mut board, _database, _dir) = seeded_board(cx, false);
@@ -671,21 +653,18 @@ fn unread_board(cx: &mut TestAppContext, with_project: bool) -> Board {
     open_board(cx, "/ko")
 }
 
-// parity: TS-components-TaskCard-4503c7
 #[gpui::test]
 fn no_unread_badge_without_unread_notifications(cx: &mut TestAppContext) {
     let (mut board, _database, _dir) = seeded_board(cx, false);
     assert!(board.find(text_contains("읽지 않음")).is_none());
 }
 
-// parity: TS-components-TaskCard-83349b
 #[gpui::test]
 fn unread_count_badge_is_shown(cx: &mut TestAppContext) {
     let mut board = unread_board(cx, true);
     assert!(board.has_role_name("status", "읽지 않음 1개"));
 }
 
-// parity: TS-components-TaskCard-f8dabc
 #[gpui::test]
 fn unread_badge_sits_on_the_project_name_line(cx: &mut TestAppContext) {
     let mut board = unread_board(cx, true);
@@ -696,7 +675,6 @@ fn unread_badge_sits_on_the_project_name_line(cx: &mut TestAppContext) {
     assert!(badge.origin.y < title.origin.y);
 }
 
-// parity: TS-components-TaskCard-4808b5
 #[gpui::test]
 fn unread_badge_falls_back_to_the_title_line_without_a_project(cx: &mut TestAppContext) {
     let mut board = unread_board(cx, false);
@@ -708,7 +686,6 @@ fn unread_badge_falls_back_to_the_title_line_without_a_project(cx: &mut TestAppC
     assert!(badge.origin.y < title.origin.y + title.size.height);
 }
 
-// parity: TS-renderer-useUnreadNotificationCountByTask-8851d7
 #[gpui::test]
 fn unread_counts_are_per_task_and_skip_read_ones(cx: &mut TestAppContext) {
     let dir = temp_dir();
@@ -737,7 +714,6 @@ fn unread_counts_are_per_task_and_skip_read_ones(cx: &mut TestAppContext) {
 
 // ───────────── 카드 요청 상태 ─────────────
 
-// parity: TS-components-Board-80491b
 #[gpui::test]
 fn deleting_card_shows_progress_and_a_second_delete_sends_nothing(cx: &mut TestAppContext) {
     let dir = temp_dir();
@@ -756,7 +732,6 @@ fn deleting_card_shows_progress_and_a_second_delete_sends_nothing(cx: &mut TestA
     );
 }
 
-// parity: TS-components-Board-684985
 #[gpui::test]
 fn context_menu_delete_keeps_the_card_until_the_service_finishes(cx: &mut TestAppContext) {
     let dir = temp_dir();
@@ -774,8 +749,6 @@ fn context_menu_delete_keeps_the_card_until_the_service_finishes(cx: &mut TestAp
     );
 }
 
-// parity: TS-components-Board-ecd0e1
-// parity: TS-components-TaskCard-e130b6
 #[gpui::test]
 fn failed_delete_shows_the_reason_and_retry_finishes_it(cx: &mut TestAppContext) {
     let dir = temp_dir();
@@ -807,7 +780,6 @@ fn failed_delete_shows_the_reason_and_retry_finishes_it(cx: &mut TestAppContext)
     );
 }
 
-// parity: TS-components-Board-6e531c
 #[gpui::test]
 fn context_menu_status_moves_the_card_and_saves_it(cx: &mut TestAppContext) {
     let dir = temp_dir();
@@ -828,8 +800,6 @@ fn context_menu_status_moves_the_card_and_saves_it(cx: &mut TestAppContext) {
     assert_eq!(saved.status, TaskStatus::Review);
 }
 
-// parity: TS-components-Board-08a81f
-// parity: TS-components-TaskCard-506216
 #[gpui::test]
 fn moved_card_shows_saving_until_the_save_finishes(cx: &mut TestAppContext) {
     let dir = temp_dir();
@@ -848,7 +818,6 @@ fn moved_card_shows_saving_until_the_save_finishes(cx: &mut TestAppContext) {
     assert!(board.has_text("저장 중…"));
 }
 
-// parity: TS-components-TaskCard-00552e
 #[gpui::test]
 fn failed_move_shows_the_reason_and_retry_moves_again(cx: &mut TestAppContext) {
     let dir = temp_dir();
@@ -887,7 +856,6 @@ fn failed_move_shows_the_reason_and_retry_moves_again(cx: &mut TestAppContext) {
     assert_eq!(saved.status, TaskStatus::Progress);
 }
 
-// parity: TS-components-DoneConfirmDialog-b80c01
 #[gpui::test]
 fn moving_a_branch_card_to_done_asks_first(cx: &mut TestAppContext) {
     let dir = temp_dir();
@@ -935,7 +903,6 @@ fn open_done_confirm(cx: &mut TestAppContext) -> (Board, Arc<Database>, KanbanTa
     (board, database, card)
 }
 
-// parity: TS-components-DoneConfirmDialog-e36d1c
 #[gpui::test]
 fn cancel_keeps_the_card_where_it_was(cx: &mut TestAppContext) {
     let (mut board, database, card) = open_done_confirm(cx);
@@ -950,7 +917,6 @@ fn cancel_keeps_the_card_where_it_was(cx: &mut TestAppContext) {
     );
 }
 
-// parity: TS-components-DoneConfirmDialog-24a1ba
 #[gpui::test]
 fn escape_cancels_the_done_move(cx: &mut TestAppContext) {
     let (mut board, database, card) = open_done_confirm(cx);
@@ -965,7 +931,6 @@ fn escape_cancels_the_done_move(cx: &mut TestAppContext) {
     );
 }
 
-// parity: TS-components-DoneConfirmDialog-deaa61
 #[gpui::test]
 fn confirm_without_dont_ask_moves_but_keeps_asking_next_time(cx: &mut TestAppContext) {
     let (mut board, database, card) = open_done_confirm(cx);
@@ -985,7 +950,6 @@ fn confirm_without_dont_ask_moves_but_keeps_asking_next_time(cx: &mut TestAppCon
     assert!(stored.is_none_or(|setting| setting.value != "true"));
 }
 
-// parity: TS-components-DoneConfirmDialog-2b911a
 #[gpui::test]
 fn confirm_with_dont_ask_saves_the_dismissal_then_moves(cx: &mut TestAppContext) {
     let (mut board, database, card) = open_done_confirm(cx);
@@ -1006,7 +970,6 @@ fn confirm_with_dont_ask_saves_the_dismissal_then_moves(cx: &mut TestAppContext)
     assert_eq!(stored.map(|setting| setting.value).as_deref(), Some("true"));
 }
 
-// parity: TS-components-DoneConfirmDialog-e4f042
 #[gpui::test]
 fn done_dialog_is_absent_until_a_done_move_needs_it(cx: &mut TestAppContext) {
     let (mut board, _database, _dir) = seeded_board(cx, false);
@@ -1015,7 +978,6 @@ fn done_dialog_is_absent_until_a_done_move_needs_it(cx: &mut TestAppContext) {
 
 // ───────────── 메뉴 키보드 ─────────────
 
-// parity: TS-components-TaskContextMenu-7b4190
 #[gpui::test]
 fn menu_escape_closes_and_enter_runs_the_focused_item(cx: &mut TestAppContext) {
     let dir = temp_dir();
@@ -1036,7 +998,6 @@ fn menu_escape_closes_and_enter_runs_the_focused_item(cx: &mut TestAppContext) {
     );
 }
 
-// parity: TS-components-TaskContextMenu-d31e48
 #[gpui::test]
 fn status_list_opens_and_changes_status_with_keys_only(cx: &mut TestAppContext) {
     let dir = temp_dir();
@@ -1054,7 +1015,6 @@ fn status_list_opens_and_changes_status_with_keys_only(cx: &mut TestAppContext) 
     );
 }
 
-// parity: TS-components-TaskContextMenu-fbab95
 #[gpui::test]
 fn menu_arrow_keys_cycle_through_items(cx: &mut TestAppContext) {
     let dir = temp_dir();
@@ -1074,7 +1034,6 @@ fn menu_arrow_keys_cycle_through_items(cx: &mut TestAppContext) {
 
 // ───────────── 헤더 ─────────────
 
-// parity: TS-components-Board-9b38c9
 #[gpui::test]
 fn task_kind_segment_changes_the_shown_cards(cx: &mut TestAppContext) {
     let (mut board, _database, _dir) = seeded_board(cx, false);
@@ -1086,7 +1045,6 @@ fn task_kind_segment_changes_the_shown_cards(cx: &mut TestAppContext) {
     assert!(board.has_text("물려받는 작업"));
 }
 
-// parity: TS-components-Board-eb7121
 #[gpui::test]
 fn task_kind_segment_sits_left_of_the_project_filter_at_the_same_height(cx: &mut TestAppContext) {
     let (mut board, _database, _dir) = seeded_board(cx, false);
@@ -1097,7 +1055,6 @@ fn task_kind_segment_sits_left_of_the_project_filter_at_the_same_height(cx: &mut
     assert!(segment.origin.x < project_filter.origin.x);
 }
 
-// parity: TS-components-Board-ab5bac
 #[gpui::test]
 fn board_header_has_no_logout_button(cx: &mut TestAppContext) {
     let (mut board, _database, _dir) = seeded_board(cx, false);
@@ -1105,7 +1062,6 @@ fn board_header_has_no_logout_button(cx: &mut TestAppContext) {
     assert!(board.find(text_contains("Logout")).is_none());
 }
 
-// parity: TS-renderer-useTaskKindFilterParams-31c803
 #[gpui::test]
 fn task_kind_query_selects_the_segment_on_entry(cx: &mut TestAppContext) {
     let dir = temp_dir();
@@ -1121,7 +1077,6 @@ fn task_kind_query_selects_the_segment_on_entry(cx: &mut TestAppContext) {
     assert!(!board.has_text("일반"));
 }
 
-// parity: TS-components-Board-74ac1d
 #[gpui::test]
 fn ctrl_f_opens_the_board_find_bar(cx: &mut TestAppContext) {
     let (mut board, _database, _dir) = seeded_board(cx, false);
@@ -1134,7 +1089,6 @@ fn ctrl_f_opens_the_board_find_bar(cx: &mut TestAppContext) {
     assert!(board.has_text("다음"));
 }
 
-// parity: TS-components-Board-2b0e2c
 #[gpui::test]
 fn escape_closes_the_find_bar(cx: &mut TestAppContext) {
     let (mut board, _database, _dir) = seeded_board(cx, false);
@@ -1144,7 +1098,6 @@ fn escape_closes_the_find_bar(cx: &mut TestAppContext) {
     assert!(!board.has_text("이전"));
 }
 
-// parity: TS-components-Board-d5d432
 #[gpui::test]
 fn slash_does_not_open_find_without_vim_mode(cx: &mut TestAppContext) {
     let dir = temp_dir();
@@ -1156,7 +1109,6 @@ fn slash_does_not_open_find_without_vim_mode(cx: &mut TestAppContext) {
     assert!(!board.has_text("이전"));
 }
 
-// parity: TS-components-Board-15f2c9
 #[gpui::test]
 fn vim_n_opens_the_new_task_modal(cx: &mut TestAppContext) {
     let (mut board, _database, _dir) = seeded_board(cx, false);
@@ -1164,7 +1116,6 @@ fn vim_n_opens_the_new_task_modal(cx: &mut TestAppContext) {
     assert!(board.has_text("새 작업 생성"));
 }
 
-// parity: TS-components-CreateTaskModal-8aea8b
 #[gpui::test]
 fn escape_closes_the_new_task_modal(cx: &mut TestAppContext) {
     let (mut board, _database, _dir) = seeded_board(cx, false);
@@ -1174,7 +1125,6 @@ fn escape_closes_the_new_task_modal(cx: &mut TestAppContext) {
     assert!(!board.has_text("새 작업 생성"));
 }
 
-// parity: TS-components-Board-2363ee
 #[gpui::test]
 fn branch_card_menu_opens_create_modal_with_the_branch_as_base(cx: &mut TestAppContext) {
     let (mut board, _database, _dir) = seeded_board(cx, false);
@@ -1184,7 +1134,6 @@ fn branch_card_menu_opens_create_modal_with_the_branch_as_base(cx: &mut TestAppC
     assert!(board.has_text("베이스 브랜치"));
 }
 
-// parity: TS-components-Board-97b6ee
 #[gpui::test]
 fn arrow_key_without_focus_enters_the_first_card(cx: &mut TestAppContext) {
     let dir = temp_dir();
@@ -1202,7 +1151,6 @@ fn arrow_key_without_focus_enters_the_first_card(cx: &mut TestAppContext) {
     );
 }
 
-// parity: TS-components-Board-782407
 #[gpui::test]
 fn vim_key_without_focus_enters_the_first_card(cx: &mut TestAppContext) {
     let dir = temp_dir();
@@ -1218,7 +1166,6 @@ fn vim_key_without_focus_enters_the_first_card(cx: &mut TestAppContext) {
     );
 }
 
-// parity: TS-components-Board-d75a51
 #[gpui::test]
 fn dd_on_a_focused_card_deletes_it_after_success(cx: &mut TestAppContext) {
     let dir = temp_dir();
@@ -1235,7 +1182,6 @@ fn dd_on_a_focused_card_deletes_it_after_success(cx: &mut TestAppContext) {
     );
 }
 
-// parity: TS-components-Board-1e08e0
 #[gpui::test]
 fn failed_dd_delete_keeps_the_card(cx: &mut TestAppContext) {
     let dir = temp_dir();
@@ -1247,7 +1193,6 @@ fn failed_dd_delete_keeps_the_card(cx: &mut TestAppContext) {
     assert!(board.has_text("지울 작업"));
 }
 
-// parity: TS-components-Board-e569f6
 #[gpui::test]
 fn dd_is_cancelled_when_the_confirm_is_declined(cx: &mut TestAppContext) {
     let dir = temp_dir();
@@ -1265,7 +1210,6 @@ fn dd_is_cancelled_when_the_confirm_is_declined(cx: &mut TestAppContext) {
     );
 }
 
-// parity: TS-components-Board-a59ead
 #[gpui::test]
 fn dd_does_nothing_without_vim_mode(cx: &mut TestAppContext) {
     let dir = temp_dir();
@@ -1282,7 +1226,6 @@ fn dd_does_nothing_without_vim_mode(cx: &mut TestAppContext) {
     );
 }
 
-// parity: TS-components-Board-9d2d31
 #[gpui::test]
 fn vim_keys_do_nothing_without_vim_mode(cx: &mut TestAppContext) {
     let dir = temp_dir();
@@ -1300,7 +1243,6 @@ fn vim_keys_do_nothing_without_vim_mode(cx: &mut TestAppContext) {
     );
 }
 
-// parity: TS-components-Board-d57236
 #[gpui::test]
 fn shift_f10_on_a_focused_card_opens_the_menu(cx: &mut TestAppContext) {
     let (mut board, _database, _dir) = seeded_board(cx, false);
@@ -1308,7 +1250,6 @@ fn shift_f10_on_a_focused_card_opens_the_menu(cx: &mut TestAppContext) {
     assert!(board.has_role_name("menuitem", "삭제"));
 }
 
-// parity: TS-components-TaskCard-d7c200
 #[gpui::test]
 fn shift_f10_opens_the_menu_without_following_the_link(cx: &mut TestAppContext) {
     let (mut board, _database, _dir) = seeded_board(cx, false);
@@ -1369,7 +1310,6 @@ fn stored_notification_is_read(database: &Database, id: &str) -> bool {
     list.iter().find(|item| item["id"] == id).unwrap()["isRead"] == true
 }
 
-// parity: TS-components-NotificationCenterButton-e76d89
 #[gpui::test]
 fn shortcut_opens_the_notification_panel(cx: &mut TestAppContext) {
     let (mut board, _database, _card) = notification_board(cx, false);
@@ -1377,7 +1317,6 @@ fn shortcut_opens_the_notification_panel(cx: &mut TestAppContext) {
     assert!(board.has_text("새 알림"));
 }
 
-// parity: TS-components-NotificationCenterButton-c9aab3
 #[gpui::test]
 fn escape_closes_the_notification_panel(cx: &mut TestAppContext) {
     let (mut board, _database, _card) = notification_board(cx, false);
@@ -1385,7 +1324,6 @@ fn escape_closes_the_notification_panel(cx: &mut TestAppContext) {
     assert!(!board.has_role_name("dialog", "알림"));
 }
 
-// parity: TS-components-NotificationCenterButton-b64c86
 #[gpui::test]
 fn space_marks_the_highlighted_notification_read_without_opening(cx: &mut TestAppContext) {
     let (mut board, database, _card) = notification_board(cx, false);
@@ -1394,7 +1332,6 @@ fn space_marks_the_highlighted_notification_read_without_opening(cx: &mut TestAp
     assert!(board.has_role_name("dialog", "알림"));
 }
 
-// parity: TS-components-NotificationCenterButton-e2732a
 #[gpui::test]
 fn arrows_and_enter_open_the_highlighted_notification(cx: &mut TestAppContext) {
     let (mut board, database, _card) = notification_board(cx, false);
@@ -1403,7 +1340,6 @@ fn arrows_and_enter_open_the_highlighted_notification(cx: &mut TestAppContext) {
     assert!(!board.has_role_name("dialog", "알림"));
 }
 
-// parity: TS-components-NotificationCenterButton-13e9f8
 #[gpui::test]
 fn picked_unread_filter_is_saved_to_app_settings(cx: &mut TestAppContext) {
     let (mut board, database, _card) = notification_board(cx, false);
@@ -1417,7 +1353,6 @@ fn picked_unread_filter_is_saved_to_app_settings(cx: &mut TestAppContext) {
     assert!(!board.has_text("예전 알림"));
 }
 
-// parity: TS-components-NotificationCenterButton-e7b9d2
 #[gpui::test]
 fn saved_unread_filter_applies_when_the_panel_opens(cx: &mut TestAppContext) {
     let (mut board, _database, _card) = notification_board(cx, true);
@@ -1425,7 +1360,6 @@ fn saved_unread_filter_applies_when_the_panel_opens(cx: &mut TestAppContext) {
     assert!(!board.has_text("예전 알림"));
 }
 
-// parity: TS-components-NotificationCenterButton-627875
 #[gpui::test]
 fn marking_read_in_unread_only_view_drops_the_item(cx: &mut TestAppContext) {
     let (mut board, _database, _card) = notification_board(cx, false);
@@ -1434,7 +1368,6 @@ fn marking_read_in_unread_only_view_drops_the_item(cx: &mut TestAppContext) {
     assert!(!board.has_text("새 알림"));
 }
 
-// parity: TS-components-NotificationCenterButton-0d4dcd
 #[gpui::test]
 fn unread_only_view_without_unread_items_shows_its_own_empty_message(cx: &mut TestAppContext) {
     let (mut board, _database, _card) = notification_board(cx, false);
@@ -1443,7 +1376,6 @@ fn unread_only_view_without_unread_items_shows_its_own_empty_message(cx: &mut Te
     assert!(board.has_text("안읽은 알림이 없습니다."));
 }
 
-// parity: TS-components-NotificationCenterButton-ec8b4d
 #[gpui::test]
 fn failed_mark_all_read_shows_the_reason(cx: &mut TestAppContext) {
     let (mut board, _database, _card) = notification_board(cx, false);
@@ -1461,7 +1393,6 @@ fn failed_mark_all_read_shows_the_reason(cx: &mut TestAppContext) {
     );
 }
 
-// parity: TS-components-NotificationCenterButton-78c97c
 #[gpui::test]
 fn missing_task_shows_a_notice_instead_of_navigating(cx: &mut TestAppContext) {
     let (mut board, database, card) = notification_board(cx, false);
@@ -1496,7 +1427,6 @@ fn host_board(cx: &mut TestAppContext) -> (Board, Arc<Database>) {
     (board, database)
 }
 
-// parity: TS-components-Board-48ebb6
 #[gpui::test]
 fn mod_shift_d_opens_the_desktop_filter(cx: &mut TestAppContext) {
     let (mut board, _database) = host_board(cx);
@@ -1507,7 +1437,6 @@ fn mod_shift_d_opens_the_desktop_filter(cx: &mut TestAppContext) {
     assert!(board.has_role_name("dialog", "데스크톱 필터"));
 }
 
-// parity: TS-components-DesktopFilter-0a9fae
 #[gpui::test]
 fn clicking_a_desktop_name_toggles_it_and_keeps_the_menu_open(cx: &mut TestAppContext) {
     let (mut board, _database) = host_board(cx);
@@ -1518,7 +1447,6 @@ fn clicking_a_desktop_name_toggles_it_and_keeps_the_menu_open(cx: &mut TestAppCo
     assert!(!board.has_text("로컬 작업"));
 }
 
-// parity: TS-components-Board-c68453
 #[gpui::test]
 fn desktop_filter_supports_several_hosts_and_resetting_to_all(cx: &mut TestAppContext) {
     let (mut board, _database) = host_board(cx);
@@ -1532,7 +1460,6 @@ fn desktop_filter_supports_several_hosts_and_resetting_to_all(cx: &mut TestAppCo
     assert!(board.has_text("원격 작업") && board.has_text("로컬 작업"));
 }
 
-// parity: TS-components-Board-57503c
 #[gpui::test]
 fn changing_desktops_drops_project_selections_from_other_desktops(cx: &mut TestAppContext) {
     let (mut board, _database) = host_board(cx);
@@ -1547,7 +1474,6 @@ fn changing_desktops_drops_project_selections_from_other_desktops(cx: &mut TestA
     assert!(board.has_text("원격 작업") && board.has_text("로컬 작업"));
 }
 
-// parity: TS-components-ProjectSelector-50aee9
 #[gpui::test]
 fn up_to_two_selected_projects_show_as_chips(cx: &mut TestAppContext) {
     let (mut board, _database) = host_board(cx);
@@ -1564,7 +1490,6 @@ fn up_to_two_selected_projects_show_as_chips(cx: &mut TestAppContext) {
     assert_eq!(hidden_count, 0);
 }
 
-// parity: TS-components-BoardSortPicker-d40c29
 #[gpui::test]
 fn sort_trigger_shows_the_number_of_chosen_fields(cx: &mut TestAppContext) {
     let (mut board, _database, _dir) = seeded_board(cx, false);
@@ -1574,7 +1499,6 @@ fn sort_trigger_shows_the_number_of_chosen_fields(cx: &mut TestAppContext) {
     assert!(board.has_text("2"));
 }
 
-// parity: TS-components-BoardSortPicker-28929e
 #[gpui::test]
 fn clear_removes_all_chosen_fields(cx: &mut TestAppContext) {
     let (mut board, database, _dir) = seeded_board(cx, false);
@@ -1592,7 +1516,6 @@ fn clear_removes_all_chosen_fields(cx: &mut TestAppContext) {
     );
 }
 
-// parity: TS-components-Board-ea02ad
 #[gpui::test]
 fn turning_on_priority_sort_saves_the_preference(cx: &mut TestAppContext) {
     let (mut board, database, _dir) = seeded_board(cx, false);
@@ -1632,14 +1555,12 @@ fn workspace_board(cx: &mut TestAppContext, path: &str) -> (Board, Arc<Database>
     (board, database, vec![without_session, with_session])
 }
 
-// parity: TS-renderer-TaskWorkspaceRoute-66ed1a
 #[gpui::test]
 fn workspace_starts_on_the_first_task_with_a_session(cx: &mut TestAppContext) {
     let (mut board, _database, _tasks) = workspace_board(cx, "/ko");
     assert!(board.has_role_name("current", "세션 있는 작업"));
 }
 
-// parity: TS-renderer-TaskWorkspaceRoute-48b3c0
 #[gpui::test]
 fn picking_another_task_switches_the_terminal_pane(cx: &mut TestAppContext) {
     let (mut board, _database, _tasks) = workspace_board(cx, "/ko");
@@ -1648,7 +1569,6 @@ fn picking_another_task_switches_the_terminal_pane(cx: &mut TestAppContext) {
     assert!(board.has_role_name("current", "세션 없는 작업"));
 }
 
-// parity: TS-renderer-TaskWorkspaceRoute-18b26c
 #[gpui::test]
 fn picking_a_task_without_a_session_starts_connecting(cx: &mut TestAppContext) {
     let (mut board, _database, _tasks) = workspace_board(cx, "/ko");
@@ -1657,7 +1577,6 @@ fn picking_a_task_without_a_session_starts_connecting(cx: &mut TestAppContext) {
     assert!(board.has_text("연결 중..."));
 }
 
-// parity: TS-renderer-TaskWorkspaceRoute-7fedd4
 #[gpui::test]
 fn failed_workspace_load_shows_the_reason_and_retries(cx: &mut TestAppContext) {
     let dir = temp_dir();
@@ -1690,7 +1609,6 @@ fn failed_workspace_load_shows_the_reason_and_retries(cx: &mut TestAppContext) {
     assert!(board.has_text("작업"));
 }
 
-// parity: TS-renderer-TaskWorkspaceRoute-9a6a8f
 #[gpui::test]
 fn slow_workspace_load_shows_the_delay_notice(cx: &mut TestAppContext) {
     let dir = temp_dir();
@@ -1716,7 +1634,6 @@ fn slow_workspace_load_shows_the_delay_notice(cx: &mut TestAppContext) {
     assert!(board.has_text("조회가 지연되고 있습니다. 계속 기다리는 중…"));
 }
 
-// parity: TS-renderer-TaskWorkspaceRoute-6bd544
 #[gpui::test]
 fn failed_workspace_refresh_keeps_the_list_and_shows_a_banner(cx: &mut TestAppContext) {
     let (mut board, _database, _tasks) = workspace_board(cx, "/ko");
@@ -1739,7 +1656,6 @@ fn failed_workspace_refresh_keeps_the_list_and_shows_a_banner(cx: &mut TestAppCo
     );
 }
 
-// parity: TS-renderer-TaskWorkspaceRoute-5f7f01
 #[gpui::test]
 fn task_id_query_selects_that_task(cx: &mut TestAppContext) {
     let dir = temp_dir();
@@ -1754,7 +1670,6 @@ fn task_id_query_selects_that_task(cx: &mut TestAppContext) {
     assert!(board.has_role_name("current", "요청한 작업"));
 }
 
-// parity: TS-renderer-WorkspaceTaskList-c96c90
 #[gpui::test]
 fn clicking_a_list_task_selects_and_marks_it_current(cx: &mut TestAppContext) {
     let (mut board, _database, _tasks) = workspace_board(cx, "/ko");
@@ -1764,7 +1679,6 @@ fn clicking_a_list_task_selects_and_marks_it_current(cx: &mut TestAppContext) {
     assert!(!board.has_role_name("current", "세션 있는 작업"));
 }
 
-// parity: TS-renderer-WorkspaceTaskList-891938
 #[gpui::test]
 fn list_enter_focuses_the_terminal_instead_of_opening_the_detail(cx: &mut TestAppContext) {
     let (mut board, _database, _tasks) = workspace_board(cx, "/ko");
@@ -1794,14 +1708,12 @@ fn branch_todo_modal(cx: &mut TestAppContext, branches_fault: Option<FaultMode>)
     board
 }
 
-// parity: TS-components-CreateTaskModal-00fa17
 #[gpui::test]
 fn waiting_branch_list_is_announced(cx: &mut TestAppContext) {
     let mut board = branch_todo_modal(cx, Some(FaultMode::Hang));
     assert!(board.has_text("브랜치 목록을 불러오는 중…"));
 }
 
-// parity: TS-components-CreateTaskModal-9268d4
 #[gpui::test]
 fn failed_branch_list_shows_the_reason_and_a_retry(cx: &mut TestAppContext) {
     let mut board = branch_todo_modal(cx, Some(FaultMode::Fail));
@@ -1809,7 +1721,6 @@ fn failed_branch_list_shows_the_reason_and_a_retry(cx: &mut TestAppContext) {
     assert!(board.has_role_name("button", "다시 시도"));
 }
 
-// parity: TS-components-CreateTaskModal-b1d549
 #[gpui::test]
 fn branch_name_input_has_no_example_placeholder(cx: &mut TestAppContext) {
     let (mut board, _database, _dir) = seeded_board(cx, false);
@@ -1818,7 +1729,6 @@ fn branch_name_input_has_no_example_placeholder(cx: &mut TestAppContext) {
     assert!(board.find(text_contains("feat/my-feature")).is_none());
 }
 
-// parity: TS-components-CreateTaskModal-dc03c9
 #[gpui::test]
 fn new_task_defaults_to_herdr_without_a_setting(cx: &mut TestAppContext) {
     let (mut board, _database, _dir) = seeded_board(cx, false);
@@ -1826,7 +1736,6 @@ fn new_task_defaults_to_herdr_without_a_setting(cx: &mut TestAppContext) {
     assert!(board.has_text("herdr"));
 }
 
-// parity: TS-components-BranchTaskModal-e1bfd9
 #[gpui::test]
 fn branch_modal_defaults_to_herdr_without_a_setting(cx: &mut TestAppContext) {
     let dir = temp_dir();
@@ -1841,7 +1750,6 @@ fn branch_modal_defaults_to_herdr_without_a_setting(cx: &mut TestAppContext) {
     assert!(board.has_text("herdr"));
 }
 
-// parity: TS-components-BranchTaskModal-b0a30f
 #[gpui::test]
 fn branch_modal_shows_branch_list_failure_with_retry(cx: &mut TestAppContext) {
     let dir = temp_dir();
@@ -1861,7 +1769,6 @@ fn branch_modal_shows_branch_list_failure_with_retry(cx: &mut TestAppContext) {
     assert!(board.has_role_name("button", "다시 시도"));
 }
 
-// parity: TS-components-ProjectRegistryDialog-75ff74
 #[gpui::test]
 fn registry_dialog_shows_the_scan_form_and_registered_projects(cx: &mut TestAppContext) {
     let (mut board, _database) = host_board(cx);
@@ -1872,7 +1779,6 @@ fn registry_dialog_shows_the_scan_form_and_registered_projects(cx: &mut TestAppC
     assert!(board.has_text("remote-app"));
 }
 
-// parity: TS-components-ProjectRegistryDialog-bc851b
 #[gpui::test]
 fn escape_closes_the_registry_dialog(cx: &mut TestAppContext) {
     let (mut board, _database) = host_board(cx);
@@ -1881,7 +1787,6 @@ fn escape_closes_the_registry_dialog(cx: &mut TestAppContext) {
     assert!(!board.has_role_name("dialog", "프로젝트 스캔"));
 }
 
-// parity: TS-components-ProjectRegistryDialog-bd738d
 #[gpui::test]
 fn closed_registry_dialog_renders_nothing(cx: &mut TestAppContext) {
     let (mut board, _database) = host_board(cx);
@@ -1889,7 +1794,6 @@ fn closed_registry_dialog_renders_nothing(cx: &mut TestAppContext) {
     assert!(!board.has_text("스캔 및 등록"));
 }
 
-// parity: TS-components-ProjectRegistryDialog-c63d06
 #[gpui::test]
 fn open_registry_dialog_blocks_board_shortcuts(cx: &mut TestAppContext) {
     let (mut board, _database) = host_board(cx);
@@ -1898,7 +1802,6 @@ fn open_registry_dialog_blocks_board_shortcuts(cx: &mut TestAppContext) {
     assert!(!board.has_text("새 작업 생성"));
 }
 
-// parity: TS-components-ProjectRegistryDialog-9f21cf
 #[gpui::test]
 fn registry_without_projects_has_no_search_input(cx: &mut TestAppContext) {
     let dir = temp_dir();
@@ -1911,7 +1814,6 @@ fn registry_without_projects_has_no_search_input(cx: &mut TestAppContext) {
 
 // ───────────── 기타 ─────────────
 
-// parity: TS-components-BoardSortPicker-585c32
 #[gpui::test]
 fn clear_does_nothing_without_chosen_fields(cx: &mut TestAppContext) {
     let (mut board, database, _dir) = seeded_board(cx, false);
@@ -1925,7 +1827,6 @@ fn clear_does_nothing_without_chosen_fields(cx: &mut TestAppContext) {
     assert!(stored.is_none());
 }
 
-// parity: TS-components-BoardSortPicker-6aa533
 #[gpui::test]
 fn sort_picker_offers_only_the_five_fields(cx: &mut TestAppContext) {
     let (mut board, _database, _dir) = seeded_board(cx, false);
@@ -1936,7 +1837,6 @@ fn sort_picker_offers_only_the_five_fields(cx: &mut TestAppContext) {
     assert!(board.find(text_contains("직접")).is_none());
 }
 
-// parity: TS-components-Board-4b7dd7
 #[gpui::test]
 fn open_dialog_blocks_the_find_shortcut(cx: &mut TestAppContext) {
     let (mut board, _database) = host_board(cx);
@@ -1948,7 +1848,6 @@ fn open_dialog_blocks_the_find_shortcut(cx: &mut TestAppContext) {
     assert!(!board.has_text("이전"));
 }
 
-// parity: TS-components-TaskCard-0fd0d5
 #[gpui::test]
 fn priority_badge_is_aligned_to_the_right(cx: &mut TestAppContext) {
     let (mut board, _database, _dir) = seeded_board(cx, false);
@@ -1972,7 +1871,6 @@ fn save_diff_stats(database: &Database, task_id: &str, files: i64) {
     .unwrap();
 }
 
-// parity: TS-renderer-useTaskDiffStats-e64ec6
 #[gpui::test]
 fn diff_stats_follow_the_stored_values_on_each_poll(cx: &mut TestAppContext) {
     let dir = temp_dir();
@@ -1988,7 +1886,6 @@ fn diff_stats_follow_the_stored_values_on_each_poll(cx: &mut TestAppContext) {
     assert!(board.has_role_name("status", "5개 파일 변경 · 4줄 추가 · 1줄 삭제"));
 }
 
-// parity: TS-components-Board-e560a8
 #[gpui::test]
 fn stored_diff_stats_show_on_cards_outside_progress(cx: &mut TestAppContext) {
     let dir = temp_dir();
@@ -2051,7 +1948,6 @@ fn hook_failure() -> BoardEvent {
     })
 }
 
-// parity: TS-renderer-BoardEventAlert-6e32ae
 #[gpui::test]
 fn board_event_alert_dismisses_itself_after_five_seconds(cx: &mut TestAppContext) {
     let (mut board, _database, _dir) = seeded_board(cx, true);
@@ -2061,7 +1957,6 @@ fn board_event_alert_dismisses_itself_after_five_seconds(cx: &mut TestAppContext
     assert!(board.find(text_contains("Hooks 자동 설치 실패")).is_none());
 }
 
-// parity: TS-renderer-BoardEventAlert-609de0
 #[gpui::test]
 fn board_event_alert_closes_with_the_close_button(cx: &mut TestAppContext) {
     let (mut board, _database, _dir) = seeded_board(cx, true);
@@ -2070,7 +1965,6 @@ fn board_event_alert_closes_with_the_close_button(cx: &mut TestAppContext) {
     assert!(board.find(text_contains("Hooks 자동 설치 실패")).is_none());
 }
 
-// parity: TS-renderer-BoardEventAlert-221574
 #[gpui::test]
 fn peer_deletion_alert_stays_until_closed(cx: &mut TestAppContext) {
     let (mut board, _database, _dir) = seeded_board(cx, true);
@@ -2089,7 +1983,6 @@ fn peer_deletion_alert_stays_until_closed(cx: &mut TestAppContext) {
     );
 }
 
-// parity: TS-renderer-App-20fae6
 #[gpui::test]
 fn board_updates_are_debounced_into_one_refresh(cx: &mut TestAppContext) {
     let (mut board, database, _dir) = seeded_board(cx, true);
@@ -2102,7 +1995,6 @@ fn board_updates_are_debounced_into_one_refresh(cx: &mut TestAppContext) {
     assert!(board.has_text("다른 창에서 만든 작업"));
 }
 
-// parity: TS-renderer-useUnreadNotificationCountByTask-b29446
 #[gpui::test]
 fn notification_changes_recount_unread_badges(cx: &mut TestAppContext) {
     let (mut board, database, _dir) = seeded_board(cx, true);
@@ -2136,7 +2028,6 @@ fn notification_changes_recount_unread_badges(cx: &mut TestAppContext) {
     assert!(board.has_role_name("status", "읽지 않음 1개"));
 }
 
-// parity: TS-components-NotificationCenterButton-006720
 #[gpui::test]
 fn sync_progress_shows_on_the_button_and_unlocks_after_completion(cx: &mut TestAppContext) {
     let (mut board, _database, _dir) = seeded_board(cx, true);
@@ -2149,7 +2040,6 @@ fn sync_progress_shows_on_the_button_and_unlocks_after_completion(cx: &mut TestA
     assert!(board.has_role_name("button", "지금 동기화"));
 }
 
-// parity: TS-renderer-useBackgroundTaskSync-72cd70
 #[gpui::test]
 fn sync_start_failure_stays_visible_and_allows_retry(cx: &mut TestAppContext) {
     let (mut board, _database, _dir) = seeded_board(cx, true);
@@ -2163,7 +2053,6 @@ fn sync_start_failure_stays_visible_and_allows_retry(cx: &mut TestAppContext) {
     assert!(board.has_role_name("button", "다시 시도"));
 }
 
-// parity: TS-components-Board-285739
 #[gpui::test]
 fn palette_sync_command_runs_the_background_sync(cx: &mut TestAppContext) {
     let (mut board, _database, _dir) = seeded_board(cx, true);
@@ -2179,7 +2068,6 @@ fn palette_sync_command_runs_the_background_sync(cx: &mut TestAppContext) {
     assert!(board.find(text_contains("sync was started")).is_some());
 }
 
-// parity: TS-renderer-CommandPaletteDialog-483930
 #[gpui::test]
 fn clicking_the_sync_row_starts_sync_and_closes(cx: &mut TestAppContext) {
     let (mut board, _database, _dir) = seeded_board(cx, true);
@@ -2196,7 +2084,6 @@ fn clicking_the_sync_row_starts_sync_and_closes(cx: &mut TestAppContext) {
     }));
 }
 
-// parity: TS-renderer-CommandPaletteDialog-c19d86
 #[gpui::test]
 fn palette_does_not_start_sync_while_another_sync_runs(cx: &mut TestAppContext) {
     let (mut board, _database, _dir) = seeded_board(cx, true);
@@ -2215,7 +2102,6 @@ fn palette_does_not_start_sync_while_another_sync_runs(cx: &mut TestAppContext) 
     );
 }
 
-// parity: TS-components-Board-fbad2a
 #[gpui::test]
 fn palette_move_command_moves_the_focused_card(cx: &mut TestAppContext) {
     let (mut board, database, _dir) = seeded_board(cx, true);
@@ -2231,7 +2117,6 @@ fn palette_move_command_moves_the_focused_card(cx: &mut TestAppContext) {
     assert_eq!(moved.status, TaskStatus::Review);
 }
 
-// parity: TS-renderer-CommandPaletteDialog-86e241
 #[gpui::test]
 fn palette_review_row_moves_the_task_shown_in_the_detail_screen(cx: &mut TestAppContext) {
     let dir = temp_dir();
@@ -2255,7 +2140,6 @@ fn palette_review_row_moves_the_task_shown_in_the_detail_screen(cx: &mut TestApp
     assert_eq!(moved.status, TaskStatus::Review);
 }
 
-// parity: TS-renderer-CommandPaletteDialog-56f289
 #[gpui::test]
 fn palette_offers_moves_for_the_board_focused_card(cx: &mut TestAppContext) {
     let (mut board, _database, _dir) = seeded_board(cx, true);
@@ -2265,7 +2149,6 @@ fn palette_offers_moves_for_the_board_focused_card(cx: &mut TestAppContext) {
     assert!(board.has_text("Review 상태로 이동"));
 }
 
-// parity: TS-renderer-CommandPaletteDialog-b1e048
 #[gpui::test]
 fn palette_without_a_move_target_has_no_move_rows(cx: &mut TestAppContext) {
     let (mut board, _database, _dir) = seeded_board(cx, true);
@@ -2275,7 +2158,6 @@ fn palette_without_a_move_target_has_no_move_rows(cx: &mut TestAppContext) {
     assert!(!board.has_text("move review"));
 }
 
-// parity: TS-renderer-CommandPaletteDialog-3dadcf
 #[gpui::test]
 fn palette_rows_render_command_and_description_separately(cx: &mut TestAppContext) {
     let (mut board, _database, _dir) = seeded_board(cx, true);
@@ -2284,7 +2166,6 @@ fn palette_rows_render_command_and_description_separately(cx: &mut TestAppContex
     assert!(board.has_text("칸반 보드로 보기"));
 }
 
-// parity: TS-renderer-CommandPaletteDialog-644c66
 #[gpui::test]
 fn palette_query_narrows_the_rows(cx: &mut TestAppContext) {
     let (mut board, _database, _dir) = seeded_board(cx, true);
@@ -2294,7 +2175,6 @@ fn palette_query_narrows_the_rows(cx: &mut TestAppContext) {
     assert!(!board.has_text("sync"));
 }
 
-// parity: TS-renderer-CommandPaletteDialog-744d19
 #[gpui::test]
 fn palette_command_tokens_leave_only_that_row(cx: &mut TestAppContext) {
     let (mut board, _database, _dir) = seeded_board(cx, true);
@@ -2306,7 +2186,6 @@ fn palette_command_tokens_leave_only_that_row(cx: &mut TestAppContext) {
     assert!(!board.has_text("sync"));
 }
 
-// parity: TS-renderer-CommandPaletteDialog-84a0fe
 #[gpui::test]
 fn palette_without_matches_shows_the_empty_message(cx: &mut TestAppContext) {
     let (mut board, _database, _dir) = seeded_board(cx, true);
@@ -2315,7 +2194,6 @@ fn palette_without_matches_shows_the_empty_message(cx: &mut TestAppContext) {
     assert!(board.has_text("일치하는 명령이 없습니다"));
 }
 
-// parity: TS-renderer-CommandPaletteDialog-c7bd25
 #[gpui::test]
 fn arrow_down_then_enter_runs_the_second_row(cx: &mut TestAppContext) {
     let (mut board, _database, _dir) = seeded_board(cx, true);
@@ -2324,7 +2202,6 @@ fn arrow_down_then_enter_runs_the_second_row(cx: &mut TestAppContext) {
     assert_eq!(board.setting("board_view_mode").as_deref(), Some("kanban"));
 }
 
-// parity: TS-renderer-CommandPaletteDialog-91add6
 #[gpui::test]
 fn view_command_saves_the_board_view(cx: &mut TestAppContext) {
     let (mut board, _database, _dir) = seeded_board(cx, true);
@@ -2337,7 +2214,6 @@ fn view_command_saves_the_board_view(cx: &mut TestAppContext) {
     );
 }
 
-// parity: TS-renderer-BoardCommandProvider-593a7a
 #[gpui::test]
 fn open_palette_blocks_other_board_shortcuts(cx: &mut TestAppContext) {
     let (mut board, _database, _dir) = seeded_board(cx, true);
@@ -2348,7 +2224,6 @@ fn open_palette_blocks_other_board_shortcuts(cx: &mut TestAppContext) {
     assert!(!board.shell_read(|shell, _| shell.is_command_palette_open()));
 }
 
-// parity: TS-renderer-TaskQuickSearchDialog-1c2f0f
 #[gpui::test]
 fn quick_search_shortcut_opens_and_loads_tasks(cx: &mut TestAppContext) {
     let (mut board, _database, _dir) = seeded_board(cx, true);
@@ -2357,7 +2232,6 @@ fn quick_search_shortcut_opens_and_loads_tasks(cx: &mut TestAppContext) {
     assert!(board.has_role_name("button", "feat/inherit"));
 }
 
-// parity: TS-renderer-TaskQuickSearchDialog-b59541
 #[gpui::test]
 fn quick_search_header_shows_no_shortcut_text(cx: &mut TestAppContext) {
     let (mut board, _database, _dir) = seeded_board(cx, true);
@@ -2366,7 +2240,6 @@ fn quick_search_header_shows_no_shortcut_text(cx: &mut TestAppContext) {
     assert!(!board.has_text("Ctrl+Shift+O"));
 }
 
-// parity: TS-renderer-TaskQuickSearchDialog-956969
 #[gpui::test]
 fn quick_search_does_not_open_behind_a_shortcut_blocker(cx: &mut TestAppContext) {
     let (mut board, _database) = host_board(cx);
@@ -2375,7 +2248,6 @@ fn quick_search_does_not_open_behind_a_shortcut_blocker(cx: &mut TestAppContext)
     assert!(!board.has_text("태스크 빠른 검색"));
 }
 
-// parity: TS-renderer-BoardCommandProvider-19bf53
 #[gpui::test]
 fn board_shortcuts_are_ignored_while_quick_search_is_open(cx: &mut TestAppContext) {
     let (mut board, _database, _dir) = seeded_board(cx, true);
@@ -2384,7 +2256,6 @@ fn board_shortcuts_are_ignored_while_quick_search_is_open(cx: &mut TestAppContex
     assert!(!board.shell_read(|shell, _| shell.is_command_palette_open()));
 }
 
-// parity: TS-renderer-TaskQuickSearchDialog-05154c
 #[gpui::test]
 fn only_remote_results_show_the_remote_badge_and_host(cx: &mut TestAppContext) {
     let (mut board, _database, _dir) = seeded_board(cx, true);
@@ -2398,7 +2269,6 @@ fn only_remote_results_show_the_remote_badge_and_host(cx: &mut TestAppContext) {
     assert!(!board.has_text("원격"));
 }
 
-// parity: TS-renderer-TaskQuickSearchDialog-c43944
 #[gpui::test]
 fn escape_closes_quick_search(cx: &mut TestAppContext) {
     let (mut board, _database, _dir) = seeded_board(cx, true);
@@ -2407,7 +2277,6 @@ fn escape_closes_quick_search(cx: &mut TestAppContext) {
     assert!(!board.has_text("태스크 빠른 검색"));
 }
 
-// parity: TS-renderer-TaskQuickSearchDialog-33fafd
 #[gpui::test]
 fn new_task_shortcut_in_quick_search_requests_a_branch_todo(cx: &mut TestAppContext) {
     let (mut board, _database, _dir) = seeded_board(cx, true);
@@ -2423,7 +2292,6 @@ fn new_task_shortcut_in_quick_search_requests_a_branch_todo(cx: &mut TestAppCont
     );
 }
 
-// parity: TS-renderer-TaskQuickSearchDialog-6a8bc5
 #[gpui::test]
 fn quick_search_load_failure_shows_reason_and_retry(cx: &mut TestAppContext) {
     let (mut board, _database, _dir) = seeded_board(cx, true);
@@ -2441,7 +2309,6 @@ fn quick_search_load_failure_shows_reason_and_retry(cx: &mut TestAppContext) {
     assert!(board.has_role_name("button", "feat/inherit"));
 }
 
-// parity: TS-renderer-TaskQuickSearchDialog-19bccd
 #[gpui::test]
 fn workspace_quick_search_selects_the_task_in_place(cx: &mut TestAppContext) {
     let dir = temp_dir();
@@ -2464,7 +2331,6 @@ fn workspace_quick_search_selects_the_task_in_place(cx: &mut TestAppContext) {
     );
 }
 
-// parity: TS-components-ProjectRegistryDialog-14ae4c
 #[gpui::test]
 fn confirmed_deletion_removes_the_project(cx: &mut TestAppContext) {
     let (mut board, database) = host_board(cx);
@@ -2479,7 +2345,6 @@ fn confirmed_deletion_removes_the_project(cx: &mut TestAppContext) {
     assert_eq!(names.len(), 1);
 }
 
-// parity: TS-components-ProjectRegistryDialog-e9888b
 #[gpui::test]
 fn deleting_project_keeps_the_scan_button_and_marks_the_row(cx: &mut TestAppContext) {
     let (mut board, _database) = host_board(cx);
@@ -2490,7 +2355,6 @@ fn deleting_project_keeps_the_scan_button_and_marks_the_row(cx: &mut TestAppCont
     assert!(board.has_role_name("button", "스캔 및 등록"));
 }
 
-// parity: TS-components-ProjectRegistryDialog-c062f2
 #[gpui::test]
 fn failed_deletion_keeps_the_reason_and_retry_deletes_the_same_project(cx: &mut TestAppContext) {
     let (mut board, database) = host_board(cx);
@@ -2511,7 +2375,6 @@ fn failed_deletion_keeps_the_reason_and_retry_deletes_the_same_project(cx: &mut 
     assert_eq!(count, 1);
 }
 
-// parity: TS-components-ProjectRegistryDialog-00685a
 #[gpui::test]
 fn deletion_failing_after_close_is_announced_by_toast(cx: &mut TestAppContext) {
     let (mut board, _database) = host_board(cx);
@@ -2544,7 +2407,6 @@ fn deletion_failing_after_close_is_announced_by_toast(cx: &mut TestAppContext) {
     );
 }
 
-// parity: TS-components-ProjectRegistryDialog-30d439
 #[gpui::test]
 fn failed_scan_shows_the_reason_and_retry(cx: &mut TestAppContext) {
     let (mut board, _database) = host_board(cx);
@@ -2556,7 +2418,6 @@ fn failed_scan_shows_the_reason_and_retry(cx: &mut TestAppContext) {
     assert!(board.has_role_name("button", "다시 시도"));
 }
 
-// parity: TS-components-ProjectRegistryDialog-d423da
 #[gpui::test]
 fn scan_submits_the_chosen_path_and_host(cx: &mut TestAppContext) {
     let (mut board, _database) = host_board(cx);
@@ -2571,7 +2432,6 @@ fn scan_submits_the_chosen_path_and_host(cx: &mut TestAppContext) {
     assert!(board.find(text_contains("received")).is_some());
 }
 
-// parity: TS-components-ProjectRegistryDialog-aee06c
 #[gpui::test]
 fn scanning_clears_the_project_search(cx: &mut TestAppContext) {
     let (mut board, _database) = host_board(cx);
@@ -2590,7 +2450,6 @@ fn scanning_clears_the_project_search(cx: &mut TestAppContext) {
     assert!(board.has_role_name("button", "스캔 중..."));
 }
 
-// parity: TS-components-ProjectRegistryDialog-928764
 #[gpui::test]
 fn search_without_matches_shows_the_notice(cx: &mut TestAppContext) {
     let (mut board, _database) = host_board(cx);
@@ -2619,7 +2478,6 @@ fn find_match_title(board: &mut Board) -> Option<(String, String)> {
     Some((title, matched))
 }
 
-// parity: TS-components-Board-2a82c7
 #[gpui::test]
 fn slash_opens_find_and_enter_selects_the_matching_text(cx: &mut TestAppContext) {
     let (mut board, _database, _dir) = seeded_board(cx, false);
@@ -2631,7 +2489,6 @@ fn slash_opens_find_and_enter_selects_the_matching_text(cx: &mut TestAppContext)
     assert!(title.contains("우선순위"));
 }
 
-// parity: TS-components-Board-7f6510
 #[gpui::test]
 fn enter_and_shift_enter_walk_the_matches_forward_and_backward(cx: &mut TestAppContext) {
     let (mut board, _database, _dir) = seeded_board(cx, false);
@@ -2676,7 +2533,6 @@ fn release_version(board: &mut Board) -> Option<String> {
     board.shell_read(|shell, _| shell.release_update_version())
 }
 
-// parity: TS-renderer-ReleaseUpdateDialog-4e3df2
 #[gpui::test]
 fn release_notes_show_when_an_update_is_available(cx: &mut TestAppContext) {
     let (mut board, _dir) = release_board(cx, None);
@@ -2684,14 +2540,12 @@ fn release_notes_show_when_an_update_is_available(cx: &mut TestAppContext) {
     assert!(board.has_role_name("button", "릴리스 보기"));
 }
 
-// parity: TS-renderer-ReleaseUpdateDialog-4a67eb
 #[gpui::test]
 fn dismissed_release_versions_are_not_shown(cx: &mut TestAppContext) {
     let (mut board, _dir) = release_board(cx, Some("[\"9.9.0\"]"));
     assert_eq!(release_version(&mut board), None);
 }
 
-// parity: TS-renderer-ReleaseUpdateDialog-cdaee7
 #[gpui::test]
 fn checked_dont_show_again_stores_the_version(cx: &mut TestAppContext) {
     let (mut board, _dir) = release_board(cx, None);
@@ -2706,7 +2560,6 @@ fn checked_dont_show_again_stores_the_version(cx: &mut TestAppContext) {
     );
 }
 
-// parity: TS-renderer-ReleaseUpdateDialog-066386
 #[gpui::test]
 fn unchecked_close_does_not_store_the_version(cx: &mut TestAppContext) {
     let (mut board, _dir) = release_board(cx, None);
@@ -2715,7 +2568,6 @@ fn unchecked_close_does_not_store_the_version(cx: &mut TestAppContext) {
     assert_eq!(board.setting("release_update_dismissed_versions"), None);
 }
 
-// parity: TS-renderer-ReleaseUpdateDialog-2603be
 #[gpui::test]
 fn the_same_release_is_not_shown_twice_in_a_session(cx: &mut TestAppContext) {
     let (mut board, _dir) = release_board(cx, None);
@@ -2724,7 +2576,6 @@ fn the_same_release_is_not_shown_twice_in_a_session(cx: &mut TestAppContext) {
     assert_eq!(release_version(&mut board), None);
 }
 
-// parity: TS-renderer-ReleaseUpdateDialog-6ee4ae
 #[gpui::test]
 fn view_release_closes_the_dialog(cx: &mut TestAppContext) {
     let (mut board, _dir) = release_board(cx, None);
@@ -2732,7 +2583,6 @@ fn view_release_closes_the_dialog(cx: &mut TestAppContext) {
     assert_eq!(release_version(&mut board), None);
 }
 
-// parity: TS-renderer-ReleaseUpdateDialog-10cb78
 #[gpui::test]
 fn a_release_claimed_by_another_window_is_not_shown(cx: &mut TestAppContext) {
     let dir = temp_dir();
@@ -2754,7 +2604,6 @@ fn a_release_claimed_by_another_window_is_not_shown(cx: &mut TestAppContext) {
     assert_eq!(release_version(&mut board), None);
 }
 
-// parity: TS-renderer-ReleaseUpdateDialog-b695eb
 #[gpui::test]
 fn release_dialog_keeps_board_shortcuts_from_running(cx: &mut TestAppContext) {
     let (mut board, _dir) = release_board(cx, None);
@@ -2766,7 +2615,6 @@ fn release_dialog_keeps_board_shortcuts_from_running(cx: &mut TestAppContext) {
 
 // ───────────── 보드 명령 전달 ─────────────
 
-// parity: TS-renderer-BoardCommandProvider-7a4d4f
 #[gpui::test]
 fn new_task_shortcut_opens_the_create_task_modal(cx: &mut TestAppContext) {
     let (mut board, _database, _dir) = seeded_board(cx, true);
@@ -2778,7 +2626,6 @@ fn new_task_shortcut_opens_the_create_task_modal(cx: &mut TestAppContext) {
     );
 }
 
-// parity: TS-renderer-BoardCommandProvider-74537e
 #[gpui::test]
 fn notification_shortcut_opens_only_the_notification_center(cx: &mut TestAppContext) {
     let (mut board, _database, _dir) = seeded_board(cx, true);
@@ -2791,7 +2638,6 @@ fn notification_shortcut_opens_only_the_notification_center(cx: &mut TestAppCont
     );
 }
 
-// parity: TS-renderer-BoardCommandProvider-8a116b
 #[gpui::test]
 fn desktop_filter_shortcut_opens_the_desktop_filter(cx: &mut TestAppContext) {
     let (mut board, _database, _dir) = seeded_board(cx, true);
@@ -2799,7 +2645,6 @@ fn desktop_filter_shortcut_opens_the_desktop_filter(cx: &mut TestAppContext) {
     assert!(board.has_text("로컬"));
 }
 
-// parity: TS-renderer-BoardCommandProvider-bed0d3
 #[gpui::test]
 fn board_shortcuts_are_ignored_behind_a_blocker(cx: &mut TestAppContext) {
     let (mut board, _database) = host_board(cx);
@@ -2814,7 +2659,6 @@ fn board_shortcuts_are_ignored_behind_a_blocker(cx: &mut TestAppContext) {
     assert!(!board.shell_read(|shell, _| shell.is_command_palette_open()));
 }
 
-// parity: TS-renderer-BoardCommandProvider-9af655
 #[gpui::test]
 fn branch_todo_requests_reach_the_board(cx: &mut TestAppContext) {
     let (mut board, _database, _dir) = seeded_board(cx, true);
@@ -2829,7 +2673,6 @@ fn branch_todo_requests_reach_the_board(cx: &mut TestAppContext) {
     );
 }
 
-// parity: TS-renderer-useBackgroundTaskSync-8ee98d
 #[gpui::test]
 fn rapid_sync_starts_are_blocked_while_one_is_starting(cx: &mut TestAppContext) {
     let (mut board, _database, _dir) = seeded_board(cx, true);
@@ -2845,7 +2688,6 @@ fn rapid_sync_starts_are_blocked_while_one_is_starting(cx: &mut TestAppContext) 
     assert!(board.has_role_name("status", "동기화 중…"));
 }
 
-// parity: TS-renderer-useBackgroundTaskSync-fe0fe1
 #[gpui::test]
 fn palette_sync_failure_is_shared_with_the_notification_center(cx: &mut TestAppContext) {
     let (mut board, _database, _dir) = seeded_board(cx, true);
@@ -2860,7 +2702,6 @@ fn palette_sync_failure_is_shared_with_the_notification_center(cx: &mut TestAppC
     assert!(board.find(text_contains("gh missing")).is_some());
 }
 
-// parity: TS-components-NotificationCenterButton-3b4ca4
 #[gpui::test]
 fn space_on_a_read_notification_does_not_save_again(cx: &mut TestAppContext) {
     let (mut board, _database, _dir) = seeded_board(cx, true);
@@ -2892,7 +2733,6 @@ fn space_on_a_read_notification_does_not_save_again(cx: &mut TestAppContext) {
     assert!(toasts.is_empty());
 }
 
-// parity: TS-components-TaskCard-eeab15
 #[gpui::test]
 fn deleting_card_blocks_the_context_menu(cx: &mut TestAppContext) {
     let dir = temp_dir();
@@ -2959,7 +2799,6 @@ fn forbid_dependency_prompt(board: &mut Board) {
     );
 }
 
-// parity: TS-components-CreateTaskModal-ecd336
 #[gpui::test]
 fn local_project_create_sends_the_request_without_the_dependency_prompt(cx: &mut TestAppContext) {
     let (mut board, _database, _dir) = create_task_modal(cx, None, "tmux");
@@ -2974,7 +2813,6 @@ fn local_project_create_sends_the_request_without_the_dependency_prompt(cx: &mut
     assert_eq!(board.current_path(), "/ko/task/task-local-fast");
 }
 
-// parity: TS-components-CreateTaskModal-8c3b39
 #[gpui::test]
 fn remote_project_create_sends_the_request_without_the_dependency_prompt(cx: &mut TestAppContext) {
     let (mut board, _database, _dir) = create_task_modal(cx, Some("remote-box"), "tmux");
@@ -2990,8 +2828,6 @@ fn remote_project_create_sends_the_request_without_the_dependency_prompt(cx: &mu
     assert!(!board.find(text_contains("dependency prompt")).is_some());
 }
 
-// parity: TS-components-CreateTaskModal-8d4eb4
-// parity: TS-renderer-sessionDependencyPrompt-a96240
 #[gpui::test]
 fn ready_dependency_lets_the_created_task_open(cx: &mut TestAppContext) {
     let (mut board, _database, _dir) = create_task_modal(cx, Some("remote-box"), "herdr");
@@ -3033,15 +2869,12 @@ fn herdr_missing_create(cx: &mut TestAppContext, is_install_ready: bool) -> Boar
     board
 }
 
-// parity: TS-components-CreateTaskModal-889eb0
-// parity: TS-renderer-sessionDependencyPrompt-9a9d2c
 #[gpui::test]
 fn herdr_task_is_created_only_after_the_dependency_is_ready(cx: &mut TestAppContext) {
     let mut board = herdr_missing_create(cx, true);
     assert_eq!(board.current_path(), "/ko/task/herdr-task");
 }
 
-// parity: TS-renderer-sessionDependencyPrompt-bf4020
 #[gpui::test]
 fn declining_the_install_prompt_neither_installs_nor_creates(cx: &mut TestAppContext) {
     let (mut board, _database, _dir) = create_task_modal(cx, Some("remote-a"), "herdr");
@@ -3075,7 +2908,6 @@ fn declining_the_install_prompt_neither_installs_nor_creates(cx: &mut TestAppCon
     assert!(!board.find(text_contains("설치에 실패했습니다")).is_some());
 }
 
-// parity: TS-components-CreateTaskModal-889eb0
 #[gpui::test]
 fn herdr_task_is_not_created_when_the_dependency_is_not_ready(cx: &mut TestAppContext) {
     let mut board = herdr_missing_create(cx, false);
@@ -3083,7 +2915,6 @@ fn herdr_task_is_not_created_when_the_dependency_is_not_ready(cx: &mut TestAppCo
     assert!(board.has_text("herdr 설치에 실패했습니다: no curl"));
 }
 
-// parity: TS-components-CreateTaskModal-2405f7
 #[gpui::test]
 fn tab_and_shift_tab_walk_the_main_inputs_from_the_base_branch(cx: &mut TestAppContext) {
     let (mut board, _database, _dir) = create_task_modal(cx, None, "tmux");
@@ -3105,7 +2936,6 @@ fn tab_and_shift_tab_walk_the_main_inputs_from_the_base_branch(cx: &mut TestAppC
     );
 }
 
-// parity: TS-components-CreateTaskModal-67f888
 #[gpui::test]
 fn escape_in_a_modal_input_closes_the_modal(cx: &mut TestAppContext) {
     let (mut board, _database, _dir) = create_task_modal(cx, None, "tmux");
@@ -3115,7 +2945,6 @@ fn escape_in_a_modal_input_closes_the_modal(cx: &mut TestAppContext) {
     assert!(!board.cx.update(|_, cx| view.read(cx).is_create_task_open()));
 }
 
-// parity: TS-components-CreateTaskModal-606faa
 #[gpui::test]
 fn enter_in_an_input_creates_the_task(cx: &mut TestAppContext) {
     let (mut board, _database, _dir) = create_task_modal(cx, None, "tmux");
@@ -3129,7 +2958,6 @@ fn enter_in_an_input_creates_the_task(cx: &mut TestAppContext) {
     assert_eq!(board.current_path(), "/ko/task/task-enter");
 }
 
-// parity: TS-components-CreateTaskModal-cd2583
 #[gpui::test]
 fn board_refresh_keeps_the_chosen_base_branch(cx: &mut TestAppContext) {
     let (mut board, _database, _dir) = create_task_modal(cx, None, "tmux");
@@ -3151,7 +2979,6 @@ fn board_refresh_keeps_the_chosen_base_branch(cx: &mut TestAppContext) {
     assert_eq!(kept.as_deref(), Some("develop"));
 }
 
-// parity: TS-components-CreateTaskModal-8102b1
 #[gpui::test]
 fn repeated_enter_while_creating_sends_one_request(cx: &mut TestAppContext) {
     let (mut board, _database, _dir) = create_task_modal(cx, None, "tmux");
@@ -3194,7 +3021,6 @@ fn close_while_creating(board: &mut Board, value: serde_json::Value) {
     assert!(!board.cx.update(|_, cx| view.read(cx).is_create_task_open()));
 }
 
-// parity: TS-components-CreateTaskModal-5fd23f
 #[gpui::test]
 fn closing_while_creating_shows_an_open_toast_instead_of_navigating(cx: &mut TestAppContext) {
     let (mut board, _database, _dir) = create_task_modal(cx, None, "tmux");
@@ -3212,7 +3038,6 @@ fn closing_while_creating_shows_an_open_toast_instead_of_navigating(cx: &mut Tes
     assert_eq!(board.current_path(), "/ko/task/task-background");
 }
 
-// parity: TS-components-CreateTaskModal-a0b8d3
 #[gpui::test]
 fn failure_after_closing_is_announced_by_a_failure_toast(cx: &mut TestAppContext) {
     let (mut board, _database, _dir) = create_task_modal(cx, None, "tmux");
@@ -3278,7 +3103,6 @@ fn branch_modal_is_open(board: &mut Board) -> bool {
     board.cx.update(|_, cx| view.read(cx).is_create_task_open())
 }
 
-// parity: TS-components-BranchTaskModal-54000d
 #[gpui::test]
 fn remote_project_branch_sends_the_request_without_the_dependency_prompt(cx: &mut TestAppContext) {
     let (mut board, _dir) = branch_task_modal(cx, Some("remote-box"), "tmux");
@@ -3293,7 +3117,6 @@ fn remote_project_branch_sends_the_request_without_the_dependency_prompt(cx: &mu
     assert!(!branch_modal_is_open(&mut board));
 }
 
-// parity: TS-components-BranchTaskModal-e9fb4c
 #[gpui::test]
 fn local_project_branch_sends_the_request_without_the_dependency_prompt(cx: &mut TestAppContext) {
     let (mut board, _dir) = branch_task_modal(cx, None, "tmux");
@@ -3327,14 +3150,12 @@ fn herdr_missing_branch(cx: &mut TestAppContext, is_install_ready: bool) -> Boar
     board
 }
 
-// parity: TS-components-BranchTaskModal-cf2c3d
 #[gpui::test]
 fn herdr_branch_is_sent_only_after_the_dependency_is_ready(cx: &mut TestAppContext) {
     let mut board = herdr_missing_branch(cx, true);
     assert!(!branch_modal_is_open(&mut board));
 }
 
-// parity: TS-components-BranchTaskModal-cf2c3d
 #[gpui::test]
 fn herdr_branch_is_not_sent_when_the_dependency_is_not_ready(cx: &mut TestAppContext) {
     let mut board = herdr_missing_branch(cx, false);
@@ -3342,7 +3163,6 @@ fn herdr_branch_is_not_sent_when_the_dependency_is_not_ready(cx: &mut TestAppCon
     assert!(board.has_text("herdr 설치에 실패했습니다: no curl"));
 }
 
-// parity: TS-components-BranchTaskModal-3c9806
 #[gpui::test]
 fn repeated_branch_submit_while_waiting_sends_one_request(cx: &mut TestAppContext) {
     let (mut board, _dir) = branch_task_modal(cx, None, "tmux");
@@ -3378,7 +3198,6 @@ fn repeated_branch_submit_while_waiting_sends_one_request(cx: &mut TestAppContex
     assert!(branch_modal_is_open(&mut board));
 }
 
-// parity: TS-components-BranchTaskModal-c93efc
 #[gpui::test]
 fn closing_while_branching_then_success_shows_an_open_toast(cx: &mut TestAppContext) {
     let (mut board, _dir) = branch_task_modal(cx, None, "tmux");
@@ -3399,7 +3218,6 @@ fn closing_while_branching_then_success_shows_an_open_toast(cx: &mut TestAppCont
     assert_eq!(board.current_path(), "/ko/task/task-1");
 }
 
-// parity: TS-components-BranchTaskModal-81f49b
 #[gpui::test]
 fn closing_while_branching_then_failure_shows_a_failure_toast(cx: &mut TestAppContext) {
     let (mut board, _dir) = branch_task_modal(cx, None, "tmux");
@@ -3479,14 +3297,12 @@ fn branch_modal_with_slow_first_project(cx: &mut TestAppContext, is_old_failure:
     board
 }
 
-// parity: TS-components-BranchTaskModal-d62867
 #[gpui::test]
 fn late_success_for_the_previous_project_is_ignored(cx: &mut TestAppContext) {
     let mut board = branch_modal_with_slow_first_project(cx, false);
     assert!(board.has_role_name("button", "B-only"));
 }
 
-// parity: TS-components-BranchTaskModal-d62867
 #[gpui::test]
 fn late_failure_for_the_previous_project_is_ignored(cx: &mut TestAppContext) {
     let mut board = branch_modal_with_slow_first_project(cx, true);
@@ -3494,7 +3310,6 @@ fn late_failure_for_the_previous_project_is_ignored(cx: &mut TestAppContext) {
     assert!(board.find(text_contains("A failed")).is_none());
 }
 
-// parity: TS-components-BranchSearchInput-5c54cf
 #[gpui::test]
 fn tab_moves_to_the_next_input_while_the_branch_list_is_open(cx: &mut TestAppContext) {
     let (mut board, _database, _dir) = create_task_modal(cx, None, "tmux");
@@ -3533,7 +3348,6 @@ fn search_branches_with_project_name(cx: &mut TestAppContext, query: &str) -> Bo
     board
 }
 
-// parity: TS-components-BranchSearchInput-c60042
 #[gpui::test]
 fn project_then_branch_query_finds_the_branch(cx: &mut TestAppContext) {
     let mut board = search_branches_with_project_name(cx, "kanvibe dev");
@@ -3541,7 +3355,6 @@ fn project_then_branch_query_finds_the_branch(cx: &mut TestAppContext) {
     assert!(!board.has_role_name("button", "main"));
 }
 
-// parity: TS-components-BranchSearchInput-c60042
 #[gpui::test]
 fn branch_then_project_query_finds_the_branch(cx: &mut TestAppContext) {
     let mut board = search_branches_with_project_name(cx, "dev kanvibe");
@@ -3624,7 +3437,6 @@ fn live_sessions_value() -> serde_json::Value {
     }]})
 }
 
-// parity: TS-components-TaskCard-d455e0
 #[gpui::test]
 fn agents_in_the_same_worktree_show_as_a_card_badge(cx: &mut TestAppContext) {
     let (mut board, _card) = live_session_board(
@@ -3635,7 +3447,6 @@ fn agents_in_the_same_worktree_show_as_a_card_badge(cx: &mut TestAppContext) {
     assert!(board.find(test_id("task-card-running-agents")).is_some());
 }
 
-// parity: TS-components-TaskCard-11e5eb
 #[gpui::test]
 fn each_provider_shows_its_own_running_count(cx: &mut TestAppContext) {
     let (mut board, _card) = live_session_board(
@@ -3659,7 +3470,6 @@ fn each_provider_shows_its_own_running_count(cx: &mut TestAppContext) {
     );
 }
 
-// parity: TS-components-TaskCard-733861
 #[gpui::test]
 fn running_badges_keep_provider_name_order(cx: &mut TestAppContext) {
     let (mut board, _card) = live_session_board(
@@ -3684,7 +3494,6 @@ fn running_badges_keep_provider_name_order(cx: &mut TestAppContext) {
     assert!(claude < codex && codex < opencode);
 }
 
-// parity: TS-components-TaskCard-d2118f
 #[gpui::test]
 fn agents_in_another_worktree_are_not_shown(cx: &mut TestAppContext) {
     let (mut board, _card) = live_session_board(
@@ -3703,7 +3512,6 @@ fn focus_first_card(board: &mut Board) {
     board.keys("down");
 }
 
-// parity: TS-components-TaskCard-f2d697
 #[gpui::test]
 fn session_panel_opens_only_after_focus_stays_a_moment(cx: &mut TestAppContext) {
     let (mut board, _card) = live_session_board(
@@ -3726,7 +3534,6 @@ fn session_panel_opens_only_after_focus_stays_a_moment(cx: &mut TestAppContext) 
     );
 }
 
-// parity: TS-components-TaskCard-d15685
 #[gpui::test]
 fn open_session_panel_is_not_clipped_by_the_card(cx: &mut TestAppContext) {
     let (mut board, _card) = live_session_board(
@@ -3750,7 +3557,6 @@ fn open_session_panel_is_not_clipped_by_the_card(cx: &mut TestAppContext) {
     assert!(popover.clip_bounds.size.height >= popover.bounds.size.height);
 }
 
-// parity: TS-components-TaskCard-c1f437
 #[gpui::test]
 fn moving_focus_off_the_card_closes_the_session_panel(cx: &mut TestAppContext) {
     let (mut board, _card) = live_session_board(
@@ -3773,7 +3579,6 @@ fn moving_focus_off_the_card_closes_the_session_panel(cx: &mut TestAppContext) {
     );
 }
 
-// parity: TS-components-TaskCardLiveSessions-56347f
 #[gpui::test]
 fn closed_panel_does_not_read_sessions(cx: &mut TestAppContext) {
     let (mut board, _card) = live_session_board(
@@ -3799,7 +3604,6 @@ fn closed_panel_does_not_read_sessions(cx: &mut TestAppContext) {
     assert!(!board.has_text("두 번째 조회"));
 }
 
-// parity: TS-components-TaskCardLiveSessions-3a4aa3
 #[gpui::test]
 fn clicking_a_session_selects_its_window_then_opens_the_task(cx: &mut TestAppContext) {
     let (mut board, card) = live_session_board(
@@ -3819,7 +3623,6 @@ fn clicking_a_session_selects_its_window_then_opens_the_task(cx: &mut TestAppCon
     assert_eq!(board.current_path(), format!("/ko/task/{}", card.id));
 }
 
-// parity: TS-components-TaskCardLiveSessions-2c798a
 #[gpui::test]
 fn open_panel_without_anything_running_draws_no_popover(cx: &mut TestAppContext) {
     let (mut board, _card) = live_session_board(cx, "/repo/task", serde_json::json!([]));
@@ -3837,7 +3640,6 @@ fn open_panel_without_anything_running_draws_no_popover(cx: &mut TestAppContext)
     );
 }
 
-// parity: TS-components-TaskCardLiveSessions-997c46
 #[gpui::test]
 fn no_agents_and_no_open_panel_draw_nothing(cx: &mut TestAppContext) {
     let (mut board, _card) = live_session_board(cx, "/repo/task", serde_json::json!([]));
@@ -3893,7 +3695,6 @@ fn next_diff_stats(board: &mut Board, card: &KanbanTask, next: serde_json::Value
     });
 }
 
-// parity: TS-components-TaskDiffStats-8548c8
 #[gpui::test]
 fn diff_badge_shows_file_count_and_line_changes(cx: &mut TestAppContext) {
     let (mut board, card) = diff_stats_board(cx, stats(0, 0, 0), false);
@@ -3917,7 +3718,6 @@ fn diff_badge_shows_file_count_and_line_changes(cx: &mut TestAppContext) {
     );
 }
 
-// parity: TS-components-TaskDiffStats-a56a86
 #[gpui::test]
 fn tasks_without_changes_have_no_diff_badge(cx: &mut TestAppContext) {
     let (mut board, _card) = diff_stats_board(cx, stats(0, 0, 0), false);
@@ -3925,7 +3725,6 @@ fn tasks_without_changes_have_no_diff_badge(cx: &mut TestAppContext) {
     assert!(board.find(test_id("task-diff-file-count")).is_none());
 }
 
-// parity: TS-components-TaskDiffStats-4b9ab7
 #[gpui::test]
 fn tasks_without_received_stats_have_no_diff_badge(cx: &mut TestAppContext) {
     let (mut board, _card) = diff_stats_board(cx, serde_json::json!(null), false);
@@ -3947,7 +3746,6 @@ fn counting_board(cx: &mut TestAppContext, is_motion_reduced: bool) -> Board {
     board
 }
 
-// parity: TS-components-CountUpNumber-884058
 #[gpui::test]
 fn first_value_is_shown_without_counting(cx: &mut TestAppContext) {
     let (mut board, _card) = diff_stats_board(cx, stats(1, 0, 0), false);
@@ -3959,7 +3757,6 @@ fn first_value_is_shown_without_counting(cx: &mut TestAppContext) {
     );
 }
 
-// parity: TS-components-CountUpNumber-bf57b6
 #[gpui::test]
 fn changed_value_counts_up_and_reaches_the_new_value(cx: &mut TestAppContext) {
     let mut board = counting_board(cx, false);
@@ -3980,7 +3777,6 @@ fn changed_value_counts_up_and_reaches_the_new_value(cx: &mut TestAppContext) {
     );
 }
 
-// parity: TS-components-CountUpNumber-01ff99
 #[gpui::test]
 fn reduced_motion_jumps_straight_to_the_new_value(cx: &mut TestAppContext) {
     let mut board = counting_board(cx, true);
@@ -4016,7 +3812,6 @@ fn contains(outer: Bounds<Pixels>, inner: Bounds<Pixels>) -> bool {
             <= outer.origin.y + outer.size.height + gpui_kit::px(0.5)
 }
 
-// parity: TS-components-TaskCard-d67bd4
 #[gpui::test]
 fn overflowing_badges_flow_to_the_next_line(cx: &mut TestAppContext) {
     let mut board = badge_heavy_board(cx, "devbox-remote-build-host");
@@ -4032,7 +3827,6 @@ fn overflowing_badges_flow_to_the_next_line(cx: &mut TestAppContext) {
     }
 }
 
-// parity: TS-components-TaskCard-ff8e20
 #[gpui::test]
 fn long_remote_host_wraps_inside_its_badge(cx: &mut TestAppContext) {
     let host = "very-long-remote-development-host.internal.example.company.net";
@@ -4050,8 +3844,6 @@ fn window_count(board: &mut Board) -> usize {
     board.cx.update(|_, cx| cx.windows().len())
 }
 
-// parity: TS-components-TaskCard-7004fc
-// parity: TS-components-Board-a0868e
 #[gpui::test]
 fn shift_enter_on_a_card_opens_the_detail_in_a_new_window(cx: &mut TestAppContext) {
     let dir = temp_dir();
@@ -4065,7 +3857,6 @@ fn shift_enter_on_a_card_opens_the_detail_in_a_new_window(cx: &mut TestAppContex
     assert_eq!(board.current_path(), "/ko");
 }
 
-// parity: TS-components-TaskCard-73c134
 #[gpui::test]
 fn clicking_a_card_opens_the_detail_in_the_same_window(cx: &mut TestAppContext) {
     let dir = temp_dir();
@@ -4078,7 +3869,6 @@ fn clicking_a_card_opens_the_detail_in_the_same_window(cx: &mut TestAppContext) 
     assert_eq!(window_count(&mut board), before);
 }
 
-// parity: TS-components-TaskCard-ed9d46
 #[gpui::test]
 fn clicking_a_card_focuses_the_window_already_showing_it(cx: &mut TestAppContext) {
     let dir = temp_dir();
@@ -4098,7 +3888,6 @@ fn clicking_a_card_focuses_the_window_already_showing_it(cx: &mut TestAppContext
     );
 }
 
-// parity: TS-renderer-useTaskDiffStats-262b4e
 #[gpui::test]
 fn diff_stats_poll_sends_the_tasks_to_refresh_in_one_request(cx: &mut TestAppContext) {
     let dir = temp_dir();
@@ -4134,7 +3923,6 @@ fn diff_stats_poll_sends_the_tasks_to_refresh_in_one_request(cx: &mut TestAppCon
     );
 }
 
-// parity: TS-renderer-useTaskDiffStats-c54b33
 #[gpui::test]
 fn diff_stats_poll_reads_stored_stats_without_tasks_to_refresh(cx: &mut TestAppContext) {
     let dir = temp_dir();
@@ -4228,7 +4016,6 @@ fn single_notification_board(cx: &mut TestAppContext) -> (Board, Arc<Database>, 
     (board, database, card)
 }
 
-// parity: TS-components-NotificationCenterButton-7d5739
 #[gpui::test]
 fn unreadable_notifications_show_the_reason_and_retry_loads_them(cx: &mut TestAppContext) {
     let dir = temp_dir();
@@ -4270,7 +4057,6 @@ fn unreadable_notifications_show_the_reason_and_retry_loads_them(cx: &mut TestAp
     assert!(board.find(text_contains("db closed")).is_none());
 }
 
-// parity: TS-components-NotificationCenterButton-250bbf
 #[gpui::test]
 fn opening_notification_is_not_repeated_and_failure_is_toasted(cx: &mut TestAppContext) {
     let (mut board, _database, _card) = single_notification_board(cx);
@@ -4300,7 +4086,6 @@ fn opening_notification_is_not_repeated_and_failure_is_toasted(cx: &mut TestAppC
     assert_eq!(board.current_path(), "/ko");
 }
 
-// parity: TS-components-NotificationCenterButton-edfff1
 #[gpui::test]
 fn task_notification_navigates_when_the_task_exists(cx: &mut TestAppContext) {
     let (mut board, _database, card) = single_notification_board(cx);
@@ -4309,7 +4094,6 @@ fn task_notification_navigates_when_the_task_exists(cx: &mut TestAppContext) {
     assert_eq!(board.current_path(), format!("/ko/task/{}", card.id));
 }
 
-// parity: TS-components-NotificationCenterButton-8e8b6e
 #[gpui::test]
 fn task_notification_focuses_the_window_already_showing_the_task(cx: &mut TestAppContext) {
     let dir = temp_dir();
@@ -4339,7 +4123,6 @@ fn task_notification_focuses_the_window_already_showing_the_task(cx: &mut TestAp
     );
 }
 
-// parity: TS-components-NotificationCenterButton-70feef
 #[gpui::test]
 fn shift_click_opens_the_task_notification_in_a_new_window(cx: &mut TestAppContext) {
     let (mut board, _database, _card) = single_notification_board(cx);
@@ -4352,7 +4135,6 @@ fn shift_click_opens_the_task_notification_in_a_new_window(cx: &mut TestAppConte
     assert_eq!(board.current_path(), "/ko");
 }
 
-// parity: TS-components-NotificationCenterButton-5bd069
 #[gpui::test]
 fn shift_enter_opens_the_highlighted_notification_in_a_new_window(cx: &mut TestAppContext) {
     let (mut board, _database, _card) = single_notification_board(cx);
@@ -4363,7 +4145,6 @@ fn shift_enter_opens_the_highlighted_notification_in_a_new_window(cx: &mut TestA
     assert_eq!(board.current_path(), "/ko");
 }
 
-// parity: TS-components-NotificationCenterButton-cbf153
 #[gpui::test]
 fn unread_only_keyboard_navigation_skips_read_notifications(cx: &mut TestAppContext) {
     let dir = temp_dir();
@@ -4454,7 +4235,6 @@ fn review_dialog_is_open(board: &mut Board) -> bool {
     board.has_role_name("dialog", "백그라운드 sync 검토")
 }
 
-// parity: TS-components-NotificationCenterButton-9a35b8
 #[gpui::test]
 fn review_notification_opens_the_review_dialog_without_navigating(cx: &mut TestAppContext) {
     let (mut board, _database, _tasks) = review_board(cx, &["Merged task"]);
@@ -4464,7 +4244,6 @@ fn review_notification_opens_the_review_dialog_without_navigating(cx: &mut TestA
     assert_eq!(board.current_path(), "/ko");
 }
 
-// parity: TS-renderer-BackgroundSyncReviewDialog-bce1d5
 #[gpui::test]
 fn deleting_keeps_the_review_and_announces_progress(cx: &mut TestAppContext) {
     let (mut board, database, tasks) = review_board(cx, &["task-a", "task-b"]);
@@ -4506,7 +4285,6 @@ fn delete_with_one_failure(cx: &mut TestAppContext) -> (Board, Arc<Database>, Ve
     (board, database, tasks)
 }
 
-// parity: TS-renderer-BackgroundSyncReviewDialog-2ca09b
 #[gpui::test]
 fn partial_failure_keeps_results_and_retries_only_failed_tasks(cx: &mut TestAppContext) {
     let (mut board, database, tasks) = delete_with_one_failure(cx);
@@ -4526,7 +4304,6 @@ fn partial_failure_keeps_results_and_retries_only_failed_tasks(cx: &mut TestAppC
     assert!(!task_exists(&database, &tasks[1]));
 }
 
-// parity: TS-renderer-useBackgroundSyncReview-5d1644
 #[gpui::test]
 fn starting_cleanup_closes_the_dialog_and_reopening_keeps_it_running(cx: &mut TestAppContext) {
     let (mut board, database, tasks) = review_board(cx, &["a", "b"]);
@@ -4557,8 +4334,6 @@ fn starting_cleanup_closes_the_dialog_and_reopening_keeps_it_running(cx: &mut Te
     assert!(!task_exists(&database, &tasks[0]) && !task_exists(&database, &tasks[1]));
 }
 
-// parity: TS-renderer-useBackgroundSyncReview-f6f4d8
-// parity: TS-components-NotificationCenterButton-a84417
 #[gpui::test]
 fn failed_cleanup_is_kept_for_reopening_and_retry_clears_it(cx: &mut TestAppContext) {
     let (mut board, database, tasks) = review_board(cx, &["a", "b"]);
@@ -4616,7 +4391,6 @@ fn is_option_visible(board: &mut Board, name: &str) -> bool {
     hit.is_some_and(|hit| contains(hit.clip_bounds, hit.bounds))
 }
 
-// parity: TS-components-ProjectSelector-b3c6dc
 #[gpui::test]
 fn three_or_more_selected_projects_show_two_chips_and_a_count(cx: &mut TestAppContext) {
     let mut board = many_projects_board(cx, 5);
@@ -4634,7 +4408,6 @@ fn three_or_more_selected_projects_show_two_chips_and_a_count(cx: &mut TestAppCo
     assert_eq!(hidden_count, 3);
 }
 
-// parity: TS-components-ProjectSelector-da673f
 #[gpui::test]
 fn multi_select_keyboard_highlight_scrolls_into_view(cx: &mut TestAppContext) {
     let mut board = many_projects_board(cx, 20);
@@ -4646,7 +4419,6 @@ fn multi_select_keyboard_highlight_scrolls_into_view(cx: &mut TestAppContext) {
     assert!(is_option_visible(&mut board, "project-15"));
 }
 
-// parity: TS-components-ProjectSelector-c1f631
 #[gpui::test]
 fn single_select_keyboard_highlight_scrolls_into_view(cx: &mut TestAppContext) {
     let mut board = many_projects_board(cx, 20);
@@ -4659,7 +4431,6 @@ fn single_select_keyboard_highlight_scrolls_into_view(cx: &mut TestAppContext) {
     assert!(is_option_visible(&mut board, "project-15"));
 }
 
-// parity: TS-components-ProjectSelector-0d3167
 #[gpui::test]
 fn single_select_trigger_takes_keyboard_focus(cx: &mut TestAppContext) {
     let mut board = many_projects_board(cx, 2);
@@ -4720,7 +4491,6 @@ fn click_workspace_search(board: &mut Board) {
     board.draw();
 }
 
-// parity: TS-renderer-WorkspaceTaskList-4df1c7
 #[gpui::test]
 fn mod_alt_release_focuses_the_selected_list_card(cx: &mut TestAppContext) {
     let (mut board, login, billing) = login_billing_workspace(cx);
@@ -4732,7 +4502,6 @@ fn mod_alt_release_focuses_the_selected_list_card(cx: &mut TestAppContext) {
     assert_eq!(selected_workspace_task(&mut board), Some(billing.id));
 }
 
-// parity: TS-renderer-WorkspaceTaskList-ea3fb6
 #[gpui::test]
 fn hidden_selection_makes_the_focus_shortcut_select_the_first_listed_task(cx: &mut TestAppContext) {
     let (mut board, _login, billing) = login_billing_workspace(cx);
@@ -4743,7 +4512,6 @@ fn hidden_selection_makes_the_focus_shortcut_select_the_first_listed_task(cx: &m
     assert_eq!(selected_workspace_task(&mut board), Some(billing.id));
 }
 
-// parity: TS-renderer-WorkspaceTaskList-2dde29
 #[gpui::test]
 fn searching_the_same_task_again_shows_the_hidden_selection(cx: &mut TestAppContext) {
     let (mut board, _login, _billing) = login_billing_workspace(cx);
@@ -4756,7 +4524,6 @@ fn searching_the_same_task_again_shows_the_hidden_selection(cx: &mut TestAppCont
     assert!(board.has_role_name("current", "Login page"));
 }
 
-// parity: TS-renderer-WorkspaceTaskList-f8e417
 #[gpui::test]
 fn list_focus_requests_are_ignored_while_capturing_shortcuts(cx: &mut TestAppContext) {
     let (mut board, login, _billing) = login_billing_workspace(cx);
@@ -4775,7 +4542,6 @@ fn list_focus_requests_are_ignored_while_capturing_shortcuts(cx: &mut TestAppCon
     assert_ne!(selected_workspace_task(&mut board), Some(login.id));
 }
 
-// parity: TS-renderer-WorkspaceTaskList-e15132
 #[gpui::test]
 fn projects_without_color_or_icon_show_the_initial_marker(cx: &mut TestAppContext) {
     let dir = temp_dir();
@@ -4794,7 +4560,6 @@ fn projects_without_color_or_icon_show_the_initial_marker(cx: &mut TestAppContex
     );
 }
 
-// parity: TS-renderer-WorkspaceTaskList-0b8c35
 #[gpui::test]
 fn worktree_project_cards_use_the_main_project_name_and_icon(cx: &mut TestAppContext) {
     let dir = temp_dir();
@@ -4885,7 +4650,6 @@ fn show_whole_workspace_list(board: &mut Board) {
     board.draw();
 }
 
-// parity: TS-renderer-TaskWorkspaceRoute-6847e7
 #[gpui::test]
 fn repeated_load_more_requests_the_next_page_once_without_skipping(cx: &mut TestAppContext) {
     let mut board = many_done_workspace(cx);
@@ -4908,7 +4672,6 @@ fn repeated_load_more_requests_the_next_page_once_without_skipping(cx: &mut Test
     assert_eq!(listed_done_count(&mut board), 60);
 }
 
-// parity: TS-renderer-TaskWorkspaceRoute-c6ea64
 #[gpui::test]
 fn failed_load_more_shows_the_reason_and_retry_requests_the_same_page(cx: &mut TestAppContext) {
     let mut board = many_done_workspace(cx);
@@ -4940,7 +4703,6 @@ fn failed_load_more_shows_the_reason_and_retry_requests_the_same_page(cx: &mut T
     assert_eq!(listed_done_count(&mut board), 40);
 }
 
-// parity: TS-renderer-TaskWorkspaceRoute-e70948
 #[gpui::test]
 fn workspace_search_selection_stays_on_the_workspace_route(cx: &mut TestAppContext) {
     let dir = temp_dir();
@@ -4959,7 +4721,6 @@ fn workspace_search_selection_stays_on_the_workspace_route(cx: &mut TestAppConte
 
 // ───────────── Board 머리·dd·돌아온 포커스·검토 활성화 ─────────────
 
-// parity: TS-components-Board-aeb341
 #[gpui::test]
 fn settings_button_opens_the_settings_of_the_current_locale(cx: &mut TestAppContext) {
     let dir = temp_dir();
@@ -4969,7 +4730,6 @@ fn settings_button_opens_the_settings_of_the_current_locale(cx: &mut TestAppCont
     assert_eq!(board.current_path(), "/ko/settings");
 }
 
-// parity: TS-components-Board-9f1a98
 #[gpui::test]
 fn mac_desktop_places_board_controls_in_the_titlebar_row(cx: &mut TestAppContext) {
     let linux_top = {
@@ -4997,7 +4757,6 @@ fn mac_desktop_places_board_controls_in_the_titlebar_row(cx: &mut TestAppContext
     assert!(f32::from(mac_top.y) < 80.0);
 }
 
-// parity: TS-components-Board-94a17d
 #[gpui::test]
 fn dd_keeps_the_card_until_the_delete_finishes(cx: &mut TestAppContext) {
     let dir = temp_dir();
@@ -5029,7 +4788,6 @@ fn dd_keeps_the_card_until_the_delete_finishes(cx: &mut TestAppContext) {
     );
 }
 
-// parity: TS-components-Board-86b04e
 #[gpui::test]
 fn dd_survives_a_board_refresh_between_the_two_presses(cx: &mut TestAppContext) {
     let dir = temp_dir();
@@ -5052,8 +4810,6 @@ fn dd_survives_a_board_refresh_between_the_two_presses(cx: &mut TestAppContext) 
     );
 }
 
-// parity: TS-components-Board-083667
-// parity: TS-renderer-BoardRoute-047eea
 #[gpui::test]
 fn returning_from_the_detail_starts_focus_on_that_task_once(cx: &mut TestAppContext) {
     let dir = temp_dir();
@@ -5080,8 +4836,6 @@ fn returning_from_the_detail_starts_focus_on_that_task_once(cx: &mut TestAppCont
     assert_eq!(next.current_path(), "/ko");
 }
 
-// parity: TS-components-Board-f9b400
-// parity: TS-renderer-App-82a327
 #[gpui::test]
 fn entering_the_board_does_not_open_a_stored_review(cx: &mut TestAppContext) {
     let dir = temp_dir();
@@ -5136,7 +4890,6 @@ fn is_quick_search_open(board: &mut Board) -> bool {
     board.has_text("태스크 빠른 검색")
 }
 
-// parity: TS-renderer-TaskQuickSearchDialog-eb91f7
 #[gpui::test]
 fn quick_search_opens_with_the_stored_shortcut(cx: &mut TestAppContext) {
     let dir = temp_dir();
@@ -5153,7 +4906,6 @@ fn quick_search_opens_with_the_stored_shortcut(cx: &mut TestAppContext) {
     assert!(is_quick_search_open(&mut board));
 }
 
-// parity: TS-renderer-TaskQuickSearchDialog-156c0c
 #[gpui::test]
 fn project_and_branch_query_then_enter_opens_the_detail(cx: &mut TestAppContext) {
     let (mut board, tasks) = quick_search_board(cx, 1);
@@ -5164,7 +4916,6 @@ fn project_and_branch_query_then_enter_opens_the_detail(cx: &mut TestAppContext)
     assert!(!is_quick_search_open(&mut board));
 }
 
-// parity: TS-renderer-TaskQuickSearchDialog-99fac4
 #[gpui::test]
 fn enter_focuses_the_window_already_showing_the_task(cx: &mut TestAppContext) {
     let dir = temp_dir();
@@ -5189,7 +4940,6 @@ fn enter_focuses_the_window_already_showing_the_task(cx: &mut TestAppContext) {
     );
 }
 
-// parity: TS-renderer-TaskQuickSearchDialog-7ecf97
 #[gpui::test]
 fn shift_enter_opens_the_result_in_a_new_window(cx: &mut TestAppContext) {
     let (mut board, _tasks) = quick_search_board(cx, 1);
@@ -5202,7 +4952,6 @@ fn shift_enter_opens_the_result_in_a_new_window(cx: &mut TestAppContext) {
     assert!(!is_quick_search_open(&mut board));
 }
 
-// parity: TS-renderer-TaskQuickSearchDialog-751070
 #[gpui::test]
 fn keyboard_selected_result_scrolls_into_view(cx: &mut TestAppContext) {
     let (mut board, _tasks) = quick_search_board(cx, 30);
@@ -5249,7 +4998,6 @@ fn inactive_release_board(cx: &mut TestAppContext) -> Board {
     open_board(cx, "/ko")
 }
 
-// parity: TS-renderer-ReleaseUpdateDialog-6be2d3
 #[gpui::test]
 fn release_waits_until_the_window_can_present_it(cx: &mut TestAppContext) {
     let mut board = inactive_release_board(cx);
@@ -5259,7 +5007,6 @@ fn release_waits_until_the_window_can_present_it(cx: &mut TestAppContext) {
     assert_eq!(release_version(&mut board).as_deref(), Some("9.9.0"));
 }
 
-// parity: TS-renderer-ReleaseUpdateDialog-dc5e74
 #[gpui::test]
 fn tab_focus_stays_inside_the_release_dialog(cx: &mut TestAppContext) {
     let (mut board, _dir) = release_board(cx, None);
@@ -5274,7 +5021,6 @@ fn tab_focus_stays_inside_the_release_dialog(cx: &mut TestAppContext) {
     assert_eq!(release_version(&mut board).as_deref(), Some("9.9.0"));
 }
 
-// parity: TS-renderer-ReleaseUpdateDialog-85ba1b
 #[gpui::test]
 fn release_is_checked_again_after_an_hour(cx: &mut TestAppContext) {
     let dir = temp_dir();
@@ -5343,7 +5089,6 @@ fn handoff_board(cx: &mut TestAppContext) -> Board {
     board
 }
 
-// parity: TS-renderer-HerdrServerHandoffPrompt-07719f
 #[gpui::test]
 fn handoff_notice_asks_for_the_host_and_replaces_after_approval(cx: &mut TestAppContext) {
     let mut board = handoff_board(cx);
@@ -5351,7 +5096,6 @@ fn handoff_notice_asks_for_the_host_and_replaces_after_approval(cx: &mut TestApp
     assert_eq!(replacement_hosts(&mut board), ["dev-box"]);
 }
 
-// parity: TS-renderer-HerdrServerHandoffPrompt-08a8ac
 #[gpui::test]
 fn declined_handoff_does_not_replace_the_server(cx: &mut TestAppContext) {
     let dir = temp_dir();
@@ -5363,7 +5107,6 @@ fn declined_handoff_does_not_replace_the_server(cx: &mut TestAppContext) {
     assert!(replacement_hosts(&mut board).is_empty());
 }
 
-// parity: TS-renderer-HerdrServerHandoffPrompt-ddbda2
 #[gpui::test]
 fn the_same_server_is_asked_only_once(cx: &mut TestAppContext) {
     let mut board = handoff_board(cx);
@@ -5372,7 +5115,6 @@ fn the_same_server_is_asked_only_once(cx: &mut TestAppContext) {
     assert_eq!(replacement_hosts(&mut board), ["dev-box"]);
 }
 
-// parity: TS-renderer-HerdrServerHandoffPrompt-276459
 #[gpui::test]
 fn other_board_events_do_not_ask_for_a_handoff(cx: &mut TestAppContext) {
     let mut board = handoff_board(cx);
@@ -5406,7 +5148,6 @@ fn plain_board(cx: &mut TestAppContext) -> Board {
     open_board(cx, "/ko")
 }
 
-// parity: TS-renderer-ActionStatusToast-0400a3
 #[gpui::test]
 fn toasts_show_by_kind_and_close_with_their_close_button(cx: &mut TestAppContext) {
     use kanvibe_app::components::toast::ToastKind;
@@ -5428,7 +5169,6 @@ fn toasts_show_by_kind_and_close_with_their_close_button(cx: &mut TestAppContext
     assert!(!board.has_role_name("alert", "sync failed"));
 }
 
-// parity: TS-renderer-ActionStatusToast-bb4e6b
 #[gpui::test]
 fn toast_action_runs_and_closes_the_toast(cx: &mut TestAppContext) {
     use kanvibe_app::components::toast::ToastKind;
@@ -5438,7 +5178,6 @@ fn toast_action_runs_and_closes_the_toast(cx: &mut TestAppContext) {
     assert_eq!(board.current_path(), "/ko/task/task-1");
 }
 
-// parity: TS-renderer-ActionStatusToast-a31615
 #[gpui::test]
 fn success_toasts_fade_while_failure_toasts_stay(cx: &mut TestAppContext) {
     use kanvibe_app::components::toast::ToastKind;
@@ -5451,7 +5190,6 @@ fn success_toasts_fade_while_failure_toasts_stay(cx: &mut TestAppContext) {
     assert!(board.has_role_name("alert", "broken"));
 }
 
-// parity: TS-components-ProjectRegistryDialog-13e1e4
 #[gpui::test]
 fn unregistered_repositories_show_their_reasons(cx: &mut TestAppContext) {
     let (mut board, _database) = host_board(cx);
@@ -5467,7 +5205,6 @@ fn unregistered_repositories_show_their_reasons(cx: &mut TestAppContext) {
     assert!(!board.find(text_contains("git 저장소")).is_some());
 }
 
-// parity: TS-renderer-useBackgroundTaskSync-279eae
 #[gpui::test]
 fn late_status_snapshot_does_not_hide_a_sync_started_elsewhere(cx: &mut TestAppContext) {
     let dir = temp_dir();
@@ -5491,7 +5228,6 @@ fn late_status_snapshot_does_not_hide_a_sync_started_elsewhere(cx: &mut TestAppC
     assert!(!board.has_role_name("button", "지금 동기화"));
 }
 
-// parity: TS-renderer-BoardCommandProvider-2983f3
 #[gpui::test]
 fn board_commands_reach_their_board_handlers(cx: &mut TestAppContext) {
     let mut board = plain_board(cx);
@@ -5503,7 +5239,6 @@ fn board_commands_reach_their_board_handlers(cx: &mut TestAppContext) {
     assert!(board.has_role_name("dialog", "알림"));
 }
 
-// parity: TS-renderer-project-2f4b41
 #[gpui::test]
 fn project_registration_refreshes_the_board(cx: &mut TestAppContext) {
     let (mut board, database) = host_board(cx);
@@ -5582,7 +5317,6 @@ impl Board {
     }
 }
 
-// parity: TS-renderer-useFlipReflow-67e76d
 #[gpui::test]
 fn reorder_after_scrolling_slides_by_the_position_change_only(cx: &mut TestAppContext) {
     let (mut board, database, first, second) = reflow_board(cx);
@@ -5602,7 +5336,6 @@ fn reorder_after_scrolling_slides_by_the_position_change_only(cx: &mut TestAppCo
     assert!(board.card_top("첫째 카드") > second_top - 1.0);
 }
 
-// parity: TS-renderer-useFlipReflow-aa4f33
 #[gpui::test]
 fn a_card_that_grew_in_place_starts_the_next_reorder_from_its_new_spot(cx: &mut TestAppContext) {
     let (mut board, database, first, second) = reflow_board(cx);
@@ -5627,7 +5360,6 @@ fn a_card_that_grew_in_place_starts_the_next_reorder_from_its_new_spot(cx: &mut 
     assert_eq!(board.card_top("둘째 카드"), grown_second);
 }
 
-// parity: TS-renderer-useFlipReflow-921696
 #[gpui::test]
 fn cards_that_keep_their_spot_get_no_transition(cx: &mut TestAppContext) {
     let (mut board, database, first, second) = reflow_board(cx);
@@ -5657,8 +5389,6 @@ fn reorder_slides_even_when_the_os_reduces_motion(cx: &mut TestAppContext) {
 
 // ───────────── ProjectIcon ─────────────
 
-// parity: TS-components-ProjectIcon-b04097
-// parity: TS-components-ProjectIcon-b029f8
 #[gpui::test]
 fn a_project_with_a_github_icon_shows_the_icon_instead_of_the_initial(cx: &mut TestAppContext) {
     let dir = temp_dir();

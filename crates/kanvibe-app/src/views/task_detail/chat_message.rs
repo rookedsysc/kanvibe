@@ -484,7 +484,6 @@ mod tests {
         message
     }
 
-    // parity: TS-renderer-AiChatTranscriptMessage-bae52b
     #[test]
     fn tool_output_is_folded_behind_its_first_line() {
         let mut message = tool(Some("Bash"), "preview");
@@ -499,7 +498,6 @@ mod tests {
         assert_eq!(message_text(&message), "Full tool output\nsecond line");
     }
 
-    // parity: TS-renderer-AiChatTranscriptMessage-3b12f1
     #[test]
     fn copy_takes_the_full_original_message_and_time_is_shown() {
         let mut message = AggregatedAiMessage::plain(
@@ -514,7 +512,6 @@ mod tests {
         assert_eq!(message_time(None), None);
     }
 
-    // parity: TS-renderer-TaskDetailRoute-b96b6e
     #[test]
     fn each_message_copies_its_original_text() {
         let mut truncated = AggregatedAiMessage::plain(AiMessageRole::Assistant, None, "미리보기…");
@@ -527,7 +524,6 @@ mod tests {
         assert_eq!(message_text(&preview_only), "짧은 답");
     }
 
-    // parity: TS-renderer-AiChatTranscriptMessage-adda56
     #[test]
     fn user_requests_stay_as_typed() {
         let message = AggregatedAiMessage::plain(AiMessageRole::User, None, "# 제목 아님\n둘째 줄");
@@ -546,7 +542,6 @@ mod tests {
         );
     }
 
-    // parity: TS-renderer-AiChatTranscriptMessage-089073
     #[test]
     fn tool_rows_show_the_tool_name_or_the_role() {
         let named = message_shape(&translator(), &tool(Some("Bash"), "ls"));
@@ -555,7 +550,6 @@ mod tests {
         assert!(matches!(unnamed, MessageShape::Disclosure { summary, .. } if summary == "도구"));
     }
 
-    // parity: TS-renderer-AiChatTranscriptMessage-da1118
     #[test]
     fn changed_files_become_preview_cards() {
         let mut message = tool(Some("Write"), "done");
@@ -578,7 +572,6 @@ mod tests {
         assert_eq!(cards[1].path, "/repo/src/app.ts");
     }
 
-    // parity: TS-renderer-AiChatTranscriptMessage-861e2a
     #[test]
     fn no_file_cards_where_previews_cannot_open() {
         let mut message = tool(Some("Write"), "done");
@@ -589,7 +582,6 @@ mod tests {
         assert!(file_cards(&translator(), &message, false).is_empty());
     }
 
-    // parity: TS-renderer-AiChatTranscriptMessage-981202
     #[test]
     fn system_and_developer_messages_are_shown_directly() {
         for role in [AiMessageRole::System, AiMessageRole::Developer] {

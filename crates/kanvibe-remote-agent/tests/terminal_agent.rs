@@ -13,7 +13,6 @@ fn base64(text: &str) -> String {
     base64::engine::general_purpose::STANDARD.encode(text)
 }
 
-// parity: TS-lib-remoteTerminalTransport-bab14b
 #[test]
 fn direct_and_relay_input_reach_one_shared_controller() {
     let Some(fixture) = Fixture::start() else {
@@ -62,7 +61,6 @@ fn direct_and_relay_input_reach_one_shared_controller() {
     );
 }
 
-// parity: TS-lib-remoteTerminalTransport-c46b4f
 #[test]
 fn history_refresh_from_a_direct_device_keeps_the_stream_and_later_input() {
     let Some(fixture) = Fixture::start() else {
@@ -94,7 +92,6 @@ fn history_refresh_from_a_direct_device_keeps_the_stream_and_later_input() {
     );
 }
 
-// parity: TS-lib-remoteTerminalTransport-83ffd1
 #[test]
 fn direct_history_uses_the_alternate_screen_and_wheel_goes_to_terminal_scroll() {
     let Some(fixture) = Fixture::start() else {
@@ -138,7 +135,6 @@ fn direct_history_uses_the_alternate_screen_and_wheel_goes_to_terminal_scroll() 
     );
 }
 
-// parity: TS-lib-remoteTerminalTransport-fe3850
 #[test]
 fn wrong_capability_and_foreign_pane_relay_are_rejected_and_device_revoke_closes_direct() {
     let Some(fixture) = Fixture::start() else {
@@ -168,7 +164,6 @@ fn wrong_capability_and_foreign_pane_relay_are_rejected_and_device_revoke_closes
     );
 }
 
-// parity: TS-main-remoteTerminalService-bccd67
 #[test]
 fn abandoned_direct_handshake_keeps_the_capability_for_relay_fallback() {
     let Some(fixture) = Fixture::start() else {
@@ -192,7 +187,6 @@ fn abandoned_direct_handshake_keeps_the_capability_for_relay_fallback() {
     });
 }
 
-// parity: TS-main-remoteTerminalService-221d5e
 #[test]
 fn ordinary_unauthenticated_https_requests_get_a_prompt_not_found() {
     let Some(fixture) = Fixture::start() else {
@@ -206,7 +200,6 @@ fn ordinary_unauthenticated_https_requests_get_a_prompt_not_found() {
     assert!(started_at.elapsed() < Duration::from_millis(500));
 }
 
-// parity: TS-main-remoteTerminalService-d5bae3
 #[test]
 fn admission_uses_the_agent_clock_even_when_the_desktop_clock_is_a_day_behind() {
     let Some(fixture) = Fixture::start() else {
@@ -229,7 +222,6 @@ fn admission_uses_the_agent_clock_even_when_the_desktop_clock_is_a_day_behind() 
     assert!(direct.messages()[0].contains("history"));
 }
 
-// parity: TS-main-remoteTerminalService-80b2dd
 #[test]
 fn a_later_grant_reads_the_restored_native_baseline_before_claiming() {
     let Some(fixture) = Fixture::start() else {

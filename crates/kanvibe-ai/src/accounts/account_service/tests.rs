@@ -111,7 +111,6 @@ fn is_directory(path: &str) -> bool {
     Path::new(path).is_dir()
 }
 
-// parity: TS-main-aiAccountService-86d9b0
 #[test]
 fn add_creates_slot_and_registers() {
     let fixture = fixture();
@@ -129,7 +128,6 @@ fn add_creates_slot_and_registers() {
     );
 }
 
-// parity: TS-main-aiAccountService-0b847d
 #[test]
 fn gemini_add_creates_dot_gemini_too() {
     let fixture = fixture();
@@ -138,7 +136,6 @@ fn gemini_add_creates_dot_gemini_too() {
     assert!(is_directory(&fixture.path(".gemini-work/.gemini")));
 }
 
-// parity: TS-main-aiAccountService-9f0e93
 #[test]
 fn escaping_names_are_rejected_without_side_effects() {
     let fixture = fixture();
@@ -160,7 +157,6 @@ fn escaping_names_are_rejected_without_side_effects() {
     assert_eq!(fixture.store.write_count.load(Ordering::SeqCst), 0);
 }
 
-// parity: TS-main-aiAccountService-e1b4b7
 #[test]
 fn adding_same_name_again_reports_existing() {
     let fixture = fixture();
@@ -171,7 +167,6 @@ fn adding_same_name_again_reports_existing() {
     );
 }
 
-// parity: TS-main-aiAccountService-a102f7
 #[test]
 fn registered_account_stays_listed_while_signed_out() {
     let fixture = fixture();
@@ -182,7 +177,6 @@ fn registered_account_stays_listed_while_signed_out() {
     assert_eq!(summary.account_name.as_deref(), Some("work"));
 }
 
-// parity: TS-main-aiAccountService-0a03fc
 #[test]
 fn listed_ids_link_discovered_accounts_and_cache() {
     let fixture = fixture();
@@ -209,7 +203,6 @@ fn listed_ids_link_discovered_accounts_and_cache() {
     );
 }
 
-// parity: TS-main-aiAccountService-7d7027
 #[test]
 fn cli_reported_label_and_plan_are_used() {
     let fixture = fixture();
@@ -225,7 +218,6 @@ fn cli_reported_label_and_plan_are_used() {
     assert!(summary.is_logged_in);
 }
 
-// parity: TS-main-aiAccountService-0114f3
 #[test]
 fn unanswered_cli_falls_back_to_credentials_file() {
     let fixture = fixture();
@@ -240,7 +232,6 @@ fn unanswered_cli_falls_back_to_credentials_file() {
     assert!(codex.is_logged_in);
 }
 
-// parity: TS-main-aiAccountService-72a40e
 #[test]
 fn manual_directories_are_not_removable() {
     let fixture = fixture();
@@ -249,7 +240,6 @@ fn manual_directories_are_not_removable() {
     assert!(!summary.is_removable);
 }
 
-// parity: TS-main-aiAccountService-f1dce4
 #[test]
 fn registered_account_is_logged_out_and_removed() {
     let fixture = fixture();
@@ -276,7 +266,6 @@ fn registered_account_is_logged_out_and_removed() {
     );
 }
 
-// parity: TS-main-aiAccountService-d5fa04
 #[test]
 fn manual_root_is_only_logged_out() {
     let fixture = fixture();
@@ -290,7 +279,6 @@ fn manual_root_is_only_logged_out() {
     assert!(is_directory(&manual_root));
 }
 
-// parity: TS-main-aiAccountService-6d21f5
 #[test]
 fn providers_without_logout_report_manual_logout() {
     let fixture = fixture();
@@ -308,7 +296,6 @@ fn providers_without_logout_report_manual_logout() {
     );
 }
 
-// parity: TS-main-aiAccountService-369ef0
 #[test]
 fn concurrent_adds_of_different_accounts_are_both_kept() {
     let fixture = fixture();
@@ -326,7 +313,6 @@ fn concurrent_adds_of_different_accounts_are_both_kept() {
     assert_eq!(names, ["first", "second"]);
 }
 
-// parity: TS-main-aiAccountService-371f88
 #[test]
 fn concurrent_adds_of_same_account_register_once() {
     let fixture = fixture();
@@ -353,7 +339,6 @@ fn concurrent_adds_of_same_account_register_once() {
     );
 }
 
-// parity: TS-main-aiAccountService-a33b45
 #[test]
 fn add_during_removal_logout_is_preserved() {
     let fixture = fixture();
@@ -381,7 +366,6 @@ fn add_during_removal_logout_is_preserved() {
     assert_eq!(fixture.registration_names(), ["new"]);
 }
 
-// parity: TS-main-aiAccountService-3497b0
 #[test]
 fn failed_save_does_not_block_next_change() {
     let fixture = fixture();

@@ -719,7 +719,6 @@ mod tests {
         assert!(results[0].title_indices.is_some());
     }
 
-    // parity: TS-renderer-TaskQuickSearchDialog-eb5211
     #[test]
     fn token_order_does_not_change_the_result() {
         let tasks = [searchable(
@@ -735,7 +734,6 @@ mod tests {
         assert_eq!(forward[0].score, backward[0].score);
     }
 
-    // parity: TS-renderer-TaskQuickSearchDialog-9f6546
     #[test]
     fn one_query_finds_project_and_branch_together() {
         let tasks = [

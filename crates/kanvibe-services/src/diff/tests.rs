@@ -100,7 +100,6 @@ fn diff_output(additions: i64, deletions: i64) -> String {
         + "\0"
 }
 
-// parity: TS-main-diffService-05a95a
 #[test]
 fn lists_remote_diff_files_through_the_ssh_host() {
     let output = [
@@ -142,7 +141,6 @@ fn lists_remote_diff_files_through_the_ssh_host() {
     }
 }
 
-// parity: TS-main-diffService-5123de
 #[test]
 fn reads_and_saves_remote_files_through_the_ssh_host() {
     let runner = Arc::new(ScriptedCommandRunner::new(|call: &RecordedCommand| {
@@ -203,7 +201,6 @@ fn reads_and_saves_remote_files_through_the_ssh_host() {
     );
 }
 
-// parity: TS-main-diffService-1dcc97
 #[test]
 fn refreshes_only_the_requested_tasks_and_saves_their_stats() {
     let runner = Arc::new(ScriptedCommandRunner::returning(&diff_output(12, 3)));
@@ -225,7 +222,6 @@ fn refreshes_only_the_requested_tasks_and_saves_their_stats() {
     assert_eq!(runner.calls().len(), 1);
 }
 
-// parity: TS-main-diffService-8c45b5
 #[test]
 fn fills_tasks_not_refreshed_from_the_saved_stats() {
     let runner = Arc::new(ScriptedCommandRunner::returning(&diff_output(12, 3)));
@@ -253,7 +249,6 @@ fn fills_tasks_not_refreshed_from_the_saved_stats() {
     assert_eq!(runner.calls().len(), 1);
 }
 
-// parity: TS-main-diffService-e06011
 #[test]
 fn returns_saved_stats_without_git_when_nothing_needs_refreshing() {
     let runner = Arc::new(ScriptedCommandRunner::returning(""));
@@ -269,7 +264,6 @@ fn returns_saved_stats_without_git_when_nothing_needs_refreshing() {
     assert!(runner.calls().is_empty());
 }
 
-// parity: TS-main-diffService-d4974f
 #[test]
 fn a_failed_refresh_keeps_the_saved_stats() {
     let runner = Arc::new(ScriptedCommandRunner::new(|_| {
@@ -293,7 +287,6 @@ fn a_failed_refresh_keeps_the_saved_stats() {
     assert_eq!(fixture.saved_stats(&task_id), Some(stats(4, 40, 8)));
 }
 
-// parity: TS-main-diffService-2dab1a
 #[test]
 fn reading_the_file_list_in_detail_also_refreshes_the_stats() {
     let runner = Arc::new(ScriptedCommandRunner::returning(&diff_output(7, 2)));
@@ -397,7 +390,6 @@ fn build_uncommitted_fixture(repository: &GitFixture) {
     repository.write("ignored.txt", b"ignored\n");
 }
 
-// parity: TS-main-diffService-ef552e
 #[test]
 fn lists_only_uncommitted_files_and_clears_stats_after_commit() {
     for ssh_host in [None, Some("remote-host")] {
@@ -455,7 +447,6 @@ fn lists_only_uncommitted_files_and_clears_stats_after_commit() {
     }
 }
 
-// parity: TS-main-diffService-65ff6a
 #[test]
 fn reads_and_saves_paths_with_spaces_korean_tabs_newlines_and_renames() {
     let repository = GitFixture::new();
@@ -528,7 +519,6 @@ fn reads_and_saves_paths_with_spaces_korean_tabs_newlines_and_renames() {
     }
 }
 
-// parity: TS-main-diffService-e0cf88
 #[test]
 fn lists_changes_without_a_base_branch_and_keeps_stats_when_git_fails() {
     let repository = GitFixture::new();
@@ -562,7 +552,6 @@ fn lists_changes_without_a_base_branch_and_keeps_stats_when_git_fails() {
     assert_eq!(fixture.saved_stats(&task_id), Some(stats(3, 3, 3)));
 }
 
-// parity: TS-main-diffService-4c19af
 #[test]
 fn reads_dot_dot_named_inner_files_and_blocks_parent_paths() {
     for ssh_host in [None, Some("remote-host")] {
@@ -655,7 +644,6 @@ impl WorkspaceFixture {
     }
 }
 
-// parity: TS-main-diffService-cd6dbd
 #[test]
 fn reads_a_relative_path_inside_the_worktree() {
     let workspace = workspace_fixture();
@@ -672,7 +660,6 @@ fn reads_a_relative_path_inside_the_worktree() {
     );
 }
 
-// parity: TS-main-diffService-b7242f
 #[test]
 fn turns_an_absolute_path_inside_the_worktree_into_a_relative_one() {
     let workspace = workspace_fixture();
@@ -691,7 +678,6 @@ fn turns_an_absolute_path_inside_the_worktree_into_a_relative_one() {
     );
 }
 
-// parity: TS-main-diffService-6f363c
 #[test]
 fn refuses_parent_and_outside_absolute_paths_without_running_commands() {
     for ssh_host in [None, Some("remote-host")] {
@@ -734,7 +720,6 @@ fn refuses_parent_and_outside_absolute_paths_without_running_commands() {
     }
 }
 
-// parity: TS-main-diffService-d7fc07
 #[test]
 fn refuses_files_over_one_mebibyte_and_reads_exactly_one() {
     for ssh_host in [None, Some("remote-host")] {
@@ -758,7 +743,6 @@ fn refuses_files_over_one_mebibyte_and_reads_exactly_one() {
     }
 }
 
-// parity: TS-main-diffService-3a800c
 #[test]
 fn reports_missing_files_and_directories_as_not_found() {
     for ssh_host in [None, Some("remote-host")] {
@@ -776,7 +760,6 @@ fn reports_missing_files_and_directories_as_not_found() {
     }
 }
 
-// parity: TS-main-diffService-4fecdb
 #[test]
 fn reports_a_missing_task_as_not_found() {
     let workspace = workspace_fixture();
@@ -787,7 +770,6 @@ fn reports_a_missing_task_as_not_found() {
     );
 }
 
-// parity: TS-main-diffService-4f4a8b
 #[test]
 fn measures_remote_files_before_reading_them() {
     let workspace = workspace_fixture();
@@ -815,7 +797,6 @@ fn measures_remote_files_before_reading_them() {
     assert_eq!(call.options.max_buffer_bytes, Some(MAX_FILE_BYTES + 4096));
 }
 
-// parity: TS-main-diffService-fa41c2
 #[test]
 fn a_failed_remote_command_is_reported_as_unreadable() {
     let runner = Arc::new(ScriptedCommandRunner::new(|_| {
@@ -904,7 +885,6 @@ fn rename_case(kind: &str, is_edited: bool) {
     assert_eq!(service.get_file_content(&task_id, &files[0].path), current);
 }
 
-// parity: TS-main-diffService-d767a6
 #[test]
 fn reads_rename_originals_for_committed_staged_and_chained_renames() {
     for kind in ["committed", "staged", "chained"] {
@@ -1046,7 +1026,6 @@ fn saved_count(fixture: &Fixture, task_ids: &[&str]) -> usize {
         .count()
 }
 
-// parity: TS-main-diffService-05c1fe
 #[test]
 fn returns_the_cache_without_waiting_for_slow_git() {
     let runner = GatedRunner::new(true, String::new());
@@ -1073,7 +1052,6 @@ fn returns_the_cache_without_waiting_for_slow_git() {
     wait_until(|| fixture.saved_stats("slow") == Some(stats(1, 7, 0)));
 }
 
-// parity: TS-main-diffService-f60d2d
 #[test]
 fn starts_every_refresh_and_merges_duplicates_in_flight() {
     let runner = GatedRunner::new(true, String::new());
@@ -1095,7 +1073,6 @@ fn starts_every_refresh_and_merges_duplicates_in_flight() {
     assert_eq!(runner.started_tasks().len(), 3);
 }
 
-// parity: TS-main-diffService-128077
 #[test]
 fn starts_all_refreshes_regardless_of_host() {
     let runner = GatedRunner::new(true, String::new());
@@ -1118,7 +1095,6 @@ fn starts_all_refreshes_regardless_of_host() {
     wait_until(|| saved_count(&fixture, &tasks) == 5);
 }
 
-// parity: TS-main-diffService-083891
 #[test]
 fn board_refreshes_run_in_background_priority_and_detail_reads_in_foreground() {
     let runner = GatedRunner::new(false, single_file_output(1));
@@ -1142,7 +1118,6 @@ fn board_refreshes_run_in_background_priority_and_detail_reads_in_foreground() {
     assert_eq!(priorities, [true, false]);
 }
 
-// parity: TS-main-diffService-db5eb2
 #[test]
 fn deleted_tasks_are_not_scheduled() {
     let runner = GatedRunner::new(false, single_file_output(4));
@@ -1156,7 +1131,6 @@ fn deleted_tasks_are_not_scheduled() {
     assert_eq!(runner.started_tasks(), ["alive"]);
 }
 
-// parity: TS-main-diffService-1d3f0c
 #[test]
 fn detail_and_board_share_one_read_and_save_for_the_same_task() {
     let runner = GatedRunner::new(true, String::new());
@@ -1184,7 +1158,6 @@ fn detail_and_board_share_one_read_and_save_for_the_same_task() {
     assert_eq!(later.get_task_diff_stats(&[])["same"].additions, 8);
 }
 
-// parity: TS-main-diffService-2b211c
 #[test]
 fn detail_reads_join_a_board_refresh_already_in_flight() {
     let runner = GatedRunner::new(true, String::new());

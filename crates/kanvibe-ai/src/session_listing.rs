@@ -260,7 +260,6 @@ mod tests {
             .collect()
     }
 
-    // parity: TS-aiSessions-shared-444cc8
     #[test]
     fn sorts_detail_messages_from_newest_to_oldest() {
         let result = sort_messages_descending(&[
@@ -275,7 +274,6 @@ mod tests {
         assert_eq!(texts(&result), ["new", "mid", "old"]);
     }
 
-    // parity: TS-aiSessions-shared-7fa8ba
     #[test]
     fn same_instant_keeps_append_order_when_reversed() {
         let messages = [
@@ -302,7 +300,6 @@ mod tests {
         assert_eq!(texts(&messages), ["질문", "응답", "후속 질문"]);
     }
 
-    // parity: TS-aiSessions-shared-01b9eb
     #[test]
     fn messages_without_time_keep_reverse_append_order() {
         let messages = [
@@ -315,7 +312,6 @@ mod tests {
         );
     }
 
-    // parity: TS-aiSessions-shared-c1882b
     #[test]
     fn map_with_concurrency_keeps_order_and_limits_workers() {
         let active_count = AtomicUsize::new(0);

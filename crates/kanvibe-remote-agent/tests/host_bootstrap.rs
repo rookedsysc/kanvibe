@@ -204,7 +204,6 @@ fn agent_binary() -> Vec<u8> {
     std::fs::read(AGENT_BINARY).unwrap()
 }
 
-// parity: TS-lib-remoteHostServer-9c3125
 #[test]
 fn eight_concurrent_loaders_publish_one_complete_binary_and_share_one_daemon() {
     let mut fixture = NamespaceFixture::new("r");
@@ -252,7 +251,6 @@ fn eight_concurrent_loaders_publish_one_complete_binary_and_share_one_daemon() {
         .push(readies[0].1["pid"].as_i64().unwrap() as i32);
 }
 
-// parity: TS-lib-remoteHostServer-76cee7
 #[test]
 fn a_detached_daemon_outlives_one_bridge_and_serves_the_next() {
     let mut fixture = NamespaceFixture::new("b");
@@ -280,7 +278,6 @@ fn a_detached_daemon_outlives_one_bridge_and_serves_the_next() {
     assert!(!is_alive(one["pid"].as_i64().unwrap() as i32));
 }
 
-// parity: TS-lib-remoteHostServer-ce1cdb
 #[test]
 fn a_previous_build_daemon_is_replaced_instead_of_rejecting_the_new_build() {
     let mut fixture = NamespaceFixture::new("u");
@@ -362,7 +359,6 @@ fn fake_node_daemon(directory: &Path) -> String {
     )
 }
 
-// parity: TS-lib-remoteHostServer-b993ce
 #[test]
 fn a_start_lock_owner_that_is_not_a_kanvibe_daemon_is_left_alone() {
     let fixture = NamespaceFixture::new("l");
@@ -384,7 +380,6 @@ fn a_start_lock_owner_that_is_not_a_kanvibe_daemon_is_left_alone() {
     assert!(is_alive(std::process::id() as i32));
 }
 
-// parity: TS-lib-remoteHostServer-b6fc2a
 #[test]
 fn server_runtime_environment_never_reaches_user_commands_or_terminals() {
     let fixture = NamespaceFixture::new("e");

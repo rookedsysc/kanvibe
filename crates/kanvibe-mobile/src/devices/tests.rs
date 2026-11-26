@@ -88,7 +88,6 @@ fn with_unpaired_device_ids(devices: &MobileDevices, run: impl FnOnce(&Mutex<Vec
     handle.unsubscribe();
 }
 
-// parity: TS-main-mobileBridgeService-934b4e
 #[test]
 fn pairing_with_the_screen_code_returns_a_token() {
     let fixture = fixture();
@@ -104,7 +103,6 @@ fn pairing_with_the_screen_code_returns_a_token() {
     assert!(token.chars().all(|character| character.is_ascii_hexdigit()));
 }
 
-// parity: TS-main-mobileBridgeService-714fb7
 #[test]
 fn wrong_code_returns_no_token() {
     let fixture = fixture();
@@ -119,7 +117,6 @@ fn wrong_code_returns_no_token() {
     );
 }
 
-// parity: TS-main-mobileBridgeService-dab508
 #[test]
 fn pairing_without_an_issued_code_fails() {
     let fixture = fixture();
@@ -134,7 +131,6 @@ fn pairing_without_an_issued_code_fails() {
     );
 }
 
-// parity: TS-main-mobileBridgeService-0381d6
 #[test]
 fn paired_device_is_stored_in_the_list() {
     let fixture = fixture();
@@ -148,7 +144,6 @@ fn paired_device_is_stored_in_the_list() {
     assert!(devices[0].paired_at.ends_with('Z'));
 }
 
-// parity: TS-main-mobileBridgeService-888eea
 #[test]
 fn device_list_does_not_carry_tokens() {
     let fixture = fixture();
@@ -160,7 +155,6 @@ fn device_list_does_not_carry_tokens() {
     assert!(!serialized.contains("token"));
 }
 
-// parity: TS-main-mobileBridgeService-88640b
 #[test]
 fn overlapping_pairings_keep_every_token() {
     let fixture = fixture();
@@ -187,7 +181,6 @@ fn overlapping_pairings_keep_every_token() {
     );
 }
 
-// parity: TS-main-mobileBridgeService-5ed12a
 #[test]
 fn pairing_during_unpair_survives_and_the_removed_device_stays_removed() {
     let fixture = fixture();
@@ -212,7 +205,6 @@ fn pairing_during_unpair_survives_and_the_removed_device_stays_removed() {
     ));
 }
 
-// parity: TS-main-mobileBridgeService-7c36b0
 #[test]
 fn unpaired_device_token_no_longer_passes() {
     let fixture = fixture();
@@ -226,7 +218,6 @@ fn unpaired_device_token_no_longer_passes() {
     assert!(!is_authorized(&fixture.devices, Some(&bearer(&token))));
 }
 
-// parity: TS-main-mobileBridgeService-6e5e10
 #[test]
 fn subscription_is_stored_rotated_and_never_exposed_with_pairing_secrets() {
     let fixture = fixture();
@@ -262,7 +253,6 @@ fn subscription_is_stored_rotated_and_never_exposed_with_pairing_secrets() {
     assert!(!pushes.contains(&token));
 }
 
-// parity: TS-main-mobileBridgeService-ce6b29
 #[test]
 fn deleting_a_subscription_keeps_other_devices_and_the_pairing() {
     let fixture = fixture();
@@ -292,7 +282,6 @@ fn deleting_a_subscription_keeps_other_devices_and_the_pairing() {
     assert!(is_authorized(devices, Some(&bearer(&first_token))));
 }
 
-// parity: TS-main-mobileBridgeService-104d1c
 #[test]
 fn unpair_racing_a_subscription_never_revives_the_device() {
     let fixture = fixture();
@@ -332,7 +321,6 @@ fn unpair_racing_a_subscription_never_revives_the_device() {
     assert!(!is_authorized(&fixture.devices, Some(&header)));
 }
 
-// parity: TS-main-mobileBridgeService-e2cfba
 #[test]
 fn broken_subscription_is_not_pushed_and_pairing_survives() {
     let fixture = fixture();
@@ -354,7 +342,6 @@ fn broken_subscription_is_not_pushed_and_pairing_survives() {
     assert!(is_authorized(&fixture.devices, Some(&bearer(&token))));
 }
 
-// parity: TS-main-mobileBridgeService-bec8e0
 #[test]
 fn expired_push_token_is_removed_only_for_the_same_device_and_token() {
     let fixture = fixture();
@@ -406,7 +393,6 @@ impl PushSubscriptionRegistry for ObservedRegistry {
     }
 }
 
-// parity: TS-main-mobileBridgeService-bc12a4
 #[test]
 fn late_410_does_not_remove_a_token_rotated_in_between() {
     let fixture = fixture();
@@ -463,7 +449,6 @@ fn late_410_does_not_remove_a_token_rotated_in_between() {
     notifications.stop();
 }
 
-// parity: TS-main-mobileBridgeService-2534f6
 #[test]
 fn paired_device_token_passes() {
     let fixture = fixture();
@@ -472,7 +457,6 @@ fn paired_device_token_passes() {
     assert!(is_authorized(&fixture.devices, Some(&bearer(&token))));
 }
 
-// parity: TS-main-mobileBridgeService-802377
 #[test]
 fn missing_token_is_blocked() {
     let fixture = fixture();
@@ -481,7 +465,6 @@ fn missing_token_is_blocked() {
     assert!(!is_authorized(&fixture.devices, None));
 }
 
-// parity: TS-main-mobileBridgeService-448213
 #[test]
 fn unknown_token_is_blocked() {
     let fixture = fixture();
@@ -493,7 +476,6 @@ fn unknown_token_is_blocked() {
     ));
 }
 
-// parity: TS-main-mobileBridgeService-5c2ac3
 #[test]
 fn nothing_passes_without_paired_devices() {
     let fixture = fixture();
@@ -504,7 +486,6 @@ fn nothing_passes_without_paired_devices() {
     ));
 }
 
-// parity: TS-main-mobileBridgeService-910b43
 #[test]
 fn authorized_request_returns_the_owner_device_id() {
     let fixture = fixture();
@@ -520,7 +501,6 @@ fn authorized_request_returns_the_owner_device_id() {
     );
 }
 
-// parity: TS-main-mobileBridgeService-a8e63f
 #[test]
 fn devices_paired_at_the_same_moment_unpair_separately() {
     let fixture = fixture();
@@ -536,7 +516,6 @@ fn devices_paired_at_the_same_moment_unpair_separately() {
     assert!(is_authorized(&fixture.devices, Some(&bearer(&kept_token))));
 }
 
-// parity: TS-main-mobileBridgeService-f3689e
 #[test]
 fn unpair_by_token_removes_only_the_owner() {
     let fixture = fixture();
@@ -560,7 +539,6 @@ fn unpair_by_token_removes_only_the_owner() {
     assert_eq!(remaining[0].device_name, "iPad");
 }
 
-// parity: TS-main-mobileBridgeService-f0fc60
 #[test]
 fn unpair_by_unknown_token_removes_nothing() {
     let fixture = fixture();
@@ -579,7 +557,6 @@ fn unpair_by_unknown_token_removes_nothing() {
     );
 }
 
-// parity: TS-main-mobileBridgeService-bceda0
 #[test]
 fn unpair_without_header_removes_nothing() {
     let fixture = fixture();
@@ -592,7 +569,6 @@ fn unpair_without_header_removes_nothing() {
     );
 }
 
-// parity: TS-main-mobileBridgeService-a70810
 #[test]
 fn unpair_by_token_racing_a_pairing_keeps_the_new_device() {
     let fixture = fixture();
@@ -619,7 +595,6 @@ fn unpair_by_token_racing_a_pairing_keeps_the_new_device() {
     );
 }
 
-// parity: TS-main-mobileBridgeService-cb9aa3
 #[test]
 fn settings_unpair_announces_the_device_id() {
     let fixture = fixture();
@@ -633,7 +608,6 @@ fn settings_unpair_announces_the_device_id() {
     });
 }
 
-// parity: TS-main-mobileBridgeService-526ada
 #[test]
 fn self_unpair_announces_the_same_signal() {
     let fixture = fixture();
@@ -652,7 +626,6 @@ fn self_unpair_announces_the_same_signal() {
     });
 }
 
-// parity: TS-main-mobileBridgeService-36178f
 #[test]
 fn nothing_is_announced_when_no_device_was_removed() {
     let fixture = fixture();
@@ -676,7 +649,6 @@ fn nothing_is_announced_when_no_device_was_removed() {
     });
 }
 
-// parity: TS-main-mobileBridgeService-f9edbe
 #[test]
 fn unsubscribed_listener_receives_nothing() {
     let fixture = fixture();

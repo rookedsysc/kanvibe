@@ -54,7 +54,6 @@ fn failing(function_names: &'static [&'static str], message: &'static str) -> Re
     }
 }
 
-// parity: TS-main-kanvibeTaskStateService-547f9c
 #[test]
 fn state_write_without_a_path_is_ignored() {
     let store = RecordingStateStore::default();
@@ -70,7 +69,6 @@ fn state_write_without_a_path_is_ignored() {
     assert!(store.calls.lock().unwrap().is_empty());
 }
 
-// parity: TS-main-kanvibeTaskStateService-2bea67
 #[test]
 fn git_exclude_is_updated_before_the_status_file_is_written() {
     let store = RecordingStateStore::default();
@@ -92,7 +90,6 @@ fn git_exclude_is_updated_before_the_status_file_is_written() {
     );
 }
 
-// parity: TS-main-kanvibeTaskStateService-937247
 #[test]
 fn failed_git_exclude_does_not_block_the_status_write() {
     let store = failing(&["add_ai_tool_patterns_to_git_exclude"], "not a git repo");
@@ -111,7 +108,6 @@ fn failed_git_exclude_does_not_block_the_status_write() {
     );
 }
 
-// parity: TS-main-kanvibeTaskStateService-f1e586
 #[test]
 fn repeated_hook_events_check_git_exclude_once_but_write_every_status() {
     let store = RecordingStateStore::default();
@@ -154,7 +150,6 @@ impl BlockingExcludeStore {
     }
 }
 
-// parity: TS-main-kanvibeTaskStateService-b03eba
 #[test]
 fn exclude_checks_are_kept_per_repository_and_host_and_overlapping_writes_wait_for_the_running_check()
  {
@@ -226,7 +221,6 @@ fn exclude_checks_are_kept_per_repository_and_host_and_overlapping_writes_wait_f
     );
 }
 
-// parity: TS-main-kanvibeTaskStateService-7e727b
 #[test]
 fn failed_exclude_checks_are_retried_and_remembered_checks_expire() {
     let exclude_attempts = AtomicUsize::new(0);
@@ -278,7 +272,6 @@ fn failed_exclude_checks_are_retried_and_remembered_checks_expire() {
     );
 }
 
-// parity: TS-main-kanvibeTaskStateService-f00c4c
 #[test]
 fn failed_status_write_does_not_block_the_caller() {
     let store = failing(&["write_task_status"], "disk full");
@@ -297,7 +290,6 @@ fn failed_status_write_does_not_block_the_caller() {
     );
 }
 
-// parity: TS-main-kanvibeTaskStateService-6c67c4
 #[test]
 fn task_with_a_worktree_path_writes_there_without_looking_up_the_project() {
     let store = RecordingStateStore::default();
@@ -317,7 +309,6 @@ fn task_with_a_worktree_path_writes_there_without_looking_up_the_project() {
     );
 }
 
-// parity: TS-main-kanvibeTaskStateService-58594b
 #[test]
 fn default_branch_task_without_a_worktree_writes_to_the_project_root() {
     let store = RecordingStateStore::default();
@@ -335,7 +326,6 @@ fn default_branch_task_without_a_worktree_writes_to_the_project_root() {
     );
 }
 
-// parity: TS-main-kanvibeTaskStateService-0f1ba4
 #[test]
 fn non_default_branch_task_without_a_worktree_writes_nothing() {
     let store = RecordingStateStore::default();
@@ -350,7 +340,6 @@ fn non_default_branch_task_without_a_worktree_writes_nothing() {
     assert!(store.calls_of("write_task_status").is_empty());
 }
 
-// parity: TS-main-kanvibeTaskStateService-4a1b20
 #[test]
 fn reads_only_the_saved_task_status() {
     let store = RecordingStateStore::default();
@@ -501,7 +490,6 @@ fn changed() -> TaskStatusSyncResult {
     }
 }
 
-// parity: TS-main-kanvibeTaskStatusSync-6dbbe1
 #[test]
 fn file_status_corrects_existing_tasks_without_git_discovery() {
     for status in TASK_STATUS_ORDER {
@@ -534,7 +522,6 @@ fn file_status_corrects_existing_tasks_without_git_discovery() {
     }
 }
 
-// parity: TS-main-kanvibeTaskStatusSync-41a422
 #[test]
 fn one_batch_read_per_host_using_the_project_host_and_root_task_path() {
     let fixture = database_fixture();
@@ -585,7 +572,6 @@ fn one_batch_read_per_host_using_the_project_host_and_root_task_path() {
     );
 }
 
-// parity: TS-main-kanvibeTaskStatusSync-16d4f0
 #[test]
 fn missing_broken_or_unchanged_files_and_pathless_tasks_leave_the_database_alone() {
     let fixture = database_fixture();
@@ -630,7 +616,6 @@ fn missing_broken_or_unchanged_files_and_pathless_tasks_leave_the_database_alone
     assert!(!store.calls_of("read_text_files")[0].contains("/fixture/no-path/"));
 }
 
-// parity: TS-main-kanvibeTaskStatusSync-d81794
 #[test]
 fn one_failed_host_read_does_not_block_other_hosts() {
     let fixture = database_fixture();
@@ -665,7 +650,6 @@ fn one_failed_host_read_does_not_block_other_hosts() {
     );
 }
 
-// parity: TS-main-kanvibeTaskStatusSync-174179
 #[test]
 fn updates_made_while_reading_are_not_overwritten() {
     for status in ["done", "progress"] {
@@ -697,7 +681,6 @@ fn updates_made_while_reading_are_not_overwritten() {
     }
 }
 
-// parity: TS-main-kanvibeTaskStatusSync-d7b8a6
 #[test]
 fn tasks_deleted_while_reading_are_not_recreated() {
     let fixture = database_fixture();
@@ -726,7 +709,6 @@ fn tasks_deleted_while_reading_are_not_recreated() {
     assert_eq!(count, 0);
 }
 
-// parity: TS-main-kanvibeTaskStatusSync-fa4e2a
 #[test]
 fn no_tasks_means_no_file_reads() {
     let fixture = database_fixture();
@@ -756,7 +738,6 @@ fn refresh_with_remote_output(
     notifier.broadcasts.load(Ordering::SeqCst)
 }
 
-// parity: TS-main-hostStatusDatabase-61283d
 #[test]
 fn reconnect_refresh_updates_timestamps_stored_at_second_precision() {
     let fixture = database_fixture();
@@ -781,7 +762,6 @@ fn reconnect_refresh_updates_timestamps_stored_at_second_precision() {
     assert_eq!(broadcasts, 1);
 }
 
-// parity: TS-main-hostStatusDatabase-082479
 #[test]
 fn reconnect_refresh_preserves_a_newer_live_update_made_during_the_read() {
     let fixture = database_fixture();
@@ -838,7 +818,6 @@ fn host_a_task(fixture: &DatabaseFixture) {
     );
 }
 
-// parity: TS-main-hostStatusReconnect-f36bd8
 #[test]
 fn reconnect_reads_only_the_current_snapshot_and_broadcasts_a_change_once() {
     let fixture = database_fixture();
@@ -861,7 +840,6 @@ fn reconnect_reads_only_the_current_snapshot_and_broadcasts_a_change_once() {
     assert_eq!(broadcasts, 1);
 }
 
-// parity: TS-main-hostStatusReconnect-a26a2a
 #[test]
 fn reconnect_does_not_overwrite_a_live_update_that_won_during_the_read() {
     let fixture = database_fixture();
@@ -884,7 +862,6 @@ fn reconnect_does_not_overwrite_a_live_update_that_won_during_the_read() {
     assert_eq!(broadcasts, 0);
 }
 
-// parity: TS-main-hostStatusReconnect-c41550
 #[test]
 fn reconnect_drops_a_snapshot_returned_after_the_connection_was_replaced() {
     let fixture = database_fixture();
@@ -905,7 +882,6 @@ fn reconnect_drops_a_snapshot_returned_after_the_connection_was_replaced() {
     assert_eq!(broadcasts, 0);
 }
 
-// parity: TS-main-hostStatusReconnect-46424a
 #[test]
 fn reconnect_ignores_other_hosts_and_tasks_without_an_execution_directory() {
     let fixture = database_fixture();

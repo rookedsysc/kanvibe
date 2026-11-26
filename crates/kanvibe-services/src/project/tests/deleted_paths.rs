@@ -53,7 +53,6 @@ fn task_ids(harness: &Harness) -> Vec<String> {
     ids
 }
 
-// parity: TS-main-projectService-27113e
 #[test]
 fn deleted_project_is_removed_with_its_tasks_and_not_recreated() {
     let fixture = cleanup_fixture(None);
@@ -79,7 +78,6 @@ fn deleted_project_is_removed_with_its_tasks_and_not_recreated() {
     );
 }
 
-// parity: TS-main-projectService-5e6d09
 #[test]
 fn reading_the_board_first_does_not_repair_a_deleted_project_path() {
     let fixture = cleanup_fixture(None);
@@ -128,7 +126,6 @@ fn block_slow_host(harness: &Harness) -> (Arc<Gate>, Arc<Gate>) {
     (slow_path_check, slow_worktree_list)
 }
 
-// parity: TS-main-projectService-707478
 #[test]
 fn slow_host_does_not_hold_other_hosts_and_same_host_waits_its_turn() {
     let harness = Harness::new();
@@ -167,7 +164,6 @@ fn slow_host_does_not_hold_other_hosts_and_same_host_waits_its_turn() {
     );
 }
 
-// parity: TS-main-projectService-609b0c
 #[test]
 fn only_deleted_worktrees_are_cleaned_even_if_git_still_lists_them() {
     let fixture = cleanup_fixture(None);
@@ -203,7 +199,6 @@ fn only_deleted_worktrees_are_cleaned_even_if_git_still_lists_them() {
     );
 }
 
-// parity: TS-main-projectService-7264a8
 #[test]
 fn failed_worktree_listing_and_pathless_tasks_are_not_deletion_evidence() {
     let fixture = cleanup_fixture(None);
@@ -229,7 +224,6 @@ fn failed_worktree_listing_and_pathless_tasks_are_not_deletion_evidence() {
     assert_eq!(fixture.harness.projects().len(), 1);
 }
 
-// parity: TS-main-projectService-762865
 #[test]
 fn worktree_moved_by_git_keeps_its_task_id_and_metadata() {
     let fixture = cleanup_fixture(None);
@@ -266,7 +260,6 @@ fn worktree_moved_by_git_keeps_its_task_id_and_metadata() {
     assert_eq!(moved.agent_type.as_deref(), Some("codex"));
 }
 
-// parity: TS-main-projectService-a77adb
 #[test]
 fn deleted_default_branch_worktree_is_not_recreated_and_root_task_stays() {
     let fixture = cleanup_fixture(None);
@@ -304,7 +297,6 @@ fn deleted_default_branch_worktree_is_not_recreated_and_root_task_stays() {
     );
 }
 
-// parity: TS-main-projectService-93390d
 #[test]
 fn task_without_ssh_host_is_checked_on_the_project_host() {
     let fixture = cleanup_fixture(Some("devbox"));
@@ -330,7 +322,6 @@ fn task_without_ssh_host_is_checked_on_the_project_host() {
     assert!(checks.contains(&(REMOVED_PATH.to_string(), Some("devbox".to_string()))));
 }
 
-// parity: TS-main-projectService-7fba64
 #[test]
 fn records_are_kept_when_the_path_check_fails() {
     for reason in ["SSH connection refused", "EACCES"] {
@@ -361,7 +352,6 @@ fn records_are_kept_when_the_path_check_fails() {
     }
 }
 
-// parity: TS-main-projectService-542fd6
 #[test]
 fn deleting_a_project_removes_its_task_records() {
     let fixture = cleanup_fixture(None);
@@ -378,7 +368,6 @@ fn deleting_a_project_removes_its_task_records() {
     assert_eq!(fixture.harness.events.board_update_count(), 1);
 }
 
-// parity: TS-main-projectService-0f8fab
 #[test]
 fn deleting_a_missing_project_deletes_nothing_and_does_not_refresh() {
     let fixture = cleanup_fixture(None);
@@ -394,7 +383,6 @@ fn deleting_a_missing_project_deletes_nothing_and_does_not_refresh() {
     assert_eq!(fixture.harness.events.board_update_count(), 0);
 }
 
-// parity: TS-main-projectService-b755c5
 #[test]
 fn explicit_sync_during_deletion_does_not_revive_the_root_task() {
     let harness = Harness::new();

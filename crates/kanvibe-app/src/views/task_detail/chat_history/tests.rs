@@ -80,7 +80,6 @@ fn message_texts(state: &ChatHistoryState) -> Vec<String> {
         .collect()
 }
 
-// parity: TS-renderer-TaskDetailRoute-2006cd
 #[test]
 fn chat_view_reads_nothing_until_opened_and_then_asks_for_the_newest_first_page() {
     let mut state = ChatHistoryState::default();
@@ -98,7 +97,6 @@ fn chat_view_reads_nothing_until_opened_and_then_asks_for_the_newest_first_page(
     assert!(state.is_history_loading);
 }
 
-// parity: TS-renderer-TaskDetailRoute-f60797
 #[test]
 fn history_shows_the_first_prompt_only_when_it_differs_from_the_title() {
     let same = session(
@@ -120,7 +118,6 @@ fn history_shows_the_first_prompt_only_when_it_differs_from_the_title() {
     assert_eq!(session_preview(&untitled), None);
 }
 
-// parity: TS-renderer-TaskDetailRoute-dbf4bf
 #[test]
 fn session_list_appends_the_next_page_after_the_newest_one() {
     let mut state = loaded(
@@ -157,7 +154,6 @@ fn session_list_appends_the_next_page_after_the_newest_one() {
     assert!(state.begin_more_sessions().is_none());
 }
 
-// parity: TS-renderer-TaskDetailRoute-739335
 #[test]
 fn provider_filter_hiding_the_whole_page_still_allows_the_next_page() {
     let mut state = loaded(
@@ -190,7 +186,6 @@ fn provider_filter_hiding_the_whole_page_still_allows_the_next_page() {
     assert_eq!(titles(&state), ["Codex older"]);
 }
 
-// parity: TS-renderer-TaskDetailRoute-dcc0e8
 #[test]
 fn additional_agents_get_their_own_filter_count_and_conversation() {
     let mut state = ChatHistoryState::default();
@@ -223,7 +218,6 @@ fn additional_agents_get_their_own_filter_count_and_conversation() {
     assert_eq!(titles(&state), ["Hermes answer"]);
 }
 
-// parity: TS-renderer-TaskDetailRoute-1369f7
 #[test]
 fn sessions_of_every_provider_share_one_list() {
     let state = loaded(
@@ -275,7 +269,6 @@ fn sessions_of_every_provider_share_one_list() {
     }
 }
 
-// parity: TS-renderer-TaskDetailRoute-cd1318
 #[test]
 fn provider_filters_combine_with_or() {
     let mut state = loaded(
@@ -310,7 +303,6 @@ fn provider_filters_combine_with_or() {
     assert_eq!(titles(&state).len(), 3);
 }
 
-// parity: TS-renderer-TaskDetailRoute-06254d
 #[test]
 fn search_reloads_history_with_the_typed_query() {
     let mut state = loaded(
@@ -340,7 +332,6 @@ fn search_reloads_history_with_the_typed_query() {
     assert_eq!(state.applied_query.as_deref(), Some("filtered topic"));
 }
 
-// parity: TS-renderer-TaskDetailRoute-d09b39
 #[test]
 fn stale_session_page_after_a_new_search_is_dropped() {
     let mut state = loaded(
@@ -382,7 +373,6 @@ fn stale_session_page_after_a_new_search_is_dropped() {
     assert!(!state.is_history_loading);
 }
 
-// parity: TS-renderer-TaskDetailRoute-249203
 #[test]
 fn detail_request_carries_the_chosen_role_filters() {
     let mut state = loaded(
@@ -414,7 +404,6 @@ fn detail_request_carries_the_chosen_role_filters() {
     );
 }
 
-// parity: TS-renderer-TaskDetailRoute-9d503e
 #[test]
 fn detail_shows_the_newest_page_and_appends_older_messages() {
     let mut state = loaded(
@@ -462,7 +451,6 @@ fn detail_shows_the_newest_page_and_appends_older_messages() {
     assert!(!state.has_older_messages());
 }
 
-// parity: TS-renderer-TaskDetailRoute-ab48b7
 #[test]
 fn stale_older_page_after_a_role_change_is_dropped() {
     let mut state = loaded(
@@ -516,7 +504,6 @@ fn stale_older_page_after_a_role_change_is_dropped() {
     assert_eq!(message_texts(&state), ["Filtered user prompt"]);
 }
 
-// parity: TS-renderer-TaskDetailRoute-ecb9e8
 #[test]
 fn detail_messages_read_in_time_order() {
     let mut state = loaded(
@@ -561,7 +548,6 @@ fn detail_messages_read_in_time_order() {
     );
 }
 
-// parity: TS-renderer-TaskDetailRoute-97e340
 #[test]
 fn going_back_to_the_history_keeps_the_list_and_allows_reselecting() {
     let mut state = loaded(
@@ -589,7 +575,6 @@ fn going_back_to_the_history_keeps_the_list_and_allows_reselecting() {
     assert_eq!(again.query.session_id, "claude-1");
 }
 
-// parity: TS-renderer-TaskDetailRoute-098157
 #[test]
 fn older_pages_keep_existing_row_keys_and_tell_duplicates_apart() {
     let newest = detail(

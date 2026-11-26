@@ -56,7 +56,6 @@ fn leftover_entries(root: &Path) -> usize {
     fs::read_dir(root).unwrap().count()
 }
 
-// parity: TS-lib-remoteImagePaste-707f95
 #[test]
 fn decodes_the_base64_payload_of_a_data_url() {
     let bytes = decode_data_url_to_bytes("data:image/png;base64,aGVsbG8=").unwrap();
@@ -64,7 +63,6 @@ fn decodes_the_base64_payload_of_a_data_url() {
     assert_eq!(bytes, b"hello");
 }
 
-// parity: TS-lib-remoteImagePaste-e3ca09
 #[test]
 fn rejects_a_data_url_without_a_comma() {
     let error = decode_data_url_to_bytes("not-a-data-url").unwrap_err();
@@ -72,7 +70,6 @@ fn rejects_a_data_url_without_a_comma() {
     assert_eq!(error.message, "잘못된 이미지 데이터입니다.");
 }
 
-// parity: TS-lib-remoteImagePaste-9f71c3
 #[test]
 fn builds_a_fixed_tmp_path_from_the_uuid() {
     assert_eq!(
@@ -81,7 +78,6 @@ fn builds_a_fixed_tmp_path_from_the_uuid() {
     );
 }
 
-// parity: TS-lib-remoteImagePaste-f468e8
 #[test]
 fn keeps_a_generic_attachment_extension_on_the_same_transport() {
     let root = tempfile::tempdir().unwrap();
@@ -105,7 +101,6 @@ fn keeps_a_generic_attachment_extension_on_the_same_transport() {
     assert_eq!(transport.copies().len(), 1);
 }
 
-// parity: TS-lib-remoteImagePaste-0fe743
 #[test]
 fn uploads_the_image_with_scp_and_returns_the_remote_path() {
     let root = tempfile::tempdir().unwrap();
@@ -146,7 +141,6 @@ fn uploads_the_image_with_scp_and_returns_the_remote_path() {
     assert_eq!(leftover_entries(root.path()), 0);
 }
 
-// parity: TS-lib-remoteImagePaste-a2adcc
 #[test]
 fn reports_scp_stderr_and_still_removes_the_local_directory() {
     let root = tempfile::tempdir().unwrap();
@@ -175,7 +169,6 @@ fn reports_scp_stderr_and_still_removes_the_local_directory() {
     assert_eq!(leftover_entries(&temp_root), 0);
 }
 
-// parity: TS-lib-remoteImagePaste-b7e7ed
 #[test]
 fn reports_a_failed_scp_spawn_and_still_cleans_up() {
     let root = tempfile::tempdir().unwrap();

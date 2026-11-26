@@ -56,7 +56,6 @@ fn wait_for_waiting_attach(harness: &Harness, terminal_key: &str) {
     });
 }
 
-// parity: TS-lib-terminalSessionLifecycle-4ff57f
 #[test]
 fn mobile_viewport_wins_until_released_then_latest_desktop_size_returns() {
     // Given
@@ -99,7 +98,6 @@ fn mobile_viewport_wins_until_released_then_latest_desktop_size_returns() {
     );
 }
 
-// parity: TS-lib-terminalSessionLifecycle-376ba3
 #[test]
 fn released_mobile_viewport_restores_the_original_size_without_desktop_changes() {
     // Given
@@ -122,7 +120,6 @@ fn released_mobile_viewport_restores_the_original_size_without_desktop_changes()
     );
 }
 
-// parity: TS-lib-terminalSessionLifecycle-d22c06
 #[test]
 fn viewport_calls_leave_other_session_types_and_missing_ptys_alone() {
     // Given
@@ -152,7 +149,6 @@ fn viewport_calls_leave_other_session_types_and_missing_ptys_alone() {
     assert!(harness.ptys.pty(0).resizes().is_empty());
 }
 
-// parity: TS-lib-terminalSessionLifecycle-f057c2
 #[test]
 fn closed_zellij_pty_is_not_recreated_by_viewport_release() {
     // Given
@@ -176,7 +172,6 @@ fn closed_zellij_pty_is_not_recreated_by_viewport_release() {
     assert_eq!(harness.ptys.pty(0).resizes(), vec![(88, 73)]);
 }
 
-// parity: TS-lib-terminalSessionLifecycle-3068af
 #[test]
 fn terminal_session_survives_its_last_client_leaving() {
     // Given
@@ -191,7 +186,6 @@ fn terminal_session_survives_its_last_client_leaving() {
     assert_eq!(harness.registry.active_terminal_count(), 1);
 }
 
-// parity: TS-lib-terminalSessionLifecycle-c7ed6f
 #[test]
 fn tmux_pty_is_detached_when_its_last_client_leaves() {
     // Given
@@ -216,7 +210,6 @@ fn tmux_pty_is_detached_when_its_last_client_leaves() {
     assert_eq!(harness.registry.active_terminal_count(), 0);
 }
 
-// parity: TS-lib-terminalSessionLifecycle-338537
 #[test]
 fn tmux_pty_stays_while_another_client_remains() {
     // Given
@@ -245,7 +238,6 @@ fn tmux_pty_stays_while_another_client_remains() {
     assert_eq!(harness.ptys.pty(0).kill_count(), 0);
 }
 
-// parity: TS-lib-terminalSessionLifecycle-4ae2fd
 #[test]
 fn app_quit_kills_every_live_terminal_pty() {
     // Given
@@ -262,7 +254,6 @@ fn app_quit_kills_every_live_terminal_pty() {
     assert_eq!(harness.registry.active_terminal_count(), 0);
 }
 
-// parity: TS-lib-terminalSessionLifecycle-2af573
 #[test]
 fn task_cleanup_kills_only_that_tasks_tab_ptys() {
     // Given
@@ -283,7 +274,6 @@ fn task_cleanup_kills_only_that_tasks_tab_ptys() {
     assert_eq!(harness.registry.active_terminal_count(), 1);
 }
 
-// parity: TS-lib-terminalSessionLifecycle-902fb7
 #[test]
 fn simultaneous_local_opens_share_one_pty_and_both_receive_output() {
     // Given
@@ -318,7 +308,6 @@ fn simultaneous_local_opens_share_one_pty_and_both_receive_output() {
     assert_eq!(second.sent(), vec!["hello"]);
 }
 
-// parity: TS-lib-terminalSessionLifecycle-d58e6b
 #[test]
 fn simultaneous_remote_opens_share_one_ssh_pty() {
     // Given
@@ -355,7 +344,6 @@ fn simultaneous_remote_opens_share_one_ssh_pty() {
     assert_eq!(second.sent(), vec!["hello"]);
 }
 
-// parity: TS-lib-terminalSessionLifecycle-780a4e
 #[test]
 fn waiting_client_is_closed_and_rejected_when_the_first_spawn_fails() {
     // Given
@@ -392,7 +380,6 @@ fn waiting_client_is_closed_and_rejected_when_the_first_spawn_fails() {
     assert_eq!(harness.registry.active_terminal_count(), 0);
 }
 
-// parity: TS-lib-terminalSessionLifecycle-6e68be
 #[test]
 fn reopening_after_a_failed_spawn_spawns_again() {
     // Given
@@ -416,7 +403,6 @@ fn reopening_after_a_failed_spawn_spawns_again() {
     assert_eq!(harness.ptys.count(), 1);
 }
 
-// parity: TS-lib-terminalSessionLifecycle-1cef62
 #[test]
 fn local_terminal_session_starts_the_login_shell_in_the_worktree() {
     // Given
@@ -444,7 +430,6 @@ fn local_terminal_session_starts_the_login_shell_in_the_worktree() {
     );
 }
 
-// parity: TS-lib-terminalSessionLifecycle-14f345
 #[test]
 fn remote_terminal_session_enters_the_worktree_then_execs_the_login_shell() {
     // Given
@@ -472,7 +457,6 @@ fn remote_terminal_session_enters_the_worktree_then_execs_the_login_shell() {
     assert!(!remote_command.contains("zellij"));
 }
 
-// parity: TS-lib-terminalSessionLifecycle-e80639
 #[test]
 fn tab_process_lookup_reads_the_tab_pty_and_returns_none_for_closed_tabs() {
     // Given
@@ -510,7 +494,6 @@ fn tab_process_lookup_reads_the_tab_pty_and_returns_none_for_closed_tabs() {
     );
 }
 
-// parity: TS-lib-terminalSessionLifecycle-90c40a
 #[test]
 fn simultaneous_attaches_share_one_pty_locally_and_remotely() {
     for is_remote in [false, true] {
@@ -551,7 +534,6 @@ fn simultaneous_attaches_share_one_pty_locally_and_remotely() {
     }
 }
 
-// parity: TS-lib-terminalSessionLifecycle-b86451
 #[test]
 fn client_closed_during_initialization_gets_no_pty() {
     // Given: tmux 세션 확인 중에 창이 닫힌다
@@ -576,7 +558,6 @@ fn client_closed_during_initialization_gets_no_pty() {
     assert_eq!(harness.ptys.count(), 0);
 }
 
-// parity: TS-lib-terminalSessionLifecycle-a45a7e
 #[test]
 fn old_pty_exit_and_old_client_close_are_ignored_after_replacement() {
     // Given

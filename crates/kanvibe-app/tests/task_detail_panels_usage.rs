@@ -73,7 +73,6 @@ fn open_usage_with(cx: &mut TestAppContext, accounts: Value) -> Detail {
     open_usage(cx, |detail| detail.substitute(SNAPSHOT, snapshot(accounts)))
 }
 
-// parity: TS-renderer-AiUsagePanel-9d2fac
 #[gpui::test]
 fn each_provider_shows_used_percent_and_plan(cx: &mut TestAppContext) {
     let mut detail = open_usage_with(cx, default_accounts());
@@ -84,7 +83,6 @@ fn each_provider_shows_used_percent_and_plan(cx: &mut TestAppContext) {
     assert!(detail.has_text("PRO"));
 }
 
-// parity: TS-renderer-AiUsagePanel-aa5e98
 #[gpui::test]
 fn provider_without_credentials_shows_the_reason_instead_of_bars(cx: &mut TestAppContext) {
     let mut detail = open_usage_with(cx, default_accounts());
@@ -93,7 +91,6 @@ fn provider_without_credentials_shows_the_reason_instead_of_bars(cx: &mut TestAp
     assert!(detail.has_text("로그인되어 있지 않습니다."));
 }
 
-// parity: TS-renderer-AiUsagePanel-7f8446
 #[gpui::test]
 fn carried_card_shows_bars_and_the_failure_reason_together(cx: &mut TestAppContext) {
     let accounts = json!([claude_account(
@@ -105,7 +102,6 @@ fn carried_card_shows_bars_and_the_failure_reason_together(cx: &mut TestAppConte
     assert!(detail.has_text("요청이 너무 잦아 잠시 뒤 다시 시도해야 합니다."));
 }
 
-// parity: TS-renderer-AiUsagePanel-c09048
 #[gpui::test]
 fn carried_values_say_when_they_were_read(cx: &mut TestAppContext) {
     let accounts = json!([claude_account(json!({
@@ -121,7 +117,6 @@ fn carried_values_say_when_they_were_read(cx: &mut TestAppContext) {
     assert!(detail.has_text(&format!("{read_at} 기준 값입니다.")));
 }
 
-// parity: TS-renderer-AiUsagePanel-084169
 #[gpui::test]
 fn successful_cards_do_not_say_they_were_carried(cx: &mut TestAppContext) {
     let mut detail = open_usage_with(cx, default_accounts());
@@ -129,7 +124,6 @@ fn successful_cards_do_not_say_they_were_carried(cx: &mut TestAppContext) {
     assert!(!detail.has_text_containing("기준 값입니다."));
 }
 
-// parity: TS-renderer-AiUsagePanel-08012f
 #[gpui::test]
 fn a_single_account_still_names_itself(cx: &mut TestAppContext) {
     let mut detail = open_usage_with(cx, default_accounts());
@@ -137,7 +131,6 @@ fn a_single_account_still_names_itself(cx: &mut TestAppContext) {
     assert!(detail.has_text("me@example.com"));
 }
 
-// parity: TS-renderer-AiUsagePanel-246ae1
 #[gpui::test]
 fn several_accounts_of_one_provider_are_named(cx: &mut TestAppContext) {
     let accounts = json!([
@@ -154,7 +147,6 @@ fn several_accounts_of_one_provider_are_named(cx: &mut TestAppContext) {
     assert!(detail.has_text("7%"));
 }
 
-// parity: TS-renderer-AiUsagePanel-1e1b03
 #[gpui::test]
 fn refreshing_over_saved_values_says_refreshing_not_loading(cx: &mut TestAppContext) {
     let mut detail = open_usage(cx, |detail| {
@@ -168,7 +160,6 @@ fn refreshing_over_saved_values_says_refreshing_not_loading(cx: &mut TestAppCont
     assert!(detail.has_text("22%"));
 }
 
-// parity: TS-renderer-AiUsagePanel-7f18a2
 #[gpui::test]
 fn loading_shows_only_while_nothing_can_be_shown(cx: &mut TestAppContext) {
     let mut detail = open_usage(cx, |detail| detail.hang(SNAPSHOT));
@@ -176,7 +167,6 @@ fn loading_shows_only_while_nothing_can_be_shown(cx: &mut TestAppContext) {
     assert!(detail.has_text("사용량을 불러오는 중"));
 }
 
-// parity: TS-renderer-AiUsagePanel-446145
 #[gpui::test]
 fn refresh_button_reads_again(cx: &mut TestAppContext) {
     let mut detail = open_usage_with(cx, default_accounts());
@@ -194,7 +184,6 @@ fn refresh_button_reads_again(cx: &mut TestAppContext) {
     assert!(detail.has_text("64%"));
 }
 
-// parity: TS-renderer-AiUsagePanel-91a1be
 #[gpui::test]
 fn refresh_is_blocked_while_reading(cx: &mut TestAppContext) {
     let mut detail = open_usage(cx, |detail| detail.hang(SNAPSHOT));
@@ -208,7 +197,6 @@ fn refresh_is_blocked_while_reading(cx: &mut TestAppContext) {
     assert!(!detail.has_text("22%"));
 }
 
-// parity: TS-renderer-AiUsagePanel-385842
 #[gpui::test]
 fn total_failure_without_values_is_reported(cx: &mut TestAppContext) {
     let mut detail = open_usage(cx, |detail| detail.fail(SNAPSHOT, "ipc down"));
@@ -216,7 +204,6 @@ fn total_failure_without_values_is_reported(cx: &mut TestAppContext) {
     assert!(detail.has_text("사용량을 불러오지 못했습니다."));
 }
 
-// parity: TS-renderer-AiUsagePanel-8350cf
 #[gpui::test]
 fn sign_in_reasons_link_to_the_accounts_screen(cx: &mut TestAppContext) {
     let accounts = json!([claude_account(json!({
@@ -227,7 +214,6 @@ fn sign_in_reasons_link_to_the_accounts_screen(cx: &mut TestAppContext) {
     assert!(detail.has_role_name("link", "계정 관리"));
 }
 
-// parity: TS-renderer-AiUsagePanel-ddc7e1
 #[gpui::test]
 fn unrelated_reasons_do_not_link_to_the_accounts_screen(cx: &mut TestAppContext) {
     let accounts = json!([claude_account(json!({
@@ -238,7 +224,6 @@ fn unrelated_reasons_do_not_link_to_the_accounts_screen(cx: &mut TestAppContext)
     assert!(!detail.has_role_name("link", "계정 관리"));
 }
 
-// parity: TS-renderer-useAiUsage-93313e
 #[gpui::test]
 fn closed_panel_reads_nothing(cx: &mut TestAppContext) {
     let dir = temp_dir();
@@ -253,7 +238,6 @@ fn closed_panel_reads_nothing(cx: &mut TestAppContext) {
     assert!(!detail.has_role_name("button", "새로고침"));
 }
 
-// parity: TS-renderer-useAiUsage-e462b9
 #[gpui::test]
 fn closed_panel_stops_reading(cx: &mut TestAppContext) {
     let mut detail = open_usage_with(cx, default_accounts());

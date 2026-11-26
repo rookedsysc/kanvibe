@@ -126,7 +126,6 @@ fn carried_after_failure(
     fixture.service.get_ai_usage_snapshot(false).unwrap()
 }
 
-// parity: TS-main-aiUsageService-ab370d
 #[test]
 fn cache_is_empty_before_any_fetch() {
     assert_eq!(
@@ -135,7 +134,6 @@ fn cache_is_empty_before_any_fetch() {
     );
 }
 
-// parity: TS-main-aiUsageService-66f004
 #[test]
 fn fetched_snapshot_is_stored_in_settings() {
     let fixture = fixture();
@@ -150,7 +148,6 @@ fn fetched_snapshot_is_stored_in_settings() {
     assert_eq!(cached.accounts[0].label, "me@example.com");
 }
 
-// parity: TS-main-aiUsageService-73ba2b
 #[test]
 fn cache_never_holds_raw_account_id() {
     let fixture = fixture();
@@ -167,7 +164,6 @@ fn cache_never_holds_raw_account_id() {
     assert!(!stored.join(",").contains("account-uuid"));
 }
 
-// parity: TS-main-aiUsageService-7a8c14
 #[test]
 fn new_fetch_replaces_cache() {
     let fixture = fixture();
@@ -183,7 +179,6 @@ fn new_fetch_replaces_cache() {
     assert_eq!(cached.accounts[0].windows[0].used_percent, 80.0);
 }
 
-// parity: TS-main-aiUsageService-2ba907
 #[test]
 fn failed_fetch_carries_last_values_and_keeps_reason() {
     let snapshot = carried_after_failure(
@@ -198,7 +193,6 @@ fn failed_fetch_carries_last_values_and_keeps_reason() {
     assert_eq!(snapshot.accounts[0].plan_name.as_deref(), Some("max"));
 }
 
-// parity: TS-main-aiUsageService-092983
 #[test]
 fn sign_in_failures_are_not_carried() {
     let snapshot = carried_after_failure(
@@ -212,7 +206,6 @@ fn sign_in_failures_are_not_carried() {
     );
 }
 
-// parity: TS-main-aiUsageService-4f3e06
 #[test]
 fn awaiting_cli_refresh_carries_values_and_their_time() {
     let snapshot = carried_after_failure(
@@ -227,7 +220,6 @@ fn awaiting_cli_refresh_carries_values_and_their_time() {
     assert_eq!(snapshot.accounts[0].fetched_at, "2026-08-10T06:00:00.000Z");
 }
 
-// parity: TS-main-aiUsageService-e1061e
 #[test]
 fn carried_values_keep_their_original_fetch_time() {
     let snapshot = carried_after_failure(
@@ -238,7 +230,6 @@ fn carried_values_keep_their_original_fetch_time() {
     assert_eq!(snapshot.fetched_at, "2026-08-10T06:05:00.000Z");
 }
 
-// parity: TS-main-aiUsageService-832c02
 #[test]
 fn reset_windows_are_not_carried() {
     let snapshot = carried_after_failure(
@@ -252,7 +243,6 @@ fn reset_windows_are_not_carried() {
     );
 }
 
-// parity: TS-main-aiUsageService-c8eb81
 #[test]
 fn failure_without_previous_value_stays_as_is() {
     let fixture = fixture();
@@ -271,7 +261,6 @@ fn failure_without_previous_value_stays_as_is() {
     );
 }
 
-// parity: TS-main-aiUsageService-b7cbdd
 #[test]
 fn overlapping_reusable_requests_share_one_aggregation() {
     let fixture = fixture_with_delay(50);
@@ -286,7 +275,6 @@ fn overlapping_reusable_requests_share_one_aggregation() {
     assert!(Arc::ptr_eq(&first, &second));
 }
 
-// parity: TS-main-aiUsageService-44e56e
 #[test]
 fn reusable_requests_within_five_minutes_do_not_aggregate_again() {
     let fixture = fixture();
@@ -300,7 +288,6 @@ fn reusable_requests_within_five_minutes_do_not_aggregate_again() {
     assert_eq!(snapshot.accounts[0].windows[0].used_percent, 22.0);
 }
 
-// parity: TS-main-aiUsageService-90e9b5
 #[test]
 fn reusable_requests_aggregate_again_after_five_minutes() {
     let fixture = fixture();
@@ -314,7 +301,6 @@ fn reusable_requests_aggregate_again_after_five_minutes() {
     assert_eq!(snapshot.accounts[0].windows[0].used_percent, 80.0);
 }
 
-// parity: TS-main-aiUsageService-4f2b64
 #[test]
 fn non_reusable_requests_always_aggregate() {
     let fixture = fixture();
@@ -327,7 +313,6 @@ fn non_reusable_requests_always_aggregate() {
     assert_eq!(snapshot.accounts[0].windows[0].used_percent, 80.0);
 }
 
-// parity: TS-main-aiUsageService-357104
 #[test]
 fn cache_write_failure_still_returns_result() {
     let fixture = fixture();

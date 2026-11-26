@@ -105,7 +105,6 @@ fn body_text(request: &HostHookRequest) -> String {
     String::from_utf8(request.body.clone()).unwrap()
 }
 
-// parity: TS-lib-remoteHostIntegration-60c139
 #[test]
 fn an_eight_mib_transaction_response_is_delivered_once_without_truncation() {
     let fixture = DaemonFixture::start();
@@ -136,7 +135,6 @@ fn an_eight_mib_transaction_response_is_delivered_once_without_truncation() {
     assert_eq!(calls.load(Ordering::SeqCst), 1);
 }
 
-// parity: TS-lib-remoteHostIntegration-05ec58
 #[test]
 fn hooks_and_another_client_keep_progressing_during_twenty_bulk_results() {
     let fixture = DaemonFixture::start();
@@ -197,7 +195,6 @@ fn start_echo(path: &Path) -> UnixListener {
     listener
 }
 
-// parity: TS-lib-remoteHostIntegration-983963
 #[test]
 fn binary_native_bytes_are_forwarded_and_detaching_keeps_the_upstream_server() {
     let fixture = DaemonFixture::start();
@@ -238,7 +235,6 @@ fn poll_until(condition: impl Fn() -> bool) {
     }
 }
 
-// parity: TS-lib-remoteHostIntegration-b2c84b
 #[test]
 fn an_offline_hook_fails_and_is_not_replayed_after_reconnect() {
     let fixture = DaemonFixture::start();
@@ -270,7 +266,6 @@ fn an_offline_hook_fails_and_is_not_replayed_after_reconnect() {
     assert_eq!(events.load(Ordering::SeqCst), 0);
 }
 
-// parity: TS-lib-remoteHostIntegration-775948
 #[test]
 fn a_later_task_is_answered_while_earlier_tasks_of_the_same_client_hang_or_fail() {
     let fixture = DaemonFixture::start();
@@ -321,7 +316,6 @@ fn a_later_task_is_answered_while_earlier_tasks_of_the_same_client_hang_or_fail(
     assert_eq!(received.lock().unwrap().len(), 3);
 }
 
-// parity: TS-lib-remoteHostIntegration-9c48bb
 #[test]
 fn an_earlier_builds_journal_file_is_neither_replayed_nor_rewritten() {
     let pending_event = serde_json::json!({ "version": 1, "nextSequence": 2, "expired": 0, "rejected": 0, "ignored": 0, "events": [{

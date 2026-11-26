@@ -315,7 +315,6 @@ mod tests {
         }
     }
 
-    // parity: TS-lib-hookEndpoint-79f805
     #[test]
     fn configured_hook_server_port_is_used_in_the_hook_url() {
         let endpoint = HookServerEndpoint::new(19736);
@@ -325,13 +324,11 @@ mod tests {
         assert_eq!(url.unwrap(), "http://localhost:19736");
     }
 
-    // parity: TS-lib-hookEndpoint-7370ea
     #[test]
     fn dev_hook_server_port_matches_the_dev_port() {
         assert_eq!(KANVIBE_DEV_HOOK_SERVER_PORT, 19736);
     }
 
-    // parity: TS-lib-hookEndpoint-8e3d69
     #[test]
     fn remote_hook_url_prefers_the_local_source_ip_of_the_ssh_route() {
         let routes = devbox_routes();
@@ -345,7 +342,6 @@ mod tests {
         assert_eq!(url.unwrap(), "http://10.0.0.8:9736");
     }
 
-    // parity: TS-lib-hookEndpoint-93a4e3
     #[test]
     fn configured_port_is_used_in_the_remote_hook_url() {
         let url = HookServerEndpoint::new(19736).url(Some("remote-devbox"), &devbox_routes());
@@ -353,7 +349,6 @@ mod tests {
         assert_eq!(url.unwrap(), "http://10.0.0.8:19736");
     }
 
-    // parity: TS-lib-hookEndpoint-1ba9b5
     #[test]
     fn unresolved_ssh_route_falls_back_to_a_private_ipv4_address() {
         let routes = FakeNetworkRoutes {
@@ -379,7 +374,6 @@ mod tests {
         assert_eq!(url.unwrap(), "http://192.168.1.20:9736");
     }
 
-    // parity: TS-lib-hookEndpoint-dbad43
     #[test]
     fn missing_ssh_host_uses_the_localhost_url() {
         let url = HookServerEndpoint::default().url(None, &FakeNetworkRoutes::default());

@@ -121,7 +121,6 @@ mod tests {
             .collect()
     }
 
-    // parity: TS-main-windowOpen-7807f2
     #[test]
     fn hash_route_without_an_open_window_opens_an_independent_internal_window() {
         // TS는 패키지된 앱의 file:// 주소였다. GPUI는 주소 없이 앱 경로만 쓰므로 같은 hash 경로로 확인한다
@@ -133,7 +132,6 @@ mod tests {
         );
     }
 
-    // parity: TS-main-windowOpen-eaabf8
     #[test]
     fn an_open_window_on_the_same_route_is_focused_instead_of_opening_a_new_one() {
         let open_windows = windows(&[(2, "/ko/task/task-1")]);
@@ -146,7 +144,6 @@ mod tests {
         );
     }
 
-    // parity: TS-main-windowOpen-4297bb
     #[test]
     fn the_opening_window_itself_is_excluded_and_a_new_window_opens() {
         let open_windows = windows(&[(1, "/ko/task/task-1")]);
@@ -158,7 +155,6 @@ mod tests {
         );
     }
 
-    // parity: TS-main-windowOpen-c41b35
     #[test]
     fn external_urls_are_not_internal_windows() {
         assert_eq!(
@@ -171,7 +167,6 @@ mod tests {
         );
     }
 
-    // parity: TS-main-windowOpen-bd15b0
     #[test]
     fn navigation_picks_the_window_already_showing_the_detail_route() {
         let open_windows = windows(&[(1, "/ko"), (2, "/ko/task/task-1")]);
@@ -181,7 +176,6 @@ mod tests {
         );
     }
 
-    // parity: TS-main-windowOpen-5f4d2a
     #[test]
     fn navigation_keeps_the_preferred_window_when_no_window_shows_the_route() {
         let open_windows = windows(&[(1, "/ko"), (2, "/ko/task/task-2")]);
@@ -191,7 +185,6 @@ mod tests {
         );
     }
 
-    // parity: TS-main-windowOpen-7c0acb
     #[test]
     fn existing_navigation_target_is_the_window_showing_the_route() {
         let open_windows = windows(&[(1, "/ko"), (2, "/ko/task/task-1")]);
@@ -201,7 +194,6 @@ mod tests {
         );
     }
 
-    // parity: TS-main-windowOpen-1585f6
     #[test]
     fn existing_navigation_target_is_none_instead_of_the_current_window() {
         let open_windows = windows(&[(1, "/ko"), (2, "/ko/task/task-2")]);
@@ -211,7 +203,6 @@ mod tests {
         );
     }
 
-    // parity: TS-main-windowOpen-e45e78
     #[test]
     fn excluded_current_window_on_the_same_route_still_finds_another_detail_window() {
         let open_windows = windows(&[(1, "/ko/task/task-1"), (2, "/ko/task/task-1")]);
@@ -221,7 +212,6 @@ mod tests {
         );
     }
 
-    // parity: TS-main-windowOpen-481372
     #[test]
     fn background_sync_review_notifications_keep_the_current_route() {
         let action = AppNotificationAction::BackgroundSyncReview {
@@ -237,7 +227,6 @@ mod tests {
         )));
     }
 
-    // parity: TS-main-windowOpen-15e48e
     #[test]
     fn task_notifications_follow_the_target_route() {
         assert!(!should_keep_current_route_for_notification_activation(None));

@@ -293,7 +293,6 @@ mod tests {
         );
     }
 
-    // parity: TS-renderer-App-e7de37
     #[test]
     fn tab_commands_outside_task_detail_only_close_the_window() {
         assert_eq!(

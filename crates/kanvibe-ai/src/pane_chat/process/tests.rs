@@ -20,7 +20,6 @@ fn pid_and_provider(process: Option<PaneChatProcess>) -> Option<(i64, PaneChatPr
     process.map(|process| (process.pid, process.provider))
 }
 
-// parity: TS-aiSessions-paneChatProcess-d3549b
 #[test]
 fn recognizes_real_cli_launch_forms() {
     let cases = [
@@ -55,7 +54,6 @@ fn recognizes_real_cli_launch_forms() {
     }
 }
 
-// parity: TS-aiSessions-paneChatProcess-212e03
 #[test]
 fn picks_gemini_memory_relaunch_child() {
     let script = "/opt/node_modules/@google/gemini-cli/bundle/gemini.js";
@@ -78,7 +76,6 @@ fn picks_gemini_memory_relaunch_child() {
     );
 }
 
-// parity: TS-aiSessions-paneChatProcess-54cc0b
 #[test]
 fn eval_and_option_values_are_not_scripts() {
     assert_eq!(
@@ -101,7 +98,6 @@ fn eval_and_option_values_are_not_scripts() {
     );
 }
 
-// parity: TS-aiSessions-paneChatProcess-49802b
 #[test]
 fn recognizes_claude_native_version_executable() {
     let shell = "40181 1 40181 40185 ttys138 Fri Nov 13 11:29:03 2026 zsh /bin/zsh";
@@ -128,7 +124,6 @@ fn recognizes_claude_native_version_executable() {
     ));
 }
 
-// parity: TS-aiSessions-paneChatProcess-431322
 #[test]
 fn refuses_processes_that_only_mention_claude() {
     let cases = [
@@ -162,7 +157,6 @@ fn refuses_processes_that_only_mention_claude() {
     }
 }
 
-// parity: TS-aiSessions-paneChatProcess-ac5f29
 #[test]
 fn nested_codex_launched_by_codex_is_ambiguous() {
     let rows = [
@@ -177,7 +171,6 @@ const CODEX_WRAPPER_ARGS: &str = "node /usr/local/lib/node_modules/@openai/codex
 const CODEX_NATIVE_ARGS: &str =
     "/usr/local/lib/node_modules/@openai/codex/vendor/aarch64-apple-darwin/codex/codex";
 
-// parity: TS-aiSessions-paneChatProcess-827a7d
 #[test]
 fn picks_native_codex_under_verified_wrapper() {
     let rows = [
@@ -190,7 +183,6 @@ fn picks_native_codex_under_verified_wrapper() {
     );
 }
 
-// parity: TS-aiSessions-paneChatProcess-2a548d
 #[test]
 fn wrapper_with_nested_codex_is_ambiguous() {
     let rows = [

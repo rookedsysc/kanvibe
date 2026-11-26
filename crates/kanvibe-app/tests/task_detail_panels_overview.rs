@@ -33,7 +33,6 @@ fn changed_files() -> serde_json::Value {
     ])
 }
 
-// parity: TS-components-TaskDiffStats-a01c21
 #[gpui::test]
 fn diff_summary_shows_totals_with_the_list_folded(cx: &mut TestAppContext) {
     let mut detail = open_branch_task(cx, changed_files());
@@ -44,7 +43,6 @@ fn diff_summary_shows_totals_with_the_list_folded(cx: &mut TestAppContext) {
     assert!(!detail.has_text("src/components/TaskCard.tsx"));
 }
 
-// parity: TS-components-TaskDiffStats-bdc6de
 #[gpui::test]
 fn clicking_the_totals_unfolds_the_file_list(cx: &mut TestAppContext) {
     let mut detail = open_branch_task(cx, changed_files());
@@ -56,7 +54,6 @@ fn clicking_the_totals_unfolds_the_file_list(cx: &mut TestAppContext) {
     assert!(detail.has_role_name("button", "변경 파일 목록 접기"));
 }
 
-// parity: TS-components-TaskDiffStats-117847
 #[gpui::test]
 fn no_changes_leave_only_the_diff_link(cx: &mut TestAppContext) {
     let mut detail = open_branch_task(cx, json!([]));
@@ -65,7 +62,6 @@ fn no_changes_leave_only_the_diff_link(cx: &mut TestAppContext) {
     assert!(!detail.has_role_name("button", "변경 파일 목록 펼치기"));
 }
 
-// parity: TS-components-ProjectBranchTasksModal-736a75
 #[gpui::test]
 fn failed_project_task_list_offers_retry(cx: &mut TestAppContext) {
     let dir = temp_dir();

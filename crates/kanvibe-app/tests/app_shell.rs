@@ -120,7 +120,6 @@ fn dock_shortcut_beats_a_focused_terminal_binding(cx: &mut TestAppContext) {
     });
 }
 
-// parity: TS-renderer-shortcutBindings-4454dc
 #[gpui::test]
 fn user_rebound_dock_shortcut_is_read_from_app_settings(cx: &mut TestAppContext) {
     let data_dir = tempfile::tempdir().unwrap();
@@ -161,7 +160,6 @@ fn current_path(window: WindowHandle<AppWindow>, cx: &mut TestAppContext) -> Str
         .unwrap()
 }
 
-// parity: TS-renderer-App-d31421
 #[gpui::test]
 fn mod_w_on_the_board_closes_the_window(cx: &mut TestAppContext) {
     init_app(cx, None);
@@ -176,7 +174,6 @@ fn mod_w_on_the_board_closes_the_window(cx: &mut TestAppContext) {
     );
 }
 
-// parity: TS-renderer-App-b1e8ab
 #[gpui::test]
 fn window_close_command_closes_any_screen(cx: &mut TestAppContext) {
     init_app(cx, None);
@@ -191,7 +188,6 @@ fn window_close_command_closes_any_screen(cx: &mut TestAppContext) {
     );
 }
 
-// parity: TS-renderer-App-749f11
 #[gpui::test]
 fn mod_w_on_task_detail_leaves_the_window_open(cx: &mut TestAppContext) {
     init_app(cx, None);
@@ -203,7 +199,6 @@ fn mod_w_on_task_detail_leaves_the_window_open(cx: &mut TestAppContext) {
     assert_eq!(current_path(window, cx), "/ko/task/task-1");
 }
 
-// parity: TS-renderer-navigation-799ff2
 #[gpui::test]
 fn linux_ctrl_brackets_move_back_and_forward(cx: &mut TestAppContext) {
     init_app(cx, None);
@@ -223,7 +218,6 @@ fn linux_ctrl_brackets_move_back_and_forward(cx: &mut TestAppContext) {
     assert_eq!(current_path(window, cx), "/ko/task/task-1");
 }
 
-// parity: TS-renderer-navigation-407ae1
 #[gpui::test]
 fn macos_cmd_brackets_move_back_and_forward(cx: &mut TestAppContext) {
     init_app(cx, None);
@@ -247,7 +241,6 @@ fn macos_cmd_brackets_move_back_and_forward(cx: &mut TestAppContext) {
     assert_eq!(current_path(window, cx), "/ko/task/task-1");
 }
 
-// parity: TS-renderer-taskNavigation-fa4433
 #[gpui::test]
 fn task_navigation_focuses_the_window_already_showing_the_task(cx: &mut TestAppContext) {
     init_app(cx, None);
@@ -271,7 +264,6 @@ fn task_navigation_focuses_the_window_already_showing_the_task(cx: &mut TestAppC
     assert_eq!(current_path(task_window, cx), "/en/task/task-1");
 }
 
-// parity: TS-renderer-taskNavigation-b4e621
 #[gpui::test]
 fn task_navigation_moves_the_origin_window_when_no_window_shows_the_task(cx: &mut TestAppContext) {
     init_app(cx, None);

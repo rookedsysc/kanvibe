@@ -127,7 +127,6 @@ fn sample_values() -> SettingsValues {
     }
 }
 
-// parity: TS-renderer-SettingsRoute-f40f8f
 #[gpui::test]
 fn slow_settings_load_shows_the_delay_notice_without_filling_defaults(cx: &mut TestAppContext) {
     let _data_dir = init_app_with_database(cx);
@@ -145,7 +144,6 @@ fn slow_settings_load_shows_the_delay_notice_without_filling_defaults(cx: &mut T
     });
 }
 
-// parity: TS-renderer-SettingsRoute-b25a84
 #[gpui::test]
 fn failed_settings_load_shows_reason_and_retry_reloads(cx: &mut TestAppContext) {
     let _data_dir = init_app_with_database(cx);
@@ -175,7 +173,6 @@ fn failed_settings_load_shows_reason_and_retry_reloads(cx: &mut TestAppContext) 
     assert!(is_shown(cx, json!({"text": "사이드바 기본 접기"})));
 }
 
-// parity: TS-renderer-SettingsRoute-28ac2c
 #[gpui::test]
 fn failed_refresh_keeps_loaded_settings_and_shows_the_banner(cx: &mut TestAppContext) {
     let _data_dir = init_app_with_database(cx);
@@ -196,7 +193,6 @@ fn failed_refresh_keeps_loaded_settings_and_shows_the_banner(cx: &mut TestAppCon
     assert!(is_shown(cx, json!({"text": "사이드바 기본 접기"})));
 }
 
-// parity: TS-components-ProjectSettings-4085ee
 #[gpui::test]
 fn changing_the_default_session_type_saves_it(cx: &mut TestAppContext) {
     let _data_dir = init_app_with_database(cx);
@@ -211,7 +207,6 @@ fn changing_the_default_session_type_saves_it(cx: &mut TestAppContext) {
     );
 }
 
-// parity: TS-components-ProjectSettings-ebd688
 #[gpui::test]
 fn choosing_a_theme_applies_it_at_once_and_stores_it(cx: &mut TestAppContext) {
     let _data_dir = init_app_with_database(cx);
@@ -230,7 +225,6 @@ fn choosing_a_theme_applies_it_at_once_and_stores_it(cx: &mut TestAppContext) {
     );
 }
 
-// parity: TS-components-ProjectSettings-604ea7
 #[gpui::test]
 fn vim_mode_toggle_updates_the_screen_and_storage(cx: &mut TestAppContext) {
     let _data_dir = init_app_with_database(cx);
@@ -248,7 +242,6 @@ fn vim_mode_toggle_updates_the_screen_and_storage(cx: &mut TestAppContext) {
     );
 }
 
-// parity: TS-components-ProjectSettings-ca9abb
 #[test]
 fn mac_desktop_moves_the_board_link_below_the_titlebar_buttons() {
     assert_eq!(aside_top_padding(true, true), spacing(16.0));
@@ -257,7 +250,6 @@ fn mac_desktop_moves_the_board_link_below_the_titlebar_buttons() {
     assert_eq!(aside_top_padding(false, false), spacing(4.0));
 }
 
-// parity: TS-components-ProjectSettings-4b376c
 #[gpui::test]
 fn settings_page_does_not_render_project_scan_or_project_list(cx: &mut TestAppContext) {
     let _data_dir = init_app_with_database(cx);
@@ -267,7 +259,6 @@ fn settings_page_does_not_render_project_scan_or_project_list(cx: &mut TestAppCo
     assert!(!is_shown(cx, json!({"text": "등록된 프로젝트"})));
 }
 
-// parity: TS-components-ProjectSettings-337f5c
 #[gpui::test]
 fn notification_toggle_reflects_the_new_value_before_saving_finishes(cx: &mut TestAppContext) {
     let _data_dir = init_app_with_database(cx);
@@ -287,7 +278,6 @@ fn notification_toggle_reflects_the_new_value_before_saving_finishes(cx: &mut Te
     });
 }
 
-// parity: TS-components-ProjectSettings-45b072
 #[gpui::test]
 fn notification_status_chip_saves_immediately(cx: &mut TestAppContext) {
     let _data_dir = init_app_with_database(cx);
@@ -310,7 +300,6 @@ fn notification_status_chip_saves_immediately(cx: &mut TestAppContext) {
     assert!(!next.contains(&"pending".to_string()));
 }
 
-// parity: TS-components-ProjectSettings-f2b498
 #[test]
 fn stale_refresh_does_not_overwrite_a_notification_change_being_saved() {
     let mut form = SettingsForm::new(sample_values());
@@ -322,7 +311,6 @@ fn stale_refresh_does_not_overwrite_a_notification_change_being_saved() {
     );
 }
 
-// parity: TS-components-ProjectSettings-71958f
 #[test]
 fn interval_input_accepts_clearing_then_typing_two_digits() {
     let mut form = SettingsForm::new(sample_values());
@@ -349,7 +337,6 @@ fn interval_input_accepts_clearing_then_typing_two_digits() {
     );
 }
 
-// parity: TS-components-ProjectSettings-0ea10d
 #[test]
 fn interval_saves_run_one_after_another_and_end_with_the_latest() {
     let mut form = SettingsForm::new(sample_values());
@@ -375,7 +362,6 @@ fn interval_saves_run_one_after_another_and_end_with_the_latest() {
     assert_eq!(form.values.background_sync.interval_ms, 900_000);
 }
 
-// parity: TS-components-ProjectSettings-29a148
 #[gpui::test]
 fn failed_vim_mode_save_restores_the_value_and_offers_retry(cx: &mut TestAppContext) {
     let _data_dir = init_app_with_database(cx);
@@ -413,7 +399,6 @@ fn failed_vim_mode_save_restores_the_value_and_offers_retry(cx: &mut TestAppCont
     assert!(view.read_with(cx, |view, _| view.form().unwrap().failure.is_none()));
 }
 
-// parity: TS-components-ProjectSettings-2e48c4
 #[gpui::test]
 fn saving_one_setting_blocks_only_that_setting(cx: &mut TestAppContext) {
     let _data_dir = init_app_with_database(cx);
@@ -438,7 +423,6 @@ fn saving_one_setting_blocks_only_that_setting(cx: &mut TestAppContext) {
     );
 }
 
-// parity: TS-components-ProjectSettings-0e982d
 #[gpui::test]
 fn failed_notification_save_restores_previous_statuses(cx: &mut TestAppContext) {
     let _data_dir = init_app_with_database(cx);
@@ -459,7 +443,6 @@ fn failed_notification_save_restores_previous_statuses(cx: &mut TestAppContext) 
     });
 }
 
-// parity: TS-components-SessionTypeOptions-9b79cf
 #[gpui::test]
 fn session_type_select_offers_the_four_session_types(cx: &mut TestAppContext) {
     let _data_dir = init_app_with_database(cx);

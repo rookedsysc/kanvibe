@@ -291,7 +291,6 @@ fn hosts(names: &[&str]) -> HashSet<String> {
     names.iter().map(|name| name.to_string()).collect()
 }
 
-// parity: TS-main-taskCliService-1a96f8
 #[test]
 fn missing_or_foreign_tokens_are_rejected_with_401_before_any_lookup() {
     let backend = FakeBackend::default();
@@ -312,7 +311,6 @@ fn missing_or_foreign_tokens_are_rejected_with_401_before_any_lookup() {
     assert!(backend.creations.lock().unwrap().is_empty());
 }
 
-// parity: TS-main-taskCliService-f85864
 #[test]
 fn internal_token_check_errors_become_a_redacted_500() {
     let backend = FakeBackend::default();
@@ -330,7 +328,6 @@ fn internal_token_check_errors_become_a_redacted_500() {
     assert!(backend.events_starting_with("find_task").is_empty());
 }
 
-// parity: TS-main-taskCliService-af0d8d
 #[test]
 fn requests_through_another_hosts_tunnel_are_rejected_even_with_a_valid_token() {
     let backend = FakeBackend::default();
@@ -358,7 +355,6 @@ fn requests_through_another_hosts_tunnel_are_rejected_even_with_a_valid_token() 
     assert!(backend.creations.lock().unwrap().is_empty());
 }
 
-// parity: TS-main-taskCliService-45ccce
 #[test]
 fn task_without_a_host_accepts_the_project_hosts_tunnel() {
     let backend = FakeBackend::default();
@@ -379,7 +375,6 @@ fn task_without_a_host_accepts_the_project_hosts_tunnel() {
     assert!(deleted.is_deleted);
 }
 
-// parity: TS-main-taskCliService-4aa3f6
 #[test]
 fn tasks_without_a_project_are_rejected_with_409() {
     let backend = FakeBackend::default();
@@ -395,7 +390,6 @@ fn tasks_without_a_project_are_rejected_with_409() {
     assert!(backend.deletions.lock().unwrap().is_empty());
 }
 
-// parity: TS-main-taskCliService-2b5938
 #[test]
 fn default_creation_inherits_the_context_session_type_and_propagates_registration() {
     let backend = FakeBackend::default();
@@ -429,7 +423,6 @@ fn default_creation_inherits_the_context_session_type_and_propagates_registratio
     assert_eq!(created.peers, peer_results());
 }
 
-// parity: TS-main-taskCliService-7aee76
 #[test]
 fn from_task_uses_that_tasks_branch_and_session_type() {
     let backend = FakeBackend::with_tasks(vec![
@@ -453,7 +446,6 @@ fn from_task_uses_that_tasks_branch_and_session_type() {
     assert_eq!(creation.session_type, SessionType::Zellij);
 }
 
-// parity: TS-main-taskCliService-d3a592
 #[test]
 fn explicit_session_type_wins_and_terminal_is_the_last_fallback() {
     let mut sessionless_context = context_task();
@@ -486,7 +478,6 @@ fn explicit_session_type_wins_and_terminal_is_the_last_fallback() {
     assert_eq!(session_types, [SessionType::Terminal, SessionType::Herdr]);
 }
 
-// parity: TS-main-taskCliService-72c5e5
 #[test]
 fn tasks_from_other_projects_or_without_branches_are_not_used_as_a_base() {
     let backend = FakeBackend::with_tasks(vec![
@@ -512,7 +503,6 @@ fn tasks_from_other_projects_or_without_branches_are_not_used_as_a_base() {
     assert!(backend.creations.lock().unwrap().is_empty());
 }
 
-// parity: TS-main-taskCliService-9bedc0
 #[test]
 fn invalid_input_is_rejected_with_400_and_creates_nothing() {
     let cases = [
@@ -540,7 +530,6 @@ fn invalid_input_is_rejected_with_400_and_creates_nothing() {
     }
 }
 
-// parity: TS-main-taskCliService-e6dfe3
 #[test]
 fn an_existing_branch_task_in_the_project_is_rejected_with_409() {
     let backend = FakeBackend::default();
@@ -556,7 +545,6 @@ fn an_existing_branch_task_in_the_project_is_rejected_with_409() {
     assert!(backend.creations.lock().unwrap().is_empty());
 }
 
-// parity: TS-main-taskCliService-c112ae
 #[test]
 fn failed_worktree_creation_is_not_propagated_to_peers() {
     let backend = FakeBackend::default();
@@ -571,7 +559,6 @@ fn failed_worktree_creation_is_not_propagated_to_peers() {
     assert!(backend.events_starting_with("propagate").is_empty());
 }
 
-// parity: TS-main-taskCliService-622f69
 #[test]
 fn created_task_session_is_prepared_once_and_returned() {
     let backend = FakeBackend::default();
@@ -592,7 +579,6 @@ fn created_task_session_is_prepared_once_and_returned() {
     assert!(created.session.is_prepared);
 }
 
-// parity: TS-main-taskCliService-2d91e4
 #[test]
 fn session_preparation_starts_without_waiting_for_peer_propagation() {
     let backend = FakeBackend::default();
@@ -623,7 +609,6 @@ fn session_preparation_starts_without_waiting_for_peer_propagation() {
     assert_eq!(created.peers, peer_results());
 }
 
-// parity: TS-main-taskCliService-426a91
 #[test]
 fn failed_session_preparation_keeps_the_task_and_reports_session_error() {
     let backend = FakeBackend::default();
@@ -642,7 +627,6 @@ fn failed_session_preparation_keeps_the_task_and_reports_session_error() {
     assert_eq!(backend.events_starting_with("propagate").len(), 1);
 }
 
-// parity: TS-main-taskCliService-e05fc8
 #[test]
 fn description_and_priority_are_saved_and_unknown_priorities_are_rejected() {
     let backend = FakeBackend::default();
@@ -669,7 +653,6 @@ fn description_and_priority_are_saved_and_unknown_priorities_are_rejected() {
     assert!(backend.creations.lock().unwrap().is_empty());
 }
 
-// parity: TS-main-taskCliService-eb9c61
 #[test]
 fn listing_returns_only_project_tasks_with_session_details() {
     let mut current = context_task();
@@ -705,7 +688,6 @@ fn listing_returns_only_project_tasks_with_session_details() {
     );
 }
 
-// parity: TS-main-taskCliService-7a2b7b
 #[test]
 fn another_tasks_token_cannot_read_the_list() {
     let backend = FakeBackend::default();
@@ -724,7 +706,6 @@ fn another_tasks_token_cannot_read_the_list() {
     );
 }
 
-// parity: TS-main-taskCliService-4152b1
 #[test]
 fn session_command_without_a_branch_prepares_the_context_task() {
     let mut current = context_task();
@@ -756,7 +737,6 @@ fn session_command_without_a_branch_prepares_the_context_task() {
     );
 }
 
-// parity: TS-main-taskCliService-8c27dc
 #[test]
 fn session_command_prepares_sibling_branches_but_not_other_projects() {
     let mut sibling = task(
@@ -795,7 +775,6 @@ fn session_command_prepares_sibling_branches_but_not_other_projects() {
     assert!(backend.prepared_tasks.lock().unwrap().is_empty());
 }
 
-// parity: TS-main-taskCliService-d2d427
 #[test]
 fn deletion_requires_confirmation() {
     let backend = FakeBackend::default();
@@ -810,7 +789,6 @@ fn deletion_requires_confirmation() {
     assert!(backend.deletions.lock().unwrap().is_empty());
 }
 
-// parity: TS-main-taskCliService-b4d214
 #[test]
 fn deletion_without_a_branch_removes_the_context_task_rejecting_dirty_worktrees_and_propagating() {
     let backend = FakeBackend::default();
@@ -844,7 +822,6 @@ fn deletion_without_a_branch_removes_the_context_task_rejecting_dirty_worktrees_
     );
 }
 
-// parity: TS-main-taskCliService-53ba70
 #[test]
 fn sibling_deletion_by_branch_honours_force_and_peer_requests_do_not_propagate_again() {
     let backend = FakeBackend::with_tasks(vec![
@@ -878,7 +855,6 @@ fn sibling_deletion_by_branch_honours_force_and_peer_requests_do_not_propagate_a
     );
 }
 
-// parity: TS-main-taskCliService-912481
 #[test]
 fn branches_of_other_projects_are_not_found() {
     let backend = FakeBackend::with_tasks(vec![
@@ -896,7 +872,6 @@ fn branches_of_other_projects_are_not_found() {
     assert!(backend.deletions.lock().unwrap().is_empty());
 }
 
-// parity: TS-main-taskCliService-343d01
 #[test]
 fn the_default_branch_root_task_cannot_be_deleted_from_the_cli() {
     let backend = FakeBackend::with_tasks(vec![
@@ -914,7 +889,6 @@ fn the_default_branch_root_task_cannot_be_deleted_from_the_cli() {
     assert!(backend.deletions.lock().unwrap().is_empty());
 }
 
-// parity: TS-main-taskCliService-e77632
 #[test]
 fn dirty_worktrees_report_409_with_the_force_hint() {
     let backend = FakeBackend::default();
@@ -936,7 +910,6 @@ fn register_body(branch_name: &str) -> RequestBody {
     body(json!({ "contextTaskId": CONTEXT_TASK_ID, "branchName": branch_name }))
 }
 
-// parity: TS-main-taskCliService-720dec
 #[test]
 fn already_registered_branches_return_the_task_without_rescanning() {
     let backend = FakeBackend::default();
@@ -957,7 +930,6 @@ fn already_registered_branches_return_the_task_without_rescanning() {
     assert!(backend.creations.lock().unwrap().is_empty());
 }
 
-// parity: TS-main-taskCliService-caa516
 #[test]
 fn new_branches_are_registered_through_the_project_worktree_sync() {
     let backend = FakeBackend::default();
@@ -981,7 +953,6 @@ fn new_branches_are_registered_through_the_project_worktree_sync() {
     assert!(backend.creations.lock().unwrap().is_empty());
 }
 
-// parity: TS-main-taskCliService-75431a
 #[test]
 fn missing_worktree_after_sync_reports_404() {
     let backend = FakeBackend::default();

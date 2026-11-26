@@ -307,7 +307,6 @@ fn respond_with_tmux_layout(harness: &Harness, is_zoomed: bool, status_position:
     });
 }
 
-// parity: TS-main-paneChatSurface-eee032
 #[test]
 fn tmux_layout_returns_attached_client_window_panes_without_selecting_or_resizing() {
     let harness = Harness::new();
@@ -333,7 +332,6 @@ fn tmux_layout_returns_attached_client_window_panes_without_selecting_or_resizin
     assert!(!harness.commands().iter().any(is_mutating));
 }
 
-// parity: TS-main-paneChatSurface-6f53d5
 #[test]
 fn tmux_layout_hides_siblings_under_zoom_and_offsets_top_status_row() {
     let harness = Harness::new();
@@ -348,7 +346,6 @@ fn tmux_layout_hides_siblings_under_zoom_and_offsets_top_status_row() {
     );
 }
 
-// parity: TS-main-paneChatSurface-e94f33
 #[test]
 fn plain_terminal_layout_fills_requested_tab_without_cell_geometry() {
     let harness = Harness::new();
@@ -377,7 +374,6 @@ fn plain_terminal_layout_fills_requested_tab_without_cell_geometry() {
     assert!(harness.commands().is_empty());
 }
 
-// parity: TS-main-paneChatSurface-3c6816
 #[test]
 fn layout_is_unavailable_when_attached_runtime_disappears() {
     let harness = Harness::new();
@@ -401,7 +397,6 @@ fn respond_with_zellij(harness: &Harness, panes: Value, tabs: Value) {
     });
 }
 
-// parity: TS-main-paneChatSurface-bf8e8c
 #[test]
 fn zellij_layout_uses_content_bounds_and_excludes_other_tabs_and_fullscreen_siblings() {
     let harness = Harness::new();
@@ -423,7 +418,6 @@ fn zellij_layout_uses_content_bounds_and_excludes_other_tabs_and_fullscreen_sibl
     );
 }
 
-// parity: TS-main-paneChatSurface-6b2cb2
 #[test]
 fn zellij_layout_does_not_cover_visible_floating_plugin_with_tiled_chat() {
     let harness = Harness::new();
@@ -454,7 +448,6 @@ fn prepare_herdr_layout(harness: &Harness, focused_pane: &str, layout: Value) {
     });
 }
 
-// parity: TS-main-paneChatSurface-f7b2a5
 #[test]
 fn herdr_zoomed_layout_stays_inside_client_visible_tab_area() {
     let harness = Harness::new();
@@ -478,7 +471,6 @@ fn herdr_zoomed_layout_stays_inside_client_visible_tab_area() {
     );
 }
 
-// parity: TS-main-paneChatSurface-b5225c
 #[test]
 fn herdr_layout_is_unavailable_when_client_surface_size_is_stale() {
     let harness = Harness::new();
@@ -509,7 +501,6 @@ fn codex_composer_capture(is_dim: bool) -> String {
     format!("2\t0\t80\t4\n› {dim}Ask Codex to do anything\x1b[0m\n\n  footer\n\n")
 }
 
-// parity: TS-main-paneChatSurface-144dd0
 #[test]
 fn tmux_capture_reads_cursor_viewport_width_and_native_placeholder_style_together() {
     let harness = Harness::new();
@@ -544,7 +535,6 @@ fn tmux_capture_reads_cursor_viewport_width_and_native_placeholder_style_togethe
     );
 }
 
-// parity: TS-main-paneChatSurface-2ef6e6
 #[test]
 fn claude_dim_suggestion_after_reply_differs_from_typed_text() {
     // 실제 화면은 `❯` 뒤에 일반 공백이 아닌 no-break space(U+00A0)를 그린다
@@ -574,7 +564,6 @@ fn claude_dim_suggestion_after_reply_differs_from_typed_text() {
     assert_eq!(surface.input_line.as_deref(), Some("❯\u{a0}abc"));
 }
 
-// parity: TS-main-paneChatSurface-ec448f
 #[test]
 fn tmux_selects_focused_pane_in_active_window_instead_of_first_pane() {
     let harness = Harness::new();
@@ -595,7 +584,6 @@ fn tmux_selects_focused_pane_in_active_window_instead_of_first_pane() {
     assert!(last_command.contains("capture-pane -pe -S -2000 -t '%3'"));
 }
 
-// parity: TS-main-paneChatSurface-0cdde1
 #[test]
 fn tmux_and_zellij_surface_checks_do_not_read_scrollback() {
     let harness = Harness::new();
@@ -633,7 +621,6 @@ fn tmux_and_zellij_surface_checks_do_not_read_scrollback() {
     );
 }
 
-// parity: TS-main-paneChatSurface-d6fe40
 #[test]
 fn tmux_rejects_requested_pane_outside_task_session() {
     let harness = Harness::new();
@@ -643,7 +630,6 @@ fn tmux_rejects_requested_pane_outside_task_session() {
     assert_eq!(harness.commands().len(), 1);
 }
 
-// parity: TS-main-paneChatSurface-8f4d9e
 #[test]
 fn inspecting_chat_does_not_create_missing_session() {
     let harness = Harness::new();
@@ -653,7 +639,6 @@ fn inspecting_chat_does_not_create_missing_session() {
     assert!(harness.commands().is_empty());
 }
 
-// parity: TS-main-paneChatSurface-3f0c87
 #[test]
 fn plain_terminal_reads_active_owned_tab_and_its_existing_pty() {
     let harness = Harness::new();
@@ -677,7 +662,6 @@ fn single_zellij_viewport() -> String {
     json!([[{ "id": 7, "is_plugin": false, "is_focused": true, "tab_id": 0 }], [{ "tab_id": 0, "active": true }]]).to_string()
 }
 
-// parity: TS-main-paneChatSurface-ed4317
 #[test]
 fn zellij_screen_stays_available_without_process_identity() {
     let harness = Harness::new();
@@ -694,7 +678,6 @@ fn zellij_screen_stays_available_without_process_identity() {
     assert_eq!(harness.screen(&surface), "zellij screen");
 }
 
-// parity: TS-main-paneChatSurface-54d006
 #[test]
 fn zellij_selects_active_tab_even_when_inactive_tabs_keep_a_focused_pane() {
     let harness = Harness::new();
@@ -803,7 +786,6 @@ fn zellij_layout_poll_does_not_look_up_the_pane_root() {
     );
 }
 
-// parity: TS-main-paneChatSurface-721547
 #[test]
 fn tmux_and_zellij_screens_strip_ansi_colors_and_osc_links() {
     let harness = Harness::new();
@@ -826,7 +808,6 @@ fn tmux_and_zellij_screens_strip_ansi_colors_and_osc_links() {
     assert_eq!(harness.screen(&surface), "Zellij model");
 }
 
-// parity: TS-main-paneChatSurface-c3be5d
 #[test]
 fn grouped_tmux_client_active_pane_wins_over_canonical_session_pane() {
     let harness = Harness::new();
@@ -849,7 +830,6 @@ fn grouped_tmux_client_active_pane_wins_over_canonical_session_pane() {
     assert_eq!(surface.root_pid, Some(300));
 }
 
-// parity: TS-main-paneChatSurface-64b7bf
 #[test]
 fn tmux_client_switched_to_unrelated_session_is_not_used() {
     let harness = Harness::new();
@@ -866,7 +846,6 @@ fn tmux_client_switched_to_unrelated_session_is_not_used() {
     assert_eq!(harness.surface(None), None);
 }
 
-// parity: TS-main-paneChatSurface-166601
 #[test]
 fn missing_attached_client_refuses_desktop_guess_but_allows_explicit_mobile_pane() {
     let harness = Harness::new();
@@ -889,7 +868,6 @@ fn missing_attached_client_refuses_desktop_guess_but_allows_explicit_mobile_pane
     );
 }
 
-// parity: TS-main-paneChatSurface-d7e37e
 #[test]
 fn herdr_reads_input_line_and_cursor_from_reported_pane_native_frame() {
     let harness = Harness::new();
@@ -928,7 +906,6 @@ fn herdr_reads_input_line_and_cursor_from_reported_pane_native_frame() {
     assert_eq!(harness.herdr.command_calls.load(Ordering::SeqCst), 1);
 }
 
-// parity: TS-main-paneChatSurface-263817
 #[test]
 fn herdr_without_exact_client_focus_does_not_fall_back_to_server_focus() {
     let harness = Harness::new();

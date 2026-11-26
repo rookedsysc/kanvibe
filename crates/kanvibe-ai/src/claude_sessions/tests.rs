@@ -78,7 +78,6 @@ mod recorded_user_text {
         full_texts(&read_source_detail(&context, "recorded-text", &source))
     }
 
-    // parity: TS-aiSessions-claudeRecordedUserText-ce1f6f
     #[test]
     fn unwraps_folded_pastes_to_the_sent_text() {
         let texts = read_recorded_user_texts(&[
@@ -94,7 +93,6 @@ mod recorded_user_text {
         );
     }
 
-    // parity: TS-aiSessions-claudeRecordedUserText-dde430
     #[test]
     fn recorded_shell_command_reads_as_bang_command() {
         assert_eq!(
@@ -103,7 +101,6 @@ mod recorded_user_text {
         );
     }
 
-    // parity: TS-aiSessions-claudeRecordedUserText-9bc051
     #[test]
     fn mismatched_paste_ids_stay_literal() {
         let literal = "<pasted_content id=\"1\">\ntext\n</pasted_content id=\"2\">";
@@ -192,7 +189,6 @@ mod detail_reuse {
         }
     }
 
-    // parity: TS-aiSessions-claudeSessionDetailReuse-d62bb5
     #[test]
     fn unchanged_history_returns_the_same_detail() {
         let mut fixture = ReuseFixture::new();
@@ -204,7 +200,6 @@ mod detail_reuse {
         assert_eq!(second, first);
     }
 
-    // parity: TS-aiSessions-claudeSessionDetailReuse-18c558
     #[test]
     fn appended_lines_lead_the_newest_first_page() {
         let mut fixture = ReuseFixture::new();
@@ -224,7 +219,6 @@ mod detail_reuse {
         assert_eq!(second.title.as_deref(), Some("첫 질문"));
     }
 
-    // parity: TS-aiSessions-claudeSessionDetailReuse-c07f2c
     #[test]
     fn half_written_line_waits_until_complete() {
         let mut fixture = ReuseFixture::new();
@@ -239,7 +233,6 @@ mod detail_reuse {
         );
     }
 
-    // parity: TS-aiSessions-claudeSessionDetailReuse-21574e
     #[test]
     fn shorter_rewrite_drops_previous_messages() {
         let mut fixture = ReuseFixture::new();
@@ -254,7 +247,6 @@ mod detail_reuse {
         assert_eq!(detail.unwrap().title.as_deref(), Some("새 질문"));
     }
 
-    // parity: TS-aiSessions-claudeSessionDetailReuse-ffb14b
     #[test]
     fn page_cursor_keeps_order_after_append() {
         let mut fixture = ReuseFixture::new();
@@ -275,7 +267,6 @@ mod detail_reuse {
         assert_eq!(older.unwrap().next_cursor, None);
     }
 
-    // parity: TS-aiSessions-claudeSessionDetailReuse-698372
     #[test]
     fn other_conversation_lines_stay_out_after_append() {
         let mut fixture = ReuseFixture::new();
@@ -289,7 +280,6 @@ mod detail_reuse {
         assert_eq!(full_texts(&fixture.read(None, 20)), ["내 답", "내 질문"]);
     }
 
-    // parity: TS-aiSessions-claudeSessionDetailReuse-d941d1
     #[test]
     fn api_request_logs_are_not_messages() {
         let mut fixture = ReuseFixture::new();
@@ -302,7 +292,6 @@ mod detail_reuse {
         assert_eq!(full_texts(&fixture.read(None, 20)), ["답", "질문"]);
     }
 
-    // parity: TS-aiSessions-claudeSessionDetailReuse-7726a5
     #[test]
     fn meta_user_lines_become_system_role() {
         let mut fixture = ReuseFixture::new();
@@ -330,7 +319,6 @@ mod history_readers {
         )
     }
 
-    // parity: TS-aiSessions-readAiSessions-9d1821
     #[test]
     fn classifies_user_system_assistant_and_tool_results() {
         let (_directory, home) = temp_home();
@@ -389,7 +377,6 @@ mod history_readers {
         );
     }
 
-    // parity: TS-aiSessions-readAiSessions-1d8c03
     #[test]
     fn tool_calls_and_thinking_become_ordered_messages_with_files() {
         let (_directory, home) = temp_home();
@@ -480,7 +467,6 @@ mod history_readers {
         );
     }
 
-    // parity: TS-aiSessions-readAiSessions-19d78e
     #[test]
     fn discovers_sessions_by_cwd_when_encoded_directory_misses() {
         let (_directory, home) = temp_home();
@@ -516,7 +502,6 @@ mod history_readers {
         );
     }
 
-    // parity: TS-aiSessions-readAiSessions-fbaa4a
     #[test]
     fn reads_latest_conversation_time_beyond_summary_head() {
         let (_directory, home) = temp_home();
@@ -537,7 +522,6 @@ mod history_readers {
         );
     }
 
-    // parity: TS-aiSessions-readAiSessions-52d3c0
     #[test]
     fn reads_remote_sessions_and_detail_over_ssh() {
         let worktree_path = "/remote/repo__worktrees/task";
@@ -614,7 +598,6 @@ mod image_history {
         json!({"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": PNG}})
     }
 
-    // parity: TS-aiSessions-imageHistory-23bdfc
     #[test]
     fn omits_native_image_companion_and_keeps_literal_text() {
         let (_directory, root) = temp_home();
@@ -658,7 +641,6 @@ mod image_history {
         );
     }
 
-    // parity: TS-aiSessions-imageHistory-8457b9
     #[test]
     fn companions_stay_out_of_list_counts_search_and_current_activity() {
         let (_directory, home) = temp_home();
@@ -706,7 +688,6 @@ mod image_history {
         assert_eq!(live[0].current_task.as_deref(), Some("Caption"));
     }
 
-    // parity: TS-aiSessions-imageHistory-1b2998
     #[test]
     fn keeps_image_only_messages_with_lazy_metadata() {
         let (_directory, root) = temp_home();
@@ -736,7 +717,6 @@ mod image_history {
         assert!(!serde_json::to_string(&detail).unwrap().contains(PNG));
     }
 
-    // parity: TS-aiSessions-imageHistory-d7c659
     #[test]
     fn foreign_cwd_is_not_inherited_by_rows_without_cwd() {
         let (_directory, root) = temp_home();
@@ -759,7 +739,6 @@ mod image_history {
         );
     }
 
-    // parity: TS-aiSessions-imageHistory-82ad14
     #[test]
     fn cleans_image_paste_markers_but_keeps_literal_text() {
         let (_directory, root) = temp_home();

@@ -72,7 +72,6 @@ fn option(number: u64, label: &str, description: &str) -> PaneChatPromptOption {
     }
 }
 
-// parity: TS-aiSessions-paneChatCodexPrompt-ef0282
 #[test]
 fn reads_command_approval_as_permission() {
     assert_eq!(
@@ -111,7 +110,6 @@ fn rate_limit_options() -> Vec<PaneChatPromptOption> {
     ]
 }
 
-// parity: TS-aiSessions-paneChatCodexPrompt-552ab2
 #[test]
 fn reads_rate_limit_warning_with_inline_descriptions() {
     let prompt = read_codex_prompt(&rate_limit()).unwrap();
@@ -125,7 +123,6 @@ fn reads_rate_limit_warning_with_inline_descriptions() {
     assert_eq!(prompt.options, rate_limit_options());
 }
 
-// parity: TS-aiSessions-paneChatCodexPrompt-ecf143
 #[test]
 fn joins_wrapped_label_and_hyphen_break() {
     let narrow: Vec<String> = approval()
@@ -154,7 +151,6 @@ fn joins_wrapped_label_and_hyphen_break() {
     assert_eq!(options[1].description, "");
 }
 
-// parity: TS-aiSessions-paneChatCodexPrompt-17221c
 #[test]
 fn joins_row_wrapped_in_description_column() {
     let narrow = with_history(&[
@@ -179,7 +175,6 @@ fn joins_row_wrapped_in_description_column() {
     assert_eq!(prompt.options, rate_limit_options());
 }
 
-// parity: TS-aiSessions-paneChatCodexPrompt-6fff3f
 #[test]
 fn reads_with_trailing_blank_rows() {
     let mut screen = rate_limit();
@@ -192,14 +187,12 @@ fn reads_with_trailing_blank_rows() {
     );
 }
 
-// parity: TS-aiSessions-paneChatCodexPrompt-1adddb
 #[test]
 fn does_not_mix_conversation_into_title_or_detail() {
     let prompt = read_codex_prompt(&approval()).unwrap();
     assert!(!format!("{}\n{}", prompt.title, prompt.detail).contains("Worked for"));
 }
 
-// parity: TS-aiSessions-paneChatCodexPrompt-2a7af3
 #[test]
 fn refuses_screens_that_are_not_prompts() {
     let without_esc: Vec<String> = rate_limit()
@@ -296,13 +289,11 @@ fn content_rows() -> Vec<String> {
         .collect()
 }
 
-// parity: TS-aiSessions-paneChatCodexPrompt-c9618a
 #[test]
 fn without_header_all_rows_above_are_conversation() {
     assert_eq!(conversation_above(&CONTENT), content_rows());
 }
 
-// parity: TS-aiSessions-paneChatCodexPrompt-ba57f4
 #[test]
 fn header_is_removed_from_conversation() {
     let narrow_header = [
@@ -323,7 +314,6 @@ fn header_is_removed_from_conversation() {
     assert_eq!(narrow, content_rows());
 }
 
-// parity: TS-aiSessions-paneChatCodexPrompt-566496
 #[test]
 fn boxed_header_is_removed_to_its_end() {
     let boxed_header = [
@@ -341,7 +331,6 @@ fn boxed_header_is_removed_to_its_end() {
     );
 }
 
-// parity: TS-aiSessions-paneChatCodexPrompt-004301
 #[test]
 fn reads_only_below_last_header() {
     let new_header = [

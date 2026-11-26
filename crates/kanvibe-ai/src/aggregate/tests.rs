@@ -79,7 +79,6 @@ fn ids(result: &AggregatedAiSessionsResult) -> Vec<&str> {
         .collect()
 }
 
-// parity: TS-aiSessions-aggregateAiSessions-651cd4
 #[test]
 fn merges_readers_and_sorts_by_updated_time() {
     let claude = session(
@@ -131,7 +130,6 @@ fn merges_readers_and_sorts_by_updated_time() {
     );
 }
 
-// parity: TS-aiSessions-aggregateAiSessions-6bea11
 #[test]
 fn keeps_other_sources_when_remote_provider_loses_ssh() {
     let runner = remote_file_system(&[]);
@@ -202,7 +200,6 @@ fn keeps_other_sources_when_remote_provider_loses_ssh() {
     );
 }
 
-// parity: TS-aiSessions-aggregateAiSessions-8bc755
 #[test]
 fn keeps_reader_filtered_sessions_matched_by_body_text() {
     let mut context = local_context("/repo");
@@ -231,7 +228,6 @@ fn keeps_reader_filtered_sessions_matched_by_body_text() {
     assert_eq!(ids(&result), ["claude-body-match"]);
 }
 
-// parity: TS-aiSessions-aggregateAiSessions-17adea
 #[test]
 fn paginates_after_sorting_newest_first() {
     let read_page = |cursor: Option<String>| {
@@ -285,7 +281,6 @@ fn paginates_after_sorting_newest_first() {
     assert_eq!(second_page.next_cursor, None);
 }
 
-// parity: TS-aiSessions-aggregateAiSessions-6919f4
 #[test]
 fn isolates_a_damaged_local_provider() {
     let result = combine_reader_outcomes(
@@ -323,7 +318,6 @@ fn isolates_a_damaged_local_provider() {
     );
 }
 
-// parity: TS-aiSessions-providerHistoryIntegration-bca9a5
 #[test]
 fn reports_all_providers_and_opens_an_added_provider() {
     let (_directory, home) = temp_home();

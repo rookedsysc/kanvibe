@@ -111,7 +111,6 @@ mod tests {
         PaneChatSessionBindings::new(Arc::new(RecordedSessionCatalog))
     }
 
-    // parity: TS-aiSessions-paneChatReportedSessionIntegration-18a749
     #[test]
     fn resolves_exact_claude_ids_through_the_real_transcript_reader() {
         let (fixture, source_ref) = ExactFixture::new(None);

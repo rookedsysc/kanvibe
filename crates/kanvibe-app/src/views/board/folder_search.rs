@@ -225,7 +225,6 @@ mod tests {
         );
     }
 
-    // parity: TS-components-FolderSearchInput-4b9021
     #[test]
     fn a_typed_remote_path_is_submitted_as_is() {
         let mut search = FolderSearch::default();
@@ -234,7 +233,6 @@ mod tests {
         assert_eq!(search.submitted_path(), "/srv/repos");
     }
 
-    // parity: TS-components-FolderSearchInput-f36a74
     #[test]
     fn a_path_chosen_from_the_list_wins_over_the_input() {
         let mut search = FolderSearch::default();
@@ -246,7 +244,6 @@ mod tests {
         assert!(!search.is_open);
     }
 
-    // parity: TS-components-FolderSearchInput-8c36d9
     #[test]
     fn late_answers_for_an_old_path_and_keys_while_loading_are_ignored() {
         let mut search = FolderSearch::default();
@@ -258,7 +255,6 @@ mod tests {
         assert_eq!(search.input, "~/work/");
     }
 
-    // parity: TS-components-FolderSearchInput-de360c
     #[test]
     fn a_failure_from_the_previous_host_keeps_the_current_list() {
         let mut search = FolderSearch::default();
@@ -270,7 +266,6 @@ mod tests {
         );
     }
 
-    // parity: TS-components-FolderSearchInput-b476ec
     #[test]
     fn a_success_from_the_previous_host_does_not_end_the_current_loading() {
         let mut search = FolderSearch::default();
@@ -283,7 +278,6 @@ mod tests {
         );
     }
 
-    // parity: TS-components-FolderSearchInput-8afe30
     #[test]
     fn the_absolute_root_keeps_single_slash_paths_for_click_and_tab() {
         let mut search = FolderSearch::default();
@@ -298,7 +292,6 @@ mod tests {
         assert_eq!(search.submitted_path(), "/srv");
     }
 
-    // parity: TS-components-FolderSearchInput-221782
     #[test]
     fn a_failed_listing_shows_the_reason_and_reload_lists_again() {
         let mut search = FolderSearch::default();
@@ -313,7 +306,6 @@ mod tests {
         assert!(matches!(search.view(), FolderListView::Directories(_)));
     }
 
-    // parity: TS-components-FolderSearchInput-38f24d
     #[test]
     fn typing_keeps_working_after_a_listing_failure() {
         let mut search = FolderSearch::default();

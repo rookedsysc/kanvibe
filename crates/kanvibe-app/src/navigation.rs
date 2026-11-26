@@ -116,7 +116,6 @@ mod tests {
         )
     }
 
-    // parity: TS-renderer-navigation-f1f2ce
     #[test]
     fn back_returns_to_the_previous_page() {
         let mut history = history(&["/ko", "/ko/task/task-1"], 1);
@@ -124,7 +123,6 @@ mod tests {
         assert_eq!(history.current_path(), "/ko");
     }
 
-    // parity: TS-renderer-navigation-55a7de
     #[test]
     fn back_without_history_goes_to_the_current_locale_board() {
         let mut history = history(&["/ko/task/task-1"], 0);
@@ -132,7 +130,6 @@ mod tests {
         assert_eq!(history.current_path(), "/ko");
     }
 
-    // parity: TS-renderer-navigation-ee5898
     #[test]
     fn back_keeps_the_locale_of_the_current_page() {
         let mut history = history(&["/zh/task/task-1"], 0);
@@ -140,7 +137,6 @@ mod tests {
         assert_eq!(history.current_path(), "/zh");
     }
 
-    // parity: TS-renderer-navigation-03a63c
     #[test]
     fn back_on_the_board_without_history_stays() {
         let mut history = history(&["/ko"], 0);
@@ -148,7 +144,6 @@ mod tests {
         assert_eq!(history.current_path(), "/ko");
     }
 
-    // parity: TS-renderer-navigation-32913e
     #[test]
     fn only_in_app_history_counts_as_a_previous_page() {
         let mut history = NavigationHistory::new("/en/task/task-1");
@@ -156,7 +151,6 @@ mod tests {
         assert_eq!(history.current_path(), "/en");
     }
 
-    // parity: TS-renderer-navigation-56c64e
     #[test]
     fn forward_moves_to_the_next_page() {
         let mut history = history(&["/ko", "/ko/task/task-1", "/ko/task/task-2"], 1);

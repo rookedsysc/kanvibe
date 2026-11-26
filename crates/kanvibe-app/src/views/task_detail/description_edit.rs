@@ -328,19 +328,16 @@ fn editor_button(
 mod tests {
     use super::*;
 
-    // parity: TS-components-TaskDetailTitleCard-0b0dcc
     #[test]
     fn unchanged_description_is_not_saved() {
         assert_eq!(description_to_save("  같은 설명 ", Some("같은 설명")), None);
     }
 
-    // parity: TS-components-TaskDetailTitleCard-3a1875
     #[test]
     fn whitespace_only_draft_clears_the_description() {
         assert_eq!(description_to_save("   ", Some("이전")), Some(None));
     }
 
-    // parity: TS-components-TaskDetailTitleCard-a4b0fd
     #[test]
     fn new_description_is_saved_for_a_task_without_one() {
         assert_eq!(

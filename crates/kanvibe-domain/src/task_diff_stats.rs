@@ -65,7 +65,6 @@ mod tests {
         }
     }
 
-    // parity: TS-shared-taskDiffStats-91b280
     #[test]
     fn sums_file_count_additions_and_deletions() {
         let files = [
@@ -84,13 +83,11 @@ mod tests {
         );
     }
 
-    // parity: TS-shared-taskDiffStats-b73110
     #[test]
     fn empty_change_list_is_all_zero() {
         assert_eq!(summarize_diff_files(&[]), TaskDiffStats::default());
     }
 
-    // parity: TS-shared-taskDiffStats-3aaf1e
     #[test]
     fn files_without_line_counts_still_count_as_files() {
         let files = [diff_file("assets/logo.png", DiffFileStatus::Added, 0, 0)];

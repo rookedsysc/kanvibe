@@ -818,7 +818,6 @@ mod tests {
     use super::*;
     use crate::views::board::task_filters::tests::project;
 
-    // parity: TS-components-ProjectRegistryDialog-4a4b2a
     #[test]
     fn search_keeps_only_matching_projects() {
         let projects = [project("kanvibe-demo"), project("api-server")];

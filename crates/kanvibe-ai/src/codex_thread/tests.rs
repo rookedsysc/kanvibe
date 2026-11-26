@@ -208,7 +208,6 @@ fn send_counting(
     (result, before_send_calls.get(), write_calls)
 }
 
-// parity: TS-aiSessions-codexThreadInput-6ca6e9
 #[test]
 fn reads_real_model_list_and_changes_only_this_thread_model() {
     let server = FakeCodexServer::start();
@@ -260,7 +259,6 @@ fn reads_real_model_list_and_changes_only_this_thread_model() {
     );
 }
 
-// parity: TS-aiSessions-codexThreadInput-6c8523
 #[test]
 fn unlisted_values_and_foreign_threads_send_no_setting_change() {
     let server = FakeCodexServer::start();
@@ -284,7 +282,6 @@ fn unlisted_values_and_foreign_threads_send_no_setting_change() {
     );
 }
 
-// parity: TS-aiSessions-codexThreadInput-879663
 #[test]
 fn sends_exact_text_and_images_once_without_resuming_or_subscribing() {
     let server = FakeCodexServer::start();
@@ -310,7 +307,6 @@ fn sends_exact_text_and_images_once_without_resuming_or_subscribing() {
     assert_eq!((before_send_calls, write_calls), (1, 1));
 }
 
-// parity: TS-aiSessions-codexThreadInput-a388c5
 #[test]
 fn refuses_foreign_child_unavailable_or_busy_targets_before_writing() {
     let changes = [
@@ -341,7 +337,6 @@ fn refuses_foreign_child_unavailable_or_busy_targets_before_writing() {
     }
 }
 
-// parity: TS-aiSessions-codexThreadInput-fdb41f
 #[test]
 fn active_thread_receives_one_more_input_on_the_same_thread() {
     let server = FakeCodexServer::start();
@@ -360,7 +355,6 @@ fn active_thread_receives_one_more_input_on_the_same_thread() {
     assert_eq!(write_calls, 1);
 }
 
-// parity: TS-aiSessions-codexThreadInput-841927
 #[test]
 fn changed_target_after_metadata_is_refused() {
     let server = FakeCodexServer::start();
@@ -380,7 +374,6 @@ fn changed_target_after_metadata_is_refused() {
     assert_eq!(write_calls, 0);
 }
 
-// parity: TS-aiSessions-codexThreadInput-25d567
 #[test]
 fn lost_response_stays_uncertain_and_is_never_resent() {
     let server = FakeCodexServer::start();
@@ -400,7 +393,6 @@ fn lost_response_stays_uncertain_and_is_never_resent() {
     assert_eq!(write_calls, 1);
 }
 
-// parity: TS-aiSessions-codexThreadInput-9691a0
 #[test]
 fn account_home_mismatch_and_unsupported_socket_have_no_fallback() {
     let server = FakeCodexServer::start();
@@ -418,7 +410,6 @@ fn account_home_mismatch_and_unsupported_socket_have_no_fallback() {
     assert_eq!(first_writes + second_writes, 0);
 }
 
-// parity: TS-aiSessions-codexThreadMetadata-a8d2f6
 #[test]
 fn reads_only_the_exact_thread_without_subscribing() {
     let server = FakeCodexServer::start();
@@ -437,7 +428,6 @@ fn reads_only_the_exact_thread_without_subscribing() {
     );
 }
 
-// parity: TS-aiSessions-codexThreadMetadata-2f5144
 #[test]
 fn rejects_metadata_that_cannot_prove_an_empty_main_thread() {
     let overrides = [
@@ -463,7 +453,6 @@ fn rejects_metadata_that_cannot_prove_an_empty_main_thread() {
     }
 }
 
-// parity: TS-aiSessions-codexThreadMetadata-72a838
 #[test]
 fn materialized_record_is_not_treated_as_empty() {
     let server = FakeCodexServer::start();
@@ -475,7 +464,6 @@ fn materialized_record_is_not_treated_as_empty() {
     );
 }
 
-// parity: TS-aiSessions-codexThreadMetadata-f14bb4
 #[test]
 fn other_provider_home_and_unsupported_socket_are_rejected() {
     let server = FakeCodexServer::start();

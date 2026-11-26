@@ -61,7 +61,6 @@ fn texts(detail: &Option<AggregatedAiSessionDetail>) -> Vec<String> {
         .collect()
 }
 
-// parity: TS-aiSessions-readSqliteAgentSessions-5e911f
 #[test]
 fn reads_opencode2_from_matching_database_names_within_task() {
     let store = AgentStore::new();
@@ -105,7 +104,6 @@ INSERT INTO session_message VALUES ('s','user','{{\"text\":[\"question\",\"secon
     );
 }
 
-// parity: TS-aiSessions-readSqliteAgentSessions-a569f8
 #[test]
 fn searches_full_opencode2_conversations_and_filters_roles_before_paging() {
     let store = AgentStore::new();
@@ -140,7 +138,6 @@ INSERT INTO session_message VALUES ('s','user','{{\"text\":\"first\"}}',17600000
     assert_eq!(texts(&detail), ["needle answer"]);
 }
 
-// parity: TS-aiSessions-readSqliteAgentSessions-b8b1b4
 #[test]
 fn respects_zcode_visibility_and_sequence_order() {
     let store = AgentStore::new();
@@ -182,7 +179,6 @@ INSERT INTO part VALUES ('p1','m1','s','{{\"type\":\"text\",\"text\":\"first pro
     );
 }
 
-// parity: TS-aiSessions-readSqliteAgentSessions-723d30
 #[test]
 fn ignores_arbitrary_source_ref_even_when_schema_matches() {
     let store = AgentStore::new();
@@ -200,7 +196,6 @@ fn ignores_arbitrary_source_ref_even_when_schema_matches() {
     }
 }
 
-// parity: TS-aiSessions-readSqliteAgentSessions-3308de
 #[test]
 fn keeps_readable_database_when_another_install_is_broken() {
     let store = AgentStore::new();
@@ -235,7 +230,6 @@ INSERT INTO session_message VALUES ('healthy','user','{{\"text\":\"hello\"}}',17
     );
 }
 
-// parity: TS-aiSessions-readSqliteAgentSessions-04c49b
 #[test]
 fn reads_legacy_zcode_schema_and_keeps_tool_and_reasoning_roles() {
     let store = AgentStore::new();
@@ -263,7 +257,6 @@ INSERT INTO part VALUES ('p','m','s','{{\"type\":\"reasoning\",\"text\":\"thinki
     );
 }
 
-// parity: TS-aiSessions-readSqliteAgentSessions-109878
 #[test]
 fn reports_absent_stores_without_creating_databases() {
     let store = AgentStore::new();

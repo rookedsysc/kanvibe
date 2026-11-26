@@ -13,7 +13,6 @@ fn session_not_running() -> PaneMirrorError {
     PaneMirrorError::SurfaceUnavailable(SurfaceUnavailableReason::SessionNotRunning)
 }
 
-// parity: TS-main-mobileBridgeService-c0226c
 #[test]
 fn pane_outside_the_session_cannot_be_subscribed() {
     let harness = Harness::new();
@@ -33,7 +32,6 @@ fn pane_outside_the_session_cannot_be_subscribed() {
     );
 }
 
-// parity: TS-main-mobileBridgeService-0772a3
 #[test]
 fn keys_cannot_reach_a_pane_outside_the_session() {
     let harness = Harness::new();
@@ -48,7 +46,6 @@ fn keys_cannot_reach_a_pane_outside_the_session() {
     assert!(harness.runner.commands_containing("send-keys").is_empty());
 }
 
-// parity: TS-main-mobileBridgeService-8deed2
 #[test]
 fn keys_reach_a_pane_inside_the_session_as_is() {
     let harness = Harness::new();
@@ -67,7 +64,6 @@ fn keys_reach_a_pane_inside_the_session_as_is() {
     );
 }
 
-// parity: TS-main-mobileBridgeService-4dfb8f
 #[test]
 fn subscriber_is_told_when_the_child_dies_by_error_or_exit() {
     for is_read_failure in [true, false] {
@@ -84,7 +80,6 @@ fn subscriber_is_told_when_the_child_dies_by_error_or_exit() {
     }
 }
 
-// parity: TS-main-mobileBridgeService-5fcccf
 #[test]
 fn dead_subscription_frees_its_slot_so_the_next_subscriber_gets_a_new_stream() {
     let harness = Harness::new();
@@ -100,7 +95,6 @@ fn dead_subscription_frees_its_slot_so_the_next_subscriber_gets_a_new_stream() {
     assert_eq!(second.chunks(), vec![SNAPSHOT_REDRAW, "살아 있다"]);
 }
 
-// parity: TS-main-mobileBridgeService-43c795
 #[test]
 fn quitting_the_app_removes_the_pipes_of_open_mirrors() {
     let harness = Harness::new();
@@ -116,7 +110,6 @@ fn quitting_the_app_removes_the_pipes_of_open_mirrors() {
     assert_eq!(harness.processes.child(0).terminate_count(), 1);
 }
 
-// parity: TS-main-mobileBridgeService-decf38
 #[test]
 fn stream_stays_while_a_claimed_subscriber_remains_after_the_earlier_one_leaves() {
     let harness = Harness::new();
@@ -137,7 +130,6 @@ fn stream_stays_while_a_claimed_subscriber_remains_after_the_earlier_one_leaves(
     });
 }
 
-// parity: TS-main-mobileBridgeService-bcf267
 #[test]
 fn releasing_the_same_subscription_twice_does_not_take_the_remaining_share() {
     let harness = Harness::new();
@@ -168,7 +160,6 @@ fn stub_capture(harness: &Harness, capture: &'static str) {
     });
 }
 
-// parity: TS-main-mobileBridgeService-5bf753
 #[test]
 fn tmux_snapshot_returns_to_the_line_start_on_each_line_and_ends_at_the_desktop_cursor() {
     let harness = Harness::new();
@@ -183,7 +174,6 @@ fn tmux_snapshot_returns_to_the_line_start_on_each_line_and_ends_at_the_desktop_
     );
 }
 
-// parity: TS-main-mobileBridgeService-a6f7e0
 #[test]
 fn tmux_alternate_screen_and_sgr_mouse_modes_set_before_connecting_are_restored_in_the_first_frame()
 {
@@ -199,7 +189,6 @@ fn tmux_alternate_screen_and_sgr_mouse_modes_set_before_connecting_are_restored_
     assert!(!first.contains("2 0 1 1 1 0 0 1 0"));
 }
 
-// parity: TS-main-mobileBridgeService-d147f7
 #[test]
 fn zellij_screen_dump_is_cleared_and_redrawn_so_dumps_do_not_pile_up() {
     let harness = Harness::new();

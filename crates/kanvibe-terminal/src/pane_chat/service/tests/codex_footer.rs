@@ -577,7 +577,6 @@ fn scoped_process_command() -> String {
     super::super::target::build_pane_process_table_command(100)
 }
 
-// parity: TS-main-paneChatService-fb80d3
 #[test]
 fn process_lookup_reads_only_the_pane_root_tty_with_one_scoped_command() {
     for ssh_host in [None, Some("remote-host")] {
@@ -605,7 +604,6 @@ fn process_lookup_reads_only_the_pane_root_tty_with_one_scoped_command() {
     }
 }
 
-// parity: TS-main-paneChatService-e02701
 #[test]
 fn empty_tty_lookup_means_no_cli_and_no_connection() {
     let harness = Harness::new();
@@ -621,7 +619,6 @@ fn empty_tty_lookup_means_no_cli_and_no_connection() {
 
 // ---- Codex displayed-thread footer binding ----
 
-// parity: TS-main-paneChatService-5099d4
 #[test]
 fn older_transcript_page_reads_only_the_verified_thread_and_rejects_a_changed_cli() {
     let fixture = create_codex_task("codex-cli 0.169.0");
@@ -662,7 +659,6 @@ fn older_transcript_page_reads_only_the_verified_thread_and_rejects_a_changed_cl
     assert_eq!(error_of(changed), "PaneChatTargetChangedError");
 }
 
-// parity: TS-main-paneChatService-5cfd8d
 #[test]
 fn reading_api_model_settings_keeps_the_bound_codex_conversation() {
     let fixture = create_codex_task("codex-cli 0.169.0");
@@ -702,7 +698,6 @@ fn reading_api_model_settings_keeps_the_bound_codex_conversation() {
 
 // ---- Codex가 선택 화면을 띄운 동안 ----
 
-// parity: TS-main-paneChatService-438ae6
 #[test]
 fn prompt_covering_the_footer_keeps_the_just_confirmed_thread_and_carries_the_prompt() {
     let fixture = create_codex_task("codex-cli 0.169.0");
@@ -726,7 +721,6 @@ fn prompt_covering_the_footer_keeps_the_just_confirmed_thread_and_carries_the_pr
     assert_eq!(closed.target_token, bound.target_token);
 }
 
-// parity: TS-main-paneChatService-7e6408
 #[test]
 fn prompt_of_a_never_confirmed_codex_is_not_connected() {
     let fixture = create_codex_task("codex-cli 0.169.0");
@@ -737,7 +731,6 @@ fn prompt_of_a_never_confirmed_codex_is_not_connected() {
     assert_unbound(&fixture.snapshot("%A"));
 }
 
-// parity: TS-main-paneChatService-466948
 #[test]
 fn another_thread_id_after_the_prompt_closes_drops_the_held_thread() {
     let fixture = create_codex_task("codex-cli 0.169.0");
@@ -770,7 +763,6 @@ fn answer(
     )
 }
 
-// parity: TS-main-paneChatService-c89687
 #[test]
 fn card_answers_send_one_number_key_and_cancel_sends_escape() {
     let fixture = create_codex_task("codex-cli 0.169.0");
@@ -790,7 +782,6 @@ fn card_answers_send_one_number_key_and_cancel_sends_escape() {
     );
 }
 
-// parity: TS-main-paneChatService-0700e1
 #[test]
 fn card_answer_is_not_sent_after_the_prompt_changed() {
     let fixture = create_codex_task("codex-cli 0.169.0");
@@ -805,7 +796,6 @@ fn card_answer_is_not_sent_after_the_prompt_changed() {
     assert!(fixture.a.with(|state| state.dialog_keys.is_empty()));
 }
 
-// parity: TS-main-paneChatService-d6bc20
 #[test]
 fn watching_the_same_prompt_keeps_the_thread_however_long_it_stays() {
     let fixture = create_codex_task("codex-cli 0.169.0");
@@ -819,7 +809,6 @@ fn watching_the_same_prompt_keeps_the_thread_however_long_it_stays() {
     }
 }
 
-// parity: TS-main-paneChatService-b85f6c
 #[test]
 fn stale_thread_confirmation_is_not_carried_behind_a_prompt() {
     let fixture = create_codex_task("codex-cli 0.169.0");
@@ -834,7 +823,6 @@ fn stale_thread_confirmation_is_not_carried_behind_a_prompt() {
     assert_eq!(reopened.prompt, None);
 }
 
-// parity: TS-main-paneChatService-13f343
 #[test]
 fn same_prompt_text_over_a_new_conversation_ends_the_hold() {
     let fixture = create_codex_task("codex-cli 0.169.0");
@@ -852,7 +840,6 @@ fn same_prompt_text_over_a_new_conversation_ends_the_hold() {
     assert_eq!(reopened.prompt, None);
 }
 
-// parity: TS-main-paneChatService-5f88c6
 #[test]
 fn prompt_refolded_by_a_narrower_pane_keeps_the_thread() {
     let fixture = create_codex_task("codex-cli 0.169.0");
@@ -889,7 +876,6 @@ fn prompt_refolded_by_a_narrower_pane_keeps_the_thread() {
     );
 }
 
-// parity: TS-main-paneChatService-6ff4d5
 #[test]
 fn prompt_with_a_shortened_header_path_keeps_the_thread() {
     let fixture = create_codex_task("codex-cli 0.169.0");
@@ -910,7 +896,6 @@ fn prompt_with_a_shortened_header_path_keeps_the_thread() {
     );
 }
 
-// parity: TS-main-paneChatService-8481bd
 #[test]
 fn new_conversation_header_right_above_the_prompt_ends_the_hold() {
     let fixture = create_codex_task("codex-cli 0.169.0");
@@ -928,7 +913,6 @@ fn new_conversation_header_right_above_the_prompt_ends_the_hold() {
     assert_unbound(&fixture.snapshot("%A"));
 }
 
-// parity: TS-main-paneChatService-8246ff
 #[test]
 fn same_prompt_with_only_the_highlight_moved_keeps_the_thread() {
     let fixture = create_codex_task("codex-cli 0.169.0");
@@ -952,7 +936,6 @@ fn same_prompt_with_only_the_highlight_moved_keeps_the_thread() {
     assert_eq!(shown.prompt.unwrap().screen.highlighted_number, 2);
 }
 
-// parity: TS-main-paneChatService-fd5868
 #[test]
 fn switching_to_another_prompt_without_seeing_the_id_ends_the_hold() {
     let fixture = create_codex_task("codex-cli 0.169.0");
@@ -968,7 +951,6 @@ fn switching_to_another_prompt_without_seeing_the_id_ends_the_hold() {
 
 // ---- 대화 ID 표시(`/statusline thread-id`) ----
 
-// parity: TS-main-paneChatService-342caf
 #[test]
 fn reveal_pastes_the_command_once_into_the_empty_composer_and_binds_only_that_pane() {
     let fixture = create_codex_task("codex-cli 0.169.0");
@@ -1002,7 +984,6 @@ fn reveal_pastes_the_command_once_into_the_empty_composer_and_binds_only_that_pa
     assert_eq!(sibling.reason.as_deref(), Some("codex-thread-unconfirmed"));
 }
 
-// parity: TS-main-paneChatService-3f73a3
 #[test]
 fn reveal_writes_nothing_while_the_composer_holds_user_text() {
     let fixture = create_codex_task("codex-cli 0.169.0");
@@ -1018,7 +999,6 @@ fn reveal_writes_nothing_while_the_composer_holds_user_text() {
     assert_eq!(fixture.a.composer(), "draft in progress");
 }
 
-// parity: TS-main-paneChatService-32a655
 #[test]
 fn reveal_writes_nothing_for_an_unverified_codex_version() {
     let fixture = create_codex_task("codex-cli 0.170.0");
@@ -1030,7 +1010,6 @@ fn reveal_writes_nothing_for_an_unverified_codex_version() {
     assert!(fixture.harness.writes().is_empty());
 }
 
-// parity: TS-main-paneChatService-f5987e
 #[test]
 fn reveal_never_presses_enter_when_the_pasted_command_is_not_echoed() {
     let fixture = create_codex_task("codex-cli 0.169.0");
@@ -1043,7 +1022,6 @@ fn reveal_never_presses_enter_when_the_pasted_command_is_not_echoed() {
     assert!(fixture.a.commands().is_empty());
 }
 
-// parity: TS-main-paneChatService-c68a4b
 #[test]
 fn reveal_reports_thread_not_found_when_the_footer_still_has_no_id() {
     let fixture = create_codex_task("codex-cli 0.169.0");
@@ -1058,7 +1036,6 @@ fn reveal_reports_thread_not_found_when_the_footer_still_has_no_id() {
     assert_eq!(fixture.a.commands(), vec!["/statusline thread-id"]);
 }
 
-// parity: TS-main-paneChatService-326f03
 #[test]
 fn reveal_never_presses_enter_after_the_pane_cli_process_changed() {
     let fixture = create_codex_task("codex-cli 0.169.0");
@@ -1085,7 +1062,6 @@ fn reveal_never_presses_enter_after_the_pane_cli_process_changed() {
     assert!(fixture.a.commands().is_empty());
 }
 
-// parity: TS-main-paneChatService-c6ed4a
 #[test]
 fn passive_reads_of_an_unconfigured_codex_never_write_statusline() {
     let fixture = create_codex_task("codex-cli 0.169.0");
@@ -1094,7 +1070,6 @@ fn passive_reads_of_an_unconfigured_codex_never_write_statusline() {
     assert!(fixture.harness.writes().is_empty());
 }
 
-// parity: TS-main-paneChatService-84ef3b
 #[test]
 fn configured_footer_is_read_without_writing_into_the_composer() {
     let fixture = create_codex_task("codex-cli 0.169.0");
@@ -1114,7 +1089,6 @@ fn configured_footer_is_read_without_writing_into_the_composer() {
     }));
 }
 
-// parity: TS-main-paneChatService-1125f3
 #[test]
 fn racing_snapshot_reads_never_write_to_the_cli() {
     let fixture = create_codex_task("codex-cli 0.169.0");
@@ -1129,7 +1103,6 @@ fn racing_snapshot_reads_never_write_to_the_cli() {
     assert!(fixture.a.commands().is_empty());
 }
 
-// parity: TS-main-paneChatService-28155d
 #[test]
 fn idle_codex_with_a_three_row_wrapped_footer_connects_through_the_hook() {
     let fixture = create_codex_task("codex-cli 0.169.0");
@@ -1154,7 +1127,6 @@ fn idle_codex_with_a_three_row_wrapped_footer_connects_through_the_hook() {
     assert!(fixture.a.submissions().is_empty());
 }
 
-// parity: TS-main-paneChatService-b5f068
 #[test]
 fn old_snapshot_whose_lookup_finishes_after_a_newer_thread_is_discarded() {
     let fixture = create_codex_task("codex-cli 0.169.0");
@@ -1203,7 +1175,6 @@ fn old_snapshot_whose_lookup_finishes_after_a_newer_thread_is_discarded() {
     );
 }
 
-// parity: TS-main-paneChatService-1d2575
 #[test]
 fn fresh_frame_is_checked_after_the_api_lookup_before_admitting_input() {
     let fixture = create_codex_task("codex-cli 0.169.0");
@@ -1234,7 +1205,6 @@ fn fresh_frame_is_checked_after_the_api_lookup_before_admitting_input() {
     assert!(fixture.a.submissions().is_empty());
 }
 
-// parity: TS-main-paneChatService-483528
 #[test]
 fn bound_codex_accepts_api_input_while_working_and_leaves_the_pty_untouched() {
     let fixture = create_codex_task("codex-cli 0.169.0");
@@ -1261,7 +1231,6 @@ fn bound_codex_accepts_api_input_while_working_and_leaves_the_pty_untouched() {
     assert!(fixture.harness.writes().is_empty());
 }
 
-// parity: TS-main-paneChatService-d08b93
 #[test]
 fn side_view_hint_is_never_bootstrapped_even_on_a_dim_empty_composer() {
     let fixture = create_codex_task("codex-cli 0.169.0");
@@ -1282,7 +1251,6 @@ fn side_view_hint_is_never_bootstrapped_even_on_a_dim_empty_composer() {
     assert_eq!(fixture.rollout_call_count(), 0);
 }
 
-// parity: TS-main-paneChatService-8dd2a1
 #[test]
 fn unconfigured_wrapped_footer_without_session_evidence_is_left_untouched() {
     let fixture = create_codex_task("codex-cli 0.169.0");
@@ -1308,7 +1276,6 @@ fn unconfigured_wrapped_footer_without_session_evidence_is_left_untouched() {
     assert!(fixture.a.commands().is_empty());
 }
 
-// parity: TS-main-paneChatService-16f0b3
 #[test]
 fn same_process_conversation_change_rebinds_without_reviving_the_earlier_token() {
     let fixture = create_codex_task("codex-cli 0.169.0");
@@ -1355,7 +1322,6 @@ fn same_process_conversation_change_rebinds_without_reviving_the_earlier_token()
     assert!(fixture.b.submissions().is_empty());
 }
 
-// parity: TS-main-paneChatService-e99db0
 #[test]
 fn multi_line_api_text_reaches_the_bound_thread_unchanged() {
     let fixture = create_codex_task("codex-cli 0.169.0");
@@ -1374,7 +1340,6 @@ fn multi_line_api_text_reaches_the_bound_thread_unchanged() {
     );
 }
 
-// parity: TS-main-paneChatService-c6d0dc
 #[test]
 fn modern_codex_message_never_touches_the_pty_composer() {
     let fixture = create_codex_task("codex-cli 0.169.0");
@@ -1395,7 +1360,6 @@ fn modern_codex_message_never_touches_the_pty_composer() {
     assert!(fixture.harness.writes().is_empty());
 }
 
-// parity: TS-main-paneChatService-f7546a
 #[test]
 fn repeated_api_operation_is_admitted_once_and_an_uncertain_result_is_never_retried() {
     let fixture = create_codex_task("codex-cli 0.169.0");
@@ -1434,7 +1398,6 @@ fn text_upload() -> PaneChatAttachmentInput {
     }
 }
 
-// parity: TS-main-paneChatService-d3789d
 #[test]
 fn uncertain_operation_survives_x_y_x_token_renewal_and_attachment_restaging() {
     let fixture = create_codex_task("codex-cli 0.169.0");
@@ -1470,7 +1433,6 @@ fn uncertain_operation_survives_x_y_x_token_renewal_and_attachment_restaging() {
     assert_eq!(fixture.a.submissions().len(), 1);
 }
 
-// parity: TS-main-paneChatService-a2a353
 #[test]
 fn native_slash_commands_stay_on_the_cli_and_never_reach_the_api() {
     let fixture = create_codex_task("codex-cli 0.169.0");
@@ -1482,7 +1444,6 @@ fn native_slash_commands_stay_on_the_cli_and_never_reach_the_api() {
     assert!(fixture.harness.sessions.api_input_calls().is_empty());
 }
 
-// parity: TS-main-paneChatService-a6c515
 #[test]
 fn admitted_api_input_stays_pinned_to_x_when_the_terminal_switches_at_the_write_boundary() {
     let fixture = create_codex_task("codex-cli 0.169.0");
@@ -1523,7 +1484,6 @@ fn admitted_api_input_stays_pinned_to_x_when_the_terminal_switches_at_the_write_
     assert!(fixture.harness.writes().is_empty());
 }
 
-// parity: TS-main-paneChatService-e1896a
 #[test]
 fn model_command_is_typed_one_echoed_character_at_a_time_below_the_popup() {
     let fixture = create_codex_task("codex-cli 0.169.0");
@@ -1541,7 +1501,6 @@ fn model_command_is_typed_one_echoed_character_at_a_time_below_the_popup() {
     assert_eq!(fixture.a.commands(), vec!["/model"]);
 }
 
-// parity: TS-main-paneChatService-4bcb7b
 #[test]
 fn terminal_draft_is_left_untouched_and_reported_as_busy() {
     let fixture = create_codex_task("codex-cli 0.169.0");
@@ -1563,7 +1522,6 @@ fn terminal_draft_is_left_untouched_and_reported_as_busy() {
     );
 }
 
-// parity: TS-main-paneChatService-50d272
 #[test]
 fn literal_placeholder_or_forged_footer_in_a_draft_is_never_native_empty_input() {
     let fixture = create_codex_task("codex-cli 0.169.0");
@@ -1592,7 +1550,6 @@ fn literal_placeholder_or_forged_footer_in_a_draft_is_never_native_empty_input()
     assert_eq!(fixture.a.composer(), "Ask Codex to do anything");
 }
 
-// parity: TS-main-paneChatService-8cac97
 #[test]
 fn verified_display_mode_blocks_input_when_the_dim_hint_lacks_the_empty_composer_layout() {
     let fixture = create_codex_task("codex-cli 0.169.0");
@@ -1609,7 +1566,6 @@ fn verified_display_mode_blocks_input_when_the_dim_hint_lacks_the_empty_composer
     );
 }
 
-// parity: TS-main-paneChatService-cf2543
 #[test]
 fn draft_under_the_same_footer_keeps_the_bound_thread_and_token() {
     let fixture = create_codex_task("codex-cli 0.169.0");
@@ -1624,7 +1580,6 @@ fn draft_under_the_same_footer_keeps_the_bound_thread_and_token() {
     assert!(fixture.a.commands().is_empty());
 }
 
-// parity: TS-main-paneChatService-a04ff9
 #[test]
 fn uuid_in_a_multi_line_draft_is_not_adopted_as_the_displayed_thread() {
     let fixture = create_codex_task("codex-cli 0.169.0");
@@ -1652,7 +1607,6 @@ fn uuid_in_a_multi_line_draft_is_not_adopted_as_the_displayed_thread() {
     assert!(fixture.harness.writes().is_empty());
 }
 
-// parity: TS-main-paneChatService-ebc9ad
 #[test]
 fn repeated_unconfirmed_reads_never_attempt_the_footer_command() {
     let fixture = create_codex_task("codex-cli 0.169.0");
@@ -1664,7 +1618,6 @@ fn repeated_unconfirmed_reads_never_attempt_the_footer_command() {
     assert_eq!(last.reason.as_deref(), Some("codex-thread-unconfirmed"));
 }
 
-// parity: TS-main-paneChatService-94acf8
 #[test]
 fn displayed_thread_without_a_main_record_in_this_task_is_refused() {
     let fixture = create_codex_task("codex-cli 0.169.0");
@@ -1688,7 +1641,6 @@ fn displayed_thread_without_a_main_record_in_this_task_is_refused() {
     assert!(fixture.harness.sessions.detail_calls().is_empty());
 }
 
-// parity: TS-main-paneChatService-a32694
 #[test]
 fn staged_image_is_submitted_as_addressed_input() {
     for caption in ["caption after image", ""] {
@@ -1720,7 +1672,6 @@ fn staged_image_is_submitted_as_addressed_input() {
     }
 }
 
-// parity: TS-main-paneChatService-a8896f
 #[test]
 fn long_prompt_is_sent_as_exact_api_text_without_placeholders() {
     let fixture = create_codex_task("codex-cli 0.169.0");
@@ -1732,7 +1683,6 @@ fn long_prompt_is_sent_as_exact_api_text_without_placeholders() {
     assert_eq!(fixture.a.submissions(), vec![(THREAD_X.to_string(), long)]);
 }
 
-// parity: TS-main-paneChatService-b05e4e
 #[test]
 fn unverified_codex_versions_keep_the_hook_path_and_type_nothing() {
     for version in ["codex-cli 0.168.0", "codex-cli 0.170.0"] {

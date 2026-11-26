@@ -32,7 +32,6 @@ async fn subscribed_stream(
     client
 }
 
-// parity: TS-electron-mobileRoutes-f2401e
 #[tokio::test]
 async fn upgrades_outside_the_stream_paths_are_cut_without_a_reply() {
     let server = TestServer::start().await;
@@ -46,7 +45,6 @@ async fn upgrades_outside_the_stream_paths_are_cut_without_a_reply() {
 }
 
 /// TS와 같은 헤더 없는 상태 줄만 쓰고 끊는다. 인증이 쿼리 검사보다 먼저다
-// parity: TS-electron-mobileRoutes-4abf56
 #[tokio::test]
 async fn missing_task_or_pane_ids_are_cut_with_400() {
     let server = TestServer::start().await;
@@ -67,7 +65,6 @@ async fn missing_task_or_pane_ids_are_cut_with_400() {
     );
 }
 
-// parity: TS-electron-mobileRoutes-167c07
 #[tokio::test]
 async fn leaving_before_the_subscription_attaches_releases_it_immediately() {
     let server = TestServer::start().await;
@@ -85,7 +82,6 @@ async fn leaving_before_the_subscription_attaches_releases_it_immediately() {
     assert_eq!(server.fake.pane_sinks.count(), 0);
 }
 
-// parity: TS-electron-mobileRoutes-264153
 #[tokio::test]
 async fn the_resized_screen_is_sent_again_to_keep_the_latest_output() {
     let server = TestServer::start().await;
@@ -100,7 +96,6 @@ async fn the_resized_screen_is_sent_again_to_keep_the_latest_output() {
     assert_eq!(server.fake.calls("viewport.resize"), vec![json!([47, 48])]);
 }
 
-// parity: TS-electron-mobileRoutes-e3a447
 #[tokio::test]
 async fn only_binary_resize_changes_size_and_the_same_json_as_text_is_typed() {
     let server = TestServer::start().await;
@@ -122,7 +117,6 @@ async fn only_binary_resize_changes_size_and_the_same_json_as_text_is_typed() {
     wait_until(|| server.fake.count("viewport.release") == 1).await;
 }
 
-// parity: TS-electron-mobileRoutes-0cf1e2
 #[tokio::test]
 async fn binary_wheel_goes_to_the_claimed_viewport_and_is_never_typed() {
     let server = TestServer::start().await;
@@ -140,7 +134,6 @@ async fn binary_wheel_goes_to_the_claimed_viewport_and_is_never_typed() {
     assert_eq!(written_inputs(&server), vec![json!("done")]);
 }
 
-// parity: TS-electron-mobileRoutes-c931d2
 #[tokio::test]
 async fn screens_returned_by_the_wheel_are_sent_to_that_device() {
     let server = TestServer::start().await;
@@ -159,7 +152,6 @@ async fn screens_returned_by_the_wheel_are_sent_to_that_device() {
     assert_eq!(client.next_text().await, "copy-mode-screen");
 }
 
-// parity: TS-electron-mobileRoutes-534b19
 #[tokio::test]
 async fn binary_history_refresh_goes_to_the_mirror_only() {
     let server = TestServer::start().await;
@@ -177,7 +169,6 @@ async fn binary_history_refresh_goes_to_the_mirror_only() {
     assert_eq!(written_inputs(&server), vec![json!("done")]);
 }
 
-// parity: TS-electron-mobileRoutes-df122f
 #[tokio::test]
 async fn invalid_binary_sizes_and_json_are_never_typed() {
     let server = TestServer::start().await;
@@ -196,7 +187,6 @@ async fn invalid_binary_sizes_and_json_are_never_typed() {
     assert_eq!(written_inputs(&server), vec![json!("done")]);
 }
 
-// parity: TS-electron-mobileRoutes-e0f776
 #[tokio::test]
 async fn the_next_key_waits_for_the_previous_write() {
     let server = TestServer::start().await;
@@ -226,7 +216,6 @@ async fn the_next_key_waits_for_the_previous_write() {
     assert_eq!(*completed.lock().expect("완료 목록"), vec!["l", "s"]);
 }
 
-// parity: TS-electron-mobileRoutes-0800b8
 #[tokio::test]
 async fn a_failed_write_does_not_block_the_next_key() {
     let server = TestServer::start().await;
@@ -243,7 +232,6 @@ async fn a_failed_write_does_not_block_the_next_key() {
     assert_eq!(written_inputs(&server), vec![json!("l"), json!("s")]);
 }
 
-// parity: TS-electron-mobileRoutes-d54737
 #[tokio::test]
 async fn a_dying_server_stream_closes_with_the_subscription_failure_code() {
     let server = TestServer::start().await;
@@ -252,7 +240,6 @@ async fn a_dying_server_stream_closes_with_the_subscription_failure_code() {
     assert_eq!(client.closed().await, (4000, "stream-failed".to_string()));
 }
 
-// parity: TS-electron-mobileRoutes-bd961c
 #[tokio::test]
 async fn streams_of_an_unpaired_device_close_with_the_unpair_code() {
     let server = TestServer::start().await;
@@ -261,7 +248,6 @@ async fn streams_of_an_unpaired_device_close_with_the_unpair_code() {
     assert_eq!(client.closed().await, (4001, "device-unpaired".to_string()));
 }
 
-// parity: TS-electron-mobileRoutes-c73707
 #[tokio::test]
 async fn another_device_watching_the_same_pane_keeps_streaming() {
     let server = TestServer::start().await;
@@ -273,7 +259,6 @@ async fn another_device_watching_the_same_pane_keeps_streaming() {
     assert_eq!(kept.next_text().await, "남은 기기가 볼 출력");
 }
 
-// parity: TS-electron-mobileRoutes-7b7e1c
 #[tokio::test]
 async fn an_unpair_signal_for_an_unknown_device_closes_nothing() {
     let server = TestServer::start().await;
@@ -285,7 +270,6 @@ async fn an_unpair_signal_for_an_unknown_device_closes_nothing() {
 
 /// TS는 서버 소켓의 `close` 스파이로 확인했다. Rust 소켓 지도는 밖에서 볼 수 없어, 닫힌 소켓의 정리(구독·세션 감시 해제)가
 /// 끝난 뒤에 온 해제 신호가 같은 기기의 살아 있는 소켓을 그대로 해제 코드로 닫는 것까지만 확인한다
-// parity: TS-electron-mobileRoutes-7960f9
 #[tokio::test]
 async fn normally_closed_sockets_leave_the_device_map() {
     let server = TestServer::start().await;
@@ -301,7 +285,6 @@ async fn normally_closed_sockets_leave_the_device_map() {
     );
 }
 
-// parity: TS-electron-mobileRoutes-eccd4f
 #[tokio::test]
 async fn a_changed_task_session_closes_the_stream_with_the_session_changed_code() {
     let server = TestServer::start().await;
@@ -310,7 +293,6 @@ async fn a_changed_task_session_closes_the_stream_with_the_session_changed_code(
     assert_eq!(client.closed().await, (4002, "session-changed".to_string()));
 }
 
-// parity: TS-electron-mobileRoutes-fddfe7
 #[tokio::test]
 async fn other_task_session_changes_are_ignored_and_closed_streams_stop_watching() {
     let server = TestServer::start().await;

@@ -54,7 +54,6 @@ fn change(value: Value) -> PaneChatModelSettingChange {
     parse_pane_chat_model_setting_change(&value).expect("변경 모양")
 }
 
-// parity: TS-aiSessions-paneChatModelSettings-f01313
 #[test]
 fn claude_reads_latest_turn_model_and_effort() {
     let records = [
@@ -67,7 +66,6 @@ fn claude_reads_latest_turn_model_and_effort() {
     );
 }
 
-// parity: TS-aiSessions-paneChatModelSettings-611193
 #[test]
 fn claude_command_output_applies_before_next_turn() {
     let records = [
@@ -90,7 +88,6 @@ fn claude_command_output_applies_before_next_turn() {
     );
 }
 
-// parity: TS-aiSessions-paneChatModelSettings-504dca
 #[test]
 fn claude_does_not_invent_values() {
     let records = [
@@ -100,7 +97,6 @@ fn claude_does_not_invent_values() {
     assert_eq!(read_claude_model_state(&records), state(None, None, None));
 }
 
-// parity: TS-aiSessions-paneChatModelSettings-bc709d
 #[test]
 fn claude_non_standard_speed_is_fast() {
     assert_eq!(
@@ -109,7 +105,6 @@ fn claude_non_standard_speed_is_fast() {
     );
 }
 
-// parity: TS-aiSessions-paneChatModelSettings-f27432
 #[test]
 fn codex_settings_between_turns_win() {
     let records = [
@@ -122,7 +117,6 @@ fn codex_settings_between_turns_win() {
     );
 }
 
-// parity: TS-aiSessions-paneChatModelSettings-8b0376
 #[test]
 fn codex_turn_context_does_not_decide_fast() {
     let records =
@@ -137,7 +131,6 @@ fn levels(ids: &[&str]) -> Vec<PaneChatEffortLevel> {
     to_effort_levels(ids.iter().copied())
 }
 
-// parity: TS-aiSessions-paneChatModelSettings-8625e1
 #[test]
 fn codex_catalog_drops_hidden_and_sorts_by_priority() {
     assert_eq!(
@@ -168,7 +161,6 @@ fn codex_catalog_drops_hidden_and_sorts_by_priority() {
     );
 }
 
-// parity: TS-aiSessions-paneChatModelSettings-bd73f4
 #[test]
 fn malformed_catalog_is_empty() {
     for cache in [Value::Null, json!("not-json"), json!({"models": "none"})] {
@@ -176,7 +168,6 @@ fn malformed_catalog_is_empty() {
     }
 }
 
-// parity: TS-aiSessions-paneChatModelSettings-3f83d0
 #[test]
 fn claude_aliases_full_model_id_and_limits_fast() {
     let settings = claude_settings(Some("claude-sonnet-5-5"));
@@ -197,7 +188,6 @@ fn claude_aliases_full_model_id_and_limits_fast() {
     );
 }
 
-// parity: TS-aiSessions-paneChatModelSettings-073582
 #[test]
 fn unknown_current_model_is_listed_without_options() {
     let settings = build_pane_chat_model_settings(
@@ -217,7 +207,6 @@ fn unknown_current_model_is_listed_without_options() {
     );
 }
 
-// parity: TS-aiSessions-paneChatModelSettings-33e521
 #[test]
 fn changes_become_cli_commands() {
     let cases = [
@@ -273,7 +262,6 @@ fn changes_become_cli_commands() {
     }
 }
 
-// parity: TS-aiSessions-paneChatModelSettings-3b1a17
 #[test]
 fn unavailable_changes_make_no_command() {
     let cases = [

@@ -25,7 +25,6 @@ fn tab_ids(harness: &Harness) -> Vec<String> {
         .collect()
 }
 
-// parity: TS-lib-terminalSessionLifecycle-454795
 #[test]
 fn first_listing_creates_one_active_tab() {
     // Given
@@ -46,7 +45,6 @@ fn first_listing_creates_one_active_tab() {
     );
 }
 
-// parity: TS-lib-terminalSessionLifecycle-eec74d
 #[test]
 fn new_tab_is_appended_and_becomes_active() {
     // Given
@@ -67,7 +65,6 @@ fn new_tab_is_appended_and_becomes_active() {
     assert_eq!(active_ids, vec![created_tab.id.as_str()]);
 }
 
-// parity: TS-lib-terminalSessionLifecycle-e8e3cf
 #[test]
 fn closing_a_tab_kills_only_its_pty_and_reports_remaining_count() {
     // Given
@@ -88,7 +85,6 @@ fn closing_a_tab_kills_only_its_pty_and_reports_remaining_count() {
     assert_eq!(harness.ptys.pty(1).kill_count(), 0);
 }
 
-// parity: TS-lib-terminalSessionLifecycle-07c0d3
 #[test]
 fn closing_the_active_tab_activates_its_successor() {
     // Given
@@ -116,7 +112,6 @@ fn closing_the_active_tab_activates_its_successor() {
     );
 }
 
-// parity: TS-lib-terminalSessionLifecycle-f33724
 #[test]
 fn tab_disappears_when_its_shell_exits_by_itself() {
     // Given
@@ -133,7 +128,6 @@ fn tab_disappears_when_its_shell_exits_by_itself() {
     assert_eq!(tab_ids(&harness), vec![second_tab.id]);
 }
 
-// parity: TS-lib-terminalSessionLifecycle-37ab53
 #[test]
 fn rename_and_move_are_reflected_in_the_listing() {
     // Given
@@ -165,7 +159,6 @@ fn rename_and_move_are_reflected_in_the_listing() {
     );
 }
 
-// parity: TS-lib-terminalSessionLifecycle-17bd5a
 #[test]
 fn moving_to_an_out_of_range_index_keeps_the_order() {
     // Given

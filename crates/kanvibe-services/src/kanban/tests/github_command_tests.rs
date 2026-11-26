@@ -77,7 +77,6 @@ fn gh_directory(workspace: &Path, repo_path: &Path) -> String {
     run_github_cli_command(&command, &create_shell_stubs(workspace, DIRENV_STUB)).unwrap()
 }
 
-// parity: TS-main-kanbanService-719656
 #[test]
 fn a_single_nested_repository_under_the_registered_path_runs_gh() {
     let workspace = tempfile::tempdir().unwrap();
@@ -89,7 +88,6 @@ fn a_single_nested_repository_under_the_registered_path_runs_gh() {
     );
 }
 
-// parity: TS-main-kanbanService-8053fe
 #[test]
 fn real_shell_recovers_through_the_git_origin_after_gh_cannot_resolve_the_repository() {
     let workspace = tempfile::tempdir().unwrap();
@@ -139,7 +137,6 @@ fn real_shell_recovers_through_the_git_origin_after_gh_cannot_resolve_the_reposi
 }
 
 /// 엉뚱한 저장소의 PR을 저장하면 머지 알림까지 잘못 뜬다. 실패가 낫다
-// parity: TS-main-kanbanService-7508c2
 #[test]
 fn several_nested_repositories_keep_gh_in_the_registered_path() {
     let workspace = tempfile::tempdir().unwrap();
@@ -152,7 +149,6 @@ fn several_nested_repositories_keep_gh_in_the_registered_path() {
     );
 }
 
-// parity: TS-main-kanbanService-c59bd8
 #[test]
 fn a_registered_repository_does_not_descend_into_nested_ones() {
     let workspace = tempfile::tempdir().unwrap();
@@ -165,7 +161,6 @@ fn a_registered_repository_does_not_descend_into_nested_ones() {
     );
 }
 
-// parity: TS-main-kanbanService-62b872
 #[test]
 fn without_envrc_plain_gh_runs_even_when_direnv_is_installed() {
     let workspace = tempfile::tempdir().unwrap();
@@ -177,7 +172,6 @@ fn without_envrc_plain_gh_runs_even_when_direnv_is_installed() {
     );
 }
 
-// parity: TS-main-kanbanService-bc278d
 #[test]
 fn envrc_in_the_repository_runs_gh_through_direnv() {
     let workspace = tempfile::tempdir().unwrap();
@@ -191,7 +185,6 @@ fn envrc_in_the_repository_runs_gh_through_direnv() {
 }
 
 /// 상위 폴더에 경로별 GitHub 인증을 둔 경우도 direnv는 그 설정을 읽는다
-// parity: TS-main-kanbanService-e51a46
 #[test]
 fn envrc_in_a_parent_directory_also_runs_gh_through_direnv() {
     let workspace = tempfile::tempdir().unwrap();
@@ -205,7 +198,6 @@ fn envrc_in_a_parent_directory_also_runs_gh_through_direnv() {
 }
 
 /// direnv allow가 안 된 .envrc면 direnv 경로가 늘 실패하므로 평범한 gh로 되돌아가야 조회할 수 있다
-// parity: TS-main-kanbanService-fee9c7
 #[test]
 fn a_failing_direnv_falls_back_to_plain_gh() {
     let workspace = tempfile::tempdir().unwrap();
@@ -222,7 +214,6 @@ fn a_failing_direnv_falls_back_to_plain_gh() {
 }
 
 /// 경로 없음은 재시도해도 회복되지 않는다. 오류로 올리면 매 background sync마다 실패 창이 뜬다
-// parity: TS-main-kanbanService-fddc93
 #[test]
 fn a_vanished_repository_prints_the_marker_without_calling_gh() {
     let workspace = tempfile::tempdir().unwrap();
@@ -233,7 +224,6 @@ fn a_vanished_repository_prints_the_marker_without_calling_gh() {
 }
 
 /// 원격 실행기는 이 패턴이 든 명령을 조용한 probe로 보고 실패 로그를 지우므로, 원격 PR 조회 실패가 로그에 남지 않게 된다
-// parity: TS-main-kanbanService-4041f1
 #[test]
 fn the_command_has_no_quiet_probe_redirections() {
     let workspace = tempfile::tempdir().unwrap();

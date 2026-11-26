@@ -43,7 +43,6 @@ fn choose(detail: &mut Detail, session_type: &str) {
     detail.click_role("option", session_type);
 }
 
-// parity: TS-components-SessionTypeEditor-5f7b1f
 #[gpui::test]
 fn pending_change_shows_progress_and_blocks_another_choice(cx: &mut TestAppContext) {
     let (mut detail, _) = open_session_task(cx);
@@ -57,7 +56,6 @@ fn pending_change_shows_progress_and_blocks_another_choice(cx: &mut TestAppConte
     assert!(!detail.has_role_name("option", "herdr"));
 }
 
-// parity: TS-components-SessionTypeEditor-77fc75
 #[gpui::test]
 fn change_errors_are_shown_and_not_retried(cx: &mut TestAppContext) {
     let (mut detail, _) = open_session_task(cx);
@@ -70,7 +68,6 @@ fn change_errors_are_shown_and_not_retried(cx: &mut TestAppContext) {
     assert!(!detail.has_text("세션 유형을 변경하고 있습니다…"));
 }
 
-// parity: TS-components-SessionTypeEditor-eba788
 #[gpui::test]
 fn live_session_is_closed_after_confirmation(cx: &mut TestAppContext) {
     let (mut detail, task) = open_session_task(cx);
@@ -91,7 +88,6 @@ fn live_session_is_closed_after_confirmation(cx: &mut TestAppContext) {
     assert_eq!(detail.refresh_count(&probe), 1);
 }
 
-// parity: TS-components-SessionTypeEditor-e07f89
 #[gpui::test]
 fn declining_keeps_the_existing_session(cx: &mut TestAppContext) {
     let (mut detail, task) = open_session_task(cx);
@@ -109,7 +105,6 @@ fn declining_keeps_the_existing_session(cx: &mut TestAppContext) {
     assert!(!detail.has_text_containing("기존 세션을 닫는 변경"));
 }
 
-// parity: TS-components-SessionTypeEditor-a7ac59
 #[gpui::test]
 fn dead_session_changes_without_asking(cx: &mut TestAppContext) {
     let (mut detail, task) = open_session_task(cx);
@@ -127,7 +122,6 @@ fn dead_session_changes_without_asking(cx: &mut TestAppContext) {
     assert!(!detail.has_text_containing("다른 인자로 바꿈"));
 }
 
-// parity: TS-components-SessionTypeEditor-e23f88
 #[gpui::test]
 fn declining_the_tool_install_changes_nothing(cx: &mut TestAppContext) {
     let (mut detail, _) = open_session_task(cx);
@@ -146,7 +140,6 @@ fn declining_the_tool_install_changes_nothing(cx: &mut TestAppContext) {
     assert!(!detail.has_text_containing("세션을 바꿈"));
 }
 
-// parity: TS-components-SessionTypeEditor-08a44e
 #[gpui::test]
 fn missing_changed_task_reports_failure(cx: &mut TestAppContext) {
     let (mut detail, _) = open_session_task(cx);

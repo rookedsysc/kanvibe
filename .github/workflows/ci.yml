@@ -8,7 +8,7 @@ on:
 
 jobs:
   rust:
-    name: Rust (fmt, clippy, test, parity, release build)
+    name: Rust (fmt, clippy, test, release build)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -36,10 +36,6 @@ jobs:
 
       - name: Test
         run: cargo nextest run --workspace
-
-      # TS 시험 장부(parity/ts-cases.jsonl)의 모든 행이 Rust 시험에 매핑되고 통과하는지 본다.
-      - name: Parity ledger
-        run: cargo xtask parity check
 
       - name: Release build
         run: cargo build --workspace --release

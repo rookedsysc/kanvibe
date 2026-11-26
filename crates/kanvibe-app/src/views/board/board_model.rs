@@ -429,7 +429,6 @@ mod tests {
         tasks.iter().map(|task| task.id.as_str()).collect()
     }
 
-    // parity: TS-components-Board-cfa96d
     #[test]
     fn dropping_inside_the_same_column_saves_nothing() {
         let mut tasks = board(&[(TaskStatus::Todo, &["a", "b"])]);
@@ -437,7 +436,6 @@ mod tests {
         assert_eq!(ids(&tasks.todo), ["a", "b"]);
     }
 
-    // parity: TS-components-Board-1d27b8
     #[test]
     fn dropping_on_another_column_saves_only_the_status_and_puts_the_card_on_top() {
         let mut tasks = board(&[
@@ -454,7 +452,6 @@ mod tests {
         assert_eq!(ids(&tasks.todo), ["a"]);
     }
 
-    // parity: TS-components-Board-cfa576
     #[test]
     fn failed_move_returns_only_that_card_to_its_original_slot() {
         let mut current = board(&[
@@ -470,7 +467,6 @@ mod tests {
         assert_eq!(ids(&current.progress), ["p"]);
     }
 
-    // parity: TS-components-Board-e9f9c5
     #[test]
     fn done_pages_are_deduplicated_while_offset_advances_by_fetched_size() {
         let mut tasks = board(&[(TaskStatus::Done, &["d1", "d2"])]);
@@ -485,7 +481,6 @@ mod tests {
         assert!(!pagination.has_more());
     }
 
-    // parity: TS-components-Board-2b19ae
     #[test]
     fn refreshed_first_page_discards_a_pending_done_page() {
         let mut pagination = DonePagination::new(40, 20);
@@ -495,7 +490,6 @@ mod tests {
         assert_eq!(pagination.offset, 20);
     }
 
-    // parity: TS-components-Board-978561
     #[test]
     fn stale_done_completion_does_not_clear_the_replacement_loading_state() {
         let mut pagination = DonePagination::new(40, 20);
@@ -507,7 +501,6 @@ mod tests {
         assert_eq!(pagination.error, None);
     }
 
-    // parity: TS-components-Board-9098bc
     #[test]
     fn failed_more_done_keeps_the_reason_and_retries_the_same_page() {
         let mut pagination = DonePagination::new(40, 20);
@@ -558,19 +551,16 @@ mod tests {
         displayed.todo.into_iter().map(|task| task.id).collect()
     }
 
-    // parity: TS-components-Board-af4985
     #[test]
     fn project_filter_shows_only_default_branch_root_tasks() {
         assert_eq!(displayed_todo_ids(TaskKindFilter::Project), ["root"]);
     }
 
-    // parity: TS-components-Board-f7f3cd
     #[test]
     fn task_filter_hides_project_roots() {
         assert_eq!(displayed_todo_ids(TaskKindFilter::Task), ["child", "loose"]);
     }
 
-    // parity: TS-components-Board-7360ad
     #[test]
     fn all_filter_shows_roots_and_ordinary_tasks() {
         assert_eq!(
@@ -600,7 +590,6 @@ mod tests {
         .collect()
     }
 
-    // parity: TS-components-Board-ea02ad
     #[test]
     fn priority_sort_orders_the_cards() {
         let tasks = TasksByStatus {
@@ -622,7 +611,6 @@ mod tests {
         );
     }
 
-    // parity: TS-components-Board-e0b147
     #[test]
     fn without_sort_keys_the_database_order_is_kept() {
         let tasks = board(&[(TaskStatus::Todo, &["b", "a", "c"])]);
@@ -637,7 +625,6 @@ mod tests {
         assert_eq!(ids(&displayed.todo), ["b", "a", "c"]);
     }
 
-    // parity: TS-components-Board-154d47
     #[test]
     fn inherited_root_priority_is_used_when_sorting_cards() {
         let (mut tasks, catalog) = root_and_child_catalog();
@@ -650,7 +637,6 @@ mod tests {
         );
     }
 
-    // parity: TS-components-Board-3bf9ed
     #[test]
     fn only_progress_cards_with_worktrees_are_refreshed() {
         let mut tasks = TasksByStatus::default();
@@ -704,7 +690,6 @@ mod tests {
         ));
     }
 
-    // parity: TS-components-Board-8b6a23
     #[test]
     fn desktop_filter_narrows_project_filter_candidates() {
         let local = project("local");

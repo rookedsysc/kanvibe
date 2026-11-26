@@ -15,7 +15,6 @@ fn pair_call(body: &serde_json::Value) -> HttpCall {
     HttpCall::new("POST", "/api/mobile/pair").json(body)
 }
 
-// parity: TS-electron-mobileRoutes-67db0c
 #[tokio::test]
 async fn pairing_passes_without_a_token() {
     let server = TestServer::start().await;
@@ -31,7 +30,6 @@ async fn pairing_passes_without_a_token() {
     assert_eq!(server.fake.count("authorize_mobile_request"), 0);
 }
 
-// parity: TS-electron-mobileRoutes-8ada68
 #[tokio::test]
 async fn board_and_pane_routes_need_a_token() {
     let server = TestServer::start().await;
@@ -49,7 +47,6 @@ async fn board_and_pane_routes_need_a_token() {
     );
 }
 
-// parity: TS-electron-mobileRoutes-8bc315
 #[tokio::test]
 async fn unknown_paths_under_the_mobile_prefix_are_404() {
     let server = TestServer::start().await;
@@ -57,7 +54,6 @@ async fn unknown_paths_under_the_mobile_prefix_are_404() {
     assert_eq!(reply.pair(), (404, failure("Not found")));
 }
 
-// parity: TS-electron-mobileRoutes-b60ec3
 #[tokio::test]
 async fn non_mobile_paths_fall_through_to_hook_routing() {
     let server = TestServer::start().await;
@@ -66,7 +62,6 @@ async fn non_mobile_paths_fall_through_to_hook_routing() {
     assert_eq!(server.fake.count("authorize_mobile_request"), 0);
 }
 
-// parity: TS-electron-mobileRoutes-64db8c
 #[tokio::test]
 async fn unpairing_with_its_own_token_removes_only_that_token() {
     let server = TestServer::start().await;
@@ -80,7 +75,6 @@ async fn unpairing_with_its_own_token_removes_only_that_token() {
     );
 }
 
-// parity: TS-electron-mobileRoutes-a17fdb
 #[tokio::test]
 async fn unpairing_without_a_token_is_stopped_by_authentication() {
     let server = TestServer::start().await;
@@ -94,7 +88,6 @@ async fn unpairing_without_a_token_is_stopped_by_authentication() {
     assert_eq!(server.fake.count("unpair_mobile_device_by_token"), 0);
 }
 
-// parity: TS-electron-mobileRoutes-04da2d
 #[tokio::test]
 async fn unpairing_with_an_unknown_token_is_stopped_by_authentication() {
     let server = TestServer::start().await;
@@ -105,7 +98,6 @@ async fn unpairing_with_an_unknown_token_is_stopped_by_authentication() {
     assert_eq!(server.fake.count("unpair_mobile_device_by_token"), 0);
 }
 
-// parity: TS-electron-mobileRoutes-659085
 #[tokio::test]
 async fn a_device_unpaired_between_authentication_and_removal_gets_401() {
     let server = TestServer::start().await;
@@ -118,7 +110,6 @@ async fn a_device_unpaired_between_authentication_and_removal_gets_401() {
     assert_eq!(reply.pair(), (401, failure(UNPAIRED_ERROR)));
 }
 
-// parity: TS-electron-mobileRoutes-b0e684
 #[tokio::test]
 async fn a_throwing_removal_answers_500_instead_of_hanging() {
     let server = TestServer::start().await;
@@ -131,7 +122,6 @@ async fn a_throwing_removal_answers_500_instead_of_hanging() {
     assert_eq!(reply.pair(), (500, failure("서버 오류")));
 }
 
-// parity: TS-electron-mobileRoutes-5a215f
 #[tokio::test]
 async fn long_device_names_are_truncated() {
     let server = TestServer::start().await;
@@ -146,7 +136,6 @@ async fn long_device_names_are_truncated() {
     );
 }
 
-// parity: TS-electron-mobileRoutes-d87f93
 #[tokio::test]
 async fn missing_device_names_use_the_default_name() {
     let server = TestServer::start().await;
@@ -159,7 +148,6 @@ async fn missing_device_names_use_the_default_name() {
     );
 }
 
-// parity: TS-electron-mobileRoutes-36b647
 #[tokio::test]
 async fn dev_runs_issue_a_pairing_code_to_this_machine() {
     let server = TestServer::start_with(RouteOptions {
@@ -179,7 +167,6 @@ async fn dev_runs_issue_a_pairing_code_to_this_machine() {
     assert_eq!(server.fake.count("start_mobile_pairing"), 1);
 }
 
-// parity: TS-electron-mobileRoutes-50954f
 #[tokio::test]
 async fn built_apps_answer_the_dev_route_like_an_unknown_path() {
     let server = TestServer::start().await;
@@ -193,7 +180,6 @@ async fn built_apps_answer_the_dev_route_like_an_unknown_path() {
     assert_eq!(server.fake.count("start_mobile_pairing"), 0);
 }
 
-// parity: TS-electron-mobileRoutes-65cc22
 #[tokio::test]
 async fn other_machines_get_the_unknown_path_answer_even_in_dev_runs() {
     let server = TestServer::start_with(RouteOptions {
@@ -214,7 +200,6 @@ async fn other_machines_get_the_unknown_path_answer_even_in_dev_runs() {
 }
 
 /// TS `readJsonBody`는 상한을 넘으면 `request.destroy()`로 소켓을 끊는다. 상대가 보는 결과는 응답 없는 끊김이다
-// parity: TS-electron-mobileRoutes-0625d5
 #[tokio::test]
 async fn bodies_over_the_limit_cut_the_socket_without_buffering() {
     let server = TestServer::start().await;
@@ -229,7 +214,6 @@ async fn bodies_over_the_limit_cut_the_socket_without_buffering() {
 }
 
 /// TS는 끊은 소켓의 가짜 응답 객체에 400을 썼지만 실제 연결에서는 그 응답이 나가지 못한다. 관찰되는 결과는 끊김이다
-// parity: TS-electron-mobileRoutes-a7b4e6
 #[tokio::test]
 async fn oversized_pairing_bodies_are_rejected_before_pairing() {
     let server = TestServer::start().await;

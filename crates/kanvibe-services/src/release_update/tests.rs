@@ -54,7 +54,6 @@ fn service_with(client: Arc<FakeReleaseFeedClient>) -> ReleaseUpdateService {
     ReleaseUpdateService::new(client, "1.0.0", false)
 }
 
-// parity: TS-main-releaseUpdateService-ae0bed
 #[test]
 fn development_runs_report_zero_as_the_current_version() {
     let service =
@@ -63,7 +62,6 @@ fn development_runs_report_zero_as_the_current_version() {
     assert_eq!(service.current_release_version(), "0.0.0");
 }
 
-// parity: TS-main-releaseUpdateService-62217e
 #[test]
 fn packaged_runs_report_the_app_version() {
     let service =
@@ -72,7 +70,6 @@ fn packaged_runs_report_the_app_version() {
     assert_eq!(service.current_release_version(), "1.2.3");
 }
 
-// parity: TS-main-releaseUpdateService-509244
 #[test]
 fn selects_the_highest_non_draft_release_above_the_current_version() {
     let mut draft = release("1.2.0", "Draft release", "Hidden");
@@ -98,7 +95,6 @@ fn selects_the_highest_non_draft_release_above_the_current_version() {
     );
 }
 
-// parity: TS-main-releaseUpdateService-df8fc4
 #[test]
 fn reports_no_update_when_the_github_request_fails() {
     let client =
@@ -118,7 +114,6 @@ fn reports_no_update_when_the_github_request_fails() {
     );
 }
 
-// parity: TS-main-releaseUpdateService-8754ed
 #[test]
 fn returns_release_details_from_github_releases() {
     let client = FakeReleaseFeedClient::new(Ok(json!([
@@ -143,7 +138,6 @@ fn returns_release_details_from_github_releases() {
     );
 }
 
-// parity: TS-main-releaseUpdateService-aea597
 #[test]
 fn concurrent_checks_share_one_request_without_consuming_the_release() {
     let client = FakeReleaseFeedClient::new(Ok(json!([release(
@@ -174,7 +168,6 @@ fn concurrent_checks_share_one_request_without_consuming_the_release() {
     }
 }
 
-// parity: TS-main-releaseUpdateService-48423c
 #[test]
 fn hides_a_cached_release_after_a_window_claims_it() {
     let client = FakeReleaseFeedClient::new(Ok(json!([release(

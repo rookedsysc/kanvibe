@@ -43,7 +43,6 @@ impl Scenario {
     }
 }
 
-// parity: TS-lib-hookServerStatus-c550f1
 #[test]
 fn marks_remote_hook_urls_with_a_mismatched_port_as_invalid() {
     let scenario = Scenario::new(
@@ -58,7 +57,6 @@ fn marks_remote_hook_urls_with_a_mismatched_port_as_invalid() {
     assert!(scenario.runner.calls().is_empty());
 }
 
-// parity: TS-lib-hookServerStatus-1e3925
 #[test]
 fn accepts_remote_hook_urls_with_a_different_host_when_the_port_matches() {
     let scenario = Scenario::new(
@@ -73,7 +71,6 @@ fn accepts_remote_hook_urls_with_a_different_host_when_the_port_matches() {
     scenario.assert_single_strict_command_containing("http://100.83.96.29:6379/api/hooks/health");
 }
 
-// parity: TS-lib-hookServerStatus-44c5a5
 #[test]
 fn accepts_remote_urls_on_the_active_port_when_the_route_cannot_be_recomputed() {
     let scenario = Scenario::new(
@@ -89,7 +86,6 @@ fn accepts_remote_urls_on_the_active_port_when_the_route_cannot_be_recomputed() 
     scenario.assert_single_strict_command_containing("http://100.83.96.29:9736/api/hooks/health");
 }
 
-// parity: TS-lib-hookServerStatus-cafe35
 #[test]
 fn rejects_remote_urls_with_a_stale_port_when_the_route_cannot_be_recomputed() {
     let scenario = Scenario::new(
@@ -104,7 +100,6 @@ fn rejects_remote_urls_with_a_stale_port_when_the_route_cannot_be_recomputed() {
     assert!(scenario.runner.calls().is_empty());
 }
 
-// parity: TS-lib-hookServerStatus-3d3793
 #[test]
 fn checks_hook_server_reachability_from_the_remote_host() {
     let scenario = Scenario::new(
@@ -121,7 +116,6 @@ fn checks_hook_server_reachability_from_the_remote_host() {
     );
 }
 
-// parity: TS-lib-hookServerStatus-d9b4c4
 #[test]
 fn ssh_connection_failure_is_not_reported_as_reachable() {
     let failing_runner = ScriptedCommandRunner::new(|_| {
@@ -137,7 +131,6 @@ fn ssh_connection_failure_is_not_reported_as_reachable() {
     assert!(!result.has_reachable_hook_server);
 }
 
-// parity: TS-lib-hookServerStatus-0e6bb9
 #[test]
 fn treats_a_local_health_check_failure_as_not_installed() {
     let mut runtime = FakeHookClientRuntime::new();

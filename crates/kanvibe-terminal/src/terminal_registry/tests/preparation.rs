@@ -48,7 +48,6 @@ fn harness_without_tmux_session() -> Harness {
     harness
 }
 
-// parity: TS-lib-terminalSessionPreparation-31dc9d
 #[test]
 fn missing_local_tmux_session_is_bootstrapped_once_without_attach() {
     // Given
@@ -65,7 +64,6 @@ fn missing_local_tmux_session_is_bootstrapped_once_without_attach() {
     assert!(!bootstrap_command.contains("attach-session"));
 }
 
-// parity: TS-lib-terminalSessionPreparation-674584
 #[test]
 fn concurrent_preparations_of_one_session_bootstrap_once() {
     // Given: 첫 부트스트랩이 끝나기 전에 같은 세션의 준비가 한 번 더 들어온다
@@ -104,7 +102,6 @@ fn concurrent_preparations_of_one_session_bootstrap_once() {
     assert_eq!(count_tmux_bootstraps(&harness), 1);
 }
 
-// parity: TS-lib-terminalSessionPreparation-968478
 #[test]
 fn alive_tmux_session_is_not_bootstrapped_again() {
     // Given
@@ -118,7 +115,6 @@ fn alive_tmux_session_is_not_bootstrapped_again() {
     assert_eq!(count_tmux_bootstraps(&harness), 0);
 }
 
-// parity: TS-lib-terminalSessionPreparation-f87371
 #[test]
 fn terminal_type_has_nothing_to_prepare_and_runs_no_command() {
     // Given
@@ -142,7 +138,6 @@ fn terminal_type_has_nothing_to_prepare_and_runs_no_command() {
     assert!(harness.commands().is_empty());
 }
 
-// parity: TS-lib-terminalSessionPreparation-985b34
 #[test]
 fn missing_local_zellij_session_is_created_in_background_with_the_layout() {
     // Given: worktree에 레이아웃 파일이 있다
@@ -169,7 +164,6 @@ fn missing_local_zellij_session_is_created_in_background_with_the_layout() {
     );
 }
 
-// parity: TS-lib-terminalSessionPreparation-a76e4d
 #[test]
 fn remote_tmux_preparation_runs_one_login_shell_command_without_attach() {
     // Given
@@ -194,7 +188,6 @@ fn remote_tmux_preparation_runs_one_login_shell_command_without_attach() {
     assert_valid_posix_syntax(remote_command);
 }
 
-// parity: TS-lib-terminalSessionPreparation-e225f5
 #[test]
 fn remote_zellij_preparation_creates_in_background_only_when_missing() {
     // Given
@@ -215,7 +208,6 @@ fn remote_zellij_preparation_creates_in_background_only_when_missing() {
     assert_valid_posix_syntax(&remote_command);
 }
 
-// parity: TS-lib-terminalSessionPreparation-d25563
 #[test]
 fn herdr_preparation_uses_the_space_bootstrap_and_returns_its_panes() {
     // Given

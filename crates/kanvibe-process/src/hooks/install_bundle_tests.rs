@@ -40,7 +40,6 @@ fn bootstrap(hook_server_url: &str, ticket: &HookInstallTicket) -> String {
     build_hook_install_bootstrap_command(hook_server_url, ticket, CLIENT_ID, None).unwrap()
 }
 
-// parity: TS-lib-hookInstallBundle-aa7040
 #[test]
 fn writes_every_provider_file_and_marks_completion() {
     let script = build_hook_install_script(&hook_files());
@@ -57,7 +56,6 @@ fn writes_every_provider_file_and_marks_completion() {
     );
 }
 
-// parity: TS-lib-hookInstallBundle-4a4f9f
 #[test]
 fn carries_file_content_as_base64_so_quotes_and_newlines_survive() {
     let files = hook_files();
@@ -68,7 +66,6 @@ fn carries_file_content_as_base64_so_quotes_and_newlines_survive() {
     assert!(!script.contains("echo '작업 완료'"));
 }
 
-// parity: TS-lib-hookInstallBundle-841f7a
 #[test]
 fn does_not_set_a_mode_for_files_that_do_not_need_one() {
     let script = build_hook_install_script(&hook_files()[1..]);
@@ -76,7 +73,6 @@ fn does_not_set_a_mode_for_files_that_do_not_need_one() {
     assert!(!script.contains("chmod"));
 }
 
-// parity: TS-lib-hookInstallBundle-54527f
 #[test]
 fn produces_the_same_script_for_the_same_files() {
     assert_eq!(
@@ -85,7 +81,6 @@ fn produces_the_same_script_for_the_same_files() {
     );
 }
 
-// parity: TS-lib-hookInstallBundle-6bdd35
 #[test]
 fn returns_the_registered_script_for_its_token() {
     let scripts = HookInstallScripts::default();
@@ -97,7 +92,6 @@ fn returns_the_registered_script_for_its_token() {
     );
 }
 
-// parity: TS-lib-hookInstallBundle-3c9310
 #[test]
 fn stays_readable_so_a_retried_install_can_reuse_the_token() {
     let scripts = HookInstallScripts::default();
@@ -108,7 +102,6 @@ fn stays_readable_so_a_retried_install_can_reuse_the_token() {
     assert!(scripts.read(Some(&ticket.token)).is_some());
 }
 
-// parity: TS-lib-hookInstallBundle-2dc128
 #[test]
 fn stops_serving_the_script_once_the_install_revokes_its_token() {
     let scripts = HookInstallScripts::default();
@@ -119,7 +112,6 @@ fn stops_serving_the_script_once_the_install_revokes_its_token() {
     assert_eq!(scripts.read(Some(&ticket.token)), None);
 }
 
-// parity: TS-lib-hookInstallBundle-6067e1
 #[test]
 fn rejects_an_unknown_token() {
     let scripts = HookInstallScripts::default();
@@ -128,7 +120,6 @@ fn rejects_an_unknown_token() {
     assert_eq!(scripts.read(Some(&"0".repeat(48))), None);
 }
 
-// parity: TS-lib-hookInstallBundle-503871
 #[test]
 fn rejects_a_missing_token() {
     let scripts = HookInstallScripts::default();
@@ -138,7 +129,6 @@ fn rejects_a_missing_token() {
     assert_eq!(scripts.read(Some("")), None);
 }
 
-// parity: TS-lib-hookInstallBundle-693c2f
 #[test]
 fn issues_an_unguessable_token_per_install() {
     let scripts = HookInstallScripts::default();
@@ -155,7 +145,6 @@ fn issues_an_unguessable_token_per_install() {
     );
 }
 
-// parity: TS-lib-hookInstallBundle-71af97
 #[test]
 fn issues_a_checksum_that_changes_with_the_install_payload() {
     let scripts = HookInstallScripts::default();
@@ -172,7 +161,6 @@ fn issues_a_checksum_that_changes_with_the_install_payload() {
     assert_ne!(ticket.script_sha256, other_ticket.script_sha256);
 }
 
-// parity: TS-lib-hookInstallBundle-4149d8
 #[test]
 fn issues_the_checksum_the_remote_computes_for_the_restored_script() {
     let scripts = HookInstallScripts::default();
@@ -197,7 +185,6 @@ fn issues_the_checksum_the_remote_computes_for_the_restored_script() {
     assert_eq!(run.stdout.trim(), ticket.script_sha256);
 }
 
-// parity: TS-lib-hookInstallBundle-14154f
 #[test]
 fn missing_install_socket_never_sends_the_token_to_a_tcp_address() {
     let workspace = tempfile::tempdir().unwrap();
@@ -223,7 +210,6 @@ fn missing_install_socket_never_sends_the_token_to_a_tcp_address() {
     assert_ne!(run.code, 0);
 }
 
-// parity: TS-lib-hookInstallBundle-ea32ec
 #[test]
 fn keeps_the_ssh_command_short_instead_of_carrying_the_payload() {
     let scripts = HookInstallScripts::default();
@@ -234,7 +220,6 @@ fn keeps_the_ssh_command_short_instead_of_carrying_the_payload() {
     assert!(command.contains(&format!("{HOOK_SERVER_URL}{HOOK_INSTALL_SCRIPT_PATH}'")));
 }
 
-// parity: TS-lib-hookInstallBundle-e4a532
 #[test]
 fn sends_the_install_token_as_a_header_not_in_the_url() {
     let scripts = HookInstallScripts::default();
@@ -249,7 +234,6 @@ fn sends_the_install_token_as_a_header_not_in_the_url() {
     )));
 }
 
-// parity: TS-lib-hookInstallBundle-535a60
 #[test]
 fn keeps_the_ssh_command_the_same_size_for_any_payload() {
     let scripts = HookInstallScripts::default();
@@ -269,7 +253,6 @@ fn keeps_the_ssh_command_the_same_size_for_any_payload() {
     assert_eq!(bulky_command.len(), small_command.len());
 }
 
-// parity: TS-lib-hookInstallBundle-e07262
 #[test]
 fn downloads_the_install_script_through_the_unix_socket() {
     let command = bootstrap(HOOK_SERVER_URL, &sample_ticket());
@@ -279,7 +262,6 @@ fn downloads_the_install_script_through_the_unix_socket() {
     ));
 }
 
-// parity: TS-lib-hookInstallBundle-deaba2
 #[test]
 fn bounds_the_download_so_fallback_is_quick() {
     let command = bootstrap(HOOK_SERVER_URL, &sample_ticket());
@@ -288,7 +270,6 @@ fn bounds_the_download_so_fallback_is_quick() {
     assert!(command.contains("--max-time 10"));
 }
 
-// parity: TS-lib-hookInstallBundle-ad772d
 #[test]
 fn downloads_fully_before_executing() {
     let command = bootstrap(HOOK_SERVER_URL, &sample_ticket());
@@ -297,7 +278,6 @@ fn downloads_fully_before_executing() {
     assert!(command.contains("printf '%s\\n' \"$__kanvibe_install_script\" | sh"));
 }
 
-// parity: TS-lib-hookInstallBundle-ef44c1
 #[test]
 fn executes_the_downloaded_script_only_after_its_checksum_matches() {
     let ticket = sample_ticket();
@@ -315,7 +295,6 @@ fn executes_the_downloaded_script_only_after_its_checksum_matches() {
     assert!(command.contains("sha256sum 2>/dev/null || shasum -a 256"));
 }
 
-// parity: TS-lib-hookInstallBundle-f4fa5d
 #[test]
 fn does_not_double_the_slash_for_a_trailing_slash_url() {
     let command = bootstrap("http://192.168.0.10:9736/", &sample_ticket());

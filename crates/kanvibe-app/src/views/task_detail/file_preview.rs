@@ -584,7 +584,6 @@ mod tests {
     use super::*;
     use kanvibe_domain::i18n::{Locale, Translator};
 
-    // parity: TS-renderer-AiChatFilePreview-2da909
     #[test]
     fn markdown_files_render_and_switch_to_their_source() {
         let mut preview = FilePreviewState::new("/repo/docs/plan.md".into());
@@ -595,7 +594,6 @@ mod tests {
         assert_eq!(preview.content.as_deref(), Some("# 계획"));
     }
 
-    // parity: TS-renderer-AiChatFilePreview-2aa06f
     #[test]
     fn copy_takes_the_whole_original_file_whatever_the_view() {
         let mut preview = FilePreviewState::new("/repo/docs/plan.md".into());
@@ -604,7 +602,6 @@ mod tests {
         assert_eq!(preview.content.as_deref(), Some("# 계획\n\n- 하나"));
     }
 
-    // parity: TS-renderer-AiChatFilePreview-0d05d8
     #[test]
     fn files_that_cannot_render_show_only_their_source() {
         assert_eq!(preview_kind("/repo/src/filters.ts"), PreviewKind::Source);
@@ -613,7 +610,6 @@ mod tests {
         assert!(has_view_toggle(preview_kind("/repo/README.MD")));
     }
 
-    // parity: TS-renderer-AiChatFilePreview-3c07ad
     #[test]
     fn another_file_starts_over_from_loading() {
         let mut first = FilePreviewState::new("/repo/a.md".into());
@@ -624,7 +620,6 @@ mod tests {
         assert_eq!(next.mode, PreviewMode::Rendered);
     }
 
-    // parity: TS-renderer-AiChatFilePreview-d4b925
     #[test]
     fn each_failure_reason_has_its_own_message() {
         let translator = Translator::new(Locale::Ko, "taskDetail");
@@ -651,7 +646,6 @@ mod tests {
         assert_eq!(preview.failure, Some(TaskWorkspaceFileFailure::NotFound));
     }
 
-    // parity: TS-renderer-AiChatFilePreview-efd9ab
     #[test]
     fn redrawing_the_same_file_keeps_its_highlighted_code() {
         let theme = ThemeTokens::for_mode(crate::theme::ThemeMode::Dark);
@@ -670,7 +664,6 @@ mod tests {
         assert_eq!(first.runs, second.runs);
     }
 
-    // parity: TS-renderer-AiChatFilePreview-a42a5d
     #[test]
     fn tex_equations_render_as_formulas_and_keep_their_source() {
         let source = "\\documentclass{article}\n% 주석\n\\begin{document}\n\\begin{equation}\nE = mc^2\n\\end{equation}\n\\end{document}";

@@ -250,7 +250,6 @@ fn add_fault(cx: &mut VisualTestContext, fault: serde_json::Value) {
     cx.update(|_, cx| cx.global::<AppServices>().faults().expect("QA").add(fault));
 }
 
-// parity: TS-renderer-AiAccountsRoute-ac5df1
 #[gpui::test]
 fn expired_account_logs_in_from_its_card_and_refreshes_afterwards(cx: &mut TestAppContext) {
     let backend = Arc::new(FakeBackend::default());
@@ -291,7 +290,6 @@ fn expired_account_logs_in_from_its_card_and_refreshes_afterwards(cx: &mut TestA
     assert_eq!(state.usage_calls, usage_before + 1);
 }
 
-// parity: TS-renderer-AiAccountsRoute-7b1fc0
 #[gpui::test]
 fn account_waiting_for_a_claude_run_counts_as_logged_in(cx: &mut TestAppContext) {
     let backend = Arc::new(FakeBackend::default());
@@ -318,7 +316,6 @@ fn account_waiting_for_a_claude_run_counts_as_logged_in(cx: &mut TestAppContext)
     assert!(!view.read_with(cx, |view, _| view.model.requires_login(&waiting)));
 }
 
-// parity: TS-renderer-AiAccountsRoute-e96cb5
 #[gpui::test]
 fn failed_login_keeps_the_output_and_can_be_closed_and_retried(cx: &mut TestAppContext) {
     let backend = Arc::new(FakeBackend::default());
@@ -361,7 +358,6 @@ fn failed_login_keeps_the_output_and_can_be_closed_and_retried(cx: &mut TestAppC
     );
 }
 
-// parity: TS-renderer-AiAccountsRoute-c9de3b
 #[gpui::test]
 fn same_named_accounts_get_only_their_own_usage(cx: &mut TestAppContext) {
     let backend = Arc::new(FakeBackend::default());
@@ -391,7 +387,6 @@ fn same_named_accounts_get_only_their_own_usage(cx: &mut TestAppContext) {
     });
 }
 
-// parity: TS-renderer-AiAccountsRoute-de6f29
 #[gpui::test]
 fn usage_failure_still_allows_adding_and_logging_in(cx: &mut TestAppContext) {
     let backend = Arc::new(FakeBackend::default());
@@ -407,7 +402,6 @@ fn usage_failure_still_allows_adding_and_logging_in(cx: &mut TestAppContext) {
     assert_eq!(backend.state.lock().unwrap().open_calls, 1);
 }
 
-// parity: TS-renderer-AiAccountsRoute-65a19b
 #[gpui::test]
 fn first_list_failure_shows_the_reason_and_retry_rereads(cx: &mut TestAppContext) {
     let backend = Arc::new(FakeBackend::default());
@@ -427,7 +421,6 @@ fn first_list_failure_shows_the_reason_and_retry_rereads(cx: &mut TestAppContext
     assert!(view.read_with(cx, |view, _| view.model.accounts.is_some()));
 }
 
-// parity: TS-renderer-AiAccountsRoute-c793c0
 #[gpui::test]
 fn removal_shows_progress_blocks_others_and_leaves_failure_on_the_row(cx: &mut TestAppContext) {
     let backend = Arc::new(FakeBackend::default());
@@ -468,7 +461,6 @@ fn removal_shows_progress_blocks_others_and_leaves_failure_on_the_row(cx: &mut T
     });
 }
 
-// parity: TS-renderer-AiAccountsRoute-3faf8d
 #[gpui::test]
 fn adding_blocks_repeat_submits_and_keeps_a_failure_reason(cx: &mut TestAppContext) {
     let backend = Arc::new(FakeBackend::default());
@@ -513,7 +505,6 @@ fn open_login_terminal(
     (view, cx)
 }
 
-// parity: TS-renderer-AiAccountLoginTerminal-258162
 #[gpui::test]
 fn exited_login_no_longer_takes_input(cx: &mut TestAppContext) {
     let backend = Arc::new(FakeBackend::default());
@@ -529,7 +520,6 @@ fn exited_login_no_longer_takes_input(cx: &mut TestAppContext) {
     assert!(backend.state.lock().unwrap().writes.is_empty());
 }
 
-// parity: TS-renderer-AiAccountLoginTerminal-71163a
 #[gpui::test]
 fn osc52_copy_in_the_login_terminal_reaches_the_clipboard(cx: &mut TestAppContext) {
     let backend = Arc::new(FakeBackend::default());
@@ -544,7 +534,6 @@ fn osc52_copy_in_the_login_terminal_reaches_the_clipboard(cx: &mut TestAppContex
     assert_eq!(copied.as_deref(), Some("CODE-1234"));
 }
 
-// parity: TS-renderer-AiAccountLoginTerminal-abc982
 #[gpui::test]
 fn closed_login_terminal_stops_handling_osc52(cx: &mut TestAppContext) {
     let backend = Arc::new(FakeBackend::default());
@@ -561,7 +550,6 @@ fn closed_login_terminal_stops_handling_osc52(cx: &mut TestAppContext) {
     assert_eq!(copied, None);
 }
 
-// parity: TS-renderer-AiAccountLoginTerminal-d76947
 #[gpui::test]
 fn unmounting_closes_the_pending_login(cx: &mut TestAppContext) {
     let backend = Arc::new(FakeBackend::default());
@@ -571,7 +559,6 @@ fn unmounting_closes_the_pending_login(cx: &mut TestAppContext) {
     assert_eq!(backend.state.lock().unwrap().close_calls, 1);
 }
 
-// parity: TS-renderer-AiAccountLoginTerminal-1f51ab
 #[gpui::test]
 fn refused_login_shows_the_reason_and_leaves_no_session(cx: &mut TestAppContext) {
     let backend = Arc::new(FakeBackend::default());
@@ -595,7 +582,6 @@ fn usage_reuse_flags(backend: &FakeBackend) -> Vec<bool> {
     backend.state.lock().unwrap().usage_reuse_flags.clone()
 }
 
-// parity: TS-renderer-useAiUsage-dd57d0
 #[gpui::test]
 fn usage_rereads_every_five_minutes_while_the_window_is_active(cx: &mut TestAppContext) {
     let backend = Arc::new(FakeBackend::default());
@@ -607,7 +593,6 @@ fn usage_rereads_every_five_minutes_while_the_window_is_active(cx: &mut TestAppC
     assert_eq!(usage_reuse_flags(&backend), vec![true, true]);
 }
 
-// parity: TS-renderer-useAiUsage-a9ac6c
 #[gpui::test]
 fn inactive_window_waits_and_reads_the_missed_usage_on_return(cx: &mut TestAppContext) {
     let backend = Arc::new(FakeBackend::default());
@@ -628,7 +613,6 @@ fn inactive_window_waits_and_reads_the_missed_usage_on_return(cx: &mut TestAppCo
     );
 }
 
-// parity: TS-renderer-useAiUsage-85e78b
 #[gpui::test]
 fn self_started_reads_share_results_but_refresh_reads_fresh(cx: &mut TestAppContext) {
     let backend = Arc::new(FakeBackend::default());
@@ -639,7 +623,6 @@ fn self_started_reads_share_results_but_refresh_reads_fresh(cx: &mut TestAppCont
     assert_eq!(usage_reuse_flags(&backend), vec![true, false]);
 }
 
-// parity: TS-renderer-useAiUsage-057629
 #[gpui::test]
 fn refresh_during_a_read_reads_once_more_afterwards(cx: &mut TestAppContext) {
     let backend = Arc::new(FakeBackend::default());
@@ -660,7 +643,6 @@ fn refresh_during_a_read_reads_once_more_afterwards(cx: &mut TestAppContext) {
     assert_eq!(usage_reuse_flags(&backend), vec![true, false, false]);
 }
 
-// parity: TS-renderer-useAiUsage-65f124
 #[gpui::test]
 fn failed_usage_read_retries_on_the_next_cycle_not_immediately(cx: &mut TestAppContext) {
     let backend = Arc::new(FakeBackend::default());
@@ -684,7 +666,6 @@ fn snapshot_fetched_at(fetched_at: &str) -> AiUsageSnapshot {
     }
 }
 
-// parity: TS-renderer-useAiUsage-5cef6c
 #[gpui::test]
 fn cached_usage_shows_while_the_fresh_read_is_pending(cx: &mut TestAppContext) {
     let backend = Arc::new(FakeBackend::default());
@@ -705,7 +686,6 @@ fn cached_usage_shows_while_the_fresh_read_is_pending(cx: &mut TestAppContext) {
     });
 }
 
-// parity: TS-renderer-useAiUsage-1b0a56
 #[test]
 fn loading_shows_only_without_a_cached_usage() {
     let mut usage = UsageState {
@@ -717,7 +697,6 @@ fn loading_shows_only_without_a_cached_usage() {
     assert!(!usage.is_loading(), "캐시가 있으면 갱신 중으로만 보인다");
 }
 
-// parity: TS-renderer-useAiUsage-b88d08
 #[test]
 fn late_cache_does_not_overwrite_a_fresh_usage() {
     let mut usage = UsageState::default();
@@ -729,7 +708,6 @@ fn late_cache_does_not_overwrite_a_fresh_usage() {
     );
 }
 
-// parity: TS-renderer-useAiUsage-aad1f0
 #[test]
 fn failed_read_keeps_the_shown_cache() {
     let mut usage = UsageState::default();
@@ -739,7 +717,6 @@ fn failed_read_keeps_the_shown_cache() {
     assert!(usage.snapshot.is_some());
 }
 
-// parity: TS-renderer-useAiUsage-fdd75f
 #[gpui::test]
 fn refresh_reads_again_even_within_the_cache_period(cx: &mut TestAppContext) {
     let backend = Arc::new(FakeBackend::default());
@@ -752,7 +729,6 @@ fn refresh_reads_again_even_within_the_cache_period(cx: &mut TestAppContext) {
     assert_eq!(usage_reuse_flags(&backend), vec![true, false, false]);
 }
 
-// parity: TS-renderer-useAiUsage-039e52
 #[gpui::test]
 fn stale_result_waits_a_full_cycle_instead_of_rereading_at_once(cx: &mut TestAppContext) {
     let backend = Arc::new(FakeBackend::default());
@@ -772,7 +748,6 @@ fn stale_result_waits_a_full_cycle_instead_of_rereading_at_once(cx: &mut TestApp
     assert_eq!(usage_reuse_flags(&backend).len(), 2);
 }
 
-// parity: TS-renderer-useAiUsage-e462b9
 #[gpui::test]
 fn closed_screen_reads_no_more_usage(cx: &mut TestAppContext) {
     let backend = Arc::new(FakeBackend::default());

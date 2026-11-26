@@ -1,3 +1,0 @@
-# Rust로 옮기지 않는 src/hooks/** TS 테스트. 각 이유는 Rust 쪽에 해당 경로가 없는 근거를 적는다.
-- id: TS-hooks-useTaskNotification-aa9e6d
-  reason: "브라우저 Notification.permission이 default일 때 requestPermission을 부르는지 보는 웹 권한 테스트다. TS 데스크톱(kanvibeDesktop.isDesktop)도 이 요청을 건너뛰었고, Rust는 런타임이 DesktopNotificationPresenter에 바로 넘겨 앱이 GPUI show_system_notification으로 띄우므로 물어볼 권한 상태 자체가 없다. 상태 변경이 권한 단계 없이 바로 OS 알림이 되는 것은 enabled_status_change_raises_os_notification_with_title_status_and_description이 확인한다."

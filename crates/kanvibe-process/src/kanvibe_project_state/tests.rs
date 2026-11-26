@@ -117,7 +117,6 @@ fn parse_json(content: &str) -> Value {
     serde_json::from_str(content).unwrap()
 }
 
-// parity: TS-lib-kanvibeProjectState-e4ac82
 #[test]
 fn builds_extensible_status_json_without_task_or_url_mappings() {
     let content = build_kanvibe_task_state_content(TaskStatus::Review);
@@ -132,7 +131,6 @@ fn builds_extensible_status_json_without_task_or_url_mappings() {
     }
 }
 
-// parity: TS-lib-kanvibeProjectState-73dbb5
 #[test]
 fn project_color_lives_in_project_json_not_status_json() {
     let task_state = parse_json(&build_kanvibe_task_state_content(TaskStatus::Progress));
@@ -151,7 +149,6 @@ fn project_color_lives_in_project_json_not_status_json() {
     );
 }
 
-// parity: TS-lib-kanvibeProjectState-02f514
 #[test]
 fn project_priority_is_stored_in_project_json_with_the_color() {
     let content =
@@ -167,7 +164,6 @@ fn project_priority_is_stored_in_project_json_with_the_color() {
     assert!(parsed.updated_at.is_some());
 }
 
-// parity: TS-lib-kanvibeProjectState-98486e
 #[test]
 fn only_rrggbb_colors_pass() {
     assert_eq!(parse_project_color("#65D08A").as_deref(), Some("#65D08A"));
@@ -181,7 +177,6 @@ fn only_rrggbb_colors_pass() {
     assert_eq!(parse_kanvibe_project_state(r#"{"projectColor":42}"#), None);
 }
 
-// parity: TS-lib-kanvibeProjectState-61e159
 #[test]
 fn normalizes_persisted_task_statuses_and_rejects_unusable_state_files() {
     assert_eq!(parse_task_status("PROGRESS"), Some(TaskStatus::Progress));
@@ -212,7 +207,6 @@ fn normalizes_persisted_task_statuses_and_rejects_unusable_state_files() {
     );
 }
 
-// parity: TS-lib-kanvibeProjectState-54d23f
 #[test]
 fn uses_host_aware_status_json_paths_when_reading_and_writing() {
     let fixture = Fixture::new();
@@ -244,7 +238,6 @@ fn uses_host_aware_status_json_paths_when_reading_and_writing() {
     );
 }
 
-// parity: TS-lib-kanvibeProjectState-e78359
 #[test]
 fn status_and_color_writes_use_different_files() {
     let fixture = Fixture::new();
@@ -266,7 +259,6 @@ fn status_and_color_writes_use_different_files() {
     );
 }
 
-// parity: TS-lib-kanvibeProjectState-228ea6
 #[test]
 fn status_write_overwrites_status_json_without_reading() {
     let runner = Arc::new(ScriptedCommandRunner::returning(""));
@@ -281,7 +273,6 @@ fn status_write_overwrites_status_json_without_reading() {
     assert!(commands[0].ends_with("> '/remote/repo/.kanvibe/status.json'"));
 }
 
-// parity: TS-lib-kanvibeProjectState-9bf616
 #[test]
 fn color_is_read_from_the_host_specific_project_json() {
     let fixture = Fixture::new();
@@ -301,7 +292,6 @@ fn color_is_read_from_the_host_specific_project_json() {
     );
 }
 
-// parity: TS-lib-kanvibeProjectState-7d8d37
 #[test]
 fn color_and_priority_writes_keep_each_other() {
     let fixture = Fixture::new();
@@ -337,7 +327,6 @@ fn color_and_priority_writes_keep_each_other() {
     );
 }
 
-// parity: TS-lib-kanvibeProjectState-f6299d
 #[test]
 fn malformed_colors_are_not_written() {
     let fixture = Fixture::new();
@@ -347,7 +336,6 @@ fn malformed_colors_are_not_written() {
     assert!(!std::path::Path::new(&fixture.state_path("project.json")).exists());
 }
 
-// parity: TS-lib-kanvibeProjectState-2070d5
 #[test]
 fn seed_color_is_written_only_when_the_file_is_absent() {
     let fixture = Fixture::new();
@@ -368,7 +356,6 @@ fn seed_color_is_written_only_when_the_file_is_absent() {
     );
 }
 
-// parity: TS-lib-kanvibeProjectState-1657cc
 #[test]
 fn malformed_seed_colors_are_not_written() {
     let fixture = Fixture::new();
@@ -379,7 +366,6 @@ fn malformed_seed_colors_are_not_written() {
     assert!(!std::path::Path::new(&fixture.state_path("project.json")).exists());
 }
 
-// parity: TS-lib-kanvibeProjectState-5af8ce
 #[test]
 fn builds_and_parses_targets_json_as_client_url_to_task_mappings() {
     let content = build_kanvibe_targets_content(&[
@@ -404,7 +390,6 @@ fn builds_and_parses_targets_json_as_client_url_to_task_mappings() {
     assert_eq!(parse_kanvibe_targets("not-json").targets, []);
 }
 
-// parity: TS-lib-kanvibeProjectState-168ef2
 #[test]
 fn keeps_transport_and_drops_unknown_transports_instead_of_downgrading() {
     let targets = vec![
@@ -428,7 +413,6 @@ fn keeps_transport_and_drops_unknown_transports_instead_of_downgrading() {
     assert_eq!(invalid.targets, []);
 }
 
-// parity: TS-lib-kanvibeProjectState-8a8359
 #[test]
 fn other_clients_watching_the_same_task_stay_registered() {
     let fixture = Fixture::new();
@@ -458,7 +442,6 @@ fn other_clients_watching_the_same_task_stay_registered() {
     );
 }
 
-// parity: TS-lib-kanvibeProjectState-c8c08d
 #[test]
 fn refreshes_my_token_keeps_peer_tokens_and_writes_targets_owner_only() {
     use std::os::unix::fs::PermissionsExt;
@@ -482,7 +465,6 @@ fn refreshes_my_token_keeps_peer_tokens_and_writes_targets_owner_only() {
     assert_eq!(mode & 0o777, 0o600);
 }
 
-// parity: TS-lib-kanvibeProjectState-9f8c09
 #[test]
 fn reinstalling_the_same_client_for_another_task_replaces_only_the_task_id() {
     let fixture = Fixture::new();
@@ -509,7 +491,6 @@ fn reinstalling_the_same_client_for_another_task_replaces_only_the_task_id() {
     );
 }
 
-// parity: TS-lib-kanvibeProjectState-6d34fc
 #[test]
 fn reinstall_after_ip_change_replaces_the_stale_entry_and_its_old_address() {
     let stale_targets = [
@@ -537,7 +518,6 @@ fn reinstall_after_ip_change_replaces_the_stale_entry_and_its_old_address() {
     }
 }
 
-// parity: TS-lib-kanvibeProjectState-1e84ef
 #[test]
 fn a_target_counts_as_registered_only_when_url_and_task_both_match() {
     let content =
@@ -561,7 +541,6 @@ fn a_target_counts_as_registered_only_when_url_and_task_both_match() {
     ));
 }
 
-// parity: TS-lib-kanvibeProjectState-dccfb4
 #[test]
 fn task_description_is_written_to_task_json_not_status_json() {
     let fixture = Fixture::new();
@@ -587,7 +566,6 @@ fn task_description_is_written_to_task_json_not_status_json() {
     );
 }
 
-// parity: TS-lib-kanvibeProjectState-eb55b3
 #[test]
 fn task_priority_is_written_to_task_json_with_the_description() {
     let content = build_kanvibe_task_description_content(
@@ -608,7 +586,6 @@ fn task_priority_is_written_to_task_json_with_the_description() {
     assert!(parsed.updated_at.is_some());
 }
 
-// parity: TS-lib-kanvibeProjectState-d0b64f
 #[test]
 fn clearing_the_description_writes_null_so_other_devices_clear_it() {
     let content = build_kanvibe_task_description_content(Some(None), None, None);
@@ -625,7 +602,6 @@ fn clearing_the_description_writes_null_so_other_devices_clear_it() {
     );
 }
 
-// parity: TS-lib-kanvibeProjectState-4903b6
 #[test]
 fn session_write_keeps_the_existing_description_and_priority() {
     let fixture = Fixture::new();
@@ -660,7 +636,6 @@ fn session_write_keeps_the_existing_description_and_priority() {
     );
 }
 
-// parity: TS-lib-kanvibeProjectState-7c13e6
 #[test]
 fn description_write_keeps_the_existing_session() {
     let fixture = Fixture::new();
@@ -689,7 +664,6 @@ fn description_write_keeps_the_existing_session() {
     );
 }
 
-// parity: TS-lib-kanvibeProjectState-028247
 #[test]
 fn reads_session_only_task_json_and_ignores_unknown_types_or_empty_names() {
     let session_only = parse_kanvibe_task_description(
@@ -711,7 +685,6 @@ fn reads_session_only_task_json_and_ignores_unknown_types_or_empty_names() {
     assert_eq!(empty_name.unwrap().session, None);
 }
 
-// parity: TS-lib-kanvibeProjectState-633990
 #[test]
 fn sync_state_includes_the_session_from_task_json() {
     let fixture = Fixture::new();
@@ -731,7 +704,6 @@ fn sync_state_includes_the_session_from_task_json() {
     assert_eq!(sync_state.description, None);
 }
 
-// parity: TS-lib-kanvibeProjectState-48b1e6
 #[test]
 fn missing_or_malformed_description_files_mean_no_information() {
     assert_eq!(parse_kanvibe_task_description(""), None);
@@ -746,7 +718,6 @@ fn missing_or_malformed_description_files_mean_no_information() {
     );
 }
 
-// parity: TS-lib-kanvibeProjectState-dc4ac5
 #[test]
 fn reads_status_and_description_in_one_remote_round_trip() {
     let fixture = Fixture::new();
@@ -770,7 +741,6 @@ fn reads_status_and_description_in_one_remote_round_trip() {
     assert_eq!(fixture.remote_manifest_paths(), expected_paths);
 }
 
-// parity: TS-lib-kanvibeProjectState-ef04c7
 #[test]
 fn task_priority_wins_and_project_priority_is_returned_alongside() {
     let cases = [
@@ -797,7 +767,6 @@ fn task_priority_wins_and_project_priority_is_returned_alongside() {
     }
 }
 
-// parity: TS-lib-kanvibeProjectState-53ef58
 #[test]
 fn missing_status_or_description_files_are_each_reported_as_absent() {
     let fixture = Fixture::new();

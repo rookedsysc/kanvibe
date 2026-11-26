@@ -58,7 +58,6 @@ packaging/macos/build-macos.sh
    cargo fmt --all --check                                  # 포맷
    cargo clippy --workspace --all-targets -- -D warnings    # 린트
    cargo nextest run --workspace                            # 테스트
-   cargo xtask parity check                                 # TS 동등성 장부
    cargo build --workspace --release                        # 릴리스 빌드
    ```
 

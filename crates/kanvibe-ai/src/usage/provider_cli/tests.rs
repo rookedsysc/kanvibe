@@ -17,7 +17,6 @@ fn environment_for(
     create_provider_cli_environment(&usage.context, config_dir_spec(provider), account_root)
 }
 
-// parity: TS-aiUsage-providerCli-8e656d
 #[test]
 fn adds_only_the_account_location_variable() {
     let usage = usage_with(&[]);
@@ -30,7 +29,6 @@ fn adds_only_the_account_location_variable() {
     assert!(!environment.contains_key("CODEX_HOME"));
 }
 
-// parity: TS-aiUsage-providerCli-1aa6e4
 #[test]
 fn server_runtime_and_kanvibe_values_never_reach_the_cli() {
     let usage = usage_with(&[
@@ -49,7 +47,6 @@ fn server_runtime_and_kanvibe_values_never_reach_the_cli() {
     );
 }
 
-// parity: TS-aiUsage-providerCli-773feb
 #[test]
 fn default_root_gets_no_location_variable() {
     let usage = usage_with(&[]);
@@ -57,7 +54,6 @@ fn default_root_gets_no_location_variable() {
     assert!(!environment.contains_key("CLAUDE_CONFIG_DIR"));
 }
 
-// parity: TS-aiUsage-providerCli-a8dcae
 #[test]
 fn inherited_location_variable_is_dropped_for_default_root() {
     let usage = usage_with(&[("CLAUDE_CONFIG_DIR", "/home/tester/.claude-work")]);
@@ -65,7 +61,6 @@ fn inherited_location_variable_is_dropped_for_default_root() {
     assert!(!environment.contains_key("CLAUDE_CONFIG_DIR"));
 }
 
-// parity: TS-aiUsage-providerCli-8aa7cc
 #[test]
 fn home_as_default_root_gets_no_location_variable() {
     let usage = usage_with(&[]);
@@ -73,7 +68,6 @@ fn home_as_default_root_gets_no_location_variable() {
     assert!(!environment.contains_key("GEMINI_CLI_HOME"));
 }
 
-// parity: TS-aiUsage-providerCli-b6499e
 #[test]
 fn claude_login_goes_straight_to_subscription_login() {
     assert_eq!(
@@ -89,7 +83,6 @@ fn claude_login_goes_straight_to_subscription_login() {
     );
 }
 
-// parity: TS-aiUsage-providerCli-66cf9d
 #[test]
 fn gemini_login_opens_the_cli_itself() {
     assert_eq!(
@@ -111,7 +104,6 @@ fn status_with(
     read_provider_auth_status(&usage.context, provider, account_root)
 }
 
-// parity: TS-aiUsage-providerCli-a24b29
 #[test]
 fn claude_reports_login_email_and_plan() {
     let stdout =
@@ -130,7 +122,6 @@ fn claude_reports_login_email_and_plan() {
     );
 }
 
-// parity: TS-aiUsage-providerCli-e0bceb
 #[test]
 fn codex_reports_login_state_only() {
     assert_eq!(
@@ -147,7 +138,6 @@ fn codex_reports_login_state_only() {
     );
 }
 
-// parity: TS-aiUsage-providerCli-dc69e2
 #[test]
 fn codex_logged_out_text_is_not_logged_in() {
     assert_eq!(
@@ -164,7 +154,6 @@ fn codex_logged_out_text_is_not_logged_in() {
     );
 }
 
-// parity: TS-aiUsage-providerCli-f92eae
 #[test]
 fn providers_without_status_command_are_unknown() {
     let usage = usage_with(&[]);
@@ -179,7 +168,6 @@ fn providers_without_status_command_are_unknown() {
     assert_eq!(usage.processes.request_count(), 0);
 }
 
-// parity: TS-aiUsage-providerCli-32ff74
 #[test]
 fn unrunnable_cli_is_unknown() {
     assert_eq!(
@@ -192,7 +180,6 @@ fn unrunnable_cli_is_unknown() {
     );
 }
 
-// parity: TS-aiUsage-providerCli-731ef5
 #[test]
 fn unreadable_output_is_unknown() {
     assert_eq!(

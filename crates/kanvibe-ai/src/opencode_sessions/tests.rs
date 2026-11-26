@@ -55,7 +55,6 @@ fn insert_session(connection: &Connection, id: &str, directory: &str, time: i64,
 
 const SCOPED_WORKTREE: &str = "/fixtures/repo_%/task";
 
-// parity: TS-aiSessions-openCodeQueryScope-40ef1e
 #[test]
 fn filters_worktree_and_descendants_before_limiting_candidates() {
     let (_directory, home) = temp_home();
@@ -110,7 +109,6 @@ fn filters_worktree_and_descendants_before_limiting_candidates() {
     assert_eq!(live_ids, ["nested", "target"]);
 }
 
-// parity: TS-aiSessions-openCodeQueryScope-689243
 #[test]
 fn applies_search_before_limiting_candidates() {
     let (_directory, home) = temp_home();
@@ -193,7 +191,6 @@ CREATE TABLE part (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, message_id TEX
     }
 }
 
-// parity: TS-aiSessions-readAiSessions-d67a27
 #[test]
 fn falls_back_to_python_sqlite_when_native_sqlite_cannot_open() {
     let (_directory, home) = temp_home();
@@ -282,7 +279,6 @@ fn remote_detail_rows() -> String {
     ]))
 }
 
-// parity: TS-aiSessions-readAiSessions-a789ca
 #[test]
 fn reads_remote_opencode_sessions_and_detail_over_ssh() {
     let python_calls = std::sync::Arc::new(AtomicUsize::new(0));
@@ -395,7 +391,6 @@ fn literal_rows(matching_id: Option<&str>) -> Vec<Value> {
         .collect()
 }
 
-// parity: TS-aiSessions-readAiSessions-0eafcf
 #[test]
 fn treats_body_search_wildcards_as_literal_text() {
     let (_directory, home) = temp_home();

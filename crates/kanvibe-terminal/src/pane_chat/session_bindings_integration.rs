@@ -242,7 +242,6 @@ fn binds_real_stdin_session(
     assert_eq!(status["status"], "progress");
 }
 
-// parity: TS-aiSessions-paneChatSessionBindingsIntegration-ad3b95
 #[test]
 fn ancestor_pid_and_start_time_bind_the_real_stdin_session() {
     binds_real_stdin_session(

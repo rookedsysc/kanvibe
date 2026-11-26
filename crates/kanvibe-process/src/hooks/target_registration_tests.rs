@@ -45,7 +45,6 @@ fn read_targets(repo_path: &std::path::Path) -> Value {
     serde_json::from_str(&content).unwrap()
 }
 
-// parity: TS-lib-hookTargetRegistration-3ed85b
 #[test]
 fn registering_a_client_records_the_task_cli_token() {
     let repo = tempfile::tempdir().unwrap();
@@ -72,7 +71,6 @@ fn registering_a_client_records_the_task_cli_token() {
     );
 }
 
-// parity: TS-lib-hookTargetRegistration-c64e7a
 #[test]
 fn remote_registration_without_transport_or_client_id_needs_reinstall() {
     let remote_url = Some("http://10.0.0.5:9736");
@@ -132,7 +130,6 @@ fn remote_registration_without_transport_or_client_id_needs_reinstall() {
     );
 }
 
-// parity: TS-lib-hookTargetRegistration-b0c9ee
 #[test]
 fn local_registration_records_the_transport_too() {
     let repo = tempfile::tempdir().unwrap();
@@ -151,7 +148,6 @@ fn local_registration_records_the_transport_too() {
     assert!(runtime.tunnel_hosts.lock().unwrap().is_empty());
 }
 
-// parity: TS-lib-hookTargetRegistration-224791
 #[test]
 fn tokenless_legacy_registration_counts_as_not_installed() {
     assert_eq!(
@@ -174,7 +170,6 @@ fn tokenless_legacy_registration_counts_as_not_installed() {
     );
 }
 
-// parity: TS-lib-hookTargetRegistration-608239
 #[test]
 fn both_client_url_and_task_id_must_be_registered() {
     assert_eq!(
@@ -188,7 +183,6 @@ fn both_client_url_and_task_id_must_be_registered() {
     );
 }
 
-// parity: TS-lib-hookTargetRegistration-cb70cd
 #[test]
 fn another_client_registering_the_task_does_not_install_this_client() {
     assert_eq!(
@@ -202,7 +196,6 @@ fn another_client_registering_the_task_does_not_install_this_client() {
     );
 }
 
-// parity: TS-lib-hookTargetRegistration-b867fa
 #[test]
 fn unregistered_task_is_not_installed() {
     assert_eq!(
@@ -216,7 +209,6 @@ fn unregistered_task_is_not_installed() {
     );
 }
 
-// parity: TS-lib-hookTargetRegistration-5764cc
 #[test]
 fn unknown_hook_server_url_falls_back_to_task_registration() {
     assert_eq!(
@@ -229,7 +221,6 @@ fn unknown_hook_server_url_falls_back_to_task_registration() {
     );
 }
 
-// parity: TS-lib-hookTargetRegistration-11a20d
 #[test]
 fn no_task_to_check_skips_the_registration_check() {
     assert_eq!(

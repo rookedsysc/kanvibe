@@ -79,7 +79,6 @@ pub fn serialize_board_sort_preference(preference: &BoardSortPreference) -> Stri
 mod tests {
     use super::*;
 
-    // parity: TS-shared-boardSort-d39fb9
     #[test]
     fn restores_the_saved_keys() {
         let preference = BoardSortPreference {
@@ -103,7 +102,6 @@ mod tests {
         );
     }
 
-    // parity: TS-shared-boardSort-f007eb
     #[test]
     fn missing_value_gives_the_default() {
         assert_eq!(
@@ -112,7 +110,6 @@ mod tests {
         );
     }
 
-    // parity: TS-shared-boardSort-c2937e
     #[test]
     fn broken_json_gives_the_default() {
         assert_eq!(
@@ -121,7 +118,6 @@ mod tests {
         );
     }
 
-    // parity: TS-shared-boardSort-fde63e
     #[test]
     fn unknown_fields_are_dropped_and_unknown_directions_become_asc() {
         let stored = r#"{"keys":[{"field":"unknownField","direction":"asc"},{"field":"createdAt","direction":"sideways"}]}"#;
@@ -135,7 +131,6 @@ mod tests {
         );
     }
 
-    // parity: TS-shared-boardSort-1e961b
     #[test]
     fn legacy_mode_field_is_dropped() {
         let stored = r#"{"keys":[{"field":"title","direction":"asc"}],"mode":"manual-first"}"#;
@@ -151,7 +146,6 @@ mod tests {
         );
     }
 
-    // parity: TS-shared-boardSort-6805c3
     #[test]
     fn repeated_field_keeps_only_the_first() {
         let stored = r#"{"keys":[{"field":"title","direction":"desc"},{"field":"title","direction":"asc"}]}"#;

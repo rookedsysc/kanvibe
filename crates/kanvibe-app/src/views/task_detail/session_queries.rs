@@ -223,7 +223,6 @@ fn workspace_read_outcome(
 mod tests {
     use super::*;
 
-    // parity: TS-renderer-AiChatFilePreview-08c6f1
     #[test]
     fn failed_request_reads_as_an_unreadable_file() {
         let failed = Err(ServiceFailure {

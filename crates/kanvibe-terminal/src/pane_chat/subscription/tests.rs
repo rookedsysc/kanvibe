@@ -355,7 +355,6 @@ fn provider_state(provider: Option<AiSessionProvider>) -> PaneChatPushEvent {
     }
 }
 
-// parity: TS-main-paneChatSubscriptionService-85bb3d
 #[test]
 fn subscribing_reads_immediately_then_pushes_only_appended_rows() {
     let given = harness();
@@ -373,7 +372,6 @@ fn subscribing_reads_immediately_then_pushes_only_appended_rows() {
     assert!(states(&events).is_empty());
 }
 
-// parity: TS-main-paneChatSubscriptionService-1218e2
 #[test]
 fn last_subscriber_leaving_stops_reads_and_file_watch() {
     let given = harness();
@@ -401,7 +399,6 @@ fn last_subscriber_leaving_stops_reads_and_file_watch() {
     assert_eq!(given.timers.pending_count(), 0);
 }
 
-// parity: TS-main-paneChatSubscriptionService-f8b522
 #[test]
 fn burst_of_file_changes_is_coalesced_into_one_follow_up_read() {
     let given = harness();
@@ -423,7 +420,6 @@ fn burst_of_file_changes_is_coalesced_into_one_follow_up_read() {
     assert_eq!(given.source.read_count(), reads_before_burst + 2);
 }
 
-// parity: TS-main-paneChatSubscriptionService-15e098
 #[test]
 fn without_a_local_file_periodic_reads_still_push_new_rows() {
     let given = harness();
@@ -438,7 +434,6 @@ fn without_a_local_file_periodic_reads_still_push_new_rows() {
     assert_eq!(row_texts(&events), ["2:b"]);
 }
 
-// parity: TS-main-paneChatSubscriptionService-efd45f
 #[test]
 fn screen_goes_only_to_subscribers_that_asked_for_it() {
     let given = harness();
@@ -464,7 +459,6 @@ fn screen_goes_only_to_subscribers_that_asked_for_it() {
     assert!(without_screen.lock().unwrap().is_empty());
 }
 
-// parity: TS-main-paneChatSubscriptionService-a88adf
 #[test]
 fn screen_is_read_and_shared_only_while_a_screen_subscriber_exists() {
     let given = harness();
@@ -495,7 +489,6 @@ fn screen_is_read_and_shared_only_while_a_screen_subscriber_exists() {
     assert_eq!(given.source.last_read(), watched(shared(true)));
 }
 
-// parity: TS-main-paneChatSubscriptionService-ca33d8
 #[test]
 fn http_snapshot_reads_the_screen_by_default() {
     let given = harness();
@@ -508,7 +501,6 @@ fn http_snapshot_reads_the_screen_by_default() {
     assert_eq!(given.source.last_read(), Some(expected));
 }
 
-// parity: TS-main-paneChatSubscriptionService-8f43cc
 #[test]
 fn http_snapshot_skips_the_screen_when_told_it_is_not_needed() {
     let given = harness();
@@ -521,7 +513,6 @@ fn http_snapshot_skips_the_screen_when_told_it_is_not_needed() {
     assert_eq!(given.source.last_read(), Some(expected));
 }
 
-// parity: TS-main-paneChatSubscriptionService-544e86
 #[test]
 fn input_state_change_is_pushed_to_subscribers_without_screen() {
     let given = harness();
@@ -541,7 +532,6 @@ fn input_state_change_is_pushed_to_subscribers_without_screen() {
     );
 }
 
-// parity: TS-main-paneChatSubscriptionService-7c5872
 #[test]
 fn reads_wait_while_kanvibe_types_into_the_pane_and_push_only_the_settled_state() {
     let given = harness();
@@ -573,7 +563,6 @@ fn reads_wait_while_kanvibe_types_into_the_pane_and_push_only_the_settled_state(
     assert!(states(&events).is_empty());
 }
 
-// parity: TS-main-paneChatSubscriptionService-a5e4b3
 #[test]
 fn agent_subscribers_get_only_provider_changes_without_reading_chat() {
     let given = harness();
@@ -595,7 +584,6 @@ fn agent_subscribers_get_only_provider_changes_without_reading_chat() {
     );
 }
 
-// parity: TS-main-paneChatSubscriptionService-860d45
 #[test]
 fn switching_to_another_session_pushes_only_a_replaced_signal() {
     let given = harness();
@@ -628,7 +616,6 @@ fn switching_to_another_session_pushes_only_a_replaced_signal() {
     assert!(!epoch.is_empty());
 }
 
-// parity: TS-main-paneChatSubscriptionService-418c4a
 #[test]
 fn cursor_is_current_only_at_the_snapshot_end() {
     let given = harness();
@@ -661,7 +648,6 @@ fn cursor_is_current_only_at_the_snapshot_end() {
     assert_eq!(freshness_of(None), PaneChatFreshness::Behind);
 }
 
-// parity: TS-main-paneChatSubscriptionService-3deead
 #[test]
 fn rows_found_first_by_http_snapshot_still_reach_subscribers_once() {
     let given = harness();

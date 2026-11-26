@@ -18,7 +18,6 @@ fn mode(path: &Path) -> u32 {
         & 0o777
 }
 
-// parity: TS-electron-mobileTlsCertificate-f1456a
 #[test]
 fn private_key_is_readable_only_by_the_owner() {
     let parent = tempfile::tempdir().expect("임시 폴더");
@@ -28,7 +27,6 @@ fn private_key_is_readable_only_by_the_owner() {
     assert_eq!(mode(&directory), 0o700);
 }
 
-// parity: TS-electron-mobileTlsCertificate-dcc0ea
 #[test]
 fn loading_again_returns_the_same_certificate_so_pinned_fingerprints_survive() {
     let parent = tempfile::tempdir().expect("임시 폴더");
@@ -38,7 +36,6 @@ fn loading_again_returns_the_same_certificate_so_pinned_fingerprints_survive() {
     assert_eq!(second, first);
 }
 
-// parity: TS-electron-mobileTlsCertificate-ae4bfa
 #[tokio::test]
 async fn generated_certificate_serves_tls_requests() {
     let parent = tempfile::tempdir().expect("임시 폴더");

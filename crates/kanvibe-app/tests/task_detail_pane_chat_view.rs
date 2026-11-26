@@ -88,7 +88,6 @@ fn unavailable(reason: &str, provider: &str, input_state: &str) -> Value {
     value
 }
 
-// parity: TS-renderer-PaneChatView-191e51
 #[gpui::test]
 fn pending_bubble_shows_before_the_reply_and_disappears_when_the_record_arrives(
     cx: &mut TestAppContext,
@@ -118,7 +117,6 @@ fn pending_bubble_shows_before_the_reply_and_disappears_when_the_record_arrives(
     );
 }
 
-// parity: TS-renderer-PaneChatView-9d3c0e
 #[gpui::test]
 fn older_pages_stay_expanded_after_the_latest_poll(cx: &mut TestAppContext) {
     init(cx);
@@ -151,7 +149,6 @@ fn older_pages_stay_expanded_after_the_latest_poll(cx: &mut TestAppContext) {
     );
 }
 
-// parity: TS-renderer-PaneChatView-43cd62
 #[gpui::test]
 fn show_instructions_reveals_system_and_agents_context_and_is_saved(cx: &mut TestAppContext) {
     init(cx);
@@ -178,7 +175,6 @@ fn show_instructions_reveals_system_and_agents_context_and_is_saved(cx: &mut Tes
     );
 }
 
-// parity: TS-renderer-PaneChatView-15616e
 #[gpui::test]
 fn codex_api_model_picker_opens_in_chat_without_terminal_switch(cx: &mut TestAppContext) {
     init(cx);
@@ -224,7 +220,6 @@ fn codex_api_model_picker_opens_in_chat_without_terminal_switch(cx: &mut TestApp
     assert_eq!(backend.call_count("paneChat.openPaneChatModelPicker"), 0);
 }
 
-// parity: TS-renderer-PaneChatView-20a9a9
 #[gpui::test]
 fn claude_metadata_opens_the_model_popover_without_api_or_terminal(cx: &mut TestAppContext) {
     init(cx);
@@ -253,7 +248,6 @@ fn claude_metadata_opens_the_model_popover_without_api_or_terminal(cx: &mut Test
     assert_eq!(backend.call_count("paneChat.openPaneChatModelPicker"), 0);
 }
 
-// parity: TS-renderer-PaneChatView-cb0f01
 #[gpui::test]
 fn cli_capture_is_hidden_once_the_transcript_renders(cx: &mut TestAppContext) {
     init(cx);
@@ -275,7 +269,6 @@ fn cli_capture_is_hidden_once_the_transcript_renders(cx: &mut TestAppContext) {
     }
 }
 
-// parity: TS-renderer-PaneChatView-5e6886
 #[gpui::test]
 fn undelivered_send_drops_the_bubble_and_keeps_text_and_reason(cx: &mut TestAppContext) {
     init(cx);
@@ -295,7 +288,6 @@ fn undelivered_send_drops_the_bubble_and_keeps_text_and_reason(cx: &mut TestAppC
     );
 }
 
-// parity: TS-renderer-PaneChatView-664a53
 #[gpui::test]
 fn possibly_delivered_send_keeps_the_bubble_with_the_send_error(cx: &mut TestAppContext) {
     init(cx);
@@ -348,7 +340,6 @@ fn prompt_error(view: &Entity<PaneChatView>, cx: &mut VisualTestContext) -> Opti
     })
 }
 
-// parity: TS-renderer-PaneChatView-f04775
 #[gpui::test]
 fn prompt_card_replaces_the_composer_and_answers_with_target_and_prompt_id(
     cx: &mut TestAppContext,
@@ -370,7 +361,6 @@ fn prompt_card_replaces_the_composer_and_answers_with_target_and_prompt_id(
     );
 }
 
-// parity: TS-renderer-PaneChatView-6b9706
 #[gpui::test]
 fn prompt_failure_shows_the_service_reason_only_on_that_card(cx: &mut TestAppContext) {
     init(cx);
@@ -404,7 +394,6 @@ fn toppings(id: &str, cheese_checked: bool, second: Value) -> Value {
         "options": [option(1, "Cheese", cheese_checked, false), second] })
 }
 
-// parity: TS-renderer-PaneChatView-9fc716
 #[gpui::test]
 fn same_dialog_check_change_keeps_the_reason_and_typed_text(cx: &mut TestAppContext) {
     init(cx);
@@ -455,7 +444,6 @@ fn same_dialog_check_change_keeps_the_reason_and_typed_text(cx: &mut TestAppCont
     );
 }
 
-// parity: TS-renderer-PaneChatView-b0d452
 #[gpui::test]
 fn reopened_prompt_does_not_show_the_previous_rejection(cx: &mut TestAppContext) {
     init(cx);
@@ -492,7 +480,6 @@ fn option_enabled(view: &Entity<PaneChatView>, cx: &mut VisualTestContext, index
     )
 }
 
-// parity: TS-renderer-PaneChatView-07924e
 #[gpui::test]
 fn prompt_stays_locked_until_the_changed_screen_is_read(cx: &mut TestAppContext) {
     init(cx);
@@ -532,7 +519,6 @@ fn hold_cheese(
     (backend, view, cx, finish)
 }
 
-// parity: TS-renderer-PaneChatView-ee6a76
 #[gpui::test]
 fn multi_select_clicks_during_a_send_are_queued_once_and_sent_with_the_new_prompt_id(
     cx: &mut TestAppContext,
@@ -567,7 +553,6 @@ fn multi_select_clicks_during_a_send_are_queued_once_and_sent_with_the_new_promp
     );
 }
 
-// parity: TS-renderer-PaneChatView-d48c4e
 #[gpui::test]
 fn queued_answers_are_dropped_when_the_question_moved_on(cx: &mut TestAppContext) {
     let (backend, view, cx, finish) = hold_cheese(cx);
@@ -586,7 +571,6 @@ fn queued_answers_are_dropped_when_the_question_moved_on(cx: &mut TestAppContext
     assert_eq!(backend.call_count("paneChat.answerPaneChatPrompt"), 1);
 }
 
-// parity: TS-renderer-PaneChatView-c83ca2
 #[gpui::test]
 fn without_a_prompt_the_composer_shows_and_no_card(cx: &mut TestAppContext) {
     init(cx);
@@ -599,7 +583,6 @@ fn without_a_prompt_the_composer_shows_and_no_card(cx: &mut TestAppContext) {
     assert!(!view.read_with(cx, |view, _| view.is_composer_hidden()));
 }
 
-// parity: TS-renderer-PaneChatView-b1c555
 #[gpui::test]
 fn queries_the_explicit_pane(cx: &mut TestAppContext) {
     init(cx);
@@ -611,7 +594,6 @@ fn queries_the_explicit_pane(cx: &mut TestAppContext) {
     );
 }
 
-// parity: TS-renderer-PaneChatView-45abc1
 #[gpui::test]
 fn another_pane_does_not_send_while_its_first_snapshot_loads(cx: &mut TestAppContext) {
     init(cx);
@@ -624,7 +606,6 @@ fn another_pane_does_not_send_while_its_first_snapshot_loads(cx: &mut TestAppCon
     assert_eq!(backend.call_count(SEND), 0);
 }
 
-// parity: TS-renderer-PaneChatView-7ece58
 #[gpui::test]
 fn header_leads_with_the_task_title_and_names_only_the_snapshot_pane(cx: &mut TestAppContext) {
     init(cx);
@@ -641,7 +622,6 @@ fn header_leads_with_the_task_title_and_names_only_the_snapshot_pane(cx: &mut Te
     );
 }
 
-// parity: TS-renderer-PaneChatView-84ca73
 #[gpui::test]
 fn draft_is_accepted_only_after_the_target_is_confirmed(cx: &mut TestAppContext) {
     init(cx);
@@ -654,7 +634,6 @@ fn draft_is_accepted_only_after_the_target_is_confirmed(cx: &mut TestAppContext)
     assert!(view.read_with(cx, |view, _| view.is_input_editable()));
 }
 
-// parity: TS-renderer-PaneChatView-69b82f
 #[gpui::test]
 fn multiline_draft_goes_to_the_exact_process_and_clears_only_after_acceptance(
     cx: &mut TestAppContext,
@@ -685,7 +664,6 @@ fn multiline_draft_goes_to_the_exact_process_and_clears_only_after_acceptance(
     assert_eq!(view.read_with(cx, |view, _| view.draft_text()), "");
 }
 
-// parity: TS-renderer-PaneChatView-faadc3
 #[gpui::test]
 fn rejected_write_keeps_the_draft_and_is_never_resent(cx: &mut TestAppContext) {
     init(cx);
@@ -706,7 +684,6 @@ fn rejected_write_keeps_the_draft_and_is_never_resent(cx: &mut TestAppContext) {
     assert_eq!(backend.call_count(SEND), 1);
 }
 
-// parity: TS-renderer-PaneChatView-c43d81
 #[gpui::test]
 fn unsupported_native_model_dialog_opens_the_same_terminal(cx: &mut TestAppContext) {
     init(cx);
@@ -728,7 +705,6 @@ fn unsupported_native_model_dialog_opens_the_same_terminal(cx: &mut TestAppConte
     assert_eq!(backend.call_count("paneChat.sendPaneChatKey"), 0);
 }
 
-// parity: TS-renderer-PaneChatView-cf67ac
 #[gpui::test]
 fn drafts_are_isolated_per_process_and_restored_on_return(cx: &mut TestAppContext) {
     init(cx);
@@ -747,7 +723,6 @@ fn drafts_are_isolated_per_process_and_restored_on_return(cx: &mut TestAppContex
     assert_eq!(backend.call_count(SEND), 0);
 }
 
-// parity: TS-renderer-PaneChatView-b3f042
 #[gpui::test]
 fn occupied_cli_keeps_the_draft_and_blocks_send_and_model(cx: &mut TestAppContext) {
     init(cx);
@@ -771,7 +746,6 @@ fn set_visible(view: &Entity<PaneChatView>, cx: &mut VisualTestContext, is_visib
     settle(cx);
 }
 
-// parity: TS-renderer-PaneChatView-fa442f
 #[gpui::test]
 fn hidden_pane_keeps_its_draft_and_pauses_polling(cx: &mut TestAppContext) {
     init(cx);
@@ -789,7 +763,6 @@ fn hidden_pane_keeps_its_draft_and_pauses_polling(cx: &mut TestAppContext) {
     );
 }
 
-// parity: TS-renderer-PaneChatView-71875f
 #[gpui::test]
 fn returning_from_the_terminal_rechecks_the_pane_before_accepting_input(cx: &mut TestAppContext) {
     init(cx);
@@ -808,7 +781,6 @@ fn returning_from_the_terminal_rechecks_the_pane_before_accepting_input(cx: &mut
     assert_eq!(backend.call_count(SEND), 0);
 }
 
-// parity: TS-renderer-PaneChatView-b65aa7
 #[gpui::test]
 fn unavailable_transcript_shows_the_cli_screen_and_keeps_history_separate(cx: &mut TestAppContext) {
     init(cx);
@@ -838,7 +810,6 @@ fn has_welcome(view: &Entity<PaneChatView>, cx: &mut VisualTestContext) -> bool 
         .any(|block| matches!(block, BodyBlock::Welcome { .. }))
 }
 
-// parity: TS-renderer-PaneChatView-043dea
 #[gpui::test]
 fn empty_sendable_conversation_shows_the_welcome_with_the_cli_name(cx: &mut TestAppContext) {
     init(cx);
@@ -859,7 +830,6 @@ fn empty_sendable_conversation_shows_the_welcome_with_the_cli_name(cx: &mut Test
     assert!(view.read_with(cx, |view, _| view.is_input_editable()));
 }
 
-// parity: TS-renderer-PaneChatView-6b0951
 #[gpui::test]
 fn conversation_with_messages_has_no_welcome(cx: &mut TestAppContext) {
     init(cx);
@@ -868,7 +838,6 @@ fn conversation_with_messages_has_no_welcome(cx: &mut TestAppContext) {
     assert!(!has_welcome(&view, cx));
 }
 
-// parity: TS-renderer-PaneChatView-03fb31
 #[gpui::test]
 fn first_message_removes_the_welcome(cx: &mut TestAppContext) {
     init(cx);
@@ -886,7 +855,6 @@ fn first_message_removes_the_welcome(cx: &mut TestAppContext) {
     assert!(!has_welcome(&view, cx));
 }
 
-// parity: TS-renderer-PaneChatView-5c59de
 #[gpui::test]
 fn recoverable_unavailable_offers_retry_and_terminal(cx: &mut TestAppContext) {
     init(cx);
@@ -907,7 +875,6 @@ fn recoverable_unavailable_offers_retry_and_terminal(cx: &mut TestAppContext) {
     );
 }
 
-// parity: TS-renderer-PaneChatView-28cc6e
 #[gpui::test]
 fn unavailable_polling_backs_off_and_retry_reads_at_once(cx: &mut TestAppContext) {
     init(cx);
@@ -925,7 +892,6 @@ fn unavailable_polling_backs_off_and_retry_reads_at_once(cx: &mut TestAppContext
     assert_eq!(backend.call_count(SNAPSHOT), 5);
 }
 
-// parity: TS-renderer-PaneChatView-90c93e
 #[gpui::test]
 fn terminal_input_wait_keeps_checking_and_connects_when_input_ends(cx: &mut TestAppContext) {
     init(cx);
@@ -961,7 +927,6 @@ fn reveal(view: &Entity<PaneChatView>, cx: &mut VisualTestContext) {
     settle(cx);
 }
 
-// parity: TS-renderer-PaneChatView-c6f9c1
 #[gpui::test]
 fn codex_daemon_card_explains_both_fixes_and_reveal_reports_its_result(cx: &mut TestAppContext) {
     init(cx);
@@ -987,7 +952,6 @@ fn codex_daemon_card_explains_both_fixes_and_reveal_reports_its_result(cx: &mut 
     assert_eq!(control.outcome, Some((t("revealThreadNotFound"), false)));
 }
 
-// parity: TS-renderer-PaneChatView-cc371b
 #[gpui::test]
 fn each_reveal_outcome_has_its_own_message(cx: &mut TestAppContext) {
     init(cx);
@@ -1007,7 +971,6 @@ fn each_reveal_outcome_has_its_own_message(cx: &mut TestAppContext) {
     }
 }
 
-// parity: TS-renderer-PaneChatView-ae63ce
 #[gpui::test]
 fn busy_codex_blocks_reveal_and_says_why(cx: &mut TestAppContext) {
     init(cx);
@@ -1019,7 +982,6 @@ fn busy_codex_blocks_reveal_and_says_why(cx: &mut TestAppContext) {
     assert_eq!(backend.call_count("paneChat.revealPaneChatCodexThread"), 0);
 }
 
-// parity: TS-renderer-PaneChatView-53644f
 #[gpui::test]
 fn each_unavailable_reason_has_its_own_message_without_reveal(cx: &mut TestAppContext) {
     init(cx);
@@ -1056,7 +1018,6 @@ fn working(view: &Entity<PaneChatView>, cx: &mut VisualTestContext) -> Option<Ve
         .map(|block| block.texts())
 }
 
-// parity: TS-renderer-PaneChatView-216d79
 #[gpui::test]
 fn working_cli_shows_elapsed_seconds_and_clears_when_done(cx: &mut TestAppContext) {
     init(cx);
@@ -1078,7 +1039,6 @@ fn working_cli_shows_elapsed_seconds_and_clears_when_done(cx: &mut TestAppContex
     assert!(working(&view, cx).is_none());
 }
 
-// parity: TS-renderer-PaneChatView-e53422
 #[gpui::test]
 fn unknown_activity_counts_as_working_until_the_send_is_recorded(cx: &mut TestAppContext) {
     init(cx);
@@ -1095,7 +1055,6 @@ fn unknown_activity_counts_as_working_until_the_send_is_recorded(cx: &mut TestAp
     assert!(working(&view, cx).is_some());
 }
 
-// parity: TS-renderer-PaneChatView-a2f350
 #[gpui::test]
 fn empty_composer_while_working_turns_send_into_stop(cx: &mut TestAppContext) {
     init(cx);
@@ -1118,7 +1077,6 @@ fn empty_composer_while_working_turns_send_into_stop(cx: &mut TestAppContext) {
 
 // usePaneChat.test.tsx
 
-// parity: TS-renderer-usePaneChat-6074cd
 #[gpui::test]
 fn accepted_send_returns_to_its_own_draft_after_the_conversation_changes(cx: &mut TestAppContext) {
     init(cx);
@@ -1155,7 +1113,6 @@ fn accepted_send_returns_to_its_own_draft_after_the_conversation_changes(cx: &mu
     assert_eq!(view.read_with(cx, |view, _| view.draft_text()), "");
 }
 
-// parity: TS-renderer-usePaneChat-8f520d
 #[gpui::test]
 fn keeps_discovering_a_cli_that_starts_after_unavailable_reads(cx: &mut TestAppContext) {
     init(cx);
@@ -1211,7 +1168,6 @@ fn send_then_record<'a>(
     (view, cx)
 }
 
-// parity: TS-renderer-usePaneChat-bd57d8
 #[gpui::test]
 fn recorded_shapes_of_the_sent_text_clear_the_bubble_and_working(cx: &mut TestAppContext) {
     let cases = [
@@ -1231,7 +1187,6 @@ fn recorded_shapes_of_the_sent_text_clear_the_bubble_and_working(cx: &mut TestAp
     }
 }
 
-// parity: TS-renderer-usePaneChat-c7a3a9
 #[gpui::test]
 fn longer_record_starting_with_the_sent_text_is_not_its_record(cx: &mut TestAppContext) {
     init(cx);

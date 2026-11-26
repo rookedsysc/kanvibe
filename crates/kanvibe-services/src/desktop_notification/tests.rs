@@ -119,7 +119,6 @@ fn status_changed(new_status: &str) -> BoardEvent {
     })
 }
 
-// parity: TS-main-desktopNotificationService-be6804
 #[test]
 fn stores_sync_results_quietly_even_when_os_notifications_are_off() {
     let fixture = fixture();
@@ -161,7 +160,6 @@ fn stored_with_title(store: &NotificationStore, title_part: &str) -> AppNotifica
         .unwrap_or_else(|| panic!("{title_part} 알림이 없다"))
 }
 
-// parity: TS-main-desktopNotificationService-e21026
 #[test]
 fn ssh_failures_and_daemon_rejections_show_different_recovery_hints() {
     let fixture = fixture();
@@ -199,7 +197,6 @@ fn ssh_failures_and_daemon_rejections_show_different_recovery_hints() {
     assert_eq!(fixture.presenter.shown_count(), 2);
 }
 
-// parity: TS-main-desktopNotificationService-3e2396
 #[test]
 fn the_daemon_rejection_reason_stays_in_the_inbox_when_os_notifications_are_off() {
     let fixture = fixture();
@@ -229,7 +226,6 @@ fn the_daemon_rejection_reason_stays_in_the_inbox_when_os_notifications_are_off(
     assert_eq!(fixture.presenter.shown_count(), 0);
 }
 
-// parity: TS-main-desktopNotificationService-1aae77
 #[test]
 fn replacing_an_unresponsive_connection_leaves_the_recovery_reason_in_the_inbox() {
     let fixture = fixture();
@@ -251,7 +247,6 @@ fn replacing_an_unresponsive_connection_leaves_the_recovery_reason_in_the_inbox(
     assert_eq!(fixture.presenter.shown_count(), 0);
 }
 
-// parity: TS-main-desktopNotificationService-52044a
 #[test]
 fn an_existing_notification_counts_as_delivered_without_showing_again() {
     let fixture = fixture();
@@ -267,7 +262,6 @@ fn an_existing_notification_counts_as_delivered_without_showing_again() {
     assert_eq!(fixture.presenter.shown_count(), 0);
 }
 
-// parity: TS-main-desktopNotificationService-8e883c
 #[test]
 fn shows_a_new_notification_and_reads_it_on_click() {
     let fixture = fixture();
@@ -292,7 +286,6 @@ fn shows_a_new_notification_and_reads_it_on_click() {
     assert_eq!(*clicked.lock().unwrap(), [stored[0].id.clone()]);
 }
 
-// parity: TS-main-desktopNotificationService-8e2506
 #[test]
 fn delivers_board_events_whose_status_is_enabled() {
     let fixture = fixture();
@@ -310,7 +303,6 @@ fn delivers_board_events_whose_status_is_enabled() {
     assert_eq!(fixture.presenter.shown_count(), 1);
 }
 
-// parity: TS-main-desktopNotificationService-624873
 #[test]
 fn ignores_board_events_whose_status_is_disabled() {
     let fixture = fixture();
@@ -325,7 +317,6 @@ fn ignores_board_events_whose_status_is_disabled() {
     assert!(fixture.store.list_notifications().unwrap().is_empty());
 }
 
-// parity: TS-main-desktopNotificationService-6910d3
 #[test]
 fn background_sync_review_creates_a_notification_with_review_action() {
     let fixture = fixture();

@@ -50,7 +50,6 @@ fn written_paths(fixture: &InstallerFixture) -> Vec<String> {
         .collect()
 }
 
-// parity: TS-lib-kanvibeHooksInstaller-230da2
 #[test]
 fn invalidates_open_code_registration_after_a_bulk_file_installation() {
     let fixture = fixture();
@@ -70,7 +69,6 @@ fn invalidates_open_code_registration_after_a_bulk_file_installation() {
     );
 }
 
-// parity: TS-lib-kanvibeHooksInstaller-3e3688
 #[test]
 fn bulk_remote_status_passes_one_strict_snapshot_to_all_providers_without_writing() {
     let fixture = fixture();
@@ -111,7 +109,6 @@ fn bulk_remote_status_passes_one_strict_snapshot_to_all_providers_without_writin
     assert_eq!(fixture.runtime.client_id_calls.load(Ordering::SeqCst), 0);
 }
 
-// parity: TS-lib-kanvibeHooksInstaller-41f965
 #[test]
 fn bulk_remote_status_snapshot_failure_is_returned_without_installing() {
     let fixture = fixture();
@@ -129,7 +126,6 @@ fn bulk_remote_status_snapshot_failure_is_returned_without_installing() {
     assert_eq!(fixture.operations.write_count(), 0);
 }
 
-// parity: TS-lib-kanvibeHooksInstaller-20391f
 #[test]
 fn full_install_writes_the_worktree_task_cli_as_executable() {
     let fixture = fixture();
@@ -156,7 +152,6 @@ fn full_install_writes_the_worktree_task_cli_as_executable() {
     );
 }
 
-// parity: TS-lib-kanvibeHooksInstaller-3c89f4
 #[test]
 fn full_install_writes_every_hook_file_in_provider_batches() {
     let fixture = fixture();
@@ -191,7 +186,6 @@ fn full_install_writes_every_hook_file_in_provider_batches() {
     }
 }
 
-// parity: TS-lib-kanvibeHooksInstaller-603aa5
 #[test]
 fn install_registers_the_current_client_before_writing() {
     let fixture = fixture();
@@ -213,7 +207,6 @@ fn install_registers_the_current_client_before_writing() {
     assert_eq!(fixture.operations.events.lock().unwrap()[0], "register");
 }
 
-// parity: TS-lib-kanvibeHooksInstaller-b30cca
 #[test]
 fn remote_install_uses_the_same_path_and_passes_the_ssh_host_to_writes() {
     let fixture = fixture();
@@ -243,7 +236,6 @@ fn remote_install_uses_the_same_path_and_passes_the_ssh_host_to_writes() {
     assert!(written_paths(&fixture).contains(&"/remote/repo/.claude/settings.json".to_string()));
 }
 
-// parity: TS-lib-kanvibeHooksInstaller-1d544b
 #[test]
 fn existing_settings_are_read_once_over_a_host_key_checked_connection() {
     let fixture = fixture();
@@ -268,7 +260,6 @@ fn existing_settings_are_read_once_over_a_host_key_checked_connection() {
     assert_eq!(read_calls[0].ssh_host.as_deref(), Some("remote-host"));
 }
 
-// parity: TS-lib-kanvibeHooksInstaller-3627b1
 #[test]
 fn remote_install_verification_shares_one_snapshot_with_every_provider() {
     let fixture = fixture();
@@ -302,7 +293,6 @@ fn remote_install_verification_shares_one_snapshot_with_every_provider() {
     }
 }
 
-// parity: TS-lib-kanvibeHooksInstaller-82a4c4
 #[test]
 fn failed_shared_verification_read_falls_back_to_per_provider_reads() {
     let fixture = fixture();
@@ -347,7 +337,6 @@ fn failed_shared_verification_read_falls_back_to_per_provider_reads() {
     assert!(!failures[0].contains("Claude"));
 }
 
-// parity: TS-lib-kanvibeHooksInstaller-1e7c65
 #[test]
 fn overlapping_status_reads_share_one_remote_read_and_reuse_it_for_thirty_seconds() {
     let fixture = fixture();
@@ -400,7 +389,6 @@ fn overlapping_status_reads_share_one_remote_read_and_reuse_it_for_thirty_second
     assert_eq!(fixture.operations.read_count(), 3);
 }
 
-// parity: TS-lib-kanvibeHooksInstaller-284618
 #[test]
 fn local_hook_statuses_are_read_every_time() {
     let fixture = fixture();
@@ -417,7 +405,6 @@ fn local_hook_statuses_are_read_every_time() {
     assert_eq!(fixture.operations.read_count(), 2);
 }
 
-// parity: TS-lib-kanvibeHooksInstaller-a2f61d
 #[test]
 fn installing_forgets_the_remembered_remote_status() {
     let fixture = fixture();
@@ -442,7 +429,6 @@ fn installing_forgets_the_remembered_remote_status() {
     assert_eq!(after.claude, installed_status(KanvibeHookProvider::Claude));
 }
 
-// parity: TS-lib-kanvibeHooksInstaller-0acfbc
 #[test]
 fn status_reads_started_before_an_install_are_not_inherited_after_it() {
     let fixture = fixture();
@@ -477,7 +463,6 @@ fn status_reads_started_before_an_install_are_not_inherited_after_it() {
     });
 }
 
-// parity: TS-lib-kanvibeHooksInstaller-5a8cc7
 #[test]
 fn install_never_reads_or_writes_the_removed_hooks_targets_file() {
     let fixture = fixture();
@@ -524,7 +509,6 @@ fn first_command(settings: &Value, event: &str) -> String {
         .to_string()
 }
 
-// parity: TS-lib-kanvibeHooksInstaller-733360
 #[test]
 fn reinstall_overwrites_stale_claude_and_gemini_entries_with_the_current_project_path() {
     let fixture = fixture();
@@ -574,7 +558,6 @@ fn reinstall_overwrites_stale_claude_and_gemini_entries_with_the_current_project
     }
 }
 
-// parity: TS-lib-kanvibeHooksInstaller-987c0f
 #[test]
 fn codex_reinstall_preserves_settings_and_updates_hooks_json_and_config_toml() {
     let fixture = fixture();
@@ -618,7 +601,6 @@ fn codex_reinstall_preserves_settings_and_updates_hooks_json_and_config_toml() {
     }
 }
 
-// parity: TS-lib-kanvibeHooksInstaller-a210f5
 #[test]
 fn hook_file_install_does_not_wait_for_provider_verification() {
     let fixture = fixture();
@@ -637,7 +619,6 @@ fn hook_file_install_does_not_wait_for_provider_verification() {
     );
 }
 
-// parity: TS-lib-kanvibeHooksInstaller-120bdb
 #[test]
 fn verification_scheduler_only_checks_provider_status_without_rewriting_files() {
     let fixture = fixture();
@@ -671,7 +652,6 @@ fn verification_scheduler_only_checks_provider_status_without_rewriting_files() 
     assert!(record.failures.lock().unwrap().is_empty());
 }
 
-// parity: TS-lib-kanvibeHooksInstaller-bde53d
 #[test]
 fn verification_scheduler_reports_provider_failures_to_the_failure_callback() {
     let fixture = fixture();
@@ -700,7 +680,6 @@ fn verification_scheduler_reports_provider_failures_to_the_failure_callback() {
     assert_eq!(fixture.operations.write_count(), 0);
 }
 
-// parity: TS-lib-kanvibeHooksInstaller-38ca8d
 #[test]
 fn provider_install_runs_only_the_selected_provider_setup() {
     let fixture = fixture();
@@ -725,7 +704,6 @@ fn provider_install_runs_only_the_selected_provider_setup() {
     assert_eq!(fixture.operations.write_count(), 0);
 }
 
-// parity: TS-lib-kanvibeHooksInstaller-808773
 #[test]
 fn a_missing_open_code_registration_alone_does_not_fail_the_full_install() {
     let fixture = fixture();
@@ -750,7 +728,6 @@ fn a_missing_open_code_registration_alone_does_not_fail_the_full_install() {
     assert_eq!(record.target_path, "/repo");
 }
 
-// parity: TS-lib-kanvibeHooksInstaller-c11075
 #[test]
 fn open_code_only_install_does_not_fail_on_a_missing_registration() {
     let fixture = fixture();
@@ -769,7 +746,6 @@ fn open_code_only_install_does_not_fail_on_a_missing_registration() {
     assert_eq!(fixture.open_code.status_count(), 1);
 }
 
-// parity: TS-lib-kanvibeHooksInstaller-529474
 #[test]
 fn open_code_registration_query_failures_do_not_fail_the_install() {
     for registration_error in [
@@ -799,7 +775,6 @@ fn open_code_registration_query_failures_do_not_fail_the_install() {
     }
 }
 
-// parity: TS-lib-kanvibeHooksInstaller-10447a
 #[test]
 fn registration_query_failure_still_propagates_other_missing_checks() {
     let fixture = fixture();
@@ -822,7 +797,6 @@ fn registration_query_failure_still_propagates_other_missing_checks() {
     );
 }
 
-// parity: TS-lib-kanvibeHooksInstaller-8aeeab
 #[test]
 fn open_code_only_install_propagates_a_plugin_file_verification_failure() {
     let fixture = fixture();
@@ -846,7 +820,6 @@ fn open_code_only_install_propagates_a_plugin_file_verification_failure() {
     assert_eq!(fixture.open_code.status_count(), 3);
 }
 
-// parity: TS-lib-kanvibeHooksInstaller-0cdefd
 #[test]
 fn provider_install_failure_is_not_retried_with_other_providers() {
     let fixture = fixture();
@@ -864,7 +837,6 @@ fn provider_install_failure_is_not_retried_with_other_providers() {
     }
 }
 
-// parity: TS-lib-kanvibeHooksInstaller-97c364
 #[test]
 fn a_transient_hook_file_write_failure_succeeds_after_a_retry() {
     let fixture = fixture();
@@ -880,7 +852,6 @@ fn a_transient_hook_file_write_failure_succeeds_after_a_retry() {
     assert_eq!(fixture.operations.write_count(), HOOK_WRITE_BATCH_COUNT * 2);
 }
 
-// parity: TS-lib-kanvibeHooksInstaller-dc6041
 #[test]
 fn a_persistent_hook_file_write_failure_propagates_after_retries() {
     let fixture = fixture();
@@ -897,7 +868,6 @@ fn a_persistent_hook_file_write_failure_propagates_after_retries() {
     assert_eq!(fixture.operations.write_count(), HOOK_WRITE_BATCH_COUNT * 3);
 }
 
-// parity: TS-lib-kanvibeHooksInstaller-43065b
 #[test]
 fn concurrent_installs_for_the_same_target_share_one_job() {
     let fixture = fixture();
@@ -920,7 +890,6 @@ fn concurrent_installs_for_the_same_target_share_one_job() {
     });
 }
 
-// parity: TS-lib-kanvibeHooksInstaller-f29bd2
 #[test]
 fn background_scheduler_merges_identical_requests_and_calls_every_callback() {
     let fixture = fixture();
@@ -947,7 +916,6 @@ fn background_scheduler_merges_identical_requests_and_calls_every_callback() {
     assert_eq!(second_record.successes.load(Ordering::SeqCst), 1);
 }
 
-// parity: TS-lib-kanvibeHooksInstaller-45d303
 #[test]
 fn install_logs_each_provider_verification_result() {
     let fixture = fixture();
@@ -978,7 +946,6 @@ fn install_logs_each_provider_verification_result() {
     );
 }
 
-// parity: TS-lib-kanvibeHooksInstaller-3ab04d
 #[test]
 fn an_uninstalled_provider_in_verification_fails_the_install_after_retries() {
     let fixture = fixture();
@@ -1008,7 +975,6 @@ fn an_uninstalled_provider_in_verification_fails_the_install_after_retries() {
     assert_eq!(record.target_path, "/repo");
 }
 
-// parity: TS-lib-kanvibeHooksInstaller-9cd15e
 #[test]
 fn remote_install_returns_only_after_provider_verification_finishes() {
     let fixture = fixture();

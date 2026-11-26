@@ -6,7 +6,6 @@ fn record(value: serde_json::Value) -> HostRecord {
     record_from(value)
 }
 
-// parity: TS-lib-remoteHostProtocol-f5f4ec
 #[test]
 fn reassembles_split_headers_and_unicode_payloads_with_adjacent_records() {
     let expected = vec![
@@ -27,7 +26,6 @@ fn reassembles_split_headers_and_unicode_payloads_with_adjacent_records() {
     assert_eq!(decoded, expected);
 }
 
-// parity: TS-lib-remoteHostProtocol-a0fdf2
 #[test]
 fn rejects_oversized_lengths_before_receiving_a_payload() {
     let prefix = ((HOST_RECORD_BYTES + 1) as u32).to_be_bytes();
@@ -37,7 +35,6 @@ fn rejects_oversized_lengths_before_receiving_a_payload() {
     assert_eq!(result, Err(HostWireError::RecordSizeExceeded));
 }
 
-// parity: TS-lib-remoteHostProtocol-09f298
 #[test]
 fn rejects_non_record_json_and_malformed_utf8() {
     let array = [&2u32.to_be_bytes()[..], b"[]"].concat();
@@ -47,7 +44,6 @@ fn rejects_non_record_json_and_malformed_utf8() {
     assert!(HostRecordDecoder::new().push(&malformed).is_err());
 }
 
-// parity: TS-lib-remoteHostProtocol-41c239
 #[test]
 fn accepts_only_canonical_base64_and_enforces_byte_bounds() {
     let korean = json!(encode_host_bytes("한글".as_bytes()));
@@ -61,7 +57,6 @@ fn accepts_only_canonical_base64_and_enforces_byte_bounds() {
     assert!(decode_host_bytes(Some(&oversized), HOST_CHUNK_BYTES).is_err());
 }
 
-// parity: TS-lib-remoteHostProtocol-100275
 #[test]
 fn recognizes_explicit_namespaces() {
     for namespace in ["dev", "prod", "qa-fixture-42"] {
@@ -75,7 +70,6 @@ fn recognizes_explicit_namespaces() {
     }
 }
 
-// parity: TS-lib-remoteHostProtocol-771d6e
 #[test]
 fn rejects_path_and_unknown_namespaces() {
     let too_long = format!("qa-{}", "x".repeat(40));

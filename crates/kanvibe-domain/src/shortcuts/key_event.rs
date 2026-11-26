@@ -225,7 +225,6 @@ mod tests {
     const MAC: ShortcutPlatform = ShortcutPlatform::Mac;
     const LINUX: ShortcutPlatform = ShortcutPlatform::Linux;
 
-    // parity: TS-renderer-keyboardShortcut-077f16
     #[test]
     fn mod_matches_ctrl_outside_macos() {
         assert!(match_shortcut_event(
@@ -235,7 +234,6 @@ mod tests {
         ));
     }
 
-    // parity: TS-renderer-keyboardShortcut-ffefeb
     #[test]
     fn mod_matches_cmd_on_macos() {
         assert!(match_shortcut_event(
@@ -245,7 +243,6 @@ mod tests {
         ));
     }
 
-    // parity: TS-renderer-keyboardShortcut-a3d411
     #[test]
     fn page_navigation_matches_the_platform_mod() {
         assert!(match_shortcut_event(
@@ -270,7 +267,6 @@ mod tests {
         ));
     }
 
-    // parity: TS-renderer-keyboardShortcut-2e18c6
     #[test]
     fn linux_page_navigation_does_not_match_alt() {
         assert!(!match_shortcut_event(
@@ -280,7 +276,6 @@ mod tests {
         ));
     }
 
-    // parity: TS-renderer-keyboardShortcut-f25bcb
     #[test]
     fn shifted_bracket_is_tab_navigation_not_page_navigation() {
         let shifted_bracket = key_event("{", "meta+shift");
@@ -297,7 +292,6 @@ mod tests {
         ));
     }
 
-    // parity: TS-renderer-keyboardShortcut-d2d168
     #[test]
     fn reported_brace_matches_the_bracket_shortcut() {
         assert!(match_shortcut_event(
@@ -307,7 +301,6 @@ mod tests {
         ));
     }
 
-    // parity: TS-renderer-keyboardShortcut-add681
     #[test]
     fn shift_separates_tab_close_from_window_close() {
         let close_tab = key_event("w", "ctrl");
@@ -335,7 +328,6 @@ mod tests {
         ));
     }
 
-    // parity: TS-renderer-keyboardShortcut-08f68c
     #[test]
     fn tab_number_shortcuts_avoid_the_macos_screenshot_combination() {
         for index in TERMINAL_TAB_SHORTCUT_INDEXES {
@@ -356,7 +348,6 @@ mod tests {
         }
     }
 
-    // parity: TS-renderer-keyboardShortcut-b21faa
     #[test]
     fn extra_modifier_prevents_a_match() {
         assert!(!match_shortcut_event(
@@ -366,7 +357,6 @@ mod tests {
         ));
     }
 
-    // parity: TS-renderer-keyboardShortcut-cfb0a0
     #[test]
     fn macos_command_is_captured_as_portable_mod() {
         assert_eq!(
@@ -375,7 +365,6 @@ mod tests {
         );
     }
 
-    // parity: TS-renderer-keyboardShortcut-23241d
     #[test]
     fn linux_control_is_captured_as_portable_mod() {
         assert_eq!(
@@ -384,7 +373,6 @@ mod tests {
         );
     }
 
-    // parity: TS-renderer-keyboardShortcut-fc4d6b
     #[test]
     fn key_transitions_match_the_platform_mod() {
         assert!(match_key_transition(&key_down("n", "meta"), "Mod+N", MAC));
@@ -395,7 +383,6 @@ mod tests {
         ));
     }
 
-    // parity: TS-renderer-keyboardShortcut-6d3a9c
     #[test]
     fn page_navigation_transitions_match_cmd_and_ctrl() {
         assert!(match_key_transition(
@@ -435,7 +422,6 @@ mod tests {
         assert!(!match_key_transition(&released, "Mod+N", LINUX));
     }
 
-    // parity: TS-renderer-keyboardShortcut-b4fc47
     #[test]
     fn dock_shortcuts_use_mod_and_a_number() {
         assert_eq!(TASK_DETAIL_DOCK_SHORTCUT_INDEXES, [1, 2, 3, 4, 5, 6]);
@@ -470,7 +456,6 @@ mod tests {
         ));
     }
 
-    // parity: TS-renderer-keyboardShortcut-1ca97a
     #[test]
     fn mod_r_is_blocked() {
         assert!(is_blocked_shortcut_event(&key_event("r", "meta"), MAC));
@@ -481,13 +466,11 @@ mod tests {
         ));
     }
 
-    // parity: TS-renderer-keyboardShortcut-ab72f1
     #[test]
     fn mod_r_transition_is_blocked() {
         assert!(is_blocked_key_transition(&key_down("r", "ctrl"), LINUX));
     }
 
-    // parity: TS-renderer-keyboardShortcut-168809
     #[test]
     fn mod_r_is_never_captured() {
         assert_eq!(
@@ -496,7 +479,6 @@ mod tests {
         );
     }
 
-    // parity: TS-renderer-keyboardShortcut-84be3a
     #[test]
     fn plus_key_is_never_captured() {
         assert_eq!(
@@ -505,7 +487,6 @@ mod tests {
         );
     }
 
-    // parity: TS-renderer-keyboardShortcut-028343
     #[test]
     fn modifier_only_input_is_not_captured() {
         assert_eq!(

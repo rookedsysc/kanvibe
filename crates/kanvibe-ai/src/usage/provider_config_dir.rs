@@ -116,7 +116,6 @@ mod tests {
 
     const FAKE_HOME: &str = "/home/tester";
 
-    // parity: TS-aiUsage-providerConfigDir-a1a1f6
     #[test]
     fn root_is_config_dir_for_claude_and_codex() {
         let claude_root = node_path::join(&[FAKE_HOME, ".claude-work"]);
@@ -130,7 +129,6 @@ mod tests {
         );
     }
 
-    // parity: TS-aiUsage-providerConfigDir-718ba0
     #[test]
     fn gemini_config_dir_is_dot_gemini_under_root() {
         let gemini_root = node_path::join(&[FAKE_HOME, ".gemini-work"]);
@@ -140,7 +138,6 @@ mod tests {
         );
     }
 
-    // parity: TS-aiUsage-providerConfigDir-e91970
     #[test]
     fn claude_and_codex_default_roots_are_dedicated_directories() {
         assert_eq!(
@@ -153,7 +150,6 @@ mod tests {
         );
     }
 
-    // parity: TS-aiUsage-providerConfigDir-9e9540
     #[test]
     fn gemini_default_root_is_home() {
         let spec = config_dir_spec(AiUsageProvider::Gemini);
@@ -165,7 +161,6 @@ mod tests {
         );
     }
 
-    // parity: TS-aiUsage-providerConfigDir-23e15f
     #[test]
     fn named_root_reads_back_its_name() {
         let spec = config_dir_spec(AiUsageProvider::Gemini);
@@ -177,7 +172,6 @@ mod tests {
         );
     }
 
-    // parity: TS-aiUsage-providerConfigDir-584a39
     #[test]
     fn default_root_has_no_name() {
         let spec = config_dir_spec(AiUsageProvider::Claude);
@@ -187,7 +181,6 @@ mod tests {
         );
     }
 
-    // parity: TS-aiUsage-providerConfigDir-869269
     #[test]
     fn accepts_safe_directory_names() {
         assert!(is_valid_account_name("work"));
@@ -195,7 +188,6 @@ mod tests {
         assert!(is_valid_account_name("work_2.a"));
     }
 
-    // parity: TS-aiUsage-providerConfigDir-e7fb30
     #[test]
     fn rejects_escaping_or_hidden_names() {
         for name in ["../escape", "work/child", "with space", ".hidden", ""] {

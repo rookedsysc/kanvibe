@@ -68,7 +68,6 @@ fn texts(detail: Option<AggregatedAiSessionDetail>) -> Vec<String> {
         .collect()
 }
 
-// parity: TS-aiSessions-legacyOpenCodeSessions-56ddd0
 #[test]
 fn reads_inline_messages_in_creation_order_with_filters() {
     let store = LegacyStore::new();
@@ -137,7 +136,6 @@ fn reads_inline_messages_in_creation_order_with_filters() {
     );
 }
 
-// parity: TS-aiSessions-legacyOpenCodeSessions-05bade
 #[test]
 fn reads_part_files_without_generated_summaries() {
     let store = LegacyStore::new();
@@ -160,7 +158,6 @@ fn reads_part_files_without_generated_summaries() {
     );
 }
 
-// parity: TS-aiSessions-legacyOpenCodeSessions-65ef77
 #[test]
 fn rejects_outside_refs_malformed_files_and_escaping_ids() {
     let store = LegacyStore::new();
@@ -230,7 +227,6 @@ fn seed_shared_session(db_path: &str) {
         .unwrap();
 }
 
-// parity: TS-aiSessions-legacyOpenCodeSessions-eec154
 #[test]
 fn prefers_sqlite_over_stale_legacy_file_with_same_id() {
     let store = LegacyStore::new();

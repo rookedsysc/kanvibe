@@ -261,7 +261,6 @@ fn open_route(
     })
 }
 
-// parity: TS-renderer-DiffRoute-d62969
 #[gpui::test]
 fn slow_task_lookup_shows_the_delay_notice_instead_of_task_not_found(cx: &mut TestAppContext) {
     init(cx);
@@ -275,7 +274,6 @@ fn slow_task_lookup_shows_the_delay_notice_instead_of_task_not_found(cx: &mut Te
     assert!(!is_shown(cx, "작업을 찾을 수 없습니다."));
 }
 
-// parity: TS-renderer-DiffRoute-d80945
 #[gpui::test]
 fn failed_task_lookup_shows_the_reason_and_retries(cx: &mut TestAppContext) {
     init(cx);
@@ -302,7 +300,6 @@ fn failed_task_lookup_shows_the_reason_and_retries(cx: &mut TestAppContext) {
     );
 }
 
-// parity: TS-renderer-DiffRoute-be8706
 #[gpui::test]
 fn missing_task_shows_task_not_found_without_an_alert(cx: &mut TestAppContext) {
     init(cx);
@@ -323,7 +320,6 @@ fn missing_task_shows_task_not_found_without_an_alert(cx: &mut TestAppContext) {
     );
 }
 
-// parity: TS-renderer-DiffPageClient-6fedf3
 #[gpui::test]
 fn saving_the_default_file_needs_no_tree_click(cx: &mut TestAppContext) {
     init(cx);
@@ -341,7 +337,6 @@ fn saving_the_default_file_needs_no_tree_click(cx: &mut TestAppContext) {
     assert!(is_shown(cx, "저장 완료"));
 }
 
-// parity: TS-renderer-DiffPageClient-184a66
 #[gpui::test]
 fn a_late_response_for_the_previous_file_does_not_replace_the_current_file(
     cx: &mut TestAppContext,
@@ -378,7 +373,6 @@ fn a_late_response_for_the_previous_file_does_not_replace_the_current_file(
     assert_eq!(reads_of_b, 2);
 }
 
-// parity: TS-renderer-DiffPageClient-fdfeea
 #[gpui::test]
 fn a_read_failure_ends_loading_and_offers_no_writable_editor(cx: &mut TestAppContext) {
     init(cx);
@@ -400,7 +394,6 @@ fn a_read_failure_ends_loading_and_offers_no_writable_editor(cx: &mut TestAppCon
     );
 }
 
-// parity: TS-renderer-DiffPageClient-e296d3
 #[gpui::test]
 fn responses_for_a_previous_task_are_ignored_even_with_the_same_file_name(cx: &mut TestAppContext) {
     init(cx);
@@ -423,7 +416,6 @@ fn responses_for_a_previous_task_are_ignored_even_with_the_same_file_name(cx: &m
     assert!(!is_shown(cx, "first-content"));
 }
 
-// parity: TS-renderer-DiffPageClient-8d4d78
 #[gpui::test]
 fn a_new_inventory_with_the_same_path_reloads_the_content(cx: &mut TestAppContext) {
     init(cx);
@@ -489,7 +481,6 @@ fn deferred_refresh_source(refresh_reply: Option<Reply>) -> Rc<FakeDiffSource> {
     })
 }
 
-// parity: TS-renderer-DiffPageClient-a73d8a
 #[gpui::test]
 fn an_editor_draft_survives_a_refresh_and_diff_mode_shows_fresh_content(cx: &mut TestAppContext) {
     init(cx);
@@ -512,7 +503,6 @@ fn an_editor_draft_survives_a_refresh_and_diff_mode_shows_fresh_content(cx: &mut
     assert!(is_shown(cx, "after"));
 }
 
-// parity: TS-renderer-DiffPageClient-5831df
 #[gpui::test]
 fn a_failed_same_file_refresh_keeps_the_editor_draft_without_an_alert(cx: &mut TestAppContext) {
     init(cx);
@@ -528,7 +518,6 @@ fn a_failed_same_file_refresh_keeps_the_editor_draft_without_an_alert(cx: &mut T
     assert!(!is_shown(cx, "refresh unavailable"));
 }
 
-// parity: TS-renderer-DiffPageClient-269b4c
 #[gpui::test]
 fn a_remaining_file_is_shown_when_the_selection_disappears(cx: &mut TestAppContext) {
     init(cx);
@@ -550,7 +539,6 @@ fn a_remaining_file_is_shown_when_the_selection_disappears(cx: &mut TestAppConte
     assert!(is_shown(cx, "변경 사항이 없습니다"));
 }
 
-// parity: TS-renderer-DiffPageClient-c65e48
 #[gpui::test]
 fn a_rename_reads_the_original_from_the_previous_path_and_saves_to_the_destination(
     cx: &mut TestAppContext,
@@ -643,7 +631,6 @@ impl EditorHarness {
     }
 }
 
-// parity: TS-components-DiffFileEditor-0e1367
 #[gpui::test]
 fn saving_twice_while_a_save_is_running_sends_one_save(cx: &mut TestAppContext) {
     init(cx);
@@ -661,7 +648,6 @@ fn saving_twice_while_a_save_is_running_sends_one_save(cx: &mut TestAppContext) 
     assert!(is_shown(cx, "저장 완료"));
 }
 
-// parity: TS-components-DiffFileEditor-bd7611
 #[gpui::test]
 fn a_save_failure_reason_stays_until_a_retry_succeeds(cx: &mut TestAppContext) {
     init(cx);
@@ -682,7 +668,6 @@ fn a_save_failure_reason_stays_until_a_retry_succeeds(cx: &mut TestAppContext) {
     assert_eq!(harness.saved_contents.borrow().len(), 2);
 }
 
-// parity: TS-components-DiffFileEditor-0296ca
 #[gpui::test]
 fn editing_marks_unsaved_changes_until_the_save_finishes(cx: &mut TestAppContext) {
     init(cx);
@@ -712,7 +697,6 @@ fn tree_files(paths: &[(&str, DiffFileStatus)]) -> Vec<DiffFile> {
         .collect()
 }
 
-// parity: TS-components-DiffFileTree-cca8e5
 #[gpui::test]
 fn the_tree_shows_folders_and_file_names(cx: &mut TestAppContext) {
     init(cx);
@@ -727,7 +711,6 @@ fn the_tree_shows_folders_and_file_names(cx: &mut TestAppContext) {
     }
 }
 
-// parity: TS-components-DiffFileTree-f9ea38
 #[gpui::test]
 fn clicking_a_file_selects_it(cx: &mut TestAppContext) {
     init(cx);
@@ -754,7 +737,6 @@ fn row_state(is_selected: bool, is_viewed: bool) -> FileRowState {
     }
 }
 
-// parity: TS-components-DiffFileTree-7a82e7
 #[gpui::test]
 fn the_selected_file_uses_the_brand_highlight(cx: &mut TestAppContext) {
     init(cx);
@@ -770,7 +752,6 @@ fn the_selected_file_uses_the_brand_highlight(cx: &mut TestAppContext) {
     );
 }
 
-// parity: TS-components-DiffFileTree-955e67
 #[gpui::test]
 fn viewed_files_show_a_check_icon_in_muted_text(cx: &mut TestAppContext) {
     init(cx);
@@ -784,14 +765,12 @@ fn viewed_files_show_a_check_icon_in_muted_text(cx: &mut TestAppContext) {
     );
 }
 
-// parity: TS-components-DiffFileTree-4d61dc
 #[test]
 fn viewed_file_names_are_struck_through() {
     assert!(file_name_is_struck_through(&row_state(false, true)));
     assert!(!file_name_is_struck_through(&row_state(false, false)));
 }
 
-// parity: TS-components-DiffFileTree-c5801b
 #[gpui::test]
 fn clicking_a_folder_collapses_it(cx: &mut TestAppContext) {
     init(cx);

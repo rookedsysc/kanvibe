@@ -41,7 +41,6 @@ fn modes(entries: &[(&str, bool)]) -> PaneChatModes {
         .collect()
 }
 
-// parity: TS-main-paneChatModeStore-651fdd
 #[test]
 fn reads_saved_chat_pane_by_task() {
     let fixture = ModeStoreFixture::new();
@@ -54,7 +53,6 @@ fn reads_saved_chat_pane_by_task() {
     assert_eq!(fixture.modes("task-1"), modes(&[("%1", true)]));
 }
 
-// parity: TS-main-paneChatModeStore-55b139
 #[test]
 fn remembers_false_when_chat_pane_returns_to_terminal() {
     let fixture = ModeStoreFixture::new();
@@ -71,7 +69,6 @@ fn remembers_false_when_chat_pane_returns_to_terminal() {
     assert_eq!(fixture.modes("task-1"), modes(&[("%1", false)]));
 }
 
-// parity: TS-main-paneChatModeStore-7667ee
 #[test]
 fn keeps_records_of_different_tasks_apart() {
     let fixture = ModeStoreFixture::new();
@@ -85,7 +82,6 @@ fn keeps_records_of_different_tasks_apart() {
     assert_eq!(fixture.modes("task-b"), PaneChatModes::new());
 }
 
-// parity: TS-main-paneChatModeStore-27e9ed
 #[test]
 fn keeps_both_panes_saved_concurrently() {
     let fixture = ModeStoreFixture::new();
@@ -111,7 +107,6 @@ fn keeps_both_panes_saved_concurrently() {
     );
 }
 
-// parity: TS-main-paneChatModeStore-729edf
 #[test]
 fn reads_broken_json_as_empty_and_saves_normally_afterwards() {
     let fixture = ModeStoreFixture::new();
@@ -130,7 +125,6 @@ fn reads_broken_json_as_empty_and_saves_normally_afterwards() {
     assert_eq!(fixture.modes("task-1"), modes(&[("%1", true)]));
 }
 
-// parity: TS-main-paneChatModeStore-da16ca
 #[test]
 fn drops_only_the_least_recently_changed_task_past_the_limit() {
     let fixture = ModeStoreFixture::new();

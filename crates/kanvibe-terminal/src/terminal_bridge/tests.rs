@@ -494,7 +494,6 @@ fn open_in_background(
     receiver
 }
 
-// parity: TS-main-terminalBridge-b28e73
 #[test]
 fn paste_into_a_local_session_fails_without_transferring() {
     let harness = harness();
@@ -514,7 +513,6 @@ fn paste_into_a_local_session_fails_without_transferring() {
     assert!(harness.image_transfer.transfers.lock().unwrap().is_empty());
 }
 
-// parity: TS-main-terminalBridge-d8880c
 #[test]
 fn paste_fails_when_the_task_ssh_host_has_no_parsed_config() {
     let harness = harness();
@@ -541,7 +539,6 @@ fn paste_fails_when_the_task_ssh_host_has_no_parsed_config() {
     );
 }
 
-// parity: TS-main-terminalBridge-a53a40
 #[test]
 fn paste_transfers_the_decoded_image_and_returns_the_remote_path() {
     let harness = harness();
@@ -559,7 +556,6 @@ fn paste_transfers_the_decoded_image_and_returns_the_remote_path() {
     );
 }
 
-// parity: TS-main-terminalBridge-670892
 #[test]
 fn paste_returns_the_scp_failure_message() {
     let harness = harness();
@@ -589,7 +585,6 @@ fn hold_task_lookup(harness: &Harness) -> Arc<Gate> {
     gate
 }
 
-// parity: TS-main-terminalBridge-8b13cb
 #[test]
 fn overlapping_opens_share_one_attach_and_balance_references() {
     let harness = harness();
@@ -610,7 +605,6 @@ fn overlapping_opens_share_one_attach_and_balance_references() {
     assert!(!client.is_open());
 }
 
-// parity: TS-main-terminalBridge-e472c9
 #[test]
 fn closing_or_destroying_the_window_while_open_is_pending_cancels_before_attach() {
     for is_window_destroyed in [false, true] {
@@ -632,7 +626,6 @@ fn closing_or_destroying_the_window_while_open_is_pending_cancels_before_attach(
     }
 }
 
-// parity: TS-main-terminalBridge-430518
 #[test]
 fn failed_preparation_allows_a_retry() {
     let harness = harness();
@@ -660,7 +653,6 @@ fn failed_preparation_allows_a_retry() {
     harness.bridge.close_window_terminals(100);
 }
 
-// parity: TS-main-terminalBridge-f869d8
 #[test]
 fn remaining_ssh_cooldown_is_forwarded_as_a_retry_hint() {
     let harness = harness();
@@ -682,7 +674,6 @@ fn remaining_ssh_cooldown_is_forwarded_as_a_retry_hint() {
     );
 }
 
-// parity: TS-main-terminalBridge-ef696f
 #[test]
 fn failure_without_a_valid_retry_hint_is_not_retried() {
     let harness = harness();
@@ -696,7 +687,6 @@ fn failure_without_a_valid_retry_hint_is_not_retried() {
     assert_eq!(result, Err(TerminalBridgeError::new("permanent failure")));
 }
 
-// parity: TS-main-terminalBridge-0eb0f0
 #[test]
 fn shared_attach_checks_remote_hooks_in_the_background_after_attaching() {
     let harness = harness();
@@ -718,7 +708,6 @@ fn shared_attach_checks_remote_hooks_in_the_background_after_attaching() {
     assert!(harness.log.position("attach_remote") < harness.log.position("hooks"));
 }
 
-// parity: TS-main-terminalBridge-16a1bd
 #[test]
 fn local_attach_also_checks_hooks_in_the_background_to_replace_tokenless_hooks() {
     let harness = harness();
@@ -745,7 +734,6 @@ fn local_attach_also_checks_hooks_in_the_background_to_replace_tokenless_hooks()
     assert!(harness.log.position("attach_local") < harness.log.position("hooks"));
 }
 
-// parity: TS-main-terminalBridge-ff3e98
 #[test]
 fn remote_attach_clears_the_ssh_cooldown_before_any_remote_command() {
     let harness = harness();
@@ -758,7 +746,6 @@ fn remote_attach_clears_the_ssh_cooldown_before_any_remote_command() {
     assert!(harness.log.position("cooldown:app-prod") < harness.log.position("dependency"));
 }
 
-// parity: TS-main-terminalBridge-464da5
 #[test]
 fn default_branch_session_without_worktree_checks_the_project_path_hooks() {
     let harness = harness();
@@ -787,7 +774,6 @@ fn default_branch_session_without_worktree_checks_the_project_path_hooks() {
     assert_eq!(harness.hooks.calls.lock().unwrap()[0].0, "/remote/root");
 }
 
-// parity: TS-main-terminalBridge-15eba4
 #[test]
 fn background_hook_failure_is_reported_but_keeps_the_terminal_open_and_retries_next_time() {
     let harness = harness();
@@ -831,7 +817,6 @@ fn background_hook_failure_is_reported_but_keeps_the_terminal_open_and_retries_n
     assert_eq!(harness.log.count("attach_remote"), 2);
 }
 
-// parity: TS-main-terminalBridge-6be605
 #[test]
 fn transient_ssh_reconnect_wait_is_not_reported_as_a_hook_install_failure() {
     let harness = harness();
@@ -853,7 +838,6 @@ fn transient_ssh_reconnect_wait_is_not_reported_as_a_hook_install_failure() {
     assert!(harness.events.install_failures.lock().unwrap().is_empty());
 }
 
-// parity: TS-main-terminalBridge-69cd97
 #[test]
 fn attach_and_terminal_input_work_while_the_hook_check_is_delayed() {
     let harness = harness();
@@ -879,7 +863,6 @@ fn attach_and_terminal_input_work_while_the_hook_check_is_delayed() {
     gate.release();
 }
 
-// parity: TS-main-terminalBridge-f6fa84
 #[test]
 fn initial_pane_commands_enter_the_attach_path_only_after_hooks_are_ready() {
     for session_type in [SessionType::Tmux, SessionType::Herdr] {
@@ -905,7 +888,6 @@ fn initial_pane_commands_enter_the_attach_path_only_after_hooks_are_ready() {
     }
 }
 
-// parity: TS-main-terminalBridge-6c68fe
 #[test]
 fn remote_connection_logs_dependency_hook_and_attach_phase_durations() {
     let harness = harness();
@@ -933,7 +915,6 @@ fn remote_connection_logs_dependency_hook_and_attach_phase_durations() {
     );
 }
 
-// parity: TS-main-terminalBridge-8de94b
 #[test]
 fn hook_preparation_failure_is_reported_and_the_terminal_still_attaches() {
     let harness = harness();

@@ -270,7 +270,6 @@ mod tests {
         ))
     }
 
-    // parity: TS-lib-githubProjectIcon-f84989
     #[test]
     fn reads_owner_and_repository_from_github_remote_formats() {
         for remote_url in [
@@ -286,7 +285,6 @@ mod tests {
         }
     }
 
-    // parity: TS-lib-githubProjectIcon-165e42
     #[test]
     fn non_github_or_invalid_owner_remotes_have_no_icon() {
         for remote_url in [
@@ -299,7 +297,6 @@ mod tests {
         }
     }
 
-    // parity: TS-lib-githubProjectIcon-ca5211
     #[test]
     fn converts_the_avatar_to_a_data_url() {
         let icon_bytes = [137, 80, 78, 71];
@@ -314,7 +311,6 @@ mod tests {
         );
     }
 
-    // parity: TS-lib-githubProjectIcon-2b232d
     #[test]
     fn non_image_responses_and_network_failures_have_no_icon() {
         let html = fixture(icon_response("text/html", &[1]));
@@ -327,7 +323,6 @@ mod tests {
         );
     }
 
-    // parity: TS-lib-githubProjectIcon-0dc726
     #[test]
     fn repository_without_remote_registers_without_an_icon() {
         let fixture = fixture(icon_response("image/png", &[1]));
@@ -342,7 +337,6 @@ mod tests {
         assert_eq!(fixture.request_count.load(Ordering::SeqCst), 0);
     }
 
-    // parity: TS-lib-githubProjectIcon-3cdc98
     #[test]
     fn reads_the_origin_remote_to_get_the_icon() {
         let icon_bytes = [1, 2, 3];
@@ -364,7 +358,6 @@ mod tests {
         assert_eq!(call.ssh_host.as_deref(), Some("remote-host"));
     }
 
-    // parity: TS-lib-githubProjectIcon-dcf8a1
     #[test]
     fn downloads_an_owner_avatar_only_once() {
         let fixture = fixture(icon_response("image/png", &[1, 2, 3]));
@@ -380,7 +373,6 @@ mod tests {
         assert_eq!(fixture.request_count.load(Ordering::SeqCst), 1);
     }
 
-    // parity: TS-lib-githubProjectIcon-9c1825
     #[test]
     fn failures_are_cached_per_owner_too() {
         let fixture = fixture(Err("offline".into()));

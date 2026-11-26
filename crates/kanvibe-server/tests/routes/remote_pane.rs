@@ -36,7 +36,6 @@ fn authorize_once_then(server: &TestServer, later: impl Fn() -> Value + Send + S
     });
 }
 
-// parity: TS-electron-mobileRoutes-b771e8
 #[tokio::test]
 async fn only_authenticated_tls_requests_get_the_scoped_b_connection() {
     let server = TestServer::start().await;
@@ -56,7 +55,6 @@ async fn only_authenticated_tls_requests_get_the_scoped_b_connection() {
     );
 }
 
-// parity: TS-electron-mobileRoutes-66be28
 #[tokio::test]
 async fn plaintext_connections_never_get_a_b_token() {
     let server = TestServer::start().await;
@@ -71,7 +69,6 @@ async fn plaintext_connections_never_get_a_b_token() {
     assert_eq!(server.fake.count("prepare_mobile_pane_connection"), 0);
 }
 
-// parity: TS-electron-mobileRoutes-e8e7e3
 #[tokio::test]
 async fn devices_unpaired_while_preparing_get_no_b_capability() {
     let server = TestServer::start().await;
@@ -95,7 +92,6 @@ async fn devices_unpaired_while_preparing_get_no_b_capability() {
     assert!(reply.json().get("connection").is_none());
 }
 
-// parity: TS-electron-mobileRoutes-4a2977
 #[tokio::test]
 async fn invalid_pane_connections_answer_the_session_error() {
     let server = TestServer::start().await;
@@ -113,7 +109,6 @@ async fn invalid_pane_connections_answer_the_session_error() {
     );
 }
 
-// parity: TS-electron-mobileRoutes-cbff8e
 #[tokio::test]
 async fn devices_unpaired_during_the_relay_handshake_are_reauthorized_and_closed() {
     let server = TestServer::start().await;
@@ -126,7 +121,6 @@ async fn devices_unpaired_during_the_relay_handshake_are_reauthorized_and_closed
     assert_eq!(server.fake.count("authorize_mobile_request"), 2);
 }
 
-// parity: TS-electron-mobileRoutes-10756e
 #[tokio::test]
 async fn keys_received_while_reauthorizing_reach_the_relay_only_after_approval() {
     let server = TestServer::start().await;
@@ -157,7 +151,6 @@ async fn keys_received_while_reauthorizing_reach_the_relay_only_after_approval()
     client.close().await;
 }
 
-// parity: TS-electron-mobileRoutes-b5d04e
 #[tokio::test]
 async fn commands_of_a_device_unpaired_while_reauthorizing_never_run() {
     let server = TestServer::start().await;
@@ -176,7 +169,6 @@ async fn commands_of_a_device_unpaired_while_reauthorizing_never_run() {
     assert_eq!(server.fake.count("get_task_surfaces"), 0);
 }
 
-// parity: TS-electron-mobileRoutes-bfa36f
 #[tokio::test]
 async fn the_b_relay_forwards_input_and_size_frames_without_local_command_paths() {
     let server = TestServer::start().await;
@@ -234,7 +226,6 @@ async fn the_b_relay_forwards_input_and_size_frames_without_local_command_paths(
     wait_until(|| server.fake.count("relay.close") == 1).await;
 }
 
-// parity: TS-electron-mobileRoutes-0ea38b
 #[tokio::test]
 async fn a_relay_that_arrives_after_the_device_left_is_closed_at_once() {
     let server = TestServer::start().await;

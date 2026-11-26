@@ -45,7 +45,6 @@ fn local_shell_service(home: &str, entries: &[(&str, &str)]) -> HerdrService {
     )
 }
 
-// parity: TS-lib-herdr-f5a016
 #[test]
 fn config_content_resolves_to_a_tab_bar_position() {
     let cases = [
@@ -97,7 +96,6 @@ fn config_content_resolves_to_a_tab_bar_position() {
     }
 }
 
-// parity: TS-lib-herdr-e3c18b
 #[test]
 fn fails_closed_when_the_config_cannot_be_read() {
     let herdr = fixture();
@@ -111,7 +109,6 @@ fn fails_closed_when_the_config_cannot_be_read() {
     );
 }
 
-// parity: TS-lib-herdr-722091
 #[test]
 fn reads_the_config_in_a_real_shell_and_refuses_relative_paths() {
     let config_home = TempDir::new().unwrap();

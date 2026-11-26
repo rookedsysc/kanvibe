@@ -233,7 +233,6 @@ fn hello_frame() -> Vec<u8> {
     )
 }
 
-// parity: TS-lib-herdrClientProxy-6250dd
 #[test]
 fn tracks_surface_size_and_sidebar_changes_and_hides_inactive_surface() {
     let mut setup = fixture();
@@ -273,7 +272,6 @@ fn tracks_surface_size_and_sidebar_changes_and_hides_inactive_surface() {
     assert_eq!(setup.proxy.surface_size(), None);
 }
 
-// parity: TS-lib-herdrClientProxy-86f49c
 #[test]
 fn unknown_resize_frame_stops_projection_without_guessing_size() {
     let mut setup = fixture();
@@ -292,7 +290,6 @@ fn unknown_resize_frame_stops_projection_without_guessing_size() {
     assert_eq!(setup.proxy.surface_size(), None);
 }
 
-// parity: TS-lib-herdrClientProxy-aaf7a1
 #[test]
 fn keeps_native_initial_snapshot_and_surface_but_drops_stale_initial_input() {
     let mut setup = fixture();
@@ -317,7 +314,6 @@ fn keeps_native_initial_snapshot_and_surface_but_drops_stale_initial_input() {
     assert_eq!(frame(&setup.sent.next()), current_input);
 }
 
-// parity: TS-lib-herdrClientProxy-287897
 #[test]
 fn drops_pane_and_popup_input_until_initial_focus_response() {
     let mut setup = fixture();
@@ -340,7 +336,6 @@ fn drops_pane_and_popup_input_until_initial_focus_response() {
     assert_eq!(frame(&setup.sent.next()), current_input);
 }
 
-// parity: TS-lib-herdrClientProxy-cef703
 #[test]
 fn first_snapshot_boot_id_selects_only_this_connection_workspace() {
     let mut setup = fixture();
@@ -354,7 +349,6 @@ fn first_snapshot_boot_id_selects_only_this_connection_workspace() {
     assert_eq!(setup.proxy.active_tab_id().as_deref(), Some("w1:t3"));
 }
 
-// parity: TS-lib-herdrClientProxy-56baa4
 #[test]
 fn returns_only_focused_pane_inside_reported_workspace() {
     let mut setup = fixture();
@@ -374,7 +368,6 @@ fn returns_only_focused_pane_inside_reported_workspace() {
     assert_eq!(setup.proxy.active_pane_id(), None);
 }
 
-// parity: TS-lib-herdrClientProxy-9bdcf1
 #[test]
 fn relays_fragmented_frames_and_native_responses_but_hides_own_responses() {
     let mut setup = fixture();
@@ -397,7 +390,6 @@ fn relays_fragmented_frames_and_native_responses_but_hides_own_responses() {
     assert_eq!(frame(&setup.sent.next()), input);
 }
 
-// parity: TS-lib-herdrClientProxy-f3eddd
 #[test]
 fn relays_large_split_frame_unchanged() {
     let mut setup = fixture();
@@ -415,7 +407,6 @@ fn relays_large_split_frame_unchanged() {
     writer.join().unwrap();
 }
 
-// parity: TS-lib-herdrClientProxy-0b1a2b
 #[test]
 fn preserves_boundaries_between_consecutive_frames_and_partial_header() {
     let mut setup = fixture();
@@ -434,7 +425,6 @@ fn preserves_boundaries_between_consecutive_frames_and_partial_header() {
     assert_eq!(frame(&setup.received.next()), third);
 }
 
-// parity: TS-lib-herdrClientProxy-b67a64
 #[test]
 fn tab_focus_waits_for_success_and_forwards_server_error() {
     let mut setup = fixture();
@@ -463,7 +453,6 @@ fn tab_focus_waits_for_success_and_forwards_server_error() {
     assert_eq!(missing.join().unwrap(), Err("tab missing".to_string()));
 }
 
-// parity: TS-lib-herdrClientProxy-2bb695
 #[test]
 fn sends_handshake_time_requests_and_input_after_initial_space_selection() {
     let mut setup = fixture();
@@ -492,7 +481,6 @@ fn sends_handshake_time_requests_and_input_after_initial_space_selection() {
     );
 }
 
-// parity: TS-lib-herdrClientProxy-da5c62
 #[test]
 fn reselects_initial_space_when_server_boot_id_changes() {
     let mut setup = fixture();
@@ -507,7 +495,6 @@ fn reselects_initial_space_when_server_boot_id_changes() {
     finish_initialization(&mut setup.upstream, &mut setup.received, &initial);
 }
 
-// parity: TS-lib-herdrClientProxy-1b970e
 #[test]
 fn completes_new_initialization_when_server_changes_during_initial_selection() {
     let mut setup = fixture();
@@ -537,7 +524,6 @@ fn completes_new_initialization_when_server_changes_during_initial_selection() {
     assert!(selecting.join().unwrap().is_ok());
 }
 
-// parity: TS-lib-herdrClientProxy-d10331
 #[test]
 fn does_not_replay_input_held_for_previous_boot() {
     let mut setup = fixture();
@@ -567,7 +553,6 @@ fn does_not_replay_input_held_for_previous_boot() {
     assert_eq!(frame(&setup.sent.next()), current_input);
 }
 
-// parity: TS-lib-herdrClientProxy-834e36
 #[test]
 fn fails_without_sending_when_endpoint_request_exceeds_size_limit() {
     let mut setup = fixture();
@@ -579,7 +564,6 @@ fn fails_without_sending_when_endpoint_request_exceeds_size_limit() {
     assert!(result.unwrap_err().contains("요청 크기 초과"));
 }
 
-// parity: TS-lib-herdrClientProxy-c745b0
 #[test]
 fn oversized_frame_closes_connection_and_fails_pending_request() {
     let mut setup = fixture();
@@ -595,7 +579,6 @@ fn oversized_frame_closes_connection_and_fails_pending_request() {
     );
 }
 
-// parity: TS-lib-herdrClientProxy-3aaf76
 #[test]
 fn endpoint_request_without_response_times_out() {
     let mut setup = fixture();
@@ -606,7 +589,6 @@ fn endpoint_request_without_response_times_out() {
     assert!(error.contains("시간 초과"), "{error}");
 }
 
-// parity: TS-lib-herdrClientProxy-d594b9
 #[test]
 fn reconnected_tui_gets_fresh_space_selection_on_same_server() {
     let mut setup = fixture();
@@ -624,7 +606,6 @@ fn reconnected_tui_gets_fresh_space_selection_on_same_server() {
     finish_initialization(&mut upstream, &mut received, &initial);
 }
 
-// parity: TS-lib-herdrClientProxy-6645cf
 #[test]
 fn close_removes_connection_and_socket_directory_and_allows_repeat() {
     let mut setup = fixture();

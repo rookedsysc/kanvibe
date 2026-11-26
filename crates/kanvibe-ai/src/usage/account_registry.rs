@@ -100,7 +100,6 @@ mod tests {
         }
     }
 
-    // parity: TS-aiUsage-accountRegistry-8dc6b7
     #[test]
     fn reads_back_what_was_saved() {
         let registrations = vec![create_registration()];
@@ -115,19 +114,16 @@ mod tests {
         );
     }
 
-    // parity: TS-aiUsage-accountRegistry-f66325
     #[test]
     fn missing_value_is_empty() {
         assert!(parse_account_registrations(None).is_empty());
     }
 
-    // parity: TS-aiUsage-accountRegistry-b96a32
     #[test]
     fn broken_json_is_dropped() {
         assert!(parse_account_registrations(Some("{not json")).is_empty());
     }
 
-    // parity: TS-aiUsage-accountRegistry-7e1830
     #[test]
     fn keeps_only_readable_entries() {
         let raw = stringify(&json!([
@@ -142,7 +138,6 @@ mod tests {
         );
     }
 
-    // parity: TS-aiUsage-accountRegistry-28c7ca
     #[test]
     fn add_builds_root_by_provider_rule() {
         assert_eq!(
@@ -155,7 +150,6 @@ mod tests {
         );
     }
 
-    // parity: TS-aiUsage-accountRegistry-8bbc36
     #[test]
     fn adding_same_account_twice_keeps_one() {
         let first = add_account_registration(&[], AiUsageProvider::Claude, "work", FAKE_HOME);
@@ -163,7 +157,6 @@ mod tests {
         assert_eq!(second.len(), 1);
     }
 
-    // parity: TS-aiUsage-accountRegistry-e442b5
     #[test]
     fn remove_drops_only_matching_root() {
         let registrations = add_account_registration(

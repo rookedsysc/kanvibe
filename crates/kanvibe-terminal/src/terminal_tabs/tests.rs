@@ -30,7 +30,6 @@ fn layout_with_focus_on_second_tab() -> String {
     .join("\n")
 }
 
-// parity: TS-lib-terminalTabs-b75904
 #[test]
 fn tmux_pane_list_reads_session_window_command_and_path() {
     let output = [
@@ -62,7 +61,6 @@ fn tmux_pane_list_reads_session_window_command_and_path() {
     );
 }
 
-// parity: TS-lib-terminalTabs-2afd3c
 #[test]
 fn tmux_pane_list_keeps_tab_characters_in_window_name() {
     assert_eq!(
@@ -71,14 +69,12 @@ fn tmux_pane_list_keeps_tab_characters_in_window_name() {
     );
 }
 
-// parity: TS-lib-terminalTabs-6f6a46
 #[test]
 fn tmux_pane_list_skips_empty_output_and_short_lines() {
     assert!(parse_tmux_pane_list("").is_empty());
     assert!(parse_tmux_pane_list("s\t@1\t0\tzsh").is_empty());
 }
 
-// parity: TS-lib-terminalTabs-2a0bcf
 #[test]
 fn tmux_pane_list_ignores_crlf_line_endings() {
     assert_eq!(
@@ -87,7 +83,6 @@ fn tmux_pane_list_ignores_crlf_line_endings() {
     );
 }
 
-// parity: TS-lib-terminalTabs-0993e0
 #[test]
 fn tmux_window_list_reads_id_index_name_and_active_state() {
     let output = ["@1\t0\t0\tzsh", "@2\t1\t1\tvim"].join("\n");
@@ -98,7 +93,6 @@ fn tmux_window_list_reads_id_index_name_and_active_state() {
     );
 }
 
-// parity: TS-lib-terminalTabs-6578ed
 #[test]
 fn tmux_window_list_preserves_non_delimiter_special_characters() {
     assert_eq!(
@@ -107,7 +101,6 @@ fn tmux_window_list_preserves_non_delimiter_special_characters() {
     );
 }
 
-// parity: TS-lib-terminalTabs-3ab619
 #[test]
 fn tmux_window_list_keeps_tab_characters_in_name() {
     assert_eq!(
@@ -116,7 +109,6 @@ fn tmux_window_list_keeps_tab_characters_in_name() {
     );
 }
 
-// parity: TS-lib-terminalTabs-e06dc6
 #[test]
 fn tmux_window_list_skips_empty_output_and_short_lines() {
     assert!(parse_tmux_window_list("").is_empty());
@@ -124,7 +116,6 @@ fn tmux_window_list_skips_empty_output_and_short_lines() {
     assert!(parse_tmux_window_list("\n\n").is_empty());
 }
 
-// parity: TS-lib-terminalTabs-493334
 #[test]
 fn tmux_window_list_ignores_crlf_line_endings() {
     assert_eq!(
@@ -133,7 +124,6 @@ fn tmux_window_list_ignores_crlf_line_endings() {
     );
 }
 
-// parity: TS-lib-terminalTabs-29870d
 #[test]
 fn tmux_list_windows_quotes_session_name_as_single_argument() {
     let command = build_tmux_list_windows_command(INJECTION_SESSION_NAME);
@@ -158,7 +148,6 @@ fn tmux_list_windows_quotes_session_name_as_single_argument() {
     );
 }
 
-// parity: TS-lib-terminalTabs-9d3c6b
 #[test]
 fn tmux_window_commands_target_window_id_without_session_prefix() {
     assert_eq!(
@@ -171,7 +160,6 @@ fn tmux_window_commands_target_window_id_without_session_prefix() {
     );
 }
 
-// parity: TS-lib-terminalTabs-66496a
 #[test]
 fn tmux_new_window_appends_colon_target_and_working_directory() {
     assert_eq!(
@@ -180,7 +168,6 @@ fn tmux_new_window_appends_colon_target_and_working_directory() {
     );
 }
 
-// parity: TS-lib-terminalTabs-e73ff4
 #[test]
 fn tmux_new_window_omits_working_directory_when_unknown() {
     assert_eq!(
@@ -189,7 +176,6 @@ fn tmux_new_window_omits_working_directory_when_unknown() {
     );
 }
 
-// parity: TS-lib-terminalTabs-f90743
 #[test]
 fn tmux_rename_window_places_name_after_double_dash() {
     assert_eq!(
@@ -198,7 +184,6 @@ fn tmux_rename_window_places_name_after_double_dash() {
     );
 }
 
-// parity: TS-lib-terminalTabs-7da33c
 #[test]
 fn tmux_move_left_inserts_before_target_and_renumbers() {
     assert_eq!(
@@ -210,7 +195,6 @@ fn tmux_move_left_inserts_before_target_and_renumbers() {
     );
 }
 
-// parity: TS-lib-terminalTabs-78ae64
 #[test]
 fn tmux_move_right_inserts_after_target() {
     assert_eq!(
@@ -222,13 +206,11 @@ fn tmux_move_right_inserts_after_target() {
     );
 }
 
-// parity: TS-lib-terminalTabs-256186
 #[test]
 fn tmux_move_to_same_index_emits_no_commands() {
     assert!(build_tmux_move_window_commands("proj-main", "@3", 1, 1).is_empty());
 }
 
-// parity: TS-lib-terminalTabs-9d4ea9
 #[test]
 fn tmux_move_never_uses_kill_flag() {
     let kill_flag = Regex::new(r" -k( |$)").unwrap();
@@ -245,7 +227,6 @@ fn tmux_move_never_uses_kill_flag() {
     );
 }
 
-// parity: TS-lib-terminalTabs-d0ec2c
 #[test]
 fn zellij_tab_id_commands_start_at_version_0_44_0() {
     assert!(!supports_zellij_tab_id_commands("zellij 0.43.1"));
@@ -254,14 +235,12 @@ fn zellij_tab_id_commands_start_at_version_0_44_0() {
     assert!(supports_zellij_tab_id_commands("zellij 1.0.0"));
 }
 
-// parity: TS-lib-terminalTabs-8b1641
 #[test]
 fn unreadable_zellij_version_counts_as_old() {
     assert!(!supports_zellij_tab_id_commands(""));
     assert!(!supports_zellij_tab_id_commands("command not found"));
 }
 
-// parity: TS-lib-terminalTabs-d6c8fc
 #[test]
 fn tab_and_pane_axes_share_one_version_check_per_host() {
     let cache = ZellijIdTargetingSupportCache::new();
@@ -286,7 +265,6 @@ fn tab_and_pane_axes_share_one_version_check_per_host() {
     assert!(mirror_service_runner.commands().is_empty());
 }
 
-// parity: TS-lib-terminalTabs-07b7fa
 #[test]
 fn host_with_failing_version_command_counts_as_old() {
     let cache = ZellijIdTargetingSupportCache::new();
@@ -300,7 +278,6 @@ fn host_with_failing_version_command_counts_as_old() {
     ));
 }
 
-// parity: TS-lib-terminalTabs-311b5b
 #[test]
 fn zellij_tab_list_reads_tab_id_position_and_active() {
     let output = serde_json::json!([
@@ -315,7 +292,6 @@ fn zellij_tab_list_reads_tab_id_position_and_active() {
     );
 }
 
-// parity: TS-lib-terminalTabs-e20f04
 #[test]
 fn zellij_tab_list_uses_tab_id_after_positions_shift() {
     let output_after_middle_tab_closed = serde_json::json!([
@@ -330,14 +306,12 @@ fn zellij_tab_list_uses_tab_id_after_positions_shift() {
     );
 }
 
-// parity: TS-lib-terminalTabs-ad6e9b
 #[test]
 fn zellij_tab_list_is_empty_for_non_json_or_non_array() {
     assert!(parse_zellij_tab_list("not json").is_empty());
     assert!(parse_zellij_tab_list(r#"{"position":0}"#).is_empty());
 }
 
-// parity: TS-lib-terminalTabs-280134
 #[test]
 fn zellij_tab_list_skips_entries_without_tab_id_or_name() {
     let output = serde_json::json!([
@@ -353,7 +327,6 @@ fn zellij_tab_list_skips_entries_without_tab_id_or_name() {
     );
 }
 
-// parity: TS-lib-terminalTabs-749525
 #[test]
 fn legacy_zellij_marks_focused_layout_tab_active() {
     assert_eq!(
@@ -362,7 +335,6 @@ fn legacy_zellij_marks_focused_layout_tab_active() {
     );
 }
 
-// parity: TS-lib-terminalTabs-b3d5e9
 #[test]
 fn legacy_zellij_assumes_first_tab_active_without_layout() {
     assert_eq!(
@@ -371,13 +343,11 @@ fn legacy_zellij_assumes_first_tab_active_without_layout() {
     );
 }
 
-// parity: TS-lib-terminalTabs-7d5aaa
 #[test]
 fn legacy_zellij_returns_empty_list_without_names() {
     assert!(parse_zellij_tab_names_with_focus("", &layout_with_focus_on_second_tab()).is_empty());
 }
 
-// parity: TS-lib-terminalTabs-7ec468
 #[test]
 fn focused_tab_name_unescapes_quotes() {
     let layout = r#"tab name="say \"hi\"" focus=true {"#;
@@ -388,13 +358,11 @@ fn focused_tab_name_unescapes_quotes() {
     );
 }
 
-// parity: TS-lib-terminalTabs-3bc570
 #[test]
 fn focused_tab_name_is_none_without_focus_marker() {
     assert_eq!(parse_zellij_focused_tab_name(r#"tab name="only" {"#), None);
 }
 
-// parity: TS-lib-terminalTabs-5433e2
 #[test]
 fn focused_tab_name_ignores_swap_layout_tabs_and_pane_focus() {
     let real_dump_layout = [
@@ -420,7 +388,6 @@ fn focused_tab_name_ignores_swap_layout_tabs_and_pane_focus() {
     );
 }
 
-// parity: TS-lib-terminalTabs-d3f398
 #[test]
 fn zellij_commands_target_session_with_session_flag() {
     assert_eq!(
@@ -441,7 +408,6 @@ fn zellij_commands_target_session_with_session_flag() {
     );
 }
 
-// parity: TS-lib-terminalTabs-d5a8db
 #[test]
 fn zellij_new_tab_passes_working_directory_only_when_known() {
     assert_eq!(
@@ -454,7 +420,6 @@ fn zellij_new_tab_passes_working_directory_only_when_known() {
     );
 }
 
-// parity: TS-lib-terminalTabs-f38bef
 #[test]
 fn legacy_zellij_focuses_target_tab_before_focused_tab_commands() {
     assert_eq!(
@@ -473,7 +438,6 @@ fn legacy_zellij_focuses_target_tab_before_focused_tab_commands() {
     );
 }
 
-// parity: TS-lib-terminalTabs-17fef4
 #[test]
 fn legacy_zellij_move_repeats_direction_per_step() {
     assert_eq!(
@@ -493,14 +457,12 @@ fn legacy_zellij_move_repeats_direction_per_step() {
     );
 }
 
-// parity: TS-lib-terminalTabs-e4d809
 #[test]
 fn zellij_move_to_same_position_emits_no_commands() {
     assert!(build_zellij_move_tab_commands("proj", "logs", 1, 1).is_empty());
     assert!(build_zellij_move_tab_by_id_commands("proj", "2", 1, 1).is_empty());
 }
 
-// parity: TS-lib-terminalTabs-0fbc0d
 #[test]
 fn zellij_move_by_id_moves_target_without_changing_focus() {
     let commands = build_zellij_move_tab_by_id_commands("proj", "2", 0, 2);

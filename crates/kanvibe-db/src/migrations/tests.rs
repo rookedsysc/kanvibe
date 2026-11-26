@@ -104,7 +104,6 @@ fn run_step_with_foreign_keys_off(
         .unwrap();
 }
 
-// parity: TS-lib-databaseMigrations-814450
 #[test]
 fn baselines_databases_created_by_the_legacy_bootstrap() {
     let fixture = DatabaseFixture::new();
@@ -128,7 +127,6 @@ fn baselines_databases_created_by_the_legacy_bootstrap() {
     assert_eq!(names[0], "InitialSchema1770854400000");
 }
 
-// parity: TS-lib-databaseMigrations-370c89
 #[test]
 fn repairs_missing_diff_stats_for_a_legacy_database() {
     for is_already_baselined in [false, true] {
@@ -165,7 +163,6 @@ fn repairs_missing_diff_stats_for_a_legacy_database() {
     }
 }
 
-// parity: TS-lib-databaseMigrations-577bf7
 #[test]
 fn backfills_older_legacy_columns_before_baselining() {
     let fixture = DatabaseFixture::new();
@@ -217,7 +214,6 @@ fn backfills_older_legacy_columns_before_baselining() {
     assert_eq!(migration_names(&connection).len(), 17);
 }
 
-// parity: TS-lib-databaseMigrations-4e4994
 #[test]
 fn runs_all_migrations_for_a_fresh_database_file() {
     let fixture = DatabaseFixture::new();
@@ -266,7 +262,6 @@ fn runs_all_migrations_for_a_fresh_database_file() {
     );
 }
 
-// parity: TS-lib-databaseMigrations-91be15
 #[test]
 fn rescope_drops_the_global_unique_name_without_unlinking_tasks() {
     let fixture = DatabaseFixture::new();
@@ -317,7 +312,6 @@ fn rescope_drops_the_global_unique_name_without_unlinking_tasks() {
     );
 }
 
-// parity: TS-lib-databaseMigrations-194ba7
 #[test]
 fn rescope_removes_parent_folders_and_numbers_added_by_the_global_rule() {
     let fixture = DatabaseFixture::new();
@@ -357,7 +351,6 @@ fn rescope_removes_parent_folders_and_numbers_added_by_the_global_rule() {
     );
 }
 
-// parity: TS-lib-databaseMigrations-899033
 #[test]
 fn baselined_database_also_loses_the_global_unique_name() {
     let fixture = DatabaseFixture::new();
@@ -396,7 +389,6 @@ fn baselined_database_also_loses_the_global_unique_name() {
     );
 }
 
-// parity: TS-lib-databaseMigrations-6a1310
 #[test]
 fn rescope_fails_instead_of_dropping_an_unknown_projects_column() {
     let fixture = DatabaseFixture::new();
@@ -427,7 +419,6 @@ fn rescope_fails_instead_of_dropping_an_unknown_projects_column() {
     );
 }
 
-// parity: TS-lib-databaseMigrations-4f234f
 #[test]
 fn tied_timestamps_still_get_distinct_display_orders() {
     let fixture = DatabaseFixture::new();
@@ -454,7 +445,6 @@ fn tied_timestamps_still_get_distinct_display_orders() {
     );
 }
 
-// parity: TS-lib-databaseMigrations-758366
 #[test]
 fn dropping_display_order_rebuilds_the_index_on_the_new_default_order() {
     let fixture = DatabaseFixture::new();
@@ -481,7 +471,6 @@ fn dropping_display_order_rebuilds_the_index_on_the_new_default_order() {
     );
 }
 
-// parity: TS-lib-databaseMigrations-1583f7
 #[test]
 fn schema_repair_rebuilds_a_baselined_index_left_on_old_columns() {
     let fixture = DatabaseFixture::new();

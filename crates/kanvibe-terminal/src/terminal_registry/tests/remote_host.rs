@@ -41,7 +41,6 @@ fn tab_ids(harness: &Harness) -> Vec<String> {
         .collect()
 }
 
-// parity: TS-lib-terminalRemoteHost-9b083b
 #[test]
 fn failed_daemon_close_acknowledgement_keeps_the_tab() {
     // Given
@@ -86,7 +85,6 @@ fn terminal_session(terminal_key: &str, session_id: &str) -> RemoteHostPtySessio
     )
 }
 
-// parity: TS-lib-terminalRemoteHost-07359d
 #[test]
 fn daemon_owned_tabs_are_restored_after_app_detach_and_closed_by_session_id() {
     // Given
@@ -117,7 +115,6 @@ fn daemon_owned_tabs_are_restored_after_app_detach_and_closed_by_session_id() {
     assert_eq!(restored_tab_ids(&harness), vec!["task-1", "task-3"]);
 }
 
-// parity: TS-lib-terminalRemoteHost-b5800a
 #[test]
 fn one_daemon_attachment_is_shared_kept_on_detach_and_closed_only_explicitly() {
     // Given
@@ -165,7 +162,6 @@ fn one_daemon_attachment_is_shared_kept_on_detach_and_closed_only_explicitly() {
     assert_eq!(again.close_session_count(), 1);
 }
 
-// parity: TS-lib-terminalRemoteHost-71a35b
 #[test]
 fn transport_loss_keeps_the_tab_and_stalled_clients_are_closed_by_backpressure() {
     // Given
@@ -199,7 +195,6 @@ fn transport_loss_keeps_the_tab_and_stalled_clients_are_closed_by_backpressure()
     assert_eq!(remote.close_session_count(), 0);
 }
 
-// parity: TS-lib-terminalRemoteHost-b7365c
 #[test]
 fn existing_multiplexer_attach_commands_run_inside_the_daemon() {
     for session_type in [SessionType::Tmux, SessionType::Zellij] {

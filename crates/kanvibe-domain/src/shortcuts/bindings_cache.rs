@@ -53,7 +53,6 @@ mod tests {
     use super::*;
     use crate::shortcuts::bindings::ShortcutCommandId;
 
-    // parity: TS-renderer-shortcutBindings-23badf
     #[test]
     fn failed_load_keeps_defaults_and_reports_failure() {
         let mut cache = ShortcutBindingsCache::default();
@@ -63,7 +62,6 @@ mod tests {
         assert_eq!(cache.bindings(), &ShortcutBindings::defaults());
     }
 
-    // parity: TS-renderer-shortcutBindings-4454dc
     #[test]
     fn successful_load_stores_the_saved_table() {
         let mut cache = ShortcutBindingsCache::default();
@@ -75,7 +73,6 @@ mod tests {
         assert_eq!(cache.bindings(), &stored_bindings);
     }
 
-    // parity: TS-renderer-shortcutBindings-c57d0a
     #[test]
     fn failed_reload_after_success_is_not_loaded() {
         let mut cache = ShortcutBindingsCache::default();

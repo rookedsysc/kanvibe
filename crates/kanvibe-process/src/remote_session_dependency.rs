@@ -385,7 +385,6 @@ mod tests {
         Err(ExecGitError::new("missing"))
     }
 
-    // parity: TS-lib-remoteSessionDependency-a8595c
     #[test]
     fn local_sessions_skip_remote_install_checks() {
         let runner = sequenced_runner(vec![]);
@@ -397,7 +396,6 @@ mod tests {
         assert!(runner.calls().is_empty());
     }
 
-    // parity: TS-lib-remoteSessionDependency-1c1dbe
     #[test]
     fn local_dependency_status_is_checked_too() {
         let runner = sequenced_runner(vec![]);
@@ -413,7 +411,6 @@ mod tests {
         assert_eq!(runner.calls()[0].ssh_host, None);
     }
 
-    // parity: TS-lib-remoteSessionDependency-607f4a
     #[test]
     fn local_environment_can_install_automatically() {
         let runner = sequenced_runner(vec![missing()]);
@@ -425,7 +422,6 @@ mod tests {
         assert!(runner.commands()[1].contains("cargo install --locked zellij"));
     }
 
-    // parity: TS-lib-remoteSessionDependency-ab43eb
     #[test]
     fn existing_remote_tool_is_not_reinstalled() {
         let runner = sequenced_runner(vec![]);
@@ -438,7 +434,6 @@ mod tests {
         assert_eq!(runner.calls()[0].ssh_host.as_deref(), Some("remote-a"));
     }
 
-    // parity: TS-lib-remoteSessionDependency-ae6934
     #[test]
     fn successful_remote_checks_are_reused_for_the_same_host_and_tool() {
         let runner = sequenced_runner(vec![]);
@@ -454,7 +449,6 @@ mod tests {
         assert_eq!(runner.calls().len(), 1);
     }
 
-    // parity: TS-lib-remoteSessionDependency-15075a
     #[test]
     fn connection_errors_neither_mean_missing_dependency_nor_block_the_host() {
         for message in [
@@ -481,7 +475,6 @@ mod tests {
         }
     }
 
-    // parity: TS-lib-remoteSessionDependency-f22e35
     #[test]
     fn missing_remote_tool_is_installed_and_checked_again() {
         let runner = sequenced_runner(vec![missing()]);
@@ -499,7 +492,6 @@ mod tests {
         assert_eq!(runner.calls()[2].ssh_host.as_deref(), Some("remote-b"));
     }
 
-    // parity: TS-lib-remoteSessionDependency-cc9fcc
     #[test]
     fn ssh_failures_during_install_do_not_block_the_host() {
         let closed = Err(ExecGitError::new(
@@ -519,7 +511,6 @@ mod tests {
         assert_eq!(runner.commands()[2], "command -v tmux >/dev/null 2>&1");
     }
 
-    // parity: TS-lib-remoteSessionDependency-e5890c
     #[test]
     fn failed_install_blocks_the_host_for_following_requests() {
         let runner = sequenced_runner(vec![missing(), Err(ExecGitError::new("sudo unavailable"))]);
@@ -546,7 +537,6 @@ mod tests {
         );
     }
 
-    // parity: TS-lib-remoteSessionDependency-0e33f5
     #[test]
     fn missing_herdr_is_detected_and_installed_with_the_official_installer() {
         for ssh_host in [None, Some("remote-herdr")] {
@@ -564,7 +554,6 @@ mod tests {
         }
     }
 
-    // parity: TS-main-sessionDependencyService-ec5e94
     #[test]
     fn herdr_server_handoff_is_asked_once_per_server() {
         let prompts = HerdrServerHandoffPrompts::default();

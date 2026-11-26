@@ -144,7 +144,6 @@ fn received_paths(server: &RecordingServer) -> Vec<String> {
         .collect()
 }
 
-// parity: TS-lib-hookSocketTransport-db3950
 #[test]
 fn ssh_registrations_send_status_only_through_the_real_unix_socket() {
     let fixture = PluginWorkspace::new();
@@ -157,7 +156,6 @@ fn ssh_registrations_send_status_only_through_the_real_unix_socket() {
     assert!(via_http.received().is_empty());
 }
 
-// parity: TS-lib-hookSocketTransport-144568
 #[test]
 fn unusable_ssh_sockets_never_fall_back_to_a_responding_tcp_server() {
     for kind in ["missing", "stale", "regular", "symlink", "permissions"] {
@@ -171,7 +169,6 @@ fn unusable_ssh_sockets_never_fall_back_to_a_responding_tcp_server() {
     }
 }
 
-// parity: TS-lib-hookSocketTransport-21db97
 #[test]
 fn sends_the_task_token_from_targets_json_as_the_authorization_header() {
     let fixture = PluginWorkspace::new();
@@ -193,7 +190,6 @@ fn sends_the_task_token_from_targets_json_as_the_authorization_header() {
     );
 }
 
-// parity: TS-lib-hookSocketTransport-bc5a3a
 #[test]
 fn local_and_legacy_loopback_registrations_use_http() {
     for transport in [Some("local"), None] {

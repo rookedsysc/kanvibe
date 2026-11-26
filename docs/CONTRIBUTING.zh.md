@@ -58,7 +58,6 @@ packaging/macos/build-macos.sh
    cargo fmt --all --check                                  # 格式
    cargo clippy --workspace --all-targets -- -D warnings    # Lint
    cargo nextest run --workspace                            # 测试
-   cargo xtask parity check                                 # TS 等价性台账
    cargo build --workspace --release                        # 发布构建
    ```
 

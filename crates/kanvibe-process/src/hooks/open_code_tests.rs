@@ -124,7 +124,6 @@ fn assert_matches(pattern: &str, content: &str) {
     );
 }
 
-// parity: TS-lib-openCodeHooksSetup-c10854
 #[test]
 fn preserves_tui_settings_and_other_plugins_and_reinstalls_a_missing_observer() {
     let fixture = OpenCodeFixture::new();
@@ -154,7 +153,6 @@ fn preserves_tui_settings_and_other_plugins_and_reinstalls_a_missing_observer() 
     assert!(!fixture.status(None).is_installed);
 }
 
-// parity: TS-lib-openCodeHooksSetup-c8db45
 #[test]
 fn does_not_overwrite_an_unparseable_tui_config() {
     let fixture = OpenCodeFixture::new();
@@ -168,7 +166,6 @@ fn does_not_overwrite_an_unparseable_tui_config() {
     );
 }
 
-// parity: TS-lib-openCodeHooksSetup-7f270b
 #[test]
 fn reports_a_missing_pane_chat_binding_as_the_failed_check() {
     let fixture = OpenCodeFixture::new();
@@ -182,7 +179,6 @@ fn reports_a_missing_pane_chat_binding_as_the_failed_check() {
     assert!(!status.has_pane_chat_binding);
 }
 
-// parity: TS-lib-openCodeHooksSetup-53269a
 #[test]
 fn creates_the_plugin_file_under_opencode_plugins() {
     let fixture = OpenCodeFixture::new();
@@ -192,7 +188,6 @@ fn creates_the_plugin_file_under_opencode_plugins() {
     assert!(fixture.status(None).has_plugin);
 }
 
-// parity: TS-lib-openCodeHooksSetup-235d07
 #[test]
 fn generates_a_plugin_with_task_binding_state_file_and_target_fanout() {
     let fixture = OpenCodeFixture::new();
@@ -221,7 +216,6 @@ fn generates_a_plugin_with_task_binding_state_file_and_target_fanout() {
     }
 }
 
-// parity: TS-lib-openCodeHooksSetup-b7b43d
 #[test]
 fn generates_a_plugin_with_every_status_event_handler() {
     let fixture = OpenCodeFixture::new();
@@ -240,7 +234,6 @@ fn generates_a_plugin_with_every_status_event_handler() {
     }
 }
 
-// parity: TS-lib-openCodeHooksSetup-6c01ca
 #[test]
 fn maps_event_types_to_statuses() {
     let fixture = OpenCodeFixture::new();
@@ -255,7 +248,6 @@ fn maps_event_types_to_statuses() {
     assert_matches(r"session\.deleted.*?done", &content);
 }
 
-// parity: TS-lib-openCodeHooksSetup-dd7909
 #[test]
 fn filters_subagent_sessions_before_updating_statuses() {
     let fixture = OpenCodeFixture::new();
@@ -293,7 +285,6 @@ fn filters_subagent_sessions_before_updating_statuses() {
     }
 }
 
-// parity: TS-lib-openCodeHooksSetup-20cc77
 #[test]
 fn reinstalling_overwrites_the_existing_plugin() {
     let fixture = OpenCodeFixture::new();
@@ -330,7 +321,6 @@ export const KanvibePlugin: Plugin = async ({ $ }) => {
 };
 "#;
 
-// parity: TS-lib-openCodeHooksSetup-9ecd09
 #[test]
 fn repairs_stale_branch_bound_plugin_content_on_reinstall() {
     let fixture = OpenCodeFixture::new();
@@ -351,7 +341,6 @@ fn repairs_stale_branch_bound_plugin_content_on_reinstall() {
     assert!(status.has_task_id_binding);
 }
 
-// parity: TS-lib-openCodeHooksSetup-c022f9
 #[test]
 fn invalidates_registration_after_writing_the_plugin() {
     let fixture = OpenCodeFixture::new();
@@ -364,7 +353,6 @@ fn invalidates_registration_after_writing_the_plugin() {
     );
 }
 
-// parity: TS-lib-openCodeHooksSetup-88b2a1
 #[test]
 fn keeps_cli_errors_distinct_from_an_unregistered_plugin() {
     let fixture = OpenCodeFixture::new();
@@ -382,7 +370,6 @@ fn keeps_cli_errors_distinct_from_an_unregistered_plugin() {
     );
 }
 
-// parity: TS-lib-openCodeHooksSetup-2c71db
 #[test]
 fn preserves_global_plugin_diagnostics_when_the_local_plugin_file_is_missing() {
     let fixture = OpenCodeFixture::new();
@@ -401,7 +388,6 @@ fn preserves_global_plugin_diagnostics_when_the_local_plugin_file_is_missing() {
     );
 }
 
-// parity: TS-lib-openCodeHooksSetup-eb3901
 #[test]
 fn reports_installed_after_setup() {
     let fixture = OpenCodeFixture::new();
@@ -427,7 +413,6 @@ fn reports_installed_after_setup() {
     );
 }
 
-// parity: TS-lib-openCodeHooksSetup-2ebc6d
 #[test]
 fn treats_an_old_transport_version_plugin_as_needing_reinstall() {
     let fixture = OpenCodeFixture::new();
@@ -447,7 +432,6 @@ fn treats_an_old_transport_version_plugin_as_needing_reinstall() {
     assert!(!status.is_installed);
 }
 
-// parity: TS-lib-openCodeHooksSetup-219c34
 #[test]
 fn does_not_treat_a_legacy_status_md_plugin_as_installed() {
     let fixture = OpenCodeFixture::new();
@@ -467,7 +451,6 @@ fn does_not_treat_a_legacy_status_md_plugin_as_installed() {
     assert!(!status.is_installed);
 }
 
-// parity: TS-lib-openCodeHooksSetup-dff8a6
 #[test]
 fn does_not_treat_a_plugin_without_common_exclude_update_as_installed() {
     let fixture = OpenCodeFixture::new();
@@ -493,7 +476,6 @@ fn does_not_treat_a_plugin_without_common_exclude_update_as_installed() {
     assert!(!status.is_installed);
 }
 
-// parity: TS-lib-openCodeHooksSetup-8498c2
 #[test]
 fn reports_not_installed_when_no_plugin_exists() {
     let fixture = OpenCodeFixture::new();
@@ -504,7 +486,6 @@ fn reports_not_installed_when_no_plugin_exists() {
     assert!(!status.has_plugin);
 }
 
-// parity: TS-lib-openCodeHooksSetup-3886d1
 #[test]
 fn stays_installed_with_diagnostics_when_the_cli_registry_omits_the_plugin() {
     let fixture = OpenCodeFixture::new();
@@ -519,7 +500,6 @@ fn stays_installed_with_diagnostics_when_the_cli_registry_omits_the_plugin() {
     assert_eq!(status.registration.registered_plugin_urls, Some(Vec::new()));
 }
 
-// parity: TS-lib-openCodeHooksSetup-233167
 #[test]
 fn stays_installed_with_diagnostics_when_the_cli_registry_query_fails() {
     let fixture = OpenCodeFixture::new();
@@ -539,7 +519,6 @@ fn stays_installed_with_diagnostics_when_the_cli_registry_query_fails() {
     );
 }
 
-// parity: TS-lib-openCodeHooksSetup-74202f
 #[test]
 fn stays_installed_with_diagnostics_when_duplicate_plugins_are_registered() {
     let fixture = OpenCodeFixture::new();
@@ -569,7 +548,6 @@ fn stays_installed_with_diagnostics_when_duplicate_plugins_are_registered() {
     );
 }
 
-// parity: TS-lib-openCodeHooksSetup-ec1bfa
 #[test]
 fn does_not_treat_an_unregistered_task_as_installed() {
     let fixture = OpenCodeFixture::new();

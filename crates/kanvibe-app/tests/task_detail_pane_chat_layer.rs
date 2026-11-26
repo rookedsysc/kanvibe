@@ -127,7 +127,6 @@ fn count_notifications(
     (notifications, subscription)
 }
 
-// parity: TS-renderer-TerminalPaneChatLayer-08b4c4
 #[gpui::test]
 fn default_chat_waits_for_layout_and_cli_without_a_connecting_screen(cx: &mut TestAppContext) {
     init(cx);
@@ -149,7 +148,6 @@ fn default_chat_waits_for_layout_and_cli_without_a_connecting_screen(cx: &mut Te
     assert!(mode_calls(&backend).contains(&vec![json!("task-1"), json!("%1"), json!(true)]));
 }
 
-// parity: TS-renderer-TerminalPaneChatLayer-bc3bec
 #[gpui::test]
 fn default_chat_skips_panes_without_a_cli_and_saves_nothing(cx: &mut TestAppContext) {
     init(cx);
@@ -164,7 +162,6 @@ fn default_chat_skips_panes_without_a_cli_and_saves_nothing(cx: &mut TestAppCont
     assert!(mode_calls(&backend).is_empty());
 }
 
-// parity: TS-renderer-TerminalPaneChatLayer-653bc5
 #[gpui::test]
 fn default_chat_opens_once_a_cli_starts_later(cx: &mut TestAppContext) {
     init(cx);
@@ -178,7 +175,6 @@ fn default_chat_opens_once_a_cli_starts_later(cx: &mut TestAppContext) {
     assert!(mode_calls(&backend).contains(&vec![json!("task-1"), json!("%1"), json!(true)]));
 }
 
-// parity: TS-renderer-TerminalPaneChatLayer-33a3d1
 #[gpui::test]
 fn saved_chat_pane_waits_as_terminal_until_its_cli_runs(cx: &mut TestAppContext) {
     init(cx);
@@ -197,7 +193,6 @@ fn saved_chat_pane_waits_as_terminal_until_its_cli_runs(cx: &mut TestAppContext)
     assert!(mode_calls(&backend).is_empty());
 }
 
-// parity: TS-renderer-TerminalPaneChatLayer-a19eee
 #[gpui::test]
 fn cli_first_screen_without_a_conversation_is_not_covered_until_it_can_connect(
     cx: &mut TestAppContext,
@@ -222,7 +217,6 @@ fn cli_first_screen_without_a_conversation_is_not_covered_until_it_can_connect(
     assert!(mode_calls(&backend).contains(&vec![json!("task-1"), json!("%1"), json!(true)]));
 }
 
-// parity: TS-renderer-TerminalPaneChatLayer-616ba3
 #[gpui::test]
 fn codex_waiting_for_reveal_is_opened_in_chat(cx: &mut TestAppContext) {
     init(cx);
@@ -236,7 +230,6 @@ fn codex_waiting_for_reveal_is_opened_in_chat(cx: &mut TestAppContext) {
     assert!(is_visible(&layer, cx, "%1"));
 }
 
-// parity: TS-renderer-TerminalPaneChatLayer-40a52a
 #[gpui::test]
 fn pane_without_a_cli_is_not_read_further(cx: &mut TestAppContext) {
     init(cx);
@@ -250,7 +243,6 @@ fn pane_without_a_cli_is_not_read_further(cx: &mut TestAppContext) {
     assert_eq!(backend.call_count(SNAPSHOT), 0);
 }
 
-// parity: TS-renderer-TerminalPaneChatLayer-b4c7b7
 #[gpui::test]
 fn explicit_toggle_opens_chat_even_without_a_cli(cx: &mut TestAppContext) {
     init(cx);
@@ -261,7 +253,6 @@ fn explicit_toggle_opens_chat_even_without_a_cli(cx: &mut TestAppContext) {
     assert!(is_visible(&layer, cx, "%1"));
 }
 
-// parity: TS-renderer-TerminalPaneChatLayer-7dfbdf
 #[gpui::test]
 fn reshown_tab_shows_the_connecting_screen_only_while_rereading_the_layout(
     cx: &mut TestAppContext,
@@ -280,7 +271,6 @@ fn reshown_tab_shows_the_connecting_screen_only_while_rereading_the_layout(
     assert!(is_visible(&layer, cx, "%1"));
 }
 
-// parity: TS-renderer-TerminalPaneChatLayer-71aae4
 #[gpui::test]
 fn pressing_the_terminal_keeps_an_open_chat_without_a_connecting_screen(cx: &mut TestAppContext) {
     init(cx);
@@ -293,7 +283,6 @@ fn pressing_the_terminal_keeps_an_open_chat_without_a_connecting_screen(cx: &mut
     assert!(is_visible(&layer, cx, "%1"));
 }
 
-// parity: TS-renderer-TerminalPaneChatLayer-c75ce8
 #[gpui::test]
 fn default_chat_applies_to_a_newly_added_pane(cx: &mut TestAppContext) {
     init(cx);
@@ -305,7 +294,6 @@ fn default_chat_applies_to_a_newly_added_pane(cx: &mut TestAppContext) {
     assert!(is_visible(&layer, cx, "%2"));
 }
 
-// parity: TS-renderer-TerminalPaneChatLayer-8c408f
 #[gpui::test]
 fn closing_a_default_chat_pane_wins_over_the_default_setting(cx: &mut TestAppContext) {
     init(cx);
@@ -320,7 +308,6 @@ fn closing_a_default_chat_pane_wins_over_the_default_setting(cx: &mut TestAppCon
     assert!(!is_opened(&layer, window_cx, "%1"));
 }
 
-// parity: TS-renderer-TerminalPaneChatLayer-7db830
 #[gpui::test]
 fn reopened_screen_restores_open_chat_but_not_closed_chat(cx: &mut TestAppContext) {
     init(cx);
@@ -339,7 +326,6 @@ fn reopened_screen_restores_open_chat_but_not_closed_chat(cx: &mut TestAppContex
     assert!(!is_opened(&layer, window_cx, "%1"));
 }
 
-// parity: TS-renderer-TerminalPaneChatLayer-3e2cc3
 #[gpui::test]
 fn app_saved_chat_mode_opens_chat_without_window_storage(cx: &mut TestAppContext) {
     init(cx);
@@ -353,7 +339,6 @@ fn app_saved_chat_mode_opens_chat_without_window_storage(cx: &mut TestAppContext
     assert!(is_visible(&layer, cx, "%1"));
 }
 
-// parity: TS-renderer-TerminalPaneChatLayer-ca1fcd
 #[gpui::test]
 fn chat_and_terminal_modes_are_saved_per_pane(cx: &mut TestAppContext) {
     init(cx);
@@ -372,7 +357,6 @@ fn chat_and_terminal_modes_are_saved_per_pane(cx: &mut TestAppContext) {
     assert_eq!(mode_calls(&backend).len(), 2);
 }
 
-// parity: TS-renderer-TerminalPaneChatLayer-ad3d2b
 #[gpui::test]
 fn pane_left_as_terminal_stays_terminal_with_default_chat_on(cx: &mut TestAppContext) {
     init(cx);
@@ -386,7 +370,6 @@ fn pane_left_as_terminal_stays_terminal_with_default_chat_on(cx: &mut TestAppCon
     assert!(mode_calls(&backend).is_empty());
 }
 
-// parity: TS-renderer-TerminalPaneChatLayer-dc866a
 #[gpui::test]
 fn unreadable_saved_modes_open_as_terminal_and_toggle_still_works(cx: &mut TestAppContext) {
     init(cx);
@@ -403,7 +386,6 @@ fn unreadable_saved_modes_open_as_terminal_and_toggle_still_works(cx: &mut TestA
     assert!(mode_calls(&backend).contains(&vec![json!("task-1"), json!("%1"), json!(true)]));
 }
 
-// parity: TS-renderer-TerminalPaneChatLayer-75d888
 #[gpui::test]
 fn restored_active_pane_takes_focus_whichever_read_finishes_first(cx: &mut TestAppContext) {
     init(cx);
@@ -437,7 +419,6 @@ fn restored_active_pane_takes_focus_whichever_read_finishes_first(cx: &mut TestA
     }
 }
 
-// parity: TS-renderer-TerminalPaneChatLayer-5b4d1d
 #[gpui::test]
 fn another_task_with_the_same_pane_id_does_not_restore_chat(cx: &mut TestAppContext) {
     init(cx);
@@ -462,7 +443,6 @@ fn width_of(
     }
 }
 
-// parity: TS-renderer-TerminalPaneChatLayer-f2a224
 #[gpui::test]
 fn chat_covers_only_the_focused_split(cx: &mut TestAppContext) {
     init(cx);
@@ -474,7 +454,6 @@ fn chat_covers_only_the_focused_split(cx: &mut TestAppContext) {
     assert_eq!(backend.calls(LAYOUT)[0], vec![json!("task-1"), json!("@1")]);
 }
 
-// parity: TS-renderer-TerminalPaneChatLayer-f1d866
 #[gpui::test]
 fn each_pane_toggles_independently_and_keeps_its_draft(cx: &mut TestAppContext) {
     init(cx);
@@ -503,7 +482,6 @@ fn each_pane_toggles_independently_and_keeps_its_draft(cx: &mut TestAppContext) 
     assert!(is_visible(&layer, cx, "%1") && is_visible(&layer, cx, "%2"));
 }
 
-// parity: TS-renderer-TerminalPaneChatLayer-504193
 #[gpui::test]
 fn hidden_terminal_tab_does_not_act(cx: &mut TestAppContext) {
     init(cx);
@@ -514,7 +492,6 @@ fn hidden_terminal_tab_does_not_act(cx: &mut TestAppContext) {
     assert!(!is_opened(&layer, cx, "%1"));
 }
 
-// parity: TS-renderer-TerminalPaneChatLayer-8fd5d9
 #[gpui::test]
 fn cover_hides_when_its_pane_is_no_longer_shown(cx: &mut TestAppContext) {
     init(cx);
@@ -529,7 +506,6 @@ fn cover_hides_when_its_pane_is_no_longer_shown(cx: &mut TestAppContext) {
     assert!(is_opened(&layer, cx, "%1") && !is_visible(&layer, cx, "%1"));
 }
 
-// parity: TS-renderer-TerminalPaneChatLayer-267de0
 #[gpui::test]
 fn toggle_result_after_the_terminal_is_hidden_is_ignored(cx: &mut TestAppContext) {
     init(cx);
@@ -543,7 +519,6 @@ fn toggle_result_after_the_terminal_is_hidden_is_ignored(cx: &mut TestAppContext
     assert!(!is_opened(&layer, cx, "%1"));
 }
 
-// parity: TS-renderer-TerminalPaneChatLayer-50b300
 #[gpui::test]
 fn runtime_focus_is_restored_before_releasing_the_pane(cx: &mut TestAppContext) {
     init(cx);
@@ -564,7 +539,6 @@ fn runtime_focus_is_restored_before_releasing_the_pane(cx: &mut TestAppContext) 
     assert!(!layer.read_with(cx, |layer, _| layer.is_chat_focused()));
 }
 
-// parity: TS-renderer-TerminalPaneChatLayer-3ccee6
 #[gpui::test]
 fn chat_stays_when_restoring_the_runtime_pane_fails(cx: &mut TestAppContext) {
     init(cx);
@@ -585,7 +559,6 @@ fn chat_stays_when_restoring_the_runtime_pane_fails(cx: &mut TestAppContext) {
     );
 }
 
-// parity: TS-renderer-TerminalPaneChatLayer-221b3a
 #[gpui::test]
 fn toggle_sits_on_its_pane_and_opens_chat_over_that_pane_only(cx: &mut TestAppContext) {
     init(cx);
@@ -604,7 +577,6 @@ fn toggle_sits_on_its_pane_and_opens_chat_over_that_pane_only(cx: &mut TestAppCo
     assert_eq!(px(390.0), px(width_of(&layer, cx, "%1").unwrap().1));
 }
 
-// parity: TS-renderer-TerminalPaneChatLayer-02c4c5
 #[gpui::test]
 fn clicked_toggle_stays_with_its_pane_when_focus_moves_before_the_fresh_read(
     cx: &mut TestAppContext,
@@ -633,7 +605,6 @@ fn is_chat_input_focused(
     })
 }
 
-// parity: TS-renderer-Terminal-db20b8
 #[gpui::test]
 fn reshown_chat_pane_keeps_the_keyboard_until_returning_to_the_terminal(cx: &mut TestAppContext) {
     init(cx);
@@ -670,7 +641,6 @@ fn reshown_chat_pane_keeps_the_keyboard_until_returning_to_the_terminal(cx: &mut
     assert_eq!(returned.get(), 1);
 }
 
-// parity: TS-renderer-TaskDetailRoute-f33aab
 #[gpui::test]
 fn pane_shortcut_opens_the_active_pane_only_while_the_terminal_is_shown(cx: &mut TestAppContext) {
     init(cx);

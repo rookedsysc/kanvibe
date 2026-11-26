@@ -107,7 +107,6 @@ fn settle() {
     std::thread::sleep(Duration::from_millis(30));
 }
 
-// parity: TS-lib-remoteHostPtyConnection-dbe59b
 #[test]
 fn final_buffered_output_is_rendered_before_the_exit_is_reported() {
     let fixture = fixture(true);
@@ -129,7 +128,6 @@ fn final_buffered_output_is_rendered_before_the_exit_is_reported() {
     assert_eq!(fixture.exits.lock().unwrap()[0].exit_code, 7);
 }
 
-// parity: TS-lib-remoteHostPtyConnection-347d50
 #[test]
 fn snapshot_bytes_after_ready_are_acknowledged_only_after_rendering() {
     let fixture = fixture(true);
@@ -146,7 +144,6 @@ fn snapshot_bytes_after_ready_are_acknowledged_only_after_rendering() {
     fixture.attachment.kill().unwrap();
 }
 
-// parity: TS-lib-remoteHostPtyConnection-1d51b0
 #[test]
 fn split_utf8_and_live_frames_are_rendered_one_at_a_time_in_order() {
     let fixture = fixture(true);
@@ -176,7 +173,6 @@ fn split_utf8_and_live_frames_are_rendered_one_at_a_time_in_order() {
     fixture.attachment.kill().unwrap();
 }
 
-// parity: TS-lib-remoteHostPtyConnection-8a5337
 #[test]
 fn the_output_ack_waits_until_the_screen_consumer_has_rendered() {
     let fixture = fixture(true);
@@ -197,7 +193,6 @@ fn the_output_ack_waits_until_the_screen_consumer_has_rendered() {
     fixture.attachment.kill().unwrap();
 }
 
-// parity: TS-lib-remoteHostPtyConnection-7a215a
 #[test]
 fn rapid_keys_and_a_large_paste_share_a_bounded_ordered_input_window() {
     let fixture = fixture(false);
@@ -224,7 +219,6 @@ fn rapid_keys_and_a_large_paste_share_a_bounded_ordered_input_window() {
     fixture.attachment.kill().unwrap();
 }
 
-// parity: TS-lib-remoteHostPtyConnection-80c8dd
 #[test]
 fn a_disconnect_drops_queued_input_while_output_bytes_are_acknowledged() {
     let fixture = fixture(false);
@@ -248,7 +242,6 @@ fn a_disconnect_drops_queued_input_while_output_bytes_are_acknowledged() {
     assert!(replay.contains("not replayed"), "{replay}");
 }
 
-// parity: TS-lib-remoteHostPtyConnection-061c30
 #[test]
 fn detach_and_explicit_close_are_separate_and_the_daemon_identity_is_kept() {
     let fixture = fixture(false);

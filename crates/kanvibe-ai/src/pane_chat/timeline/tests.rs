@@ -21,7 +21,6 @@ fn row(seq: u64, message: AggregatedAiMessage) -> PaneChatTimelineRow {
     PaneChatTimelineRow { seq, message }
 }
 
-// parity: TS-aiSessions-paneChatTimeline-6c1332
 #[test]
 fn first_read_numbers_from_one_without_replacing() {
     let advance = advance_pane_chat_timeline(None, Some("session-a"), &messages(&["a", "b"]));
@@ -30,7 +29,6 @@ fn first_read_numbers_from_one_without_replacing() {
     assert_eq!(read_pane_chat_timeline_seq(&advance.timeline), 2);
 }
 
-// parity: TS-aiSessions-paneChatTimeline-2e6694
 #[test]
 fn appended_rows_continue_numbering() {
     let timeline = start(&["a", "b", "c"]);
@@ -47,7 +45,6 @@ fn appended_rows_continue_numbering() {
     assert!(!advance.is_replaced);
 }
 
-// parity: TS-aiSessions-paneChatTimeline-f16e92
 #[test]
 fn grown_last_row_keeps_its_number() {
     let timeline = start(&["a", "답변을"]);
@@ -63,7 +60,6 @@ fn grown_last_row_keeps_its_number() {
     assert_eq!(advance.timeline.epoch, timeline.epoch);
 }
 
-// parity: TS-aiSessions-paneChatTimeline-9dc384
 #[test]
 fn rows_scrolled_out_of_window_are_not_divergence() {
     let timeline = start(&["a", "b", "c", "d"]);
@@ -77,7 +73,6 @@ fn rows_scrolled_out_of_window_are_not_divergence() {
     assert!(!advance.is_replaced);
 }
 
-// parity: TS-aiSessions-paneChatTimeline-d097ae
 #[test]
 fn unchanged_record_emits_nothing() {
     let timeline = start(&["a", "b"]);
@@ -87,7 +82,6 @@ fn unchanged_record_emits_nothing() {
     assert_eq!(advance.timeline, timeline);
 }
 
-// parity: TS-aiSessions-paneChatTimeline-d8c431
 #[test]
 fn diverged_records_start_new_epoch() {
     let cases: [(&str, Vec<&str>); 4] = [
@@ -109,7 +103,6 @@ fn diverged_records_start_new_epoch() {
     }
 }
 
-// parity: TS-aiSessions-paneChatTimeline-d1a2e5
 #[test]
 fn repeated_sentence_gets_new_number() {
     let timeline = start(&["네"]);
@@ -118,7 +111,6 @@ fn repeated_sentence_gets_new_number() {
     assert_eq!(advance.changed_rows, [row(2, message("네"))]);
 }
 
-// parity: TS-aiSessions-paneChatTimeline-3a033a
 #[test]
 fn first_row_after_empty_record_keeps_epoch() {
     let timeline = start(&[]);
@@ -133,7 +125,6 @@ fn first_row_after_empty_record_keeps_epoch() {
     assert!(!advance.is_replaced);
 }
 
-// parity: TS-aiSessions-paneChatTimeline-6212b3
 #[test]
 fn judges_subscriber_cursor_freshness() {
     let timeline = start(&["a", "b", "c"]);
@@ -156,7 +147,6 @@ fn judges_subscriber_cursor_freshness() {
     assert!(!is_pane_chat_cursor_current(Some(&timeline), None));
 }
 
-// parity: TS-aiSessions-paneChatTimeline-5e5189
 #[test]
 fn unread_pane_has_no_current_cursor() {
     let cursor = PaneChatCursor {

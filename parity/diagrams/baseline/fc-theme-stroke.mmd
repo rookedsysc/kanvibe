@@ -1,6 +1,0 @@
-%%{init: {"themeVariables": {"strokeWidth": 3, "arrowheadColor": "#dc2626", "lineColor": "#2563eb"}}}%%
-flowchart LR
-  A[Checkout] -->|compile| B(Test)
-  B --> C{Deploy?}
-  C -->|yes| D[Release]
-  C -.->|no| A

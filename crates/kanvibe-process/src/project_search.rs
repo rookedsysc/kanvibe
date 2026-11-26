@@ -83,7 +83,6 @@ mod tests {
         }
     }
 
-    // parity: TS-utils-projectSearch-e106f2
     #[test]
     fn matches_subsequences_in_name_path_or_host() {
         for query in ["kvb", "cd/mpr", "dvbx", " KVB ", "", "   "] {
@@ -94,7 +93,6 @@ mod tests {
         }
     }
 
-    // parity: TS-utils-projectSearch-2d1398
     #[test]
     fn rejects_out_of_order_or_cross_field_queries() {
         for query in ["bvk", "zzz", "kanvibee", "kvbdvbx"] {
@@ -105,7 +103,6 @@ mod tests {
         }
     }
 
-    // parity: TS-utils-projectSearch-33155b
     #[test]
     fn local_projects_have_no_host_to_match() {
         assert!(!matches_project_search(&project(None), "dvbx"));

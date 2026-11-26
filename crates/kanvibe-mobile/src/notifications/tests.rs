@@ -157,7 +157,6 @@ fn settle() {
     std::thread::sleep(Duration::from_millis(200));
 }
 
-// parity: TS-main-mobileNotificationService-195031
 #[test]
 fn long_unicode_text_fits_the_fcm_limit_and_matches_the_socket_event() {
     let relay = ok_relay();
@@ -195,7 +194,6 @@ fn long_unicode_text_fits_the_fcm_limit_and_matches_the_socket_event() {
     );
 }
 
-// parity: TS-main-mobileNotificationService-cb67be
 #[test]
 fn one_hook_event_shares_its_id_between_socket_and_every_push() {
     let relay = ok_relay();
@@ -247,7 +245,6 @@ fn one_hook_event_shares_its_id_between_socket_and_every_push() {
     );
 }
 
-// parity: TS-main-mobileNotificationService-466c17
 #[test]
 fn every_hook_status_reaches_the_socket_without_relay_settings() {
     let relay = ok_relay();
@@ -275,7 +272,6 @@ fn every_hook_status_reaches_the_socket_without_relay_settings() {
     assert!(relay.received().is_empty());
 }
 
-// parity: TS-main-mobileNotificationService-1f040e
 #[test]
 fn stalled_relay_does_not_block_events_and_stop_discards_in_flight_results() {
     let (release_relay, relay_gate) = channel::<()>();
@@ -313,7 +309,6 @@ fn stalled_relay_does_not_block_events_and_stop_discards_in_flight_results() {
     assert!(lock(&registry.removed).is_empty());
 }
 
-// parity: TS-main-mobileNotificationService-bb8662
 #[test]
 fn failed_relay_response_does_not_stop_other_device_pushes() {
     let responder: RelayResponder = Arc::new(|request| {
@@ -337,7 +332,6 @@ fn failed_relay_response_does_not_stop_other_device_pushes() {
     wait_until("두 기기 푸시", || relay.received().len() == 2);
 }
 
-// parity: TS-main-mobileNotificationService-b12270
 #[test]
 fn stopping_while_reading_subscriptions_sends_no_push() {
     let relay = ok_relay();
@@ -360,7 +354,6 @@ fn stopping_while_reading_subscriptions_sends_no_push() {
     assert!(relay.received().is_empty());
 }
 
-// parity: TS-main-mobileNotificationService-90b0b5
 #[test]
 fn only_selected_statuses_are_pushed_while_every_status_is_synced() {
     for is_enabled in [false, true] {
@@ -394,7 +387,6 @@ fn only_selected_statuses_are_pushed_while_every_status_is_synced() {
     }
 }
 
-// parity: TS-main-mobileNotificationService-086477
 #[test]
 fn hook_install_failure_is_a_foreground_warning_without_the_secret_error() {
     let relay = ok_relay();
@@ -427,7 +419,6 @@ fn hook_install_failure_is_a_foreground_warning_without_the_secret_error() {
     assert!(relay.received().is_empty());
 }
 
-// parity: TS-main-mobileNotificationService-ac344f
 #[test]
 fn missing_target_follows_status_settings_and_shares_the_event_id() {
     let relay = ok_relay();
@@ -480,7 +471,6 @@ fn is_accepted_by_relay_contract(payload: &Value) -> bool {
         && payload["data"]["kind"] == "hook-status-target-missing"
 }
 
-// parity: TS-main-mobileNotificationService-7dbccb
 #[test]
 fn missing_target_warning_meets_the_relay_http_contract() {
     let accepted = Arc::new(Mutex::new(Vec::<Value>::new()));

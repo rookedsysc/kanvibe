@@ -49,11 +49,10 @@ TOOLS_DIR = Path(__file__).resolve().parent
 REPO_ROOT = TOOLS_DIR.parents[2]
 sys.path.insert(0, str(TOOLS_DIR))
 sys.path.insert(0, str(TOOLS_DIR.parent / "screens"))
-sys.path.insert(0, str(TOOLS_DIR.parent / "screens-rust"))
 sys.path.insert(0, str(TOOLS_DIR.parent / "app-launch"))
 
 import capture  # noqa: E402
-from capture_rust import ControlClient  # noqa: E402
+from qa_control import ControlClient  # noqa: E402
 from check_release_launch import free_display, free_hook_port  # noqa: E402
 from run_perf import MarkerLog, fixed_now_iso  # noqa: E402
 

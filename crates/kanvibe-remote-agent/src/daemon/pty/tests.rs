@@ -137,7 +137,6 @@ fn input(id: &str, bytes: &[u8]) -> Value {
     json!({ "type": "pty.input", "id": id, "data": encode_host_bytes(bytes) })
 }
 
-// parity: TS-lib-remoteHostPty-55bb09
 #[test]
 fn attachment_capacity_is_reserved_synchronously_for_a_burst_of_opens() {
     let fixture = fixture();
@@ -202,7 +201,6 @@ impl PtyLauncher for ScriptedLauncher {
     }
 }
 
-// parity: TS-lib-remoteHostPty-009374
 #[test]
 fn attach_is_rejected_while_the_exited_session_flushes_its_output() {
     let (exit, exits): (Sender<()>, Receiver<()>) = channel();
@@ -237,7 +235,6 @@ fn attach_is_rejected_while_the_exited_session_flushes_its_output() {
     });
 }
 
-// parity: TS-lib-remoteHostPty-711f2e
 #[test]
 fn lists_only_the_owners_detached_sessions_and_closes_one_by_daemon_id() {
     let fixture = fixture();
@@ -293,7 +290,6 @@ fn lists_only_the_owners_detached_sessions_and_closes_one_by_daemon_id() {
     });
 }
 
-// parity: TS-lib-remoteHostPty-b8c56b
 #[test]
 fn session_ids_and_the_shell_pid_survive_detach_and_reattach() {
     let fixture = fixture();
@@ -334,7 +330,6 @@ fn session_ids_and_the_shell_pid_survive_detach_and_reattach() {
     });
 }
 
-// parity: TS-lib-remoteHostPty-8d3c36
 #[test]
 fn another_desktop_can_neither_attach_to_nor_close_a_session() {
     let fixture = fixture();
@@ -368,7 +363,6 @@ fn another_desktop_can_neither_attach_to_nor_close_a_session() {
     assert_ne!(own["sessionId"], first["sessionId"]);
 }
 
-// parity: TS-lib-remoteHostPty-7b6d53
 #[test]
 fn invalid_bounds_and_duplicate_attachment_ids_are_rejected() {
     let fixture = fixture();
@@ -386,7 +380,6 @@ fn invalid_bounds_and_duplicate_attachment_ids_are_rejected() {
     assert_eq!(fixture.registry.state.lock().unwrap().sessions.len(), 1);
 }
 
-// parity: TS-lib-remoteHostPty-f28b89
 #[test]
 fn a_large_raw_paste_is_written_once_and_each_chunk_is_acknowledged() {
     let fixture = fixture();
@@ -412,7 +405,6 @@ fn a_large_raw_paste_is_written_once_and_each_chunk_is_acknowledged() {
     });
 }
 
-// parity: TS-lib-remoteHostPty-5986f4
 #[test]
 fn input_acks_wait_for_the_reader_and_queued_paste_memory_is_bounded() {
     let fixture = fixture();
@@ -440,7 +432,6 @@ fn input_acks_wait_for_the_reader_and_queued_paste_memory_is_bounded() {
     fixture.registry.detach(&fixture.peer);
 }
 
-// parity: TS-lib-remoteHostPty-70f50f
 #[test]
 fn a_consumer_that_never_acks_is_detached_while_the_session_survives() {
     let fixture = fixture();

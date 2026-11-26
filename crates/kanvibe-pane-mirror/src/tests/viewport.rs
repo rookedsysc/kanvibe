@@ -178,7 +178,6 @@ fn has_layout_override(harness: &Harness) -> bool {
         .any(|command| command.contains("fullscreen") || command.contains("override-layout"))
 }
 
-// parity: TS-main-mobileBridgeService-06a1de
 #[test]
 fn zellij_split_pane_matches_the_real_grid_and_restores_the_desktop_grid_after_the_last_client() {
     let harness = Harness::new();
@@ -212,7 +211,6 @@ fn zellij_split_pane_matches_the_real_grid_and_restores_the_desktop_grid_after_t
     assert!(!has_layout_override(&harness));
 }
 
-// parity: TS-main-mobileBridgeService-ac09f6
 #[test]
 fn zellij_prefers_the_latest_mobile_request_and_returns_to_the_remaining_client_grid() {
     let harness = Harness::new();
@@ -237,7 +235,6 @@ fn zellij_prefers_the_latest_mobile_request_and_returns_to_the_remaining_client_
     assert_eq!(harness.attacher.call_count(), 1);
 }
 
-// parity: TS-main-mobileBridgeService-f8965c
 #[test]
 fn zellij_multiple_tabs_open_the_selected_pane_tab_on_the_desktop_and_fit_the_phone_grid() {
     let harness = Harness::new();
@@ -269,7 +266,6 @@ fn zellij_multiple_tabs_open_the_selected_pane_tab_on_the_desktop_and_fit_the_ph
     assert_eq!(last_resize(&harness), (120, 30));
 }
 
-// parity: TS-main-mobileBridgeService-073481
 #[test]
 fn zellij_opens_the_newly_selected_tab_even_when_the_grid_already_matches() {
     let harness = Harness::new();
@@ -285,7 +281,6 @@ fn zellij_opens_the_newly_selected_tab_even_when_the_grid_already_matches() {
     viewport.release().unwrap();
 }
 
-// parity: TS-main-mobileBridgeService-03c43e
 #[test]
 fn zellij_keeps_adjusting_the_grid_when_the_same_tab_is_selected_again() {
     let harness = Harness::new();
@@ -307,7 +302,6 @@ fn zellij_keeps_adjusting_the_grid_when_the_same_tab_is_selected_again() {
     viewport.release().unwrap();
 }
 
-// parity: TS-main-mobileBridgeService-dd0fb4
 #[test]
 fn zellij_tab_switch_failure_is_not_success_and_release_restores_the_desktop_size() {
     let harness = Harness::new();
@@ -335,7 +329,6 @@ fn floating_commands(harness: &Harness) -> Vec<String> {
         .commands_containing("change-floating-pane-coordinates")
 }
 
-// parity: TS-main-mobileBridgeService-7d0a21
 #[test]
 fn zellij_pinned_floating_pane_fits_exactly_and_restores_its_position_and_size() {
     let harness = Harness::new();
@@ -371,7 +364,6 @@ fn zellij_pinned_floating_pane_fits_exactly_and_restores_its_position_and_size()
     assert!(!has_layout_override(&harness));
 }
 
-// parity: TS-main-mobileBridgeService-b8d97c
 #[test]
 fn zellij_alternating_floating_panes_each_restore_their_original_layout_at_the_end() {
     let harness = Harness::new();
@@ -426,7 +418,6 @@ fn position_of(commands: &[String], needle: &str) -> usize {
         .expect(needle)
 }
 
-// parity: TS-main-mobileBridgeService-29e113
 #[test]
 fn tmux_takes_the_phone_size_and_restores_layout_and_size_policy_after_the_last_mobile() {
     let harness = Harness::new();
@@ -514,7 +505,6 @@ fn scroll(direction: &str, column: i64, row: i64) -> Value {
     json!({ "type": "scroll", "direction": direction, "column": column, "row": row })
 }
 
-// parity: TS-main-mobileBridgeService-66d531
 #[test]
 fn tmux_drops_the_wheel_for_an_alternate_screen_program_without_mouse_reporting() {
     let harness = Harness::new();
@@ -526,7 +516,6 @@ fn tmux_drops_the_wheel_for_an_alternate_screen_program_without_mouse_reporting(
     viewport.release().unwrap();
 }
 
-// parity: TS-main-mobileBridgeService-344d75
 #[test]
 fn tmux_passes_the_wheel_report_in_the_program_mouse_encoding() {
     for (state, report) in [
@@ -547,7 +536,6 @@ fn tmux_passes_the_wheel_report_in_the_program_mouse_encoding() {
     }
 }
 
-// parity: TS-main-mobileBridgeService-e70cf8
 #[test]
 fn tmux_normal_screen_enters_copy_mode_on_wheel_up_and_ignores_wheel_down() {
     let harness = Harness::new();
@@ -570,7 +558,6 @@ fn tmux_normal_screen_enters_copy_mode_on_wheel_up_and_ignores_wheel_down() {
     viewport.release().unwrap();
 }
 
-// parity: TS-main-mobileBridgeService-d0df09
 #[test]
 fn tmux_copy_mode_moves_by_the_default_binding_and_resends_the_program_screen_at_the_bottom() {
     let harness = Harness::new();
@@ -603,7 +590,6 @@ fn tmux_copy_mode_moves_by_the_default_binding_and_resends_the_program_screen_at
     viewport.release().unwrap();
 }
 
-// parity: TS-main-mobileBridgeService-654d40
 #[test]
 fn zellij_wheel_goes_to_the_desktop_client_as_sgr_relative_to_the_pane_text_area() {
     let harness = Harness::new();
@@ -628,7 +614,6 @@ fn zellij_wheel_goes_to_the_desktop_client_as_sgr_relative_to_the_pane_text_area
     viewport.release().unwrap();
 }
 
-// parity: TS-main-mobileBridgeService-07238e
 #[test]
 fn zellij_wheel_is_dropped_when_the_pane_list_omits_the_text_area_position() {
     let harness = Harness::new();
@@ -645,7 +630,6 @@ fn zellij_wheel_is_dropped_when_the_pane_list_omits_the_text_area_position() {
     viewport.release().unwrap();
 }
 
-// parity: TS-main-mobileBridgeService-9e0db5
 #[test]
 fn terminal_session_uses_the_latest_mobile_size_and_returns_to_the_remaining_mobile_and_desktop_sizes()
  {
@@ -677,7 +661,6 @@ fn terminal_session_uses_the_latest_mobile_size_and_returns_to_the_remaining_mob
     assert!(harness.ptys.pty(0).writes().is_empty());
 }
 
-// parity: TS-main-mobileBridgeService-59ade2
 #[test]
 fn panes_of_other_sessions_cannot_be_resized() {
     let harness = Harness::new();
@@ -701,7 +684,6 @@ fn panes_of_other_sessions_cannot_be_resized() {
     );
 }
 
-// parity: TS-main-mobileBridgeService-98a6d8
 #[test]
 fn desktop_resize_during_a_mobile_session_is_kept_and_applied_when_the_last_mobile_leaves() {
     let harness = Harness::new();
@@ -736,7 +718,6 @@ fn desktop_resize_during_a_mobile_session_is_kept_and_applied_when_the_last_mobi
     harness.registry.client_closed(&attachment);
 }
 
-// parity: TS-main-mobileBridgeService-0ee52b
 #[test]
 fn reconnecting_after_two_mobiles_leave_together_is_not_overwritten_by_the_earlier_restore() {
     let harness = Harness::new();

@@ -231,7 +231,6 @@ mod tests {
 
     const POLICY: &str = r#"<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; form-action 'none'">"#;
 
-    // parity: TS-renderer-AiChatFilePreview-76ec05
     #[test]
     fn the_request_blocking_policy_goes_right_after_a_doctype_or_first() {
         assert_eq!(
@@ -249,7 +248,6 @@ mod tests {
         assert_eq!(sandboxed_preview_document(""), POLICY);
     }
 
-    // parity: TS-renderer-AiChatFilePreview-3b528a
     #[test]
     fn html_runs_scripts_in_an_isolated_document_that_cannot_leave() {
         // 문서는 주소 없이 원문으로 읽고(불투명 출처), 처음 문서 안에서만 움직인다
@@ -271,7 +269,6 @@ mod tests {
         }
     }
 
-    // parity: TS-main-embeddedDocumentNavigation-767f25
     #[test]
     fn an_embedded_document_cannot_move_itself_to_another_address() {
         // 앱 창 자체는 GPUI가 그려 이 규칙과 무관하고, 창 안에 넣은 문서만 처음 문서에 묶인다

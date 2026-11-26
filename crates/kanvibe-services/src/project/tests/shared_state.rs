@@ -81,7 +81,6 @@ fn zellij_session() -> KanvibeTaskSession {
     }
 }
 
-// parity: TS-main-projectService-892ff2
 #[test]
 fn description_left_by_another_device_is_imported() {
     let fixture = description_fixture(None);
@@ -105,7 +104,6 @@ fn description_left_by_another_device_is_imported() {
     );
 }
 
-// parity: TS-main-projectService-970e4a
 #[test]
 fn different_shared_session_is_followed_after_saving_and_the_old_terminal_is_detached() {
     let fixture = description_fixture(None);
@@ -151,7 +149,6 @@ fn different_shared_session_is_followed_after_saving_and_the_old_terminal_is_det
     assert_eq!(broadcast_state.session_type, Some(SessionType::Zellij));
 }
 
-// parity: TS-main-projectService-6a8ee0
 #[test]
 fn same_shared_session_is_neither_saved_nor_detached() {
     let fixture = description_fixture(Some(zellij_session()));
@@ -185,7 +182,6 @@ fn same_shared_session_is_neither_saved_nor_detached() {
     );
 }
 
-// parity: TS-main-projectService-e552e9
 #[test]
 fn missing_task_file_keeps_the_db_description() {
     let fixture = description_fixture(None);
@@ -208,7 +204,6 @@ fn project_priority(priority: TaskPriority) -> KanvibeTaskSyncState {
     }
 }
 
-// parity: TS-main-projectService-131fc5
 #[test]
 fn task_priority_wins_over_project_priority() {
     let fixture = description_fixture(None);
@@ -226,7 +221,6 @@ fn task_priority_wins_over_project_priority() {
     assert_eq!(login.priority, Some(TaskPriority::Low));
 }
 
-// parity: TS-main-projectService-5a8cce
 #[test]
 fn project_priority_is_imported_when_no_task_priority_exists() {
     let fixture = description_fixture(None);
@@ -326,7 +320,6 @@ fn block_first_worktree_list(harness: &Harness, empty_after: bool) -> Arc<Gate> 
     gate
 }
 
-// parity: TS-main-projectService-a29cc8
 #[test]
 fn repeated_snapshot_reads_dispatch_no_remote_work() {
     let (harness, project, _) = latency_fixture();
@@ -342,7 +335,6 @@ fn repeated_snapshot_reads_dispatch_no_remote_work() {
     assert!(harness.state_files.persisted.lock().unwrap().is_empty());
 }
 
-// parity: TS-main-projectService-d91b32
 #[test]
 fn unchanged_root_state_avoids_status_and_exclude_writes() {
     let (harness, project, root) = latency_fixture();
@@ -363,7 +355,6 @@ fn unchanged_root_state_avoids_status_and_exclude_writes() {
     );
 }
 
-// parity: TS-main-projectService-63eb9a
 #[test]
 fn missing_shared_status_is_persisted_during_recovery() {
     let (harness, project, root) = latency_fixture();
@@ -387,7 +378,6 @@ fn missing_shared_status_is_persisted_during_recovery() {
     );
 }
 
-// parity: TS-main-projectService-e22f9c
 #[test]
 fn concurrent_recovery_of_the_same_project_shares_its_scan() {
     let (harness, project, _) = latency_fixture();
@@ -421,7 +411,6 @@ fn concurrent_recovery_of_the_same_project_shares_its_scan() {
     assert!(left.errors.is_empty());
 }
 
-// parity: TS-main-projectService-50ce55
 #[test]
 fn recovery_serializes_one_host_while_another_host_progresses() {
     let (harness, project, _) = latency_fixture();
@@ -465,7 +454,6 @@ fn recovery_serializes_one_host_while_another_host_progresses() {
     assert!(!scans_while_blocked.contains(&"/latency/other".to_string()));
 }
 
-// parity: TS-main-projectService-2b9bc9
 #[test]
 fn project_deleted_while_queued_on_its_host_is_not_repaired() {
     let (harness, project, _) = latency_fixture();
@@ -510,7 +498,6 @@ fn project_deleted_while_queued_on_its_host_is_not_repaired() {
     );
 }
 
-// parity: TS-main-projectService-7bc5ab
 #[test]
 fn failed_recovery_is_retried_and_restores_the_missing_root() {
     let harness = Harness::new();

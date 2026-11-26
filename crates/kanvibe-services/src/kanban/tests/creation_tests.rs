@@ -28,7 +28,6 @@ fn set_created_worktree(fixture: &KanbanFixture, worktree_path: &str) {
     };
 }
 
-// parity: TS-main-kanbanService-ad4efe
 #[test]
 fn creating_a_local_worktree_task_installs_hook_files_and_records_todo() {
     let fixture = KanbanFixture::new();
@@ -86,19 +85,16 @@ fn assert_creation_waits_for_hook_install(ssh_host: Option<&str>, worktree_path:
     assert_eq!(fixture.board_update_count(), 1);
 }
 
-// parity: TS-main-kanbanService-b1a959
 #[test]
 fn worktree_task_creation_returns_after_hook_install_finishes() {
     assert_creation_waits_for_hook_install(None, "/workspace/repo-worktrees/task-1");
 }
 
-// parity: TS-main-kanbanService-29de98
 #[test]
 fn remote_worktree_task_creation_returns_after_hook_install_finishes() {
     assert_creation_waits_for_hook_install(Some("remote-host"), "/remote/repo-worktrees/task-1");
 }
 
-// parity: TS-main-kanbanService-b6373d
 #[test]
 fn hooks_status_and_metadata_run_together_and_all_finish_before_returning() {
     for ssh_host in [None, Some("remote-host")] {
@@ -146,7 +142,6 @@ fn hooks_status_and_metadata_run_together_and_all_finish_before_returning() {
     }
 }
 
-// parity: TS-main-kanbanService-5e9b33
 #[test]
 fn hook_install_failure_is_broadcast_and_the_task_is_still_returned() {
     let fixture = KanbanFixture::new();
@@ -177,7 +172,6 @@ fn hook_install_failure_is_broadcast_and_the_task_is_still_returned() {
     assert_eq!(fixture.board_update_count(), 1);
 }
 
-// parity: TS-main-kanbanService-1d04a3
 #[test]
 fn successful_hook_install_broadcasts_one_board_update() {
     let fixture = KanbanFixture::new();
@@ -210,7 +204,6 @@ fn add_remote_branch_task(fixture: &KanbanFixture, branch: &str, status: TaskSta
     task.id
 }
 
-// parity: TS-main-kanbanService-ccbb46
 #[test]
 fn connecting_a_remote_branch_task_creates_the_session_after_hooks_install() {
     let fixture = KanbanFixture::new();
@@ -254,7 +247,6 @@ fn connecting_a_remote_branch_task_creates_the_session_after_hooks_install() {
     assert_eq!(fixture.board_update_count(), 1);
 }
 
-// parity: TS-main-kanbanService-4ed912
 #[test]
 fn connecting_a_task_that_already_has_a_session_returns_it_unchanged() {
     let fixture = KanbanFixture::new();
@@ -284,7 +276,6 @@ fn connecting_a_task_that_already_has_a_session_returns_it_unchanged() {
     assert_eq!(fixture.board_update_count(), 0);
 }
 
-// parity: TS-main-kanbanService-a4de0c
 #[test]
 fn connecting_a_branch_task_keeps_its_current_status() {
     let fixture = KanbanFixture::new();
@@ -306,7 +297,6 @@ fn connecting_a_branch_task_keeps_its_current_status() {
     assert_eq!(status.content, "review");
 }
 
-// parity: TS-main-kanbanService-af1a14
 #[test]
 fn connecting_continues_creating_the_session_when_hooks_install_is_slow() {
     let fixture = KanbanFixture::with_timings(KanbanTimings {
@@ -338,7 +328,6 @@ fn connecting_continues_creating_the_session_when_hooks_install_is_slow() {
     );
 }
 
-// parity: TS-main-kanbanService-2e71e5
 #[test]
 fn branching_from_a_task_installs_hooks_then_schedules_verification_then_updates_the_board() {
     let fixture = KanbanFixture::new();

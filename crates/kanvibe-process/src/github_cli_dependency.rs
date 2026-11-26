@@ -262,7 +262,6 @@ mod tests {
         }))
     }
 
-    // parity: TS-lib-githubCliDependency-82e1af
     #[test]
     fn connection_errors_are_not_treated_as_missing_gh() {
         for message in [
@@ -282,7 +281,6 @@ mod tests {
         }
     }
 
-    // parity: TS-lib-githubCliDependency-56c874
     #[test]
     fn local_environment_status_is_checked_too() {
         let runner = sequenced_runner(vec![]);
@@ -297,7 +295,6 @@ mod tests {
         assert_eq!(runner.calls()[0].ssh_host, None);
     }
 
-    // parity: TS-lib-githubCliDependency-e81726
     #[test]
     fn remote_install_verifies_gh_again() {
         let runner = sequenced_runner(vec![]);
@@ -314,7 +311,6 @@ mod tests {
         assert_eq!(runner.calls()[1].ssh_host.as_deref(), Some("remote-a"));
     }
 
-    // parity: TS-lib-githubCliDependency-f5c36e
     #[test]
     fn failed_remote_install_blocks_the_host_for_following_requests() {
         let runner = sequenced_runner(vec![Err(ExecGitError::new("sudo unavailable"))]);

@@ -98,7 +98,6 @@ mod tests {
     use super::*;
     use crate::shortcuts::key_event::test_support::{key_down, key_up};
 
-    // parity: TS-renderer-keyboardShortcut-4936bc
     #[test]
     fn releasing_mod_alt_alone_focuses_once_on_each_platform() {
         for (platform, mod_name, mod_key) in [
@@ -113,7 +112,6 @@ mod tests {
         }
     }
 
-    // parity: TS-renderer-keyboardShortcut-5d1c79
     #[test]
     fn another_key_or_a_blur_reset_cancels_the_focus() {
         let mut tracker = WorkspaceListFocusTracker::new(ShortcutPlatform::Mac);
@@ -126,7 +124,6 @@ mod tests {
         assert!(!tracker.handle_key_transition(&key_up("Alt", "meta")));
     }
 
-    // parity: TS-renderer-keyboardShortcut-ece42a
     #[test]
     fn extra_modifiers_and_partial_releases_do_not_focus() {
         let mut tracker = WorkspaceListFocusTracker::new(ShortcutPlatform::Mac);

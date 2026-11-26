@@ -25,7 +25,6 @@ fn task_cli_call(path: &str, body: &str) -> HttpCall {
         .body(body)
 }
 
-// parity: TS-electron-taskCliRoutes-d26dae
 #[tokio::test]
 async fn task_cli_routes_pass_authorization_and_body_and_return_the_service_result() {
     let server = TestServer::start().await;
@@ -47,7 +46,6 @@ async fn task_cli_routes_pass_authorization_and_body_and_return_the_service_resu
     }
 }
 
-// parity: TS-electron-taskCliRoutes-2a4282
 #[tokio::test]
 async fn task_cli_request_errors_keep_the_service_status_and_reason() {
     let server = TestServer::start().await;
@@ -68,7 +66,6 @@ async fn task_cli_request_errors_keep_the_service_status_and_reason() {
     );
 }
 
-// parity: TS-electron-taskCliRoutes-21ba69
 #[tokio::test]
 async fn unexpected_task_cli_failures_answer_500_with_the_cause_message() {
     let server = TestServer::start().await;
@@ -88,7 +85,6 @@ async fn unexpected_task_cli_failures_answer_500_with_the_cause_message() {
     );
 }
 
-// parity: TS-electron-taskCliRoutes-5ae79a
 #[tokio::test]
 async fn unreadable_or_non_object_task_cli_bodies_are_rejected_before_the_service() {
     let server = TestServer::start().await;
@@ -102,7 +98,6 @@ async fn unreadable_or_non_object_task_cli_bodies_are_rejected_before_the_servic
     assert_eq!(server.fake.count("task_cli.Create"), 0);
 }
 
-// parity: TS-electron-taskCliRoutes-c16111
 #[tokio::test]
 async fn other_paths_and_methods_fall_through_to_hook_routing() {
     let server = TestServer::start().await;
@@ -116,7 +111,6 @@ async fn other_paths_and_methods_fall_through_to_hook_routing() {
     assert_eq!(server.fake.count("update_hook_task_status"), 1);
 }
 
-// parity: TS-electron-browserOriginGuard-08a1e4
 #[tokio::test]
 async fn requests_with_an_origin_header_are_rejected_with_403_before_handling() {
     let server = TestServer::start().await;
@@ -132,7 +126,6 @@ async fn requests_with_an_origin_header_are_rejected_with_403_before_handling() 
     assert_eq!(server.fake.count("update_hook_task_status"), 0);
 }
 
-// parity: TS-electron-browserOriginGuard-3d8972
 #[tokio::test]
 async fn requests_without_an_origin_header_pass_through_to_the_hook_route() {
     let server = TestServer::start().await;
@@ -143,7 +136,6 @@ async fn requests_without_an_origin_header_pass_through_to_the_hook_route() {
     assert_eq!(server.fake.count("update_hook_task_status"), 1);
 }
 
-// parity: TS-electron-hookTransportGuard-a6b315
 #[tokio::test]
 async fn remote_tcp_hook_requests_are_rejected_before_any_handler_runs() {
     let server = TestServer::start().await;
@@ -168,7 +160,6 @@ async fn remote_tcp_hook_requests_are_rejected_before_any_handler_runs() {
     );
 }
 
-// parity: TS-electron-hookTransportGuard-b9b3ef
 #[tokio::test]
 async fn local_peers_are_handled_as_hook_requests() {
     let server = TestServer::start().await;

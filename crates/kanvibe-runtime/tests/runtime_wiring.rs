@@ -100,7 +100,6 @@ fn tmux_task_gets_worktree_session_and_signed_hook_target() {
     assert!(has_session.status.success(), "{has_session:?}");
 }
 
-// parity: TS-main-runtimeEnvironment-e208fe, TS-main-runtimeEnvironment-c26eaf
 #[test]
 fn the_launch_hook_port_reaches_installed_hooks_without_the_port_variable() {
     let fixture = RuntimeFixture::new();
@@ -212,7 +211,6 @@ fn task_cli_lists_and_creates_tasks_through_the_desktop_backend() {
     );
 }
 
-// parity: TS-main-runtimeEnvironment-08531a
 #[test]
 fn server_runtime_values_never_reach_child_processes() {
     let fixture = RuntimeFixture::new();

@@ -1259,7 +1259,6 @@ mod tests {
         }
     }
 
-    // parity: TS-components-NotificationCenterButton-b19efb
     #[test]
     fn newest_notification_comes_first() {
         let sorted = newest_first(&[
@@ -1269,7 +1268,6 @@ mod tests {
         assert_eq!(sorted[0].id, "new");
     }
 
-    // parity: TS-components-NotificationCenterButton-d68d74
     #[test]
     fn unread_only_hides_read_notifications() {
         let visible = visible_notifications(

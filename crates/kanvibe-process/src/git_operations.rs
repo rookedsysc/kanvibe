@@ -248,7 +248,6 @@ mod tests {
         )
     }
 
-    // parity: TS-lib-gitOperations-131d5b
     #[test]
     fn local_tilde_paths_expand_to_the_local_home_directory() {
         assert_eq!(
@@ -257,7 +256,6 @@ mod tests {
         );
     }
 
-    // parity: TS-lib-gitOperations-0354bd
     #[test]
     fn remote_tilde_paths_resolve_against_the_remote_home() {
         assert_eq!(
@@ -266,7 +264,6 @@ mod tests {
         );
     }
 
-    // parity: TS-lib-gitOperations-570fed
     #[test]
     fn remote_branch_exists_returns_true_when_origin_has_the_branch() {
         let (access, runner) = access_with(ScriptedCommandRunner::returning("exists"));
@@ -283,7 +280,6 @@ mod tests {
         assert!(runner.commands()[0].contains("refs/heads/feature/exists"));
     }
 
-    // parity: TS-lib-gitOperations-73d032
     #[test]
     fn remote_branch_exists_returns_false_when_origin_lacks_the_branch() {
         let (access, runner) = access_with(ScriptedCommandRunner::returning("missing"));
@@ -300,7 +296,6 @@ mod tests {
         assert!(runner.commands()[0].contains("refs/heads/feature/missing"));
     }
 
-    // parity: TS-lib-gitOperations-ddd236
     #[test]
     fn scan_git_repos_finds_regular_and_worktree_repositories() {
         let (access, runner) = access_with(ScriptedCommandRunner::returning(

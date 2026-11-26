@@ -84,7 +84,6 @@ fn answers(backend: &FakeBackend) -> Vec<Value> {
         .collect()
 }
 
-// parity: TS-renderer-PaneChatPromptCard-a1cd37
 #[gpui::test]
 fn question_shows_options_with_descriptions_and_answers_the_chosen_number(cx: &mut TestAppContext) {
     let (backend, view, cx) = open_prompt(cx, question());
@@ -101,7 +100,6 @@ fn question_shows_options_with_descriptions_and_answers_the_chosen_number(cx: &m
     );
 }
 
-// parity: TS-renderer-PaneChatPromptCard-7f0586
 #[gpui::test]
 fn blank_text_entry_is_an_input_whose_text_becomes_the_answer(cx: &mut TestAppContext) {
     let (backend, view, cx) = open_prompt(cx, question());
@@ -135,7 +133,6 @@ fn blank_text_entry_is_an_input_whose_text_becomes_the_answer(cx: &mut TestAppCo
     );
 }
 
-// parity: TS-renderer-PaneChatPromptCard-355ad1
 #[gpui::test]
 fn entered_single_select_text_is_shown_and_answers_with_that_text(cx: &mut TestAppContext) {
     let prompt = change(
@@ -178,7 +175,6 @@ fn entered_single_select_text_is_shown_and_answers_with_that_text(cx: &mut TestA
     );
 }
 
-// parity: TS-renderer-PaneChatPromptCard-1f6b7b
 #[gpui::test]
 fn entered_multi_select_text_has_no_answer_button(cx: &mut TestAppContext) {
     let prompt = change(
@@ -205,7 +201,6 @@ fn entered_multi_select_text_has_no_answer_button(cx: &mut TestAppContext) {
     );
 }
 
-// parity: TS-renderer-PaneChatPromptCard-180586
 #[gpui::test]
 fn step_buttons_work_while_text_entry_is_active(cx: &mut TestAppContext) {
     let prompt = change(
@@ -217,7 +212,6 @@ fn step_buttons_work_while_text_entry_is_active(cx: &mut TestAppContext) {
     assert_eq!(card(&view, cx).are_steps_enabled, Some(true));
 }
 
-// parity: TS-renderer-PaneChatPromptCard-ea48c6
 #[gpui::test]
 fn hidden_options_notice_appears_only_when_options_are_hidden(cx: &mut TestAppContext) {
     init(cx);
@@ -230,7 +224,6 @@ fn hidden_options_notice_appears_only_when_options_are_hidden(cx: &mut TestAppCo
     }
 }
 
-// parity: TS-renderer-PaneChatPromptCard-a58901
 #[gpui::test]
 fn multi_select_reports_pressed_state_and_steps_move_between_questions(cx: &mut TestAppContext) {
     let prompt = json!({ "id": "prompt-question", "kind": "question", "title": "Which toppings?", "detail": "",
@@ -280,14 +273,12 @@ fn multi_select_reports_pressed_state_and_steps_move_between_questions(cx: &mut 
     );
 }
 
-// parity: TS-renderer-PaneChatPromptCard-067ee9
 #[gpui::test]
 fn prompt_without_steps_has_no_step_buttons(cx: &mut TestAppContext) {
     let (_backend, view, cx) = open_prompt(cx, question());
     assert_eq!(card(&view, cx).are_steps_enabled, None);
 }
 
-// parity: TS-renderer-PaneChatPromptCard-8afb75
 #[gpui::test]
 fn permission_shows_the_tool_command_and_offers_cancel_and_terminal(cx: &mut TestAppContext) {
     let prompt = change(
@@ -325,7 +316,6 @@ fn permission_shows_the_tool_command_and_offers_cancel_and_terminal(cx: &mut Tes
     );
 }
 
-// parity: TS-renderer-PaneChatPromptCard-c51268
 #[gpui::test]
 fn cli_confirmation_is_labelled_as_such(cx: &mut TestAppContext) {
     let prompt = change(
@@ -337,7 +327,6 @@ fn cli_confirmation_is_labelled_as_such(cx: &mut TestAppContext) {
     assert_eq!(card(&view, cx).kind_label, t("promptConfirmation"));
 }
 
-// parity: TS-renderer-PaneChatPromptCard-65b6b0
 #[gpui::test]
 fn options_lock_while_answering_and_the_failure_reason_is_shown(cx: &mut TestAppContext) {
     let (backend, view, cx) = open_prompt(cx, question());
@@ -362,7 +351,6 @@ fn options_lock_while_answering_and_the_failure_reason_is_shown(cx: &mut TestApp
     );
 }
 
-// parity: TS-renderer-PaneChatPromptCard-6e8414
 #[gpui::test]
 fn two_digit_options_cannot_be_chosen(cx: &mut TestAppContext) {
     let mut options: Vec<Value> = (1..=9)
@@ -449,7 +437,6 @@ fn picker_flag(
     view.read_with(cx, |view, _| view.model_picker().is_some_and(read))
 }
 
-// parity: TS-renderer-PaneChatModelPicker-e067a3
 #[gpui::test]
 fn snapshot_options_show_at_once_and_refresh_through_the_api(cx: &mut TestAppContext) {
     init(cx);
@@ -464,7 +451,6 @@ fn snapshot_options_show_at_once_and_refresh_through_the_api(cx: &mut TestAppCon
     assert_eq!(checked_model(&view, cx).as_deref(), Some("b"));
 }
 
-// parity: TS-renderer-PaneChatModelPicker-3aebd3
 #[gpui::test]
 fn arrows_move_between_models_without_applying_and_escape_or_outside_click_closes(
     cx: &mut TestAppContext,
@@ -491,7 +477,6 @@ fn arrows_move_between_models_without_applying_and_escape_or_outside_click_close
     assert!(view.read_with(cx, |view, _| view.model_picker().is_none()));
 }
 
-// parity: TS-renderer-PaneChatModelPicker-d0ee12
 #[gpui::test]
 fn effort_reset_and_fast_apply_and_wait_for_the_confirmed_state(cx: &mut TestAppContext) {
     init(cx);
@@ -532,7 +517,6 @@ fn effort_reset_and_fast_apply_and_wait_for_the_confirmed_state(cx: &mut TestApp
     assert_eq!(is_fast, Some(false));
 }
 
-// parity: TS-renderer-PaneChatModelPicker-fa7034
 #[gpui::test]
 fn failed_updates_keep_the_confirmed_choice_and_catalog_can_be_retried(cx: &mut TestAppContext) {
     init(cx);
@@ -554,7 +538,6 @@ fn failed_updates_keep_the_confirmed_choice_and_catalog_can_be_retried(cx: &mut 
     assert_eq!(checked_model(&view, cx).as_deref(), Some("a"));
 }
 
-// parity: TS-renderer-PaneChatModelPicker-4045cc
 #[gpui::test]
 fn closed_picker_is_not_refreshed_or_notified_after_an_update(cx: &mut TestAppContext) {
     init(cx);
@@ -577,7 +560,6 @@ fn closed_picker_is_not_refreshed_or_notified_after_an_update(cx: &mut TestAppCo
     assert_eq!(backend.call_count(SNAPSHOT), reads);
 }
 
-// parity: TS-renderer-PaneChatModelPicker-a5a817
 #[gpui::test]
 fn older_catalog_reply_is_ignored_after_a_confirmed_update(cx: &mut TestAppContext) {
     init(cx);
@@ -598,7 +580,6 @@ fn older_catalog_reply_is_ignored_after_a_confirmed_update(cx: &mut TestAppConte
     assert_eq!(checked_model(&view, cx).as_deref(), Some("b"));
 }
 
-// parity: TS-renderer-PaneChatModelPicker-ea00fa
 #[gpui::test]
 fn focus_stays_in_the_popup_while_a_change_disables_its_controls(cx: &mut TestAppContext) {
     init(cx);

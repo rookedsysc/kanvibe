@@ -184,7 +184,6 @@ fn type_into_composer(cx: &mut VisualTestContext, text: &str) {
     redraw(cx);
 }
 
-// parity: TS-renderer-textContextMenu-098a46, TS-main-textContextMenuBridge-af40af
 #[gpui::test]
 fn right_clicking_selected_chat_text_offers_copy_in_this_window(cx: &mut TestAppContext) {
     let cx = open_chat(cx);
@@ -202,7 +201,6 @@ fn right_clicking_selected_chat_text_offers_copy_in_this_window(cx: &mut TestApp
     assert!(menu_items(cx).is_empty(), "고르면 메뉴를 닫는다");
 }
 
-// parity: TS-renderer-textContextMenu-a77b71
 #[gpui::test]
 fn without_selected_text_the_menu_has_nothing_to_copy(cx: &mut TestAppContext) {
     let cx = open_chat(cx);
@@ -216,7 +214,6 @@ fn without_selected_text_the_menu_has_nothing_to_copy(cx: &mut TestAppContext) {
     assert_eq!(clipboard_text(cx).as_deref(), Some("before"));
 }
 
-// parity: TS-renderer-textContextMenu-a8c0f6
 #[gpui::test]
 fn a_selected_range_in_the_composer_can_be_cut_and_pasted(cx: &mut TestAppContext) {
     let cx = open_chat(cx);
@@ -233,7 +230,6 @@ fn a_selected_range_in_the_composer_can_be_cut_and_pasted(cx: &mut TestAppContex
     assert!(has_composer_text(cx, "입력한 "));
 }
 
-// parity: TS-renderer-textContextMenu-cb7c39, TS-renderer-TerminalPaneChatLayer-268b71
 #[gpui::test]
 fn a_caret_in_the_composer_can_paste_but_has_nothing_to_copy(cx: &mut TestAppContext) {
     let cx = open_chat(cx);
@@ -250,7 +246,6 @@ fn a_caret_in_the_composer_can_paste_but_has_nothing_to_copy(cx: &mut TestAppCon
     assert!(has_composer_text(cx, "초안 붙일 글자"));
 }
 
-// parity: TS-renderer-textContextMenu-ab6990
 #[gpui::test]
 fn a_non_text_control_is_not_treated_as_a_text_field(cx: &mut TestAppContext) {
     let cx = open_chat(cx);

@@ -208,7 +208,6 @@ fn pair(session_id: &str, source_ref: &str) -> Option<(String, String)> {
     Some((session_id.to_string(), source_ref.to_string()))
 }
 
-// parity: TS-aiSessions-paneChatSessionBindings-d480c5
 #[test]
 fn gemini_child_hook_binds_new_session_and_refuses_other_cwd() {
     let fixture = Fixture::new();
@@ -249,7 +248,6 @@ fn gemini_child_hook_binds_new_session_and_refuses_other_cwd() {
     assert_eq!(fixture.find(&gemini).unwrap().session_id, "gemini-b");
 }
 
-// parity: TS-aiSessions-paneChatSessionBindings-606be0
 #[test]
 fn gemini_external_path_is_never_read() {
     let fixture = Fixture::new();
@@ -295,7 +293,6 @@ fn opencode_process(start: &str) -> PaneChatProcess {
     }
 }
 
-// parity: TS-aiSessions-paneChatSessionBindings-d2d501
 #[test]
 fn opencode_revisions_bind_to_pid_and_start_time() {
     let (_directory, root) = temp_home();
@@ -344,7 +341,6 @@ fn opencode_revisions_bind_to_pid_and_start_time() {
     );
 }
 
-// parity: TS-aiSessions-paneChatSessionBindings-1e0fb2
 #[test]
 fn small_ssh_clock_skew_is_allowed() {
     let fixture = Fixture::new();
@@ -370,7 +366,6 @@ fn small_ssh_clock_skew_is_allowed() {
     );
 }
 
-// parity: TS-aiSessions-paneChatSessionBindings-bdda82
 #[test]
 fn opencode_refuses_other_runs_paths_and_stale_records() {
     let (_directory, root) = temp_home();
@@ -402,7 +397,6 @@ fn opencode_refuses_other_runs_paths_and_stale_records() {
     }
 }
 
-// parity: TS-aiSessions-paneChatSessionBindings-9cf715
 #[test]
 fn binds_exact_ancestor_and_refuses_other_identities() {
     let fixture = Fixture::new();
@@ -442,7 +436,6 @@ fn binds_exact_ancestor_and_refuses_other_identities() {
     );
 }
 
-// parity: TS-aiSessions-paneChatSessionBindings-13e3a1
 #[test]
 fn does_not_bind_unrelated_transcript_or_read_hook_path() {
     let fixture = Fixture::new();
@@ -455,7 +448,6 @@ fn does_not_bind_unrelated_transcript_or_read_hook_path() {
     );
 }
 
-// parity: TS-aiSessions-paneChatSessionBindings-33a696
 #[test]
 fn waits_for_first_transcript_flush() {
     let fixture = Fixture::new();
@@ -468,7 +460,6 @@ fn waits_for_first_transcript_flush() {
     assert_eq!(fixture.find(&claude).unwrap().session_id, "session-a");
 }
 
-// parity: TS-aiSessions-paneChatSessionBindings-0c02dc
 #[test]
 fn two_claude_processes_keep_their_own_sessions() {
     let fixture = Fixture::new();
@@ -499,7 +490,6 @@ fn two_claude_processes_keep_their_own_sessions() {
     );
 }
 
-// parity: TS-aiSessions-paneChatSessionBindings-80004e
 #[test]
 fn ignores_codex_child_hooks_and_malformed_metadata() {
     let fixture = Fixture::new();
@@ -514,7 +504,6 @@ fn ignores_codex_child_hooks_and_malformed_metadata() {
     assert_eq!(fixture.find(&query(PaneChatProvider::Claude)), None);
 }
 
-// parity: TS-aiSessions-paneChatSessionBindings-65a60a
 #[test]
 fn refuses_other_provider_or_outside_cwd() {
     let fixture = Fixture::new();
@@ -531,7 +520,6 @@ fn refuses_other_provider_or_outside_cwd() {
     assert_eq!(fixture.find(&query(PaneChatProvider::Claude)), None);
 }
 
-// parity: TS-aiSessions-paneChatSessionBindings-07201f
 #[test]
 fn shared_codex_daemon_is_never_the_owner() {
     let fixture = Fixture::new();
@@ -548,7 +536,6 @@ fn shared_codex_daemon_is_never_the_owner() {
     assert_eq!(fixture.find(&query(PaneChatProvider::Codex)), None);
 }
 
-// parity: TS-aiSessions-paneChatSessionBindings-89f8f3
 #[test]
 fn fences_a_to_b_to_a_without_querying_b() {
     let fixture = Fixture::new();
@@ -642,7 +629,6 @@ impl ProcessFixture {
     }
 }
 
-// parity: TS-aiSessions-paneChatSessionBindings-a19eb1
 #[test]
 fn binds_idle_claude_live_pid_record() {
     let scene = ProcessFixture::new(&descriptor(json!({})));
@@ -661,7 +647,6 @@ fn binds_idle_claude_live_pid_record() {
     }));
 }
 
-// parity: TS-aiSessions-paneChatSessionBindings-194f87
 #[test]
 fn allows_new_empty_session_before_first_flush() {
     let scene = ProcessFixture::new(&descriptor(json!({})));
@@ -703,7 +688,6 @@ fn allows_new_empty_session_before_first_flush() {
     assert_eq!(calls.len(), 1);
 }
 
-// parity: TS-aiSessions-paneChatSessionBindings-d2716a
 #[test]
 fn rejects_foreign_or_stale_process_records() {
     let invalid = [
@@ -722,7 +706,6 @@ fn rejects_foreign_or_stale_process_records() {
     }
 }
 
-// parity: TS-aiSessions-paneChatSessionBindings-02235a
 #[test]
 fn validates_utc_start_marker_on_macos() {
     let scene = ProcessFixture::new(&descriptor(
@@ -742,7 +725,6 @@ fn validates_utc_start_marker_on_macos() {
     assert_eq!(probe.ssh_host, None);
 }
 
-// parity: TS-aiSessions-paneChatSessionBindings-ceb01e
 #[test]
 fn rereads_process_session_after_clear_or_resume() {
     let scene = ProcessFixture::new(&descriptor(json!({})));
@@ -763,7 +745,6 @@ fn rereads_process_session_after_clear_or_resume() {
     );
 }
 
-// parity: TS-aiSessions-paneChatSessionBindings-ad4f05
 #[test]
 fn unavailable_or_malformed_record_stays_unavailable() {
     let scene = ProcessFixture::new(&descriptor(json!({})));
@@ -777,7 +758,6 @@ fn unavailable_or_malformed_record_stays_unavailable() {
     assert_eq!(scene.find(PaneChatProvider::Codex), None);
 }
 
-// parity: TS-aiSessions-paneChatSessionBindings-14f9ee
 #[test]
 fn reported_binding_resolves_only_allowed_ids() {
     let scene = ProcessFixture::new(&descriptor(json!({})));

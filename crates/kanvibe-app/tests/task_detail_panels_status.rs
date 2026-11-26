@@ -33,7 +33,6 @@ fn stored_status(detail: &mut Detail, task_id: &str) -> TaskStatus {
     task.expect("task").status
 }
 
-// parity: TS-renderer-TaskDetailRoute-6039de
 #[gpui::test]
 fn a_pending_move_names_its_target_and_blocks_other_moves(cx: &mut TestAppContext) {
     let (mut detail, task_id) = open_status_panel(cx);
@@ -59,7 +58,6 @@ fn a_pending_move_names_its_target_and_blocks_other_moves(cx: &mut TestAppContex
     assert!(!detail.has_text_containing("second move"));
 }
 
-// parity: TS-renderer-TaskDetailRoute-7e3688
 #[gpui::test]
 fn a_failed_move_keeps_the_status_and_retry_moves_again(cx: &mut TestAppContext) {
     let (mut detail, task_id) = open_status_panel(cx);
@@ -80,7 +78,6 @@ fn a_failed_move_keeps_the_status_and_retry_moves_again(cx: &mut TestAppContext)
     assert_eq!(stored_status(&mut detail, &task_id), TaskStatus::Review);
 }
 
-// parity: TS-renderer-TaskDetailRoute-85b7a9
 #[gpui::test]
 fn moving_to_done_stays_on_the_detail_screen(cx: &mut TestAppContext) {
     let (mut detail, task_id) = open_status_panel(cx);
@@ -110,7 +107,6 @@ fn open_branch_task_status_panel(cx: &mut TestAppContext) -> (Detail, String) {
     (detail, task.id)
 }
 
-// parity: TS-components-DoneStatusButton-81c925
 #[gpui::test]
 fn the_done_button_shows_its_label(cx: &mut TestAppContext) {
     let (mut detail, _) = open_status_panel(cx);
@@ -118,7 +114,6 @@ fn the_done_button_shows_its_label(cx: &mut TestAppContext) {
     assert!(detail.has_role_name("button", "Done"));
 }
 
-// parity: TS-components-DoneStatusButton-97f909
 #[gpui::test]
 fn confirming_the_notice_closes_it_and_moves_to_done(cx: &mut TestAppContext) {
     let (mut detail, task_id) = open_branch_task_status_panel(cx);
@@ -132,7 +127,6 @@ fn confirming_the_notice_closes_it_and_moves_to_done(cx: &mut TestAppContext) {
     assert_eq!(stored_status(&mut detail, &task_id), TaskStatus::Done);
 }
 
-// parity: TS-components-DoneStatusButton-12a194
 #[gpui::test]
 fn cancelling_the_notice_closes_it_without_moving(cx: &mut TestAppContext) {
     let (mut detail, task_id) = open_branch_task_status_panel(cx);
@@ -174,7 +168,6 @@ fn dont_ask_again_saves_the_dismissal_before_moving(cx: &mut TestAppContext) {
     assert_eq!(stored.map(|setting| setting.value).as_deref(), Some("true"));
 }
 
-// parity: TS-components-DoneStatusButton-be2579
 #[gpui::test]
 fn a_task_without_resources_moves_to_done_without_the_notice(cx: &mut TestAppContext) {
     let (mut detail, task_id) = open_status_panel(cx);
@@ -185,7 +178,6 @@ fn a_task_without_resources_moves_to_done_without_the_notice(cx: &mut TestAppCon
     assert_eq!(stored_status(&mut detail, &task_id), TaskStatus::Done);
 }
 
-// parity: TS-components-DoneStatusButton-fddd9f
 #[gpui::test]
 fn the_done_button_is_blocked_while_another_move_is_pending(cx: &mut TestAppContext) {
     let (mut detail, task_id) = open_status_panel(cx);

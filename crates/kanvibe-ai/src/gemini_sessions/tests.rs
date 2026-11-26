@@ -28,7 +28,6 @@ fn role_texts(detail: &AggregatedAiSessionDetail) -> Vec<(AiMessageRole, String)
         .collect()
 }
 
-// parity: TS-aiSessions-readAiSessions-8dea2e
 #[test]
 fn reads_chat_recordings_and_classifies_responses_thoughts_and_tools() {
     let (_directory, home) = temp_home();
@@ -96,7 +95,6 @@ fn reads_chat_recordings_and_classifies_responses_thoughts_and_tools() {
     assert!(tool.full_text.contains("read_file"));
 }
 
-// parity: TS-aiSessions-readAiSessions-d0d649
 #[test]
 fn uses_project_root_file_when_projects_json_has_no_mapping() {
     let (_directory, home) = temp_home();
@@ -159,7 +157,6 @@ fn uses_project_root_file_when_projects_json_has_no_mapping() {
     );
 }
 
-// parity: TS-aiSessions-readAiSessions-f00005
 #[test]
 fn reads_remote_worktree_sessions_and_detail_over_ssh() {
     let worktree_path = "/remote/repo__worktrees/task";
@@ -242,7 +239,6 @@ fn jsonl_fixture(home: &str) -> String {
     file
 }
 
-// parity: TS-aiSessions-geminiJsonl-3dd6cd
 #[test]
 fn discovers_jsonl_chats_and_maps_project_root() {
     let (_directory, home) = temp_home();
@@ -256,7 +252,6 @@ fn discovers_jsonl_chats_and_maps_project_root() {
     assert_eq!(session.matched_path.as_deref(), Some(JSONL_WORKTREE));
 }
 
-// parity: TS-aiSessions-geminiJsonl-732f5f
 #[test]
 fn finds_body_matches_and_pages_jsonl_messages_newest_first() {
     let (_directory, home) = temp_home();

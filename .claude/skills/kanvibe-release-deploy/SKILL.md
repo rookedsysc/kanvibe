@@ -159,7 +159,7 @@ If the release worktree path or branch already exists, re-read its status and PR
 
 After the user chooses the target version, update the root `Cargo.toml` `[workspace.package]` `version` and refresh `Cargo.lock` before running the build. Use a deterministic script instead of editing by hand.
 
-The desktop version has exactly one place to edit. Every crate (and `xtask`) uses `version.workspace = true`, the app reads `env!("CARGO_PKG_VERSION")`, and `packaging/macos/build-macos.sh` takes the version from `cargo metadata` and substitutes it into `packaging/macos/Info.plist.in`, so none of those files change. `Cargo.lock` does change: it has one `version = "..."` line per workspace member, and `cargo update --workspace` rewrites exactly those entries without touching third-party packages.
+The desktop version has exactly one place to edit. Every crate uses `version.workspace = true`, the app reads `env!("CARGO_PKG_VERSION")`, and `packaging/macos/build-macos.sh` takes the version from `cargo metadata` and substitutes it into `packaging/macos/Info.plist.in`, so none of those files change. `Cargo.lock` does change: it has one `version = "..."` line per workspace member, and `cargo update --workspace` rewrites exactly those entries without touching third-party packages.
 
 The `Cargo.toml` replacement anchors on a **whole-line exact match** inside the `[workspace.package]` table. It never matches substrings and never looks outside that table, so a dependency entry or a future `[workspace.dependencies.<name>]` sub-table carrying the same version string cannot be rewritten. The npm-era bump script lost three releases to anchors that were looser than this; the rule stays.
 

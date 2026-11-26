@@ -72,13 +72,11 @@ mod tests {
         parse_hex_color(color).is_some() && !color.starts_with(' ')
     }
 
-    // parity: TS-lib-projectColor-1d2e57
     #[test]
     fn returns_a_hex_color() {
         assert!(is_hex_color(compute_project_color("kanvibe")));
     }
 
-    // parity: TS-lib-projectColor-d5c0ff
     #[test]
     fn same_name_gives_the_same_color() {
         assert_eq!(
@@ -87,7 +85,6 @@ mod tests {
         );
     }
 
-    // parity: TS-lib-projectColor-4c2d30
     #[test]
     fn different_names_spread_over_several_colors() {
         let mut colors: Vec<&str> = ["kanvibe", "my-app", "backend", "frontend", "docs"]
@@ -100,25 +97,21 @@ mod tests {
         assert!(colors.len() >= 2);
     }
 
-    // parity: TS-lib-projectColor-de9fa2
     #[test]
     fn returns_one_of_the_preset_colors() {
         assert!(PRESET_COLORS.contains(&compute_project_color("test-project")));
     }
 
-    // parity: TS-lib-projectColor-32a223
     #[test]
     fn empty_name_still_gets_a_color() {
         assert!(is_hex_color(compute_project_color("")));
     }
 
-    // parity: TS-lib-projectColor-49966e
     #[test]
     fn long_name_still_gets_a_color() {
         assert!(is_hex_color(compute_project_color(&"a".repeat(1000))));
     }
 
-    // parity: TS-lib-projectColor-d1203c
     #[test]
     fn single_character_name_gets_a_preset_color() {
         assert!(PRESET_COLORS.contains(&compute_project_color("a")));
@@ -131,7 +124,6 @@ mod tests {
         assert_eq!(compute_project_color(""), "#F9A8D4");
     }
 
-    // parity: TS-lib-projectColor-b744c3
     #[test]
     fn pastel_presets_get_dark_text() {
         for color in PRESET_COLORS {
@@ -139,7 +131,6 @@ mod tests {
         }
     }
 
-    // parity: TS-lib-projectColor-a43911
     #[test]
     fn dark_backgrounds_get_white_text() {
         for color in ["#0064FF", "#000000", "#202632"] {
@@ -147,7 +138,6 @@ mod tests {
         }
     }
 
-    // parity: TS-lib-projectColor-878c5f
     #[test]
     fn malformed_colors_get_dark_text() {
         for color in ["not-a-color", "#FFF", ""] {
@@ -155,7 +145,6 @@ mod tests {
         }
     }
 
-    // parity: TS-lib-projectColor-bcce7c
     #[test]
     fn surrounding_spaces_are_ignored() {
         assert_eq!(readable_text_color("  #000000  "), "#FFFFFF");

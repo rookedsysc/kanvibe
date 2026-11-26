@@ -1,9 +1,0 @@
-erDiagram
-    direction LR
-    p["Person"] {
-        string id PK, FK "primary"
-        List~int~ tags
-    }
-    p }|..|{ CAR : "drives"
-    CAR one or more optionally to zero or one GARAGE : parks
-    p ||--|| p : self

@@ -15,7 +15,6 @@ fn subscribe(body: &Value) -> HttpCall {
         .json(body)
 }
 
-// parity: TS-electron-mobileRoutes-e7c07f
 #[tokio::test]
 async fn notification_registration_and_task_lookup_need_pairing() {
     let server = TestServer::start().await;
@@ -36,7 +35,6 @@ async fn notification_registration_and_task_lookup_need_pairing() {
     );
 }
 
-// parity: TS-electron-mobileRoutes-2261c1
 #[tokio::test]
 async fn push_tokens_are_registered_and_removed_only_for_the_authenticated_device() {
     let server = TestServer::start().await;
@@ -64,7 +62,6 @@ fn with_field(name: &str, value: Value) -> Value {
     body
 }
 
-// parity: TS-electron-mobileRoutes-072e6e
 #[tokio::test]
 async fn malformed_subscriptions_are_not_stored() {
     let server = TestServer::start().await;
@@ -85,7 +82,6 @@ async fn malformed_subscriptions_are_not_stored() {
     );
 }
 
-// parity: TS-electron-mobileRoutes-64e14d
 #[tokio::test]
 async fn a_device_unpaired_after_authentication_cannot_register() {
     let server = TestServer::start().await;
@@ -95,7 +91,6 @@ async fn a_device_unpaired_after_authentication_cannot_register() {
     assert_eq!(server.request(subscribe(&subscription())).await.status, 401);
 }
 
-// parity: TS-electron-mobileRoutes-8a8e6f
 #[tokio::test]
 async fn tasks_outside_the_first_board_page_are_readable_and_missing_ones_are_404() {
     let server = TestServer::start().await;
@@ -115,7 +110,6 @@ async fn tasks_outside_the_first_board_page_are_readable_and_missing_ones_are_40
     );
 }
 
-// parity: TS-electron-mobileRoutes-e7472d
 #[tokio::test]
 async fn pane_chat_pushes_reach_only_the_subscriber_and_closing_clears_the_subscription() {
     let server = TestServer::start().await;
@@ -152,7 +146,6 @@ async fn pane_chat_pushes_reach_only_the_subscriber_and_closing_clears_the_subsc
     send(pushed);
 }
 
-// parity: TS-electron-mobileRoutes-7636e4
 #[tokio::test]
 async fn events_socket_sends_connection_board_and_task_events_and_ignores_other_unpairs() {
     let server = TestServer::start().await;
@@ -172,7 +165,6 @@ async fn events_socket_sends_connection_board_and_task_events_and_ignores_other_
     assert_eq!(client.closed().await, (4001, "device-unpaired".to_string()));
 }
 
-// parity: TS-electron-mobileRoutes-4b9f3f
 #[tokio::test]
 async fn events_socket_rejects_unauthenticated_handshakes() {
     let server = TestServer::start().await;
@@ -182,7 +174,6 @@ async fn events_socket_rejects_unauthenticated_handshakes() {
     );
 }
 
-// parity: TS-electron-mobileRoutes-5fa432
 #[tokio::test]
 async fn shutdown_closes_event_subscriptions_and_open_event_sockets() {
     let server = TestServer::start().await;
@@ -193,7 +184,6 @@ async fn shutdown_closes_event_subscriptions_and_open_event_sockets() {
     assert_eq!(server.fake.notification_listeners.count(), 0);
 }
 
-// parity: TS-electron-mobileRoutes-f62ab0
 #[tokio::test]
 async fn stored_notifications_are_returned() {
     let server = TestServer::start().await;
@@ -207,7 +197,6 @@ async fn stored_notifications_are_returned() {
     );
 }
 
-// parity: TS-electron-mobileRoutes-52c197
 #[tokio::test]
 async fn no_notifications_return_an_empty_list() {
     let server = TestServer::start().await;
@@ -219,7 +208,6 @@ async fn no_notifications_return_an_empty_list() {
     );
 }
 
-// parity: TS-electron-mobileRoutes-655efe
 #[tokio::test]
 async fn bodyless_read_requests_decode_the_path_id_and_return_the_changed_notification() {
     let server = TestServer::start().await;
@@ -238,7 +226,6 @@ async fn bodyless_read_requests_decode_the_path_id_and_return_the_changed_notifi
     );
 }
 
-// parity: TS-electron-mobileRoutes-fbe939
 #[tokio::test]
 async fn reading_a_missing_notification_is_404() {
     let server = TestServer::start().await;
@@ -251,7 +238,6 @@ async fn reading_a_missing_notification_is_404() {
     assert_eq!(reply.pair(), (404, failure("없는 알림입니다")));
 }
 
-// parity: TS-electron-mobileRoutes-1bdb61
 #[tokio::test]
 async fn bodyless_read_all_requests_succeed() {
     let server = TestServer::start().await;
@@ -262,7 +248,6 @@ async fn bodyless_read_all_requests_succeed() {
     assert_eq!(server.fake.count("mark_all_mobile_notifications_read"), 1);
 }
 
-// parity: TS-electron-mobileRoutes-60520a
 #[tokio::test]
 async fn task_notification_reads_decode_the_task_id_and_return_the_updated_count() {
     let server = TestServer::start().await;
@@ -304,7 +289,6 @@ const INBOX_ROUTES: [(&str, &str, &str); 4] = [
     ),
 ];
 
-// parity: TS-electron-mobileRoutes-bcd9d2
 #[tokio::test]
 async fn inbox_routes_do_not_call_services_before_authentication() {
     let server = TestServer::start().await;
@@ -319,7 +303,6 @@ async fn inbox_routes_do_not_call_services_before_authentication() {
     }
 }
 
-// parity: TS-electron-mobileRoutes-323e34
 #[tokio::test]
 async fn inbox_service_errors_are_hidden_behind_500() {
     let server = TestServer::start().await;
@@ -332,7 +315,6 @@ async fn inbox_service_errors_are_hidden_behind_500() {
     }
 }
 
-// parity: TS-electron-mobileRoutes-62e26c
 #[tokio::test]
 async fn notification_store_changes_send_only_an_invalidation_to_every_device() {
     let server = TestServer::start().await;
@@ -351,7 +333,6 @@ async fn notification_store_changes_send_only_an_invalidation_to_every_device() 
     );
 }
 
-// parity: TS-electron-mobileRoutes-76ca8b
 #[tokio::test]
 async fn notification_settings_are_readable_by_the_paired_device() {
     let server = TestServer::start().await;
@@ -365,7 +346,6 @@ async fn notification_settings_are_readable_by_the_paired_device() {
     );
 }
 
-// parity: TS-electron-mobileRoutes-9ecd6c
 #[tokio::test]
 async fn notification_settings_cannot_be_read_or_changed_without_authentication() {
     let server = TestServer::start().await;
@@ -385,7 +365,6 @@ async fn notification_settings_cannot_be_read_or_changed_without_authentication(
     );
 }
 
-// parity: TS-electron-mobileRoutes-80962c
 #[tokio::test]
 async fn notification_settings_are_saved_and_the_stored_value_returned() {
     let server = TestServer::start().await;
@@ -407,7 +386,6 @@ async fn notification_settings_are_saved_and_the_stored_value_returned() {
     );
 }
 
-// parity: TS-electron-mobileRoutes-8ab754
 #[tokio::test]
 async fn invalid_settings_and_json_are_400() {
     let server = TestServer::start().await;

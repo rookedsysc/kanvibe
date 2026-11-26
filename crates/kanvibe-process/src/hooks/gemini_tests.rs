@@ -57,7 +57,6 @@ fn bucket_length(settings: &Value, event: &str) -> usize {
     settings["hooks"][event].as_array().unwrap().len()
 }
 
-// parity: TS-lib-geminiHooksSetup-3f2397
 #[test]
 fn creates_hook_scripts_and_settings_in_the_gemini_directory() {
     let repo = GeminiRepo::new();
@@ -90,7 +89,6 @@ fn creates_hook_scripts_and_settings_in_the_gemini_directory() {
     assert!(first_command(&settings, "AfterAgent", 0).contains("kanvibe-stop-hook.sh"));
 }
 
-// parity: TS-lib-geminiHooksSetup-7b409f
 #[test]
 fn preserves_existing_settings_entries_when_adding_hooks() {
     let repo = GeminiRepo::new();
@@ -114,7 +112,6 @@ fn preserves_existing_settings_entries_when_adding_hooks() {
     assert!(first_command(&settings, "BeforeAgent", 1).contains("kanvibe-prompt-hook.sh"));
 }
 
-// parity: TS-lib-geminiHooksSetup-c0a078
 #[test]
 fn does_not_duplicate_hooks_when_called_multiple_times() {
     let repo = GeminiRepo::new();
@@ -127,7 +124,6 @@ fn does_not_duplicate_hooks_when_called_multiple_times() {
     assert_eq!(bucket_length(&settings, "AfterAgent"), 1);
 }
 
-// parity: TS-lib-geminiHooksSetup-c5b499
 #[test]
 fn repairs_stale_gemini_hook_command_entries_on_reinstall() {
     let repo = GeminiRepo::new();
@@ -159,7 +155,6 @@ fn repairs_stale_gemini_hook_command_entries_on_reinstall() {
     );
 }
 
-// parity: TS-lib-geminiHooksSetup-794070
 #[test]
 fn reports_installed_after_setup() {
     let repo = GeminiRepo::new();
@@ -174,7 +169,6 @@ fn reports_installed_after_setup() {
     assert!(status.scripts.has_status_json_persistence);
 }
 
-// parity: TS-lib-geminiHooksSetup-d82892
 #[test]
 fn legacy_status_md_gemini_hooks_are_not_installed() {
     let repo = GeminiRepo::new();
@@ -196,7 +190,6 @@ fn legacy_status_md_gemini_hooks_are_not_installed() {
     assert!(!status.is_installed);
 }
 
-// parity: TS-lib-geminiHooksSetup-070c7b
 #[test]
 fn reports_not_installed_when_no_hooks_exist() {
     let repo = GeminiRepo::new();
@@ -209,7 +202,6 @@ fn reports_not_installed_when_no_hooks_exist() {
     assert!(!status.has_settings_entry);
 }
 
-// parity: TS-lib-geminiHooksSetup-637249
 #[test]
 fn reports_not_installed_when_scripts_exist_but_settings_entry_is_missing() {
     let repo = GeminiRepo::new();
@@ -230,7 +222,6 @@ fn reports_not_installed_when_scripts_exist_but_settings_entry_is_missing() {
     assert!(!status.is_installed);
 }
 
-// parity: TS-lib-geminiHooksSetup-b54359
 #[test]
 fn task_not_registered_in_targets_is_not_installed() {
     let repo = GeminiRepo::new();

@@ -6,7 +6,6 @@ use kanvibe_domain::project::DUPLICATE_PROJECT_NAME_ERROR;
 
 use super::fakes::{Gate, Harness, wait_until, worktree};
 
-// parity: TS-main-projectService-0cf4e7
 #[test]
 fn remote_scan_searches_repositories_without_session_dependency_checks() {
     let harness = Harness::new();
@@ -25,7 +24,6 @@ fn remote_scan_searches_repositories_without_session_dependency_checks() {
     assert_eq!(result.registered, ["api"]);
 }
 
-// parity: TS-main-projectService-1cd110
 #[test]
 fn remote_registration_survives_a_failed_session_creation() {
     let harness = Harness::new();
@@ -43,7 +41,6 @@ fn remote_registration_survives_a_failed_session_creation() {
     assert_eq!(harness.projects().len(), 1);
 }
 
-// parity: TS-main-projectService-bf946e
 #[test]
 fn remote_default_branch_task_does_not_create_a_tmux_session() {
     let harness = Harness::new();
@@ -60,7 +57,6 @@ fn remote_default_branch_task_does_not_create_a_tmux_session() {
     assert!(harness.sessions.creations.lock().unwrap().is_empty());
 }
 
-// parity: TS-main-projectService-1f62ad
 #[test]
 fn bare_common_repo_default_task_keeps_a_null_worktree_path() {
     let harness = Harness::new();
@@ -83,7 +79,6 @@ fn bare_common_repo_default_task_keeps_a_null_worktree_path() {
     assert_eq!(root.ssh_host.as_deref(), Some("remote-host"));
 }
 
-// parity: TS-main-projectService-720a30
 #[test]
 fn same_name_on_another_pc_is_registered_unchanged() {
     let harness = Harness::new();
@@ -104,7 +99,6 @@ fn same_name_on_another_pc_is_registered_unchanged() {
     assert_eq!(project.ssh_host.as_deref(), Some("remote-host"));
 }
 
-// parity: TS-main-projectService-03e2dd
 #[test]
 fn same_name_on_the_same_pc_gets_the_parent_folder() {
     let harness = Harness::new();
@@ -123,7 +117,6 @@ fn same_name_on_the_same_pc_gets_the_parent_folder() {
     assert_eq!(result.project.unwrap().name, "Documents/kanvibe");
 }
 
-// parity: TS-main-projectService-70df2a
 #[test]
 fn same_name_and_parent_on_the_same_pc_is_rejected() {
     let harness = Harness::new();
@@ -141,7 +134,6 @@ fn same_name_and_parent_on_the_same_pc_is_rejected() {
     assert_eq!(harness.projects().len(), 2);
 }
 
-// parity: TS-main-projectService-ec5da2
 #[test]
 fn scanned_repo_with_colliding_name_and_parent_is_reported_as_an_error() {
     let harness = Harness::new();
@@ -165,7 +157,6 @@ fn scanned_repo_with_colliding_name_and_parent_is_reported_as_an_error() {
     assert_eq!(harness.projects().len(), 2);
 }
 
-// parity: TS-main-projectService-17c42f
 #[test]
 fn same_host_and_path_is_not_registered_twice_under_another_name() {
     let harness = Harness::new();
@@ -180,7 +171,6 @@ fn same_host_and_path_is_not_registered_twice_under_another_name() {
     assert_eq!(result.error.as_deref(), Some("이미 등록된 프로젝트입니다."));
 }
 
-// parity: TS-main-projectService-8ba93b
 #[test]
 fn registration_saves_first_and_fills_the_icon_in_the_background() {
     let harness = Harness::new();
@@ -212,7 +202,6 @@ fn registration_saves_first_and_fills_the_icon_in_the_background() {
     );
 }
 
-// parity: TS-main-projectService-17ebd8
 #[test]
 fn icon_is_not_saved_again_when_the_project_was_deleted_meanwhile() {
     let harness = Harness::new();

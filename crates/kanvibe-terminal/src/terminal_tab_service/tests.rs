@@ -360,7 +360,6 @@ fn close_preview(
 
 const TWO_TMUX_WINDOWS: &str = "@1\t0\t1\tzsh\n@2\t1\t0\tvim";
 
-// parity: TS-main-terminalTabService-84feca
 #[test]
 fn lists_tmux_windows_as_tabs() {
     let harness = Harness::new();
@@ -375,7 +374,6 @@ fn lists_tmux_windows_as_tabs() {
     );
 }
 
-// parity: TS-main-terminalTabService-3e9856
 #[test]
 fn multiplexer_command_failure_becomes_failed_list_result() {
     let harness = Harness::new();
@@ -392,7 +390,6 @@ fn multiplexer_command_failure_becomes_failed_list_result() {
     assert_eq!(result, expected);
 }
 
-// parity: TS-main-terminalTabService-10b602
 #[test]
 fn polling_tmux_window_list_asks_not_to_log_failures() {
     let harness = Harness::new();
@@ -414,7 +411,6 @@ fn polling_tmux_window_list_asks_not_to_log_failures() {
     );
 }
 
-// parity: TS-main-terminalTabService-8820b2
 #[test]
 fn user_close_command_failures_stay_logged() {
     let harness = Harness::new();
@@ -433,7 +429,6 @@ fn user_close_command_failures_stay_logged() {
     assert!(!kill_window_call.options.is_failure_expected);
 }
 
-// parity: TS-main-terminalTabService-a73b58
 #[test]
 fn task_without_session_gives_failed_list_without_commands() {
     let harness = Harness::new();
@@ -451,7 +446,6 @@ fn task_without_session_gives_failed_list_without_commands() {
     assert!(harness.runner.commands().is_empty());
 }
 
-// parity: TS-main-terminalTabService-273819
 #[test]
 fn terminal_session_reads_registry_without_multiplexer() {
     let harness = Harness::new();
@@ -464,7 +458,6 @@ fn terminal_session_reads_registry_without_multiplexer() {
     assert!(harness.runner.commands().is_empty());
 }
 
-// parity: TS-main-terminalTabService-896c27
 #[test]
 fn tmux_new_window_gets_worktree_directory() {
     let harness = Harness::new();
@@ -480,7 +473,6 @@ fn tmux_new_window_gets_worktree_directory() {
     );
 }
 
-// parity: TS-main-terminalTabService-46f54e
 #[test]
 fn zellij_new_tab_gets_worktree_directory() {
     let harness = Harness::new();
@@ -496,7 +488,6 @@ fn zellij_new_tab_gets_worktree_directory() {
     );
 }
 
-// parity: TS-main-terminalTabService-57c651
 #[test]
 fn terminal_session_creates_tab_only_in_registry() {
     let harness = Harness::new();
@@ -512,7 +503,6 @@ fn terminal_session_creates_tab_only_in_registry() {
     assert!(harness.runner.commands().is_empty());
 }
 
-// parity: TS-main-terminalTabService-f7930d
 #[test]
 fn closes_tmux_window_and_keeps_window_when_tabs_remain() {
     let harness = Harness::new();
@@ -530,7 +520,6 @@ fn closes_tmux_window_and_keeps_window_when_tabs_remain() {
     assert_eq!(result, closed(false));
 }
 
-// parity: TS-main-terminalTabService-195b2d
 #[test]
 fn last_tmux_window_is_kept_and_only_app_window_closes() {
     let harness = Harness::new();
@@ -636,7 +625,6 @@ fn close_two_tabs_concurrently(session_type: SessionType) {
     assert_eq!((first, second), (closed(false), closed(true)));
 }
 
-// parity: TS-main-terminalTabService-6d6205
 #[test]
 fn concurrent_closes_keep_last_tmux_and_zellij_tab() {
     close_two_tabs_concurrently(SessionType::Tmux);
@@ -681,14 +669,12 @@ fn close_in_other_boundary_without_waiting(is_host_boundary: bool) {
     });
 }
 
-// parity: TS-main-terminalTabService-4e2a4e
 #[test]
 fn close_in_other_host_or_session_does_not_wait() {
     close_in_other_boundary_without_waiting(true);
     close_in_other_boundary_without_waiting(false);
 }
 
-// parity: TS-main-terminalTabService-324cac
 #[test]
 fn failed_close_does_not_block_next_close_of_same_session() {
     let harness = Harness::new();
@@ -722,7 +708,6 @@ fn failed_close_does_not_block_next_close_of_same_session() {
     );
 }
 
-// parity: TS-main-terminalTabService-aedfa8
 #[test]
 fn last_zellij_tab_is_kept_and_only_app_window_closes() {
     let harness = Harness::new();
@@ -741,7 +726,6 @@ fn last_zellij_tab_is_kept_and_only_app_window_closes() {
     assert_eq!(result, closed(true));
 }
 
-// parity: TS-main-terminalTabService-2e1758
 #[test]
 fn unreadable_session_list_deletes_nothing_and_closes_app_window() {
     let harness = Harness::new();
@@ -756,7 +740,6 @@ fn unreadable_session_list_deletes_nothing_and_closes_app_window() {
     assert_eq!(result, closed(true));
 }
 
-// parity: TS-main-terminalTabService-230f29
 #[test]
 fn zellij_0_44_selects_tab_by_id() {
     let harness = Harness::new();
@@ -774,7 +757,6 @@ fn zellij_0_44_selects_tab_by_id() {
     );
 }
 
-// parity: TS-main-terminalTabService-b95836
 #[test]
 fn zellij_before_0_44_selects_tab_by_name() {
     let harness = Harness::new();
@@ -795,7 +777,6 @@ fn zellij_before_0_44_selects_tab_by_name() {
     assert_eq!(harness.find_executed_command("go-to-tab-by-id"), None);
 }
 
-// parity: TS-main-terminalTabService-310204
 #[test]
 fn zellij_version_is_checked_once_per_host() {
     let harness = Harness::new();
@@ -817,7 +798,6 @@ fn zellij_version_is_checked_once_per_host() {
     assert_eq!(version_calls, 1);
 }
 
-// parity: TS-main-terminalTabService-bc5e2b
 #[test]
 fn blank_tab_name_is_rejected_without_commands() {
     let harness = Harness::new();
@@ -835,7 +815,6 @@ fn blank_tab_name_is_rejected_without_commands() {
     assert!(harness.runner.commands().is_empty());
 }
 
-// parity: TS-main-terminalTabService-e7e2e4
 #[test]
 fn tmux_rename_puts_name_after_double_dash() {
     let harness = Harness::new();
@@ -852,7 +831,6 @@ fn tmux_rename_puts_name_after_double_dash() {
     );
 }
 
-// parity: TS-main-terminalTabService-ef4555
 #[test]
 fn tmux_move_inserts_before_target_then_renumbers() {
     let harness = Harness::new();
@@ -873,7 +851,6 @@ fn tmux_move_inserts_before_target_then_renumbers() {
     );
 }
 
-// parity: TS-main-terminalTabService-fb604c
 #[test]
 fn tmux_move_targets_native_index_of_destination_window() {
     let harness = Harness::new();
@@ -891,7 +868,6 @@ fn tmux_move_targets_native_index_of_destination_window() {
     );
 }
 
-// parity: TS-main-terminalTabService-47d918
 #[test]
 fn tab_missing_from_list_is_not_moved() {
     let harness = Harness::new();
@@ -910,7 +886,6 @@ fn tab_missing_from_list_is_not_moved() {
     assert_eq!(harness.find_executed_command("move-window"), None);
 }
 
-// parity: TS-main-terminalTabService-858b80
 #[test]
 fn negative_move_index_is_rejected() {
     let harness = Harness::new();
@@ -928,7 +903,6 @@ fn negative_move_index_is_rejected() {
     assert!(harness.runner.commands().is_empty());
 }
 
-// parity: TS-main-terminalTabService-74d631
 #[test]
 fn herdr_tabs_keep_native_ids_and_active_state() {
     let harness = Harness::new();
@@ -961,7 +935,6 @@ fn herdr_harness_with_two_workspaces() -> (Harness, String) {
     (harness, task_id)
 }
 
-// parity: TS-main-terminalTabService-fee8cb
 #[test]
 fn herdr_new_tab_goes_to_active_workspace() {
     let (harness, task_id) = herdr_harness_with_two_workspaces();
@@ -985,7 +958,6 @@ fn herdr_new_tab_goes_to_active_workspace() {
     );
 }
 
-// parity: TS-main-terminalTabService-63a2f1
 #[test]
 fn herdr_move_converts_position_to_workspace_insert_boundary() {
     for (tab_id, destination, insert_index) in [("w2:t2", 2, 0), ("w2:t1", 3, 2)] {
@@ -1007,7 +979,6 @@ fn herdr_move_converts_position_to_workspace_insert_boundary() {
     }
 }
 
-// parity: TS-main-terminalTabService-3c7d9e
 #[test]
 fn herdr_move_across_workspaces_is_rejected() {
     let (harness, task_id) = herdr_harness_with_two_workspaces();
@@ -1026,7 +997,6 @@ fn herdr_move_across_workspaces_is_rejected() {
     assert!(harness.herdr.moves().is_empty());
 }
 
-// parity: TS-main-terminalTabService-d15904
 #[test]
 fn last_herdr_tab_is_kept_and_only_app_window_closes() {
     let (harness, task_id) = herdr_harness_with_two_workspaces();
@@ -1041,7 +1011,6 @@ fn last_herdr_tab_is_kept_and_only_app_window_closes() {
     assert!(!harness.herdr.has_command_starting_with(&["tab", "close"]));
 }
 
-// parity: TS-main-terminalTabService-e3c261
 #[test]
 fn herdr_select_rename_close_target_tab_by_id_despite_duplicate_names() {
     let (harness, task_id) = herdr_harness_with_two_workspaces();
@@ -1077,7 +1046,6 @@ fn herdr_select_rename_close_target_tab_by_id_despite_duplicate_names() {
     assert!(harness.herdr.has_command(&["tab", "close", "w2:t2"]));
 }
 
-// parity: TS-main-terminalTabService-80622a
 #[test]
 fn close_preview_for_last_multiplexer_tab_only_closes_app_window() {
     let harness = Harness::new();
@@ -1091,7 +1059,6 @@ fn close_preview_for_last_multiplexer_tab_only_closes_app_window() {
     assert_eq!(harness.find_executed_command("list-panes"), None);
 }
 
-// parity: TS-main-terminalTabService-b5b2e4
 #[test]
 fn close_preview_collects_process_names_from_all_panes_of_the_tab_only() {
     let harness = Harness::new();
@@ -1127,7 +1094,6 @@ fn mirror_pane(id: &str, tab_id: &str, command: &str) -> MirrorPane {
     }
 }
 
-// parity: TS-main-terminalTabService-c97a32
 #[test]
 fn close_preview_collects_herdr_process_names_of_the_tab_only() {
     let harness = Harness::new();
@@ -1148,7 +1114,6 @@ fn close_preview_collects_herdr_process_names_of_the_tab_only() {
     assert_eq!(preview, close_preview(false, Some(&["claude"])));
 }
 
-// parity: TS-main-terminalTabService-d4a4b1
 #[test]
 fn failed_process_lookup_is_not_reported_as_no_running_work() {
     let harness = Harness::new();
@@ -1163,7 +1128,6 @@ fn failed_process_lookup_is_not_reported_as_no_running_work() {
     assert_eq!(preview, close_preview(false, None));
 }
 
-// parity: TS-main-terminalTabService-c029f7
 #[test]
 fn failed_tab_list_is_not_turned_into_close_permission() {
     let harness = Harness::new();
@@ -1175,7 +1139,6 @@ fn failed_tab_list_is_not_turned_into_close_permission() {
     assert_eq!(preview, TerminalTabClosePreview::failure("offline"));
 }
 
-// parity: TS-main-terminalTabService-ee4749
 #[test]
 fn empty_process_lookup_is_not_assumed_safe() {
     let harness = Harness::new();
@@ -1189,7 +1152,6 @@ fn empty_process_lookup_is_not_assumed_safe() {
     assert_eq!(preview.process_names, None);
 }
 
-// parity: TS-main-terminalTabService-8fb43f
 #[test]
 fn remote_terminal_does_not_show_local_ssh_process_as_remote_work() {
     let harness = Harness::new();
@@ -1205,7 +1167,6 @@ fn remote_terminal_does_not_show_local_ssh_process_as_remote_work() {
     assert!(!harness.registry.has_call_starting_with("local_process"));
 }
 
-// parity: TS-main-terminalTabService-281317
 #[test]
 fn missing_tab_is_not_accepted_as_close_target() {
     let harness = Harness::new();
@@ -1220,7 +1181,6 @@ fn missing_tab_is_not_accepted_as_close_target() {
     );
 }
 
-// parity: TS-main-terminalTabService-c85267
 #[test]
 fn plain_terminal_warns_about_current_pty_process_even_for_last_tab() {
     let harness = Harness::new();
@@ -1246,7 +1206,6 @@ fn shared_space_harness() -> (Harness, String) {
     (harness, task_id)
 }
 
-// parity: TS-main-terminalTabService-39c566
 #[test]
 fn shared_space_marks_task_client_selection_as_active() {
     let (harness, task_id) = shared_space_harness();
@@ -1258,7 +1217,6 @@ fn shared_space_marks_task_client_selection_as_active() {
     assert_eq!(active_states, vec![false, true]);
 }
 
-// parity: TS-main-terminalTabService-d7c2dc
 #[test]
 fn shared_space_create_and_select_go_to_task_client_without_global_focus() {
     let (harness, task_id) = shared_space_harness();
@@ -1297,7 +1255,6 @@ fn shared_space_create_and_select_go_to_task_client_without_global_focus() {
     assert!(!harness.herdr.has_command_starting_with(&["tab", "focus"]));
 }
 
-// parity: TS-main-terminalTabService-a39b68
 #[test]
 fn shared_space_rejects_selecting_tab_of_other_space() {
     let (harness, task_id) = shared_space_harness();

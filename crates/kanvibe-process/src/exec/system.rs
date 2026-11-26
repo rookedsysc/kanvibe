@@ -64,7 +64,6 @@ impl ShellCommandRunner for SystemShellCommandRunner {
 mod tests {
     use super::*;
 
-    // parity: TS-lib-gitOperations-a16e1c
     #[test]
     fn local_commands_include_cli_paths_missing_from_macos_app_environments() {
         let parent_environment: ShellEnvironment = [

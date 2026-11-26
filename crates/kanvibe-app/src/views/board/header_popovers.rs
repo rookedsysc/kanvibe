@@ -835,7 +835,6 @@ mod tests {
             .collect()
     }
 
-    // parity: TS-components-BoardSortPicker-22bbff
     #[test]
     fn picked_fields_stack_in_ascending_order() {
         let first = toggle_sort_field(&BoardSortPreference::default(), BoardSortField::Priority);
@@ -849,7 +848,6 @@ mod tests {
         );
     }
 
-    // parity: TS-components-BoardSortPicker-23f4d0
     #[test]
     fn picking_a_chosen_field_again_removes_it() {
         let picked = toggle_sort_field(&BoardSortPreference::default(), BoardSortField::Priority);
@@ -860,7 +858,6 @@ mod tests {
         );
     }
 
-    // parity: TS-components-BoardSortPicker-be20e3
     #[test]
     fn direction_toggles_for_the_chosen_field_only() {
         let picked = toggle_sort_field(
@@ -877,7 +874,6 @@ mod tests {
         );
     }
 
-    // parity: TS-components-ProjectSelector-dce11a
     #[test]
     fn remote_projects_match_by_ssh_host() {
         let remote = Project {
@@ -888,13 +884,11 @@ mod tests {
         assert!(!matches_project_search(&project("api"), "devb"));
     }
 
-    // parity: TS-components-ProjectSelector-d2ad60
     #[test]
     fn projects_match_by_repo_path() {
         assert!(matches_project_search(&project("api"), "/repo/a"));
     }
 
-    // parity: TS-components-ProjectSelector-d75674
     #[test]
     fn selected_projects_are_listed_first() {
         let projects = [project("a"), project("b"), project("c")];

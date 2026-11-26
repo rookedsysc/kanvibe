@@ -10,7 +10,6 @@ fn surface_unavailable(reason: &str) -> BridgeError {
     BridgeError::SurfaceUnavailable(reason.to_string())
 }
 
-// parity: TS-electron-mobileRoutes-b38356
 #[tokio::test]
 async fn start_session_returns_the_prepared_panes_to_the_requester() {
     let server = TestServer::start().await;
@@ -28,7 +27,6 @@ async fn start_session_returns_the_prepared_panes_to_the_requester() {
     );
 }
 
-// parity: TS-electron-mobileRoutes-d1d5e8
 #[tokio::test]
 async fn start_session_rejects_malformed_task_ids() {
     let server = TestServer::start().await;
@@ -47,7 +45,6 @@ async fn start_session_rejects_malformed_task_ids() {
     assert_eq!(server.fake.count("get_task_surfaces"), 0);
 }
 
-// parity: TS-electron-mobileRoutes-061372
 #[tokio::test]
 async fn start_session_keeps_the_failure_reason_as_the_code() {
     let server = TestServer::start().await;
@@ -77,7 +74,6 @@ async fn start_session_keeps_the_failure_reason_as_the_code() {
     }
 }
 
-// parity: TS-electron-mobileRoutes-20226a
 #[tokio::test]
 async fn connected_message_lists_the_supported_commands() {
     let server = TestServer::start().await;
@@ -101,7 +97,6 @@ async fn connected_message_lists_the_supported_commands() {
     );
 }
 
-// parity: TS-electron-mobileRoutes-3e45ec
 #[tokio::test]
 async fn delete_results_go_only_to_the_requesting_socket() {
     let server = TestServer::start().await;
@@ -130,7 +125,6 @@ async fn delete_results_go_only_to_the_requesting_socket() {
 }
 
 /// 두 명령은 서로 기다리지 않아 서비스 호출 순서가 정해지지 않는다. 그래서 강제 여부로 실패를 고르고 호출은 집합으로 본다
-// parity: TS-electron-mobileRoutes-b2212a
 #[tokio::test]
 async fn dirty_worktrees_answer_dirty_worktree_and_forced_deletion_passes_is_forced() {
     let server = TestServer::start().await;
@@ -161,7 +155,6 @@ async fn dirty_worktrees_answer_dirty_worktree_and_forced_deletion_passes_is_for
     );
 }
 
-// parity: TS-electron-mobileRoutes-8fd06b
 #[tokio::test]
 async fn deleting_a_missing_task_answers_task_not_found() {
     let server = TestServer::start().await;
@@ -178,7 +171,6 @@ async fn deleting_a_missing_task_answers_task_not_found() {
     );
 }
 
-// parity: TS-electron-mobileRoutes-316a27
 #[tokio::test]
 async fn close_tab_passes_only_the_named_pane_and_returns_the_remaining_surfaces() {
     let server = TestServer::start().await;
@@ -201,7 +193,6 @@ async fn close_tab_passes_only_the_named_pane_and_returns_the_remaining_surfaces
     );
 }
 
-// parity: TS-electron-mobileRoutes-531c7a
 #[tokio::test]
 async fn close_tab_errors_map_to_their_codes() {
     let server = TestServer::start().await;
@@ -228,7 +219,6 @@ async fn close_tab_errors_map_to_their_codes() {
     }
 }
 
-// parity: TS-electron-mobileRoutes-d51eda
 #[tokio::test]
 async fn unexpected_command_errors_hide_the_internal_reason() {
     let server = TestServer::start().await;
@@ -249,7 +239,6 @@ async fn unexpected_command_errors_hide_the_internal_reason() {
     assert!(!result.to_string().contains("/private/path"));
 }
 
-// parity: TS-electron-mobileRoutes-59d594
 #[tokio::test]
 async fn tab_close_info_returns_running_process_names() {
     let server = TestServer::start().await;
@@ -269,7 +258,6 @@ async fn tab_close_info_returns_running_process_names() {
     );
 }
 
-// parity: TS-electron-mobileRoutes-dbdf4b
 #[tokio::test]
 async fn unknown_commands_are_answered_and_request_id_less_messages_keep_the_socket_open() {
     let server = TestServer::start().await;
@@ -291,7 +279,6 @@ async fn unknown_commands_are_answered_and_request_id_less_messages_keep_the_soc
     assert_eq!(server.fake.count("delete_mobile_task"), 0);
 }
 
-// parity: TS-electron-mobileRoutes-454f70
 #[tokio::test]
 async fn binary_frames_are_not_read_as_commands() {
     let server = TestServer::start().await;

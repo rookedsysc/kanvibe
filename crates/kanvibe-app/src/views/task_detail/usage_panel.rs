@@ -410,7 +410,6 @@ mod tests {
         polling
     }
 
-    // parity: TS-renderer-useAiUsage-5cef6c
     #[test]
     fn saved_result_shows_while_the_new_read_is_pending() {
         let mut polling = opened();
@@ -424,7 +423,6 @@ mod tests {
         assert!(!polling.usage.is_refreshing);
     }
 
-    // parity: TS-renderer-useAiUsage-1b0a56
     #[test]
     fn loading_only_without_cache() {
         let mut polling = opened();
@@ -436,7 +434,6 @@ mod tests {
         assert!(!polling.usage.is_loading());
     }
 
-    // parity: TS-renderer-useAiUsage-b88d08
     #[test]
     fn late_cache_does_not_overwrite_a_new_result() {
         let mut polling = opened();
@@ -447,7 +444,6 @@ mod tests {
         assert_eq!(shown_percent(&polling), Some(80.0));
     }
 
-    // parity: TS-renderer-useAiUsage-aad1f0
     #[test]
     fn failed_read_keeps_the_cache() {
         let mut polling = opened();
@@ -459,7 +455,6 @@ mod tests {
         assert_eq!(shown_percent(&polling), Some(22.0));
     }
 
-    // parity: TS-renderer-useAiUsage-057629
     #[test]
     fn refresh_during_a_read_reads_once_more_without_reuse() {
         let mut polling = opened();
@@ -477,7 +472,6 @@ mod tests {
         assert!(!polling.usage.is_refreshing);
     }
 
-    // parity: TS-renderer-useAiUsage-fdd75f
     #[test]
     fn refresh_reads_again_regardless_of_the_interval() {
         let mut polling = opened();
@@ -486,7 +480,6 @@ mod tests {
         assert_eq!(polling.request_refresh(), reuse(false));
     }
 
-    // parity: TS-renderer-useAiUsage-85e78b
     #[test]
     fn own_reads_share_recent_results_and_refresh_reads_fresh() {
         let mut polling = UsagePolling::default();
@@ -496,7 +489,6 @@ mod tests {
         assert_eq!(polling.request_refresh(), reuse(false));
     }
 
-    // parity: TS-renderer-useAiUsage-dd57d0
     #[test]
     fn reads_again_every_five_minutes_from_the_result_time() {
         let mut polling = opened();
@@ -513,7 +505,6 @@ mod tests {
         assert_eq!(polling.begin_fetch(true), reuse(true));
     }
 
-    // parity: TS-renderer-useAiUsage-a9ac6c
     #[test]
     fn overdue_read_runs_as_soon_as_the_window_returns() {
         let mut polling = opened();
@@ -524,7 +515,6 @@ mod tests {
         assert_eq!(polling.auto_load_delay(returned_at), Duration::ZERO);
     }
 
-    // parity: TS-renderer-useAiUsage-039e52
     #[test]
     fn stale_result_waits_a_full_interval_before_reading_again() {
         let mut polling = opened();
@@ -538,7 +528,6 @@ mod tests {
         );
     }
 
-    // parity: TS-renderer-useAiUsage-65f124
     #[test]
     fn failed_read_retries_on_the_next_interval() {
         let mut polling = opened();

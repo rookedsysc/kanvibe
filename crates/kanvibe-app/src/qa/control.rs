@@ -1,4 +1,4 @@
-//! QA 제어 소켓. 재생 드라이버(`parity/tools/screens-rust/driver.py`)가 한 줄 JSON 명령을 보내고 한 줄 JSON 응답을 받는다.
+//! QA 제어 소켓. 측정 도구(`parity/tools/perf/qa_control.py`)가 한 줄 JSON 명령을 보내고 한 줄 JSON 응답을 받는다.
 //!
 //! 명령: `navigate`, `click`, `hover`, `bounds`, `focus`, `fill`, `scroll_into_view`, `mouse_move`, `mouse_down`,
 //! `mouse_up`, `park_pointer`, `key`, `type`, `wait_for`, `wait_idle`, `report_ready`, `fault`, `clear_fault`,

@@ -168,7 +168,6 @@ fn attachment_input(name: &str, mime_type: &str, data_url: &str) -> PaneChatAtta
     }
 }
 
-// parity: TS-main-paneChatService-13c8fe
 #[test]
 fn gemini_and_opencode_support_exact_reading_paging_sending_and_conversation_fencing() {
     let cases = [
@@ -282,7 +281,6 @@ fn gemini_and_opencode_support_exact_reading_paging_sending_and_conversation_fen
     }
 }
 
-// parity: TS-main-paneChatService-ecf8af
 #[test]
 fn gemini_does_not_overwrite_a_native_draft_below_an_empty_first_row() {
     let harness = Harness::new();
@@ -338,7 +336,6 @@ fn opencode_table() -> &'static str {
     "100 1 100 200 ttys010 Thu Nov 12 18:00:00 2026 zsh /bin/zsh\n200 100 200 200 ttys010 Thu Nov 12 19:00:00 2026 opencode.exe opencode"
 }
 
-// parity: TS-main-paneChatService-c5b15b
 #[test]
 fn opencode_does_not_overwrite_a_multiline_draft_above_an_empty_cursor_row() {
     let harness = Harness::new();
@@ -385,7 +382,6 @@ fn opencode_does_not_overwrite_a_multiline_draft_above_an_empty_cursor_row() {
     );
 }
 
-// parity: TS-main-paneChatService-91c557
 #[test]
 fn opencode_home_sends_the_first_prompt_into_an_empty_conversation() {
     let harness = Harness::new();
@@ -425,7 +421,6 @@ fn opencode_home_sends_the_first_prompt_into_an_empty_conversation() {
     );
 }
 
-// parity: TS-main-paneChatService-61fa2b
 #[test]
 fn gemini_and_opencode_without_an_exact_session_never_guess_history_or_allow_input() {
     for (provider, name) in [
@@ -446,7 +441,6 @@ fn gemini_and_opencode_without_an_exact_session_never_guess_history_or_allow_inp
     }
 }
 
-// parity: TS-main-paneChatService-345f3d
 #[test]
 fn suggestions_are_pinned_to_the_target_and_rejected_when_the_cli_changes_while_loading() {
     let harness = Harness::new();
@@ -489,7 +483,6 @@ fn suggestions_are_pinned_to_the_target_and_rejected_when_the_cli_changes_while_
     assert!(harness.writes().is_empty());
 }
 
-// parity: TS-main-paneChatService-befe75
 #[test]
 fn a_raised_suggestion_limit_reaches_the_catalog_and_limits_outside_1_to_512_are_rejected() {
     let harness = Harness::new();
@@ -518,7 +511,6 @@ fn a_raised_suggestion_limit_reaches_the_catalog_and_limits_outside_1_to_512_are
     assert!(harness.catalog.calls().is_empty());
 }
 
-// parity: TS-main-paneChatService-23562f
 #[test]
 fn the_same_request_can_retry_after_a_definite_refusal_before_any_write() {
     let harness = Harness::new();
@@ -542,7 +534,6 @@ fn the_same_request_can_retry_after_a_definite_refusal_before_any_write() {
     assert_eq!(harness.writes().len(), 2);
 }
 
-// parity: TS-main-paneChatService-08c36c
 #[test]
 fn a_staged_image_is_pasted_as_a_native_attachment_for_image_only_input() {
     let harness = Harness::new();
@@ -590,7 +581,6 @@ fn a_staged_image_is_pasted_as_a_native_attachment_for_image_only_input() {
         .unwrap();
 }
 
-// parity: TS-main-paneChatService-ddc755
 #[test]
 fn an_attachment_from_another_live_cli_target_is_rejected_before_any_write() {
     let harness = Harness::new();
@@ -616,7 +606,6 @@ fn an_attachment_from_another_live_cli_target_is_rejected_before_any_write() {
         .unwrap();
 }
 
-// parity: TS-main-paneChatService-03e389
 #[test]
 fn one_request_receipt_is_replayed_and_the_same_id_with_another_payload_is_rejected() {
     let harness = Harness::new();
@@ -638,7 +627,6 @@ fn one_request_receipt_is_replayed_and_the_same_id_with_another_payload_is_rejec
     assert_eq!(harness.writes().len(), 2);
 }
 
-// parity: TS-main-paneChatService-cd4358
 #[test]
 fn a_possibly_accepted_paste_is_not_repeated_after_an_interrupted_delivery() {
     let harness = Harness::new();
@@ -663,7 +651,6 @@ fn a_possibly_accepted_paste_is_not_repeated_after_an_interrupted_delivery() {
     assert_eq!(harness.writes().len(), 1);
 }
 
-// parity: TS-main-paneChatService-d64c7b
 #[test]
 fn a_native_codex_skill_completion_token_is_closed_before_the_single_submit_enter() {
     let harness = Harness::new();
@@ -675,7 +662,6 @@ fn a_native_codex_skill_completion_token_is_closed_before_the_single_submit_ente
     );
 }
 
-// parity: TS-main-paneChatService-612ed8
 #[test]
 fn a_staged_claude_file_reference_is_closed_before_the_single_submit_enter() {
     for text in ["", "Read this file"] {
@@ -731,7 +717,6 @@ fn a_staged_claude_file_reference_is_closed_before_the_single_submit_enter() {
     }
 }
 
-// parity: TS-main-paneChatService-4b02a7
 #[test]
 fn claude_text_is_preserved_and_only_a_final_file_mention_is_terminated() {
     let cases = [
@@ -768,7 +753,6 @@ fn claude_text_is_preserved_and_only_a_final_file_mention_is_terminated() {
     }
 }
 
-// parity: TS-main-paneChatService-d869b1
 #[test]
 fn returning_to_the_terminal_restores_the_requested_tmux_pane() {
     let harness = Harness::new();
@@ -792,7 +776,6 @@ fn returning_to_the_terminal_restores_the_requested_tmux_pane() {
     assert!(harness.writes().is_empty());
 }
 
-// parity: TS-main-paneChatService-e3d6e1
 #[test]
 fn an_invalid_or_missing_return_target_never_focuses_another_pane() {
     let harness = Harness::new();
@@ -824,7 +807,6 @@ fn surface_on(session_type: SessionType, pane_id: &str) -> PaneChatSurface {
     target
 }
 
-// parity: TS-main-paneChatService-36d4f7
 #[test]
 fn returning_targets_the_selected_zellij_session_and_pane() {
     let harness = Harness::new();
@@ -847,7 +829,6 @@ fn returning_targets_the_selected_zellij_session_and_pane() {
     assert!(harness.writes().is_empty());
 }
 
-// parity: TS-main-paneChatService-c41f7a
 #[test]
 fn herdr_returns_through_the_task_client_and_a_stale_plain_tab_is_rejected() {
     let harness = Harness::new();
@@ -880,7 +861,6 @@ fn herdr_returns_through_the_task_client_and_a_stale_plain_tab_is_rejected() {
     assert!(harness.writes().is_empty());
 }
 
-// parity: TS-main-paneChatService-026cf0
 #[test]
 fn invalid_layout_requests_are_rejected_and_unavailable_geometry_is_hidden() {
     let harness = Harness::new();
@@ -907,7 +887,6 @@ fn invalid_layout_requests_are_rejected_and_unavailable_geometry_is_hidden() {
     assert!(harness.writes().is_empty());
 }
 
-// parity: TS-main-paneChatService-a49f85
 #[test]
 fn the_service_boundary_preserves_the_selected_terminal_identity_and_cell_geometry() {
     let harness = Harness::new();
@@ -939,7 +918,6 @@ fn the_service_boundary_preserves_the_selected_terminal_identity_and_cell_geomet
     assert!(harness.writes().is_empty());
 }
 
-// parity: TS-main-paneChatService-f08ccb
 #[test]
 fn a_pinned_chat_stays_on_its_pane_when_runtime_focus_moves_to_a_sibling() {
     let harness = Harness::new();
@@ -965,7 +943,6 @@ fn a_pinned_chat_stays_on_its_pane_when_runtime_focus_moves_to_a_sibling() {
     );
 }
 
-// parity: TS-main-paneChatService-56c77b
 #[test]
 fn scrollback_is_read_only_when_the_screen_is_requested_or_the_transcript_is_unavailable() {
     let harness = Harness::new();
@@ -991,7 +968,6 @@ fn scrollback_is_read_only_when_the_screen_is_requested_or_the_transcript_is_una
     assert_eq!(harness.surfaces.screen_calls().len(), 2);
 }
 
-// parity: TS-main-paneChatService-f54971
 #[test]
 fn a_pane_whose_screen_cannot_be_read_is_hidden_even_with_a_bound_conversation() {
     let harness = Harness::new();
@@ -1012,7 +988,6 @@ fn a_pane_whose_screen_cannot_be_read_is_hidden_even_with_a_bound_conversation()
     assert_eq!(shown.reason.as_deref(), Some("pane-unavailable"));
 }
 
-// parity: TS-main-paneChatService-ebbbf9
 #[test]
 fn a_watcher_reading_is_reused_within_one_second_and_refreshed_after_time_or_input() {
     let harness = Harness::new();
@@ -1052,7 +1027,6 @@ fn a_watcher_reading_is_reused_within_one_second_and_refreshed_after_time_or_inp
     assert!(harness.surfaces.calls().len() > reads_after_input);
 }
 
-// parity: TS-main-paneChatService-bac213
 #[test]
 fn the_exact_cli_stays_visible_but_input_is_refused_while_the_conversation_is_unmapped() {
     let harness = Harness::new();
@@ -1071,7 +1045,6 @@ fn the_exact_cli_stays_visible_but_input_is_refused_while_the_conversation_is_un
     assert_eq!(first.target_token, next.target_token);
 }
 
-// parity: TS-main-paneChatService-e3a16f
 #[test]
 fn recent_history_is_never_substituted_for_a_shell_or_background_provider() {
     let harness = Harness::new();
@@ -1087,7 +1060,6 @@ fn recent_history_is_never_substituted_for_a_shell_or_background_provider() {
     assert!(harness.sessions.detail_calls().is_empty());
 }
 
-// parity: TS-main-paneChatService-7cf139
 #[test]
 fn multiline_text_is_pasted_and_a_separate_cr_goes_to_the_same_fenced_process() {
     let harness = Harness::new();
@@ -1099,7 +1071,6 @@ fn multiline_text_is_pasted_and_a_separate_cr_goes_to_the_same_fenced_process() 
     );
 }
 
-// parity: TS-main-paneChatService-b1c242
 #[test]
 fn a_reused_pid_is_rejected_before_any_write() {
     let harness = Harness::new();
@@ -1112,7 +1083,6 @@ fn a_reused_pid_is_rejected_before_any_write() {
     assert!(harness.writes().is_empty());
 }
 
-// parity: TS-main-paneChatService-66d990
 #[test]
 fn no_cr_is_submitted_if_the_cli_exits_after_the_paste() {
     let harness = Harness::new();
@@ -1125,7 +1095,6 @@ fn no_cr_is_submitted_if_the_cli_exits_after_the_paste() {
     assert_eq!(harness.writes().len(), 1);
 }
 
-// parity: TS-main-paneChatService-4401fa
 #[test]
 fn control_sequence_injection_and_cross_task_token_reuse_are_rejected() {
     let harness = Harness::new();
@@ -1145,7 +1114,6 @@ fn control_sequence_injection_and_cross_task_token_reuse_are_rejected() {
     assert!(harness.writes().is_empty());
 }
 
-// parity: TS-main-paneChatService-605be8
 #[test]
 fn the_codex_picker_is_opened_by_pasting_its_command_once_and_only_known_keys_are_sent() {
     let harness = Harness::new();
@@ -1172,7 +1140,6 @@ fn the_codex_picker_is_opened_by_pasting_its_command_once_and_only_known_keys_ar
     );
 }
 
-// parity: TS-main-paneChatService-d983cb
 #[test]
 fn enter_is_not_pressed_if_the_cli_is_replaced_after_the_command_paste() {
     let harness = Harness::new();
@@ -1207,7 +1174,6 @@ fn open_claude_picker_with_input_line_after_paste(
     harness.service.open_pane_chat_model_picker(TASK, &token)
 }
 
-// parity: TS-main-paneChatService-447ecf
 #[test]
 fn claude_command_enter_is_pressed_when_the_composer_still_shows_the_command() {
     let harness = Harness::new();
@@ -1218,7 +1184,6 @@ fn claude_command_enter_is_pressed_when_the_composer_still_shows_the_command() {
     );
 }
 
-// parity: TS-main-paneChatService-657500
 #[test]
 fn claude_command_enter_is_withheld_when_the_composer_changed_or_disappeared() {
     let changed_lines = [
@@ -1272,7 +1237,6 @@ fn send_with_claude_screen_after_paste(
     (harness, result)
 }
 
-// parity: TS-main-paneChatService-074064
 #[test]
 fn claude_message_enter_is_pressed_when_the_composer_shows_the_paste() {
     let cases: [(&str, &[&str]); 3] = [
@@ -1295,7 +1259,6 @@ fn claude_message_enter_is_pressed_when_the_composer_shows_the_paste() {
     }
 }
 
-// parity: TS-main-paneChatService-39d0e0
 #[test]
 fn claude_message_enter_is_withheld_when_the_composer_changed_cleared_or_a_prompt_appeared() {
     let border = "─".repeat(BORDER_WIDTH);
@@ -1325,7 +1288,6 @@ fn claude_message_enter_is_withheld_when_the_composer_changed_cleared_or_a_promp
     }
 }
 
-// parity: TS-main-paneChatService-88a821
 #[test]
 fn a_navigation_key_and_an_interrupt_each_verify_the_target_once() {
     let harness = Harness::new();
@@ -1341,7 +1303,6 @@ fn a_navigation_key_and_an_interrupt_each_verify_the_target_once() {
     assert_eq!(harness.surfaces.calls().len(), 1);
 }
 
-// parity: TS-main-paneChatService-16f160
 #[test]
 fn current_model_settings_and_selectable_options_come_from_the_exact_session() {
     let harness = Harness::new();
@@ -1505,7 +1466,6 @@ impl PaneChatSessionRecords for RealTailSessions {
     }
 }
 
-// parity: TS-main-paneChatService-8b9401
 #[test]
 fn an_unchanged_remote_transcript_is_not_fetched_again_for_model_settings() {
     let remote_file = "/remote/exact-control-model-cache.jsonl";
@@ -1578,7 +1538,6 @@ fn an_unchanged_remote_transcript_is_not_fetched_again_for_model_settings() {
     assert!(last_tail.command.contains(remote_file));
 }
 
-// parity: TS-main-paneChatService-63eaad
 #[test]
 fn claude_picker_metadata_is_read_without_opening_a_cli_picker() {
     let harness = Harness::new();
@@ -1601,7 +1560,6 @@ fn claude_picker_metadata_is_read_without_opening_a_cli_picker() {
     assert!(harness.writes().is_empty());
 }
 
-// parity: TS-main-paneChatService-f44375
 #[test]
 fn transcript_and_model_metadata_are_read_concurrently() {
     let harness = Harness::new();
@@ -1634,7 +1592,6 @@ fn transcript_and_model_metadata_are_read_concurrently() {
     assert_eq!(shown.transcript.status, PaneChatTranscriptStatus::Available);
 }
 
-// parity: TS-main-paneChatService-5f038b
 #[test]
 fn an_empty_claude_descriptor_session_loads_before_its_first_transcript_exists() {
     let harness = Harness::new();
@@ -1668,7 +1625,6 @@ fn an_empty_claude_descriptor_session_loads_before_its_first_transcript_exists()
     assert!(harness.writes().is_empty());
 }
 
-// parity: TS-main-paneChatService-07d75d
 #[test]
 fn exact_herdr_session_reports_are_used_without_a_footer_or_cli_commands() {
     let harness = Harness::new();
@@ -1715,7 +1671,6 @@ fn exact_herdr_session_reports_are_used_without_a_footer_or_cli_commands() {
     assert!(harness.writes().is_empty());
 }
 
-// parity: TS-main-paneChatService-7af379
 #[test]
 fn the_current_process_descriptor_wins_over_an_older_hook_session() {
     let harness = Harness::new();
@@ -1747,7 +1702,6 @@ fn the_current_process_descriptor_wins_over_an_older_hook_session() {
     assert!(harness.writes().is_empty());
 }
 
-// parity: TS-main-paneChatService-e6d053
 #[test]
 fn model_settings_are_omitted_when_the_transcript_tail_cannot_be_read() {
     let harness = Harness::new();
@@ -1768,7 +1722,6 @@ fn change(harness: &Harness, token: &str, change: Value) -> Result<(), PaneChatE
         .change_pane_chat_model_setting(TASK, token, &change)
 }
 
-// parity: TS-main-paneChatService-55c4d5
 #[test]
 fn a_model_setting_changes_by_pasting_the_command_built_from_selectable_options() {
     let harness = Harness::new();
@@ -1792,7 +1745,6 @@ fn a_model_setting_changes_by_pasting_the_command_built_from_selectable_options(
     );
 }
 
-// parity: TS-main-paneChatService-343322
 #[test]
 fn the_target_is_verified_the_same_number_of_times_however_long_the_model_command_is() {
     let harness = Harness::new();
@@ -1825,7 +1777,6 @@ fn the_target_is_verified_the_same_number_of_times_however_long_the_model_comman
     assert_eq!(harness.surfaces.calls().len(), reads_for_short_command);
 }
 
-// parity: TS-main-paneChatService-6f884b
 #[test]
 fn unselectable_or_malformed_model_changes_are_refused_without_writing() {
     let changes = [
@@ -1847,7 +1798,6 @@ fn unselectable_or_malformed_model_changes_are_refused_without_writing() {
     }
 }
 
-// parity: TS-main-paneChatService-554894
 #[test]
 fn fast_mode_is_refused_for_a_model_without_it_and_while_the_cli_input_is_occupied() {
     let harness = Harness::new();
@@ -1878,7 +1828,6 @@ fn fast_mode_is_refused_for_a_model_without_it_and_while_the_cli_input_is_occupi
     assert!(harness.writes().is_empty());
 }
 
-// parity: TS-main-paneChatService-09f37a
 #[test]
 fn only_the_hook_bound_exact_session_is_read_and_newest_first_order_is_kept() {
     let harness = Harness::new();
@@ -1915,7 +1864,6 @@ fn only_the_hook_bound_exact_session_is_read_and_newest_first_order_is_kept() {
     );
 }
 
-// parity: TS-main-paneChatService-682b92
 #[test]
 fn a_dim_claude_suggestion_after_a_reply_counts_as_an_empty_composer() {
     let harness = Harness::new();
@@ -1944,7 +1892,6 @@ fn a_dim_claude_suggestion_after_a_reply_counts_as_an_empty_composer() {
     );
 }
 
-// parity: TS-main-paneChatService-fb70b1
 #[test]
 fn text_typed_directly_into_the_claude_composer_stays_blocked() {
     let harness = Harness::new();
@@ -1964,7 +1911,6 @@ fn text_typed_directly_into_the_claude_composer_stays_blocked() {
     assert!(harness.writes().is_empty());
 }
 
-// parity: TS-main-paneChatService-56568c
 #[test]
 fn a_dim_dynamic_suggestion_counts_as_empty_on_a_codex_version_without_display_mode() {
     let harness = Harness::new();
@@ -1983,7 +1929,6 @@ fn a_dim_dynamic_suggestion_counts_as_empty_on_a_codex_version_without_display_m
     );
 }
 
-// parity: TS-main-paneChatService-fe5b17
 #[test]
 fn a_terminal_draft_is_kept_and_prompt_or_model_commands_are_refused_while_occupied() {
     let harness = Harness::new();
@@ -2012,7 +1957,6 @@ fn a_terminal_draft_is_kept_and_prompt_or_model_commands_are_refused_while_occup
     );
 }
 
-// parity: TS-main-paneChatService-b06a47
 #[test]
 fn ambiguous_foreground_provider_families_are_disabled_even_when_one_is_a_child() {
     let harness = Harness::new();
@@ -2025,7 +1969,6 @@ fn ambiguous_foreground_provider_families_are_disabled_even_when_one_is_a_child(
     assert_eq!(shown.target_token, None);
 }
 
-// parity: TS-main-paneChatService-9b0f89
 #[test]
 fn a_token_is_retired_when_the_same_cli_changes_conversation() {
     let harness = Harness::new();
@@ -2050,7 +1993,6 @@ fn a_token_is_retired_when_the_same_cli_changes_conversation() {
     assert_eq!(next.transcript.session_id.as_deref(), Some("session-b"));
 }
 
-// parity: TS-main-paneChatService-ae48cf
 #[test]
 fn sending_is_refused_when_the_exact_conversation_identity_is_unavailable() {
     let harness = Harness::new();
@@ -2064,7 +2006,6 @@ fn sending_is_refused_when_the_exact_conversation_identity_is_unavailable() {
     );
 }
 
-// parity: TS-main-paneChatService-eaf416
 #[test]
 fn a_transcript_finished_after_a_same_process_session_change_is_discarded() {
     let harness = Harness::new();
@@ -2094,7 +2035,6 @@ fn a_transcript_finished_after_a_same_process_session_change_is_discarded() {
     assert!(!shown.can_send);
 }
 
-// parity: TS-main-paneChatService-37b95c
 #[test]
 fn a_retired_token_is_not_resurrected_after_a_to_b_to_a_in_the_same_process() {
     let harness = Harness::new();
@@ -2125,7 +2065,6 @@ fn a_retired_token_is_not_resurrected_after_a_to_b_to_a_in_the_same_process() {
     assert!(harness.writes().is_empty());
 }
 
-// parity: TS-main-paneChatService-d3fccd
 #[test]
 fn old_input_is_rejected_after_the_host_changes_or_the_pane_closes() {
     let mut remote = surface();
@@ -2142,7 +2081,6 @@ fn old_input_is_rejected_after_the_host_changes_or_the_pane_closes() {
     }
 }
 
-// parity: TS-main-paneChatService-78f7fd
 #[test]
 fn a_conversation_draft_key_is_not_shared_across_hosts_with_the_same_session_id() {
     let harness = Harness::new();

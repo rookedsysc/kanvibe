@@ -26,7 +26,6 @@ fn socket_id(server: &TestServer, index: usize) -> Value {
     server.fake.calls("open_mobile_ai_login")[index][1].clone()
 }
 
-// parity: TS-electron-mobileAiRoutes-a6dc48
 #[tokio::test]
 async fn ai_routes_return_the_bridge_envelopes() {
     let server = TestServer::start().await;
@@ -74,7 +73,6 @@ async fn ai_routes_return_the_bridge_envelopes() {
     );
 }
 
-// parity: TS-electron-mobileAiRoutes-6675c9
 #[tokio::test]
 async fn accounts_are_created_and_removed_only_through_explicit_methods() {
     let server = TestServer::start().await;
@@ -101,7 +99,6 @@ async fn accounts_are_created_and_removed_only_through_explicit_methods() {
     );
 }
 
-// parity: TS-electron-mobileAiRoutes-fd44f6
 #[tokio::test]
 async fn authentication_precedes_every_account_mutation() {
     let server = TestServer::start().await;
@@ -112,7 +109,6 @@ async fn authentication_precedes_every_account_mutation() {
     assert_eq!(server.fake.count("add_mobile_ai_account"), 0);
 }
 
-// parity: TS-electron-mobileAiRoutes-7602be
 #[tokio::test]
 async fn malformed_json_is_400_and_request_errors_are_preserved() {
     let server = TestServer::start().await;
@@ -141,7 +137,6 @@ async fn malformed_json_is_400_and_request_errors_are_preserved() {
     assert_eq!(duplicate.pair(), (409, failure("중복된 계정")));
 }
 
-// parity: TS-electron-mobileAiRoutes-37d3ee
 #[tokio::test]
 async fn internal_failures_are_hidden_and_unknown_routes_are_not_dispatched() {
     let server = TestServer::start().await;
@@ -168,7 +163,6 @@ async fn internal_failures_are_hidden_and_unknown_routes_are_not_dispatched() {
     );
 }
 
-// parity: TS-electron-mobileAiRoutes-7c675a
 #[tokio::test]
 async fn missing_graph_parameters_and_malformed_identifiers_are_rejected_before_readers() {
     let server = TestServer::start().await;
@@ -190,7 +184,6 @@ async fn missing_graph_parameters_and_malformed_identifiers_are_rejected_before_
     assert_eq!(server.fake.count("get_mobile_live_ai_sessions"), 0);
 }
 
-// parity: TS-electron-mobileAiRoutes-65066c
 #[tokio::test]
 async fn login_stream_routes_output_input_resize_and_close_to_its_owner() {
     let server = TestServer::start().await;
@@ -238,7 +231,6 @@ async fn login_stream_routes_output_input_resize_and_close_to_its_owner() {
     );
 }
 
-// parity: TS-electron-mobileAiRoutes-1a9dc9
 #[tokio::test]
 async fn ready_is_not_sent_after_a_disconnect_while_the_account_lookup_is_pending() {
     let server = TestServer::start().await;
@@ -259,7 +251,6 @@ async fn ready_is_not_sent_after_a_disconnect_while_the_account_lookup_is_pendin
     assert!(!server.fake.ai_login(0).is_open());
 }
 
-// parity: TS-electron-mobileAiRoutes-81aedb
 #[tokio::test]
 async fn invalid_oversized_and_binary_frames_close_without_running_terminal_input() {
     let server = TestServer::start().await;
@@ -293,7 +284,6 @@ async fn invalid_oversized_and_binary_frames_close_without_running_terminal_inpu
 }
 
 /// TS의 출력 적체(`bufferedAmount` > 2 MiB → 1009) 갈래는 Rust 보내기 줄에 적체 값이 없어 옮기지 못했다
-// parity: TS-electron-mobileAiRoutes-ba7eeb
 #[tokio::test]
 async fn login_exit_closes_the_socket_and_cleans_the_process_immediately() {
     let server = TestServer::start().await;
@@ -310,7 +300,6 @@ async fn login_exit_closes_the_socket_and_cleans_the_process_immediately() {
     wait_until(|| server.fake.count("close_mobile_ai_login") == 1).await;
 }
 
-// parity: TS-electron-mobileAiRoutes-b2448a
 #[tokio::test]
 async fn login_over_a_real_websocket_streams_both_ways_and_releases_on_disconnect() {
     let server = TestServer::start().await;
@@ -337,7 +326,6 @@ async fn login_over_a_real_websocket_streams_both_ways_and_releases_on_disconnec
     assert_eq!(server.fake.count("open_mobile_ai_login"), 1);
 }
 
-// parity: TS-electron-mobileAiMount-564ba9
 #[tokio::test]
 async fn ai_http_and_login_socket_are_protected_before_provider_calls() {
     let server = TestServer::start().await;
@@ -359,7 +347,6 @@ async fn ai_http_and_login_socket_are_protected_before_provider_calls() {
     assert_eq!(server.fake.count("open_mobile_ai_login"), 0);
 }
 
-// parity: TS-electron-mobileAiMount-69ca66
 #[tokio::test]
 async fn login_socket_uses_the_authenticated_device_and_owns_cleanup() {
     let server = TestServer::start().await;
@@ -397,7 +384,6 @@ async fn login_socket_uses_the_authenticated_device_and_owns_cleanup() {
     .await;
 }
 
-// parity: TS-electron-mobileAiMount-03fc36
 #[tokio::test]
 async fn unpairing_closes_only_that_device_while_shutdown_closes_every_login() {
     let server = TestServer::start().await;

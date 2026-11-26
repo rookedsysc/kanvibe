@@ -49,7 +49,6 @@ fn with(field: &str, value: Value) -> Value {
     request
 }
 
-// parity: TS-main-mobileDiagramRenderService-72f594
 #[test]
 fn rejects_four_component_scans_even_when_segment_bounds_are_consistent() {
     let image = jpeg(640, 120);
@@ -65,7 +64,6 @@ fn rejects_four_component_scans_even_when_segment_bounds_are_consistent() {
     assert!(validate_mobile_diagram_image(&invalid, 640).is_err());
 }
 
-// parity: TS-main-mobileDiagramRenderService-7a4e79
 #[test]
 fn recognizes_a_real_jpeg_container_and_preserves_mime_plus_sof_dimensions() {
     let tiny = validate_mobile_diagram_image(&tiny_jpeg(), 2).expect("tiny");
@@ -86,7 +84,6 @@ fn recognizes_a_real_jpeg_container_and_preserves_mime_plus_sof_dimensions() {
     );
 }
 
-// parity: TS-main-mobileDiagramRenderService-857b48
 #[test]
 fn rejects_jpeg_size_mismatches_missing_eoi_malformed_lengths_and_unsupported_frames() {
     assert!(validate_mobile_diagram_image(&jpeg(639, 120), 640).is_err());
@@ -111,7 +108,6 @@ fn rejects_jpeg_size_mismatches_missing_eoi_malformed_lengths_and_unsupported_fr
     assert!(validate_mobile_diagram_image(&oversized, 640).is_err());
 }
 
-// parity: TS-main-mobileDiagramRenderService-883c71
 #[test]
 fn does_not_accept_a_dimensions_only_fake_jpeg_without_a_scan() {
     let image = jpeg(640, 120);
@@ -120,7 +116,6 @@ fn does_not_accept_a_dimensions_only_fake_jpeg_without_a_scan() {
     assert!(validate_mobile_diagram_image(&fake, 640).is_err());
 }
 
-// parity: TS-main-mobileDiagramRenderService-c05dc8
 #[test]
 fn rejects_unsafe_or_invalid_input() {
     let cases = [
@@ -151,7 +146,6 @@ fn rejects_unsafe_or_invalid_input() {
     }
 }
 
-// parity: TS-main-mobileDiagramRenderService-b81b8d
 #[test]
 fn accepts_exact_utf8_source_and_width_boundaries() {
     let longest = with("definition", json!("a".repeat(65536)));
@@ -172,7 +166,6 @@ fn accepts_exact_utf8_source_and_width_boundaries() {
     );
 }
 
-// parity: TS-main-mobileDiagramRenderService-451667
 #[test]
 fn reads_actual_png_dimensions_and_rejects_mismatches_magic_height_and_bytes() {
     let image = validate_mobile_diagram_image(&png(640, 120), 640).expect("png");

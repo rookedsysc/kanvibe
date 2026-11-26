@@ -218,7 +218,6 @@ fn assert_message_matches(error: &ExecGitError, pattern: &str) {
     );
 }
 
-// parity: TS-lib-gitOperations-05d48a
 #[test]
 fn many_multibyte_chunks_are_measured_incrementally() {
     let h = harness();
@@ -237,7 +236,6 @@ fn many_multibyte_chunks_are_measured_incrementally() {
     );
 }
 
-// parity: TS-lib-gitOperations-42f0e9
 #[test]
 fn late_output_after_settlement_is_not_processed() {
     for is_success in [true, false] {
@@ -266,7 +264,6 @@ fn late_output_after_settlement_is_not_processed() {
     }
 }
 
-// parity: TS-lib-gitOperations-419f52
 #[test]
 fn completion_marker_chunk_boundaries_and_last_prefix_win() {
     let marker = REMOTE_COMMAND_EXIT_MARKER;
@@ -309,7 +306,6 @@ fn completion_marker_chunk_boundaries_and_last_prefix_win() {
     }
 }
 
-// parity: TS-lib-gitOperations-f418da
 #[test]
 fn utf8_stdout_and_stderr_are_summed_up_to_the_exact_limit() {
     let h = harness();
@@ -327,7 +323,6 @@ fn utf8_stdout_and_stderr_are_summed_up_to_the_exact_limit() {
     assert_eq!(h.exec("stream", &options).unwrap(), "한글");
 }
 
-// parity: TS-lib-gitOperations-b6d564
 #[test]
 fn removing_the_responder_request_line_frees_output_capacity() {
     let h = harness();
@@ -357,7 +352,6 @@ fn removing_the_responder_request_line_frees_output_capacity() {
     assert_eq!(*payloads.lock().unwrap(), [payload]);
 }
 
-// parity: TS-lib-gitOperations-a10549
 #[test]
 fn exceeding_the_limit_before_removing_the_request_skips_the_callback() {
     let h = harness();
@@ -383,7 +377,6 @@ fn exceeding_the_limit_before_removing_the_request_skips_the_callback() {
     assert_eq!(calls.load(Ordering::SeqCst), 0);
 }
 
-// parity: TS-lib-gitOperations-480977
 #[test]
 fn a_split_request_line_is_answered_once_and_secrets_go_through_stdin() {
     let h = harness();
@@ -415,7 +408,6 @@ fn a_split_request_line_is_answered_once_and_secrets_go_through_stdin() {
     assert!(!h.command(0).0.args.join(" ").contains("secret-response"));
 }
 
-// parity: TS-lib-gitOperations-1c223c
 #[test]
 fn nested_same_host_commands_in_a_callback_share_the_shard_without_deadlock() {
     let h = harness_with_concurrency(1);
@@ -449,7 +441,6 @@ fn nested_same_host_commands_in_a_callback_share_the_shard_without_deadlock() {
     assert_eq!(h.command(1).control_path(), h.command(0).control_path());
 }
 
-// parity: TS-lib-gitOperations-12f2fb
 #[test]
 fn a_callback_error_closes_input_and_the_process_without_replaying() {
     let h = harness();
@@ -471,7 +462,6 @@ fn a_callback_error_closes_input_and_the_process_without_replaying() {
     assert_eq!(h.launcher.command_count(), 1);
 }
 
-// parity: TS-lib-gitOperations-427908
 #[test]
 fn a_transport_drop_after_the_response_does_not_replay_the_transaction() {
     let h = harness();
@@ -502,7 +492,6 @@ fn a_transport_drop_after_the_response_does_not_replay_the_transaction() {
     assert_eq!(h.launcher.command_count(), 1);
 }
 
-// parity: TS-lib-gitOperations-71fc00
 #[test]
 fn ssh_exiting_right_after_the_request_skips_the_unstarted_callback() {
     let h = harness();
@@ -530,7 +519,6 @@ fn ssh_exiting_right_after_the_request_skips_the_unstarted_callback() {
     assert_eq!(calls.load(Ordering::SeqCst), 0);
 }
 
-// parity: TS-lib-gitOperations-dd0342
 #[test]
 fn transport_and_cooldown_errors_carry_the_actual_remaining_retry_time() {
     let now_ms = Arc::new(AtomicU64::new(1000));
@@ -563,7 +551,6 @@ fn transport_and_cooldown_errors_carry_the_actual_remaining_retry_time() {
     assert_eq!(h.launcher.command_count(), 1);
 }
 
-// parity: TS-lib-gitOperations-0016de
 #[test]
 fn remote_stdin_is_piped_and_kept_out_of_the_arguments() {
     let h = harness();
@@ -583,7 +570,6 @@ fn remote_stdin_is_piped_and_kept_out_of_the_arguments() {
     assert!(!h.command(0).0.args.join(" ").contains("secret-body"));
 }
 
-// parity: TS-lib-gitOperations-6c92fc
 #[test]
 fn host_key_verified_commands_do_not_reuse_existing_connections() {
     let h = harness();
@@ -602,7 +588,6 @@ fn host_key_verified_commands_do_not_reuse_existing_connections() {
     assert!(!args.iter().any(|arg| arg == "ControlMaster=auto"));
 }
 
-// parity: TS-lib-gitOperations-57b896
 #[test]
 fn remote_commands_use_the_ssh_binary_and_options() {
     let h = harness();
@@ -654,7 +639,6 @@ fn remote_commands_use_the_ssh_binary_and_options() {
     assert!(child.remote_command().contains(REMOTE_COMMAND_EXIT_MARKER));
 }
 
-// parity: TS-lib-gitOperations-54d1db
 #[test]
 fn the_per_command_output_limit_applies() {
     let h = harness();
@@ -673,7 +657,6 @@ fn the_per_command_output_limit_applies() {
     );
 }
 
-// parity: TS-lib-gitOperations-950f07
 #[test]
 fn following_commands_skip_ssh_right_after_a_transport_failure() {
     let h = harness();
@@ -703,7 +686,6 @@ fn following_commands_skip_ssh_right_after_a_transport_failure() {
     assert!(!h.master_args_contain("exit"));
 }
 
-// parity: TS-lib-gitOperations-017b68
 #[test]
 fn a_remote_timeout_is_not_replayed_and_keeps_the_master_for_the_next_command() {
     let h = harness();
@@ -731,7 +713,6 @@ fn a_remote_timeout_is_not_replayed_and_keeps_the_master_for_the_next_command() 
     assert!(!h.master_args_contain("exit"));
 }
 
-// parity: TS-lib-gitOperations-3a939c
 #[test]
 fn clearing_the_cooldown_lets_the_next_command_connect_again() {
     let h = harness();
@@ -773,7 +754,6 @@ fn clearing_the_cooldown_lets_the_next_command_connect_again() {
     );
 }
 
-// parity: TS-lib-gitOperations-bce8f7
 #[test]
 fn commands_with_expected_failures_leave_no_error_log() {
     let h = harness();
@@ -803,7 +783,6 @@ fn commands_with_expected_failures_leave_no_error_log() {
     assert_eq!(h.observer.failures.lock().unwrap()[0].ssh_host, HOST);
 }
 
-// parity: TS-lib-gitOperations-060c57
 #[test]
 fn a_transport_failure_recovered_within_three_attempts_returns_the_result() {
     let h = harness();
@@ -849,13 +828,11 @@ fn assert_limited_concurrency(h: &Harness, total: usize, limit: usize) {
     }
 }
 
-// parity: TS-lib-gitOperations-2870f0
 #[test]
 fn same_host_commands_run_with_limited_concurrency() {
     assert_limited_concurrency(&harness_with_concurrency(4), 5, 4);
 }
 
-// parity: TS-lib-gitOperations-f9cc04
 #[test]
 fn default_host_concurrency_is_eight_channels() {
     assert_limited_concurrency(
@@ -865,7 +842,6 @@ fn default_host_concurrency_is_eight_channels() {
     );
 }
 
-// parity: TS-lib-gitOperations-227426
 #[test]
 fn the_environment_can_raise_the_concurrency_limit() {
     let environment: ShellEnvironment = [(
@@ -881,7 +857,6 @@ fn the_environment_can_raise_the_concurrency_limit() {
     assert_limited_concurrency(&h, 7, 6);
 }
 
-// parity: TS-lib-gitOperations-9857c6
 #[test]
 fn environment_concurrency_never_exceeds_eight_channels() {
     let environment: ShellEnvironment = [(
@@ -897,7 +872,6 @@ fn environment_concurrency_never_exceeds_eight_channels() {
     assert_limited_concurrency(&h, 9, 8);
 }
 
-// parity: TS-lib-gitOperations-7caf75
 #[test]
 fn concurrent_commands_share_one_process_owned_control_master() {
     let h = harness_with_concurrency(6);
@@ -921,7 +895,6 @@ fn concurrent_commands_share_one_process_owned_control_master() {
     }
 }
 
-// parity: TS-lib-gitOperations-fa96c8
 #[test]
 fn later_commands_keep_sharing_the_master_of_completed_commands() {
     let h = harness_with_concurrency(2);
@@ -948,7 +921,6 @@ fn later_commands_keep_sharing_the_master_of_completed_commands() {
     assert_eq!(join(handles.next().unwrap()).unwrap(), "three");
 }
 
-// parity: TS-lib-gitOperations-3b0ffd
 #[test]
 fn quiet_probe_failures_leave_no_error_log() {
     let h = harness();
@@ -965,7 +937,6 @@ fn quiet_probe_failures_leave_no_error_log() {
     assert!(h.observer.failures.lock().unwrap().is_empty());
 }
 
-// parity: TS-lib-gitOperations-b19a61
 #[test]
 fn file_probe_failures_leave_no_error_log() {
     let h = harness();
@@ -980,7 +951,6 @@ fn file_probe_failures_leave_no_error_log() {
     assert!(h.observer.failures.lock().unwrap().is_empty());
 }
 
-// parity: TS-lib-gitOperations-1173e1
 #[test]
 fn permanent_failures_are_not_transient_and_never_replayed() {
     for message in [
@@ -1014,7 +984,6 @@ fn permanent_failures_are_not_transient_and_never_replayed() {
     }
 }
 
-// parity: TS-lib-gitOperations-9e39eb
 #[test]
 fn a_mutation_with_an_unknown_result_is_not_replayed() {
     let h = harness();
@@ -1033,7 +1002,6 @@ fn a_mutation_with_an_unknown_result_is_not_replayed() {
     assert!(!h.master_args_contain("exit"));
 }
 
-// parity: TS-lib-gitOperations-a97519
 #[test]
 fn background_saturation_reserves_capacity_for_interactive_detail_reads() {
     let h = harness_with_concurrency(3);
@@ -1066,7 +1034,6 @@ fn background_saturation_reserves_capacity_for_interactive_detail_reads() {
     }
 }
 
-// parity: TS-lib-gitOperations-df4ba1
 #[test]
 fn interactive_queued_commands_precede_background_work_without_raising_the_ceiling() {
     let h = harness_with_concurrency(1);
@@ -1088,7 +1055,6 @@ fn interactive_queued_commands_precede_background_work_without_raising_the_ceili
     join(background).unwrap();
 }
 
-// parity: TS-lib-gitOperations-dc1825
 #[test]
 fn a_queued_command_that_expired_is_never_dispatched_later() {
     let h = harness_with_concurrency(1);
@@ -1110,7 +1076,6 @@ fn a_queued_command_that_expired_is_never_dispatched_later() {
     assert!(h.command(1).remote_command().contains("next"));
 }
 
-// parity: TS-lib-gitOperations-df2a32
 #[test]
 fn a_saturated_repair_host_does_not_block_another_host() {
     let h = harness_with_concurrency(1);
@@ -1132,7 +1097,6 @@ fn a_saturated_repair_host_does_not_block_another_host() {
     assert_eq!(join(repair).unwrap(), "repaired");
 }
 
-// parity: TS-lib-gitOperations-da55ca
 #[test]
 fn a_command_timeout_preserves_a_concurrent_command_and_allows_the_next() {
     let h = harness();
@@ -1154,7 +1118,6 @@ fn a_command_timeout_preserves_a_concurrent_command_and_allows_the_next() {
     assert!(!h.master_args_contain("exit"));
 }
 
-// parity: TS-lib-gitOperations-172b7c
 #[test]
 fn cold_master_preparation_is_joined_and_shared_across_concurrent_commands() {
     let h = harness();
@@ -1193,7 +1156,6 @@ fn cold_master_preparation_is_joined_and_shared_across_concurrent_commands() {
     );
 }
 
-// parity: TS-lib-gitOperations-5a2d1c
 #[test]
 fn strict_connections_are_independent_and_admitted_one_at_a_time() {
     let h = harness();
@@ -1247,7 +1209,6 @@ fn assert_slow_command_logs(logs: &[SlowRemoteCommandLog]) {
     assert!(!logs.iter().any(|log| log.command == "strict-read-1"));
 }
 
-// parity: TS-lib-gitOperations-3a7c9f
 #[test]
 fn slow_commands_split_slot_connection_and_command_time_and_fast_ones_are_not_logged() {
     let mut settings = RemoteSshSettings {
@@ -1290,7 +1251,6 @@ fn slow_commands_split_slot_connection_and_command_time_and_fast_ones_are_not_lo
     assert_slow_command_logs(&h.observer.slow_commands.lock().unwrap());
 }
 
-// parity: TS-lib-gitOperations-a27f02
 #[test]
 fn a_completed_remote_application_error_is_not_a_transport_failure_or_replayed() {
     let h = harness();
@@ -1314,7 +1274,6 @@ fn a_completed_remote_application_error_is_not_a_transport_failure_or_replayed()
     assert_eq!(h.launcher.command_count(), 2);
 }
 
-// parity: TS-lib-gitOperations-f01de5
 #[test]
 fn a_cold_callers_deadline_does_not_cancel_shared_master_preparation() {
     let h = harness();
@@ -1337,7 +1296,6 @@ fn a_cold_callers_deadline_does_not_cancel_shared_master_preparation() {
     assert_eq!(h.launcher.command_count(), 2);
 }
 
-// parity: TS-lib-gitOperations-e88ad4
 #[test]
 fn cold_nested_commands_in_an_authenticated_strict_responder_cannot_deadlock() {
     let h = harness_with_concurrency(1);
@@ -1370,7 +1328,6 @@ fn cold_nested_commands_in_an_authenticated_strict_responder_cannot_deadlock() {
     assert_ne!(h.command(1).control_path(), "none");
 }
 
-// parity: TS-lib-gitOperations-198d8b
 #[test]
 fn a_stale_preparation_failure_cannot_poison_a_newer_recovery() {
     let h = harness();
@@ -1403,7 +1360,6 @@ fn a_stale_preparation_failure_cannot_poison_a_newer_recovery() {
     assert_eq!(h.launcher.command_count(), 2);
 }
 
-// parity: TS-lib-gitOperations-abbba4
 #[test]
 fn a_permanent_master_authentication_failure_never_dispatches_or_replays() {
     let h = harness();
@@ -1428,7 +1384,6 @@ fn a_permanent_master_authentication_failure_never_dispatches_or_replays() {
     assert_eq!(h.launcher.command_count(), 0);
 }
 
-// parity: TS-lib-gitOperations-08da29
 #[test]
 fn strict_callers_expire_while_queued_for_admission_and_are_never_dispatched() {
     let h = harness();
@@ -1442,7 +1397,6 @@ fn strict_callers_expire_while_queued_for_admission_and_are_never_dispatched() {
     assert_eq!(h.launcher.command_count(), 1);
 }
 
-// parity: TS-lib-gitOperations-01c314
 #[test]
 fn a_strict_responder_releases_authentication_before_joining_a_queued_master() {
     let h = harness();
@@ -1479,7 +1433,6 @@ fn a_strict_responder_releases_authentication_before_joining_a_queued_master() {
     assert_eq!(h.launcher.master_count(), 1);
 }
 
-// parity: TS-lib-gitOperations-344f8b
 #[test]
 fn a_master_failure_after_every_caller_left_does_not_trap_the_next_request() {
     let h = harness();

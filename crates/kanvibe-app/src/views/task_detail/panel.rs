@@ -276,7 +276,6 @@ mod tests {
         }
     }
 
-    // parity: TS-renderer-TaskDetailRoute-22fa59
     #[test]
     fn status_panel_offers_every_other_status() {
         let labels: Vec<&str> = visible_transitions(TaskStatus::Progress)
@@ -286,7 +285,6 @@ mod tests {
         assert_eq!(labels, ["moveToTodo", "moveToReview", "moveToDone"]);
     }
 
-    // parity: TS-components-DoneStatusButton-252543
     #[test]
     fn done_with_cleanable_resources_asks_first() {
         let mut with_branch = task(TaskStatus::Progress);
@@ -294,7 +292,6 @@ mod tests {
         assert!(should_confirm_done(&with_branch, false));
     }
 
-    // parity: TS-components-DoneStatusButton-60501e
     #[test]
     fn dismissed_done_alert_moves_directly() {
         let mut with_session = task(TaskStatus::Progress);
@@ -302,7 +299,6 @@ mod tests {
         assert!(!should_confirm_done(&with_session, true));
     }
 
-    // parity: TS-components-DoneStatusButton-a862fa
     #[test]
     fn tasks_without_resources_move_to_done_directly() {
         assert!(!should_confirm_done(&task(TaskStatus::Progress), false));

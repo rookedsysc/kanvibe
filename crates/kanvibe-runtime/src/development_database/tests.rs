@@ -123,7 +123,6 @@ fn insert_hook_client_id(database: &Connection, id: &str, value: &str) {
         .unwrap();
 }
 
-// parity: TS-electron-developmentDatabase-fc681c
 #[test]
 fn copies_every_table_including_committed_wal_data_and_keeps_edits_separate() {
     let directories = Directories::new();
@@ -172,7 +171,6 @@ fn copies_every_table_including_committed_wal_data_and_keeps_edits_separate() {
     assert_eq!(std::fs::read(&wal_path).unwrap(), before_wal);
 }
 
-// parity: TS-electron-developmentDatabase-d0d3a9
 #[test]
 fn refreshes_an_existing_development_database_when_application_mode_is_requested() {
     let directories = Directories::new();
@@ -196,7 +194,6 @@ fn refreshes_an_existing_development_database_when_application_mode_is_requested
     );
 }
 
-// parity: TS-electron-developmentDatabase-93f995
 #[test]
 fn does_not_copy_the_application_hook_client_id() {
     let directories = Directories::new();
@@ -222,7 +219,6 @@ fn does_not_copy_the_application_hook_client_id() {
     );
 }
 
-// parity: TS-electron-developmentDatabase-2c73a0
 #[test]
 fn keeps_the_development_hook_client_id_across_refreshes() {
     let directories = Directories::new();
@@ -245,7 +241,6 @@ fn keeps_the_development_hook_client_id_across_refreshes() {
     );
 }
 
-// parity: TS-electron-developmentDatabase-3844a0
 #[test]
 fn drops_a_development_hook_client_id_that_an_older_copy_took_from_the_application() {
     let directories = Directories::new();
@@ -272,7 +267,6 @@ fn drops_a_development_hook_client_id_that_an_older_copy_took_from_the_applicati
     );
 }
 
-// parity: TS-electron-developmentDatabase-4b8fc2
 #[test]
 fn preserves_development_edits_across_restarts_in_existing_mode() {
     for data_source in [None, Some(""), Some("existing")] {
@@ -294,7 +288,6 @@ fn preserves_development_edits_across_restarts_in_existing_mode() {
     }
 }
 
-// parity: TS-electron-developmentDatabase-89bd1a
 #[test]
 fn does_not_import_application_data_into_a_new_development_database_by_default() {
     for has_custom_source in [false, true] {
@@ -311,7 +304,6 @@ fn does_not_import_application_data_into_a_new_development_database_by_default()
     }
 }
 
-// parity: TS-electron-developmentDatabase-aa89ae
 #[test]
 fn keeps_development_data_by_default_even_when_the_application_database_is_corrupt() {
     let directories = Directories::new();
@@ -328,7 +320,6 @@ fn keeps_development_data_by_default_even_when_the_application_database_is_corru
     assert_eq!(all_texts(&target, "SELECT value FROM retained"), ["keep"]);
 }
 
-// parity: TS-electron-developmentDatabase-cf0b4f
 #[test]
 fn keeps_an_explicit_app_data_fixture_by_default() {
     let directories = Directories::new();
@@ -343,7 +334,6 @@ fn keeps_an_explicit_app_data_fixture_by_default() {
     assert!(!fixture.join("kanvibe.db").exists());
 }
 
-// parity: TS-electron-developmentDatabase-6fb19b
 #[test]
 fn copies_from_an_explicitly_selected_application_directory_into_an_explicit_target() {
     let directories = Directories::new();
@@ -365,7 +355,6 @@ fn copies_from_an_explicitly_selected_application_directory_into_an_explicit_tar
     );
 }
 
-// parity: TS-electron-developmentDatabase-dd8ef4
 #[test]
 fn leaves_packaged_start_automated_and_manual_qa_data_alone() {
     let cases: [fn(&mut DevelopmentDatabaseRequest); 3] = [
@@ -390,7 +379,6 @@ fn leaves_packaged_start_automated_and_manual_qa_data_alone() {
     }
 }
 
-// parity: TS-electron-developmentDatabase-296222
 #[test]
 fn warns_and_retains_development_data_when_no_application_database_is_installed() {
     let directories = Directories::new();
@@ -410,7 +398,6 @@ fn warns_and_retains_development_data_when_no_application_database_is_installed(
     );
 }
 
-// parity: TS-electron-developmentDatabase-83f906
 #[test]
 fn rejects_a_missing_explicitly_requested_source() {
     let directories = Directories::new();
@@ -421,7 +408,6 @@ fn rejects_a_missing_explicitly_requested_source() {
     assert!(!directories.target_path().exists());
 }
 
-// parity: TS-electron-developmentDatabase-47f356
 #[test]
 fn preserves_the_old_development_database_if_the_application_database_is_corrupt() {
     let directories = Directories::new();
@@ -439,7 +425,6 @@ fn preserves_the_old_development_database_if_the_application_database_is_corrupt
     );
 }
 
-// parity: TS-electron-developmentDatabase-df1459
 #[test]
 fn rejects_the_application_directory_even_in_existing_mode() {
     for data_source in ["application", "existing"] {
@@ -452,7 +437,6 @@ fn rejects_the_application_directory_even_in_existing_mode() {
     }
 }
 
-// parity: TS-electron-developmentDatabase-692538
 #[test]
 fn rejects_a_development_directory_symlink_to_application_data() {
     let directories = Directories::new();
@@ -465,7 +449,6 @@ fn rejects_a_development_directory_symlink_to_application_data() {
     assert!(prepare_error(&request).contains("separate database directories"));
 }
 
-// parity: TS-electron-developmentDatabase-85020f
 #[test]
 fn rejects_a_development_database_linked_to_the_application_database() {
     let link_kinds: [fn(&Path, &Path) -> std::io::Result<()>; 2] = [
@@ -481,7 +464,6 @@ fn rejects_a_development_database_linked_to_the_application_database() {
     }
 }
 
-// parity: TS-electron-developmentDatabase-96ec9e
 #[test]
 fn rejects_a_dangling_development_database_symlink_before_it_can_create_a_shared_database() {
     let directories = Directories::new();
@@ -491,7 +473,6 @@ fn rejects_a_dangling_development_database_symlink_before_it_can_create_a_shared
     assert!(!directories.source_path().exists());
 }
 
-// parity: TS-electron-developmentDatabase-c1da38
 #[test]
 fn rejects_a_second_development_instance_before_refreshing_its_database() {
     let directories = Directories::new();
@@ -504,7 +485,6 @@ fn rejects_a_second_development_instance_before_refreshing_its_database() {
     assert!(!directories.target_path().exists());
 }
 
-// parity: TS-electron-developmentDatabase-dd91c2
 #[test]
 fn rejects_an_unknown_data_source_mode() {
     let directories = Directories::new();

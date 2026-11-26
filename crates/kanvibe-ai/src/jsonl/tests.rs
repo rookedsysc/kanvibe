@@ -31,7 +31,6 @@ fn session_file() -> (tempfile::TempDir, String) {
     (directory, format!("{root}/session.jsonl"))
 }
 
-// parity: TS-aiSessions-appendedJsonLines-ada1f2
 #[test]
 fn unchanged_file_returns_same_lines() {
     let (_directory, file_path) = session_file();
@@ -43,7 +42,6 @@ fn unchanged_file_returns_same_lines() {
     assert_eq!(values(&second), [json!({"id": 1}), json!({"id": 2})]);
 }
 
-// parity: TS-aiSessions-appendedJsonLines-1d1909
 #[test]
 fn appends_only_new_lines_to_the_same_log() {
     let (_directory, file_path) = session_file();
@@ -62,7 +60,6 @@ fn appends_only_new_lines_to_the_same_log() {
     );
 }
 
-// parity: TS-aiSessions-appendedJsonLines-2bceaa
 #[test]
 fn half_written_last_line_waits_until_complete() {
     let (_directory, file_path) = session_file();
@@ -83,7 +80,6 @@ fn half_written_last_line_waits_until_complete() {
     assert_eq!(read_appended_json_lines(&file_path).unwrap().lines.len(), 2);
 }
 
-// parity: TS-aiSessions-appendedJsonLines-46008b
 #[test]
 fn complete_last_line_without_newline_is_read_once() {
     let (_directory, file_path) = session_file();
@@ -103,7 +99,6 @@ fn complete_last_line_without_newline_is_read_once() {
     );
 }
 
-// parity: TS-aiSessions-appendedJsonLines-8f9484
 #[test]
 fn skips_blank_and_unparsable_lines() {
     let (_directory, file_path) = session_file();
@@ -122,7 +117,6 @@ fn skips_blank_and_unparsable_lines() {
     );
 }
 
-// parity: TS-aiSessions-appendedJsonLines-6ad49f
 #[test]
 fn resumes_at_exact_byte_after_multibyte_text() {
     let (_directory, file_path) = session_file();
@@ -135,7 +129,6 @@ fn resumes_at_exact_byte_after_multibyte_text() {
     );
 }
 
-// parity: TS-aiSessions-appendedJsonLines-0518b3
 #[test]
 fn shrunk_file_is_reread_into_a_new_log() {
     let (_directory, file_path) = session_file();
@@ -147,7 +140,6 @@ fn shrunk_file_is_reread_into_a_new_log() {
     assert_eq!(values(&second), [json!({"id": 9})]);
 }
 
-// parity: TS-aiSessions-appendedJsonLines-b2b677
 #[test]
 fn rewritten_longer_content_is_reread() {
     let (_directory, file_path) = session_file();
@@ -159,7 +151,6 @@ fn rewritten_longer_content_is_reread() {
     assert_eq!(values(&second), [json!({"id": 7}), json!({"id": 8})]);
 }
 
-// parity: TS-aiSessions-appendedJsonLines-847de9
 #[test]
 fn replaced_file_is_reread() {
     let (directory, file_path) = session_file();
@@ -177,7 +168,6 @@ fn replaced_file_is_reread() {
     assert_eq!(values(&second), [json!({"id": 1}), json!({"id": 5})]);
 }
 
-// parity: TS-aiSessions-appendedJsonLines-568c6f
 #[test]
 fn concurrent_reads_do_not_duplicate_appended_lines() {
     let (_directory, file_path) = session_file();
@@ -194,7 +184,6 @@ fn concurrent_reads_do_not_duplicate_appended_lines() {
     assert_eq!(values(&right), [json!({"id": 1}), json!({"id": 2})]);
 }
 
-// parity: TS-aiSessions-appendedJsonLines-561c16
 #[test]
 fn missing_file_is_a_read_error() {
     let (_directory, root) = temp_home();
@@ -202,7 +191,6 @@ fn missing_file_is_a_read_error() {
     assert!(error.is_not_found());
 }
 
-// parity: TS-aiSessions-cacheHostIdentity-b76a01
 #[test]
 fn remote_head_reads_requested_lines_with_quoted_path() {
     let runner = ScriptedRunner::new(|_, _| Ok("{\"source\":\"head\"}\n".to_string()));

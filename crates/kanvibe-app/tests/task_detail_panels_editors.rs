@@ -38,7 +38,6 @@ fn saved_task(detail: &mut Detail, task_id: &str) -> KanbanTask {
 
 // ───────────── PrioritySelector / PriorityEditor ─────────────
 
-// parity: TS-components-PrioritySelector-4bbc60
 #[gpui::test]
 fn priority_selector_offers_four_options(cx: &mut TestAppContext) {
     let (mut detail, _) = open_overview(cx, |_| {});
@@ -65,33 +64,26 @@ fn assert_priority_click_saves(
     assert_eq!(saved_task(&mut detail, &task.id).priority, expected);
 }
 
-// parity: TS-components-PrioritySelector-505bf3
 #[gpui::test]
 fn single_mark_saves_low(cx: &mut TestAppContext) {
     assert_priority_click_saves(cx, "!", Some(TaskPriority::Low));
 }
 
-// parity: TS-components-PrioritySelector-4ece51
-// parity: TS-components-PriorityEditor-e8b4ef
 #[gpui::test]
 fn double_mark_saves_medium(cx: &mut TestAppContext) {
     assert_priority_click_saves(cx, "!!", Some(TaskPriority::Medium));
 }
 
-// parity: TS-components-PrioritySelector-b4a2f8
 #[gpui::test]
 fn triple_mark_saves_high(cx: &mut TestAppContext) {
     assert_priority_click_saves(cx, "!!!", Some(TaskPriority::High));
 }
 
-// parity: TS-components-PrioritySelector-00d268
-// parity: TS-components-PriorityEditor-fd21e0
 #[gpui::test]
 fn none_option_clears_the_priority(cx: &mut TestAppContext) {
     assert_priority_click_saves(cx, "없음", None);
 }
 
-// parity: TS-components-PriorityEditor-4378ae
 #[gpui::test]
 fn saved_priority_refreshes_the_task_detail(cx: &mut TestAppContext) {
     let (mut detail, _) = open_overview(cx, |_| {});
@@ -102,7 +94,6 @@ fn saved_priority_refreshes_the_task_detail(cx: &mut TestAppContext) {
     assert_eq!(detail.refresh_count(&probe), 1);
 }
 
-// parity: TS-components-PriorityEditor-f88123
 #[gpui::test]
 fn pending_priority_save_blocks_other_options(cx: &mut TestAppContext) {
     let (mut detail, task) = open_overview(cx, |_| {});
@@ -120,7 +111,6 @@ fn pending_priority_save_blocks_other_options(cx: &mut TestAppContext) {
     );
 }
 
-// parity: TS-components-PriorityEditor-ed93f1
 #[gpui::test]
 fn failed_priority_save_reports_the_reason(cx: &mut TestAppContext) {
     let (mut detail, _) = open_overview(cx, |_| {});
@@ -147,7 +137,6 @@ fn open_project_task(cx: &mut TestAppContext) -> (Detail, KanbanTask) {
     (detail, task)
 }
 
-// parity: TS-components-ProjectColorEditor-f22aee
 #[gpui::test]
 fn failed_color_save_restores_the_saved_color(cx: &mut TestAppContext) {
     let (mut detail, _) = open_project_task(cx);
@@ -162,7 +151,6 @@ fn failed_color_save_restores_the_saved_color(cx: &mut TestAppContext) {
     assert_eq!(detail.refresh_count(&probe), 0);
 }
 
-// parity: TS-components-ProjectColorEditor-f706a6
 #[gpui::test]
 fn color_picker_cannot_reopen_while_saving(cx: &mut TestAppContext) {
     let (mut detail, _) = open_project_task(cx);
@@ -180,7 +168,6 @@ fn color_picker_cannot_reopen_while_saving(cx: &mut TestAppContext) {
 
 // ───────────── TaskDetailInfoCard ─────────────
 
-// parity: TS-components-TaskDetailInfoCard-bd95fa
 #[gpui::test]
 fn project_shortcut_is_titled_with_the_base_branch(cx: &mut TestAppContext) {
     let dir = temp_dir();
@@ -201,7 +188,6 @@ fn project_shortcut_is_titled_with_the_base_branch(cx: &mut TestAppContext) {
     assert!(detail.has_role_name("link", "main"));
 }
 
-// parity: TS-components-TaskDetailInfoCard-d383f2
 #[gpui::test]
 fn project_shortcut_falls_back_to_the_project_name(cx: &mut TestAppContext) {
     let (mut detail, _) = open_project_task(cx);
@@ -209,7 +195,6 @@ fn project_shortcut_falls_back_to_the_project_name(cx: &mut TestAppContext) {
     assert!(detail.has_role_name("link", "kanvibe"));
 }
 
-// parity: TS-components-TaskDetailInfoCard-076bda
 #[gpui::test]
 fn task_without_project_has_no_project_shortcut(cx: &mut TestAppContext) {
     let (mut detail, _) = open_overview(cx, |_| {});
@@ -218,7 +203,6 @@ fn task_without_project_has_no_project_shortcut(cx: &mut TestAppContext) {
     assert!(!detail.has_role_name("link", "보드 필터 추가"));
 }
 
-// parity: TS-components-TaskDetailInfoCard-a107f8
 #[gpui::test]
 fn task_information_does_not_repeat_the_pr_link(cx: &mut TestAppContext) {
     let (mut detail, _) = open_overview(cx, |task| {
@@ -241,7 +225,6 @@ fn open_with_description(
     })
 }
 
-// parity: TS-components-TaskDetailTitleCard-f4a877
 #[gpui::test]
 fn missing_description_shows_the_placeholder(cx: &mut TestAppContext) {
     let (mut detail, _) = open_with_description(cx, None);
@@ -249,7 +232,6 @@ fn missing_description_shows_the_placeholder(cx: &mut TestAppContext) {
     assert!(detail.has_text("설명 추가"));
 }
 
-// parity: TS-components-TaskDetailTitleCard-dabe9f
 #[gpui::test]
 fn description_text_is_shown(cx: &mut TestAppContext) {
     let (mut detail, _) = open_with_description(cx, Some("기존 설명"));
@@ -257,7 +239,6 @@ fn description_text_is_shown(cx: &mut TestAppContext) {
     assert!(detail.has_text("기존 설명"));
 }
 
-// parity: TS-components-TaskDetailTitleCard-eea2a7
 #[gpui::test]
 fn clicking_the_description_edits_it(cx: &mut TestAppContext) {
     let (mut detail, _) = open_with_description(cx, Some("기존 설명"));
@@ -267,7 +248,6 @@ fn clicking_the_description_edits_it(cx: &mut TestAppContext) {
     assert!(detail.has_textbox("기존 설명"));
 }
 
-// parity: TS-components-TaskDetailTitleCard-8f96b0
 #[gpui::test]
 fn clicking_the_placeholder_starts_with_an_empty_draft(cx: &mut TestAppContext) {
     let (mut detail, _) = open_with_description(cx, None);
@@ -277,7 +257,6 @@ fn clicking_the_placeholder_starts_with_an_empty_draft(cx: &mut TestAppContext) 
     assert!(detail.has_textbox(""));
 }
 
-// parity: TS-components-TaskDetailTitleCard-b152f3
 #[gpui::test]
 fn edit_mode_offers_cancel_and_save(cx: &mut TestAppContext) {
     let (mut detail, _) = open_with_description(cx, Some("기존 설명"));
@@ -288,7 +267,6 @@ fn edit_mode_offers_cancel_and_save(cx: &mut TestAppContext) {
     assert!(detail.has_role_name("button", "저장"));
 }
 
-// parity: TS-components-TaskDetailTitleCard-b75d3a
 #[gpui::test]
 fn cancel_closes_the_editor_and_drops_the_draft(cx: &mut TestAppContext) {
     let (mut detail, _) = open_with_description(cx, Some("기존 설명"));
@@ -301,7 +279,6 @@ fn cancel_closes_the_editor_and_drops_the_draft(cx: &mut TestAppContext) {
     assert!(detail.has_text("기존 설명"));
 }
 
-// parity: TS-components-TaskDetailTitleCard-7c5d02
 #[gpui::test]
 fn escape_closes_the_editor(cx: &mut TestAppContext) {
     let (mut detail, _) = open_with_description(cx, Some("기존 설명"));
@@ -324,7 +301,6 @@ fn edit_description_and(
     (detail, task)
 }
 
-// parity: TS-components-TaskDetailTitleCard-b7dea3
 #[gpui::test]
 fn save_button_stores_the_changed_description(cx: &mut TestAppContext) {
     let (mut detail, task) = open_with_description(cx, None);
@@ -339,8 +315,6 @@ fn save_button_stores_the_changed_description(cx: &mut TestAppContext) {
     assert_eq!(detail.refresh_count(&probe), 1);
 }
 
-// parity: TS-components-TaskDetailTitleCard-62ce2f
-// parity: TS-components-TaskDetailTitleCard-55ccd5
 #[gpui::test]
 fn mod_enter_saves_the_description(cx: &mut TestAppContext) {
     let (mut detail, task) = edit_description_and(cx, |detail| detail.keys("ctrl-enter"));
@@ -349,7 +323,6 @@ fn mod_enter_saves_the_description(cx: &mut TestAppContext) {
     assert_eq!(saved.description.as_deref(), Some("새로운 설명"));
 }
 
-// parity: TS-components-TaskDetailTitleCard-1196cb
 #[gpui::test]
 fn enter_saves_the_description_without_a_newline(cx: &mut TestAppContext) {
     let (mut detail, task) = edit_description_and(cx, |detail| detail.keys("enter"));
@@ -359,7 +332,6 @@ fn enter_saves_the_description_without_a_newline(cx: &mut TestAppContext) {
     assert!(!detail.has_any_textbox());
 }
 
-// parity: TS-components-TaskDetailTitleCard-efe635
 #[gpui::test]
 fn pending_description_save_is_sent_once(cx: &mut TestAppContext) {
     let (mut detail, task) = open_with_description(cx, Some("기존 설명"));
@@ -385,7 +357,6 @@ fn pending_description_save_is_sent_once(cx: &mut TestAppContext) {
     assert_eq!(saved.description.as_deref(), Some("기존 설명 고침"));
 }
 
-// parity: TS-components-TaskDetailTitleCard-d31e01
 #[gpui::test]
 fn failed_description_save_keeps_the_editor_open(cx: &mut TestAppContext) {
     let (mut detail, _) = open_with_description(cx, Some("기존 설명"));
@@ -409,7 +380,6 @@ fn open_status(cx: &mut TestAppContext) -> (Detail, KanbanTask) {
     (detail, task)
 }
 
-// parity: TS-components-DeleteTaskButton-818f14
 #[gpui::test]
 fn pending_delete_blocks_the_button_and_says_deleting(cx: &mut TestAppContext) {
     let (mut detail, task) = open_status(cx);
@@ -436,7 +406,6 @@ fn pending_delete_blocks_the_button_and_says_deleting(cx: &mut TestAppContext) {
     );
 }
 
-// parity: TS-components-DeleteTaskButton-43639a
 #[gpui::test]
 fn failed_delete_reports_the_reason_and_reenables_the_button(cx: &mut TestAppContext) {
     let (mut detail, _) = open_status(cx);

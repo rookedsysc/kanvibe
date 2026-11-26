@@ -331,7 +331,6 @@ fn source_of(
         .unwrap()
 }
 
-// parity: TS-aiSessions-readAdditionalFileSessions-6b95c3
 #[test]
 fn keeps_existing_hermes_detail_when_no_messages_match() {
     for has_source_ref in [true, false] {
@@ -372,7 +371,6 @@ fn keeps_existing_hermes_detail_when_no_messages_match() {
     }
 }
 
-// parity: TS-aiSessions-readAdditionalFileSessions-3880bb
 #[test]
 fn keeps_list_query_and_guards_for_empty_detail_searches() {
     let history = HistoryHome::new();
@@ -425,7 +423,6 @@ fn keeps_list_query_and_guards_for_empty_detail_searches() {
     );
 }
 
-// parity: TS-aiSessions-readAdditionalFileSessions-c09b73
 #[test]
 fn filters_query_and_roles_before_reverse_paging() {
     let history = HistoryHome::new();
@@ -552,7 +549,6 @@ fn assert_fixture_round_trip(fixture: &Fixture) {
     );
 }
 
-// parity: TS-aiSessions-readAdditionalFileSessions-3eb4e9
 #[test]
 fn reads_each_provider_list_content_pagination_and_isolation() {
     for fixture in fixtures() {
@@ -560,7 +556,6 @@ fn reads_each_provider_list_content_pagination_and_isolation() {
     }
 }
 
-// parity: TS-aiSessions-readAdditionalFileSessions-6cc914
 #[test]
 fn rejects_outside_refs_and_isolates_broken_providers() {
     let history = HistoryHome::new();
@@ -587,7 +582,6 @@ fn rejects_outside_refs_and_isolates_broken_providers() {
     );
 }
 
-// parity: TS-aiSessions-readAdditionalFileSessions-7bf35a
 #[test]
 fn keeps_readable_files_beside_malformed_ones_and_rejects_symlinks() {
     let history = HistoryHome::new();
@@ -631,7 +625,6 @@ fn keeps_readable_files_beside_malformed_ones_and_rejects_symlinks() {
     );
 }
 
-// parity: TS-aiSessions-readAdditionalFileSessions-a2df24
 #[test]
 fn classifies_omp_transcripts_in_the_pi_directory_once() {
     let history = HistoryHome::new();
@@ -656,7 +649,6 @@ fn classifies_omp_transcripts_in_the_pi_directory_once() {
     assert_eq!(omp_ids, ["omp-id"]);
 }
 
-// parity: TS-aiSessions-readAdditionalFileSessions-7c7770
 #[test]
 fn reads_devin_cwd_and_visibility_from_sibling_database() {
     let history = HistoryHome::new();
@@ -692,7 +684,6 @@ fn reads_devin_cwd_and_visibility_from_sibling_database() {
     );
 }
 
-// parity: TS-aiSessions-readAdditionalFileSessions-be830b
 #[test]
 fn does_not_guess_antigravity_workspace_on_conflict() {
     let history = HistoryHome::new();
@@ -708,7 +699,6 @@ fn does_not_guess_antigravity_workspace_on_conflict() {
     );
 }
 
-// parity: TS-aiSessions-readAdditionalFileSessions-707579
 #[test]
 fn excludes_other_worktree_graph_transcript_before_reading_body() {
     let file = "/remote/home/.pi/agent/sessions/other.jsonl";
@@ -732,7 +722,6 @@ fn excludes_other_worktree_graph_transcript_before_reading_body() {
     assert!(full_reads.is_empty(), "{full_reads:?}");
 }
 
-// parity: TS-aiSessions-readAdditionalFileSessions-5e664c
 #[test]
 fn pages_kimi_turns_newest_first_without_timestamps() {
     let history = HistoryHome::new();
@@ -781,7 +770,6 @@ fn pages_kimi_turns_newest_first_without_timestamps() {
     assert_eq!(second.unwrap().next_cursor, None);
 }
 
-// parity: TS-aiSessions-readAdditionalFileSessions-ed820a
 #[test]
 fn keeps_kiro_interleaving_across_pages() {
     let history = HistoryHome::new();

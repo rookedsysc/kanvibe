@@ -35,7 +35,6 @@ fn with_fields(base: Value, overrides: Value) -> Value {
     merged
 }
 
-// parity: TS-lib-paneMirror-d59b12
 #[test]
 fn zellij_select_tab_names_session_and_tab() {
     assert_eq!(
@@ -44,7 +43,6 @@ fn zellij_select_tab_names_session_and_tab() {
     );
 }
 
-// parity: TS-lib-paneMirror-97e802
 #[test]
 fn zellij_floating_viewport_separates_position_and_bordered_size() {
     let output = json!([[{ "id": 7, "is_plugin": false, "is_floating": true, "tab_id": 0,
@@ -69,7 +67,6 @@ fn zellij_floating_viewport_separates_position_and_bordered_size() {
     );
 }
 
-// parity: TS-lib-paneMirror-b5b5c9
 #[test]
 fn zellij_viewport_separates_program_grid_from_split_and_decoration_sizes() {
     let plugin = with_fields(zellij_viewport_pane(), json!({ "is_plugin": true }));
@@ -93,7 +90,6 @@ fn zellij_viewport_separates_program_grid_from_split_and_decoration_sizes() {
     );
 }
 
-// parity: TS-lib-paneMirror-e98c2e
 #[test]
 fn zellij_viewport_rejects_incomplete_geometry() {
     let zero_rows = with_fields(zellij_viewport_pane(), json!({ "pane_content_rows": 0 }));
@@ -112,7 +108,6 @@ fn zellij_viewport_rejects_incomplete_geometry() {
     }
 }
 
-// parity: TS-lib-paneMirror-2cf8e4
 #[test]
 fn zellij_viewport_reads_content_origin_only_when_listed() {
     let placed = with_fields(
@@ -136,14 +131,12 @@ fn zellij_viewport_reads_content_origin_only_when_listed() {
     );
 }
 
-// parity: TS-lib-paneMirror-4e192b
 #[test]
 fn zellij_viewport_does_not_use_another_panes_geometry() {
     let output = json!([[zellij_viewport_pane()], [zellij_viewport_tab()]]).to_string();
     assert_eq!(parse_zellij_viewport_state(&output, "terminal_8"), None);
 }
 
-// parity: TS-lib-paneMirror-fe2fc0
 #[test]
 fn zellij_read_viewport_quotes_session_and_reads_panes_and_tabs_together() {
     let command = build_zellij_read_viewport_command("task's session");
@@ -172,7 +165,6 @@ fn mirror_pane(
     }
 }
 
-// parity: TS-lib-paneMirror-e8f617
 #[test]
 fn tmux_pane_list_reads_every_window_pane_with_geometry() {
     let output = [
@@ -192,7 +184,6 @@ fn tmux_pane_list_reads_every_window_pane_with_geometry() {
     );
 }
 
-// parity: TS-lib-paneMirror-e32747
 #[test]
 fn tmux_pane_list_keeps_tab_characters_in_window_name() {
     let output = "%1\t@1\tbash\t0\t0\t80\t24\tname\twith\ttabs";
@@ -202,7 +193,6 @@ fn tmux_pane_list_keeps_tab_characters_in_window_name() {
     );
 }
 
-// parity: TS-lib-paneMirror-bb8f4d
 #[test]
 fn tmux_pane_list_skips_lines_with_missing_fields() {
     let output = ["%1\t@1\tbash", "%2\t@1\tbash\t0\t0\t80\t24\tbash"].join("\n");
@@ -213,7 +203,6 @@ fn tmux_pane_list_skips_lines_with_missing_fields() {
     assert_eq!(pane_ids, vec!["%2"]);
 }
 
-// parity: TS-lib-paneMirror-66d8a8
 #[test]
 fn tmux_pane_list_drops_zero_sized_panes() {
     assert_eq!(
@@ -222,13 +211,11 @@ fn tmux_pane_list_drops_zero_sized_panes() {
     );
 }
 
-// parity: TS-lib-paneMirror-10ab0d
 #[test]
 fn tmux_pane_list_of_empty_output_is_empty() {
     assert_eq!(parse_tmux_mirror_pane_list(""), vec![]);
 }
 
-// parity: TS-lib-paneMirror-6a36b9
 #[test]
 fn tmux_list_mirror_panes_reads_one_session_with_geometry() {
     assert_eq!(
@@ -237,7 +224,6 @@ fn tmux_list_mirror_panes_reads_one_session_with_geometry() {
     );
 }
 
-// parity: TS-lib-paneMirror-54068b
 #[test]
 fn tmux_snapshot_keeps_ansi() {
     assert_eq!(
@@ -246,7 +232,6 @@ fn tmux_snapshot_keeps_ansi() {
     );
 }
 
-// parity: TS-lib-paneMirror-d1eba3
 #[test]
 fn tmux_stream_pipes_into_temp_file_and_follows_it() {
     let command = build_tmux_pane_stream_command("%19");
@@ -254,7 +239,6 @@ fn tmux_stream_pipes_into_temp_file_and_follows_it() {
     assert!(command.contains("tail -n +1 -f \"$sink\""));
 }
 
-// parity: TS-lib-paneMirror-bec626
 #[test]
 fn tmux_stream_cleans_pipe_and_temp_file_on_exit() {
     assert!(build_tmux_pane_stream_command("%19").contains(
@@ -262,7 +246,6 @@ fn tmux_stream_cleans_pipe_and_temp_file_on_exit() {
     ));
 }
 
-// parity: TS-lib-paneMirror-6076f3
 #[test]
 fn tmux_stream_waits_on_background_tail_so_trap_survives() {
     let command = build_tmux_pane_stream_command("%19");
@@ -271,7 +254,6 @@ fn tmux_stream_waits_on_background_tail_so_trap_survives() {
     assert!(!command.ends_with("tail -n +1 -f \"$sink\""));
 }
 
-// parity: TS-lib-paneMirror-c00dfd
 #[test]
 fn tmux_cancel_pipe_passes_no_command() {
     assert_eq!(
@@ -280,7 +262,6 @@ fn tmux_cancel_pipe_passes_no_command() {
     );
 }
 
-// parity: TS-lib-paneMirror-1f670b
 #[test]
 fn tmux_send_keys_sends_input_literally() {
     assert_eq!(
@@ -289,7 +270,6 @@ fn tmux_send_keys_sends_input_literally() {
     );
 }
 
-// parity: TS-lib-paneMirror-c01f6b
 #[test]
 fn tmux_send_keys_sends_nul_as_ctrl_space_in_order() {
     let cases = [
@@ -314,13 +294,11 @@ fn tmux_send_keys_sends_nul_as_ctrl_space_in_order() {
     }
 }
 
-// parity: TS-lib-paneMirror-af0ae0
 #[test]
 fn tmux_send_keys_does_not_treat_dash_input_as_option() {
     assert!(build_tmux_send_keys_command("%19", "--version").contains("-l -- '--version'"));
 }
 
-// parity: TS-lib-paneMirror-4c73ea
 #[test]
 fn tmux_capture_quotes_shell_metacharacters_in_pane_id() {
     let command = build_tmux_capture_pane_command(INJECTION_PANE_ID);
@@ -335,7 +313,6 @@ fn tmux_capture_quotes_shell_metacharacters_in_pane_id() {
     );
 }
 
-// parity: TS-lib-paneMirror-62aae9
 #[test]
 fn screen_redraw_clears_returns_each_line_and_places_cursor() {
     let cursor = TerminalCursorPosition {
@@ -349,7 +326,6 @@ fn screen_redraw_clears_returns_each_line_and_places_cursor() {
     );
 }
 
-// parity: TS-lib-paneMirror-3d09e2
 #[test]
 fn screen_redraw_moves_cursor_up_from_last_visible_line_after_scrollback() {
     let cursor = TerminalCursorPosition {
@@ -363,7 +339,6 @@ fn screen_redraw_moves_cursor_up_from_last_visible_line_after_scrollback() {
     );
 }
 
-// parity: TS-lib-paneMirror-048d0c
 #[test]
 fn screen_redraw_keeps_only_last_2000_lines() {
     let screen: Vec<String> = (0..2100).map(|index| format!("line-{index}")).collect();
@@ -376,7 +351,6 @@ fn screen_redraw_keeps_only_last_2000_lines() {
     );
 }
 
-// parity: TS-lib-paneMirror-fbd44f
 #[test]
 fn screen_redraw_does_not_double_existing_crlf() {
     assert_eq!(
@@ -385,13 +359,11 @@ fn screen_redraw_does_not_double_existing_crlf() {
     );
 }
 
-// parity: TS-lib-paneMirror-8468f6
 #[test]
 fn screen_redraw_without_cursor_does_not_move_it() {
     assert_eq!(build_screen_redraw("a\nb", None), format!("{CLEAR}a\r\nb"));
 }
 
-// parity: TS-lib-paneMirror-4bb56d
 #[test]
 fn tmux_pane_state_is_read_with_display_message() {
     assert_eq!(
@@ -400,7 +372,6 @@ fn tmux_pane_state_is_read_with_display_message() {
     );
 }
 
-// parity: TS-lib-paneMirror-9c8534
 #[test]
 fn tmux_pane_state_parses_or_reports_unknown_for_malformed_output() {
     assert_eq!(
@@ -427,7 +398,6 @@ fn zellij_list_entry(overrides: Value) -> Value {
     with_fields(base, overrides)
 }
 
-// parity: TS-lib-paneMirror-dbad3d
 #[test]
 fn zellij_pane_list_reads_terminal_panes_with_geometry() {
     let output = json!([
@@ -447,7 +417,6 @@ fn zellij_pane_list_reads_terminal_panes_with_geometry() {
     );
 }
 
-// parity: TS-lib-paneMirror-27b00f
 #[test]
 fn zellij_pane_list_skips_plugin_panes() {
     let output = json!([
@@ -461,7 +430,6 @@ fn zellij_pane_list_skips_plugin_panes() {
     assert_eq!(pane_ids, vec!["terminal_1"]);
 }
 
-// parity: TS-lib-paneMirror-f5084f
 #[test]
 fn zellij_pane_list_uses_title_when_command_is_empty() {
     let output = json!([zellij_list_entry(
@@ -473,7 +441,6 @@ fn zellij_pane_list_uses_title_when_command_is_empty() {
     );
 }
 
-// parity: TS-lib-paneMirror-cf11cc
 #[test]
 fn zellij_pane_list_of_non_json_is_empty() {
     assert_eq!(
@@ -482,7 +449,6 @@ fn zellij_pane_list_of_non_json_is_empty() {
     );
 }
 
-// parity: TS-lib-paneMirror-26c579
 #[test]
 fn zellij_list_mirror_panes_queries_json() {
     assert_eq!(
@@ -491,7 +457,6 @@ fn zellij_list_mirror_panes_queries_json() {
     );
 }
 
-// parity: TS-lib-paneMirror-bb3028
 #[test]
 fn zellij_dump_targets_named_pane_without_focus_change() {
     assert_eq!(
@@ -500,7 +465,6 @@ fn zellij_dump_targets_named_pane_without_focus_change() {
     );
 }
 
-// parity: TS-lib-paneMirror-bf42e0
 #[test]
 fn zellij_viewport_dump_reads_visible_screen_without_scrollback() {
     assert_eq!(
@@ -509,7 +473,6 @@ fn zellij_viewport_dump_reads_visible_screen_without_scrollback() {
     );
 }
 
-// parity: TS-lib-paneMirror-322f46
 #[test]
 fn zellij_write_spreads_input_as_decimal_utf8_bytes() {
     assert_eq!(
@@ -518,7 +481,6 @@ fn zellij_write_spreads_input_as_decimal_utf8_bytes() {
     );
 }
 
-// parity: TS-lib-paneMirror-5ca03a
 #[test]
 fn zellij_write_splits_korean_input_into_bytes() {
     assert_eq!(
@@ -527,7 +489,6 @@ fn zellij_write_splits_korean_input_into_bytes() {
     );
 }
 
-// parity: TS-lib-paneMirror-fa80fa
 #[test]
 fn tmux_shortcuts_target_named_pane_instead_of_prefix() {
     let cases = [
@@ -562,7 +523,6 @@ fn tmux_shortcuts_target_named_pane_instead_of_prefix() {
     }
 }
 
-// parity: TS-lib-paneMirror-18c384
 #[test]
 fn zellij_split_creates_pane_in_selected_tab_without_focus() {
     for (action, direction) in [("split-right", "right"), ("split-down", "down")] {
@@ -575,7 +535,6 @@ fn zellij_split_creates_pane_in_selected_tab_without_focus() {
     }
 }
 
-// parity: TS-lib-paneMirror-12dff8
 #[test]
 fn zellij_shortcuts_use_pane_id_instead_of_client_focus() {
     let cases = [
@@ -595,7 +554,6 @@ fn zellij_shortcuts_use_pane_id_instead_of_client_focus() {
     }
 }
 
-// parity: TS-lib-paneMirror-85ddc3
 #[test]
 fn shortcuts_reject_shell_commands_and_other_multiplexer_actions() {
     for action in ["; rm -rf /", "toString", "unknown"] {
@@ -615,7 +573,6 @@ fn shortcuts_reject_shell_commands_and_other_multiplexer_actions() {
     );
 }
 
-// parity: TS-lib-paneMirror-de235a
 #[test]
 fn shortcuts_quote_shell_metacharacters_in_targets() {
     assert_eq!(
@@ -629,7 +586,6 @@ fn shortcuts_quote_shell_metacharacters_in_targets() {
     );
 }
 
-// parity: TS-lib-paneMirror-c31d9d
 #[test]
 fn tmux_close_kills_only_named_pane() {
     assert_eq!(
@@ -638,7 +594,6 @@ fn tmux_close_kills_only_named_pane() {
     );
 }
 
-// parity: TS-lib-paneMirror-0ab4b4
 #[test]
 fn zellij_close_targets_pane_id_instead_of_focus() {
     assert_eq!(
@@ -647,7 +602,6 @@ fn zellij_close_targets_pane_id_instead_of_focus() {
     );
 }
 
-// parity: TS-lib-paneMirror-c82970
 #[test]
 fn herdr_close_passes_pane_id_as_single_argument() {
     assert_eq!(
@@ -656,7 +610,6 @@ fn herdr_close_passes_pane_id_as_single_argument() {
     );
 }
 
-// parity: TS-lib-paneMirror-f8a9fa
 #[test]
 fn close_commands_quote_shell_metacharacters_in_targets() {
     assert_eq!(
@@ -666,7 +619,6 @@ fn close_commands_quote_shell_metacharacters_in_targets() {
     assert!(build_zellij_close_pane_command("a'b", "terminal_3").contains("--session 'a'\"'\"'b'"));
 }
 
-// parity: TS-lib-paneMirror-c691ef
 #[test]
 fn herdr_write_passes_control_and_dash_input_as_one_send_text_argument() {
     assert_eq!(
@@ -679,7 +631,6 @@ fn herdr_write_passes_control_and_dash_input_as_one_send_text_argument() {
     );
 }
 
-// parity: TS-lib-paneMirror-0aabaa
 #[test]
 fn herdr_write_sends_nul_as_ctrl_space_in_order() {
     let expected = [
@@ -694,7 +645,6 @@ fn herdr_write_sends_nul_as_ctrl_space_in_order() {
     );
 }
 
-// parity: TS-lib-paneMirror-81a361
 #[test]
 fn herdr_split_keeps_pc_focus_and_zoom_toggles() {
     assert_eq!(
@@ -725,7 +675,6 @@ fn herdr_split_keeps_pc_focus_and_zoom_toggles() {
     );
 }
 
-// parity: TS-lib-paneMirror-e4932b
 #[test]
 fn herdr_shortcuts_without_herdr_command_are_unsupported() {
     for action in [
@@ -743,7 +692,6 @@ fn herdr_shortcuts_without_herdr_command_are_unsupported() {
     }
 }
 
-// parity: TS-lib-paneMirror-00c348
 #[test]
 fn herdr_reads_up_to_2000_ansi_lines_and_observe_sets_grid() {
     assert_eq!(
@@ -760,7 +708,6 @@ fn herdr_reads_up_to_2000_ansi_lines_and_observe_sets_grid() {
     );
 }
 
-// parity: TS-lib-paneMirror-a9df8c
 #[test]
 fn herdr_observe_frame_reads_actual_grid_for_resize_ack() {
     let line =
@@ -778,7 +725,6 @@ fn herdr_observe_frame_reads_actual_grid_for_resize_ack() {
     );
 }
 
-// parity: TS-lib-paneMirror-923349
 #[test]
 fn herdr_control_stream_opens_with_explicit_size() {
     assert_eq!(
@@ -789,7 +735,6 @@ fn herdr_control_stream_opens_with_explicit_size() {
     );
 }
 
-// parity: TS-lib-paneMirror-a2a54f
 #[test]
 fn herdr_observe_frame_decodes_base64_as_utf8_and_full_screen_flag() {
     let bytes = BASE64.encode("\x1b[1;1H한글");
@@ -813,7 +758,6 @@ fn herdr_observe_frame_decodes_base64_as_utf8_and_full_screen_flag() {
     ));
 }
 
-// parity: TS-lib-paneMirror-6e493b
 #[test]
 fn herdr_observe_distinguishes_closed_and_ignores_broken_or_unknown_lines() {
     assert_eq!(
@@ -827,7 +771,6 @@ fn herdr_observe_distinguishes_closed_and_ignores_broken_or_unknown_lines() {
     );
 }
 
-// parity: TS-lib-paneMirror-c1a33e
 #[test]
 fn tmux_wheel_state_reads_copy_mode_alternate_screen_and_mouse_encoding() {
     assert_eq!(
@@ -850,7 +793,6 @@ fn tmux_wheel_state_reads_copy_mode_alternate_screen_and_mouse_encoding() {
     );
 }
 
-// parity: TS-lib-paneMirror-e1cdf6
 #[test]
 fn tmux_wheel_state_is_unknown_for_unreadable_output() {
     for output in ["", "no server running", "0 1 0 0"] {
@@ -858,7 +800,6 @@ fn tmux_wheel_state_is_unknown_for_unreadable_output() {
     }
 }
 
-// parity: TS-lib-paneMirror-dc33fa
 #[test]
 fn tmux_copy_mode_capture_shifts_range_by_scroll_position() {
     let view = parse_tmux_copy_mode_view("1 10 24\n");
@@ -875,13 +816,11 @@ fn tmux_copy_mode_capture_shifts_range_by_scroll_position() {
     );
 }
 
-// parity: TS-lib-paneMirror-c384ae
 #[test]
 fn tmux_copy_mode_view_is_none_after_copy_mode_ends() {
     assert_eq!(parse_tmux_copy_mode_view("0  24"), None);
 }
 
-// parity: TS-lib-paneMirror-d62be0
 #[test]
 fn mouse_wheel_report_sends_zero_based_cells_as_one_based() {
     let cases = [
@@ -910,7 +849,6 @@ fn mouse_wheel_report_sends_zero_based_cells_as_one_based() {
     }
 }
 
-// parity: TS-lib-paneMirror-1bdf1e
 #[test]
 fn mouse_wheel_report_skips_far_cells_in_normal_encoding_but_not_utf8() {
     assert_eq!(
@@ -923,7 +861,6 @@ fn mouse_wheel_report_skips_far_cells_in_normal_encoding_but_not_utf8() {
     );
 }
 
-// parity: TS-lib-paneMirror-8f054f
 #[test]
 fn wheel_delegated_redraw_uses_alternate_screen_without_mouse_reporting() {
     let reset_mouse = "\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1005l\x1b[?1006l";
@@ -933,7 +870,6 @@ fn wheel_delegated_redraw_uses_alternate_screen_without_mouse_reporting() {
     );
 }
 
-// parity: TS-lib-paneMirror-824733
 #[test]
 fn herdr_scroll_control_record_wraps_one_wheel_step() {
     let request = parse_terminal_scroll_request(
@@ -951,7 +887,6 @@ fn herdr_scroll_control_record_wraps_one_wheel_step() {
     );
 }
 
-// parity: TS-lib-paneMirror-ee7a94
 #[test]
 fn scroll_request_with_invalid_direction_or_cell_is_dropped() {
     let records = [

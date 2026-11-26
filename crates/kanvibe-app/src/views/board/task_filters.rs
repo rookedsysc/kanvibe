@@ -406,7 +406,6 @@ pub(crate) mod tests {
         }
     }
 
-    // parity: TS-renderer-boardTaskSort-9d579b
     #[test]
     fn title_sort_follows_the_collation_of_the_viewed_language() {
         let mut lee = task("lee");
@@ -462,7 +461,6 @@ pub(crate) mod tests {
         }
     }
 
-    // parity: TS-renderer-boardTaskSort-29ca71
     #[test]
     fn tasks_without_priority_inherit_the_project_root_priority() {
         let child = with_project("child", "project-1");
@@ -474,7 +472,6 @@ pub(crate) mod tests {
         assert!(is_inherited_priority(&child, &roots));
     }
 
-    // parity: TS-renderer-boardTaskSort-5907ca
     #[test]
     fn own_priority_overrides_the_inherited_one() {
         let child = KanbanTask {
@@ -489,7 +486,6 @@ pub(crate) mod tests {
         assert!(!is_inherited_priority(&child, &roots));
     }
 
-    // parity: TS-renderer-boardTaskSort-aadd49
     #[test]
     fn no_root_or_no_project_means_no_priority() {
         let roots = HashMap::from([("project-1".to_string(), TaskPriority::High)]);
@@ -500,7 +496,6 @@ pub(crate) mod tests {
         );
     }
 
-    // parity: TS-renderer-boardTaskSort-e5a9cd
     #[test]
     fn only_default_branch_tasks_count_as_roots() {
         let projects = lookup(&[project("project-1")]);
@@ -518,7 +513,6 @@ pub(crate) mod tests {
         assert_eq!(roots.get("project-1"), Some(&TaskPriority::Medium));
     }
 
-    // parity: TS-renderer-boardTaskSort-322dd1
     #[test]
     fn worktree_projects_are_never_roots() {
         let projects = lookup(&[Project {
@@ -533,7 +527,6 @@ pub(crate) mod tests {
         assert!(build_project_root_priority_map([&root], &projects).is_empty());
     }
 
-    // parity: TS-renderer-boardTaskSort-d5f25d
     #[test]
     fn no_sort_keys_keep_the_incoming_order() {
         let tasks = [
@@ -547,7 +540,6 @@ pub(crate) mod tests {
         );
     }
 
-    // parity: TS-renderer-boardTaskSort-7b601a
     #[test]
     fn later_keys_only_break_ties() {
         let tasks = [
@@ -565,7 +557,6 @@ pub(crate) mod tests {
         );
     }
 
-    // parity: TS-renderer-boardTaskSort-65f108
     #[test]
     fn missing_values_stay_last_in_both_directions() {
         let tasks = [
@@ -585,7 +576,6 @@ pub(crate) mod tests {
         );
     }
 
-    // parity: TS-renderer-boardTaskSort-610327
     #[test]
     fn inherited_priority_is_used_for_sorting() {
         let tasks = [
@@ -600,7 +590,6 @@ pub(crate) mod tests {
         );
     }
 
-    // parity: TS-renderer-boardTaskSort-92a66d
     #[test]
     fn ties_fall_back_to_most_recently_updated() {
         let older = KanbanTask {
@@ -618,13 +607,11 @@ pub(crate) mod tests {
         );
     }
 
-    // parity: TS-renderer-useTaskKindFilterParams-3dbf35
     #[test]
     fn missing_task_kind_query_defaults_to_all() {
         assert_eq!(TaskKindFilter::parse(None), TaskKindFilter::All);
     }
 
-    // parity: TS-renderer-useTaskKindFilterParams-0618fd
     #[test]
     fn unknown_task_kind_values_fall_back_to_all() {
         assert_eq!(TaskKindFilter::parse(Some("weird")), TaskKindFilter::All);
@@ -634,7 +621,6 @@ pub(crate) mod tests {
         );
     }
 
-    // parity: TS-components-Board-3f3387
     #[test]
     fn worktrees_use_their_hosts_main_project_display_settings() {
         let local_main = Project {
@@ -661,7 +647,6 @@ pub(crate) mod tests {
         assert_eq!(worktree.group_key, displays["remote-main"].group_key);
     }
 
-    // parity: TS-components-Column-8b83fc
     #[test]
     fn same_name_projects_on_different_hosts_get_different_groups() {
         let local = project("app");

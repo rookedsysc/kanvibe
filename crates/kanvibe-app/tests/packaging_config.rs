@@ -20,7 +20,6 @@ fn plist_string(plist: &str, key: &str) -> Option<String> {
         .map(|(value, _)| value.to_string())
 }
 
-// parity: TS-lib-packageScripts-77e497
 #[test]
 fn packaged_apps_are_named_kanvibe() {
     let plist = read("packaging/macos/Info.plist.in");
@@ -38,7 +37,6 @@ fn packaged_apps_are_named_kanvibe() {
     assert!(!plist.contains("Kanivibe") && !desktop_entry.contains("Kanivibe"));
 }
 
-// parity: TS-lib-electronBuilderConfig-1c3bdc
 #[test]
 fn the_mac_app_uses_the_kanvibe_icon_from_resources() {
     let plist = read("packaging/macos/Info.plist.in");

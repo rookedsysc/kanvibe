@@ -58,7 +58,6 @@ The version comes from `workspace.package.version` in the root `Cargo.toml`. `bu
    cargo fmt --all --check                                  # Formatting
    cargo clippy --workspace --all-targets -- -D warnings    # Lints
    cargo nextest run --workspace                            # Tests
-   cargo xtask parity check                                 # TS parity ledger
    cargo build --workspace --release                        # Release build
    ```
 

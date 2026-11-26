@@ -1133,7 +1133,6 @@ mod tests {
         (view, cx)
     }
 
-    // parity: TS-renderer-TaskDetailRoute-74b0c3
     #[gpui_kit::test]
     fn opening_the_chat_view_loads_the_first_history_page_by_itself(cx: &mut TestAppContext) {
         let (view, cx) = open_chat_view(cx);
@@ -1144,7 +1143,6 @@ mod tests {
         });
     }
 
-    // parity: TS-renderer-AiChatFilePreview-42fb0e
     #[gpui_kit::test]
     fn closing_the_file_preview_removes_it(cx: &mut TestAppContext) {
         let (view, cx) = open_chat_view(cx);
@@ -1166,7 +1164,6 @@ mod tests {
         assert!(!is_narrow_layout(Some(720.0)));
     }
 
-    // parity: TS-renderer-TaskDetailRoute-6f049a
     #[test]
     fn jump_to_latest_appears_only_when_far_from_the_bottom() {
         assert!(!should_show_jump_to_latest(0.0));

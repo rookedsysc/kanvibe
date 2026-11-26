@@ -45,7 +45,6 @@ fn respond_with_local_session(
     runner.respond(move |_, _| Some(Ok(sessions.clone())));
 }
 
-// parity: TS-lib-herdr-c7c7a9
 #[test]
 fn cli_api_errors_are_not_mistaken_for_an_empty_list() {
     let herdr = fixture();
@@ -60,7 +59,6 @@ fn cli_api_errors_are_not_mistaken_for_an_empty_list() {
     assert_eq!(error.to_string(), "Herdr: missing session");
 }
 
-// parity: TS-lib-herdr-74fa20
 #[test]
 fn tab_list_polling_asks_not_to_log_expected_failures() {
     let herdr = fixture();
@@ -82,7 +80,6 @@ fn tab_list_polling_asks_not_to_log_expected_failures() {
     assert!(calls[0].options.is_failure_expected);
 }
 
-// parity: TS-lib-herdr-5a35e4
 #[test]
 fn sends_one_exact_tab_move_request_even_when_the_reply_is_fragmented() {
     let herdr = fixture();
@@ -107,7 +104,6 @@ fn sends_one_exact_tab_move_request_even_when_the_reply_is_fragmented() {
     assert!(requests.try_recv().is_err());
 }
 
-// parity: TS-lib-herdr-3d8883
 #[test]
 fn socket_error_replies_reach_the_caller() {
     let herdr = fixture();
@@ -129,7 +125,6 @@ fn socket_error_replies_reach_the_caller() {
     assert!(error.to_string().contains("tab missing"));
 }
 
-// parity: TS-lib-herdr-d73545
 #[test]
 fn never_sends_socket_requests_to_a_stopped_session() {
     let herdr = fixture();
@@ -145,7 +140,6 @@ fn never_sends_socket_requests_to_a_stopped_session() {
     assert!(error.to_string().contains("세션을 찾을 수 없습니다"));
 }
 
-// parity: TS-lib-herdr-3457f2
 #[test]
 fn collects_running_agents_even_when_another_session_fails() {
     let herdr = fixture();

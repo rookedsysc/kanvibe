@@ -524,7 +524,6 @@ mod tests {
         assert_eq!(AppBuild::current(), expected);
     }
 
-    // parity: TS-electron-runtimeEnvironment-d4830f, TS-electron-runtimeEnvironment-19a69e, TS-electron-runtimeEnvironment-de42d5
     #[test]
     fn each_build_and_the_qa_switch_get_their_own_data_directory_port_and_namespace() {
         // TS 설치된 앱, `pnpm dev`, `pnpm start`, 설치된 앱 `--qa`, 소스 실행 `--qa` 순서다
@@ -584,7 +583,6 @@ mod tests {
         }
     }
 
-    // parity: TS-electron-runtimeEnvironment-0b3891
     #[test]
     fn manual_qa_on_the_installed_app_reuses_its_directory_across_launches() {
         let first = plan_for_build(AppBuild::Packaged, "--qa", &[]).unwrap();
@@ -644,7 +642,6 @@ mod tests {
         assert_eq!(plan.data_dir, Some(PathBuf::from("/d")));
     }
 
-    // parity: TS-root-launchElectron-468c59
     #[test]
     fn automated_qa_starts_the_server_only_on_a_launcher_port() {
         let capture = plan(&format!("{HARNESS} --data-dir /d"), &[]).unwrap();
@@ -697,7 +694,6 @@ mod tests {
         assert_eq!(source_build, None);
     }
 
-    // parity: TS-root-launchElectron-e65446
     #[test]
     fn a_qa_data_directory_wins_over_inherited_production_paths() {
         let inherited = [
@@ -711,7 +707,6 @@ mod tests {
         assert_eq!(qa.data_dir, Some(PathBuf::from("/fixture")));
     }
 
-    // parity: TS-lib-desktopDiagnostics-df0168
     #[test]
     fn startup_and_panics_are_written_to_the_diagnostics_log() {
         let data_dir = tempfile::tempdir().unwrap();

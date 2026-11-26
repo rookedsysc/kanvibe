@@ -415,7 +415,6 @@ fn attach_in_background(
     receiver
 }
 
-// parity: TS-main-remoteTerminalService-e06379
 #[test]
 fn concurrent_grants_share_one_strict_ssh_agent_and_relay_exact_unicode_and_nul_input() {
     let Fixture {
@@ -473,7 +472,6 @@ fn concurrent_grants_share_one_strict_ssh_agent_and_relay_exact_unicode_and_nul_
     assert_eq!(spawner.spawned_arguments().len(), 1);
 }
 
-// parity: TS-main-remoteTerminalService-824542
 #[test]
 fn relay_with_a_different_device_scope_is_rejected_before_reaching_the_agent() {
     let Fixture {
@@ -492,7 +490,6 @@ fn relay_with_a_different_device_scope_is_rejected_before_reaching_the_agent() {
     assert!(spawner.received_requests("attach").is_empty());
 }
 
-// parity: TS-main-remoteTerminalService-b4daa1
 #[test]
 fn unsupported_runtime_result_is_shared_by_the_next_probe() {
     let Fixture {
@@ -510,7 +507,6 @@ fn unsupported_runtime_result_is_shared_by_the_next_probe() {
     assert_eq!(spawner.spawned_arguments().len(), 1);
 }
 
-// parity: TS-main-remoteTerminalService-7a6477
 #[test]
 fn stopping_the_owner_fails_a_pending_ssh_bootstrap_immediately() {
     let Fixture {
@@ -537,7 +533,6 @@ fn stopping_the_owner_fails_a_pending_ssh_bootstrap_immediately() {
     assert!(spawner.termination_count.load(Ordering::SeqCst) >= 1);
 }
 
-// parity: TS-main-remoteTerminalService-ab8552
 #[test]
 fn revoking_one_grant_keeps_another_stream_of_the_same_task() {
     let Fixture { service, _home, .. } = fixture(FakeAgentScript::default());
@@ -572,7 +567,6 @@ fn revoking_one_grant_keeps_another_stream_of_the_same_task() {
     second_relay.close();
 }
 
-// parity: TS-main-remoteTerminalService-101229
 #[test]
 fn fresh_grant_attaches_after_the_previous_controller_stream_failed() {
     let Fixture {
@@ -612,7 +606,6 @@ fn fresh_grant_attaches_after_the_previous_controller_stream_failed() {
     fresh_relay.close();
 }
 
-// parity: TS-main-remoteTerminalService-435674
 #[test]
 fn wide_native_geometry_is_clamped_to_the_mobile_bound_in_the_wire_grant() {
     let Fixture {
@@ -671,7 +664,6 @@ fn wide_native_geometry_is_clamped_to_the_mobile_bound_in_the_wire_grant() {
     assert_eq!(wire_grant["geometryCommand"], geometry_command);
 }
 
-// parity: TS-main-remoteTerminalService-fbd9a5
 #[test]
 fn revoking_the_only_requester_fails_its_pending_attach() {
     let Fixture {
@@ -697,7 +689,6 @@ fn revoking_the_only_requester_fails_its_pending_attach() {
     assert_eq!(outcome.err().unwrap(), "Remote terminal request rejected");
 }
 
-// parity: TS-main-remoteTerminalService-379f64
 #[test]
 fn another_devices_attach_survives_when_the_first_requester_is_revoked() {
     let Fixture {
@@ -741,7 +732,6 @@ fn another_devices_attach_survives_when_the_first_requester_is_revoked() {
     second_relay.close();
 }
 
-// parity: TS-main-remoteTerminalService-fc0714
 #[test]
 fn stopping_the_owner_fails_a_pending_attach_and_terminates_the_ssh_agent() {
     let Fixture {

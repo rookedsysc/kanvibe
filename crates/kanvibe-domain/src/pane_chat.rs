@@ -148,7 +148,6 @@ mod tests {
             .collect()
     }
 
-    // parity: TS-shared-paneChat-069b3d
     #[test]
     fn keeps_matches_in_label_or_description_case_insensitively_by_name() {
         let suggestions = [
@@ -164,7 +163,6 @@ mod tests {
         assert!(!result.is_truncated);
     }
 
-    // parity: TS-shared-paneChat-9cd4d8
     #[test]
     fn empty_query_returns_everything_by_name() {
         let result =
@@ -173,7 +171,6 @@ mod tests {
         assert_eq!(labels(&result), ["a", "b"]);
     }
 
-    // parity: TS-shared-paneChat-4ca47b
     #[test]
     fn reports_truncation_only_beyond_the_limit() {
         let suggestions: Vec<PaneChatSuggestion> = (0..3)
@@ -189,7 +186,6 @@ mod tests {
         assert!(bounded.is_truncated);
     }
 
-    // parity: TS-shared-paneChat-81e805
     #[test]
     fn no_match_gives_an_empty_list() {
         let result = filter_pane_chat_suggestions(&[suggestion("plan", "")], "zzz", 20);

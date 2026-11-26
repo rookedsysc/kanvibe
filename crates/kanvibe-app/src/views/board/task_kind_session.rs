@@ -125,7 +125,6 @@ impl BoardView {
 mod tests {
     use super::*;
 
-    // parity: TS-renderer-useTaskKindFilterParams-714d3d
     #[test]
     fn without_a_query_the_window_memory_is_restored_into_the_query() {
         let entry = resolve_task_kind_entry("", None, Some(TaskKindFilter::Task));
@@ -133,7 +132,6 @@ mod tests {
         assert_eq!(entry.replaced_search.as_deref(), Some("taskKind=task"));
     }
 
-    // parity: TS-renderer-useTaskKindFilterParams-b17552
     #[test]
     fn an_unknown_query_clears_both_the_query_and_the_memory() {
         let entry = resolve_task_kind_entry("taskKind=unknown", Some("unknown"), None);

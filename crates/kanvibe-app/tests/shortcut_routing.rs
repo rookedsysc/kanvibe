@@ -134,7 +134,6 @@ fn save_shortcut_bindings(data_dir: &std::path::Path, bindings_json: &str) {
     .unwrap();
 }
 
-// parity: TS-main-desktopShortcutRouting-096c60
 #[gpui::test]
 fn platform_shortcuts_reach_create_task_and_new_window_before_the_terminal(
     cx: &mut TestAppContext,
@@ -185,7 +184,6 @@ fn platform_shortcuts_reach_create_task_and_new_window_before_the_terminal(
     );
 }
 
-// parity: TS-main-desktopShortcutRouting-830be7
 #[gpui::test]
 fn usage_shortcut_is_taken_only_on_task_detail(cx: &mut TestAppContext) {
     init_app(cx, None);
@@ -205,7 +203,6 @@ fn usage_shortcut_is_taken_only_on_task_detail(cx: &mut TestAppContext) {
     );
 }
 
-// parity: TS-main-desktopShortcutRouting-2fb50f
 #[gpui::test]
 fn pane_chat_toggle_beats_the_terminal_only_on_task_detail(cx: &mut TestAppContext) {
     init_app(cx, None);
@@ -223,7 +220,6 @@ fn pane_chat_toggle_beats_the_terminal_only_on_task_detail(cx: &mut TestAppConte
     );
 }
 
-// parity: TS-main-desktopShortcutRouting-17cf33
 #[gpui::test]
 fn saved_rebinding_is_read_again_after_the_change_notification(cx: &mut TestAppContext) {
     let data_dir = tempfile::tempdir().unwrap();
@@ -247,7 +243,6 @@ fn saved_rebinding_is_read_again_after_the_change_notification(cx: &mut TestAppC
     assert_eq!(terminal_keys, vec![SharedString::from("ctrl-alt-n")]);
 }
 
-// parity: TS-main-desktopShortcutRouting-25f491
 #[gpui::test]
 fn capturing_window_passes_combos_through_before_command_lookup(cx: &mut TestAppContext) {
     init_app(cx, None);
@@ -268,7 +263,6 @@ fn capturing_window_passes_combos_through_before_command_lookup(cx: &mut TestApp
     );
 }
 
-// parity: TS-main-desktopShortcutRouting-88dded
 #[gpui::test]
 fn closing_a_capturing_window_clears_its_capture_mark(cx: &mut TestAppContext) {
     init_app(cx, None);
@@ -284,7 +278,6 @@ fn closing_a_capturing_window_clears_its_capture_mark(cx: &mut TestAppContext) {
     assert_eq!(capturing_window_count(cx), 0);
 }
 
-// parity: TS-main-desktopShortcutRouting-0677b2
 #[gpui::test]
 fn route_change_clears_the_capture_mark_of_its_window(cx: &mut TestAppContext) {
     init_app(cx, None);
@@ -298,7 +291,6 @@ fn route_change_clears_the_capture_mark_of_its_window(cx: &mut TestAppContext) {
     assert_eq!(capturing_window_count(cx), 0);
 }
 
-// parity: TS-main-desktopShortcutRouting-617139
 #[gpui::test]
 fn reloaded_rebinding_applies_to_every_open_window(cx: &mut TestAppContext) {
     let data_dir = tempfile::tempdir().unwrap();
@@ -320,7 +312,6 @@ fn reloaded_rebinding_applies_to_every_open_window(cx: &mut TestAppContext) {
     }
 }
 
-// parity: TS-main-desktopShortcutRouting-e2122f
 #[gpui::test]
 fn mod_r_is_swallowed_without_a_refresh_command(cx: &mut TestAppContext) {
     init_app(cx, None);

@@ -90,7 +90,6 @@ fn loaded_model() -> ShortcutSettingsModel {
     model
 }
 
-// parity: TS-renderer-ShortcutSettingsRoute-e2db28
 #[gpui::test]
 fn recorded_combination_becomes_the_commands_new_shortcut(cx: &mut TestAppContext) {
     let _data_dir = init_app_with_database(cx);
@@ -107,7 +106,6 @@ fn recorded_combination_becomes_the_commands_new_shortcut(cx: &mut TestAppContex
     );
 }
 
-// parity: TS-renderer-ShortcutSettingsRoute-769fb6
 #[gpui::test]
 fn recorded_pane_toggle_is_normalized_and_every_window_reloads_it(cx: &mut TestAppContext) {
     let _data_dir = init_app_with_database(cx);
@@ -126,7 +124,6 @@ fn recorded_pane_toggle_is_normalized_and_every_window_reloads_it(cx: &mut TestA
     assert_eq!(reloaded, "Mod+Alt+J");
 }
 
-// parity: TS-renderer-ShortcutSettingsRoute-7f3b74
 #[test]
 fn taken_combination_is_not_saved_and_names_the_other_command() {
     let mut model = loaded_model();
@@ -144,7 +141,6 @@ fn taken_combination_is_not_saved_and_names_the_other_command() {
     assert_eq!(describe_command(conflict, Locale::Ko), "작업 빠른 검색");
 }
 
-// parity: TS-renderer-ShortcutSettingsRoute-e0e92c
 #[test]
 fn resetting_to_a_default_taken_by_another_command_is_refused() {
     let mut model = loaded_model();
@@ -159,7 +155,6 @@ fn resetting_to_a_default_taken_by_another_command_is_refused() {
     );
 }
 
-// parity: TS-renderer-ShortcutSettingsRoute-f04be6
 #[gpui::test]
 fn escape_cancels_recording(cx: &mut TestAppContext) {
     let _data_dir = init_app_with_database(cx);
@@ -173,7 +168,6 @@ fn escape_cancels_recording(cx: &mut TestAppContext) {
     assert_eq!(stored_bindings(cx), None, "아무것도 저장하지 않는다");
 }
 
-// parity: TS-renderer-ShortcutSettingsRoute-0b23a6
 #[test]
 fn modifier_only_presses_do_not_raise_an_error() {
     let mut model = loaded_model();
@@ -188,7 +182,6 @@ fn modifier_only_presses_do_not_raise_an_error() {
     assert_eq!(model.recording, Some(ShortcutCommandId::TaskSearch));
 }
 
-// parity: TS-renderer-ShortcutSettingsRoute-6f6fc3
 #[test]
 fn unsupported_combination_is_not_saved() {
     let mut model = loaded_model();
@@ -201,7 +194,6 @@ fn unsupported_combination_is_not_saved() {
     assert_eq!(model.bindings, ShortcutBindings::defaults());
 }
 
-// parity: TS-renderer-ShortcutSettingsRoute-79b3f3
 #[test]
 fn escape_also_clears_a_leftover_error() {
     let mut model = loaded_model();
@@ -215,7 +207,6 @@ fn escape_also_clears_a_leftover_error() {
     assert_eq!(model.notice, None);
 }
 
-// parity: TS-renderer-ShortcutSettingsRoute-0773ec
 #[gpui::test]
 fn reset_all_removes_every_stored_override(cx: &mut TestAppContext) {
     let _data_dir = init_app_with_database(cx);
@@ -235,7 +226,6 @@ fn reset_all_removes_every_stored_override(cx: &mut TestAppContext) {
     assert_eq!(stored_bindings(cx).as_deref(), Some("{}"));
 }
 
-// parity: TS-renderer-ShortcutSettingsRoute-597af1
 #[gpui::test]
 fn recording_pauses_app_shortcuts_for_this_window_until_it_ends(cx: &mut TestAppContext) {
     let _data_dir = init_app_with_database(cx);
@@ -257,7 +247,6 @@ fn recording_pauses_app_shortcuts_for_this_window_until_it_ends(cx: &mut TestApp
     assert!(!is_capturing(cx));
 }
 
-// parity: TS-renderer-ShortcutSettingsRoute-047c88
 #[gpui::test]
 fn failed_save_raises_the_error_banner(cx: &mut TestAppContext) {
     let _data_dir = init_app_with_database(cx);
@@ -274,7 +263,6 @@ fn failed_save_raises_the_error_banner(cx: &mut TestAppContext) {
     );
 }
 
-// parity: TS-renderer-ShortcutSettingsRoute-7b605a
 #[gpui::test]
 fn failed_load_blocks_saving_and_reports_it(cx: &mut TestAppContext) {
     let _data_dir = init_app_with_database(cx);
@@ -292,7 +280,6 @@ fn failed_load_blocks_saving_and_reports_it(cx: &mut TestAppContext) {
     assert_eq!(stored_bindings(cx), None);
 }
 
-// parity: TS-renderer-ShortcutSettingsRoute-32bd05
 #[test]
 fn dock_commands_use_the_dock_item_names_for_each_dock_slot() {
     let dock_labels: Vec<String> = shortcut_command_definitions()
@@ -313,7 +300,6 @@ fn dock_commands_use_the_dock_item_names_for_each_dock_slot() {
     );
 }
 
-// parity: TS-renderer-ShortcutSettingsRoute-cdf0d3
 #[gpui::test]
 fn window_title_comes_from_the_translation(cx: &mut TestAppContext) {
     let _data_dir = init_app_with_database(cx);

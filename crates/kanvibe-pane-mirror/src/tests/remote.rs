@@ -65,7 +65,6 @@ fn session_not_running() -> PaneMirrorError {
     PaneMirrorError::SurfaceUnavailable(SurfaceUnavailableReason::SessionNotRunning)
 }
 
-// parity: TS-main-mobileBridgeService-ef72c5
 #[test]
 fn only_a_verified_remote_herdr_pane_gets_a_grant_for_that_device() {
     let harness = grant_harness(Some("remote-b"));
@@ -91,7 +90,6 @@ fn only_a_verified_remote_herdr_pane_gets_a_grant_for_that_device() {
     assert!(harness.commands().is_empty());
 }
 
-// parity: TS-main-mobileBridgeService-bd237c
 #[test]
 fn other_panes_and_local_panes_get_no_grant() {
     let harness = grant_harness(None);
@@ -105,7 +103,6 @@ fn other_panes_and_local_panes_get_no_grant() {
     assert!(harness.grants.prepared.lock().unwrap().is_empty());
 }
 
-// parity: TS-main-mobileBridgeService-9a1112
 #[test]
 fn existing_legacy_subscription_prevents_a_second_controller() {
     let harness = grant_harness(None);
@@ -116,7 +113,6 @@ fn existing_legacy_subscription_prevents_a_second_controller() {
     assert!(harness.grants.prepared.lock().unwrap().is_empty());
 }
 
-// parity: TS-main-mobileBridgeService-921240
 #[test]
 fn grant_arriving_during_a_session_change_is_discarded() {
     let harness = grant_harness(Some("remote-b"));
@@ -145,7 +141,6 @@ fn grant_arriving_during_a_session_change_is_discarded() {
     );
 }
 
-// parity: TS-main-mobileBridgeService-bb5910
 #[test]
 fn unpairing_a_device_also_revokes_its_direct_grants() {
     let harness = grant_harness(Some("remote-b"));
@@ -158,7 +153,6 @@ fn unpairing_a_device_also_revokes_its_direct_grants() {
     );
 }
 
-// parity: TS-main-mobileBridgeService-0bc3d5
 #[test]
 fn device_unpaired_while_the_task_is_read_gets_no_new_grant() {
     let harness = grant_harness(Some("remote-b"));
@@ -176,7 +170,6 @@ fn device_unpaired_while_the_task_is_read_gets_no_new_grant() {
     assert!(harness.grants.prepared.lock().unwrap().is_empty());
 }
 
-// parity: TS-main-mobileBridgeService-75367d
 #[test]
 fn late_legacy_ownership_revokes_only_that_grant_and_not_the_whole_task() {
     let harness = grant_harness(Some("remote-b"));
@@ -199,7 +192,6 @@ fn late_legacy_ownership_revokes_only_that_grant_and_not_the_whole_task() {
     assert!(harness.grants.revoked_tasks.lock().unwrap().is_empty());
 }
 
-// parity: TS-main-mobileBridgeService-4f9c6a
 #[test]
 fn relay_keeps_the_grant_and_device_task_pane_scope_unchanged() {
     let harness = grant_harness(None);

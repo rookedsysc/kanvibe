@@ -5,7 +5,6 @@ use kanvibe_process::exec::ExecGitError;
 use super::*;
 use crate::test_support::ScriptedShellRunner;
 
-// parity: TS-lib-worktree-6c6fa8
 #[test]
 fn directive_test_searches_every_tmux_config_path_in_tmux_lookup_order() {
     let command = build_tmux_user_clipboard_directive_test_command();
@@ -22,7 +21,6 @@ fn directive_test_searches_every_tmux_config_path_in_tmux_lookup_order() {
     assert!(command.contains("grep -sE"));
 }
 
-// parity: TS-lib-worktree-3000b1
 #[test]
 fn preference_command_reuses_the_same_path_list_and_prints_the_marker() {
     let preference_command = build_tmux_user_clipboard_preference_command();
@@ -48,7 +46,6 @@ fn run_with_stubbed_grep(status: i32, command: &str, home: &std::path::Path) -> 
     )
 }
 
-// parity: TS-lib-gitLiteralPaths-4be784
 #[test]
 fn grep_errors_stay_unknown_and_only_missing_settings_count_as_absent() {
     let directory = tempfile::tempdir().expect("임시 디렉터리");

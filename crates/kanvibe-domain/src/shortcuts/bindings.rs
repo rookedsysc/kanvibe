@@ -473,7 +473,6 @@ mod tests {
         bindings
     }
 
-    // parity: TS-shared-shortcutBindings-848cfd
     #[test]
     fn tab_number_shortcuts_return_the_position_without_hitting_the_dock() {
         for index in TERMINAL_TAB_SHORTCUT_INDEXES {
@@ -483,7 +482,6 @@ mod tests {
         }
     }
 
-    // parity: TS-shared-shortcutBindings-2fe0d2
     #[test]
     fn dock_number_input_is_not_a_tab_number() {
         let dock_event = key_event("1", "ctrl");
@@ -492,7 +490,6 @@ mod tests {
         assert_eq!(tab_position_for(&dock_event, LINUX), None);
     }
 
-    // parity: TS-shared-shortcutBindings-09da5a
     #[test]
     fn macos_dock_input_without_option_is_not_a_tab_number() {
         let dock_event = key_event("1", "meta");
@@ -501,7 +498,6 @@ mod tests {
         assert_eq!(tab_position_for(&dock_event, MAC), None);
     }
 
-    // parity: TS-shared-shortcutBindings-076a29
     #[test]
     fn transitions_resolve_tab_numbers() {
         let command_id = ShortcutBindings::defaults()
@@ -513,7 +509,6 @@ mod tests {
         );
     }
 
-    // parity: TS-shared-shortcutBindings-c5007c
     #[test]
     fn dock_matcher_returns_the_dock_number() {
         assert_eq!(dock_index_for(&key_event("4", "meta"), MAC), Some(4));
@@ -521,7 +516,6 @@ mod tests {
         assert_eq!(dock_index_for(&key_event("4", "alt"), LINUX), None);
     }
 
-    // parity: TS-shared-shortcutBindings-244d78
     #[test]
     fn task_detail_creates_new_previous_and_next_tab_commands() {
         use TerminalTabShortcutCommand::{NewTab, NextTab, PreviousTab};
@@ -539,7 +533,6 @@ mod tests {
         );
     }
 
-    // parity: TS-shared-shortcutBindings-9a3ff5
     #[test]
     fn number_shortcut_carries_the_tab_position() {
         assert_eq!(
@@ -548,7 +541,6 @@ mod tests {
         );
     }
 
-    // parity: TS-shared-shortcutBindings-a927dd
     #[test]
     fn tab_close_closes_the_window_outside_task_detail() {
         assert_eq!(
@@ -561,7 +553,6 @@ mod tests {
         );
     }
 
-    // parity: TS-shared-shortcutBindings-3a47cc
     #[test]
     fn window_close_works_on_every_screen() {
         assert_eq!(
@@ -570,7 +561,6 @@ mod tests {
         );
     }
 
-    // parity: TS-shared-shortcutBindings-f652de
     #[test]
     fn tab_commands_need_task_detail() {
         assert_eq!(
@@ -583,7 +573,6 @@ mod tests {
         );
     }
 
-    // parity: TS-shared-shortcutBindings-949604
     #[test]
     fn page_navigation_does_not_leak_into_tab_commands() {
         assert_eq!(
@@ -596,7 +585,6 @@ mod tests {
         );
     }
 
-    // parity: TS-shared-shortcutBindings-90a632
     #[test]
     fn events_and_transitions_create_the_same_command() {
         let new_tab = Some(TerminalTabShortcutCommand::NewTab);
@@ -611,7 +599,6 @@ mod tests {
         );
     }
 
-    // parity: TS-shared-shortcutBindings-aa8329
     #[test]
     fn event_path_creates_no_tab_command_outside_task_detail() {
         assert_eq!(
@@ -620,7 +607,6 @@ mod tests {
         );
     }
 
-    // parity: TS-shared-shortcutBindings-bc7060
     #[test]
     fn event_path_resolves_tab_numbers_and_window_close() {
         assert_eq!(
@@ -633,7 +619,6 @@ mod tests {
         );
     }
 
-    // parity: TS-shared-shortcutBindings-cf3c5e
     #[test]
     fn mod_zero_is_the_usage_shortcut() {
         let bindings = ShortcutBindings::defaults();
@@ -648,14 +633,12 @@ mod tests {
         );
     }
 
-    // parity: TS-shared-shortcutBindings-156125
     #[test]
     fn usage_shortcut_does_not_overlap_the_dock() {
         assert!(!TASK_DETAIL_DOCK_SHORTCUT_INDEXES.contains(&0));
         assert_eq!(dock_index_for(&key_event("0", "ctrl"), LINUX), None);
     }
 
-    // parity: TS-shared-shortcutBindings-0e49bd
     #[test]
     fn usage_shortcut_does_not_overlap_tab_numbers() {
         let command_id =
@@ -664,7 +647,6 @@ mod tests {
         assert_ne!(command_id, Some(ShortcutCommandId::TaskDetailUsage));
     }
 
-    // parity: TS-shared-shortcutBindings-db2eb9
     #[test]
     fn command_palette_and_project_filter_shortcuts() {
         let bindings = ShortcutBindings::defaults();
@@ -679,7 +661,6 @@ mod tests {
         );
     }
 
-    // parity: TS-shared-shortcutBindings-7f2e2b
     #[test]
     fn desktop_filter_opens_on_both_platforms() {
         let bindings = ShortcutBindings::defaults();
@@ -698,7 +679,6 @@ mod tests {
         );
     }
 
-    // parity: TS-shared-shortcutBindings-5d4a2a
     #[test]
     fn dock_commands_exist_only_for_real_dock_items() {
         let dock_item_ids: Vec<Option<TaskDetailDockItemId>> = shortcut_command_definitions()
@@ -720,7 +700,6 @@ mod tests {
         );
     }
 
-    // parity: TS-shared-shortcutBindings-089467
     #[test]
     fn default_table_has_no_duplicate_combinations() {
         let mut used_shortcuts = std::collections::HashSet::new();
@@ -734,7 +713,6 @@ mod tests {
         assert_eq!(used_shortcuts.len(), 28);
     }
 
-    // parity: TS-shared-shortcutBindings-10c03f
     #[test]
     fn reassigned_combination_resolves_the_command() {
         let bindings = ShortcutBindings::with_overrides(&overrides_from(&[(
@@ -750,7 +728,6 @@ mod tests {
         assert_eq!(dock_index_for(&key_event("4", "ctrl"), LINUX), Some(4));
     }
 
-    // parity: TS-shared-shortcutBindings-b2a9d5
     #[test]
     fn unknown_commands_and_non_string_values_are_dropped() {
         let stored =
@@ -762,7 +739,6 @@ mod tests {
         );
     }
 
-    // parity: TS-shared-shortcutBindings-d5e540
     #[test]
     fn broken_storage_falls_back_to_defaults() {
         assert!(parse_shortcut_overrides(Some("{not json"), LINUX).is_empty());
@@ -772,7 +748,6 @@ mod tests {
         );
     }
 
-    // parity: TS-shared-shortcutBindings-4a57c3
     #[test]
     fn entries_equal_to_the_default_are_not_stored() {
         let bindings = defaults_with(ShortcutCommandId::TaskDetailDock1, "Mod+Shift+K");
@@ -783,7 +758,6 @@ mod tests {
         );
     }
 
-    // parity: TS-shared-shortcutBindings-50321f
     #[test]
     fn combination_used_by_another_command_is_a_conflict() {
         let bindings = ShortcutBindings::defaults();
@@ -800,7 +774,6 @@ mod tests {
         );
     }
 
-    // parity: TS-shared-shortcutBindings-8eb372
     #[test]
     fn legacy_platform_notation_is_the_same_combination() {
         use ShortcutCommandId::{BoardProjectFilter, TaskSearch};
@@ -825,7 +798,6 @@ mod tests {
         );
     }
 
-    // parity: TS-shared-shortcutBindings-42c074
     #[test]
     fn non_mod_platform_modifiers_are_not_folded() {
         use ShortcutCommandId::BoardProjectFilter;
@@ -848,7 +820,6 @@ mod tests {
         );
     }
 
-    // parity: TS-shared-shortcutBindings-e743c7
     #[test]
     fn default_written_in_platform_notation_is_not_an_override() {
         let mac_bindings = defaults_with(ShortcutCommandId::TaskSearch, "Meta+Shift+O");
@@ -858,7 +829,6 @@ mod tests {
         assert!(linux_bindings.collect_overrides(LINUX).is_empty());
     }
 
-    // parity: TS-shared-shortcutBindings-fa312d
     #[test]
     fn chat_toggle_matches_the_same_way_for_events_and_transitions() {
         let bindings = ShortcutBindings::defaults();

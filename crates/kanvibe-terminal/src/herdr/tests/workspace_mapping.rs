@@ -53,7 +53,6 @@ fn task_pane_lists() -> (serde_json::Value, serde_json::Value) {
     (panes, tabs)
 }
 
-// parity: TS-lib-herdr-81c83d
 #[test]
 fn task_pane_tabs_read_only_the_pane_and_tab_lists() {
     let herdr = fixture();
@@ -97,7 +96,6 @@ fn task_pane_tabs_read_only_the_pane_and_tab_lists() {
     assert_eq!(herdr.runner.calls().len(), 2);
 }
 
-// parity: TS-lib-herdr-81659c
 #[test]
 fn task_liveness_lists_spaces_without_waiting_for_the_mapping_read() {
     let herdr = fixture();
@@ -137,7 +135,6 @@ fn task_liveness_lists_spaces_without_waiting_for_the_mapping_read() {
     assert!(has_listed_workspaces.load(Ordering::SeqCst));
 }
 
-// parity: TS-lib-herdr-5c7d1f
 #[test]
 fn consecutive_commands_reuse_one_mapping_read_for_two_seconds() {
     let mut herdr = fixture();
@@ -169,7 +166,6 @@ fn consecutive_commands_reuse_one_mapping_read_for_two_seconds() {
     assert_eq!(mapping_read_count(&herdr.runner), 2);
 }
 
-// parity: TS-lib-herdr-47a1df
 #[test]
 fn a_failed_mapping_read_is_not_handed_to_the_next_command() {
     let herdr = fixture();

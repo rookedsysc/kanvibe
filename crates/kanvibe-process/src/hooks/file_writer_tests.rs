@@ -70,7 +70,6 @@ fn success_output() -> String {
     format!("{HOOK_INSTALL_SUCCESS_MARKER}\n")
 }
 
-// parity: TS-lib-hookFileWriter-0f519c
 #[test]
 fn installs_through_a_single_short_bootstrap_command() {
     let output = success_output();
@@ -91,7 +90,6 @@ fn installs_through_a_single_short_bootstrap_command() {
     assert!(!calls[0].command.contains("base64 -d"));
 }
 
-// parity: TS-lib-hookFileWriter-17ecc6
 #[test]
 fn bounds_the_install_command_so_fallback_is_quick() {
     let output = success_output();
@@ -104,7 +102,6 @@ fn bounds_the_install_command_so_fallback_is_quick() {
     assert!(options.should_check_host_key_strictly);
 }
 
-// parity: TS-lib-hookFileWriter-23f395
 #[test]
 fn revokes_the_install_token_once_the_install_finishes() {
     let output = success_output();
@@ -116,7 +113,6 @@ fn revokes_the_install_token_once_the_install_finishes() {
     assert_eq!(scenario.runtime.install_scripts.read(Some(&token)), None);
 }
 
-// parity: TS-lib-hookFileWriter-55a6af
 #[test]
 fn revokes_the_install_token_even_when_the_http_install_fails() {
     let scenario = Scenario::new(Err("curl: (7) Failed to connect"));
@@ -127,7 +123,6 @@ fn revokes_the_install_token_even_when_the_http_install_fails() {
     assert_eq!(scenario.runtime.install_scripts.read(Some(&token)), None);
 }
 
-// parity: TS-lib-hookFileWriter-4e8432
 #[test]
 fn falls_back_to_ssh_injection_when_the_remote_cannot_reach_the_hook_server() {
     let scenario = Scenario::new(Err("curl: (7) Failed to connect"));
@@ -145,7 +140,6 @@ fn falls_back_to_ssh_injection_when_the_remote_cannot_reach_the_hook_server() {
     );
 }
 
-// parity: TS-lib-hookFileWriter-3bb71f
 #[test]
 fn falls_back_when_the_bootstrap_script_does_not_report_completion() {
     let scenario = Scenario::new(Ok("sh: curl: not found\n"));
@@ -157,7 +151,6 @@ fn falls_back_when_the_bootstrap_script_does_not_report_completion() {
     assert!(commands[1].contains("base64 -d"));
 }
 
-// parity: TS-lib-hookFileWriter-21006d
 #[test]
 fn does_not_touch_the_remote_when_there_are_no_files() {
     let scenario = Scenario::new(Ok(""));

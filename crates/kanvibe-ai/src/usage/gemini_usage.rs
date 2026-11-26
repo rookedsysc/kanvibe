@@ -279,7 +279,6 @@ mod tests {
             .count()
     }
 
-    // parity: TS-aiUsage-readGeminiUsage-d01581
     #[test]
     fn missing_credentials_are_unavailable() {
         let fixture = fixture(None);
@@ -292,7 +291,6 @@ mod tests {
         assert_eq!(fixture.usage.http.request_count(), 0);
     }
 
-    // parity: TS-aiUsage-readGeminiUsage-e0e627
     #[test]
     fn expired_token_without_installed_cli_gives_up() {
         let fixture = fixture(Some(-ONE_HOUR_MS));
@@ -302,7 +300,6 @@ mod tests {
         assert_eq!(fixture.usage.http.request_count(), 0);
     }
 
-    // parity: TS-aiUsage-readGeminiUsage-24a064
     #[test]
     fn unknown_project_skips_quota_call() {
         let fixture = fixture(Some(ONE_HOUR_MS));
@@ -313,7 +310,6 @@ mod tests {
         assert_eq!(quota_requests(&fixture), 0);
     }
 
-    // parity: TS-aiUsage-readGeminiUsage-812c16
     #[test]
     fn remaining_fraction_becomes_used_percent_with_display_name() {
         let fixture = fixture(Some(ONE_HOUR_MS));
@@ -339,7 +335,6 @@ mod tests {
         );
     }
 
-    // parity: TS-aiUsage-readGeminiUsage-16ae2f
     #[test]
     fn unmapped_model_id_gets_readable_name() {
         let fixture = fixture(Some(ONE_HOUR_MS));

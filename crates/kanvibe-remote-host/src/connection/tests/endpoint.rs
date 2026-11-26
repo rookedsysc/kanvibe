@@ -76,7 +76,6 @@ fn endpoint_keys(proxy_command: &str) -> (String, String) {
     (first, second)
 }
 
-// parity: TS-lib-remoteHostConnection-fa6e84
 #[test]
 fn ordinary_aliases_with_identical_effective_configuration_share_a_key() {
     let (first, second) = endpoint_keys("");
@@ -84,7 +83,6 @@ fn ordinary_aliases_with_identical_effective_configuration_share_a_key() {
     assert_eq!(first, second);
 }
 
-// parity: TS-lib-remoteHostConnection-f3fa32
 #[test]
 fn a_proxy_command_keeping_the_original_host_token_separates_aliases() {
     let (first, second) = endpoint_keys("ProxyCommand ssh gateway nc %n 22");
@@ -92,7 +90,6 @@ fn a_proxy_command_keeping_the_original_host_token_separates_aliases() {
     assert_ne!(first, second);
 }
 
-// parity: TS-lib-remoteHostConnection-d6d3dd
 #[test]
 fn a_proxy_command_keeping_the_host_key_alias_token_separates_aliases() {
     let (first, second) = endpoint_keys("ProxyCommand ssh gateway nc %k 22");

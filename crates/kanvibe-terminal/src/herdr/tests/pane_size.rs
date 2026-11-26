@@ -18,7 +18,6 @@ fn layout() -> Value {
     })
 }
 
-// parity: TS-lib-herdr-ebed85
 #[test]
 fn reads_only_the_selected_pane_and_its_layout_for_each_zoom_state() {
     for (zoomed, focused, cols) in [
@@ -61,7 +60,6 @@ fn reads_only_the_selected_pane_and_its_layout_for_each_zoom_state() {
     }
 }
 
-// parity: TS-lib-herdr-3e065f
 #[test]
 fn unavailable_selected_pane_skips_the_layout_read() {
     let mut restore_failed = selected();
@@ -84,7 +82,6 @@ fn unavailable_selected_pane_skips_the_layout_read() {
     }
 }
 
-// parity: TS-lib-herdr-ce0eed
 #[test]
 fn selected_pane_missing_from_its_layout_is_not_granted() {
     let herdr = fixture();
@@ -104,7 +101,6 @@ fn selected_pane_missing_from_its_layout_is_not_granted() {
     assert_eq!(herdr.runner.calls().len(), 2);
 }
 
-// parity: TS-lib-herdr-f77571
 #[test]
 fn connection_failures_propagate_without_extra_probes() {
     for message in [
@@ -125,7 +121,6 @@ fn connection_failures_propagate_without_extra_probes() {
     }
 }
 
-// parity: TS-lib-herdr-a08564
 #[test]
 fn keeps_the_kanvibe_space_guard() {
     let herdr = fixture();
@@ -173,7 +168,6 @@ fn keeps_the_kanvibe_space_guard() {
     assert_eq!(pane_probes().len(), 2);
 }
 
-// parity: TS-lib-herdr-9a4bb6
 #[test]
 fn keeps_mutations_outside_the_read_only_retry_whitelist() {
     let mutations: [&[&str]; 3] = [

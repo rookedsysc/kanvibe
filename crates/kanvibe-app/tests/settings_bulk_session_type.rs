@@ -171,7 +171,6 @@ async fn run(cx: &mut TestAppContext, changer: Arc<FakeChanger>, answers: Vec<bo
     }
 }
 
-// parity: TS-components-BulkSessionTypeChangeSettings-80f073
 #[gpui::test]
 async fn nothing_to_change_only_informs(cx: &mut TestAppContext) {
     init_app(cx);
@@ -190,7 +189,6 @@ async fn nothing_to_change_only_informs(cx: &mut TestAppContext) {
     );
 }
 
-// parity: TS-components-BulkSessionTypeChangeSettings-4a51d5
 #[gpui::test]
 async fn cancelling_the_count_confirmation_changes_nothing(cx: &mut TestAppContext) {
     init_app(cx);
@@ -205,7 +203,6 @@ async fn cancelling_the_count_confirmation_changes_nothing(cx: &mut TestAppConte
     assert_eq!(run.outcome, None);
 }
 
-// parity: TS-components-BulkSessionTypeChangeSettings-7ab661
 #[gpui::test]
 async fn asks_whether_to_close_live_sessions_and_passes_the_answer(cx: &mut TestAppContext) {
     init_app(cx);
@@ -231,7 +228,6 @@ async fn asks_whether_to_close_live_sessions_and_passes_the_answer(cx: &mut Test
     );
 }
 
-// parity: TS-components-BulkSessionTypeChangeSettings-8fd0dd
 #[gpui::test]
 async fn without_live_sessions_changes_without_the_close_question(cx: &mut TestAppContext) {
     init_app(cx);
@@ -245,7 +241,6 @@ async fn without_live_sessions_changes_without_the_close_question(cx: &mut TestA
     );
 }
 
-// parity: TS-components-BulkSessionTypeChangeSettings-e44967
 #[gpui::test]
 async fn declining_a_host_tool_install_changes_nothing(cx: &mut TestAppContext) {
     init_app(cx);
@@ -264,7 +259,6 @@ async fn declining_a_host_tool_install_changes_nothing(cx: &mut TestAppContext) 
     assert_eq!(run.outcome, None);
 }
 
-// parity: TS-components-BulkSessionTypeChangeSettings-73a14a
 #[gpui::test]
 async fn announces_host_preparation_and_change_stages_in_order(cx: &mut TestAppContext) {
     init_app(cx);
@@ -290,7 +284,6 @@ async fn announces_host_preparation_and_change_stages_in_order(cx: &mut TestAppC
     );
 }
 
-// parity: TS-components-BulkSessionTypeChangeSettings-86d780
 #[gpui::test]
 async fn partial_failure_is_reported_and_retry_changes_the_rest(cx: &mut TestAppContext) {
     init_app(cx);

@@ -237,7 +237,6 @@ mod tests {
         PathBuf::from(format!("{}.1", log_path.display()))
     }
 
-    // parity: TS-electron-diagnostics-abe310
     #[test]
     fn keeps_one_append_only_file_by_trimming_bytes_from_the_head() {
         let (_directory, log_path) = temp_log_path();
@@ -265,7 +264,6 @@ mod tests {
         assert!(!backup_path(&log_path).exists());
     }
 
-    // parity: TS-electron-diagnostics-f5d25a
     #[test]
     fn trims_an_oversized_legacy_log_instead_of_rotating_it() {
         let (_directory, log_path) = temp_log_path();
@@ -311,7 +309,6 @@ mod tests {
         }
     }
 
-    // parity: TS-electron-diagnostics-a11905
     #[test]
     fn keeps_reading_until_the_retained_tail_is_complete_when_a_read_returns_early() {
         let content = b"legacy-start\nlegacy-middle\nlegacy-tail\n".to_vec();
@@ -340,7 +337,6 @@ mod tests {
         assert!(written.contains("legacy-tail") && written.contains("main:start"));
     }
 
-    // parity: TS-electron-diagnostics-ca3d41
     #[test]
     fn truncates_oversized_entries_before_appending_them() {
         let (_directory, log_path) = temp_log_path();
@@ -365,7 +361,6 @@ mod tests {
         assert!(std::fs::metadata(&log_path).unwrap().len() < 1024);
     }
 
-    // parity: TS-lib-desktopDiagnostics-114bcb
     #[test]
     fn structured_events_go_to_the_app_log_path() {
         let directory = tempfile::tempdir().unwrap();

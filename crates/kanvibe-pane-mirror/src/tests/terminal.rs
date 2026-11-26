@@ -26,7 +26,6 @@ fn terminal_harness() -> Harness {
     harness
 }
 
-// parity: TS-main-mobileBridgeService-4c2066
 #[test]
 fn each_tab_becomes_one_pane_whose_id_is_the_tab_id() {
     let harness = terminal_harness();
@@ -56,7 +55,6 @@ fn each_tab_becomes_one_pane_whose_id_is_the_tab_id() {
     );
 }
 
-// parity: TS-main-mobileBridgeService-55ca46
 #[test]
 fn missing_pty_is_created_and_an_existing_one_sends_its_screen_before_following_output() {
     let harness = terminal_harness();
@@ -74,7 +72,6 @@ fn missing_pty_is_created_and_an_existing_one_sends_its_screen_before_following_
     assert_eq!(later_chunks[1..].to_vec(), vec![" world"]);
 }
 
-// parity: TS-main-mobileBridgeService-9e6ecd
 #[test]
 fn output_while_the_screen_is_prepared_follows_the_screen_exactly_once() {
     let harness = terminal_harness();
@@ -102,7 +99,6 @@ fn output_while_the_screen_is_prepared_follows_the_screen_exactly_once() {
     harness.registry.client_closed(&attachment);
 }
 
-// parity: TS-main-mobileBridgeService-a92b21
 #[test]
 fn pty_creation_failure_rejects_with_the_reason_without_announcing_an_end() {
     let harness = terminal_harness();
@@ -133,7 +129,6 @@ fn pty_creation_failure_rejects_with_the_reason_without_announcing_an_end() {
     assert_eq!(end_count.load(Ordering::SeqCst), 0);
 }
 
-// parity: TS-main-mobileBridgeService-10314d
 #[test]
 fn input_goes_to_the_pty_as_is_and_resize_shaped_input_does_not_resize() {
     let harness = terminal_harness();
@@ -156,7 +151,6 @@ fn input_goes_to_the_pty_as_is_and_resize_shaped_input_does_not_resize() {
     assert!(harness.ptys.pty(0).resizes().is_empty());
 }
 
-// parity: TS-main-mobileBridgeService-6d8976
 #[test]
 fn tabs_of_another_task_cannot_be_subscribed_or_written() {
     let harness = terminal_harness();
@@ -180,7 +174,6 @@ fn tabs_of_another_task_cannot_be_subscribed_or_written() {
     assert_eq!(harness.ptys.count(), 0);
 }
 
-// parity: TS-main-mobileBridgeService-4d7386
 #[test]
 fn end_is_announced_only_when_the_shell_exits_and_the_pty_outlives_subscribers() {
     let harness = terminal_harness();

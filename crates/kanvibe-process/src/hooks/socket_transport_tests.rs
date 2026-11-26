@@ -98,7 +98,6 @@ fn set_mode(path: &Path, mode: u32) {
 const UNAVAILABLE_SOCKET_KINDS: [&str; 5] =
     ["missing", "stale", "regular", "symlink", "permissions"];
 
-// parity: TS-lib-hookSocketTransport-3a13d1
 #[test]
 fn shell_and_desktop_agree_on_the_socket_name() {
     let fixture = SocketWorkspace::new();
@@ -156,7 +155,6 @@ fn assert_namespaced_endpoint_is_reached(namespace: &str) {
     );
 }
 
-// parity: TS-lib-hookSocketTransport-c27a2a
 #[test]
 fn namespaced_hook_and_cli_reach_the_stable_endpoint_with_client_identity() {
     for namespace in ["dev", "prod", "qa-fixture"] {
@@ -164,7 +162,6 @@ fn namespaced_hook_and_cli_reach_the_stable_endpoint_with_client_identity() {
     }
 }
 
-// parity: TS-lib-hookSocketTransport-600c98
 #[test]
 fn invalid_namespaces_are_rejected_even_if_a_legacy_socket_is_live() {
     for namespace in ["qa-", "../prod", "qa-TOO", "qa-1234567890123456789012345"] {
@@ -180,7 +177,6 @@ fn invalid_namespaces_are_rejected_even_if_a_legacy_socket_is_live() {
     }
 }
 
-// parity: TS-lib-hookSocketTransport-69d251
 #[test]
 fn local_http_boundary_accepts_only_loopback_urls_with_local_transport() {
     let cases = [
@@ -205,7 +201,6 @@ fn local_http_boundary_accepts_only_loopback_urls_with_local_transport() {
     }
 }
 
-// parity: TS-lib-hookSocketTransport-82d9b9
 #[test]
 fn client_ids_with_path_or_shell_characters_never_resolve_a_socket() {
     let fixture = SocketWorkspace::new();
@@ -218,7 +213,6 @@ fn client_ids_with_path_or_shell_characters_never_resolve_a_socket() {
     }
 }
 
-// parity: TS-lib-hookSocketTransport-0fe91c
 #[test]
 fn sockets_in_shared_directories_or_regular_files_get_no_token() {
     let shared_directory = SocketWorkspace::new();
@@ -234,7 +228,6 @@ fn sockets_in_shared_directories_or_regular_files_get_no_token() {
     }
 }
 
-// parity: TS-lib-hookSocketTransport-3d3c3a
 #[test]
 fn symlinked_socket_directory_is_not_used() {
     let fixture = SocketWorkspace::new();
@@ -249,7 +242,6 @@ fn symlinked_socket_directory_is_not_used() {
     assert_eq!(result.stdout, "");
 }
 
-// parity: TS-lib-hookSocketTransport-73f8d4
 #[test]
 fn prepare_command_removes_the_old_socket_and_makes_a_0700_directory() {
     let fixture = SocketWorkspace::new();
@@ -276,7 +268,6 @@ fn prepare_command_removes_the_old_socket_and_makes_a_0700_directory() {
     assert!(result.stdout.trim().ends_with('0'));
 }
 
-// parity: TS-lib-hookSocketTransport-565be9
 #[test]
 fn prepare_command_does_not_delete_unexpected_files() {
     for kind in ["regular", "symlink"] {
@@ -298,7 +289,6 @@ fn prepare_command_does_not_delete_unexpected_files() {
     }
 }
 
-// parity: TS-lib-hookSocketTransport-db977f
 #[test]
 fn one_line_check_ignores_sockets_in_non_0700_directories() {
     let fixture = SocketWorkspace::new();
@@ -313,7 +303,6 @@ fn one_line_check_ignores_sockets_in_non_0700_directories() {
     assert_eq!(result.stdout, "");
 }
 
-// parity: TS-lib-hookSocketTransport-a6171c
 #[test]
 fn one_line_check_only_keeps_owned_sockets() {
     let fixture = SocketWorkspace::new();
@@ -350,7 +339,6 @@ fn build_cli_command(
     fixture.with_test_socket_directory(&command)
 }
 
-// parity: TS-lib-hookSocketTransport-7e1c51
 #[test]
 fn cli_uses_the_socket_so_the_token_never_hits_the_plain_port() {
     let fixture = SocketWorkspace::new();
@@ -369,7 +357,6 @@ fn cli_uses_the_socket_so_the_token_never_hits_the_plain_port() {
     assert!(via_http.received().is_empty());
 }
 
-// parity: TS-lib-hookSocketTransport-5e85c6
 #[test]
 fn cli_fails_without_http_fallback_when_the_remote_socket_is_unusable() {
     for kind in UNAVAILABLE_SOCKET_KINDS {
@@ -389,7 +376,6 @@ fn cli_fails_without_http_fallback_when_the_remote_socket_is_unusable() {
     }
 }
 
-// parity: TS-lib-hookSocketTransport-c3d94c
 #[test]
 fn stale_target_address_is_ignored_in_favor_of_the_client_socket() {
     let fixture = SocketWorkspace::new();
@@ -409,7 +395,6 @@ fn stale_target_address_is_ignored_in_favor_of_the_client_socket() {
     assert!(via_stale_address.received().is_empty());
 }
 
-// parity: TS-lib-hookSocketTransport-9c372a
 #[test]
 fn remote_registration_without_client_id_sends_nowhere() {
     let fixture = SocketWorkspace::new();
@@ -428,7 +413,6 @@ fn remote_registration_without_client_id_sends_nowhere() {
     assert!(via_http.received().is_empty());
 }
 
-// parity: TS-lib-hookSocketTransport-e1beaf
 #[test]
 fn local_or_legacy_loopback_registrations_keep_http() {
     for transport in [Some("local"), None] {
@@ -442,7 +426,6 @@ fn local_or_legacy_loopback_registrations_keep_http() {
     }
 }
 
-// parity: TS-lib-hookSocketTransport-3445bb
 #[test]
 fn explicitly_invalid_transport_never_uses_tcp_even_on_loopback() {
     for transport in [json!(""), json!("unknown"), Value::Null, json!(false)] {
@@ -458,7 +441,6 @@ fn explicitly_invalid_transport_never_uses_tcp_even_on_loopback() {
     }
 }
 
-// parity: TS-lib-hookSocketTransport-bcdb6a
 #[test]
 fn reordered_json_fields_keep_the_ssh_transport_for_the_cli() {
     let fixture = SocketWorkspace::new();
@@ -474,7 +456,6 @@ fn reordered_json_fields_keep_the_ssh_transport_for_the_cli() {
     assert!(server.received().is_empty());
 }
 
-// parity: TS-lib-hookSocketTransport-1a2d96
 #[test]
 fn userinfo_urls_never_use_tcp_without_a_socket() {
     for transport in [Some("local"), Some("unknown"), None] {
@@ -499,7 +480,6 @@ fn context_task_ids(server: &RecordingServer) -> Vec<Value> {
         .collect()
 }
 
-// parity: TS-lib-hookSocketTransport-fa20a2
 #[test]
 fn peer_propagation_keeps_each_client_transport() {
     let fixture = SocketWorkspace::new();
@@ -537,7 +517,6 @@ fn build_hook_script(fixture: &SocketWorkspace, target_url: &str, transport: &st
     )
 }
 
-// parity: TS-lib-hookSocketTransport-e1f143
 #[test]
 fn hook_status_goes_through_the_socket_instead_of_http() {
     let fixture = SocketWorkspace::new();
@@ -559,7 +538,6 @@ fn hook_status_goes_through_the_socket_instead_of_http() {
     assert!(via_http.received().is_empty());
 }
 
-// parity: TS-lib-hookSocketTransport-de11b3
 #[test]
 fn hook_status_never_falls_back_to_http_for_unusable_sockets() {
     for kind in UNAVAILABLE_SOCKET_KINDS {
@@ -573,7 +551,6 @@ fn hook_status_never_falls_back_to_http_for_unusable_sockets() {
     }
 }
 
-// parity: TS-lib-hookSocketTransport-621597
 #[test]
 fn hook_status_with_invalid_transport_never_uses_tcp() {
     for transport in ["", "unknown"] {
@@ -586,7 +563,6 @@ fn hook_status_with_invalid_transport_never_uses_tcp() {
     }
 }
 
-// parity: TS-lib-hookSocketTransport-516b71
 #[test]
 fn reordered_json_fields_keep_the_ssh_transport_for_hooks() {
     let fixture = SocketWorkspace::new();
@@ -601,7 +577,6 @@ fn reordered_json_fields_keep_the_ssh_transport_for_hooks() {
     assert!(server.received().is_empty());
 }
 
-// parity: TS-lib-hookSocketTransport-4ba625
 #[test]
 fn failed_notification_still_leaves_the_latest_status_json() {
     let fixture = SocketWorkspace::new();
@@ -621,7 +596,6 @@ fn failed_notification_still_leaves_the_latest_status_json() {
     assert_eq!(status["status"], "review");
 }
 
-// parity: TS-lib-hookSocketTransport-21ab99
 #[test]
 fn local_loopback_registration_sends_status_over_http() {
     let fixture = SocketWorkspace::new();

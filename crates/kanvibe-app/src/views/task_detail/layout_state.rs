@@ -167,7 +167,6 @@ mod tests {
         }
     }
 
-    // parity: TS-renderer-TaskDetailRoute-edc85b
     #[test]
     fn dock_order_follows_the_shared_dock_item_list() {
         let entries = loaded_layout(true).dock_entries(true, None, DockBusyState::default());
@@ -180,7 +179,6 @@ mod tests {
         assert_eq!(positions, [1, 2, 3, 4, 5, 6]);
     }
 
-    // parity: TS-renderer-TaskDetailRoute-64fce3
     #[test]
     fn live_sessions_stay_on_slot_five_without_a_pull_request() {
         let entries = loaded_layout(true).dock_entries(true, None, DockBusyState::default());
@@ -195,7 +193,6 @@ mod tests {
         );
     }
 
-    // parity: TS-renderer-TaskDetailRoute-5ecd4b
     #[test]
     fn pull_request_link_takes_slot_four_and_live_sessions_slot_five() {
         let pr_url = "https://github.com/acme/kanvibe-demo/pull/42";
@@ -211,7 +208,6 @@ mod tests {
         );
     }
 
-    // parity: TS-renderer-TaskDetailRoute-4d8119
     #[test]
     fn usage_is_not_a_dock_entry_and_does_not_shift_numbers() {
         let entries = loaded_layout(true).dock_entries(true, None, DockBusyState::default());
@@ -225,7 +221,6 @@ mod tests {
         );
     }
 
-    // parity: TS-renderer-TaskDetailRoute-ffb745
     #[test]
     fn default_expanded_setting_opens_the_overview_panel_until_dismissed() {
         let mut layout = loaded_layout(false);
@@ -236,14 +231,12 @@ mod tests {
         assert_eq!(layout.visible_panel(true), None);
     }
 
-    // parity: TS-renderer-TaskDetailRoute-3e905c
     #[test]
     fn default_collapsed_setting_does_not_open_the_overview_panel() {
         assert_eq!(loaded_layout(true).visible_panel(true), None);
         assert_eq!(LayoutState::default().visible_panel(true), None);
     }
 
-    // parity: TS-renderer-TaskDetailRoute-b4fb9c
     #[test]
     fn overview_button_opens_and_closes_the_panel() {
         let mut layout = loaded_layout(true);
@@ -253,7 +246,6 @@ mod tests {
         assert_eq!(layout.visible_panel(true), None);
     }
 
-    // parity: TS-renderer-TaskDetailRoute-06c6d5
     #[test]
     fn closing_the_default_panel_survives_a_settings_reload() {
         let mut layout = loaded_layout(false);
@@ -262,7 +254,6 @@ mod tests {
         assert_eq!(layout.visible_panel(true), None);
     }
 
-    // parity: TS-renderer-TaskDetailRoute-0a584c
     #[test]
     fn usage_toggle_opens_and_closes_the_usage_panel() {
         let mut layout = loaded_layout(true);
@@ -272,7 +263,6 @@ mod tests {
         assert_eq!(layout.visible_panel(true), None);
     }
 
-    // parity: TS-renderer-TaskDetailRoute-6f4f4f
     #[test]
     fn chat_entry_switches_the_main_area_instead_of_opening_a_drawer() {
         let mut layout = loaded_layout(false);
@@ -285,7 +275,6 @@ mod tests {
         assert_eq!(layout.main_view, MainView::Terminal);
     }
 
-    // parity: TS-renderer-TaskDetailRoute-74b0c3
     #[test]
     fn dock_slot_three_switches_to_the_chat_history() {
         let entries = loaded_layout(true).dock_entries(true, None, DockBusyState::default());

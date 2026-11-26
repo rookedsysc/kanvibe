@@ -28,7 +28,6 @@ impl ShortcutPlatform {
 mod tests {
     use super::*;
 
-    // parity: TS-renderer-keyboardShortcut-9bc682
     #[test]
     fn only_macos_uses_command_as_mod() {
         assert_eq!(

@@ -10,7 +10,6 @@ fn provider_calls(harness: &Harness) -> Vec<HookCall> {
     harness.hooks.provider_install_calls.lock().unwrap().clone()
 }
 
-// parity: TS-main-projectService-d05f43
 #[test]
 fn local_claude_install_reinstalls_only_the_claude_provider() {
     let harness = Harness::new();
@@ -37,7 +36,6 @@ fn local_claude_install_reinstalls_only_the_claude_provider() {
     assert!(harness.hooks.install_calls.lock().unwrap().is_empty());
 }
 
-// parity: TS-main-projectService-c560ca
 #[test]
 fn local_open_code_install_reinstalls_only_the_open_code_provider_on_the_root_task() {
     let harness = Harness::new();
@@ -62,7 +60,6 @@ fn local_open_code_install_reinstalls_only_the_open_code_provider_on_the_root_ta
     assert!(harness.hooks.install_calls.lock().unwrap().is_empty());
 }
 
-// parity: TS-main-projectService-13ab72
 #[test]
 fn project_root_task_status_is_read_for_the_current_root_task() {
     let harness = Harness::new();
@@ -90,7 +87,6 @@ fn project_root_task_status_is_read_for_the_current_root_task() {
     );
 }
 
-// parity: TS-main-projectService-b2be88
 #[test]
 fn project_root_task_reinstall_rebinds_claude_to_the_current_root_task() {
     let harness = Harness::new();
@@ -118,7 +114,6 @@ fn project_root_task_reinstall_rebinds_claude_to_the_current_root_task() {
     assert!(harness.hooks.install_calls.lock().unwrap().is_empty());
 }
 
-// parity: TS-main-projectService-11a128
 #[test]
 fn local_default_branch_task_gets_hooks_even_if_it_stays_todo() {
     let harness = Harness::new();
@@ -139,7 +134,6 @@ fn local_default_branch_task_gets_hooks_even_if_it_stays_todo() {
     );
 }
 
-// parity: TS-main-projectService-49ab3f
 #[test]
 fn legacy_project_is_repaired_by_explicit_sync_not_by_listing() {
     let harness = Harness::new();
@@ -166,7 +160,6 @@ fn legacy_project_is_repaired_by_explicit_sync_not_by_listing() {
     assert!(harness.hooks.install_calls.lock().unwrap().is_empty());
 }
 
-// parity: TS-main-projectService-f25d76
 #[test]
 fn failed_root_task_sync_is_retried_on_the_next_sync() {
     let harness = Harness::new();
@@ -204,7 +197,6 @@ fn assert_no_hook_work(harness: &Harness) {
     assert!(harness.hooks.ensure_calls.lock().unwrap().is_empty());
 }
 
-// parity: TS-main-projectService-26ef71
 #[test]
 fn listing_projects_does_not_read_remote_root_hook_status() {
     let harness = Harness::new();
@@ -217,7 +209,6 @@ fn listing_projects_does_not_read_remote_root_hook_status() {
     assert_no_hook_work(&harness);
 }
 
-// parity: TS-main-projectService-ea5945
 #[test]
 fn listing_projects_does_not_install_remote_root_hooks() {
     let harness = Harness::new();
@@ -236,7 +227,6 @@ fn listing_projects_does_not_install_remote_root_hooks() {
     assert_no_hook_work(&harness);
 }
 
-// parity: TS-main-projectService-faeab0
 #[test]
 fn project_hook_reinstall_continues_when_the_legacy_root_task_is_missing() {
     let harness = Harness::new();

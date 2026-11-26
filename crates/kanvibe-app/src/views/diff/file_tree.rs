@@ -361,7 +361,6 @@ mod tests {
             .collect()
     }
 
-    // parity: TS-components-DiffFileTree-c2fcc0
     #[test]
     fn flat_paths_become_a_nested_tree_with_folders_first() {
         let files = vec![
@@ -384,7 +383,6 @@ mod tests {
         );
     }
 
-    // parity: TS-components-DiffFileTree-801670
     #[test]
     fn every_status_has_its_one_letter_label() {
         let labels: Vec<_> = [

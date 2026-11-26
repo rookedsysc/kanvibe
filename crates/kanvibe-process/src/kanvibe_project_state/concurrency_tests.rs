@@ -116,7 +116,6 @@ fn assert_all_distinct_clients_preserved(repo: &Path, client_count: usize) {
     assert_eq!(sorted_entries(&repo.join(".kanvibe")), ["targets.json"]);
 }
 
-// parity: TS-lib-kanvibeTargetsConcurrency-523ca0
 #[test]
 fn preserves_all_concurrent_distinct_clients_with_local_remote_and_mixed_access() {
     for mode in ["local", "remote", "mixed"] {
@@ -184,7 +183,6 @@ fn spawn_separate_writer(repo_path: &str, client: usize) -> std::process::Child 
         .unwrap()
 }
 
-// parity: TS-lib-kanvibeTargetsConcurrency-59eced
 #[test]
 fn keeps_registrations_made_by_two_separate_processes() {
     let repo = tempfile::tempdir().unwrap();
@@ -206,7 +204,6 @@ fn saved_target(repo: &Path) -> String {
     text(&target_path)
 }
 
-// parity: TS-lib-kanvibeTargetsConcurrency-eecca9
 #[test]
 fn does_not_publish_or_remove_a_successor_after_the_lock_is_replaced() {
     for host in [None, FIXTURE_HOST] {
@@ -232,7 +229,6 @@ fn does_not_publish_or_remove_a_successor_after_the_lock_is_replaced() {
     }
 }
 
-// parity: TS-lib-kanvibeTargetsConcurrency-9e43ac
 #[test]
 fn recovers_a_proven_dead_owner_and_preserves_saved_contents() {
     for host in [None, FIXTURE_HOST] {
@@ -253,7 +249,6 @@ fn recovers_a_proven_dead_owner_and_preserves_saved_contents() {
     }
 }
 
-// parity: TS-lib-kanvibeTargetsConcurrency-4b70c4
 #[test]
 fn does_not_reclaim_an_owner_from_another_host_by_its_pid() {
     for host in [None, FIXTURE_HOST] {
@@ -286,7 +281,6 @@ fn does_not_reclaim_an_owner_from_another_host_by_its_pid() {
     }
 }
 
-// parity: TS-lib-kanvibeTargetsConcurrency-b2a1a4
 #[test]
 fn preserves_an_ownerless_lock_and_reports_its_path() {
     for host in [None, FIXTURE_HOST] {
@@ -309,7 +303,6 @@ fn preserves_an_ownerless_lock_and_reports_its_path() {
     }
 }
 
-// parity: TS-lib-kanvibeTargetsConcurrency-0cf9ff
 #[test]
 fn keeps_an_active_owner_until_its_callback_finishes() {
     for host in [None, FIXTURE_HOST] {
@@ -349,7 +342,6 @@ fn keeps_an_active_owner_until_its_callback_finishes() {
     }
 }
 
-// parity: TS-lib-kanvibeTargetsConcurrency-85eccc
 #[test]
 fn releases_the_lock_after_update_failure_without_replacing_saved_contents() {
     for host in [None, FIXTURE_HOST] {
@@ -369,7 +361,6 @@ fn releases_the_lock_after_update_failure_without_replacing_saved_contents() {
     }
 }
 
-// parity: TS-lib-kanvibeTargetsConcurrency-ac5a5c
 #[test]
 fn does_not_interpret_a_read_failure_as_an_absent_file() {
     for host in [None, FIXTURE_HOST] {
@@ -401,7 +392,6 @@ fn observe_complete_json(target_path: &Path, is_completed: &AtomicBool) -> usize
     reads
 }
 
-// parity: TS-lib-kanvibeTargetsConcurrency-7812e5
 #[test]
 fn publishes_only_complete_json_while_readers_run_during_writes() {
     for host in [None, FIXTURE_HOST] {
@@ -437,7 +427,6 @@ fn publishes_only_complete_json_while_readers_run_during_writes() {
     }
 }
 
-// parity: TS-lib-kanvibeProjectConcurrency-31d1c4
 #[test]
 fn preserves_concurrent_color_and_priority_with_local_remote_and_mixed_access() {
     for mode in ["local", "remote", "mixed"] {
@@ -503,7 +492,6 @@ impl SymlinkFixture {
     }
 }
 
-// parity: TS-lib-kanvibeStateSymlink-d53dea
 #[test]
 fn state_paths_without_links_pass() {
     let fixture = SymlinkFixture::new();
@@ -520,7 +508,6 @@ fn state_paths_without_links_pass() {
     }
 }
 
-// parity: TS-lib-kanvibeStateSymlink-00cd83
 #[test]
 fn a_linked_task_script_is_refused() {
     let fixture = SymlinkFixture::new();
@@ -544,7 +531,6 @@ fn a_linked_task_script_is_refused() {
     }
 }
 
-// parity: TS-lib-kanvibeStateSymlink-1269c9
 #[test]
 fn a_linked_state_directory_never_receives_the_token() {
     for host in [None, Some("remote-host")] {

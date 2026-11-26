@@ -277,7 +277,6 @@ fn pulled_task() -> BackgroundSyncPulledTaskPayload {
     }
 }
 
-// parity: TS-main-backgroundTaskSyncService-81f5b5
 #[test]
 fn shares_one_run_across_clients_and_exposes_progress() {
     let fixture = fixture();
@@ -321,7 +320,6 @@ fn shares_one_run_across_clients_and_exposes_progress() {
     assert_eq!(fixture.stages.count("worktree:start"), 2);
 }
 
-// parity: TS-main-backgroundTaskSyncService-4a54ff
 #[test]
 fn a_status_only_correction_updates_the_board_and_status_reads_do_not_sync() {
     let fixture = fixture();
@@ -345,7 +343,6 @@ fn a_status_only_correction_updates_the_board_and_status_reads_do_not_sync() {
     assert_eq!(fixture.events.board_update_count(), 1);
 }
 
-// parity: TS-main-backgroundTaskSyncService-9f08f6
 #[test]
 fn reports_status_file_read_failures_and_continues() {
     let fixture = fixture();
@@ -369,7 +366,6 @@ fn reports_status_file_read_failures_and_continues() {
     assert_eq!(failures[0].reason, "host-a 상태 읽기 실패");
 }
 
-// parity: TS-main-backgroundTaskSyncService-0df1af
 #[test]
 fn a_failed_status_sync_does_not_stop_the_other_stages() {
     let fixture = fixture();
@@ -409,7 +405,6 @@ fn merged_pull_request() -> TaskPrMergedDetectedPayload {
     }
 }
 
-// parity: TS-main-backgroundTaskSyncService-e0e725
 #[test]
 fn broadcasts_one_review_event_for_all_review_targets() {
     let fixture = fixture();
@@ -444,7 +439,6 @@ fn broadcasts_one_review_event_for_all_review_targets() {
     fixture.service.stop_background_task_sync();
 }
 
-// parity: TS-main-backgroundTaskSyncService-043945
 #[test]
 fn manual_sync_runs_the_same_cycle_even_when_disabled() {
     let fixture = fixture_with(false);
@@ -457,7 +451,6 @@ fn manual_sync_runs_the_same_cycle_even_when_disabled() {
     }
 }
 
-// parity: TS-main-backgroundTaskSyncService-614f1e
 #[test]
 fn manual_sync_joins_a_scheduled_cycle_in_flight() {
     let fixture = fixture();
@@ -480,7 +473,6 @@ fn manual_sync_joins_a_scheduled_cycle_in_flight() {
     fixture.service.stop_background_task_sync();
 }
 
-// parity: TS-main-backgroundTaskSyncService-225555
 #[test]
 fn starting_twice_runs_one_loop() {
     let fixture = fixture();
@@ -497,7 +489,6 @@ fn starting_twice_runs_one_loop() {
     fixture.service.stop_background_task_sync();
 }
 
-// parity: TS-main-backgroundTaskSyncService-d5c72d
 #[test]
 fn a_running_cycle_blocks_additional_cycles() {
     let fixture = fixture();
@@ -520,7 +511,6 @@ fn a_running_cycle_blocks_additional_cycles() {
     fixture.service.stop_background_task_sync();
 }
 
-// parity: TS-main-backgroundTaskSyncService-d47a75
 #[test]
 fn runs_expensive_stages_one_after_another() {
     let fixture = fixture();
@@ -561,7 +551,6 @@ fn runs_expensive_stages_one_after_another() {
     fixture.service.stop_background_task_sync();
 }
 
-// parity: TS-main-backgroundTaskSyncService-c08cc5
 #[test]
 fn a_failed_worktree_stage_still_runs_pull_request_and_pull_sync() {
     let fixture = fixture();
@@ -600,7 +589,6 @@ fn a_failed_worktree_stage_still_runs_pull_request_and_pull_sync() {
     fixture.service.stop_background_task_sync();
 }
 
-// parity: TS-main-backgroundTaskSyncService-022e8c
 #[test]
 fn an_interval_change_during_manual_sync_reschedules_with_the_new_interval() {
     let fixture = fixture();
@@ -627,7 +615,6 @@ fn an_interval_change_during_manual_sync_reschedules_with_the_new_interval() {
     fixture.service.stop_background_task_sync();
 }
 
-// parity: TS-main-backgroundTaskSyncService-c7636a
 #[test]
 fn repeats_every_ten_minutes_after_the_first_run() {
     let fixture = fixture();
@@ -649,7 +636,6 @@ fn repeats_every_ten_minutes_after_the_first_run() {
     fixture.service.stop_background_task_sync();
 }
 
-// parity: TS-main-backgroundTaskSyncService-654ee3
 #[test]
 fn includes_task_pull_results_in_the_review_event() {
     let fixture = fixture();
@@ -673,7 +659,6 @@ fn includes_task_pull_results_in_the_review_event() {
     fixture.service.stop_background_task_sync();
 }
 
-// parity: TS-main-backgroundTaskSyncService-6f961a
 #[test]
 fn failures_alone_trigger_a_review_event_with_target_and_reason() {
     let fixture = fixture();
@@ -719,7 +704,6 @@ fn failures_alone_trigger_a_review_event_with_target_and_reason() {
     fixture.service.stop_background_task_sync();
 }
 
-// parity: TS-main-backgroundTaskSyncService-9494d9
 #[test]
 fn waits_without_timers_while_disabled_and_still_runs_manual_sync() {
     let fixture = fixture_with(false);
@@ -737,7 +721,6 @@ fn waits_without_timers_while_disabled_and_still_runs_manual_sync() {
     fixture.service.stop_background_task_sync();
 }
 
-// parity: TS-main-backgroundTaskSyncService-6d1922
 #[test]
 fn disabling_cancels_the_schedule_and_ignores_interval_changes_while_off() {
     let fixture = fixture();
@@ -761,7 +744,6 @@ fn disabling_cancels_the_schedule_and_ignores_interval_changes_while_off() {
     fixture.service.stop_background_task_sync();
 }
 
-// parity: TS-main-backgroundTaskSyncService-c94524
 #[test]
 fn disabling_during_a_run_does_not_schedule_the_next_one() {
     let fixture = fixture();
@@ -780,7 +762,6 @@ fn disabling_during_a_run_does_not_schedule_the_next_one() {
     fixture.service.stop_background_task_sync();
 }
 
-// parity: TS-main-backgroundTaskSyncService-02e570
 #[test]
 fn the_latest_user_setting_wins_over_the_startup_setting() {
     let fixture = fixture();

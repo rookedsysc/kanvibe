@@ -40,7 +40,6 @@ fn review_updater() -> String {
     build_shell_kanvibe_status_updater(ShellHookStatus::Review, None)
 }
 
-// parity: TS-lib-shellHookScript-8eda33
 #[test]
 fn shell_resolver_pins_the_task_id_inside_the_hook_file() {
     let resolver = build_shell_task_id_resolver("fallback-task");
@@ -49,7 +48,6 @@ fn shell_resolver_pins_the_task_id_inside_the_hook_file() {
     assert!(!resolver.contains(".kanvibe/task-id"));
 }
 
-// parity: TS-lib-shellHookScript-34676e
 #[test]
 fn pinned_task_id_is_read_back_and_missing_one_is_none() {
     let script = ["#!/bin/bash", "TASK_ID=\"task-123\"", "echo \"$TASK_ID\""].join("\n");
@@ -61,7 +59,6 @@ fn pinned_task_id_is_read_back_and_missing_one_is_none() {
     );
 }
 
-// parity: TS-lib-shellHookScript-38c44f
 #[test]
 fn task_id_resolver_escapes_double_quoted_shell_characters_reversibly() {
     let task_id = "task-\"quoted\"-\\-`cmd`-$HOME";
@@ -75,7 +72,6 @@ fn task_id_resolver_escapes_double_quoted_shell_characters_reversibly() {
     assert_eq!(extract_shell_task_id(&resolver).as_deref(), Some(task_id));
 }
 
-// parity: TS-lib-shellHookScript-918360
 #[test]
 fn status_updater_saves_status_json_and_fans_out_to_every_target() {
     let updater = review_updater();
@@ -103,7 +99,6 @@ fn status_updater_saves_status_json_and_fans_out_to_every_target() {
     assert!(!updater.contains("task-state.json"));
 }
 
-// parity: TS-lib-shellHookScript-409fd4
 #[test]
 fn target_fanout_check_rejects_hooks_without_targets_fanout() {
     let updater = review_updater();
@@ -119,7 +114,6 @@ fn target_fanout_check_rejects_hooks_without_targets_fanout() {
     )));
 }
 
-// parity: TS-lib-shellHookScript-b5dc79
 #[test]
 fn parallel_fanout_check_rejects_sequential_curl_loops() {
     let updater = review_updater();
@@ -131,7 +125,6 @@ fn parallel_fanout_check_rejects_sequential_curl_loops() {
     ));
 }
 
-// parity: TS-lib-shellHookScript-0be4ea
 #[test]
 fn notify_timeout_check_rejects_unbounded_curl() {
     let updater = review_updater();
@@ -143,7 +136,6 @@ fn notify_timeout_check_rejects_unbounded_curl() {
     ));
 }
 
-// parity: TS-lib-shellHookScript-2bc65c
 #[test]
 fn status_updater_does_not_touch_the_project_color() {
     let updater = review_updater();
@@ -266,7 +258,6 @@ fn prepare_fanout_repo(repo_path: &Path, sandbox_bin_directory: &Path) {
     );
 }
 
-// parity: TS-lib-shellHookScript-118cfe
 #[test]
 fn hook_fans_out_status_to_every_client_without_node_or_user_env() {
     let workspace = tempfile::tempdir().unwrap();
@@ -320,7 +311,6 @@ fn header_deliveries(curl_log: &str) -> Vec<(String, String, String)> {
     deliveries
 }
 
-// parity: TS-lib-shellHookScript-7c2e6e
 #[test]
 fn each_client_token_goes_through_stdin_and_never_the_command_line() {
     let workspace = tempfile::tempdir().unwrap();
@@ -364,7 +354,6 @@ fn each_client_token_goes_through_stdin_and_never_the_command_line() {
     );
 }
 
-// parity: TS-lib-shellHookScript-8848b5
 #[test]
 fn status_json_persistence_check_rejects_legacy_status_md_hooks() {
     let updater = review_updater();
@@ -374,7 +363,6 @@ fn status_json_persistence_check_rejects_legacy_status_md_hooks() {
     assert!(!has_shell_kanvibe_status_json_persistence(&legacy_updater));
 }
 
-// parity: TS-lib-shellHookScript-dd3258
 #[test]
 fn status_json_persistence_check_rejects_hooks_without_common_exclude_update() {
     let updater = review_updater();
@@ -395,7 +383,6 @@ fn task_id_payload_script(task_id: &str) -> String {
     .join("\n")
 }
 
-// parity: TS-lib-shellHookScript-955434
 #[test]
 fn binding_check_accepts_hooks_pinning_the_same_task_id() {
     let scripts = [
@@ -415,7 +402,6 @@ fn binding_check_accepts_hooks_pinning_the_same_task_id() {
     );
 }
 
-// parity: TS-lib-shellHookScript-34d8c7
 #[test]
 fn binding_check_fails_for_different_or_missing_task_ids() {
     let scripts = [
@@ -432,7 +418,6 @@ fn binding_check_fails_for_different_or_missing_task_ids() {
     assert_eq!(get_shell_task_id_binding_status(&[]), unbound);
 }
 
-// parity: TS-lib-shellHookScript-203eec
 #[test]
 fn only_http_target_urls_reach_curl_and_options_or_files_are_skipped() {
     let workspace = tempfile::tempdir().unwrap();
@@ -508,7 +493,6 @@ fn run_metadata_hook(provider: ShellHookAgentProvider, payload: &Value) -> (Valu
     (posted, process_id)
 }
 
-// parity: TS-lib-shellHookChatMetadata-a18a07
 #[test]
 fn hooks_forward_stdin_and_sender_pid_and_drain_oversized_input() {
     let cases = [

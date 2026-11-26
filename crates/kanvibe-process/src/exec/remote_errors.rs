@@ -135,7 +135,6 @@ pub(crate) fn normalize_ssh_exec_error(
 mod tests {
     use super::*;
 
-    // parity: TS-lib-gitOperations-6d2bb9
     #[test]
     fn distinguishes_ssh_transport_errors_from_remote_command_failures() {
         let connection_reset = ExecGitError::new(

@@ -50,7 +50,6 @@ impl ClaudeRepo {
     }
 }
 
-// parity: TS-lib-claudeHooksSetup-861671
 #[test]
 fn every_hook_script_sends_only_the_status_without_auth_headers() {
     let repo = ClaudeRepo::new(true);
@@ -83,7 +82,6 @@ fn every_hook_script_sends_only_the_status_without_auth_headers() {
     assert!(status.scripts.has_target_fanout);
 }
 
-// parity: TS-lib-claudeHooksSetup-0e646e
 #[test]
 fn legacy_status_md_hooks_are_not_installed_and_reinstall_repairs_them() {
     let repo = ClaudeRepo::new(true);
@@ -116,7 +114,6 @@ fn stale_settings() -> Value {
     })
 }
 
-// parity: TS-lib-claudeHooksSetup-f0ad94
 #[test]
 fn stale_command_entries_are_not_installed_and_are_repaired_on_reinstall() {
     let repo = ClaudeRepo::new(true);
@@ -156,7 +153,6 @@ fn stale_command_entries_are_not_installed_and_are_repaired_on_reinstall() {
     assert!(repaired_status.is_installed);
 }
 
-// parity: TS-lib-claudeHooksSetup-6236b2
 #[test]
 fn stays_installed_when_reachability_fails_but_configuration_is_correct() {
     let repo = ClaudeRepo::new(false);
@@ -169,7 +165,6 @@ fn stays_installed_when_reachability_fails_but_configuration_is_correct() {
     assert!(!status.scripts.has_reachable_hook_server);
 }
 
-// parity: TS-lib-claudeHooksSetup-6a0846
 #[test]
 fn task_not_registered_in_targets_is_not_installed() {
     let repo = ClaudeRepo::new(true);
@@ -183,7 +178,6 @@ fn task_not_registered_in_targets_is_not_installed() {
     assert_eq!(status.scripts.bound_task_id.as_deref(), Some("task-1"));
 }
 
-// parity: TS-lib-claudeHooksSetup-09467a
 #[test]
 fn registered_client_stays_installed_when_another_client_rewrites_the_scripts() {
     let repo = ClaudeRepo::new(true);

@@ -361,7 +361,6 @@ mod tests {
         assert_eq!(tabs.tab_id_at(5), None);
     }
 
-    // parity: TS-renderer-useTerminalTabs-1430a2
     #[test]
     fn optimistic_selection_marks_only_the_chosen_tab() {
         let mut tabs = state(vec![tab("1", true), tab("2", false)]);
@@ -369,7 +368,6 @@ mod tests {
         assert_eq!(tabs.active_tab().map(|tab| tab.id.as_str()), Some("2"));
     }
 
-    // parity: TS-renderer-TerminalTabBar-5f0921
     #[test]
     fn rename_is_sent_only_for_a_changed_non_empty_name() {
         let tabs = vec![tab("1", true)];

@@ -37,7 +37,6 @@ fn osc52_sequence(payload: &str, terminator: &str) -> Vec<u8> {
     format!("\u{1b}]52;{payload}{terminator}").into_bytes()
 }
 
-// parity: TS-lib-terminalClipboard-e5e0b7
 #[test]
 fn decodes_a_base64_clipboard_payload() {
     let data = format!("c;{}", encode_base64_utf8("kanvibe"));
@@ -45,7 +44,6 @@ fn decodes_a_base64_clipboard_payload() {
     assert_eq!(read_osc52_clipboard_text(&data).as_deref(), Some("kanvibe"));
 }
 
-// parity: TS-lib-terminalClipboard-262118
 #[test]
 fn decodes_multibyte_text_without_corruption() {
     let data = format!("c;{}", encode_base64_utf8("한글 복사 ✅"));
@@ -56,31 +54,26 @@ fn decodes_multibyte_text_without_corruption() {
     );
 }
 
-// parity: TS-lib-terminalClipboard-632eca
 #[test]
 fn ignores_a_clipboard_read_request_so_terminal_content_is_not_sent_back() {
     assert_eq!(read_osc52_clipboard_text("c;?"), None);
 }
 
-// parity: TS-lib-terminalClipboard-a38a37
 #[test]
 fn ignores_a_payload_without_a_selection_separator() {
     assert_eq!(read_osc52_clipboard_text("c"), None);
 }
 
-// parity: TS-lib-terminalClipboard-0d9f53
 #[test]
 fn ignores_an_empty_payload() {
     assert_eq!(read_osc52_clipboard_text("c;"), None);
 }
 
-// parity: TS-lib-terminalClipboard-84a6b9
 #[test]
 fn ignores_an_undecodable_payload() {
     assert_eq!(read_osc52_clipboard_text("c;!!!not-base64!!!"), None);
 }
 
-// parity: TS-lib-terminalClipboard-702fd4
 #[test]
 fn ignores_a_payload_above_the_size_limit() {
     let data = format!("c;{}", "A".repeat(1_000_001));
@@ -88,7 +81,6 @@ fn ignores_a_payload_above_the_size_limit() {
     assert_eq!(read_osc52_clipboard_text(&data), None);
 }
 
-// parity: TS-lib-terminalClipboard-1663c7, TS-lib-terminalClipboard-d959a8
 #[test]
 fn copies_the_decoded_payload_to_the_system_clipboard() {
     let clipboard = RecordingClipboard::default();
@@ -102,7 +94,6 @@ fn copies_the_decoded_payload_to_the_system_clipboard() {
     assert_eq!(clipboard.written(), vec!["복사 대상".to_string()]);
 }
 
-// parity: TS-lib-terminalClipboard-71fa27
 #[test]
 fn consumes_a_read_request_without_touching_the_clipboard() {
     let clipboard = RecordingClipboard::default();
@@ -117,7 +108,6 @@ fn consumes_a_read_request_without_touching_the_clipboard() {
     assert_eq!(screen.viewport_lines()[0], "");
 }
 
-// parity: TS-lib-terminalClipboard-a4fbb2, TS-lib-terminalClipboard-2b5251
 #[test]
 fn keeps_the_terminal_usable_when_the_clipboard_write_is_rejected() {
     let clipboard = RecordingClipboard {
@@ -141,7 +131,6 @@ fn keeps_the_terminal_usable_when_the_clipboard_write_is_rejected() {
     assert_eq!(recovered.written(), vec!["다음".to_string()]);
 }
 
-// parity: TS-lib-terminalClipboard-51c719
 #[test]
 fn copies_a_bell_terminated_sequence_which_is_what_a_plain_printf_sends() {
     let clipboard = RecordingClipboard::default();
@@ -155,7 +144,6 @@ fn copies_a_bell_terminated_sequence_which_is_what_a_plain_printf_sends() {
     assert_eq!(clipboard.written(), vec!["OSC52-OK".to_string()]);
 }
 
-// parity: TS-lib-terminalClipboard-91dca5
 #[test]
 fn copies_a_string_terminated_sequence_which_is_what_tmux_forwards() {
     let clipboard = RecordingClipboard::default();

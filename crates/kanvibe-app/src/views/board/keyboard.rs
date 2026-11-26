@@ -581,7 +581,6 @@ mod tests {
         ]
     }
 
-    // parity: TS-components-TaskCard-f12813
     #[test]
     fn arrow_up_and_down_move_within_the_column() {
         let columns = columns();
@@ -599,14 +598,12 @@ mod tests {
         );
     }
 
-    // parity: TS-components-TaskCard-a830d8
     #[test]
     fn vim_j_and_k_move_vertically() {
         assert_eq!(focus_move_for_key("j", false, true), Some(FocusMove::Down));
         assert_eq!(focus_move_for_key("k", false, true), Some(FocusMove::Up));
     }
 
-    // parity: TS-components-TaskCard-40926d
     #[test]
     fn vim_keys_are_ignored_without_vim_mode_but_arrows_still_move() {
         assert_eq!(focus_move_for_key("j", false, false), None);
@@ -616,7 +613,6 @@ mod tests {
         );
     }
 
-    // parity: TS-components-TaskCard-b8527a
     #[test]
     fn left_and_right_skip_empty_columns_and_keep_the_row() {
         let columns = columns();
@@ -635,7 +631,6 @@ mod tests {
         assert_eq!(next_focus_position(&columns, 3, 0, FocusMove::Right), None);
     }
 
-    // parity: TS-components-TaskCard-0be9d5
     #[test]
     fn vim_h_and_l_move_horizontally() {
         assert_eq!(focus_move_for_key("h", false, true), Some(FocusMove::Left));

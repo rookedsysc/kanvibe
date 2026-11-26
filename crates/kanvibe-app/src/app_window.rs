@@ -393,7 +393,6 @@ mod tests {
         assert!(!is_bundle_held(&LoadingHolds::default(), "SettingsRoute"));
     }
 
-    // parity: TS-lib-mainWindowOptions-9f645c
     #[test]
     fn the_app_window_sets_no_minimum_size() {
         let bounds = Bounds::new(point(px(0.0), px(0.0)), size(px(1280.0), px(800.0)));

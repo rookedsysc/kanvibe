@@ -104,7 +104,6 @@ fn status_of(error: MobileError) -> Option<u16> {
     error.status_code()
 }
 
-// parity: TS-main-mobileFeatureServices-6dc017
 #[test]
 fn invalid_details_are_rejected_before_mutation() {
     let fixture = fixture();
@@ -126,7 +125,6 @@ fn invalid_details_are_rejected_before_mutation() {
     assert_eq!(fixture.tasks.calls.count_starting_with("update_task "), 0);
 }
 
-// parity: TS-main-mobileFeatureServices-ef78e2
 #[test]
 fn explicit_clears_pass_only_the_approved_fields() {
     let fixture = fixture();
@@ -151,7 +149,6 @@ fn explicit_clears_pass_only_the_approved_fields() {
     );
 }
 
-// parity: TS-main-mobileFeatureServices-edb4a9
 #[test]
 fn missing_task_is_not_mutated() {
     let fixture = fixture();
@@ -165,7 +162,6 @@ fn missing_task_is_not_mutated() {
     assert_eq!(fixture.tasks.calls.count_starting_with("update_task "), 0);
 }
 
-// parity: TS-main-mobileFeatureServices-2791bb
 #[test]
 fn invalid_pagination_is_rejected() {
     let fixture = fixture();
@@ -186,7 +182,6 @@ fn invalid_pagination_is_rejected() {
     );
 }
 
-// parity: TS-main-mobileFeatureServices-0a2159
 #[test]
 fn unconfigured_ssh_alias_is_rejected_without_scanning() {
     let fixture = fixture();
@@ -200,7 +195,6 @@ fn unconfigured_ssh_alias_is_rejected_without_scanning() {
     assert!(fixture.projects.calls.all().is_empty());
 }
 
-// parity: TS-main-mobileFeatureServices-3edb82
 #[test]
 fn configured_remote_host_reaches_directory_and_scan_services() {
     let fixture = fixture();
@@ -223,7 +217,6 @@ fn configured_remote_host_reaches_directory_and_scan_services() {
     );
 }
 
-// parity: TS-main-mobileFeatureServices-16e6e9
 #[test]
 fn color_is_validated_before_saving() {
     let fixture = fixture();
@@ -254,7 +247,6 @@ fn color_is_validated_before_saving() {
     );
 }
 
-// parity: TS-main-mobileFeatureServices-ce40b3
 #[test]
 fn branching_reuses_the_task_and_refuses_an_already_connected_task() {
     let fixture = fixture();
@@ -292,7 +284,6 @@ fn branching_reuses_the_task_and_refuses_an_already_connected_task() {
     );
 }
 
-// parity: TS-main-mobileFeatureServices-dc0897
 #[test]
 fn unsafe_paths_are_rejected_before_file_access() {
     let fixture = fixture();
@@ -318,7 +309,6 @@ fn unsafe_paths_are_rejected_before_file_access() {
     );
 }
 
-// parity: TS-main-mobileFeatureServices-e846d4
 #[test]
 fn changed_file_behind_a_symbolic_link_is_rejected() {
     let fixture = fixture();
@@ -337,7 +327,6 @@ fn changed_file_behind_a_symbolic_link_is_rejected() {
     );
 }
 
-// parity: TS-main-mobileFeatureServices-5ec197
 #[test]
 fn non_diff_paths_and_oversized_edits_write_nothing() {
     let fixture = fixture();
@@ -366,7 +355,6 @@ fn non_diff_paths_and_oversized_edits_write_nothing() {
     );
 }
 
-// parity: TS-main-mobileFeatureServices-bc583a
 #[test]
 fn accepted_edits_are_delegated_and_write_failures_reported() {
     let fixture = fixture();
@@ -402,7 +390,6 @@ fn accepted_edits_are_delegated_and_write_failures_reported() {
     );
 }
 
-// parity: TS-main-mobileFeatureServices-be1163
 #[test]
 fn tab_identity_is_checked_before_rename_or_move() {
     let fixture = fixture();
@@ -438,7 +425,6 @@ fn tab_identity_is_checked_before_rename_or_move() {
     );
 }
 
-// parity: TS-main-mobileFeatureServices-a58d32
 #[test]
 fn pane_layout_size_and_scope_are_checked_before_saving() {
     let fixture = fixture();
@@ -475,7 +461,6 @@ fn pane_layout_size_and_scope_are_checked_before_saving() {
     assert_eq!(layouts[0].panes[0].command, "echo ready");
 }
 
-// parity: TS-main-mobileFeatureServices-472d7b
 #[test]
 fn all_settings_are_validated_before_any_write() {
     let fixture = fixture();
@@ -513,7 +498,6 @@ fn all_settings_are_validated_before_any_write() {
     );
 }
 
-// parity: TS-main-mobileFeatureServices-07f75f
 #[test]
 fn duplicate_sort_criteria_and_missing_bulk_dependencies_are_rejected() {
     let fixture = fixture();
@@ -572,7 +556,6 @@ fn create_review_notification(store: &NotificationStore) -> String {
     store.create_notification(&payload).unwrap().notification.id
 }
 
-// parity: TS-main-mobileFeatureServices-3f8bfa
 #[test]
 fn sync_review_deletes_only_unchanged_tasks_owned_by_the_notification() {
     let fixture = fixture();
@@ -612,7 +595,6 @@ fn sync_review_deletes_only_unchanged_tasks_owned_by_the_notification() {
     );
 }
 
-// parity: TS-main-mobileFeatureServices-5c2ad8
 #[test]
 fn marks_only_the_requested_existing_task_notifications_read() {
     let fixture = fixture();
@@ -651,7 +633,6 @@ fn marks_only_the_requested_existing_task_notifications_read() {
 
 const PNG_BASE64: &str = "iVBORw0KGgo=";
 
-// parity: TS-main-mobileFeatureServices-f06fc7
 #[test]
 fn malformed_images_and_local_targets_are_rejected_before_upload() {
     let fixture = fixture();
@@ -680,7 +661,6 @@ fn malformed_images_and_local_targets_are_rejected_before_upload() {
     assert!(fixture.images.calls.all().is_empty());
 }
 
-// parity: TS-main-mobileFeatureServices-79fca7
 #[test]
 fn images_go_only_to_an_owned_remote_pane_and_insert_a_quoted_path() {
     let fixture = fixture();

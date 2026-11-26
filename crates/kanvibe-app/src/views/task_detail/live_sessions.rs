@@ -539,7 +539,6 @@ mod tests {
         live_session_row(session, &translator(), NOW_MS, true, true)
     }
 
-    // parity: TS-renderer-LiveAiSessionPanel-0421a2
     #[test]
     fn running_and_idle_sessions_get_different_state_dots() {
         let theme = ThemeTokens::for_mode(crate::theme::ThemeMode::Dark);
@@ -556,7 +555,6 @@ mod tests {
         );
     }
 
-    // parity: TS-renderer-LiveAiSessionPanel-cd66d3
     #[test]
     fn shows_running_subtask_count_and_names() {
         let mut claude = session(AiSessionProvider::Claude, LiveAiSessionState::Running);
@@ -571,7 +569,6 @@ mod tests {
         assert_eq!(names, ["코드 탐색", "b"]);
     }
 
-    // parity: TS-renderer-LiveAiSessionPanel-a0e6f9
     #[test]
     fn tally_counts_sessions_per_provider_in_name_order() {
         let sessions = [
@@ -588,7 +585,6 @@ mod tests {
         );
     }
 
-    // parity: TS-renderer-LiveAiSessionPanel-bb1c3b
     #[test]
     fn session_rows_carry_the_provider_rail_color() {
         let theme = ThemeTokens::for_mode(crate::theme::ThemeMode::Dark);
@@ -603,7 +599,6 @@ mod tests {
         assert_ne!(theme.agent.claude, theme.agent.codex);
     }
 
-    // parity: TS-renderer-LiveAiSessionPanel-b6833b
     #[test]
     fn shows_time_since_last_activity() {
         let translator = translator();
@@ -621,7 +616,6 @@ mod tests {
         assert_eq!(label(-5_000), None);
     }
 
-    // parity: TS-renderer-LiveAiSessionPanel-590973
     #[test]
     fn only_sessions_with_a_terminal_window_are_clickable() {
         let mut attached = session(AiSessionProvider::Claude, LiveAiSessionState::Running);
@@ -640,7 +634,6 @@ mod tests {
         assert_eq!(without_handler.focus_label, None);
     }
 
-    // parity: TS-renderer-LiveAiSessionPanel-3f192f
     #[test]
     fn shows_the_current_task_instead_of_the_provider() {
         assert_eq!(
@@ -653,7 +646,6 @@ mod tests {
         );
     }
 
-    // parity: TS-renderer-LiveAiSessionPanel-d6177d
     #[test]
     fn falls_back_to_the_provider_name_without_a_task() {
         let mut unknown = session(AiSessionProvider::Codex, LiveAiSessionState::Running);
@@ -661,7 +653,6 @@ mod tests {
         assert_eq!(row(&unknown).title, "codex");
     }
 
-    // parity: TS-renderer-LiveAiSessionPanel-1fe7a4
     #[test]
     fn subtasks_hang_as_branches_and_only_the_last_closes() {
         let mut claude = session(AiSessionProvider::Claude, LiveAiSessionState::Running);
@@ -674,7 +665,6 @@ mod tests {
         assert_eq!(last_flags, [false, false, true]);
     }
 
-    // parity: TS-renderer-LiveAiSessionPanel-95b549
     #[test]
     fn a_single_subtask_is_the_last_branch() {
         let mut claude = session(AiSessionProvider::Claude, LiveAiSessionState::Running);
@@ -682,7 +672,6 @@ mod tests {
         assert!(row(&claude).subtasks[0].is_last);
     }
 
-    // parity: TS-renderer-LiveAiSessionPanel-bacfa0
     #[test]
     fn progress_is_drawn_only_for_running_sessions() {
         assert!(
@@ -701,7 +690,6 @@ mod tests {
         );
     }
 
-    // parity: TS-renderer-LiveAiSessionPanel-8f9512
     #[test]
     fn graph_button_is_attached_when_the_graph_can_open() {
         let claude = session(AiSessionProvider::Claude, LiveAiSessionState::Running);
@@ -709,7 +697,6 @@ mod tests {
         assert!(!live_session_row(&claude, &translator(), NOW_MS, true, false).has_graph_button);
     }
 
-    // parity: TS-renderer-LiveAiSessionPanel-fde54b
     #[test]
     fn no_graph_button_without_a_session_id() {
         let mut claude = session(AiSessionProvider::Claude, LiveAiSessionState::Running);
@@ -717,7 +704,6 @@ mod tests {
         assert!(!row(&claude).has_graph_button);
     }
 
-    // parity: TS-renderer-LiveAiSessionPanel-37dcb2
     #[test]
     fn empty_panel_says_no_session_is_running() {
         assert_eq!(

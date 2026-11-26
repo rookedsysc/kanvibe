@@ -43,7 +43,6 @@ fn spawn_remote(harness: &Harness, request: RemoteAttachRequest) -> (Vec<String>
     (spawn_request.args, attach_command)
 }
 
-// parity: TS-lib-terminal-c8b438
 #[test]
 fn remote_zellij_attach_creates_the_session_with_its_layout_when_missing() {
     // Given
@@ -75,7 +74,6 @@ fn remote_zellij_attach_creates_the_session_with_its_layout_when_missing() {
     assert_valid_posix_syntax(&attach_command);
 }
 
-// parity: TS-lib-terminal-95197d
 #[test]
 fn remote_zellij_attach_still_creates_the_session_without_a_worktree() {
     // Given
@@ -100,7 +98,6 @@ fn remote_zellij_attach_still_creates_the_session_without_a_worktree() {
     assert_valid_posix_syntax(&attach_command);
 }
 
-// parity: TS-lib-terminal-ee04cc
 #[test]
 fn remote_tmux_spawns_ssh_with_forced_tty_and_health_options() {
     // Given
@@ -148,7 +145,6 @@ fn remote_tmux_spawns_ssh_with_forced_tty_and_health_options() {
     );
 }
 
-// parity: TS-lib-terminal-9390a4
 #[test]
 fn remote_tmux_attach_command_is_posix_valid() {
     // Given
@@ -166,7 +162,6 @@ fn remote_tmux_attach_command_is_posix_valid() {
     assert!(harness.ptys.pty(0).writes().is_empty());
 }
 
-// parity: TS-lib-terminal-00373f
 #[test]
 fn remote_tmux_bootstrap_is_passed_as_the_ssh_command() {
     // Given
@@ -185,7 +180,6 @@ fn remote_tmux_bootstrap_is_passed_as_the_ssh_command() {
     assert!(harness.ptys.pty(0).writes().is_empty());
 }
 
-// parity: TS-lib-terminal-f6c37c
 #[test]
 fn trusted_x11_forwarding_is_requested_only_with_a_local_display() {
     // Given
@@ -206,7 +200,6 @@ fn trusted_x11_forwarding_is_requested_only_with_a_local_display() {
     assert!(x11_index < destination_index);
 }
 
-// parity: TS-lib-terminal-d2cc93
 #[test]
 fn remote_tmux_bootstrap_applies_pane_layout() {
     // Given
@@ -227,7 +220,6 @@ fn remote_tmux_bootstrap_applies_pane_layout() {
     assert!(harness.ptys.pty(0).writes().is_empty());
 }
 
-// parity: TS-lib-terminal-171b32
 #[test]
 fn remote_tmux_bootstraps_and_attaches_the_default_socket_in_one_hardened_sequence() {
     // Given
@@ -261,7 +253,6 @@ fn remote_tmux_bootstraps_and_attaches_the_default_socket_in_one_hardened_sequen
     assert!(harness.ptys.pty(0).writes().is_empty());
 }
 
-// parity: TS-lib-terminal-0894ac
 #[test]
 fn remote_osc52_decision_runs_inside_the_remote_shell() {
     // Given
@@ -282,7 +273,6 @@ fn remote_osc52_decision_runs_inside_the_remote_shell() {
     assert_valid_posix_syntax(&attach_command);
 }
 
-// parity: TS-lib-terminal-a01913
 #[test]
 fn remote_set_clipboard_branch_runs_only_when_the_remote_config_is_silent() {
     // Given
@@ -322,7 +312,6 @@ fn remote_set_clipboard_branch_runs_only_when_the_remote_config_is_silent() {
     }
 }
 
-// parity: TS-lib-terminal-aa5b9d
 #[test]
 fn remote_tmux_attach_with_multiline_quoted_pane_command_is_posix_valid() {
     // Given
@@ -342,7 +331,6 @@ fn remote_tmux_attach_with_multiline_quoted_pane_command_is_posix_valid() {
     assert!(harness.ptys.pty(0).writes().is_empty());
 }
 
-// parity: TS-lib-terminal-6a6db4
 #[test]
 fn long_remote_tmux_bootstrap_stays_out_of_the_login_prompt() {
     // Given

@@ -42,7 +42,6 @@ fn machine_add(server_name: &str, ssh_host: &str) -> String {
     )
 }
 
-// parity: TS-lib-herdr-c99f3c
 #[test]
 fn registers_the_real_server_session_as_a_local_machine() {
     for (session_name, server_name) in [("kanvibe:task-a", "kanvibe"), ("feature", "feature")] {
@@ -90,7 +89,6 @@ fn registers_the_real_server_session_as_a_local_machine() {
     }
 }
 
-// parity: TS-lib-herdr-3a2576
 #[test]
 fn keeps_an_existing_profile_name_and_enabled_state() {
     for enabled in [true, false] {
@@ -107,7 +105,6 @@ fn keeps_an_existing_profile_name_and_enabled_state() {
     }
 }
 
-// parity: TS-lib-herdr-b6155f
 #[test]
 fn distinguishes_profiles_of_other_hosts_or_sessions() {
     for existing in [
@@ -133,7 +130,6 @@ fn distinguishes_profiles_of_other_hosts_or_sessions() {
     }
 }
 
-// parity: TS-lib-herdr-a21aa4
 #[test]
 fn concurrent_and_repeated_connections_register_once() {
     let herdr = fixture();
@@ -182,7 +178,6 @@ fn concurrent_and_repeated_connections_register_once() {
     );
 }
 
-// parity: TS-lib-herdr-a8632e
 #[test]
 fn serializes_catalog_writes_across_hosts() {
     let herdr = fixture();
@@ -229,7 +224,6 @@ fn serializes_catalog_writes_across_hosts() {
     );
 }
 
-// parity: TS-lib-herdr-a98099
 #[test]
 fn retries_on_the_next_request_after_a_lookup_or_add_failure() {
     for failure in ["lookup", "add"] {
@@ -267,7 +261,6 @@ fn retries_on_the_next_request_after_a_lookup_or_add_failure() {
     }
 }
 
-// parity: TS-lib-herdr-29cf0d
 #[test]
 fn invalid_machine_list_output_never_writes_a_profile() {
     for output in ["invalid json", "{}"] {
@@ -285,7 +278,6 @@ fn invalid_machine_list_output_never_writes_a_profile() {
     }
 }
 
-// parity: TS-lib-herdr-e877ee
 #[test]
 fn re_registers_a_profile_the_user_deleted() {
     let herdr = fixture();
@@ -318,7 +310,6 @@ fn re_registers_a_profile_the_user_deleted() {
     );
 }
 
-// parity: TS-lib-herdr-788fe7
 #[test]
 fn a_server_started_by_an_older_kanvibe_requires_handoff_instead_of_registration() {
     // Given: 세션 리더가 아니지만 live handoff는 지원하는 원격 서버
@@ -347,7 +338,6 @@ fn a_server_started_by_an_older_kanvibe_requires_handoff_instead_of_registration
     );
 }
 
-// parity: TS-lib-herdr-dbfffe
 #[test]
 fn servers_that_cannot_be_handed_off_still_try_registration() {
     let statuses = [
@@ -374,7 +364,6 @@ fn servers_that_cannot_be_handed_off_still_try_registration() {
     }
 }
 
-// parity: TS-lib-herdr-b18326
 #[test]
 fn server_handoff_runs_herdr_live_handoff_on_the_remote() {
     let herdr = fixture();

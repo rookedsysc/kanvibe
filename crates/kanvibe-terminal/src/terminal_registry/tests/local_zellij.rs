@@ -35,7 +35,6 @@ fn attach_zellij(harness: &Harness, task_id: &str, working_directory: Option<&st
     harness.attach_local(request, &FakeClient::new()).unwrap();
 }
 
-// parity: TS-lib-terminal-011a01
 #[test]
 fn missing_local_zellij_session_is_created_with_the_session_flag() {
     // Given
@@ -52,7 +51,6 @@ fn missing_local_zellij_session_is_created_with_the_session_flag() {
     assert_eq!(request.working_directory, workspace);
 }
 
-// parity: TS-lib-terminal-3dc1fe
 #[test]
 fn new_local_zellij_session_applies_the_kdl_layout_file() {
     // Given
@@ -80,7 +78,6 @@ fn new_local_zellij_session_applies_the_kdl_layout_file() {
     assert_eq!(request.working_directory, workspace);
 }
 
-// parity: TS-lib-terminal-3a1726
 #[test]
 fn alive_local_zellij_session_is_attached_without_creation() {
     // Given
@@ -96,7 +93,6 @@ fn alive_local_zellij_session_is_attached_without_creation() {
     assert_eq!(request.working_directory, "/home/local-user");
 }
 
-// parity: TS-lib-terminal-5d35c5
 #[test]
 fn missing_layout_file_leaves_out_the_layout_flag() {
     // Given
@@ -112,7 +108,6 @@ fn missing_layout_file_leaves_out_the_layout_flag() {
     assert_eq!(request.working_directory, workspace);
 }
 
-// parity: TS-lib-terminal-9bb077
 #[test]
 fn zellij_without_working_directory_skips_the_layout_check_and_starts_at_home() {
     // Given
@@ -127,7 +122,6 @@ fn zellij_without_working_directory_skips_the_layout_check_and_starts_at_home() 
     assert_eq!(request.working_directory, "/home/local-user");
 }
 
-// parity: TS-lib-terminal-0df493
 #[test]
 fn exited_local_zellij_session_counts_as_missing() {
     // Given

@@ -1,9 +1,0 @@
-flowchart TD
-  subgraph client [Mobile client]
-    UI[Chat view] --> Req[Render request]
-  end
-  subgraph desktop [Desktop]
-    Route[HTTP route] --> Worker[Diagram worker]
-  end
-  Req --> Route
-  Worker --> UI

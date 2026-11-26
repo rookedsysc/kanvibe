@@ -109,7 +109,6 @@ impl BridgeFixture {
     }
 }
 
-// parity: TS-main-mobileAiLoginBridge-e63aab
 #[test]
 fn opens_provider_cli_with_scoped_environment_and_forwards_events() {
     let fixture = fixture();
@@ -147,7 +146,6 @@ fn opens_provider_cli_with_scoped_environment_and_forwards_events() {
     );
 }
 
-// parity: TS-main-mobileAiLoginBridge-24a764
 #[test]
 fn codex_uses_device_auth_for_phone_browsers() {
     let fixture = fixture();
@@ -166,7 +164,6 @@ fn codex_uses_device_auth_for_phone_browsers() {
     );
 }
 
-// parity: TS-main-mobileAiLoginBridge-0b78d9
 #[test]
 fn input_resize_and_close_belong_to_the_owning_socket() {
     let fixture = fixture();
@@ -198,7 +195,6 @@ fn input_resize_and_close_belong_to_the_owning_socket() {
     assert_eq!(terminal.kills(), 1);
 }
 
-// parity: TS-main-mobileAiLoginBridge-3e0968
 #[test]
 fn one_login_writer_per_account() {
     let fixture = fixture();
@@ -213,7 +209,6 @@ fn one_login_writer_per_account() {
     assert_eq!(fixture.spawner.count(), 1);
 }
 
-// parity: TS-main-mobileAiLoginBridge-b89dd9
 #[test]
 fn unpairing_closes_only_that_devices_processes() {
     let fixture = fixture();
@@ -232,7 +227,6 @@ fn unpairing_closes_only_that_devices_processes() {
     );
 }
 
-// parity: TS-main-mobileAiLoginBridge-003280
 #[test]
 fn account_removal_kills_every_owner() {
     let fixture = fixture();
@@ -249,7 +243,6 @@ fn account_removal_kills_every_owner() {
     );
 }
 
-// parity: TS-main-mobileAiLoginBridge-52aaf5
 #[test]
 fn abandoned_logins_expire_and_free_ownership() {
     let fixture = fixture();
@@ -262,7 +255,6 @@ fn abandoned_logins_expire_and_free_ownership() {
     assert_eq!(fixture.spawner.count(), 2);
 }
 
-// parity: TS-main-mobileAiLoginBridge-c7664b
 #[test]
 fn startup_failure_is_sanitized_and_releases_the_account() {
     let fixture = fixture();
@@ -282,7 +274,6 @@ fn startup_failure_is_sanitized_and_releases_the_account() {
     assert_eq!(fixture.spawner.count(), 1);
 }
 
-// parity: TS-main-mobileAiLoginBridge-f72ec1
 #[test]
 fn shutdown_clears_every_session() {
     let fixture = fixture();
@@ -299,7 +290,6 @@ fn shutdown_clears_every_session() {
     );
 }
 
-// parity: TS-main-mobileAiLoginBridge-1c26d3
 #[test]
 fn invalid_sizes_and_oversized_input_are_rejected_before_the_pty() {
     let fixture = fixture();
@@ -331,7 +321,6 @@ fn invalid_sizes_and_oversized_input_are_rejected_before_the_pty() {
     assert!(terminal.resizes.lock().unwrap().is_empty());
 }
 
-// parity: TS-main-mobileAiLoginBridge-d027a3
 #[test]
 fn stale_callbacks_after_replacement_are_ignored() {
     let fixture = fixture();

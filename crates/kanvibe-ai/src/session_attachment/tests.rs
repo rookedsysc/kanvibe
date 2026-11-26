@@ -49,7 +49,6 @@ fn first_attachment_id(provider: AiSessionProvider, source: &str) -> String {
     detail.messages[0].attachment_list()[0].id.clone()
 }
 
-// parity: TS-aiSessions-imageHistory-702635
 #[test]
 fn foreign_worktree_or_session_images_are_hidden() {
     let (_directory, fixture) = temp_home();
@@ -77,7 +76,6 @@ fn foreign_worktree_or_session_images_are_hidden() {
     }
 }
 
-// parity: TS-aiSessions-imageHistory-7aa0fa
 #[test]
 fn loads_authorized_inline_bytes_and_refuses_foreign_ids() {
     let (_directory, fixture) = temp_home();
@@ -114,7 +112,6 @@ fn loads_authorized_inline_bytes_and_refuses_foreign_ids() {
     assert_eq!(read(&context(), "image-session", "/etc/passwd"), None);
 }
 
-// parity: TS-aiSessions-imageHistory-6491b0
 #[test]
 fn loads_recorded_local_image_until_it_is_removed() {
     let (_directory, fixture) = temp_home();
@@ -147,7 +144,6 @@ fn loads_recorded_local_image_until_it_is_removed() {
     assert_eq!(read(), None);
 }
 
-// parity: TS-aiSessions-imageHistory-35bc19
 #[test]
 fn refuses_remote_urls_and_unsafe_image_markup() {
     let (_directory, fixture) = temp_home();
@@ -186,7 +182,6 @@ fn refuses_remote_urls_and_unsafe_image_markup() {
     }
 }
 
-// parity: TS-aiSessions-imageHistory-d7c659
 #[test]
 fn foreign_claude_cwd_is_not_inherited_by_later_rows() {
     let (_directory, fixture) = temp_home();
@@ -223,7 +218,6 @@ fn foreign_claude_cwd_is_not_inherited_by_later_rows() {
     assert!(detail.is_none());
 }
 
-// parity: TS-aiSessions-imageHistory-e3c575
 #[test]
 fn rejects_recorded_fifo_without_waiting_for_a_writer() {
     let (_directory, fixture) = temp_home();

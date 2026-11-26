@@ -229,7 +229,6 @@ mod tests {
         std::fs::read_to_string(fixture.exclude_path()).unwrap()
     }
 
-    // parity: TS-lib-gitExclude-4737a6
     #[test]
     fn creates_exclude_file_with_marker_block_when_it_does_not_exist() {
         let fixture = GitFixture::new();
@@ -255,7 +254,6 @@ mod tests {
         }
     }
 
-    // parity: TS-lib-gitExclude-c4a050
     #[test]
     fn does_not_duplicate_patterns_when_called_multiple_times() {
         let fixture = GitFixture::new();
@@ -272,7 +270,6 @@ mod tests {
         );
     }
 
-    // parity: TS-lib-gitExclude-d58844
     #[test]
     fn preserves_existing_content_in_exclude_file() {
         let fixture = GitFixture::new();
@@ -287,7 +284,6 @@ mod tests {
         assert!(content.contains(".claude/hooks/"));
     }
 
-    // parity: TS-lib-gitExclude-578a1f
     #[test]
     fn restores_missing_patterns_when_only_the_marker_block_remains() {
         let fixture = GitFixture::new();
@@ -311,7 +307,6 @@ mod tests {
         }
     }
 
-    // parity: TS-lib-gitExclude-152501
     #[test]
     fn prunes_legacy_kanvibe_state_files_from_the_generated_block() {
         let fixture = GitFixture::new();
@@ -344,7 +339,6 @@ mod tests {
         assert_eq!(content.matches(KANVIBE_GIT_EXCLUDE_MARKER).count(), 1);
     }
 
-    // parity: TS-lib-gitExclude-d8f6f0
     #[test]
     fn updates_the_shared_common_dir_exclude_from_a_linked_worktree() {
         let fixture = GitFixture::new();
@@ -390,7 +384,6 @@ mod tests {
         }
     }
 
-    // parity: TS-lib-gitExclude-6ee1ef
     #[test]
     fn fails_when_path_is_not_a_git_repository() {
         let fixture = GitFixture::new();
@@ -405,7 +398,6 @@ mod tests {
         assert!(result.is_err());
     }
 
-    // parity: TS-lib-gitExclude-5a50a2
     #[test]
     fn creates_info_directory_when_it_does_not_exist() {
         let fixture = GitFixture::new();
@@ -418,7 +410,6 @@ mod tests {
         assert!(content.contains(KANVIBE_GIT_EXCLUDE_MARKER));
     }
 
-    // parity: TS-lib-gitExclude-94ca4c
     #[test]
     fn updates_the_common_git_exclude_when_called_from_a_worktree() {
         let fixture = GitFixture::new();
@@ -448,7 +439,6 @@ mod tests {
         assert!(content.contains(".claude/hooks/"));
     }
 
-    // parity: TS-lib-gitExclude-85388e
     #[test]
     fn writes_ai_hook_patterns_to_the_remote_common_git_exclude() {
         let runner = Arc::new(ScriptedCommandRunner::new(|call| {

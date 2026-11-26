@@ -21,7 +21,6 @@ fn unavailable(reason: SurfaceUnavailableReason) -> PaneMirrorError {
     PaneMirrorError::SurfaceUnavailable(reason)
 }
 
-// parity: TS-main-mobileBridgeService-7db40c
 #[test]
 fn panes_are_grouped_by_tab() {
     let harness = Harness::new();
@@ -45,7 +44,6 @@ fn panes_are_grouped_by_tab() {
     assert_eq!(tabs, vec![("@10".to_string(), 2), ("@11".to_string(), 1)]);
 }
 
-// parity: TS-main-mobileBridgeService-c12e60
 #[test]
 fn pane_coordinates_are_sent_as_is_so_a_tablet_can_rebuild_the_layout() {
     let harness = Harness::new();
@@ -84,7 +82,6 @@ fn stub_mirror_after_connect(harness: &Harness) {
     });
 }
 
-// parity: TS-main-mobileBridgeService-8b34df
 #[test]
 fn concurrent_retries_for_a_session_less_project_task_share_one_connection() {
     let harness = Arc::new(Harness::new());
@@ -126,7 +123,6 @@ fn concurrent_retries_for_a_session_less_project_task_share_one_connection() {
     );
 }
 
-// parity: TS-main-mobileBridgeService-b1765c
 #[test]
 fn retry_after_a_failed_connection_releases_the_reservation_and_recovers() {
     let harness = Harness::new();
@@ -155,7 +151,6 @@ fn retry_after_a_failed_connection_releases_the_reservation_and_recovers() {
     );
 }
 
-// parity: TS-main-mobileBridgeService-1b2eba
 #[test]
 fn task_without_a_session_reports_the_reason() {
     let harness = Harness::new();
@@ -167,7 +162,6 @@ fn task_without_a_session_reports_the_reason() {
     );
 }
 
-// parity: TS-main-mobileBridgeService-df03cb
 #[test]
 fn stopped_session_reports_the_reason_instead_of_an_empty_screen() {
     let harness = Harness::new();
@@ -179,7 +173,6 @@ fn stopped_session_reports_the_reason_instead_of_an_empty_screen() {
     );
 }
 
-// parity: TS-main-mobileBridgeService-7ac6dd
 #[test]
 fn missing_task_is_also_a_reason() {
     let harness = Harness::new();
@@ -191,7 +184,6 @@ fn missing_task_is_also_a_reason() {
     );
 }
 
-// parity: TS-main-mobileBridgeService-475a3b
 #[test]
 fn zellij_task_uses_the_json_listing() {
     let harness = Harness::new();
@@ -251,7 +243,6 @@ fn startup_client_is_open(harness: &Harness) -> bool {
     harness.attacher.calls.lock().unwrap()[0].2.is_open()
 }
 
-// parity: TS-main-mobileBridgeService-3ee134
 #[test]
 fn missing_session_is_started_the_desktop_way_and_the_startup_client_detaches() {
     let harness = Harness::new();
@@ -266,7 +257,6 @@ fn missing_session_is_started_the_desktop_way_and_the_startup_client_detaches() 
     assert!(!startup_client_is_open(&harness));
 }
 
-// parity: TS-main-mobileBridgeService-f7e406
 #[test]
 fn session_start_failure_reports_a_stopped_session_instead_of_a_server_error() {
     let harness = Harness::new();
@@ -285,7 +275,6 @@ fn session_start_failure_reports_a_stopped_session_instead_of_a_server_error() {
     assert!(!startup_client_is_open(&harness));
 }
 
-// parity: TS-main-mobileBridgeService-a0d964
 #[test]
 fn unreachable_remote_host_is_reported_separately_without_starting_a_session() {
     let harness = Harness::new();
@@ -305,7 +294,6 @@ fn unreachable_remote_host_is_reported_separately_without_starting_a_session() {
     assert_eq!(harness.attacher.call_count(), 0);
 }
 
-// parity: TS-main-mobileBridgeService-8e859f
 #[test]
 fn reachable_remote_host_starts_a_missing_session_the_same_way() {
     let harness = Harness::new();
@@ -326,7 +314,6 @@ fn reachable_remote_host_starts_a_missing_session_the_same_way() {
     assert_eq!(harness.attacher.call_count(), 1);
 }
 
-// parity: TS-main-mobileBridgeService-ac4ffc
 #[test]
 fn live_session_is_not_started_again() {
     let harness = Harness::new();

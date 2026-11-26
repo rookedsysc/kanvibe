@@ -75,7 +75,6 @@ fn found(credentials: String) -> ClaudeKeychainReadResult {
     ClaudeKeychainReadResult::Found { credentials }
 }
 
-// parity: TS-aiUsage-claudeCredentials-1428d2
 #[test]
 fn reads_access_token_from_credentials() {
     assert_eq!(
@@ -84,7 +83,6 @@ fn reads_access_token_from_credentials() {
     );
 }
 
-// parity: TS-aiUsage-claudeCredentials-5f85d4
 #[test]
 fn empty_broken_or_tokenless_credentials_have_no_token() {
     assert_eq!(read_claude_access_token(""), None);
@@ -99,13 +97,11 @@ fn empty_broken_or_tokenless_credentials_have_no_token() {
     );
 }
 
-// parity: TS-aiUsage-claudeCredentials-d575b9
 #[test]
 fn mcp_only_credentials_are_not_login_tokens() {
     assert_eq!(read_claude_access_token(&mcp_only_credentials()), None);
 }
 
-// parity: TS-aiUsage-claudeCredentials-75a6f4
 #[test]
 fn reads_expiry_from_credentials() {
     let credentials = stringify(&json!({"claudeAiOauth": {"expiresAt": 1_787_110_963_172_i64}}));
@@ -115,7 +111,6 @@ fn reads_expiry_from_credentials() {
     );
 }
 
-// parity: TS-aiUsage-claudeCredentials-6135b2
 #[test]
 fn missing_or_non_numeric_expiry_is_none() {
     assert_eq!(
@@ -129,7 +124,6 @@ fn missing_or_non_numeric_expiry_is_none() {
     );
 }
 
-// parity: TS-aiUsage-claudeCredentials-83c9c9
 #[test]
 fn token_is_expired_from_the_expiry_instant() {
     let now_ms = parse_date_ms("2026-08-15T10:00:00.000Z").unwrap();
@@ -138,7 +132,6 @@ fn token_is_expired_from_the_expiry_instant() {
     assert!(!is_claude_access_token_expired(&at(now_ms + 1.0), now_ms));
 }
 
-// parity: TS-aiUsage-claudeCredentials-fdc96a
 #[test]
 fn unknown_expiry_is_not_expired() {
     assert!(!is_claude_access_token_expired(
@@ -148,7 +141,6 @@ fn unknown_expiry_is_not_expired() {
     assert!(!is_claude_access_token_expired("{not json", 0.0));
 }
 
-// parity: TS-aiUsage-claudeCredentials-999bc4
 #[test]
 fn refresh_token_is_usable_without_or_before_expiry() {
     let now_ms = 1_000_000.0;
@@ -162,7 +154,6 @@ fn refresh_token_is_usable_without_or_before_expiry() {
     assert!(has_usable_claude_refresh_token(&unexpired, now_ms));
 }
 
-// parity: TS-aiUsage-claudeCredentials-813494
 #[test]
 fn missing_or_expired_refresh_token_is_unusable() {
     let now_ms = 1_000_000.0;
@@ -175,7 +166,6 @@ fn missing_or_expired_refresh_token_is_unusable() {
     assert!(!has_usable_claude_refresh_token("", now_ms));
 }
 
-// parity: TS-aiUsage-claudeCredentials-0691c9
 #[test]
 fn keychain_is_untouched_outside_macos() {
     let usage = TestUsage::new("/Users/tester");
@@ -183,7 +173,6 @@ fn keychain_is_untouched_outside_macos() {
     assert_eq!(usage.processes.request_count(), 0);
 }
 
-// parity: TS-aiUsage-claudeCredentials-5ef9e2
 #[test]
 fn security_runs_by_absolute_path() {
     let usage = darwin();
@@ -196,7 +185,6 @@ fn security_runs_by_absolute_path() {
     );
 }
 
-// parity: TS-aiUsage-claudeCredentials-e95961
 #[test]
 fn scoped_service_is_read_with_current_user_first() {
     let usage = darwin();
@@ -218,7 +206,6 @@ fn scoped_service_is_read_with_current_user_first() {
     assert_eq!(usage.processes.request_count(), 1);
 }
 
-// parity: TS-aiUsage-claudeCredentials-34442d
 #[test]
 fn falls_back_to_legacy_service() {
     let usage = darwin();
@@ -231,7 +218,6 @@ fn falls_back_to_legacy_service() {
     assert!(requested_services(&usage).contains(&LEGACY_SERVICE.to_string()));
 }
 
-// parity: TS-aiUsage-claudeCredentials-2ee599
 #[test]
 fn tokenless_item_does_not_hide_later_candidates() {
     let usage = darwin();
@@ -246,7 +232,6 @@ fn tokenless_item_does_not_hide_later_candidates() {
     assert_eq!(read(&usage), found(create_credentials_json("legacy-token")));
 }
 
-// parity: TS-aiUsage-claudeCredentials-1b1f85
 #[test]
 fn no_login_token_anywhere_is_absent() {
     let usage = darwin();
@@ -261,7 +246,6 @@ fn no_login_token_anywhere_is_absent() {
     assert_eq!(read(&usage), ClaudeKeychainReadResult::Absent);
 }
 
-// parity: TS-aiUsage-claudeCredentials-e6913e
 #[test]
 fn retries_same_service_without_account() {
     let usage = darwin();
@@ -281,7 +265,6 @@ fn retries_same_service_without_account() {
     );
 }
 
-// parity: TS-aiUsage-claudeCredentials-ad4ae2
 #[test]
 fn every_config_dir_candidate_gets_a_scoped_lookup() {
     let usage = darwin();
@@ -295,7 +278,6 @@ fn every_config_dir_candidate_gets_a_scoped_lookup() {
     assert!(services.contains(&"Claude Code-credentials-c4394a73".to_string()));
 }
 
-// parity: TS-aiUsage-claudeCredentials-0dcdb0
 #[test]
 fn unguessed_names_are_found_in_the_stored_list() {
     let usage = darwin();
@@ -310,7 +292,6 @@ fn unguessed_names_are_found_in_the_stored_list() {
     assert!(requested_services(&usage).contains(&stored_service.to_string()));
 }
 
-// parity: TS-aiUsage-claudeCredentials-63b6ce
 #[test]
 fn listing_never_decrypts_and_is_skipped_when_guess_hits() {
     let usage = darwin();
@@ -346,7 +327,6 @@ fn listing_never_decrypts_and_is_skipped_when_guess_hits() {
     assert_eq!(dump_args, Some(vec!["dump-keychain".to_string()]));
 }
 
-// parity: TS-aiUsage-claudeCredentials-8d38c0
 #[test]
 fn other_apps_in_the_list_are_not_queried() {
     let usage = darwin();
@@ -369,7 +349,6 @@ fn other_apps_in_the_list_are_not_queried() {
     );
 }
 
-// parity: TS-aiUsage-claudeCredentials-646288
 #[test]
 fn missing_item_means_not_logged_in() {
     let usage = darwin();
@@ -377,7 +356,6 @@ fn missing_item_means_not_logged_in() {
     assert_eq!(read(&usage), ClaudeKeychainReadResult::Absent);
 }
 
-// parity: TS-aiUsage-claudeCredentials-020cab
 #[test]
 fn denied_access_is_unreadable() {
     let usage = darwin();
@@ -385,7 +363,6 @@ fn denied_access_is_unreadable() {
     assert_eq!(read(&usage), ClaudeKeychainReadResult::Unreadable);
 }
 
-// parity: TS-aiUsage-claudeCredentials-bab60c
 #[test]
 fn unreadable_item_does_not_block_other_candidates() {
     let usage = darwin();
@@ -400,7 +377,6 @@ fn unreadable_item_does_not_block_other_candidates() {
     assert_eq!(read(&usage), found(create_credentials_json("legacy-token")));
 }
 
-// parity: TS-aiUsage-claudeCredentials-f2b66f
 #[test]
 fn unreadable_item_is_not_retried_without_account() {
     let usage = darwin();
@@ -413,7 +389,6 @@ fn unreadable_item_is_not_retried_without_account() {
     assert_eq!(scoped_lookups, [TESTER_SCOPED_SERVICE]);
 }
 
-// parity: TS-aiUsage-claudeCredentials-ceab9d
 #[test]
 fn miss_report_lists_services_and_outcomes_only() {
     let usage = darwin();
@@ -429,7 +404,6 @@ fn miss_report_lists_services_and_outcomes_only() {
     assert!(!message.contains("mcpOAuth"));
 }
 
-// parity: TS-aiUsage-claudeCredentials-818051
 #[test]
 fn unknown_failures_like_timeouts_are_unreadable() {
     let usage = darwin();
@@ -437,7 +411,6 @@ fn unknown_failures_like_timeouts_are_unreadable() {
     assert_eq!(read(&usage), ClaudeKeychainReadResult::Unreadable);
 }
 
-// parity: TS-aiUsage-claudeCredentials-5c40ea
 #[test]
 fn lookups_are_time_limited() {
     let usage = darwin();

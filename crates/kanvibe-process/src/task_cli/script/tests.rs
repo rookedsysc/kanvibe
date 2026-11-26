@@ -213,7 +213,6 @@ fn target(url: &str, task_id: &str, token: &str) -> Value {
     json!({ "url": url, "taskId": task_id, "token": token })
 }
 
-// parity: TS-lib-taskCliScript-5d1276
 #[test]
 fn create_from_a_subdirectory_uses_the_worktree_branch_and_only_the_first_client() {
     let fixture = TaskCliWorkspace::new();
@@ -265,7 +264,6 @@ fn create_from_a_subdirectory_uses_the_worktree_branch_and_only_the_first_client
     assert!(second_client.calls().is_empty());
 }
 
-// parity: TS-lib-taskCliScript-98e9dc
 #[test]
 fn control_characters_in_the_title_are_json_escaped() {
     let fixture = TaskCliWorkspace::new();
@@ -279,7 +277,6 @@ fn control_characters_in_the_title_are_json_escaped() {
     assert_eq!(client.calls()[0].body["title"], title);
 }
 
-// parity: TS-lib-taskCliScript-38b374
 #[test]
 fn from_task_sends_the_task_id_instead_of_the_current_branch() {
     let fixture = TaskCliWorkspace::new();
@@ -302,7 +299,6 @@ fn from_task_sends_the_task_id_instead_of_the_current_branch() {
     );
 }
 
-// parity: TS-lib-taskCliScript-997cc8
 #[test]
 fn detached_head_without_a_base_task_is_a_usage_error() {
     let fixture = TaskCliWorkspace::new();
@@ -317,7 +313,6 @@ fn detached_head_without_a_base_task_is_a_usage_error() {
     assert!(client.calls().is_empty());
 }
 
-// parity: TS-lib-taskCliScript-d34ee2
 #[test]
 fn invalid_create_arguments_are_usage_errors_without_requests() {
     let cases: [(&[&str], &str); 3] = [
@@ -341,7 +336,6 @@ fn invalid_create_arguments_are_usage_errors_without_requests() {
     }
 }
 
-// parity: TS-lib-taskCliScript-b55b31
 #[test]
 fn only_an_unreachable_client_moves_on_to_the_next_client() {
     let fixture = TaskCliWorkspace::new();
@@ -367,7 +361,6 @@ fn only_an_unreachable_client_moves_on_to_the_next_client() {
     assert_eq!(context_task_ids, [json!("task-online")]);
 }
 
-// parity: TS-lib-taskCliScript-e2ecad
 #[test]
 fn silent_client_is_a_connect_timeout_and_the_next_client_is_tried() {
     let fixture = TaskCliWorkspace::new();
@@ -396,7 +389,6 @@ fn silent_client_is_a_connect_timeout_and_the_next_client_is_tried() {
     assert_eq!(reachable_client.calls().len(), 1);
 }
 
-// parity: TS-lib-taskCliScript-17c269
 #[test]
 fn timeout_after_connecting_is_not_retried_on_another_client() {
     let fixture = TaskCliWorkspace::new();
@@ -419,7 +411,6 @@ fn timeout_after_connecting_is_not_retried_on_another_client() {
     assert!(other_client.calls().is_empty());
 }
 
-// parity: TS-lib-taskCliScript-1520ad
 #[test]
 fn answered_failure_is_not_retried_and_reports_the_error_body() {
     let fixture = TaskCliWorkspace::new();
@@ -440,7 +431,6 @@ fn answered_failure_is_not_retried_and_reports_the_error_body() {
     assert!(other_client.calls().is_empty());
 }
 
-// parity: TS-lib-taskCliScript-35c877
 #[test]
 fn target_url_selects_one_client_and_unknown_urls_are_usage_errors() {
     let fixture = TaskCliWorkspace::new();
@@ -479,7 +469,6 @@ fn target_url_selects_one_client_and_unknown_urls_are_usage_errors() {
     assert!(unknown_run.stderr.contains("등록된 client가 아닙니다"));
 }
 
-// parity: TS-lib-taskCliScript-05e408
 #[test]
 fn description_and_priority_are_sent_in_the_body() {
     let fixture = TaskCliWorkspace::new();
@@ -511,7 +500,6 @@ fn peers_response(is_second_success: bool, data: Value) -> Value {
     data
 }
 
-// parity: TS-lib-taskCliScript-48a82c
 #[test]
 fn create_succeeds_but_warns_about_unpropagated_peers() {
     let fixture = TaskCliWorkspace::new();
@@ -536,7 +524,6 @@ fn create_succeeds_but_warns_about_unpropagated_peers() {
     );
 }
 
-// parity: TS-lib-taskCliScript-7a9497
 #[test]
 fn not_found_on_the_first_live_client_suggests_another_target_url() {
     let fixture = TaskCliWorkspace::new();
@@ -556,7 +543,6 @@ fn not_found_on_the_first_live_client_suggests_another_target_url() {
     assert!(owner_client.calls().is_empty());
 }
 
-// parity: TS-lib-taskCliScript-282561
 #[test]
 fn not_found_hint_is_skipped_for_selected_or_single_clients() {
     let fixture = TaskCliWorkspace::new();
@@ -582,7 +568,6 @@ fn not_found_hint_is_skipped_for_selected_or_single_clients() {
     assert!(!selected_run.stderr.contains("--target-url로 지정해"));
 }
 
-// parity: TS-lib-taskCliScript-b8b677
 #[test]
 fn registrations_without_cli_tokens_ask_to_reinstall_hooks() {
     let fixture = TaskCliWorkspace::new();
@@ -596,7 +581,6 @@ fn registrations_without_cli_tokens_ask_to_reinstall_hooks() {
     assert!(client.calls().is_empty());
 }
 
-// parity: TS-lib-taskCliScript-72aafe
 #[test]
 fn list_requests_the_list_route_with_the_current_task_token() {
     let fixture = TaskCliWorkspace::new();
@@ -621,7 +605,6 @@ fn list_requests_the_list_route_with_the_current_task_token() {
     );
 }
 
-// parity: TS-lib-taskCliScript-6c063c
 #[test]
 fn session_targets_the_given_branch_or_the_current_task() {
     let fixture = TaskCliWorkspace::new();
@@ -652,7 +635,6 @@ fn session_targets_the_given_branch_or_the_current_task() {
     );
 }
 
-// parity: TS-lib-taskCliScript-0ef1ba
 #[test]
 fn delete_without_yes_sends_nothing() {
     let fixture = TaskCliWorkspace::new();
@@ -666,7 +648,6 @@ fn delete_without_yes_sends_nothing() {
     assert!(client.calls().is_empty());
 }
 
-// parity: TS-lib-taskCliScript-856e04
 #[test]
 fn delete_sends_confirmation_force_and_branch_to_one_client() {
     let fixture = TaskCliWorkspace::new();
@@ -696,7 +677,6 @@ fn delete_sends_confirmation_force_and_branch_to_one_client() {
     assert!(second_client.calls().is_empty());
 }
 
-// parity: TS-lib-taskCliScript-56810f
 #[test]
 fn delete_succeeds_but_warns_about_unpropagated_peers() {
     let fixture = TaskCliWorkspace::new();
@@ -718,7 +698,6 @@ fn delete_succeeds_but_warns_about_unpropagated_peers() {
     assert!(run.stderr.contains("1곳에는 삭제를 전파하지 못했습니다"));
 }
 
-// parity: TS-lib-taskCliScript-4849a8
 #[test]
 fn fully_propagated_delete_prints_no_warning() {
     let fixture = TaskCliWorkspace::new();
@@ -737,7 +716,6 @@ fn fully_propagated_delete_prints_no_warning() {
     assert_eq!(run.stderr, "");
 }
 
-// parity: TS-lib-taskCliScript-85ffc4
 #[test]
 fn propagate_delete_reaches_every_other_client_with_its_own_task_and_token() {
     let fixture = TaskCliWorkspace::new();
@@ -775,7 +753,6 @@ fn propagate_delete_reaches_every_other_client_with_its_own_task_and_token() {
     );
 }
 
-// parity: TS-lib-taskCliScript-d5f499
 #[test]
 fn propagate_register_only_registers_the_new_branch_on_other_clients() {
     let fixture = TaskCliWorkspace::new();
@@ -805,7 +782,6 @@ fn propagate_register_only_registers_the_new_branch_on_other_clients() {
     );
 }
 
-// parity: TS-lib-taskCliScript-7b2ad1
 #[test]
 fn tokens_are_never_passed_to_curl_as_arguments() {
     let content = build_task_cli_file("/repo", None).content;
@@ -852,7 +828,6 @@ fn run_sh(fixture: &TaskCliWorkspace, flag: &str, command: &str) -> ShellRun {
     )
 }
 
-// parity: TS-lib-taskCliScript-c0e00c
 #[test]
 fn client_runs_its_own_script_instead_of_an_overwritten_task_sh() {
     let fixture = TaskCliWorkspace::new();
@@ -886,7 +861,6 @@ fn client_runs_its_own_script_instead_of_an_overwritten_task_sh() {
     );
 }
 
-// parity: TS-lib-taskCliScript-639478
 #[test]
 fn script_and_arguments_survive_two_nested_shells() {
     let fixture = TaskCliWorkspace::new();
@@ -912,7 +886,6 @@ fn script_and_arguments_survive_two_nested_shells() {
     assert_eq!(call.body["branchName"], "feat/it's new");
 }
 
-// parity: TS-lib-taskCliScript-b93f74
 #[test]
 fn option_or_non_http_target_urls_are_never_called() {
     let fixture = TaskCliWorkspace::new();

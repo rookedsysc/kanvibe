@@ -1,7 +1,0 @@
-%%{init: {"themeCSS": ".node rect { fill: #fde68a; stroke: #b45309; } .node polygon { fill: #bbf7d0; } .flowchart-link { stroke: #dc2626; } .label text { fill: #1e3a8a; } .cluster rect { fill: #e0f2fe; stroke: #0369a1; } .cluster-label text { fill: #be185d; } .edgeLabel rect { fill: #fce7f3; }"}}%%
-flowchart TD
-  subgraph desktop [Desktop]
-    A[Checkout] -->|compile| B{Deploy?}
-  end
-  B -->|yes| C((Done))
-  B --> D[Release]

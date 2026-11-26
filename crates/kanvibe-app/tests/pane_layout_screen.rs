@@ -119,7 +119,6 @@ fn reload(view: &Entity<PaneLayoutView>, cx: &mut VisualTestContext) {
     draw(cx);
 }
 
-// parity: TS-renderer-PaneLayoutRoute-1dca62
 #[gpui::test]
 fn slow_load_shows_the_error_but_hydrates_the_saved_layout_when_it_arrives(
     cx: &mut TestAppContext,
@@ -151,7 +150,6 @@ fn slow_load_shows_the_error_but_hydrates_the_saved_layout_when_it_arrives(
     assert!(!view.read_with(cx, |view, _| view.is_load_failed));
 }
 
-// parity: TS-renderer-PaneLayoutRoute-463c51
 #[gpui::test]
 fn failed_global_read_stays_unsavable_until_retried(cx: &mut TestAppContext) {
     let _data_dir = init_app_with_database(cx);
@@ -169,7 +167,6 @@ fn failed_global_read_stays_unsavable_until_retried(cx: &mut TestAppContext) {
     assert!(view.read_with(cx, |view, _| view.global_editor().is_some()));
 }
 
-// parity: TS-renderer-PaneLayoutRoute-77d4ad
 #[gpui::test]
 fn failed_project_read_is_not_shown_as_an_absent_override(cx: &mut TestAppContext) {
     let _data_dir = init_app_with_database(cx);
@@ -191,7 +188,6 @@ fn failed_project_read_is_not_shown_as_an_absent_override(cx: &mut TestAppContex
     });
 }
 
-// parity: TS-renderer-PaneLayoutRoute-05a8f2
 #[gpui::test]
 fn explicitly_absent_global_setting_can_be_created(cx: &mut TestAppContext) {
     let _data_dir = init_app_with_database(cx);
@@ -214,7 +210,6 @@ fn explicitly_absent_global_setting_can_be_created(cx: &mut TestAppContext) {
     );
 }
 
-// parity: TS-renderer-PaneLayoutRoute-324d4a
 #[gpui::test]
 fn edited_draft_survives_successful_and_failed_refreshes(cx: &mut TestAppContext) {
     let _data_dir = init_app_with_database(cx);
@@ -242,7 +237,6 @@ fn edited_draft_survives_successful_and_failed_refreshes(cx: &mut TestAppContext
     );
 }
 
-// parity: TS-renderer-PaneLayoutRoute-70459e
 #[gpui::test]
 fn loaded_project_draft_is_kept_when_its_refresh_fails(cx: &mut TestAppContext) {
     let _data_dir = init_app_with_database(cx);

@@ -197,7 +197,6 @@ mod tests {
         })
     }
 
-    // parity: TS-aiSessions-messageFiles-2d4b5a
     #[test]
     fn write_creates_and_edits_modify() {
         assert_eq!(
@@ -232,7 +231,6 @@ mod tests {
         );
     }
 
-    // parity: TS-aiSessions-messageFiles-802805
     #[test]
     fn read_and_bash_summaries_carry_no_files() {
         assert_eq!(
@@ -249,7 +247,6 @@ mod tests {
         );
     }
 
-    // parity: TS-aiSessions-messageFiles-b7f628
     #[test]
     fn other_tools_show_one_line_json() {
         assert_eq!(
@@ -271,7 +268,6 @@ mod tests {
         assert!(long.ends_with("..."));
     }
 
-    // parity: TS-aiSessions-messageFiles-9d530e
     #[test]
     fn missing_or_non_string_paths_do_not_throw() {
         assert_eq!(
@@ -294,7 +290,6 @@ mod tests {
         );
     }
 
-    // parity: TS-aiSessions-messageFiles-2c8795
     #[test]
     fn non_tool_parts_are_none() {
         assert_eq!(
@@ -309,7 +304,6 @@ mod tests {
         assert_eq!(summarize_claude_tool_use(&json!("tool_use")), None);
     }
 
-    // parity: TS-aiSessions-messageFiles-d64f8b
     #[test]
     fn add_and_update_headers_become_files() {
         let patch = "*** Begin Patch\n*** Add File: docs/a.md\n+x\n*** Update File: src/b.ts\n@@\n-a\n+b\n*** Delete File: src/c.ts\n*** End Patch";
@@ -322,7 +316,6 @@ mod tests {
         );
     }
 
-    // parity: TS-aiSessions-messageFiles-b075b9
     #[test]
     fn repeated_files_keep_first_header() {
         assert_eq!(
@@ -331,7 +324,6 @@ mod tests {
         );
     }
 
-    // parity: TS-aiSessions-messageFiles-2737ee
     #[test]
     fn body_lines_shaped_like_headers_are_ignored() {
         let patch = "*** Begin Patch\n*** Update File: src/a.test.ts\n@@\n *** Update File: fake/context.ts\n-*** Add File: fake/removed.ts\n+*** Add File: fake/added.ts\n*** End Patch";
@@ -341,7 +333,6 @@ mod tests {
         );
     }
 
-    // parity: TS-aiSessions-messageFiles-3c056b
     #[test]
     fn non_string_or_pathless_headers_are_empty() {
         assert!(parse_apply_patch_files(&Value::Null).is_empty());
@@ -349,7 +340,6 @@ mod tests {
         assert!(parse_apply_patch_files(&json!("*** Add File:\n*** Update File: ")).is_empty());
     }
 
-    // parity: TS-aiSessions-messageFiles-8f0461
     #[test]
     fn exec_script_apply_patch_files_are_read() {
         let input = "text(await tools.apply_patch(\"*** Begin Patch\\n*** Add File: docs/a.md\\n+x\\n*** Update File: src/b.ts\\n@@\\n-a\\n+b\\n*** End Patch\"));";
@@ -367,7 +357,6 @@ mod tests {
         );
     }
 
-    // parity: TS-aiSessions-messageFiles-9273cf
     #[test]
     fn non_patch_calls_summarize_first_three_lines() {
         let input = "text(await tools.exec_command({cmd:\"ls\"}));\n\nline 2\nline 3\nline 4";
@@ -381,7 +370,6 @@ mod tests {
         assert!(result.files.is_empty());
     }
 
-    // parity: TS-aiSessions-messageFiles-9f6cc9
     #[test]
     fn missing_name_or_input_does_not_throw() {
         let unnamed = summarize_codex_custom_tool_call(&json!({"type": "custom_tool_call"}));

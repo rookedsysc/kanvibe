@@ -5,7 +5,6 @@ use serde_json::{Value, json};
 
 use crate::harness::*;
 
-// parity: TS-electron-mobileFeatureRoutes-0ffad8
 #[tokio::test]
 async fn search_returns_every_searchable_task_from_the_provider() {
     let server = TestServer::start().await;
@@ -20,7 +19,6 @@ async fn search_returns_every_searchable_task_from_the_provider() {
     assert_eq!(server.fake.feature_calls(), vec![FeatureCall::SearchTasks]);
 }
 
-// parity: TS-electron-mobileFeatureRoutes-ca2ece
 #[tokio::test]
 async fn feature_providers_are_not_called_before_authorization() {
     let server = TestServer::start().await;
@@ -31,7 +29,6 @@ async fn feature_providers_are_not_called_before_authorization() {
     assert!(server.fake.feature_calls().is_empty());
 }
 
-// parity: TS-electron-mobileFeatureRoutes-dfb642
 #[tokio::test]
 async fn done_pagination_is_validated_before_delegation() {
     let server = TestServer::start().await;
@@ -59,7 +56,6 @@ async fn done_pagination_is_validated_before_delegation() {
     assert_eq!(server.fake.feature_calls().len(), 1);
 }
 
-// parity: TS-electron-mobileFeatureRoutes-0e43bc
 #[tokio::test]
 async fn task_details_update_only_through_the_explicit_endpoint() {
     let server = TestServer::start().await;
@@ -81,7 +77,6 @@ async fn task_details_update_only_through_the_explicit_endpoint() {
     );
 }
 
-// parity: TS-electron-mobileFeatureRoutes-4c6751
 #[tokio::test]
 async fn unexpected_feature_failures_answer_a_generic_error() {
     let server = TestServer::start().await;
@@ -102,7 +97,6 @@ fn render(body: &str, authorization: &str) -> HttpCall {
         .body(body)
 }
 
-// parity: TS-electron-mobileDiagramRoutes-3e5ee1
 #[tokio::test]
 async fn diagram_route_authorizes_before_touching_the_renderer() {
     let server = TestServer::start().await;
@@ -113,7 +107,6 @@ async fn diagram_route_authorizes_before_touching_the_renderer() {
     assert_eq!(server.fake.count("render_mobile_diagram"), 0);
 }
 
-// parity: TS-electron-mobileDiagramRoutes-a547f8
 #[tokio::test]
 async fn diagram_route_returns_only_the_image_envelope() {
     let server = TestServer::start().await;
@@ -128,7 +121,6 @@ async fn diagram_route_returns_only_the_image_envelope() {
     );
 }
 
-// parity: TS-electron-mobileDiagramRoutes-60ec00
 #[tokio::test]
 async fn malformed_diagram_json_is_rejected_before_rendering() {
     let server = TestServer::start().await;
@@ -136,7 +128,6 @@ async fn malformed_diagram_json_is_rejected_before_rendering() {
     assert_eq!(server.fake.count("render_mobile_diagram"), 0);
 }
 
-// parity: TS-electron-mobileDiagramRoutes-2a56df
 #[tokio::test]
 async fn safe_renderer_error_statuses_are_preserved() {
     let server = TestServer::start().await;
@@ -155,7 +146,6 @@ async fn safe_renderer_error_statuses_are_preserved() {
     }
 }
 
-// parity: TS-electron-mobileDiagramRoutes-84ddd9
 #[tokio::test]
 async fn unexpected_renderer_errors_hide_paths_and_source() {
     let server = TestServer::start().await;

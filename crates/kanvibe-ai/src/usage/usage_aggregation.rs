@@ -204,7 +204,6 @@ mod tests {
             .unwrap()
     }
 
-    // parity: TS-aiUsage-aggregateAiUsage-5de22e
     #[test]
     fn providers_without_accounts_keep_a_card() {
         let sources = ScriptedSources::default();
@@ -230,7 +229,6 @@ mod tests {
         assert!(sources.read_accounts.lock().unwrap().is_empty());
     }
 
-    // parity: TS-aiUsage-aggregateAiUsage-0a833e
     #[test]
     fn each_account_gets_its_own_result() {
         let personal = create_account(AiUsageProvider::Claude, "personal");
@@ -252,7 +250,6 @@ mod tests {
         assert_eq!(read_accounts, ["personal", "work"]);
     }
 
-    // parity: TS-aiUsage-aggregateAiUsage-37a4c7
     #[test]
     fn one_failing_read_keeps_other_results() {
         let claude_account = create_account(AiUsageProvider::Claude, "personal");
@@ -281,7 +278,6 @@ mod tests {
         );
     }
 
-    // parity: TS-aiUsage-aggregateAiUsage-1be817
     #[test]
     fn failed_discovery_leaves_an_empty_slot() {
         let sources = ScriptedSources {

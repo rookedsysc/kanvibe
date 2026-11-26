@@ -90,7 +90,6 @@ fn link(href: &str, content: &str) -> (Option<String>, String) {
     (Some(href.to_string()), content.to_string())
 }
 
-// parity: TS-renderer-AiSessionMessageContent-815249
 #[test]
 fn 언어가_붙은_코드_블록에_언어_이름을_보이고_글자에_색을_입힌다() {
     let blocks = code_blocks("```ts\nconst total = 3;\n```");
@@ -106,7 +105,6 @@ fn 언어가_붙은_코드_블록에_언어_이름을_보이고_글자에_색을
     assert_eq!(blocks[0].code, "const total = 3;\n");
 }
 
-// parity: TS-renderer-AiSessionMessageContent-ff456d
 #[test]
 fn 언어가_없거나_모르는_언어인_코드_블록은_색_없이_원문_그대로_둔다() {
     let blocks = code_blocks("```\n<b>plain</b>\n```\n\n```nosuchlang\nvalue = 1\n```");
@@ -121,7 +119,6 @@ fn 언어가_없거나_모르는_언어인_코드_블록은_색_없이_원문_�
     assert!(blocks.iter().all(|block| block.highlight.is_none()));
 }
 
-// parity: TS-renderer-AiSessionMessageContent-86db00
 #[test]
 fn 닫히지_않은_코드_블록도_끝까지_코드로_그린다() {
     let blocks = code_blocks("설명\n\n```py\nprint('still code')");
@@ -165,7 +162,6 @@ fn 코드로_시작하지_않는_원시_pre는_공백을_그대로_둔_글자다
     );
 }
 
-// parity: TS-renderer-AiSessionMessageContent-2bc393
 #[test]
 fn 표를_옆으로_넘길_수_있는_틀로_감싼다() {
     let blocks = markdown_blocks("| 이름 | 값 |\n| --- | --- |\n| a | 1 |");
@@ -239,7 +235,6 @@ fn 원시_표는_행과_머리_칸과_칸_병합을_남기고_안의_markdown은
     assert_eq!(second.blocks, [Block::Inlines(vec![text("**md?**")])]);
 }
 
-// parity: TS-renderer-AiSessionMessageContent-0d5248
 #[test]
 fn 본문에_섞인_스크립트와_인라인_스타일은_그리지_않는다() {
     let blocks = markdown_blocks(
@@ -266,7 +261,6 @@ fn 그려지지_않거나_dompurify가_지우는_요소는_내용까지_뺀다()
     );
 }
 
-// parity: TS-renderer-AiSessionMessageContent-4db3dd
 #[test]
 fn 수식을_mathml로_그리고_코드_안의_달러는_글자로_둔다() {
     let blocks = markdown_blocks("Formula $E=mc^2$ and \\[\\frac{a}{b}\\] plus `$literal$`");
@@ -305,7 +299,6 @@ fn 머메이드_조각은_정의_원문을_넘긴다() {
     );
 }
 
-// parity: TS-renderer-TaskDetailRoute-b9924e
 #[test]
 fn 채팅_상세_메시지는_markdown과_mermaid를_나누고_위험한_html을_지운다() {
     let message = [
@@ -377,7 +370,6 @@ fn 채팅_상세_메시지는_markdown과_mermaid를_나누고_위험한_html을
     );
 }
 
-// parity: TS-renderer-ReleaseUpdateDialog-f7ee72
 #[test]
 fn 릴리스_노트는_제목과_표_안_그림을_그리고_위험한_html을_지운다() {
     let notes = [

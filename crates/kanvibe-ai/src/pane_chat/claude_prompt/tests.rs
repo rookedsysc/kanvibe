@@ -131,7 +131,6 @@ fn replace_rows(screen: &[String], replacements: &[(&str, &str)]) -> Vec<String>
         .collect()
 }
 
-// parity: TS-aiSessions-paneChatClaudePrompt-b4b54f
 #[test]
 fn reads_question_with_described_options_and_text_entry() {
     assert_eq!(
@@ -156,7 +155,6 @@ fn reads_question_with_described_options_and_text_entry() {
     );
 }
 
-// parity: TS-aiSessions-paneChatClaudePrompt-a0d1e0
 #[test]
 fn reads_permission_command_detail_and_wrapped_rest_as_description() {
     let prompt = read_claude_prompt(&permission(), 7, 1, None).unwrap();
@@ -189,7 +187,6 @@ fn reads_permission_command_detail_and_wrapped_rest_as_description() {
 const HARD_WRAPPED: &str =
     "   2. Yes, and always allow access to /home/user/kanvibe__worktrees/fix-lo";
 
-// parity: TS-aiSessions-paneChatClaudePrompt-f80e40
 #[test]
 fn joins_path_broken_inside_word_without_space() {
     let long_path =
@@ -221,7 +218,6 @@ fn joins_path_broken_inside_word_without_space() {
     assert_eq!(prompt.options[1].description, "");
 }
 
-// parity: TS-aiSessions-paneChatClaudePrompt-f10455
 #[test]
 fn joins_word_wrapped_row_with_space() {
     let screen: Vec<String> = permission()
@@ -244,7 +240,6 @@ fn joins_word_wrapped_row_with_space() {
     assert_eq!(prompt.options[1].description, "");
 }
 
-// parity: TS-aiSessions-paneChatClaudePrompt-9816a5
 #[test]
 fn short_option_keeps_description_row() {
     let prompt = read_claude_prompt(&single_question(), 6, 0, Some(120)).unwrap();
@@ -257,7 +252,6 @@ fn short_option_keeps_description_row() {
     );
 }
 
-// parity: TS-aiSessions-paneChatClaudePrompt-5b10e9
 #[test]
 fn question_label_near_edge_keeps_description() {
     let near_edge = [
@@ -280,7 +274,6 @@ fn question_label_near_edge_keeps_description() {
     );
 }
 
-// parity: TS-aiSessions-paneChatClaudePrompt-b73152
 #[test]
 fn question_joins_wrapped_label_when_boundary_is_clear() {
     let screen = [
@@ -301,7 +294,6 @@ fn question_joins_wrapped_label_when_boundary_is_clear() {
     assert_eq!(prompt.options[0].description, "recommended");
 }
 
-// parity: TS-aiSessions-paneChatClaudePrompt-267b93
 #[test]
 fn description_after_wrapped_label_stays_description() {
     let screen = [
@@ -320,7 +312,6 @@ fn description_after_wrapped_label_stays_description() {
     assert_eq!(prompt.options[0].description, "its description");
 }
 
-// parity: TS-aiSessions-paneChatClaudePrompt-35d2d6
 #[test]
 fn confirmation_below_border_uses_whole_notice_as_title() {
     let prompt = read_claude_prompt(&model_switch(), 3, 3, None).unwrap();
@@ -341,7 +332,6 @@ fn confirmation_below_border_uses_whole_notice_as_title() {
     );
 }
 
-// parity: TS-aiSessions-paneChatClaudePrompt-a56c52
 #[test]
 fn multi_select_reads_checks_and_steps_without_submit_row() {
     let prompt = read_claude_prompt(&multi_select(), 5, 0, None).unwrap();
@@ -362,7 +352,6 @@ fn multi_select_reads_checks_and_steps_without_submit_row() {
     );
 }
 
-// parity: TS-aiSessions-paneChatClaudePrompt-188204
 #[test]
 fn review_screen_reads_chosen_answers_as_detail() {
     let prompt = read_claude_prompt(&review(), 10, 0, None).unwrap();
@@ -378,7 +367,6 @@ fn review_screen_reads_chosen_answers_as_detail() {
     );
 }
 
-// parity: TS-aiSessions-paneChatClaudePrompt-f7f50d
 #[test]
 fn chosen_single_option_drops_mark_and_is_checked() {
     let revisited = replace_rows(
@@ -390,7 +378,6 @@ fn chosen_single_option_drops_mark_and_is_checked() {
     assert!(prompt.options[1].is_checked);
 }
 
-// parity: TS-aiSessions-paneChatClaudePrompt-47a045
 #[test]
 fn cursor_on_highlighted_text_means_text_entry() {
     let typing = replace_rows(
@@ -410,7 +397,6 @@ fn cursor_on_highlighted_text_means_text_entry() {
     );
 }
 
-// parity: TS-aiSessions-paneChatClaudePrompt-200d49
 #[test]
 fn would_you_like_to_is_permission() {
     let border = border();
@@ -429,7 +415,6 @@ fn would_you_like_to_is_permission() {
     );
 }
 
-// parity: TS-aiSessions-paneChatClaudePrompt-fca029
 #[test]
 fn highlighted_multi_select_text_entry_is_active() {
     let typing = replace_rows(
@@ -445,7 +430,6 @@ fn highlighted_multi_select_text_entry_is_active() {
     assert!(prompt.is_multi_select);
 }
 
-// parity: TS-aiSessions-paneChatClaudePrompt-ae3b7f
 #[test]
 fn spaced_chosen_mark_after_typed_text_is_removed() {
     let with_text = |row: &str| replace_rows(&single_question(), &[("  4. Type something.", row)]);
@@ -461,7 +445,6 @@ fn spaced_chosen_mark_after_typed_text_is_removed() {
     assert_eq!(after_leaving, while_typing);
 }
 
-// parity: TS-aiSessions-paneChatClaudePrompt-445316
 #[test]
 fn chosen_mark_in_the_middle_is_checked() {
     let top = "▔".repeat(40);
@@ -481,7 +464,6 @@ fn chosen_mark_in_the_middle_is_checked() {
     );
 }
 
-// parity: TS-aiSessions-paneChatClaudePrompt-2c2bf4
 #[test]
 fn scrolled_options_report_hidden_options() {
     let border = border();
@@ -514,7 +496,6 @@ fn scrolled_options_report_hidden_options() {
     );
 }
 
-// parity: TS-aiSessions-paneChatClaudePrompt-7ac011
 #[test]
 fn notice_on_top_border_is_not_mixed_into_title() {
     let mut screen = lines(&[
@@ -530,7 +511,6 @@ fn notice_on_top_border_is_not_mixed_into_title() {
     assert_eq!(prompt.detail, "");
 }
 
-// parity: TS-aiSessions-paneChatClaudePrompt-89489d
 #[test]
 fn refuses_screens_that_are_not_prompts() {
     let border = border();
@@ -604,7 +584,6 @@ fn narrow() -> Vec<String> {
     ])
 }
 
-// parity: TS-aiSessions-paneChatClaudePrompt-f003b1
 #[test]
 fn reads_latest_question_tool_call() {
     let records = [
@@ -623,7 +602,6 @@ fn reads_latest_question_tool_call() {
     assert!(read_claude_asked_questions(&broken).is_empty());
 }
 
-// parity: TS-aiSessions-paneChatClaudePrompt-cf10bc
 #[test]
 fn splits_label_and_description_by_original_question() {
     let screen = read_claude_prompt(&narrow(), 2, 0, Some(50)).unwrap();
@@ -652,7 +630,6 @@ fn splits_label_and_description_by_original_question() {
     );
 }
 
-// parity: TS-aiSessions-paneChatClaudePrompt-b90ebe
 #[test]
 fn mismatched_question_keeps_screen_reading() {
     let screen = read_claude_prompt(&narrow(), 2, 0, Some(50)).unwrap();

@@ -715,7 +715,6 @@ mod tests {
         }
     }
 
-    // parity: TS-components-TaskDetailInfoCard-6a616c
     #[test]
     fn project_shortcut_goes_to_the_board_without_a_base_branch_task() {
         let shortcut = project_shortcut(&snapshot(Some("main"), None)).expect("shortcut");

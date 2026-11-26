@@ -219,14 +219,12 @@ mod tests {
         format!("{root}/usr/local/{OAUTH2_BUNDLE_SUBPATH}")
     }
 
-    // parity: TS-aiUsage-geminiOAuthClient-f041d0
     #[test]
     fn missing_binary_is_none() {
         let (_directory, _root, usage) = install_root();
         assert_eq!(resolve_gemini_oauth_client(&usage.context), None);
     }
 
-    // parity: TS-aiUsage-geminiOAuthClient-2b5975
     #[test]
     fn extracts_client_from_installed_bundle() {
         let (_directory, root, usage) = install_root();
@@ -244,7 +242,6 @@ mod tests {
         );
     }
 
-    // parity: TS-aiUsage-geminiOAuthClient-70ced2
     #[test]
     fn changed_bundle_format_is_none() {
         let (_directory, root, usage) = install_root();

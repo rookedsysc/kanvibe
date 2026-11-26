@@ -421,7 +421,6 @@ mod tests {
     use super::*;
     use crate::notifications::BackgroundSyncOperation;
 
-    // parity: TS-shared-taskNotifications-1ef320
     #[test]
     fn unknown_locale_falls_back_to_korean() {
         assert_eq!(notification_locale("fr-FR"), Locale::Ko);
@@ -429,7 +428,6 @@ mod tests {
         assert_eq!(notification_locale("zh-CN"), Locale::Zh);
     }
 
-    // parity: TS-shared-taskNotifications-52363d
     #[test]
     fn task_status_notification_has_a_stable_path_and_dedupe_key() {
         let notification = build_task_status_notification(&TaskStatusNotification {
@@ -453,7 +451,6 @@ mod tests {
         );
     }
 
-    // parity: TS-shared-taskNotifications-4bd230
     #[test]
     fn missing_target_notification_uses_the_locale_message_and_root_path() {
         let notification =
@@ -491,7 +488,6 @@ mod tests {
         }
     }
 
-    // parity: TS-shared-taskNotifications-79d9db
     #[test]
     fn background_sync_body_summarizes_and_the_action_carries_details() {
         let pulled_tasks = vec![

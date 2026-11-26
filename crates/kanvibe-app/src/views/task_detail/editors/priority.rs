@@ -220,8 +220,6 @@ impl TaskDetailView {
 mod tests {
     use super::*;
 
-    // parity: TS-components-PriorityEditor-ac412b
-    // parity: TS-components-PrioritySelector-1b2011
     #[test]
     fn current_priority_gets_the_selection_ring() {
         assert_eq!(selected_priority_index(Some(TaskPriority::High)), 3);

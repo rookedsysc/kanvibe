@@ -95,7 +95,6 @@ fn pdf_document() -> PaneChatAttachmentInput {
     )
 }
 
-// parity: TS-main-paneChatAttachmentService-ff5be1
 #[test]
 fn stages_bytes_in_owned_path_and_removes_unsent_file() {
     let fixture = AttachmentFixture::new("");
@@ -127,7 +126,6 @@ fn stages_bytes_in_owned_path_and_removes_unsent_file() {
     assert!(fs::metadata(&stored[0].path).is_err());
 }
 
-// parity: TS-main-paneChatAttachmentService-9d971d
 #[test]
 fn does_not_substitute_attachments_from_another_pane_host_or_cli() {
     let fixture = AttachmentFixture::new("");
@@ -172,7 +170,6 @@ fn does_not_substitute_attachments_from_another_pane_host_or_cli() {
     );
 }
 
-// parity: TS-main-paneChatAttachmentService-85d2d7
 #[test]
 fn keeps_submitted_file_readable_after_composer_chip_is_removed() {
     let fixture = AttachmentFixture::new("");
@@ -199,7 +196,6 @@ fn keeps_submitted_file_readable_after_composer_chip_is_removed() {
     assert_eq!(fs::read_to_string(&stored[0].path).unwrap(), "hello");
 }
 
-// parity: TS-main-paneChatAttachmentService-5184bc
 #[test]
 fn rejects_forged_image_bytes_before_creating_attachment() {
     let fixture = AttachmentFixture::new("");
@@ -223,7 +219,6 @@ fn rejects_forged_image_bytes_before_creating_attachment() {
     );
 }
 
-// parity: TS-main-paneChatAttachmentService-fd1582
 #[test]
 fn bounds_concurrent_uploads_at_ten_per_cli() {
     let fixture = AttachmentFixture::new("");
@@ -272,7 +267,6 @@ fn assert_unknown_host_is_not_uploaded(remote_owner: &PaneChatAttachmentOwner) {
     assert!(unknown_host.uploader.transfers.lock().unwrap().is_empty());
 }
 
-// parity: TS-main-paneChatAttachmentService-bce4f4
 #[test]
 fn stages_and_removes_remote_file_only_on_its_verified_host() {
     let ssh_config = "Host own-host\n  HostName 127.0.0.1\n  User fixture\n  Port 2222\n  IdentityFile /fixture/key\n";

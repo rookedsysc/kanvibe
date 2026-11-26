@@ -103,7 +103,6 @@ fn cleanup_options(
     }
 }
 
-// parity: TS-lib-worktree-6d27d6
 #[test]
 fn tmux_session_alive_checks_both_sockets() {
     let runner = returning("");
@@ -124,7 +123,6 @@ fn tmux_session_alive_checks_both_sockets() {
     ));
 }
 
-// parity: TS-lib-worktree-781941
 #[test]
 fn tmux_session_lookup_includes_the_pre_1_0_6_socket() {
     let runner = returning("");
@@ -140,7 +138,6 @@ fn tmux_session_lookup_includes_the_pre_1_0_6_socket() {
     assert!(runner.commands()[0].contains("tmux -L 'kanvibe' has-session -t 'feat-branch'"));
 }
 
-// parity: TS-lib-worktree-119491
 #[test]
 fn missing_tmux_session_is_not_alive() {
     let runner = failing("no session");
@@ -154,7 +151,6 @@ fn missing_tmux_session_is_not_alive() {
     ));
 }
 
-// parity: TS-lib-worktree-76b142
 #[test]
 fn listed_zellij_session_is_alive() {
     let runner = returning("feat-branch\nother-session\n");
@@ -168,7 +164,6 @@ fn listed_zellij_session_is_alive() {
     ));
 }
 
-// parity: TS-lib-worktree-ff4a7f
 #[test]
 fn unlisted_zellij_session_is_not_alive() {
     let runner = returning("other-session\n");
@@ -182,7 +177,6 @@ fn unlisted_zellij_session_is_not_alive() {
     ));
 }
 
-// parity: TS-lib-worktree-a200d4
 #[test]
 fn remote_session_check_passes_the_ssh_host() {
     let runner = returning("");
@@ -200,7 +194,6 @@ fn remote_session_check_passes_the_ssh_host() {
     assert_eq!(call.ssh_host.as_deref(), Some("remote-host"));
 }
 
-// parity: TS-lib-worktree-833170
 #[test]
 fn exited_zellij_session_is_not_alive() {
     let runner = returning("EXITED: feat-branch\nother-session\n");
@@ -214,7 +207,6 @@ fn exited_zellij_session_is_not_alive() {
     ));
 }
 
-// parity: TS-lib-worktree-c6b7f3
 #[test]
 fn colored_zellij_session_name_is_alive() {
     let runner = returning("\x1b[32;1mfeat-branch\x1b[m [Created \x1b[35;1m2s\x1b[m ago] \n");
@@ -228,7 +220,6 @@ fn colored_zellij_session_name_is_alive() {
     ));
 }
 
-// parity: TS-lib-worktree-82b00a
 #[test]
 fn zellij_session_name_prefix_is_not_a_match() {
     let runner = returning("feat-branch-extra [Created 1h ago]\n");
@@ -242,7 +233,6 @@ fn zellij_session_name_prefix_is_not_a_match() {
     ));
 }
 
-// parity: TS-lib-worktree-b469e9
 #[test]
 fn removes_the_worktree_path_resolved_from_git() {
     let runner = repository_runner(
@@ -281,7 +271,6 @@ fn removes_the_worktree_path_resolved_from_git() {
     ));
 }
 
-// parity: TS-lib-worktree-58e063
 #[test]
 fn skips_worktree_removal_when_the_branch_has_no_worktree() {
     let runner = repository_runner(&[("/workspace/repo", "main")], &[]);
@@ -304,7 +293,6 @@ fn skips_worktree_removal_when_the_branch_has_no_worktree() {
     ));
 }
 
-// parity: TS-lib-worktree-807617
 #[test]
 fn deletes_a_stale_managed_directory_git_no_longer_lists() {
     let runner = repository_runner(&[("/workspace/repo", "main")], &[]);
@@ -332,7 +320,6 @@ fn deletes_a_stale_managed_directory_git_no_longer_lists() {
     ));
 }
 
-// parity: TS-lib-worktree-f39789
 #[test]
 fn keeps_a_sanitized_managed_path_registered_to_another_worktree() {
     let runner = repository_runner(
@@ -363,7 +350,6 @@ fn keeps_a_sanitized_managed_path_registered_to_another_worktree() {
     );
 }
 
-// parity: TS-lib-worktree-afebc3
 #[test]
 fn falls_back_to_the_managed_task_path_when_the_branch_changed() {
     let runner = repository_runner(
@@ -400,7 +386,6 @@ fn falls_back_to_the_managed_task_path_when_the_branch_changed() {
     ));
 }
 
-// parity: TS-lib-worktree-0af0d1
 #[test]
 fn does_not_fall_back_to_a_path_owned_by_another_worktree() {
     let runner = repository_runner(
@@ -432,7 +417,6 @@ fn does_not_fall_back_to_a_path_owned_by_another_worktree() {
     ));
 }
 
-// parity: TS-lib-worktree-8fd6b1
 #[test]
 fn prunes_a_broken_registration_and_still_deletes_the_branch() {
     let runner = repository_runner(
@@ -461,7 +445,6 @@ fn prunes_a_broken_registration_and_still_deletes_the_branch() {
     assert_eq!(filter_calls(&runner, "branch -D 'feature/broken'").len(), 1);
 }
 
-// parity: TS-lib-worktree-9914a9
 #[test]
 fn still_deletes_the_branch_when_remove_and_prune_fail() {
     let runner = repository_runner(
@@ -485,7 +468,6 @@ fn still_deletes_the_branch_when_remove_and_prune_fail() {
     assert_eq!(filter_calls(&runner, "branch -D 'feature/broken'").len(), 1);
 }
 
-// parity: TS-lib-worktree-f5be66
 #[test]
 fn still_deletes_the_branch_when_stale_directory_cleanup_fails() {
     let runner = repository_runner(&[("/workspace/repo", "main")], &["rm -rf --"]);
@@ -507,7 +489,6 @@ fn still_deletes_the_branch_when_stale_directory_cleanup_fails() {
     );
 }
 
-// parity: TS-lib-worktree-7755ed
 #[test]
 fn keeps_a_branch_checked_out_in_the_project_root() {
     let runner = repository_runner(&[("/workspace/repo", "feature/root-checkout")], &[]);
@@ -553,7 +534,6 @@ fn branch_cleanup_failure_is_reported_only_when_requested() {
     );
 }
 
-// parity: TS-lib-worktree-6fcbac
 #[test]
 fn kills_a_tmux_session_on_both_sockets() {
     let runner = returning("");
@@ -577,7 +557,6 @@ fn kills_a_tmux_session_on_both_sockets() {
 
 const ZELLIJ_CLEANUP: &str = "zellij kill-session 'feat-branch' 2>/dev/null || true; zellij delete-session --force 'feat-branch' 2>/dev/null || true";
 
-// parity: TS-lib-worktree-c2e5d7
 #[test]
 fn kills_a_zellij_session_and_deletes_its_resurrect_data() {
     let runner = returning("");
@@ -595,7 +574,6 @@ fn kills_a_zellij_session_and_deletes_its_resurrect_data() {
     assert!(has_call(&runner, ZELLIJ_CLEANUP, None));
 }
 
-// parity: TS-lib-worktree-116a82
 #[test]
 fn remote_zellij_cleanup_passes_the_ssh_host() {
     let runner = returning("");
@@ -627,7 +605,6 @@ fn strict_session_cleanup_command(session_type: SessionType) -> RecordedCommand 
     runner.calls().remove(0)
 }
 
-// parity: TS-lib-worktree-31df1f
 #[test]
 fn strict_zellij_cleanup_verifies_the_session_is_gone() {
     let call = strict_session_cleanup_command(SessionType::Zellij);
@@ -677,19 +654,16 @@ fn run_zellij_cleanup(can_remove_session: bool) -> (Option<i32>, bool) {
     (status.code(), session_state_file.exists())
 }
 
-// parity: TS-lib-worktree-25e27a
 #[test]
 fn zellij_cleanup_in_shell_removes_a_running_session() {
     assert_eq!(run_zellij_cleanup(true), (Some(0), false));
 }
 
-// parity: TS-lib-worktree-e559d5
 #[test]
 fn zellij_cleanup_in_shell_fails_when_a_colored_session_remains() {
     assert_eq!(run_zellij_cleanup(false), (Some(1), true));
 }
 
-// parity: TS-lib-worktree-bb7213
 #[test]
 fn strict_tmux_cleanup_verifies_by_exact_session_name() {
     let call = strict_session_cleanup_command(SessionType::Tmux);
@@ -708,7 +682,6 @@ fn strict_tmux_cleanup_verifies_by_exact_session_name() {
     assert_eq!(call.ssh_host.as_deref(), Some("remote-host"));
 }
 
-// parity: TS-lib-worktree-dad7b4
 #[test]
 fn already_terminated_session_is_not_an_error() {
     let runner = failing("session not found");
@@ -761,7 +734,6 @@ fn create_without_worktree(
     (session_name, runner)
 }
 
-// parity: TS-lib-worktree-79dbe0
 #[test]
 fn session_name_comes_from_project_and_branch() {
     let (session_name, _) =
@@ -770,7 +742,6 @@ fn session_name_comes_from_project_and_branch() {
     assert_eq!(session_name, "path-feat-my-feature");
 }
 
-// parity: TS-lib-worktree-09c469
 #[test]
 fn local_tmux_session_is_created_at_terminal_attach() {
     let (session_name, runner) =
@@ -781,7 +752,6 @@ fn local_tmux_session_is_created_at_terminal_attach() {
     assert!(filter_calls(&runner, "tmux new-session").is_empty());
 }
 
-// parity: TS-lib-worktree-e0deab
 #[test]
 fn local_tmux_session_is_not_probed_before_attach() {
     let (_, runner) = create_without_worktree(SessionType::Tmux, None, None, "main");
@@ -790,7 +760,6 @@ fn local_tmux_session_is_not_probed_before_attach() {
     assert!(filter_calls(&runner, "tmux new-session").is_empty());
 }
 
-// parity: TS-lib-worktree-6726d8
 #[test]
 fn remote_tmux_dependency_checks_wait_for_attach() {
     let (_, runner) = create_without_worktree(
@@ -843,7 +812,6 @@ fn create_local_zellij_worktree(
     (layout_path, written_kdl, runner)
 }
 
-// parity: TS-lib-worktree-97215b
 #[test]
 fn remote_worktree_creation_runs_only_git_worktree_add() {
     let runner = returning("");
@@ -866,7 +834,6 @@ fn remote_worktree_creation_runs_only_git_worktree_add() {
     assert_eq!(filter_calls(&runner, "git -C").len(), 1);
 }
 
-// parity: TS-lib-worktree-da4e29
 #[test]
 fn local_worktree_creation_runs_only_git_worktree_add() {
     let runner = returning("");
@@ -894,7 +861,6 @@ fn local_worktree_creation_runs_only_git_worktree_add() {
     assert_eq!(session.session_name, "kanvibe-feat-local");
 }
 
-// parity: TS-lib-worktree-7de7cd
 #[test]
 fn zellij_layout_file_is_written_without_starting_zellij() {
     let lookup = || {
@@ -913,7 +879,6 @@ fn zellij_layout_file_is_written_without_starting_zellij() {
     assert!(filter_calls(&runner, "zellij").is_empty());
 }
 
-// parity: TS-lib-worktree-56006e
 #[test]
 fn single_layout_still_writes_a_bar_free_layout_file() {
     let lookup = || Ok(Some(layout(PaneLayoutType::Single, &[(0, "echo hello")])));
@@ -925,7 +890,6 @@ fn single_layout_still_writes_a_bar_free_layout_file() {
     assert!(!written_kdl.contains("zellij:status-bar"));
 }
 
-// parity: TS-lib-worktree-f7f51c
 #[test]
 fn remote_layout_file_is_written_through_the_remote_runner() {
     let runner = returning("");
@@ -960,7 +924,6 @@ fn remote_layout_file_is_written_through_the_remote_runner() {
     );
 }
 
-// parity: TS-lib-worktree-93a11d
 #[test]
 fn layout_lookup_failure_falls_back_to_a_single_pane_file() {
     let lookup = || Err("DB error".to_string());
@@ -971,7 +934,6 @@ fn layout_lookup_failure_falls_back_to_a_single_pane_file() {
     assert!(written_kdl.contains("pane cwd="));
 }
 
-// parity: TS-lib-worktree-f87b50
 #[test]
 fn three_pane_layout_is_written_to_the_worktree() {
     let commands = [
@@ -988,7 +950,6 @@ fn three_pane_layout_is_written_to_the_worktree() {
     }
 }
 
-// parity: TS-lib-worktree-85440a
 #[test]
 fn quad_layout_is_written_to_the_worktree() {
     let commands = [(0, "cmd0"), (1, "cmd1"), (2, "cmd2"), (3, "cmd3")];
@@ -1002,7 +963,6 @@ fn quad_layout_is_written_to_the_worktree() {
     assert!(written_kdl.contains(r#"split_direction="vertical""#));
 }
 
-// parity: TS-lib-worktree-cd44b1
 #[test]
 fn zellij_session_without_worktree_does_not_start_zellij() {
     let (session_name, runner) =
@@ -1012,7 +972,6 @@ fn zellij_session_without_worktree_does_not_start_zellij() {
     assert!(filter_calls(&runner, "zellij").is_empty());
 }
 
-// parity: TS-lib-worktree-d86c3e
 #[test]
 fn herdr_session_for_an_existing_directory_uses_the_shared_spaces_reference() {
     let runner = returning("");
@@ -1032,7 +991,6 @@ fn herdr_session_for_an_existing_directory_uses_the_shared_spaces_reference() {
     assert!(runner.commands().is_empty());
 }
 
-// parity: TS-lib-worktree-709fec
 #[test]
 fn herdr_session_for_a_new_worktree_uses_the_shared_spaces_reference() {
     let runner = returning("");
@@ -1056,7 +1014,6 @@ fn herdr_session_for_a_new_worktree_uses_the_shared_spaces_reference() {
     );
 }
 
-// parity: TS-lib-gitLiteralPaths-bb7c1f
 #[test]
 fn remote_home_expands_while_trailing_shell_characters_stay_literal() {
     let suffix = "/$ABSENT$(printf nope)`printf nope`\"'";
@@ -1134,7 +1091,6 @@ fn system_runner(home: &str) -> Arc<dyn ShellCommandRunner> {
     ))
 }
 
-// parity: TS-lib-gitLiteralPaths-55f360
 #[test]
 fn worktree_lifecycle_keeps_special_characters_in_paths_literal() {
     let root = tempfile::tempdir().unwrap();

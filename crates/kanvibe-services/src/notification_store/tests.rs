@@ -86,7 +86,6 @@ fn read_states(notifications: &[AppNotification]) -> Vec<(String, bool)> {
         .collect()
 }
 
-// parity: TS-main-notificationStore-dd62ca
 #[test]
 fn marks_only_unread_notifications_of_the_same_task() {
     let storage = MemoryStorage::with(&[
@@ -109,7 +108,6 @@ fn marks_only_unread_notifications_of_the_same_task() {
     );
 }
 
-// parity: TS-main-notificationStore-816e57
 #[test]
 fn does_not_rewrite_when_the_task_is_already_read() {
     let storage = MemoryStorage::with(&[
@@ -124,7 +122,6 @@ fn does_not_rewrite_when_the_task_is_already_read() {
     assert_eq!(storage.write_count.load(Ordering::SeqCst), 0);
 }
 
-// parity: TS-main-notificationStore-7eed9d
 #[test]
 fn skips_notifications_without_a_task() {
     let storage = MemoryStorage::with(&[notification("n1", None, false)]);
@@ -138,7 +135,6 @@ fn skips_notifications_without_a_task() {
 
 type MarkRead = fn(&NotificationStore);
 
-// parity: TS-main-notificationStore-b968b8
 #[test]
 fn creating_and_marking_read_at_the_same_time_keeps_both_changes() {
     let cases: [(&str, MarkRead, bool); 3] = [
@@ -185,7 +181,6 @@ fn creating_and_marking_read_at_the_same_time_keeps_both_changes() {
     }
 }
 
-// parity: TS-main-notificationStore-18b4b3
 #[test]
 fn concurrent_duplicates_are_stored_once() {
     let store = store_with(MemoryStorage::with(&[base_notification()]));
@@ -214,7 +209,6 @@ fn concurrent_duplicates_are_stored_once() {
     );
 }
 
-// parity: TS-main-notificationStore-cc1d42
 #[test]
 fn keeps_the_newest_hundred_and_lists_newest_first() {
     let base_ms = chrono::DateTime::parse_from_rfc3339("2026-01-01T00:00:00Z")
@@ -239,7 +233,6 @@ fn keeps_the_newest_hundred_and_lists_newest_first() {
     assert!(!saved.iter().any(|entry| entry.id == "retained-99"));
 }
 
-// parity: TS-main-notificationStore-343712
 #[test]
 fn notifies_only_successful_changes() {
     let storage = MemoryStorage::with(&[base_notification()]);
@@ -281,7 +274,6 @@ fn notifies_only_successful_changes() {
     assert_eq!(changes.lock().unwrap().len(), 3);
 }
 
-// parity: TS-main-notificationStore-1159a0
 #[test]
 fn task_read_changes_notify_after_saving() {
     let storage = MemoryStorage::with(&[base_notification()]);
@@ -301,7 +293,6 @@ fn task_read_changes_notify_after_saving() {
     assert_eq!(*observed.lock().unwrap(), [vec![read]]);
 }
 
-// parity: TS-main-notificationStore-76f066
 #[test]
 fn a_failed_save_does_not_notify_and_later_writes_continue() {
     let storage = MemoryStorage::with(&[base_notification()]);
@@ -326,7 +317,6 @@ fn a_failed_save_does_not_notify_and_later_writes_continue() {
     assert_eq!(change_count.load(Ordering::SeqCst), 1);
 }
 
-// parity: TS-main-notificationStore-47cad0
 #[test]
 fn a_failing_listener_does_not_block_saving_or_other_listeners() {
     let store = store_with(MemoryStorage::with(&[base_notification()]));

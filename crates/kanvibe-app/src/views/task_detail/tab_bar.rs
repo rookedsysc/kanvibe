@@ -418,7 +418,6 @@ mod tests {
         }
     }
 
-    // parity: TS-renderer-TerminalTabBar-8322b3
     #[test]
     fn no_divider_next_to_the_active_tab() {
         let tabs = vec![tab("1", false), tab("2", true), tab("3", false)];
@@ -426,7 +425,6 @@ mod tests {
         assert!(!has_tab_divider(&tabs, 2));
     }
 
-    // parity: TS-renderer-TerminalTabBar-d023e5
     #[test]
     fn divider_between_two_inactive_tabs_after_the_first() {
         let tabs = vec![tab("1", true), tab("2", false), tab("3", false)];
@@ -442,7 +440,6 @@ mod tests {
         }
     }
 
-    // parity: TS-renderer-TerminalTabBar-3349d1
     #[test]
     fn first_five_tabs_show_their_move_shortcut() {
         let state = shortcut_state(ShortcutPlatform::Linux);
@@ -450,7 +447,6 @@ mod tests {
         assert_eq!(tab_shortcut_label(4, &state).as_deref(), Some("Ctrl+Alt+5"));
     }
 
-    // parity: TS-renderer-TerminalTabBar-cea316
     #[test]
     fn sixth_tab_and_later_have_no_shortcut_hint() {
         let state = shortcut_state(ShortcutPlatform::Linux);

@@ -78,7 +78,6 @@ fn registry_with(
     ))
 }
 
-// parity: TS-lib-openCodePluginRegistry-01ba2e
 #[test]
 fn extracts_plugin_urls_from_valid_json_output() {
     let output =
@@ -90,7 +89,6 @@ fn extracts_plugin_urls_from_valid_json_output() {
     );
 }
 
-// parity: TS-lib-openCodePluginRegistry-b4cc60
 #[test]
 fn falls_back_to_the_plugin_block_when_debug_output_is_not_valid_json() {
     let output = "{\n  \"plugin\": [\n    \"file:///tmp/alpha.ts\",\n    \"file:///tmp/kanvibe-plugin.ts\"\n  ],\n  \"agent\": {\n    \"custom\": {\n      \"template\": \"line 1\nline 2\"\n    }\n  }\n}";
@@ -116,7 +114,6 @@ fn plugin_block_fallback_decodes_json_escapes_like_ts() {
     );
 }
 
-// parity: TS-lib-openCodePluginRegistry-e153ce
 #[test]
 fn filters_only_kanvibe_plugin_urls() {
     let output = r#"{"plugin":["file:///tmp/alpha.ts","file:///tmp/kanvibe-plugin.ts","file:///tmp/kanvibe-plugin.js"],"agent":{}}"#;
@@ -130,7 +127,6 @@ fn filters_only_kanvibe_plugin_urls() {
     );
 }
 
-// parity: TS-lib-openCodePluginRegistry-ccb49f
 #[test]
 fn matches_kanvibe_plugin_urls_with_ts_or_js_extensions() {
     assert!(is_kanvibe_plugin_url("file:///tmp/kanvibe-plugin.ts"));
@@ -165,7 +161,6 @@ fn fake_cli_environment(
     create_local_shell_environment(&parent_environment, platform, "/unused")
 }
 
-// parity: TS-lib-openCodePluginRegistry-101d34
 #[test]
 fn runs_opencode_debug_config_with_the_local_shell_environment() {
     let workspace = tempfile::tempdir().unwrap();
@@ -198,7 +193,6 @@ fn runs_opencode_debug_config_with_the_local_shell_environment() {
     assert_eq!(lines[3], "unsetunset");
 }
 
-// parity: TS-lib-openCodePluginRegistry-ec92df
 #[test]
 fn shares_concurrent_requests_and_caches_sequential_requests_for_five_seconds() {
     let (release_sender, release_receiver) = mpsc::channel::<()>();
@@ -238,7 +232,6 @@ fn shares_concurrent_requests_and_caches_sequential_requests_for_five_seconds() 
     assert_eq!(command.call_count(), 3);
 }
 
-// parity: TS-lib-openCodePluginRegistry-3ce229
 #[test]
 fn bounds_a_slow_cli_and_retains_failure_instead_of_reporting_an_empty_registration() {
     let command = FakeDebugConfigCommand::new(|_| {
@@ -286,7 +279,6 @@ fn bounds_a_slow_cli_and_retains_failure_instead_of_reporting_an_empty_registrat
     assert!(error.starts_with("Command failed: opencode debug config"));
 }
 
-// parity: TS-lib-openCodePluginRegistry-d88a81
 #[test]
 fn invalidates_a_completed_query_after_installation() {
     let command = FakeDebugConfigCommand::new(|_| Ok(r#"{"plugin":[]}"#.into()));
@@ -310,7 +302,6 @@ fn invalidates_a_completed_query_after_installation() {
     assert_eq!(command.call_count(), 2);
 }
 
-// parity: TS-lib-openCodePluginRegistry-773e02
 #[test]
 fn waits_for_an_invalidated_in_flight_query_before_sharing_one_fresh_query() {
     let (finish_sender, finish_receiver) = mpsc::channel::<()>();

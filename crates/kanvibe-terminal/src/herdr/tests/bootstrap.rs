@@ -42,7 +42,6 @@ fn layout(layout_type: PaneLayoutType, commands: &[&str]) -> PaneLayoutSelection
     PaneLayoutSelection { layout_type, panes }
 }
 
-// parity: TS-lib-herdr-b7113c
 #[test]
 fn local_server_runs_in_its_own_session_with_a_narrowed_environment() {
     let fake_bin = TempDir::new().unwrap();
@@ -87,7 +86,6 @@ fn local_server_runs_in_its_own_session_with_a_narrowed_environment() {
     );
 }
 
-// parity: TS-lib-herdr-adfec0
 #[test]
 fn local_server_spawn_failure_reaches_the_connection_request() {
     let mut herdr = fixture();
@@ -103,7 +101,6 @@ fn local_server_spawn_failure_reaches_the_connection_request() {
     assert_eq!(herdr.runner.calls().len(), 1);
 }
 
-// parity: TS-lib-herdr-b9a9ed
 #[test]
 fn ssh_server_starts_on_the_remote_host_and_waits_for_readiness() {
     let mut herdr = fixture();
@@ -122,7 +119,6 @@ fn ssh_server_starts_on_the_remote_host_and_waits_for_readiness() {
     assert_eq!(calls[1].ssh_host.as_deref(), Some("remote"));
 }
 
-// parity: TS-lib-herdr-08fa36
 #[test]
 fn ssh_server_launch_command_makes_herdr_its_own_session_leader() {
     // Given: 원격 시작 명령을 그대로 받아 실행할 수 있도록, 자기 세션 정보를 기록하는 가짜 herdr를 PATH 맨 앞에 둔다
@@ -156,7 +152,6 @@ fn ssh_server_launch_command_makes_herdr_its_own_session_leader() {
     assert_eq!(launch["args"], json!(["--session", "feature", "server"]));
 }
 
-// parity: TS-lib-herdr-46e0ea
 #[test]
 fn reconnecting_to_an_existing_session_does_not_repeat_layout_or_commands() {
     let herdr = fixture();
@@ -198,7 +193,6 @@ fn respond_as_empty_server(runner: &crate::test_support::ScriptedShellRunner) {
 /// 레이아웃 종류, 기대하는 split(대상 pane, 방향), 위치 순서의 pane ID
 type LayoutCase<'a> = (PaneLayoutType, &'a [(&'a str, &'a str)], &'a [&'a str]);
 
-// parity: TS-lib-herdr-5ef08d
 #[test]
 fn layout_commands_reach_the_pane_at_each_position() {
     let cases: [LayoutCase; 6] = [
@@ -296,7 +290,6 @@ fn assert_layout_commands(layout_type: PaneLayoutType, splits: &[(&str, &str)], 
     );
 }
 
-// parity: TS-lib-herdr-251b74
 #[test]
 fn concurrent_connection_requests_join_one_bootstrap() {
     let herdr = fixture();
@@ -341,7 +334,6 @@ fn concurrent_connection_requests_join_one_bootstrap() {
     );
 }
 
-// parity: TS-lib-herdr-53aa5d
 #[test]
 fn ssh_connection_failures_never_start_a_remote_server() {
     let messages = [
@@ -407,7 +399,6 @@ fn respond_as_shared_server(
     });
 }
 
-// parity: TS-lib-herdr-4905e3
 #[test]
 fn closes_only_the_task_space_unrestorable_panes_and_keeps_the_space() {
     let herdr = fixture();
@@ -444,7 +435,6 @@ fn closes_only_the_task_space_unrestorable_panes_and_keeps_the_space() {
     );
 }
 
-// parity: TS-lib-herdr-0cfdc3
 #[test]
 fn replaces_a_task_space_whose_panes_all_failed_to_restore() {
     let herdr = fixture();
@@ -481,7 +471,6 @@ fn replaces_a_task_space_whose_panes_all_failed_to_restore() {
     );
 }
 
-// parity: TS-lib-herdr-312deb
 #[test]
 fn creates_a_new_workspace_when_every_dedicated_server_pane_failed_to_restore() {
     let herdr = fixture();
@@ -525,7 +514,6 @@ fn creates_a_new_workspace_when_every_dedicated_server_pane_failed_to_restore() 
     ])));
 }
 
-// parity: TS-lib-herdr-0ec387
 #[test]
 fn initial_layout_failure_cleans_up_the_new_session() {
     let herdr = fixture();

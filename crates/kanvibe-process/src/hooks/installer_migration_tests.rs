@@ -170,7 +170,6 @@ fn own_peer(own: &Value) -> Value {
     peer
 }
 
-// parity: TS-lib-kanvibeHooksInstaller-a045f8
 #[test]
 fn current_provider_and_cli_are_not_rewritten_but_file_changes_are_rechecked() {
     let migration = MigrationFixture::new();
@@ -191,7 +190,6 @@ fn current_provider_and_cli_are_not_rewritten_but_file_changes_are_rechecked() {
     );
 }
 
-// parity: TS-lib-kanvibeHooksInstaller-2d2d9c
 #[test]
 fn unchanged_remote_hooks_read_one_bundle_and_skip_provider_rechecks() {
     let migration = MigrationFixture::new();
@@ -215,7 +213,6 @@ fn unchanged_remote_hooks_read_one_bundle_and_skip_provider_rechecks() {
     assert_eq!(migration.writes(), 0);
 }
 
-// parity: TS-lib-kanvibeHooksInstaller-8de4c3
 #[test]
 fn a_deleted_provider_file_is_found_and_repaired_even_after_a_successful_check() {
     let migration = MigrationFixture::new();
@@ -235,7 +232,6 @@ fn a_deleted_provider_file_is_found_and_repaired_even_after_a_successful_check()
     assert_eq!(migration.writes(), HOOK_WRITE_BATCH_COUNT);
 }
 
-// parity: TS-lib-kanvibeHooksInstaller-cf5489
 #[test]
 fn a_missing_open_code_pane_chat_binding_is_reinstalled_instead_of_failing() {
     let migration = MigrationFixture::new();
@@ -253,7 +249,6 @@ fn a_missing_open_code_pane_chat_binding_is_reinstalled_instead_of_failing() {
     );
 }
 
-// parity: TS-lib-kanvibeHooksInstaller-f88d76
 #[test]
 fn a_verification_does_not_skip_checks_for_another_remote_host() {
     let migration = MigrationFixture::new();
@@ -266,7 +261,6 @@ fn a_verification_does_not_skip_checks_for_another_remote_host() {
     assert!(new_hosts.contains(&Some("other-host".to_string())));
 }
 
-// parity: TS-lib-kanvibeHooksInstaller-04a967
 #[test]
 fn a_current_read_failure_is_not_reported_as_success_after_a_previous_check() {
     let migration = MigrationFixture::new();
@@ -282,7 +276,6 @@ fn a_current_read_failure_is_not_reported_as_success_after_a_previous_check() {
     assert_eq!(migration.writes(), 0);
 }
 
-// parity: TS-lib-kanvibeHooksInstaller-97f036
 #[test]
 fn files_changed_during_a_check_are_not_remembered_as_verified() {
     let migration = MigrationFixture::new();
@@ -318,7 +311,6 @@ fn files_changed_during_a_check_are_not_remembered_as_verified() {
     );
 }
 
-// parity: TS-lib-kanvibeHooksInstaller-bc47f0
 #[test]
 fn a_lost_current_client_registration_is_restored_while_keeping_peers() {
     let migration = MigrationFixture::new();
@@ -332,7 +324,6 @@ fn a_lost_current_client_registration_is_restored_while_keeping_peers() {
     assert_eq!(migration.fixture.operations.register_count(), 1);
 }
 
-// parity: TS-lib-kanvibeHooksInstaller-b13e38
 #[test]
 fn a_changed_client_id_does_not_reuse_the_previous_clients_verification() {
     let migration = MigrationFixture::new();
@@ -345,7 +336,6 @@ fn a_changed_client_id_does_not_reuse_the_previous_clients_verification() {
     assert_eq!(migration.fixture.operations.register_count(), 1);
 }
 
-// parity: TS-lib-kanvibeHooksInstaller-d30cd0
 #[test]
 fn another_tasks_missing_registration_is_not_hidden_by_a_previous_tasks_check() {
     let migration = MigrationFixture::new();
@@ -357,7 +347,6 @@ fn another_tasks_missing_registration_is_not_hidden_by_a_previous_tasks_check() 
     assert!(migration.fixture.operations.register_count() > 0);
 }
 
-// parity: TS-lib-kanvibeHooksInstaller-e1041c
 #[test]
 fn a_changed_hook_port_rechecks_provider_status_for_identical_files() {
     let migration = MigrationFixture::new();
@@ -374,7 +363,6 @@ fn a_changed_hook_port_rechecks_provider_status_for_identical_files() {
     assert!(migration.command_hosts().len() > commands_before);
 }
 
-// parity: TS-lib-kanvibeHooksInstaller-ed34c1
 #[test]
 fn local_provider_status_is_rechecked_every_time() {
     let migration = MigrationFixture::new();
@@ -397,7 +385,6 @@ fn provider_kind(provider: &FakeProvider) -> KanvibeHookProvider {
     provider.provider()
 }
 
-// parity: TS-lib-kanvibeHooksInstaller-b7ccfc
 #[test]
 fn old_provider_transports_are_updated_to_the_latest() {
     for relative_path in [
@@ -433,7 +420,6 @@ fn old_provider_transports_are_updated_to_the_latest() {
     }
 }
 
-// parity: TS-lib-kanvibeHooksInstaller-30b63f
 #[test]
 fn current_client_registration_is_repaired_while_keeping_peers() {
     for scenario in ["missing", "wrong-transport", "other-client"] {
@@ -463,7 +449,6 @@ fn current_client_registration_is_repaired_while_keeping_peers() {
     }
 }
 
-// parity: TS-lib-kanvibeHooksInstaller-202bec
 #[test]
 fn matching_remote_client_and_transport_are_not_reinstalled_for_an_old_ip() {
     let migration = MigrationFixture::new();
@@ -476,7 +461,6 @@ fn matching_remote_client_and_transport_are_not_reinstalled_for_an_old_ip() {
     assert_eq!(migration.writes(), 0);
 }
 
-// parity: TS-lib-kanvibeHooksInstaller-00e90a
 #[test]
 fn a_write_that_skips_the_cli_returns_a_verification_failure() {
     let migration = MigrationFixture::new();
@@ -497,7 +481,6 @@ fn a_write_that_skips_the_cli_returns_a_verification_failure() {
     assert!(error.to_string().contains("task.sh"));
 }
 
-// parity: TS-lib-kanvibeHooksInstaller-6f55de
 #[test]
 fn an_unreachable_tunnel_alone_does_not_rewrite_current_files() {
     let migration = MigrationFixture::new();
@@ -508,7 +491,6 @@ fn an_unreachable_tunnel_alone_does_not_rewrite_current_files() {
     assert_eq!(migration.writes(), 0);
 }
 
-// parity: TS-lib-kanvibeHooksInstaller-e19803
 #[test]
 fn concurrent_connections_for_the_same_task_share_the_check_and_install() {
     let migration = MigrationFixture::new();
@@ -527,7 +509,6 @@ fn concurrent_connections_for_the_same_task_share_the_check_and_install() {
     assert_eq!(migration.writes(), HOOK_WRITE_BATCH_COUNT);
 }
 
-// parity: TS-lib-kanvibeHooksInstaller-660674
 #[test]
 fn a_failed_check_does_not_write_and_is_retried_on_the_next_connection() {
     let migration = MigrationFixture::new();
@@ -543,7 +524,6 @@ fn a_failed_check_does_not_write_and_is_retried_on_the_next_connection() {
     assert!(migration.ensure("task-1", Some("remote-host")).is_ok());
 }
 
-// parity: TS-lib-kanvibeHooksInstaller-28bc8e
 #[test]
 fn a_failed_write_stays_failed_and_is_retried_on_the_next_connection() {
     let migration = MigrationFixture::new();

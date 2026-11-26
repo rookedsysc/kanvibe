@@ -130,7 +130,6 @@ fn script(pull_outputs: Vec<Result<&'static str, &'static str>>) -> PullScript {
     }
 }
 
-// parity: TS-main-kanbanService-208d89
 #[test]
 fn pull_sync_skips_the_default_branch_and_pulls_one_task_at_a_time() {
     let fixture = KanbanFixture::new();
@@ -182,7 +181,6 @@ fn pull_sync_skips_the_default_branch_and_pulls_one_task_at_a_time() {
     );
 }
 
-// parity: TS-main-kanbanService-1918f3
 #[test]
 fn pull_sync_moves_on_when_one_remote_branch_check_times_out() {
     let fixture = KanbanFixture::new();
@@ -233,7 +231,6 @@ fn pull_sync_moves_on_when_one_remote_branch_check_times_out() {
     assert!(result.pulled_tasks[0].summary.contains("timed out"));
 }
 
-// parity: TS-main-kanbanService-17fd66
 #[test]
 fn remote_pull_sync_leaves_timing_to_the_ssh_layer() {
     let fixture = KanbanFixture::new();
@@ -267,7 +264,6 @@ fn remote_pull_sync_leaves_timing_to_the_ssh_layer() {
     );
 }
 
-// parity: TS-main-kanbanService-23fbcf
 #[test]
 fn pull_sync_never_pulls_done_tasks() {
     let fixture = KanbanFixture::new();
@@ -296,7 +292,6 @@ fn pull_sync_never_pulls_done_tasks() {
     assert_eq!(result, ActiveTaskPullSyncResult::default());
 }
 
-// parity: TS-main-kanbanService-702aa2
 #[test]
 fn pull_sync_skips_tasks_without_a_remote_branch() {
     let fixture = KanbanFixture::new();
@@ -336,7 +331,6 @@ fn pull_sync_skips_tasks_without_a_remote_branch() {
     assert_eq!(result, ActiveTaskPullSyncResult::default());
 }
 
-// parity: TS-main-kanbanService-d9587d
 #[test]
 fn missing_remote_ref_pull_errors_are_not_reported_as_failures() {
     let fixture = KanbanFixture::new();
@@ -361,7 +355,6 @@ fn missing_remote_ref_pull_errors_are_not_reported_as_failures() {
     );
 }
 
-// parity: TS-main-kanbanService-dbebf4
 #[test]
 fn the_same_pull_failure_is_reported_once_until_a_pull_succeeds() {
     let fixture = KanbanFixture::new();

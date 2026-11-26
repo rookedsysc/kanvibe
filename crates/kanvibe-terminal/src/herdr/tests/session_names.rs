@@ -3,7 +3,6 @@
 use kanvibe_process::worktree::sanitize_herdr_session_name;
 use regex::Regex;
 
-// parity: TS-lib-herdr-0c27a3
 #[test]
 fn valid_session_names_are_kept() {
     for name in ["normal-branch".to_string(), "a".repeat(40)] {
@@ -11,7 +10,6 @@ fn valid_session_names_are_kept() {
     }
 }
 
-// parity: TS-lib-herdr-b0b3ec
 #[test]
 fn out_of_rule_names_become_deterministic_ascii_names() {
     let allowed = Regex::new("^[a-zA-Z0-9._-]{1,40}$").unwrap();
@@ -28,7 +26,6 @@ fn out_of_rule_names_become_deterministic_ascii_names() {
     }
 }
 
-// parity: TS-lib-herdr-bd475c
 #[test]
 fn names_sharing_a_truncated_prefix_stay_distinct() {
     let first = format!("{}x", "a".repeat(80));

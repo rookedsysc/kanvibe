@@ -207,7 +207,6 @@ fn open_socket(is_open: bool) -> Arc<dyn MobileLoginSocket> {
     Arc::new(FakeSocket { is_open })
 }
 
-// parity: TS-main-mobileAiService-702f89
 #[test]
 fn account_list_carries_opaque_handles_only() {
     let fixture = fixture();
@@ -228,7 +227,6 @@ fn account_list_carries_opaque_handles_only() {
     );
 }
 
-// parity: TS-main-mobileAiService-f57614
 #[test]
 fn creation_returns_the_handle_of_the_new_account() {
     let fixture = fixture();
@@ -242,7 +240,6 @@ fn creation_returns_the_handle_of_the_new_account() {
     assert_eq!(created.account_id, first_account_id(&fixture));
 }
 
-// parity: TS-main-mobileAiService-bcae3f
 #[test]
 fn untrusted_account_creation_is_rejected_before_writes() {
     let fixture = fixture();
@@ -262,7 +259,6 @@ fn untrusted_account_creation_is_rejected_before_writes() {
     assert!(fixture.accounts.calls.all().is_empty());
 }
 
-// parity: TS-main-mobileAiService-08c30d
 #[test]
 fn duplicate_account_is_a_conflict() {
     let fixture = fixture();
@@ -276,7 +272,6 @@ fn duplicate_account_is_a_conflict() {
     assert_eq!(error.status_code(), Some(409));
 }
 
-// parity: TS-main-mobileAiService-d3cfc0
 #[test]
 fn deletion_handle_resolves_to_the_current_account_root() {
     let fixture = fixture();
@@ -298,7 +293,6 @@ fn deletion_handle_resolves_to_the_current_account_root() {
     );
 }
 
-// parity: TS-main-mobileAiService-93cafa
 #[test]
 fn path_injection_and_stale_handles_delete_nothing() {
     let fixture = fixture();
@@ -319,7 +313,6 @@ fn path_injection_and_stale_handles_delete_nothing() {
     assert!(fixture.accounts.calls.all().is_empty());
 }
 
-// parity: TS-main-mobileAiService-e3934d
 #[test]
 fn discovered_accounts_kanvibe_does_not_own_are_protected() {
     let fixture = fixture();
@@ -335,7 +328,6 @@ fn discovered_accounts_kanvibe_does_not_own_are_protected() {
     assert!(fixture.accounts.calls.all().is_empty());
 }
 
-// parity: TS-main-mobileAiService-29b0ed
 #[test]
 fn login_uses_the_validated_server_account() {
     let fixture = fixture();
@@ -360,7 +352,6 @@ fn login_uses_the_validated_server_account() {
     );
 }
 
-// parity: TS-main-mobileAiService-519aca
 #[test]
 fn login_is_not_launched_after_the_socket_closed() {
     let fixture = fixture();
@@ -380,7 +371,6 @@ fn login_is_not_launched_after_the_socket_closed() {
     assert!(fixture.logins.calls.all().is_empty());
 }
 
-// parity: TS-main-mobileAiService-d91036
 #[test]
 fn live_and_graph_readers_run_only_for_known_tasks_and_valid_providers() {
     let fixture = fixture();
@@ -420,7 +410,6 @@ fn live_and_graph_readers_run_only_for_known_tasks_and_valid_providers() {
     assert_eq!(missing.status_code(), Some(404));
 }
 
-// parity: TS-main-mobileAiService-e25e25
 #[test]
 fn graph_session_path_injection_is_rejected() {
     let fixture = fixture();
@@ -441,7 +430,6 @@ fn graph_session_path_injection_is_rejected() {
     );
 }
 
-// parity: TS-main-mobileAiService-9ef1cb
 #[test]
 fn deletion_and_login_startup_are_serialized() {
     let fixture = fixture();
@@ -486,7 +474,6 @@ fn deletion_and_login_startup_are_serialized() {
     );
 }
 
-// parity: TS-main-mobileAiService-0405ac
 #[test]
 fn usage_carries_hashed_identity_and_public_fields_only() {
     let fixture = fixture();
@@ -521,7 +508,6 @@ fn usage_carries_hashed_identity_and_public_fields_only() {
     assert!(!usage.to_string().contains("/fixture"));
 }
 
-// parity: TS-main-mobileAiService-ea0f89
 #[test]
 fn running_panes_are_the_shared_snapshot() {
     let fixture = fixture();

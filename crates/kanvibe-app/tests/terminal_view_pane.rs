@@ -336,7 +336,6 @@ fn data_url(bytes: &[u8]) -> String {
 
 // ───────────── 연결 ─────────────
 
-// parity: TS-renderer-Terminal-f24fd8
 #[gpui::test]
 fn shows_a_connecting_status_until_the_open_answer_arrives(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -353,7 +352,6 @@ fn shows_a_connecting_status_until_the_open_answer_arrives(cx: &mut TestAppConte
     assert_eq!(transport.open_count(), 1);
 }
 
-// parity: TS-renderer-Terminal-c64e2f
 #[gpui::test]
 fn cooldown_shows_reconnecting_and_opens_once_more_after_the_wait(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -369,7 +367,6 @@ fn cooldown_shows_reconnecting_and_opens_once_more_after_the_wait(cx: &mut TestA
     assert!(!pane.has_status());
 }
 
-// parity: TS-renderer-Terminal-d320a9
 #[gpui::test]
 fn a_failed_reconnect_stops_and_offers_a_manual_retry(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -389,7 +386,6 @@ fn a_failed_reconnect_stops_and_offers_a_manual_retry(cx: &mut TestAppContext) {
     assert_eq!(transport.close_count(), 1);
 }
 
-// parity: TS-renderer-Terminal-a74cf8
 #[gpui::test]
 fn a_real_error_is_shown_at_once_without_an_automatic_retry(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -402,7 +398,6 @@ fn a_real_error_is_shown_at_once_without_an_automatic_retry(cx: &mut TestAppCont
     assert_eq!(transport.open_count(), 1);
 }
 
-// parity: TS-renderer-Terminal-ae99d7
 #[gpui::test]
 fn closing_during_the_cooldown_cancels_the_retry_and_cleans_up_once(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -417,7 +412,6 @@ fn closing_during_the_cooldown_cancels_the_retry_and_cleans_up_once(cx: &mut Tes
     assert_eq!(transport.close_count(), 1);
 }
 
-// parity: TS-renderer-Terminal-8ed6e5
 #[gpui::test]
 fn hiding_a_tab_pauses_the_retry_and_showing_it_offers_a_manual_retry(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -439,7 +433,6 @@ fn hiding_a_tab_pauses_the_retry_and_showing_it_offers_a_manual_retry(cx: &mut T
     assert!(!pane.has_alert());
 }
 
-// parity: TS-renderer-Terminal-ac7328
 #[gpui::test]
 fn switching_task_tab_or_session_cancels_the_previous_retry(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -474,7 +467,6 @@ fn switching_task_tab_or_session_cancels_the_previous_retry(cx: &mut TestAppCont
     }
 }
 
-// parity: TS-renderer-Terminal-1a5825
 #[gpui::test]
 fn coming_back_to_the_window_reports_the_terminal_size_again(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -488,7 +480,6 @@ fn coming_back_to_the_window_reports_the_terminal_size_again(cx: &mut TestAppCon
     assert_eq!(transport.resizes.lock().unwrap().len(), 1);
 }
 
-// parity: TS-renderer-Terminal-f58e6e
 #[gpui::test]
 fn herdr_server_replacement_reconnects_without_an_error_line(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -504,7 +495,6 @@ fn herdr_server_replacement_reconnects_without_an_error_line(cx: &mut TestAppCon
     assert!(!pane.has_alert());
 }
 
-// parity: TS-renderer-Terminal-3fa3fe
 #[gpui::test]
 fn closing_while_the_open_is_pending_releases_the_terminal_once(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -526,7 +516,6 @@ fn closing_while_the_open_is_pending_releases_the_terminal_once(cx: &mut TestApp
 
 // ───────────── 원격 이미지 붙여넣기 ─────────────
 
-// parity: TS-renderer-Terminal-44fca7
 #[gpui::test]
 fn remote_paste_with_an_image_sends_it_and_types_the_remote_path(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -546,7 +535,6 @@ fn remote_paste_with_an_image_sends_it_and_types_the_remote_path(cx: &mut TestAp
     );
 }
 
-// parity: TS-renderer-Terminal-959cdf
 #[gpui::test]
 fn a_rejected_remote_image_shows_the_reason_in_the_terminal(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -564,7 +552,6 @@ fn a_rejected_remote_image_shows_the_reason_in_the_terminal(cx: &mut TestAppCont
     assert!(transport.writes().is_empty());
 }
 
-// parity: TS-renderer-Terminal-e318c7
 #[gpui::test]
 fn a_progress_toast_stays_while_the_image_is_sent(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -587,7 +574,6 @@ fn a_progress_toast_stays_while_the_image_is_sent(cx: &mut TestAppContext) {
     assert_eq!(transport.writes(), vec!["/tmp/kanvibe-paste.png"]);
 }
 
-// parity: TS-renderer-Terminal-e8d72e
 #[gpui::test]
 fn a_failed_image_request_offers_resending_the_same_image(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -608,7 +594,6 @@ fn a_failed_image_request_offers_resending_the_same_image(cx: &mut TestAppContex
     );
 }
 
-// parity: TS-renderer-Terminal-5e9120
 #[gpui::test]
 fn two_images_type_their_paths_in_paste_order(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -637,7 +622,6 @@ fn two_images_type_their_paths_in_paste_order(cx: &mut TestAppContext) {
     );
 }
 
-// parity: TS-renderer-Terminal-1e91e9
 #[gpui::test]
 fn remote_text_paste_goes_to_the_terminal_as_text(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -650,7 +634,6 @@ fn remote_text_paste_goes_to_the_terminal_as_text(cx: &mut TestAppContext) {
     assert_eq!(transport.writes(), vec!["echo hi"]);
 }
 
-// parity: TS-renderer-Terminal-d0a015
 #[gpui::test]
 fn local_paste_never_sends_images(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -662,7 +645,6 @@ fn local_paste_never_sends_images(cx: &mut TestAppContext) {
     assert!(transport.pastes().is_empty());
 }
 
-// parity: TS-renderer-Terminal-ca2c4a
 #[gpui::test]
 fn remote_ctrl_v_with_an_image_sends_the_image_instead_of_the_key(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -675,7 +657,6 @@ fn remote_ctrl_v_with_an_image_sends_the_image_instead_of_the_key(cx: &mut TestA
     assert!(!transport.writes().contains(&"\x16".to_string()));
 }
 
-// parity: TS-renderer-Terminal-fa6921
 #[gpui::test]
 fn remote_ctrl_v_without_an_image_keeps_the_terminal_key(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -688,7 +669,6 @@ fn remote_ctrl_v_without_an_image_keeps_the_terminal_key(cx: &mut TestAppContext
     assert_eq!(transport.writes(), vec!["\x16"]);
 }
 
-// parity: TS-renderer-Terminal-902c39
 #[gpui::test]
 fn local_ctrl_v_keeps_the_terminal_key_even_with_an_image(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -701,7 +681,6 @@ fn local_ctrl_v_keeps_the_terminal_key_even_with_an_image(cx: &mut TestAppContex
     assert_eq!(transport.writes(), vec!["\x16"]);
 }
 
-// parity: TS-renderer-Terminal-1d43df
 #[gpui::test]
 fn remote_ctrl_shift_v_and_shift_insert_also_send_images(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -714,7 +693,6 @@ fn remote_ctrl_shift_v_and_shift_insert_also_send_images(cx: &mut TestAppContext
     assert_eq!(transport.pastes().len(), 2);
 }
 
-// parity: TS-renderer-Terminal-59b336
 #[gpui::test]
 fn remote_middle_click_sends_the_clipboard_image(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -726,7 +704,6 @@ fn remote_middle_click_sends_the_clipboard_image(cx: &mut TestAppContext) {
     assert_eq!(transport.pastes(), vec![data_url(b"fake")]);
 }
 
-// parity: TS-renderer-Terminal-3415c4
 #[gpui::test]
 fn remote_middle_click_without_an_image_does_nothing(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -739,7 +716,6 @@ fn remote_middle_click_without_an_image_does_nothing(cx: &mut TestAppContext) {
     assert!(transport.writes().is_empty());
 }
 
-// parity: TS-renderer-Terminal-ed98a8
 #[gpui::test]
 fn local_middle_click_ignores_clipboard_images(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();

@@ -73,7 +73,6 @@ fn recorded_socket_directory(record: &Value) -> PathBuf {
         .to_path_buf()
 }
 
-// parity: TS-lib-herdr-fc4b53
 #[test]
 fn requests_through_a_dedicated_tunnel_and_cleans_up_the_process_and_directory() {
     let tunnel = tunnel_fixture(
@@ -125,7 +124,6 @@ fn requests_through_a_dedicated_tunnel_and_cleans_up_the_process_and_directory()
     assert!(!recorded_socket_directory(&record).exists());
 }
 
-// parity: TS-lib-herdr-c149fc
 #[test]
 fn tunnel_launch_failure_reaches_the_caller_and_removes_the_socket_directory() {
     let tunnel = tunnel_fixture("sys.stderr.write('ssh unavailable')\nsys.exit(255)", &[]);
@@ -141,7 +139,6 @@ fn tunnel_launch_failure_reaches_the_caller_and_removes_the_socket_directory() {
     assert!(!recorded_socket_directory(&record).exists());
 }
 
-// parity: TS-lib-herdr-025919
 #[test]
 fn unresponsive_server_times_out_without_resending_the_mutation() {
     let herdr = fixture();
@@ -172,7 +169,6 @@ fn unresponsive_server_times_out_without_resending_the_mutation() {
     assert_eq!(request_count.load(Ordering::SeqCst), 1);
 }
 
-// parity: TS-lib-herdr-484ce0
 #[test]
 fn tunnel_that_never_becomes_ready_times_out_and_cleans_up() {
     let mut tunnel = tunnel_fixture("time.sleep(600)", &[]);

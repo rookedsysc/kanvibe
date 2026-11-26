@@ -369,7 +369,6 @@ mod tests {
         std::fs::write(home.join(".ssh/config"), content).unwrap();
     }
 
-    // parity: TS-lib-sshConfig-031382
     #[test]
     fn expands_concrete_host_aliases_and_skips_wildcard_aliases() {
         let content = "Host app-prod app-bastion *.internal\n  HostName example.com\n  User tester\n  Port 2202\n  IdentityFile ~/.ssh/custom_key\n";
@@ -386,7 +385,6 @@ mod tests {
         assert_eq!(hosts, [expected("app-prod"), expected("app-bastion")]);
     }
 
-    // parity: TS-lib-sshConfig-e9d305
     #[test]
     fn reuses_parsed_ssh_config_on_repeated_calls() {
         let home = tempfile::tempdir().unwrap();
@@ -406,7 +404,6 @@ mod tests {
         assert_eq!(second[0].username, "tester");
     }
 
-    // parity: TS-lib-sshConfig-15c626
     #[test]
     fn adds_trusted_x11_forwarding_and_forced_tty_before_the_ssh_destination() {
         let options = SshArgsOptions {
@@ -435,7 +432,6 @@ mod tests {
         );
     }
 
-    // parity: TS-lib-sshConfig-dcab84
     #[test]
     fn adds_connection_reuse_options_before_the_ssh_destination() {
         let options = SshArgsOptions {
@@ -480,7 +476,6 @@ mod tests {
         );
     }
 
-    // parity: TS-lib-sshConfig-6d4dce
     #[test]
     fn builds_kanvibe_connection_reuse_options_under_the_app_local_directory() {
         let result =
@@ -490,7 +485,6 @@ mod tests {
         assert_eq!(result.control_persist, "10m");
     }
 
-    // parity: TS-lib-sshConfig-cf22b7
     #[test]
     fn builds_shard_specific_kanvibe_connection_reuse_options() {
         let result =
@@ -500,7 +494,6 @@ mod tests {
         assert_eq!(result.control_persist, "10m");
     }
 
-    // parity: TS-lib-sshConfig-fe5e93
     #[test]
     fn creates_the_kanvibe_ssh_control_directory_with_private_permissions() {
         use std::os::unix::fs::PermissionsExt;
@@ -517,7 +510,6 @@ mod tests {
         assert_eq!(metadata.permissions().mode() & 0o777, 0o700);
     }
 
-    // parity: TS-lib-sshConfig-55a19e
     #[test]
     fn detects_local_x11_availability_from_display() {
         let with_display: ShellEnvironment = [("DISPLAY".to_string(), ":0".to_string())].into();
@@ -526,7 +518,6 @@ mod tests {
         assert!(!has_local_x11_display(&ShellEnvironment::new()));
     }
 
-    // parity: TS-lib-sshConfig-a5a4d8
     #[test]
     fn uses_the_uppercase_port_flag_and_appends_host_remote_path_as_the_last_argument() {
         let mut config = host_config("/tmp/test-key");
@@ -551,7 +542,6 @@ mod tests {
         );
     }
 
-    // parity: TS-lib-sshConfig-9d1812
     #[test]
     fn isolates_control_sockets_across_runner_lifetimes() {
         let first =
@@ -563,7 +553,6 @@ mod tests {
         assert_ne!(first.control_path, "/home/local-user/.kanvibe/ssh-%C");
     }
 
-    // parity: TS-lib-sshConfig-1af4d0
     #[test]
     fn does_not_reuse_the_same_master_identity_after_authentication_settings_change() {
         let control = SshControlDirectory::new("/home/local-user");

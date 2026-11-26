@@ -334,7 +334,6 @@ impl Render for HooksStatusCard {
 mod tests {
     use super::*;
 
-    // parity: TS-components-HooksStatusCard-eae0b4
     #[test]
     fn every_hook_row_uses_its_provider_brand_icon() {
         let providers: Vec<_> = HOOK_TOOLS

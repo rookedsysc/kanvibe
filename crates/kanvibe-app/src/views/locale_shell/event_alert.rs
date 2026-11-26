@@ -199,7 +199,6 @@ mod tests {
         TaskPeerDeletionFailedPayload,
     };
 
-    // parity: TS-renderer-BoardEventAlert-578b59
     #[test]
     fn hook_install_failure_becomes_a_top_alert_that_dismisses_itself() {
         let event = BoardEvent::TaskHookInstallFailed(TaskHookInstallFailedPayload {
@@ -217,7 +216,6 @@ mod tests {
         assert!(!alert.is_sticky);
     }
 
-    // parity: TS-renderer-BoardEventAlert-6dae7a
     #[test]
     fn herdr_registration_failure_names_host_reason_and_session() {
         let event =
@@ -236,7 +234,6 @@ mod tests {
         );
     }
 
-    // parity: TS-renderer-BoardEventAlert-06a1cc
     #[test]
     fn peer_deletion_failure_lists_where_the_task_remains() {
         let event = BoardEvent::TaskPeerDeletionFailed(TaskPeerDeletionFailedPayload {

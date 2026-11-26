@@ -444,7 +444,6 @@ mod tests {
         }
     }
 
-    // parity: TS-renderer-AiUsagePanel-8dc7a8
     #[test]
     fn windows_near_the_limit_use_severity_colors() {
         assert_eq!(usage_bar_tone(22.0), UsageBarTone::Brand);
@@ -452,7 +451,6 @@ mod tests {
         assert_eq!(usage_bar_tone(95.0), UsageBarTone::Error);
     }
 
-    // parity: TS-renderer-AiUsagePanel-ac9fa0
     #[test]
     fn plans_stay_with_their_account() {
         let accounts = [
@@ -470,7 +468,6 @@ mod tests {
         assert_eq!(plans, [Some("max"), Some("pro")]);
     }
 
-    // parity: TS-renderer-AiUsagePanel-efffcb
     #[test]
     fn label_equal_to_provider_name_is_not_repeated() {
         assert!(!has_distinct_account_label(&account(
@@ -485,7 +482,6 @@ mod tests {
         )));
     }
 
-    // parity: TS-renderer-AiUsagePanel-5ec781
     #[test]
     fn model_weekly_limits_sit_under_the_weekly_total() {
         let windows = [
@@ -501,7 +497,6 @@ mod tests {
         assert_eq!(weekly.scoped[0].model_name.as_deref(), Some("Fable"));
     }
 
-    // parity: TS-renderer-AiUsagePanel-acaf9f
     #[test]
     fn model_windows_without_a_period_total_are_not_indented() {
         let windows = [

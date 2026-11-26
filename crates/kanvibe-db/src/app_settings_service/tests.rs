@@ -60,7 +60,6 @@ const PLATFORM_CASES: [(ShortcutPlatform, &str, &str); 3] = [
     (ShortcutPlatform::Linux, "Ctrl", "Meta"),
 ];
 
-// parity: TS-main-appSettingsService-035b94
 #[test]
 fn saved_session_type_is_returned_as_is() {
     let fixture = SettingsFixture::new();
@@ -72,7 +71,6 @@ fn saved_session_type_is_returned_as_is() {
     }
 }
 
-// parity: TS-main-appSettingsService-74e2f8
 #[test]
 fn missing_or_unknown_session_type_falls_back_to_herdr() {
     let fixture = SettingsFixture::new();
@@ -91,7 +89,6 @@ fn missing_or_unknown_session_type_falls_back_to_herdr() {
     );
 }
 
-// parity: TS-main-appSettingsService-616036
 #[test]
 fn unread_only_survives_a_restart() {
     let fixture = SettingsFixture::new();
@@ -108,7 +105,6 @@ fn unread_only_survives_a_restart() {
     );
 }
 
-// parity: TS-main-appSettingsService-fdcdcd
 #[test]
 fn turning_unread_only_off_returns_to_all() {
     let fixture = SettingsFixture::new();
@@ -120,7 +116,6 @@ fn turning_unread_only_off_returns_to_all() {
     assert!(!service.get_notification_unread_only_enabled().unwrap());
 }
 
-// parity: TS-main-appSettingsService-3b47f1
 #[test]
 fn unread_only_starts_off() {
     let fixture = SettingsFixture::new();
@@ -133,7 +128,6 @@ fn unread_only_starts_off() {
     );
 }
 
-// parity: TS-main-appSettingsService-f303be
 #[test]
 fn board_sort_survives_a_restart() {
     let fixture = SettingsFixture::new();
@@ -156,7 +150,6 @@ fn board_sort_survives_a_restart() {
     );
 }
 
-// parity: TS-main-appSettingsService-c2bb72
 #[test]
 fn board_sort_starts_without_keys() {
     let fixture = SettingsFixture::new();
@@ -167,7 +160,6 @@ fn board_sort_starts_without_keys() {
     );
 }
 
-// parity: TS-main-appSettingsService-7cb522
 #[test]
 fn broken_board_sort_falls_back_to_the_default() {
     let fixture = SettingsFixture::new();
@@ -182,7 +174,6 @@ fn broken_board_sort_falls_back_to_the_default() {
     );
 }
 
-// parity: TS-main-appSettingsService-deb9bd
 #[test]
 fn reassigned_shortcuts_survive_a_restart() {
     let fixture = SettingsFixture::new();
@@ -199,7 +190,6 @@ fn reassigned_shortcuts_survive_a_restart() {
     );
 }
 
-// parity: TS-main-appSettingsService-281d21
 #[test]
 fn entries_equal_to_the_default_are_not_stored() {
     let fixture = SettingsFixture::new();
@@ -215,7 +205,6 @@ fn entries_equal_to_the_default_are_not_stored() {
     );
 }
 
-// parity: TS-main-appSettingsService-4ed35e
 #[test]
 fn shortcuts_start_from_the_defaults() {
     let fixture = SettingsFixture::new();
@@ -226,7 +215,6 @@ fn shortcuts_start_from_the_defaults() {
     );
 }
 
-// parity: TS-main-appSettingsService-7b5a18
 #[test]
 fn task_search_reads_from_the_same_table() {
     let fixture = SettingsFixture::new();
@@ -239,7 +227,6 @@ fn task_search_reads_from_the_same_table() {
     assert_eq!(service.get_task_search_shortcut().unwrap(), "Mod+Shift+F");
 }
 
-// parity: TS-main-appSettingsService-b5209f
 #[test]
 fn legacy_task_search_shortcut_is_inherited_when_no_table_exists() {
     let fixture = SettingsFixture::new();
@@ -260,7 +247,6 @@ fn legacy_task_search_shortcut_is_inherited_when_no_table_exists() {
     );
 }
 
-// parity: TS-main-appSettingsService-f068f7
 #[test]
 fn legacy_platform_notation_is_folded_into_mod() {
     for (platform, primary_modifier, _) in PLATFORM_CASES {
@@ -286,7 +272,6 @@ fn legacy_platform_notation_is_folded_into_mod() {
     }
 }
 
-// parity: TS-main-appSettingsService-502212
 #[test]
 fn inherited_default_in_platform_notation_is_not_stored_as_an_override() {
     for (platform, primary_modifier, _) in PLATFORM_CASES {
@@ -310,7 +295,6 @@ fn inherited_default_in_platform_notation_is_not_stored_as_an_override() {
     }
 }
 
-// parity: TS-main-appSettingsService-301142
 #[test]
 fn legacy_value_with_a_non_mod_modifier_is_kept_as_an_override() {
     for (platform, _, opposite_modifier) in PLATFORM_CASES {
@@ -334,7 +318,6 @@ fn legacy_value_with_a_non_mod_modifier_is_kept_as_an_override() {
     }
 }
 
-// parity: TS-main-appSettingsService-4499e8
 #[test]
 fn legacy_value_without_a_key_is_not_inherited() {
     let fixture = SettingsFixture::new();
@@ -353,7 +336,6 @@ fn legacy_value_without_a_key_is_not_inherited() {
     );
 }
 
-// parity: TS-main-appSettingsService-139ac8
 #[test]
 fn table_written_after_inheritance_wins_over_the_legacy_value() {
     let fixture = SettingsFixture::new();
@@ -373,7 +355,6 @@ fn table_written_after_inheritance_wins_over_the_legacy_value() {
     );
 }
 
-// parity: TS-main-appSettingsService-6dc983
 #[test]
 fn defaults_are_returned_without_being_stored() {
     let fixture = SettingsFixture::new();
@@ -385,7 +366,6 @@ fn defaults_are_returned_without_being_stored() {
     assert_eq!(fixture.stored_json(SHORTCUT_BINDINGS_KEY), None);
 }
 
-// parity: TS-main-appSettingsService-c7df42
 #[test]
 fn background_sync_starts_off() {
     let fixture = SettingsFixture::new();
@@ -398,7 +378,6 @@ fn background_sync_starts_off() {
     );
 }
 
-// parity: TS-main-appSettingsService-c88d95
 #[test]
 fn background_sync_setting_is_kept() {
     let fixture = SettingsFixture::new();

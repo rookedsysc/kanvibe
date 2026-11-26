@@ -265,7 +265,6 @@ mod tests {
             .collect()
     }
 
-    // parity: TS-renderer-AiSessionMessageContent-0ce8d8
     #[test]
     fn code_block_copy_text_is_the_code_without_its_header() {
         let segments = message_segments("설명\n\n```ts\nconst a = 1;\nconst b = 2;\n```\n끝");
@@ -275,7 +274,6 @@ mod tests {
         );
     }
 
-    // parity: TS-renderer-AiSessionMessageContent-86db00
     #[test]
     fn unclosed_code_block_is_code_until_the_end() {
         let segments = message_segments("앞\n```\nlet x = 1;\n```not-a-close\nlet y = 2;");
@@ -285,7 +283,6 @@ mod tests {
         assert!(blocks[0].1.contains("```not-a-close\nlet y = 2;"));
     }
 
-    // parity: TS-renderer-AiSessionMessageContent-ac9103
     #[test]
     fn changed_content_produces_the_new_blocks() {
         let paragraph = |segments: &[MessageSegment]| match &segments[0] {
@@ -342,7 +339,6 @@ mod tests {
         (view, cx)
     }
 
-    // parity: TS-renderer-AiSessionMessageContent-66e0c0
     #[gpui_kit::test]
     fn selected_text_survives_a_redraw_with_the_same_content(cx: &mut gpui_kit::TestAppContext) {
         let (view, cx) = open_message(cx, "고를 수 있는 답변 본문");
@@ -381,7 +377,6 @@ mod tests {
         assert_eq!(after, selected);
     }
 
-    // parity: TS-renderer-AiSessionMessageContent-45757d
     #[test]
     fn a_redraw_with_the_same_diagram_reuses_its_rendered_state() {
         let content = "```mermaid\ngraph TD\nA[보드] --> B[필터]\n```";

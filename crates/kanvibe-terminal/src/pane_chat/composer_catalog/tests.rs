@@ -101,7 +101,6 @@ fn find_label<'a>(result: &'a FilteredPaneChatSuggestions, label: &str) -> &'a P
         .unwrap()
 }
 
-// parity: TS-main-paneChatComposerCatalog-779b42
 #[test]
 fn prefers_project_skills_follows_symlinks_and_skips_malformed_skill() {
     let directory = tempfile::tempdir().unwrap();
@@ -148,7 +147,6 @@ fn prefers_project_skills_follows_symlinks_and_skips_malformed_skill() {
     assert_eq!(review.insert_text, "$review");
 }
 
-// parity: TS-main-paneChatComposerCatalog-479334
 #[test]
 fn uses_claude_slash_commands_and_hides_non_user_invocable_skills() {
     let directory = tempfile::tempdir().unwrap();
@@ -209,7 +207,6 @@ fn init_git_repository(cwd: &Path, home: &Path) {
     assert!(status.success());
 }
 
-// parity: TS-main-paneChatComposerCatalog-385295
 #[test]
 fn suggests_repo_files_with_safe_mentions_respecting_git_ignores() {
     let directory = tempfile::tempdir().unwrap();
@@ -257,7 +254,6 @@ fn suggests_repo_files_with_safe_mentions_respecting_git_ignores() {
     );
 }
 
-// parity: TS-main-paneChatComposerCatalog-663f8b
 #[test]
 fn uses_selected_cli_process_custom_provider_home() {
     let directory = tempfile::tempdir().unwrap();
@@ -295,7 +291,6 @@ fn uses_selected_cli_process_custom_provider_home() {
     assert_eq!(runner.commands(), vec!["ps eww -p 4242 -o command="]);
 }
 
-// parity: TS-main-paneChatComposerCatalog-91c81d
 #[test]
 fn reads_remote_skill_bytes_only_through_selected_ssh_host() {
     let skill_path = "/remote/repo/.agents/skills/remote/SKILL.md";
@@ -328,7 +323,6 @@ fn reads_remote_skill_bytes_only_through_selected_ssh_host() {
     );
 }
 
-// parity: TS-main-paneChatComposerCatalog-424024
 #[test]
 fn bounds_visible_suggestions_and_announces_more_matches() {
     let directory = tempfile::tempdir().unwrap();
@@ -349,7 +343,6 @@ fn bounds_visible_suggestions_and_announces_more_matches() {
     assert!(result.is_truncated);
 }
 
-// parity: TS-main-paneChatComposerCatalog-8f6035
 #[test]
 fn returns_whole_catalog_when_caller_raises_limit() {
     let directory = tempfile::tempdir().unwrap();
@@ -377,7 +370,6 @@ fn age_cached_catalogs(catalog: &PaneChatComposerCatalog, age: Duration) {
     }
 }
 
-// parity: TS-main-paneChatComposerCatalog-065d6c
 #[test]
 fn reuses_scanned_catalog_for_ten_seconds_then_picks_up_new_skill() {
     let directory = tempfile::tempdir().unwrap();
@@ -412,7 +404,6 @@ fn reuses_scanned_catalog_for_ten_seconds_then_picks_up_new_skill() {
     assert_eq!(read_labels(), vec!["first", "second"]);
 }
 
-// parity: TS-main-paneChatComposerCatalog-071c87
 #[test]
 fn shares_one_scan_between_concurrent_requests() {
     let runner = ScriptedShellRunner::new();
@@ -441,7 +432,6 @@ fn shares_one_scan_between_concurrent_requests() {
     assert_eq!(scanned_roots, 1);
 }
 
-// parity: TS-main-paneChatComposerCatalog-59ae6f
 #[test]
 fn does_not_remember_failed_scan() {
     let runner = ScriptedShellRunner::new();

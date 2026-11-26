@@ -52,7 +52,6 @@ fn detached(fixture: &KanbanFixture) -> Vec<(String, String)> {
     fixture.terminal.detached.lock().unwrap().clone()
 }
 
-// parity: TS-main-kanbanService-8edd5f
 #[test]
 fn deletion_cleans_up_by_project_and_branch_even_when_the_stored_worktree_path_differs() {
     let fixture = KanbanFixture::new();
@@ -76,7 +75,6 @@ fn deletion_cleans_up_by_project_and_branch_even_when_the_stored_worktree_path_d
     assert!(stored_task(&fixture, &task.id).is_none());
 }
 
-// parity: TS-main-kanbanService-9b7cc1
 #[test]
 fn deletion_without_a_stored_worktree_path_delegates_worktree_lookup_to_cleanup() {
     let fixture = KanbanFixture::new();
@@ -103,7 +101,6 @@ fn deletion_without_a_stored_worktree_path_delegates_worktree_lookup_to_cleanup(
     assert_eq!(fixture.board_update_count(), 1);
 }
 
-// parity: TS-main-kanbanService-731c70
 #[test]
 fn deleting_a_remote_tmux_task_without_session_name_derives_the_session_name() {
     let fixture = KanbanFixture::new();
@@ -180,19 +177,16 @@ fn assert_stale_task_is_kept_after_session_cleanup(project_id: Option<&str>) {
     assert!(stored_task(&fixture, &task.id).is_some());
 }
 
-// parity: TS-main-kanbanService-2a2049
 #[test]
 fn stale_remote_task_with_a_missing_project_is_kept_after_session_cleanup() {
     assert_stale_task_is_kept_after_session_cleanup(Some("missing-project"));
 }
 
-// parity: TS-main-kanbanService-93b1fd
 #[test]
 fn orphaned_remote_task_without_project_is_kept_after_session_cleanup() {
     assert_stale_task_is_kept_after_session_cleanup(None);
 }
 
-// parity: TS-main-kanbanService-f6f3d7
 #[test]
 fn session_only_remote_task_is_deleted_even_without_its_project() {
     let fixture = KanbanFixture::new();
@@ -209,7 +203,6 @@ fn session_only_remote_task_is_deleted_even_without_its_project() {
     assert_eq!(fixture.board_update_count(), 1);
 }
 
-// parity: TS-main-kanbanService-837265
 #[test]
 fn failed_session_cleanup_keeps_the_task_record() {
     let fixture = KanbanFixture::new();
@@ -232,7 +225,6 @@ fn failed_session_cleanup_keeps_the_task_record() {
     assert_eq!(fixture.board_update_count(), 0);
 }
 
-// parity: TS-main-kanbanService-028a43
 #[test]
 fn active_terminal_ptys_are_detached_before_the_tmux_session_is_removed() {
     let fixture = KanbanFixture::new();
@@ -261,7 +253,6 @@ fn add_merge_task(fixture: &KanbanFixture, project: &Project, branch: &str) -> K
     )
 }
 
-// parity: TS-main-kanbanService-a4745a
 #[test]
 fn bulk_deletion_returns_the_ids_it_actually_deleted() {
     let fixture = KanbanFixture::new();
@@ -273,7 +264,6 @@ fn bulk_deletion_returns_the_ids_it_actually_deleted() {
     );
 }
 
-// parity: TS-main-kanbanService-97e8bd
 #[test]
 fn bulk_deletion_cleans_up_in_request_order_and_updates_the_board_once() {
     let fixture = KanbanFixture::new();
@@ -367,7 +357,6 @@ fn use_local_shell(fixture: &KanbanFixture, prelude: &str) -> Arc<LoopbackShellR
     shell
 }
 
-// parity: TS-main-kanbanService-41b1d1
 #[test]
 fn gui_deletion_propagates_to_peers_before_removing_the_worktree() {
     let (fixture, task) = shared_task_fixture(SHARED_WORKTREE);
@@ -407,7 +396,6 @@ fn assert_invalid_worktree_keeps_everything(
     assert!(worktree_removals(fixture).is_empty());
 }
 
-// parity: TS-main-kanbanService-00bb85
 #[test]
 fn missing_or_broken_git_metadata_is_reported_as_registration_only_removal() {
     for metadata in ["missing", "broken"] {
@@ -427,7 +415,6 @@ fn missing_or_broken_git_metadata_is_reported_as_registration_only_removal() {
     }
 }
 
-// parity: TS-main-kanbanService-9e5869
 #[test]
 fn git_repository_damage_diagnostics_are_reported_as_registration_only_removal() {
     for message in [
@@ -445,7 +432,6 @@ fn git_repository_damage_diagnostics_are_reported_as_registration_only_removal()
     }
 }
 
-// parity: TS-main-kanbanService-5ece5b
 #[test]
 fn uncommitted_changes_in_a_real_repository_still_block_deletion() {
     for is_dirty in [false, true] {
@@ -480,7 +466,6 @@ fn uncommitted_changes_in_a_real_repository_still_block_deletion() {
     }
 }
 
-// parity: TS-main-kanbanService-a70e76
 #[test]
 fn git_permission_errors_are_not_mistaken_for_repository_damage() {
     let directory = tempfile::tempdir().unwrap();
@@ -500,7 +485,6 @@ fn git_permission_errors_are_not_mistaken_for_repository_damage() {
     assert!(stored_task(&fixture, &task.id).is_some());
 }
 
-// parity: TS-main-kanbanService-8a320f
 #[test]
 fn removing_only_the_registration_touches_no_other_resource() {
     let (fixture, task) = shared_task_fixture(SHARED_WORKTREE);
@@ -520,7 +504,6 @@ fn removing_only_the_registration_touches_no_other_resource() {
     assert!(session_removals(&fixture).is_empty() && worktree_removals(&fixture).is_empty());
 }
 
-// parity: TS-main-kanbanService-c7403b
 #[test]
 fn removing_a_missing_registration_changes_nothing() {
     let fixture = KanbanFixture::new();
@@ -533,7 +516,6 @@ fn removing_a_missing_registration_changes_nothing() {
     assert!(fixture.events().is_empty());
 }
 
-// parity: TS-main-kanbanService-a6a631
 #[test]
 fn ssh_failure_during_the_dirty_check_is_neither_damage_nor_deletion() {
     let (fixture, task) = shared_task_fixture(SHARED_WORKTREE);
@@ -548,7 +530,6 @@ fn ssh_failure_during_the_dirty_check_is_neither_damage_nor_deletion() {
     assert!(stored_task(&fixture, &task.id).is_some());
 }
 
-// parity: TS-main-kanbanService-72f2a8
 #[test]
 fn dirty_worktree_stops_propagation_cleanup_and_record_deletion() {
     let (fixture, task) = shared_task_fixture(SHARED_WORKTREE);
@@ -577,7 +558,6 @@ fn dirty_worktree_stops_propagation_cleanup_and_record_deletion() {
     assert!(stored_task(&fixture, &task.id).is_some());
 }
 
-// parity: TS-main-kanbanService-8a6a60
 #[test]
 fn clean_deletion_returns_peer_results_and_relayed_deletion_does_not_propagate_again() {
     let (fixture, task) = shared_task_fixture(SHARED_WORKTREE);
@@ -621,7 +601,6 @@ fn clean_deletion_returns_peer_results_and_relayed_deletion_does_not_propagate_a
     assert_eq!(fixture.log.count("board:task-session-changed"), 2);
 }
 
-// parity: TS-main-kanbanService-f7e163
 #[test]
 fn deletion_finishes_locally_and_reports_peers_that_kept_the_task() {
     let (fixture, task) = shared_task_fixture(SHARED_WORKTREE);
@@ -643,7 +622,6 @@ fn deletion_finishes_locally_and_reports_peers_that_kept_the_task() {
     );
 }
 
-// parity: TS-main-kanbanService-0ec0f5
 #[test]
 fn bulk_deletion_propagates_each_task_to_peers() {
     let (fixture, task) = shared_task_fixture(SHARED_WORKTREE);

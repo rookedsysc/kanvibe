@@ -132,7 +132,6 @@ fn claude_text(role: &str, text: &str, worktree: &str) -> Value {
     json!({"type": role, "sessionId": "session-a", "cwd": worktree, "message": {"role": role, "content": [{"type": "text", "text": text}]}})
 }
 
-// parity: TS-aiSessions-liveAiSessions-31c2d0
 #[test]
 fn fresh_record_is_running_without_a_pane() {
     let fixture = LiveFixture::new();
@@ -143,7 +142,6 @@ fn fresh_record_is_running_without_a_pane() {
     assert_eq!(claude.terminal_window, None);
 }
 
-// parity: TS-aiSessions-liveAiSessions-729a38
 #[test]
 fn stale_record_is_idle() {
     let fixture = LiveFixture::new();
@@ -156,7 +154,6 @@ fn stale_record_is_idle() {
     assert_eq!(claude.state, LiveAiSessionState::Idle);
 }
 
-// parity: TS-aiSessions-liveAiSessions-d16bea
 #[test]
 fn several_running_sessions_come_back_newest_first() {
     let fixture = LiveFixture::new();
@@ -175,7 +172,6 @@ fn several_running_sessions_come_back_newest_first() {
     );
 }
 
-// parity: TS-aiSessions-liveAiSessions-329305
 #[test]
 fn without_running_records_only_the_latest_stays_idle() {
     let fixture = LiveFixture::new();
@@ -195,7 +191,6 @@ fn without_running_records_only_the_latest_stays_idle() {
     assert_eq!(claude[0].state, LiveAiSessionState::Idle);
 }
 
-// parity: TS-aiSessions-liveAiSessions-f5d59a
 #[test]
 fn extra_sessions_get_no_terminal_window() {
     let fixture = LiveFixture::new();
@@ -215,7 +210,6 @@ fn extra_sessions_get_no_terminal_window() {
     assert_eq!(claude[1].terminal_window, None);
 }
 
-// parity: TS-aiSessions-liveAiSessions-967a5c
 #[test]
 fn call_graph_closes_finished_agents_and_nests_running_ones() {
     let fixture = LiveFixture::new();
@@ -274,7 +268,6 @@ fn call_graph_closes_finished_agents_and_nests_running_ones() {
     );
 }
 
-// parity: TS-aiSessions-liveAiSessions-243fa7
 #[test]
 fn session_without_agents_has_an_empty_graph() {
     let fixture = LiveFixture::new();
@@ -282,7 +275,6 @@ fn session_without_agents_has_an_empty_graph() {
     assert!(fixture.claude_graph("session-a").is_empty());
 }
 
-// parity: TS-aiSessions-liveAiSessions-c4f9c1
 #[test]
 fn attached_pane_counts_as_running_while_idle() {
     let fixture = LiveFixture::new();
@@ -307,7 +299,6 @@ fn attached_pane_counts_as_running_while_idle() {
     );
 }
 
-// parity: TS-aiSessions-liveAiSessions-a1aa4f
 #[test]
 fn only_recently_active_subagents_are_running_subtasks() {
     let fixture = LiveFixture::new();
@@ -335,7 +326,6 @@ fn only_recently_active_subagents_are_running_subtasks() {
     assert_eq!(subtasks, [("running-agent", Some("코드베이스를 조사한다"))]);
 }
 
-// parity: TS-aiSessions-liveAiSessions-d1f22b
 #[test]
 fn codex_counts_only_children_of_the_same_parent_thread() {
     let fixture = LiveFixture::new();
@@ -371,7 +361,6 @@ fn codex_counts_only_children_of_the_same_parent_thread() {
     assert_eq!(subtasks, [("child-thread", Some("Fermat"))]);
 }
 
-// parity: TS-aiSessions-liveAiSessions-14577a
 #[test]
 fn current_task_is_the_last_ai_answer() {
     let fixture = LiveFixture::new();
@@ -393,7 +382,6 @@ fn current_task_is_the_last_ai_answer() {
     );
 }
 
-// parity: TS-aiSessions-liveAiSessions-fc0664
 #[test]
 fn current_task_falls_back_to_last_user_request() {
     let fixture = LiveFixture::new();
@@ -407,7 +395,6 @@ fn current_task_falls_back_to_last_user_request() {
     assert_eq!(claude.current_task.as_deref(), Some("방금 시킨 일"));
 }
 
-// parity: TS-aiSessions-liveAiSessions-0d1622
 #[test]
 fn codex_current_task_is_the_last_ai_answer() {
     let fixture = LiveFixture::new();
@@ -424,7 +411,6 @@ fn codex_current_task_is_the_last_ai_answer() {
     assert_eq!(codex.current_task.as_deref(), Some("코덱스가 지금 하는 일"));
 }
 
-// parity: TS-aiSessions-liveAiSessions-2cbc80
 #[test]
 fn providers_without_records_or_panes_are_left_out() {
     let fixture = LiveFixture::new();

@@ -369,7 +369,6 @@ fn refresh(detail: &mut Detail) {
 
 // ───────────── 첫 조회·새로 고침 ─────────────
 
-// parity: TS-renderer-TaskDetailRoute-ecf487
 #[gpui::test]
 fn refresh_replaces_the_shown_task_with_the_latest_data(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -383,7 +382,6 @@ fn refresh_replaces_the_shown_task_with_the_latest_data(cx: &mut TestAppContext)
     assert!(detail.has_containing("group", "fresh task title"));
 }
 
-// parity: TS-renderer-TaskDetailRoute-be9141
 #[gpui::test]
 fn another_task_never_shows_the_previous_task(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -401,7 +399,6 @@ fn another_task_never_shows_the_previous_task(cx: &mut TestAppContext) {
     assert!(second.has_containing("alert", "B unavailable"));
 }
 
-// parity: TS-renderer-TaskDetailRoute-3f49cd
 #[gpui::test]
 fn a_loading_task_shows_loading_instead_of_another_task(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -418,7 +415,6 @@ fn a_loading_task_shows_loading_instead_of_another_task(cx: &mut TestAppContext)
     assert!(!detail.has_containing("group", "Foreign cache"));
 }
 
-// parity: TS-renderer-TaskDetailRoute-f96037
 #[gpui::test]
 fn a_slow_first_load_shows_the_delay_notice_not_task_missing(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -431,7 +427,6 @@ fn a_slow_first_load_shows_the_delay_notice_not_task_missing(cx: &mut TestAppCon
     assert!(!detail.has("status", "작업을 찾을 수 없습니다."));
 }
 
-// parity: TS-renderer-TaskDetailRoute-6954a7
 #[gpui::test]
 fn a_failed_first_load_shows_the_reason_and_retry_loads_again(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -446,7 +441,6 @@ fn a_failed_first_load_shows_the_reason_and_retry_loads_again(cx: &mut TestAppCo
     assert!(!detail.has_containing("alert", "db locked"));
 }
 
-// parity: TS-renderer-TaskDetailRoute-22207e
 #[gpui::test]
 fn a_failed_refresh_keeps_the_task_and_shows_the_banner(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -463,7 +457,6 @@ fn a_failed_refresh_keeps_the_task_and_shows_the_banner(cx: &mut TestAppContext)
     assert!(!detail.has("status", "작업을 찾을 수 없습니다."));
 }
 
-// parity: TS-renderer-TaskDetailRoute-f7ca19
 #[gpui::test]
 fn closing_the_info_panel_does_not_reload_the_task(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -480,7 +473,6 @@ fn closing_the_info_panel_does_not_reload_the_task(cx: &mut TestAppContext) {
 
 // ───────────── 알림 읽음 ─────────────
 
-// parity: TS-renderer-TaskDetailRoute-80725c, TS-renderer-useMarkTaskNotificationsReadWhenFocused-0c00de
 #[gpui::test]
 fn opening_the_task_in_an_active_window_marks_its_notifications_read(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -491,7 +483,6 @@ fn opening_the_task_in_an_active_window_marks_its_notifications_read(cx: &mut Te
     assert!(is_notification_read(cx));
 }
 
-// parity: TS-renderer-TaskDetailRoute-f8a796
 #[gpui::test]
 fn an_inactive_window_does_not_mark_notifications_even_after_refresh(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -509,7 +500,6 @@ fn an_inactive_window_does_not_mark_notifications_even_after_refresh(cx: &mut Te
     assert!(!is_notification_read(cx));
 }
 
-// parity: TS-renderer-TaskDetailRoute-8e48c8, TS-renderer-useMarkTaskNotificationsReadWhenFocused-596397
 #[gpui::test]
 fn an_inactive_window_marks_notifications_when_it_gets_focus(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -540,7 +530,6 @@ fn detail_loaded_in_an_inactive_window(cx: &mut TestAppContext) -> Detail {
     detail
 }
 
-// parity: TS-renderer-useMarkTaskNotificationsReadWhenFocused-25cfea
 #[gpui::test]
 fn an_open_detail_in_an_inactive_window_leaves_notifications_unread(cx: &mut TestAppContext) {
     let mut detail = detail_loaded_in_an_inactive_window(cx);
@@ -548,7 +537,6 @@ fn an_open_detail_in_an_inactive_window_leaves_notifications_unread(cx: &mut Tes
     assert!(!is_notification_read(cx));
 }
 
-// parity: TS-renderer-useMarkTaskNotificationsReadWhenFocused-09222c
 #[gpui::test]
 fn redrawing_an_inactive_detail_leaves_notifications_unread(cx: &mut TestAppContext) {
     let mut detail = detail_loaded_in_an_inactive_window(cx);
@@ -558,7 +546,6 @@ fn redrawing_an_inactive_detail_leaves_notifications_unread(cx: &mut TestAppCont
     assert!(!is_notification_read(cx));
 }
 
-// parity: TS-renderer-useMarkTaskNotificationsReadWhenFocused-09f9ca
 #[gpui::test]
 fn notifications_wait_until_the_task_is_confirmed(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -572,7 +559,6 @@ fn notifications_wait_until_the_task_is_confirmed(cx: &mut TestAppContext) {
     assert!(is_notification_read(cx));
 }
 
-// parity: TS-renderer-TaskDetailRoute-8e5f59, TS-renderer-useMarkTaskNotificationsReadWhenFocused-31d85c
 #[gpui::test]
 fn a_failed_mark_read_keeps_the_detail_screen(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -591,7 +577,6 @@ fn a_failed_mark_read_keeps_the_detail_screen(cx: &mut TestAppContext) {
     assert!(!is_notification_read(cx));
 }
 
-// parity: TS-renderer-TaskDetailRoute-0c75db
 #[gpui::test]
 fn a_missing_task_does_not_mark_notifications(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -604,7 +589,6 @@ fn a_missing_task_does_not_mark_notifications(cx: &mut TestAppContext) {
 
 // ───────────── dock: PR·VS Code·단축키 ─────────────
 
-// parity: TS-renderer-TaskDetailRoute-bd3209
 #[gpui::test]
 fn a_task_with_a_pr_url_shows_a_pr_link_in_the_dock(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -617,7 +601,6 @@ fn a_task_with_a_pr_url_shows_a_pr_link_in_the_dock(cx: &mut TestAppContext) {
     assert!(!detail.has("button", "PR"));
 }
 
-// parity: TS-renderer-TaskDetailRoute-381371
 #[gpui::test]
 fn dock_shortcuts_win_over_the_focused_terminal(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -629,7 +612,6 @@ fn dock_shortcuts_win_over_the_focused_terminal(cx: &mut TestAppContext) {
     assert!(detail.has("button", BACK_TO_TERMINAL));
 }
 
-// parity: TS-renderer-TaskDetailRoute-66e039
 #[gpui::test]
 fn dock_slot_four_opens_the_pr_in_the_browser(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -643,7 +625,6 @@ fn dock_slot_four_opens_the_pr_in_the_browser(cx: &mut TestAppContext) {
     assert_eq!(detail.cx.opened_url().as_deref(), Some(pr_url));
 }
 
-// parity: TS-renderer-TaskDetailRoute-cdd77f
 #[gpui::test]
 fn a_task_without_a_pr_keeps_slot_four_and_looks_it_up_again(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -661,7 +642,6 @@ fn a_task_without_a_pr_keeps_slot_four_and_looks_it_up_again(cx: &mut TestAppCon
     );
 }
 
-// parity: TS-renderer-TaskDetailRoute-4f2ede
 #[gpui::test]
 fn a_failed_pr_lookup_is_reported_as_a_lookup_failure(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -689,7 +669,6 @@ fn a_failed_pr_lookup_is_reported_as_a_lookup_failure(cx: &mut TestAppContext) {
     assert!(message.contains("gh auth failed"), "{message}");
 }
 
-// parity: TS-renderer-TaskDetailRoute-3980d1
 #[gpui::test]
 fn pressing_pr_again_while_looking_up_starts_no_second_lookup(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -743,7 +722,6 @@ fn pr_lookup_task(
     })
 }
 
-// parity: TS-renderer-fetchPrUrlWithPrompt-a8feef
 #[gpui::test]
 fn declining_the_remote_gh_install_stops_the_pr_lookup(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -757,7 +735,6 @@ fn declining_the_remote_gh_install_stops_the_pr_lookup(cx: &mut TestAppContext) 
     assert!(detail.has("button", "PR"));
 }
 
-// parity: TS-renderer-fetchPrUrlWithPrompt-a87904
 #[gpui::test]
 fn a_ready_remote_gh_continues_the_pr_lookup(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -770,7 +747,6 @@ fn a_ready_remote_gh_continues_the_pr_lookup(cx: &mut TestAppContext) {
     assert!(detail.has("link", "PR"));
 }
 
-// parity: TS-renderer-fetchPrUrlWithPrompt-61024a
 #[gpui::test]
 fn a_local_task_looks_up_the_pr_without_asking(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -782,7 +758,6 @@ fn a_local_task_looks_up_the_pr_without_asking(cx: &mut TestAppContext) {
     assert!(detail.has("link", "PR"));
 }
 
-// parity: TS-renderer-githubCliDependencyPrompt-425764
 #[gpui::test]
 fn an_installed_remote_gh_passes_without_a_prompt(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -795,7 +770,6 @@ fn an_installed_remote_gh_passes_without_a_prompt(cx: &mut TestAppContext) {
     assert!(detail.has("link", "PR"));
 }
 
-// parity: TS-renderer-githubCliDependencyPrompt-c2d118
 #[gpui::test]
 fn cancelling_the_gh_install_prompt_installs_nothing(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -816,7 +790,6 @@ fn cancelling_the_gh_install_prompt_installs_nothing(cx: &mut TestAppContext) {
     assert!(!detail.has("link", "PR"));
 }
 
-// parity: TS-renderer-githubCliDependencyPrompt-115c88
 #[gpui::test]
 fn confirming_the_gh_install_installs_on_that_host_then_passes(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -833,7 +806,6 @@ fn confirming_the_gh_install_installs_on_that_host_then_passes(cx: &mut TestAppC
     assert!(detail.has("link", "PR"));
 }
 
-// parity: TS-renderer-TaskDetailRoute-9234e1
 #[gpui::test]
 fn dock_slot_six_opens_the_task_folder_in_vs_code(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -853,7 +825,6 @@ fn dock_slot_six_opens_the_task_folder_in_vs_code(cx: &mut TestAppContext) {
     assert_eq!(detail.pending_prompt(), None);
 }
 
-// parity: TS-renderer-TaskDetailRoute-7e23da
 #[gpui::test]
 fn a_thrown_vs_code_request_shows_the_failure_alert(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -869,7 +840,6 @@ fn a_thrown_vs_code_request_shows_the_failure_alert(cx: &mut TestAppContext) {
     );
 }
 
-// parity: TS-renderer-TaskDetailRoute-61a4cf
 #[gpui::test]
 fn a_dock_command_sent_by_the_app_runs_the_same_dock_action(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -880,7 +850,6 @@ fn a_dock_command_sent_by_the_app_runs_the_same_dock_action(cx: &mut TestAppCont
     assert!(detail.has("button", BACK_TO_TERMINAL));
 }
 
-// parity: TS-renderer-TaskDetailRoute-43988b
 #[gpui::test]
 fn dock_commands_arriving_right_after_the_load_use_the_loaded_dock(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -895,7 +864,6 @@ fn dock_commands_arriving_right_after_the_load_use_the_loaded_dock(cx: &mut Test
     assert!(detail.has("heading", INFO_PANEL));
 }
 
-// parity: TS-renderer-TaskDetailRoute-01cf11
 #[gpui::test]
 fn the_pr_is_looked_up_automatically_on_load_and_on_refresh(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -921,7 +889,6 @@ fn the_pr_is_looked_up_automatically_on_load_and_on_refresh(cx: &mut TestAppCont
     assert!(detail.has("link", "PR"));
 }
 
-// parity: TS-renderer-TaskDetailRoute-0eb822
 #[gpui::test]
 fn the_dock_rail_has_no_notification_button(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -945,7 +912,6 @@ fn the_dock_rail_has_no_notification_button(cx: &mut TestAppContext) {
     assert!(detail.find(second).is_none());
 }
 
-// parity: TS-renderer-TaskDetailRoute-782e42
 #[gpui::test]
 fn pressing_the_terminal_closes_an_open_drawer(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -965,7 +931,6 @@ fn pressing_the_terminal_closes_an_open_drawer(cx: &mut TestAppContext) {
     assert!(!detail.has("heading", INFO_PANEL));
 }
 
-// parity: TS-renderer-TaskDetailRoute-ba2f24
 #[gpui::test]
 fn closing_a_tab_without_a_terminal_closes_the_window(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -980,7 +945,6 @@ fn closing_a_tab_without_a_terminal_closes_the_window(cx: &mut TestAppContext) {
 
 // ───────────── 포커스·알림 센터 ─────────────
 
-// parity: TS-renderer-Terminal-bd7df4
 #[gpui::test]
 fn entering_the_detail_focuses_the_terminal_input(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -990,7 +954,6 @@ fn entering_the_detail_focuses_the_terminal_input(cx: &mut TestAppContext) {
     assert!(detail.is_terminal_focused());
 }
 
-// parity: TS-renderer-Terminal-a891ac
 #[gpui::test]
 fn closing_a_panel_returns_input_focus_to_the_terminal(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -1003,7 +966,6 @@ fn closing_a_panel_returns_input_focus_to_the_terminal(cx: &mut TestAppContext) 
     assert!(detail.is_terminal_focused());
 }
 
-// parity: TS-renderer-TaskDetailRoute-2e1d1e
 #[gpui::test]
 fn the_notification_shortcut_toggles_the_detail_notification_center(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -1016,7 +978,6 @@ fn the_notification_shortcut_toggles_the_detail_notification_center(cx: &mut Tes
     assert!(!detail.has("button", "지금 동기화"));
 }
 
-// parity: TS-renderer-TaskDetailRoute-510dea
 #[gpui::test]
 fn closing_the_notification_dropdown_returns_focus_to_the_terminal(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -1030,7 +991,6 @@ fn closing_the_notification_dropdown_returns_focus_to_the_terminal(cx: &mut Test
     assert!(detail.is_terminal_focused());
 }
 
-// parity: TS-renderer-TaskDetailRoute-b21c4d
 #[gpui::test]
 fn page_back_wins_over_the_focused_terminal(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -1053,7 +1013,6 @@ fn page_back_wins_over_the_focused_terminal(cx: &mut TestAppContext) {
     assert_eq!(path, "/ko");
 }
 
-// parity: TS-renderer-TaskDetailRoute-fb51d2
 #[gpui::test]
 fn a_slow_diff_does_not_hold_the_task_screen_or_terminal_input(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -1081,7 +1040,6 @@ fn a_slow_diff_does_not_hold_the_task_screen_or_terminal_input(cx: &mut TestAppC
     assert!(detail.find(TargetQuery::ExactText("+7".into())).is_some());
 }
 
-// parity: TS-renderer-TaskDetailRoute-f33aab
 #[gpui::test]
 fn the_pane_chat_shortcut_keeps_the_terminal_and_the_dock_opens_history(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -1209,7 +1167,6 @@ fn run_close_case(cx: &mut TestAppContext, database: &Database, case: CloseCase)
     detail
 }
 
-// parity: TS-renderer-TaskDetailRoute-051652
 #[gpui::test]
 fn closing_a_tab_asks_first_and_handles_every_answer(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -1303,7 +1260,6 @@ fn terminal_session(new_task: &mut NewKanbanTask) {
     new_task.session_type = Some(SessionType::Terminal);
 }
 
-// parity: TS-renderer-TerminalLoader-8cdd19
 #[gpui::test]
 fn a_multiplexer_terminal_mounts_at_once(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -1316,7 +1272,6 @@ fn a_multiplexer_terminal_mounts_at_once(cx: &mut TestAppContext) {
     assert!(detail.has("status", CONNECTING));
 }
 
-// parity: TS-renderer-TerminalLoader-e8af80
 #[gpui::test]
 fn no_terminal_is_opened_before_the_tab_list_arrives(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -1329,7 +1284,6 @@ fn no_terminal_is_opened_before_the_tab_list_arrives(cx: &mut TestAppContext) {
     assert!(!detail.has("status", CONNECTING));
 }
 
-// parity: TS-renderer-TerminalLoader-df28da
 #[gpui::test]
 fn waiting_for_the_tab_list_says_loading(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -1340,7 +1294,6 @@ fn waiting_for_the_tab_list_says_loading(cx: &mut TestAppContext) {
     assert!(detail.has("status", "로딩 중..."));
 }
 
-// parity: TS-renderer-useTerminalTabs-cf1cc2
 #[gpui::test]
 fn before_and_after_the_first_tab_list_look_different(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -1360,7 +1313,6 @@ fn before_and_after_the_first_tab_list_look_different(cx: &mut TestAppContext) {
     assert!(detail.has("button", "새 탭"));
 }
 
-// parity: TS-renderer-TerminalLoader-3ce9a3
 #[gpui::test]
 fn an_empty_tab_list_offers_a_new_tab(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -1383,7 +1335,6 @@ fn an_empty_tab_list_offers_a_new_tab(cx: &mut TestAppContext) {
     assert!(detail.has("tab", "t1"));
 }
 
-// parity: TS-renderer-TerminalLoader-23a1d2
 #[gpui::test]
 fn an_unreadable_tab_list_shows_the_reason_and_retry(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -1408,7 +1359,6 @@ fn an_unreadable_tab_list_shows_the_reason_and_retry(cx: &mut TestAppContext) {
     assert!(detail.has("tab", "t1"));
 }
 
-// parity: TS-renderer-TerminalLoader-73f195
 #[gpui::test]
 fn an_inactive_tab_keeps_its_terminal_connection(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -1441,7 +1391,6 @@ fn an_inactive_tab_keeps_its_terminal_connection(cx: &mut TestAppContext) {
     );
 }
 
-// parity: TS-renderer-TerminalLoader-144bf4
 #[gpui::test]
 fn the_chat_history_keeps_the_same_terminal_connection(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -1461,7 +1410,6 @@ fn the_chat_history_keeps_the_same_terminal_connection(cx: &mut TestAppContext) 
     assert!(detail.is_terminal_focused());
 }
 
-// parity: TS-renderer-useTerminalTabs-3268ce
 #[gpui::test]
 fn slow_tab_polls_stay_single_flight(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -1495,7 +1443,6 @@ fn slow_tab_polls_stay_single_flight(cx: &mut TestAppContext) {
     assert!(detail.has("tab", "second"));
 }
 
-// parity: TS-renderer-useTerminalTabs-f8d2ab
 #[gpui::test]
 fn a_command_during_a_read_ends_with_one_final_read(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -1525,7 +1472,6 @@ fn a_command_during_a_read_ends_with_one_final_read(cx: &mut TestAppContext) {
     );
 }
 
-// parity: TS-renderer-useTerminalTabs-5ae6e4
 #[gpui::test]
 fn a_previous_session_late_tab_list_is_ignored(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -1548,7 +1494,6 @@ fn a_previous_session_late_tab_list_is_ignored(cx: &mut TestAppContext) {
     assert!(detail.has("tab", "second"));
 }
 
-// parity: TS-renderer-useTerminalTabs-8b253f
 #[gpui::test]
 fn a_second_new_tab_is_not_sent_while_one_is_being_added(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -1594,7 +1539,6 @@ fn a_second_new_tab_is_not_sent_while_one_is_being_added(cx: &mut TestAppContext
     assert!(!has_tab_error(&mut detail, "second create sent"));
 }
 
-// parity: TS-renderer-useTerminalTabs-0ec95c
 #[gpui::test]
 fn a_hidden_remote_window_skips_tab_reads_and_catches_up_once(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -1626,7 +1570,6 @@ fn a_hidden_remote_window_skips_tab_reads_and_catches_up_once(cx: &mut TestAppCo
     assert!(detail.has("tab", "w1:t2"));
 }
 
-// parity: TS-renderer-useTerminalTabs-84782e
 #[gpui::test]
 fn a_window_opened_in_the_background_still_reads_the_tabs_once(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -1666,7 +1609,6 @@ fn has_tab_error(detail: &mut Detail, reason: &str) -> bool {
     detail.has_containing("alert", reason)
 }
 
-// parity: TS-renderer-TerminalTabBar-f01bfc
 #[gpui::test]
 fn pressing_an_inactive_tab_selects_it(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -1676,7 +1618,6 @@ fn pressing_an_inactive_tab_selects_it(cx: &mut TestAppContext) {
     assert!(has_tab_error(&mut detail, "select sent"));
 }
 
-// parity: TS-renderer-TerminalTabBar-894453
 #[gpui::test]
 fn pressing_the_active_tab_sends_nothing(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -1686,7 +1627,6 @@ fn pressing_the_active_tab_sends_nothing(cx: &mut TestAppContext) {
     assert!(!has_tab_error(&mut detail, "select sent"));
 }
 
-// parity: TS-renderer-TerminalTabBar-3c1cff
 #[gpui::test]
 fn a_tab_close_button_does_not_select_the_tab(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -1708,7 +1648,6 @@ fn a_tab_close_button_does_not_select_the_tab(cx: &mut TestAppContext) {
     assert!(!detail.is_open(), "the close request ran");
 }
 
-// parity: TS-renderer-TerminalTabBar-fb1c30
 #[gpui::test]
 fn the_new_tab_button_creates_a_tab(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -1727,7 +1666,6 @@ fn rename_logs(detail: &mut Detail, keys: &str) {
     detail.keys(keys);
 }
 
-// parity: TS-renderer-TerminalTabBar-f7b300
 #[gpui::test]
 fn double_click_then_enter_renames_the_tab(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -1743,7 +1681,6 @@ fn double_click_then_enter_renames_the_tab(cx: &mut TestAppContext) {
     assert!(has_tab_error(&mut detail, "rename sent"));
 }
 
-// parity: TS-renderer-TerminalTabBar-97fcb0
 #[gpui::test]
 fn escape_cancels_the_rename(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -1773,7 +1710,6 @@ fn drag_tab(detail: &mut Detail, from: &str, to: &str) {
     detail.draw();
 }
 
-// parity: TS-renderer-TerminalTabBar-fc250e
 #[gpui::test]
 fn dropping_a_tab_moves_it_to_that_index(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -1789,7 +1725,6 @@ fn dropping_a_tab_moves_it_to_that_index(cx: &mut TestAppContext) {
     assert!(has_tab_error(&mut detail, "move sent"));
 }
 
-// parity: TS-renderer-TerminalTabBar-40af9c
 #[gpui::test]
 fn dropping_a_tab_on_itself_moves_nothing(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -1813,7 +1748,6 @@ fn dropping_a_tab_on_itself_moves_nothing(cx: &mut TestAppContext) {
     assert!(!has_tab_error(&mut detail, "move sent"));
 }
 
-// parity: TS-renderer-TerminalTabBar-6627fd
 #[gpui::test]
 fn adding_a_tab_blocks_the_add_button_and_shows_progress(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -1830,8 +1764,6 @@ fn adding_a_tab_blocks_the_add_button_and_shows_progress(cx: &mut TestAppContext
     assert!(detail.find(busy).is_some());
 }
 
-// parity: TS-renderer-TerminalTabBar-331c32
-// parity: TS-renderer-useTerminalTabs-16d75c
 #[gpui::test]
 fn a_failed_tab_command_shows_the_reason_and_retries_the_same_command(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -1874,7 +1806,6 @@ fn auto_connect_task(database: &Database, ssh_host: Option<&str>) -> KanbanTask 
     })
 }
 
-// parity: TS-components-AutoConnectTerminalSession-7ab455
 #[gpui::test]
 fn a_session_less_task_connects_with_the_default_session_type(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -1903,7 +1834,6 @@ fn a_session_less_task_connects_with_the_default_session_type(cx: &mut TestAppCo
     assert!(detail.has("button", "알림"), "the terminal chrome is shown");
 }
 
-// parity: TS-components-AutoConnectTerminalSession-15ae4e
 #[gpui::test]
 fn the_same_task_is_connected_only_once(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -1936,7 +1866,6 @@ fn the_same_task_is_connected_only_once(cx: &mut TestAppContext) {
     assert!(detail.has("button", "알림"));
 }
 
-// parity: TS-components-AutoConnectTerminalSession-d487f4
 #[gpui::test]
 fn a_failed_connect_shows_the_error_and_the_button_reconnects(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -1967,7 +1896,6 @@ fn a_failed_connect_shows_the_error_and_the_button_reconnects(cx: &mut TestAppCo
     assert!(detail.has("button", "알림"));
 }
 
-// parity: TS-components-AutoConnectTerminalSession-25bc9a
 #[gpui::test]
 fn a_thrown_dependency_check_shows_its_message_without_connecting(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -1990,7 +1918,6 @@ fn a_thrown_dependency_check_shows_its_message_without_connecting(cx: &mut TestA
     assert!(!detail.has_containing("alert", "connect called"));
 }
 
-// parity: TS-components-AutoConnectTerminalSession-b18285
 #[gpui::test]
 fn declining_the_install_prompt_leaves_only_the_connect_button(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -2021,7 +1948,6 @@ fn declining_the_install_prompt_leaves_only_the_connect_button(cx: &mut TestAppC
     assert!(!detail.has_containing("alert", ""));
 }
 
-// parity: TS-renderer-TaskDetailRoute-28b787
 #[gpui::test]
 fn the_usage_command_sent_by_the_app_opens_the_usage_panel(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
@@ -2048,7 +1974,6 @@ fn branch_task(database: &Database, edit: impl FnOnce(&mut NewKanbanTask)) -> Ka
     })
 }
 
-// parity: TS-renderer-TaskDetailRoute-fb9df5
 #[gpui::test]
 fn the_open_task_becomes_the_board_return_focus_target(cx: &mut TestAppContext) {
     let dir = target_temp_dir();
@@ -2064,7 +1989,6 @@ fn the_open_task_becomes_the_board_return_focus_target(cx: &mut TestAppContext) 
     assert_eq!(remembered.as_deref(), Some(stored.id.as_str()));
 }
 
-// parity: TS-renderer-TaskDetailRoute-c51100
 #[gpui::test]
 fn the_new_task_shortcut_opens_the_modal_based_on_this_branch(cx: &mut TestAppContext) {
     let dir = target_temp_dir();
@@ -2092,7 +2016,6 @@ fn the_new_task_shortcut_opens_the_modal_based_on_this_branch(cx: &mut TestAppCo
     );
 }
 
-// parity: TS-renderer-TaskDetailRoute-ec08f4
 #[gpui::test]
 fn closing_the_new_task_modal_returns_focus_to_the_terminal(cx: &mut TestAppContext) {
     let dir = target_temp_dir();
@@ -2122,7 +2045,6 @@ fn closing_the_new_task_modal_returns_focus_to_the_terminal(cx: &mut TestAppCont
     );
 }
 
-// parity: TS-renderer-TaskDetailRoute-8dbcdf
 #[gpui::test]
 fn the_command_palette_moves_this_task_and_updates_the_screen(cx: &mut TestAppContext) {
     let dir = target_temp_dir();

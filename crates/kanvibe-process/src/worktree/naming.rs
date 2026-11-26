@@ -128,7 +128,6 @@ pub(crate) fn posix_join(base: &str, child: &str) -> String {
 mod tests {
     use super::*;
 
-    // parity: TS-lib-worktree-3875cf
     #[test]
     fn formats_project_and_branch_with_slashes_replaced() {
         assert_eq!(
@@ -137,7 +136,6 @@ mod tests {
         );
     }
 
-    // parity: TS-lib-worktree-f164fe
     #[test]
     fn handles_multiple_slashes_in_branch_name() {
         assert_eq!(
@@ -146,13 +144,11 @@ mod tests {
         );
     }
 
-    // parity: TS-lib-worktree-3a716e
     #[test]
     fn handles_branch_name_without_slashes() {
         assert_eq!(format_session_name("kanvibe", "main"), "kanvibe-main");
     }
 
-    // parity: TS-lib-worktree-e88ad5
     #[test]
     fn replaces_slashes_in_project_name_as_well() {
         assert_eq!(
@@ -161,7 +157,6 @@ mod tests {
         );
     }
 
-    // parity: TS-lib-worktree-78f5b2
     #[test]
     fn derives_session_name_from_project_path_and_branch_name() {
         assert_eq!(
@@ -170,13 +165,11 @@ mod tests {
         );
     }
 
-    // parity: TS-lib-worktree-419135
     #[test]
     fn zellij_name_within_limit_is_unchanged() {
         assert_eq!(sanitize_zellij_session_name("feat-login"), "feat-login");
     }
 
-    // parity: TS-lib-worktree-301ec7
     #[test]
     fn zellij_name_over_sixty_characters_is_truncated() {
         let result = sanitize_zellij_session_name(&"a".repeat(80));
@@ -184,7 +177,6 @@ mod tests {
         assert_eq!(result, "a".repeat(60));
     }
 
-    // parity: TS-lib-worktree-d249b6
     #[test]
     fn zellij_name_of_exactly_sixty_characters_is_unchanged() {
         let exact_name = "x".repeat(60);

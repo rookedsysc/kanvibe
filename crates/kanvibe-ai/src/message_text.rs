@@ -264,7 +264,6 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    // parity: TS-aiSessions-shared-4c29d3
     #[test]
     fn normalize_removes_pasted_placeholders_and_transport_noise() {
         let result = normalize_text(
@@ -283,7 +282,6 @@ mod tests {
         parts.join("\n")
     }
 
-    // parity: TS-aiSessions-shared-ce4446
     #[test]
     fn keeps_noise_lines_inside_code_blocks() {
         let source = lines(
@@ -297,14 +295,12 @@ mod tests {
         assert_eq!(preserve_message_text(&source), source);
     }
 
-    // parity: TS-aiSessions-shared-17b12f
     #[test]
     fn removes_noise_lines_outside_code_blocks() {
         let source = lines(&[&["빌드 결과입니다"], &NOISE_LINES[..], &["끝"]].concat());
         assert_eq!(preserve_message_text(&source), "빌드 결과입니다\n끝");
     }
 
-    // parity: TS-aiSessions-shared-fe906d
     #[test]
     fn unclosed_code_block_runs_to_the_end() {
         let source = lines(&[&["error: 블록 밖", "```"], &NOISE_LINES[..]].concat());
@@ -314,7 +310,6 @@ mod tests {
         );
     }
 
-    // parity: TS-aiSessions-shared-0f931e
     #[test]
     fn tilde_fences_behave_like_backtick_fences() {
         let block = [&["~~~"], &NOISE_LINES[..], &["~~~"]].concat();
@@ -322,7 +317,6 @@ mod tests {
         assert_eq!(preserve_message_text(&source), lines(&block));
     }
 
-    // parity: TS-aiSessions-shared-736f76
     #[test]
     fn shorter_fence_does_not_close_block() {
         let outer_block = [
@@ -337,7 +331,6 @@ mod tests {
         assert_eq!(preserve_message_text(&source), lines(&outer_block));
     }
 
-    // parity: TS-aiSessions-shared-190cb1
     #[test]
     fn fence_with_language_does_not_close_block() {
         let block = ["```", "code", "```js", "error: 아직 블록 안", "```"];
@@ -345,7 +338,6 @@ mod tests {
         assert_eq!(preserve_message_text(&source), lines(&block));
     }
 
-    // parity: TS-aiSessions-shared-9029c0
     #[test]
     fn longer_same_fence_closes_and_other_marker_does_not() {
         let block = ["```", "~~~~", "error: 블록 안", "`````"];
@@ -353,7 +345,6 @@ mod tests {
         assert_eq!(preserve_message_text(&source), lines(&block));
     }
 
-    // parity: TS-aiSessions-shared-548487
     #[test]
     fn keeps_markdown_line_breaks_for_detail_and_flat_preview() {
         let source = json!({

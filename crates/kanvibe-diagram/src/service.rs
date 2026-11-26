@@ -280,7 +280,6 @@ mod tests {
         panic!("조건이 끝내 참이 되지 않았습니다");
     }
 
-    // parity: TS-main-mobileDiagramRenderService-c54882
     #[test]
     fn evicts_by_encoded_image_bytes_before_the_entry_count_is_reached() {
         let fake = FakeRasterizer {
@@ -299,7 +298,6 @@ mod tests {
         assert_eq!(service.rasterizer.calls.load(Ordering::SeqCst), 6);
     }
 
-    // parity: TS-main-mobileDiagramRenderService-429ad3
     #[test]
     fn deduplicates_concurrent_requests_and_serves_cached_copies() {
         let (release, gate) = mpsc::channel();
@@ -329,7 +327,6 @@ mod tests {
         assert_eq!(service.rasterizer.calls.load(Ordering::SeqCst), 1);
     }
 
-    // parity: TS-main-mobileDiagramRenderService-9329d2
     #[test]
     fn runs_one_worker_admits_three_waiting_jobs_and_rejects_a_fifth() {
         let (release, gate) = mpsc::channel();
@@ -368,7 +365,6 @@ mod tests {
         );
     }
 
-    // parity: TS-main-mobileDiagramRenderService-c0e6c7
     #[test]
     fn carries_the_natural_width_and_omits_it_when_unknown() {
         let fake = FakeRasterizer::default();
@@ -388,7 +384,6 @@ mod tests {
         assert!(unknown.to_response_json().get("naturalWidth").is_none());
     }
 
-    // parity: TS-main-mobileDiagramRenderService-d14451
     #[test]
     fn does_not_cache_failures_and_lets_the_next_request_run() {
         let fake = FakeRasterizer::default();
@@ -412,7 +407,6 @@ mod tests {
         assert_eq!(service.rasterizer.calls.load(Ordering::SeqCst), 2);
     }
 
-    // parity: TS-main-mobileDiagramRenderService-bc4bee
     #[test]
     fn keeps_theme_and_width_distinct_and_evicts_the_oldest_of_seventeen() {
         let service = MobileDiagramService::new(FakeRasterizer::default());
@@ -434,7 +428,6 @@ mod tests {
         NativeDiagramRenderer::with_fonts(crate::text::tests::bundled_fonts())
     }
 
-    // parity: TS-main-mobileDiagramWorker-33a075
     #[test]
     fn reports_the_natural_width_of_the_rendered_diagram() {
         let image = native()
@@ -448,7 +441,6 @@ mod tests {
         );
     }
 
-    // parity: TS-main-mobileDiagramWorker-48037a
     #[test]
     fn maps_syntax_failures_to_422() {
         let error = native()

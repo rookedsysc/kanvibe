@@ -269,7 +269,6 @@ mod tests {
         }
     }
 
-    // parity: TS-main-editorService-3d4895
     #[test]
     fn local_task_opens_only_the_worktree_path() {
         let fixture = Fixture::new();
@@ -291,7 +290,6 @@ mod tests {
         );
     }
 
-    // parity: TS-main-editorService-d711b3
     #[test]
     fn remote_task_attaches_local_vs_code_through_remote_ssh() {
         let fixture = Fixture::new();
@@ -312,7 +310,6 @@ mod tests {
         );
     }
 
-    // parity: TS-main-editorService-396ec4
     #[test]
     fn task_without_worktree_opens_the_project_repository() {
         let fixture = Fixture::new();
@@ -325,7 +322,6 @@ mod tests {
         assert_eq!(launcher.launches.borrow()[0].1, ["/workspace/repo"]);
     }
 
-    // parity: TS-main-editorService-729afa
     #[test]
     fn task_without_any_path_does_not_launch_vs_code() {
         let fixture = Fixture::new();
@@ -344,7 +340,6 @@ mod tests {
         assert!(launcher.launches.borrow().is_empty());
     }
 
-    // parity: TS-main-editorService-cedbac
     #[test]
     fn missing_code_command_returns_the_failure_reason() {
         let fixture = Fixture::new();

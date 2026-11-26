@@ -68,7 +68,6 @@ fn footer(thread: &str) -> String {
     format!("  {thread}")
 }
 
-// parity: TS-aiSessions-paneChatCodexDisplay-54fdf9
 #[test]
 fn recognizes_dim_native_hint_with_padding() {
     for hint in ["Ask Codex to do anything", "Summarize recent commits"] {
@@ -91,7 +90,6 @@ fn recognizes_dim_native_hint_with_padding() {
     }
 }
 
-// parity: TS-aiSessions-paneChatCodexDisplay-c558b7
 #[test]
 fn refuses_user_written_hint_with_same_characters() {
     let row = TestCellRow::new()
@@ -100,7 +98,6 @@ fn refuses_user_written_hint_with_same_characters() {
     assert!(!is_dim_hint_empty_composer(Some(&row), 2));
 }
 
-// parity: TS-aiSessions-paneChatCodexDisplay-c7796d
 #[test]
 fn accepts_verified_narrow_main_footer_without_relaxing_position() {
     for hint in [
@@ -133,7 +130,6 @@ fn accepts_verified_narrow_main_footer_without_relaxing_position() {
     }
 }
 
-// parity: TS-aiSessions-paneChatCodexDisplay-21bd53
 #[test]
 fn keeps_warning_badge_separate_from_thread_id() {
     let mut rows = vec![
@@ -158,7 +154,6 @@ fn keeps_warning_badge_separate_from_thread_id() {
     assert!(!is_codex_main_composer_ready(&rows, 0));
 }
 
-// parity: TS-aiSessions-paneChatCodexDisplay-717ed9
 #[test]
 fn reads_thread_id_below_empty_composer() {
     let rows = [
@@ -175,7 +170,6 @@ fn reads_thread_id_below_empty_composer() {
     );
 }
 
-// parity: TS-aiSessions-paneChatCodexDisplay-faf6cc
 #[test]
 fn accepts_main_thread_label_after_id() {
     let rows = [
@@ -193,7 +187,6 @@ fn accepts_main_thread_label_after_id() {
     );
 }
 
-// parity: TS-aiSessions-paneChatCodexDisplay-95f87a
 #[test]
 fn reads_real_footer_not_uuid_inside_draft() {
     let rows = [
@@ -209,7 +202,6 @@ fn reads_real_footer_not_uuid_inside_draft() {
     );
 }
 
-// parity: TS-aiSessions-paneChatCodexDisplay-4aaa8a
 #[test]
 fn reads_multi_row_draft_with_blank_line() {
     let rows = [
@@ -225,7 +217,6 @@ fn reads_multi_row_draft_with_blank_line() {
     );
 }
 
-// parity: TS-aiSessions-paneChatCodexDisplay-11c54e
 #[test]
 fn reports_no_thread_id_for_other_footers() {
     let footers = [
@@ -245,7 +236,6 @@ fn reports_no_thread_id_for_other_footers() {
     }
 }
 
-// parity: TS-aiSessions-paneChatCodexDisplay-5ecf90
 #[test]
 fn ignores_uuid_in_transcript_above_composer() {
     let rows = [
@@ -259,7 +249,6 @@ fn ignores_uuid_in_transcript_above_composer() {
     assert_eq!(read_codex_display(&rows, 2, false).unwrap().thread_id, None);
 }
 
-// parity: TS-aiSessions-paneChatCodexDisplay-740168
 #[test]
 fn reads_typed_command_under_popup() {
     let rows = [
@@ -270,7 +259,6 @@ fn reads_typed_command_under_popup() {
     assert_eq!(read_codex_display(&rows, 0, false), display("/mod", None));
 }
 
-// parity: TS-aiSessions-paneChatCodexDisplay-9e8e7b
 #[test]
 fn reads_composer_below_popup_with_same_marker() {
     let rows = [
@@ -286,7 +274,6 @@ fn reads_composer_below_popup_with_same_marker() {
     );
 }
 
-// parity: TS-aiSessions-paneChatCodexDisplay-58180f
 #[test]
 fn reads_draft_taller_than_twelve_rows() {
     let draft_rows: Vec<String> = (1..=14).map(|index| format!("line {index}")).collect();
@@ -300,7 +287,6 @@ fn reads_draft_taller_than_twelve_rows() {
     );
 }
 
-// parity: TS-aiSessions-paneChatCodexDisplay-e7200e
 #[test]
 fn returns_nothing_when_first_row_scrolled_out() {
     assert_eq!(
@@ -313,7 +299,6 @@ fn returns_nothing_when_first_row_scrolled_out() {
     );
 }
 
-// parity: TS-aiSessions-paneChatCodexDisplay-47b181
 #[test]
 fn returns_nothing_when_cursor_is_not_on_composer() {
     let rows = [
@@ -327,7 +312,6 @@ fn returns_nothing_when_cursor_is_not_on_composer() {
 
 const DRAFT_UUID: &str = "11111111-1111-7111-8111-111111111111";
 
-// parity: TS-aiSessions-paneChatCodexDisplay-48ae3b
 #[test]
 fn draft_uuid_is_not_footer_without_shortcut_hint() {
     let rows = [
@@ -342,7 +326,6 @@ fn draft_uuid_is_not_footer_without_shortcut_hint() {
     );
 }
 
-// parity: TS-aiSessions-paneChatCodexDisplay-f61b6f
 #[test]
 fn refuses_invented_label_after_id() {
     let labelled = format!("  {DRAFT_UUID} · invented-label");
@@ -360,7 +343,6 @@ fn refuses_invented_label_after_id() {
     );
 }
 
-// parity: TS-aiSessions-paneChatCodexDisplay-106714
 #[test]
 fn empty_composer_thread_needs_exact_layout() {
     let thread = footer(DISPLAYED_THREAD);
@@ -385,7 +367,6 @@ fn empty_composer_thread_needs_exact_layout() {
     }
 }
 
-// parity: TS-aiSessions-paneChatCodexDisplay-c407f4
 #[test]
 fn blank_or_hint_first_row_does_not_read_footer() {
     let thread = footer(DISPLAYED_THREAD);
@@ -407,7 +388,6 @@ fn blank_or_hint_first_row_does_not_read_footer() {
     );
 }
 
-// parity: TS-aiSessions-paneChatCodexDisplay-e149fd
 #[test]
 fn draft_layout_id_comes_with_differing_composer_text() {
     // 화면만으로는 초안의 마지막 줄과 footer를 구분할 수 없어, 이 배치의 ID는 이미 연결된 대화와 같은지 견주는 데만 쓴다
@@ -417,14 +397,12 @@ fn draft_layout_id_comes_with_differing_composer_text() {
     );
 }
 
-// parity: TS-aiSessions-paneChatCodexDisplay-79771f
 #[test]
 fn allows_only_verified_version() {
     assert!(is_codex_thread_footer_supported("codex-cli 0.169.0"));
     assert!(is_codex_thread_footer_supported("codex-cli 0.169.0\n"));
 }
 
-// parity: TS-aiSessions-paneChatCodexDisplay-4843a4
 #[test]
 fn refuses_other_versions() {
     for output in [
@@ -443,7 +421,6 @@ fn same(composer: &str, expected: &str) -> bool {
     is_same_composer_text(composer, expected, None)
 }
 
-// parity: TS-aiSessions-paneChatCodexDisplay-c3e15f
 #[test]
 fn keeps_whitespace_inside_row_literal() {
     assert!(!same("print(\"ab\")", "print(\"a b\")"));
@@ -451,7 +428,6 @@ fn keeps_whitespace_inside_row_literal() {
     assert!(!same("  indented", "indented"));
 }
 
-// parity: TS-aiSessions-paneChatCodexDisplay-285b3a
 #[test]
 fn never_reads_row_break_as_fold_without_width() {
     assert!(!same("ab\ncd", "ab cd"));
@@ -465,7 +441,6 @@ fn never_reads_row_break_as_fold_without_width() {
     assert!(!same(&format!("{full}\n{tail}"), "wrap ".repeat(45).trim()));
 }
 
-// parity: TS-aiSessions-paneChatCodexDisplay-370c5a
 #[test]
 fn matches_exact_multi_line_text() {
     assert!(same("ab\ncd", "ab\ncd"));
@@ -475,14 +450,12 @@ fn matches_exact_multi_line_text() {
     ));
 }
 
-// parity: TS-aiSessions-paneChatCodexDisplay-c2ccf0
 #[test]
 fn ignores_only_trailing_whitespace() {
     assert!(same("Use $qa-skill", "Use $qa-skill "));
     assert!(same("first\n\nthird", "first \n\nthird"));
 }
 
-// parity: TS-aiSessions-paneChatCodexDisplay-3fb4c9
 #[test]
 fn requires_every_row_and_line() {
     assert!(!same("first\nsecond", "first"));
@@ -490,7 +463,6 @@ fn requires_every_row_and_line() {
     assert!(!same("first\n\nthird", "first\nthird"));
 }
 
-// parity: TS-aiSessions-paneChatCodexDisplay-205b5b
 #[test]
 fn distinguishes_different_and_partial_echo() {
     assert!(!same("Ask Codex to do anything", "Must stay unsubmitted"));
@@ -508,7 +480,6 @@ fn same_at(composer: &str, expected: &str, columns: Option<usize>) -> bool {
     is_same_composer_text(composer, expected, columns)
 }
 
-// parity: TS-aiSessions-paneChatCodexDisplay-417233
 #[test]
 fn accepts_observed_korean_wrap() {
     assert!(same_at(
@@ -519,7 +490,6 @@ fn accepts_observed_korean_wrap() {
     assert!(!same_at("한글\n입력", "한글 입력", Some(80)));
 }
 
-// parity: TS-aiSessions-paneChatCodexDisplay-df1c51
 #[test]
 fn row_break_is_not_fold_when_next_word_fits() {
     let x = "x".repeat(33);
@@ -537,7 +507,6 @@ fn row_break_is_not_fold_when_next_word_fits() {
     ));
 }
 
-// parity: TS-aiSessions-paneChatCodexDisplay-898400
 #[test]
 fn joins_line_folded_at_space() {
     let full = full_row();
@@ -554,7 +523,6 @@ fn joins_line_folded_at_space() {
     ));
 }
 
-// parity: TS-aiSessions-paneChatCodexDisplay-8ac9e1
 #[test]
 fn joins_path_folded_after_hyphen() {
     let row_ending_at_hyphen = format!("@/{}/desktop-pane-", "d".repeat(128));
@@ -570,7 +538,6 @@ fn joins_path_folded_after_hyphen() {
     ));
 }
 
-// parity: TS-aiSessions-paneChatCodexDisplay-f8dbc7
 #[test]
 fn joins_token_cut_exactly_at_width() {
     assert!(same_at(
@@ -585,7 +552,6 @@ fn joins_token_cut_exactly_at_width() {
     ));
 }
 
-// parity: TS-aiSessions-paneChatCodexDisplay-3b17c6
 #[test]
 fn refuses_row_wider_than_width() {
     assert!(!same_at(
@@ -595,7 +561,6 @@ fn refuses_row_wider_than_width() {
     ));
 }
 
-// parity: TS-aiSessions-paneChatCodexDisplay-388d7f
 #[test]
 fn refuses_fold_before_no_break_characters() {
     let full = full_row();
@@ -612,7 +577,6 @@ fn refuses_fold_before_no_break_characters() {
     }
 }
 
-// parity: TS-aiSessions-paneChatCodexDisplay-9574c2
 #[test]
 fn refuses_fold_after_opening_bracket() {
     let row = format!("{}wra(", "wrap ".repeat(28));
@@ -623,7 +587,6 @@ fn refuses_fold_after_opening_bracket() {
     ));
 }
 
-// parity: TS-aiSessions-paneChatCodexDisplay-940b09
 #[test]
 fn refuses_fold_in_uncertain_column_width() {
     let cases = [
@@ -645,7 +608,6 @@ fn refuses_fold_in_uncertain_column_width() {
     }
 }
 
-// parity: TS-aiSessions-paneChatCodexDisplay-24e9cf
 #[test]
 fn keeps_whitespace_literal_with_width() {
     assert!(!same_at(
@@ -657,7 +619,6 @@ fn keeps_whitespace_literal_with_width() {
     assert!(same_at("Use $qa-skill", "Use $qa-skill ", VIEWPORT_COLUMNS));
 }
 
-// parity: TS-aiSessions-paneChatCodexDisplay-627de2
 #[test]
 fn offers_literal_text_and_folded_placeholder() {
     assert_eq!(
@@ -672,7 +633,6 @@ fn matches_any(body: &str, image_count: usize, composer: &str) -> bool {
         .any(|expected| same(composer, expected))
 }
 
-// parity: TS-aiSessions-paneChatCodexDisplay-c8556d
 #[test]
 fn matches_observed_rows_after_pasting_image() {
     assert!(matches_any(
@@ -688,7 +648,6 @@ fn matches_observed_rows_after_pasting_image() {
     ));
 }
 
-// parity: TS-aiSessions-paneChatCodexDisplay-959459
 #[test]
 fn rejects_other_caption_or_missing_image() {
     assert!(!matches_any(

@@ -158,7 +158,6 @@ mod tests {
         stringify(&stored)
     }
 
-    // parity: TS-aiUsage-usageSnapshotCache-102ec5
     #[test]
     fn account_id_is_not_stored_verbatim() {
         assert!(
@@ -167,7 +166,6 @@ mod tests {
         );
     }
 
-    // parity: TS-aiUsage-usageSnapshotCache-8e8e9b
     #[test]
     fn same_account_keeps_same_cached_id() {
         let first = from_cached_snapshot(Some(&to_cacheable_snapshot(&create_snapshot()))).unwrap();
@@ -176,7 +174,6 @@ mod tests {
         assert_eq!(first.accounts[0].account_id, second.accounts[0].account_id);
     }
 
-    // parity: TS-aiUsage-usageSnapshotCache-56e825
     #[test]
     fn monthly_and_model_windows_round_trip() {
         let mut snapshot = create_snapshot();
@@ -196,7 +193,6 @@ mod tests {
         );
     }
 
-    // parity: TS-aiUsage-usageSnapshotCache-fe237c
     #[test]
     fn rendered_values_survive() {
         let restored =
@@ -214,7 +210,6 @@ mod tests {
         );
     }
 
-    // parity: TS-aiUsage-usageSnapshotCache-64a701
     #[test]
     fn only_known_fields_are_stored() {
         let serialized = to_cacheable_snapshot(&create_snapshot());
@@ -227,27 +222,23 @@ mod tests {
         );
     }
 
-    // parity: TS-aiUsage-usageSnapshotCache-7d8697
     #[test]
     fn missing_value_is_none() {
         assert_eq!(from_cached_snapshot(None), None);
         assert_eq!(from_cached_snapshot(Some("")), None);
     }
 
-    // parity: TS-aiUsage-usageSnapshotCache-94e44c
     #[test]
     fn broken_json_is_dropped() {
         assert_eq!(from_cached_snapshot(Some("{not json")), None);
     }
 
-    // parity: TS-aiUsage-usageSnapshotCache-f49e43
     #[test]
     fn other_schema_version_is_dropped() {
         let stored = mutate_stored(|stored| stored["version"] = json!(99));
         assert_eq!(from_cached_snapshot(Some(&stored)), None);
     }
 
-    // parity: TS-aiUsage-usageSnapshotCache-d5aea7
     #[test]
     fn unknown_provider_or_status_is_dropped() {
         let stored =

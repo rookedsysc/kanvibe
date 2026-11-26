@@ -1,7 +1,0 @@
-C4Dynamic
-    title Hook flow
-    ContainerDb(db, "Database", "SQLite")
-    Container(api, "Hook Server", "Rust")
-    Component(handler, "Status Handler", "Rust", "Updates task status")
-    Rel(api, handler, "Receives hook")
-    Rel(handler, db, "Writes status")

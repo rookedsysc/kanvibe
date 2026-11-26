@@ -45,7 +45,6 @@ fn attach_task_a_shared_space(harness: &Harness, is_remote: bool) {
     harness.attach_remote(request, &client).unwrap();
 }
 
-// parity: TS-lib-terminalSessionLifecycle-e562ed
 #[test]
 fn shared_space_connects_through_the_client_relay_and_closes_it_with_the_pty() {
     for is_remote in [false, true] {
@@ -90,7 +89,6 @@ fn shared_space_connects_through_the_client_relay_and_closes_it_with_the_pty() {
     }
 }
 
-// parity: TS-lib-terminalSessionLifecycle-66b3f5
 #[test]
 fn window_closed_while_preparing_the_relay_cleans_up_without_a_pty() {
     // Given
@@ -122,7 +120,6 @@ fn window_closed_while_preparing_the_relay_cleans_up_without_a_pty() {
     assert_eq!(relay.close_count(), 1);
 }
 
-// parity: TS-lib-terminalSessionLifecycle-8a0dbd
 #[test]
 fn tab_focus_goes_only_to_the_owning_task_client() {
     // Given
@@ -154,7 +151,6 @@ fn tab_focus_goes_only_to_the_owning_task_client() {
     harness.registry.kill_all_terminal_sessions();
 }
 
-// parity: TS-lib-terminalSessionLifecycle-547d21
 #[test]
 fn pane_focus_goes_only_to_the_owning_task_client_and_rejects_others() {
     // Given
@@ -223,7 +219,6 @@ fn surface_bounds(left: u16, top: u16, width: u16) -> Option<HerdrSurfaceBounds>
     })
 }
 
-// parity: TS-lib-terminalSessionLifecycle-43659e
 #[test]
 fn herdr_pane_bounds_follow_the_client_surface_and_tab_bar_position() {
     for (position, other_position, top) in [

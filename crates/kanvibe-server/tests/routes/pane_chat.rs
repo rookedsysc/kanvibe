@@ -22,7 +22,6 @@ fn action(task_id: &str, token: &str, action: PaneChatAction) -> (String, String
     (task_id.to_string(), token.to_string(), action)
 }
 
-// parity: TS-electron-mobileRoutes-dde2c2
 #[tokio::test]
 async fn paired_devices_read_the_exact_requested_pane_snapshot() {
     let server = TestServer::start().await;
@@ -41,7 +40,6 @@ async fn paired_devices_read_the_exact_requested_pane_snapshot() {
     );
 }
 
-// parity: TS-electron-mobileRoutes-a6ea62
 #[tokio::test]
 async fn devices_hiding_the_screen_read_the_snapshot_without_it() {
     let server = TestServer::start().await;
@@ -57,7 +55,6 @@ async fn devices_hiding_the_screen_read_the_snapshot_without_it() {
     );
 }
 
-// parity: TS-electron-mobileRoutes-b67b91
 #[tokio::test]
 async fn agent_only_reads_return_the_provider_without_a_snapshot() {
     let server = TestServer::start().await;
@@ -81,7 +78,6 @@ async fn agent_only_reads_return_the_provider_without_a_snapshot() {
     assert_eq!(server.fake.count("get_sequenced_pane_chat_snapshot"), 0);
 }
 
-// parity: TS-electron-mobileRoutes-1d66b4
 #[tokio::test]
 async fn devices_without_a_token_cannot_read_or_send() {
     let server = TestServer::start().await;
@@ -101,7 +97,6 @@ async fn devices_without_a_token_cannot_read_or_send() {
     assert!(server.fake.pane_chat_actions().is_empty());
 }
 
-// parity: TS-electron-mobileRoutes-a17d14
 #[tokio::test]
 async fn prompts_keep_authentication_and_the_target_token() {
     let server = TestServer::start().await;
@@ -125,7 +120,6 @@ async fn prompts_keep_authentication_and_the_target_token() {
     );
 }
 
-// parity: TS-electron-mobileRoutes-d3e4f0
 #[tokio::test]
 async fn model_setting_changes_pass_through_and_rejections_are_400() {
     let server = TestServer::start().await;
@@ -161,7 +155,6 @@ async fn model_setting_changes_pass_through_and_rejections_are_400() {
     );
 }
 
-// parity: TS-electron-mobileRoutes-ec52aa
 #[tokio::test]
 async fn replaced_targets_conflict_and_empty_tokens_are_rejected() {
     let server = TestServer::start().await;
@@ -193,7 +186,6 @@ fn staged_attachment() -> Value {
     json!({ "success": true, "attachment": { "id": "owned-id", "name": "file.txt", "mimeType": "text/plain", "kind": "file", "sizeBytes": 65537 } })
 }
 
-// parity: TS-electron-mobileRoutes-534ec1
 #[tokio::test]
 async fn only_authenticated_uploads_read_attachment_bodies_over_64_kib() {
     let server = TestServer::start().await;
@@ -229,7 +221,6 @@ async fn only_authenticated_uploads_read_attachment_bodies_over_64_kib() {
     assert_eq!(server.fake.pane_chat_actions().len(), 1);
 }
 
-// parity: TS-electron-mobileRoutes-2ed80b
 #[tokio::test]
 async fn attachment_removal_and_search_use_the_same_target_token() {
     let server = TestServer::start().await;
@@ -267,7 +258,6 @@ async fn attachment_removal_and_search_use_the_same_target_token() {
     );
 }
 
-// parity: TS-electron-mobileRoutes-995f5b
 #[tokio::test]
 async fn full_list_requests_pass_the_limit_as_a_number() {
     let server = TestServer::start().await;
@@ -279,7 +269,6 @@ async fn full_list_requests_pass_the_limit_as_a_number() {
     );
 }
 
-// parity: TS-electron-mobileRoutes-fe148f
 #[tokio::test]
 async fn attachment_ids_and_the_dedupe_id_travel_with_the_prompt() {
     let server = TestServer::start().await;
@@ -295,7 +284,6 @@ async fn attachment_ids_and_the_dedupe_id_travel_with_the_prompt() {
     );
 }
 
-// parity: TS-electron-mobileRoutes-dfbcc3
 #[tokio::test]
 async fn history_attachments_need_authentication_and_missing_files_are_404() {
     let server = TestServer::start().await;
@@ -323,7 +311,6 @@ async fn history_attachments_need_authentication_and_missing_files_are_404() {
     );
 }
 
-// parity: TS-electron-mobileRoutes-541405
 #[tokio::test]
 async fn only_paired_devices_read_workspace_files_and_the_path_is_decoded() {
     let server = TestServer::start().await;
@@ -344,7 +331,6 @@ async fn only_paired_devices_read_workspace_files_and_the_path_is_decoded() {
     );
 }
 
-// parity: TS-electron-mobileRoutes-4bbd8d
 #[tokio::test]
 async fn missing_or_empty_file_paths_are_400_without_reading() {
     let server = TestServer::start().await;
@@ -362,7 +348,6 @@ async fn missing_or_empty_file_paths_are_400_without_reading() {
     assert_eq!(server.fake.count("get_mobile_task_file"), 0);
 }
 
-// parity: TS-electron-mobileRoutes-e2a9ac
 #[tokio::test]
 async fn file_open_failures_are_told_apart_by_status_and_reason() {
     let server = TestServer::start().await;
@@ -397,7 +382,6 @@ async fn file_open_failures_are_told_apart_by_status_and_reason() {
     }
 }
 
-// parity: TS-electron-mobileRoutes-9652dc
 #[tokio::test]
 async fn unknown_file_read_failures_hide_the_internal_message() {
     let server = TestServer::start().await;
@@ -413,7 +397,6 @@ async fn unknown_file_read_failures_hide_the_internal_message() {
     assert_eq!(reply.pair(), (500, failure("서버 오류")));
 }
 
-// parity: TS-electron-mobileRoutes-92cab0
 #[tokio::test]
 async fn uncertain_partial_deliveries_are_stated_without_inviting_a_resend() {
     let server = TestServer::start().await;

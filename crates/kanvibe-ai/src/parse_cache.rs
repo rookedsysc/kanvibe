@@ -253,7 +253,6 @@ mod tests {
             .clone()
     }
 
-    // parity: TS-aiSessions-parseCacheFreshness-8e8d06
     #[test]
     fn eventually_reparses_remote_last_write_with_unchanged_coarse_mtime() {
         for (kind, name) in KINDS {
@@ -267,7 +266,6 @@ mod tests {
         }
     }
 
-    // parity: TS-aiSessions-parseCacheFreshness-0afa12
     #[test]
     fn revalidates_each_remote_coarse_mtime_once() {
         for (kind, name) in KINDS {
@@ -295,7 +293,6 @@ mod tests {
         }
     }
 
-    // parity: TS-aiSessions-parseCacheFreshness-ed4e9e
     #[test]
     fn keeps_unchanged_local_files_and_invalidates_changed_mtimes() {
         for (kind, name) in KINDS {
@@ -308,7 +305,6 @@ mod tests {
         }
     }
 
-    // parity: TS-aiSessions-historyPerformance-991b6c
     #[test]
     fn identical_paths_are_isolated_by_execution_host() {
         for (kind, name) in [KINDS[0], KINDS[1]] {
@@ -329,7 +325,6 @@ mod tests {
         }
     }
 
-    // parity: TS-aiSessions-historyPerformance-08711c
     #[test]
     fn concurrent_reads_of_an_unchanged_file_share_one_parse() {
         for (kind, name) in [KINDS[0], KINDS[1]] {
@@ -357,7 +352,6 @@ mod tests {
         }
     }
 
-    // parity: TS-aiSessions-cacheHostIdentity-faf448
     #[test]
     fn isolates_local_and_remote_cache_entries() {
         for (kind, name) in KINDS {

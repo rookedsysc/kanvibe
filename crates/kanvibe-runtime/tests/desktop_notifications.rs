@@ -92,8 +92,6 @@ fn hook_target_missing() -> BoardEvent {
     })
 }
 
-// parity: TS-renderer-NotificationListener-a52653
-// parity: TS-hooks-useTaskNotification-109e97
 #[test]
 fn enabled_status_change_raises_os_notification_with_title_status_and_description() {
     let fixture = RuntimeFixture::new();
@@ -118,7 +116,6 @@ fn enabled_status_change_raises_os_notification_with_title_status_and_descriptio
     assert_eq!(shown[0].locale, "ko");
 }
 
-// parity: TS-hooks-useTaskNotification-a24420
 #[test]
 fn missing_description_leaves_only_the_status_line_in_the_body() {
     let fixture = RuntimeFixture::new();
@@ -136,7 +133,6 @@ fn missing_description_leaves_only_the_status_line_in_the_body() {
     assert_eq!(shown[0].locale, "en");
 }
 
-// parity: TS-hooks-useTaskNotification-df0527
 #[test]
 fn os_notification_carries_the_task_detail_path_and_status_dedupe_key() {
     let fixture = RuntimeFixture::new();
@@ -165,7 +161,6 @@ fn os_notification_carries_the_task_detail_path_and_status_dedupe_key() {
     assert_eq!(shown[0].dedupe_key, "task-status:task-desktop:review");
 }
 
-// parity: TS-renderer-NotificationListener-fd5513
 #[test]
 fn status_outside_the_enabled_statuses_raises_no_notification() {
     let fixture = RuntimeFixture::new();
@@ -207,7 +202,6 @@ fn background_sync_review() -> BackgroundSyncReviewPayload {
     }
 }
 
-// parity: TS-renderer-NotificationListener-daa175
 #[test]
 fn background_sync_review_lands_in_the_list_with_the_review_action() {
     let fixture = RuntimeFixture::new();
@@ -235,7 +229,6 @@ fn background_sync_review_lands_in_the_list_with_the_review_action() {
     assert_eq!(payload.registered_worktrees, review.registered_worktrees);
 }
 
-// parity: TS-hooks-useTaskNotification-f3eeb1
 #[test]
 fn missing_hook_target_raises_a_notification_naming_the_task_and_status() {
     let fixture = RuntimeFixture::new();
@@ -252,7 +245,6 @@ fn missing_hook_target_raises_a_notification_naming_the_task_and_status() {
     assert_eq!(shown[0].locale, "ko");
 }
 
-// parity: TS-hooks-useTaskNotification-ab2d1c
 #[test]
 fn missing_hook_target_body_follows_the_notification_locale() {
     let fixture = RuntimeFixture::new();
@@ -269,7 +261,6 @@ fn missing_hook_target_body_follows_the_notification_locale() {
     assert_eq!(shown[0].locale, "en");
 }
 
-// parity: TS-hooks-useTaskNotification-b8d5b1
 #[test]
 fn without_an_os_notification_channel_nothing_pops_up_but_the_list_keeps_it() {
     let fixture = RuntimeFixture::new();

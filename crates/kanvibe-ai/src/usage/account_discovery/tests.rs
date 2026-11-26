@@ -91,7 +91,6 @@ fn keychain_token() -> String {
     stringify(&json!({"claudeAiOauth": {"accessToken": "keychain-token"}}))
 }
 
-// parity: TS-aiUsage-accountDiscovery-bbacd8
 #[test]
 fn finds_default_claude_account_with_email_label() {
     let fixture = HomeFixture::new();
@@ -107,7 +106,6 @@ fn finds_default_claude_account_with_email_label() {
     assert_eq!(accounts[0].config_dir, fixture.path(".claude"));
 }
 
-// parity: TS-aiUsage-accountDiscovery-2bc83a
 #[test]
 fn label_falls_back_to_display_name_then_default() {
     let fixture = HomeFixture::new();
@@ -125,7 +123,6 @@ fn label_falls_back_to_display_name_then_default() {
     assert_eq!(discover(&usage, AiUsageProvider::Claude)[0].label, "Claude");
 }
 
-// parity: TS-aiUsage-accountDiscovery-a4eb6a
 #[test]
 fn finds_second_account_in_sibling_directory() {
     let fixture = HomeFixture::new();
@@ -150,7 +147,6 @@ fn finds_second_account_in_sibling_directory() {
     assert_eq!(labels, ["me@example.com", "work@example.com"]);
 }
 
-// parity: TS-aiUsage-accountDiscovery-d2b2a8
 #[test]
 fn same_account_from_two_paths_is_returned_once() {
     let fixture = HomeFixture::new();
@@ -173,7 +169,6 @@ fn same_account_from_two_paths_is_returned_once() {
     assert_eq!(accounts[0].config_dir, configured);
 }
 
-// parity: TS-aiUsage-accountDiscovery-9cb6ec
 #[test]
 fn directory_without_credentials_is_not_an_account() {
     let fixture = HomeFixture::new();
@@ -187,7 +182,6 @@ fn directory_without_credentials_is_not_an_account() {
     );
 }
 
-// parity: TS-aiUsage-accountDiscovery-39acdb
 #[test]
 fn keychain_login_counts_without_credentials_file() {
     let fixture = HomeFixture::new();
@@ -204,7 +198,6 @@ fn keychain_login_counts_without_credentials_file() {
     assert_eq!(accounts[0].config_dir, fixture.path(".claude"));
 }
 
-// parity: TS-aiUsage-accountDiscovery-a73019
 #[test]
 fn keychain_receives_every_candidate_config_dir() {
     let fixture = HomeFixture::new();
@@ -236,7 +229,6 @@ fn keychain_receives_every_candidate_config_dir() {
     );
 }
 
-// parity: TS-aiUsage-accountDiscovery-1d633b
 #[test]
 fn unreadable_keychain_still_leaves_an_account_slot() {
     let fixture = HomeFixture::new();
@@ -245,7 +237,6 @@ fn unreadable_keychain_still_leaves_an_account_slot() {
     assert_eq!(discover(&usage, AiUsageProvider::Claude).len(), 1);
 }
 
-// parity: TS-aiUsage-accountDiscovery-62ce20
 #[test]
 fn identity_falls_back_to_home_config_for_default_root() {
     let fixture = HomeFixture::new();
@@ -261,7 +252,6 @@ fn identity_falls_back_to_home_config_for_default_root() {
     assert_eq!(accounts[0].label, "mac@example.com");
 }
 
-// parity: TS-aiUsage-accountDiscovery-5e861a
 #[test]
 fn sibling_root_does_not_inherit_home_identity() {
     let fixture = HomeFixture::new();
@@ -289,7 +279,6 @@ fn sibling_root_does_not_inherit_home_identity() {
     assert_eq!(work_account.label, "work");
 }
 
-// parity: TS-aiUsage-accountDiscovery-e74951
 #[test]
 fn file_account_skips_keychain() {
     let fixture = HomeFixture::new();
@@ -307,7 +296,6 @@ fn file_account_skips_keychain() {
     assert_eq!(usage.processes.request_count(), 0);
 }
 
-// parity: TS-aiUsage-accountDiscovery-ca422d
 #[test]
 fn codex_account_uses_account_id_and_id_token_email() {
     let fixture = HomeFixture::new();
@@ -326,7 +314,6 @@ fn codex_account_uses_account_id_and_id_token_email() {
     assert_eq!(accounts[0].label, "codex@example.com");
 }
 
-// parity: TS-aiUsage-accountDiscovery-ecb423
 #[test]
 fn codex_auth_without_access_token_is_not_an_account() {
     let fixture = HomeFixture::new();
@@ -340,7 +327,6 @@ fn codex_auth_without_access_token_is_not_an_account() {
     );
 }
 
-// parity: TS-aiUsage-accountDiscovery-96cbc0
 #[test]
 fn finds_default_gemini_account_under_home() {
     let fixture = HomeFixture::new();
@@ -354,7 +340,6 @@ fn finds_default_gemini_account_under_home() {
     assert_eq!(accounts[0].account_root, fixture.home);
 }
 
-// parity: TS-aiUsage-accountDiscovery-05a702
 #[test]
 fn finds_gemini_account_under_sibling_root() {
     let fixture = HomeFixture::new();
@@ -368,7 +353,6 @@ fn finds_gemini_account_under_sibling_root() {
     assert_eq!(accounts[0].config_dir, fixture.path(".gemini-work/.gemini"));
 }
 
-// parity: TS-aiUsage-accountDiscovery-5f8ee6
 #[test]
 fn multiple_gemini_accounts_are_labelled_by_name() {
     let fixture = HomeFixture::new();
@@ -384,7 +368,6 @@ fn multiple_gemini_accounts_are_labelled_by_name() {
     assert_eq!(labels, ["Gemini", "work"]);
 }
 
-// parity: TS-aiUsage-accountDiscovery-a67468
 #[test]
 fn registered_account_keeps_its_slot_while_signed_out() {
     let fixture = HomeFixture::new();
@@ -402,7 +385,6 @@ fn registered_account_keeps_its_slot_while_signed_out() {
     assert_eq!(accounts[0].config_dir, format!("{work_root}/.gemini"));
 }
 
-// parity: TS-aiUsage-accountDiscovery-8647f8
 #[test]
 fn other_provider_registrations_do_not_leak_in() {
     let fixture = HomeFixture::new();

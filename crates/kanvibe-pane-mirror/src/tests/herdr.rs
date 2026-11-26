@@ -80,7 +80,6 @@ fn last_chunk(subscriber: &Subscriber) -> Option<String> {
     subscriber.chunks().last().cloned()
 }
 
-// parity: TS-main-mobileBridgeService-79b23b
 #[test]
 fn minimal_surfaces_return_the_first_pane_coordinates_without_reading_commands() {
     let harness = herdr_harness();
@@ -119,7 +118,6 @@ fn minimal_surfaces_return_the_first_pane_coordinates_without_reading_commands()
     );
 }
 
-// parity: TS-main-mobileBridgeService-ae7a46
 #[test]
 fn minimal_surfaces_mark_the_requested_non_first_tab_as_displayable() {
     let harness = herdr_harness();
@@ -158,7 +156,6 @@ fn minimal_surfaces_mark_the_requested_non_first_tab_as_displayable() {
     );
 }
 
-// parity: TS-main-mobileBridgeService-f78a87
 #[test]
 fn herdr_surfaces_come_from_herdr_queries_without_tmux_commands() {
     let harness = herdr_harness();
@@ -192,7 +189,6 @@ fn herdr_surfaces_come_from_herdr_queries_without_tmux_commands() {
     assert!(harness.runner.commands_containing("tmux").is_empty());
 }
 
-// parity: TS-main-mobileBridgeService-663b84
 #[test]
 fn missing_session_and_missing_herdr_report_the_install_reason_without_starting() {
     let harness = herdr_harness();
@@ -213,7 +209,6 @@ fn missing_session_and_missing_herdr_report_the_install_reason_without_starting(
     assert_eq!(harness.attacher.call_count(), 0);
 }
 
-// parity: TS-main-mobileBridgeService-dbfa5b
 #[test]
 fn keys_go_through_send_text_and_nul_through_ctrl_space() {
     let harness = herdr_harness();
@@ -232,7 +227,6 @@ fn keys_go_through_send_text_and_nul_through_ctrl_space() {
     assert!(harness.runner.commands_containing("tmux").is_empty());
 }
 
-// parity: TS-main-mobileBridgeService-11344d
 #[test]
 fn input_is_not_sent_to_a_pane_outside_the_session() {
     let harness = herdr_harness();
@@ -249,7 +243,6 @@ fn input_is_not_sent_to_a_pane_outside_the_session() {
     assert!(harness.runner.commands_containing("send-text").is_empty());
 }
 
-// parity: TS-main-mobileBridgeService-756929
 #[test]
 fn split_shortcut_waits_for_the_new_pane_and_scroll_shortcut_is_refused() {
     let harness = herdr_harness();
@@ -283,7 +276,6 @@ fn split_shortcut_waits_for_the_new_pane_and_scroll_shortcut_is_refused() {
     assert!(error.to_string().contains("지원하지 않는"));
 }
 
-// parity: TS-main-mobileBridgeService-0d6cba
 #[test]
 fn mobile_wheel_goes_to_the_size_control_connection_as_one_terminal_scroll_line() {
     let harness = herdr_harness();
@@ -309,7 +301,6 @@ fn mobile_wheel_goes_to_the_size_control_connection_as_one_terminal_scroll_line(
     viewport.release().unwrap();
 }
 
-// parity: TS-main-mobileBridgeService-2bfb91
 #[test]
 fn wheel_before_the_control_connection_and_malformed_wheels_are_dropped() {
     let harness = herdr_harness();
@@ -329,7 +320,6 @@ fn wheel_before_the_control_connection_and_malformed_wheels_are_dropped() {
     viewport.release().unwrap();
 }
 
-// parity: TS-main-mobileBridgeService-f85e99
 #[test]
 fn pane_listing_is_read_once_by_the_subscription_and_once_by_the_size_claim() {
     let harness = herdr_harness();
@@ -345,7 +335,6 @@ fn pane_listing_is_read_once_by_the_subscription_and_once_by_the_size_claim() {
     viewport.release().unwrap();
 }
 
-// parity: TS-main-mobileBridgeService-61e8b7
 #[test]
 fn latest_mobile_request_drives_one_controller_and_the_last_release_hands_control_back() {
     let harness = herdr_harness();
@@ -392,7 +381,6 @@ fn latest_mobile_request_drives_one_controller_and_the_last_release_hands_contro
     assert!(controller.is_stdin_ended.load(Ordering::SeqCst));
 }
 
-// parity: TS-main-mobileBridgeService-1bc332
 #[test]
 fn different_panes_of_the_same_tab_do_not_share_size_control_or_release() {
     let harness = herdr_harness();
@@ -435,7 +423,6 @@ fn withheld_ack_harness(command_timeout: Duration) -> Harness {
     harness
 }
 
-// parity: TS-main-mobileBridgeService-996faa
 #[test]
 fn missing_size_ack_cleans_up_the_controller_and_ends_the_wait() {
     let harness = withheld_ack_harness(Duration::from_millis(200));
@@ -451,7 +438,6 @@ fn missing_size_ack_cleans_up_the_controller_and_ends_the_wait() {
     viewport.release().unwrap();
 }
 
-// parity: TS-main-mobileBridgeService-ddc8f3
 #[test]
 fn resize_succeeds_only_after_a_full_frame_of_the_requested_grid() {
     let harness = withheld_ack_harness(Duration::from_secs(3));
@@ -484,7 +470,6 @@ fn resize_succeeds_only_after_a_full_frame_of_the_requested_grid() {
     viewport.release().unwrap();
 }
 
-// parity: TS-main-mobileBridgeService-4dd87f
 #[test]
 fn closed_record_instead_of_the_first_frame_rejects_resize_even_with_exit_zero() {
     let harness = withheld_ack_harness(Duration::from_secs(3));
@@ -512,7 +497,6 @@ fn closed_record_instead_of_the_first_frame_rejects_resize_even_with_exit_zero()
     viewport.release().unwrap();
 }
 
-// parity: TS-main-mobileBridgeService-371591
 #[test]
 fn lost_controller_also_ends_the_observation_stream_so_a_wrong_grid_is_not_shown() {
     let harness = herdr_harness();
@@ -530,7 +514,6 @@ fn lost_controller_also_ends_the_observation_stream_so_a_wrong_grid_is_not_shown
     viewport.release().unwrap();
 }
 
-// parity: TS-main-mobileBridgeService-2c938e
 #[test]
 fn history_and_late_subscriber_resends_use_the_mobile_grid_and_drop_stale_frames() {
     let harness = herdr_harness();
@@ -567,7 +550,6 @@ fn history_and_late_subscriber_resends_use_the_mobile_grid_and_drop_stale_frames
     viewport.release().unwrap();
 }
 
-// parity: TS-main-mobileBridgeService-c492c4
 #[test]
 fn chat_read_returns_only_the_first_full_frame_and_joins_partial_records() {
     let harness = Arc::new(herdr_harness());
@@ -612,7 +594,6 @@ fn a_remote_herdr_observe_is_spawned_to_end_with_its_ssh_channel() {
     );
 }
 
-// parity: TS-main-mobileBridgeService-e61a5e
 #[test]
 fn history_goes_first_and_split_ndjson_lines_are_joined_into_frames() {
     let harness = herdr_harness();
@@ -631,7 +612,6 @@ fn history_goes_first_and_split_ndjson_lines_are_joined_into_frames() {
     });
 }
 
-// parity: TS-main-mobileBridgeService-af00d8
 #[test]
 fn quiet_output_with_more_history_resends_history_and_restarts_observe() {
     let harness = herdr_harness();
@@ -668,7 +648,6 @@ fn quiet_output_with_more_history_resends_history_and_restarts_observe() {
     assert_eq!(harness.processes.count(), 2);
 }
 
-// parity: TS-main-mobileBridgeService-e7ab6f
 #[test]
 fn requested_history_refresh_resends_even_without_new_rows_and_repeated_requests_run_once() {
     let harness = herdr_harness();
@@ -682,7 +661,6 @@ fn requested_history_refresh_resends_even_without_new_rows_and_repeated_requests
     assert_eq!(harness.processes.count(), 2);
 }
 
-// parity: TS-main-mobileBridgeService-fad529
 #[test]
 fn history_refresh_for_an_unsubscribed_pane_runs_nothing() {
     let harness = herdr_harness();
@@ -693,7 +671,6 @@ fn history_refresh_for_an_unsubscribed_pane_runs_nothing() {
     assert_eq!(harness.processes.count(), 0);
 }
 
-// parity: TS-main-mobileBridgeService-28daf1
 #[test]
 fn unchanged_history_does_not_restart_observe() {
     let harness = herdr_harness();
@@ -709,7 +686,6 @@ fn unchanged_history_does_not_restart_observe() {
     assert_eq!(last_chunk(&subscriber).as_deref(), Some("typing"));
 }
 
-// parity: TS-main-mobileBridgeService-1a19f8
 #[test]
 fn late_subscriber_gets_the_screen_through_a_new_observe() {
     let harness = herdr_harness();
@@ -729,7 +705,6 @@ fn late_subscriber_gets_the_screen_through_a_new_observe() {
     });
 }
 
-// parity: TS-main-mobileBridgeService-94bbe4
 #[test]
 fn observe_ending_by_itself_tells_the_subscriber() {
     let harness = herdr_harness();
@@ -740,7 +715,6 @@ fn observe_ending_by_itself_tells_the_subscriber() {
     wait_until("끝을 알린다", || subscriber.ended() == 1);
 }
 
-// parity: TS-main-mobileBridgeService-134cd2
 #[test]
 fn failed_history_check_ends_the_stream_and_stops_observe_and_later_checks() {
     let harness = herdr_harness();
@@ -762,7 +736,6 @@ fn failed_history_check_ends_the_stream_and_stops_observe_and_later_checks() {
     );
 }
 
-// parity: TS-main-mobileBridgeService-8e575c
 #[test]
 fn history_check_scheduled_before_observe_ended_does_not_restart_it() {
     let harness = herdr_harness();

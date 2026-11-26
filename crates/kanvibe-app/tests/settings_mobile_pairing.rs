@@ -160,7 +160,6 @@ fn close_window(cx: &mut VisualTestContext) {
     cx.run_until_parked();
 }
 
-// parity: TS-components-MobilePairingSettings-bf49c9
 #[gpui::test]
 fn no_code_is_shown_before_issuing_one(cx: &mut TestAppContext) {
     init_app(cx);
@@ -173,7 +172,6 @@ fn no_code_is_shown_before_issuing_one(cx: &mut TestAppContext) {
     ));
 }
 
-// parity: TS-components-MobilePairingSettings-85c06d
 #[gpui::test]
 fn issuing_shows_the_code_to_type_in(cx: &mut TestAppContext) {
     init_app(cx);
@@ -186,7 +184,6 @@ fn issuing_shows_the_code_to_type_in(cx: &mut TestAppContext) {
     });
 }
 
-// parity: TS-components-MobilePairingSettings-4ad086
 #[gpui::test]
 fn shown_code_turns_the_button_into_clear(cx: &mut TestAppContext) {
     init_app(cx);
@@ -204,7 +201,6 @@ fn shown_code_turns_the_button_into_clear(cx: &mut TestAppContext) {
     ));
 }
 
-// parity: TS-components-MobilePairingSettings-990bba
 #[gpui::test]
 fn clearing_the_code_removes_it(cx: &mut TestAppContext) {
     let bridge = Arc::new(FakeBridge::default());
@@ -218,7 +214,6 @@ fn clearing_the_code_removes_it(cx: &mut TestAppContext) {
     assert_eq!(bridge.state.lock().unwrap().stop_calls, 1);
 }
 
-// parity: TS-components-MobilePairingSettings-18443b
 #[gpui::test]
 fn code_discarded_by_the_desktop_disappears_before_expiry(cx: &mut TestAppContext) {
     let bridge = Arc::new(FakeBridge::default());
@@ -232,7 +227,6 @@ fn code_discarded_by_the_desktop_disappears_before_expiry(cx: &mut TestAppContex
     assert!(view.read_with(cx, |view, _| view.state.code.is_none()));
 }
 
-// parity: TS-components-MobilePairingSettings-37289c
 #[gpui::test]
 fn shows_the_tls_port_and_saves_lan_plaintext(cx: &mut TestAppContext) {
     let bridge = Arc::new(FakeBridge::default());
@@ -257,7 +251,6 @@ fn shows_the_tls_port_and_saves_lan_plaintext(cx: &mut TestAppContext) {
     );
 }
 
-// parity: TS-components-MobilePairingSettings-10a6c0
 #[gpui::test]
 fn failed_lan_plaintext_save_explains_and_keeps_the_checkbox(cx: &mut TestAppContext) {
     let bridge = Arc::new(FakeBridge::default());
@@ -278,7 +271,6 @@ fn failed_lan_plaintext_save_explains_and_keeps_the_checkbox(cx: &mut TestAppCon
     });
 }
 
-// parity: TS-components-MobilePairingSettings-b0a517
 #[gpui::test]
 fn paired_devices_are_listed(cx: &mut TestAppContext) {
     let bridge = Arc::new(FakeBridge::default());
@@ -300,7 +292,6 @@ fn paired_devices_are_listed(cx: &mut TestAppContext) {
     ));
 }
 
-// parity: TS-components-MobilePairingSettings-b5eace
 #[gpui::test]
 fn disconnecting_sends_the_device_id_and_rereads_the_list(cx: &mut TestAppContext) {
     let bridge = Arc::new(FakeBridge::default());
@@ -317,7 +308,6 @@ fn disconnecting_sends_the_device_id_and_rereads_the_list(cx: &mut TestAppContex
     assert_eq!(view.read_with(cx, |view, _| view.state.devices.len()), 1);
 }
 
-// parity: TS-components-MobilePairingSettings-0ca283
 #[gpui::test]
 fn leaving_without_a_code_does_not_call_the_desktop(cx: &mut TestAppContext) {
     let bridge = Arc::new(FakeBridge::default());
@@ -327,7 +317,6 @@ fn leaving_without_a_code_does_not_call_the_desktop(cx: &mut TestAppContext) {
     assert_eq!(bridge.state.lock().unwrap().stop_calls, 0);
 }
 
-// parity: TS-components-MobilePairingSettings-ad1f08
 #[gpui::test]
 fn leaving_with_a_code_on_screen_withdraws_it(cx: &mut TestAppContext) {
     let bridge = Arc::new(FakeBridge::default());
@@ -340,7 +329,6 @@ fn leaving_with_a_code_on_screen_withdraws_it(cx: &mut TestAppContext) {
     assert_eq!(bridge.state.lock().unwrap().stop_calls, 1);
 }
 
-// parity: TS-components-MobilePairingSettings-498f79
 #[gpui::test]
 fn unreadable_device_list_still_renders_the_settings(cx: &mut TestAppContext) {
     let bridge = Arc::new(FakeBridge::default());
@@ -359,7 +347,6 @@ fn unreadable_device_list_still_renders_the_settings(cx: &mut TestAppContext) {
     ));
 }
 
-// parity: TS-components-MobilePairingSettings-e9bdab
 #[gpui::test]
 fn unreadable_device_list_keeps_known_devices_and_can_reread(cx: &mut TestAppContext) {
     let bridge = Arc::new(FakeBridge::default());
@@ -383,7 +370,6 @@ fn unreadable_device_list_keeps_known_devices_and_can_reread(cx: &mut TestAppCon
     assert!(view.read_with(cx, |view, _| !view.state.is_device_list_unreadable));
 }
 
-// parity: TS-components-MobilePairingSettings-32888b
 #[gpui::test]
 fn failed_issue_explains_what_went_wrong(cx: &mut TestAppContext) {
     let bridge = Arc::new(FakeBridge::default());
@@ -401,7 +387,6 @@ fn failed_issue_explains_what_went_wrong(cx: &mut TestAppContext) {
     });
 }
 
-// parity: TS-components-MobilePairingSettings-5df4f0
 #[gpui::test]
 fn other_pairing_actions_wait_while_a_code_is_being_issued(cx: &mut TestAppContext) {
     let bridge = Arc::new(FakeBridge::default());

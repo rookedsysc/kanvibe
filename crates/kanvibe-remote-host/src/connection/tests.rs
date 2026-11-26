@@ -71,7 +71,6 @@ fn socket_forward_keeps_sending_while_acks_are_pending_and_drains_before_end() {
     connection.close();
 }
 
-// parity: TS-lib-remoteHostConnection-72109c
 #[test]
 fn concurrent_commands_are_correlated_and_unicode_split_across_chunks_is_kept() {
     let (connection, remote) = connect_fake();
@@ -107,7 +106,6 @@ fn concurrent_commands_are_correlated_and_unicode_split_across_chunks_is_kept() 
     assert_eq!(second.join().unwrap().unwrap(), "");
 }
 
-// parity: TS-lib-remoteHostConnection-1654c7
 #[test]
 fn a_disconnect_rejects_an_unknown_command_outcome_without_replay() {
     let (connection, remote) = connect_fake();
@@ -129,7 +127,6 @@ fn a_disconnect_rejects_an_unknown_command_outcome_without_replay() {
     assert_eq!(remote.records_of("exec.open").len(), 1);
 }
 
-// parity: TS-lib-remoteHostConnection-c8536b
 #[test]
 fn completed_remote_errors_carry_stdout_and_stderr() {
     let (connection, remote) = connect_fake();
@@ -149,7 +146,6 @@ fn completed_remote_errors_carry_stdout_and_stderr() {
     assert_eq!(remote.records_of("exec.open")[0]["command"], "false");
 }
 
-// parity: TS-lib-remoteHostConnection-a0c20a
 #[test]
 fn the_daemons_liveness_probe_is_answered_with_the_same_request_id() {
     let (_connection, remote) = connect_fake();
@@ -172,7 +168,6 @@ fn connect_with_handshake(
     )
 }
 
-// parity: TS-lib-remoteHostConnection-b690a4
 #[test]
 fn the_daemons_exact_rejection_reason_is_returned() {
     let error = connect_with_handshake(|_| {
@@ -189,7 +184,6 @@ fn the_daemons_exact_rejection_reason_is_returned() {
     );
 }
 
-// parity: TS-lib-remoteHostConnection-3c2ea9
 #[test]
 fn a_mismatched_ready_field_is_named_in_the_error() {
     let mismatches = [
@@ -216,7 +210,6 @@ fn a_mismatched_ready_field_is_named_in_the_error() {
     }
 }
 
-// parity: TS-lib-remoteHostConnection-739722
 #[test]
 fn an_ssh_exit_before_bootstrap_is_classified_and_keeps_its_stderr() {
     let (_binary_directory, catalog) = fake_remote::fixture_catalog();

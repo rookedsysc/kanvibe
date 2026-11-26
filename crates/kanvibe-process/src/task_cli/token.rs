@@ -116,7 +116,6 @@ mod tests {
         .unwrap()
     }
 
-    // parity: TS-main-taskCliTokenService-1d56d1
     #[test]
     fn same_task_gets_the_same_token_and_other_tasks_differ() {
         let directory = tempfile::tempdir().unwrap();
@@ -135,7 +134,6 @@ mod tests {
         assert_ne!(service.build_task_cli_token("task-2").unwrap(), first_token);
     }
 
-    // parity: TS-main-taskCliTokenService-a2d1a0
     #[test]
     fn token_is_valid_only_for_its_task() {
         let directory = tempfile::tempdir().unwrap();
@@ -148,7 +146,6 @@ mod tests {
         assert!(!service.is_valid_task_cli_token("task-1", "forged").unwrap());
     }
 
-    // parity: TS-main-taskCliTokenService-bdf1b2
     #[test]
     fn concurrent_first_issue_stores_one_secret_that_survives_a_restart() {
         let directory = tempfile::tempdir().unwrap();

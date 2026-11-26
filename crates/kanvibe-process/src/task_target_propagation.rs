@@ -251,7 +251,6 @@ mod tests {
         std::fs::write(directory.join("targets.json"), content).unwrap();
     }
 
-    // parity: TS-main-taskTargetPropagationService-1d75cc
     #[test]
     fn worktree_without_other_clients_does_not_run_the_task_cli() {
         let runner = remote_runner(targets_content(&[(OWN_URL, "task-own", "own")]), || {
@@ -267,7 +266,6 @@ mod tests {
         assert!(task_cli_calls(&runner).is_empty());
     }
 
-    // parity: TS-main-taskTargetPropagationService-5803b8
     #[test]
     fn deletion_runs_the_task_cli_on_the_worktree_host_and_returns_results_per_client() {
         let targets = targets_content(&[
@@ -326,7 +324,6 @@ mod tests {
         );
     }
 
-    // parity: TS-main-taskTargetPropagationService-f9e20f
     #[test]
     fn registration_passes_the_new_branch_to_the_project_root_task_cli() {
         let repo = tempfile::tempdir().unwrap();
@@ -350,7 +347,6 @@ mod tests {
         assert_eq!(call.options.timeout, Some(PEER_PROPAGATION_TIMEOUT));
     }
 
-    // parity: TS-main-taskTargetPropagationService-6fb93f
     #[test]
     fn task_cli_failure_reports_every_peer_as_failed_instead_of_raising() {
         let repo = tempfile::tempdir().unwrap();
@@ -389,7 +385,6 @@ mod tests {
         );
     }
 
-    // parity: TS-main-taskTargetPropagationService-faaf60
     #[test]
     fn failures_before_reading_peers_return_an_unresolved_failure() {
         let runner = remote_runner(String::new(), || Ok(String::new()));

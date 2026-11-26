@@ -177,7 +177,6 @@ fn post(
     post_to(&server.paths, client_id, body, headers, path)
 }
 
-// parity: TS-lib-remoteHostServer-983d0e
 #[test]
 fn private_sockets_keep_the_daemon_identity_across_attachment_disconnects() {
     let fixture = start();
@@ -196,7 +195,6 @@ fn private_sockets_keep_the_daemon_identity_across_attachment_disconnects() {
     assert_eq!(mode & 0o777, 0o600);
 }
 
-// parity: TS-lib-remoteHostServer-668fac
 #[test]
 fn a_competing_server_is_rejected_without_unlinking_the_live_socket() {
     let fixture = start();
@@ -210,7 +208,6 @@ fn a_competing_server_is_rejected_without_unlinking_the_live_socket() {
     );
 }
 
-// parity: TS-lib-remoteHostServer-ec3b4a
 #[test]
 fn symlinked_and_nonprivate_roots_are_rejected() {
     let root = temp_root();
@@ -226,7 +223,6 @@ fn symlinked_and_nonprivate_roots_are_rejected() {
     assert!(shared.contains("private"), "{shared}");
 }
 
-// parity: TS-lib-remoteHostServer-5ae4b1
 #[test]
 fn mismatched_hellos_are_rejected() {
     let fixture = start();
@@ -247,7 +243,6 @@ fn mismatched_hellos_are_rejected() {
     }
 }
 
-// parity: TS-lib-remoteHostServer-69ed01
 #[test]
 fn commands_stream_stdout_and_stderr_with_exit_code_and_take_interactive_stdin_once() {
     let fixture = start();
@@ -264,7 +259,6 @@ fn commands_stream_stdout_and_stderr_with_exit_code_and_take_interactive_stdin_o
     assert_eq!(peer.next("exec.exit")["code"], json!(7));
 }
 
-// parity: TS-lib-remoteHostServer-4e98d0
 #[test]
 fn cancelling_one_request_leaves_another_command_usable() {
     let fixture = start();
@@ -295,7 +289,6 @@ fn start_echo_server(path: &Path) -> UnixListener {
     listener
 }
 
-// parity: TS-lib-remoteHostServer-372a4e
 #[test]
 fn a_real_unix_socket_is_forwarded_without_owning_the_upstream_lifetime() {
     let fixture = start();
@@ -320,7 +313,6 @@ fn a_real_unix_socket_is_forwarded_without_owning_the_upstream_lifetime() {
     assert!(UnixStream::connect(&upstream_path).is_ok());
 }
 
-// parity: TS-lib-remoteHostServer-b796e2
 #[test]
 fn hooks_go_to_one_desktop_and_offline_requests_get_503_without_being_kept() {
     let fixture = start();
@@ -420,7 +412,6 @@ fn wait_until(condition: impl Fn() -> bool) {
     }
 }
 
-// parity: TS-lib-remoteHostServer-3e6bfa
 #[test]
 fn task_cli_requests_and_tokens_reach_the_connected_desktop() {
     let fixture = start();
@@ -445,7 +436,6 @@ fn task_cli_requests_and_tokens_reach_the_connected_desktop() {
     }
 }
 
-// parity: TS-lib-remoteHostServer-7f2626
 #[test]
 fn a_duplicate_live_client_id_is_rejected_without_replacing_the_first_desktop() {
     let fixture = start();
@@ -466,7 +456,6 @@ fn a_duplicate_live_client_id_is_rejected_without_replacing_the_first_desktop() 
     assert_eq!(first.next("status")["instanceId"], original["instanceId"]);
 }
 
-// parity: TS-lib-remoteHostServer-6a8ce9
 #[test]
 fn an_unresponsive_desktop_is_replaced_once_when_several_connections_share_its_client_id() {
     let fixture = start();
@@ -513,7 +502,6 @@ fn an_unresponsive_desktop_is_replaced_once_when_several_connections_share_its_c
     assert_eq!(new_hook.join().unwrap(), (202, String::new()));
 }
 
-// parity: TS-lib-remoteHostServer-0100d6
 #[test]
 fn the_original_desktop_stays_when_the_waiting_replacement_disconnects() {
     let fixture = start();
@@ -528,7 +516,6 @@ fn the_original_desktop_stays_when_the_waiting_replacement_disconnects() {
     assert_eq!(original.next("status")["id"], json!("original-status"));
 }
 
-// parity: TS-lib-remoteHostServer-32c20b
 #[test]
 fn consumed_stdin_chunks_are_acknowledged_so_a_bulk_upload_stays_bounded() {
     let fixture = start();
@@ -552,7 +539,6 @@ fn consumed_stdin_chunks_are_acknowledged_so_a_bulk_upload_stays_bounded() {
     assert_eq!(peer.next("exec.exit")["code"], json!(0));
 }
 
-// parity: TS-lib-remoteHostServer-fd68dd
 #[test]
 fn unbounded_streaming_output_stays_alive_while_bounded_commands_enforce_their_limit() {
     let fixture = start();
@@ -569,7 +555,6 @@ fn unbounded_streaming_output_stays_alive_while_bounded_commands_enforce_their_l
     assert_eq!(streaming["code"], json!(0));
 }
 
-// parity: TS-lib-remoteHostServer-1e9ffc
 #[test]
 fn a_browser_origin_is_rejected_at_hook_ingress() {
     let fixture = start();
@@ -589,7 +574,6 @@ fn a_browser_origin_is_rejected_at_hook_ingress() {
     );
 }
 
-// parity: TS-lib-remoteHostServer-ef2ee8
 #[test]
 fn a_forty_kib_file_command_is_not_limited_by_the_chunk_size() {
     let fixture = start();
@@ -610,7 +594,6 @@ fn a_forty_kib_file_command_is_not_limited_by_the_chunk_size() {
     assert_eq!(peer.next("exec.exit")["code"], json!(0));
 }
 
-// parity: TS-lib-remoteHostPtyWire-dd6861
 #[test]
 fn a_daemon_pty_reattaches_to_the_same_pid_after_the_ssh_attachment_is_lost() {
     let fixture = start();

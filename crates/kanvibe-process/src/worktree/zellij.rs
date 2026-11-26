@@ -204,7 +204,6 @@ mod tests {
             .code()
     }
 
-    // parity: TS-lib-worktree-7b1e2c
     #[test]
     fn alive_check_excludes_exited_sessions_like_the_parser() {
         let command = build_zellij_alive_session_check_command("feat-login");
@@ -215,7 +214,6 @@ mod tests {
         assert!(!command.contains("attach"));
     }
 
-    // parity: TS-lib-worktree-4759b9
     #[test]
     fn alive_check_in_shell_accepts_colored_session_name() {
         let output = r"\033[32;1mfeat-login\033[m [Created \033[35;1m2s\033[m ago] \n";
@@ -223,7 +221,6 @@ mod tests {
         assert_eq!(run_alive_check(output, "feat-login"), Some(0));
     }
 
-    // parity: TS-lib-worktree-6aed77
     #[test]
     fn alive_check_in_shell_rejects_other_sessions() {
         let output = r"\033[32;1mfeat-login-extra\033[m [Created 2s ago] \n";
@@ -231,7 +228,6 @@ mod tests {
         assert_eq!(run_alive_check(output, "feat-login"), Some(1));
     }
 
-    // parity: TS-lib-worktree-91fb3e
     #[test]
     fn single_pane_layout_with_command() {
         let kdl = generate_zellij_layout_kdl(
@@ -247,7 +243,6 @@ mod tests {
         assert!(!kdl.contains("split_direction"));
     }
 
-    // parity: TS-lib-worktree-539426
     #[test]
     fn single_pane_layout_without_command() {
         let kdl =
@@ -257,7 +252,6 @@ mod tests {
         assert!(!kdl.contains(r#"command="bash""#));
     }
 
-    // parity: TS-lib-worktree-425f32
     #[test]
     fn horizontal_two_pane_layout_uses_default_direction() {
         let kdl = generate_zellij_layout_kdl(
@@ -271,7 +265,6 @@ mod tests {
         assert!(!kdl.contains("split_direction"));
     }
 
-    // parity: TS-lib-worktree-66a9bb
     #[test]
     fn vertical_two_pane_layout() {
         let kdl = generate_zellij_layout_kdl(
@@ -285,7 +278,6 @@ mod tests {
         assert!(kdl.contains(r#""pnpm test""#));
     }
 
-    // parity: TS-lib-worktree-7931fe
     #[test]
     fn left_right_tb_layout() {
         let kdl = generate_zellij_layout_kdl(
@@ -308,7 +300,6 @@ mod tests {
         );
     }
 
-    // parity: TS-lib-worktree-716e48
     #[test]
     fn left_tb_right_layout() {
         let kdl = generate_zellij_layout_kdl(
@@ -323,7 +314,6 @@ mod tests {
         }
     }
 
-    // parity: TS-lib-worktree-d2cffb
     #[test]
     fn quad_layout() {
         let kdl = generate_zellij_layout_kdl(
@@ -338,7 +328,6 @@ mod tests {
         }
     }
 
-    // parity: TS-lib-worktree-a95cfd
     #[test]
     fn empty_command_panes_become_plain_shell_panes() {
         let kdl = generate_zellij_layout_kdl(
@@ -360,7 +349,6 @@ mod tests {
         assert!(plain_panes >= 1);
     }
 
-    // parity: TS-lib-worktree-fb68a7
     #[test]
     fn escapes_backslashes_and_quotes() {
         let kdl = generate_zellij_layout_kdl(
@@ -373,7 +361,6 @@ mod tests {
         assert!(kdl.contains(r#"\"hello world\""#));
     }
 
-    // parity: TS-lib-worktree-687fc2
     #[test]
     fn every_pane_gets_the_working_directory() {
         let kdl = generate_zellij_layout_kdl(

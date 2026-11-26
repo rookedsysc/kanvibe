@@ -1,8 +1,0 @@
-%%{init: {"themeVariables": {"personBkg": "#7c3aed", "personBorder": "#4c1d95", "textColor": "#065f46", "lineColor": "#dc2626"}}}%%
-C4Context
-    title System Context
-    Person(user, "User", "A KanVibe user")
-    System(app, "KanVibe", "Task board with terminals")
-    System_Ext(git, "GitHub", "Hosts repositories")
-    Rel(user, app, "Uses")
-    Rel(app, git, "Fetches PRs")

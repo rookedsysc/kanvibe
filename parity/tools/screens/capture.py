@@ -1,7 +1,7 @@
-"""화면 캡처 공용 부품: states.yaml 읽기, fixture, 고정 글꼴 설정, Xvfb, 격리 앱 환경, ffmpeg x11grab.
+"""앱 실행 공용 부품: fixture, 고정 글꼴 설정, Xvfb, 격리 앱 환경, ffmpeg x11grab.
 
-기준 이미지(`parity/screens/baseline/`)를 찍을 때 쓴 것과 같은 방법이다. `screens-rust/capture_rust.py`와
-`perf/run_perf.py`가 가져다 쓴다. 기준 이미지를 찍던 TS 드라이버와 그 실행기는 TS 코드와 함께 지웠다.
+`perf/run_perf.py`와 `perf/pane_chat_latency.py`가 가져다 쓴다. TS 앱과 화면을 비교하던 도구와 기준 이미지는
+커밋 9a82617e까지 남아 있다.
 
 창 관리자 없이 Xvfb 화면 크기를 창 크기와 같게 두고, 창은 (0,0)에 정확한 크기로 놓는다.
 사용자 tmux·셸·HOME은 건드리지 않는다. 앱 프로세스에만 격리 HOME, XDG_*, TMUX_TMPDIR, FONTCONFIG_FILE을 넘긴다.
@@ -17,13 +17,10 @@ import sys
 import time
 from pathlib import Path
 
-import yaml
-
 TOOLS_DIR = Path(__file__).resolve().parent
 REPO_ROOT = TOOLS_DIR.parents[2]
 PARITY_DIR = REPO_ROOT / "parity"
 FIXTURES_DIR = PARITY_DIR / "fixtures"
-SCREENS_DIR = PARITY_DIR / "screens"
 sys.path.insert(0, str(FIXTURES_DIR))
 sys.path.insert(0, str(TOOLS_DIR))
 
@@ -39,18 +36,6 @@ def multiplexer_bin_dirs() -> list[str]:
         if found and os.path.dirname(found) not in dirs:
             dirs.append(os.path.dirname(found))
     return dirs
-
-
-def load_states(states_path: Path) -> tuple[dict, list[dict]]:
-    document = yaml.safe_load(states_path.read_text(encoding="utf-8"))
-    defaults = document["defaults"]
-    expanded = []
-    for state in document["states"]:
-        themes = state.get("themes", ["dark"])
-        for theme in themes:
-            image_id = state["id"] if theme == "dark" else f"{state['id']}--light"
-            expanded.append({**defaults, **state, "theme": theme, "image_id": image_id})
-    return document, expanded
 
 
 def start_xvfb(display_number: int, width: int, height: int, log_path: Path) -> subprocess.Popen:

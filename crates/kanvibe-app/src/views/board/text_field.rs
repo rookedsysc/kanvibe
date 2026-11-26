@@ -319,13 +319,11 @@ mod tests {
             .collect()
     }
 
-    // parity: TS-components-ProjectSelector-794d9f
     #[gpui_kit::gpui::test]
     fn projects_filter_while_korean_text_is_composing(cx: &mut TestAppContext) {
         assert_eq!(filter_while_composing(cx, "한글"), ["한글 프로젝트"]);
     }
 
-    // parity: TS-components-ProjectSelector-e3296c
     #[gpui_kit::gpui::test]
     fn english_entered_during_unfinished_composition_keeps_filtering(cx: &mut TestAppContext) {
         assert_eq!(filter_while_composing(cx, "English"), ["English Project"]);

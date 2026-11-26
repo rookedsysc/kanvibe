@@ -134,7 +134,6 @@ impl Harness {
 const SECOND: Duration = Duration::from_secs(1);
 const MINUTE: Duration = Duration::from_secs(60);
 
-// parity: TS-renderer-usePolledValue-7f9c4f
 #[gpui::test]
 fn the_previous_query_is_hidden_while_the_next_is_pending_or_rejected(cx: &mut TestAppContext) {
     let mut harness = open_host(cx, true);
@@ -148,7 +147,6 @@ fn the_previous_query_is_hidden_while_the_next_is_pending_or_rejected(cx: &mut T
     assert_eq!(harness.value(), None);
 }
 
-// parity: TS-renderer-usePolledValue-9222c0
 #[gpui::test]
 fn a_failed_later_poll_keeps_the_same_querys_last_success(cx: &mut TestAppContext) {
     let mut harness = open_host(cx, true);
@@ -160,7 +158,6 @@ fn a_failed_later_poll_keeps_the_same_querys_last_success(cx: &mut TestAppContex
     assert_eq!(harness.value().as_deref(), Some("A"));
 }
 
-// parity: TS-renderer-usePolledValue-b980d7
 #[gpui::test]
 fn a_cancelled_query_response_never_covers_the_current_query(cx: &mut TestAppContext) {
     let mut harness = open_host(cx, true);
@@ -174,7 +171,6 @@ fn a_cancelled_query_response_never_covers_the_current_query(cx: &mut TestAppCon
     assert_eq!(harness.value().as_deref(), Some("B"));
 }
 
-// parity: TS-renderer-usePolledValue-cf960c
 #[gpui::test]
 fn hiding_a_read_window_does_not_reread_and_returning_catches_up_once(cx: &mut TestAppContext) {
     let mut harness = open_host(cx, true);
@@ -189,7 +185,6 @@ fn hiding_a_read_window_does_not_reread_and_returning_catches_up_once(cx: &mut T
     assert_eq!(script.calls.get(), 2);
 }
 
-// parity: TS-renderer-usePolledValue-2b248a
 #[gpui::test]
 fn a_window_opened_in_the_background_still_reads_once(cx: &mut TestAppContext) {
     let mut harness = open_host(cx, false);
@@ -201,7 +196,6 @@ fn a_window_opened_in_the_background_still_reads_once(cx: &mut TestAppContext) {
     assert_eq!(script.calls.get(), 1);
 }
 
-// parity: TS-renderer-usePolledValue-7374d5
 #[gpui::test]
 fn toggling_activation_during_a_slow_read_neither_overlaps_nor_drops_it(cx: &mut TestAppContext) {
     let mut harness = open_host(cx, true);

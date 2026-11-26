@@ -173,7 +173,6 @@ mod tests {
     use super::*;
     use crate::shortcuts::defaults;
 
-    // parity: TS-renderer-keyboardShortcut-2aa70b
     #[test]
     fn mod_is_displayed_as_cmd_on_macos() {
         assert_eq!(
@@ -182,7 +181,6 @@ mod tests {
         );
     }
 
-    // parity: TS-renderer-keyboardShortcut-3d63f0
     #[test]
     fn page_navigation_shortcuts_are_displayed_per_platform() {
         assert_eq!(
@@ -203,7 +201,6 @@ mod tests {
         );
     }
 
-    // parity: TS-renderer-keyboardShortcut-a47d4e
     #[test]
     fn tab_shortcuts_are_displayed_with_the_platform_mod() {
         let mac = ShortcutPlatform::Mac;

@@ -61,7 +61,6 @@ fn assistant_text(text: &str) -> Value {
     json!({ "type": "message", "role": "assistant", "content": [{ "type": "output_text", "text": text }] })
 }
 
-// parity: TS-aiSessions-readAiSessions-a00276
 #[test]
 fn resolves_exact_main_thread_and_refuses_duplicate_identities() {
     let (_directory, home) = temp_home();
@@ -97,7 +96,6 @@ fn resolves_exact_main_thread_and_refuses_duplicate_identities() {
     );
 }
 
-// parity: TS-aiSessions-readAiSessions-2f1c40
 #[test]
 fn refuses_child_mismatched_and_out_of_scope_records() {
     let extras = [
@@ -127,7 +125,6 @@ fn refuses_child_mismatched_and_out_of_scope_records() {
     }
 }
 
-// parity: TS-aiSessions-readAiSessions-056a03
 #[test]
 fn classifies_developer_user_reasoning_tool_and_assistant_events() {
     let (_directory, home) = temp_home();
@@ -181,7 +178,6 @@ fn classifies_developer_user_reasoning_tool_and_assistant_events() {
     assert_eq!(developer.full_text, "Follow project rules.");
 }
 
-// parity: TS-aiSessions-readAiSessions-3d8eae
 #[test]
 fn tool_calls_carry_names_and_apply_patch_files() {
     let (_directory, home) = temp_home();
@@ -259,7 +255,6 @@ fn tool_calls_carry_names_and_apply_patch_files() {
     );
 }
 
-// parity: TS-aiSessions-readAiSessions-583584
 #[test]
 fn uses_exec_prompts_and_final_answers_instead_of_environment_messages() {
     let (_directory, home) = temp_home();
@@ -343,7 +338,6 @@ fn uses_exec_prompts_and_final_answers_instead_of_environment_messages() {
     );
 }
 
-// parity: TS-aiSessions-readAiSessions-a476d7
 #[test]
 fn latest_user_or_assistant_message_sets_activity_time() {
     let (_directory, home) = temp_home();
@@ -367,7 +361,6 @@ fn latest_user_or_assistant_message_sets_activity_time() {
     );
 }
 
-// parity: TS-aiSessions-readAiSessions-52b656
 #[test]
 fn reads_remote_worktree_sessions_and_detail_over_ssh() {
     let worktree_path = "/remote/repo__worktrees/task";
@@ -424,7 +417,6 @@ fn image_rollout(events: &[Value]) -> (tempfile::TempDir, String) {
     (directory, file)
 }
 
-// parity: TS-aiSessions-imageHistory-426804
 #[test]
 fn image_only_rows_keep_distinct_media_identities_across_pages() {
     let (_directory, source) = image_rollout(&[
@@ -458,7 +450,6 @@ fn image_only_rows_keep_distinct_media_identities_across_pages() {
     assert!(!serde_json::to_string(&second).unwrap().contains(PNG));
 }
 
-// parity: TS-aiSessions-imageHistory-0e041c
 #[test]
 fn native_image_framing_becomes_attachment_and_clean_caption() {
     let (_directory, source) = image_rollout(&[
@@ -478,7 +469,6 @@ fn native_image_framing_becomes_attachment_and_clean_caption() {
     assert_eq!(detail.messages[0].attachment_list().len(), 1);
 }
 
-// parity: TS-aiSessions-historyPerformance-ade3b4
 #[test]
 fn unrelated_rollouts_are_excluded_before_loading_bodies() {
     let meta = crate::javascript::stringify(
@@ -514,7 +504,6 @@ fn unrelated_rollouts_are_excluded_before_loading_bodies() {
     );
 }
 
-// parity: TS-aiSessions-historyPerformance-cb8e9e
 #[test]
 fn remote_header_read_transfers_only_requested_lines() {
     let runner = ScriptedRunner::new(|_, _| Ok("{\"type\":\"session_meta\"}\n".to_string()));
@@ -618,7 +607,6 @@ fn texts(detail: &Option<AggregatedAiSessionDetail>) -> Vec<String> {
         .collect()
 }
 
-// parity: TS-aiSessions-codexSessionDetailReuse-e29b82
 #[test]
 fn unchanged_rollout_returns_same_detail_without_rebuilding() {
     let mut fixture = ReuseFixture::new();
@@ -634,7 +622,6 @@ fn unchanged_rollout_returns_same_detail_without_rebuilding() {
     assert_eq!(built_message_count(), built_after_first);
 }
 
-// parity: TS-aiSessions-codexSessionDetailReuse-2623c8
 #[test]
 fn appended_lines_are_added_newest_first_without_rebuilding_older_messages() {
     let mut fixture = ReuseFixture::new();
@@ -655,7 +642,6 @@ fn appended_lines_are_added_newest_first_without_rebuilding_older_messages() {
     assert_eq!(second.unwrap().title.as_deref(), Some("첫 질문"));
 }
 
-// parity: TS-aiSessions-codexSessionDetailReuse-7eacbe
 #[test]
 fn repeated_message_after_append_is_kept_once() {
     let mut fixture = ReuseFixture::new();
@@ -666,7 +652,6 @@ fn repeated_message_after_append_is_kept_once() {
     assert_eq!(texts(&fixture.read(None, 20)), ["답", "같은 질문"]);
 }
 
-// parity: TS-aiSessions-codexSessionDetailReuse-b818f2
 #[test]
 fn other_conversation_stays_empty_after_append() {
     let mut fixture = ReuseFixture::new();
@@ -677,7 +662,6 @@ fn other_conversation_stays_empty_after_append() {
     assert_eq!(fixture.read(None, 20), None);
 }
 
-// parity: TS-aiSessions-codexSessionDetailReuse-04cad7
 #[test]
 fn shorter_rewrite_drops_previous_messages() {
     let mut fixture = ReuseFixture::new();
@@ -691,7 +675,6 @@ fn shorter_rewrite_drops_previous_messages() {
     assert_eq!(texts(&fixture.read(None, 20)), ["새 질문"]);
 }
 
-// parity: TS-aiSessions-codexSessionDetailReuse-258257
 #[test]
 fn previous_page_cursor_points_to_same_order_after_append() {
     let mut fixture = ReuseFixture::new();

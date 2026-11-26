@@ -40,7 +40,6 @@ fn vertical_layout(panes: Vec<PaneCommand>) -> Option<PaneLayoutSelection> {
     })
 }
 
-// parity: TS-lib-terminal-2ad4b0
 #[test]
 fn local_tmux_session_name_with_shell_metacharacters_is_passed_literally() {
     // Given
@@ -68,7 +67,6 @@ fn local_tmux_session_name_with_shell_metacharacters_is_passed_literally() {
     assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), session_name);
 }
 
-// parity: TS-lib-terminal-2003b9
 #[test]
 fn missing_local_tmux_session_is_created_in_the_working_directory() {
     // Given
@@ -92,7 +90,6 @@ fn missing_local_tmux_session_is_created_in_the_working_directory() {
     assert_eq!(call.ssh_host, None);
 }
 
-// parity: TS-lib-terminal-5f62cc
 #[test]
 fn alive_local_tmux_session_gets_its_status_bar_hidden_before_attach() {
     // Given: 부트스트랩은 세션 생성 때만 돌아서, 탭 바 이전에 만든 세션은 상태바가 탭 바와 겹친 채 남는다
@@ -111,7 +108,6 @@ fn alive_local_tmux_session_gets_its_status_bar_hidden_before_attach() {
     );
 }
 
-// parity: TS-lib-terminal-7fba04
 #[test]
 fn hiding_the_status_bar_failure_does_not_block_attaching() {
     // Given
@@ -129,7 +125,6 @@ fn hiding_the_status_bar_failure_does_not_block_attaching() {
     assert_eq!(harness.ptys.count(), 1);
 }
 
-// parity: TS-lib-terminal-8935b8
 #[test]
 fn local_tmux_bootstrap_applies_pane_layout_in_one_tmux_call() {
     // Given
@@ -152,7 +147,6 @@ fn local_tmux_bootstrap_applies_pane_layout_in_one_tmux_call() {
     assert_eq!(bootstrap_command.matches("tmux ").count(), 1);
 }
 
-// parity: TS-lib-terminal-514ed3
 #[test]
 fn local_tmux_bootstrap_keeps_unattached_session_alive() {
     // Given
@@ -168,7 +162,6 @@ fn local_tmux_bootstrap_keeps_unattached_session_alive() {
     assert!(bootstrap_command.contains("set-option -t 'feat-login' destroy-unattached off"));
 }
 
-// parity: TS-lib-terminal-6ba596
 #[test]
 fn local_tmux_status_bar_is_hidden_only_for_the_kanvibe_session() {
     // Given
@@ -186,7 +179,6 @@ fn local_tmux_status_bar_is_hidden_only_for_the_kanvibe_session() {
     assert!(!bootstrap_command.contains("set-option -s status"));
 }
 
-// parity: TS-lib-terminal-6ebd20
 #[test]
 fn local_tmux_window_size_option_is_scoped_to_the_session() {
     // Given
@@ -208,7 +200,6 @@ fn local_tmux_window_size_option_is_scoped_to_the_session() {
     assert!(bootstrap_command.contains("set-option -t 'feat-login' window-size latest"));
 }
 
-// parity: TS-lib-terminal-b68253
 #[test]
 fn local_tmux_bootstrap_enables_osc52_when_user_config_is_silent() {
     // Given
@@ -224,7 +215,6 @@ fn local_tmux_bootstrap_enables_osc52_when_user_config_is_silent() {
     assert!(bootstrap_command.contains("set-option -s set-clipboard on"));
 }
 
-// parity: TS-lib-terminal-9f1ff7
 #[test]
 fn local_tmux_bootstrap_leaves_set_clipboard_to_the_user_choice() {
     // Given
@@ -247,7 +237,6 @@ fn local_tmux_bootstrap_leaves_set_clipboard_to_the_user_choice() {
     assert!(bootstrap_command.contains("set-option -t 'feat-login' destroy-unattached off"));
 }
 
-// parity: TS-lib-terminal-c4a09c
 #[test]
 fn local_tmux_bootstrap_leaves_set_clipboard_alone_when_the_check_fails() {
     // Given
@@ -273,7 +262,6 @@ fn local_tmux_bootstrap_leaves_set_clipboard_alone_when_the_check_fails() {
     );
 }
 
-// parity: TS-lib-terminal-7ace51
 #[test]
 fn local_tmux_bootstrap_retries_without_the_user_config_after_failure() {
     // Given
@@ -304,7 +292,6 @@ fn local_tmux_bootstrap_retries_without_the_user_config_after_failure() {
     assert!(bootstrap_commands[1].contains("tmux -f /dev/null new-session"));
 }
 
-// parity: TS-lib-terminal-3103a0
 #[test]
 fn local_tmux_bootstrap_with_multiline_quoted_pane_command_is_posix_valid() {
     // Given
@@ -322,7 +309,6 @@ fn local_tmux_bootstrap_with_multiline_quoted_pane_command_is_posix_valid() {
     assert_valid_posix_syntax(&harness.command_containing("new-session").unwrap());
 }
 
-// parity: TS-lib-terminal-e5bff3
 #[test]
 fn alive_local_tmux_session_is_not_created_again() {
     // Given
@@ -337,7 +323,6 @@ fn alive_local_tmux_session_is_not_created_again() {
     assert_eq!(harness.command_containing("new-session"), None);
 }
 
-// parity: TS-lib-terminal-5c1794
 #[test]
 fn local_tmux_pty_attaches_the_session_without_window_targeting() {
     // Given
@@ -359,7 +344,6 @@ fn local_tmux_pty_attaches_the_session_without_window_targeting() {
     );
 }
 
-// parity: TS-lib-terminal-74ba25
 #[test]
 fn local_tmux_creation_failure_closes_the_client_with_1008() {
     // Given
@@ -381,7 +365,6 @@ fn local_tmux_creation_failure_closes_the_client_with_1008() {
     assert_eq!(harness.ptys.count(), 0);
 }
 
-// parity: TS-lib-terminal-41a1bc
 #[test]
 fn focusing_a_task_does_not_switch_the_host_tmux_client() {
     // Given
@@ -398,7 +381,6 @@ fn focusing_a_task_does_not_switch_the_host_tmux_client() {
     assert_eq!(harness.command_containing("switch-client"), None);
 }
 
-// parity: TS-lib-terminal-7c4665
 #[test]
 fn plain_terminal_snapshot_reads_rendered_text_instead_of_control_bytes() {
     // Given

@@ -100,7 +100,6 @@ fn local_hostname_hex() -> String {
     hex::encode(&buffer[..length])
 }
 
-// parity: TS-lib-herdr-9cfa8a
 #[test]
 fn different_tasks_become_spaces_of_one_server_and_concurrent_reconnects_do_not_duplicate() {
     let spaces = shared_spaces(json!({}), &[]);
@@ -143,7 +142,6 @@ fn different_tasks_become_spaces_of_one_server_and_concurrent_reconnects_do_not_
     );
 }
 
-// parity: TS-lib-herdr-39850c
 #[test]
 fn renamed_space_reconnects_by_stored_id_without_repeating_startup_commands() {
     let spaces = shared_spaces(json!({ "task-a": "w1" }), &["w1"]);
@@ -173,7 +171,6 @@ fn renamed_space_reconnects_by_stored_id_without_repeating_startup_commands() {
     );
 }
 
-// parity: TS-lib-herdr-c5a17a
 #[test]
 fn live_space_returns_the_checked_id_without_writing_the_mapping() {
     for ssh_host in [None, Some("remote")] {
@@ -220,7 +217,6 @@ fn live_space_returns_the_checked_id_without_writing_the_mapping() {
     }
 }
 
-// parity: TS-lib-herdr-f48e1c
 #[test]
 fn space_issued_by_another_connection_is_rechecked_inside_the_lock() {
     let spaces = shared_spaces(json!({}), &[]);
@@ -263,7 +259,6 @@ fn space_issued_by_another_connection_is_rechecked_inside_the_lock() {
     );
 }
 
-// parity: TS-lib-herdr-4ef359
 #[test]
 fn one_task_tab_mutation_cannot_select_another_task() {
     let spaces = shared_spaces(json!({ "task-a": "w1" }), &["w1"]);
@@ -278,7 +273,6 @@ fn one_task_tab_mutation_cannot_select_another_task() {
     assert_eq!(count_containing(&spaces.commands(), "'tab' 'close'"), 0);
 }
 
-// parity: TS-lib-herdr-cb95b1
 #[test]
 fn numeric_space_id_task_reconnects_even_with_lettered_space_ids_present() {
     let spaces = shared_spaces(json!({ "task-a": "w1", "task-b": "wA" }), &["w1", "wA"]);
@@ -308,7 +302,6 @@ fn numeric_space_id_task_reconnects_even_with_lettered_space_ids_present() {
     );
 }
 
-// parity: TS-lib-herdr-0ce331
 #[test]
 fn newly_issued_lettered_space_reconnects_and_closes_alone() {
     let spaces = shared_spaces(json!({ "task-a": "w1" }), &["w1"]);
@@ -358,7 +351,6 @@ fn newly_issued_lettered_space_reconnects_and_closes_alone() {
     );
 }
 
-// parity: TS-lib-herdr-43227b
 #[test]
 fn lettered_ids_cannot_reach_another_space_either() {
     let cases: [&[&str]; 5] = [
@@ -389,7 +381,6 @@ fn lettered_ids_cannot_reach_another_space_either() {
     }
 }
 
-// parity: TS-lib-herdr-50e48a
 #[test]
 fn initial_layout_failure_closes_only_the_new_space() {
     let spaces = shared_spaces(json!({}), &["w1"]);
@@ -415,7 +406,6 @@ fn initial_layout_failure_closes_only_the_new_space() {
     assert_eq!(spaces.shared.read_mapping(), json!({}));
 }
 
-// parity: TS-lib-herdr-581c63
 #[test]
 fn closing_one_task_keeps_other_spaces_and_the_shared_server() {
     let spaces = shared_spaces(json!({ "task-a": "w1", "task-b": "w2" }), &["w1", "w2"]);
@@ -435,7 +425,6 @@ fn closing_one_task_keeps_other_spaces_and_the_shared_server() {
     assert!(service.is_herdr_task_alive("kanvibe:task-b", None));
 }
 
-// parity: TS-lib-herdr-5f3adc
 #[test]
 fn missing_task_space_counts_as_no_session_even_with_a_live_server() {
     let spaces = shared_spaces(json!({ "task-a": "w9" }), &[]);
@@ -448,7 +437,6 @@ fn missing_task_space_counts_as_no_session_even_with_a_live_server() {
     );
 }
 
-// parity: TS-lib-herdr-07e7c0
 #[test]
 fn space_closed_natively_is_recreated_and_its_id_updated() {
     let spaces = shared_spaces(json!({ "task-a": "w9" }), &[]);
@@ -464,7 +452,6 @@ fn space_closed_natively_is_recreated_and_its_id_updated() {
     assert_eq!(spaces.space_count(), 1);
 }
 
-// parity: TS-lib-herdr-91ba7f
 #[test]
 fn shared_server_mirror_returns_only_the_task_space_panes() {
     let spaces = shared_spaces(json!({ "task-a": "w1", "task-b": "w2" }), &["w1", "w2"]);
@@ -502,7 +489,6 @@ fn shared_server_mirror_returns_only_the_task_space_panes() {
     );
 }
 
-// parity: TS-lib-herdr-b55d8d
 #[test]
 fn shared_server_agents_report_their_task_session_reference() {
     let spaces = shared_spaces(json!({ "task-a": "w1", "task-b": "w2" }), &["w1", "w2"]);
@@ -524,7 +510,6 @@ fn shared_server_agents_report_their_task_session_reference() {
     assert_eq!(session_names, vec!["kanvibe:task-a", "kanvibe:task-b"]);
 }
 
-// parity: TS-lib-herdr-4f856a
 #[test]
 fn input_text_or_tab_names_are_not_mistaken_for_space_ids() {
     let spaces = shared_spaces(json!({ "task-a": "w1" }), &["w1"]);
@@ -546,7 +531,6 @@ fn input_text_or_tab_names_are_not_mistaken_for_space_ids() {
     );
 }
 
-// parity: TS-lib-herdr-6dea06
 #[test]
 fn corrupted_mapping_is_reported_without_being_overwritten() {
     let spaces = shared_spaces(json!({}), &[]);

@@ -85,7 +85,6 @@ mod tests {
         }
     }
 
-    // parity: TS-lib-databasePaths-763c95
     #[test]
     fn database_lives_in_the_selected_app_data_directory_only() {
         let fixture = LocationFixture::new();
@@ -97,7 +96,6 @@ mod tests {
         assert!(!fixture.path("production").exists());
     }
 
-    // parity: TS-lib-databasePaths-fb6433
     #[test]
     fn existing_database_survives_a_changed_seed() {
         let fixture = LocationFixture::new();
@@ -120,7 +118,6 @@ mod tests {
         );
     }
 
-    // parity: TS-lib-databasePaths-b27828
     #[test]
     fn new_database_is_seeded_only_once() {
         let fixture = LocationFixture::new();

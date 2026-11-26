@@ -101,7 +101,6 @@ fn merge_batch_count(fixture: &KanbanFixture) -> usize {
     fixture.log.count("board:task-pr-merged-detected-batch")
 }
 
-// parity: TS-main-kanbanService-6b0e86
 #[test]
 fn pr_url_lookup_runs_gh_inside_the_repository_with_direnv() {
     let fixture = KanbanFixture::new();
@@ -137,7 +136,6 @@ fn pr_url_lookup_runs_gh_inside_the_repository_with_direnv() {
     assert_eq!(fixture.board_update_count(), 1);
 }
 
-// parity: TS-main-kanbanService-b1d690
 #[test]
 fn missing_gh_cli_quietly_skips_the_lookup() {
     let fixture = KanbanFixture::new();
@@ -157,7 +155,6 @@ fn missing_gh_cli_quietly_skips_the_lookup() {
     assert_eq!(stored_task(&fixture, &task.id).unwrap().pr_url, None);
 }
 
-// parity: TS-main-kanbanService-48e4cd
 #[test]
 fn other_gh_failures_are_returned_instead_of_no_pull_request() {
     let fixture = KanbanFixture::new();
@@ -173,7 +170,6 @@ fn other_gh_failures_are_returned_instead_of_no_pull_request() {
     assert_eq!(stored_task(&fixture, &task.id).unwrap().pr_url, None);
 }
 
-// parity: TS-main-kanbanService-8764f8
 #[test]
 fn simultaneous_lookups_from_several_windows_share_one_gh_query() {
     let fixture = KanbanFixture::new();
@@ -204,7 +200,6 @@ fn simultaneous_lookups_from_several_windows_share_one_gh_query() {
     assert_eq!(fixture.board_update_count(), 1);
 }
 
-// parity: TS-main-kanbanService-2d9287
 #[test]
 fn automatic_lookups_run_gh_once_per_thirty_seconds_but_manual_lookups_always_run() {
     let fixture = KanbanFixture::new();
@@ -236,7 +231,6 @@ fn automatic_lookups_run_gh_once_per_thirty_seconds_but_manual_lookups_always_ru
     assert_eq!(fixture.runner.calls().len(), 4);
 }
 
-// parity: TS-main-kanbanService-dc2e5f
 #[test]
 fn auth_failures_stop_automatic_lookups_until_a_manual_lookup_succeeds() {
     let fixture = KanbanFixture::new();
@@ -281,7 +275,6 @@ fn auth_failures_stop_automatic_lookups_until_a_manual_lookup_succeeds() {
     assert_eq!(fixture.runner.calls().len(), 4);
 }
 
-// parity: TS-main-kanbanService-66f1df
 #[test]
 fn remembered_auth_failure_is_rechecked_once_after_five_minutes() {
     let fixture = KanbanFixture::new();
@@ -304,7 +297,6 @@ fn remembered_auth_failure_is_rechecked_once_after_five_minutes() {
     assert_eq!(fixture.runner.calls().len(), 2);
 }
 
-// parity: TS-main-kanbanService-55aea9
 #[test]
 fn background_sync_remembers_auth_failure_per_task_path_for_the_next_cycle() {
     let fixture = KanbanFixture::new();
@@ -359,7 +351,6 @@ fn remote_worktree_task(
     })
 }
 
-// parity: TS-main-kanbanService-1335ba
 #[test]
 fn remote_projects_look_up_the_pr_in_the_task_worktree_over_ssh() {
     let fixture = KanbanFixture::new();
@@ -391,7 +382,6 @@ fn remote_projects_look_up_the_pr_in_the_task_worktree_over_ssh() {
     assert_eq!(fixture.board_update_count(), 1);
 }
 
-// parity: TS-main-kanbanService-1b9f15
 #[test]
 fn without_a_project_the_lookup_uses_the_task_worktree() {
     let fixture = KanbanFixture::new();
@@ -427,7 +417,6 @@ fn without_a_project_the_lookup_uses_the_task_worktree() {
     assert_eq!(fixture.board_update_count(), 1);
 }
 
-// parity: TS-main-kanbanService-945c44
 #[test]
 fn missing_remote_gh_cli_quietly_skips_the_lookup() {
     let fixture = KanbanFixture::new();
@@ -464,7 +453,6 @@ fn local_feature_task(
     )
 }
 
-// parity: TS-main-kanbanService-c3f17a
 #[test]
 fn pr_sync_saves_a_new_open_pr_url() {
     let fixture = KanbanFixture::new();
@@ -489,7 +477,6 @@ fn pr_sync_saves_a_new_open_pr_url() {
     assert_eq!(merge_batch_count(&fixture), 0);
 }
 
-// parity: TS-main-kanbanService-8587a7
 #[test]
 fn pr_sync_skips_the_default_branch_root_task() {
     let fixture = KanbanFixture::new();
@@ -506,7 +493,6 @@ fn pr_sync_skips_the_default_branch_root_task() {
     assert_eq!(merge_batch_count(&fixture), 0);
 }
 
-// parity: TS-main-kanbanService-d877ed
 #[test]
 fn pr_sync_failures_name_the_task_and_the_reason() {
     let fixture = KanbanFixture::new();
@@ -537,7 +523,6 @@ fn pr_sync_failures_name_the_task_and_the_reason() {
     assert_eq!(merge_batch_count(&fixture), 0);
 }
 
-// parity: TS-main-kanbanService-b3057c
 #[test]
 fn pr_sync_broadcasts_each_merge_once() {
     let fixture = KanbanFixture::new();
@@ -584,7 +569,6 @@ fn pr_sync_broadcasts_each_merge_once() {
     );
 }
 
-// parity: TS-main-kanbanService-035c5c
 #[test]
 fn pr_sync_queries_gh_one_task_at_a_time() {
     let fixture = KanbanFixture::new();
@@ -617,7 +601,6 @@ fn pr_sync_queries_gh_one_task_at_a_time() {
     assert_eq!(most_in_flight.load(Ordering::SeqCst), 1);
 }
 
-// parity: TS-main-kanbanService-0016ac
 #[test]
 fn pr_sync_moves_on_after_a_local_gh_timeout() {
     let fixture = KanbanFixture::new();
@@ -653,7 +636,6 @@ fn pr_sync_moves_on_after_a_local_gh_timeout() {
     assert!(result.updated_task_ids.is_empty());
 }
 
-// parity: TS-main-kanbanService-3a20f2
 #[test]
 fn missing_repository_marker_quietly_skips_the_lookup() {
     let fixture = KanbanFixture::new();
@@ -694,7 +676,6 @@ fn add_race_task(fixture: &KanbanFixture) -> KanbanTask {
     })
 }
 
-// parity: TS-main-kanbanService-1a0fd9
 #[test]
 fn lookups_keep_title_and_status_edited_while_waiting() {
     for is_manual in [true, false] {
@@ -734,7 +715,6 @@ fn lookups_keep_title_and_status_edited_while_waiting() {
     }
 }
 
-// parity: TS-main-kanbanService-4f84f5
 #[test]
 fn lookups_skip_saving_and_notifying_when_the_task_was_deleted_or_rebranched() {
     let changes = [
@@ -776,7 +756,6 @@ fn lookups_skip_saving_and_notifying_when_the_task_was_deleted_or_rebranched() {
     }
 }
 
-// parity: TS-main-kanbanService-612383
 #[test]
 fn unchanged_pr_url_is_not_rewritten_but_the_task_must_still_exist() {
     for does_exist in [true, false] {
@@ -820,7 +799,6 @@ fn fallback_task(fixture: &KanbanFixture) -> KanbanTask {
 const UNRESOLVED: &str =
     "GraphQL: Could not resolve to a Repository with the name 'stale/repo'. (repository)";
 
-// parity: TS-main-kanbanService-54ccf0
 #[test]
 fn task_worktree_is_queried_before_the_project() {
     let fixture = KanbanFixture::new();
@@ -837,7 +815,6 @@ fn task_worktree_is_queried_before_the_project() {
     assert!(last_command(&fixture).contains("repo='/tasks/fallback'"));
 }
 
-// parity: TS-main-kanbanService-93e1f5
 #[test]
 fn unresolved_repository_is_retried_with_the_git_origin() {
     for remote_url in [
@@ -878,7 +855,6 @@ fn unresolved_repository_is_retried_with_the_git_origin() {
     }
 }
 
-// parity: TS-main-kanbanService-908605
 #[test]
 fn background_status_lookup_uses_the_same_fallback() {
     let fixture = KanbanFixture::new();
@@ -900,7 +876,6 @@ fn background_status_lookup_uses_the_same_fallback() {
     assert!(command.contains("--repo 'example/repo'") && command.contains("--state all"));
 }
 
-// parity: TS-main-kanbanService-6711a1
 #[test]
 fn unreadable_git_origin_keeps_the_original_error() {
     let fixture = KanbanFixture::new();
@@ -917,7 +892,6 @@ fn unreadable_git_origin_keeps_the_original_error() {
     );
 }
 
-// parity: TS-main-kanbanService-ae75a6
 #[test]
 fn non_github_origin_keeps_the_original_error() {
     let fixture = KanbanFixture::new();
@@ -939,7 +913,6 @@ fn non_github_origin_keeps_the_original_error() {
     assert_eq!(fixture.runner.calls().len(), 2);
 }
 
-// parity: TS-main-kanbanService-cfac78
 #[test]
 fn failed_retry_with_an_explicit_repository_returns_that_error() {
     let fixture = KanbanFixture::new();
@@ -963,7 +936,6 @@ fn failed_retry_with_an_explicit_repository_returns_that_error() {
     );
 }
 
-// parity: TS-main-kanbanService-40b6c5
 #[test]
 fn empty_results_do_not_trigger_the_fallback() {
     let fixture = KanbanFixture::new();

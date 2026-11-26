@@ -219,7 +219,6 @@ mod tests {
             .collect()
     }
 
-    // parity: TS-main-textContextMenuBridge-8d6a48
     #[test]
     fn copy_is_always_offered_and_cut_and_paste_only_inside_a_field() {
         let outside = TextContextMenuRequest {

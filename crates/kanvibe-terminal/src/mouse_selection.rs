@@ -105,7 +105,6 @@ mod tests {
         }
     }
 
-    // parity: TS-lib-terminalMouseSelection-d0c26c
     #[test]
     fn mac_shift_left_click_is_forced_selection_without_asking_the_default_rule() {
         let asked = std::cell::Cell::new(false);
@@ -119,7 +118,6 @@ mod tests {
         assert!(!asked.get());
     }
 
-    // parity: TS-lib-terminalMouseSelection-2b2467
     #[test]
     fn shift_click_is_not_promoted_outside_macos() {
         let is_forced =
@@ -128,7 +126,6 @@ mod tests {
         assert!(!is_forced);
     }
 
-    // parity: TS-lib-terminalMouseSelection-ee2479
     #[test]
     fn mac_shift_click_is_normalized_to_the_option_click_selection_path() {
         let normalized = normalize_selection_press(&shift_left_click(), true);
@@ -139,7 +136,6 @@ mod tests {
         assert_eq!(normalized.click_count, 1);
     }
 
-    // parity: TS-lib-terminalMouseSelection-9ac5a6
     #[test]
     fn terminal_options_include_the_mac_forced_selection_option() {
         let font_family = "'JetBrainsMono Nerd Font Mono', monospace";

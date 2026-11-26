@@ -1,7 +1,0 @@
-# Rust로 옮기지 않는 src/components/** TS 테스트.
-- id: TS-components-TaskCard-3953d6
-  reason: "@hello-pangea/dnd가 링크 요소에 넣는 draggable 인라인 style과 프로젝트 테두리 색 style 객체가 합쳐지는지 보는 DOM 테스트다. GPUI 카드는 끌기를 on_drag로 걸고 테두리 색을 요소 스타일로 직접 정해 합칠 style 객체가 없다."
-- id: TS-components-Board-8fa749
-  reason: "defaultSessionType prop이 바뀌면 Board 내부 state와 하위 모달 prop이 따라가는지 보는 React prop 동기화 테스트다. Rust 보드는 prop을 받지 않고 보드 데이터를 다시 읽을 때 AppSettings default_session_type을 함께 읽어 새 모달에 넘긴다."
-- id: TS-components-NotificationCenterButton-b64c8a
-  reason: "BoardCommandProvider의 ShortcutBlocker가 켜진 채 window keydown으로 들어온 Enter·Escape를 알림 패널이 무시하는지 보는 DOM 전역 키 처리 테스트다. GPUI 알림 패널은 자기 FocusHandle에 포커스가 있을 때만 키를 받고, 막는 대화상자(새 작업·등록·팔레트·sync 검토)가 열리면 포커스가 그 대화상자로 가 패널에 키가 닿지 않는다. 대화상자가 열린 동안 알림 단축키도 열리지 않는다(board_shortcuts_are_ignored_behind_a_blocker)."

@@ -76,7 +76,6 @@ fn ok() -> AiAccountLoginOpenResult {
     }
 }
 
-// parity: TS-main-aiAccountLoginBridge-8f441d
 #[test]
 fn survives_operations_after_native_pty_closes_before_exit() {
     for operation in ["resize", "write", "kill"] {
@@ -104,7 +103,6 @@ fn survives_operations_after_native_pty_closes_before_exit() {
     }
 }
 
-// parity: TS-main-aiAccountLoginBridge-0e6689
 #[test]
 fn closing_continues_when_one_kill_fails() {
     let fixture = fixture();
@@ -119,7 +117,6 @@ fn closing_continues_when_one_kill_fails() {
     assert_eq!(fixture.spawner.terminal(1).kills(), 1);
 }
 
-// parity: TS-main-aiAccountLoginBridge-266d0d
 #[test]
 fn forwards_dimensions_and_ignores_resize_after_exit() {
     let fixture = fixture();
@@ -140,7 +137,6 @@ fn forwards_dimensions_and_ignores_resize_after_exit() {
     );
 }
 
-// parity: TS-main-aiAccountLoginBridge-f18846
 #[test]
 fn concurrent_opens_share_one_pty_that_close_kills() {
     let fixture = fixture();
@@ -157,7 +153,6 @@ fn concurrent_opens_share_one_pty_that_close_kills() {
     assert_eq!(fixture.spawner.terminal(0).kills(), 1);
 }
 
-// parity: TS-main-aiAccountLoginBridge-4ba5d8
 #[test]
 fn stale_exit_after_replacement_is_ignored() {
     let fixture = fixture();

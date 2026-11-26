@@ -139,7 +139,6 @@ fn close(view: Entity<PaneChatView>, cx: &mut VisualTestContext) {
     cx.run_until_parked();
 }
 
-// parity: TS-renderer-PaneChatComposer-67b2ec
 #[gpui::test]
 fn composer_edge_resizes_and_busy_api_conversations_still_accept_messages(cx: &mut TestAppContext) {
     init(cx);
@@ -165,7 +164,6 @@ fn composer_edge_resizes_and_busy_api_conversations_still_accept_messages(cx: &m
     assert!(call[4].is_string());
 }
 
-// parity: TS-renderer-PaneChatComposer-fbfa5d
 #[gpui::test]
 fn resizing_clamps_between_the_minimum_and_sixty_percent_of_the_chat(cx: &mut TestAppContext) {
     init(cx);
@@ -189,7 +187,6 @@ fn resizing_clamps_between_the_minimum_and_sixty_percent_of_the_chat(cx: &mut Te
     );
 }
 
-// parity: TS-renderer-PaneChatComposer-d2aaff
 #[gpui::test]
 fn image_bytes_are_staged_and_sent_without_text_by_opaque_id(cx: &mut TestAppContext) {
     init(cx);
@@ -208,7 +205,6 @@ fn image_bytes_are_staged_and_sent_without_text_by_opaque_id(cx: &mut TestAppCon
     assert!(names(&view, cx).is_empty());
 }
 
-// parity: TS-renderer-PaneChatComposer-6fa72d
 #[gpui::test]
 fn photo_selection_clipboard_images_and_dropped_files_are_all_staged(cx: &mut TestAppContext) {
     init(cx);
@@ -242,7 +238,6 @@ fn photo_selection_clipboard_images_and_dropped_files_are_all_staged(cx: &mut Te
     assert!(names(&view, cx).contains(&"notes.txt".to_string()));
 }
 
-// parity: TS-renderer-PaneChatComposer-b82cb8
 #[gpui::test]
 fn failed_upload_blocks_sending_and_retries_the_same_file(cx: &mut TestAppContext) {
     init(cx);
@@ -277,7 +272,6 @@ fn remove(view: &Entity<PaneChatView>, cx: &mut VisualTestContext, local_id: u64
     settle(cx);
 }
 
-// parity: TS-renderer-PaneChatComposer-0232b8
 #[gpui::test]
 fn pending_upload_removed_before_its_acknowledgement_is_cleaned_up(cx: &mut TestAppContext) {
     init(cx);
@@ -298,7 +292,6 @@ fn pending_upload_removed_before_its_acknowledgement_is_cleaned_up(cx: &mut Test
     );
 }
 
-// parity: TS-renderer-PaneChatComposer-3d7875
 #[gpui::test]
 fn failed_removal_keeps_the_attachment_and_can_be_retried(cx: &mut TestAppContext) {
     init(cx);
@@ -316,7 +309,6 @@ fn failed_removal_keeps_the_attachment_and_can_be_retried(cx: &mut TestAppContex
     assert!(names(&view, cx).is_empty());
 }
 
-// parity: TS-renderer-PaneChatComposer-4d507a
 #[gpui::test]
 fn uploads_and_drafts_stay_with_their_pane(cx: &mut TestAppContext) {
     init(cx);
@@ -344,7 +336,6 @@ fn uploads_and_drafts_stay_with_their_pane(cx: &mut TestAppContext) {
     assert_eq!(names(&view, cx), vec!["photo.png".to_string()]);
 }
 
-// parity: TS-renderer-PaneChatComposer-8f9137
 #[gpui::test]
 fn earlier_send_completion_keeps_newer_text_and_attachments(cx: &mut TestAppContext) {
     init(cx);
@@ -365,7 +356,6 @@ fn earlier_send_completion_keeps_newer_text_and_attachments(cx: &mut TestAppCont
     assert_eq!(names(&view, cx), vec!["notes.txt".to_string()]);
 }
 
-// parity: TS-renderer-PaneChatComposer-8c1bf0
 #[gpui::test]
 fn failed_send_reuses_the_request_id_only_for_an_unchanged_retry(cx: &mut TestAppContext) {
     init(cx);
@@ -386,7 +376,6 @@ fn failed_send_reuses_the_request_id_only_for_an_unchanged_retry(cx: &mut TestAp
     assert_ne!(backend.calls(SEND)[2][4], calls[0][4]);
 }
 
-// parity: TS-renderer-PaneChatComposer-8676e0
 #[gpui::test]
 fn caret_token_suggestions_move_with_arrows_and_tab_inserts_without_sending(
     cx: &mut TestAppContext,
@@ -418,7 +407,6 @@ fn caret_token_suggestions_move_with_arrows_and_tab_inserts_without_sending(
     assert_eq!(backend.call_count(SEND), 0);
 }
 
-// parity: TS-renderer-PaneChatComposer-16d106
 #[gpui::test]
 fn skill_button_command_and_file_lookups_and_escape(cx: &mut TestAppContext) {
     init(cx);
@@ -470,7 +458,6 @@ fn skill_button_command_and_file_lookups_and_escape(cx: &mut TestAppContext) {
     assert_eq!(backend.call_count(SEND), 0);
 }
 
-// parity: TS-renderer-PaneChatComposer-27b8a9
 #[gpui::test]
 fn stale_file_replies_are_ignored_and_lookup_errors_can_be_retried(cx: &mut TestAppContext) {
     init(cx);
@@ -497,7 +484,6 @@ fn stale_file_replies_are_ignored_and_lookup_errors_can_be_retried(cx: &mut Test
     assert!(options(&view, cx).unwrap().contains(&"Test".to_string()));
 }
 
-// parity: TS-renderer-PaneChatComposer-11454a
 #[gpui::test]
 fn skill_list_is_requested_once_and_enter_is_blocked_while_loading_or_empty(
     cx: &mut TestAppContext,
@@ -537,7 +523,6 @@ fn skill_list_is_requested_once_and_enter_is_blocked_while_loading_or_empty(
     assert_eq!(backend.call_count(SEND), 1);
 }
 
-// parity: TS-renderer-PaneChatComposer-8a83bf
 #[gpui::test]
 fn loaded_command_list_is_filtered_on_screen_per_keystroke(cx: &mut TestAppContext) {
     init(cx);
@@ -560,7 +545,6 @@ fn loaded_command_list_is_filtered_on_screen_per_keystroke(cx: &mut TestAppConte
     assert_eq!(backend.call_count(SUGGEST), 1);
 }
 
-// parity: TS-renderer-PaneChatComposer-3905dc
 #[gpui::test]
 fn incomplete_skill_list_asks_the_desktop_per_query(cx: &mut TestAppContext) {
     init(cx);
@@ -590,7 +574,6 @@ fn incomplete_skill_list_asks_the_desktop_per_query(cx: &mut TestAppContext) {
     );
 }
 
-// parity: TS-renderer-PaneChatComposer-38ba20
 #[gpui::test]
 fn reopened_menu_shows_the_remembered_list_and_refreshes_in_the_background(
     cx: &mut TestAppContext,
@@ -623,7 +606,6 @@ fn reopened_menu_shows_the_remembered_list_and_refreshes_in_the_background(
     );
 }
 
-// parity: TS-renderer-PaneChatComposer-70698b
 #[gpui::test]
 fn failed_background_refresh_keeps_the_remembered_list(cx: &mut TestAppContext) {
     init(cx);
@@ -646,7 +628,6 @@ fn failed_background_refresh_keeps_the_remembered_list(cx: &mut TestAppContext) 
     );
 }
 
-// parity: TS-renderer-PaneChatComposer-3f3a04
 #[gpui::test]
 fn skill_list_errors_retry_and_lists_for_another_pane_are_rejected(cx: &mut TestAppContext) {
     init(cx);
@@ -672,7 +653,6 @@ fn skill_list_errors_retry_and_lists_for_another_pane_are_rejected(cx: &mut Test
     assert!(options(&view, cx).unwrap().contains(&"Review".to_string()));
 }
 
-// parity: TS-renderer-PaneChatComposer-0d677c
 #[gpui::test]
 fn file_lookup_waits_for_typing_to_pause(cx: &mut TestAppContext) {
     init(cx);
@@ -694,7 +674,6 @@ fn file_lookup_waits_for_typing_to_pause(cx: &mut TestAppContext) {
     );
 }
 
-// parity: TS-renderer-PaneChatComposer-01397a
 #[gpui::test]
 fn upload_acknowledged_after_close_is_removed(cx: &mut TestAppContext) {
     init(cx);
@@ -713,7 +692,6 @@ fn upload_acknowledged_after_close_is_removed(cx: &mut TestAppContext) {
     );
 }
 
-// parity: TS-renderer-PaneChatComposer-f15301
 #[gpui::test]
 fn closing_discards_ready_attachments_of_every_pane(cx: &mut TestAppContext) {
     init(cx);
@@ -735,7 +713,6 @@ fn closing_discards_ready_attachments_of_every_pane(cx: &mut TestAppContext) {
     );
 }
 
-// parity: TS-renderer-PaneChatComposer-ae254d
 #[gpui::test]
 fn captured_send_is_disposed_only_after_its_outcome(cx: &mut TestAppContext) {
     init(cx);
@@ -754,7 +731,6 @@ fn captured_send_is_disposed_only_after_its_outcome(cx: &mut TestAppContext) {
     );
 }
 
-// parity: TS-renderer-PaneChatComposer-24bcb9
 #[gpui::test]
 fn oversized_files_and_too_many_files_are_rejected_without_staging(cx: &mut TestAppContext) {
     init(cx);
@@ -777,7 +753,6 @@ fn conversation(token: &str, key: &str) -> Value {
     with(composer_snapshot(token), "conversationKey", json!(key))
 }
 
-// parity: TS-renderer-PaneChatComposer-948dde
 #[gpui::test]
 fn renewed_lease_keeps_the_draft_and_requires_restaging(cx: &mut TestAppContext) {
     init(cx);
@@ -811,7 +786,6 @@ fn renewed_lease_keeps_the_draft_and_requires_restaging(cx: &mut TestAppContext)
     assert_eq!(call[2]["name"], json!("notes.txt"));
 }
 
-// parity: TS-renderer-PaneChatComposer-d01506
 #[gpui::test]
 fn unresolved_operation_id_survives_token_renewal_and_restaging(cx: &mut TestAppContext) {
     init(cx);
@@ -853,7 +827,6 @@ fn unresolved_operation_id_survives_token_renewal_and_restaging(cx: &mut TestApp
     );
 }
 
-// parity: TS-renderer-PaneChatComposer-386e77
 #[gpui::test]
 fn old_upload_failure_after_restaging_is_ignored(cx: &mut TestAppContext) {
     init(cx);

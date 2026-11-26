@@ -1,6 +1,6 @@
 //! Mermaid 11 `default`(라이트)·`dark` 테마에서 실제 SVG에 들어간 색.
 //!
-//! 값은 기준 SVG의 `<style>`에서 읽은 그대로다(parity/diagrams/baseline/*.svg).
+//! 값은 TS 앱의 Mermaid가 그린 기준 SVG의 `<style>`에서 읽은 그대로다(기준 SVG는 커밋 9a82617e까지 parity/diagrams/baseline/*.svg).
 
 use crate::scene::Color;
 

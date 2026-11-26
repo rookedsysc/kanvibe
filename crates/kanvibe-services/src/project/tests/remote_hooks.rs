@@ -44,7 +44,6 @@ fn assert_nothing_repaired(harness: &Harness) {
     assert!(harness.state_files.persisted.lock().unwrap().is_empty());
 }
 
-// parity: TS-main-projectService-43712e
 #[test]
 fn detailed_hook_status_failure_is_not_hidden_as_success() {
     let harness = Harness::new();
@@ -61,7 +60,6 @@ fn detailed_hook_status_failure_is_not_hidden_as_success() {
     assert!(harness.hooks.ensure_calls.lock().unwrap().is_empty());
 }
 
-// parity: TS-main-projectService-80e8c2
 #[test]
 fn project_hook_status_reads_the_existing_root_task_without_repairing() {
     for provider in [
@@ -84,7 +82,6 @@ fn project_hook_status_reads_the_existing_root_task_without_repairing() {
     }
 }
 
-// parity: TS-main-projectService-34c257
 #[test]
 fn status_reads_do_not_repair_hooks_even_when_all_providers_are_missing() {
     let harness = Harness::new();
@@ -108,7 +105,6 @@ fn status_reads_do_not_repair_hooks_even_when_all_providers_are_missing() {
     assert_nothing_repaired(&harness);
 }
 
-// parity: TS-main-projectService-7c2922
 #[test]
 fn batch_hook_status_resolves_the_task_target_once() {
     let harness = Harness::new();
@@ -137,7 +133,6 @@ fn batch_hook_status_resolves_the_task_target_once() {
     assert!(harness.hooks.ensure_calls.lock().unwrap().is_empty());
 }
 
-// parity: TS-main-projectService-682778
 #[test]
 fn default_branch_status_reads_the_root_task_without_writing_state() {
     let harness = Harness::new();
@@ -157,7 +152,6 @@ fn default_branch_status_reads_the_root_task_without_writing_state() {
     assert_nothing_repaired(&harness);
 }
 
-// parity: TS-main-projectService-b28979
 #[test]
 fn remote_task_claude_status_is_read_on_its_ssh_host() {
     let harness = Harness::new();
@@ -179,7 +173,6 @@ fn remote_task_claude_status_is_read_on_its_ssh_host() {
     );
 }
 
-// parity: TS-main-projectService-266f32
 #[test]
 fn non_default_branch_task_on_the_remote_repo_root_reads_status_with_its_own_id() {
     let harness = Harness::new();
@@ -209,7 +202,6 @@ fn non_default_branch_task_on_the_remote_repo_root_reads_status_with_its_own_id(
     assert!(harness.hooks.ensure_calls.lock().unwrap().is_empty());
 }
 
-// parity: TS-main-projectService-e0f056
 #[test]
 fn remote_reinstall_runs_only_the_chosen_provider() {
     let harness = Harness::new();
@@ -233,7 +225,6 @@ fn remote_reinstall_runs_only_the_chosen_provider() {
     assert!(harness.hooks.install_calls.lock().unwrap().is_empty());
 }
 
-// parity: TS-main-projectService-aaf85b
 #[test]
 fn non_default_branch_task_on_the_remote_repo_root_reinstalls_with_its_own_id() {
     let harness = Harness::new();
@@ -262,7 +253,6 @@ fn non_default_branch_task_on_the_remote_repo_root_reinstalls_with_its_own_id() 
     assert!(harness.hooks.install_calls.lock().unwrap().is_empty());
 }
 
-// parity: TS-main-projectService-daed09
 #[test]
 fn remote_ai_session_listing_passes_the_task_scope_and_ssh_host() {
     let harness = Harness::new();

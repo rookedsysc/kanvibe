@@ -522,7 +522,6 @@ mod tests {
         Translator::new(Locale::Ko, "taskDetail")
     }
 
-    // parity: TS-renderer-AgentCallGraphPanel-a48184
     #[test]
     fn flattens_nested_subagents_in_lineage_order() {
         let labels: Vec<(Option<String>, String)> = rows(&nested_graph())
@@ -539,7 +538,6 @@ mod tests {
         );
     }
 
-    // parity: TS-renderer-AgentCallGraphPanel-4afece
     #[test]
     fn guides_follow_depth_and_stop_at_the_last_sibling() {
         let guides: Vec<Vec<CallGuide>> = rows(&nested_graph())
@@ -556,7 +554,6 @@ mod tests {
         );
     }
 
-    // parity: TS-renderer-AgentCallGraphPanel-404c0f
     #[test]
     fn bars_share_one_timeline_and_only_running_ones_reach_now() {
         let bars: Vec<CallBar> = rows(&nested_graph())
@@ -569,7 +566,6 @@ mod tests {
         assert_eq!(bars[0].width_percent.round(), 58.0);
     }
 
-    // parity: TS-renderer-AgentCallGraphPanel-88d7c4
     #[test]
     fn nodes_without_a_start_time_get_no_bar() {
         let rows = rows(&graph(vec![node(
@@ -583,7 +579,6 @@ mod tests {
         assert_eq!(rows[0].bar, None);
     }
 
-    // parity: TS-renderer-AgentCallGraphPanel-704e11
     #[test]
     fn header_counts_subagents_running_and_depth() {
         assert_eq!(
@@ -592,7 +587,6 @@ mod tests {
         );
     }
 
-    // parity: TS-renderer-AgentCallGraphPanel-b056a4
     #[test]
     fn graph_without_subagents_shows_the_empty_notice() {
         assert_eq!(
@@ -605,7 +599,6 @@ mod tests {
         );
     }
 
-    // parity: TS-renderer-AgentCallGraphPanel-a843b3
     #[test]
     fn back_button_returns_to_the_session_list() {
         let mut state = super::super::live_sessions::LiveSessionsState {
@@ -627,7 +620,6 @@ mod tests {
         assert!(state.graph.is_none());
     }
 
-    // parity: TS-renderer-AgentCallGraphPanel-73b5e2
     #[test]
     fn graph_not_read_yet_says_it_is_being_built() {
         assert_eq!(call_graph_body(None), CallGraphBody::Loading);

@@ -22,7 +22,6 @@ use crate::connection::{RemoteHostConnectionError, RemoteHostConnectionErrorKind
 
 const REMOTE_SOCKET: &str = "/tmp/kv-1000/1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed.sock";
 
-// parity: TS-main-hookTunnelService-a838cf
 #[test]
 fn tunnel_arguments_surface_forward_failures_and_end_with_the_app() {
     let base_args: Vec<String> = ["-p", "22", "host-a"].map(String::from).to_vec();
@@ -50,7 +49,6 @@ fn tunnel_arguments_surface_forward_failures_and_end_with_the_app() {
     assert_eq!(arguments, expected);
 }
 
-// parity: TS-main-hookTunnelService-5116b7
 #[test]
 fn no_tunnel_opens_before_the_service_starts() {
     let fixture = Fixture::new(&["host-a"]);
@@ -61,7 +59,6 @@ fn no_tunnel_opens_before_the_service_starts() {
     assert_eq!(fixture.spawner.spawn_count(), 0);
 }
 
-// parity: TS-main-hookTunnelService-ac5d09
 #[test]
 fn aliases_of_one_remote_account_share_a_tunnel_that_serves_both() {
     let fixture = Fixture::new(&["host-a", "host-a-alias"]);
@@ -81,7 +78,6 @@ fn aliases_of_one_remote_account_share_a_tunnel_that_serves_both() {
     assert_eq!(hosts, ["host-a", "host-a-alias"]);
 }
 
-// parity: TS-main-hookTunnelService-c3db40
 #[test]
 fn different_remote_accounts_open_separate_tunnels() {
     let fixture = Fixture::new(&["host-a", "host-b"]);
@@ -91,7 +87,6 @@ fn different_remote_accounts_open_separate_tunnels() {
     fixture.spawner.wait_for_spawns(2);
 }
 
-// parity: TS-main-hookTunnelService-c3e97f
 #[test]
 fn a_host_with_only_done_tasks_keeps_its_tunnel_for_worktree_hooks() {
     let database = DatabaseFixture::new();
@@ -106,7 +101,6 @@ fn a_host_with_only_done_tasks_keeps_its_tunnel_for_worktree_hooks() {
     fixture.spawner.wait_for_spawns(1);
 }
 
-// parity: TS-main-hookTunnelService-71476e
 #[test]
 fn a_host_with_a_remote_project_but_no_tasks_gets_a_tunnel() {
     let database = DatabaseFixture::new();
@@ -123,7 +117,6 @@ fn a_host_with_a_remote_project_but_no_tasks_gets_a_tunnel() {
     fixture.spawner.wait_for_spawns(1);
 }
 
-// parity: TS-main-hookTunnelService-134b99
 #[test]
 fn a_tunnel_opens_for_a_remote_task_and_closes_when_no_task_remains() {
     let timings = TunnelTimings {
@@ -145,7 +138,6 @@ fn a_tunnel_opens_for_a_remote_task_and_closes_when_no_task_remains() {
     assert_eq!(fixture.spawner.spawn_count(), 1);
 }
 
-// parity: TS-main-hookTunnelService-021d9c
 #[test]
 fn requesting_the_same_host_again_keeps_one_tunnel() {
     let fixture = Fixture::new(&["host-a"]);
@@ -158,7 +150,6 @@ fn requesting_the_same_host_again_keeps_one_tunnel() {
     assert_eq!(fixture.spawner.spawn_count(), 1);
 }
 
-// parity: TS-main-hookTunnelService-fed6bc
 #[test]
 fn a_dropped_tunnel_reconnects_and_backs_off_when_it_drops_again_quickly() {
     let fixture = Fixture::new(&["host-a"]);
@@ -182,7 +173,6 @@ fn a_dropped_tunnel_reconnects_and_backs_off_when_it_drops_again_quickly() {
     assert!(second_wait >= minimum * 2, "{second_wait:?}");
 }
 
-// parity: TS-main-hookTunnelService-47620d
 #[test]
 fn ssh_failures_are_logged_and_notified_only_when_the_reason_changes_across_retries() {
     let fixture = Fixture::new(&["host-a"]);
@@ -249,7 +239,6 @@ fn a_daemon_rejection_for_a_responding_client_is_classified_as_client_in_use() {
     );
 }
 
-// parity: TS-main-hookTunnelService-638b48
 #[test]
 fn a_failed_prepare_command_does_not_stop_the_app_and_is_retried() {
     let fixture = Fixture::new(&["host-a"]);
@@ -263,7 +252,6 @@ fn a_failed_prepare_command_does_not_stop_the_app_and_is_retried() {
     assert_eq!(fixture.runner.call_count(), 2);
 }
 
-// parity: TS-main-hookTunnelService-5dee43
 #[test]
 fn a_socket_path_of_another_client_does_not_open_a_tunnel() {
     let fixture = Fixture::new(&["host-a"]);
@@ -282,7 +270,6 @@ fn a_socket_path_of_another_client_does_not_open_a_tunnel() {
     assert!(error.contains("소켓 경로"), "{error}");
 }
 
-// parity: TS-main-hookTunnelService-068df1
 #[test]
 fn waking_from_sleep_drops_a_live_looking_connection_and_reconnects() {
     let fixture = Fixture::new(&["host-a"]);
@@ -296,7 +283,6 @@ fn waking_from_sleep_drops_a_live_looking_connection_and_reconnects() {
     assert!(fixture.health.failures().is_empty());
 }
 
-// parity: TS-main-hookTunnelService-314ab8
 #[test]
 fn stopping_closes_tunnels_without_reconnecting() {
     let fixture = Fixture::new(&["host-a"]);
@@ -355,7 +341,6 @@ type ReachabilityCase<'case> = (
     bool,
 );
 
-// parity: TS-main-hookTunnelService-cbe28a
 #[test]
 fn tunnel_requests_reach_only_tasks_of_the_tunnel_hosts() {
     let host_a = HashSet::from(["host-a".to_string()]);
@@ -419,7 +404,6 @@ fn read_stored_status(database: &DatabaseFixture) -> String {
         .unwrap()
 }
 
-// parity: TS-main-hostConnectionStatusSync-aa8433
 #[test]
 fn connecting_reflects_the_remote_status_file_and_reconnecting_reflects_the_latest_value() {
     let database = DatabaseFixture::new();

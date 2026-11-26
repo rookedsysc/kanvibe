@@ -112,7 +112,6 @@ mod tests {
             .collect()
     }
 
-    // parity: TS-aiSessions-liveAiSessions-e909ca
     #[test]
     fn keeps_worktree_and_nested_paths() {
         let panes = [
@@ -126,13 +125,11 @@ mod tests {
         );
     }
 
-    // parity: TS-aiSessions-liveAiSessions-c1f4e3
     #[test]
     fn excludes_worktrees_sharing_only_a_prefix() {
         assert!(filter_panes_by_worktree(&[pane("/repo/task-2")], Some("/repo/task")).is_empty());
     }
 
-    // parity: TS-aiSessions-liveAiSessions-c245dc
     #[test]
     fn unknown_worktree_keeps_nothing() {
         assert!(filter_panes_by_worktree(&[pane("/repo/task")], None).is_empty());

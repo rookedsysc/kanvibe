@@ -54,7 +54,6 @@ fn assert_bridge_untouched(server: &TestServer, names: &[&str]) {
     }
 }
 
-// parity: TS-electron-mobileCommands-1c8767
 #[tokio::test]
 async fn registration_removal_is_its_own_command_and_never_deletes_resources() {
     let server = TestServer::start().await;
@@ -75,7 +74,6 @@ async fn registration_removal_is_its_own_command_and_never_deletes_resources() {
     assert_bridge_untouched(&server, &["delete_mobile_task"]);
 }
 
-// parity: TS-electron-mobileCommands-6f73a4
 #[tokio::test]
 async fn damaged_worktrees_answer_the_registration_removal_hint_code() {
     let server = TestServer::start().await;
@@ -92,7 +90,6 @@ async fn damaged_worktrees_answer_the_registration_removal_hint_code() {
     assert_code(&result, "invalid-worktree");
 }
 
-// parity: TS-electron-mobileCommands-0aec8f
 #[tokio::test]
 async fn removing_a_missing_registration_answers_task_not_found() {
     let server = TestServer::start().await;
@@ -109,7 +106,6 @@ async fn removing_a_missing_registration_answers_task_not_found() {
     assert_bridge_untouched(&server, &["delete_mobile_task"]);
 }
 
-// parity: TS-electron-mobileCommands-2aba03
 #[tokio::test]
 async fn supported_commands_are_exposed_with_the_connected_event() {
     let server = TestServer::start().await;
@@ -123,7 +119,6 @@ async fn supported_commands_are_exposed_with_the_connected_event() {
     );
 }
 
-// parity: TS-electron-mobileCommands-87027e
 #[tokio::test]
 async fn unknown_commands_answer_unsupported_with_the_request_id() {
     let server = TestServer::start().await;
@@ -135,7 +130,6 @@ async fn unknown_commands_answer_unsupported_with_the_request_id() {
     assert_bridge_untouched(&server, &["delete_mobile_task"]);
 }
 
-// parity: TS-electron-mobileCommands-450616
 #[tokio::test]
 async fn malformed_task_and_pane_fields_answer_invalid_command_without_bridge_calls() {
     let server = TestServer::start().await;
@@ -164,7 +158,6 @@ async fn malformed_task_and_pane_fields_answer_invalid_command_without_bridge_ca
     );
 }
 
-// parity: TS-electron-mobileCommands-eed2d6
 #[tokio::test]
 async fn messages_without_a_valid_request_id_or_command_type_get_no_answer() {
     let server = TestServer::start().await;
@@ -182,7 +175,6 @@ async fn messages_without_a_valid_request_id_or_command_type_get_no_answer() {
     assert_bridge_untouched(&server, &["delete_mobile_task"]);
 }
 
-// parity: TS-electron-mobileCommands-8ff0f0
 #[tokio::test]
 async fn messages_that_are_not_json_objects_are_ignored() {
     let server = TestServer::start().await;
@@ -192,7 +184,6 @@ async fn messages_that_are_not_json_objects_are_ignored() {
     }
 }
 
-// parity: TS-electron-mobileCommands-2addfb
 #[tokio::test]
 async fn messages_over_1024_bytes_are_ignored_without_parsing() {
     let server = TestServer::start().await;
@@ -202,7 +193,6 @@ async fn messages_over_1024_bytes_are_ignored_without_parsing() {
     assert_bridge_untouched(&server, &["delete_mobile_task"]);
 }
 
-// parity: TS-electron-mobileCommands-409fcd
 #[tokio::test]
 async fn pane_chat_subscription_passes_the_sending_socket_and_returns_freshness() {
     let server = TestServer::start().await;
@@ -226,7 +216,6 @@ async fn pane_chat_subscription_passes_the_sending_socket_and_returns_freshness(
     assert_eq!(call[1], normalized);
 }
 
-// parity: TS-electron-mobileCommands-26cd50
 #[tokio::test]
 async fn an_empty_subscription_list_is_passed_through_to_clear_everything() {
     let server = TestServer::start().await;
@@ -246,7 +235,6 @@ async fn an_empty_subscription_list_is_passed_through_to_clear_everything() {
     );
 }
 
-// parity: TS-electron-mobileCommands-576ac4
 #[tokio::test]
 async fn malformed_pane_chat_subscriptions_are_rejected_without_changing_subscriptions() {
     let server = TestServer::start().await;
@@ -273,7 +261,6 @@ async fn malformed_pane_chat_subscriptions_are_rejected_without_changing_subscri
     assert_bridge_untouched(&server, &["set_pane_chat_subscriptions"]);
 }
 
-// parity: TS-electron-mobileCommands-569aeb
 #[tokio::test]
 async fn pane_chat_modes_are_returned_per_pane() {
     let server = TestServer::start().await;
@@ -293,7 +280,6 @@ async fn pane_chat_modes_are_returned_per_pane() {
     );
 }
 
-// parity: TS-electron-mobileCommands-ef04c4
 #[tokio::test]
 async fn saving_a_pane_chat_mode_passes_the_values_through_and_answers_empty_success() {
     let server = TestServer::start().await;
@@ -310,7 +296,6 @@ async fn saving_a_pane_chat_mode_passes_the_values_through_and_answers_empty_suc
     );
 }
 
-// parity: TS-electron-mobileCommands-450616-2
 #[tokio::test]
 async fn malformed_pane_chat_mode_commands_answer_invalid_command_without_bridge_calls() {
     let server = TestServer::start().await;
@@ -330,7 +315,6 @@ async fn malformed_pane_chat_mode_commands_answer_invalid_command_without_bridge
 }
 
 /// TS의 Buffer 입력은 소켓의 텍스트 프레임이다(이진 프레임은 명령으로 읽지 않는다)
-// parity: TS-electron-mobileCommands-6fc7e2
 #[tokio::test]
 async fn a_64_character_request_id_is_processed() {
     let server = TestServer::start().await;

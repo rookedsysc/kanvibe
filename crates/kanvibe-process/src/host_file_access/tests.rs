@@ -144,7 +144,6 @@ fn update_to(
     )
 }
 
-// parity: TS-lib-hostFileAccess-59f0db
 #[test]
 fn only_a_missing_nested_path_is_reported_as_deleted() {
     let directory = tempfile::tempdir().unwrap();
@@ -162,7 +161,6 @@ fn only_a_missing_nested_path_is_reported_as_deleted() {
     }
 }
 
-// parity: TS-lib-hostFileAccess-49595e
 #[test]
 fn a_broken_symbolic_link_is_not_treated_as_deleted() {
     let directory = tempfile::tempdir().unwrap();
@@ -175,7 +173,6 @@ fn a_broken_symbolic_link_is_not_treated_as_deleted() {
     }
 }
 
-// parity: TS-lib-hostFileAccess-2bb31c
 #[test]
 fn a_denied_parent_directory_is_not_treated_as_deleted() {
     let directory = tempfile::tempdir().unwrap();
@@ -197,7 +194,6 @@ fn a_denied_parent_directory_is_not_treated_as_deleted() {
     assert_eq!(results, [true, true]);
 }
 
-// parity: TS-lib-hostFileAccess-e3deea
 #[test]
 fn an_ssh_failure_is_not_treated_as_deleted() {
     let runner = Arc::new(ScriptedCommandRunner::new(|_| {
@@ -212,7 +208,6 @@ fn an_ssh_failure_is_not_treated_as_deleted() {
     assert!(error.to_string().contains("SSH connection refused"));
 }
 
-// parity: TS-lib-hostFileAccess-a826d2
 #[test]
 fn remote_batch_read_command_runs_in_posix_sh() {
     let directory = tempfile::tempdir().unwrap();
@@ -248,7 +243,6 @@ fn remote_batch_read_command_runs_in_posix_sh() {
     assert_eq!(std::fs::read_to_string(&file_path).unwrap(), content);
 }
 
-// parity: TS-lib-hostFileAccess-042808
 #[test]
 fn remote_batch_read_command_survives_the_double_ssh_shell_wrapper() {
     let directory = tempfile::tempdir().unwrap();
@@ -279,7 +273,6 @@ fn remote_batch_read_command_survives_the_double_ssh_shell_wrapper() {
     assert!(!read[&missing_path].exists);
 }
 
-// parity: TS-lib-hostFileAccess-1f54b8
 #[test]
 fn trimmed_ssh_output_keeps_an_empty_single_file() {
     for exists in [false, true] {
@@ -306,7 +299,6 @@ fn trimmed_ssh_output_keeps_an_empty_single_file() {
     }
 }
 
-// parity: TS-lib-hostFileAccess-0b3535
 #[test]
 fn remote_batch_read_keeps_the_last_manifest_file() {
     let directory = tempfile::tempdir().unwrap();
@@ -331,7 +323,6 @@ fn remote_batch_read_keeps_the_last_manifest_file() {
     assert_eq!(read[&final_file_path].content, final_content);
 }
 
-// parity: TS-lib-hostFileAccess-2a21ab
 #[test]
 fn only_missing_local_files_are_absent_and_permission_errors_propagate() {
     let directory = tempfile::tempdir().unwrap();
@@ -372,7 +363,6 @@ fn only_missing_local_files_are_absent_and_permission_errors_propagate() {
     );
 }
 
-// parity: TS-lib-hostFileAccess-c3034c
 #[test]
 fn a_local_directory_read_failure_is_not_hidden_as_absence() {
     let directory = tempfile::tempdir().unwrap();
@@ -387,7 +377,6 @@ fn a_local_directory_read_failure_is_not_hidden_as_absence() {
     assert!(read.is_err());
 }
 
-// parity: TS-lib-hostFileAccess-2432f2
 #[test]
 fn missing_or_corrupted_remote_records_are_not_treated_as_absent() {
     let outputs = [
@@ -410,7 +399,6 @@ fn missing_or_corrupted_remote_records_are_not_treated_as_absent() {
     }
 }
 
-// parity: TS-lib-hostFileAccess-0d50c8
 #[test]
 fn an_unsearchable_remote_parent_is_not_hidden_as_missing() {
     let directory = tempfile::tempdir().unwrap();
@@ -430,7 +418,6 @@ fn an_unsearchable_remote_parent_is_not_hidden_as_missing() {
     assert!(read.is_err());
 }
 
-// parity: TS-lib-hostFileAccess-0e005c
 #[test]
 fn a_real_remote_base64_failure_is_not_hidden_as_success() {
     let directory = tempfile::tempdir().unwrap();
@@ -447,7 +434,6 @@ fn a_real_remote_base64_failure_is_not_hidden_as_success() {
     assert!(read.is_err());
 }
 
-// parity: TS-lib-hostFileAccess-de0fb0
 #[test]
 fn remote_chat_files_are_read_with_the_larger_output_limit() {
     let runner = Arc::new(ScriptedCommandRunner::returning("remote chat"));
@@ -472,7 +458,6 @@ fn remote_chat_files_are_read_with_the_larger_output_limit() {
     assert!(!call.options.should_check_host_key_strictly);
 }
 
-// parity: TS-lib-hostFileAccess-3cf218
 #[test]
 fn a_remote_chat_read_failure_is_not_hidden_as_an_empty_file() {
     let runner = Arc::new(ScriptedCommandRunner::new(|_| {
@@ -488,7 +473,6 @@ fn a_remote_chat_read_failure_is_not_hidden_as_an_empty_file() {
     assert!(read.unwrap_err().to_string().contains("exceeded maxBuffer"));
 }
 
-// parity: TS-lib-hostFileAccess-74bdad
 #[test]
 fn concurrent_updates_hold_the_lock_and_keep_every_change() {
     let directory = tempfile::tempdir().unwrap();
@@ -525,7 +509,6 @@ fn concurrent_updates_hold_the_lock_and_keep_every_change() {
     assert_eq!(letters, ['a', 'b']);
 }
 
-// parity: TS-lib-hostFileAccess-04b9d8
 #[test]
 fn credential_files_are_published_with_the_requested_mode_from_creation() {
     let directory = tempfile::tempdir().unwrap();
@@ -541,7 +524,6 @@ fn credential_files_are_published_with_the_requested_mode_from_creation() {
     assert_eq!(std::fs::read_to_string(&target_path).unwrap(), "{}");
 }
 
-// parity: TS-lib-hostFileAccess-814604
 #[test]
 fn updating_a_widely_readable_file_narrows_it_to_the_requested_mode() {
     let directory = tempfile::tempdir().unwrap();
@@ -565,7 +547,6 @@ fn updating_a_widely_readable_file_narrows_it_to_the_requested_mode() {
     assert_eq!(std::fs::read_to_string(&target_path).unwrap(), "old-next");
 }
 
-// parity: TS-lib-hostFileAccess-bca1bf
 #[test]
 fn remote_updates_create_the_file_with_the_requested_mode_before_chmod() {
     let directory = tempfile::tempdir().unwrap();
@@ -587,7 +568,6 @@ fn remote_updates_create_the_file_with_the_requested_mode_before_chmod() {
     );
 }
 
-// parity: TS-lib-hostFileAccess-f81752
 #[test]
 fn remote_update_of_a_wide_file_with_large_content_keeps_content_and_mode() {
     let directory = tempfile::tempdir().unwrap();
@@ -612,7 +592,6 @@ fn remote_update_of_a_wide_file_with_large_content_keeps_content_and_mode() {
     );
 }
 
-// parity: TS-lib-hostFileAccess-7862d2
 #[test]
 fn remote_update_sends_content_through_stdin_not_the_command_line() {
     let directory = tempfile::tempdir().unwrap();
@@ -651,7 +630,6 @@ fn remote_update_sends_content_through_stdin_not_the_command_line() {
     );
 }
 
-// parity: TS-lib-hostFileAccess-96f5d4
 #[test]
 fn remote_update_without_stdin_does_not_replace_the_existing_file() {
     let directory = tempfile::tempdir().unwrap();
@@ -678,7 +656,6 @@ fn remote_update_without_stdin_does_not_replace_the_existing_file() {
     assert!(!Path::new(&format!("{}.lock", path_text(&target_path))).exists());
 }
 
-// parity: TS-lib-hostFileAccess-deb34e
 #[test]
 fn remote_update_retries_when_the_lock_was_released_right_after_a_lost_race() {
     let directory = tempfile::tempdir().unwrap();
@@ -698,7 +675,6 @@ fn remote_update_retries_when_the_lock_was_released_right_after_a_lost_race() {
     assert!(!Path::new(&lock_path).exists());
 }
 
-// parity: TS-lib-hostFileAccess-439e93
 #[test]
 fn remote_update_keeps_whitespace_and_trailing_newlines_in_one_ssh_transaction() {
     let directory = tempfile::tempdir().unwrap();
@@ -730,7 +706,6 @@ fn remote_update_keeps_whitespace_and_trailing_newlines_in_one_ssh_transaction()
     );
 }
 
-// parity: TS-lib-hostFileAccess-aa5a0a
 #[test]
 fn an_8_mib_current_file_reaches_the_callback_and_is_replaced_by_a_smaller_result() {
     let directory = tempfile::tempdir().unwrap();
@@ -762,7 +737,6 @@ fn an_8_mib_current_file_reaches_the_callback_and_is_replaced_by_a_smaller_resul
     );
 }
 
-// parity: TS-lib-hostFileAccess-03d42d
 #[test]
 fn write_if_absent_creates_parent_directories() {
     let directory = tempfile::tempdir().unwrap();
@@ -776,7 +750,6 @@ fn write_if_absent_creates_parent_directories() {
     assert_eq!(std::fs::read_to_string(&target_path).unwrap(), "seed\n");
 }
 
-// parity: TS-lib-hostFileAccess-e90b79
 #[test]
 fn write_if_absent_does_not_overwrite_an_existing_file() {
     let directory = tempfile::tempdir().unwrap();
@@ -794,7 +767,6 @@ fn write_if_absent_does_not_overwrite_an_existing_file() {
     );
 }
 
-// parity: TS-lib-hostFileAccess-0592b1
 #[test]
 fn remote_write_if_absent_runs_in_posix_sh_and_keeps_existing_files() {
     let directory = tempfile::tempdir().unwrap();
@@ -820,7 +792,6 @@ fn remote_write_if_absent_runs_in_posix_sh_and_keeps_existing_files() {
     );
 }
 
-// parity: TS-lib-hostFileAccess-a6e13d
 #[test]
 fn remote_write_if_absent_keeps_a_file_another_writer_created_right_after_the_check() {
     let directory = tempfile::tempdir().unwrap();
@@ -843,7 +814,6 @@ fn remote_write_if_absent_keeps_a_file_another_writer_created_right_after_the_ch
     );
 }
 
-// parity: TS-lib-hostFileAccess-4422af
 #[test]
 fn hook_file_reads_and_writes_pass_the_strict_option_to_the_ssh_boundary() {
     let runner = Arc::new(ScriptedCommandRunner::new(answer_strict_boundary_call));

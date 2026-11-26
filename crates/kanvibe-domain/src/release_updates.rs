@@ -65,7 +65,6 @@ mod tests {
         }
     }
 
-    // parity: TS-shared-releaseUpdates-131111
     #[test]
     fn parses_plain_and_v_prefixed_versions() {
         assert_eq!(parse_release_version("1.2.3"), Some(version(1, 2, 3)));
@@ -75,7 +74,6 @@ mod tests {
         );
     }
 
-    // parity: TS-shared-releaseUpdates-6a1bd5
     #[test]
     fn rejects_invalid_or_pre_release_tags() {
         assert_eq!(parse_release_version("1.2"), None);
@@ -84,7 +82,6 @@ mod tests {
         assert_eq!(parse_release_version("9007199254740992.0.0"), None);
     }
 
-    // parity: TS-shared-releaseUpdates-c40f72
     #[test]
     fn compares_by_major_minor_and_patch() {
         assert_eq!(
@@ -105,7 +102,6 @@ mod tests {
         );
     }
 
-    // parity: TS-shared-releaseUpdates-5d9382
     #[test]
     fn only_greater_semver_releases_count() {
         assert!(is_release_version_greater_than("1.0.1", "1.0.0"));

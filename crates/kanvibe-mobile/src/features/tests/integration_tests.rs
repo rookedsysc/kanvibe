@@ -266,7 +266,6 @@ fn status_of(error: crate::error::MobileError) -> Option<u16> {
     error.status_code()
 }
 
-// parity: TS-main-mobileFeatureIntegration-5ed10b
 #[test]
 fn searchable_tasks_include_tasks_beyond_the_first_done_page() {
     let fixture = fixture();
@@ -279,7 +278,6 @@ fn searchable_tasks_include_tasks_beyond_the_first_done_page() {
     assert_eq!(project_tasks.count(), 25);
 }
 
-// parity: TS-main-mobileFeatureIntegration-66c9c3
 #[test]
 fn remaining_done_page_comes_with_the_actual_total() {
     let fixture = fixture();
@@ -302,7 +300,6 @@ fn remaining_done_page_comes_with_the_actual_total() {
     assert_eq!(ids.len(), 25);
 }
 
-// parity: TS-main-mobileFeatureIntegration-590e74
 #[test]
 fn description_and_nullable_priority_are_persisted_on_the_same_task() {
     let fixture = fixture();
@@ -330,7 +327,6 @@ fn description_and_nullable_priority_are_persisted_on_the_same_task() {
     assert_eq!(fixture.stored_task(&fixture.task_id).priority, None);
 }
 
-// parity: TS-main-mobileFeatureIntegration-c28aa7
 #[test]
 fn unknown_fields_bad_priorities_missing_tasks_and_unpaired_requests_write_nothing() {
     let fixture = fixture();
@@ -361,7 +357,6 @@ fn unknown_fields_bad_priorities_missing_tasks_and_unpaired_requests_write_nothi
     assert_eq!(fixture.stored_task(&fixture.task_id), before);
 }
 
-// parity: TS-main-mobileFeatureIntegration-4909f1
 #[test]
 fn typed_pc_settings_and_pane_layouts_use_the_shared_desktop_stores() {
     let fixture = fixture();
@@ -410,7 +405,6 @@ fn typed_pc_settings_and_pane_layouts_use_the_shared_desktop_stores() {
     );
 }
 
-// parity: TS-main-mobileFeatureIntegration-fe2912
 #[test]
 fn reading_task_notifications_leaves_other_tasks_unread() {
     let fixture = fixture();
@@ -492,7 +486,6 @@ fn prepare_changed_repository(directory: &Path) {
     std::fs::write(directory.join("src/new.ts"), "new\nfile\n").unwrap();
 }
 
-// parity: TS-main-mobileFeatureIntegration-a00d7f
 #[test]
 fn real_changed_git_files_are_read_and_saved_and_escapes_rejected() {
     let fixture = fixture();

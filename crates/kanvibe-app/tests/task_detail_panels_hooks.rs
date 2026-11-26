@@ -36,7 +36,6 @@ fn open_status_panel(
     detail
 }
 
-// parity: TS-components-HooksStatusCard-c8efdf
 #[gpui::test]
 fn hook_tools_are_listed_inline(cx: &mut TestAppContext) {
     let mut detail = open_status_panel(cx, false, |detail| {
@@ -50,7 +49,6 @@ fn hook_tools_are_listed_inline(cx: &mut TestAppContext) {
     assert!(detail.has_text("0/4"));
 }
 
-// parity: TS-components-HooksStatusCard-6e362e
 #[gpui::test]
 fn installed_hooks_offer_reinstall(cx: &mut TestAppContext) {
     let mut detail = open_status_panel(cx, false, |detail| {
@@ -63,7 +61,6 @@ fn installed_hooks_offer_reinstall(cx: &mut TestAppContext) {
     assert!(detail.has_text("1/4"));
 }
 
-// parity: TS-components-HooksStatusCard-8a2b46
 #[gpui::test]
 fn remote_status_is_not_described_as_unsupported(cx: &mut TestAppContext) {
     let mut detail = open_status_panel(cx, true, |detail| {
@@ -75,7 +72,6 @@ fn remote_status_is_not_described_as_unsupported(cx: &mut TestAppContext) {
     assert!(detail.has_text("미설치"));
 }
 
-// parity: TS-components-HooksStatusCard-f7a60a
 #[gpui::test]
 fn failed_open_code_verification_differs_from_missing_hooks(cx: &mut TestAppContext) {
     let mut detail = open_status_panel(cx, false, |detail| {
@@ -89,7 +85,6 @@ fn failed_open_code_verification_differs_from_missing_hooks(cx: &mut TestAppCont
     assert!(detail.has_text("검증 실패"));
 }
 
-// parity: TS-components-HooksStatusCard-fd11d1
 #[gpui::test]
 fn installing_claude_updates_its_row_and_rereads_all_statuses_once(cx: &mut TestAppContext) {
     let mut detail = open_status_panel(cx, false, |detail| {
@@ -113,7 +108,6 @@ fn installing_claude_updates_its_row_and_rereads_all_statuses_once(cx: &mut Test
     assert!(detail.has_text("4/4"));
 }
 
-// parity: TS-components-HooksStatusCard-96ff36
 #[gpui::test]
 fn reading_statuses_says_loading_until_done(cx: &mut TestAppContext) {
     let mut detail = open_status_panel(cx, true, |detail| detail.hang(STATUSES));
@@ -125,7 +119,6 @@ fn reading_statuses_says_loading_until_done(cx: &mut TestAppContext) {
     assert!(!done.has_text("로딩 중..."));
 }
 
-// parity: TS-components-HooksStatusCard-b27f4f
 #[gpui::test]
 fn failed_install_without_result_offers_retry_of_the_same_tool(cx: &mut TestAppContext) {
     let mut detail = open_status_panel(cx, false, |detail| {
@@ -148,7 +141,6 @@ fn failed_install_without_result_offers_retry_of_the_same_tool(cx: &mut TestAppC
     assert!(detail.has_text("Hooks 설치 완료"));
 }
 
-// parity: TS-components-HooksStatusCard-1e4e9b
 #[gpui::test]
 fn reopened_panel_shows_the_statuses_already_read(cx: &mut TestAppContext) {
     let mut detail = open_status_panel(cx, false, |detail| {
@@ -201,7 +193,6 @@ fn statuses_with(installed: &[&str]) -> Value {
     })
 }
 
-// parity: TS-renderer-TaskDetailRoute-34029c
 #[gpui::test]
 fn slow_ai_sessions_do_not_hold_back_hook_statuses(cx: &mut TestAppContext) {
     let mut detail = open_closed_project_task(cx);
@@ -215,7 +206,6 @@ fn slow_ai_sessions_do_not_hold_back_hook_statuses(cx: &mut TestAppContext) {
     assert!(!detail.has_text("로딩 중..."));
 }
 
-// parity: TS-renderer-TaskDetailRoute-478add
 #[gpui::test]
 fn hook_statuses_are_read_only_while_the_status_panel_is_open(cx: &mut TestAppContext) {
     let mut detail = open_closed_project_task(cx);
@@ -251,7 +241,6 @@ fn hook_statuses_are_read_only_while_the_status_panel_is_open(cx: &mut TestAppCo
     assert!(detail.has_text("1/4"));
 }
 
-// parity: TS-renderer-TaskDetailRoute-93fbc9
 #[gpui::test]
 fn the_status_card_says_loading_while_statuses_are_read(cx: &mut TestAppContext) {
     let mut detail = open_closed_project_task(cx);
@@ -269,7 +258,6 @@ fn the_status_card_says_loading_while_statuses_are_read(cx: &mut TestAppContext)
     assert!(detail.has_role_name("button", "재설치 Gemini"));
 }
 
-// parity: TS-renderer-project-c87884
 #[gpui::test]
 fn installing_task_hooks_does_not_refresh_the_whole_app(cx: &mut TestAppContext) {
     let mut detail = open_status_panel(cx, false, |detail| {

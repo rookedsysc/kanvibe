@@ -115,7 +115,6 @@ fn window(
     }
 }
 
-// parity: TS-aiUsage-readClaudeUsage-95881b
 #[test]
 fn reads_credentials_from_account_config_dir() {
     let fixture = ClaudeFixture::new(&create_credentials_json("access-token", None));
@@ -126,7 +125,6 @@ fn reads_credentials_from_account_config_dir() {
     assert_eq!(result.label, "me@example.com");
 }
 
-// parity: TS-aiUsage-readClaudeUsage-0646cd
 #[test]
 fn maps_five_hour_and_seven_day_windows() {
     let fixture = ClaudeFixture::new(&create_credentials_json("access-token", None));
@@ -155,7 +153,6 @@ fn maps_five_hour_and_seven_day_windows() {
     );
 }
 
-// parity: TS-aiUsage-readClaudeUsage-db3864
 #[test]
 fn expired_token_with_live_refresh_waits_for_cli() {
     let fixture = ClaudeFixture::new(&create_credentials_json(
@@ -169,7 +166,6 @@ fn expired_token_with_live_refresh_waits_for_cli() {
     assert_eq!(fixture.usage.http.request_count(), 0);
 }
 
-// parity: TS-aiUsage-readClaudeUsage-600ab2
 #[test]
 fn expired_token_without_refresh_needs_sign_in() {
     let fixture = ClaudeFixture::new(&stringify(
@@ -182,7 +178,6 @@ fn expired_token_without_refresh_needs_sign_in() {
     assert_eq!(fixture.usage.http.request_count(), 0);
 }
 
-// parity: TS-aiUsage-readClaudeUsage-5a9387
 #[test]
 fn both_tokens_expired_needs_sign_in() {
     let fixture = ClaudeFixture::new(&stringify(&json!({"claudeAiOauth": {
@@ -198,7 +193,6 @@ fn both_tokens_expired_needs_sign_in() {
     assert_eq!(fixture.usage.http.request_count(), 0);
 }
 
-// parity: TS-aiUsage-readClaudeUsage-3a3d2a
 #[test]
 fn unknown_expiry_is_queried() {
     let fixture = ClaudeFixture::new(&create_credentials_json("token-without-expiry", None));
@@ -207,7 +201,6 @@ fn unknown_expiry_is_queried() {
     assert_eq!(fixture.usage.http.request_count(), 1);
 }
 
-// parity: TS-aiUsage-readClaudeUsage-f4c2cf
 #[test]
 fn soon_expiring_token_is_sent_without_refreshing() {
     let fixture = ClaudeFixture::new("");
@@ -223,7 +216,6 @@ fn soon_expiring_token_is_sent_without_refreshing() {
     assert_eq!(fixture.sent_authorization(0), "Bearer soon-expiring-token");
 }
 
-// parity: TS-aiUsage-readClaudeUsage-cda686
 #[test]
 fn no_file_and_no_keychain_is_missing_credentials() {
     let fixture = ClaudeFixture::new("");
@@ -236,7 +228,6 @@ fn no_file_and_no_keychain_is_missing_credentials() {
     assert_eq!(fixture.usage.http.request_count(), 0);
 }
 
-// parity: TS-aiUsage-readClaudeUsage-8005a0
 #[test]
 fn keychain_token_is_used_without_file() {
     let fixture =
@@ -246,7 +237,6 @@ fn keychain_token_is_used_without_file() {
     assert_eq!(fixture.sent_authorization(0), "Bearer keychain-token");
 }
 
-// parity: TS-aiUsage-readClaudeUsage-bef5b9
 #[test]
 fn fresher_keychain_wins_over_stale_file() {
     let fixture = ClaudeFixture::with_keychain(
@@ -261,7 +251,6 @@ fn fresher_keychain_wins_over_stale_file() {
     assert_eq!(fixture.sent_authorization(0), "Bearer fresh-keychain-token");
 }
 
-// parity: TS-aiUsage-readClaudeUsage-5e97d2
 #[test]
 fn fresher_file_wins_over_stale_keychain() {
     let fixture = ClaudeFixture::with_keychain(
@@ -276,7 +265,6 @@ fn fresher_file_wins_over_stale_keychain() {
     assert_eq!(fixture.sent_authorization(0), "Bearer fresh-file-token");
 }
 
-// parity: TS-aiUsage-readClaudeUsage-86b0c9
 #[test]
 fn side_with_known_expiry_wins() {
     let fixture = ClaudeFixture::with_keychain(
@@ -291,7 +279,6 @@ fn side_with_known_expiry_wins() {
     assert_eq!(fixture.sent_authorization(0), "Bearer keychain-token");
 }
 
-// parity: TS-aiUsage-readClaudeUsage-224017
 #[test]
 fn unreadable_keychain_is_not_reported_as_signed_out() {
     let fixture = ClaudeFixture::with_keychain("", None);
@@ -304,7 +291,6 @@ fn unreadable_keychain_is_not_reported_as_signed_out() {
     assert_eq!(fixture.usage.http.request_count(), 0);
 }
 
-// parity: TS-aiUsage-readClaudeUsage-e81617
 #[test]
 fn rejected_token_with_live_refresh_waits_for_cli() {
     let fixture = ClaudeFixture::new(&create_credentials_json(
@@ -320,7 +306,6 @@ fn rejected_token_with_live_refresh_waits_for_cli() {
     );
 }
 
-// parity: TS-aiUsage-readClaudeUsage-55ca8d
 #[test]
 fn rejected_token_without_refresh_needs_sign_in() {
     let fixture = ClaudeFixture::new(&stringify(
@@ -335,7 +320,6 @@ fn rejected_token_without_refresh_needs_sign_in() {
     );
 }
 
-// parity: TS-aiUsage-readClaudeUsage-90f2ac
 #[test]
 fn rate_limit_blocks_calls_until_retry_after() {
     let fixture = ClaudeFixture::new(&create_credentials_json("access-token", None));
@@ -347,7 +331,6 @@ fn rate_limit_blocks_calls_until_retry_after() {
     assert_eq!(fixture.usage.http.request_count(), 1);
 }
 
-// parity: TS-aiUsage-readClaudeUsage-a4fa8b
 #[test]
 fn calls_again_after_retry_after() {
     let fixture = ClaudeFixture::new(&create_credentials_json("access-token", None));
@@ -360,7 +343,6 @@ fn calls_again_after_retry_after() {
     assert_eq!(fixture.usage.http.request_count(), 2);
 }
 
-// parity: TS-aiUsage-readClaudeUsage-61edf7
 #[test]
 fn missing_retry_after_still_backs_off() {
     let fixture = ClaudeFixture::new(&create_credentials_json("access-token", None));
@@ -372,7 +354,6 @@ fn missing_retry_after_still_backs_off() {
     assert_eq!(fixture.usage.http.request_count(), 1);
 }
 
-// parity: TS-aiUsage-readClaudeUsage-d9a468
 #[test]
 fn model_weekly_limits_join_weekly_kind_with_model_name() {
     let fixture = ClaudeFixture::new(&create_credentials_json("access-token", None));
@@ -405,7 +386,6 @@ fn model_weekly_limits_join_weekly_kind_with_model_name() {
     );
 }
 
-// parity: TS-aiUsage-readClaudeUsage-b30fbd
 #[test]
 fn unnamed_model_and_unknown_windows_are_dropped() {
     let fixture = ClaudeFixture::new(&create_credentials_json("access-token", None));
@@ -420,7 +400,6 @@ fn unnamed_model_and_unknown_windows_are_dropped() {
     );
 }
 
-// parity: TS-aiUsage-readClaudeUsage-0df62e
 #[test]
 fn subscription_type_becomes_plan_name() {
     let fixture = ClaudeFixture::new(&stringify(
@@ -430,7 +409,6 @@ fn subscription_type_becomes_plan_name() {
     assert_eq!(fixture.read().plan_name.as_deref(), Some("max"));
 }
 
-// parity: TS-aiUsage-readClaudeUsage-24b287
 #[test]
 fn empty_windows_are_an_empty_response_error() {
     let fixture = ClaudeFixture::new(&create_credentials_json("access-token", None));

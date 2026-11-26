@@ -426,7 +426,6 @@ mod tests {
 
     use super::*;
 
-    // parity: TS-lib-gitOperations-5ee9d9
     #[test]
     fn multibyte_characters_split_across_chunks_are_decoded_once_whole() {
         let mut decoder = Utf8ChunkDecoder::default();

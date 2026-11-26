@@ -42,7 +42,6 @@ fn removals(fixture: &KanbanFixture) -> Vec<SessionRemoval> {
     fixture.worktrees.session_removals.lock().unwrap().clone()
 }
 
-// parity: TS-main-kanbanService-2ac5ce
 #[test]
 fn closing_the_old_session_removes_tmux_and_records_the_zellij_session() {
     let (fixture, _, task) = tmux_task_fixture();
@@ -80,7 +79,6 @@ fn closing_the_old_session_removes_tmux_and_records_the_zellij_session() {
     )));
 }
 
-// parity: TS-main-kanbanService-9d7bb8
 #[test]
 fn keeping_the_old_session_only_detaches_and_changes_the_type() {
     let (fixture, _, task) = tmux_task_fixture();
@@ -96,7 +94,6 @@ fn keeping_the_old_session_only_detaches_and_changes_the_type() {
     assert_eq!(changed.session_type, Some(SessionType::Zellij));
 }
 
-// parity: TS-main-kanbanService-cdb75b
 #[test]
 fn the_same_session_type_leaves_the_session_untouched() {
     let (fixture, _, task) = tmux_task_fixture();
@@ -113,7 +110,6 @@ fn the_same_session_type_leaves_the_session_untouched() {
     assert!(fixture.events().is_empty());
 }
 
-// parity: TS-main-kanbanService-61c0ee
 #[test]
 fn a_task_without_a_session_has_nothing_to_change() {
     let fixture = KanbanFixture::new();
@@ -135,7 +131,6 @@ fn a_task_without_a_session_has_nothing_to_change() {
     );
 }
 
-// parity: TS-main-kanbanService-6e66b4
 #[test]
 fn bulk_targets_are_tasks_with_another_session_type_including_done_with_live_count_and_hosts() {
     let fixture = KanbanFixture::new();
@@ -181,7 +176,6 @@ fn bulk_targets_are_tasks_with_another_session_type_including_done_with_live_cou
     assert_eq!(fixture.worktrees.alive_checks.load(Ordering::SeqCst), 2);
 }
 
-// parity: TS-main-kanbanService-e21df6
 #[test]
 fn bulk_change_closes_only_sessions_of_tasks_that_switched_and_counts_failures() {
     let fixture = KanbanFixture::new();

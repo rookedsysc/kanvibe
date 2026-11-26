@@ -140,7 +140,6 @@ fn stored_notifications(fixture: &BridgeFixture) -> Value {
     serde_json::from_str(&fixture.app_setting("app_notifications").unwrap()).unwrap()
 }
 
-// parity: TS-main-mobileBridgeService-31d17f
 #[test]
 fn inbox_lists_newest_first_and_exposes_only_the_action_type() {
     let fixture = fixture();
@@ -167,7 +166,6 @@ fn inbox_lists_newest_first_and_exposes_only_the_action_type() {
     );
 }
 
-// parity: TS-main-mobileBridgeService-9a780e
 #[test]
 fn inbox_is_empty_without_stored_notifications() {
     assert!(
@@ -179,7 +177,6 @@ fn inbox_is_empty_without_stored_notifications() {
     );
 }
 
-// parity: TS-main-mobileBridgeService-bb7c3e
 #[test]
 fn marking_one_read_reaches_the_desktop_store_and_distinguishes_missing() {
     let fixture = fixture();
@@ -227,7 +224,6 @@ fn marking_one_read_reaches_the_desktop_store_and_distinguishes_missing() {
     );
 }
 
-// parity: TS-main-mobileBridgeService-f4a952
 #[test]
 fn marking_all_read_covers_notifications_without_task() {
     let fixture = fixture();
@@ -252,7 +248,6 @@ fn marking_all_read_covers_notifications_without_task() {
     );
 }
 
-// parity: TS-main-mobileBridgeService-78514d
 #[test]
 fn marking_task_read_changes_only_that_task_and_returns_the_count() {
     let fixture = fixture();
@@ -290,7 +285,6 @@ fn marking_task_read_changes_only_that_task_and_returns_the_count() {
     );
 }
 
-// parity: TS-main-mobileBridgeService-937a9c
 #[test]
 fn change_listener_sees_completed_saves_until_unsubscribed() {
     let fixture = fixture();
@@ -343,7 +337,6 @@ fn change_listener_sees_completed_saves_until_unsubscribed() {
     assert_eq!(*lock(&saved_read_states), vec![vec![false], vec![true]]);
 }
 
-// parity: TS-main-mobileBridgeService-a42f02
 #[test]
 fn single_task_lookup_adds_the_project_name_or_returns_none() {
     let fixture = fixture();
@@ -366,7 +359,6 @@ fn single_task_lookup_adds_the_project_name_or_returns_none() {
     assert_eq!(fixture.bridge.get_mobile_task("missing").unwrap(), None);
 }
 
-// parity: TS-main-mobileBridgeService-65a2e8
 #[test]
 fn create_uses_the_branch_name_as_title_through_the_desktop_path() {
     let fixture = fixture();
@@ -391,7 +383,6 @@ fn create_uses_the_branch_name_as_title_through_the_desktop_path() {
     assert_eq!(input.session_type, Some(SessionType::Tmux));
 }
 
-// parity: TS-main-mobileBridgeService-acf53f
 #[test]
 fn created_worktree_task_registers_only_on_peer_desktops() {
     let fixture = fixture();
@@ -422,7 +413,6 @@ fn created_worktree_task_registers_only_on_peer_desktops() {
     );
 }
 
-// parity: TS-main-mobileBridgeService-1be9f6
 #[test]
 fn task_without_worktree_is_not_propagated() {
     let fixture = fixture();
@@ -432,7 +422,6 @@ fn task_without_worktree_is_not_propagated() {
     assert!(fixture.peers.calls.all().is_empty());
 }
 
-// parity: TS-main-mobileBridgeService-29f754
 #[test]
 fn shell_expanding_branch_names_are_blocked_before_the_desktop() {
     let fixture = fixture();
@@ -453,7 +442,6 @@ fn shell_expanding_branch_names_are_blocked_before_the_desktop() {
     assert_eq!(fixture.tasks.calls.count_starting_with("create_task"), 0);
 }
 
-// parity: TS-main-mobileBridgeService-2314bf
 #[test]
 fn parent_path_branch_names_are_blocked() {
     let fixture = fixture();
@@ -470,7 +458,6 @@ fn parent_path_branch_names_are_blocked() {
     assert_eq!(fixture.tasks.calls.count_starting_with("create_task"), 0);
 }
 
-// parity: TS-main-mobileBridgeService-7b9cc1
 #[test]
 fn base_branch_follows_the_same_rule() {
     let fixture = fixture();
@@ -487,7 +474,6 @@ fn base_branch_follows_the_same_rule() {
     assert_eq!(fixture.tasks.calls.count_starting_with("create_task"), 0);
 }
 
-// parity: TS-main-mobileBridgeService-af177f
 #[test]
 fn omitted_session_type_uses_the_pc_default_and_chosen_values_are_validated() {
     let fixture = fixture();
@@ -518,7 +504,6 @@ fn omitted_session_type_uses_the_pc_default_and_chosen_values_are_validated() {
     assert_eq!(inputs[1].session_type, Some(SessionType::Tmux));
 }
 
-// parity: TS-main-mobileBridgeService-082386
 #[test]
 fn fields_missing_from_the_mobile_screen_never_reach_the_desktop() {
     let fixture = fixture();
@@ -540,7 +525,6 @@ fn prepare_session_change(fixture: &BridgeFixture) {
     *lock(&fixture.dependencies.status) = Some(dependency_status(true, Some("zellij")));
 }
 
-// parity: TS-main-mobileBridgeService-731a98
 #[test]
 fn ready_session_tool_hands_over_to_the_desktop_change_path() {
     let fixture = fixture();
@@ -566,7 +550,6 @@ fn ready_session_tool_hands_over_to_the_desktop_change_path() {
     assert_eq!(changed.session_type, Some(SessionType::Zellij));
 }
 
-// parity: TS-main-mobileBridgeService-97ecbd
 #[test]
 fn missing_session_tool_is_rejected_with_its_name() {
     let fixture = fixture();
@@ -589,7 +572,6 @@ fn missing_session_tool_is_rejected_with_its_name() {
     );
 }
 
-// parity: TS-main-mobileBridgeService-b21dc4
 #[test]
 fn unknown_session_type_is_blocked() {
     let fixture = fixture();
@@ -610,7 +592,6 @@ fn unknown_session_type_is_blocked() {
     );
 }
 
-// parity: TS-main-mobileBridgeService-50d514
 #[test]
 fn session_change_of_missing_task_returns_none() {
     let fixture = fixture();
@@ -632,7 +613,6 @@ fn session_change_of_missing_task_returns_none() {
     );
 }
 
-// parity: TS-main-mobileBridgeService-35c62d
 #[test]
 fn session_change_watch_forwards_only_the_watched_task_until_released() {
     let fixture = fixture();
@@ -650,7 +630,6 @@ fn session_change_watch_forwards_only_the_watched_task_until_released() {
     assert_eq!(*lock(&change_count), 1);
 }
 
-// parity: TS-main-mobileBridgeService-2ca367
 #[test]
 fn registration_removal_does_not_take_the_resource_deletion_path() {
     let fixture = fixture();
@@ -677,7 +656,6 @@ fn peer_result(url: &str, is_success: bool) -> PeerTargetResult {
     }
 }
 
-// parity: TS-main-mobileBridgeService-069a38
 #[test]
 fn default_delete_rejects_dirty_worktrees_and_counts_failed_peers() {
     let fixture = fixture();
@@ -698,7 +676,6 @@ fn default_delete_rejects_dirty_worktrees_and_counts_failed_peers() {
     );
 }
 
-// parity: TS-main-mobileBridgeService-d1fe0d
 #[test]
 fn forced_delete_ignores_changes_and_missing_task_returns_none() {
     let fixture = fixture();
@@ -716,7 +693,6 @@ fn forced_delete_ignores_changes_and_missing_task_returns_none() {
     );
 }
 
-// parity: TS-main-mobileBridgeService-560e3e
 #[test]
 fn known_status_goes_through_the_desktop_path() {
     let fixture = fixture();
@@ -732,7 +708,6 @@ fn known_status_goes_through_the_desktop_path() {
     );
 }
 
-// parity: TS-main-mobileBridgeService-50cfbd
 #[test]
 fn unknown_status_is_blocked() {
     let fixture = fixture();
@@ -746,7 +721,6 @@ fn unknown_status_is_blocked() {
     assert!(fixture.tasks.calls.all().is_empty());
 }
 
-// parity: TS-main-mobileBridgeService-ba664a
 #[test]
 fn status_move_of_deleted_task_returns_none() {
     let fixture = fixture();
@@ -761,7 +735,6 @@ fn status_move_of_deleted_task_returns_none() {
     );
 }
 
-// parity: TS-main-mobileBridgeService-0e02a7
 #[test]
 fn project_branches_use_the_desktop_lookup() {
     let fixture = fixture();
@@ -780,7 +753,6 @@ fn project_branches_use_the_desktop_lookup() {
     );
 }
 
-// parity: TS-main-mobileBridgeService-66b16d
 #[test]
 fn deduplicated_board_sends_each_icon_once_and_default_board_is_unchanged() {
     let fixture = fixture();
@@ -817,7 +789,6 @@ fn deduplicated_board_sends_each_icon_once_and_default_board_is_unchanged() {
     assert!(full.get("projectIcons").is_none());
 }
 
-// parity: TS-main-mobileBridgeService-571bfa
 #[test]
 fn board_carries_the_desktop_default_session_type() {
     let fixture = fixture();
@@ -828,7 +799,6 @@ fn board_carries_the_desktop_default_session_type() {
     assert_eq!(board.default_session_type, SessionType::Zellij);
 }
 
-// parity: TS-main-mobileBridgeService-f0f0f1
 #[test]
 fn notification_settings_are_deduplicated_and_empty_lists_kept() {
     let fixture = fixture();
@@ -858,7 +828,6 @@ fn notification_settings_are_deduplicated_and_empty_lists_kept() {
     );
 }
 
-// parity: TS-main-mobileBridgeService-a1f34a
 #[test]
 fn invalid_notification_settings_are_rejected_before_saving() {
     let inputs = [
@@ -944,7 +913,6 @@ fn queue_detail(
 
 const CODEX: AiSessionProvider = AiSessionProvider::Codex;
 
-// parity: TS-main-mobileBridgeService-a428ce
 #[test]
 fn attachments_come_only_from_history_found_in_the_current_task() {
     let fixture = fixture();
@@ -998,7 +966,6 @@ fn attachments_come_only_from_history_found_in_the_current_task() {
     assert_eq!(lock(&fixture.projects.attachment_requests).len(), before);
 }
 
-// parity: TS-main-mobileBridgeService-ec098b
 #[test]
 fn task_file_is_read_from_the_workspace_and_failure_reason_is_kept() {
     let fixture = fixture();
@@ -1034,7 +1001,6 @@ fn task_file_is_read_from_the_workspace_and_failure_reason_is_kept() {
     assert_eq!(error.to_string(), "too-large");
 }
 
-// parity: TS-main-mobileBridgeService-705019
 #[test]
 fn attachment_reader_errors_are_not_exposed() {
     let fixture = fixture();
@@ -1060,7 +1026,6 @@ fn attachment_reader_errors_are_not_exposed() {
     );
 }
 
-// parity: TS-main-mobileBridgeService-5ad3db
 #[test]
 fn listed_source_is_reused_for_details_and_stripped_from_responses() {
     let fixture = fixture();
@@ -1115,7 +1080,6 @@ fn listed_source_is_reused_for_details_and_stripped_from_responses() {
     );
 }
 
-// parity: TS-main-mobileBridgeService-186647
 #[test]
 fn stale_cached_source_is_looked_up_once_more() {
     let fixture = fixture();
@@ -1146,7 +1110,6 @@ fn stale_cached_source_is_looked_up_once_more() {
     );
 }
 
-// parity: TS-main-mobileBridgeService-d427bf
 #[test]
 fn same_session_id_in_another_task_does_not_share_the_cache() {
     let fixture = fixture();
@@ -1166,7 +1129,6 @@ fn same_session_id_in_another_task_does_not_share_the_cache() {
     assert!(lock(&fixture.projects.detail_requests).is_empty());
 }
 
-// parity: TS-main-mobileBridgeService-1d083d
 #[test]
 fn chosen_session_is_found_even_beyond_the_cache_limit() {
     let fixture = fixture();
@@ -1194,7 +1156,6 @@ fn chosen_session_is_found_even_beyond_the_cache_limit() {
     );
 }
 
-// parity: TS-main-mobileBridgeService-65cec0
 #[test]
 fn deleted_cached_source_is_looked_up_once_more() {
     let fixture = fixture();
@@ -1235,7 +1196,6 @@ fn deleted_cached_source_is_looked_up_once_more() {
     );
 }
 
-// parity: TS-main-mobileBridgeService-0793a9
 #[test]
 fn permission_errors_stay_detail_failures() {
     let fixture = fixture();
@@ -1280,7 +1240,6 @@ fn path_text(path: &Path) -> String {
     path.to_string_lossy().into_owned()
 }
 
-// parity: TS-main-mobileBridgeService-289274
 #[test]
 fn existing_folder_is_verified_then_listed_by_the_desktop_service() {
     let (fixture, directory) = folder_fixture();
@@ -1297,7 +1256,6 @@ fn existing_folder_is_verified_then_listed_by_the_desktop_service() {
     );
 }
 
-// parity: TS-main-mobileBridgeService-f1bdf0
 #[test]
 fn home_shorthand_resolves_to_the_connected_pc_home() {
     let (fixture, directory) = folder_fixture();
@@ -1313,7 +1271,6 @@ fn home_shorthand_resolves_to_the_connected_pc_home() {
     );
 }
 
-// parity: TS-main-mobileBridgeService-5eee20
 #[test]
 fn disallowed_paths_are_rejected_before_any_lookup() {
     let (fixture, _directory) = folder_fixture();
@@ -1334,7 +1291,6 @@ fn disallowed_paths_are_rejected_before_any_lookup() {
     assert!(fixture.projects.calls.all().is_empty());
 }
 
-// parity: TS-main-mobileBridgeService-2d9063
 #[test]
 fn missing_folders_and_plain_files_are_not_shown_as_empty_folders() {
     let (fixture, directory) = folder_fixture();
@@ -1354,7 +1310,6 @@ fn missing_folders_and_plain_files_are_not_shown_as_empty_folders() {
     assert!(fixture.projects.calls.all().is_empty());
 }
 
-// parity: TS-main-mobileBridgeService-459621
 #[test]
 fn scan_verifies_the_folder_and_keeps_the_scan_result() {
     let (fixture, directory) = folder_fixture();

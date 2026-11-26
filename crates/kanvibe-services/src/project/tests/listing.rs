@@ -10,7 +10,6 @@ use super::fakes::Harness;
 use crate::project::adapters::HostProjectRepositoryProbe;
 use crate::project::{ProjectService, ProjectServiceParts};
 
-// parity: TS-main-projectService-c34bd3
 #[test]
 fn remote_directories_are_scanned_without_session_tool_checks() {
     let harness = Harness::new();
@@ -33,7 +32,6 @@ fn remote_directories_are_scanned_without_session_tool_checks() {
     assert_eq!(directories, ["api", "web"]);
 }
 
-// parity: TS-main-projectService-26a6a8
 #[test]
 fn tilde_path_is_expanded_to_the_local_home() {
     let harness = Harness::new();
@@ -54,7 +52,6 @@ fn tilde_path_is_expanded_to_the_local_home() {
     assert_eq!(directories, ["projects"]);
 }
 
-// parity: TS-main-projectService-78a108
 #[test]
 fn remote_tilde_path_is_scanned_from_the_remote_home() {
     let harness = Harness::new();
@@ -73,7 +70,6 @@ fn remote_tilde_path_is_scanned_from_the_remote_home() {
     assert_eq!(directories, ["projects"]);
 }
 
-// parity: TS-main-projectService-b81a84
 #[test]
 fn remote_project_branches_are_listed_without_a_blocking_fetch() {
     let harness = Harness::new();
@@ -107,7 +103,6 @@ fn local_shell_probe(home: &str) -> HostProjectRepositoryProbe {
     HostProjectRepositoryProbe::new(Arc::new(HostFileAccess::new(Arc::new(runner), home)))
 }
 
-// parity: TS-lib-gitLiteralPaths-8dadcd
 #[test]
 fn folder_browsing_keeps_directory_names_with_command_substitution() {
     let root = tempfile::tempdir().unwrap();

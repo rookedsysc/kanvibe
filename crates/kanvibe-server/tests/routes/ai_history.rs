@@ -14,7 +14,6 @@ use crate::harness::*;
 
 const DETAIL_PATH: &str = "/api/mobile/tasks/task-1/ai-sessions/hermes/session-1";
 
-// parity: TS-electron-mobileRoutes-eae433
 #[tokio::test]
 async fn history_list_and_detail_need_authentication() {
     let server = TestServer::start().await;
@@ -24,7 +23,6 @@ async fn history_list_and_detail_need_authentication() {
     assert_eq!(server.fake.count("get_mobile_ai_sessions"), 0);
 }
 
-// parity: TS-electron-mobileRoutes-63f33f
 #[tokio::test]
 async fn history_list_passes_search_and_page_values() {
     let server = TestServer::start().await;
@@ -46,7 +44,6 @@ async fn history_list_passes_search_and_page_values() {
     );
 }
 
-// parity: TS-electron-mobileRoutes-db4d5d
 #[tokio::test]
 async fn history_detail_passes_the_role_filter_and_returns_the_conversation() {
     let server = TestServer::start().await;
@@ -66,7 +63,6 @@ async fn history_detail_passes_the_role_filter_and_returns_the_conversation() {
     );
 }
 
-// parity: TS-electron-mobileRoutes-c6ae9d
 #[tokio::test]
 async fn invalid_history_query_values_are_rejected() {
     let server = TestServer::start().await;
@@ -91,7 +87,6 @@ async fn invalid_history_query_values_are_rejected() {
     assert_eq!(server.fake.count("get_mobile_ai_session_detail"), 0);
 }
 
-// parity: TS-electron-mobileRoutes-90d62e
 #[tokio::test]
 async fn unknown_agents_are_400_and_missing_tasks_or_sessions_are_404() {
     let server = TestServer::start().await;
@@ -198,7 +193,6 @@ fn install_codex_readers(server: &TestServer, home: String, source_ref: String) 
         });
 }
 
-// parity: TS-electron-mobileRoutes-0177aa
 #[tokio::test]
 async fn real_codex_fixture_readers_flow_through_the_http_contract() {
     let server = TestServer::start().await;
@@ -240,7 +234,6 @@ fn scan(body: &Value) -> HttpCall {
     HttpCall::new("POST", "/api/mobile/projects/scan").json(body)
 }
 
-// parity: TS-electron-mobileRoutes-8d1db5
 #[tokio::test]
 async fn directory_listing_starts_at_home_and_decodes_the_path() {
     let server = TestServer::start().await;
@@ -264,7 +257,6 @@ async fn directory_listing_starts_at_home_and_decodes_the_path() {
     );
 }
 
-// parity: TS-electron-mobileRoutes-c60b4f
 #[tokio::test]
 async fn directory_listing_and_project_scan_need_authentication() {
     let server = TestServer::start().await;
@@ -285,7 +277,6 @@ async fn directory_listing_and_project_scan_need_authentication() {
     );
 }
 
-// parity: TS-electron-mobileRoutes-bfa69f
 #[tokio::test]
 async fn only_the_chosen_folder_is_scanned_and_the_result_returned() {
     let server = TestServer::start().await;
@@ -300,7 +291,6 @@ async fn only_the_chosen_folder_is_scanned_and_the_result_returned() {
     );
 }
 
-// parity: TS-electron-mobileRoutes-32762a
 #[tokio::test]
 async fn scan_bodies_without_a_root_path_are_rejected() {
     let server = TestServer::start().await;
@@ -322,7 +312,6 @@ async fn scan_bodies_without_a_root_path_are_rejected() {
     assert_eq!(server.fake.count("scan_mobile_projects"), 0);
 }
 
-// parity: TS-electron-mobileRoutes-ea05f4
 #[tokio::test]
 async fn malformed_scan_json_is_rejected_before_the_service() {
     let server = TestServer::start().await;
@@ -337,7 +326,6 @@ async fn malformed_scan_json_is_rejected_before_the_service() {
     assert_eq!(server.fake.count("scan_mobile_projects"), 0);
 }
 
-// parity: TS-electron-mobileRoutes-4223a4
 #[tokio::test]
 async fn already_registered_folders_show_the_skipped_result() {
     let server = TestServer::start().await;
@@ -352,7 +340,6 @@ async fn already_registered_folders_show_the_skipped_result() {
     );
 }
 
-// parity: TS-electron-mobileRoutes-fe20a7
 #[tokio::test]
 async fn missing_folders_answer_the_service_safe_message() {
     let server = TestServer::start().await;
@@ -366,7 +353,6 @@ async fn missing_folders_answer_the_service_safe_message() {
     assert_eq!(reply.pair(), (400, failure("폴더를 찾을 수 없습니다")));
 }
 
-// parity: TS-electron-mobileRoutes-7c918b
 #[tokio::test]
 async fn internal_scan_errors_are_hidden() {
     let server = TestServer::start().await;

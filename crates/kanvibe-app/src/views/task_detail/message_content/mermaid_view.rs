@@ -224,7 +224,6 @@ mod tests {
         FontBook::from_font_files(files).expect("글꼴")
     }
 
-    // parity: TS-renderer-AiSessionMessageContent-af769e
     #[test]
     fn wide_diagrams_keep_their_natural_width_instead_of_shrinking_to_the_column() {
         let definition = "graph LR\n  A[아주 긴 첫 번째 단계 이름] --> B[아주 긴 두 번째 단계 이름] --> C[아주 긴 세 번째 단계 이름] --> D[아주 긴 네 번째 단계 이름] --> E[아주 긴 다섯 번째 단계 이름]";

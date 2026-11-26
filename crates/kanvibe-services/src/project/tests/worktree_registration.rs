@@ -25,7 +25,6 @@ fn scheduled_installs(harness: &Harness) -> Vec<(String, String, Option<String>)
         .collect()
 }
 
-// parity: TS-main-projectService-68d2f7
 #[test]
 fn scanned_local_todo_worktree_task_gets_hooks() {
     let harness = Harness::new();
@@ -45,7 +44,6 @@ fn scanned_local_todo_worktree_task_gets_hooks() {
     assert!(install_calls(&harness).contains(&(worktree_path.to_string(), task.id, None)));
 }
 
-// parity: TS-main-projectService-cdb404
 #[test]
 fn project_scan_does_not_register_git_submodules_separately() {
     let harness = Harness::new();
@@ -108,7 +106,6 @@ fn remote_worktree_scan_harness() -> (Harness, &'static str) {
     (harness, worktree_path)
 }
 
-// parity: TS-main-projectService-c631d5
 #[test]
 fn scanning_only_a_worktree_path_keeps_the_remote_host() {
     for has_session in [false, true] {
@@ -140,7 +137,6 @@ fn scanning_only_a_worktree_path_keeps_the_remote_host() {
     }
 }
 
-// parity: TS-main-projectService-f34fd3
 #[test]
 fn alive_herdr_session_is_used_when_tmux_is_absent() {
     let (harness, _) = remote_worktree_scan_harness();
@@ -164,7 +160,6 @@ fn alive_herdr_session_is_used_when_tmux_is_absent() {
     );
 }
 
-// parity: TS-main-projectService-fe1bdd
 #[test]
 fn remote_scan_registers_worktrees_without_reading_root_hook_status() {
     let harness = Harness::new();
@@ -185,7 +180,6 @@ fn remote_scan_registers_worktrees_without_reading_root_hook_status() {
     assert!(harness.hooks.status_calls.lock().unwrap().is_empty());
 }
 
-// parity: TS-main-projectService-9bfbef
 #[test]
 fn scan_follow_up_only_touches_repositories_found_by_this_scan() {
     let harness = Harness::new();
@@ -202,7 +196,6 @@ fn scan_follow_up_only_touches_repositories_found_by_this_scan() {
     assert!(!listed.contains(&"/workspace/web".to_string()));
 }
 
-// parity: TS-main-projectService-1344cf
 #[test]
 fn orphan_task_with_only_the_same_branch_name_is_not_reused() {
     let harness = Harness::new();
@@ -236,7 +229,6 @@ fn orphan_task_with_only_the_same_branch_name_is_not_reused() {
     assert!(install_calls(&harness).contains(&(worktree_path.to_string(), created.id, None)));
 }
 
-// parity: TS-main-projectService-6fcfe5
 #[test]
 fn background_sync_does_not_repair_existing_root_hooks() {
     let harness = Harness::new();
@@ -257,7 +249,6 @@ fn background_sync_does_not_repair_existing_root_hooks() {
     assert!(install_calls(&harness).is_empty());
 }
 
-// parity: TS-main-projectService-5ce143
 #[test]
 fn non_git_project_path_is_skipped_without_writing_state_files() {
     let harness = Harness::new();
@@ -285,7 +276,6 @@ fn non_git_project_path_is_skipped_without_writing_state_files() {
     assert!(harness.state_files.persisted.lock().unwrap().is_empty());
 }
 
-// parity: TS-main-projectService-ebdf57
 #[test]
 fn ssh_failure_in_the_git_probe_does_not_skip_the_sync() {
     let harness = Harness::new();
@@ -328,7 +318,6 @@ fn shared_color_harness() -> (Harness, kanvibe_domain::project::Project) {
     (harness, project)
 }
 
-// parity: TS-main-projectService-d12bd3
 #[test]
 fn user_color_edit_during_shared_color_sync_is_not_overwritten() {
     let (harness, project) = shared_color_harness();
@@ -347,7 +336,6 @@ fn user_color_edit_during_shared_color_sync_is_not_overwritten() {
     assert_eq!(harness.projects()[0].color.as_deref(), Some("#111111"));
 }
 
-// parity: TS-main-projectService-83d2f5
 #[test]
 fn unchanged_shared_color_is_applied_to_the_db_and_board() {
     let (harness, _) = shared_color_harness();
@@ -361,7 +349,6 @@ fn unchanged_shared_color_is_applied_to_the_db_and_board() {
     assert_eq!(harness.projects()[0].color.as_deref(), Some("#0064FF"));
 }
 
-// parity: TS-main-projectService-7acbb3
 #[test]
 fn remote_background_sync_does_not_schedule_root_hook_repair() {
     let harness = Harness::new();
@@ -383,7 +370,6 @@ fn remote_background_sync_does_not_schedule_root_hook_repair() {
     assert!(install_calls(&harness).is_empty());
 }
 
-// parity: TS-main-projectService-5c78b1
 #[test]
 fn background_sync_registers_a_new_worktree_as_a_todo_task() {
     let harness = Harness::new();
@@ -420,7 +406,6 @@ fn background_sync_registers_a_new_worktree_as_a_todo_task() {
     );
 }
 
-// parity: TS-main-projectService-1888bd
 #[test]
 fn new_worktree_with_an_alive_session_but_no_shared_state_stays_todo() {
     let harness = Harness::new();
@@ -474,7 +459,6 @@ fn child_worktree_fixture(
     (harness, child)
 }
 
-// parity: TS-main-projectService-804a2c
 #[test]
 fn worktree_sync_keeps_an_existing_base_branch_and_only_fills_missing_values() {
     let cases = [
@@ -507,7 +491,6 @@ fn worktree_sync_keeps_an_existing_base_branch_and_only_fills_missing_values() {
     }
 }
 
-// parity: TS-main-projectService-15d303
 #[test]
 fn new_worktree_is_registered_with_the_shared_task_status() {
     let harness = Harness::new();
@@ -537,7 +520,6 @@ fn new_worktree_is_registered_with_the_shared_task_status() {
     );
 }
 
-// parity: TS-main-projectService-dd8aad
 #[test]
 fn existing_worktree_task_follows_the_shared_task_status() {
     let harness = Harness::new();
@@ -571,7 +553,6 @@ fn existing_worktree_task_follows_the_shared_task_status() {
     );
 }
 
-// parity: TS-main-projectService-1f5ffc
 #[test]
 fn registration_keeps_the_default_worktree_status_after_attaching_tmux() {
     let harness = Harness::new();
@@ -606,7 +587,6 @@ fn registration_keeps_the_default_worktree_status_after_attaching_tmux() {
     assert_eq!(root.status, TaskStatus::Review);
 }
 
-// parity: TS-main-projectService-da4529
 #[test]
 fn orphan_worktree_task_is_linked_with_the_shared_status() {
     let harness = Harness::new();
@@ -643,7 +623,6 @@ fn orphan_worktree_task_is_linked_with_the_shared_status() {
     assert_eq!(linked.status, TaskStatus::Done);
 }
 
-// parity: TS-main-projectService-820662
 #[test]
 fn attaching_the_main_branch_session_keeps_the_shared_status() {
     let harness = Harness::new();
@@ -671,7 +650,6 @@ fn attaching_the_main_branch_session_keeps_the_shared_status() {
     assert_eq!(attached.status, TaskStatus::Progress);
 }
 
-// parity: TS-main-projectService-3c213e
 #[test]
 fn remote_new_worktree_hooks_are_scheduled_in_the_background() {
     let harness = Harness::new();
@@ -700,7 +678,6 @@ fn remote_new_worktree_hooks_are_scheduled_in_the_background() {
     assert!(install_calls(&harness).is_empty());
 }
 
-// parity: TS-main-projectService-28872a
 #[test]
 fn background_sync_lists_worktrees_one_project_at_a_time() {
     let harness = Harness::new();
@@ -743,7 +720,6 @@ fn background_sync_lists_worktrees_one_project_at_a_time() {
     );
 }
 
-// parity: TS-main-projectService-ec9aa5
 #[test]
 fn icon_backfill_runs_in_parallel_before_the_sequential_worktree_scan() {
     let harness = Harness::new();

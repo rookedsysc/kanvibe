@@ -512,7 +512,6 @@ mod tests {
         assert_eq!(decode_base64("a$=="), None);
     }
 
-    // parity: TS-renderer-AiChatAttachment-33cf88
     #[test]
     fn a_late_response_from_an_earlier_request_does_not_replace_the_current_image() {
         let mut state = ChatAttachmentState::default();
@@ -555,7 +554,6 @@ mod tests {
         assert_ne!(element("task-a").state_id(), element("task-b").state_id());
     }
 
-    // parity: TS-renderer-AiChatAttachment-e644e9
     #[test]
     fn an_unavailable_attachment_recovers_when_retried() {
         let mut state = ChatAttachmentState::default();
@@ -570,7 +568,6 @@ mod tests {
         assert!(!state.is_failed);
     }
 
-    // parity: TS-renderer-AiChatAttachment-5fded2
     #[test]
     fn an_image_only_message_shows_its_image_and_expands_without_a_copy_action() {
         let message = kanvibe_ai::types::AggregatedAiMessage::plain(
@@ -593,7 +590,6 @@ mod tests {
         assert!(state.is_expanded);
     }
 
-    // parity: TS-renderer-AiChatAttachment-189cef
     #[test]
     fn file_bytes_stay_unread_until_an_explicit_download() {
         assert!(!should_load_when_visible(AiAttachmentKind::File));
@@ -608,7 +604,6 @@ mod tests {
         );
     }
 
-    // parity: TS-renderer-AiChatAttachment-3b5b3e
     #[test]
     fn file_urls_and_active_image_markup_are_refused() {
         let mut state = ChatAttachmentState::default();

@@ -1,8 +1,0 @@
-%%{init: {"theme": "forest"}}%%
-C4Context
-    title System Context
-    Person(user, "User", "A KanVibe user")
-    System(app, "KanVibe", "Task board with terminals")
-    System_Ext(git, "GitHub", "Hosts repositories")
-    Rel(user, app, "Uses")
-    Rel(app, git, "Fetches PRs")

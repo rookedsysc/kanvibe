@@ -136,7 +136,6 @@ mod tests {
         }
     }
 
-    // parity: TS-electron-runtimeEnvironment-f21bd6
     #[test]
     fn uses_the_requested_app_data_directory() {
         let mode = LaunchMode {
@@ -149,7 +148,6 @@ mod tests {
         );
     }
 
-    // parity: TS-electron-runtimeEnvironment-d4830f
     #[test]
     fn keeps_the_installed_app_user_data_path() {
         let mode = LaunchMode {
@@ -159,7 +157,6 @@ mod tests {
         assert_eq!(resolve(&mode), Ok(PathBuf::from(USER_DATA)));
     }
 
-    // parity: TS-electron-runtimeEnvironment-19a69e
     #[test]
     fn selects_persistent_data_by_launch_mode() {
         let cases = [
@@ -186,7 +183,6 @@ mod tests {
         }
     }
 
-    // parity: TS-electron-runtimeEnvironment-0b3891
     #[test]
     fn manual_qa_restarts_reuse_the_same_directory() {
         assert_eq!(
@@ -195,7 +191,6 @@ mod tests {
         );
     }
 
-    // parity: TS-electron-runtimeEnvironment-06e08e
     #[test]
     fn blank_data_directory_override_counts_as_absent() {
         let mode = LaunchMode {
@@ -205,7 +200,6 @@ mod tests {
         assert_eq!(resolve(&mode), Ok(Path::new(APP_DATA).join("kanvibe-qa")));
     }
 
-    // parity: TS-electron-runtimeEnvironment-0dd145
     #[test]
     fn automated_qa_requires_a_fixture_directory() {
         let mode = LaunchMode {
@@ -216,7 +210,6 @@ mod tests {
         assert!(error.to_string().contains("KANVIBE_APP_DATA_DIR"));
     }
 
-    // parity: TS-electron-runtimeEnvironment-513360
     #[test]
     fn automated_qa_uses_the_trimmed_fixture_directory() {
         let mode = LaunchMode {
@@ -227,7 +220,6 @@ mod tests {
         assert_eq!(resolve(&mode), Ok(PathBuf::from("/tmp/kanvibe-fixture")));
     }
 
-    // parity: TS-electron-runtimeEnvironment-de42d5
     #[test]
     fn each_launch_kind_gets_its_own_hook_port() {
         let cases = [
@@ -261,7 +253,6 @@ mod tests {
         }
     }
 
-    // parity: TS-electron-runtimeEnvironment-81a6f1
     #[test]
     fn automated_qa_launcher_port_wins() {
         let mode = LaunchMode {
@@ -305,7 +296,6 @@ mod tests {
         assert!(!is_dev_pairing_route_enabled(&LaunchMode::default()));
     }
 
-    // parity: TS-electron-runtimeEnvironment-24c13f
     #[test]
     fn invalid_requested_hook_ports_are_refused() {
         for requested in ["abc", "0", "65536", "1.5"] {

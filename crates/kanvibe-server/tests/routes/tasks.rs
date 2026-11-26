@@ -15,7 +15,6 @@ fn reason_failure(reason: &str) -> Value {
     json!({ "success": false, "reason": reason })
 }
 
-// parity: TS-electron-mobileRoutes-4397d7
 #[tokio::test]
 async fn unauthenticated_tokens_cannot_create_tabs() {
     let server = TestServer::start().await;
@@ -29,7 +28,6 @@ async fn unauthenticated_tokens_cannot_create_tabs() {
     assert_eq!(server.fake.count("create_mobile_terminal_tab"), 0);
 }
 
-// parity: TS-electron-mobileRoutes-b6381a
 #[tokio::test]
 async fn tabs_are_added_to_the_authenticated_task_and_the_new_pane_returned() {
     let server = TestServer::start().await;
@@ -60,7 +58,6 @@ async fn tabs_are_added_to_the_authenticated_task_and_the_new_pane_returned() {
     );
 }
 
-// parity: TS-electron-mobileRoutes-e40688
 #[tokio::test]
 async fn tab_creation_without_a_session_answers_409_with_the_reason() {
     let server = TestServer::start().await;
@@ -74,7 +71,6 @@ async fn tab_creation_without_a_session_answers_409_with_the_reason() {
     assert_eq!(reply.pair(), (409, reason_failure("no-session")));
 }
 
-// parity: TS-electron-mobileRoutes-e87612
 #[tokio::test]
 async fn failed_tab_creation_hides_ssh_commands_and_hosts() {
     let server = TestServer::start().await;
@@ -88,7 +84,6 @@ async fn failed_tab_creation_hides_ssh_commands_and_hosts() {
     assert_eq!(reply.pair(), (500, failure("서버 오류")));
 }
 
-// parity: TS-electron-mobileRoutes-b02ca2
 #[tokio::test]
 async fn only_minimal_surface_requests_pass_the_new_option() {
     let server = TestServer::start().await;
@@ -126,7 +121,6 @@ async fn only_minimal_surface_requests_pass_the_new_option() {
     assert_eq!(server.fake.calls("get_task_surfaces"), expected);
 }
 
-// parity: TS-electron-mobileRoutes-7c631e
 #[tokio::test]
 async fn icon_deduplication_applies_only_on_request_and_keeps_authentication() {
     let server = TestServer::start().await;
@@ -152,7 +146,6 @@ async fn icon_deduplication_applies_only_on_request_and_keeps_authentication() {
     assert_eq!(server.fake.count("get_mobile_board"), 2);
 }
 
-// parity: TS-electron-mobileRoutes-86c2e8
 #[tokio::test]
 async fn panes_without_a_session_answer_409_with_the_reason() {
     let server = TestServer::start().await;
@@ -166,7 +159,6 @@ async fn panes_without_a_session_answer_409_with_the_reason() {
     assert_eq!(reply.pair(), (409, reason_failure("session-missing")));
 }
 
-// parity: TS-electron-mobileRoutes-912217
 #[tokio::test]
 async fn other_surface_errors_hide_the_internal_message() {
     let server = TestServer::start().await;
@@ -181,7 +173,6 @@ async fn other_surface_errors_hide_the_internal_message() {
     assert!(!reply.body.contains("secret-alias"));
 }
 
-// parity: TS-electron-mobileRoutes-667a9f
 #[tokio::test]
 async fn a_throwing_board_read_answers_500() {
     let server = TestServer::start().await;
@@ -194,7 +185,6 @@ async fn a_throwing_board_read_answers_500() {
     );
 }
 
-// parity: TS-electron-mobileRoutes-d30f12
 #[tokio::test]
 async fn broken_percent_encoding_in_the_path_answers_500() {
     let server = TestServer::start().await;
@@ -202,7 +192,6 @@ async fn broken_percent_encoding_in_the_path_answers_500() {
     assert_eq!(reply.pair(), (500, failure("서버 오류")));
 }
 
-// parity: TS-electron-mobileRoutes-dd27b0
 #[tokio::test]
 async fn a_throwing_authorization_lookup_answers_500() {
     let server = TestServer::start().await;
@@ -225,7 +214,6 @@ fn create_task(body: &Value) -> HttpCall {
         .json(body)
 }
 
-// parity: TS-electron-mobileRoutes-cf1c7d
 #[tokio::test]
 async fn task_drafts_are_passed_to_the_service_and_the_created_task_returned() {
     let server = TestServer::start().await;
@@ -238,7 +226,6 @@ async fn task_drafts_are_passed_to_the_service_and_the_created_task_returned() {
     assert_eq!(server.fake.calls("create_mobile_task"), vec![draft()]);
 }
 
-// parity: TS-electron-mobileRoutes-54f8ec
 #[tokio::test]
 async fn the_chosen_session_type_is_passed_to_task_creation() {
     let server = TestServer::start().await;
@@ -251,7 +238,6 @@ async fn the_chosen_session_type_is_passed_to_task_creation() {
     );
 }
 
-// parity: TS-electron-mobileRoutes-bddeef
 #[tokio::test]
 async fn task_creation_without_a_token_is_stopped_by_authentication() {
     let server = TestServer::start().await;
@@ -262,7 +248,6 @@ async fn task_creation_without_a_token_is_stopped_by_authentication() {
     assert_eq!(server.fake.count("create_mobile_task"), 0);
 }
 
-// parity: TS-electron-mobileRoutes-541966
 #[tokio::test]
 async fn task_creation_without_project_or_branch_is_400() {
     let server = TestServer::start().await;
@@ -282,7 +267,6 @@ async fn task_creation_without_project_or_branch_is_400() {
 }
 
 /// TS는 문자열을 `JSON.stringify`해 보냈다. 읽히는 JSON이지만 객체가 아니라 두 칸을 찾지 못한다
-// parity: TS-electron-mobileRoutes-61e530
 #[tokio::test]
 async fn non_object_task_bodies_are_400() {
     let server = TestServer::start().await;
@@ -296,7 +280,6 @@ async fn non_object_task_bodies_are_400() {
     assert_eq!(server.fake.count("create_mobile_task"), 0);
 }
 
-// parity: TS-electron-mobileRoutes-b09bfa
 #[tokio::test]
 async fn invalid_value_errors_return_their_reason() {
     let server = TestServer::start().await;
@@ -311,7 +294,6 @@ async fn invalid_value_errors_return_their_reason() {
     );
 }
 
-// parity: TS-electron-mobileRoutes-295924
 #[tokio::test]
 async fn other_task_creation_errors_hide_the_internal_message() {
     let server = TestServer::start().await;
@@ -329,7 +311,6 @@ fn move_task(body: &Value) -> HttpCall {
     HttpCall::new("PATCH", "/api/mobile/tasks/task-1/status").json(body)
 }
 
-// parity: TS-electron-mobileRoutes-1c3f0c
 #[tokio::test]
 async fn known_statuses_move_the_task() {
     let server = TestServer::start().await;
@@ -347,7 +328,6 @@ async fn known_statuses_move_the_task() {
     );
 }
 
-// parity: TS-electron-mobileRoutes-cbf401
 #[tokio::test]
 async fn moving_without_a_token_is_stopped_by_authentication() {
     let server = TestServer::start().await;
@@ -361,7 +341,6 @@ async fn moving_without_a_token_is_stopped_by_authentication() {
     assert_eq!(server.fake.count("update_mobile_task_status"), 0);
 }
 
-// parity: TS-electron-mobileRoutes-afba02
 #[tokio::test]
 async fn moving_without_a_status_is_400() {
     let server = TestServer::start().await;
@@ -375,7 +354,6 @@ async fn moving_without_a_status_is_400() {
     assert_eq!(server.fake.count("update_mobile_task_status"), 0);
 }
 
-// parity: TS-electron-mobileRoutes-e6bd1f
 #[tokio::test]
 async fn tasks_deleted_before_the_move_are_404() {
     let server = TestServer::start().await;
@@ -391,7 +369,6 @@ async fn tasks_deleted_before_the_move_are_404() {
     );
 }
 
-// parity: TS-electron-mobileRoutes-0de201
 #[tokio::test]
 async fn unknown_status_errors_return_their_reason() {
     let server = TestServer::start().await;
@@ -409,7 +386,6 @@ fn change_session_type(body: &Value) -> HttpCall {
     HttpCall::new("PATCH", "/api/mobile/tasks/task-1/session-type").json(body)
 }
 
-// parity: TS-electron-mobileRoutes-294264
 #[tokio::test]
 async fn session_type_and_close_flag_are_passed_and_the_changed_task_returned() {
     let server = TestServer::start().await;
@@ -426,7 +402,6 @@ async fn session_type_and_close_flag_are_passed_and_the_changed_task_returned() 
     );
 }
 
-// parity: TS-electron-mobileRoutes-ba6de2
 #[tokio::test]
 async fn a_non_true_close_flag_keeps_the_existing_session() {
     let server = TestServer::start().await;
@@ -438,7 +413,6 @@ async fn a_non_true_close_flag_keeps_the_existing_session() {
     );
 }
 
-// parity: TS-electron-mobileRoutes-e912e4
 #[tokio::test]
 async fn session_type_changes_need_a_token() {
     let server = TestServer::start().await;
@@ -452,7 +426,6 @@ async fn session_type_changes_need_a_token() {
     assert_eq!(server.fake.count("change_mobile_task_session_type"), 0);
 }
 
-// parity: TS-electron-mobileRoutes-0cb6f6
 #[tokio::test]
 async fn session_type_changes_without_a_type_are_400() {
     let server = TestServer::start().await;
@@ -463,7 +436,6 @@ async fn session_type_changes_without_a_type_are_400() {
     assert_eq!(server.fake.count("change_mobile_task_session_type"), 0);
 }
 
-// parity: TS-electron-mobileRoutes-b12c72
 #[tokio::test]
 async fn rejected_session_types_return_400_with_the_reason() {
     let server = TestServer::start().await;
@@ -480,7 +452,6 @@ async fn rejected_session_types_return_400_with_the_reason() {
     );
 }
 
-// parity: TS-electron-mobileRoutes-e3a781
 #[tokio::test]
 async fn a_missing_session_tool_answers_409_with_the_install_hint() {
     let server = TestServer::start().await;
@@ -500,7 +471,6 @@ async fn a_missing_session_tool_answers_409_with_the_install_hint() {
     );
 }
 
-// parity: TS-electron-mobileRoutes-1fb838
 #[tokio::test]
 async fn session_type_changes_for_missing_tasks_are_404() {
     let server = TestServer::start().await;
@@ -517,7 +487,6 @@ async fn session_type_changes_for_missing_tasks_are_404() {
     );
 }
 
-// parity: TS-electron-mobileRoutes-434731
 #[tokio::test]
 async fn session_liveness_is_reported() {
     let server = TestServer::start().await;
@@ -537,7 +506,6 @@ async fn session_liveness_is_reported() {
     );
 }
 
-// parity: TS-electron-mobileRoutes-a62aca
 #[tokio::test]
 async fn paired_devices_get_the_branch_list() {
     let server = TestServer::start().await;
@@ -552,7 +520,6 @@ async fn paired_devices_get_the_branch_list() {
     );
 }
 
-// parity: TS-electron-mobileRoutes-3f4498
 #[tokio::test]
 async fn branch_lists_need_a_token() {
     let server = TestServer::start().await;
@@ -566,7 +533,6 @@ async fn branch_lists_need_a_token() {
     assert_eq!(server.fake.count("get_mobile_project_branches"), 0);
 }
 
-// parity: TS-electron-mobileRoutes-1c6809
 #[tokio::test]
 async fn a_throwing_branch_read_answers_500() {
     let server = TestServer::start().await;
@@ -586,7 +552,6 @@ fn shortcut(body: &Value) -> HttpCall {
     HttpCall::new("POST", SHORTCUT_PATH).auth(GOOD).json(body)
 }
 
-// parity: TS-electron-mobileRoutes-ac453c
 #[tokio::test]
 async fn unauthenticated_shortcuts_do_not_run() {
     let server = TestServer::start().await;
@@ -597,7 +562,6 @@ async fn unauthenticated_shortcuts_do_not_run() {
     assert_eq!(server.fake.count("execute_mobile_terminal_shortcut"), 0);
 }
 
-// parity: TS-electron-mobileRoutes-afd595
 #[tokio::test]
 async fn only_the_path_target_and_action_reach_the_service() {
     let server = TestServer::start().await;
@@ -619,7 +583,6 @@ async fn only_the_path_target_and_action_reach_the_service() {
     );
 }
 
-// parity: TS-electron-mobileRoutes-ab6ac5
 #[tokio::test]
 async fn bodies_without_an_action_are_400() {
     let server = TestServer::start().await;
@@ -634,7 +597,6 @@ async fn bodies_without_an_action_are_400() {
     assert_eq!(server.fake.count("execute_mobile_terminal_shortcut"), 0);
 }
 
-// parity: TS-electron-mobileRoutes-a1aad6
 #[tokio::test]
 async fn actions_rejected_by_the_service_are_400() {
     let server = TestServer::start().await;
@@ -651,7 +613,6 @@ async fn actions_rejected_by_the_service_are_400() {
     );
 }
 
-// parity: TS-electron-mobileRoutes-2a2b7f
 #[tokio::test]
 async fn panes_of_another_session_are_409() {
     let server = TestServer::start().await;
@@ -665,7 +626,6 @@ async fn panes_of_another_session_are_409() {
     assert_eq!(reply.pair(), (409, reason_failure("session-not-running")));
 }
 
-// parity: TS-electron-mobileRoutes-a6c88c
 #[tokio::test]
 async fn failed_cli_commands_are_not_exposed() {
     let server = TestServer::start().await;

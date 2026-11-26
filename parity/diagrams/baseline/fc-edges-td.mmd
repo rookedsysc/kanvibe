@@ -1,7 +1,0 @@
-flowchart TD
-  Start --> Check{Valid?}
-  Check -->|Yes| Save[Save record]
-  Check -- No --> Reject[Show error]
-  Save -.-> Audit[Audit log]
-  Save ==> Done((Done))
-  Reject --- Done

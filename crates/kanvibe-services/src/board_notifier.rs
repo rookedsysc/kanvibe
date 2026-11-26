@@ -274,7 +274,6 @@ mod tests {
         serde_json::to_value(event).unwrap()
     }
 
-    // parity: TS-lib-boardNotifier-382c3b
     #[test]
     fn delivers_board_updated_to_subscribers() {
         let notifier = BoardNotifier::new();
@@ -297,7 +296,6 @@ mod tests {
         }
     }
 
-    // parity: TS-lib-boardNotifier-c541e3
     #[test]
     fn delivers_task_status_changed_with_its_payload() {
         let notifier = BoardNotifier::new();
@@ -319,7 +317,6 @@ mod tests {
         );
     }
 
-    // parity: TS-lib-boardNotifier-5b444a
     #[test]
     fn keeps_a_missing_description_as_null() {
         let notifier = BoardNotifier::new();
@@ -332,7 +329,6 @@ mod tests {
         assert_eq!(delivered["type"], "task-status-changed");
     }
 
-    // parity: TS-lib-boardNotifier-2f42ec
     #[test]
     fn delivers_hook_status_target_missing_with_its_payload() {
         let notifier = BoardNotifier::new();
@@ -355,7 +351,6 @@ mod tests {
         );
     }
 
-    // parity: TS-lib-boardNotifier-f274a4
     #[test]
     fn stops_notifying_after_unsubscribe() {
         let notifier = BoardNotifier::new();

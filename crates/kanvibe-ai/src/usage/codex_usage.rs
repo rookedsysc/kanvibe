@@ -179,7 +179,6 @@ mod tests {
         iso_string_from_ms(seconds * 1000.0)
     }
 
-    // parity: TS-aiUsage-readCodexUsage-5c6f9d
     #[test]
     fn week_long_primary_window_is_weekly() {
         let result = read_with(json!({"plan_type": "pro", "rate_limit": {
@@ -199,7 +198,6 @@ mod tests {
         );
     }
 
-    // parity: TS-aiUsage-readCodexUsage-67ed73
     #[test]
     fn session_and_weekly_windows_map_by_length() {
         let result = read_with(json!({"plan_type": "plus", "rate_limit": {
@@ -219,7 +217,6 @@ mod tests {
         assert_eq!(percents, [10.0, 80.0]);
     }
 
-    // parity: TS-aiUsage-readCodexUsage-23824d
     #[test]
     fn thirty_day_window_is_monthly() {
         let result = read_with(json!({"plan_type": "free", "rate_limit": {
@@ -238,7 +235,6 @@ mod tests {
         );
     }
 
-    // parity: TS-aiUsage-readCodexUsage-f6500e
     #[test]
     fn unknown_window_length_is_empty_response() {
         let result = read_with(json!({"plan_type": "free", "rate_limit": {
@@ -249,7 +245,6 @@ mod tests {
         assert_eq!(result.reason, Some(AiUsageFailureReason::EmptyResponse));
     }
 
-    // parity: TS-aiUsage-readCodexUsage-d5aa7b
     #[test]
     fn missing_access_token_skips_network() {
         let fixture = fixture(&stringify(&json!({"auth_mode": "apikey", "tokens": null})));
@@ -262,7 +257,6 @@ mod tests {
         assert_eq!(fixture.usage.http.request_count(), 0);
     }
 
-    // parity: TS-aiUsage-readCodexUsage-dd9205
     #[test]
     fn sends_account_id_header() {
         let fixture = fixture(&auth_json());

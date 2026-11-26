@@ -532,7 +532,6 @@ pub mod text_scale {
 mod tests {
     use super::*;
 
-    // parity: TS-styles-colorTokens-437637
     #[test]
     fn brand_and_neutral_button_use_the_point_colors_in_both_themes() {
         for mode in [ThemeMode::Dark, ThemeMode::Light] {
@@ -560,7 +559,6 @@ mod tests {
         assert_ne!(light.group_line, dark.group_line);
     }
 
-    // parity: TS-styles-globals-f98c48
     #[test]
     fn light_theme_keeps_project_and_base_tags_on_the_neutral_button() {
         let light = ThemeTokens::for_mode(ThemeMode::Light);
@@ -569,7 +567,6 @@ mod tests {
         assert_eq!(light.tag.base_branch, pair(hex(0x202632), hex(0xffffff)));
     }
 
-    // parity: TS-styles-globals-32f486
     #[test]
     fn session_and_remote_tags_change_with_the_theme() {
         let dark = ThemeTokens::for_mode(ThemeMode::Dark);
@@ -588,7 +585,6 @@ mod tests {
         assert_eq!(dark.tag.pull_request.text, dark.brand.primary);
     }
 
-    // parity: TS-styles-globals-38bfcd
     #[test]
     fn keyboard_focused_kanban_cards_get_a_high_contrast_brand_glow() {
         let dark = ThemeTokens::for_mode(ThemeMode::Dark);
@@ -601,7 +597,6 @@ mod tests {
         assert_eq!(light.shadow.kanban_task_focus[0].color, light.border.brand);
     }
 
-    // parity: TS-styles-colorTokens-079f05
     #[test]
     fn agent_conventions_document_the_color_tokens() {
         let conventions = include_str!("../../../CLAUDE.md");

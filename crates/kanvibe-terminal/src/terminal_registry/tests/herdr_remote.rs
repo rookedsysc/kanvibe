@@ -41,7 +41,6 @@ fn command_failure(message: &str, stderr: &str) -> HerdrSessionError {
     }
 }
 
-// parity: TS-lib-terminalSessionLifecycle-3bc991
 #[test]
 fn remote_herdr_attach_connects_ssh_while_machine_registration_runs_in_background() {
     // Given: machine 등록이 끝나지 않고 붙잡혀 있다
@@ -72,7 +71,6 @@ fn remote_herdr_attach_connects_ssh_while_machine_registration_runs_in_backgroun
     registration_gate.open();
 }
 
-// parity: TS-lib-terminalSessionLifecycle-b641f1
 #[test]
 fn failed_machine_registration_keeps_the_remote_pty_and_warns() {
     // Given: `machine list`와 `machine add` 어느 쪽이 실패해도 같은 실패로 올라온다
@@ -110,7 +108,6 @@ fn failed_machine_registration_keeps_the_remote_pty_and_warns() {
     }
 }
 
-// parity: TS-lib-terminalSessionLifecycle-571be0
 #[test]
 fn rejected_machine_registration_reports_the_last_stderr_line() {
     // Given: Herdr CLI는 안내 문구 뒤 마지막 줄에 거부 이유를 쓰고 실패한다
@@ -146,7 +143,6 @@ fn rejected_machine_registration_reports_the_last_stderr_line() {
     );
 }
 
-// parity: TS-lib-terminalSessionLifecycle-c63e32
 #[test]
 fn legacy_remote_server_asks_for_replacement_instead_of_registering() {
     // Given: 세션 리더가 아니지만 live handoff를 지원하는 원격 서버
@@ -182,7 +178,6 @@ fn is_waiting_for_handoff(harness: &Harness) -> bool {
     handoffs.any(|handoff| handoff.waiting_count() > 0)
 }
 
-// parity: TS-lib-terminalSessionLifecycle-4ef4cf
 #[test]
 fn approved_replacement_closes_attached_screens_and_holds_new_ones_until_done() {
     // Given: 이전 방식 서버에 붙은 원격 Herdr 화면
@@ -232,7 +227,6 @@ fn approved_replacement_closes_attached_screens_and_holds_new_ones_until_done() 
     });
 }
 
-// parity: TS-lib-terminalSessionLifecycle-bc26b7
 #[test]
 fn failed_replacement_reports_the_herdr_reason_without_registering() {
     // Given
@@ -259,7 +253,6 @@ fn failed_replacement_reports_the_herdr_reason_without_registering() {
     assert!(harness.herdr.remote_machine_calls().is_empty());
 }
 
-// parity: TS-lib-terminalSessionLifecycle-47efa4
 #[test]
 fn local_herdr_attach_never_touches_remote_machines() {
     // Given
@@ -280,7 +273,6 @@ fn local_herdr_attach_never_touches_remote_machines() {
     assert!(harness.herdr.remote_machine_calls().is_empty());
 }
 
-// parity: TS-lib-terminalSessionLifecycle-731e62
 #[test]
 fn client_closed_while_preparing_herdr_gets_no_pty() {
     for is_remote in [false, true] {
@@ -305,7 +297,6 @@ fn client_closed_while_preparing_herdr_gets_no_pty() {
     }
 }
 
-// parity: TS-lib-terminalSessionLifecycle-21f0ca
 #[test]
 fn cancelled_client_during_concurrent_preparation_is_not_kept() {
     for (is_remote, is_cancelled_first) in
@@ -358,7 +349,6 @@ fn cancelled_client_during_concurrent_preparation_is_not_kept() {
     }
 }
 
-// parity: TS-lib-terminalSessionLifecycle-f80637
 #[test]
 fn concurrent_herdr_attaches_share_one_pty_and_only_the_last_window_detaches() {
     for is_remote in [false, true] {

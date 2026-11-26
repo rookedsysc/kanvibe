@@ -140,7 +140,6 @@ fn task_in(project: &Project, title: &str, status: TaskStatus) -> NewKanbanTask 
     }
 }
 
-// parity: TS-main-hookService-79eb43
 #[test]
 fn rejects_missing_foreign_or_malformed_tokens_without_touching_the_task() {
     let fixture = fixture();
@@ -175,7 +174,6 @@ fn rejects_missing_foreign_or_malformed_tokens_without_touching_the_task() {
     assert!(fixture.events.events().is_empty());
 }
 
-// parity: TS-main-hookService-12554d
 #[test]
 fn tunnel_requests_cannot_change_tasks_of_other_hosts() {
     let fixture = fixture();
@@ -193,7 +191,6 @@ fn tunnel_requests_cannot_change_tasks_of_other_hosts() {
     assert!(fixture.status_changes().is_empty());
 }
 
-// parity: TS-main-hookService-4b20eb
 #[test]
 fn changes_the_task_status_by_id() {
     let fixture = fixture();
@@ -231,7 +228,6 @@ fn changes_the_task_status_by_id() {
     assert_eq!(fixture.stored_status(&task.id), TaskStatus::Review);
 }
 
-// parity: TS-main-hookService-ce2ed8
 #[test]
 fn done_from_a_hook_keeps_session_and_worktree() {
     let fixture = fixture();
@@ -276,7 +272,6 @@ fn done_from_a_hook_keeps_session_and_worktree() {
     assert_eq!(updated.project_name, "kanvibe");
 }
 
-// parity: TS-main-hookService-a48082
 #[test]
 fn writes_the_status_into_the_worktree_state_file() {
     let fixture = fixture();
@@ -301,7 +296,6 @@ fn writes_the_status_into_the_worktree_state_file() {
     assert!(state.contains("\"status\": \"review\""), "{state}");
 }
 
-// parity: TS-main-hookService-a3f2ea
 #[test]
 fn a_failed_state_file_write_still_answers_and_broadcasts() {
     let fixture = fixture();
@@ -331,7 +325,6 @@ fn a_failed_state_file_write_still_answers_and_broadcasts() {
     assert_eq!(fixture.status_changes()[0].new_status, "review");
 }
 
-// parity: TS-main-hookService-1bd581
 #[test]
 fn rejects_a_missing_task_id_with_400() {
     let fixture = fixture();
@@ -352,7 +345,6 @@ fn rejects_a_missing_task_id_with_400() {
     );
 }
 
-// parity: TS-main-hookService-7905d5
 #[test]
 fn tasks_without_a_worktree_follow_the_shared_location_rule() {
     for branch_name in ["feature", "main"] {
@@ -384,7 +376,6 @@ fn tasks_without_a_worktree_follow_the_shared_location_rule() {
     }
 }
 
-// parity: TS-main-hookService-3699ef
 #[test]
 fn local_hook_metadata_binds_only_the_stored_task_scope() {
     let fixture = fixture();
@@ -417,7 +408,6 @@ fn local_hook_metadata_binds_only_the_stored_task_scope() {
     );
 }
 
-// parity: TS-main-hookService-22a0d1
 #[test]
 fn remote_metadata_binds_only_through_that_hosts_tunnel() {
     let fixture = fixture();

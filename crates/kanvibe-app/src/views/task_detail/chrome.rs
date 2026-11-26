@@ -184,28 +184,24 @@ pub fn project_initial(project_name: &str) -> Option<String> {
 mod tests {
     use super::*;
 
-    // parity: TS-components-ProjectIcon-5e5fb8
     #[test]
     fn missing_icons_fall_back_to_a_colored_initial() {
         assert_eq!(project_initial("  kanvibe").as_deref(), Some("k"));
         assert!(render_project_icon("kanvibe", None, Some("#8B5CF6")).is_some());
     }
 
-    // parity: TS-components-ProjectIcon-15b7cf
     #[test]
     fn nothing_is_drawn_without_icon_or_color() {
         assert!(render_project_icon("kanvibe", None, None).is_none());
         assert!(render_project_icon("   ", None, Some("#8B5CF6")).is_none());
     }
 
-    // parity: TS-components-ProjectIcon-89c5e0
     #[test]
     fn dark_project_colors_draw_white_initials() {
         assert_eq!(readable_text_color("#1f2937"), "#FFFFFF");
         assert_eq!(readable_text_color("#FDE047"), "#111827");
     }
 
-    // parity: TS-renderer-TaskDetailRoute-d46cbf
     #[test]
     fn context_badge_title_joins_project_and_task_names() {
         let project = TaskContextProject {
@@ -235,7 +231,6 @@ mod tests {
         }
     }
 
-    // parity: TS-renderer-TaskDetailRoute-cf0648
     #[test]
     fn badge_uses_the_project_color_and_inverts_the_initial_chip() {
         let badge = TaskContextProject::from_project(&project(Some("#86EFAC")));
@@ -245,14 +240,12 @@ mod tests {
         assert!(render_project_icon(&badge.name, None, Some(&badge.text_color)).is_some());
     }
 
-    // parity: TS-renderer-TaskDetailRoute-7ce018
     #[test]
     fn badge_without_a_project_color_uses_the_name_hash_color() {
         let badge = TaskContextProject::from_project(&project(None));
         assert_eq!(css_hex(&badge.background_color), gpui_kit::rgb(0x5eead4));
     }
 
-    // parity: TS-renderer-TaskDetailRoute-d84407
     #[test]
     fn task_without_a_project_shows_only_its_title_on_the_green_badge() {
         assert_eq!(

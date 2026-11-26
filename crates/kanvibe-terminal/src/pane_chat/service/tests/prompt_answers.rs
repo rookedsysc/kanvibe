@@ -76,7 +76,6 @@ mod activity {
             .agent_activity
     }
 
-    // parity: TS-main-paneChatService-bfa64c
     #[test]
     fn claude_activity_reads_only_the_footer_interrupt_hint() {
         let cases = [
@@ -114,7 +113,6 @@ mod activity {
         }
     }
 
-    // parity: TS-main-paneChatService-5f781e
     #[test]
     fn codex_activity_reads_the_working_status_above_the_composer() {
         for (expected, status) in [
@@ -137,7 +135,6 @@ mod activity {
         }
     }
 
-    // parity: TS-main-paneChatService-a5bd42
     #[test]
     fn activity_is_unknown_without_screen_coordinates_or_for_unverified_clis() {
         let harness = Harness::new();
@@ -341,7 +338,6 @@ mod answers {
         }
     }
 
-    // parity: TS-main-paneChatService-0b695d
     #[test]
     fn snapshot_carries_the_on_screen_prompt_with_its_kind() {
         let pane = ClaudePromptPane::new();
@@ -361,7 +357,6 @@ mod answers {
         assert!(!prompt.id.is_empty());
     }
 
-    // parity: TS-main-paneChatService-65321f
     #[test]
     fn prompt_kind_comes_from_the_screen_not_from_the_transcript() {
         let pane = ClaudePromptPane::new();
@@ -398,7 +393,6 @@ mod answers {
         );
     }
 
-    // parity: TS-main-paneChatService-f26068
     #[test]
     fn asked_question_text_refines_labels_but_keeps_the_screen_prompt_id() {
         let pane = ClaudePromptPane::new();
@@ -450,7 +444,6 @@ mod answers {
         assert_eq!(pane.typed_keys(), vec!["1"]);
     }
 
-    // parity: TS-main-paneChatService-5c567b
     #[test]
     fn composer_screens_and_unverified_cli_layouts_are_not_prompts() {
         let pane = ClaudePromptPane::new();
@@ -463,7 +456,6 @@ mod answers {
         assert!(pane.snapshot().prompt.is_none());
     }
 
-    // parity: TS-main-paneChatService-60b662
     #[test]
     fn same_prompt_on_screen_sends_the_chosen_number_key_once() {
         let pane = ClaudePromptPane::new();
@@ -480,7 +472,6 @@ mod answers {
         );
     }
 
-    // parity: TS-main-paneChatService-608c80
     #[test]
     fn moved_highlight_is_still_the_same_prompt() {
         let pane = ClaudePromptPane::new();
@@ -502,7 +493,6 @@ mod answers {
         assert_eq!(pane.typed_keys(), vec!["1"]);
     }
 
-    // parity: TS-main-paneChatService-8b76e6
     #[test]
     fn changed_or_closed_prompt_receives_no_key() {
         let switch = model_switch();
@@ -526,7 +516,6 @@ mod answers {
         }
     }
 
-    // parity: TS-main-paneChatService-0cbef8
     #[test]
     fn check_state_changed_in_the_terminal_blocks_the_same_number_key() {
         let pane = ClaudePromptPane::new();
@@ -542,7 +531,6 @@ mod answers {
         assert!(pane.typed_keys().is_empty());
     }
 
-    // parity: TS-main-paneChatService-ef6cce
     #[test]
     fn answer_waits_for_the_screen_to_react_but_only_for_a_bounded_time() {
         let pane = ClaudePromptPane::new();
@@ -588,7 +576,6 @@ mod answers {
         assert_eq!(unchanged_pane.harness.clock.sleeps(), vec![50; 6]);
     }
 
-    // parity: TS-main-paneChatService-aa7a36
     #[test]
     fn active_text_entry_is_left_with_up_before_sending_a_number() {
         let pane = ClaudePromptPane::new();
@@ -609,7 +596,6 @@ mod answers {
         assert_eq!(pane.typed_keys(), vec![UP, "1"]);
     }
 
-    // parity: TS-main-paneChatService-31a387
     #[test]
     fn active_text_entry_is_left_with_up_before_moving_between_questions() {
         let pane = ClaudePromptPane::new();
@@ -630,7 +616,6 @@ mod answers {
         assert_eq!(pane.typed_keys(), vec![UP, RIGHT]);
     }
 
-    // parity: TS-main-paneChatService-d47e3c
     #[test]
     fn single_select_text_entry_uses_its_number_then_pastes_and_submits_after_echo() {
         let pane = ClaudePromptPane::new();
@@ -650,7 +635,6 @@ mod answers {
         );
     }
 
-    // parity: TS-main-paneChatService-72c7c7
     #[test]
     fn multi_select_text_entry_moves_with_arrows_and_leaves_without_enter() {
         let pane = ClaudePromptPane::new();
@@ -682,7 +666,6 @@ mod answers {
         );
     }
 
-    // parity: TS-main-paneChatService-2bde82
     #[test]
     fn text_entry_already_showing_the_same_text_is_submitted_with_enter_only() {
         let pane = ClaudePromptPane::new();
@@ -695,7 +678,6 @@ mod answers {
         assert_eq!(pane.typed_keys(), vec!["\r"]);
     }
 
-    // parity: TS-main-paneChatService-c0cef9
     #[test]
     fn text_entry_holding_other_text_receives_no_key() {
         let pane = ClaudePromptPane::new();
@@ -708,7 +690,6 @@ mod answers {
         assert!(pane.typed_keys().is_empty());
     }
 
-    // parity: TS-main-paneChatService-e96740
     #[test]
     fn pasted_text_not_echoed_exactly_is_not_submitted() {
         let pane = ClaudePromptPane::new();
@@ -722,7 +703,6 @@ mod answers {
         assert_eq!(pane.typed_keys(), vec![bracketed("Extra large")]);
     }
 
-    // parity: TS-main-paneChatService-42a59c
     #[test]
     fn step_and_cancel_answers_send_their_single_key() {
         let cases = [
@@ -741,7 +721,6 @@ mod answers {
         }
     }
 
-    // parity: TS-main-paneChatService-383d18
     #[test]
     fn invalid_answers_are_rejected_without_any_key() {
         let cases = [
@@ -766,7 +745,6 @@ mod answers {
         }
     }
 
-    // parity: TS-main-paneChatService-5e4f45
     #[test]
     fn blank_text_entry_cannot_be_chosen_by_number() {
         let pane = ClaudePromptPane::new();

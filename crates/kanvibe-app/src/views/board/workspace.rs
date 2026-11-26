@@ -1017,14 +1017,12 @@ mod tests {
         (tasks, catalog)
     }
 
-    // parity: TS-renderer-WorkspaceTaskList-e41ec2
     #[test]
     fn without_filters_all_tasks_including_done_are_listed_in_status_order() {
         let (tasks, catalog) = sample();
         assert_eq!(listed(&tasks, &catalog, |_| {}), ["todo", "root", "done"]);
     }
 
-    // parity: TS-renderer-WorkspaceTaskList-a9b506
     #[test]
     fn search_matches_title_branch_and_project_name_ignoring_case() {
         let (tasks, catalog) = sample();
@@ -1042,7 +1040,6 @@ mod tests {
         );
     }
 
-    // parity: TS-renderer-WorkspaceTaskList-8cb6b5
     #[test]
     fn status_chips_combine_and_toggle() {
         let (tasks, catalog) = sample();
@@ -1068,7 +1065,6 @@ mod tests {
         assert_eq!(ids, ["todo", "done"]);
     }
 
-    // parity: TS-renderer-WorkspaceTaskList-ba72b6
     #[test]
     fn project_filter_follows_the_kanban_rules() {
         let (tasks, catalog) = sample();
@@ -1095,7 +1091,6 @@ mod tests {
         );
     }
 
-    // parity: TS-renderer-WorkspaceTaskList-e0f5b9
     #[test]
     fn project_kind_keeps_only_default_branch_tasks() {
         let (tasks, catalog) = sample();
@@ -1106,7 +1101,6 @@ mod tests {
         );
     }
 
-    // parity: TS-renderer-WorkspaceTaskList-869215
     #[test]
     fn sort_preference_orders_tasks_within_each_status() {
         let catalog = ProjectCatalog::default();
@@ -1158,14 +1152,12 @@ mod tests {
         assert_eq!(ids, ["high", "low", "review"]);
     }
 
-    // parity: TS-renderer-WorkspaceTaskList-914a90
     #[test]
     fn unmatched_filters_leave_an_empty_list() {
         let (tasks, catalog) = sample();
         assert!(listed(&tasks, &catalog, |query| query.search = "zzzz").is_empty());
     }
 
-    // parity: TS-renderer-WorkspaceTaskList-f083a1
     #[test]
     fn arrow_selection_follows_the_listed_order_and_stops_at_the_edges() {
         let (tasks, catalog) = sample();
@@ -1197,7 +1189,6 @@ mod tests {
         );
     }
 
-    // parity: TS-renderer-WorkspaceTaskList-f0ffbe
     #[test]
     fn selected_task_stays_visible_outside_the_filter_until_the_user_hides_it() {
         let (tasks, catalog) = sample();
@@ -1218,7 +1209,6 @@ mod tests {
         );
     }
 
-    // parity: TS-renderer-TaskWorkspaceRoute-66ed1a
     #[test]
     fn initial_selection_is_the_first_task_with_a_session() {
         let tasks = board(&[

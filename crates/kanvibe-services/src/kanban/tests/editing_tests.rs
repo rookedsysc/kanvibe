@@ -16,7 +16,6 @@ fn project_color(fixture: &KanbanFixture, project_id: &str) -> Option<String> {
         .color
 }
 
-// parity: TS-main-kanbanService-41f2ac
 #[test]
 fn editing_task_content_updates_the_board() {
     let fixture = KanbanFixture::new();
@@ -36,7 +35,6 @@ fn editing_task_content_updates_the_board() {
     assert_eq!(fixture.board_update_count(), 1);
 }
 
-// parity: TS-main-kanbanService-f91de6
 #[test]
 fn changing_the_project_color_updates_the_board() {
     let fixture = KanbanFixture::new();
@@ -54,7 +52,6 @@ fn changing_the_project_color_updates_the_board() {
     assert_eq!(fixture.board_update_count(), 1);
 }
 
-// parity: TS-main-kanbanService-706a5a
 #[test]
 fn project_color_is_written_to_the_shared_state_file_before_the_database() {
     let fixture = KanbanFixture::new();
@@ -85,7 +82,6 @@ fn project_color_is_written_to_the_shared_state_file_before_the_database() {
     );
 }
 
-// parity: TS-main-kanbanService-b19f3b
 #[test]
 fn color_spreads_only_to_projects_on_the_same_host_and_git_common_directory() {
     let fixture = KanbanFixture::new();
@@ -133,7 +129,6 @@ fn color_spreads_only_to_projects_on_the_same_host_and_git_common_directory() {
     );
 }
 
-// parity: TS-main-kanbanService-bc6fe6
 #[test]
 fn moving_to_another_column_only_changes_the_status() {
     let fixture = KanbanFixture::new();
@@ -159,7 +154,6 @@ fn moving_to_another_column_only_changes_the_status() {
     assert_eq!(fixture.board_update_count(), 1);
 }
 
-// parity: TS-main-kanbanService-d575de
 #[test]
 fn status_change_of_a_feature_task_without_worktree_leaves_the_project_root_state_alone() {
     let fixture = KanbanFixture::new();
@@ -229,7 +223,6 @@ fn assert_resources_preserved(fixture: &KanbanFixture, task: &KanbanTask) {
     assert_eq!(fixture.board_update_count(), 1);
 }
 
-// parity: TS-main-kanbanService-e61ab3
 #[test]
 fn done_status_saves_first_and_keeps_resource_fields() {
     let fixture = KanbanFixture::new();
@@ -243,7 +236,6 @@ fn done_status_saves_first_and_keeps_resource_fields() {
     assert_resources_preserved(&fixture, &task);
 }
 
-// parity: TS-main-kanbanService-f4034e
 #[test]
 fn done_status_never_cleans_up_session_worktree_or_branch() {
     let fixture = KanbanFixture::new();
@@ -258,7 +250,6 @@ fn done_status_never_cleans_up_session_worktree_or_branch() {
     assert_resources_preserved(&fixture, &task);
 }
 
-// parity: TS-main-kanbanService-947e15
 #[test]
 fn moving_to_done_saves_status_first_and_keeps_resource_fields() {
     let fixture = KanbanFixture::new();
@@ -272,7 +263,6 @@ fn moving_to_done_saves_status_first_and_keeps_resource_fields() {
     assert_resources_preserved(&fixture, &task);
 }
 
-// parity: TS-main-kanbanService-b7357d
 #[test]
 fn moving_to_done_never_cleans_up_session_worktree_or_branch() {
     let fixture = KanbanFixture::new();
@@ -287,7 +277,6 @@ fn moving_to_done_never_cleans_up_session_worktree_or_branch() {
     assert_resources_preserved(&fixture, &task);
 }
 
-// parity: TS-main-kanbanService-01fbc8
 #[test]
 fn failed_done_move_rolls_back_to_the_previous_status_and_resources() {
     let fixture = KanbanFixture::new();
@@ -327,7 +316,6 @@ fn failed_done_move_rolls_back_to_the_previous_status_and_resources() {
     assert_eq!(fixture.board_update_count(), 1);
 }
 
-// parity: TS-main-kanbanService-a9f6b5
 #[test]
 fn quick_search_lists_done_tasks_with_their_project_name() {
     let fixture = KanbanFixture::new();
@@ -408,7 +396,6 @@ fn single_metadata_write(fixture: &KanbanFixture) -> (String, String) {
     (writes[0].repo_path.clone(), writes[0].content.clone())
 }
 
-// parity: TS-main-kanbanService-f7fc55
 #[test]
 fn changing_the_description_writes_the_shared_task_file() {
     let fixture = KanbanFixture::new();
@@ -425,7 +412,6 @@ fn changing_the_description_writes_the_shared_task_file() {
     assert!(content.contains("description=Some(Some(\"결제 실패 로그 원인 추적\"))"));
 }
 
-// parity: TS-main-kanbanService-2166bf
 #[test]
 fn clearing_the_description_writes_null_so_other_devices_clear_it() {
     let fixture = KanbanFixture::new();
@@ -441,7 +427,6 @@ fn clearing_the_description_writes_null_so_other_devices_clear_it() {
     assert!(content.contains("description=Some(None)"));
 }
 
-// parity: TS-main-kanbanService-634be1
 #[test]
 fn feature_task_priority_is_written_to_the_task_file() {
     let fixture = KanbanFixture::new();
@@ -458,7 +443,6 @@ fn feature_task_priority_is_written_to_the_task_file() {
     assert!(content.contains("priority=Some(Some(\"high\"))"));
 }
 
-// parity: TS-main-kanbanService-17437c
 #[test]
 fn project_root_task_priority_is_written_to_the_project_file() {
     let fixture = KanbanFixture::new();
@@ -481,7 +465,6 @@ fn project_root_task_priority_is_written_to_the_project_file() {
     assert_eq!(priority_writes[0].content, "Some(\"medium\")");
 }
 
-// parity: TS-main-kanbanService-488f1b
 #[test]
 fn title_only_edits_leave_the_shared_files_alone() {
     let fixture = KanbanFixture::new();

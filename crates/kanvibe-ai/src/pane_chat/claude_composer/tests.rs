@@ -13,7 +13,6 @@ fn read(composer_rows: &[&str]) -> Option<String> {
     read_claude_composer_text(&lines, 1 + composer_rows.len())
 }
 
-// parity: TS-aiSessions-paneChatClaudeComposer-e1b42c
 #[test]
 fn reads_single_row_composer() {
     assert_eq!(
@@ -22,7 +21,6 @@ fn reads_single_row_composer() {
     );
 }
 
-// parity: TS-aiSessions-paneChatClaudeComposer-145e61
 #[test]
 fn joins_wrapped_composer_rows() {
     assert_eq!(
@@ -31,7 +29,6 @@ fn joins_wrapped_composer_rows() {
     );
 }
 
-// parity: TS-aiSessions-paneChatClaudeComposer-95d09b
 #[test]
 fn keeps_blank_rows_inside_composer() {
     assert_eq!(
@@ -44,13 +41,11 @@ fn keeps_blank_rows_inside_composer() {
     );
 }
 
-// parity: TS-aiSessions-paneChatClaudeComposer-7a2ea9
 #[test]
 fn restores_shell_mode_marker() {
     assert_eq!(read(&["! ls -la"]).as_deref(), Some("!ls -la"));
 }
 
-// parity: TS-aiSessions-paneChatClaudeComposer-dc1361
 #[test]
 fn refuses_rows_that_are_not_the_composer() {
     let border = border();
@@ -84,7 +79,6 @@ fn refuses_rows_that_are_not_the_composer() {
     }
 }
 
-// parity: TS-aiSessions-paneChatClaudeComposer-e72b23
 #[test]
 fn ignores_whitespace_and_wrapping_differences() {
     assert!(is_claude_composer_showing_paste(
@@ -94,7 +88,6 @@ fn ignores_whitespace_and_wrapping_differences() {
     ));
 }
 
-// parity: TS-aiSessions-paneChatClaudeComposer-b55cd1
 #[test]
 fn different_text_is_not_the_paste() {
     assert!(!is_claude_composer_showing_paste(
@@ -109,7 +102,6 @@ fn different_text_is_not_the_paste() {
     ));
 }
 
-// parity: TS-aiSessions-paneChatClaudeComposer-581549
 #[test]
 fn folded_multi_line_marker_needs_matching_line_count() {
     let five_lines = "a\nb\nc\nd\ne";
@@ -130,7 +122,6 @@ fn folded_multi_line_marker_needs_matching_line_count() {
     ));
 }
 
-// parity: TS-aiSessions-paneChatClaudeComposer-fd3854
 #[test]
 fn folded_marker_without_lines_needs_long_single_line() {
     assert!(is_claude_composer_showing_paste(
@@ -145,7 +136,6 @@ fn folded_marker_without_lines_needs_long_single_line() {
     ));
 }
 
-// parity: TS-aiSessions-paneChatClaudeComposer-599da1
 #[test]
 fn image_markers_must_match_image_count() {
     assert!(is_claude_composer_showing_paste(
@@ -170,7 +160,6 @@ fn image_markers_must_match_image_count() {
     ));
 }
 
-// parity: TS-aiSessions-paneChatClaudeComposer-d20829
 #[test]
 fn shell_mode_text_matches() {
     assert!(is_claude_composer_showing_paste("!ls -la", "!ls -la", 0));

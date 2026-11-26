@@ -121,7 +121,6 @@ fn has_process_info(runner: &ScriptedShellRunner) -> bool {
         .any(|command| command.contains("'process-info'"))
 }
 
-// parity: TS-lib-herdr-f9b2c6
 #[test]
 fn merges_geometry_and_commands_in_tab_order() {
     let herdr = fixture();
@@ -159,7 +158,6 @@ fn merges_geometry_and_commands_in_tab_order() {
     );
 }
 
-// parity: TS-lib-herdr-5de66a
 #[test]
 fn minimal_list_skips_commands_and_unselected_tab_layouts() {
     let herdr = fixture();
@@ -185,7 +183,6 @@ fn minimal_list_skips_commands_and_unselected_tab_layouts() {
     );
 }
 
-// parity: TS-lib-herdr-771725
 #[test]
 fn selected_pane_check_reads_only_its_tab_geometry_without_commands() {
     let herdr = fixture();
@@ -215,7 +212,6 @@ fn selected_pane_check_reads_only_its_tab_geometry_without_commands() {
     assert!(!has_process_info(&herdr.runner));
 }
 
-// parity: TS-lib-herdr-b02a7e
 #[test]
 fn minimal_list_reads_every_pane_geometry_of_the_requested_tab() {
     let herdr = fixture();
@@ -249,7 +245,6 @@ fn minimal_list_reads_every_pane_geometry_of_the_requested_tab() {
     );
 }
 
-// parity: TS-lib-herdr-4d7381
 #[test]
 fn minimal_list_refuses_to_guess_when_needed_geometry_is_missing() {
     let herdr = fixture();
@@ -270,7 +265,6 @@ fn minimal_list_refuses_to_guess_when_needed_geometry_is_missing() {
     assert!(error.to_string().contains("배치를 확인할 수 없습니다"));
 }
 
-// parity: TS-lib-herdr-22970b
 #[test]
 fn minimal_list_rejects_an_invalid_zoomed_pane_width() {
     let herdr = fixture();
@@ -291,7 +285,6 @@ fn minimal_list_rejects_an_invalid_zoomed_pane_width() {
     assert!(error.to_string().contains("배치를 확인할 수 없습니다"));
 }
 
-// parity: TS-lib-herdr-f6c962
 #[test]
 fn unknown_selected_pane_is_rejected_without_reading_other_tabs() {
     let herdr = fixture();
@@ -307,7 +300,6 @@ fn unknown_selected_pane_is_rejected_without_reading_other_tabs() {
     assert!(!has_process_info(&herdr.runner));
 }
 
-// parity: TS-lib-herdr-3fe427
 #[test]
 fn zoomed_pane_uses_the_whole_tab_width_and_others_stay() {
     let herdr = fixture();
@@ -329,7 +321,6 @@ fn zoomed_pane_uses_the_whole_tab_width_and_others_stay() {
     assert_eq!(width_of("w1:p3"), 60);
 }
 
-// parity: TS-lib-herdr-78537d
 #[test]
 fn pane_list_survives_unreadable_commands() {
     let herdr = fixture();
@@ -349,7 +340,6 @@ fn pane_list_survives_unreadable_commands() {
     assert_eq!(commands, vec!["", "", ""]);
 }
 
-// parity: TS-lib-herdr-fc1715
 #[test]
 fn panes_that_failed_to_restore_are_left_out() {
     let herdr = fixture();

@@ -20,7 +20,6 @@ fn zellij_pane(id: i64, tab_id: i64, tab_name: &str) -> serde_json::Value {
         "pane_x": 0, "pane_y": 0, "pane_rows": 24, "pane_columns": 80 })
 }
 
-// parity: TS-main-mobileBridgeService-b16e85
 #[test]
 fn terminal_session_keeps_existing_tabs_and_input_reaches_the_new_tab_pane() {
     let harness = Harness::new();
@@ -50,7 +49,6 @@ fn terminal_session_keeps_existing_tabs_and_input_reaches_the_new_tab_pane() {
     assert!(harness.commands().is_empty());
 }
 
-// parity: TS-main-mobileBridgeService-85f619
 #[test]
 fn remote_tmux_creation_uses_the_stored_session_and_worktree_and_returns_the_new_window_pane() {
     let harness = Harness::new();
@@ -91,7 +89,6 @@ fn remote_tmux_creation_uses_the_stored_session_and_worktree_and_returns_the_new
     );
 }
 
-// parity: TS-main-mobileBridgeService-6ab29d
 #[test]
 fn zellij_waits_for_a_late_new_tab_pane_without_repeating_the_create_command() {
     let harness = Harness::new();
@@ -150,7 +147,6 @@ fn zellij_waits_for_a_late_new_tab_pane_without_repeating_the_create_command() {
     assert_eq!(reads_after_create.load(Ordering::SeqCst), 2);
 }
 
-// parity: TS-main-mobileBridgeService-0f83e8
 #[test]
 fn task_without_a_session_runs_no_create_command() {
     let harness = Harness::new();
@@ -168,7 +164,6 @@ fn task_without_a_session_runs_no_create_command() {
     assert!(harness.commands().is_empty());
 }
 
-// parity: TS-main-mobileBridgeService-fc1ed0
 #[test]
 fn failed_create_command_is_not_repeated_and_the_listing_is_not_polled() {
     let harness = Harness::new();
@@ -189,7 +184,6 @@ fn failed_create_command_is_not_repeated_and_the_listing_is_not_polled() {
     assert_eq!(harness.runner.commands_containing("list-panes").len(), 1);
 }
 
-// parity: TS-main-mobileBridgeService-b7a495
 #[test]
 fn new_pane_that_never_appears_fails_at_the_deadline_after_one_create() {
     let harness = Harness::new();
@@ -238,7 +232,6 @@ fn kill_commands(harness: &Harness) -> Vec<String> {
     harness.runner.commands_containing("kill-pane")
 }
 
-// parity: TS-main-mobileBridgeService-1a72c3
 #[test]
 fn closing_one_of_two_panes_in_a_window_leaves_the_other_and_returns_the_remaining_panes() {
     let harness = Harness::new();
@@ -256,7 +249,6 @@ fn closing_one_of_two_panes_in_a_window_leaves_the_other_and_returns_the_remaini
     assert_eq!(pane_ids, vec![vec!["%19".to_string()]]);
 }
 
-// parity: TS-main-mobileBridgeService-53a747
 #[test]
 fn the_only_pane_of_a_session_is_refused_without_a_close_command() {
     let harness = Harness::new();
@@ -272,7 +264,6 @@ fn the_only_pane_of_a_session_is_refused_without_a_close_command() {
     assert!(kill_commands(&harness).is_empty());
 }
 
-// parity: TS-main-mobileBridgeService-bb4a6b
 #[test]
 fn pane_outside_the_session_is_refused_without_a_close_command() {
     let harness = Harness::new();
@@ -288,7 +279,6 @@ fn pane_outside_the_session_is_refused_without_a_close_command() {
     assert!(kill_commands(&harness).is_empty());
 }
 
-// parity: TS-main-mobileBridgeService-d94f65
 #[test]
 fn two_devices_closing_the_last_two_panes_together_close_only_one_and_keep_the_session() {
     let harness = Arc::new(Harness::new());
@@ -311,7 +301,6 @@ fn two_devices_closing_the_last_two_panes_together_close_only_one_and_keep_the_s
     assert_eq!(results.iter().filter(|result| result.is_err()).count(), 1);
 }
 
-// parity: TS-main-mobileBridgeService-881980
 #[test]
 fn zellij_closes_only_the_pane_named_by_id() {
     let harness = Harness::new();
@@ -353,7 +342,6 @@ fn zellij_closes_only_the_pane_named_by_id() {
     assert_eq!(result.surfaces.tabs.len(), 1);
 }
 
-// parity: TS-main-mobileBridgeService-466f2a
 #[test]
 fn terminal_session_pane_is_its_tab_so_only_that_tab_closes() {
     let harness = Harness::new();
@@ -376,7 +364,6 @@ fn terminal_session_pane_is_its_tab_so_only_that_tab_closes() {
     assert!(harness.commands().is_empty());
 }
 
-// parity: TS-main-mobileBridgeService-8f42c5
 #[test]
 fn the_only_terminal_session_tab_is_refused() {
     let harness = Harness::new();
@@ -405,7 +392,6 @@ fn stub_pane_command(harness: &Harness, command_name: &str) {
     });
 }
 
-// parity: TS-main-mobileBridgeService-31c9b7
 #[test]
 fn idle_shell_reports_no_running_process() {
     for shell in ["sh", "bash", "zsh", "fish", "dash"] {
@@ -425,7 +411,6 @@ fn idle_shell_reports_no_running_process() {
     }
 }
 
-// parity: TS-main-mobileBridgeService-50a87f
 #[test]
 fn running_non_shell_command_is_reported_by_name() {
     let harness = Harness::new();
@@ -439,7 +424,6 @@ fn running_non_shell_command_is_reported_by_name() {
     assert_eq!(info.process_names, vec!["vim"]);
 }
 
-// parity: TS-main-mobileBridgeService-12ac46
 #[test]
 fn failed_lookup_raises_an_error_instead_of_assuming_nothing_runs() {
     let harness = Harness::new();
@@ -456,7 +440,6 @@ fn failed_lookup_raises_an_error_instead_of_assuming_nothing_runs() {
     );
 }
 
-// parity: TS-main-mobileBridgeService-cc1e09
 #[test]
 fn pane_outside_the_session_is_refused_without_lookup() {
     let harness = Harness::new();
@@ -484,7 +467,6 @@ fn shortcut(
         .execute_mobile_terminal_shortcut(task_id, pane_id, action)
 }
 
-// parity: TS-main-mobileBridgeService-f56038
 #[test]
 fn split_affects_only_the_selected_pane_and_returns_the_updated_listing() {
     let harness = Harness::new();
@@ -524,7 +506,6 @@ fn split_affects_only_the_selected_pane_and_returns_the_updated_listing() {
     );
 }
 
-// parity: TS-main-mobileBridgeService-433a31
 #[test]
 fn late_split_is_awaited_without_repeating_the_command() {
     let harness = Harness::new();
@@ -547,7 +528,6 @@ fn late_split_is_awaited_without_repeating_the_command() {
     assert_eq!(harness.runner.commands_containing("split-window").len(), 1);
 }
 
-// parity: TS-main-mobileBridgeService-77d33a
 #[test]
 fn shortcut_is_not_run_on_another_task_pane() {
     let harness = Harness::new();
@@ -562,7 +542,6 @@ fn shortcut_is_not_run_on_another_task_pane() {
     assert!(harness.runner.commands_containing("resize-pane").is_empty());
 }
 
-// parity: TS-main-mobileBridgeService-81e200
 #[test]
 fn unknown_action_runs_no_shell_command() {
     for action in ["unknown", "toString", "; rm -rf /"] {
@@ -579,7 +558,6 @@ fn unknown_action_runs_no_shell_command() {
     }
 }
 
-// parity: TS-main-mobileBridgeService-36d31c
 #[test]
 fn terminal_session_refuses_multiplexer_commands() {
     let harness = Harness::new();
@@ -595,7 +573,6 @@ fn terminal_session_refuses_multiplexer_commands() {
     assert!(harness.commands().is_empty());
 }
 
-// parity: TS-main-mobileBridgeService-96e926
 #[test]
 fn tmux_copy_mode_screen_is_returned_because_pipe_pane_never_shows_it() {
     let harness = Harness::new();
@@ -611,7 +588,6 @@ fn tmux_copy_mode_screen_is_returned_because_pipe_pane_never_shows_it() {
     assert_eq!(result.screen.as_deref(), Some(SNAPSHOT_REDRAW));
 }
 
-// parity: TS-main-mobileBridgeService-5632b4
 #[test]
 fn returning_from_tmux_scroll_leaves_copy_mode_and_returns_the_original_screen() {
     let harness = Harness::new();
@@ -628,7 +604,6 @@ fn returning_from_tmux_scroll_leaves_copy_mode_and_returns_the_original_screen()
     assert_eq!(result.screen.as_deref(), Some(SNAPSHOT_REDRAW));
 }
 
-// parity: TS-main-mobileBridgeService-225699
 #[test]
 fn remote_zellij_runs_the_pane_id_command_on_the_same_host() {
     let harness = Harness::new();

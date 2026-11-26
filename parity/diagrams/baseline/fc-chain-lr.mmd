@@ -1,4 +1,0 @@
-flowchart LR
-    A["Tailscale proxy"] -->|"내부 HTTP"| B["Istio gateway Service"]
-    B --> C["Gateway와 VirtualService"]
-    C --> D["backend Service"]

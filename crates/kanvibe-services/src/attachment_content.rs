@@ -121,7 +121,6 @@ mod tests {
 
     const PNG_BASE64: &str = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aOK0AAAAASUVORK5CYII=";
 
-    // parity: TS-lib-attachmentContent-b86292
     #[test]
     fn decodes_actual_images_and_ordinary_file_bytes_with_their_mime() {
         let png = STANDARD.decode(PNG_BASE64).unwrap();
@@ -151,7 +150,6 @@ mod tests {
         assert_eq!(detect_image_mime_type(b"not an image"), None);
     }
 
-    // parity: TS-lib-attachmentContent-137974
     #[test]
     fn rejects_malformed_or_falsely_declared_bytes() {
         for value in [
@@ -165,7 +163,6 @@ mod tests {
         }
     }
 
-    // parity: TS-lib-attachmentContent-0f7977
     #[test]
     fn rejects_mime_disagreement_and_decoded_files_over_the_limit() {
         let oversized = STANDARD.encode(vec![0u8; MAX_ATTACHMENT_BYTES + 1]);

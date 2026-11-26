@@ -273,7 +273,6 @@ mod tests {
         }
     }
 
-    // parity: TS-main-kanvibeProjectColorService-002a58
     #[test]
     fn writes_the_color_to_the_project_root_and_every_task_worktree() {
         let store = RecordingStateStore::default();
@@ -291,7 +290,6 @@ mod tests {
         );
     }
 
-    // parity: TS-main-kanvibeProjectColorService-12fa83
     #[test]
     fn writes_the_root_task_priority_to_the_root_and_every_worktree() {
         let store = RecordingStateStore::default();
@@ -311,7 +309,6 @@ mod tests {
         );
     }
 
-    // parity: TS-main-kanvibeProjectColorService-9c0949
     #[test]
     fn missing_or_malformed_colors_are_not_written() {
         let store = RecordingStateStore::default();
@@ -324,7 +321,6 @@ mod tests {
         assert!(store.calls_of("write_project_color").is_empty());
     }
 
-    // parity: TS-main-kanvibeProjectColorService-c5f84f
     #[test]
     fn one_failed_path_does_not_stop_the_remaining_writes() {
         let is_first_write = std::sync::atomic::AtomicBool::new(true);
@@ -344,7 +340,6 @@ mod tests {
         assert_eq!(store.calls_of("write_project_color").len(), 2);
     }
 
-    // parity: TS-main-kanvibeProjectColorService-52383a
     #[test]
     fn only_a_color_changed_by_another_client_is_returned_for_the_database() {
         let store = shared_colors(Some("#0064FF"), Some("#0064FF"));
@@ -361,7 +356,6 @@ mod tests {
         );
     }
 
-    // parity: TS-main-kanvibeProjectColorService-9325b8
     #[test]
     fn sync_does_not_change_the_project_color_itself() {
         let store = shared_colors(Some("#0064FF"), Some("#0064FF"));
@@ -374,7 +368,6 @@ mod tests {
         assert_eq!(synced_project.color.as_deref(), Some("#65D08A"));
     }
 
-    // parity: TS-main-kanvibeProjectColorService-5034ca
     #[test]
     fn paths_that_already_hold_the_same_color_are_not_rewritten() {
         let store = shared_colors(Some("#65D08A"), Some("#65D08A"));
@@ -392,7 +385,6 @@ mod tests {
         );
     }
 
-    // parity: TS-main-kanvibeProjectColorService-029fc7
     #[test]
     fn worktrees_created_after_the_color_was_fixed_receive_the_shared_color() {
         let store = shared_colors(Some("#65D08A"), None);
@@ -408,7 +400,6 @@ mod tests {
         );
     }
 
-    // parity: TS-main-kanvibeProjectColorService-8e4793
     #[test]
     fn sync_spreads_the_new_root_color_instead_of_the_stale_in_memory_color() {
         let store = shared_colors(Some("#0064FF"), Some("#0064FF"));
@@ -421,7 +412,6 @@ mod tests {
         assert!(store.calls_of("write_project_color").is_empty());
     }
 
-    // parity: TS-main-kanvibeProjectColorService-62d6ba
     #[test]
     fn the_project_root_color_file_is_not_a_sync_propagation_target() {
         let store = shared_colors(Some("#0064FF"), Some("#65D08A"));
@@ -445,7 +435,6 @@ mod tests {
         records
     }
 
-    // parity: TS-main-kanvibeProjectColorService-471239
     #[test]
     fn missing_shared_color_is_seeded_while_keeping_the_existing_color() {
         let store = shared_colors(None, None);
@@ -463,7 +452,6 @@ mod tests {
         );
     }
 
-    // parity: TS-main-kanvibeProjectColorService-cedd6d
     #[test]
     fn the_seed_uses_the_current_database_color_not_the_stale_snapshot() {
         let store = shared_colors(None, None);
@@ -478,7 +466,6 @@ mod tests {
         );
     }
 
-    // parity: TS-main-kanvibeProjectColorService-558d15
     #[test]
     fn the_seed_is_written_only_to_the_authoritative_root() {
         let store = shared_colors(None, None);
@@ -494,7 +481,6 @@ mod tests {
         assert!(store.calls_of("write_project_color").is_empty());
     }
 
-    // parity: TS-main-kanvibeProjectColorService-f430ac
     #[test]
     fn a_failed_seed_does_not_stop_the_sync() {
         let store = RecordingStateStore {
@@ -511,7 +497,6 @@ mod tests {
         assert_eq!(synced, None);
     }
 
-    // parity: TS-main-kanvibeProjectColorService-c5b9d4
     #[test]
     fn a_failed_color_read_does_not_stop_registration() {
         let store = RecordingStateStore {
