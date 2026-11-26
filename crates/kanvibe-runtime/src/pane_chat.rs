@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use kanvibe_ai::codex_app_server::UnixSocketForwarder;
 use kanvibe_pane_mirror::{
     KanbanMirrorTaskStore, KanbanPaneChatTaskLookup, MirrorTimings, PaneChatRuntime,
     PaneChatRuntimeParts, PaneMirror, PaneMirrorParts, RelayClose, RelayOutput,
@@ -17,13 +18,14 @@ use kanvibe_terminal::pane_chat::subscription::{
     NotifyTranscriptFileWatchers, ThreadPaneChatTimers,
 };
 use kanvibe_terminal::remote_terminal_protocol::{RemoteTerminalGrant, RemoteTerminalGrantInput};
+use kanvibe_terminal::socket_forwarding::SshUnixSocketForwarder;
 use kanvibe_terminal::terminal_bridge::TerminalBridge;
 
 use crate::ai::AiParts;
 use crate::board::BoardParts;
 use crate::config::RuntimeConfig;
 use crate::foundation::Foundation;
-use crate::terminal::TerminalParts;
+use crate::terminal::{TerminalParts, temporary_directory};
 
 /// 원격 terminal agent가 없는 실행. 직접 연결 권한을 내지 않아 모바일은 로컬 미러로 비춘다
 pub struct NoRemotePaneGrants;
@@ -82,7 +84,7 @@ pub(crate) fn build_pane_chat(inputs: &PaneChatInputs<'_>) -> PaneChatParts {
     );
     let sessions = AiPaneChatSessionRecords::new(
         inputs.ai.session_host.clone(),
-        None,
+        Some(build_codex_socket_forwarder(foundation)),
         Arc::clone(&inputs.ai.pane_chat_session_bindings),
     );
     let connection_signals = build_connection_signals(inputs);
@@ -104,6 +106,15 @@ pub(crate) fn build_pane_chat(inputs: &PaneChatInputs<'_>) -> PaneChatParts {
         connection_signals,
     }));
     PaneChatParts { mirror, pane_chat }
+}
+
+/// 원격 태스크의 Codex app-server 제어 소켓을 SSH 터널로 잇는다(TS `codexAppServer.ts` `withHostSocket`)
+fn build_codex_socket_forwarder(foundation: &Foundation) -> Arc<dyn UnixSocketForwarder> {
+    Arc::new(SshUnixSocketForwarder::new(
+        Arc::clone(&foundation.ssh_config),
+        Arc::clone(&foundation.environment),
+        temporary_directory(&foundation.environment),
+    ))
 }
 
 /// hook 바인딩이 저장되면 그 Task의 pane 채팅이 바로 다시 확인하도록 바인딩 표와 연결 신호를 잇는다

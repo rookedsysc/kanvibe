@@ -16,7 +16,7 @@ use crate::clock::{EpochClock, iso_timestamp};
 use crate::error::{MobileError, MobileResult};
 use crate::listeners::{Listener, ListenerHandle, ListenerSet};
 use crate::pairing::{
-    FailureDelay, IssuedPairingCode, PairedDevice, PairingCodes, PushPlatform, find_paired_device,
+    IssuedPairingCode, PairedDevice, PairingCodes, PushPlatform, find_paired_device,
     mint_device_id, mint_device_token, parse_paired_devices, read_mobile_push_subscription,
     serialize_paired_devices,
 };
@@ -26,8 +26,6 @@ const PAIRED_DEVICES_KEY: &str = "mobile_paired_devices";
 pub struct MobileDevicesParts {
     pub database: Arc<Database>,
     pub clock: Arc<EpochClock>,
-    /// 실패한 페어링 교환을 늦추는 방법. 앱은 [`crate::pairing::thread_sleep_delay`]를 넘긴다
-    pub pairing_failure_delay: Arc<FailureDelay>,
 }
 
 /// 연결된 기기 목록의 항목. 토큰은 대조용이라 화면에 내보내지 않는다
@@ -72,7 +70,7 @@ impl MobileDevices {
         Self {
             database: parts.database,
             clock: parts.clock,
-            pairing: PairingCodes::new(parts.pairing_failure_delay),
+            pairing: PairingCodes::default(),
             device_list_turn: Mutex::new(()),
             unpaired_listeners: ListenerSet::default(),
         }

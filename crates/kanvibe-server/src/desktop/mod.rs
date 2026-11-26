@@ -25,7 +25,6 @@ use kanvibe_mobile::lan_plaintext::LanPlaintextUsage;
 use kanvibe_mobile::notifications::{
     MobileNotifications, MobileNotificationsParts, PushRelayConfig,
 };
-use kanvibe_mobile::pairing::thread_sleep_delay;
 use kanvibe_pane_mirror::{PaneChatRuntime, PaneMirror};
 use kanvibe_runtime::DesktopRuntime;
 
@@ -57,7 +56,6 @@ impl DesktopServices {
         let devices = Arc::new(MobileDevices::new(MobileDevicesParts {
             database: runtime.database().clone(),
             clock: system_clock(),
-            pairing_failure_delay: thread_sleep_delay(),
         }));
         let mirror = Arc::clone(runtime.pane_mirror());
         let notifications = Arc::new(MobileNotifications::new(MobileNotificationsParts {

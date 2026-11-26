@@ -147,6 +147,33 @@ async fn pane_chat_pushes_reach_only_the_subscriber_and_closing_clears_the_subsc
 }
 
 #[tokio::test]
+async fn a_subscription_finishing_after_the_socket_closed_is_cleared_again() {
+    let server = TestServer::start().await;
+    let gate = Gate::new();
+    let held = gate.clone();
+    server
+        .fake
+        .respond("set_pane_chat_subscriptions", move |_| Ok(held.wait()));
+    let mut subscriber = server.events(GOOD).await;
+    let pane = json!({ "taskId": "task-1", "paneId": "%3", "detail": "chat" });
+    subscriber
+        .send_json(&json!({ "type": "command", "requestId": "sub-1", "command": "set-pane-chat-subscription", "panes": [pane] }))
+        .await;
+    wait_until(|| server.fake.count("set_pane_chat_subscriptions") == 1).await;
+
+    subscriber.close().await;
+    wait_until(|| server.fake.count("clear_pane_chat_subscriptions") == 1).await;
+    gate.open(json!([]));
+
+    wait_until(|| server.fake.count("clear_pane_chat_subscriptions") == 2).await;
+    let owner = server.fake.calls("set_pane_chat_subscriptions")[0][0].clone();
+    assert_eq!(
+        server.fake.calls("clear_pane_chat_subscriptions"),
+        vec![owner.clone(), owner]
+    );
+}
+
+#[tokio::test]
 async fn events_socket_sends_connection_board_and_task_events_and_ignores_other_unpairs() {
     let server = TestServer::start().await;
     let mut client = server.events(GOOD).await;

@@ -241,7 +241,6 @@ fn fixture() -> IntegrationFixture {
     let devices = MobileDevices::new(MobileDevicesParts {
         database: Arc::clone(&test_database.database),
         clock: system_clock(),
-        pairing_failure_delay: Arc::new(|_| {}),
     });
     IntegrationFixture {
         features,

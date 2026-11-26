@@ -13,7 +13,7 @@ use tokio::net::TcpListener;
 use tokio::sync::watch;
 
 use crate::bridge::{MobileBridge, Subscription};
-use crate::http::{ListenerKind, PeerContext, serve_connection};
+use crate::http::{ConnectionTimeouts, ListenerKind, PeerContext, serve_connection};
 use crate::routes::hooks::{HOOK_HEALTH_PATH, HookBackend};
 use crate::ws::DEVICE_UNPAIRED_CLOSE_CODE;
 use crate::ws::socket::SocketHub;
@@ -39,6 +39,7 @@ pub struct ServerState {
     pub lan_usage: Option<Arc<dyn LanPlaintextUsage>>,
     pub options: RouteOptions,
     pub sockets: SocketHub,
+    pub connection_timeouts: ConnectionTimeouts,
 }
 
 impl ServerState {
@@ -53,6 +54,7 @@ impl ServerState {
             lan_usage: None,
             options,
             sockets: SocketHub::default(),
+            connection_timeouts: ConnectionTimeouts::default(),
         }
     }
 
@@ -288,7 +290,11 @@ async fn accept_tcp(
             match acceptor {
                 None => serve_connection(stream, peer, state).await,
                 Some(acceptor) => {
-                    if let Ok(stream) = acceptor.accept(stream).await {
+                    let handshake = tokio::time::timeout(
+                        state.connection_timeouts.tls_handshake,
+                        acceptor.accept(stream),
+                    );
+                    if let Ok(Ok(stream)) = handshake.await {
                         serve_connection(stream, peer, state).await;
                     }
                 }

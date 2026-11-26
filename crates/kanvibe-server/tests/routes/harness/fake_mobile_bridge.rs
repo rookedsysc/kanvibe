@@ -218,9 +218,10 @@ impl MobileBridge for FakeBridge {
         self.call("open_mobile_ai_login", args).map(drop)
     }
 
+    /// 응답기를 걸면 쓰기 도중을 붙잡아 순서를 볼 수 있다
     fn write_mobile_ai_login(&self, device_id: &str, socket_id: &str, data: &str) {
-        self.recorder
-            .record("write_mobile_ai_login", json!([device_id, socket_id, data]));
+        let args = json!([device_id, socket_id, data]);
+        drop(self.call("write_mobile_ai_login", args));
     }
 
     fn resize_mobile_ai_login(&self, device_id: &str, socket_id: &str, cols: u16, rows: u16) {

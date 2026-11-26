@@ -13,6 +13,7 @@ mod pane_chat;
 mod tasks;
 
 use http::Method;
+use kanvibe_mobile::pairing::PAIRING_CODE_FAILURE_DELAY;
 use serde_json::{Value, json};
 
 use super::js_semantics::{MobileUrl, UriError, property};
@@ -195,10 +196,14 @@ async fn handle_pair_request(
         bridge.pair_mobile_device(&code, &device_name)
     })
     .await?;
-    Ok(match token {
-        Some(token) => json_response(200, &json!({ "success": true, "token": token })),
-        None => failure_response(401, "코드가 맞지 않거나 만료되었습니다"),
-    })
+    let Some(token) = token else {
+        tokio::time::sleep(PAIRING_CODE_FAILURE_DELAY).await;
+        return Ok(failure_response(401, "코드가 맞지 않거나 만료되었습니다"));
+    };
+    Ok(json_response(
+        200,
+        &json!({ "success": true, "token": token }),
+    ))
 }
 
 /// `{ success: true, ...value }`. 객체가 아닌 값은 펼칠 칸이 없다

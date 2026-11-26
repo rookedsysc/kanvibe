@@ -12,6 +12,8 @@ use std::sync::{Arc, RwLock};
 
 use kanvibe_domain::notifications::{HookTunnelFailedPayload, HookTunnelRecoveredPayload};
 use kanvibe_pane_mirror::RemotePaneGrants;
+use kanvibe_process::exec::ShellCommandRunner;
+use kanvibe_process::exec::system::SystemShellCommandRunner;
 use kanvibe_process::shell_environment::{
     ShellEnvironment, ShellPlatform, create_local_shell_environment,
 };
@@ -27,9 +29,11 @@ use kanvibe_remote_host::pool::{RemoteHostConnectionPool, RemoteHostConnectionPo
 use kanvibe_remote_host::registry_bindings::{RegistryHostConnections, TunnelHostTransport};
 use kanvibe_remote_host::ssh_transport::{SystemEffectiveSshConfig, SystemHostTransportSpawner};
 use kanvibe_remote_host::terminal_agent_seam::{
-    RustRemoteTerminalAgentBundle, SelfSignedCertificateIssuer, UploadingRemoteTerminalAgentSpawner,
+    DaemonFirstRemoteTerminalAgentSpawner, PooledDaemonAgentLauncher,
+    RustRemoteTerminalAgentBundle, SelfSignedCertificateIssuer,
+    UploadingRemoteTerminalAgentSpawner,
 };
-use kanvibe_runtime::{DesktopRuntime, RemoteHookRouting, RuntimeConfig};
+use kanvibe_runtime::{DesktopRuntime, RemoteCommandRouting, RemoteHookRouting, RuntimeConfig};
 use kanvibe_services::board_notifier::BoardNotifier;
 use kanvibe_terminal::environment::TerminalHostEnvironment;
 use kanvibe_terminal::remote_terminal_service::{
@@ -68,14 +72,15 @@ impl RemoteHostWiring {
             Some(directory) => AgentBinaryCatalog::from_directory(directory)?,
             None => AgentBinaryCatalog::default(),
         });
-        let terminal_agents = build_terminal_agents(&config, &binaries);
-        let environment = narrow_environment(config.base_environment, &config.home_directory);
+        let environment =
+            narrow_environment(config.base_environment.clone(), &config.home_directory);
         let pool = RemoteHostConnectionPool::new(RemoteHostConnectionPoolDependencies {
             ssh_hosts: Arc::new(SshConfigReader::new(&config.home_directory)),
             binaries: Arc::clone(&binaries),
             transport_spawner: Arc::new(SystemHostTransportSpawner::new(environment.clone())),
             effective_ssh_config: Arc::new(SystemEffectiveSshConfig::new(environment.clone())),
         });
+        let terminal_agents = build_terminal_agents(&config, &binaries, &pool);
         let routing = Arc::new(LateBoundHookRouting {
             pool: Arc::clone(&pool),
             tunnels: RwLock::new(None),
@@ -93,6 +98,7 @@ impl RemoteHostWiring {
     /// agent 권한은 런타임 pane 미러가 쓰고, 런타임 `shutdown()`이 미러를 멈출 때 agent도 함께 내린다
     pub fn wire_runtime(&self, config: &mut RuntimeConfig) {
         config.remote_host_connections = self.host_connections();
+        config.remote_command_routing = Arc::new(DaemonCommandRouting(Arc::clone(&self.pool)));
         config.remote_hook_routing = self.hook_routing();
         config.remote_pane_grants = self.remote_grants();
     }
@@ -147,16 +153,12 @@ impl RemoteHostWiring {
         server: TunnelServer,
     ) -> HookTunnelDependencies {
         let database = runtime.database();
-        // TS `execGit`처럼 daemon이 붙은 호스트의 원격 소켓 준비 명령은 daemon 연결로 보낸다
-        let runner = DaemonRoutedCommandRunner::new(
-            Arc::clone(runtime.shell_runner()),
-            Arc::clone(&self.pool),
-        );
         HookTunnelDependencies {
             request_server: Arc::new(server),
             host_transport: Arc::new(TunnelHostTransport(Arc::clone(&self.pool))),
             ssh_hosts: runtime.ssh_config().clone(),
-            runner: Arc::new(runner),
+            // 런타임 실행기는 이미 daemon이 붙은 호스트의 명령을 그 연결로 보낸다(`wire_runtime`)
+            runner: Arc::clone(runtime.shell_runner()),
             process_spawner: Arc::new(SystemHookTunnelProcessSpawner::from_parent_environment(
                 &self.environment,
             )),
@@ -169,6 +171,21 @@ impl RemoteHostWiring {
             )),
             health_notifier: Arc::new(BoardHookTunnelHealth(runtime.board_notifier().clone())),
         }
+    }
+}
+
+/// 런타임 서비스 명령을 daemon 연결로 보낸다(TS `execGit`이 먼저 `getRemoteHostConnection`을 찾는 것과 같다)
+struct DaemonCommandRouting(Arc<RemoteHostConnectionPool>);
+
+impl RemoteCommandRouting for DaemonCommandRouting {
+    fn route_commands(
+        &self,
+        system_runner: Arc<SystemShellCommandRunner>,
+    ) -> Arc<dyn ShellCommandRunner> {
+        Arc::new(DaemonRoutedCommandRunner::new(
+            system_runner,
+            Arc::clone(&self.0),
+        ))
     }
 }
 
@@ -189,6 +206,7 @@ impl HookTunnelHealthNotifier for BoardHookTunnelHealth {
 fn build_terminal_agents(
     config: &RemoteHostWiringConfig,
     binaries: &Arc<AgentBinaryCatalog>,
+    pool: &Arc<RemoteHostConnectionPool>,
 ) -> Arc<RemoteTerminalService> {
     let mut parent_environment = config.base_environment.clone();
     parent_environment.insert("HOME".into(), config.home_directory.clone());
@@ -198,6 +216,10 @@ fn build_terminal_agents(
         &config.home_directory,
     ));
     let ssh_spawner = Arc::new(SystemRemoteTerminalAgentSpawner::new(terminal_environment));
+    let daemon_first_spawner = Arc::new(DaemonFirstRemoteTerminalAgentSpawner::new(
+        Arc::new(PooledDaemonAgentLauncher(Arc::clone(pool))),
+        ssh_spawner,
+    ));
     Arc::new(RemoteTerminalService::new(
         RemoteTerminalServiceDependencies {
             ssh_hosts: Arc::new(SshConfigReader::new(&config.home_directory)),
@@ -207,7 +229,7 @@ fn build_terminal_agents(
             )),
             certificate_issuer: Arc::new(SelfSignedCertificateIssuer),
             agent_spawner: Arc::new(UploadingRemoteTerminalAgentSpawner::new(
-                ssh_spawner,
+                daemon_first_spawner,
                 Arc::clone(binaries),
             )),
         },
@@ -236,9 +258,12 @@ pub struct LateBoundHookRouting {
 
 impl RemoteHookRouting for LateBoundHookRouting {
     /// TS `await getRemoteHostConnection(sshHost) ? getRemoteHostNamespace() : undefined`
-    fn remote_host_namespace(&self, ssh_host: &str) -> Option<String> {
-        self.pool.connection(ssh_host).ok().flatten()?;
-        self.pool.namespace()
+    fn remote_host_namespace(&self, ssh_host: &str) -> Result<Option<String>, String> {
+        let connection = self
+            .pool
+            .connection(ssh_host)
+            .map_err(|error| error.to_string())?;
+        Ok(connection.and_then(|_| self.pool.namespace()))
     }
 
     fn ensure_hook_tunnel(&self, ssh_host: &str) {

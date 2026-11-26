@@ -15,7 +15,7 @@ use std::sync::{Arc, RwLock};
 use http::{HeaderMap, Method};
 
 pub use body::{ConnectionAbort, HttpResponse, RequestBody};
-pub use connection::{IoStream, UpgradeHead, serve_connection};
+pub use connection::{ConnectionTimeouts, IoStream, UpgradeHead, serve_connection};
 
 /// upgrade 처리부가 머리 뒤에 이미 받은 바이트를 WebSocket 첫 프레임으로 다시 읽게 한다
 pub fn rewind_stream(

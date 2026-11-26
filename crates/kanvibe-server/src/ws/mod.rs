@@ -166,7 +166,12 @@ async fn run_socket<S>(
     let (terminate_sender, mut terminated) = watch::channel(false);
     let socket = Arc::new(SocketHandle::new(state.sockets.next_socket_id(), sender));
     state.sockets.register(&session.device_id, socket.clone());
-    tokio::spawn(write_outgoing(sink, receiver, terminate_sender));
+    tokio::spawn(write_outgoing(
+        sink,
+        receiver,
+        socket.clone(),
+        terminate_sender,
+    ));
     let behavior = attach_behavior(&session, socket.clone(), &state).await;
     loop {
         let message = tokio::select! {
@@ -236,13 +241,18 @@ async fn attach_behavior(
 async fn write_outgoing<W>(
     mut sink: W,
     mut receiver: mpsc::UnboundedReceiver<Outgoing>,
+    socket: Arc<SocketHandle>,
     terminate: watch::Sender<bool>,
 ) where
     W: futures_util::Sink<Message> + Unpin,
 {
     while let Some(outgoing) = receiver.recv().await {
+        let mut text_bytes = 0;
         let message = match outgoing {
-            Outgoing::Text(text) => Message::text(text),
+            Outgoing::Text(text) => {
+                text_bytes = text.len();
+                Message::text(text)
+            }
             Outgoing::Ping => Message::Ping(Bytes::new()),
             Outgoing::Close(code, reason) => {
                 schedule_close_timeout(terminate.clone());
@@ -253,7 +263,9 @@ async fn write_outgoing<W>(
             }
             Outgoing::Terminate => break,
         };
-        if sink.send(message).await.is_err() {
+        let is_sent = sink.send(message).await.is_ok();
+        socket.mark_written(text_bytes);
+        if !is_sent {
             break;
         }
     }

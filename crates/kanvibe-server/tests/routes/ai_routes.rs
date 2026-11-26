@@ -232,6 +232,40 @@ async fn login_stream_routes_output_input_resize_and_close_to_its_owner() {
 }
 
 #[tokio::test]
+async fn login_input_frames_reach_the_terminal_in_arrival_order() {
+    let server = TestServer::start().await;
+    let gate = Gate::new();
+    let held = gate.clone();
+    server.fake.respond("write_mobile_ai_login", move |args| {
+        if args[2] == "A" {
+            held.wait();
+        }
+        Ok(Value::Null)
+    });
+    let mut client = open_login(&server, GOOD).await;
+
+    client
+        .send_json(&json!({ "type": "input", "data": "A" }))
+        .await;
+    client
+        .send_json(&json!({ "type": "input", "data": "B" }))
+        .await;
+    wait_until(|| server.fake.count("write_mobile_ai_login") == 1).await;
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    assert_eq!(server.fake.count("write_mobile_ai_login"), 1);
+    gate.open(Value::Null);
+    wait_until(|| server.fake.count("write_mobile_ai_login") == 2).await;
+
+    let written: Vec<Value> = server
+        .fake
+        .calls("write_mobile_ai_login")
+        .into_iter()
+        .map(|call| call[2].clone())
+        .collect();
+    assert_eq!(written, [json!("A"), json!("B")]);
+}
+
+#[tokio::test]
 async fn ready_is_not_sent_after_a_disconnect_while_the_account_lookup_is_pending() {
     let server = TestServer::start().await;
     let gate = Gate::new();
@@ -283,7 +317,31 @@ async fn invalid_oversized_and_binary_frames_close_without_running_terminal_inpu
     assert_eq!(server.fake.count("write_mobile_ai_login"), 0);
 }
 
-/// TS의 출력 적체(`bufferedAmount` > 2 MiB → 1009) 갈래는 Rust 보내기 줄에 적체 값이 없어 옮기지 못했다
+#[tokio::test]
+async fn login_output_that_the_phone_does_not_read_closes_the_socket_with_1009() {
+    let server = TestServer::start().await;
+    let mut client = open_login(&server, GOOD).await;
+    let login = server.fake.ai_login(0);
+    let output = json!({ "type": "output", "data": "x".repeat(64 * 1024) });
+    for _ in 0..1024 {
+        if !login.is_open() {
+            break;
+        }
+        login.on_event(output.clone());
+    }
+    assert!(
+        !login.is_open(),
+        "쌓인 출력이 상한을 넘으면 소켓을 닫아야 한다"
+    );
+    let close = loop {
+        if let ws_client::Frame::Closed(code, reason) = client.next_frame().await {
+            break (code, reason);
+        }
+    };
+    assert_eq!(close, (1009, "login-output-overflow".to_string()));
+    wait_until(|| server.fake.count("close_mobile_ai_login") == 1).await;
+}
+
 #[tokio::test]
 async fn login_exit_closes_the_socket_and_cleans_the_process_immediately() {
     let server = TestServer::start().await;

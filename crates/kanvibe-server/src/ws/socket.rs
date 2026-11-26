@@ -4,7 +4,7 @@
 //! 출력 콜백이 어느 스레드에서 불려도 프레임 순서가 섞이지 않는다.
 
 use std::collections::{HashMap, HashSet};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use serde_json::Value;
@@ -27,6 +27,8 @@ pub struct SocketHandle {
     is_open: AtomicBool,
     /// 하트비트 사이에 pong을 받았는지
     is_alive: AtomicBool,
+    /// 보내기로 넣었지만 아직 소켓에 쓰지 못한 텍스트 바이트(TS `bufferedAmount`)
+    buffered_bytes: AtomicUsize,
 }
 
 impl SocketHandle {
@@ -36,6 +38,7 @@ impl SocketHandle {
             sender,
             is_open: AtomicBool::new(true),
             is_alive: AtomicBool::new(true),
+            buffered_bytes: AtomicUsize::new(0),
         }
     }
 
@@ -45,8 +48,18 @@ impl SocketHandle {
 
     pub fn send_text(&self, text: String) {
         if self.is_open() {
+            self.buffered_bytes.fetch_add(text.len(), Ordering::SeqCst);
             let _ = self.sender.send(Outgoing::Text(text));
         }
+    }
+
+    pub fn buffered_amount(&self) -> usize {
+        self.buffered_bytes.load(Ordering::SeqCst)
+    }
+
+    /// 보내기 작업이 텍스트 프레임 하나를 소켓에 쓴 뒤 부른다
+    pub fn mark_written(&self, text_bytes: usize) {
+        self.buffered_bytes.fetch_sub(text_bytes, Ordering::SeqCst);
     }
 
     pub fn send_json(&self, payload: &Value) {

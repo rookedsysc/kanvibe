@@ -25,7 +25,6 @@ fn fixture() -> DeviceFixture {
     let devices = Arc::new(MobileDevices::new(MobileDevicesParts {
         database: Arc::clone(&test_database.database),
         clock: system_clock(),
-        pairing_failure_delay: Arc::new(|_| {}),
     }));
     DeviceFixture {
         devices,

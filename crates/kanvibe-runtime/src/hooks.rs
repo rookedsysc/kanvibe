@@ -118,8 +118,10 @@ impl HookClientRuntime for DesktopHookClientRuntime {
         self.address.port()
     }
 
-    fn remote_host_namespace(&self, ssh_host: &str) -> Option<String> {
-        self.routing.remote_host_namespace(ssh_host)
+    fn remote_host_namespace(&self, ssh_host: &str) -> Result<Option<String>, HookInstallError> {
+        self.routing
+            .remote_host_namespace(ssh_host)
+            .map_err(install_error)
     }
 
     fn ensure_hook_tunnel(&self, ssh_host: &str) {

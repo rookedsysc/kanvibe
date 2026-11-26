@@ -112,7 +112,8 @@ async fn prompts_keep_authentication_and_the_target_token() {
     assert_eq!(reply.pair(), (200, json!({ "success": true })));
     let prompt = PaneChatAction::Prompt {
         text: json!("First\nSecond"),
-        extra: None,
+        attachment_ids: None,
+        request_id: None,
     };
     assert_eq!(
         server.fake.pane_chat_actions(),
@@ -276,11 +277,42 @@ async fn attachment_ids_and_the_dedupe_id_travel_with_the_prompt() {
     server.request(post("prompt", &body).auth(GOOD)).await;
     let prompt = PaneChatAction::Prompt {
         text: json!("caption"),
-        extra: Some((json!(["owned-id"]), json!("once"))),
+        attachment_ids: Some(json!(["owned-id"])),
+        request_id: Some(json!("once")),
     };
     assert_eq!(
         server.fake.pane_chat_actions(),
         vec![action("task-1", "token", prompt)]
+    );
+}
+
+#[tokio::test]
+async fn a_missing_attachment_list_or_dedupe_id_stays_missing_instead_of_becoming_null() {
+    let server = TestServer::start().await;
+    let only_request_id = json!({ "targetToken": "token", "text": "retry", "requestId": "r1" });
+    let only_attachments = json!({ "targetToken": "token", "text": "plain", "attachmentIds": [] });
+    let explicit_null = json!({ "targetToken": "token", "text": "bad", "requestId": null });
+    for body in [&only_request_id, &only_attachments, &explicit_null] {
+        server.request(post("prompt", body).auth(GOOD)).await;
+    }
+    let prompt = |text: &str, attachment_ids: Option<Value>, request_id: Option<Value>| {
+        action(
+            "task-1",
+            "token",
+            PaneChatAction::Prompt {
+                text: json!(text),
+                attachment_ids,
+                request_id,
+            },
+        )
+    };
+    assert_eq!(
+        server.fake.pane_chat_actions(),
+        vec![
+            prompt("retry", None, Some(json!("r1"))),
+            prompt("plain", Some(json!([])), None),
+            prompt("bad", None, Some(Value::Null)),
+        ]
     );
 }
 

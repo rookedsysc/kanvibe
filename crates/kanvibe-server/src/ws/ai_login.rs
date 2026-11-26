@@ -5,6 +5,7 @@ use std::sync::{Arc, Mutex};
 
 use bytes::Bytes;
 use serde_json::{Value, json};
+use tokio::sync::mpsc;
 
 use super::SocketBehavior;
 use super::socket::SocketHandle;
@@ -14,6 +15,8 @@ use crate::routes::mobile::call_bridge;
 use crate::server::ServerState;
 
 const MAX_FRAME_BYTES: usize = 64 * 1024;
+/// 휴대폰이 읽지 않는 동안 쌓아 둘 로그인 출력의 상한(TS `MAX_BUFFERED_OUTPUT_BYTES`)
+const MAX_BUFFERED_OUTPUT_BYTES: usize = 1024 * 1024;
 const DEFAULT_SIZE: (f64, f64) = (80.0, 24.0);
 const INVALID_INPUT_ERROR: &str = "터미널 입력 형식이 올바르지 않습니다";
 
@@ -27,6 +30,13 @@ struct AiLoginSocket {
     runtime: tokio::runtime::Handle,
     /// `ready`를 보내기 전에 PTY가 낸 이벤트. 기기는 언제나 `ready`를 먼저 받는다
     pending_events: Mutex<Option<Vec<Value>>>,
+    /// 입력·크기 프레임을 받은 순서대로 PTY에 넘기는 큐. 정리하면 비워 둬 큐를 비우는 작업도 끝난다
+    terminal_inputs: Mutex<Option<mpsc::UnboundedSender<LoginTerminalInput>>>,
+}
+
+enum LoginTerminalInput {
+    Write(String),
+    Resize(u16, u16),
 }
 
 pub fn attach_ai_login_socket(
@@ -35,6 +45,7 @@ pub fn attach_ai_login_socket(
     url: &MobileUrl,
     state: Arc<ServerState>,
 ) -> Arc<dyn SocketBehavior> {
+    let (terminal_input_sender, terminal_input_receiver) = mpsc::unbounded_channel();
     let login = Arc::new(AiLoginSocket {
         socket,
         state,
@@ -43,7 +54,14 @@ pub fn attach_ai_login_socket(
         is_closed: AtomicBool::new(false),
         runtime: tokio::runtime::Handle::current(),
         pending_events: Mutex::new(Some(Vec::new())),
+        terminal_inputs: Mutex::new(Some(terminal_input_sender)),
     });
+    tokio::spawn(apply_terminal_inputs_in_order(
+        login.state.clone(),
+        login.device_id.clone(),
+        login.socket_id.clone(),
+        terminal_input_receiver,
+    ));
     let account_id = account_id_from_path(&url.pathname);
     let size = read_terminal_size(url);
     tokio::spawn(open_login(login.clone(), account_id, size));
@@ -108,6 +126,28 @@ async fn open_login(
     }
 }
 
+/// blocking 작업을 하나씩 끝까지 기다려, 이웃한 두 프레임이 다른 스레드에서 앞질러 PTY에 들어가지 않게 한다
+async fn apply_terminal_inputs_in_order(
+    state: Arc<ServerState>,
+    device_id: String,
+    socket_id: String,
+    mut receiver: mpsc::UnboundedReceiver<LoginTerminalInput>,
+) {
+    while let Some(input) = receiver.recv().await {
+        let bridge = state.bridge.clone();
+        let (device_id, socket_id) = (device_id.clone(), socket_id.clone());
+        let _ = tokio::task::spawn_blocking(move || match input {
+            LoginTerminalInput::Write(data) => {
+                bridge.write_mobile_ai_login(&device_id, &socket_id, &data)
+            }
+            LoginTerminalInput::Resize(cols, rows) => {
+                bridge.resize_mobile_ai_login(&device_id, &socket_id, cols, rows)
+            }
+        })
+        .await;
+    }
+}
+
 /// TS `responseError(error).error`
 fn login_error_message(error: &BridgeError) -> String {
     match error {
@@ -129,15 +169,26 @@ impl AiLoginSocket {
     }
 
     fn send(&self, event: Value) {
-        if self.is_open() {
-            self.socket.send_json(&event);
+        if !self.is_open() {
+            return;
         }
+        if self.socket.buffered_amount() > MAX_BUFFERED_OUTPUT_BYTES {
+            self.finish(1009, "login-output-overflow");
+            return;
+        }
+        self.socket.send_json(&event);
     }
 
     fn cleanup(&self) {
         if self.is_closed.swap(true, Ordering::SeqCst) {
             return;
         }
+        drop(
+            self.terminal_inputs
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .take(),
+        );
         let bridge = self.state.bridge.clone();
         let (device_id, socket_id) = (self.device_id.clone(), self.socket_id.clone());
         self.runtime
@@ -175,6 +226,16 @@ impl AiLoginSocket {
         }
     }
 
+    fn queue_terminal_input(&self, input: LoginTerminalInput) {
+        let terminal_inputs = self
+            .terminal_inputs
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(terminal_inputs) = terminal_inputs.as_ref() {
+            let _ = terminal_inputs.send(input);
+        }
+    }
+
     fn reject_input(&self) {
         self.send(json!({ "type": "error", "error": INVALID_INPUT_ERROR }));
         self.finish(1008, "invalid-login-input");
@@ -209,20 +270,14 @@ impl SocketBehavior for AiLoginSocket {
             return self.reject_input();
         }
         let command: Value = serde_json::from_slice(&data).unwrap_or(Value::Null);
-        let bridge = self.state.bridge.clone();
-        let (device_id, socket_id) = (self.device_id.clone(), self.socket_id.clone());
         match command.get("type").and_then(Value::as_str) {
             Some("input") if command.get("data").is_some_and(Value::is_string) => {
                 let data = command["data"].as_str().unwrap_or_default().to_string();
-                tokio::task::spawn_blocking(move || {
-                    bridge.write_mobile_ai_login(&device_id, &socket_id, &data)
-                });
+                self.queue_terminal_input(LoginTerminalInput::Write(data));
             }
             Some("resize") if read_resize(&command).is_some() => {
                 let (cols, rows) = read_resize(&command).unwrap_or_default();
-                tokio::task::spawn_blocking(move || {
-                    bridge.resize_mobile_ai_login(&device_id, &socket_id, cols, rows)
-                });
+                self.queue_terminal_input(LoginTerminalInput::Resize(cols, rows));
             }
             _ => self.reject_input(),
         }

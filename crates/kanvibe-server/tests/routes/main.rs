@@ -7,6 +7,7 @@ mod harness;
 mod ai_history;
 mod ai_routes;
 mod auth_boundary;
+mod connection_timeouts;
 mod event_commands;
 mod feature_routes;
 mod hook_routes;

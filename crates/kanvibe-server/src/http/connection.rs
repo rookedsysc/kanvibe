@@ -1,11 +1,12 @@
 //! 연결 하나의 수명. 첫 요청 머리를 읽어 upgrade인지 가른 뒤 WebSocket 처리부나 hyper로 넘긴다.
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use bytes::{Bytes, BytesMut};
 use hyper::server::conn::http1;
 use hyper::service::service_fn;
-use hyper_util::rt::TokioIo;
+use hyper_util::rt::{TokioIo, TokioTimer};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite};
 
 use super::rewind::Rewind;
@@ -15,6 +16,25 @@ use crate::server::ServerState;
 /// 요청 머리의 상한. 넘으면 Node처럼 연결을 끊는다
 const MAX_HEAD_BYTES: usize = 64 * 1024;
 const MAX_HEADERS: usize = 100;
+
+/// 아무것도 보내지 않는 연결이 task와 fd를 붙잡지 않게 닫는 시간 제한.
+/// TS 서버가 기대던 Node `http.Server` 기본값(`headersTimeout` 60초)에 맞춘다
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ConnectionTimeouts {
+    /// TLS 핸드셰이크를 마칠 때까지
+    pub tls_handshake: Duration,
+    /// 요청 머리를 다 받을 때까지. keep-alive 연결이 다음 요청 머리를 기다리는 시간도 같은 제한을 받는다
+    pub request_head: Duration,
+}
+
+impl Default for ConnectionTimeouts {
+    fn default() -> Self {
+        Self {
+            tls_handshake: Duration::from_secs(10),
+            request_head: Duration::from_secs(60),
+        }
+    }
+}
 
 pub trait IoStream: AsyncRead + AsyncWrite + Unpin + Send + 'static {}
 
@@ -34,7 +54,10 @@ pub async fn serve_connection<S: IoStream>(
     peer: PeerContext,
     state: Arc<ServerState>,
 ) {
-    let Some(buffered) = read_request_head(&mut stream).await else {
+    let timeouts = state.connection_timeouts;
+    let Ok(Some(buffered)) =
+        tokio::time::timeout(timeouts.request_head, read_request_head(&mut stream)).await
+    else {
         return;
     };
     let is_tunnel = matches!(peer.listener, ListenerKind::Tunnel(_));
@@ -64,6 +87,8 @@ pub async fn serve_connection<S: IoStream>(
     });
     let _ = http1::Builder::new()
         .keep_alive(true)
+        .timer(TokioTimer::new())
+        .header_read_timeout(timeouts.request_head)
         .serve_connection(io, service)
         .await;
 }

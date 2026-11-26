@@ -22,7 +22,10 @@ mod task_cli;
 mod terminal;
 
 pub use clock::AppClock;
-pub use config::{NoRemoteHookRouting, NoRemoteHostConnections, RemoteHookRouting, RuntimeConfig};
+pub use config::{
+    NoRemoteCommandRouting, NoRemoteHookRouting, NoRemoteHostConnections, RemoteCommandRouting,
+    RemoteHookRouting, RuntimeConfig,
+};
 pub use diagram::{DiagramFontFiles, SharedDiagramRenderer};
 pub use hooks::{DesktopHookClientRuntime, HookServerAddress, TaskCliTokens};
 pub use notifications::{

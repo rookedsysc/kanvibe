@@ -6,6 +6,8 @@ use std::sync::Arc;
 use kanvibe_db::DatabaseLocation;
 use kanvibe_domain::platform::ShortcutPlatform;
 use kanvibe_pane_mirror::RemotePaneGrants;
+use kanvibe_process::exec::ShellCommandRunner;
+use kanvibe_process::exec::system::SystemShellCommandRunner;
 use kanvibe_process::shell_environment::ShellEnvironment;
 use kanvibe_services::desktop_notification::{
     DesktopNotificationPresenter, NotificationDeliveryCallbacks,
@@ -23,8 +25,9 @@ use crate::qa_network::NetworkResponseTable;
 /// 원격 hook이 데스크톱 hook 서버로 돌아오는 경로(TS `getRemoteHostNamespace`, `ensureHookTunnel`).
 /// 원격 host daemon과 터널은 kanvibe-remote-host가 구현해 넘긴다
 pub trait RemoteHookRouting: Send + Sync {
-    /// 호스트에 원격 host daemon이 붙어 있을 때 그 daemon의 namespace(`dev`, `prod`, `qa-*`). 없으면 `None`이다
-    fn remote_host_namespace(&self, ssh_host: &str) -> Option<String>;
+    /// 호스트에 원격 host daemon이 붙어 있을 때 그 daemon의 namespace(`dev`, `prod`, `qa-*`). daemon을 쓰지 않는 호스트면 `Ok(None)`,
+    /// 연결 준비에 실패하면 legacy 경로로 돌리지 않고 오류다(TS `getRemoteHostConnection`의 throw)
+    fn remote_host_namespace(&self, ssh_host: &str) -> Result<Option<String>, String>;
     /// 원격 hook이 돌아올 터널을 연다. 결과를 기다리지 않는다
     fn ensure_hook_tunnel(&self, ssh_host: &str);
 }
@@ -33,19 +36,41 @@ pub trait RemoteHookRouting: Send + Sync {
 pub struct NoRemoteHookRouting;
 
 impl RemoteHookRouting for NoRemoteHookRouting {
-    fn remote_host_namespace(&self, _ssh_host: &str) -> Option<String> {
-        None
+    fn remote_host_namespace(&self, _ssh_host: &str) -> Result<Option<String>, String> {
+        Ok(None)
     }
 
     fn ensure_hook_tunnel(&self, _ssh_host: &str) {}
+}
+
+/// 서비스가 쓰는 명령 실행기를 고른다(TS `execGit`의 `getRemoteHostConnection` 분기).
+/// 원격 host daemon이 붙은 호스트의 명령을 그 연결로 보내는 실행기는 kanvibe-remote-host가 만들어 넘긴다
+pub trait RemoteCommandRouting: Send + Sync {
+    /// 시스템 실행기(로컬 셸·ssh)를 받아 런타임 서비스 전체가 쓸 실행기를 돌려준다
+    fn route_commands(
+        &self,
+        system_runner: Arc<SystemShellCommandRunner>,
+    ) -> Arc<dyn ShellCommandRunner>;
+}
+
+/// 원격 daemon이 없는 실행. 모든 명령이 시스템 실행기로 간다
+pub struct NoRemoteCommandRouting;
+
+impl RemoteCommandRouting for NoRemoteCommandRouting {
+    fn route_commands(
+        &self,
+        system_runner: Arc<SystemShellCommandRunner>,
+    ) -> Arc<dyn ShellCommandRunner> {
+        system_runner
+    }
 }
 
 /// 원격 host daemon이 없는 실행. 원격 세션은 모두 순수 ssh 경로로 간다
 pub struct NoRemoteHostConnections;
 
 impl RemoteHostConnections for NoRemoteHostConnections {
-    fn connection(&self, _ssh_host: &str) -> Option<Arc<dyn RemoteHostConnection>> {
-        None
+    fn connection(&self, _ssh_host: &str) -> Result<Option<Arc<dyn RemoteHostConnection>>, String> {
+        Ok(None)
     }
 }
 
@@ -63,6 +88,8 @@ pub struct RuntimeConfig {
     pub base_environment: ShellEnvironment,
     /// 원격 host daemon 연결. 기본값은 연결 없음이다
     pub remote_host_connections: Arc<dyn RemoteHostConnections>,
+    /// 서비스 명령을 daemon 연결로 보낼지. 기본값은 모두 시스템 실행기다
+    pub remote_command_routing: Arc<dyn RemoteCommandRouting>,
     /// 원격 hook의 namespace와 터널. 기본값은 둘 다 없음이다
     pub remote_hook_routing: Arc<dyn RemoteHookRouting>,
     /// 원격 Herdr pane 직접 연결 권한(모바일). 기본값은 권한을 내지 않음이다
@@ -102,6 +129,7 @@ impl RuntimeConfig {
             home_directory: home_directory.into(),
             base_environment,
             remote_host_connections: Arc::new(NoRemoteHostConnections),
+            remote_command_routing: Arc::new(NoRemoteCommandRouting),
             remote_hook_routing: Arc::new(NoRemoteHookRouting),
             remote_pane_grants: Arc::new(NoRemotePaneGrants),
             shortcut_platform: ShortcutPlatform::current(),

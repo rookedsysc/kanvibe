@@ -98,7 +98,8 @@ fn build_usage_context(foundation: &Foundation, config: &RuntimeConfig) -> Usage
         .find_map(|key| config.base_environment.get(key))
         .cloned()
         .unwrap_or_default();
-    let warn: WarningSink = Arc::new(|message: &str| eprintln!("[ai-usage] {message}"));
+    // 호출자가 `[ai-usage]`·`[ai-login]` 접두어를 이미 붙인다
+    let warn: WarningSink = Arc::new(|message: &str| eprintln!("{message}"));
     UsageContext {
         home_directory: config.home_directory.clone(),
         process_variables: Arc::new(foundation.environment.shell_environment.clone()),

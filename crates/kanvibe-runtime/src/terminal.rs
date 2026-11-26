@@ -129,7 +129,7 @@ impl RemoteImageTransfer for ScpRemoteImageTransfer {
 }
 
 /// Node `os.tmpdir()`처럼 좁힌 환경의 `TMPDIR`, `TMP`, `TEMP`, `/tmp` 순으로 고르고 끝의 `/` 하나를 뗀다
-fn temporary_directory(environment: &TerminalHostEnvironment) -> PathBuf {
+pub(crate) fn temporary_directory(environment: &TerminalHostEnvironment) -> PathBuf {
     let configured = ["TMPDIR", "TMP", "TEMP"]
         .into_iter()
         .find_map(|key| environment.variable(key))

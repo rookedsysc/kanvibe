@@ -301,8 +301,14 @@ async fn subscribe_pane_chat(
     let owner = socket.id;
     let push_socket = socket.clone();
     let send = Arc::new(move |event: Value| push_socket.send_json(&event));
+    let subscribing_socket = socket.clone();
     let panes = bridge_call(state, move |bridge| {
-        bridge.set_pane_chat_subscriptions(owner, &targets, send)
+        let panes = bridge.set_pane_chat_subscriptions(owner, &targets, send);
+        // 소켓은 닫힘 정리보다 먼저 닫힘으로 표시된다. 정리가 이 등록보다 먼저 돌았으면 여기서 다시 지워 받는 쪽 없는 구독을 남기지 않는다
+        if !subscribing_socket.is_open() {
+            bridge.clear_pane_chat_subscriptions(owner);
+        }
+        panes
     })
     .await?;
     Ok(single("panes", panes))

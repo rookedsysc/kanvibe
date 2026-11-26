@@ -15,6 +15,7 @@ use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use kanvibe_server::http::ConnectionTimeouts;
 use kanvibe_server::server::{
     RouteOptions, RunningServer, ServerConfig, ServerState, start_server,
 };
@@ -46,11 +47,20 @@ impl TestServer {
     }
 
     pub async fn start_with(options: RouteOptions) -> Self {
+        Self::start_configured(options, ConnectionTimeouts::default()).await
+    }
+
+    pub async fn start_with_connection_timeouts(timeouts: ConnectionTimeouts) -> Self {
+        Self::start_configured(RouteOptions::default(), timeouts).await
+    }
+
+    async fn start_configured(options: RouteOptions, timeouts: ConnectionTimeouts) -> Self {
         let directory = tempfile::tempdir().expect("임시 폴더");
         let tls_directory = directory.path().join("mobile-tls");
         let tls_fingerprint = tls_client::write_test_identity(&tls_directory);
         let fake = FakeBridge::new();
-        let state = ServerState::new(fake.clone(), fake.clone(), options);
+        let mut state = ServerState::new(fake.clone(), fake.clone(), options);
+        state.connection_timeouts = timeouts;
         let running = start_server(&server_config(tls_directory), state)
             .await
             .expect("서버 시작");

@@ -185,7 +185,8 @@ async fn run_pane_chat_action(
         "attachments" => PaneChatAction::RemoveAttachment { id: field("id") },
         "prompt" => PaneChatAction::Prompt {
             text: field("text"),
-            extra: prompt_extra(&body),
+            attachment_ids: optional_property(&body, "attachmentIds").cloned(),
+            request_id: optional_property(&body, "requestId").cloned(),
         },
         "interrupt" => PaneChatAction::Interrupt,
         "model-picker" => PaneChatAction::ModelPicker,
@@ -200,17 +201,4 @@ async fn run_pane_chat_action(
         })
         .await?;
     Ok(json_response(200, &result))
-}
-
-/// 첨부 ID와 요청 ID가 둘 다 없으면 TS는 인자를 넘기지 않았다
-fn prompt_extra(body: &Value) -> Option<(Value, Value)> {
-    let attachment_ids = optional_property(body, "attachmentIds").cloned();
-    let request_id = optional_property(body, "requestId").cloned();
-    if attachment_ids.is_none() && request_id.is_none() {
-        return None;
-    }
-    Some((
-        attachment_ids.unwrap_or(Value::Null),
-        request_id.unwrap_or(Value::Null),
-    ))
 }

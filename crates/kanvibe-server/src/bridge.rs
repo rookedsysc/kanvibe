@@ -229,10 +229,11 @@ pub enum PaneChatAction {
     RemoveAttachment {
         id: Value,
     },
-    /// `attachment_ids`·`request_id`는 둘 다 없으면 TS가 인자를 넘기지 않았다
+    /// 본문에 없는 `attachmentIds`·`requestId`는 `None`(TS의 undefined)이고, 명시적 `null`은 `Some(Null)`이다
     Prompt {
         text: Value,
-        extra: Option<(Value, Value)>,
+        attachment_ids: Option<Value>,
+        request_id: Option<Value>,
     },
     Interrupt,
     ModelPicker,

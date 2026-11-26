@@ -39,7 +39,9 @@ pub(crate) fn build_foundation(config: &RuntimeConfig) -> Result<Foundation, Run
         &config.home_directory,
         RemoteSshSettings::from_environment(&config.base_environment),
     ));
-    let runner: Arc<dyn ShellCommandRunner> = system_runner.clone();
+    let runner = config
+        .remote_command_routing
+        .route_commands(system_runner.clone());
     let files = Arc::new(HostFileAccess::new(
         Arc::clone(&runner),
         config.home_directory.as_str(),

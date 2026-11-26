@@ -123,6 +123,18 @@ async fn a_throwing_removal_answers_500_instead_of_hanging() {
 }
 
 #[tokio::test]
+async fn a_wrong_pairing_code_is_answered_only_after_the_failure_delay() {
+    let server = TestServer::start().await;
+    server.fake.returns("pair_mobile_device", json!(null));
+    let started = std::time::Instant::now();
+    let reply = server
+        .request(pair_call(&json!({ "code": "000000" })))
+        .await;
+    assert_eq!(reply.status, 401);
+    assert!(started.elapsed() >= kanvibe_mobile::pairing::PAIRING_CODE_FAILURE_DELAY);
+}
+
+#[tokio::test]
 async fn long_device_names_are_truncated() {
     let server = TestServer::start().await;
     server

@@ -4,7 +4,7 @@
 //! 반대로 기기 토큰은 길고 기기에만 저장되므로 만료시키지 않는다. 한 번 연결한 기기는 계속 쓸 수 있어야 한다.
 //! 아직 쓰이지 않은 코드는 TS 모듈 지역 상태 대신 [`PairingCodes`]가 들고, 기기 목록의 영속화는 `devices`가 맡는다.
 
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Mutex, MutexGuard};
 use std::time::Duration;
 
 use kanvibe_ai::javascript::{is_js_whitespace, utf16_length};
@@ -22,7 +22,8 @@ pub const PAIRING_CODE_TTL_MS: i64 = 5 * 60_000;
 /// 이 상한이 없으면 코드 수명 5분 안에 LAN의 누구나 전체 공간을 훑어 만료되지 않는 기기 토큰을 가져간다
 pub const PAIRING_CODE_MAX_FAILURES: u32 = 5;
 
-/// 실패한 시도만 이만큼 늦춘다. 성공은 늦추지 않는다
+/// 실패한 시도만 이만큼 늦춘다. 성공은 늦추지 않는다.
+/// 지연은 요청을 받는 async 경로가 맡는다. 서비스 스레드를 재우면 실패 요청이 몰릴 때 blocking 풀이 잠든 스레드로 찬다
 pub const PAIRING_CODE_FAILURE_DELAY: Duration = Duration::from_millis(300);
 
 /// 기기 토큰은 저장되어 계속 쓰이므로 추측 시도를 무의미하게 만들 만큼 길어야 한다
@@ -30,13 +31,6 @@ const DEVICE_TOKEN_BYTES: usize = 32;
 const DEVICE_ID_BYTES: usize = 8;
 const MAX_PUSH_TOKEN_LENGTH: usize = 4096;
 const MAX_CONNECTION_ID_LENGTH: usize = 128;
-
-/// 실패한 교환을 늦추는 방법. 앱은 스레드를 재우고 테스트는 요청된 시간만 기록한다
-pub type FailureDelay = dyn Fn(Duration) + Send + Sync;
-
-pub fn thread_sleep_delay() -> Arc<FailureDelay> {
-    Arc::new(std::thread::sleep)
-}
 
 /// 화면에 띄울 페어링 코드
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -54,9 +48,9 @@ struct PendingPairing {
 }
 
 /// 아직 교환되지 않은 페어링 코드. 앱이 꺼지면 같이 사라지는 것이 맞다
+#[derive(Default)]
 pub struct PairingCodes {
     pending: Mutex<Option<PendingPairing>>,
-    failure_delay: Arc<FailureDelay>,
 }
 
 fn random_bytes<const LENGTH: usize>() -> [u8; LENGTH] {
@@ -81,13 +75,6 @@ fn generate_pairing_code() -> String {
 }
 
 impl PairingCodes {
-    pub fn new(failure_delay: Arc<FailureDelay>) -> Self {
-        Self {
-            pending: Mutex::new(None),
-            failure_delay,
-        }
-    }
-
     fn lock(&self) -> MutexGuard<'_, Option<PendingPairing>> {
         self.pending
             .lock()
@@ -119,8 +106,8 @@ impl PairingCodes {
         read_live_code(&self.lock(), now_ms)
     }
 
-    /// 코드를 확인하고 성공하면 소모한다. 실패는 지연보다 먼저 세어, 동시에 몰려온 시도가 잠든 사이에도 상한이 지켜진다.
-    /// 상한에 닿아 버린 코드는 맞는 값을 넣어도 통하지 않는다
+    /// 코드를 확인하고 성공하면 소모한다. 실패는 호출자가 늦추기 전에 여기서 세어, 동시에 몰려온 시도가 기다리는 사이에도
+    /// 상한이 지켜진다. 상한에 닿아 버린 코드는 맞는 값을 넣어도 통하지 않는다
     pub fn redeem(&self, submitted_code: &str, now_ms: i64) -> bool {
         let mut pending = self.lock();
         let is_match = read_live_code(&pending, now_ms)
@@ -130,8 +117,6 @@ impl PairingCodes {
             return true;
         }
         count_failed_redeem(&mut pending);
-        drop(pending);
-        (self.failure_delay)(PAIRING_CODE_FAILURE_DELAY);
         false
     }
 }

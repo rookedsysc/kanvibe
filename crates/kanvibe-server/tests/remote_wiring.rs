@@ -164,7 +164,7 @@ fn late_bound_hook_routing_does_nothing_before_tunnels_start() {
 
     routing.ensure_hook_tunnel("remote-a");
 
-    assert_eq!(routing.remote_host_namespace("remote-a"), None);
+    assert_eq!(routing.remote_host_namespace("remote-a"), Ok(None));
     assert_eq!(wiring.pool().namespace(), None);
 }
 
@@ -179,10 +179,10 @@ async fn hook_tunnels_bind_to_the_runtime_and_scope_tunnel_requests() {
         .start_hook_tunnels(&runtime, running.tunnel_server())
         .expect("터널 시작");
     wait_until(|| wiring.pool().namespace().as_deref() == Some(NAMESPACE)).await;
-    // ssh 설정에 없는 호스트는 daemon 연결이 없으므로 namespace를 싣지 않는다
+    // ssh 설정에 없는 호스트는 legacy namespace로 돌리지 않고 연결 오류를 돌려준다(TS `getRemoteHostConnection`의 throw)
     assert_eq!(
         wiring.hook_routing().remote_host_namespace("remote-a"),
-        None
+        Err("SSH 호스트를 찾을 수 없습니다: remote-a".to_string())
     );
 
     let tunnel = serve_tunnel_socket(&running.tunnel_server(), "remote-a");

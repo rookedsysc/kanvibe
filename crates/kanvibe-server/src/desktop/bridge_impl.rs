@@ -12,6 +12,7 @@ use kanvibe_mobile::bridge::{
 use kanvibe_mobile::error::MobileResult;
 use kanvibe_mobile::ports::TaskPaneAccess;
 use kanvibe_pane_mirror::{PaneMirror, PaneViewportClaim, SurfaceQuery};
+use kanvibe_terminal::pane_chat::service::PaneChatError;
 use kanvibe_terminal::pane_chat::subscription::{
     PaneChatSubscriberOwner, PaneChatSubscriptionRequest,
 };
@@ -647,13 +648,14 @@ impl DesktopServices {
                     .map_err(from_pane_chat)?;
                 Ok(json!({ "success": true, "attachment": to_json(staged)? }))
             }
-            PaneChatAction::RemoveAttachment { id } => to_json(
-                chat.remove_pane_chat_attachment(task_id, target_token, &id)
-                    .map_err(from_pane_chat)?,
+            PaneChatAction::RemoveAttachment { id } => pane_chat_action_succeeded(
+                chat.remove_pane_chat_attachment(task_id, target_token, &id),
             ),
-            PaneChatAction::Prompt { text, extra } => {
-                let (attachment_ids, request_id) =
-                    extra.map_or((None, None), |(ids, request)| (Some(ids), Some(request)));
+            PaneChatAction::Prompt {
+                text,
+                attachment_ids,
+                request_id,
+            } => {
                 let sent = chat.send_pane_chat_prompt(
                     task_id,
                     target_token,
@@ -661,26 +663,28 @@ impl DesktopServices {
                     attachment_ids.as_ref(),
                     request_id.as_ref(),
                 );
-                to_json(sent.map_err(from_pane_chat)?)
+                pane_chat_action_succeeded(sent)
             }
-            PaneChatAction::Interrupt => to_json(
-                chat.interrupt_pane_chat(task_id, target_token)
-                    .map_err(from_pane_chat)?,
+            PaneChatAction::Interrupt => {
+                pane_chat_action_succeeded(chat.interrupt_pane_chat(task_id, target_token))
+            }
+            PaneChatAction::ModelPicker => {
+                pane_chat_action_succeeded(chat.open_pane_chat_model_picker(task_id, target_token))
+            }
+            PaneChatAction::ModelSetting { change } => pane_chat_action_succeeded(
+                chat.change_pane_chat_model_setting(task_id, target_token, &change),
             ),
-            PaneChatAction::ModelPicker => to_json(
-                chat.open_pane_chat_model_picker(task_id, target_token)
-                    .map_err(from_pane_chat)?,
-            ),
-            PaneChatAction::ModelSetting { change } => to_json(
-                chat.change_pane_chat_model_setting(task_id, target_token, &change)
-                    .map_err(from_pane_chat)?,
-            ),
-            PaneChatAction::Key { key } => to_json(
-                chat.send_pane_chat_key(task_id, target_token, &key)
-                    .map_err(from_pane_chat)?,
-            ),
+            PaneChatAction::Key { key } => {
+                pane_chat_action_succeeded(chat.send_pane_chat_key(task_id, target_token, &key))
+            }
         }
     }
+}
+
+/// 모바일은 동작 응답 본문의 `success`를 읽으므로, 돌려줄 값이 없는 동작도 TS처럼 `{success: true}`를 보낸다
+fn pane_chat_action_succeeded(result: Result<(), PaneChatError>) -> BridgeResult<Value> {
+    result.map_err(from_pane_chat)?;
+    Ok(json!({ "success": true }))
 }
 
 /// 명령 계층이 정규화한 `[{taskId, paneId, detail, wantsScreen, cursor}]`
@@ -742,5 +746,27 @@ impl RemotePaneRelay for MirrorRelay {
 
     fn close(&self) {
         self.0.close();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pane_chat_action_without_payload_returns_success_true() {
+        let response = pane_chat_action_succeeded(Ok(())).expect("성공 응답");
+
+        assert_eq!(response, json!({ "success": true }));
+    }
+
+    #[test]
+    fn pane_chat_action_failure_keeps_the_error() {
+        let response = pane_chat_action_succeeded(Err(PaneChatError::TargetChanged));
+
+        assert!(matches!(
+            response,
+            Err(BridgeError::PaneChatTargetChanged(_))
+        ));
     }
 }

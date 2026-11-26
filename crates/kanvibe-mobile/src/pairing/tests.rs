@@ -1,6 +1,3 @@
-use std::sync::{Arc, Mutex};
-use std::time::Duration;
-
 use kanvibe_process::request_scope::parse_bearer_token;
 use serde_json::json;
 
@@ -8,16 +5,8 @@ use super::*;
 
 const NOW: i64 = 1_800_000_000_000;
 
-/// 실패 지연을 재우지 않고 요청된 시간만 남기는 코드 보관소
-fn recording_codes() -> (PairingCodes, Arc<Mutex<Vec<Duration>>>) {
-    let delays = Arc::new(Mutex::new(Vec::new()));
-    let recorded = Arc::clone(&delays);
-    let codes = PairingCodes::new(Arc::new(move |delay| recorded.lock().unwrap().push(delay)));
-    (codes, delays)
-}
-
 fn codes() -> PairingCodes {
-    recording_codes().0
+    PairingCodes::default()
 }
 
 /// 발급된 코드와 반드시 다른 여섯 자리
@@ -141,26 +130,6 @@ fn new_code_restarts_the_failure_count() {
     let code = codes.issue(NOW).code;
     assert!(!codes.redeem(wrong_code_for(&code), NOW));
     assert!(codes.redeem(&code, NOW));
-}
-
-#[test]
-fn wrong_code_waits_for_the_failure_delay_before_answering() {
-    let (codes, delays) = recording_codes();
-    let code = codes.issue(NOW).code;
-
-    assert!(!codes.redeem(wrong_code_for(&code), NOW));
-
-    assert_eq!(*delays.lock().unwrap(), vec![Duration::from_millis(300)]);
-}
-
-#[test]
-fn correct_code_answers_without_delay() {
-    let (codes, delays) = recording_codes();
-    let code = codes.issue(NOW).code;
-
-    assert!(codes.redeem(&code, NOW));
-
-    assert!(delays.lock().unwrap().is_empty());
 }
 
 #[test]
