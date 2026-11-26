@@ -118,12 +118,19 @@ pub(super) fn is_blank_cell(cell: &Cell) -> bool {
 
 /// xterm `getChars()`. 빈 칸과 넓은 글자의 뒤 칸은 빈 문자열이다
 pub(super) fn cell_chars(cell: &Cell) -> String {
-    if cell_width(cell) == 0 || is_blank_cell(cell) {
-        return String::new();
-    }
-    let mut chars = String::from(cell.c);
-    chars.extend(cell.zerowidth().unwrap_or_default());
+    let mut chars = String::new();
+    write_cell_chars(cell, &mut chars);
     chars
+}
+
+/// `cell_chars`를 이미 있는 문자열에 덮어쓴다. 프레임마다 같은 버퍼를 다시 쓸 때 할당하지 않는다
+pub(super) fn write_cell_chars(cell: &Cell, chars: &mut String) {
+    chars.clear();
+    if cell_width(cell) == 0 || is_blank_cell(cell) {
+        return;
+    }
+    chars.push(cell.c);
+    chars.extend(cell.zerowidth().unwrap_or_default());
 }
 
 /// 화면의 한 줄을 xterm `IBufferLine`처럼 읽는다

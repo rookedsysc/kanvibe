@@ -191,8 +191,8 @@ pub trait RemoteHostConnection: Send + Sync {
 }
 
 pub trait RemoteHostConnections: Send + Sync {
-    /// daemon을 쓸 수 없는 호스트면 `None`이다(TS `getRemoteHostConnection`)
-    fn connection(&self, ssh_host: &str) -> Option<Arc<dyn RemoteHostConnection>>;
+    /// daemon을 쓸 수 없는 호스트(미설정·미지원)면 `Ok(None)`이다. 연결 준비에 실패하면 순수 ssh로 돌리지 않고 오류를 돌려준다(TS `getRemoteHostConnection`의 throw)
+    fn connection(&self, ssh_host: &str) -> Result<Option<Arc<dyn RemoteHostConnection>>, String>;
 }
 
 /// 보드 알림 가운데 레지스트리가 내는 것(TS `boardNotifier`의 Herdr 알림)
@@ -394,7 +394,7 @@ impl TerminalRegistry {
         if self.lock_state().local_terminal_tabs.contains(task_id) {
             return Ok(self.list_local_terminal_tabs(task_id));
         }
-        let Some(connection) = self.dependencies.remote_hosts.connection(ssh_host) else {
+        let Some(connection) = self.dependencies.remote_hosts.connection(ssh_host)? else {
             return Ok(self.list_local_terminal_tabs(task_id));
         };
         let sessions = connection.list_pty_sessions()?;
@@ -429,7 +429,7 @@ impl TerminalRegistry {
         let remote_pty = self
             .active_entry(&terminal_key)
             .and_then(|entry| entry.remote_pty.clone());
-        if let Some(connection) = self.dependencies.remote_hosts.connection(ssh_host) {
+        if let Some(connection) = self.dependencies.remote_hosts.connection(ssh_host)? {
             match remote_pty {
                 Some(remote_pty) => connection.close_pty_session(&remote_pty.session_id())?,
                 None => close_unattached_remote_session(
@@ -679,7 +679,8 @@ impl TerminalRegistry {
     }
 
     /// 떠 있는 terminal 세션 탭에 붙이고 붙인 순간까지의 화면(ANSI)을 돌려준다. PTY가 없으면 `None`이다.
-    /// 화면 직렬화와 클라이언트 등록을 출력과 같은 잠금 안에서 해, 받는 쪽은 돌려받은 화면 뒤에 이어지는 출력만 받는다
+    /// 화면 직렬화와 클라이언트 등록을 출력과 같은 잠금 안에서 해, 받는 쪽은 돌려받은 화면 뒤에 이어지는 출력만 받는다.
+    /// 스크롤백 전체 직렬화는 오래 걸릴 수 있어 레지스트리 잠금은 쥐지 않는다. 그 사이 항목이 바뀌었으면 등록을 되돌린다
     pub fn attach_client_to_terminal_tab(
         &self,
         task_id: &str,
@@ -687,14 +688,25 @@ impl TerminalRegistry {
         client: Arc<dyn TerminalClient>,
     ) -> Option<(TerminalAttachment, String)> {
         let terminal_key = build_terminal_key(task_id, Some(tab_id));
-        let state = self.lock_state();
-        let entry = state.active_terminals.get(&terminal_key)?;
-        let mut sink = lock(&entry.output.sink);
-        let screen_until_now = sink.screen.as_ref()?.serialize();
-        if !client.is_open() {
+        let entry = self.active_entry(&terminal_key)?;
+        let (screen_until_now, client_id) = {
+            let mut sink = lock(&entry.output.sink);
+            let screen_until_now = sink.screen.as_ref()?.serialize();
+            if !client.is_open() {
+                return None;
+            }
+            let client_id = sink.register(&client, || self.allocate_client_id());
+            (screen_until_now, client_id)
+        };
+        let is_still_current = self
+            .active_entry(&terminal_key)
+            .is_some_and(|current| Arc::ptr_eq(&current, &entry));
+        if !is_still_current {
+            lock(&entry.output.sink)
+                .clients
+                .retain(|registered| registered.client_id != client_id);
             return None;
         }
-        let client_id = sink.register(&client, || self.allocate_client_id());
         let attachment = TerminalAttachment {
             terminal_key,
             entry_generation: entry.generation(),
@@ -716,7 +728,8 @@ impl TerminalRegistry {
         sink.screen.as_ref().map(read)
     }
 
-    /// 화면의 보기 상태(스크롤백 위치, 셀 픽셀 크기)를 바꾼다. 화면 내용은 바꾸지 않는다
+    /// 화면의 보기 상태(스크롤백 위치, 셀 픽셀 크기)를 바꾸거나, 시간 제한이 지난 동기화 출력을 반영한다.
+    /// 그 밖의 화면 내용은 바꾸지 않는다
     pub fn update_terminal_screen_view<R>(
         &self,
         task_id: &str,

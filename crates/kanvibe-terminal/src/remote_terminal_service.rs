@@ -43,7 +43,7 @@ use crate::remote_terminal_protocol::{
 
 /// 미지원 런타임 결과는 descriptor 조회와 예전 방식 fallback이 잠시 함께 쓴다
 const UNSUPPORTED_RUNTIME_CACHE: Duration = Duration::from_millis(60_000);
-const CERTIFICATE_VALIDITY_MS: i64 = 24 * 60 * 60_000;
+pub const CERTIFICATE_VALIDITY_MS: i64 = 24 * 60 * 60_000;
 const DEFAULT_NATIVE_COLUMNS: u32 = 80;
 const DEFAULT_NATIVE_ROWS: u32 = 24;
 const GRANT_TOKEN_BYTES: usize = 32;

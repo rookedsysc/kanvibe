@@ -70,6 +70,42 @@ fn failed_daemon_close_acknowledgement_keeps_the_tab() {
     harness.registry.kill_all_terminal_sessions();
 }
 
+#[test]
+fn daemon_connection_errors_fail_the_close_and_keep_the_tab_instead_of_closing_only_locally() {
+    // Given
+    let harness = Harness::new();
+    let tab_id = harness.registry.list_local_terminal_tabs("task")[0]
+        .id
+        .clone();
+    *harness.remote_hosts.connection_error.lock().unwrap() =
+        Some("Host preparation cancelled".to_string());
+
+    // When
+    let closing = harness
+        .registry
+        .close_remote_terminal_tab("task", &tab_id, "fixture", "shell");
+
+    // Then
+    assert_eq!(closing, Err("Host preparation cancelled".to_string()));
+    assert!(tab_ids(&harness).contains(&tab_id));
+}
+
+#[test]
+fn daemon_connection_errors_fail_remote_tab_restoration() {
+    let harness = Harness::new();
+    *harness.remote_hosts.connection_error.lock().unwrap() =
+        Some("SSH 호스트를 찾을 수 없습니다: fixture".to_string());
+
+    let restored = harness
+        .registry
+        .list_remote_terminal_tabs("task", "fixture", "shell");
+
+    assert_eq!(
+        restored,
+        Err("SSH 호스트를 찾을 수 없습니다: fixture".to_string())
+    );
+}
+
 /// daemon 세션 목록으로 되살린 탭 ID
 fn restored_tab_ids(harness: &Harness) -> Vec<String> {
     let restored = harness
@@ -193,6 +229,25 @@ fn transport_loss_keeps_the_tab_and_stalled_clients_are_closed_by_backpressure()
     assert!(client.sent().is_empty());
     assert!(tab_ids(&harness).contains(&tab_id));
     assert_eq!(remote.close_session_count(), 0);
+}
+
+#[test]
+fn output_sent_while_the_daemon_pty_opens_reaches_the_first_client() {
+    for session_type in [SessionType::Tmux, SessionType::Zellij] {
+        // Given
+        let harness = Harness::new();
+        let connection = harness.with_daemon_connection();
+        connection.queue_pty();
+        *connection.output_on_open.lock().unwrap() = Some("first-screen".to_string());
+        let client = FakeClient::new();
+
+        // When
+        let request = daemon_request(None, session_type, "existing-session", Some("/work"));
+        harness.attach_remote(request, &client).unwrap().unwrap();
+
+        // Then
+        assert_eq!(client.sent(), ["first-screen"]);
+    }
 }
 
 #[test]

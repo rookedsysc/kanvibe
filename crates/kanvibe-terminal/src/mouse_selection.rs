@@ -1,46 +1,7 @@
-//! 터미널 뷰의 기본 옵션과 macOS Shift 선택 규칙(TS `terminalMouseSelection.ts`).
+//! 터미널 뷰의 macOS Shift 선택 규칙(TS `terminalMouseSelection.ts`).
 //!
 //! 마우스 보고를 켠 TUI 안에서는 클릭이 TUI로 가므로, 글을 선택하려면 강제 선택 키가 필요하다.
 //! macOS 사용자는 다른 플랫폼처럼 Shift 왼쪽 클릭으로도 선택할 수 있어야 해서, 그 클릭을 Option 클릭으로 바꿔 강제 선택 경로로 보낸다.
-
-/// 터미널 색. 앱 테마와 상관없이 같은 어두운 터미널이다
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TerminalTheme {
-    pub background: &'static str,
-    pub foreground: &'static str,
-    pub cursor: &'static str,
-    pub selection_background: &'static str,
-}
-
-const TERMINAL_THEME: TerminalTheme = TerminalTheme {
-    background: "#0a0a0a",
-    foreground: "#e4e4e7",
-    cursor: "#e4e4e7",
-    selection_background: "#3b82f680",
-};
-
-/// 터미널 뷰 옵션(TS `createTerminalOptions`)
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TerminalViewOptions {
-    pub should_blink_cursor: bool,
-    pub font_size: u16,
-    pub font_family: String,
-    pub should_rescale_overlapping_glyphs: bool,
-    /// macOS에서 Option 클릭이 마우스 보고 대신 글 선택을 하게 한다
-    pub does_mac_option_click_force_selection: bool,
-    pub theme: TerminalTheme,
-}
-
-pub fn create_terminal_options(font_family: &str) -> TerminalViewOptions {
-    TerminalViewOptions {
-        should_blink_cursor: true,
-        font_size: 14,
-        font_family: font_family.to_string(),
-        should_rescale_overlapping_glyphs: true,
-        does_mac_option_click_force_selection: true,
-        theme: TERMINAL_THEME,
-    }
-}
 
 /// 선택 판정에 쓰는 마우스 누름. 좌표와 클릭 수는 그대로 전달한다
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -134,15 +95,5 @@ mod tests {
         assert!(!normalized.is_shift_pressed);
         assert_eq!((normalized.column, normalized.row), (10.0, 20.0));
         assert_eq!(normalized.click_count, 1);
-    }
-
-    #[test]
-    fn terminal_options_include_the_mac_forced_selection_option() {
-        let font_family = "'JetBrainsMono Nerd Font Mono', monospace";
-
-        let options = create_terminal_options(font_family);
-
-        assert_eq!(options.font_family, font_family);
-        assert!(options.does_mac_option_click_force_selection);
     }
 }

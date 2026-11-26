@@ -934,8 +934,8 @@ impl HerdrClientRelayFactory for UnusedTerminalPeers {
 }
 
 impl RemoteHostConnections for UnusedTerminalPeers {
-    fn connection(&self, _ssh_host: &str) -> Option<Arc<dyn RemoteHostConnection>> {
-        None
+    fn connection(&self, _ssh_host: &str) -> Result<Option<Arc<dyn RemoteHostConnection>>, String> {
+        Ok(None)
     }
 }
 

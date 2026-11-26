@@ -120,3 +120,57 @@ fn native_pty_resize_updates_the_reported_size_and_accepts_input() {
         output.lock().unwrap()
     );
 }
+
+#[test]
+fn native_pty_write_returns_without_waiting_for_a_child_that_does_not_read() {
+    // Given: raw 모드라 줄 단위 버퍼가 없고 입력을 읽지 않는 자식. PTY 입력 버퍼가 곧 찬다
+    let directory = tempfile::tempdir().unwrap();
+    let (callbacks, _output, _exits) = collecting_callbacks();
+    let request = shell_request(
+        "stty raw -echo; sleep 30",
+        directory.path().to_str().unwrap(),
+        BTreeMap::new(),
+    );
+    let process = NativePtySpawner.spawn(request, callbacks).unwrap();
+    std::thread::sleep(Duration::from_millis(300));
+    let large_paste = "x".repeat(4 * 1024 * 1024);
+
+    // When
+    let started = std::time::Instant::now();
+    let written = process.write(&large_paste);
+    let elapsed = started.elapsed();
+    process.kill().unwrap();
+
+    // Then
+    assert!(written.is_ok());
+    assert!(
+        elapsed < Duration::from_secs(2),
+        "write blocked for {elapsed:?}"
+    );
+}
+
+#[test]
+fn native_pty_delivers_separate_writes_in_order() {
+    // Given
+    let directory = tempfile::tempdir().unwrap();
+    let (callbacks, output, exits) = collecting_callbacks();
+    let request = shell_request(
+        "read line; printf 'got=%s' \"$line\"",
+        directory.path().to_str().unwrap(),
+        BTreeMap::new(),
+    );
+    let process = NativePtySpawner.spawn(request, callbacks).unwrap();
+
+    // When
+    for chunk in ["first-", "second-", "third\r"] {
+        process.write(chunk).unwrap();
+    }
+    exits.recv_timeout(EVENT_TIMEOUT).unwrap();
+
+    // Then
+    assert!(
+        output.lock().unwrap().contains("got=first-second-third"),
+        "{}",
+        output.lock().unwrap()
+    );
+}

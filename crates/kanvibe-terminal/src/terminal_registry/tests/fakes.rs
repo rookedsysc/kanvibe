@@ -532,6 +532,8 @@ pub struct FakeConnection {
     pub sessions: Mutex<Vec<RemoteHostPtySession>>,
     pub closed_session_ids: Mutex<Vec<String>>,
     pub close_failure: Mutex<Option<String>>,
+    /// 열린 PTY가 콜백을 받자마자 낼 출력. 레지스트리에 올리기 전 출력을 흉내 낸다
+    pub output_on_open: Mutex<Option<String>>,
 }
 
 impl FakeConnection {
@@ -573,6 +575,9 @@ impl RemoteHostConnection for FakeConnection {
             .pop_front()
             .expect("열 daemon PTY를 넣어 둬야 한다");
         pty.attach_callbacks(callbacks);
+        if let Some(output) = self.output_on_open.lock().unwrap().take() {
+            pty.emit_output(&output);
+        }
         Ok(pty)
     }
 
@@ -602,12 +607,16 @@ impl RemoteHostConnection for FakeConnection {
 #[derive(Default)]
 pub struct FakeRemoteHosts {
     pub connection: Mutex<Option<Arc<FakeConnection>>>,
+    pub connection_error: Mutex<Option<String>>,
 }
 
 impl RemoteHostConnections for FakeRemoteHosts {
-    fn connection(&self, _ssh_host: &str) -> Option<Arc<dyn RemoteHostConnection>> {
-        let connection = self.connection.lock().unwrap().clone()?;
-        Some(connection)
+    fn connection(&self, _ssh_host: &str) -> Result<Option<Arc<dyn RemoteHostConnection>>, String> {
+        if let Some(error) = self.connection_error.lock().unwrap().clone() {
+            return Err(error);
+        }
+        let connection = self.connection.lock().unwrap().clone();
+        Ok(connection.map(|connection| connection as Arc<dyn RemoteHostConnection>))
     }
 }
 

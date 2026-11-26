@@ -133,7 +133,7 @@ fn open_upstream_route(
             upstream_socket_path: server_socket_path.to_string(),
         });
     };
-    if let Some(connection) = dependencies.remote_hosts.connection(ssh_host) {
+    if let Some(connection) = dependencies.remote_hosts.connection(ssh_host)? {
         let host_forward = connection.forward_socket(server_socket_path)?;
         return Ok(UpstreamRoute {
             upstream_socket_path: host_forward.socket_path(),

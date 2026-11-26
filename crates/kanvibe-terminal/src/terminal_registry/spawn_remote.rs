@@ -34,7 +34,10 @@ impl TerminalRegistry {
     ) -> AttachResult {
         let terminal_key = super::build_terminal_key(&request.task_id, request.tab_id.as_deref());
         if request.session_type != SessionType::Herdr
-            && let Some(connection) = self.dependencies.remote_hosts.connection(&request.ssh_host)
+            && let Some(connection) = self
+                .dependencies
+                .remote_hosts
+                .connection(&request.ssh_host)?
         {
             return self.spawn_host_daemon_session(
                 &terminal_key,
@@ -198,7 +201,8 @@ impl TerminalRegistry {
             build_remote_pty_key(terminal_key, request.session_type, &request.session_name);
         let columns = request.columns.unwrap_or(DEFAULT_TERMINAL_COLUMNS);
         let rows = request.rows.unwrap_or(DEFAULT_TERMINAL_ROWS);
-        let output = self.create_entry_output(request.session_type, columns, rows, None);
+        // PTY가 열리자마자 낸 첫 화면을 놓치지 않도록 출력 자리에 첫 클라이언트를 먼저 붙인다
+        let output = self.create_entry_output(request.session_type, columns, rows, Some(client));
         let callbacks = self.build_pty_callbacks(terminal_key, &output, "Host");
         let remote_pty = connection.open_pty(&pty_key, &command, columns, rows, callbacks)?;
         if !client.is_open() {

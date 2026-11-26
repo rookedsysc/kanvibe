@@ -17,6 +17,7 @@ use super::{PtyEventCallbacks, PtyExit, PtyProcess, PtySpawnRequest, PtySpawner}
 /// 읽기가 끝나지 않으므로, 그때도 종료는 이 시간 뒤에 알린다
 const OUTPUT_DRAIN_TIMEOUT: Duration = Duration::from_millis(1_000);
 const READ_BUFFER_BYTES: usize = 64 * 1024;
+const INPUT_WRITER_CLOSED_MESSAGE: &str = "PTY input writer is closed";
 
 fn lock<T: ?Sized>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(PoisonError::into_inner)
@@ -57,7 +58,7 @@ impl PtySpawner for NativePtySpawner {
         let process = Arc::new(NativePtyProcess {
             pid: child.process_id().unwrap_or(0),
             master: Mutex::new(pair.master),
-            writer: Mutex::new(writer),
+            input: spawn_input_writer(writer),
             killer: Mutex::new(child.clone_killer()),
             size: Mutex::new((request.columns, request.rows)),
         });
@@ -124,6 +125,23 @@ fn start_event_threads(
     });
 }
 
+/// PTY 입력은 쓰기 전용 스레드가 받은 순서대로 쓴다(node-pty `write` 큐). 자식이 입력을 읽지 않아 PTY 입력 버퍼가
+/// 차도 호출한 스레드(GPUI 메인 스레드, 출력 읽기 스레드의 질의 응답)는 막히지 않는다. 쓰기가 실패하면 스레드를 끝낸다
+fn spawn_input_writer(mut writer: Box<dyn Write + Send>) -> mpsc::Sender<Vec<u8>> {
+    let (input, pending_inputs) = mpsc::channel::<Vec<u8>>();
+    thread::spawn(move || {
+        for pending_input in pending_inputs {
+            let written = writer
+                .write_all(&pending_input)
+                .and_then(|_| writer.flush());
+            if written.is_err() {
+                break;
+            }
+        }
+    });
+    input
+}
+
 /// portable-pty는 시그널을 `strsignal` 이름으로만 준다. 같은 이름의 번호로 되돌린다
 fn signal_number(signal_name: &str) -> Option<i32> {
     (1..65).find(|&number| {
@@ -137,7 +155,8 @@ fn signal_number(signal_name: &str) -> Option<i32> {
 struct NativePtyProcess {
     pid: u32,
     master: Mutex<Box<dyn MasterPty + Send>>,
-    writer: Mutex<Box<dyn Write + Send>>,
+    /// 쓰기 전용 스레드로 가는 입력 줄
+    input: mpsc::Sender<Vec<u8>>,
     killer: Mutex<Box<dyn ChildKiller + Send + Sync>>,
     size: Mutex<(u16, u16)>,
 }
@@ -161,11 +180,9 @@ impl PtyProcess for NativePtyProcess {
     }
 
     fn write(&self, data: &str) -> Result<(), String> {
-        let mut writer = lock(&self.writer);
-        writer
-            .write_all(data.as_bytes())
-            .and_then(|_| writer.flush())
-            .map_err(|error| error.to_string())
+        self.input
+            .send(data.as_bytes().to_vec())
+            .map_err(|_| INPUT_WRITER_CLOSED_MESSAGE.to_string())
     }
 
     fn resize(&self, columns: u16, rows: u16) -> Result<(), String> {

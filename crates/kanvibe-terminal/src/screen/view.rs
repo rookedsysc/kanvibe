@@ -9,7 +9,7 @@ use alacritty_terminal::term::cell::{Cell, Flags};
 use alacritty_terminal::vte::ansi::CursorShape;
 
 use super::TerminalScreen;
-use super::cells::{CellColor, cell_chars, cell_width};
+use super::cells::{CellColor, cell_width, write_cell_chars};
 
 /// 셀 하나의 글자와 꾸밈. `text`는 빈 칸과 넓은 글자의 뒤 칸에서 빈 문자열이다
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -30,20 +30,37 @@ pub struct ScreenCell {
 
 impl ScreenCell {
     fn of(cell: &Cell) -> Self {
+        let mut screen_cell = Self {
+            text: String::new(),
+            width: 0,
+            fg: CellColor::Default,
+            bg: CellColor::Default,
+            is_bold: false,
+            is_dim: false,
+            is_italic: false,
+            is_underline: false,
+            is_inverse: false,
+            is_strikethrough: false,
+            is_hidden: false,
+        };
+        screen_cell.overwrite_from(cell);
+        screen_cell
+    }
+
+    /// 이 칸을 `cell`의 값으로 덮어쓴다. 글자 문자열은 가진 버퍼를 다시 쓴다
+    fn overwrite_from(&mut self, cell: &Cell) {
         let flags = cell.flags;
-        Self {
-            text: cell_chars(cell),
-            width: cell_width(cell),
-            fg: CellColor::from_alacritty(cell.fg),
-            bg: CellColor::from_alacritty(cell.bg),
-            is_bold: flags.contains(Flags::BOLD),
-            is_dim: flags.contains(Flags::DIM),
-            is_italic: flags.contains(Flags::ITALIC),
-            is_underline: flags.intersects(Flags::ALL_UNDERLINES),
-            is_inverse: flags.contains(Flags::INVERSE),
-            is_strikethrough: flags.contains(Flags::STRIKEOUT),
-            is_hidden: flags.contains(Flags::HIDDEN),
-        }
+        write_cell_chars(cell, &mut self.text);
+        self.width = cell_width(cell);
+        self.fg = CellColor::from_alacritty(cell.fg);
+        self.bg = CellColor::from_alacritty(cell.bg);
+        self.is_bold = flags.contains(Flags::BOLD);
+        self.is_dim = flags.contains(Flags::DIM);
+        self.is_italic = flags.contains(Flags::ITALIC);
+        self.is_underline = flags.intersects(Flags::ALL_UNDERLINES);
+        self.is_inverse = flags.contains(Flags::INVERSE);
+        self.is_strikethrough = flags.contains(Flags::STRIKEOUT);
+        self.is_hidden = flags.contains(Flags::HIDDEN);
     }
 }
 
@@ -84,17 +101,43 @@ pub struct ScreenInputModes {
 impl TerminalScreen {
     /// 보이는 영역의 셀 한 줄. 스크롤백을 보는 중이면 그만큼 위 줄이다
     pub fn visible_cells(&self, screen_row: usize) -> Option<Vec<ScreenCell>> {
+        let mut cells = Vec::new();
+        self.copy_visible_cells_into(screen_row, &mut cells)
+            .then_some(cells)
+    }
+
+    /// `visible_cells`를 이미 있는 셀 버퍼에 덮어쓴다. 그리기처럼 프레임마다 읽는 쪽이 칸마다 할당하지 않게 한다.
+    /// 보이는 영역 밖 줄이면 버퍼를 비우고 거짓이다
+    pub fn copy_visible_cells_into(&self, screen_row: usize, cells: &mut Vec<ScreenCell>) -> bool {
         let grid = self.term.grid();
         if screen_row >= grid.screen_lines() {
-            return None;
+            cells.clear();
+            return false;
         }
         let line = Line(screen_row as i32 - grid.display_offset() as i32);
         let row = &grid[line];
-        Some(
-            (0..grid.columns())
-                .map(|column| ScreenCell::of(&row[Column(column)]))
-                .collect(),
-        )
+        let columns = grid.columns();
+        cells.truncate(columns);
+        for column in 0..columns {
+            let source = &row[Column(column)];
+            match cells.get_mut(column) {
+                Some(cell) => cell.overwrite_from(source),
+                None => cells.push(ScreenCell::of(source)),
+            }
+        }
+        true
+    }
+
+    /// 보이는 줄이 자동 줄바꿈으로 다음 줄에 이어지는지(xterm 다음 줄의 `isWrapped`). 복사할 때 개행 없이 잇는 데 쓴다
+    pub fn is_visible_row_wrapped(&self, screen_row: usize) -> bool {
+        let grid = self.term.grid();
+        if screen_row >= grid.screen_lines() {
+            return false;
+        }
+        let line = Line(screen_row as i32 - grid.display_offset() as i32);
+        grid[line][Column(grid.columns() - 1)]
+            .flags
+            .contains(Flags::WRAPLINE)
     }
 
     pub fn cursor(&self) -> ScreenCursor {

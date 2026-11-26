@@ -1,8 +1,12 @@
 //! TS `terminalSessionLifecycle.test.ts` "terminal 세션 탭 레지스트리"
 
+use std::sync::{Arc, Mutex, OnceLock, Weak};
+
 use kanvibe_domain::task::SessionType;
 use kanvibe_domain::terminal_tabs::TerminalTab;
 
+use super::super::entry::{self, TerminalEntry};
+use super::super::{ClientClosure, TerminalClient, TerminalRegistry};
 use super::fakes::*;
 
 fn attach_tab(harness: &Harness, tab_id: &str) {
@@ -172,4 +176,97 @@ fn moving_to_an_out_of_range_index_keeps_the_order() {
 
     // Then
     assert_eq!(tab_ids(&harness), vec![first_tab.id]);
+}
+
+/// 붙는 도중(화면 직렬화 뒤, 등록 직전)에 레지스트리를 들여다보는 모바일 클라이언트
+struct AttachProbeClient {
+    registry: OnceLock<Weak<TerminalRegistry>>,
+    should_remove_entry_while_attaching: bool,
+    was_registry_lock_free: Mutex<Option<bool>>,
+    removed_entry: Mutex<Option<Arc<TerminalEntry>>>,
+}
+
+impl AttachProbeClient {
+    fn new(
+        registry: &Arc<TerminalRegistry>,
+        should_remove_entry_while_attaching: bool,
+    ) -> Arc<Self> {
+        let client = Arc::new(Self {
+            registry: OnceLock::new(),
+            should_remove_entry_while_attaching,
+            was_registry_lock_free: Mutex::new(None),
+            removed_entry: Mutex::new(None),
+        });
+        let _ = client.registry.set(Arc::downgrade(registry));
+        client
+    }
+}
+
+impl TerminalClient for AttachProbeClient {
+    fn is_open(&self) -> bool {
+        let registry = self.registry.get().and_then(Weak::upgrade);
+        let Some(registry) = registry else {
+            return true;
+        };
+        let state = registry.state.try_lock();
+        let is_lock_free = state.is_ok();
+        if let Ok(mut state) = state
+            && self.should_remove_entry_while_attaching
+        {
+            *self.removed_entry.lock().unwrap() = state.active_terminals.remove("task-1#task-1-1");
+        }
+        self.was_registry_lock_free
+            .lock()
+            .unwrap()
+            .get_or_insert(is_lock_free);
+        true
+    }
+
+    fn send(&self, _data: &str) {}
+
+    fn buffered_amount(&self) -> usize {
+        0
+    }
+
+    fn close(&self, _closure: Option<ClientClosure>) {}
+}
+
+#[test]
+fn mobile_attach_serializes_the_screen_without_holding_the_registry_lock() {
+    // Given
+    let harness = Harness::new();
+    attach_tab(&harness, "task-1-1");
+    harness.ptys.pty(0).emit_output("scrollback");
+    let probe = AttachProbeClient::new(&harness.registry, false);
+
+    // When
+    let attached =
+        harness
+            .registry
+            .attach_client_to_terminal_tab("task-1", "task-1-1", probe.clone());
+
+    // Then
+    let (_, screen_until_now) = attached.unwrap();
+    assert!(screen_until_now.contains("scrollback"));
+    assert_eq!(*probe.was_registry_lock_free.lock().unwrap(), Some(true));
+}
+
+#[test]
+fn mobile_attach_is_undone_when_the_tab_entry_is_replaced_while_attaching() {
+    // Given
+    let harness = Harness::new();
+    attach_tab(&harness, "task-1-1");
+    let probe = AttachProbeClient::new(&harness.registry, true);
+
+    // When
+    let attached =
+        harness
+            .registry
+            .attach_client_to_terminal_tab("task-1", "task-1-1", probe.clone());
+
+    // Then
+    assert!(attached.is_none());
+    let removed_entry = probe.removed_entry.lock().unwrap().clone().unwrap();
+    let remaining_clients = entry::lock(&removed_entry.output.sink).clients.len();
+    assert_eq!(remaining_clients, 1, "탭을 연 첫 클라이언트만 남는다");
 }
