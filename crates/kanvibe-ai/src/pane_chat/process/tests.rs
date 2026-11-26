@@ -227,3 +227,21 @@ fn codex_remote_socket_is_only_kept_for_unix_addresses() {
             .is_none()
     );
 }
+
+#[test]
+fn descendant_table_rows_on_other_ttys_do_not_link_the_cli_to_the_pane() {
+    // root와 그 자손만 읽은 표(`ps -q`)에는 다른 tty로 옮긴 중간 프로세스가 들어 있을 수 있다.
+    // tty로 읽은 표에는 그 줄이 없어 CLI가 pane의 자손으로 이어지지 않았으므로, 자손 표에서도 같은 판정이어야 한다
+    let detached_parent = "150 100 200 200 ttys011 Thu Nov 12 19:00:00 2026 tmux tmux new-session";
+    let claude_under_detached_parent = row(250, 150, "claude", "claude");
+    assert_eq!(
+        find(&[detached_parent.to_string(), claude_under_detached_parent]),
+        None
+    );
+
+    let claude_on_pane_tty = row(300, 100, "claude", "claude");
+    assert_eq!(
+        pid_and_provider(find(&[detached_parent.to_string(), claude_on_pane_tty])),
+        found(300, PaneChatProvider::Claude)
+    );
+}

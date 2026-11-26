@@ -208,14 +208,21 @@ fn parse_integer(field: &str) -> i64 {
 }
 
 /// `ps -o pid=,ppid=,pgid=,tpgid=,tty=,lstart=,ucomm=,args=` 출력에서 pane 셸(`root_pid`)의 입력을 받는 CLI를 고른다.
-/// 후보가 모호하면 `None`이다
+/// 후보가 모호하면 `None`이다. 출력은 root tty의 프로세스 표(`ps -t`)이거나 root와 그 자손(`ps -q`)이다.
+/// 자손 표에는 다른 tty로 옮긴 자손도 있으므로, 조상 관계도 root tty의 줄로만 따져 두 출력의 판정을 같게 한다
 pub fn find_pane_chat_process(output: &str, root_pid: i64) -> Option<PaneChatProcess> {
-    let rows = parse_process_rows(output);
-    let by_pid: HashMap<i64, &ProcessRow> = rows.iter().map(|row| (row.pid, row)).collect();
-    let root = by_pid.get(&root_pid)?;
+    let all_rows = parse_process_rows(output);
+    let root = all_rows.iter().find(|row| row.pid == root_pid)?;
     if root.tty == "??" || root.tty == "?" || root.foreground_group < 1 {
         return None;
     }
+    let root_tty = root.tty.clone();
+    let rows: Vec<ProcessRow> = all_rows
+        .into_iter()
+        .filter(|row| row.tty == root_tty)
+        .collect();
+    let by_pid: HashMap<i64, &ProcessRow> = rows.iter().map(|row| (row.pid, row)).collect();
+    let root = by_pid.get(&root_pid)?;
     let candidates: Vec<&ProcessRow> = rows
         .iter()
         .filter(|row| {

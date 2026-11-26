@@ -572,7 +572,10 @@ fn error_of<T: std::fmt::Debug>(result: Result<T, PaneChatError>) -> &'static st
 
 // ---- pane process lookup ----
 
-const SCOPED_PROCESS_COMMAND: &str = "pane_tty=$(ps -o tty= -p 100 | tr -d ' '); case \"$pane_tty\" in \"\"|\"?\"|\"??\") ;; *) ps -wwo pid=,ppid=,pgid=,tpgid=,tty=,lstart=,ucomm=,args= -t \"$pane_tty\" ;; esac";
+/// root의 자손만 `ps -q`로 읽고, 그럴 수 없는 호스트에서는 root tty의 프로세스만 읽는 한 명령
+fn scoped_process_command() -> String {
+    super::super::target::build_pane_process_table_command(100)
+}
 
 // parity: TS-main-paneChatService-fb80d3
 #[test]
@@ -589,7 +592,7 @@ fn process_lookup_reads_only_the_pane_root_tty_with_one_scoped_command() {
         let lookups = harness.process_lookups();
         assert!(!lookups.is_empty());
         for (command, host) in lookups {
-            assert_eq!(command, SCOPED_PROCESS_COMMAND);
+            assert_eq!(command, scoped_process_command());
             assert_eq!(host.as_deref(), ssh_host);
         }
         assert!(

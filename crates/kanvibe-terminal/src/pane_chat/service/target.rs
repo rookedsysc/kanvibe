@@ -136,11 +136,44 @@ pub(super) fn conversation_parts(conversation: &str) -> (String, String) {
     (part(0), part(1))
 }
 
-/// pane root와 같은 터미널에 붙은 프로세스만 조회한다. 판정은 root의 tty에 있는 자손만 보므로 전체 프로세스 표를 읽을 필요가 없다.
-/// tty가 없거나 확인되지 않으면 아무것도 출력하지 않아 "CLI 없음"으로 판정된다
+/// pane 프로세스 조회 스크립트. `$1`은 pane root PID다.
+///
+/// Linux에서 `/proc/<pid>/task/<tid>/children`을 읽을 수 있으면 root와 그 자손만 모아 `ps -q`(PID를 지정해 그 프로세스만
+/// 읽는 procps-ng의 빠른 모드)로 한 번에 읽는다. procps-ng의 `ps -p`·`ps -t`는 PID를 골라도 모든 프로세스의 `/proc`를 훑어
+/// 프로세스가 많은 머신에서는 한 번에 수십 ms가 든다. 판정은 root의 tty에 있는 자손만 보므로 자손만 읽어도 결과가 같다
+/// (다른 tty의 줄은 [`find_pane_chat_process`]가 버린다). 자손 목록을 읽을 수 없거나 `ps -q`가 없으면(macOS, busybox)
+/// 이전처럼 root의 tty에 붙은 프로세스를 읽는다. tty가 없거나 확인되지 않으면 아무것도 출력하지 않아 "CLI 없음"으로 판정된다
+const PANE_PROCESS_TABLE_SCRIPT: &str = r#"root=$1
+if [ -r "/proc/$root/task/$root/children" ]; then
+  pids=$root
+  frontier=$root
+  depth=0
+  while [ -n "$frontier" ] && [ "$depth" -lt 32 ]; do
+    depth=$((depth + 1))
+    next=
+    for pid in $frontier; do
+      for list in /proc/$pid/task/*/children; do
+        children=
+        [ -r "$list" ] && read -r children < "$list"
+        for child in $children; do
+          pids="$pids,$child"
+          next="$next $child"
+        done
+      done
+    done
+    frontier=$next
+  done
+  ps -wwo COLUMNS -q "$pids" 2>/dev/null && exit 0
+fi
+pane_tty=$(ps -o tty= -p "$root" | tr -d " ")
+case "$pane_tty" in ""|"?"|"??") ;; *) ps -wwo COLUMNS -t "$pane_tty" ;; esac"#;
+
+/// pane root의 프로세스 표를 읽는 명령 하나. 원격 로그인 셸이 zsh여도 단어 나누기가 같도록 POSIX `sh`로 돌린다
 pub(super) fn build_pane_process_table_command(root_pid: i64) -> String {
+    let script = PANE_PROCESS_TABLE_SCRIPT.replace("COLUMNS", PROCESS_TABLE_COLUMNS);
     format!(
-        "pane_tty=$(ps -o tty= -p {root_pid} | tr -d ' '); case \"$pane_tty\" in \"\"|\"?\"|\"??\") ;; *) ps -wwo {PROCESS_TABLE_COLUMNS} -t \"$pane_tty\" ;; esac"
+        "sh -c {} kanvibe-pane-processes {root_pid}",
+        quote_for_posix_shell(&script)
     )
 }
 
@@ -472,4 +505,66 @@ fn verify_codex_composer(
         return Err(unconfirmed_input_error());
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::process::{Command, Stdio};
+
+    use super::*;
+
+    fn run_probe(root_pid: i64) -> String {
+        let output = Command::new("sh")
+            .args(["-c", &build_pane_process_table_command(root_pid)])
+            .output()
+            .expect("sh 실행");
+        String::from_utf8_lossy(&output.stdout).into_owned()
+    }
+
+    fn listed_pids(output: &str) -> Vec<i64> {
+        output
+            .lines()
+            .filter_map(|line| line.split_whitespace().next()?.parse().ok())
+            .collect()
+    }
+
+    /// 자손 목록을 읽을 수 있는 Linux에서는 root와 그 자손만, 프로세스 표와 같은 열로 읽는다
+    #[test]
+    fn probe_lists_the_root_and_its_descendants_with_process_table_columns() {
+        if !std::path::Path::new("/proc/self/task").exists() {
+            return;
+        }
+        let mut root = Command::new("sh")
+            .args(["-c", "sleep 30 & sleep 30 & wait"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("프로세스 트리");
+        let root_pid = i64::from(root.id());
+        let mut descendants = Vec::new();
+        for _ in 0..100 {
+            let output = run_probe(root_pid);
+            descendants = listed_pids(&output);
+            if descendants.len() >= 3 {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        let _ = Command::new("pkill")
+            .args(["-P", &root_pid.to_string()])
+            .status();
+        let _ = root.kill();
+        let _ = root.wait();
+
+        assert_eq!(descendants.first(), Some(&root_pid));
+        assert_eq!(descendants.len(), 3, "root와 sleep 둘: {descendants:?}");
+        assert!(!descendants.contains(&i64::from(std::process::id())));
+    }
+
+    /// 없는 PID는 자손 목록도 tty도 없으므로 아무것도 출력하지 않는다("CLI 없음")
+    #[test]
+    fn probe_prints_nothing_for_a_missing_root() {
+        assert_eq!(run_probe(i64::from(i32::MAX)), "");
+    }
 }
