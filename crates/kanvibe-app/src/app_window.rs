@@ -4,8 +4,9 @@
 use gpui_kit::base::TextSelectionLayer;
 use gpui_kit::{
     AnyView, AnyWindowHandle, App, AppContext, Bounds, Context, Entity, FocusHandle,
-    InteractiveElement, IntoElement, KeyContext, ParentElement, Pixels, Render, Styled, Window,
-    WindowBounds, WindowDecorations, WindowOptions, deferred, div, point, px, size,
+    InteractiveElement, IntoElement, KeyContext, ParentElement, Pixels, Render, Styled,
+    TitlebarOptions, Window, WindowBounds, WindowDecorations, WindowOptions, deferred, div, point,
+    px, size,
 };
 use kanvibe_domain::i18n::Locale;
 
@@ -74,11 +75,17 @@ pub fn open_app_window(
     Ok(handle)
 }
 
+const MACOS_TITLEBAR_HEIGHT: Pixels = px(32.0);
+
 /// 앱 창 옵션(TS `createBrowserWindowOptions`). 앱이 최소 창 크기를 정하지 않아 창 관리자가 허용하는 만큼 줄일 수 있다
 fn app_window_options(bounds: Bounds<Pixels>) -> WindowOptions {
     WindowOptions {
         window_bounds: Some(WindowBounds::Windowed(bounds)),
-        titlebar: None,
+        titlebar: cfg!(target_os = "macos").then_some(TitlebarOptions {
+            title: None,
+            appears_transparent: true,
+            traffic_light_position: Some(point(px(12.0), px(9.0))),
+        }),
         // 클라이언트 장식은 그림자·크기 조절용 여백을 창 안쪽에 두어 내용이 2px 밀린다. 장식은 창 관리자에 맡긴다
         window_decorations: Some(WindowDecorations::Server),
         app_id: Some("kanvibe".to_string()),
@@ -385,6 +392,12 @@ impl Render for AppWindow {
             .on_action(cx.listener(Self::handle_open_task_search))
             .relative()
             .size_full()
+            // 신호등과 AppKit의 드래그 영역 아래에서 각 화면을 시작한다
+            .pt(if cfg!(target_os = "macos") && !window.is_fullscreen() {
+                MACOS_TITLEBAR_HEIGHT
+            } else {
+                px(0.0)
+            })
             .bg(CANVAS_BACKGROUND)
             .font(sans_font(400))
             .text_size(text_scale::BODY.font_size)
@@ -411,6 +424,24 @@ mod tests {
         assert!(is_bundle_held(&holds, "SettingsRoute"));
         assert!(!is_bundle_held(&holds, "ShortcutSettingsRoute"));
         assert!(!is_bundle_held(&LoadingHolds::default(), "SettingsRoute"));
+    }
+
+    #[test]
+    fn app_window_keeps_native_chrome_for_the_current_platform() {
+        let options = app_window_options(Bounds::default());
+
+        assert_eq!(options.window_decorations, Some(WindowDecorations::Server));
+        assert!(options.is_resizable);
+        assert!(options.is_minimizable);
+        assert!(options.is_movable);
+        assert!(!options.app_owns_titlebar_drag);
+        if cfg!(target_os = "macos") {
+            let titlebar = options.titlebar.expect("native macOS titlebar");
+            assert!(titlebar.appears_transparent);
+            assert!(titlebar.traffic_light_position.is_some());
+        } else {
+            assert!(options.titlebar.is_none());
+        }
     }
 
     #[test]
