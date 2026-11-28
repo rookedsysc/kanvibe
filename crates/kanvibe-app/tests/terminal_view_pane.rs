@@ -9,8 +9,8 @@ use std::time::Duration;
 
 use gpui_kit::gpui;
 use gpui_kit::{
-    Bounds, ClipboardItem, Entity, Focusable, Image, ImageFormat, Modifiers, MouseButton, Pixels,
-    TestAppContext, VisualTestContext, WeakEntity,
+    Bounds, ClipboardItem, Entity, EntityInputHandler, Focusable, Image, ImageFormat, Modifiers,
+    MouseButton, Pixels, TestAppContext, VisualTestContext, WeakEntity,
 };
 use kanvibe_app::components::terminal_view::window::ViewTerminalWindow;
 use kanvibe_app::components::terminal_view::{
@@ -564,6 +564,95 @@ fn closing_while_the_open_is_pending_releases_the_terminal_once(cx: &mut TestApp
     cx.run_until_parked();
     assert_eq!(transport.open_count(), 0);
     assert_eq!(transport.close_count(), 1);
+}
+
+#[gpui::test]
+fn ime_commits_only_the_finished_hangul_syllable(cx: &mut TestAppContext) {
+    let dir = tempfile::tempdir().unwrap();
+    init_app(cx, dir.path().to_path_buf());
+    let transport = Arc::new(RecordingTransport::default());
+    let mut pane = open_pane(cx, target("task-1", None, false), &transport);
+    pane.cx.update(|window, _| window.activate_window());
+    pane.focus();
+    let terminal = pane.entity();
+
+    terminal.update_in(&mut pane.cx, |view, window, cx| {
+        for syllable in ["ㅎ", "하", "한"] {
+            view.replace_and_mark_text_in_range(None, syllable, Some(1..1), window, cx);
+        }
+    });
+    assert!(transport.writes().is_empty());
+
+    let window = transport.windows.lock().unwrap()[0].clone();
+    window.send_terminal_output("task-1", None, "redraw");
+    pane.draw();
+    terminal.update_in(&mut pane.cx, |view, window, cx| {
+        assert!(view.focus_handle(cx).is_focused(window));
+        assert_eq!(view.marked_text_range(window, cx), Some(0..1));
+    });
+
+    pane.cx
+        .simulate_keystrokes("enter backspace left right up down");
+    assert!(transport.writes().is_empty());
+    terminal.update_in(&mut pane.cx, |view, window, cx| {
+        view.replace_text_in_range(None, "한", window, cx);
+        view.replace_and_mark_text_in_range(None, "ㄱ", Some(1..1), window, cx);
+        assert_eq!(
+            view.text_for_range(0..1, &mut None, window, cx).as_deref(),
+            Some("ㄱ"),
+        );
+        view.replace_and_mark_text_in_range(None, "", None, window, cx);
+    });
+    assert_eq!(transport.writes(), ["한"]);
+
+    pane.cx.simulate_keystrokes("enter backspace left");
+    assert_eq!(transport.writes(), ["한", "\r", "\x7f", "\x1b[D"]);
+
+    terminal.update_in(&mut pane.cx, |view, window, cx| {
+        view.replace_and_mark_text_in_range(None, "ㄷ", None, window, cx);
+        window.blur(cx);
+    });
+    pane.draw();
+    pane.keys("enter");
+    assert_eq!(transport.writes(), ["한", "\r", "\x7f", "\x1b[D", "\r"]);
+}
+
+#[gpui::test]
+fn ime_replaces_partial_marked_text_and_reports_utf16_selection(cx: &mut TestAppContext) {
+    let dir = tempfile::tempdir().unwrap();
+    init_app(cx, dir.path().to_path_buf());
+    let transport = Arc::new(RecordingTransport::default());
+    let mut pane = open_pane(cx, target("task-1", None, false), &transport);
+    let terminal = pane.entity();
+
+    terminal.update_in(&mut pane.cx, |view, window, cx| {
+        view.replace_and_mark_text_in_range(None, "한🦀글", None, window, cx);
+        view.replace_and_mark_text_in_range(Some(1..3), "새", Some(0..1), window, cx);
+
+        assert_eq!(view.marked_text_range(window, cx), Some(0..3));
+        let selection = view.selected_text_range(false, window, cx).unwrap();
+        assert_eq!(selection.range, 1..2);
+        assert!(!selection.reversed);
+        let mut adjusted = None;
+        assert_eq!(
+            view.text_for_range(1..10, &mut adjusted, window, cx)
+                .as_deref(),
+            Some("새글"),
+        );
+        assert_eq!(adjusted, Some(1..3));
+    });
+    assert!(transport.writes().is_empty());
+
+    terminal.update_in(&mut pane.cx, |view, window, cx| {
+        view.replace_text_in_range(Some(1..2), "국", window, cx);
+        assert_eq!(view.marked_text_range(window, cx), None);
+        assert_eq!(
+            view.selected_text_range(false, window, cx).unwrap().range,
+            0..0
+        );
+        assert_eq!(view.text_for_range(0..3, &mut None, window, cx), None);
+    });
+    assert_eq!(transport.writes(), ["한국글"]);
 }
 
 // ───────────── 원격 이미지 붙여넣기 ─────────────
