@@ -148,6 +148,29 @@ fn registers_the_current_codex_lifecycle_hooks() {
 }
 
 #[test]
+fn reinstall_preserves_user_hooks_in_codex_groups() {
+    use serde_json::{Value, json};
+
+    let settings: Value = serde_json::from_str(&upsert_codex_hooks_json("").unwrap()).unwrap();
+    let mut grouped = settings.clone();
+    let user_group = json!({
+        "matcher": "Bash",
+        "hooks": [{ "type": "command", "command": "echo user", "timeout": 5 }],
+    });
+    grouped["hooks"]["PreToolUse"][0]["hooks"]
+        .as_array_mut()
+        .unwrap()
+        .push(user_group["hooks"][0].clone());
+
+    let updated: Value =
+        serde_json::from_str(&upsert_codex_hooks_json(&grouped.to_string()).unwrap()).unwrap();
+    assert_eq!(
+        updated["hooks"]["PreToolUse"],
+        json!([user_group, settings["hooks"]["PreToolUse"][0]])
+    );
+}
+
+#[test]
 fn creates_all_codex_hook_script_files() {
     let repo = CodexRepo::new(true);
 

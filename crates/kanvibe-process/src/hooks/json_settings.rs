@@ -67,23 +67,61 @@ pub fn build_matcher_command_hook_entry(matcher: &str, command: &str, timeout: u
     Value::Object(entry)
 }
 
-fn references_script_name(entry: &Value, script_name: &str) -> bool {
-    serde_json::to_string(entry)
-        .unwrap_or_default()
-        .contains(script_name)
+fn invokes_managed_script(hook: &Value, script_path: &str) -> bool {
+    let Some(command) = hook["command"]
+        .as_str()
+        .filter(|_| hook["type"] == "command")
+    else {
+        return false;
+    };
+    let command = command.trim();
+    let script = command
+        .strip_prefix("bash ")
+        .unwrap_or(command)
+        .trim_start();
+    let quoted_path = script
+        .strip_prefix('"')
+        .and_then(|path| path.strip_suffix('"'))
+        .or_else(|| {
+            script
+                .strip_prefix('\'')
+                .and_then(|path| path.strip_suffix('\''))
+        });
+    if quoted_path.is_none() && script.contains(char::is_whitespace) {
+        return false;
+    }
+    let path = quoted_path.unwrap_or(script);
+    path == script_path
+        || path.strip_suffix(script_path).is_some_and(|prefix| {
+            prefix.ends_with('/')
+                && (prefix.starts_with(['/', '$'])
+                    || prefix.starts_with("\"$")
+                    || matches!(prefix, "./" | "../"))
+        })
 }
 
-/// 같은 스크립트를 가리키는 기존 entry만 교체하고 사용자가 추가한 다른 entry는 보존한다
+fn preserve_hook_group(mut group: Value, script_path: &str) -> Option<Value> {
+    if let Some(hooks) = group.get_mut("hooks").and_then(Value::as_array_mut) {
+        let original_len = hooks.len();
+        hooks.retain(|hook| !invokes_managed_script(hook, script_path));
+        if original_len != 0 && hooks.is_empty() {
+            return None;
+        }
+    }
+    Some(group)
+}
+
+/// 그룹 안의 KanVibe 명령만 새로 설치하고 사용자 명령과 매처는 보존한다
 pub fn upsert_json_hook_entries(
     hook_entries: Option<&Value>,
-    script_name: &str,
+    script_path: &str,
     next_entry: Value,
 ) -> Vec<Value> {
     let mut preserved_entries: Vec<Value> = match hook_entries {
         Some(Value::Array(entries)) => entries
             .iter()
-            .filter(|entry| !references_script_name(entry, script_name))
             .cloned()
+            .filter_map(|group| preserve_hook_group(group, script_path))
             .collect(),
         _ => Vec::new(),
     };
@@ -121,24 +159,24 @@ mod tests {
     fn upsert_replaces_only_entries_that_reference_the_script() {
         let entries = json!([
             { "hooks": [{ "type": "command", "command": "echo user", "timeout": 5 }] },
-            { "hooks": [{ "type": "command", "command": "old/kanvibe-stop-hook.sh", "timeout": 10 }] },
+            { "hooks": [{ "type": "command", "command": "/old/.claude/hooks/kanvibe-stop-hook.sh", "timeout": 10 }] },
         ]);
 
         let upserted = upsert_json_hook_entries(
             Some(&entries),
-            "kanvibe-stop-hook.sh",
-            build_command_hook_entry("new/kanvibe-stop-hook.sh", 10),
+            ".claude/hooks/kanvibe-stop-hook.sh",
+            build_command_hook_entry(".claude/hooks/kanvibe-stop-hook.sh", 10),
         );
 
         assert_eq!(upserted.len(), 2);
         assert_eq!(upserted[0]["hooks"][0]["command"], "echo user");
         assert!(has_command_hook_entry(
             &Value::Array(upserted.clone()),
-            "new/kanvibe-stop-hook.sh"
+            ".claude/hooks/kanvibe-stop-hook.sh"
         ));
         assert!(!has_command_hook_entry(
             &Value::Array(upserted),
-            "old/kanvibe-stop-hook.sh"
+            "/old/.claude/hooks/kanvibe-stop-hook.sh"
         ));
     }
 

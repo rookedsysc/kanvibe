@@ -223,7 +223,8 @@ pub fn upsert_codex_hooks_json(hooks_content: &str) -> Result<String, HookInstal
         ),
     ];
     for (event, script_name, entry) in upserts {
-        let entries = upsert_json_hook_entries(hooks.get(event), script_name, entry);
+        let script_path = format!("{CONFIG_DIR_NAME}/hooks/{script_name}");
+        let entries = upsert_json_hook_entries(hooks.get(event), &script_path, entry);
         hooks.insert(event.to_string(), Value::Array(entries));
     }
     Ok(serialize_json_hook_settings(&settings))

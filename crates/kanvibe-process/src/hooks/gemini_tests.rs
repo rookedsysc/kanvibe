@@ -94,7 +94,13 @@ fn preserves_existing_settings_entries_when_adding_hooks() {
     let repo = GeminiRepo::new();
     let existing = json!({
         "hooks": {
-            "BeforeAgent": [{ "matcher": "*", "hooks": [{ "type": "command", "command": "existing-hook.sh", "timeout": 3000 }] }],
+            "BeforeAgent": [{
+                "matcher": "*",
+                "hooks": [
+                    { "type": "command", "command": "existing-hook.sh", "timeout": 3000 },
+                    { "type": "command", "command": "$GEMINI_PROJECT_DIR/.gemini/hooks/kanvibe-prompt-hook.sh", "timeout": 10000 }
+                ]
+            }],
         },
         "customSetting": true,
     });

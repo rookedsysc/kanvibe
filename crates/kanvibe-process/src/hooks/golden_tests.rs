@@ -142,13 +142,13 @@ fn json_hook_settings_serialization_matches_ts_output() {
     let buckets = ensure_json_hook_buckets(&mut settings);
     let stop_entries = upsert_json_hook_entries(
         buckets.get("Stop"),
-        "kanvibe-stop-hook.sh",
+        ".claude/hooks/kanvibe-stop-hook.sh",
         build_command_hook_entry(stop_command, 10),
     );
     buckets.insert("Stop".into(), stop_entries.into());
     let question_entries = upsert_json_hook_entries(
         buckets.get("PreToolUse"),
-        "kanvibe-question-hook.sh",
+        ".claude/hooks/kanvibe-question-hook.sh",
         build_matcher_command_hook_entry("AskUserQuestion", question_command, 10),
     );
     buckets.insert("PreToolUse".into(), question_entries.into());
@@ -160,7 +160,7 @@ fn json_hook_settings_serialization_matches_ts_output() {
     let mut fresh = parse_json_hook_settings("", "settings.json").unwrap();
     let prompt_entries = upsert_json_hook_entries(
         None,
-        "kanvibe-prompt-hook.sh",
+        ".codex/hooks/kanvibe-prompt-hook.sh",
         build_command_hook_entry(
             "bash \"$(git rev-parse --show-toplevel)/.codex/hooks/kanvibe-prompt-hook.sh\"",
             10,
