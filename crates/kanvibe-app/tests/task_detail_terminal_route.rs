@@ -955,6 +955,54 @@ fn entering_the_detail_focuses_the_terminal_input(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
+fn shell_search_overlays_keep_focus_across_task_detail_renders(cx: &mut TestAppContext) {
+    let dir = tempfile::tempdir().unwrap();
+    let database = init_app(cx, dir.path().to_path_buf());
+    let stored = task(&database, "task title", |_| {});
+    let path = format!("/ko/task/{}", stored.id);
+    let handle = cx.add_window(move |window, cx| AppWindow::new(&path, window, cx));
+    let mut visual = VisualTestContext::from_window(handle.into(), cx);
+    visual.run_until_parked();
+    let (view, shell) = handle
+        .read_with(&visual, |app, _| {
+            (
+                app.screen()
+                    .clone()
+                    .downcast::<TaskDetailView>()
+                    .ok()
+                    .unwrap(),
+                app.locale_shell().clone(),
+            )
+        })
+        .unwrap();
+    let terminal_focus = visual.update(|window, cx| window.focused(cx)).unwrap();
+    assert!(view.read_with(&visual, |view, cx| {
+        view.focus_handle(cx) != terminal_focus
+    }));
+
+    for shortcut in ["ctrl-shift-p", "ctrl-shift-o"] {
+        visual.simulate_keystrokes(shortcut);
+        assert!(
+            shell.read_with(&visual, |shell, cx| shell.has_open_overlay(cx)),
+            "{shortcut} must open its shell overlay",
+        );
+
+        view.update(&mut visual, |_, cx| cx.notify());
+        visual.run_until_parked();
+        let overlay_focus = visual.update(|window, cx| window.focused(cx)).unwrap();
+        assert_ne!(overlay_focus, terminal_focus);
+
+        visual.simulate_keystrokes("escape");
+        visual.run_until_parked();
+        assert!(!shell.read_with(&visual, |shell, cx| shell.has_open_overlay(cx)));
+        assert_eq!(
+            visual.update(|window, cx| window.focused(cx)),
+            Some(terminal_focus.clone())
+        );
+    }
+}
+
+#[gpui::test]
 fn closing_a_panel_returns_input_focus_to_the_terminal(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
     let database = init_app(cx, dir.path().to_path_buf());
