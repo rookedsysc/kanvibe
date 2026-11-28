@@ -1,6 +1,7 @@
 //! KanVibe GPUI 데스크톱 앱. Electron 렌더러(`src/desktop/renderer`)와 main 창 관리를 대신한다.
 
 pub mod app_events;
+mod app_menu;
 pub mod app_window;
 pub mod assets;
 mod blocking_call;
@@ -165,6 +166,7 @@ fn init_app_with_desktop(
     notifications::reload_notification_center(cx);
     shortcuts::install_shortcut_dispatch(cx).detach();
     notifications::install_notification_click_routing(cx);
+    app_menu::install_app_menu(cx);
     mark_startup_phase("app_globals_ready");
     Ok(())
 }
