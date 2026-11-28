@@ -151,7 +151,10 @@ impl PartialEq for ShortcutRouting {
 
 /// GPUI 키 입력을 도메인 판정이 읽는 브라우저 `KeyboardEvent.key` 모양으로 바꾼다
 pub fn shortcut_event_from_keystroke(keystroke: &Keystroke) -> ShortcutKeyEvent {
+    // AppKit은 한글 두벌식 W를 ㅈ/ㅉ으로 보낼 수 있다. GPUI가 ㅉ에 Shift를 남기지 않아도 복원한다.
+    let has_shifted_korean_w = keystroke.modifiers.platform && keystroke.key == "ㅉ";
     let key = match keystroke.key.as_str() {
+        "ㅈ" | "ㅉ" if keystroke.modifiers.platform => "w",
         "escape" => "Escape",
         "enter" => "Enter",
         "tab" => "Tab",
@@ -174,7 +177,7 @@ pub fn shortcut_event_from_keystroke(keystroke: &Keystroke) -> ShortcutKeyEvent 
             has_meta: keystroke.modifiers.platform,
             has_ctrl: keystroke.modifiers.control,
             has_alt: keystroke.modifiers.alt,
-            has_shift: keystroke.modifiers.shift,
+            has_shift: keystroke.modifiers.shift || has_shifted_korean_w,
         },
     }
 }
@@ -321,6 +324,21 @@ mod tests {
             shortcut_event_from_keystroke(&keystroke("escape")).key,
             "Escape"
         );
+    }
+
+    #[test]
+    fn the_native_korean_w_mapping_preserves_non_command_input() {
+        let shifted = shortcut_event_from_keystroke(&keystroke("cmd-ㅉ"));
+        assert_eq!(shifted.key, "w");
+        assert!(shifted.modifiers.has_shift);
+
+        let unshifted = shortcut_event_from_keystroke(&keystroke("cmd-ㅈ"));
+        assert_eq!(unshifted.key, "w");
+        assert!(!unshifted.modifiers.has_shift);
+
+        let typed = shortcut_event_from_keystroke(&keystroke("ㅉ"));
+        assert_eq!(typed.key, "ㅉ");
+        assert!(!typed.modifiers.has_shift);
     }
 
     fn focus_path(contexts: &[&str]) -> Vec<KeyContext> {

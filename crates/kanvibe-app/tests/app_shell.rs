@@ -189,6 +189,24 @@ fn window_close_command_closes_any_screen(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
+fn mac_close_window_shortcut_works_with_english_and_korean_keys(cx: &mut TestAppContext) {
+    init_app(cx, None);
+    cx.update(|cx| cx.global_mut::<ShortcutState>().platform = ShortcutPlatform::Mac);
+
+    for path in ["/ko", "/ko/task/task-1"] {
+        for keys in ["cmd-shift-w", "cmd-shift-ㅈ", "cmd-ㅉ"] {
+            let window = open_app_window(cx, path);
+            VisualTestContext::from_window(window.into(), cx).simulate_keystrokes(keys);
+            cx.run_until_parked();
+            assert!(
+                window.read_with(cx, |_, _| ()).is_err(),
+                "{keys} must close the window at {path}"
+            );
+        }
+    }
+}
+
+#[gpui::test]
 fn mod_w_on_task_detail_leaves_the_window_open(cx: &mut TestAppContext) {
     init_app(cx, None);
     let window = open_app_window(cx, "/ko/task/task-1");
