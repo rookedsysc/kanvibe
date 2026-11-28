@@ -1,6 +1,7 @@
 //! 작업 터미널 하나(TS `Terminal.tsx`). 레지스트리 화면을 그리고, 키·IME·붙여넣기·마우스를 PTY 입력으로 보낸다.
 
 use std::cell::{Cell, RefCell};
+use std::ops::Range;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -80,7 +81,7 @@ pub struct TerminalPane {
     /// PTY에 마지막으로 알린 크기
     pub(super) reported_size: Option<(u16, u16)>,
     focus_handle: FocusHandle,
-    marked_text: Option<String>,
+    composition: Option<TerminalComposition>,
     /// 드래그 선택을 시작한 칸. 이 칸을 벗어나기 전까지는 빈 선택이다. 선택 자체는 화면이 버퍼 줄에 묶어 쥔다
     selection_press_point: Option<GridPoint>,
     is_selecting: bool,
@@ -104,6 +105,7 @@ pub struct TerminalPane {
     /// 쿨다운 뒤 다시 열기 예약. 가려지거나 다시 연결하면 버린다
     pub(super) _cooldown_wait: Option<Task<()>>,
     _window_activation: Option<gpui_kit::Subscription>,
+    _composition_blur: Option<gpui_kit::Subscription>,
     /// 끝나지 않은 동기화 출력의 시간 제한 시각과 그때 다시 그리는 예약. 출력이 더 오지 않아도 화면이 풀리게 한다
     sync_expiry_redraw: Option<(Instant, Task<()>)>,
     /// 커서 깜박임 타이머(xterm.js `cursorBlink: true`). 포커스가 있고 창이 앞에 있으며 보이는 동안만 쥔다
@@ -159,7 +161,7 @@ impl TerminalPane {
             paint_frame: Rc::default(),
             reported_size: None,
             focus_handle: cx.focus_handle(),
-            marked_text: None,
+            composition: None,
             selection_press_point: None,
             is_selecting: false,
             reporting_button: None,
@@ -176,6 +178,7 @@ impl TerminalPane {
             _open_task: None,
             _cooldown_wait: None,
             _window_activation: None,
+            _composition_blur: None,
             sync_expiry_redraw: None,
             cursor_blink: None,
             is_cursor_blink_on: true,
@@ -342,6 +345,11 @@ impl TerminalPane {
         let Some(sequence) = encode_keystroke(keystroke, modes) else {
             return;
         };
+        // IME가 넘겨준 키라도 조합이 남아 있으면 PTY로 제어 문자를 보내지 않는다.
+        if self.composition.is_some() {
+            cx.stop_propagation();
+            return;
+        }
         self.prepare_for_input(cx);
         self.write_input(&sequence);
         cx.stop_propagation();
@@ -809,6 +817,14 @@ fn mouse_report_modifiers(modifiers: &gpui_kit::Modifiers) -> MouseReportModifie
 impl Render for TerminalPane {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.observe_window_activation(window, cx);
+        if self._composition_blur.is_none() {
+            self._composition_blur =
+                Some(cx.on_blur(&self.focus_handle, window, |pane, window, cx| {
+                    if !pane.focus_handle.is_focused(window) && pane.composition.take().is_some() {
+                        cx.notify();
+                    }
+                }));
+        }
         self.finish_expired_screen_sync(cx);
         let is_focused = self.focus_handle.is_focused(window);
         self.sync_cursor_blink(
@@ -823,7 +839,10 @@ impl Render for TerminalPane {
             target: self.target.clone(),
             is_focused,
             is_cursor_blink_on: self.is_cursor_blink_on,
-            marked_text: self.marked_text.clone(),
+            marked_text: self
+                .composition
+                .as_ref()
+                .map(|composition| composition.text.clone()),
             scroll_bar_track: Rc::clone(&self.scroll_bar_track),
             scroll_bar_color: cx.global::<ThemeTokens>().border.strong.into(),
             focus_handle: self.focus_handle.clone(),
@@ -1036,15 +1055,53 @@ impl PaintInputs {
     }
 }
 
+#[derive(Default)]
+struct TerminalComposition {
+    text: String,
+    selection: Range<usize>,
+}
+
+impl TerminalComposition {
+    fn replace(&mut self, range: Option<Range<usize>>, replacement: &str) -> usize {
+        let Some(range) = range else {
+            replacement.clone_into(&mut self.text);
+            return 0;
+        };
+        let (bytes, adjusted_range) = utf16_range(&self.text, range);
+        self.text.replace_range(bytes, replacement);
+        adjusted_range.start
+    }
+}
+
+/// UTF-16 범위를 문자 경계에 맞춘 뒤 문자열 바이트 범위와 함께 돌려준다.
+fn utf16_range(text: &str, range: Range<usize>) -> (Range<usize>, Range<usize>) {
+    let index = |offset| {
+        let mut utf16_offset = 0;
+        for (byte, character) in text.char_indices() {
+            if utf16_offset >= offset {
+                return (byte, utf16_offset);
+            }
+            utf16_offset += character.len_utf16();
+        }
+        (text.len(), utf16_offset)
+    };
+    let (start_byte, start_offset) = index(range.start);
+    let (end_byte, end_offset) = index(range.end.max(range.start));
+    (start_byte..end_byte, start_offset..end_offset)
+}
+
 impl gpui_kit::EntityInputHandler for TerminalPane {
     fn text_for_range(
         &mut self,
-        _range: std::ops::Range<usize>,
-        _adjusted_range: &mut Option<std::ops::Range<usize>>,
+        range: Range<usize>,
+        adjusted_range: &mut Option<Range<usize>>,
         _window: &mut Window,
         _cx: &mut Context<Self>,
     ) -> Option<String> {
-        None
+        let composition = self.composition.as_ref()?;
+        let (bytes, range) = utf16_range(&composition.text, range);
+        *adjusted_range = Some(range);
+        Some(composition.text[bytes].to_owned())
     }
 
     fn selected_text_range(
@@ -1053,12 +1110,12 @@ impl gpui_kit::EntityInputHandler for TerminalPane {
         _window: &mut Window,
         _cx: &mut Context<Self>,
     ) -> Option<gpui_kit::UTF16Selection> {
-        let end = self
-            .marked_text
-            .as_deref()
-            .map_or(0, |text| text.encode_utf16().count());
+        let range = self
+            .composition
+            .as_ref()
+            .map_or(0..0, |composition| composition.selection.clone());
         Some(gpui_kit::UTF16Selection {
-            range: end..end,
+            range,
             reversed: false,
         })
     }
@@ -1067,26 +1124,32 @@ impl gpui_kit::EntityInputHandler for TerminalPane {
         &self,
         _window: &mut Window,
         _cx: &mut Context<Self>,
-    ) -> Option<std::ops::Range<usize>> {
-        self.marked_text
-            .as_deref()
-            .map(|text| 0..text.encode_utf16().count())
+    ) -> Option<Range<usize>> {
+        self.composition
+            .as_ref()
+            .map(|composition| 0..composition.text.encode_utf16().count())
     }
 
     fn unmark_text(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        self.marked_text = None;
+        self.composition = None;
         cx.notify();
     }
 
     /// 확정된 글자(일반 타이핑과 IME 확정)를 PTY로 보낸다
     fn replace_text_in_range(
         &mut self,
-        _range: Option<std::ops::Range<usize>>,
+        range: Option<Range<usize>>,
         text: &str,
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.marked_text = None;
+        let mut composition = self.composition.take();
+        let text = if let (Some(composition), Some(range)) = (&mut composition, range) {
+            composition.replace(Some(range), text);
+            composition.text.as_str()
+        } else {
+            text
+        };
         if text.is_empty() {
             cx.notify();
             return;
@@ -1097,20 +1160,33 @@ impl gpui_kit::EntityInputHandler for TerminalPane {
 
     fn replace_and_mark_text_in_range(
         &mut self,
-        _range: Option<std::ops::Range<usize>>,
+        range: Option<Range<usize>>,
         new_text: &str,
-        _new_selected_range: Option<std::ops::Range<usize>>,
+        new_selected_range: Option<Range<usize>>,
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.marked_text = (!new_text.is_empty()).then(|| new_text.to_string());
+        let mut composition = self.composition.take().unwrap_or_default();
+        let start = composition.replace(range, new_text);
+        if !composition.text.is_empty() {
+            // 선택 범위는 새로 들어온 문자열의 시작을 기준으로 한다.
+            let selection = new_selected_range.map_or_else(
+                || {
+                    let end = new_text.encode_utf16().count();
+                    end..end
+                },
+                |range| utf16_range(new_text, range).1,
+            );
+            composition.selection = start + selection.start..start + selection.end;
+            self.composition = Some(composition);
+        }
         cx.notify();
     }
 
     /// IME 후보 창을 커서 칸 옆에 띄운다
     fn bounds_for_range(
         &mut self,
-        _range_utf16: std::ops::Range<usize>,
+        _range_utf16: Range<usize>,
         _element_bounds: gpui_kit::Bounds<gpui_kit::Pixels>,
         _window: &mut Window,
         _cx: &mut Context<Self>,
