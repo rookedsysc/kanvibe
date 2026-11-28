@@ -55,3 +55,6 @@ x11rb = { version = "0.13", default-features = false }
 [dev-dependencies]
 gpui-kit = { version = "0.11.0", features = ["test-support"] }
 tempfile.workspace = true
+
+[target.'cfg(target_os = "macos")'.dev-dependencies]
+gpui-apple = { package = "gpui-pre-apple", version = "=0.3.14", features = ["font-kit"] }

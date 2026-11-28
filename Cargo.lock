@@ -4774,6 +4774,7 @@ dependencies = [
  "anyhow",
  "futures",
  "gpui-kit",
+ "gpui-pre-apple",
  "gpui-webview",
  "icu_calendar",
  "icu_collator",

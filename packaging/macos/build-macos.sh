@@ -95,6 +95,7 @@ assemble_app() {
   plutil -lint "$app/Contents/Info.plist" >/dev/null
   printf 'APPL????' > "$app/Contents/PkgInfo"
   install -m 0644 "$repo_root/resources/icon.icns" "$app/Contents/Resources/icon.icns"
+  install -m 0644 "$repo_root"/crates/kanvibe-app/assets/fonts/LICENSE-*.txt "$app/Contents/Resources/"
   install -m 0755 "$agents"/kanvibe-remote-agent-* "$app/Contents/Resources/remote-agents/"
   install -m 0644 "$agents/SHA256SUMS" "$app/Contents/Resources/remote-agents/SHA256SUMS"
   (cd "$app/Contents/Resources/remote-agents" && shasum -a 256 -c SHA256SUMS >/dev/null)

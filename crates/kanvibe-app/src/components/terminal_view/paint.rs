@@ -14,7 +14,7 @@ use kanvibe_terminal::screen::{
 use std::ops::Range;
 
 use super::mouse::{GridPoint, GridSelection};
-use crate::fonts::mono_font;
+use crate::fonts::terminal_font;
 
 /// TS `createTerminalOptions`의 `fontSize: 14`
 pub const TERMINAL_FONT_SIZE: f32 = 14.0;
@@ -52,7 +52,7 @@ impl GridLayout {
 /// 글꼴로 셀 크기를 잰다. xterm처럼 글자 높이를 올림한 값을 줄 높이로 쓴다
 pub fn measure_cell_size(window: &Window) -> Size<Pixels> {
     let text_system = window.text_system();
-    let font_id = text_system.resolve_font(&mono_font(400));
+    let font_id = text_system.resolve_font(&terminal_font(400));
     let font_size = px(TERMINAL_FONT_SIZE);
     let width = text_system
         .advance(font_id, font_size, 'm')
@@ -236,10 +236,10 @@ struct TerminalFonts {
 impl TerminalFonts {
     fn new() -> Self {
         Self {
-            regular: styled_mono_font(false, false),
-            bold: styled_mono_font(true, false),
-            italic: styled_mono_font(false, true),
-            bold_italic: styled_mono_font(true, true),
+            regular: styled_terminal_font(false, false),
+            bold: styled_terminal_font(true, false),
+            italic: styled_terminal_font(false, true),
+            bold_italic: styled_terminal_font(true, true),
         }
     }
 
@@ -253,8 +253,8 @@ impl TerminalFonts {
     }
 }
 
-fn styled_mono_font(is_bold: bool, is_italic: bool) -> Font {
-    let mut font = mono_font(if is_bold { 700 } else { 400 });
+fn styled_terminal_font(is_bold: bool, is_italic: bool) -> Font {
+    let mut font = terminal_font(if is_bold { 700 } else { 400 });
     if is_italic {
         font.style = gpui_kit::FontStyle::Italic;
     }
@@ -467,7 +467,7 @@ fn paint_marked_text(
     let color: Hsla = rgb(TERMINAL_FOREGROUND).into();
     let run = TextRun {
         len: marked_text.len(),
-        font: mono_font(400),
+        font: terminal_font(400),
         color,
         background_color: Some(rgb(TERMINAL_BACKGROUND).into()),
         underline: Some(UnderlineStyle {

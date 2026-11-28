@@ -28,17 +28,27 @@ pub const BUNDLED_FONT_FILES: [&[u8]; 11] = [
     include_bytes!("../assets/fonts/KanVibeDejaVuSansMono-Bold.ttf"),
 ];
 
-/// 터미널 프롬프트 아이콘(Powerline·Nerd Font 사설 영역 글자). TS 터미널은 JetBrainsMono Nerd Font Mono를 웹폰트로 받아 첫 순서에 썼다.
-/// 기호만 든 얼굴이라 'm' 글리프가 없어 GPUI가 대체 순서에서는 빼지만(`SYMBOLS2_FAMILY`와 같다), 텍스트 시스템에 올려 두면
-/// cosmic-text 자체 대체가 앞 얼굴들에 없는 글자를 이 얼굴로 그린다. 이름으로 고르지 않으므로 `KanVibe ` 접두어가 필요 없다.
-/// 다이어그램·문서 미리보기 글꼴 묶음(`BUNDLED_FONT_FILES`)에는 넣지 않아 그쪽 기호 대체는 그대로다
-pub const TERMINAL_ICON_FONT_FILE: &[u8] =
-    include_bytes!("../assets/fonts/SymbolsNerdFontMono-Regular.ttf");
+// CoreText의 GPUI 구현은 'm'이 없는 얼굴을 건너뛴다. macOS에서는 같은 DejaVu 기반의
+// Nerd Font를 터미널 기본 글꼴로 삼아 일반 글자와 프롬프트 기호를 같은 폭으로 그린다.
+#[cfg(target_os = "macos")]
+const TERMINAL_FONT_FILES: &[&[u8]] = &[
+    include_bytes!("../assets/fonts/KanVibeDejaVuSansMNerdFontMono-Regular.ttf"),
+    include_bytes!("../assets/fonts/KanVibeDejaVuSansMNerdFontMono-Bold.ttf"),
+];
+// cosmic-text는 번들에 등록된 기호 전용 얼굴도 자체 대체로 찾는다.
+#[cfg(not(target_os = "macos"))]
+const TERMINAL_FONT_FILES: &[&[u8]] = &[include_bytes!(
+    "../assets/fonts/SymbolsNerdFontMono-Regular.ttf"
+)];
 
 /// `--font-sans`가 기준 환경에서 풀린 Noto Sans
 pub const SANS_FAMILY: &str = "KanVibe Noto Sans";
-/// `--font-mono`·터미널·Monaco가 기준 환경에서 풀린 DejaVu Sans Mono
+/// `--font-mono`·Monaco가 기준 환경에서 풀린 DejaVu Sans Mono
 pub const MONO_FAMILY: &str = "KanVibe DejaVu Sans Mono";
+#[cfg(target_os = "macos")]
+const TERMINAL_FAMILY: &str = "KanVibe DejaVuSansM Nerd Font Mono";
+#[cfg(not(target_os = "macos"))]
+const TERMINAL_FAMILY: &str = MONO_FAMILY;
 /// 한글을 그리는 Noto Sans CJK KR Regular
 pub const CJK_FAMILY: &str = "KanVibe Noto Sans CJK KR";
 /// Chromium이 굵은 한글을 그린 방식(Regular 윤곽선을 글자 크기 1/24만큼 FT_Outline_Embolden)을 미리 적용한 얼굴.
@@ -61,12 +71,16 @@ const MONO_FALLBACKS: [&str; 3] = [CJK_FAMILY, SYMBOLS_FAMILY, SYMBOLS2_FAMILY];
 
 /// 번들 글꼴을 앱 텍스트 시스템에 올린다. 창을 열기 전에 불러야 첫 레이아웃부터 번들 얼굴을 쓴다.
 pub fn register_bundled_fonts(cx: &App) -> anyhow::Result<()> {
+    register_fonts(cx.text_system())
+}
+
+fn register_fonts(text_system: &gpui_kit::TextSystem) -> anyhow::Result<()> {
     let font_files = BUNDLED_FONT_FILES
         .iter()
-        .chain([&TERMINAL_ICON_FONT_FILE])
+        .chain(TERMINAL_FONT_FILES)
         .map(|bytes| Cow::Borrowed(*bytes))
         .collect();
-    cx.text_system().add_fonts(font_files)
+    text_system.add_fonts(font_files)
 }
 
 /// CSS `font-weight`를 기준 환경이 실제로 고른 얼굴로 옮긴다.
@@ -87,6 +101,10 @@ pub fn sans_font(css_weight: u16) -> Font {
 /// 코드·브랜치·단축키 글꼴
 pub fn mono_font(css_weight: u16) -> Font {
     font_with_fallbacks(MONO_FAMILY, &MONO_FALLBACKS, css_weight)
+}
+
+pub(crate) fn terminal_font(css_weight: u16) -> Font {
+    font_with_fallbacks(TERMINAL_FAMILY, &MONO_FALLBACKS, css_weight)
 }
 
 /// 굵은 글씨면 CJK 자리 앞에 합성 bold 얼굴을 끼운다. 합성 bold에 없는 CJK 글자는 바로 뒤 Regular로 그린다.
@@ -116,15 +134,63 @@ fn font_with_fallbacks(family: &str, fallbacks: &[&str], css_weight: u16) -> Fon
 mod tests {
     use super::*;
 
+    #[cfg(not(target_os = "macos"))]
     #[test]
     fn the_terminal_icon_font_is_the_nerd_font_symbols_face() {
         let mut database = resvg::usvg::fontdb::Database::new();
-        database.load_font_data(TERMINAL_ICON_FONT_FILE.to_vec());
+        database.load_font_data(TERMINAL_FONT_FILES[0].to_vec());
         let families: Vec<String> = database
             .faces()
             .flat_map(|face| face.families.iter().map(|(family, _)| family.clone()))
             .collect();
         assert_eq!(families, ["Symbols Nerd Font Mono"]);
+        assert_eq!(terminal_font(400), mono_font(400));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn core_text_resolves_terminal_icons_at_the_original_cell_size() {
+        use std::sync::Arc;
+
+        use gpui_kit::{PlatformTextSystem, TextSystem, px};
+
+        let core_text = Arc::new(gpui_apple::AppleTextSystem::new());
+        let text_system = TextSystem::new(core_text.clone());
+        register_fonts(&text_system).unwrap();
+        let font_size = px(14.0);
+
+        for weight in [400, 700] {
+            let original_font_id = text_system.resolve_font(&mono_font(weight));
+            let terminal_font_id = text_system.resolve_font(&terminal_font(weight));
+            assert_ne!(terminal_font_id, original_font_id);
+            let original_cell_width = text_system
+                .advance(original_font_id, font_size, 'm')
+                .unwrap()
+                .width;
+            assert_eq!(
+                text_system.ascent(terminal_font_id, font_size),
+                text_system.ascent(original_font_id, font_size)
+            );
+            assert_eq!(
+                text_system.descent(terminal_font_id, font_size),
+                text_system.descent(original_font_id, font_size)
+            );
+
+            for character in ['m', '┌', '\u{e0b0}', '\u{f418}'] {
+                let glyph = core_text
+                    .glyph_for_char(terminal_font_id, character)
+                    .unwrap_or_else(|| panic!("terminal glyph missing for {character:?}"));
+                assert_ne!(glyph.0, 0, "{character:?} resolved to .notdef");
+                assert_eq!(
+                    text_system
+                        .advance(terminal_font_id, font_size, character)
+                        .unwrap()
+                        .width,
+                    original_cell_width,
+                    "{character:?} must fit one cell"
+                );
+            }
+        }
     }
 
     #[test]
@@ -146,7 +212,7 @@ mod tests {
 
     #[test]
     fn bold_text_draws_korean_with_the_synthetic_bold_face_first() {
-        for font in [sans_font(600), mono_font(700)] {
+        for font in [sans_font(600), mono_font(700), terminal_font(700)] {
             let fallbacks = font.fallbacks.expect("font must carry fallbacks");
             assert_eq!(
                 &fallbacks.fallback_list()[..2],
