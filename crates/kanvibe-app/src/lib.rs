@@ -65,7 +65,10 @@ pub fn init_desktop_app(
     plan: &DesktopLaunchPlan,
     cx: &mut App,
 ) -> anyhow::Result<()> {
-    init_app_with_desktop(launch, Some(plan), cx)
+    init_app_with_desktop(launch, Some(plan), cx)?;
+    #[cfg(target_os = "macos")]
+    notifications::warn_if_macos_notifications_unavailable();
+    Ok(())
 }
 
 fn init_app_with_desktop(
