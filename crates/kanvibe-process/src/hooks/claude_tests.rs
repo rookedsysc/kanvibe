@@ -154,6 +154,43 @@ fn stale_command_entries_are_not_installed_and_are_repaired_on_reinstall() {
 }
 
 #[test]
+fn reinstall_preserves_user_hooks_in_the_same_matcher_group() {
+    let repo = ClaudeRepo::new(true);
+    let url = "http://localhost:9736";
+    repo.setup("task-1", url);
+
+    let first_user_hook = json!({ "type": "command", "command": "notify-send done" });
+    let second_user_hook =
+        json!({ "type": "command", "command": "echo .claude/hooks/kanvibe-stop-hook.sh" });
+    let user_group = json!({
+        "matcher": "",
+        "hooks": [first_user_hook, second_user_hook],
+    });
+    let mut settings = stale_settings();
+    let stale_stop = settings["hooks"]["Stop"][0]["hooks"][0].clone();
+    settings["hooks"]["Stop"][0] = user_group.clone();
+    settings["hooks"]["Stop"][0]["hooks"]
+        .as_array_mut()
+        .unwrap()
+        .insert(1, stale_stop);
+    std::fs::write(repo.settings_path(), settings.to_string()).unwrap();
+
+    repo.setup("task-1", url);
+    repo.setup("task-1", url);
+
+    let updated: Value =
+        serde_json::from_str(&std::fs::read_to_string(repo.settings_path()).unwrap()).unwrap();
+    let stop = updated["hooks"]["Stop"].as_array().unwrap();
+    assert_eq!(stop.len(), 2);
+    assert_eq!(stop[0], user_group);
+    assert_eq!(
+        stop[1]["hooks"][0]["command"],
+        "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/kanvibe-stop-hook.sh"
+    );
+    assert!(repo.status(None).is_installed);
+}
+
+#[test]
 fn stays_installed_when_reachability_fails_but_configuration_is_correct() {
     let repo = ClaudeRepo::new(false);
 

@@ -147,7 +147,8 @@ pub fn build_claude_hook_files(
     let mut settings = parse_json_hook_settings(settings_content, "Claude settings.json")?;
     let hooks = ensure_json_hook_buckets(&mut settings);
     for (event, script_name, entry) in claude_hook_entries() {
-        let entries = upsert_json_hook_entries(hooks.get(event), script_name, entry);
+        let script_path = format!("{CONFIG_DIR_NAME}/hooks/{script_name}");
+        let entries = upsert_json_hook_entries(hooks.get(event), &script_path, entry);
         hooks.insert(event.to_string(), Value::Array(entries));
     }
     let mut files = build_shell_hook_script_files(
