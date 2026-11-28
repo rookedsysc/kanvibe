@@ -657,7 +657,13 @@ impl Render for TaskDetailView {
             || self.description_edit.is_some()
             || self.create_task.is_some()
             || self.done_confirm.is_some();
+        let has_shell_overlay = self
+            .screen
+            .navigator
+            .locale_shell(cx)
+            .is_some_and(|shell| shell.read(cx).has_open_overlay(cx));
         if is_loaded
+            && !has_shell_overlay
             && !has_pending_input
             && !self.focus_handle.contains_focused(window, cx)
             && !terminal_has_focus
@@ -665,7 +671,7 @@ impl Render for TaskDetailView {
         {
             self.focus_terminal(window, cx);
         }
-        if std::mem::take(&mut self.should_refocus_terminal) {
+        if !has_shell_overlay && std::mem::take(&mut self.should_refocus_terminal) {
             self.focus_terminal(window, cx);
         }
         let body: AnyElement = match &self.load {
