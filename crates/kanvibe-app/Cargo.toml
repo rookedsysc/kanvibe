@@ -47,6 +47,9 @@ serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-foundation = { version = "0.3.2", default-features = false, features = ["NSBundle", "NSString"] }
+
 [target.'cfg(target_os = "linux")'.dependencies]
 # QA 재생: 창 관리자가 없는 Xvfb에서 창에 입력 포커스를 직접 준다(TS 기준 이미지는 포커스된 창에서 찍었다)
 raw-window-handle = "0.6"

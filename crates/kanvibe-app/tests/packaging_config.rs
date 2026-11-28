@@ -54,3 +54,12 @@ fn the_mac_app_uses_the_kanvibe_icon_from_resources() {
     );
     assert!(repository_root().join("resources/icon.icns").is_file());
 }
+
+#[test]
+fn the_mac_app_has_the_bundle_identifier_required_for_system_notifications() {
+    let plist = read("packaging/macos/Info.plist.in");
+    assert_eq!(
+        plist_string(&plist, "CFBundleIdentifier").as_deref(),
+        Some("com.kanvibe.desktop")
+    );
+}

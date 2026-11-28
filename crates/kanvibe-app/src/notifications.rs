@@ -1,7 +1,8 @@
 //! 알림 기반. 앱 안 알림 센터(버튼 배지·목록)의 모델과, OS 알림을 띄우고 누르면 작업 상세로 보내는 경로.
 //!
 //! OS 알림은 `OsNotificationBackend` 뒤에 둔다. Linux 구현은 GPUI의 시스템 알림(XDG D-Bus, notify-rust)을 쓴다.
-//! TODO(M9, macOS 패키징 담당): macOS 번들 식별자로 `UNUserNotificationCenter` 권한·클릭 응답을 검증한다.
+//! macOS는 앱 번들에서 GPUI의 `UNUserNotificationCenter` 구현을 쓴다.
+//! TODO(M9, macOS 패키징 담당): 서명된 앱 번들에서 알림 권한·배너·클릭 응답을 검증한다.
 
 use std::collections::HashMap;
 
@@ -210,6 +211,23 @@ pub fn handle_system_notification_response(
     ))
 }
 
+#[cfg(target_os = "macos")]
+pub(crate) fn warn_if_macos_notifications_unavailable() {
+    let has_bundle_identifier = objc2_foundation::NSBundle::mainBundle()
+        .bundleIdentifier()
+        .is_some();
+    if let Some(warning) = macos_notification_warning(has_bundle_identifier) {
+        eprintln!("[kanvibe] warning: {warning}");
+    }
+}
+
+#[cfg(any(target_os = "macos", test))]
+fn macos_notification_warning(has_bundle_identifier: bool) -> Option<&'static str> {
+    (!has_bundle_identifier).then_some(
+        "macOS desktop notifications require the KanVibe.app bundle. In-app notifications remain available.",
+    )
+}
+
 /// 앱 시작 때 한 번 건다
 pub fn install_notification_click_routing(cx: &mut App) {
     cx.on_system_notification_response(|response, cx| {
@@ -220,6 +238,14 @@ pub fn install_notification_click_routing(cx: &mut App) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn macos_notification_warning_explains_how_to_enable_banners() {
+        assert_eq!(macos_notification_warning(true), None);
+        let warning = macos_notification_warning(false).unwrap();
+        assert!(warning.contains("KanVibe.app"));
+        assert!(warning.contains("In-app notifications remain available."));
+    }
 
     #[test]
     fn badge_shows_counts_up_to_nine_then_nine_plus() {

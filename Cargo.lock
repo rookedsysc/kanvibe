@@ -4791,6 +4791,7 @@ dependencies = [
  "kanvibe-services",
  "kanvibe-terminal",
  "lb-wry",
+ "objc2-foundation 0.3.2",
  "raw-window-handle",
  "regress",
  "resvg 0.46.0",
